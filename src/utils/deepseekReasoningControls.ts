@@ -132,16 +132,16 @@ const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 
 // 2A Qwen 思考强度三档预设（映射到 thinking_budget 数值，单位 tokens）。
 // DashScope 混合思考模型（qwen3.7-max/plus、qwen-plus/turbo/flash、qwen3.5/3.6/3.7 非 thinking 变体）
-// 通过 thinking_budget 表达"思考强度"。低/中/高/超高/最高对应 1024 / 4096 / 16384 / 32768 / 65536。
+// 通过 thinking_budget 表达"思考强度"。低/中/高/超高/最高对应 1024 / 4096 / 16384 / 65536 / 262144。
 //
-// 注意：xhigh 和 max 仅在 qwen3.7-max / qwen3-max / qwen-plus 文档上限内有效；
+// 注意：xhigh 和 max 仅在部分模型（qwen3.7-max / qwen3-max / qwen-plus / qwen3.8）文档上限内有效；
 // qwen-turbo / qwen-flash 等较小模型可能返回 400 错误，由 chat 错误处理提醒用户降档。
 const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.qwen.depth.low', defaultLabel: '低 (1024)' },
   { value: 'medium', labelKey: 'settings:api.modal.qwen.depth.medium', defaultLabel: '中 (4096)' },
   { value: 'high', labelKey: 'settings:api.modal.qwen.depth.high', defaultLabel: '高 (16384)' },
-  { value: 'xhigh', labelKey: 'settings:api.modal.qwen.depth.xhigh', defaultLabel: '超高 (32768)' },
-  { value: 'max', labelKey: 'settings:api.modal.qwen.depth.max', defaultLabel: '最高 (65536)' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.qwen.depth.xhigh', defaultLabel: '超高 (65536)' },
+  { value: 'max', labelKey: 'settings:api.modal.qwen.depth.max', defaultLabel: '最高 (262144)' },
 ];
 
 const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
@@ -474,18 +474,18 @@ export function deepSeekV32BudgetToEffort(budget: number | undefined | null): 'l
 //
 // 档位依据：
 // - low/medium/high 是 2A 引入的保守档，兼容所有 Qwen 混合思考模型
-// - xhigh (32768) 匹配 qwen-plus 文档上限
-// - max (65536) 匹配 qwen3.7-max / qwen3-max 文档上限
+// - xhigh (65536) 匹配 qwen-plus / qwen3-max 等中高端模型的实际上限
+// - max (262144 = 256K) 匹配 qwen3.7-max / qwen3.8 等旗舰模型的最新上限（覆盖 20 多万）
 //
-// 注意：部分模型（如 qwen-turbo / qwen-flash）文档上限低于 max，
+// 注意：部分模型（如 qwen-turbo / qwen-flash）文档上限低于 max 甚至 xhigh，
 // API 会返回 400 错误。前端允许选择这两档，但需要在错误发生后提醒
-// 用户降到 high 或更低（见 chat 错误处理）。
+// 用户降到 high 或更低（见 chat 错误处理 detectThinkingBudgetError）。
 const QWEN_EFFORT_BUDGETS = {
   low: 1024,
   medium: 4096,
   high: 16384,
-  xhigh: 32768,
-  max: 65536,
+  xhigh: 65536,
+  max: 262144,
 } as const;
 
 export function qwenEffortToBudget(effort: string | undefined | null): number {

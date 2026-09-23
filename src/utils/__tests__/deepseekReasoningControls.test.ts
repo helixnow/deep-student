@@ -376,10 +376,10 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
     expect(qwenEffortToBudget('bogus')).toBe(4096);   // 未知值也回 medium
   });
 
-  // 新增：xhigh/max 档位（仅 qwen3.7-max / qwen3-max / qwen-plus 等文档上限内有效）
-  it('qwenEffortToBudget maps xhigh/max to 32768/65536', () => {
-    expect(qwenEffortToBudget('xhigh')).toBe(32768);
-    expect(qwenEffortToBudget('max')).toBe(65536);
+  // 新增：xhigh/max 档位（仅 qwen3.7-max / qwen3-max / qwen-plus / qwen3.8 等文档上限内有效）
+  it('qwenEffortToBudget maps xhigh/max to 65536/262144', () => {
+    expect(qwenEffortToBudget('xhigh')).toBe(65536);
+    expect(qwenEffortToBudget('max')).toBe(262144);
   });
 
   it('qwenBudgetToEffort reverse-maps budget to effort bucket', () => {
@@ -394,10 +394,12 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
 
   // 新增：xhigh/max 反向映射
   it('qwenBudgetToEffort reverse-maps xhigh/max budgets', () => {
+    expect(qwenBudgetToEffort(65536)).toBe('xhigh');
     expect(qwenBudgetToEffort(32768)).toBe('xhigh');
-    expect(qwenBudgetToEffort(24576)).toBe('xhigh');
-    expect(qwenBudgetToEffort(65536)).toBe('max');
-    expect(qwenBudgetToEffort(100000)).toBe('max');
+    expect(qwenBudgetToEffort(49152)).toBe('xhigh');
+    expect(qwenBudgetToEffort(262144)).toBe('max');
+    expect(qwenBudgetToEffort(200000)).toBe('max');
+    expect(qwenBudgetToEffort(131072)).toBe('max');
   });
 
   it('qwen3.7-max resolves to qwen-budget-effort with medium default', () => {
@@ -491,7 +493,7 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
   });
 
   // 新增：xhigh / max selection
-  it('selection maps xhigh effort to thinkingBudget=32768', () => {
+  it('selection maps xhigh effort to thinkingBudget=65536', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'qwen3.7-max',
       providerType: 'qwen',
@@ -504,11 +506,11 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
     expect(selection).toEqual({
       enableThinking: true,
       reasoningEffort: 'xhigh',
-      thinkingBudget: 32768,
+      thinkingBudget: 65536,
     });
   });
 
-  it('selection maps max effort to thinkingBudget=65536', () => {
+  it('selection maps max effort to thinkingBudget=262144', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'qwen3-max',
       providerType: 'qwen',
@@ -521,7 +523,7 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
     expect(selection).toEqual({
       enableThinking: true,
       reasoningEffort: 'max',
-      thinkingBudget: 65536,
+      thinkingBudget: 262144,
     });
   });
 
