@@ -907,4 +907,112 @@ describe('InputBarV2 stale context ref guard', () => {
       thinkingBudget: 32768,
     });
   });
+
+  it('resolves current model by config ID, not by display name, for same-name models across vendors', async () => {
+    // 模拟场景：全局默认从 SiliconFlow Qwen/Qwen3-8B 切换到 DashScope Qwen3-8B
+    // 两个供应商的模型同名，但 config ID 不同
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'get_model_assignments') {
+        return { model2_config_id: 'dashscope-qwen3-8b' };
+      }
+      if (command === 'get_model_profiles') {
+        return [];
+      }
+      return [];
+    });
+
+    const { store } = createMockStore();
+
+    // 未固定会话：modelId 为空，modelIdPinnedByUser 为 false
+    act(() => {
+      store.setState({
+        chatParams: {
+          modelId: '',
+          modelDisplayName: 'Qwen/Qwen3-8B', // 旧的 displayName 残留
+          modelIdPinnedByUser: false,
+          enableThinking: true,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'siliconflow-qwen3-8b',
+            name: 'Qwen/Qwen3-8B',
+            model: 'Qwen/Qwen3-8B',
+            vendorName: 'SiliconFlow',
+            providerType: 'siliconflow',
+            providerScope: 'siliconflow',
+            baseUrl: 'https://api.siliconflow.cn/v1',
+          },
+          {
+            id: 'dashscope-qwen3-8b',
+            name: 'Qwen3-8B',
+            model: 'Qwen3-8B',
+            vendorName: 'DashScope',
+            providerType: 'dashscope',
+            providerScope: 'dashscope',
+            baseUrl: 'https://dashscope.aliyuncs.com/v1',
+          },
+        ]}
+      />
+    );
+
+    // 应该显示 DashScope 版本（全局默认），而不是 SiliconFlow 版本（同名但排名靠前）
+    await waitFor(() => {
+      expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('Qwen3-8B');
+      expect(capturedInputBarUIProps?.runtimeModelProviderLabel).toBe('DashScope');
+    });
+  });
+
+  it('resolves pinned session model by exact config ID, ignoring display name', async () => {
+    // 已固定会话：用户显式选择了 SiliconFlow 版本
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          modelId: 'siliconflow-qwen3-8b',
+          modelDisplayName: 'Qwen/Qwen3-8B',
+          modelIdPinnedByUser: true,
+          enableThinking: true,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'dashscope-qwen3-8b',
+            name: 'Qwen3-8B',
+            model: 'Qwen3-8B',
+            vendorName: 'DashScope',
+            providerType: 'dashscope',
+          },
+          {
+            id: 'siliconflow-qwen3-8b',
+            name: 'Qwen/Qwen3-8B',
+            model: 'Qwen/Qwen3-8B',
+            vendorName: 'SiliconFlow',
+            providerType: 'siliconflow',
+          },
+        ]}
+      />
+    );
+
+    // 已固定会话应该显示用户选择的 SiliconFlow 版本
+    await waitFor(() => {
+      expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('Qwen/Qwen3-8B');
+      expect(capturedInputBarUIProps?.runtimeModelProviderLabel).toBe('SiliconFlow');
+    });
+  });
 });
