@@ -93,9 +93,21 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   messageId,
   searchActive,
 }) => {
-  const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
+  const isActivelyStreaming = isActive && isStreaming;
+  // 🚀 性能（2026-09-24 流式卡顿治理）：流式期间禁用 flowtoken 的
+  // AnimatedMarkdown——它携带独立的 react-markdown@9 副本，每个 flush 对
+  // 活动块做第二份全量解析并为新 token 生成逐词 CSS 动画，是流式期间
+  // 仅次于主管线重解析的 CPU 开销。流式期间一律走主管线 MarkdownRenderer
+  // （KaTeX 懒加载 + LRU、rehype-sanitize 消毒），块闭合（isActive=false）
+  // 后 flowtoken 门禁自然生效，渲染树一次性切换并补播淡入动画。
+  //
+  // 注意 shouldUseFullFlowTokenEffect 第二参数原本是「该块是否处于流式
+  // 上下文」，用于决定是否启用 flowtoken。它与「是否活动块」是两回事：
+  // 这里恒传 true（该渲染器只服务流式产生的块），活动块判定由
+  // !isActivelyStreaming 单独承担。
+  const shouldUseFlowToken = !isActivelyStreaming && shouldUseFullFlowTokenEffect(
     block,
-    isActive && isStreaming,
+    true,
   ) && !searchActive;
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
 
@@ -133,9 +145,18 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   // 已完成块：只要 raw 不变就跳过
   // 🔧 B4: 回调 props（引用点击/图片解析）也纳入比较，
   // 父组件换新回调时不再让子树继续持有过期闭包
+  //
+  // 🚀 2026-09-24 流式卡顿治理补充：shouldUseFlowToken 依赖
+  // (isActive && isStreaming)，流式结束（isStreaming true→false）会让
+  // 活动块从「主管线」一次性切换到「flowtoken」补播动画。若此处只看
+  // block 与回调，isStreaming 变化会被 memo 吞掉，切换永不发生。
+  // 因此把 isStreaming / isActive 纳入比较——对真正静止的已完成块
+  // 这两个值恒定，不产生额外渲染。
   if (prev.block.isComplete && next.block.isComplete && prev.block.raw === next.block.raw) {
     return (
       prev.isNew === next.isNew &&
+      prev.isActive === next.isActive &&
+      prev.isStreaming === next.isStreaming &&
       prev.searchActive === next.searchActive &&
       prev.onLinkClick === next.onLinkClick &&
       prev.extraRemarkPlugins === next.extraRemarkPlugins &&
@@ -249,8 +270,10 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
 
   const hasVisibleContent = mainContent.trim().length > 0;
   const thinkingContent = parsedContent?.thinkingContent ?? '';
+  // 与 MemoizedBlock 相同：流式期间思维链不走 flowtoken（详见其上注释），
+  // 由 isStreaming=false 的块闭合一次性切换补播动画。
   const shouldUseThinkingFlowToken = Boolean(
-    isStreaming &&
+    !isStreaming &&
     thinkingContent &&
     !thinkingContent.includes('\n') &&
     !searchActive &&
