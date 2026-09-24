@@ -188,14 +188,20 @@ export function useSessionManagerEvents(listener: SessionManagerListener): void 
 /**
  * 获取所有会话 ID 列表
  *
- * @param pollInterval 轮询间隔（毫秒），默认 1000
+ * 🚀 2026-09-24 性能治理：由 1s setInterval 轮询改为事件驱动。
+ * 会话集合只在 created/destroyed/current-changed 时变化，轮询每秒空转
+ * 纯属浪费（getAllSessionIds + 数组比较 + 定时器唤醒）。
+ * `pollInterval` 参数保留仅为 API 兼容（既有调用方传参不报错），
+ * 现已不生效；低频兜底（60s）仅防御事件丢失。
+ *
+ * @param pollInterval 已废弃（保留兼容，不生效）
  * @returns 所有会话 ID 列表
  */
 export function useAllSessionIds(pollInterval = 1000): string[] {
   const [ids, setIds] = useState<string[]>([]);
 
   useEffect(() => {
-    // 内容相同则保留旧引用，避免每次轮询都因新数组引用触发重渲染
+    // 内容相同则保留旧引用，避免每次同步都因新数组引用触发重渲染
     const syncIds = () => {
       setIds((prev) => {
         const next = sessionManager.getAllSessionIds();
@@ -210,10 +216,25 @@ export function useAllSessionIds(pollInterval = 1000): string[] {
     };
 
     syncIds();
-    const interval = setInterval(syncIds, pollInterval);
+    const unsubscribe = sessionManager.subscribe((event) => {
+      if (
+        event.type === 'session-created' ||
+        event.type === 'session-destroyed' ||
+        event.type === 'current-session-changed'
+      ) {
+        syncIds();
+      }
+    });
+    // 低频兜底：防御事件丢失（正常路径下每秒不再唤醒）
+    const fallback = setInterval(syncIds, 60_000);
 
-    return () => clearInterval(interval);
-  }, [pollInterval]);
+    return () => {
+      unsubscribe();
+      clearInterval(fallback);
+    };
+    // pollInterval 已废弃：事件驱动后不再依赖该值重建订阅
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return ids;
 }
@@ -284,7 +305,10 @@ export interface SessionStats {
 /**
  * 获取会话统计信息
  *
- * @param pollInterval 轮询间隔（毫秒），默认 1000
+ * 🚀 2026-09-24 性能治理：由 1s setInterval 轮询改为事件驱动 + 低频兜底，
+ * 与 useAllSessionIds 同理。`pollInterval` 保留仅为 API 兼容，现已不生效。
+ *
+ * @param pollInterval 已废弃（保留兼容，不生效）
  * @returns 会话统计信息
  */
 export function useSessionStats(pollInterval = 1000): SessionStats {
@@ -300,7 +324,7 @@ export function useSessionStats(pollInterval = 1000): SessionStats {
       const total = sessionManager.getSessionCount();
       const streaming = sessionManager.getActiveStreamingSessions().length;
       const maxSessions = sessionManager.getMaxSessions();
-      // 数值未变化时保留旧对象引用，避免每次轮询都触发重渲染
+      // 数值未变化时保留旧对象引用，避免每次同步都触发重渲染
       setStats((prev) =>
         prev.total === total &&
         prev.streaming === streaming &&
@@ -316,10 +340,17 @@ export function useSessionStats(pollInterval = 1000): SessionStats {
     };
 
     updateStats();
-    const interval = setInterval(updateStats, pollInterval);
+    const unsubscribe = sessionManager.subscribe(() => updateStats());
+    // 低频兜底：防御事件丢失（正常路径下每秒不再唤醒）
+    const fallback = setInterval(updateStats, 60_000);
 
-    return () => clearInterval(interval);
-  }, [pollInterval]);
+    return () => {
+      unsubscribe();
+      clearInterval(fallback);
+    };
+    // pollInterval 已废弃：事件驱动后不再依赖该值重建订阅
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return stats;
 }
