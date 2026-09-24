@@ -170,10 +170,42 @@ fn persist_temp_session_to_db(state: &AppState, session: &StreamContext) -> Resu
         .map_err(|e| AppError::database(format!("持久化临时会话失败: {}", e)))
 }
 
+// ============================================================================
+// temp_sessions 内存缓存上限（2026-09-24 内存治理）
+// ============================================================================
+
+/// 内存中缓存的 temp_session 上限。StreamContext 携带整套 base64 题图/
+/// 分析图与完整聊天历史，单条可达数 MB；此前 HashMap 只插不删，长时
+/// 运行会持续驻留。超出上限时按最旧 created_at 优先驱逐。
+/// DB（temp_sessions 表）始终是完整数据源，驱逐只清内存、可回读。
+const TEMP_SESSION_MEMORY_CAP: usize = 8;
+
+/// 超出容量时驱逐最旧的 temp_session（按 created_at，相同则按 temp_id
+/// 字典序取较小者保证确定性）。调用方须已持有锁。
+fn evict_temp_sessions_if_over_cap(sessions: &mut HashMap<String, StreamContext>) {
+    while sessions.len() > TEMP_SESSION_MEMORY_CAP {
+        let oldest_key = sessions
+            .iter()
+            .min_by(|(id_a, a), (id_b, b)| {
+                a.created_at
+                    .cmp(&b.created_at)
+                    .then_with(|| id_a.cmp(id_b))
+            })
+            .map(|(id, _)| id.clone());
+        match oldest_key {
+            Some(key) => {
+                sessions.remove(&key);
+            }
+            None => break,
+        }
+    }
+}
+
 pub async fn cache_temp_session(state: &AppState, session: StreamContext) -> Result<()> {
     {
         let mut sessions = state.temp_sessions.lock().await;
         sessions.insert(session.temp_id.clone(), session.clone());
+        evict_temp_sessions_if_over_cap(&mut sessions);
     }
     persist_temp_session_to_db(state, &session)?;
     Ok(())
@@ -209,6 +241,7 @@ pub async fn get_or_restore_temp_session(state: &AppState, temp_id: &str) -> Res
     {
         let mut sessions = state.temp_sessions.lock().await;
         sessions.insert(temp_id.to_string(), session.clone());
+        evict_temp_sessions_if_over_cap(&mut sessions);
     }
 
     Ok(session)
@@ -242,6 +275,7 @@ where
         {
             let mut sessions = state.temp_sessions.lock().await;
             sessions.insert(temp_id.to_string(), session.clone());
+            evict_temp_sessions_if_over_cap(&mut sessions);
         }
         updated = Some(session);
     }
@@ -3498,26 +3532,38 @@ pub async fn call_llm_for_boundary(
 // ============================================================================
 
 /// 从文件路径解析文档文本
+///
+/// 🚀 2026-09-24 性能治理：同步 pdfium/docx/xlsx/epub 解析是 CPU 密集
+/// 且可能耗时数秒，必须移出 tokio worker 线程（否则大文件解析会卡住
+/// 执行器，连带流式响应一起卡顿）。spawn_blocking 内有独立线程池。
 #[tauri::command]
 pub async fn parse_document_from_path(file_path: String) -> std::result::Result<String, String> {
     info!("开始解析文档: {}", file_path);
 
-    let parser = crate::document_parser::DocumentParser::new();
+    let path_for_log = file_path.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        let parser = crate::document_parser::DocumentParser::new();
+        parser.extract_text_from_path(&file_path)
+    })
+    .await
+    .map_err(|join_err| format!("文档解析任务失败: {}", join_err))?;
 
-    match parser.extract_text_from_path(&file_path) {
+    match result {
         Ok(text) => {
             debug!("文档解析成功，提取文本长度: {} 字符", text.len());
             Ok(text)
         }
         Err(err) => {
             let error_msg = format!("文档解析失败: {}", err);
-            error!("{}", error_msg);
+            error!("{} (path={})", error_msg, path_for_log);
             Err(error_msg)
         }
     }
 }
 
 /// 从Base64编码内容解析文档文本
+///
+/// 🚀 2026-09-24 性能治理：同 parse_document_from_path，移出 worker 线程。
 #[tauri::command]
 pub async fn parse_document_from_base64(
     file_name: String,
@@ -3525,9 +3571,14 @@ pub async fn parse_document_from_base64(
 ) -> std::result::Result<String, String> {
     info!("开始解析Base64文档: {}", file_name);
 
-    let parser = crate::document_parser::DocumentParser::new();
+    let result = tokio::task::spawn_blocking(move || {
+        let parser = crate::document_parser::DocumentParser::new();
+        parser.extract_text_from_base64(&file_name, &base64_content)
+    })
+    .await
+    .map_err(|join_err| format!("Base64文档解析任务失败: {}", join_err))?;
 
-    match parser.extract_text_from_base64(&file_name, &base64_content) {
+    match result {
         Ok(text) => {
             debug!("Base64文档解析成功，提取文本长度: {} 字符", text.len());
             Ok(text)
@@ -5386,6 +5437,107 @@ mod tests {
             Some("openai_codex"),
             None,
         ));
+    }
+
+    // ------------------------------------------------------------------
+    // temp_sessions 内存容量上限（2026-09-24 内存治理）
+    // ------------------------------------------------------------------
+
+    mod temp_session_cap {
+        use super::super::{
+            evict_temp_sessions_if_over_cap, TEMP_SESSION_MEMORY_CAP,
+        };
+        use crate::models::StreamContext;
+        use chrono::{DateTime, Duration, Utc};
+        use std::collections::HashMap;
+
+        fn make_ctx(temp_id: &str, created_at: DateTime<Utc>) -> StreamContext {
+            StreamContext {
+                temp_id: temp_id.to_string(),
+                question_images: vec![],
+                analysis_images: vec![],
+                user_question: String::new(),
+                ocr_text: String::new(),
+                ocr_note: None,
+                tags: vec![],
+                mistake_type: String::new(),
+                chat_category: String::new(),
+                chat_metadata: None,
+                chat_history: vec![],
+                initial_doc_attachments: None,
+                pinned_images: None,
+                created_at,
+                exam_sheet: None,
+                stream_state: Default::default(),
+                bridge_context: None,
+                last_error: None,
+            }
+        }
+
+        #[test]
+        fn under_cap_is_noop() {
+            let now = Utc::now();
+            let mut sessions: HashMap<String, StreamContext> = (0..TEMP_SESSION_MEMORY_CAP)
+                .map(|i| {
+                    let id = format!("t{i}");
+                    (id.clone(), make_ctx(&id, now + Duration::seconds(i as i64)))
+                })
+                .collect();
+            let before: Vec<String> = sessions.keys().cloned().collect();
+            evict_temp_sessions_if_over_cap(&mut sessions);
+            assert_eq!(sessions.len(), TEMP_SESSION_MEMORY_CAP);
+            let after: Vec<String> = sessions.keys().cloned().collect();
+            assert_eq!(before.len(), after.len());
+        }
+
+        #[test]
+        fn evicts_oldest_by_created_at() {
+            let now = Utc::now();
+            let mut sessions: HashMap<String, StreamContext> = (0..=TEMP_SESSION_MEMORY_CAP)
+                .map(|i| {
+                    let id = format!("t{i}");
+                    // t0 最旧，t1 次旧 … 容量+1 条
+                    (id.clone(), make_ctx(&id, now + Duration::seconds(i as i64)))
+                })
+                .collect();
+            evict_temp_sessions_if_over_cap(&mut sessions);
+            assert_eq!(sessions.len(), TEMP_SESSION_MEMORY_CAP);
+            assert!(!sessions.contains_key("t0"), "最旧的 t0 应被驱逐");
+            assert!(sessions.contains_key(&format!("t{TEMP_SESSION_MEMORY_CAP}")));
+        }
+
+        #[test]
+        fn evicts_multiple_when_far_over_cap() {
+            let now = Utc::now();
+            let over = TEMP_SESSION_MEMORY_CAP + 3;
+            let mut sessions: HashMap<String, StreamContext> = (0..over)
+                .map(|i| {
+                    let id = format!("t{i:02}");
+                    (id.clone(), make_ctx(&id, now + Duration::seconds(i as i64)))
+                })
+                .collect();
+            evict_temp_sessions_if_over_cap(&mut sessions);
+            assert_eq!(sessions.len(), TEMP_SESSION_MEMORY_CAP);
+            // 最旧 3 条被驱逐
+            for i in 0..3 {
+                assert!(!sessions.contains_key(&format!("t{i:02}")));
+            }
+        }
+
+        #[test]
+        fn equal_timestamps_fall_back_to_lexicographic_id() {
+            let now = Utc::now();
+            let mut sessions: HashMap<String, StreamContext> = (0..=TEMP_SESSION_MEMORY_CAP)
+                .map(|i| {
+                    let id = format!("t{i:02}");
+                    (id.clone(), make_ctx(&id, now)) // 全部同刻
+                })
+                .collect();
+            evict_temp_sessions_if_over_cap(&mut sessions);
+            assert_eq!(sessions.len(), TEMP_SESSION_MEMORY_CAP);
+            // 确定性：字典序最小者被驱逐
+            assert!(!sessions.contains_key("t00"));
+        }
     }
 }
 
