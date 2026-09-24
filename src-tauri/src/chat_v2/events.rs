@@ -23,9 +23,10 @@ use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::LazyLock;
-use tauri::{Emitter, Window};
+use std::time::Duration;
+use tauri::{Emitter, Manager, Window};
 
 use super::types::TokenUsage;
 
@@ -1107,6 +1108,9 @@ pub struct ChatV2EventEmitter {
     session_event_sequence_counter: Arc<AtomicU64>,
     /// 工具块事件元数据注册表（用于补齐 skill_state_version / round_id）
     block_event_meta: Arc<DashMap<String, BlockEventMeta>>,
+    /// 流式 content/thinking chunk 合批器（无窗口 emitter 不启用）。
+    /// Option 仅为满足无窗口透传语义；桌面运行时恒为 Some。
+    chunk_batcher: Option<Arc<ChunkBatcher>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1114,6 +1118,109 @@ struct BlockEventMeta {
     variant_id: Option<String>,
     skill_state_version: Option<u64>,
     round_id: Option<String>,
+}
+
+// ============================================================
+// 流式 chunk 合批（性能：降低 IPC 事件频率）
+// ============================================================
+
+/// 后端 chunk 合批时间窗：略低于前端 chunkBuffer 的 120ms 窗口，
+/// 高 token 速率下每窗每块至多一次 IPC，低速 token 的显示延迟增加 <100ms。
+pub(crate) const CHUNK_BATCH_WINDOW: Duration = Duration::from_millis(100);
+
+/// 合批缓冲的容量上限（字节）：超过立即冲刷，避免长窗内大段内容滞留。
+const CHUNK_BATCH_MAX_BYTES: usize = 4096;
+
+/// 待冲刷的合批 chunk：同一 (type, block_id, variant_id) 的 delta 合并为一条。
+#[derive(Debug)]
+struct PendingChunk {
+    event_type: String,
+    block_id: String,
+    chunk: String,
+    variant_id: Option<String>,
+}
+
+impl PendingChunk {
+    fn key_matches(&self, event_type: &str, block_id: &str, variant_id: Option<&str>) -> bool {
+        self.event_type == event_type
+            && self.block_id == block_id
+            && self.variant_id.as_deref() == variant_id
+    }
+}
+
+#[derive(Debug, Default)]
+struct ChunkBatcherState {
+    pending: Option<PendingChunk>,
+    window_open: bool,
+}
+
+/// 流式 chunk 合批器。
+///
+/// ## 语义
+/// - 仅 content / thinking chunk 参与合批（前端 eventBridge 对这两类本就按
+///   `blockId + chunk 拼接` 处理，合并不改变最终内容）；其它类型即时透传。
+/// - 任何「非合批路径」的事件（start/end/error/tool_call/generative_ui chunk、
+///   会话级事件）发射前都会先冲刷缓冲，保证事件相对顺序不变。
+/// - 序列号：批量内所有 delta 先取序列号，合并后的事件携带批内第一个序列号，
+///   因此序列号保持严格单调递增（允许跳号——合批前的语义同样可能因 P0 重试
+///   之外的正常路径产生跳号，前端只用序列号做乱序/丢失检测）。
+/// - 无窗口（headless/测试）emitter 不启用合批，保持即时透传，测试语义不变。
+/// - [`Drop`] 时冲刷尾部缓冲，防止流提前中止（取消/错误）时丢失尾部内容。
+#[derive(Debug)]
+struct ChunkBatcher {
+    state: Mutex<ChunkBatcherState>,
+}
+
+impl ChunkBatcher {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new(ChunkBatcherState::default()),
+        }
+    }
+
+    fn lock_state(&self) -> std::sync::MutexGuard<'_, ChunkBatcherState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    fn take_pending(&self) -> Option<PendingChunk> {
+        self.lock_state().pending.take()
+    }
+
+    /// 追加一个 delta。返回 `true` 表示调用方需要开启新的时间窗
+    /// （即当前没有已开启的窗口）。
+    fn push(
+        &self,
+        event_type: &str,
+        block_id: &str,
+        chunk: &str,
+        variant_id: Option<&str>,
+    ) -> bool {
+        let mut state = self.lock_state();
+        if let Some(pending) = state.pending.as_mut() {
+            if pending.key_matches(event_type, block_id, variant_id) {
+                pending.chunk.push_str(chunk);
+                return false;
+            }
+            // 调用方保证：切换 key 前已冲刷旧 pending，此处不应出现不同 key。
+            debug_assert!(false, "chunk batcher: push with mismatched key without flush");
+        }
+        state.pending = Some(PendingChunk {
+            event_type: event_type.to_string(),
+            block_id: block_id.to_string(),
+            chunk: chunk.to_string(),
+            variant_id: variant_id.map(|s| s.to_string()),
+        });
+        if state.window_open {
+            false
+        } else {
+            state.window_open = true;
+            true
+        }
+    }
+
+    fn close_window(&self) {
+        self.lock_state().window_open = false;
+    }
 }
 
 impl ChatV2EventEmitter {
@@ -1133,7 +1240,20 @@ impl ChatV2EventEmitter {
 
     /// 以自定义事件出口构造 emitter（测试替身 / 未来 headless 录制 sink
     /// 等扩展点）。
+    ///
+    /// 合批开关：桌面窗口 sink（`window()` 返回 Some）默认启用；无窗口
+    /// sink 默认透传。测试可用 [`Self::with_sink_and_batching`] 显式指定。
     pub fn with_sink(sink: Arc<dyn ExecutionEventSink>, session_id: String) -> Self {
+        let batching = sink.window().is_some();
+        Self::with_sink_and_batching(sink, session_id, batching)
+    }
+
+    /// 显式指定合批开关的构造（测试注入用）。
+    pub fn with_sink_and_batching(
+        sink: Arc<dyn ExecutionEventSink>,
+        session_id: String,
+        batching_enabled: bool,
+    ) -> Self {
         Self {
             sink,
             session_id: session_id.clone(),
@@ -1141,6 +1261,7 @@ impl ChatV2EventEmitter {
             sequence_counter: get_or_create_session_counter(&session_id),
             session_event_sequence_counter: get_or_create_session_event_counter(&session_id),
             block_event_meta: Arc::new(DashMap::new()),
+            chunk_batcher: batching_enabled.then(|| Arc::new(ChunkBatcher::new())),
         }
     }
 
@@ -1247,6 +1368,10 @@ impl ChatV2EventEmitter {
     /// 事件构造（序列号 / session_id 补齐 / meta 应用）在 emitter 内完成，
     /// 实际投递委托给 [`ExecutionEventSink`]；失败重试与计数策略由
     /// [`WindowEventSink`] 保持现状语义，无窗口 sink 直接丢弃。
+    ///
+    /// 注意：本方法不做合批护栏。调用方（公开 emit_* 方法）必须在取
+    /// 序列号之前显式调用 [`Self::flush_pending_chunk`]，以保证合并 chunk
+    /// 的序列号先于随后的 start/end/error。
     fn emit(&self, mut event: BackendEvent) {
         let event_name = self.block_event_channel();
         if event.session_id.is_none() {
@@ -1259,7 +1384,11 @@ impl ChatV2EventEmitter {
     ///
     /// 🆕 补齐 sequence_id（会话级通道独立递增计数），前端可据此检测
     /// 乱序/丢失；投递策略同块级事件。
+    ///
+    /// 合批护栏：会话级终态事件（stream_complete 等）发射前先冲刷 chunk
+    /// 缓冲，避免前端在内容未齐时进入完成态。
     fn emit_session(&self, mut event: SessionEvent) {
+        self.flush_pending_chunk();
         let event_name = self.session_event_channel();
         if event.stream_generation.is_none() {
             event.stream_generation = self.stream_generation;
@@ -1271,6 +1400,85 @@ impl ChatV2EventEmitter {
             );
         }
         self.sink.emit_session_event(&event_name, &event);
+    }
+
+    // ========== chunk 合批 ==========
+
+    /// 冲刷合批缓冲中的 pending chunk（若有）。序列号在推送时已预取，
+    /// 这里使用批内第一个序列号。
+    fn flush_pending_chunk(&self) {
+        let Some(batcher) = &self.chunk_batcher else {
+            return;
+        };
+        let Some(pending) = batcher.take_pending() else {
+            return;
+        };
+        let seq = self.next_sequence_id();
+        let mut event = BackendEvent::chunk(
+            seq,
+            &pending.event_type,
+            &pending.block_id,
+            &pending.chunk,
+            pending.variant_id.as_deref(),
+        );
+        self.apply_registered_meta(Some(&pending.block_id), &mut event);
+        self.emit(event);
+    }
+
+    /// 窗口期到点的延时冲刷（由异步任务调用）。仅当 pending 仍匹配
+    /// `expected_block_id` 时冲刷——窗口期内 key 变化已被同步护栏处理，
+    /// 不匹配说明该 pending 已被后续事件冲刷或替换。
+    ///
+    /// 注意：必须由 [`Self::schedule_chunk_flush`] 生成的、只访问本 emitter
+    /// 克隆句柄的异步任务调用。
+    fn flush_pending_chunk_if_current(&self, expected_block_id: &str) {
+        let Some(batcher) = &self.chunk_batcher else {
+            return;
+        };
+        let matches = batcher
+            .lock_state()
+            .pending
+            .as_ref()
+            .map(|p| p.block_id == expected_block_id)
+            .unwrap_or(false);
+        if matches {
+            batcher.close_window();
+            self.flush_pending_chunk();
+        }
+    }
+
+    /// 为合批 chunk 调度窗口期延时冲刷任务。
+    ///
+    /// 使用 tauri 全局 async runtime spawn（与窗口生命周期无关；emitter
+    /// 销毁后任务仍可能触发，但只冲刷共享 batcher 中的 pending——这正是
+    /// 「Drop 冲刷兜底」之外的第二道保险）。spawn 失败时回退立即冲刷。
+    fn schedule_chunk_flush(&self, batcher: Arc<ChunkBatcher>, block_id: &str) {
+        let Some(batcher2) = self.chunk_batcher.clone() else {
+            return;
+        };
+        debug_assert!(Arc::ptr_eq(&batcher, &batcher2));
+        let cloned = self.clone_for_flush_task();
+        let block_id_owned = block_id.to_string();
+        tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(CHUNK_BATCH_WINDOW).await;
+            cloned.flush_pending_chunk_if_current(&block_id_owned);
+        });
+    }
+
+    /// 构造一个仅用于 flush 任务的 emitter 克隆。
+    ///
+    /// 不实现 `Clone` trait（避免外部误克隆 emitter 导致语义混乱），
+    /// 仅供内部延时冲刷任务持有。
+    fn clone_for_flush_task(&self) -> Self {
+        Self {
+            sink: self.sink.clone(),
+            session_id: self.session_id.clone(),
+            stream_generation: self.stream_generation,
+            sequence_counter: self.sequence_counter.clone(),
+            session_event_sequence_counter: self.session_event_sequence_counter.clone(),
+            block_event_meta: self.block_event_meta.clone(),
+            chunk_batcher: self.chunk_batcher.clone(),
+        }
     }
 
     // ========== 块级事件便捷方法 ==========
@@ -1294,6 +1502,7 @@ impl ChatV2EventEmitter {
         payload: Option<Value>,
         variant_id: Option<&str>,
     ) -> Option<String> {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event =
             BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
@@ -1312,6 +1521,7 @@ impl ChatV2EventEmitter {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
     ) -> Option<String> {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event =
             BackendEvent::start(seq, event_type, message_id, block_id, payload, variant_id);
@@ -1329,6 +1539,11 @@ impl ChatV2EventEmitter {
     /// - `block_id`: 块 ID
     /// - `chunk`: 数据块内容
     /// - `variant_id`: 变体 ID（多变体模式下传入）
+    ///
+    /// ## 合批
+    /// content / thinking chunk 在桌面运行时按 [`CHUNK_BATCH_WINDOW`] 合批：
+    /// 同窗同块 delta 合并为单个事件，非合批事件/窗口到点/Drop 时冲刷。
+    /// 其它类型与无窗口 runtime 维持即时透传。
     pub fn emit_chunk(
         &self,
         event_type: &str,
@@ -1336,10 +1551,47 @@ impl ChatV2EventEmitter {
         chunk: &str,
         variant_id: Option<&str>,
     ) {
-        let seq = self.next_sequence_id();
-        let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
-        self.apply_registered_meta(Some(block_id), &mut event);
-        self.emit(event);
+        let batchable = matches!(event_type, event_types::CONTENT | event_types::THINKING)
+            && !chunk.is_empty();
+        let batcher = if batchable {
+            self.chunk_batcher.as_ref()
+        } else {
+            None
+        };
+        let Some(batcher) = batcher else {
+            self.flush_pending_chunk();
+            let seq = self.next_sequence_id();
+            let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
+            self.apply_registered_meta(Some(block_id), &mut event);
+            self.emit(event);
+            return;
+        };
+
+        // key 切换前必须冲刷旧 pending（保证顺序），随后推入并视情况开窗。
+        let key_matches = batcher
+            .lock_state()
+            .pending
+            .as_ref()
+            .map(|p| p.key_matches(event_type, block_id, variant_id))
+            .unwrap_or(true);
+        if !key_matches {
+            self.flush_pending_chunk();
+        }
+        let open_new_window = batcher.push(event_type, block_id, chunk, variant_id);
+        let should_flush_now = batcher
+            .lock_state()
+            .pending
+            .as_ref()
+            .map(|p| p.chunk.len() >= CHUNK_BATCH_MAX_BYTES)
+            .unwrap_or(false);
+        if should_flush_now {
+            // 大 chunk（如一次性回填的长 tail）立即冲刷，窗口关闭由下次
+            // push 或护栏重新开启。
+            batcher.close_window();
+            self.flush_pending_chunk();
+        } else if open_new_window {
+            self.schedule_chunk_flush(batcher.clone(), block_id);
+        }
     }
 
     pub fn emit_chunk_with_meta(
@@ -1351,6 +1603,7 @@ impl ChatV2EventEmitter {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event = BackendEvent::chunk(seq, event_type, block_id, chunk, variant_id);
         event.skill_state_version = skill_state_version;
@@ -1373,6 +1626,7 @@ impl ChatV2EventEmitter {
         result: Option<Value>,
         variant_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
         self.apply_registered_meta(Some(block_id), &mut event);
@@ -1388,6 +1642,7 @@ impl ChatV2EventEmitter {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event = BackendEvent::end(seq, event_type, block_id, result, variant_id);
         event.skill_state_version = skill_state_version;
@@ -1404,6 +1659,7 @@ impl ChatV2EventEmitter {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let event = BackendEvent {
             sequence_id: seq,
@@ -1441,6 +1697,7 @@ impl ChatV2EventEmitter {
         error: &str,
         variant_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
         self.apply_registered_meta(Some(block_id), &mut event);
@@ -1456,6 +1713,7 @@ impl ChatV2EventEmitter {
         skill_state_version: Option<u64>,
         round_id: Option<&str>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let mut event = BackendEvent::error(seq, event_type, block_id, error, variant_id);
         event.skill_state_version = skill_state_version;
@@ -1775,9 +2033,19 @@ impl ChatV2EventEmitter {
         error: Option<&str>,
         usage: Option<TokenUsage>,
     ) {
+        self.flush_pending_chunk();
         let seq = self.next_sequence_id();
         let event = BackendEvent::variant_end(seq, variant_id, status, error, usage);
         self.emit(event);
+    }
+}
+
+impl Drop for ChatV2EventEmitter {
+    /// 兜底冲刷：emitter 销毁（流结束、取消、错误路径）时若缓冲里还有
+    /// 未发出的 content/thinking delta，立即冲刷，保证尾部内容不丢。
+    /// 正常路径下 end/error 事件的护栏已先行冲刷，这里通常为 no-op。
+    fn drop(&mut self) {
+        self.flush_pending_chunk();
     }
 }
 
@@ -2554,5 +2822,212 @@ mod tests {
         let first_seq = captured[0].1.sequence_id.expect("sequence_id filled");
         let second_seq = captured[1].1.sequence_id.expect("sequence_id filled");
         assert!(first_seq < second_seq);
+    }
+
+    // ========== 流式 chunk 合批 ==========
+
+    /// 共享录制 sink：块/会话事件向量通过 Arc 共享，测试可直接观察。
+    #[derive(Default)]
+    struct SharedRecordingSink {
+        block_events: Arc<std::sync::Mutex<Vec<(String, BackendEvent)>>>,
+        session_events: Arc<std::sync::Mutex<Vec<(String, SessionEvent)>>>,
+    }
+
+    impl ExecutionEventSink for SharedRecordingSink {
+        fn emit_block_event(&self, channel: &str, event: &BackendEvent) {
+            self.block_events
+                .lock()
+                .unwrap()
+                .push((channel.to_string(), event.clone()));
+        }
+        fn emit_session_event(&self, channel: &str, event: &SessionEvent) {
+            self.session_events
+                .lock()
+                .unwrap()
+                .push((channel.to_string(), event.clone()));
+        }
+        fn window(&self) -> Option<Window> {
+            None
+        }
+    }
+
+    fn batching_emitter(
+        session: &str,
+    ) -> (
+        ChatV2EventEmitter,
+        Arc<std::sync::Mutex<Vec<(String, BackendEvent)>>>,
+    ) {
+        let block_events = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = SharedRecordingSink {
+            block_events: block_events.clone(),
+            session_events: Arc::new(std::sync::Mutex::new(Vec::new())),
+        };
+        let emitter = ChatV2EventEmitter::with_sink_and_batching(
+            Arc::new(sink),
+            session.to_string(),
+            true,
+        );
+        (emitter, block_events)
+    }
+
+    /// 同窗同块 content delta 合并为单个 chunk；end 护栏先冲刷 pending，
+    /// 因此录制序列为 [merged_chunk, end]，序列号严格递增。
+    #[test]
+    fn chunk_batching_merges_and_end_flushes_in_order() {
+        let (emitter, recorded) = batching_emitter("test_batch_merge");
+
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "Hello ", None);
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "world", None);
+        // 此刻 pending 尚未发出
+        assert!(recorded.lock().unwrap().is_empty());
+
+        emitter.emit_end(event_types::CONTENT, "blk_1", None, None);
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1.r#type, event_types::CONTENT);
+        assert_eq!(events[0].1.phase, "chunk");
+        assert_eq!(events[0].1.chunk.as_deref(), Some("Hello world"));
+        assert_eq!(events[1].1.phase, "end");
+        assert!(events[0].1.sequence_id < events[1].1.sequence_id);
+    }
+
+    /// 切换块（content→thinking 或换 block_id）时先冲刷旧 pending，保证
+    /// 两个块的 chunk 事件顺序与 delta 到达顺序一致。
+    #[test]
+    fn chunk_batching_key_switch_flushes_previous_pending() {
+        let (emitter, recorded) = batching_emitter("test_batch_switch");
+
+        emitter.emit_chunk(event_types::CONTENT, "blk_a", "a1", None);
+        emitter.emit_chunk(event_types::THINKING, "blk_b", "t1", None);
+        emitter.emit_chunk(event_types::CONTENT, "blk_a", "a2", None);
+        emitter.emit_end(event_types::CONTENT, "blk_a", None, None);
+
+        let events = recorded.lock().unwrap();
+        // 顺序：blk_a(a1) 被 blk_b 冲刷 → blk_b(t1) 被 blk_a(a2) 冲刷 →
+        // blk_a(a2) 被 end 冲刷 → end
+        let chunks: Vec<&BackendEvent> = events
+            .iter()
+            .map(|(_, e)| e)
+            .filter(|e| e.phase == "chunk")
+            .collect();
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].block_id.as_deref(), Some("blk_a"));
+        assert_eq!(chunks[0].chunk.as_deref(), Some("a1"));
+        assert_eq!(chunks[1].block_id.as_deref(), Some("blk_b"));
+        assert_eq!(chunks[1].chunk.as_deref(), Some("t1"));
+        assert_eq!(chunks[2].block_id.as_deref(), Some("blk_a"));
+        assert_eq!(chunks[2].chunk.as_deref(), Some("a2"));
+        // 全局序列号严格递增
+        for pair in events.windows(2) {
+            assert!(pair[0].1.sequence_id < pair[1].1.sequence_id);
+        }
+    }
+
+    /// 非合批事件（start）同样触发护栏冲刷。
+    #[test]
+    fn chunk_batching_start_event_flushes_pending() {
+        let (emitter, recorded) = batching_emitter("test_batch_start_flush");
+
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "partial", None);
+        emitter.emit_start(event_types::TOOL_CALL, "msg_1", Some("blk_2"), None, None);
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1.phase, "chunk");
+        assert_eq!(events[0].1.chunk.as_deref(), Some("partial"));
+        assert_eq!(events[1].1.phase, "start");
+    }
+
+    /// 会话级事件（stream_complete）触发护栏冲刷。
+    #[test]
+    fn chunk_batching_session_event_flushes_pending() {
+        let (emitter, recorded) = batching_emitter("test_batch_session_flush");
+
+        emitter.emit_chunk(event_types::THINKING, "blk_1", "tail", None);
+        emitter.emit_stream_complete("msg_1", 10);
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.phase, "chunk");
+        assert_eq!(events[0].1.chunk.as_deref(), Some("tail"));
+    }
+
+    /// Drop 兜底冲刷尾部 pending（流取消/错误路径）。
+    #[test]
+    fn chunk_batching_drop_flushes_pending_tail() {
+        let recorded;
+        {
+            let (emitter, rec) = batching_emitter("test_batch_drop");
+            recorded = rec;
+            emitter.emit_chunk(event_types::CONTENT, "blk_1", "orphan", None);
+            assert!(recorded.lock().unwrap().is_empty());
+            // emitter 离开作用域 → Drop 冲刷
+        }
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.phase, "chunk");
+        assert_eq!(events[0].1.chunk.as_deref(), Some("orphan"));
+    }
+
+    /// tool_call_preparing 等非合批类型即时透传、且触发 pending 护栏。
+    #[test]
+    fn chunk_batching_non_batchable_type_passes_through_immediately() {
+        let (emitter, recorded) = batching_emitter("test_batch_passthrough");
+
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "c1", None);
+        emitter.emit_chunk(event_types::TOOL_CALL_PREPARING, "blk_2", "{}", None);
+
+        let events = recorded.lock().unwrap();
+        // c1 被护栏冲刷，tool_call_preparing 即时透传
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].1.r#type, event_types::CONTENT);
+        assert_eq!(events[0].1.chunk.as_deref(), Some("c1"));
+        assert_eq!(events[1].1.r#type, event_types::TOOL_CALL_PREPARING);
+    }
+
+    /// 窗口到点的异步冲刷：sleep 超过窗口后 pending 自动发出。
+    #[tokio::test]
+    async fn chunk_batching_window_expiry_flushes() {
+        let (emitter, recorded) = batching_emitter("test_batch_window");
+
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", "slow", None);
+        assert!(recorded.lock().unwrap().is_empty());
+
+        tokio::time::sleep(CHUNK_BATCH_WINDOW + Duration::from_millis(50)).await;
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.chunk.as_deref(), Some("slow"));
+    }
+
+    /// 窗口期内持续到达的同块 delta 只产生一个事件（合并计数验证）。
+    #[test]
+    fn chunk_batching_coalesces_many_deltas_into_one() {
+        let (emitter, recorded) = batching_emitter("test_batch_count");
+
+        for i in 0..50 {
+            emitter.emit_chunk(event_types::CONTENT, "blk_1", &format!("t{i}"), None);
+        }
+        emitter.emit_end(event_types::CONTENT, "blk_1", None, None);
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 2); // 1 merged chunk + 1 end
+        let merged = events[0].1.chunk.as_ref().unwrap();
+        let expected: String = (0..50).map(|i| format!("t{i}")).collect();
+        assert_eq!(merged, &expected);
+    }
+
+    /// 超过容量上限立即冲刷，不等窗口。
+    #[test]
+    fn chunk_batching_size_cap_flushes_immediately() {
+        let (emitter, recorded) = batching_emitter("test_batch_sizecap");
+
+        let big = "x".repeat(CHUNK_BATCH_MAX_BYTES + 1);
+        emitter.emit_chunk(event_types::CONTENT, "blk_1", &big, None);
+
+        let events = recorded.lock().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].1.chunk.as_ref().unwrap().len(), big.len());
     }
 }
