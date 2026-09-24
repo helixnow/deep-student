@@ -82,6 +82,7 @@ interface AggregatedStoreState {
   enableThinking: boolean;
   modelId: string;
   modelDisplayName?: string;
+  modelIdPinnedByUser?: boolean;
   model2OverrideId: string | null;
   maxTokens: number;
   contextLimit?: number;
@@ -157,8 +158,12 @@ function matchesModelIdentity(model: ModelInfo, candidates: unknown[]): boolean 
   const normalizedCandidates = new Set(candidates.map(normalizeModelIdentity).filter(Boolean));
   if (normalizedCandidates.size === 0) return false;
 
+  // 候选中包含 config ID 时严格按 ID 匹配，避免同名模型跨供应商误匹配
+  if (normalizedCandidates.has(normalizeModelIdentity(model.id))) return true;
+
+  // 无 config ID 匹配时才回退到名称/别名模糊匹配
   const aliases = Array.isArray(model.aliases) ? model.aliases : [];
-  return [model.id, model.model, model.name, ...aliases].some((value) =>
+  return [model.model, model.name, ...aliases].some((value) =>
     normalizedCandidates.has(normalizeModelIdentity(value))
   );
 }
@@ -268,6 +273,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       enableThinking,
       modelId,
       modelDisplayName,
+      modelIdPinnedByUser,
       model2OverrideId,
       maxTokens,
       contextLimit,
@@ -301,6 +307,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         enableThinking: s.chatParams.enableThinking,
         modelId: s.chatParams.modelId,
         modelDisplayName: s.chatParams.modelDisplayName,
+        modelIdPinnedByUser: s.chatParams.modelIdPinnedByUser,
         model2OverrideId: s.chatParams.model2OverrideId ?? null,
         maxTokens: s.chatParams.maxTokens,
         contextLimit: s.chatParams.contextLimit,
@@ -351,6 +358,32 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       (enabled: boolean) => setFeature('kbProactive', enabled),
       [setFeature],
     );
+
+    // 全局默认对话模型 config ID（未固定会话的生效模型）
+    const [globalDefaultModelId, setGlobalDefaultModelId] = useState<string | null>(null);
+    useEffect(() => {
+      let cancelled = false;
+      const fetchDefault = async () => {
+        try {
+          const assignments = await invoke<{ model2_config_id?: string | null }>('get_model_assignments');
+          if (!cancelled) {
+            setGlobalDefaultModelId(assignments?.model2_config_id ?? null);
+          }
+        } catch {
+          if (!cancelled) setGlobalDefaultModelId(null);
+        }
+      };
+      void fetchDefault();
+      const handler = () => { void fetchDefault(); };
+      window.addEventListener('model_assignments_changed', handler);
+      return () => {
+        cancelled = true;
+        window.removeEventListener('model_assignments_changed', handler);
+      };
+    }, []);
+
+    // 未固定会话的生效模型 config ID：全局默认 > 空
+    const effectiveUnpinnedModelId = modelIdPinnedByUser ? modelId : (globalDefaultModelId ?? modelId);
 
     // 🆕 队列模式设置（来自本地存储）
     const queueSettings = useQueueSettings();
@@ -454,8 +487,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [store]);
 
     const currentModelInfo = useMemo(
-      () => availableModels?.find((model) => matchesModelIdentity(model, [modelId, modelDisplayName])),
-      [availableModels, modelDisplayName, modelId]
+      // 未固定会话：用全局默认 config ID 精确匹配，避免同名模型跨供应商误匹配
+      // 已固定会话：用会话持久化的 modelId 精确匹配
+      () => availableModels?.find((model) => model.id === effectiveUnpinnedModelId),
+      [availableModels, effectiveUnpinnedModelId]
     );
 
     const runtimeOverrideModelInfo = useMemo(
@@ -479,7 +514,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         typeof activeRuntimeModelInfo?.contextWindow === 'number' && Number.isFinite(activeRuntimeModelInfo.contextWindow)
           ? activeRuntimeModelInfo.contextWindow
           : undefined;
-      const effectiveModelId = model2OverrideId || modelId;
+      const effectiveModelId = model2OverrideId || effectiveUnpinnedModelId;
       const effectiveModelDisplayName = model2OverrideId ? undefined : modelDisplayName;
 
       return inferInputContextBudget({
@@ -502,7 +537,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       maxTokens,
       model2OverrideId,
       modelDisplayName,
-      modelId,
+      effectiveUnpinnedModelId,
     ]);
 
     // 🆕 压缩完成瞬间优先用后端下发的覆盖值渲染水位环；
@@ -541,8 +576,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const thinkingControl = useMemo(
       () =>
         resolveDeepSeekRuntimeReasoningControl({
-          model: activeRuntimeModelInfo?.model ?? model2OverrideId ?? modelDisplayName ?? modelId,
-          modelId: activeRuntimeModelInfo?.id ?? model2OverrideId ?? modelId,
+          model: activeRuntimeModelInfo?.model ?? model2OverrideId ?? modelDisplayName ?? effectiveUnpinnedModelId,
+          modelId: activeRuntimeModelInfo?.id ?? model2OverrideId ?? effectiveUnpinnedModelId,
           providerType: activeRuntimeModelInfo?.providerType,
           providerScope: activeRuntimeModelInfo?.providerScope,
           baseUrl: activeRuntimeModelInfo?.baseUrl,
@@ -555,7 +590,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         activeRuntimeModelInfo?.baseUrl,
         model2OverrideId,
         modelDisplayName,
-        modelId,
+        effectiveUnpinnedModelId,
       ]
     );
 
@@ -790,13 +825,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         model2OverrideId ||
         getModelDisplayLabel(currentModelInfo) ||
         resolvedStoredModelDisplayName ||
-        modelId ||
+        effectiveUnpinnedModelId ||
         undefined
       );
     }, [
       currentModelInfo,
       model2OverrideId,
-      modelId,
+      effectiveUnpinnedModelId,
       resolvedStoredModelDisplayName,
       runtimeOverrideModelInfo,
     ]);
@@ -812,7 +847,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         runtimeModelLabel ||
         resolvedStoredModelDisplayName ||
         model2OverrideId ||
-        modelId ||
+        effectiveUnpinnedModelId ||
         ''
       );
     }, [
@@ -820,7 +855,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       activeRuntimeModelInfo?.model,
       activeRuntimeModelInfo?.name,
       model2OverrideId,
-      modelId,
+      effectiveUnpinnedModelId,
       resolvedStoredModelDisplayName,
       runtimeModelLabel,
     ]);
