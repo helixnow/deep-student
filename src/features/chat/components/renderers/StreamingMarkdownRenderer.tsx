@@ -111,15 +111,18 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     (extraRemarkPlugins && extraRemarkPlugins.length > 0)
   );
   const thinkingContent = parsedContent?.thinkingContent ?? '';
+  // 🚀 性能（2026-09-24 流式卡顿治理）：与 StreamingBlockRenderer 一致，
+  // 流式期间不走 flowtoken AnimatedMarkdown（独立 react-markdown@9 副本 +
+  // 逐词动画 = 每 flush 第二份全量解析）；流式结束后一次性切换并补播动画。
   const shouldUseThinkingFlowToken = Boolean(
-    isStreaming &&
+    !isStreaming &&
     thinkingContent &&
     !thinkingContent.includes('\n') &&
     !searchActive &&
     canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
   );
   const shouldUseDirectFlowTokenForParsedMainContent =
-    isStreaming &&
+    !isStreaming &&
     Boolean(parsedContent?.mainContent) &&
     !searchActive &&
     canUseDirectFlowTokenMarkdown(
