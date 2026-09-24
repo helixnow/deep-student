@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.69](https://github.com/helixnow/deep-student/compare/v0.9.68...v0.9.69) (2026-09-24)
+
+
+### Bug Fixes
+
+* **chat:** resolve same-name model across vendors by config ID ([#417](https://github.com/helixnow/deep-student/issues/417)) ([471082d](https://github.com/helixnow/deep-student/commit/471082dd259ac30cca259e73103a6ee4737d02cf))
+
 ## [0.9.68](https://github.com/helixnow/deep-student/compare/v0.9.67...v0.9.68) (2026-09-23)
 
 
