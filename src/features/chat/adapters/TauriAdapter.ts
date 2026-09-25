@@ -311,6 +311,13 @@ export class ChatV2TauriAdapter {
   private cancelScheduledFullHistoryLoad: (() => void) | null = null;
   private fullHistoryLoadInFlight = false;
   private fullHistoryLoadComplete = false;
+  /**
+   * 🚀 长会话内存窗口化（2026-09-25）：已加载历史的连续窗口起点（backend
+   * offset 语义，按最老消息计）。restore 尾窗后 = total - 已加载数；反向
+   * 回填/滚动补页每合并一页就向 0 推进。0 = 全量在内存。窗口始终连续，
+   * 不会出现"中间空洞"，补页 offset 因此可以精确推导。
+   */
+  private historyWindowStartOffset = 0;
   /** 最近一次 loadSession 返回的会话信息（分页补页构造合并响应用） */
   private lastLoadedSessionInfo: LoadSessionResponseType['session'] | null = null;
   
@@ -1104,6 +1111,7 @@ export class ChatV2TauriAdapter {
     this.cancelScheduledFullHistoryLoad?.();
     this.cancelScheduledFullHistoryLoad = null;
     this.fullHistoryLoadComplete = false;
+    this.historyWindowStartOffset = 0;
     this.lastLoadedSessionInfo = null;
 
     // 等待监听器注册完成，确保 unlisteners 已填充
@@ -4078,10 +4086,17 @@ export class ChatV2TauriAdapter {
         this.onDataRestored();
       }
 
-      // 第二阶段：还有更早历史时，首帧后空闲期全量拉取并合并到头部
+      // 第二阶段：还有更早历史时，首帧后空闲期分批回填并合并到头部。
+      // 🚀 长会话内存窗口化：回填有页数上限（HISTORY_BACKFILL_MAX_PAGES），
+      // 先初始化连续窗口起点（backend offset 语义），触顶后由滚动向上补页
+      // 按窗口起点续拉；≤500 条消息的会话回填行为与全量加载完全一致。
       const totalCount = response.totalMessageCount;
-      if (typeof totalCount === 'number' && totalCount > (response.messages?.length ?? 0)) {
+      const initialLoadedCount = response.messages?.length ?? 0;
+      if (typeof totalCount === 'number' && totalCount > initialLoadedCount) {
+        this.historyWindowStartOffset = totalCount - initialLoadedCount;
         this.scheduleFullHistoryLoad();
+      } else {
+        this.historyWindowStartOffset = 0;
       }
     } catch (error) {
       console.error(LOG_PREFIX, 'Load session failed:', getErrorMessage(error));
@@ -4089,15 +4104,17 @@ export class ChatV2TauriAdapter {
     }
   }
 
-  /** 手动加载更早历史：按当前已加载数量请求下一页，并在 generation
-   * 仍有效时复用既有 prepend 锚定逻辑合并。空闲期自动补页在途/已完成时
-   * 跳过（prepend 幂等，重复拉取只是浪费 IPC）。 */
+  /** 手动加载更早历史（🚀 长会话内存窗口化）：从连续窗口起点向更老一页
+   * 请求 `chat_v2_load_messages_page`，合并后窗口起点向 0 推进（窗口始终
+   * 连续）。空闲期自动补页在途时跳过（避免窗口竞态）；全量已完成或窗口
+   * 已抵达最老端时无可补。 */
   async loadEarlierMessages(): Promise<void> {
     const generation = this.setupGeneration;
     const session = this.lastLoadedSessionInfo;
     if (!session || !this.isSessionRuntimeOwner()) return;
     if (this.fullHistoryLoadInFlight || this.fullHistoryLoadComplete) return;
-    const offset = this.store.getOrderedMessages().length;
+    if (this.historyWindowStartOffset <= 0) return;
+    const offset = Math.max(0, this.historyWindowStartOffset - HISTORY_BACKFILL_PAGE_SIZE);
     const baseline = this.captureRestoreBaseline();
     const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
       sessionId: this.sessionId,
@@ -4105,15 +4122,21 @@ export class ChatV2TauriAdapter {
       limit: HISTORY_BACKFILL_PAGE_SIZE,
     });
     if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
-    this.store.prependHistoryFromBackend(
-      {
-        session,
-        messages: page.messages,
-        blocks: page.blocks,
-        totalMessageCount: page.totalMessageCount,
-      },
-      baseline,
-    );
+    if (page.messages.length > 0) {
+      this.store.prependHistoryFromBackend(
+        {
+          session,
+          messages: page.messages,
+          blocks: page.blocks,
+          totalMessageCount: page.totalMessageCount,
+        },
+        baseline,
+      );
+      this.historyWindowStartOffset = Math.max(
+        0,
+        this.historyWindowStartOffset - page.messages.length,
+      );
+    }
   }
 
   /**
@@ -4160,10 +4183,15 @@ export class ChatV2TauriAdapter {
       if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
       this.fullHistoryLoadInFlight = true;
       try {
-        // 首选：分批向前补页（chat_v2_load_messages_page，每批 ~100 条）
+        // 首选：分批回填页（chat_v2_load_messages_page，每批 ~100 条，倒序推进）
         const pagedResult = await this.backfillHistoryByPages(generation);
         if (pagedResult === 'done') {
           this.fullHistoryLoadComplete = true;
+          return;
+        }
+        if (pagedResult === 'capped') {
+          // 页数上限收尾：fullHistoryLoadComplete 不置位，
+          // 更早历史由滚动向上补页（loadEarlierMessages）按窗口起点续拉
           return;
         }
         if (pagedResult === 'stale') return;
@@ -4176,6 +4204,7 @@ export class ChatV2TauriAdapter {
         });
         if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
         this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
+        this.historyWindowStartOffset = 0;
         this.fullHistoryLoadComplete = true;
         console.log(LOG_PREFIX, 'Full history merged (fallback path):', {
           sessionId: this.sessionId,
@@ -4222,19 +4251,24 @@ export class ChatV2TauriAdapter {
   }
 
   /**
-   * 分批向前补齐历史：从 offset 0 起按 HISTORY_BACKFILL_PAGE_SIZE 逐窗口拉取
-   * `chat_v2_load_messages_page`，每页立即合并进 store（prepend 幂等，已存在的
-   * 消息/块会被跳过，尾部窗口重叠无副作用）。
+   * 分批回填历史（🚀 2026-09-25 反向窗口化）：从连续窗口起点向更早历史
+   * 倒序拉取 `chat_v2_load_messages_page`（页 offset 按最老消息计），
+   * 每页立即合并进 store——mergeHistoryMessageOrder 按 timestamp 重排 +
+   * 锚点合并，与页面到达顺序无关。窗口始终连续（无中间空洞），每页合并
+   * 后 historyWindowStartOffset 向 0 推进；触顶（页数上限）后停止自动
+   * 回填，更早历史由滚动补页按窗口起点续拉。
    *
    * 返回值：
-   * - `'done'`：补齐完成（或达到页数上限后主动收尾）
+   * - `'done'`：窗口抵达最老端（全量在内存）
+   * - `'capped'`：达到页数上限后主动收尾（fullHistoryLoadComplete 不置位，
+   *   滚动补页接续）
    * - `'stale'`：会话已切换/adapter 已过期，放弃
-   * - `'unsupported'`：分页命令 invoke 失败（旧后端未注册/后端异常），
+   * - `'unsupported'`：分页命令 invoke 失败或页序竞态无法保证窗口连续，
    *   调用方应退回全量加载 fallback
    */
   private async backfillHistoryByPages(
     generation: number,
-  ): Promise<'done' | 'stale' | 'unsupported'> {
+  ): Promise<'done' | 'capped' | 'stale' | 'unsupported'> {
     const session = this.lastLoadedSessionInfo;
     if (!session || session.id !== this.sessionId) {
       // 没有可用的会话信息（理论上 loadSession 已写入），退回全量路径
@@ -4242,17 +4276,16 @@ export class ChatV2TauriAdapter {
     }
 
     const t0 = performance.now();
-    let offset = 0;
-    let total = Number.POSITIVE_INFINITY;
     let pagesFetched = 0;
     let mergedMessages = 0;
 
-    while (offset < total && pagesFetched < HISTORY_BACKFILL_MAX_PAGES) {
+    while (this.historyWindowStartOffset > 0 && pagesFetched < HISTORY_BACKFILL_MAX_PAGES) {
       if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
         return 'stale';
       }
 
       const restoreBaseline = this.captureRestoreBaseline();
+      const offset = Math.max(0, this.historyWindowStartOffset - HISTORY_BACKFILL_PAGE_SIZE);
       let page: LoadMessagesPageResponseType;
       try {
         page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
@@ -4273,44 +4306,58 @@ export class ChatV2TauriAdapter {
         return 'stale';
       }
 
-      if (page.messages.length > 0) {
-        this.store.prependHistoryFromBackend(
-          {
-            session,
-            messages: page.messages,
-            blocks: page.blocks,
-            totalMessageCount: page.totalMessageCount,
-          },
-          restoreBaseline,
-        );
-        mergedMessages += page.messages.length;
-      }
-
-      total = page.totalMessageCount;
-      pagesFetched += 1;
       if (page.messages.length === 0) {
-        // 服务端返回空页（total 与实际行数竞态），防御死循环直接收尾
+        // 服务端返回空页（total 与实际行数竞态，如压缩收缩）：防御死循环，
+        // 按抵达最老端收尾（store 分页标志由 prepend 按最新 total 重算）
+        this.historyWindowStartOffset = 0;
         break;
       }
-      offset += page.messages.length;
+      if (page.messages.length < HISTORY_BACKFILL_PAGE_SIZE && offset > 0) {
+        // 未抵达最老端却拿到短页：页序竞态下无法保证窗口连续（会留中间
+        // 空洞），退回全量加载 fallback 兜底
+        console.warn(LOG_PREFIX, 'Short history page mid-window, will fall back to full load:', {
+          sessionId: this.sessionId,
+          offset,
+          returned: page.messages.length,
+        });
+        return 'unsupported';
+      }
+
+      this.store.prependHistoryFromBackend(
+        {
+          session,
+          messages: page.messages,
+          blocks: page.blocks,
+          totalMessageCount: page.totalMessageCount,
+        },
+        restoreBaseline,
+      );
+      mergedMessages += page.messages.length;
+      this.historyWindowStartOffset = Math.max(
+        0,
+        this.historyWindowStartOffset - page.messages.length,
+      );
+      pagesFetched += 1;
     }
 
-    if (pagesFetched >= HISTORY_BACKFILL_MAX_PAGES && offset < total) {
-      console.warn(LOG_PREFIX, 'History backfill hit page cap, stopping early:', {
+    const capped = this.historyWindowStartOffset > 0;
+    if (capped) {
+      console.log(LOG_PREFIX, 'History backfill hit page cap, deferring older history to scroll-up paging:', {
         sessionId: this.sessionId,
-        offset,
-        total,
+        pagesFetched,
+        mergedMessages,
+        windowStartOffset: this.historyWindowStartOffset,
+        elapsedMs: Math.round(performance.now() - t0),
+      });
+    } else {
+      console.log(LOG_PREFIX, 'History backfilled by pages:', {
+        sessionId: this.sessionId,
+        pagesFetched,
+        mergedMessages,
+        elapsedMs: Math.round(performance.now() - t0),
       });
     }
-
-    console.log(LOG_PREFIX, 'History backfilled by pages:', {
-      sessionId: this.sessionId,
-      pagesFetched,
-      mergedMessages,
-      totalMessages: total,
-      elapsedMs: Math.round(performance.now() - t0),
-    });
-    return 'done';
+    return capped ? 'capped' : 'done';
   }
 
   /**

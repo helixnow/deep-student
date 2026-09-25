@@ -53,6 +53,34 @@ function lookupBlocksIfChanged(
 }
 
 // ============================================================================
+// 长会话直渲染准入辅助
+// ============================================================================
+
+const contentLengthCache = new WeakMap<Map<string, Block>, number>();
+
+/**
+ * 🚀 长会话性能：blocks 总正文字节数（content + thinkingContent）。
+ * MessageList 的直渲染准入用它约束"消息不多但单条巨长"的会话形状——
+ * 这类会话按消息数/块数都会漏进直渲染，而每冲刷的强制 layout 成本
+ * 实际由总正文体量决定。WeakMap 按 Map 身份缓存：同一 flush（同一
+ * Map 实例）只求和一次，subscribe 重复调用 O(1) 命中。
+ */
+export function selectBlocksContentLength(
+  blocks: Map<string, Block> | undefined | null,
+): number {
+  if (!blocks) return 0;
+  const cached = contentLengthCache.get(blocks);
+  if (cached !== undefined) return cached;
+  let total = 0;
+  for (const block of blocks.values()) {
+    // thinking 块的正文也存在 content 字段（见 Block 类型注释）
+    total += block.content?.length ?? 0;
+  }
+  contentLengthCache.set(blocks, total);
+  return total;
+}
+
+// ============================================================================
 // 消息选择器
 // ============================================================================
 

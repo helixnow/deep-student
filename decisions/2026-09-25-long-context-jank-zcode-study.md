@@ -63,3 +63,37 @@
 - 每批：目标 vitest 套件 + 全量 chat 套件（基线 1410 通过）+ `npx tsc --noEmit`；A1/A2 新增指纹 hook 单测（内容增长 0 重渲染断言，沿用 useBlocksSegmentMeta 测试范式）。
 - B1/B2 需桌面端长会话（200+ 消息、单条 50KB+）滚动 + 流式实机观察：吸底、搜索定位、锚点跳转不回归。
 - 量化：dev 面板性能追踪（sessionSwitchPerf 已有基础设施）记录冲刷间隔内的长任务数前后对比。
+
+## 六、实施记录（2026-09-25，commit 84901286 + 后续合并批次）
+
+批次 A/B 已随 commit 84901286 落地（A1-A4、B1-B3 原样实施；B2 最终采用"精确状态去重"而非 rAF 合并——时间启发式会误杀 ResizeObserver 的正常跟随）。
+
+### 补充批次（同日，用户要求合并为一次构建验证）
+
+**层级 1 — 块级渲染跳过**：`.stream-block` wrapper 对 `isComplete` 块加 `content-visibility: auto + contain-intrinsic-size: auto 96px`（StreamingBlockRenderer.tsx）。流式中的活动块不启用（必须参与吸底 layout）。这是"单条消息巨长"场景的主解：每冲刷的强制排版只覆盖可视区附近的块。
+
+**层级 2 — 内容总量准入**：`selectBlocksContentLength`（useChatStore.ts，WeakMap 按 Map 身份缓存，每 flush 求和一次）；直渲染准入抽为纯函数 `shouldDirectRender(messageCount, blocksCount, contentLength)`（MessageList.tsx 导出），三条件：消息数 ≤16（由 80 收紧）、块数 ≤600、总正文字节 ≤200_000。
+
+**层级 3 — 阈值收紧**：VIRTUALIZATION_THRESHOLD 80→16。排在层级 1/2 之后：先压两种模式的长消息排版成本，再收窄直渲染边界。
+
+**C1 — 长会话内存窗口化（回填上限 + 反向窗口）**：
+- 关键前置发现：滚动补页路径被 `fullHistoryLoadComplete` 门控且 offset 按"已加载数"计算，隐含"加载集 = 自最老端连续前缀"不变量；`mergeHistoryMessageOrder` 按 timestamp 重排 + 锚点合并，**与页面到达顺序无关**。
+- 设计：回填从尾窗起点**倒序**向更老历史推进（页 offset = max(0, W - 100)），合并后窗口起点推进；上限 HISTORY_BACKFILL_MAX_PAGES 100→5（500 条）。触顶返回 `'capped'`，`fullHistoryLoadComplete` 不置位，滚动补页（loadEarlierMessages）按窗口起点续拉——窗口始终连续，无中间空洞。
+- 竞态防御：空页 → 按抵达最老端收尾；非最老端短页 → 返回 `'unsupported'` 退回全量加载 fallback（保证窗口连续性）。
+- 行为兼容：≤500 条消息的会话与原全量回填完全一致；>500 条的会话更早历史滚动按需加载。**代价：全量会话内搜索只覆盖已加载窗口（≤500 条会话无感知）**。
+
+**C2（历史回合默认折叠）暂缓**：产品可见的交互变更（Worked for Ns 折叠），且其性能收益（减少挂载 DOM）大部分已被层级 1 的块级渲染跳过覆盖；应单独一版做并配交互测试。
+
+### 新增/修改测试
+- blocksDigest 7 例、useBlocksByIds 4 例、useBlocksSegmentMeta 多冲刷 1 例、splitter 对象身份 2 例（批次 A/B，commit 84901286）
+- shouldDirectRender 5 例、selectBlocksContentLength 3 例、StreamingBlockRenderer 完成块渲染跳过 2 例
+- MessageList.scrollToBottom.source.test.ts 契约断言更新（followBottom 新实现）；MessageList.scrollToBottomControl.test.tsx 的 useChatStore mock 补 selectBlocksContentLength 导出
+- chat 全量 1434/1434；tsc 干净
+
+### 实机验证清单（单次构建覆盖）
+1. 长会话（200+ 条）流式：打字流畅度、吸底跟随、滚动向上再回底。
+2. 单条 50KB+ 超长回复：流式期间滚动回看前缀块、完成后流式→flowtoken 切换无闪烁。
+3. >500 条消息会话：打开会话 → 滚动到顶 → 历史续拉正确（无空洞/乱序）、重复滚动不重复拉取。
+4. 会话内搜索（流式中开/关、非流式）：结果即时性、定位跳转。
+5. agent 任务会话（大量工具块）：任务面板/产物架出现时机正确。
+6. 代码块：滚动经过已完成消息的长代码块，展开/复制/sticky 头正常（content-visibility 影响）。
