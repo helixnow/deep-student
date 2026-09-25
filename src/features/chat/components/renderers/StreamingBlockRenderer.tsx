@@ -44,6 +44,18 @@ interface MemoizedBlockProps {
 // ─── MemoizedBlock ───────────────────────────────────────────────────────────
 
 /**
+ * 🚀 长会话性能：已完成块的渲染跳过（层级 1，ZCode 同源做法）。
+ * 视口外的已完成块不再参与每帧 layout/paint——一条 100KB 的长回复上百个块，
+ * 流式冲刷的强制排版只覆盖可视区附近几个块（流式中的活动块不启用，
+ * 必须真实参与吸底 layout）。contain-intrinsic-size 的 auto 前缀让浏览器
+ * 记住上次渲染尺寸，未渲染过时按 96px 回落。
+ */
+const COMPLETED_BLOCK_STYLE: React.CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: 'auto 96px',
+};
+
+/**
  * 单个 markdown 块的 memo 渲染器。
  * - 已完成块：只要 raw 不变就跳过重渲染
  * - 活跃块（流式中最后一个块）：每次内容变化都重渲染
@@ -71,6 +83,7 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
       data-block-type={block.type}
       data-flowtoken="false"
       data-motion-layer={motionLayer}
+      style={block.isComplete ? COMPLETED_BLOCK_STYLE : undefined}
     >
       <MarkdownRenderer
         content={block.raw}

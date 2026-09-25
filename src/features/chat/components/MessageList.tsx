@@ -22,7 +22,7 @@ import { newMessageVariants } from '@/styles/motion-variants';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
-import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
+import { useMessageOrder, useSessionStatus, useIsDataLoaded, selectBlocksContentLength } from '../hooks/useChatStore';
 import type { Block, ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -53,14 +53,39 @@ const VIRTUALIZER_INIT_DELAY = 0;
 
 /** 默认估算消息高度（设置为合理值，测量会覆盖）*/
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
-/** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
-const VIRTUALIZATION_THRESHOLD = 80;
+/**
+ * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16）：
+ * 配合已完成块 content-visibility 与块数/字节数准入，长会话不再依赖
+ * 直渲染路径；直渲染只保留给真正的小会话。
+ */
+const VIRTUALIZATION_THRESHOLD = 16;
 /**
  * 直渲染准入同时受总块数约束（🚀 长会话性能）：agent 任务会话消息数不多
  * 但每条消息带大量工具块，仅按消息数阈值会整会话直渲染，每次流式冲刷的
  * 强制 layout/选择器成本都随总块数线性上升。Map.size 为 O(1)。
  */
 const DIRECT_RENDER_MAX_BLOCKS = 600;
+/**
+ * 直渲染准入的内容总量上限（正文字节，含 thinking）：约束"消息不多但
+ * 单条巨长"的会话形状——这类会话按消息数/块数都会漏进直渲染，而每冲刷
+ * 的排版成本实际由总正文体量决定。超限自动落入虚拟化路径。
+ */
+const DIRECT_RENDER_MAX_CONTENT_LENGTH = 200_000;
+
+/**
+ * 直渲染准入判定（纯函数，便于单测）：三项全部满足才整会话直渲染。
+ */
+export function shouldDirectRender(
+  messageCount: number,
+  blocksCount: number,
+  contentLength: number,
+): boolean {
+  return (
+    messageCount <= VIRTUALIZATION_THRESHOLD &&
+    blocksCount <= DIRECT_RENDER_MAX_BLOCKS &&
+    contentLength <= DIRECT_RENDER_MAX_CONTENT_LENGTH
+  );
+}
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
@@ -539,12 +564,15 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 是否正在流式生成
   const isStreaming = sessionStatus === 'streaming';
   // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度。
-  // 🚀 直渲染准入同时受总块数约束：agent 任务会话消息少但工具块多，
-  // 仅按消息数放行会让每冲刷成本随总块数线性上升（见 DIRECT_RENDER_MAX_BLOCKS）
+  // 🚀 直渲染准入三条件：消息数 / 总块数 / 总正文字节（见 shouldDirectRender），
+  // "一次对话消息就很长"的会话按内容总量落入虚拟化路径
   const blocksCount = useStore(store, (s) => s.blocks?.size ?? 0);
-  const useDirectRender =
-    messageOrder.length <= VIRTUALIZATION_THRESHOLD &&
-    blocksCount <= DIRECT_RENDER_MAX_BLOCKS;
+  const contentLength = useStore(store, (s) => selectBlocksContentLength(s.blocks));
+  const useDirectRender = shouldDirectRender(
+    messageOrder.length,
+    blocksCount,
+    contentLength,
+  );
 
   const virtualRowCount = messageOrder.length;
 
