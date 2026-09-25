@@ -187,9 +187,7 @@ fn evict_temp_sessions_if_over_cap(sessions: &mut HashMap<String, StreamContext>
         let oldest_key = sessions
             .iter()
             .min_by(|(id_a, a), (id_b, b)| {
-                a.created_at
-                    .cmp(&b.created_at)
-                    .then_with(|| id_a.cmp(id_b))
+                a.created_at.cmp(&b.created_at).then_with(|| id_a.cmp(id_b))
             })
             .map(|(id, _)| id.clone());
         match oldest_key {
@@ -5444,9 +5442,7 @@ mod tests {
     // ------------------------------------------------------------------
 
     mod temp_session_cap {
-        use super::super::{
-            evict_temp_sessions_if_over_cap, TEMP_SESSION_MEMORY_CAP,
-        };
+        use super::super::{evict_temp_sessions_if_over_cap, TEMP_SESSION_MEMORY_CAP};
         use crate::models::StreamContext;
         use chrono::{DateTime, Duration, Utc};
         use std::collections::HashMap;

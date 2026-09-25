@@ -130,9 +130,10 @@ export class SessionManagerImpl implements ISessionManager {
     // 2. 检查是否需要淘汰
     // [FIX-LRU-EVICTION] Use effective size: pending evictions are already
     // "logically freed" even though they are still in the Map until save completes.
-    const effectiveSize = this.sessions.size - this.pendingEvictions.size;
-    if (effectiveSize >= this.maxSessions) {
-      this.evictLRU();
+    // Busy / leased sessions may have temporarily exceeded the cap. Reclaim
+    // all available excess before adding one more, not just a single entry.
+    while (this.sessions.size - this.pendingEvictions.size >= this.maxSessions) {
+      if (!this.evictLRU()) break;
     }
 
     // 3. 创建新 Store
@@ -441,11 +442,15 @@ export class SessionManagerImpl implements ISessionManager {
    * 设置最大缓存数
    */
   setMaxSessions(max: number): void {
+    const previousMax = this.maxSessions;
     this.maxSessions = max;
     // [FIX-LRU-EVICTION] Use effective size (pending evictions are already logically freed).
     // Break if evictLRU returns false (no evictable candidate) to avoid infinite loop.
     while (this.sessions.size - this.pendingEvictions.size > this.maxSessions) {
       if (!this.evictLRU()) break;
+    }
+    if (previousMax !== max) {
+      this.emit({ type: 'max-sessions-changed', sessionId: '' });
     }
   }
 
