@@ -16,6 +16,7 @@ import { eventRegistry, type EventStartPayload } from '../../registry/eventRegis
 import { autoSave, streamingBlockSaver } from './autoSave';
 import { chunkBuffer } from './chunkBuffer';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
+import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import {
   EVENT_BRIDGE_MAX_BUFFER_SIZE,
   EVENT_BRIDGE_MAX_PROCESSED_IDS,
@@ -1381,7 +1382,10 @@ export async function handleStreamComplete(
   // 🆕 Prompt 8: 处理 stream_complete 事件的 token 统计
   // 更新消息的 _meta.usage
   if (options?.messageId && options?.usage) {
-    console.log(
+    // 🚀 2026-09-24 性能治理：每次流式完成都走的裸 console.log 改走
+    // debugLog（debugMasterSwitch 门禁，生产默认关闭零分配），不再在
+    // 生产环境为每条流式响应分配 usage 对象 + 控制台序列化。
+    debugLog.log(
       '[EventBridge] Token usage received:',
       'messageId=', options.messageId,
       'prompt=', options.usage.promptTokens,

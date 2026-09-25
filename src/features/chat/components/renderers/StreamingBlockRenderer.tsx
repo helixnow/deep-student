@@ -2,11 +2,8 @@ import React, { useMemo, memo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
-import { canUseDirectFlowTokenMarkdown, containsHtmlTagLikeContent } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
-import { useMessageSearchContext } from '../messageSearchContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
@@ -42,35 +39,6 @@ interface MemoizedBlockProps {
   extraRemarkPlugins?: any[];
   onCitationClick?: (type: string, index: number) => void;
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
-  blockId?: string;
-  messageId?: string;
-  searchActive: boolean;
-}
-
-const FLOWTOKEN_SUPPORTED_BLOCK_TYPES = new Set<MarkdownBlock['type']>([
-  'paragraph',
-  'heading',
-  'list',
-  'blockquote',
-]);
-
-function shouldUseFullFlowTokenEffect(
-  block: MarkdownBlock,
-  isStreamingBlock: boolean,
-): boolean {
-  if (!isStreamingBlock || !FLOWTOKEN_SUPPORTED_BLOCK_TYPES.has(block.type)) {
-    return false;
-  }
-
-  // 🔒 P1 (2026-07-08 审阅 21 P1-1)：块级路径此前只按块类型判断，
-  // paragraph 等块中的行内 HTML（如 `文本 <img onerror=...> 文本`）会绕过
-  // 整段级别的 flowtoken 门禁进入未消毒的 AnimatedMarkdown。
-  // 这里对块原文复检疑似 HTML，命中则回退到带 rehype-sanitize 的 MarkdownRenderer。
-  if (containsHtmlTagLikeContent(block.raw)) {
-    return false;
-  }
-
-  return true;
 }
 
 // ─── MemoizedBlock ───────────────────────────────────────────────────────────
@@ -89,14 +57,9 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  blockId,
-  messageId,
-  searchActive,
 }) => {
-  const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
-    block,
-    isActive && isStreaming,
-  ) && !searchActive;
+  // 流式和完成态保持同一渲染管线，避免闭合时重建 DOM、补播整段动画，
+  // 并保留引用、图片解析与额外 remark 插件。
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
 
   return (
@@ -106,37 +69,29 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
       data-new={isNew ? 'true' : 'false'}
       data-active={isActive ? 'true' : 'false'}
       data-block-type={block.type}
-      data-flowtoken={shouldUseFlowToken ? 'true' : 'false'}
+      data-flowtoken="false"
       data-motion-layer={motionLayer}
     >
-      {shouldUseFlowToken ? (
-        <FlowTokenMarkdownRenderer
-          content={block.raw}
-          isStreaming
-          onLinkClick={onLinkClick}
-          blockId={blockId}
-          messageId={messageId}
-        />
-      ) : (
-        <MarkdownRenderer
-          content={block.raw}
-          isStreaming={isActive && isStreaming}
-          onLinkClick={onLinkClick}
-          extraRemarkPlugins={extraRemarkPlugins}
-          onCitationClick={onCitationClick}
-          resolveCitationImage={resolveCitationImage}
-        />
-      )}
+      <MarkdownRenderer
+        content={block.raw}
+        isStreaming={isActive && isStreaming}
+        onLinkClick={onLinkClick}
+        extraRemarkPlugins={extraRemarkPlugins}
+        onCitationClick={onCitationClick}
+        resolveCitationImage={resolveCitationImage}
+      />
     </div>
   );
 }, (prev, next) => {
   // 已完成块：只要 raw 不变就跳过
   // 🔧 B4: 回调 props（引用点击/图片解析）也纳入比较，
   // 父组件换新回调时不再让子树继续持有过期闭包
+  // 只比较本块的流式状态；整条消息结束不应重渲染已经静止的块。
   if (prev.block.isComplete && next.block.isComplete && prev.block.raw === next.block.raw) {
     return (
       prev.isNew === next.isNew &&
-      prev.searchActive === next.searchActive &&
+      prev.isActive === next.isActive &&
+      (prev.isActive && prev.isStreaming) === (next.isActive && next.isStreaming) &&
       prev.onLinkClick === next.onLinkClick &&
       prev.extraRemarkPlugins === next.extraRemarkPlugins &&
       prev.onCitationClick === next.onCitationClick &&
@@ -180,16 +135,12 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  blockId,
-  messageId,
 }) => {
   const { t } = useTranslation('chatV2');
-  const { query: searchQuery } = useMessageSearchContext();
-  const searchActive = Boolean(searchQuery.trim());
 
   // 行业最优解：不再裁剪未闭合数学。remark-math 自然降级为原文，
   // KaTeX 在闭合时无缝接管。原始 content 直通渲染器，
-  // 由 flowtoken 的 AnimatedMarkdown / SplitText sep="diff" 负责增量动画。
+  // 由统一的 Markdown 管线渲染活动块。
   // OS 模式 background 窗（壳层已停绘）：冻结提交内容，避免不可见窗每个
   // token 重跑 markdown 管线；token 留在 store，回可见立即整段补渲。
   const processedContent = useSuspendedStreamContent(content ?? '', isStreaming);
@@ -225,11 +176,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     highlightSpansRef.current = highlightSpans;
   }
   const stableHighlightSpans = highlightSpansRef.current;
-  const hasExtendedMarkdownFeatures = Boolean(
-    onCitationClick ||
-    resolveCitationImage ||
-    (extraRemarkPlugins && extraRemarkPlugins.length > 0),
-  );
 
   const allRemarkPlugins = useMemo(() => {
     const needsHighlight =
@@ -249,13 +195,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
 
   const hasVisibleContent = mainContent.trim().length > 0;
   const thinkingContent = parsedContent?.thinkingContent ?? '';
-  const shouldUseThinkingFlowToken = Boolean(
-    isStreaming &&
-    thinkingContent &&
-    !thinkingContent.includes('\n') &&
-    !searchActive &&
-    canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
-  );
 
   return (
     <div
@@ -272,24 +211,14 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
           </div>
           <div className="thinking-content">
-            {shouldUseThinkingFlowToken ? (
-              <FlowTokenMarkdownRenderer
-                content={thinkingContent}
-                isStreaming
-                onLinkClick={onLinkClick}
-                blockId={blockId}
-                messageId={messageId}
-              />
-            ) : (
-              <MarkdownRenderer
-                content={thinkingContent}
-                isStreaming={isStreaming}
-                onLinkClick={onLinkClick}
-                extraRemarkPlugins={allRemarkPlugins}
-                onCitationClick={onCitationClick}
-                resolveCitationImage={resolveCitationImage}
-              />
-            )}
+            <MarkdownRenderer
+              content={thinkingContent}
+              isStreaming={isStreaming}
+              onLinkClick={onLinkClick}
+              extraRemarkPlugins={allRemarkPlugins}
+              onCitationClick={onCitationClick}
+              resolveCitationImage={resolveCitationImage}
+            />
           </div>
         </div>
       )}
@@ -307,9 +236,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             extraRemarkPlugins={allRemarkPlugins}
             onCitationClick={onCitationClick}
             resolveCitationImage={resolveCitationImage}
-            blockId={blockId}
-            messageId={messageId}
-            searchActive={searchActive}
           />
         ))}
       </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { createStore, type StoreApi } from 'zustand';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import { MessageItem } from '../MessageItem';
@@ -210,7 +210,8 @@ interface TestBlock {
   id: string;
   type: 'thinking' | 'content';
   content: string;
-  status: 'success' | 'running' | 'pending';
+  status: 'success' | 'running' | 'pending' | 'error';
+  error?: string;
   messageId: string;
 }
 
@@ -273,6 +274,53 @@ describe('MessageItem streaming content visibility', () => {
     await waitFor(() => {
       expect(screen.getByText('final answer')).toBeInTheDocument();
     });
+  });
+
+  it('keeps partial output actions after an initially empty response fails', () => {
+    const store = createMessageItemStore();
+    store.setState((state) => ({
+      blocks: new Map(state.blocks)
+        .set('blk_thinking', { ...state.blocks.get('blk_thinking')!, content: '' })
+        .set('blk_content', { ...state.blocks.get('blk_content')!, status: 'running' }),
+    }));
+    render(<MessageItem messageId="msg_test" store={store as unknown as StoreApi<any>} />);
+
+    act(() => {
+      store.setState((state) => ({
+        blocks: new Map(state.blocks).set('blk_content', {
+          ...state.blocks.get('blk_content')!,
+          content: 'partial answer',
+          status: 'error',
+          error: 'connection lost',
+        }),
+      }));
+    });
+
+    expect(screen.getByText('partial answer')).toBeInTheDocument();
+    expect(screen.getByTestId('message-actions')).toBeInTheDocument();
+    expect(screen.queryByText('messageItem.failure.retry')).toBeNull();
+  });
+
+  it('updates the visible failure detail when a block error changes', () => {
+    const store = createMessageItemStore();
+    store.setState((state) => ({
+      blocks: new Map(state.blocks)
+        .set('blk_thinking', { ...state.blocks.get('blk_thinking')!, content: '' })
+        .set('blk_content', { ...state.blocks.get('blk_content')!, status: 'error', error: 'initial error' }),
+    }));
+    render(<MessageItem messageId="msg_test" store={store as unknown as StoreApi<any>} />);
+    expect(screen.getByText('initial error')).toBeInTheDocument();
+
+    act(() => {
+      store.setState((state) => ({
+        blocks: new Map(state.blocks).set('blk_content', {
+          ...state.blocks.get('blk_content')!, error: 'updated error detail',
+        }),
+      }));
+    });
+
+    expect(screen.getByText('updated error detail')).toBeInTheDocument();
+    expect(screen.queryByText('initial error')).toBeNull();
   });
 
   it('keeps the latest assistant footer hidden while streaming and reveals it after completion', async () => {

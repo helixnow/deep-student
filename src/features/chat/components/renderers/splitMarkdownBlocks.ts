@@ -30,7 +30,7 @@ export type MarkdownBlockType =
   | 'html';
 
 export interface MarkdownBlock {
-  /** 稳定 ID：基于块索引 + 内容前缀 hash，确保已完成块的 key 不变 */
+  /** 稳定 ID：基于块索引 + 类型，正文追加和块闭合不更换 key */
   id: string;
   /** 块类型 */
   type: MarkdownBlockType;
@@ -48,18 +48,6 @@ interface CoreBlock {
   closed: boolean;
   /** 块首行在被解析文本中的字符偏移（用于增量重解析定位） */
   startOffset: number;
-}
-
-/**
- * 简单字符串 hash（FNV-1a 变体），用于生成稳定 block ID
- */
-function hashStr(str: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < Math.min(str.length, 64); i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
 }
 
 /** 检测行是否为代码围栏开始/结束 */
@@ -340,17 +328,15 @@ function coreParse(content: string): CoreBlock[] {
 /**
  * 标注阶段：分配稳定 ID 并落定 isComplete。
  *
- * 流式期间，最后一个活跃块使用不随 raw 变化的稳定 key，
- * 避免每个 chunk 都触发 React remount，打断内部动画 / diff 状态。
+ * 同一位置/类型的块从活动到完成使用相同 key；raw/isComplete 仍由
+ * 渲染器比较并更新，避免块闭合时 remount 丢失选区、图片与交互状态。
  */
 function finalizeBlocks(coreBlocks: CoreBlock[], isStreaming: boolean): MarkdownBlock[] {
   const lastIndex = coreBlocks.length - 1;
   return coreBlocks.map((block, idx) => {
     const isActiveStreamingBlock = isStreaming && idx === lastIndex;
     return {
-      id: isActiveStreamingBlock
-        ? `b${idx}-${block.type[0]}-streaming`
-        : `b${idx}-${block.type[0]}-${hashStr(block.raw)}`,
+      id: `b${idx}-${block.type}`,
       type: block.type,
       raw: block.raw,
       isComplete: isActiveStreamingBlock ? false : block.closed,

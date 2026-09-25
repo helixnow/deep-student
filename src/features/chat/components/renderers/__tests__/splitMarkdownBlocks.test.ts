@@ -13,6 +13,16 @@ describe('splitMarkdownBlocks', () => {
     expect(first[0]?.id).toBe(second[0]?.id);
   });
 
+  it('keeps a block id when the block closes and the stream completes', () => {
+    const split = createMarkdownBlockSplitter();
+    const active = split('First paragraph.', true);
+    const closed = split('First paragraph.\n\nSecond paragraph.', true);
+    const complete = split('First paragraph.\n\nSecond paragraph.', false);
+    expect(closed[0].id).toBe(active[0].id);
+    expect(complete.map((block) => block.id)).toEqual(closed.map((block) => block.id));
+    expect(complete.every((block) => block.isComplete)).toBe(true);
+  });
+
   it('treats a single-line $$...$$ as a self-closed math block', () => {
     const blocks = splitMarkdownBlocks('$$E=mc^2$$\n\n后续段落内容', false);
 
