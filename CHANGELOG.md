@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.70](https://github.com/helixnow/deep-student/compare/v0.9.69...v0.9.70) (2026-09-25)
+
+
+### Bug Fixes
+
+* **chat:** preserve streaming renderer behavior without remount churn ([0f2ef30](https://github.com/helixnow/deep-student/commit/0f2ef3015f1aa54305d8f567684e9ef2560e008d))
+* **chat:** reclaim excess session cache and complete manager events ([46ff59d](https://github.com/helixnow/deep-student/commit/46ff59dfea5aa44b54adf11786be59323e642e87))
+* **chat:** serialize batched event delivery and retain per-variant chunks ([02b1521](https://github.com/helixnow/deep-student/commit/02b1521f23f4cf0ae9442ce299cdc69e871ab22c))
+* **ci:** build MinIO fixtures from verified releases ([516b63f](https://github.com/helixnow/deep-student/commit/516b63f518fac584f061cff8f2c28b021ea62bcf))
+* **ci:** restore MinIO provider contract fixtures ([7f42397](https://github.com/helixnow/deep-student/commit/7f423977c9e1d03c0694a57aa0cb3b490e8baef1))
+
+
+### Performance Improvements
+
+* **backend:** cap temp_sessions memory and move document parsing off the async executor ([dbf87fb](https://github.com/helixnow/deep-student/commit/dbf87fb55ed4eaf21602ee8a15875018d108207a))
+* **chat:** append variant text snapshots incrementally ([2860886](https://github.com/helixnow/deep-student/commit/2860886ed66c0c6d612d9ddb8951ed7370a7412d))
+* **chat:** avoid retaining chat state in chunk buffering ([ed1d037](https://github.com/helixnow/deep-student/commit/ed1d037dec52c59783e581d2324f1c8252b26691))
+* **chat:** batch streaming content/thinking chunks at the IPC boundary ([61c71ab](https://github.com/helixnow/deep-student/commit/61c71abc0e14fb01a797b59aec2e14f1b88718e4))
+* **chat:** eliminate streaming jank and reduce memory footprint ([ecaed01](https://github.com/helixnow/deep-student/commit/ecaed019921ec6ec122c629ef6cebbf66d81d980))
+* **chat:** replace 1s polling hooks with event-driven sync; gate stream-complete token log ([cbddba4](https://github.com/helixnow/deep-student/commit/cbddba41bc71f2f971daed0a503864e45e88019e))
+* **chat:** slow streaming store updates to 120ms and defer flowtoken animation until stream end ([03bc72d](https://github.com/helixnow/deep-student/commit/03bc72d0bcec6e5f9a731202917fdde4b5ea1643))
+* **chat:** subscribe MessageItem to segment-structure fingerprint, not block identity ([dc7f0a3](https://github.com/helixnow/deep-student/commit/dc7f0a3d77f3787850c335744372e66cf0570a04))
+
 ## [0.9.69](https://github.com/helixnow/deep-student/compare/v0.9.68...v0.9.69) (2026-09-24)
 
 
