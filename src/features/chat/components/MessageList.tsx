@@ -55,9 +55,18 @@ const VIRTUALIZER_INIT_DELAY = 0;
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
 const VIRTUALIZATION_THRESHOLD = 80;
+/**
+ * 直渲染准入同时受总块数约束（🚀 长会话性能）：agent 任务会话消息数不多
+ * 但每条消息带大量工具块，仅按消息数阈值会整会话直渲染，每次流式冲刷的
+ * 强制 layout/选择器成本都随总块数线性上升。Map.size 为 O(1)。
+ */
+const DIRECT_RENDER_MAX_BLOCKS = 600;
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
+
+/** 流式期间搜索匹配重算的最小间隔（毫秒）：匹配结果允许落后流式内容 ≤500ms */
+const SEARCH_MATCH_THROTTLE_MS = 500;
 
 const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
@@ -266,14 +275,51 @@ const MessageListInner: React.FC<MessageListProps> = ({
     store,
     useCallback((state: ChatStore) => isSearchOpen ? state.blocks : EMPTY_BLOCK_MAP, [isSearchOpen]),
   );
+  // 🚀 长会话性能：流式期间 blocks 每 flush 换身份，若直接以最新 blocks 重算
+  // 匹配，搜索打开时每次冲刷都会做全会话文本扫描。改为快照节流：
+  // - 非流式 / 查询词变化 / 刚打开：立即重算（交互即时性不变）
+  // - 流式中的 blocks 变化：每 500ms 至多重算一次（匹配允许落后流式 ≤500ms，
+  //   流式结束的边沿会触发一次立即重算兜底）
+  const isSearchStreaming = useStore(store, (s) => s.sessionStatus === 'streaming');
+  const [searchSnapshot, setSearchSnapshot] = useState(EMPTY_BLOCK_MAP);
+  const searchSnapshotRef = useRef(EMPTY_BLOCK_MAP);
+  const lastSearchSyncAtRef = useRef(0);
+  const lastSearchQueryRef = useRef(searchQuery);
+  useEffect(() => {
+    if (!isSearchOpen) {
+      if (searchSnapshotRef.current !== EMPTY_BLOCK_MAP) {
+        searchSnapshotRef.current = EMPTY_BLOCK_MAP;
+        setSearchSnapshot(EMPTY_BLOCK_MAP);
+      }
+      lastSearchSyncAtRef.current = 0;
+      return;
+    }
+    const queryChanged = searchQuery !== lastSearchQueryRef.current;
+    lastSearchQueryRef.current = searchQuery;
+    const elapsed = performance.now() - lastSearchSyncAtRef.current;
+    if (!isSearchStreaming || queryChanged || elapsed >= SEARCH_MATCH_THROTTLE_MS) {
+      lastSearchSyncAtRef.current = performance.now();
+      searchSnapshotRef.current = searchBlocks;
+      setSearchSnapshot(searchBlocks);
+      return;
+    }
+    const timer = setTimeout(() => {
+      lastSearchSyncAtRef.current = performance.now();
+      if (searchSnapshotRef.current !== searchBlocks) {
+        searchSnapshotRef.current = searchBlocks;
+        setSearchSnapshot(searchBlocks);
+      }
+    }, SEARCH_MATCH_THROTTLE_MS - elapsed);
+    return () => clearTimeout(timer);
+  }, [searchBlocks, searchQuery, isSearchOpen, isSearchStreaming]);
   const searchMatches = useMemo(
     () => findMessageSearchMatches(
       messageOrder,
       store.getState().messageMap,
-      searchBlocks,
+      searchSnapshot,
       searchQuery,
     ),
-    [messageOrder, searchBlocks, searchQuery, store],
+    [messageOrder, searchSnapshot, searchQuery, store],
   );
   const resolvedActiveSearchIndex = searchMatches.length > 0
     ? Math.min(activeSearchIndex, searchMatches.length - 1)
@@ -492,8 +538,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 是否正在流式生成
   const isStreaming = sessionStatus === 'streaming';
-  // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度
-  const useDirectRender = messageOrder.length <= VIRTUALIZATION_THRESHOLD;
+  // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度。
+  // 🚀 直渲染准入同时受总块数约束：agent 任务会话消息少但工具块多，
+  // 仅按消息数放行会让每冲刷成本随总块数线性上升（见 DIRECT_RENDER_MAX_BLOCKS）
+  const blocksCount = useStore(store, (s) => s.blocks?.size ?? 0);
+  const useDirectRender =
+    messageOrder.length <= VIRTUALIZATION_THRESHOLD &&
+    blocksCount <= DIRECT_RENDER_MAX_BLOCKS;
 
   const virtualRowCount = messageOrder.length;
 
@@ -598,11 +649,23 @@ const MessageListInner: React.FC<MessageListProps> = ({
     observedTopRef.current = el.scrollTop;
   }, [viewportElement]);
 
-  // 跟随写入：仅在拥有滚动所有权（atBottom）时生效
+  // 跟随写入：仅在拥有滚动所有权（atBottom）时生效。
+  // 🚀 吸底跟随去重：同一份内容增长会多次触发本函数（同一提交里
+  // useLayoutEffect 与 ResizeObserver 先后调用、滚动事件的账本补偿紧跟其后）。
+  // scrollHeight 与 scrollTop 均未变化说明视口已钉底，重写只会白写并再触发
+  // 一轮滚动事件；内容真实增长（scrollHeight 变化）或浏览器 clamp（scrollTop
+  // 偏离账本）仍会正常跟随。
+  const lastFollowStateRef = useRef<{ top: number; height: number } | null>(null);
   const followBottom = useCallback(() => {
     const el = viewportElement;
     if (!el || !atBottomRef.current) return;
-    writeScroll(el.scrollHeight);
+    const height = el.scrollHeight;
+    const last = lastFollowStateRef.current;
+    if (last && last.height === height && Math.abs(el.scrollTop - last.top) <= 0.5) {
+      return;
+    }
+    writeScroll(height);
+    lastFollowStateRef.current = { top: observedTopRef.current, height };
   }, [viewportElement, writeScroll]);
 
   // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
