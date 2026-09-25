@@ -452,8 +452,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   const hasConsumableAssistantContent = useMemo(() => {
     if (isUser) return false;
-    return extractMessageContent().length > 0;
-  }, [extractMessageContent, isUser]);
+    // 与复制内容的正文/思考/工具回退类型一致，直接消费已订阅的空值状态。
+    // getState 回调引用稳定，不能用它作为正文从空变为非空的依赖。
+    return assistantBlocks.some((block) =>
+      !block.isEmpty && (block.type === 'content' || block.type === 'thinking' || block.type === 'mcp_tool')
+    );
+  }, [assistantBlocks, isUser]);
 
   const assistantFailureDetails = useMemo(() => {
     if (isUser) return null;
@@ -464,11 +468,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     const variantError = activeVariant?.error?.trim();
     if (variantError) return variantError;
 
-    const blockError = assistantBlocks.find((block) => block.hasError)
-      ? getDisplayBlocks().find((b) => typeof b.error === 'string' && b.error.trim().length > 0)?.error?.trim()
-      : undefined;
+    const blockError = assistantBlocks.find((block) => block.error)?.error;
     return blockError || null;
-  }, [activeVariant?.error, assistantBlocks, isUser, message?._meta?.terminalError, getDisplayBlocks]);
+  }, [activeVariant?.error, assistantBlocks, isUser, message?._meta?.terminalError]);
 
   const hasZeroOutputFailure = useMemo(() => {
     if (isUser || isMultiVariant) return false;
