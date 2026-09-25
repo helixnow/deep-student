@@ -11,7 +11,10 @@ name: deep-student-sync-test
 services:
   # ============== MinIO (S3 兼容) ==============
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z@sha256:a1ea29fa28355559ef137d71fc570e508a214ec84ff8083e39bc5428980b015e
+    build:
+      context: ../..
+      dockerfile: dstu-test/docker/Dockerfile.minio-tool
+    image: deep-student-sync-test-minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ds-minio
     ports:
       - "127.0.0.1:9000:9000"   # S3 API
@@ -23,7 +26,7 @@ services:
     volumes:
       - minio_data:/data
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:9000/minio/health/live"]
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -31,7 +34,7 @@ services:
 
   # 自动创建 bucket
   minio-init:
-    image: quay.io/minio/mc:RELEASE.2025-04-16T18-13-26Z@sha256:aead63c77f9db9107f1696fb08ecb0faeda23729cde94b0f663edf4fe09728e3
+    image: deep-student-sync-test-minio:RELEASE.2025-04-22T22-12-26Z
     container_name: ds-minio-init
     depends_on:
       minio:
