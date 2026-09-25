@@ -46,39 +46,75 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.querySelector('pre [style*="animation-name: ft-fadeIn"]')).toBeNull();
   });
 
-  it('uses the same flowtoken animation path in streaming block mode', () => {
+  // 流式与完成态使用同一 Markdown 管线；专用 flowtoken 组件单独测试。
+
+  it('uses the main pipeline (no flowtoken) for the active streaming block', () => {
     const { container } = render(
       <StreamingBlockRenderer content="当前聊天流式块正在输出。" isStreaming />
     );
 
-    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).not.toBeNull();
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
+    // 主管线接管：内容仍完整渲染
+    expect(container.textContent).toContain('当前聊天流式块正在输出。');
   });
 
-  it('uses flowtoken markdown list styling for supported streaming blocks', () => {
+  it('keeps the block on the main pipeline once streaming ends', () => {
+    const { container, rerender } = render(
+      <StreamingBlockRenderer content="当前聊天流式块正在输出。" isStreaming />
+    );
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
+
+    rerender(<StreamingBlockRenderer content="当前聊天流式块正在输出。" isStreaming={false} />);
+
+    expect(container.querySelector('.stream-block .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.stream-block .markdown-content')).not.toBeNull();
+  });
+
+  it('renders streaming lists through the main pipeline while streaming', () => {
     const { container } = render(
       <StreamingBlockRenderer content={'- 第一项\n- 第二项'} isStreaming />
     );
 
-    expect(container.querySelector('li.ft-custom-li')).not.toBeNull();
+    // 流式期间不走 flowtoken（无 ft-custom-li），主管线渲染列表
+    expect(container.querySelector('li.ft-custom-li')).toBeNull();
+    expect(container.querySelector('li')).not.toBeNull();
   });
 
-  it('uses flowtoken fade-in for the streaming thinking chain', () => {
+  it('does not use flowtoken fade-in for the streaming thinking chain', () => {
     const { container } = render(
       <StreamingBlockRenderer content={'<thinking>先想一想</thinking>\n最终答案'} isStreaming />
     );
 
-    expect(container.querySelector('.chain-of-thought [style*="animation-name: ft-fadeIn"]')).not.toBeNull();
+    expect(container.querySelector('.chain-of-thought [style*="animation-name: ft-fadeIn"]')).toBeNull();
+    // 思维链内容仍由主管线渲染
+    expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
   });
 
-  it('routes streaming main content with thinking tags through the full flowtoken renderer', () => {
+  it('keeps the thinking chain on the main pipeline after streaming ends', () => {
+    const { container, rerender } = render(
+      <StreamingBlockRenderer content={'<thinking>先想一想</thinking>\n最终答案'} isStreaming />
+    );
+    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).toBeNull();
+
+    rerender(
+      <StreamingBlockRenderer content={'<thinking>先想一想</thinking>\n最终答案'} isStreaming={false} />
+    );
+
+    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
+  });
+
+  it('routes streaming main content with thinking tags through the main pipeline', () => {
     const { container } = render(
       <StreamingMarkdownRenderer content={'<thinking>先想一想</thinking>\n最终答案正在输出。'} isStreaming />
     );
 
-    expect(container.querySelector('.main-content .flowtoken-markdown')).not.toBeNull();
+    expect(container.querySelector('.main-content .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.main-content .markdown-content')).not.toBeNull();
   });
 
-  it('routes standalone streaming thinking blocks through the full flowtoken renderer', () => {
+  it('routes standalone streaming thinking blocks through the main pipeline', () => {
     const { container } = render(
       <ThinkingBlock
         block={{
@@ -92,19 +128,20 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.think-content .flowtoken-markdown')).not.toBeNull();
-    expect(container.querySelector('.think-content [style*="animation-name: ft-fadeIn"]')).not.toBeNull();
+    expect(container.querySelector('.think-content .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.think-content [style*="animation-name: ft-fadeIn"]')).toBeNull();
+    expect(container.textContent).toContain('先拆解问题，再组织答案。');
   });
 
-  it('uses flowtoken for citation-like streaming blocks (content gate removed)', () => {
+  it('does not use flowtoken for citation-like streaming blocks while streaming', () => {
     const { container } = render(
       <StreamingBlockRenderer content="参考这个结论 [知识库-1]" isStreaming />
     );
 
-    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
   });
 
-  it('keeps streaming blocks on flowtoken while content grows (content gate removed)', () => {
+  it('keeps streaming blocks on the main pipeline while content grows', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content="参考这个结论 [知识库-1]" isStreaming />
     );
@@ -114,26 +151,29 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     );
 
     const block = container.querySelector('.stream-block');
-    expect(block?.getAttribute('data-flowtoken')).toBe('true');
+    expect(block?.getAttribute('data-flowtoken')).toBe('false');
     expect(block?.getAttribute('data-motion-layer')).toBe('inline');
+    expect(container.textContent).toContain('并继续补充说明。');
   });
 
-  it('keeps dangling markdown text visible in the flowtoken streaming path', () => {
+  it('keeps the stream stable on dangling markdown text in the streaming main pipeline', () => {
     const { container } = render(
       <StreamingBlockRenderer content="看看这个半截链接 [还没补完" isStreaming />
     );
 
-    expect(container.textContent).toContain('[还没补完');
-    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
+    // 主管线流式预处理（sanitizeDanglingMarkdown）会剥除未闭合的半截链接
+    // 标记，渲染保持稳定不崩溃、已闭合的前文完整保留
+    expect(container.textContent).toContain('看看这个半截链接');
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
   });
 
-  it('uses flowtoken for bare LaTeX streaming blocks (content gate removed)', () => {
+  it('renders bare LaTeX streaming blocks through the main pipeline', () => {
     const { container } = render(
       <StreamingBlockRenderer content={'score(Q, K) = \\\\frac{QK^T}{\\\\sqrt{d_k}}'} isStreaming />
     );
 
-    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
-    expect(container.querySelector('.flowtoken-markdown')).not.toBeNull();
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
+    expect(container.querySelector('.flowtoken-markdown')).toBeNull();
     expect(container.textContent).not.toContain('[object Object]');
   });
 
@@ -200,18 +240,21 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.textContent).not.toContain('[object Object]');
   });
 
-  it('keeps the existing animated span node stable while append-only text grows', () => {
+  it('preserves the paragraph node while text grows and streaming ends', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content="第一句" isStreaming />
     );
-
-    const firstAnimatedSpan = container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR);
-    expect(firstAnimatedSpan).not.toBeNull();
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
+    const paragraph = container.querySelector('.stream-block p');
 
     rerender(<StreamingBlockRenderer content="第一句第二句" isStreaming />);
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
+    expect(container.textContent).toContain('第一句第二句');
+    expect(container.querySelector('.stream-block p')).toBe(paragraph);
 
-    const nextAnimatedSpan = container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR);
-    expect(nextAnimatedSpan).toBe(firstAnimatedSpan);
+    rerender(<StreamingBlockRenderer content="第一句第二句" isStreaming={false} />);
+    expect(container.querySelector('.stream-block p')).toBe(paragraph);
+    expect(container.querySelector('.stream-block .flowtoken-markdown')).toBeNull();
   });
 
   it('renders flowtoken spans with the slower demo-like timing', () => {

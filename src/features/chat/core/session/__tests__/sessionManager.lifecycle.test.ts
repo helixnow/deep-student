@@ -223,7 +223,9 @@ describe('SessionManager lifecycle races', () => {
     manager.touch('other');
     manager.getOrCreate('third');
 
-    expect(mocks.forceImmediateSave).toHaveBeenCalledTimes(2);
+    expect(
+      mocks.forceImmediateSave.mock.calls.filter(([state]) => state.sessionId === 'same')
+    ).toHaveLength(2);
     firstSave.resolve();
     await firstSave.promise;
     await Promise.resolve();

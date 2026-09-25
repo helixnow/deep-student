@@ -761,11 +761,258 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
     }
   }), []);
 
-  const renderMath = (value: string, displayMode: boolean) => {
+  const renderMath = useCallback((value: string, displayMode: boolean) => {
     const latex = value?.trim() ?? '';
     if (!latex) return null;
     // 缓存查询/懒加载/错误降级统一在 LazyMath 内处理
     return <LazyMath latex={latex} displayMode={displayMode} options={katexOptions} />;
+  }, [katexOptions]);
+
+  // Stable component types preserve paragraph/image DOM across token updates.
+  // Recreate only the renderer whose behavior depends on the changed callback.
+  const renderMarkdownMath = useCallback(({ value }: { value?: string }) => renderMath(String(value ?? ''), true), [renderMath]);
+
+  const renderMarkdownInlineMath = useCallback(({ value }: { value?: string }) => renderMath(String(value ?? ''), false), [renderMath]);
+
+  const renderMarkdownPre = useCallback(({ children }: any) => {
+    const childArray = React.Children.toArray(children as any);
+    const codeElement: any = (childArray as any[]).find((c: any) => c?.type === 'code') ?? childArray[0];
+    const className = (codeElement as any)?.props?.className as string | undefined;
+    const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
+
+    // 若 pre>code 被标记为 math 样式（如 "math math-display" 或 "math math-inline"），直接用 KaTeX 渲染
+    // (?![\w-]) 边界：避免 language-latex-src / language-mathml 之类前缀语言被误判为数学
+    const cls = typeof className === 'string' ? className : '';
+    const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)(?![\w-])/i.test(cls);
+    if (isMathLike) {
+      const display = /math-display/i.test(cls) || (!/math-inline/i.test(cls));
+      return renderMath(codeContent, display);
+    }
+
+    return (
+      <CodeBlock className={className} isStreaming={isStreaming} rendererCapabilities={rendererCapabilities}>
+        {(codeElement as any)?.props?.children}
+      </CodeBlock>
+    );
+  }, [isStreaming, rendererCapabilities, renderMath]);
+
+  const renderMarkdownCode = useCallback(({ inline, className, children, node: _node, ...props }: any) => {
+    const codeContent = String(children).replace(/\n$/, '');
+
+    // 1) 明确标记为 math/latex 的代码块，强制转 KaTeX
+    // (?![\w-]) 边界：language-mathematica 等真实语言不应被误转
+    const isMathBlock = typeof className === 'string' && /language-(math|latex)(?![\w-])/i.test(className);
+    if (isMathBlock) {
+      return renderMath(codeContent, inline === false);
+    }
+
+    // 2) 兜底：裸代码块若包含典型 LaTeX 命令（\frac、\int、\sum、\lim、\sqrt、上下标），也转 KaTeX
+    const hasLatexSignature = /\\(frac|int|sum|lim|sqrt|prod|infty|to|rightarrow|leftarrow|partial|nabla|alpha|beta|gamma|theta|pi|sigma|omega|cdot|times|geq?|leq?|neq?|approx|equiv|text|mathrm|mathbb|bmatrix|begin|end)|[\^_]\{/i.test(codeContent);
+    if (hasLatexSignature && !className) {
+      // 识别为未声明语言的 LaTeX 代码块，转为数学渲染
+      console.warn('[MarkdownRenderer] Detected bare LaTeX code block (missing $ wrapper), auto-converted to KaTeX:', codeContent);
+      return renderMath(codeContent, inline === false);
+    }
+
+    const isMultiline = codeContent.includes('\n');
+    const isInlineCode = inline !== false && !isMultiline && !className;
+    if (isInlineCode) {
+      return <code className="inline-code" {...props}>{children}</code>;
+    }
+    return <code className={className} {...props}>{children}</code>;
+  }, [renderMath]);
+
+  const renderMarkdownTable = useCallback(({ children }: any) => (
+    <TableBlockShell>{children}</TableBlockShell>
+  ), []);
+
+  const renderMarkdownImg = useCallback(({ src, alt, node: _node, ...props }: any) => (
+    <MarkdownImage src={resolveImageSrc(src)} alt={alt} {...props} />
+  ), [resolveImageSrc]);
+
+  const renderMarkdownP = useCallback(({ children, node: _node, ...props }: any) => {
+    const childArray = React.Children.toArray(children);
+    const hasMindmapCard = childArray.some((child) => {
+      if (!React.isValidElement(child)) return false;
+      if (child.type === MindmapCitationCard) return true;
+      // 自定义 span 渲染器包装的引用占位符：此时 child.type 是 span 渲染
+      // 函数，MindmapCitationCard 要在 span 渲染内部才出现，只能靠 props
+      // 上的 data 属性识别（否则块级导图卡会留在 <p> 里，嵌套非法且
+      // 被 .markdown-content > p 的 width:fit-content 收成 0 宽）
+      const childProps = child.props as Record<string, unknown> | undefined;
+      return childProps?.['data-mindmap-citation'] === 'true';
+    });
+    if (hasMindmapCard) {
+      return <div className="my-3">{children}</div>;
+    }
+    return <p {...props}>{children}</p>;
+  }, []);
+
+  const renderMarkdownSpan = useCallback(({ children, node: _node, ...props }: any) => {
+    const encodedSmiles = props['data-smiles'] ?? props.dataSmiles;
+    if (typeof encodedSmiles === 'string') {
+      try {
+        const smiles = decodeURIComponent(encodedSmiles);
+        return rendererCapabilities.chemicalStructures
+          ? <InlineSmiles smiles={smiles} />
+          : <code className="inline-code">{`\\smiles{${smiles}}`}</code>;
+      } catch {
+        // 损坏的 URL 编码不应让整条聊天消息渲染失败。
+        return <span {...props}>{children}</span>;
+      }
+    }
+
+    // Generative UI research reports mark non-interactive source labels with their
+    // literal citation id. Re-apply note semantics after rehype-sanitize strips `role`.
+    // Prefer the pre-computed i18n aria-label when sanitize let it through.
+    const researchCitationLabel = props['data-citation'];
+    if (
+      typeof researchCitationLabel === 'string' &&
+      researchCitationLabel !== 'true'
+    ) {
+      return (
+        <span
+          {...props}
+          role="note"
+          aria-label={props['aria-label'] ?? researchCitationLabel}
+        >
+          {children}
+        </span>
+      );
+    }
+
+    // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
+    const isMindmapCitation = props['data-mindmap-citation'] === 'true';
+    if (isMindmapCitation) {
+      const mindmapId = props['data-mindmap-id'] as string | undefined;
+      const mindmapVersionId = props['data-mindmap-version-id'] as string | undefined;
+      // ★ 2026-02 修复：读取 LLM 提供的标题信息，在加载期间显示
+      const rawTitle = props['data-mindmap-title'] as string | undefined;
+      const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
+      return (
+        <MindmapCitationCard
+          mindmapId={mindmapId}
+          versionId={mindmapVersionId}
+          displayTitle={displayTitle}
+          embedHeight={280}
+        />
+      );
+    }
+
+    // 处理题目集引用 - 渲染可点击跳转徽章
+    const isQbankCitation = props['data-qbank-citation'] === 'true';
+    if (isQbankCitation) {
+      const sessionId = props['data-qbank-session-id'] as string;
+      const rawTitle = props['data-qbank-title'] as string | undefined;
+      const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
+      return (
+        <QbankCitationBadge
+          sessionId={sessionId}
+          title={displayTitle}
+        />
+      );
+    }
+
+    // 处理普通引用
+    const isCitation = props['data-citation'] === 'true';
+    if (!isCitation) {
+      return <span {...props}>{children}</span>;
+    }
+
+    const citationType = props['data-citation-type'] as RetrievalSourceType | undefined;
+    const citationIndex = Number(props['data-citation-index'] || 0);
+    // 🔧 P37: 只有显式使用 [知识库-1:图片] 格式时才渲染图片
+    const showImage = props['data-citation-show-image'] === 'true';
+    const handleBadgeNavigate = () => {
+      if (citationType && citationIndex > 0 && onCitationClick) {
+        onCitationClick(citationType, citationIndex);
+      }
+    };
+
+    // 🔧 P37: 只在显式请求时渲染图片（[知识库-1:图片] 格式）
+    // 支持 rag 和 multimodal 类型的图片渲染
+    const imageInfo =
+      showImage && (citationType === 'multimodal' || citationType === 'rag') && citationIndex > 0 && resolveCitationImage
+        ? resolveCitationImage(citationType, citationIndex)
+        : null;
+
+    // 判断是否有可渲染的图片（直接 URL 或可异步加载）
+    const hasImage = imageInfo && (
+      imageInfo.url ||
+      (imageInfo.resourceId && imageInfo.pageIndex !== undefined && imageInfo.pageIndex !== null)
+    );
+
+    // ★ 2026-01 修复：有图片时使用 div 块级容器
+    // 注意：不展开 props 以避免原始 class 覆盖我们的 className
+    if (hasImage && imageInfo) {
+      return (
+        <div
+          className="citation-image-block"
+          data-citation="true"
+          data-citation-type={citationType}
+          data-citation-index={citationIndex}
+        >
+          <CitationBadgeWithPopover
+            citationType={citationType}
+            citationIndex={citationIndex}
+            onNavigate={handleBadgeNavigate}
+          />
+          <AsyncCitationImage
+            imageInfo={imageInfo}
+            citationIndex={citationIndex}
+            resolveImageSrc={resolveImageSrc}
+          />
+        </div>
+      );
+    }
+
+    // 无图片时直接返回带 hover 预览的徽章（不再套外层 span）
+    // 来源数据经 CitationSourceContext resolve（content.tsx 提供）
+    return (
+      <CitationBadgeWithPopover
+        citationType={citationType}
+        citationIndex={citationIndex}
+        onNavigate={handleBadgeNavigate}
+      />
+    );
+  }, [rendererCapabilities, onCitationClick, resolveCitationImage, resolveImageSrc]);
+
+  const renderMarkdownA = useCallback(({ href, children, node: _node, ...props }: any) => {
+    const handleClick = async (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (!href) return;
+
+      // 如果有自定义处理函数，先调用它
+      if (onLinkClick) {
+        onLinkClick(href);
+        return;
+      }
+
+      // 使用统一的跨平台链接打开函数
+      await openUrl(href);
+    };
+    return (
+      <a
+        href={href}
+        onClick={handleClick}
+        className="text-primary underline cursor-pointer"
+        {...props}
+      >
+        {children}
+      </a>
+    );
+  }, [onLinkClick]);
+
+  const markdownComponents = {
+    math: renderMarkdownMath,
+    inlineMath: renderMarkdownInlineMath,
+    pre: renderMarkdownPre,
+    code: renderMarkdownCode,
+    table: renderMarkdownTable,
+    img: renderMarkdownImg,
+    p: renderMarkdownP,
+    span: renderMarkdownSpan,
+    a: renderMarkdownA,
   };
 
   return (
@@ -773,243 +1020,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={rehypePlugins}
-        components={{
-          // 注意：react-markdown v9+ 会把 HAST `node` 传给自定义组件，
-          // 自定义组件展开 {...props} 前必须先把 node 解构掉，
-          // 否则 node 对象会作为未知属性写到 DOM 上（React dev 警告 + 无效属性）。
-          // h1-h6 / blockquote / li / strong / em 等纯透传覆盖已移除，交给默认渲染。
-          // @ts-expect-error - remark-math plugin provides math/inlineMath components not in react-markdown types
-          math: ({ value }: { value?: string }) => renderMath(String(value ?? ''), true),
-          inlineMath: ({ value }: { value?: string }) => renderMath(String(value ?? ''), false),
-          // 统一处理 pre，避免出现嵌套的 <pre><pre> 造成双滚动条
-          pre: ({ children }: any) => {
-            const childArray = React.Children.toArray(children as any);
-            const codeElement: any = (childArray as any[]).find((c: any) => c?.type === 'code') ?? childArray[0];
-            const className = (codeElement as any)?.props?.className as string | undefined;
-            const codeContent = String((codeElement as any)?.props?.children ?? '').replace(/\n$/, '');
-
-            // 若 pre>code 被标记为 math 样式（如 "math math-display" 或 "math math-inline"），直接用 KaTeX 渲染
-            // (?![\w-]) 边界：避免 language-latex-src / language-mathml 之类前缀语言被误判为数学
-            const cls = typeof className === 'string' ? className : '';
-            const isMathLike = /(?:^|\s)(math|math-display|math-inline)(?:\s|$)/i.test(cls) || /language-(math|latex)(?![\w-])/i.test(cls);
-            if (isMathLike) {
-              const display = /math-display/i.test(cls) || (!/math-inline/i.test(cls));
-              return renderMath(codeContent, display);
-            }
-
-            return (
-              <CodeBlock className={className} isStreaming={isStreaming} rendererCapabilities={rendererCapabilities}>
-                {(codeElement as any)?.props?.children}
-              </CodeBlock>
-            );
-          },
-          // 自定义 code：区分内联与块级，但块级不再额外包裹一层 pre
-          code: ({ inline, className, children, node: _node, ...props }: any) => {
-            const codeContent = String(children).replace(/\n$/, '');
-            
-            // 1) 明确标记为 math/latex 的代码块，强制转 KaTeX
-            // (?![\w-]) 边界：language-mathematica 等真实语言不应被误转
-            const isMathBlock = typeof className === 'string' && /language-(math|latex)(?![\w-])/i.test(className);
-            if (isMathBlock) {
-              return renderMath(codeContent, inline === false);
-            }
-
-            // 2) 兜底：裸代码块若包含典型 LaTeX 命令（\frac、\int、\sum、\lim、\sqrt、上下标），也转 KaTeX
-            const hasLatexSignature = /\\(frac|int|sum|lim|sqrt|prod|infty|to|rightarrow|leftarrow|partial|nabla|alpha|beta|gamma|theta|pi|sigma|omega|cdot|times|geq?|leq?|neq?|approx|equiv|text|mathrm|mathbb|bmatrix|begin|end)|[\^_]\{/i.test(codeContent);
-            if (hasLatexSignature && !className) {
-              // 识别为未声明语言的 LaTeX 代码块，转为数学渲染
-              console.warn('[MarkdownRenderer] Detected bare LaTeX code block (missing $ wrapper), auto-converted to KaTeX:', codeContent);
-              return renderMath(codeContent, inline === false);
-            }
-
-            const isMultiline = codeContent.includes('\n');
-            const isInlineCode = inline !== false && !isMultiline && !className;
-            if (isInlineCode) {
-              return <code className="inline-code" {...props}>{children}</code>;
-            }
-            return <code className={className} {...props}>{children}</code>;
-          },
-          // 自定义表格渲染
-          table: ({ children }) => (
-            <TableBlockShell>{children}</TableBlockShell>
-          ),
-          // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL；
-          // 加载失败时显示内联 broken 占位（非静默隐藏）
-          img: ({ src, alt, node: _node, ...props }: any) => (
-            <MarkdownImage src={resolveImageSrc(src)} alt={alt} {...props} />
-          ),
-          p: ({ children, node: _node, ...props }: any) => {
-            const childArray = React.Children.toArray(children);
-            const hasMindmapCard = childArray.some((child) => {
-              if (!React.isValidElement(child)) return false;
-              if (child.type === MindmapCitationCard) return true;
-              // 自定义 span 渲染器包装的引用占位符：此时 child.type 是 span 渲染
-              // 函数，MindmapCitationCard 要在 span 渲染内部才出现，只能靠 props
-              // 上的 data 属性识别（否则块级导图卡会留在 <p> 里，嵌套非法且
-              // 被 .markdown-content > p 的 width:fit-content 收成 0 宽）
-              const childProps = child.props as Record<string, unknown> | undefined;
-              return childProps?.['data-mindmap-citation'] === 'true';
-            });
-            if (hasMindmapCard) {
-              return <div className="my-3">{children}</div>;
-            }
-            return <p {...props}>{children}</p>;
-          },
-          span: ({ children, node: _node, ...props }: any) => {
-            const encodedSmiles = props['data-smiles'] ?? props.dataSmiles;
-            if (typeof encodedSmiles === 'string') {
-              try {
-                const smiles = decodeURIComponent(encodedSmiles);
-                return rendererCapabilities.chemicalStructures
-                  ? <InlineSmiles smiles={smiles} />
-                  : <code className="inline-code">{`\\smiles{${smiles}}`}</code>;
-              } catch {
-                // 损坏的 URL 编码不应让整条聊天消息渲染失败。
-                return <span {...props}>{children}</span>;
-              }
-            }
-
-            // Generative UI research reports mark non-interactive source labels with their
-            // literal citation id. Re-apply note semantics after rehype-sanitize strips `role`.
-            // Prefer the pre-computed i18n aria-label when sanitize let it through.
-            const researchCitationLabel = props['data-citation'];
-            if (
-              typeof researchCitationLabel === 'string' &&
-              researchCitationLabel !== 'true'
-            ) {
-              return (
-                <span
-                  {...props}
-                  role="note"
-                  aria-label={props['aria-label'] ?? researchCitationLabel}
-                >
-                  {children}
-                </span>
-              );
-            }
-
-            // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
-            const isMindmapCitation = props['data-mindmap-citation'] === 'true';
-            if (isMindmapCitation) {
-              const mindmapId = props['data-mindmap-id'] as string | undefined;
-              const mindmapVersionId = props['data-mindmap-version-id'] as string | undefined;
-              // ★ 2026-02 修复：读取 LLM 提供的标题信息，在加载期间显示
-              const rawTitle = props['data-mindmap-title'] as string | undefined;
-              const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
-              return (
-                <MindmapCitationCard
-                  mindmapId={mindmapId}
-                  versionId={mindmapVersionId}
-                  displayTitle={displayTitle}
-                  embedHeight={280}
-                />
-              );
-            }
-
-            // 处理题目集引用 - 渲染可点击跳转徽章
-            const isQbankCitation = props['data-qbank-citation'] === 'true';
-            if (isQbankCitation) {
-              const sessionId = props['data-qbank-session-id'] as string;
-              const rawTitle = props['data-qbank-title'] as string | undefined;
-              const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
-              return (
-                <QbankCitationBadge
-                  sessionId={sessionId}
-                  title={displayTitle}
-                />
-              );
-            }
-
-            // 处理普通引用
-            const isCitation = props['data-citation'] === 'true';
-            if (!isCitation) {
-              return <span {...props}>{children}</span>;
-            }
-
-            const citationType = props['data-citation-type'] as RetrievalSourceType | undefined;
-            const citationIndex = Number(props['data-citation-index'] || 0);
-            // 🔧 P37: 只有显式使用 [知识库-1:图片] 格式时才渲染图片
-            const showImage = props['data-citation-show-image'] === 'true';
-            const handleBadgeNavigate = () => {
-              if (citationType && citationIndex > 0 && onCitationClick) {
-                onCitationClick(citationType, citationIndex);
-              }
-            };
-
-            // 🔧 P37: 只在显式请求时渲染图片（[知识库-1:图片] 格式）
-            // 支持 rag 和 multimodal 类型的图片渲染
-            const imageInfo =
-              showImage && (citationType === 'multimodal' || citationType === 'rag') && citationIndex > 0 && resolveCitationImage
-                ? resolveCitationImage(citationType, citationIndex)
-                : null;
-            
-            // 判断是否有可渲染的图片（直接 URL 或可异步加载）
-            const hasImage = imageInfo && (
-              imageInfo.url || 
-              (imageInfo.resourceId && imageInfo.pageIndex !== undefined && imageInfo.pageIndex !== null)
-            );
-
-            // ★ 2026-01 修复：有图片时使用 div 块级容器
-            // 注意：不展开 props 以避免原始 class 覆盖我们的 className
-            if (hasImage && imageInfo) {
-              return (
-                <div 
-                  className="citation-image-block"
-                  data-citation="true"
-                  data-citation-type={citationType}
-                  data-citation-index={citationIndex}
-                >
-                  <CitationBadgeWithPopover
-                    citationType={citationType}
-                    citationIndex={citationIndex}
-                    onNavigate={handleBadgeNavigate}
-                  />
-                  <AsyncCitationImage
-                    imageInfo={imageInfo}
-                    citationIndex={citationIndex}
-                    resolveImageSrc={resolveImageSrc}
-                  />
-                </div>
-              );
-            }
-            
-            // 无图片时直接返回带 hover 预览的徽章（不再套外层 span）
-            // 来源数据经 CitationSourceContext resolve（content.tsx 提供）
-            return (
-              <CitationBadgeWithPopover
-                citationType={citationType}
-                citationIndex={citationIndex}
-                onNavigate={handleBadgeNavigate}
-              />
-            );
-          },
-          // 自定义链接处理，跨平台兼容
-          a: ({ href, children, node: _node, ...props }: any) => {
-            const handleClick = async (e: React.MouseEvent) => {
-              e.preventDefault();
-              if (!href) return;
-
-              // 如果有自定义处理函数，先调用它
-              if (onLinkClick) {
-                onLinkClick(href);
-                return;
-              }
-
-              // 使用统一的跨平台链接打开函数
-              await openUrl(href);
-            };
-            return (
-              <a
-                href={href}
-                onClick={handleClick}
-                className="text-primary underline cursor-pointer"
-                {...props}
-              >
-                {children}
-              </a>
-            );
-          },
-        }}
+        components={markdownComponents}
       >
         {processedContent}
       </ReactMarkdown>

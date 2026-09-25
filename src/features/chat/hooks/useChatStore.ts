@@ -174,6 +174,123 @@ export function useBlocksByIds(store: ChatStoreApi, blockIds: string[]): Block[]
 }
 
 // ============================================================================
+// 分段结构指纹订阅（流式性能）
+// ============================================================================
+
+/**
+ * 决定消息「渲染分段结构」的块元信息。
+ *
+ * MessageItem 的分段归组（时间线 vs 普通段）与多个布尔派生
+ * （hasSources / hasConsumableAssistantContent / 空内容折叠等）
+ * 只依赖这些字段，**不依赖流式正文的具体字符**。流式块每次 flush
+ * 都会更换块对象身份（content 字符串增长），若按对象身份订阅，
+ * 整条 MessageItem 每 120ms 全量重渲染（分段归组 + 数十个派生）。
+ *
+ * 注意刻意不含 contentLength/content：正文长度每 flush 都变，
+ * 会把本 hook 退化成与按身份订阅等价。正文由消费方在事件回调里
+ * 通过 store.getState() 按需读取（extractMessageContent 等），
+ * 可见正文的渲染由 BlockRendererWithStore 的单块订阅负责。
+ */
+export interface BlockSegmentMeta {
+  id: string;
+  type: Block['type'];
+  status: Block['status'];
+  toolName?: string;
+  /** content 是否为空/纯空白（流式期间可能翻转：空→非空，会改变分段） */
+  isEmpty: boolean;
+  /** 是否存在 citations（hasSources 判定用；仅布尔，不看具体来源） */
+  hasCitations: boolean;
+  /** 是否存在 toolOutput（hasSources 判定用） */
+  hasToolOutput: boolean;
+  /** 可见错误详情；文案更新也必须通知消息组件 */
+  error?: string;
+}
+
+// store 通过不可变更新替换变化的块。复用未变块的元信息，避免每次
+// token 更新都重新读取、trim 所有历史块的正文；弱引用随块释放。
+const segmentMetaCache = new WeakMap<Block, BlockSegmentMeta>();
+
+function blockToSegmentMeta(block: Block): BlockSegmentMeta {
+  const cached = segmentMetaCache.get(block);
+  if (cached) return cached;
+  const content = block.content ?? '';
+  const meta: BlockSegmentMeta = {
+    id: block.id,
+    type: block.type,
+    status: block.status,
+    toolName: block.toolName,
+    isEmpty: content.trim() === '',
+    hasCitations: !!(block.citations && block.citations.length > 0),
+    hasToolOutput: !!block.toolOutput,
+    error: block.error?.trim() || undefined,
+  };
+  segmentMetaCache.set(block, meta);
+  return meta;
+}
+
+function segmentMetaEquals(a: BlockSegmentMeta, b: BlockSegmentMeta): boolean {
+  return (
+    a.id === b.id &&
+    a.type === b.type &&
+    a.status === b.status &&
+    a.toolName === b.toolName &&
+    a.isEmpty === b.isEmpty &&
+    a.hasCitations === b.hasCitations &&
+    a.hasToolOutput === b.hasToolOutput &&
+    a.error === b.error
+  );
+}
+
+/**
+ * 🚀 流式性能：订阅「分段结构指纹」而非块对象身份。
+ *
+ * 流式期间纯文本追加只增长 content——分段结构（type/status/isEmpty/
+ * toolName/citations/toolOutput）不变，本 hook 的返回值保持稳定引用，
+ * MessageItem 因此**不再每 flush 重渲染**。结构真正变化时（新块插入、
+ * 块状态翻转、空 content 变为非空、citations 落地）才触发重渲染，
+ * 这通常一个流式周期只发生个位数次，而非每 120ms 一次。
+ *
+ * 可见正文不经过本 hook：BlockRendererWithStore 按单块订阅渲染，
+ * 正文增长只重渲染那一个块。
+ *
+ * 与 useBlocksByIds 的差异：那里返回块对象数组（身份比较，流式噪声
+ * 全量传导），这里返回扁平元信息数组（逐字段标量比较，正文增长被
+ * 完全屏蔽）。
+ */
+export function useBlocksSegmentMeta(store: ChatStoreApi, blockIds: string[]): BlockSegmentMeta[] {
+  const prevRef = useRef<BlockSegmentMeta[]>([]);
+
+  const stableIdsRef = useRef<string[]>(blockIds);
+  if (
+    stableIdsRef.current !== blockIds &&
+    (stableIdsRef.current.length !== blockIds.length ||
+      blockIds.some((id, i) => id !== stableIdsRef.current[i]))
+  ) {
+    stableIdsRef.current = blockIds;
+  }
+  const stableBlockIds = stableIdsRef.current;
+
+  return useStore(
+    store,
+    useCallback((s: ChatStore) => {
+      const next = stableBlockIds
+        .map((id) => s.blocks.get(id))
+        .filter((block): block is Block => block !== undefined)
+        .map(blockToSegmentMeta);
+
+      if (
+        next.length === prevRef.current.length &&
+        next.every((meta, i) => segmentMetaEquals(meta, prevRef.current[i]))
+      ) {
+        return prevRef.current;
+      }
+      prevRef.current = next;
+      return next;
+    }, [stableBlockIds])
+  );
+}
+
+// ============================================================================
 // 块选择器
 // ============================================================================
 

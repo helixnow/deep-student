@@ -2,7 +2,7 @@
  * BlockedMarkdownRenderer
  *
  * 流式 Markdown 渲染优化版：将文本切分为 markdown 块，每块用 React.memo 缓存。
- * - 已完成块（非最后一块）使用稳定 key（基于内容 hash），命中 memo 后跳过重渲
+ * - 同一位置/类型的块使用稳定 key，已完成块命中 memo 后跳过重渲
  * - 仅最后一块在流式期间标记 isStreaming=true，词淡入只作用于活跃块
  * - 数学块、代码块、表格独立渲染，避免整段重跑 KaTeX
  *
