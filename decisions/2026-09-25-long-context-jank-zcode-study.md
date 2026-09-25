@@ -97,3 +97,14 @@
 4. 会话内搜索（流式中开/关、非流式）：结果即时性、定位跳转。
 5. agent 任务会话（大量工具块）：任务面板/产物架出现时机正确。
 6. 代码块：滚动经过已完成消息的长代码块，展开/复制/sticky 头正常（content-visibility 影响）。
+
+## 七、审查与修正（2026-09-25，相对 PR #419 复审 84901286+238be79a）
+
+复审发现并已修：
+
+- **P0 搜索静默漏查未加载窗口**：>500 条会话 capped 后 `fullHistoryLoadComplete` 恒 false、窗口只留 ≤500 条，会话内搜索只查内存 blocks——搜早期内容静默 0 结果。修复：MessageSearchBar 新增 `hasUnloadedHistory`（由 MessageList 传 `hasMoreHistory`），无结果且仍有未加载历史时提示"仅搜索已加载消息，加载更早消息可搜索全部"（zh-CN/en-US）。
+- **P1 反向窗口零测试**：`historyWindowStartOffset` 追踪 / 倒序拉页 / capped / unsupported / 空页竞态是新引入最复杂的路径，此前无任何适配层测试。补 `TauriAdapter.historyWindow.test.ts` 9 例：窗口推进、offset 截断到 0、最老端短路、空页不推进（手动路径）vs 收尾（自动路径）、倒序逐页 done、5 页上限 capped、capped 后 loadEarlierMessages 无缝续拉（offset 序列 [900..400] 连续无重叠无空洞）、非最老端短页退 unsupported。
+
+可接受项（不阻塞）：15→17 条边界 `useDirectRender` 随流式字节翻转引起一次性路径切换（虚拟化兜底不闪空白）；capped 后首次手动补页重复拉尾窗重叠 ≤99 条（prepend 幂等，仅一次 IPC）；无后端补齐搜索命令（超范围，留后续）。
+
+测试：chat 全量 1443/1443（基线 1434 + 新增 9）；tsc 干净。
