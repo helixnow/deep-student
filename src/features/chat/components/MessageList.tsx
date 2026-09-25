@@ -1125,6 +1125,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       activeMatchIndex={resolvedActiveSearchIndex}
       activeMessageId={activeSearchMessageId}
       activeOccurrenceIndex={activeSearchMatch?.occurrenceIndex ?? 0}
+      hasUnloadedHistory={hasMoreHistory}
       onQueryChange={setSearchQuery}
       onPrevious={() => moveToSearchMatch(-1)}
       onNext={() => moveToSearchMatch(1)}
