@@ -51,13 +51,19 @@ test('provider contract is a fixed fail-closed CI job', () => {
 
 test('canonical provider composition pins all services with healthchecks', () => {
   const compose = read('scripts/dev/docker-compose.sync-test.yml');
+  const minioDockerfile = read('dstu-test/docker/Dockerfile.minio-tool');
   const minio = yamlTopLevelSection(compose, 'minio');
   const webdav = yamlTopLevelSection(compose, 'webdav');
   const ftp = yamlTopLevelSection(compose, 'ftp');
 
-  assert.match(minio, /image: quay.io\/minio\/minio:RELEASE\.[^\s]+@sha256:[a-f0-9]{64}/);
+  assert.match(minio, /dockerfile: dstu-test\/docker\/Dockerfile\.minio-tool/);
+  assert.match(minio, /image: deep-student-sync-test-minio:RELEASE\.[^\s]+/);
   assert.match(minio, /healthcheck:/);
   assert.match(minio, /\/minio\/health\/live/);
+  assert.match(minioDockerfile, /FROM alpine:3\.22\.1@sha256:[a-f0-9]{64} AS minio-amd64/);
+  assert.match(minioDockerfile, /FROM alpine:3\.22\.1@sha256:[a-f0-9]{64} AS minio-arm64/);
+  assert.equal((minioDockerfile.match(/ADD --checksum=sha256:[a-f0-9]{64}/g) ?? []).length, 4);
+  assert.match(minioDockerfile, /FROM minio-\$\{TARGETARCH\}/);
 
   assert.match(webdav, /image: bytemark\/webdav:2\.4/);
   assert.match(webdav, /healthcheck:/);
