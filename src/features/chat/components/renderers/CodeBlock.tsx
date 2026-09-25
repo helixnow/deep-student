@@ -221,6 +221,18 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
 // CodeBlock 主组件
 // ============================================================================
 
+/**
+ * 🚀 长会话性能：非流式消息的代码块容器启用渲染跳过（content-visibility）。
+ * 离屏代码块（Shiki/mermaid/KaTeX 重 DOM）不再参与每帧 layout/paint，
+ * 直渲染模式下流式冲刷的强制 layout 只覆盖可视区。contain-intrinsic-size
+ * 的 auto 前缀让浏览器记住上次渲染尺寸，未渲染时回落 220px。
+ * 流式中的消息不启用：活动内容必须真实参与吸底跟随的 layout。
+ */
+const IDLE_CODE_SHELL_STYLE: React.CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: 'auto 220px',
+};
+
 export const CodeBlock: React.FC<CodeBlockProps> = ({
   children,
   className,
@@ -825,6 +837,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       header={header}
       stickyHeader
       bodyClassName="code-block-body-shell"
+      style={isStreaming ? undefined : IDLE_CODE_SHELL_STYLE}
     >
       {showRichRenderer && richRendererKind ? (
         <RichCodeRenderer kind={richRendererKind} source={codeContent} />

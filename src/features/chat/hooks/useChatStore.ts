@@ -11,6 +11,47 @@ import type { ChatStore, Message, Block, SessionStatus } from '../core/types';
 /** Store 参数类型 */
 type ChatStoreApi = StoreApi<ChatStore>;
 
+/**
+ * 🚀 长会话性能：零分配身份快路径。
+ *
+ * 先逐 id 把 `blocks.get(id)` 与上一份结果做块对象身份比较（immer 结构共享
+ * 保证未变化的块对象身份不变），全部相同时直接复用上一份数组——不构建任何
+ * 中间数组；有任何变化才重建。流式期间每个 flush，直渲染模式下全部挂载
+ * 消息合计从「O(全部块) 的 map/filter 分配」降为「O(全部块) 的 O(1) 哈希
+ * 查找比较」，历史消息零分配，只有活动消息按其自身块数重建。
+ */
+function lookupBlocksIfChanged(
+  blocks: Map<string, Block>,
+  blockIds: readonly string[],
+  prev: Block[],
+): { blocks: Block[]; changed: boolean } {
+  if (blockIds.length === prev.length) {
+    let same = true;
+    for (let i = 0; i < blockIds.length; i++) {
+      if (blocks.get(blockIds[i]) !== prev[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return { blocks: prev, changed: false };
+  }
+  const next: Block[] = [];
+  for (const id of blockIds) {
+    const block = blocks.get(id);
+    if (block !== undefined) next.push(block);
+  }
+  // 长度不等路径（缺失块过滤、消息刚追加）重建后仍需与上一份逐元素比较：
+  // selector 必须对同一状态幂等（重复调用返回同一引用），否则缺失块持续
+  // 存在时每次调用都产出新数组，zustand 会判定变化并无限重渲染
+  if (
+    next.length === prev.length &&
+    next.every((block, i) => block === prev[i])
+  ) {
+    return { blocks: prev, changed: false };
+  }
+  return { blocks: next, changed: true };
+}
+
 // ============================================================================
 // 消息选择器
 // ============================================================================
@@ -91,9 +132,9 @@ export function useMessageOrder(store: ChatStoreApi): string[] {
  * 性能优化：使用 shallow 比较避免不必要的重渲染
  */
 export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[] {
-  // 缓存上次结果，用于 shallow 比较
+  // 缓存上次结果，作为身份快路径的比较基准
   const prevBlocksRef = useRef<Block[]>([]);
-  
+
   return useStore(
     store,
     useCallback(
@@ -107,21 +148,16 @@ export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[
           }
           return prevBlocksRef.current;
         }
-        
-        const newBlocks = message.blockIds
-          .map((id) => s.blocks.get(id))
-          .filter((b): b is Block => b !== undefined);
-        
-        // 如果块数量和内容都相同，返回之前的引用
-        if (
-          newBlocks.length === prevBlocksRef.current.length &&
-          newBlocks.every((b, i) => b === prevBlocksRef.current[i])
-        ) {
-          return prevBlocksRef.current;
-        }
-        
-        prevBlocksRef.current = newBlocks;
-        return newBlocks;
+
+        const { blocks: nextBlocks, changed } = lookupBlocksIfChanged(
+          s.blocks,
+          message.blockIds,
+          prevBlocksRef.current,
+        );
+        if (!changed) return prevBlocksRef.current;
+
+        prevBlocksRef.current = nextBlocks;
+        return nextBlocks;
       },
       [messageId]
     )
@@ -156,16 +192,12 @@ export function useBlocksByIds(store: ChatStoreApi, blockIds: string[]): Block[]
   return useStore(
     store,
     useCallback((s: ChatStore) => {
-      const nextBlocks = stableBlockIds
-        .map((id) => s.blocks.get(id))
-        .filter((block): block is Block => block !== undefined);
-
-      if (
-        nextBlocks.length === prevBlocksRef.current.length &&
-        nextBlocks.every((block, index) => block === prevBlocksRef.current[index])
-      ) {
-        return prevBlocksRef.current;
-      }
+      const { blocks: nextBlocks, changed } = lookupBlocksIfChanged(
+        s.blocks,
+        stableBlockIds,
+        prevBlocksRef.current,
+      );
+      if (!changed) return prevBlocksRef.current;
 
       prevBlocksRef.current = nextBlocks;
       return nextBlocks;
@@ -259,6 +291,9 @@ function segmentMetaEquals(a: BlockSegmentMeta, b: BlockSegmentMeta): boolean {
  */
 export function useBlocksSegmentMeta(store: ChatStoreApi, blockIds: string[]): BlockSegmentMeta[] {
   const prevRef = useRef<BlockSegmentMeta[]>([]);
+  // 上一次结果的源块数组：身份快路径的比较基准（元信息是块对象的纯函数，
+  // 全部块对象身份未变 ⇒ 元信息必然相同，可直接复用上次结果，零分配）
+  const prevSourceRef = useRef<Block[]>([]);
 
   const stableIdsRef = useRef<string[]>(blockIds);
   if (
@@ -273,17 +308,24 @@ export function useBlocksSegmentMeta(store: ChatStoreApi, blockIds: string[]): B
   return useStore(
     store,
     useCallback((s: ChatStore) => {
-      const next = stableBlockIds
-        .map((id) => s.blocks.get(id))
-        .filter((block): block is Block => block !== undefined)
-        .map(blockToSegmentMeta);
+      const { blocks: sourceBlocks, changed } = lookupBlocksIfChanged(
+        s.blocks,
+        stableBlockIds,
+        prevSourceRef.current,
+      );
+      if (!changed) return prevRef.current;
 
+      const next = sourceBlocks.map(blockToSegmentMeta);
       if (
         next.length === prevRef.current.length &&
         next.every((meta, i) => segmentMetaEquals(meta, prevRef.current[i]))
       ) {
+        // 指纹未变（典型：活动块正文增长但结构字段不变）：
+        // 结果复用旧引用，但源块身份已变化，必须前移比较基准
+        prevSourceRef.current = sourceBlocks;
         return prevRef.current;
       }
+      prevSourceRef.current = sourceBlocks;
       prevRef.current = next;
       return next;
     }, [stableBlockIds])
