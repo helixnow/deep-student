@@ -168,6 +168,7 @@ export type SessionManagerEventType =
   | 'current-session-changed'
   | 'session-destroyed'
   | 'session-evicted'
+  | 'max-sessions-changed'
   | 'streaming-change'
   | 'blocking-interaction-change';
 
