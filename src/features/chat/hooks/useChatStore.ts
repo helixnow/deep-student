@@ -202,13 +202,19 @@ export interface BlockSegmentMeta {
   hasCitations: boolean;
   /** 是否存在 toolOutput（hasSources 判定用） */
   hasToolOutput: boolean;
-  /** 是否存在 error 文本（assistantFailureDetails 判定用） */
-  hasError: boolean;
+  /** 可见错误详情；文案更新也必须通知消息组件 */
+  error?: string;
 }
 
+// store 通过不可变更新替换变化的块。复用未变块的元信息，避免每次
+// token 更新都重新读取、trim 所有历史块的正文；弱引用随块释放。
+const segmentMetaCache = new WeakMap<Block, BlockSegmentMeta>();
+
 function blockToSegmentMeta(block: Block): BlockSegmentMeta {
+  const cached = segmentMetaCache.get(block);
+  if (cached) return cached;
   const content = block.content ?? '';
-  return {
+  const meta: BlockSegmentMeta = {
     id: block.id,
     type: block.type,
     status: block.status,
@@ -216,8 +222,10 @@ function blockToSegmentMeta(block: Block): BlockSegmentMeta {
     isEmpty: content.trim() === '',
     hasCitations: !!(block.citations && block.citations.length > 0),
     hasToolOutput: !!block.toolOutput,
-    hasError: typeof block.error === 'string' && block.error.trim().length > 0,
+    error: block.error?.trim() || undefined,
   };
+  segmentMetaCache.set(block, meta);
+  return meta;
 }
 
 function segmentMetaEquals(a: BlockSegmentMeta, b: BlockSegmentMeta): boolean {
@@ -229,7 +237,7 @@ function segmentMetaEquals(a: BlockSegmentMeta, b: BlockSegmentMeta): boolean {
     a.isEmpty === b.isEmpty &&
     a.hasCitations === b.hasCitations &&
     a.hasToolOutput === b.hasToolOutput &&
-    a.hasError === b.hasError
+    a.error === b.error
   );
 }
 

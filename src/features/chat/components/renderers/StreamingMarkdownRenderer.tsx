@@ -2,12 +2,9 @@ import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
-import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
-import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought } from './rendererUtils';
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
-import { useMessageSearchContext } from '../messageSearchContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import './streaming.css';
 
@@ -76,18 +73,13 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   onCitationClick,
   resolveCitationImage,
   streamRenderingMode,
-  blockId,
-  messageId,
 }) => {
-  // 2026 默认 blocked：结构化流式渲染，由 flowtoken AnimatedMarkdown sep="diff" 负责增量动画。
+  // 默认按块渲染，完成态沿用同一 Markdown 管线。
   // legacy 保留给兼容性排查与 A/B 对比。
   const effectiveMode: 'legacy' | 'blocked' =
     streamRenderingMode ?? 'blocked';
   const { t } = useTranslation('chatV2');
-  const { query: searchQuery } = useMessageSearchContext();
-  const searchActive = Boolean(searchQuery.trim());
   // 原始 content 直通渲染器，不再经过平滑层。
-  // flowtoken AnimatedMarkdown / SplitText sep="diff" 自行处理增量 diff 和动画。
   // OS 模式 background 窗（壳层已停绘）：冻结提交内容，回可见立即补渲。
   const suspendableContent = useSuspendedStreamContent(content, isStreaming);
   const processedContent = useMemo(
@@ -105,30 +97,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
 
   const parsedContent = useMemo(() => parseChainOfThought(displayContent), [displayContent]);
   const stableHighlightSpans = highlightSpansRef.current;
-  const hasExtendedMarkdownFeatures = Boolean(
-    onCitationClick ||
-    resolveCitationImage ||
-    (extraRemarkPlugins && extraRemarkPlugins.length > 0)
-  );
   const thinkingContent = parsedContent?.thinkingContent ?? '';
-  // 🚀 性能（2026-09-24 流式卡顿治理）：与 StreamingBlockRenderer 一致，
-  // 流式期间不走 flowtoken AnimatedMarkdown（独立 react-markdown@9 副本 +
-  // 逐词动画 = 每 flush 第二份全量解析）；流式结束后一次性切换并补播动画。
-  const shouldUseThinkingFlowToken = Boolean(
-    !isStreaming &&
-    thinkingContent &&
-    !thinkingContent.includes('\n') &&
-    !searchActive &&
-    canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
-  );
-  const shouldUseDirectFlowTokenForParsedMainContent =
-    !isStreaming &&
-    Boolean(parsedContent?.mainContent) &&
-    !searchActive &&
-    canUseDirectFlowTokenMarkdown(
-      parsedContent?.mainContent ?? '',
-      hasExtendedMarkdownFeatures,
-    );
 
   // 高亮插件仅在非流式时构建；流式期间直接复用外部插件数组的引用，
   // 避免每个 token 生成新数组击穿 BlockedMarkdownRenderer 内部已完成块的 memo。
@@ -214,24 +183,14 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">
-                {shouldUseThinkingFlowToken ? (
-                  <FlowTokenMarkdownRenderer
-                    content={thinkingContent}
-                    isStreaming
-                    onLinkClick={onLinkClick}
-                    blockId={blockId}
-                    messageId={messageId}
-                  />
-                ) : (
-                  <MarkdownRenderer
-                    content={thinkingContent}
-                    isStreaming={isStreaming}
-                    onLinkClick={onLinkClick}
-                    extraRemarkPlugins={extraRemarkPlugins}
-                    onCitationClick={onCitationClick}
-                    resolveCitationImage={resolveCitationImage}
-                  />
-                )}
+                <MarkdownRenderer
+                  content={thinkingContent}
+                  isStreaming={isStreaming}
+                  onLinkClick={onLinkClick}
+                  extraRemarkPlugins={extraRemarkPlugins}
+                  onCitationClick={onCitationClick}
+                  resolveCitationImage={resolveCitationImage}
+                />
               </div>
             </div>
           )}
@@ -239,13 +198,14 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
           {/* 渲染主要内容 */}
           <div className="main-content">
             {parsedContent.mainContent ? (
-              shouldUseDirectFlowTokenForParsedMainContent ? (
-                <FlowTokenMarkdownRenderer
+              effectiveMode === 'blocked' ? (
+                <BlockedMarkdownRenderer
                   content={parsedContent.mainContent}
-                  isStreaming
+                  isStreaming={isStreaming}
                   onLinkClick={onLinkClick}
-                  blockId={blockId}
-                  messageId={messageId}
+                  extraRemarkPlugins={parsedMainPlugins}
+                  onCitationClick={onCitationClick}
+                  resolveCitationImage={resolveCitationImage}
                 />
               ) : (
                 <MarkdownRenderer

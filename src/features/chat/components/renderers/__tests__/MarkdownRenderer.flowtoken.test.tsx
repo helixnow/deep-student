@@ -46,12 +46,7 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.querySelector('pre [style*="animation-name: ft-fadeIn"]')).toBeNull();
   });
 
-  // ── 🚀 2026-09-24 流式卡顿治理后的新契约 ──────────────────────────────
-  // 流式期间（活动块）不走 flowtoken AnimatedMarkdown——它携带独立的
-  // react-markdown@9 副本，每个 flush 会对活动块做第二份全量解析并注入
-  // 逐词 CSS 动画，是流式期间仅次于主管线重解析的 CPU 开销。
-  // 流式期间一律走主管线 MarkdownRenderer；块闭合/流式结束后 flowtoken
-  // 门禁重新生效，渲染树一次性切换并补播淡入动画。
+  // 流式与完成态使用同一 Markdown 管线；专用 flowtoken 组件单独测试。
 
   it('uses the main pipeline (no flowtoken) for the active streaming block', () => {
     const { container } = render(
@@ -64,7 +59,7 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.textContent).toContain('当前聊天流式块正在输出。');
   });
 
-  it('switches the block to flowtoken once streaming ends (animation replay)', () => {
+  it('keeps the block on the main pipeline once streaming ends', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content="当前聊天流式块正在输出。" isStreaming />
     );
@@ -72,9 +67,8 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
 
     rerender(<StreamingBlockRenderer content="当前聊天流式块正在输出。" isStreaming={false} />);
 
-    // 结束后 flowtoken 渲染器接管（单段无尾换行时块 closed=false，
-    // data-flowtoken 仍标 false，但渲染树已切换）
-    expect(container.querySelector('.stream-block .flowtoken-markdown')).not.toBeNull();
+    expect(container.querySelector('.stream-block .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.stream-block .markdown-content')).not.toBeNull();
   });
 
   it('renders streaming lists through the main pipeline while streaming', () => {
@@ -97,7 +91,7 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
   });
 
-  it('switches the thinking chain to flowtoken after streaming ends', () => {
+  it('keeps the thinking chain on the main pipeline after streaming ends', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content={'<thinking>先想一想</thinking>\n最终答案'} isStreaming />
     );
@@ -107,7 +101,8 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       <StreamingBlockRenderer content={'<thinking>先想一想</thinking>\n最终答案'} isStreaming={false} />
     );
 
-    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).not.toBeNull();
+    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
   });
 
   it('routes streaming main content with thinking tags through the main pipeline', () => {
@@ -245,21 +240,21 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.textContent).not.toContain('[object Object]');
   });
 
-  it('replaces the whole block tree once when streaming ends (no per-token animation churn)', () => {
-    // 旧契约断言「动画 span 在追加文本时保持节点稳定」——那是流式期逐词
-    // 动画的语义。新契约下流式期没有动画 span；这里固化为：流式期无动画、
-  // 结束后 flowtoken 一次性接管（树整体切换一次）。
+  it('preserves the paragraph node while text grows and streaming ends', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content="第一句" isStreaming />
     );
     expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
+    const paragraph = container.querySelector('.stream-block p');
 
     rerender(<StreamingBlockRenderer content="第一句第二句" isStreaming />);
     expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
     expect(container.textContent).toContain('第一句第二句');
+    expect(container.querySelector('.stream-block p')).toBe(paragraph);
 
     rerender(<StreamingBlockRenderer content="第一句第二句" isStreaming={false} />);
-    expect(container.querySelector('.stream-block .flowtoken-markdown')).not.toBeNull();
+    expect(container.querySelector('.stream-block p')).toBe(paragraph);
+    expect(container.querySelector('.stream-block .flowtoken-markdown')).toBeNull();
   });
 
   it('renders flowtoken spans with the slower demo-like timing', () => {

@@ -6,7 +6,7 @@
  * - 分段结构变化（isEmpty 翻转 / 新块 / 状态翻转 / citations 落地）触发重渲染
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useBlocksSegmentMeta } from '../useChatStore';
 import { createChatStore } from '../../core/store/createChatStore';
@@ -132,5 +132,22 @@ describe('useBlocksSegmentMeta', () => {
 
     rerender({ ids: ['b1', 'b2'] });
     expect(result.current).toHaveLength(2);
+  });
+
+  it('does not reread unchanged historical content on unrelated block updates', () => {
+    const store = createChatStore('sess_meta_history');
+    const readHistoricalContent = vi.fn(() => 'completed answer');
+    const historicalBlock = makeContentBlock('history', '', 'success');
+    Object.defineProperty(historicalBlock, 'content', { get: readHistoricalContent });
+    seedBlocks(store, [historicalBlock, makeContentBlock('active', 'new answer')]);
+    renderHook(() => useBlocksSegmentMeta(store, ['history']));
+    const readsAfterMount = readHistoricalContent.mock.calls.length;
+    expect(readsAfterMount).toBeGreaterThan(0);
+
+    act(() => {
+      seedBlocks(store, [makeContentBlock('active', 'new answer keeps growing')]);
+    });
+
+    expect(readHistoricalContent).toHaveBeenCalledTimes(readsAfterMount);
   });
 });
