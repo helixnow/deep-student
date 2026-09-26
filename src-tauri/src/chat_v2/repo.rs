@@ -9,7 +9,7 @@
 use crate::database::Database;
 use chrono::{DateTime, Utc};
 use log::{debug, info};
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{params, params_from_iter, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::time::Instant;
@@ -1397,6 +1397,64 @@ impl ChatV2Repo {
         Ok(messages)
     }
 
+    /// Lightweight ordered keys for compaction boundary selection. Large metadata,
+    /// attachments and variants are materialized only after choosing the history window.
+    pub(crate) fn get_session_message_ids_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            "SELECT id FROM chat_v2_messages WHERE session_id = ?1 ORDER BY timestamp ASC, rowid ASC",
+        )?;
+        let rows = stmt.query_map(params![session_id], |row| row.get::<_, String>(0))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            match row {
+                Ok(id) => ids.push(id),
+                Err(error) => log::warn!("[ChatV2Repo] Skipping malformed message id: {}", error),
+            }
+        }
+        Ok(ids)
+    }
+
+    /// Hydrate selected messages in the caller's existing (timestamp, rowid) order.
+    pub(crate) fn get_messages_by_ids_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        message_ids: &[String],
+    ) -> ChatV2Result<Vec<ChatMessage>> {
+        let mut messages = std::collections::HashMap::new();
+        // Stay below SQLite's conservative bind-parameter limit.
+        for chunk in message_ids.chunks(400) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let sql = format!(
+                "SELECT id, session_id, role, block_ids_json, timestamp, persistent_stable_id,
+                        parent_id, supersedes, meta_json, attachments_json, active_variant_id,
+                        variants_json, shared_context_json
+                 FROM chat_v2_messages WHERE session_id = ? AND id IN ({placeholders})"
+            );
+            let mut stmt = conn.prepare(&sql)?;
+            let parameters = std::iter::once(session_id).chain(chunk.iter().map(String::as_str));
+            let rows = stmt.query_map(params_from_iter(parameters), Self::row_to_message)?;
+            for row in rows {
+                match row {
+                    Ok(message) => {
+                        messages.insert(message.id.clone(), message);
+                    }
+                    Err(error) => {
+                        log::warn!("[ChatV2Repo] Skipping malformed history message: {}", error)
+                    }
+                }
+            }
+        }
+        Ok(message_ids
+            .iter()
+            .filter_map(|id| messages.remove(id))
+            .collect())
+    }
+
     /// Load one page of messages and all blocks belonging to that page.
     ///
     /// Pagination is applied by SQLite before message/block materialization so
@@ -1924,6 +1982,83 @@ impl ChatV2Repo {
             })
             .collect();
         Ok(blocks)
+    }
+
+    /// Batch the selected history window's blocks and optional replay sidecars.
+    /// Missing replay columns retain the legacy empty-sidecar fallback.
+    pub(crate) fn get_history_blocks_with_replay_with_conn(
+        conn: &Connection,
+        message_ids: &[String],
+    ) -> ChatV2Result<(
+        std::collections::HashMap<String, Vec<MessageBlock>>,
+        std::collections::HashMap<String, BlockReplayData>,
+    )> {
+        let mut blocks_by_message: std::collections::HashMap<String, Vec<MessageBlock>> =
+            std::collections::HashMap::new();
+        let mut replay_map = std::collections::HashMap::new();
+        let mut has_replay_columns = true;
+        for chunk in message_ids.chunks(400) {
+            let placeholders = std::iter::repeat_n("?", chunk.len())
+                .collect::<Vec<_>>()
+                .join(",");
+            let base_columns = "id, message_id, block_type, status, block_index, content, tool_name,
+                tool_input_json, tool_output_json, citations_json, error, started_at, ended_at, first_chunk_at";
+            let sql = |with_replay: bool| {
+                format!(
+                    "SELECT {base_columns}{} FROM chat_v2_blocks
+                 WHERE message_id IN ({placeholders}) ORDER BY message_id, block_index ASC",
+                    if with_replay {
+                        ", llm_content, tool_call_id, round_text"
+                    } else {
+                        ""
+                    },
+                )
+            };
+            let mut stmt = match conn.prepare(&sql(has_replay_columns)) {
+                Ok(stmt) => stmt,
+                Err(error)
+                    if has_replay_columns && Self::is_missing_replay_column_error(&error) =>
+                {
+                    has_replay_columns = false;
+                    conn.prepare(&sql(false))?
+                }
+                Err(error) => return Err(error.into()),
+            };
+            let rows = stmt.query_map(params_from_iter(chunk.iter()), |row| {
+                let block = Self::row_to_block(row)?;
+                // A malformed sidecar never discards an otherwise valid display block.
+                let replay = if has_replay_columns {
+                    (|| -> rusqlite::Result<BlockReplayData> {
+                        Ok(BlockReplayData {
+                            llm_content: row.get(14)?,
+                            tool_call_id: row.get(15)?,
+                            round_text: row.get(16)?,
+                        })
+                    })()
+                    .ok()
+                } else {
+                    None
+                };
+                Ok((block, replay))
+            })?;
+            for row in rows {
+                match row {
+                    Ok((block, replay)) => {
+                        if let Some(replay) = replay.filter(|data| !data.is_empty()) {
+                            replay_map.insert(block.id.clone(), replay);
+                        }
+                        blocks_by_message
+                            .entry(block.message_id.clone())
+                            .or_default()
+                            .push(block);
+                    }
+                    Err(error) => {
+                        log::warn!("[ChatV2Repo] Skipping malformed history block: {}", error)
+                    }
+                }
+            }
+        }
+        Ok((blocks_by_message, replay_map))
     }
 
     // ========================================================================
@@ -5749,6 +5884,120 @@ mod tests {
         ChatV2Repo::delete_message_with_conn(&conn, &message_id).unwrap();
         let deleted = ChatV2Repo::get_message_with_conn(&conn, &message_id).unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_history_window_batch_preserves_key_order_metadata_and_replay() {
+        let conn = setup_test_db();
+        apply_replay_columns(&conn);
+        let session_id = "sess_history_window_batch";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let mut expected = Vec::new();
+        // Equal timestamps and reverse-lexical IDs catch accidental id sorting;
+        // 405 keys also exercise both bounded parameter batches.
+        for index in 0..405 {
+            let mut message = ChatMessage::new_assistant(session_id.into());
+            message.id = format!("msg_batch_{:04}", 405 - index);
+            message.timestamp = 1_000;
+            message.meta = Some(MessageMeta {
+                model_id: Some(format!("model_{index}")),
+                ..Default::default()
+            });
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+            expected.push(message.id.clone());
+            if index == 0 || index == 404 {
+                for position in [2, 0] {
+                    let mut block = MessageBlock::new_content(message.id.clone(), position);
+                    block.id = format!("blk_batch_{index}_{position}");
+                    block.content = Some(format!("payload {index}/{position}"));
+                    ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+                    if position == 2 {
+                        ChatV2Repo::update_block_replay_with_conn(
+                            &conn,
+                            &block.id,
+                            &BlockReplayData {
+                                llm_content: Some(format!("wrapped {index}")),
+                                tool_call_id: Some(format!("call_{index}")),
+                                round_text: Some("before tool".into()),
+                            },
+                        )
+                        .unwrap();
+                    }
+                }
+            }
+        }
+        let ids = ChatV2Repo::get_session_message_ids_with_conn(&conn, session_id).unwrap();
+        assert_eq!(ids, expected);
+        let messages = ChatV2Repo::get_messages_by_ids_with_conn(&conn, session_id, &ids).unwrap();
+        assert_eq!(
+            messages
+                .iter()
+                .map(|message| &message.id)
+                .collect::<Vec<_>>(),
+            ids.iter().collect::<Vec<_>>()
+        );
+        assert_eq!(
+            messages[404].meta.as_ref().unwrap().model_id.as_deref(),
+            Some("model_404")
+        );
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &ids).unwrap();
+        for index in [0, 404] {
+            let row = blocks.get(&ids[index]).unwrap();
+            assert_eq!(
+                row.iter()
+                    .map(|block| block.block_index)
+                    .collect::<Vec<_>>(),
+                vec![0, 2]
+            );
+            let old_replay =
+                ChatV2Repo::get_block_replay_map_with_conn(&conn, &ids[index]).unwrap();
+            for (block_id, data) in old_replay {
+                assert_eq!(replay.get(&block_id), Some(&data));
+            }
+        }
+        assert_eq!(replay.len(), 2);
+        let selected = vec![ids[404].clone(), ids[0].clone()];
+        let selected_messages =
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, session_id, &selected).unwrap();
+        assert_eq!(selected_messages[0].id, selected[0]);
+        assert_eq!(selected_messages[1].id, selected[1]);
+        assert!(
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, "another_session", &selected)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn test_history_batch_without_replay_columns_keeps_blocks() {
+        let conn = setup_test_db();
+        let session_id = "sess_history_legacy_replay";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let message = ChatMessage::new_user(session_id.into(), Vec::new());
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.content = Some("legacy body".into());
+        ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &[message.id.clone()])
+                .unwrap();
+        assert_eq!(
+            blocks[&message.id][0].content.as_deref(),
+            Some("legacy body")
+        );
+        assert!(replay.is_empty());
+        let (blocks, replay) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &[]).unwrap();
+        assert!(blocks.is_empty() && replay.is_empty());
     }
 
     #[test]
