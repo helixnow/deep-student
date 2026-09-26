@@ -4697,7 +4697,7 @@ impl BackupManager {
         {
             let backup = Backup::new(&src_conn, &mut dest_conn)?;
 
-            // 手动分批复制，每次 100 页，间隔 50ms
+            // 手动分批复制，每次 100 页；成功推进不等待，仅锁冲突时退避。
             // 每批复制后通过回调报告页面级进度
             use rusqlite::backup::StepResult;
 
@@ -4721,7 +4721,6 @@ impl BackupManager {
                     StepResult::Done => break,
                     StepResult::More => {
                         busy_retries = 0;
-                        std::thread::sleep(Duration::from_millis(RETRY_SLEEP_MS));
                     }
                     StepResult::Busy | StepResult::Locked => {
                         busy_retries = busy_retries.saturating_add(1);
@@ -5427,7 +5426,6 @@ impl BackupManager {
                     StepResult::Done => break,
                     StepResult::More => {
                         busy_retries = 0;
-                        std::thread::sleep(Duration::from_millis(50));
                     }
                     StepResult::Busy | StepResult::Locked => {
                         busy_retries = busy_retries.saturating_add(1);

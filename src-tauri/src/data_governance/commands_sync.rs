@@ -2317,6 +2317,18 @@ pub async fn data_governance_export_sync_data(
     window: Window,
     output_path: Option<String>,
 ) -> Result<SyncExportResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        export_sync_data_blocking(&app, &window, output_path)
+    })
+    .await
+    .map_err(|error| format!("同步导出任务异常退出: {}", error))?
+}
+
+fn export_sync_data_blocking(
+    app: &tauri::AppHandle,
+    window: &Window,
+    output_path: Option<String>,
+) -> Result<SyncExportResponse, String> {
     info!("[data_governance] 导出同步数据");
 
     let active_dir = get_active_data_dir(&app)?;
@@ -2377,13 +2389,9 @@ pub async fn data_governance_export_sync_data(
     // 构建导出数据（使用带完整数据的变更）
     let export_data = SyncExportData {
         manifest,
-        pending_changes: all_enriched_changes.clone(),
+        pending_changes: all_enriched_changes,
         exported_at: chrono::Utc::now().to_rfc3339(),
     };
-
-    // 序列化
-    let json = serde_json::to_string_pretty(&export_data)
-        .map_err(|e| format!("序列化导出数据失败: {}", e))?;
 
     // 确定输出路径（虚拟 URI 先导出到本地临时文件，再复制到目标 URI）
     let mut target_virtual_uri: Option<String> = None;
@@ -2414,8 +2422,8 @@ pub async fn data_governance_export_sync_data(
         std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 写入文件（本地）
-    std::fs::write(&output, &json).map_err(|e| format!("写入文件失败: {}", e))?;
+    // 直接写入缓冲文件，避免与记录集合同时持有整份 JSON 字符串。
+    write_sync_export_data(&output, &export_data)?;
 
     let mut final_output_path = output.to_string_lossy().to_string();
     if let Some(target_uri) = target_virtual_uri {
@@ -2431,14 +2439,14 @@ pub async fn data_governance_export_sync_data(
     info!(
         "[data_governance] 同步数据已导出: path={}, changes={}",
         final_output_path,
-        all_enriched_changes.len()
+        export_data.pending_changes.len()
     );
 
     Ok(SyncExportResponse {
         success: true,
         output_path: final_output_path,
         manifest_databases: export_data.manifest.databases.len(),
-        pending_changes_count: all_enriched_changes.len(),
+        pending_changes_count: export_data.pending_changes.len(),
     })
 }
 
@@ -2451,6 +2459,34 @@ pub struct SyncExportData {
     pub pending_changes: Vec<SyncChangeWithData>,
     /// 导出时间
     pub exported_at: String,
+}
+
+fn write_sync_export_data(path: &Path, data: &SyncExportData) -> Result<(), String> {
+    use std::io::Write;
+
+    let file = std::fs::File::create(path).map_err(|error| format!("写入文件失败: {}", error))?;
+    let mut writer = std::io::BufWriter::new(file);
+    serde_json::to_writer_pretty(&mut writer, data).map_err(|error| {
+        if error.is_io() {
+            format!("写入文件失败: {}", error)
+        } else {
+            format!("序列化导出数据失败: {}", error)
+        }
+    })?;
+    writer
+        .flush()
+        .map_err(|error| format!("写入文件失败: {}", error))
+}
+
+fn read_sync_import_data(path: &Path) -> Result<SyncExportData, String> {
+    let file = std::fs::File::open(path).map_err(|error| format!("读取文件失败: {}", error))?;
+    serde_json::from_reader(std::io::BufReader::new(file)).map_err(|error| {
+        if error.is_io() {
+            format!("读取文件失败: {}", error)
+        } else {
+            format!("解析导入数据失败: {}", error)
+        }
+    })
 }
 
 /// 同步导出响应
@@ -2490,7 +2526,7 @@ pub async fn data_governance_import_sync_data(
     // 恢复/迁移/同步串行化，避免并发写导致的数据不一致。此前 import 完全没有这两道
     // 防护。复用与上传/下载同步一致的模式。
     check_maintenance_mode(&app)?;
-    let _permit = tokio::time::timeout(
+    let permit = tokio::time::timeout(
         std::time::Duration::from_secs(SYNC_LOCK_TIMEOUT_SECS),
         BACKUP_GLOBAL_LIMITER.clone().acquire_owned(),
     )
@@ -2503,6 +2539,21 @@ pub async fn data_governance_import_sync_data(
     })?
     .map_err(|_| "获取全局数据治理锁失败".to_string())?;
 
+    tauri::async_runtime::spawn_blocking(move || {
+        // 阻塞任务不可被外层 future 取消；许可必须随实际数据库工作一起存活。
+        let _permit = permit;
+        import_sync_data_blocking(&app, &window, input_path, strategy)
+    })
+    .await
+    .map_err(|error| format!("同步导入任务异常退出: {}", error))?
+}
+
+fn import_sync_data_blocking(
+    app: &tauri::AppHandle,
+    window: &Window,
+    input_path: String,
+    strategy: Option<String>,
+) -> Result<SyncImportResponse, String> {
     let app_data_dir = get_app_data_dir(&app)?;
     let active_dir = get_active_data_dir(&app)?;
 
@@ -2524,23 +2575,12 @@ pub async fn data_governance_import_sync_data(
             (input_file, None)
         };
 
-    // 读取文件
-    let json =
-        std::fs::read_to_string(&input_file_path).map_err(|e| format!("读取文件失败: {}", e));
-    let json = match json {
-        Ok(v) => v,
+    // 从缓冲文件反序列化，不同时保留整份原始 JSON 字符串。
+    let import_data = match read_sync_import_data(&input_file_path) {
+        Ok(data) => data,
         Err(e) => {
             cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
             return Err(e);
-        }
-    };
-
-    // 解析（v2 格式含完整数据）
-    let import_data: SyncExportData = match serde_json::from_str(&json) {
-        Ok(data) => data,
-        Err(err) => {
-            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
-            return Err(format!("解析导入数据失败: {}", err));
         }
     };
 
@@ -5808,6 +5848,62 @@ pub async fn data_governance_list_unsynced_items(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn manual_sync_json_buffered_roundtrip_preserves_record_data() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("sync.json");
+        let record =
+            serde_json::json!({ "id": "record-1", "content": "多语言正文\n".repeat(4096) });
+        let data = SyncExportData {
+            manifest: SyncManager::new("test-device".into()).create_manifest(HashMap::new()),
+            pending_changes: vec![SyncChangeWithData {
+                table_name: "messages".into(),
+                record_id: "record-1".into(),
+                operation: super::super::sync::ChangeOperation::Update,
+                data: Some(record.clone()),
+                changed_at: "2026-09-27T00:00:00Z".into(),
+                change_log_id: Some(1),
+                database_name: Some("chat_v2".into()),
+                suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
+            }],
+            exported_at: "2026-09-27T00:00:00Z".into(),
+        };
+
+        write_sync_export_data(&path, &data).expect("buffered export");
+        let restored = read_sync_import_data(&path).expect("buffered import");
+        assert_eq!(restored.manifest.device_id, data.manifest.device_id);
+        assert_eq!(restored.exported_at, data.exported_at);
+        assert_eq!(restored.pending_changes.len(), 1);
+        assert_eq!(restored.pending_changes[0].data.as_ref(), Some(&record));
+        assert_eq!(
+            restored.pending_changes[0].database_name.as_deref(),
+            Some("chat_v2")
+        );
+    }
+
+    #[test]
+    fn manual_sync_json_retains_read_parse_and_write_error_categories() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("sync.json");
+        assert!(read_sync_import_data(&path)
+            .unwrap_err()
+            .starts_with("读取文件失败:"));
+        std::fs::write(&path, b"{broken").expect("malformed fixture");
+        assert!(read_sync_import_data(&path)
+            .unwrap_err()
+            .starts_with("解析导入数据失败:"));
+        let data = SyncExportData {
+            manifest: SyncManager::new("test-device".into()).create_manifest(HashMap::new()),
+            pending_changes: Vec::new(),
+            exported_at: "2026-09-27T00:00:00Z".into(),
+        };
+        assert!(write_sync_export_data(dir.path(), &data)
+            .unwrap_err()
+            .starts_with("写入文件失败:"));
+    }
 
     // ============ [R04-sync-e2ee] 记录级上传加密一致性策略 ============
 

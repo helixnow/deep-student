@@ -1653,13 +1653,6 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
             None => return,
         };
 
-    // 设置任务参数（用于持久化和恢复）。注意：备份密码绝不写入持久化参数。
-    job_ctx.set_params(BackupJobParams {
-        zip_path: Some(zip_file_path.to_string_lossy().to_string()),
-        backup_id: backup_id.clone(),
-        ..Default::default()
-    });
-
     // 获取应用数据目录
     let app_data_dir = match get_app_data_dir(&app) {
         Ok(dir) => dir,
@@ -1678,14 +1671,24 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
         }
     }
 
-    // 获取已处理的项目列表（用于断点续传）
-    let processed_items = job_ctx.get_processed_items();
-    let is_resuming = !processed_items.is_empty();
+    // 旧版文件名清单只用于兼容；真正的续传由导入器检查目标文件与清单。
+    let checkpoint = job_ctx.get_checkpoint();
+    let processed_count = checkpoint
+        .as_ref()
+        .map(|checkpoint| {
+            checkpoint
+                .current_index
+                .max(checkpoint.processed_items.len())
+        })
+        .unwrap_or_default();
+    let is_resuming = checkpoint
+        .as_ref()
+        .is_some_and(|checkpoint| checkpoint.partial_output.is_some() || processed_count > 0);
 
     if is_resuming {
         info!(
             "[data_governance] 从检查点恢复 ZIP 导入任务，已处理 {} 个文件",
-            processed_items.len()
+            processed_count
         );
     }
 
@@ -1719,6 +1722,24 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
         return;
     }
 
+    // 首个文件尚未完成时也能恢复同一目录；密码绝不写入持久化参数。
+    job_ctx.set_params(BackupJobParams {
+        zip_path: Some(zip_file_path.to_string_lossy().to_string()),
+        backup_id: Some(target_backup_id.clone()),
+        ..Default::default()
+    });
+    if checkpoint.is_none() {
+        job_ctx.init_checkpoint(0);
+    }
+    job_ctx.set_partial_output(&target_dir.to_string_lossy());
+    job_ctx.update_zip_checkpoint(
+        processed_count,
+        checkpoint
+            .as_ref()
+            .map(|checkpoint| checkpoint.total_items)
+            .unwrap_or_default(),
+    );
+
     // 阶段 1: 扫描
     job_ctx.mark_running(
         BackupJobPhase::Scan,
@@ -1728,7 +1749,7 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
         } else {
             "正在验证 ZIP 文件...".to_string()
         }),
-        processed_items.len() as u64,
+        processed_count as u64,
         0,
     );
 
@@ -1745,39 +1766,49 @@ pub(super) async fn execute_zip_import_with_progress_resumable(
     // 断点续传：使用 import_backup_from_zip_resumable，
     // 自动跳过目标目录中已存在且大小匹配的文件；
     // 加密全保真 ZIP 的续传携带用户重新提供的备份密码。
-    let result = import_backup_from_zip_resumable(
-        &zip_file_path,
-        &target_dir,
-        |progress| {
-            let phase = match progress.phase {
-                ZipImportPhase::Scan => BackupJobPhase::Scan,
-                ZipImportPhase::Extract => BackupJobPhase::Extract,
-                ZipImportPhase::Verify => BackupJobPhase::Verify,
-                ZipImportPhase::Completed => BackupJobPhase::Completed,
-            };
+    let zip_for_task = zip_file_path.clone();
+    let target_for_task = target_dir.clone();
+    let join_result = tauri::async_runtime::spawn_blocking(move || {
+        import_backup_from_zip_resumable(
+            &zip_for_task,
+            &target_for_task,
+            |progress| {
+                let phase = match progress.phase {
+                    ZipImportPhase::Scan => BackupJobPhase::Scan,
+                    ZipImportPhase::Extract => BackupJobPhase::Extract,
+                    ZipImportPhase::Verify => BackupJobPhase::Verify,
+                    ZipImportPhase::Completed => BackupJobPhase::Completed,
+                };
 
-            job_ctx_for_progress.mark_running(
-                phase,
-                progress.progress,
-                Some(
-                    if is_resuming && progress.phase == ZipImportPhase::Extract {
-                        format!("(断点续传) {}", progress.message)
-                    } else {
-                        progress.message
-                    },
-                ),
-                progress.processed_files as u64,
-                progress.total_files as u64,
-            );
+                job_ctx_for_progress.mark_running(
+                    phase,
+                    progress.progress,
+                    Some(
+                        if is_resuming && progress.phase == ZipImportPhase::Extract {
+                            format!("(断点续传) {}", progress.message)
+                        } else {
+                            progress.message
+                        },
+                    ),
+                    progress.processed_files as u64,
+                    progress.total_files as u64,
+                );
 
-            // 更新检查点
-            if let Some(ref file_name) = progress.current_file {
-                job_ctx_for_progress.update_checkpoint(file_name);
-            }
-        },
-        || job_ctx_for_cancel.is_cancelled(),
-        password.as_deref(),
-    );
+                job_ctx_for_progress
+                    .update_zip_checkpoint(progress.processed_files, progress.total_files);
+            },
+            || job_ctx_for_cancel.is_cancelled(),
+            password.as_deref(),
+        )
+    })
+    .await;
+    let result = match join_result {
+        Ok(result) => result,
+        Err(error) => {
+            job_ctx.fail(format!("ZIP 续传任务异常退出: {}", error));
+            return;
+        }
+    };
 
     match result {
         Ok(file_count) => {
