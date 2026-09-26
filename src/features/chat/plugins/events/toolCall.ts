@@ -167,10 +167,10 @@ const toolCallEventHandler: EventHandler = {
     const { toolName, toolInput, toolCallId } = payload as ToolCallStartPayload & { toolCallId?: string };
 
     // 🆕 调试：工具调用开始执行
-    emitToolCallDebug('info', 'backend:start', `${toolName} 开始执行`, {
+    emitToolCallDebug('info', 'backend:start', `${toolName} 开始执行`, () => ({
       toolName, toolCallId, blockId: backendBlockId,
       detail: { toolInput, preparingBlockFound: false /* updated below */ },
-    });
+    }));
     if (toolCallId) trackStart(toolCallId, backendBlockId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
@@ -333,10 +333,10 @@ const toolCallEventHandler: EventHandler = {
     store.clearPreparingToolCall?.(messageId);
 
     // 🆕 调试：记录 blockId 映射
-    emitToolCallDebug('debug', 'frontend:blockUpdate', `${toolName} 块 → running`, {
+    emitToolCallDebug('debug', 'frontend:blockUpdate', `${toolName} 块 → running`, () => ({
       toolName, toolCallId, blockId,
       detail: { hadPreparingBlock: !!preparingBlockId, usedReplaceBlockId: !!(preparingBlockId && backendBlockId && store.replaceBlockId) },
-    });
+    }));
 
     return blockId;
   },
@@ -927,10 +927,10 @@ const imageGenEventHandler: EventHandler = {
 
     // 🆕 2026-02-17: 生命周期追踪 — image_gen 无 preparing 阶段，trackStart 会自动回填
     const syntheticToolCallId = backendBlockId || `img_${Date.now()}`;
-    emitToolCallDebug('info', 'backend:start', `image_gen 开始执行`, {
+    emitToolCallDebug('info', 'backend:start', `image_gen 开始执行`, () => ({
       toolName: 'image_gen', toolCallId: syntheticToolCallId, blockId: backendBlockId,
       detail: { prompt: prompt?.slice(0, 80), width, height, model },
-    });
+    }));
     trackStart(syntheticToolCallId, backendBlockId, 'image_gen');
 
     // 如果后端传了 blockId，使用它；否则由前端生成
@@ -1027,9 +1027,9 @@ const toolCallPreparingEventHandler: EventHandler = {
     );
 
     // 🆕 调试：工具准备中
-    emitToolCallDebug('info', 'frontend:preparing', `${toolName} 准备中`, {
+    emitToolCallDebug('info', 'frontend:preparing', `${toolName} 准备中`, () => ({
       toolName, toolCallId,
-    });
+    }));
     if (toolCallId) trackPreparing(toolCallId, toolName);
 
     // 🆕 2026-01-21: 判断是否是 coordinator_sleep 工具，需要创建 sleep 类型块
