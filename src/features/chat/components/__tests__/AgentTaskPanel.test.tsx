@@ -1,5 +1,5 @@
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { DEMO_SESSIONS } from '@/demo/fixtures';
@@ -140,6 +140,42 @@ describe('AgentTaskPanel', () => {
     expect(container).toBeEmptyDOMElement();
     expect(screen.queryByText('Plan')).not.toBeInTheDocument();
     expect(screen.queryByText('0/0')).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])('does not commit on unrelated text chunks when expanded=%s', (expanded) => {
+    const todo = {
+      toolName: 'todo_init',
+      toolOutput: {
+        title: 'Stable plan',
+        steps: [{ id: 'step-1', description: 'Initial step', status: 'pending' }],
+      },
+    };
+    const store = createMockStore({
+      blocks: new Map<string, unknown>([
+        ['todo-1', todo],
+        ['text-1', { id: 'text-1', type: 'content', status: 'running', content: 'First' }],
+      ]),
+      activeBlockIds: new Set(['text-1']),
+    });
+    let commits = 0;
+    render(
+      <React.Profiler id="task-panel" onRender={() => { commits += 1; }}>
+        <AgentTaskPanel store={store as unknown as StoreApi<any>} />
+      </React.Profiler>,
+    );
+    if (expanded) fireEvent.click(screen.getByRole('button', { name: /Stable plan/ }));
+    const beforeChunk = commits;
+    act(() => store.setState((state) => ({ blocks: new Map(state.blocks).set('text-1', {
+      id: 'text-1', type: 'content', status: 'running', content: 'First second',
+    }) })));
+    expect(commits).toBe(beforeChunk);
+
+    act(() => store.setState((state) => ({ blocks: new Map(state.blocks).set('todo-1', {
+      ...todo,
+      toolOutput: { ...todo.toolOutput, steps: [{ id: 'step-1', description: 'Updated step', status: 'running' }] },
+    }) })));
+    expect(commits).toBeGreaterThan(beforeChunk);
+    expect(screen.getByText('Updated step')).toBeInTheDocument();
   });
 
   it('renders todo progress once todo steps exist in the store', () => {
