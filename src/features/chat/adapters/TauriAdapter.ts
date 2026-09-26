@@ -4112,17 +4112,44 @@ export class ChatV2TauriAdapter {
     const generation = this.setupGeneration;
     const session = this.lastLoadedSessionInfo;
     if (!session || !this.isSessionRuntimeOwner()) return;
-    if (this.fullHistoryLoadInFlight || this.fullHistoryLoadComplete) return;
+    if (this.fullHistoryLoadComplete) return;
     if (this.historyWindowStartOffset <= 0) return;
-    const offset = Math.max(0, this.historyWindowStartOffset - HISTORY_BACKFILL_PAGE_SIZE);
-    const baseline = this.captureRestoreBaseline();
-    const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
-      sessionId: this.sessionId,
-      offset,
-      limit: HISTORY_BACKFILL_PAGE_SIZE,
-    });
-    if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
-    if (page.messages.length > 0) {
+
+    // 手动滚动可能发生在 idle 回填已排队、尚未进入 in-flight 的窗口内。
+    // 先取消排队任务，再同步占有同一个 in-flight 门；若 idle 回填已开始，
+    // 则直接让在途任务完成，避免两个请求读取同一个窗口起点。
+    const resumeAutomaticBackfill = this.cancelScheduledFullHistoryLoad !== null;
+    this.cancelScheduledFullHistoryLoad?.();
+    if (this.fullHistoryLoadInFlight) return;
+    this.fullHistoryLoadInFlight = true;
+
+    try {
+      const requestWindowStart = this.historyWindowStartOffset;
+      const offset = Math.max(0, requestWindowStart - HISTORY_BACKFILL_PAGE_SIZE);
+      const expectedCount = requestWindowStart - offset;
+      const baseline = this.captureRestoreBaseline();
+      const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
+        sessionId: this.sessionId,
+        offset,
+        limit: HISTORY_BACKFILL_PAGE_SIZE,
+      });
+      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
+      // 请求期间窗口已被其他路径推进时，响应已经过期，不能按共享当前值盲减。
+      if (this.historyWindowStartOffset !== requestWindowStart) return;
+
+      if (page.messages.length !== expectedCount) {
+        // 非连续短页/空页不能直接拼到当前尾窗，否则会制造中间空洞；直接走
+        // 全量 fallback 一次性重建连续历史，也避免用户反复滚顶请求同一坏页。
+        console.warn(LOG_PREFIX, 'Manual history page was not contiguous, falling back to full load:', {
+          sessionId: this.sessionId,
+          offset,
+          expected: expectedCount,
+          returned: page.messages.length,
+        });
+        await this.loadFullHistoryFallback(generation);
+        return;
+      }
+
       this.store.prependHistoryFromBackend(
         {
           session,
@@ -4132,11 +4159,39 @@ export class ChatV2TauriAdapter {
         },
         baseline,
       );
-      this.historyWindowStartOffset = Math.max(
-        0,
-        this.historyWindowStartOffset - page.messages.length,
-      );
+      this.historyWindowStartOffset = offset;
+      if (offset === 0) this.fullHistoryLoadComplete = true;
+    } finally {
+      this.fullHistoryLoadInFlight = false;
+      if (
+        resumeAutomaticBackfill
+        && !this.fullHistoryLoadComplete
+        && this.historyWindowStartOffset > 0
+        && generation === this.setupGeneration
+        && this.isSessionRuntimeOwner()
+      ) {
+        this.scheduleFullHistoryLoad();
+      }
     }
+  }
+
+  /** 分页不可保证连续时，以一次全量读取重建连续历史窗口。 */
+  private async loadFullHistoryFallback(generation: number): Promise<boolean> {
+    const t0 = performance.now();
+    const restoreBaseline = this.captureRestoreBaseline();
+    const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
+      sessionId: this.sessionId,
+    });
+    if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return false;
+    this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
+    this.historyWindowStartOffset = 0;
+    this.fullHistoryLoadComplete = true;
+    console.log(LOG_PREFIX, 'Full history merged (fallback path):', {
+      sessionId: this.sessionId,
+      totalMessages: fullResponse.messages?.length ?? 0,
+      invokeMs: Math.round(performance.now() - t0),
+    });
+    return true;
   }
 
   /**
@@ -4158,9 +4213,10 @@ export class ChatV2TauriAdapter {
       cancelIdleCallback?: (id: number) => void;
     };
     let started = false;
+    let cancelled = false;
     let idleId: number | null = null;
     let watchdogId: number | null = null;
-    const cancelSchedule = () => {
+    const clearSchedule = () => {
       if (idleId !== null) {
         if (win.cancelIdleCallback) win.cancelIdleCallback(idleId);
         else window.clearTimeout(idleId);
@@ -4174,11 +4230,15 @@ export class ChatV2TauriAdapter {
         this.cancelScheduledFullHistoryLoad = null;
       }
     };
+    const cancelSchedule = () => {
+      cancelled = true;
+      clearSchedule();
+    };
 
     const run = async () => {
-      if (started) return;
+      if (started || cancelled) return;
       started = true;
-      cancelSchedule();
+      clearSchedule();
       // cleanup()/重新 setup 会推进 setupGeneration，此时放弃过期的补齐任务
       if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
       this.fullHistoryLoadInFlight = true;
@@ -4197,20 +4257,7 @@ export class ChatV2TauriAdapter {
         if (pagedResult === 'stale') return;
 
         // fallback：分页命令 invoke 失败（旧后端/异常）时退回全量二次拉取
-        const t0 = performance.now();
-        const restoreBaseline = this.captureRestoreBaseline();
-        const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
-          sessionId: this.sessionId,
-        });
-        if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
-        this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
-        this.historyWindowStartOffset = 0;
-        this.fullHistoryLoadComplete = true;
-        console.log(LOG_PREFIX, 'Full history merged (fallback path):', {
-          sessionId: this.sessionId,
-          totalMessages: fullResponse.messages?.length ?? 0,
-          invokeMs: Math.round(performance.now() - t0),
-        });
+        await this.loadFullHistoryFallback(generation);
       } catch (error) {
         console.warn(LOG_PREFIX, 'Full history load failed (tail view remains):', getErrorMessage(error));
         if (
@@ -4284,8 +4331,10 @@ export class ChatV2TauriAdapter {
         return 'stale';
       }
 
+      const requestWindowStart = this.historyWindowStartOffset;
       const restoreBaseline = this.captureRestoreBaseline();
-      const offset = Math.max(0, this.historyWindowStartOffset - HISTORY_BACKFILL_PAGE_SIZE);
+      const offset = Math.max(0, requestWindowStart - HISTORY_BACKFILL_PAGE_SIZE);
+      const expectedCount = requestWindowStart - offset;
       let page: LoadMessagesPageResponseType;
       try {
         page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
@@ -4305,6 +4354,9 @@ export class ChatV2TauriAdapter {
       if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
         return 'stale';
       }
+      if (this.historyWindowStartOffset !== requestWindowStart) {
+        return 'stale';
+      }
 
       if (page.messages.length === 0) {
         // 服务端返回空页（total 与实际行数竞态，如压缩收缩）：防御死循环，
@@ -4312,7 +4364,7 @@ export class ChatV2TauriAdapter {
         this.historyWindowStartOffset = 0;
         break;
       }
-      if (page.messages.length < HISTORY_BACKFILL_PAGE_SIZE && offset > 0) {
+      if (page.messages.length !== expectedCount && offset > 0) {
         // 未抵达最老端却拿到短页：页序竞态下无法保证窗口连续（会留中间
         // 空洞），退回全量加载 fallback 兜底
         console.warn(LOG_PREFIX, 'Short history page mid-window, will fall back to full load:', {
@@ -4333,10 +4385,7 @@ export class ChatV2TauriAdapter {
         restoreBaseline,
       );
       mergedMessages += page.messages.length;
-      this.historyWindowStartOffset = Math.max(
-        0,
-        this.historyWindowStartOffset - page.messages.length,
-      );
+      this.historyWindowStartOffset = offset;
       pagesFetched += 1;
     }
 
