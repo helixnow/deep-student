@@ -41,12 +41,15 @@ use tokio::sync::Mutex as TokioMutex;
 // use chrono::Utc;
 use regex::Regex;
 use std::sync::LazyLock;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
 pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
+
+/// PDF/图片预处理与索引兜底共用的 OCR 并发容量。
+pub(crate) const MAX_OCR_CONCURRENCY: usize = 4;
 
 // ============================================================
 // 流式事件出口（G01-b：LLM 流式层去 Window 依赖）
@@ -3818,6 +3821,8 @@ pub struct LLMManager {
     db: Arc<Database>,
     openai_codex_auth: CodexAuthManager,
     file_manager: Arc<FileManager>,
+    /// 由调用服务获取许可，LLM 请求方法不重复获取。
+    ocr_semaphore: Arc<Semaphore>,
     crypto_service: CryptoService,
     cancel_registry: Arc<TokioMutex<HashSet<String>>>,
     cancel_channels: Arc<TokioMutex<std::collections::HashMap<String, watch::Sender<bool>>>>,
@@ -4249,6 +4254,7 @@ impl LLMManager {
             db,
             openai_codex_auth,
             file_manager,
+            ocr_semaphore: Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY)),
             crypto_service,
             cancel_registry: Arc::new(TokioMutex::new(HashSet::new())),
             cancel_channels: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
@@ -4260,6 +4266,11 @@ impl LLMManager {
     // 对外暴露 HTTP 客户端，便于独立管线重用统一配置的客户端
     pub fn get_http_client(&self) -> Client {
         self.client.clone()
+    }
+
+    /// 为媒体预处理和索引兜底提供同一组 OCR 许可。
+    pub(crate) fn ocr_semaphore(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.ocr_semaphore)
     }
 
     pub fn openai_codex_auth(&self) -> CodexAuthManager {

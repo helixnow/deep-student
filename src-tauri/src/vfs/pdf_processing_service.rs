@@ -53,7 +53,7 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
     }
 }
 use crate::file_manager::FileManager;
-use crate::llm_manager::LLMManager;
+use crate::llm_manager::{LLMManager, MAX_OCR_CONCURRENCY};
 use crate::models::PdfOcrTextBlock;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
@@ -64,7 +64,7 @@ use crate::vfs::ocr_utils::{
     classify_pdf_content, has_valid_ocr_pages, has_valid_text, parse_ocr_pages_json, PdfContentKind,
 };
 use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPreviewConfig};
-use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
+use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo, VfsIndexingConfigRepo};
 use crate::vfs::types::PdfPreviewJson;
 use crate::vfs::unit_builder::UnitBuildInput;
 
@@ -371,8 +371,6 @@ pub type PdfProcessingErrorEvent = MediaProcessingErrorEvent;
 // OCR 处理常量
 // ============================================================================
 
-/// 服务共享 OCR 上限，同时保留每文件页任务上限。
-const MAX_OCR_CONCURRENCY: usize = 4;
 /// OCR 最大重试次数
 const MAX_OCR_RETRY_ATTEMPTS: usize = 3;
 /// 初始退避时间（毫秒）
@@ -527,12 +525,13 @@ impl PdfProcessingService {
         llm_manager: Arc<LLMManager>,
         file_manager: Arc<FileManager>,
     ) -> Self {
+        let ocr_semaphore = llm_manager.ocr_semaphore();
         Self {
             db,
             settings_db,
             llm_manager,
             file_manager,
-            ocr_semaphore: Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY)),
+            ocr_semaphore,
             image_processing_semaphore: Arc::new(Semaphore::new(
                 std::thread::available_parallelism()
                     .map_or(1, usize::from)
@@ -2945,6 +2944,16 @@ impl PdfProcessingService {
         generation: u64,
     ) -> VfsResult<()> {
         if self.skip_stale_task_side_effects(file_id, Some(generation), "stage_vector_indexing") {
+            return Ok(());
+        }
+
+        // The upload pipeline is automatic indexing, so honor the same setting
+        // as the background indexer before it can trigger fallback OCR.
+        if !VfsIndexingConfigRepo::get_bool(&self.db, "indexing.enabled", true)? {
+            info!(
+                "[PdfProcessingService] Automatic vector indexing disabled for file: {}",
+                file_id
+            );
             return Ok(());
         }
 
