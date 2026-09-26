@@ -19,6 +19,7 @@
 /// 重复插）、refresh_stats_with_conn。事务外副作用（SM-2 复习计划、
 /// learner_profile 回流）由本文件按 `VerdictApplyOutcome` 的
 /// needs_review_plan / mastery_state 标记执行。
+use base64::Engine;
 use futures_util::StreamExt;
 use regex::Regex;
 use rusqlite::{params, OptionalExtension};
@@ -32,6 +33,9 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{AnswerSubmission, Question, VfsQuestionRepo};
 
 use super::events::QbankGradingEmitter;
+use super::image_answer::{
+    fetch_image_answer_contents, parse_image_answer_envelope, ImageAnswerPayload,
+};
 use super::types::{
     QbankGradingMode, QbankGradingRequest, QbankGradingResponse, Verdict, ANALYZE_SYSTEM_PROMPT,
     GRADE_SYSTEM_PROMPT,
@@ -101,21 +105,41 @@ pub async fn run_qbank_grading(
     let submissions = VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
         .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
 
-    // 4. 构造 Prompt
-    let (system_prompt, user_prompt) =
-        build_prompts(&question, &current_submission, &submissions, &request.mode)
-            .map_err(&emit_and_return)?;
+    // 4. 图片作答信封探测（主观题/填空题手写拍照作答）：
+    //    submission.user_answer 是信封时取回图片走多模态评判，否则原文本路径。
+    //    取图失败（附件被删/未同步）与超限一样显式报错——图片判分丢图等于判空白卷。
+    let image_answer = parse_image_answer_envelope(&current_submission.user_answer);
+    let answer_images: Vec<String> = match &image_answer {
+        Some(payload) => {
+            fetch_image_answer_contents(&deps.vfs_db, payload).map_err(&emit_and_return)?
+        }
+        None => Vec::new(),
+    };
 
-    // 5. 获取模型配置
-    let config = resolve_grading_config(&deps.llm, request.model_config_id.as_ref())
-        .await
-        .map_err(&emit_and_return)?;
+    // 5. 构造 Prompt
+    let (system_prompt, user_prompt) = build_prompts(
+        &question,
+        &current_submission,
+        &submissions,
+        &request.mode,
+        image_answer.as_ref(),
+    )
+    .map_err(&emit_and_return)?;
+
+    // 6. 获取模型配置（图片作答必须落多模态模型，非多模态配置显式报错引导）
+    let config = resolve_grading_config(
+        &deps.llm,
+        request.model_config_id.as_ref(),
+        !answer_images.is_empty(),
+    )
+    .await
+    .map_err(&emit_and_return)?;
     let api_key = deps
         .llm
         .decrypt_api_key(&config.api_key)
         .map_err(&emit_and_return)?;
 
-    // 6. 流式调用 LLM
+    // 7. 流式调用 LLM
     let mut accumulated = String::new();
     let stream_event = format!("qbank_grading_stream_{}", request.stream_session_id);
 
@@ -126,6 +150,8 @@ pub async fn run_qbank_grading(
         &user_prompt,
         &stream_event,
         deps.llm.clone(),
+        config.is_multimodal,
+        &answer_images,
         |chunk| {
             accumulated.push_str(&chunk);
             deps.emitter
@@ -459,10 +485,23 @@ fn persist_grading_result(
 /// 解析评判使用的模型配置
 ///
 /// 优先级：请求显式指定 > 模型分配表中的 qbank 评判模型 > Model2 默认配置。
+/// `require_multimodal`：图片作答时必须为 true；非多模态配置显式报错引导用户
+/// 到模型分配表换视觉模型——图片判分静默丢图等于判空白卷，绝不降级纯文本。
 async fn resolve_grading_config(
     llm: &LLMManager,
     model_config_id: Option<&String>,
+    require_multimodal: bool,
 ) -> Result<ApiConfig, AppError> {
+    let reject_non_multimodal = |config: &ApiConfig, source: &str| -> Option<AppError> {
+        if require_multimodal && !config.is_multimodal {
+            return Some(AppError::validation(format!(
+                "图片作答需要视觉模型，但{}（{}）不支持图片输入。请在「设置 → 模型分配」中为题库 AI 评判配置多模态模型，或将作答改为文字。",
+                source, config.model
+            )));
+        }
+        None
+    };
+
     if let Some(model_id) = model_config_id {
         let configs = llm.get_api_configs().await?;
         let found = configs
@@ -483,6 +522,9 @@ async fn resolve_grading_config(
                 "重排序模型不支持 AI 评判: {}",
                 model_id
             )));
+        }
+        if let Some(err) = reject_non_multimodal(&found, "指定的模型") {
+            return Err(err);
         }
         return Ok(found);
     }
@@ -506,18 +548,32 @@ async fn resolve_grading_config(
                 model_id
             )));
         }
+        if let Some(err) = reject_non_multimodal(&found, "模型分配表中的题库评判模型")
+        {
+            return Err(err);
+        }
         Ok(found)
     } else {
-        llm.get_model2_config().await
+        let config = llm.get_model2_config().await?;
+        if let Some(err) = reject_non_multimodal(&config, "默认模型 Model2") {
+            return Err(err);
+        }
+        Ok(config)
     }
 }
 
 /// 构造评判 Prompt
+///
+/// `image_answer`：当前 submission 是图片作答信封时的解析结果。
+/// 有图时"学生答案"段只放占位文本（图片经 stream_grade 的多模态 parts 附带），
+/// 历次作答记录里的信封同样显示为"[图片作答 N 张]"而非回放原始 JSON
+/// （历史图片不重发，控制 token）。
 fn build_prompts(
     question: &Question,
     current_submission: &AnswerSubmission,
     submissions: &[AnswerSubmission],
     mode: &QbankGradingMode,
+    image_answer: Option<&ImageAnswerPayload>,
 ) -> Result<(String, String), AppError> {
     let system_prompt = match mode {
         QbankGradingMode::Grade => GRADE_SYSTEM_PROMPT.to_string(),
@@ -568,7 +624,18 @@ fn build_prompts(
     };
     user_prompt.push_str(label);
     user_prompt.push('\n');
-    user_prompt.push_str(&current_submission.user_answer);
+    match image_answer {
+        Some(payload) => {
+            user_prompt.push_str(&format!(
+                "（学生以手写图片作答，共 {} 张，图片附在本消息末尾，请直接阅读图片内容评判）\n",
+                payload.images.len()
+            ));
+            if !payload.text.trim().is_empty() {
+                user_prompt.push_str(&format!("学生文字补充：{}\n", payload.text));
+            }
+        }
+        None => user_prompt.push_str(&current_submission.user_answer),
+    }
     user_prompt.push_str("\n\n");
 
     // 历次作答记录
@@ -580,10 +647,16 @@ fn build_prompts(
                 Some(false) => "错误",
                 None => "待评判",
             };
+            // 历史图片作答只报张数不回放图片（控制 token；当前 submission 的图
+            // 由 stream_grade 多模态分支附带）
+            let answer_str = match parse_image_answer_envelope(&sub.user_answer) {
+                Some(payload) => format!("[图片作答 {} 张]", payload.images.len()),
+                None => format!("\"{}\"", sub.user_answer),
+            };
             user_prompt.push_str(&format!(
-                "第{}次：答案=\"{}\"，结果={}，方式={}，时间={}\n",
+                "第{}次：答案={}，结果={}，方式={}，时间={}\n",
                 i + 1,
-                sub.user_answer,
+                answer_str,
                 correct_str,
                 sub.grading_method,
                 sub.submitted_at,
@@ -655,6 +728,38 @@ fn parse_verdict_and_score(result: &str) -> (Option<Verdict>, Option<i32>) {
     (verdict, score)
 }
 
+/// 图片 base64 的 MIME 探测（与 essay_grading::guess_image_mime 同语义）：
+/// 优先读 data URI 前缀声明，否则按魔数检测，兜底 JPEG。
+fn guess_image_mime(base64_data: &str) -> &'static str {
+    if let Some(rest) = base64_data.strip_prefix("data:") {
+        let declared = rest.split(&[';', ','][..]).next().unwrap_or("");
+        match declared {
+            "image/png" => return "image/png",
+            "image/jpeg" | "image/jpg" => return "image/jpeg",
+            "image/webp" => return "image/webp",
+            "image/gif" => return "image/gif",
+            _ => {}
+        }
+    }
+    let payload = match base64_data.split_once(',') {
+        Some((prefix, rest)) if prefix.starts_with("data:") => rest,
+        _ => base64_data,
+    };
+    let head = payload.get(..payload.len().min(24)).unwrap_or("");
+    if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(head) {
+        if bytes.starts_with(&[0x89, 0x50, 0x4E, 0x47]) {
+            return "image/png";
+        }
+        if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            return "image/jpeg";
+        }
+        if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
+            return "image/webp";
+        }
+    }
+    "image/jpeg"
+}
+
 /// 🔧 #56: 检测 SSE 数据块是否携带 finish_reason（非 null）。
 ///
 /// 部分 OpenAI 兼容网关只发 `finish_reason: "stop"` 而不发 `data: [DONE]` 哨兵，
@@ -679,7 +784,8 @@ fn sse_block_signals_finish(line: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// 流式调用 LLM（复用 essay_grading 的 stream_grade 实现）
+/// 流式调用 LLM（复用 essay_grading 的多模态消息构造：is_multimodal 且有图时
+/// user content 改为图文 parts 数组，图片标签文本在前、完整文本 prompt 收尾）
 async fn stream_grade<F>(
     config: &ApiConfig,
     api_key: &str,
@@ -687,16 +793,50 @@ async fn stream_grade<F>(
     user_prompt: &str,
     stream_event: &str,
     llm: Arc<LLMManager>,
+    is_multimodal: bool,
+    answer_images: &[String],
     mut on_chunk: F,
 ) -> Result<StreamStatus, AppError>
 where
     F: FnMut(String),
 {
     let result = async {
-        let messages = vec![
-            json!({ "role": "system", "content": system_prompt }),
-            json!({ "role": "user", "content": user_prompt }),
-        ];
+        // 构造消息：图片作答在多模态模型下转为图文混合 content；
+        // 无图（或非多模态——调用方已在校验层拦下图片+非多模态组合）保持纯文本。
+        let has_images = !answer_images.is_empty();
+        let messages = if is_multimodal && has_images {
+            let mut user_content_parts: Vec<serde_json::Value> = Vec::new();
+            user_content_parts.push(json!({
+                "type": "text",
+                "text": "【学生手写答案图片】以下是学生手写/拍摄答案的原始图片，请先逐条誊写识别出的内容，再对照参考答案评判："
+            }));
+            for img_b64 in answer_images {
+                let mime = guess_image_mime(img_b64);
+                user_content_parts.push(json!({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": format!("data:{};base64,{}", mime, img_b64)
+                    }
+                }));
+            }
+            user_content_parts.push(json!({
+                "type": "text",
+                "text": user_prompt
+            }));
+            log::info!(
+                "[QbankGrading] 多模态评判：{} 张答案图片",
+                answer_images.len()
+            );
+            vec![
+                json!({ "role": "system", "content": system_prompt }),
+                json!({ "role": "user", "content": user_content_parts }),
+            ]
+        } else {
+            vec![
+                json!({ "role": "system", "content": system_prompt }),
+                json!({ "role": "user", "content": user_prompt }),
+            ]
+        };
 
         let mut request_body = json!({
             "model": config.model,
@@ -919,6 +1059,146 @@ mod tests {
         assert!(!sse_block_signals_finish(": keep-alive"));
         assert!(!sse_block_signals_finish(""));
         assert!(!sse_block_signals_finish("data: not-json"));
+    }
+
+    // ========================================================================
+    // 图片作答信封：build_prompts 占位文本 / 历史作答展示
+    // ========================================================================
+
+    fn test_question_for_prompt() -> Question {
+        Question {
+            id: "q1".to_string(),
+            exam_id: "e1".to_string(),
+            card_id: None,
+            question_label: Some("1".to_string()),
+            content: "简述牛顿第二定律".to_string(),
+            options: None,
+            answer: Some("F = ma".to_string()),
+            explanation: None,
+            user_answer: None,
+            is_correct: None,
+            status: crate::vfs::repos::question_repo::QuestionStatus::New,
+            attempt_count: 0,
+            correct_count: 0,
+            difficulty: None,
+            tags: Vec::new(),
+            structured_data: None,
+            question_type: crate::vfs::repos::QuestionType::ShortAnswer,
+            source_type: crate::vfs::repos::question_repo::SourceType::Manual,
+            source_ref: None,
+            images: Vec::new(),
+            parent_id: None,
+            created_at: String::new(),
+            updated_at: String::new(),
+            ai_feedback: None,
+            ai_score: None,
+            ai_graded_at: None,
+            last_attempt_at: None,
+            user_note: None,
+            is_favorite: false,
+            is_bookmarked: false,
+        }
+    }
+
+    fn envelope_submission(answer: &str) -> AnswerSubmission {
+        AnswerSubmission {
+            id: "sub1".to_string(),
+            question_id: "q1".to_string(),
+            user_answer: answer.to_string(),
+            is_correct: None,
+            grading_method: "ai".to_string(),
+            submitted_at: "2026-09-26T00:00:00Z".to_string(),
+        }
+    }
+
+    fn envelope_raw() -> String {
+        serde_json::json!({
+            "type": "image_answer",
+            "images": [
+                { "id": "att1", "name": "a.jpg", "mime": "image/jpeg", "hash": "h1" },
+                { "id": "att2", "name": "b.jpg", "mime": "image/jpeg", "hash": "h2" }
+            ],
+            "text": "第二问没把握"
+        })
+        .to_string()
+    }
+
+    #[test]
+    fn build_prompts_uses_placeholder_for_image_envelope() {
+        let question = test_question_for_prompt();
+        let submission = envelope_submission(&envelope_raw());
+        let payload =
+            super::super::image_answer::parse_image_answer_envelope(&envelope_raw()).unwrap();
+
+        let (_, user_prompt) = build_prompts(
+            &question,
+            &submission,
+            &[],
+            &QbankGradingMode::Grade,
+            Some(&payload),
+        )
+        .unwrap();
+
+        // 信封原文 JSON 不进 prompt；占位文本 + 文字补充在场
+        assert!(user_prompt.contains("共 2 张"));
+        assert!(user_prompt.contains("学生文字补充：第二问没把握"));
+        assert!(!user_prompt.contains("image_answer"));
+        assert!(!user_prompt.contains("att1"));
+    }
+
+    #[test]
+    fn build_prompts_keeps_raw_text_answer_untouched() {
+        let question = test_question_for_prompt();
+        let submission = envelope_submission("物体所受合力等于质量与加速度的乘积");
+
+        let (_, user_prompt) =
+            build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+
+        assert!(user_prompt.contains("物体所受合力等于质量与加速度的乘积"));
+    }
+
+    #[test]
+    fn build_prompts_renders_history_envelopes_as_count_marker() {
+        let question = test_question_for_prompt();
+        // 当前作答是普通文本（信封检测发生在 run_qbank_grading，未触发时按原文）
+        let current = envelope_submission("新的文字作答");
+        let history_text = envelope_submission("旧的文字作答");
+        let history_envelope = AnswerSubmission {
+            id: "sub0".to_string(),
+            user_answer: envelope_raw(),
+            ..envelope_submission("")
+        };
+
+        let (_, user_prompt) = build_prompts(
+            &question,
+            &current,
+            &[history_envelope, history_text],
+            &QbankGradingMode::Grade,
+            None,
+        )
+        .unwrap();
+
+        // 历史里的信封显示张数标记，不回放 JSON 原文
+        assert!(user_prompt.contains("[图片作答 2 张]"));
+        assert!(!user_prompt.contains("\"type\":\"image_answer\""));
+        assert!(user_prompt.contains("旧的文字作答"));
+    }
+
+    #[test]
+    fn guess_image_mime_detects_png_and_jpeg_magics() {
+        // PNG 魔数前缀的 base64
+        let png_head =
+            base64::engine::general_purpose::STANDARD.encode([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A]);
+        assert_eq!(guess_image_mime(&png_head), "image/png");
+        let jpg_head = base64::engine::general_purpose::STANDARD.encode([0xFF, 0xD8, 0xFF, 0xE0]);
+        assert_eq!(guess_image_mime(&jpg_head), "image/jpeg");
+        // data URI 声明优先
+        assert_eq!(
+            guess_image_mime("data:image/webp;base64,AAAA"),
+            "image/webp"
+        );
+        // 兜底 JPEG
+        assert_eq!(guess_image_mime(""), "image/jpeg");
     }
 
     #[test]

@@ -9,6 +9,7 @@
 /// - 独立的 Prompt 模板和结果解析逻辑
 /// - 独立的事件名命名空间（qbank_grading_stream_）
 pub mod events;
+pub mod image_answer;
 pub mod pipeline;
 pub mod types;
 
