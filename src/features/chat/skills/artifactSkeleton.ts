@@ -14,8 +14,8 @@
 
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 import { generativeUIRegistry } from '@/features/generative-ui/registry';
-// 内置块 import 即注册——保证校验时 registry 已填充，避免模块加载顺序导致误报
-import '@/features/generative-ui/blocks';
+// Validation needs schema metadata, not React renderers/charting libraries.
+import '@/features/generative-ui/blockSchemas';
 import type { SkillArtifactDeclaration, SkillDefinition } from './types';
 
 /** 骨架注入段的包裹标签（prompt 内可识别、审计可过滤） */

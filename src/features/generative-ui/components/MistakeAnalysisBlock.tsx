@@ -1,17 +1,10 @@
+import { mistakeAnalysisPropsSchema } from '../schema';
+export { mistakeAnalysisPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
-
-export const mistakeAnalysisPropsSchema = z.object({
-  id: z.string().optional(),
-  topic: z.string().min(1).max(120),
-  errorRate: z.number().min(0).max(100),
-  mistakeCount: z.number().min(0).optional(),
-  suggestion: z.string().max(500),
-  severity: z.enum(['low', 'medium', 'high']).optional().default('medium'),
-});
 
 export type MistakeAnalysisProps = z.infer<typeof mistakeAnalysisPropsSchema>;
 

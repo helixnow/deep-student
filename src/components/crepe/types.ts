@@ -4,7 +4,7 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
-import type { AgentHighlightMeta } from './plugins/agentHighlight';
+import type { AgentHighlightMeta, AgentHighlightState } from './plugins/agentHighlight';
 import type { CrepePluginsOptions } from './plugins';
 import type { CrepeFormattingState } from './formattingState';
 import type { BlockTransferService } from './blockTransfer/service';
@@ -183,6 +183,9 @@ export interface CrepeEditorApi {
    * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）
    */
   agentSignal: (meta: AgentHighlightMeta) => void;
+
+  /** Read mapped AI caret/ranges without importing editor runtime into callers. */
+  getAgentHighlightState?: () => AgentHighlightState | null;
 
   /**
    * ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出。

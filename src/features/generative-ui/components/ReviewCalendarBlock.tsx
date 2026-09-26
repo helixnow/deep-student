@@ -1,26 +1,12 @@
+import { reviewCalendarPropsSchema } from '../schema';
+export { reviewCalendarPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { formatGenerativeDate } from '../utils/formatGenerativeDate';
 import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
-
-export const reviewCalendarPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().max(120).optional(),
-  days: z
-    .array(
-      z.object({
-        date: z.string().min(1).max(20),
-        label: z.string().max(40).optional(),
-        dueCount: z.number().min(0),
-        completedCount: z.number().min(0).optional(),
-      }),
-    )
-    .min(1)
-    .max(14),
-});
 
 export type ReviewCalendarProps = z.infer<typeof reviewCalendarPropsSchema>;
 

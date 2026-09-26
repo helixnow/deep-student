@@ -44,7 +44,7 @@ import { BlockTransferDialog } from './blockTransfer/BlockTransferDialog';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { readFormattingState } from './formattingState';
 import { readCssTimeMs } from '@/shared/utils/cssTime';
-import { agentHighlightKey, type AgentHighlightMeta } from './plugins/agentHighlight';
+import { agentHighlightKey, type AgentHighlightMeta, type AgentHighlightState } from './plugins/agentHighlight';
 import {
   createImageBlockConfig,
   createImageUploader,
@@ -1078,6 +1078,21 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       },
       
       getCrepe: () => crepeRef.current,
+
+      getAgentHighlightState: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return null;
+        try {
+          let state: AgentHighlightState | null = null;
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            state = agentHighlightKey.getState(view.state) ?? null;
+          });
+          return state;
+        } catch {
+          return null;
+        }
+      },
       
       destroy: async () => {
         setBlockMenu(null);

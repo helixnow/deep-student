@@ -11,14 +11,12 @@
  * 设计：docs/dev/acr/DESIGN.md §5.2 / ROUND1 R1-12 / ROUND2 R2-03
  * 锚点对齐 R1-03：{ heading?, position: 'end'|'afterHeading' }
  */
-import { editorViewCtx } from '@milkdown/kit/core';
 import i18n from '@/i18n';
 import { boundedRegexReplace } from '@/utils/boundedRegexReplace';
 import type { CrepeEditorApi, FullDocumentSnapshot } from '@/components/crepe/types';
-import {
-  agentHighlightKey,
-  type AgentHighlightMeta,
-  type AgentHighlightState,
+import type {
+  AgentHighlightMeta,
+  AgentHighlightState,
 } from '@/components/crepe/plugins/agentHighlight';
 import { isContentDirty } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { withUserPatch } from '../userPatch';
@@ -447,27 +445,12 @@ function dispatchSuggestionEvent(detail: {
 
 /** 从 agentHighlight 插件读取当前 caret / 插入区间（供批次重映射与账本） */
 export function readAgentHighlightState(
-  api: Pick<CrepeEditorApi, 'getCrepe'>,
+  api: Pick<CrepeEditorApi, 'getCrepe' | 'getAgentHighlightState'>,
 ): AgentHighlightState | null {
-  const crepe = api.getCrepe();
-  if (!crepe) return null;
   try {
-    let state: AgentHighlightState | null = null;
-    crepe.editor.action((ctx) => {
-      let view: { state: unknown } | null = null;
-      try {
-        view = ctx.get('editorView' as never);
-      } catch {
-        try {
-          view = ctx.get(editorViewCtx as never);
-        } catch {
-          return;
-        }
-      }
-      if (!view) return;
-      state = agentHighlightKey.getState(view.state as never) ?? null;
-    });
-    return state;
+    // The mounted editor owns Milkdown/ProseMirror. ACR registration/probing
+    // must not import that runtime before any note is opened.
+    return api.getAgentHighlightState?.() ?? null;
   } catch {
     return null;
   }
@@ -638,7 +621,7 @@ async function waitWhileNoteHot(
  * 导出供并发交错单测。
  */
 export function remapInsertPos(
-  api: Pick<CrepeEditorApi, 'getCrepe' | 'getDocEndPos'>,
+  api: Pick<CrepeEditorApi, 'getCrepe' | 'getDocEndPos' | 'getAgentHighlightState'>,
   fallbackPos: number,
 ): number {
   const hl = readAgentHighlightState(api);

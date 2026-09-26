@@ -1,12 +1,13 @@
+import { STEPS_STATUSES, stepsStepSchema, stepsBlockPropsSchema } from '../schema';
+export { STEPS_STATUSES, stepsStepSchema, stepsBlockPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { CheckCircle, Circle, MinusCircle, WarningCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from '../registry';
 
-export const STEPS_STATUSES = ['pending', 'active', 'done', 'error', 'skipped'] as const;
 export type StepsStatus = (typeof STEPS_STATUSES)[number];
 
 /** status → 设计宪法语义色（default/info/success/destructive/muted） */
@@ -41,20 +42,6 @@ const STATUS_BADGE_CLASS: Record<StepsStatus, string> = {
   error: 'bg-destructive/10 text-destructive',
   skipped: 'bg-muted/10 text-muted-foreground',
 };
-
-export const stepsStepSchema = z.object({
-  id: z.string().optional(),
-  label: z.string().min(1).max(160),
-  description: z.string().max(300).optional(),
-  status: z.enum(STEPS_STATUSES).default('pending'),
-  durationLabel: z.string().max(40).optional(),
-});
-
-export const stepsBlockPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().max(120).optional(),
-  steps: z.array(stepsStepSchema).min(1).max(20),
-});
 
 export type StepsStepProps = z.infer<typeof stepsStepSchema>;
 export type StepsBlockProps = z.infer<typeof stepsBlockPropsSchema>;

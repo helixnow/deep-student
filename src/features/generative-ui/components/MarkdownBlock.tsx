@@ -1,21 +1,13 @@
+import { MARKDOWN_TITLE_MAX, MARKDOWN_BODY_MAX, markdownPropsSchema } from '../schema';
+export { MARKDOWN_TITLE_MAX, MARKDOWN_BODY_MAX, markdownPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { Card, CardContent, CardHeader } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
 import { GenerativeMarkdownBody } from './GenerativeMarkdownBody';
 import { GenerativeUIErrorBoundary } from './GenerativeUIErrorBoundary';
 import { sanitizeGenerativeMarkdown } from '../utils/sanitizeGenerativeMarkdown';
-
-export const MARKDOWN_TITLE_MAX = 120;
-export const MARKDOWN_BODY_MAX = 20000;
-
-export const markdownPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().max(MARKDOWN_TITLE_MAX).optional(),
-  body: z.string().min(1).max(MARKDOWN_BODY_MAX),
-  variant: z.enum(['default', 'compact']).optional(),
-});
 
 export type MarkdownBlockProps = z.infer<typeof markdownPropsSchema>;
 

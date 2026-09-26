@@ -3,7 +3,7 @@
  * 不依赖 zod-to-json-schema；块 type enum 来自已注册表，保证可序列化、可确定性导出。
  */
 
-import '../blocks';
+import '../blockSchemas';
 import { generativeUIRegistry } from '../registry';
 import {
   GENERATIVE_LAYOUT_UNITS,

@@ -1,6 +1,8 @@
+import { CHART_KINDS, chartSeriesSchema, chartBlockPropsSchema } from '../schema';
+export { CHART_KINDS, chartSeriesSchema, chartBlockPropsSchema } from '../schema';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import {
   Bar,
   BarChart,
@@ -28,28 +30,6 @@ export function resolveChartAnimationActive(
 ): boolean {
   return !compact && !prefersReducedMotion;
 }
-
-export const CHART_KINDS = ['bar', 'line', 'pie'] as const;
-
-export const chartSeriesSchema = z.object({
-  name: z.string().max(40),
-  values: z.array(z.number()),
-});
-
-export const chartBlockPropsSchema = z
-  .object({
-    id: z.string().optional(),
-    title: z.string().max(120).optional(),
-    kind: z.enum(CHART_KINDS),
-    categories: z.array(z.string()).min(1).max(24),
-    series: z.array(chartSeriesSchema).min(1).max(8).optional(),
-    unit: z.string().max(16).optional(),
-  })
-  .refine(
-    (data) =>
-      (data.series ?? []).every((item) => item.values.length === data.categories.length),
-    { message: 'series.values.length must equal categories.length', path: ['series'] },
-  );
 
 export type ChartKind = (typeof CHART_KINDS)[number];
 export type ChartSeries = z.infer<typeof chartSeriesSchema>;

@@ -3,7 +3,8 @@
  */
 
 import type { GenerativeUIIntent } from '../types';
-import { STEPS_STATUSES, type StepsStatus } from '../components/StepsBlock';
+import { STEPS_STATUSES } from '../schema';
+import type { StepsStatus } from '../components/StepsBlock';
 
 const STATUS_SET = new Set<string>(STEPS_STATUSES);
 
