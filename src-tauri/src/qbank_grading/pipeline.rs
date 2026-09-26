@@ -599,6 +599,19 @@ fn build_prompts(
         user_prompt.push('\n');
     }
 
+    // 结构化数据（填空空位定义 / 数值容差 / 匹配配对 / 排序正序）：
+    // 判分依据不止 question.answer，填空题的可接受答案列表存在这里——
+    // 不传的话模型看不到"有几个空、每空接受什么答案"，只能盲猜。
+    if let Some(structured) = question
+        .structured_data
+        .as_ref()
+        .filter(|v| !v.is_null() && **v != serde_json::json!({}))
+    {
+        user_prompt.push_str("## 结构化作答要求\n");
+        user_prompt.push_str(&serde_json::to_string_pretty(structured).unwrap_or_default());
+        user_prompt.push_str("\n\n");
+    }
+
     // 参考答案
     if let Some(ref answer) = question.answer {
         user_prompt.push_str("## 参考答案\n");
@@ -1155,6 +1168,44 @@ mod tests {
             build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
 
         assert!(user_prompt.contains("物体所受合力等于质量与加速度的乘积"));
+    }
+
+    #[test]
+    fn build_prompts_includes_structured_data_when_present() {
+        let mut question = test_question_for_prompt();
+        question.question_type = crate::vfs::repos::QuestionType::FillBlank;
+        question.structured_data = Some(serde_json::json!({
+            "blanks": [
+                { "answers": ["牛顿第二定律", "Newton's second law"], "case_sensitive": false, "trim": true }
+            ]
+        }));
+        let submission = envelope_submission("牛顿定律");
+
+        let (_, user_prompt) =
+            build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+
+        // 填空空位定义进 prompt：模型能看到可接受答案列表
+        assert!(user_prompt.contains("## 结构化作答要求"));
+        assert!(user_prompt.contains("牛顿第二定律"));
+        assert!(user_prompt.contains("Newton's second law"));
+    }
+
+    #[test]
+    fn build_prompts_omits_structured_data_section_when_null_or_empty() {
+        for structured in [
+            None,
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!({})),
+        ] {
+            let mut question = test_question_for_prompt();
+            question.structured_data = structured;
+            let submission = envelope_submission("文字作答");
+
+            let (_, user_prompt) =
+                build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+
+            assert!(!user_prompt.contains("## 结构化作答要求"));
+        }
     }
 
     #[test]
