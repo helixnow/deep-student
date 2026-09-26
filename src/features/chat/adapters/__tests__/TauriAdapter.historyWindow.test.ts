@@ -73,6 +73,23 @@ function pageResponse(offset: number, count: number, total: number) {
   };
 }
 
+function fullSessionResponse(total: number) {
+  return {
+    session: { id: SESSION_ID },
+    messages: makeMessages(0, total),
+    blocks: makeBlocks(0, total),
+    totalMessageCount: total,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 interface Harness {
   adapter: ChatV2TauriAdapter;
   prepends: Array<{ offsetGuess: number; messages: unknown[]; total: number }>;
@@ -117,6 +134,7 @@ function createHarness(opts: {
 
 beforeEach(() => {
   invokeMock.mockReset();
+  vi.restoreAllMocks();
 });
 
 describe('loadEarlierMessages（反向窗口续拉）', () => {
@@ -174,21 +192,100 @@ describe('loadEarlierMessages（反向窗口续拉）', () => {
     expect(invokeMock).not.toHaveBeenCalled();
   });
 
-  it('空页不回推进窗口也不合并', async () => {
+  it('手动短页不直接合并，改用全量 fallback 保持窗口连续', async () => {
+    const { adapter, prepends } = createHarness({
+      windowStartOffset: 300,
+      totalCount: 400,
+      initialLoadedCount: 100,
+    });
+    invokeMock
+      .mockResolvedValueOnce(pageResponse(200, 30, 400))
+      .mockResolvedValueOnce(fullSessionResponse(400));
+
+    await adapter.loadEarlierMessages();
+
+    expect(invokeMock.mock.calls.map((call) => call[0])).toEqual([
+      'chat_v2_load_messages_page',
+      'chat_v2_load_session',
+    ]);
+    expect(prepends).toHaveLength(1);
+    expect(prepends[0].messages).toHaveLength(400);
+    expect(
+      (adapter as unknown as Record<string, unknown>).historyWindowStartOffset,
+    ).toBe(0);
+  });
+
+  it('请求返回时窗口已推进则丢弃过期响应，不按共享窗口值盲减', async () => {
+    const { adapter, prepends } = createHarness({
+      windowStartOffset: 350,
+      totalCount: 450,
+      initialLoadedCount: 100,
+    });
+    const page = deferred<ReturnType<typeof pageResponse>>();
+    invokeMock.mockReturnValueOnce(page.promise);
+
+    const pending = adapter.loadEarlierMessages();
+    (adapter as unknown as Record<string, unknown>).historyWindowStartOffset = 150;
+    page.resolve(pageResponse(250, PAGE_SIZE, 450));
+    await pending;
+
+    expect(prepends).toHaveLength(0);
+    expect(
+      (adapter as unknown as Record<string, unknown>).historyWindowStartOffset,
+    ).toBe(150);
+  });
+
+  it('取消 pending idle 回填后手动页先提交，再从新窗口恢复自动回填', async () => {
+    const idleCallbacks: Array<() => void> = [];
+    const cancelIdleCallback = vi.fn();
+    Object.defineProperty(window, 'requestIdleCallback', {
+      configurable: true,
+      value: vi.fn((callback: () => void) => {
+        idleCallbacks.push(callback);
+        return idleCallbacks.length;
+      }),
+    });
+    Object.defineProperty(window, 'cancelIdleCallback', {
+      configurable: true,
+      value: cancelIdleCallback,
+    });
+
     const { adapter, prepends } = createHarness({
       windowStartOffset: 200,
       totalCount: 300,
       initialLoadedCount: 100,
     });
-    invokeMock.mockResolvedValueOnce(pageResponse(100, 0, 300));
+    const internal = adapter as unknown as {
+      scheduleFullHistoryLoad: () => void;
+      historyWindowStartOffset: number;
+    };
+    internal.scheduleFullHistoryLoad();
+    expect(idleCallbacks).toHaveLength(1);
 
-    await adapter.loadEarlierMessages();
+    const manualPage = deferred<ReturnType<typeof pageResponse>>();
+    invokeMock.mockReturnValueOnce(manualPage.promise);
+    const manualLoad = adapter.loadEarlierMessages();
 
-    expect(prepends).toHaveLength(0);
-    // 空页不推进窗口（与 backfill 空页收尾不同：手动路径保守不动）
-    expect(
-      (adapter as unknown as Record<string, unknown>).historyWindowStartOffset,
-    ).toBe(200);
+    expect(cancelIdleCallback).toHaveBeenCalledWith(1);
+    // 即使已取消的 callback 被迟到派发，也不得启动同页请求。
+    idleCallbacks[0]();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect((invokeMock.mock.calls[0][1] as { offset: number }).offset).toBe(100);
+
+    manualPage.resolve(pageResponse(100, PAGE_SIZE, 300));
+    await manualLoad;
+    expect(internal.historyWindowStartOffset).toBe(100);
+    expect(idleCallbacks).toHaveLength(2);
+
+    invokeMock.mockResolvedValueOnce(pageResponse(0, PAGE_SIZE, 300));
+    idleCallbacks[1]();
+    await vi.waitFor(() => expect(internal.historyWindowStartOffset).toBe(0));
+
+    expect(invokeMock.mock.calls.map((call) => (call[1] as { offset: number }).offset)).toEqual([
+      100,
+      0,
+    ]);
+    expect(prepends).toHaveLength(2);
   });
 });
 
