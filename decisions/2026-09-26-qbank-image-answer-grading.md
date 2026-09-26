@@ -1,8 +1,10 @@
 # 题库图片作答 — 主观题/填空题手写拍照上传与多模态 AI 判分方案
 
 日期：2026-09-26
-状态：方案完成，待确认后实施
-前置探索：本会话对答题/判分全链路的代码实证（file:line 均为当前 main 0.9.70 口径）。
+状态：已实施（分支 feat/qbank-image-answer-grading，5 commit：523f8456 方案文档 / 891fdaaf 信封契约 / 0c16da13 后端多模态评判 / 0cdad201 前端上传 UI / dcd4daa3 structured_data 补缺）
+决策点确认：D1 Analyze 同批支持=是；D2 上限对齐作文口径（6 张/50MB/100MB）；D3 上传前压缩保清晰（长边 2000px jpeg 0.9）；D4 填空题开放图片作答=是；D5 structured_data 补缺=做。
+测试结果：后端 qbank_grading 21/21、question_bank_service 26/26、question_repo 5/5、essay_grading 51/51；前端 tsc 绿、vitest 新增 16 例全绿（全套 25 个失败经干净 main 基线对照确认全部为既有失败，crepe/mindmap 等无关模块）。
+前置探索：本会话对答题/判分全链路的代码实证（file:line 均为当时 main 0.9.70 口径）。
 
 ## 〇、需求与结论
 
