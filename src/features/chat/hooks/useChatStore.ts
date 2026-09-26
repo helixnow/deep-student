@@ -56,6 +56,104 @@ function lookupBlocksIfChanged(
 // 长会话直渲染准入辅助
 // ============================================================================
 
+const DEFAULT_DIRECT_RENDER_MAX_CONTENT_LENGTH = 200_000;
+
+export interface BlocksContentLengthState {
+  blocks: Map<string, Block>;
+  sessionStatus: SessionStatus;
+  activeBlockIds: ReadonlySet<string>;
+}
+
+interface KnownBlockLength {
+  block: Block;
+  length: number;
+}
+
+function blockContentLength(block: Block | undefined): number {
+  return block?.content?.length ?? 0;
+}
+
+/**
+ * 为单个 ChatStore/MessageList 实例创建增量 selector。
+ *
+ * 首次或非流式 blocks 迁移会建立一次完整基线；流式期间 store 的契约是
+ * content 只通过 activeBlockIds 中的块增长，因此后续 flush 只读取这些块。
+ * 若活跃集合不足以解释 Map 结构变化，则回退全量重建，优先保证准入正确。
+ * 一旦超过直渲阈值，返回 threshold + 1 并锁存：会话此后保持虚拟化，避免
+ * 每个 token flush 为一个已经确定不满足准入的会话继续统计。
+ */
+export function createBlocksContentLengthSelector(
+  threshold = DEFAULT_DIRECT_RENDER_MAX_CONTENT_LENGTH,
+): (state: BlocksContentLengthState) => number {
+  const overThreshold = threshold + 1;
+  let lastBlocks: Map<string, Block> | null = null;
+  let total = 0;
+  let latched = false;
+  const knownLengths = new Map<string, KnownBlockLength>();
+
+  const fullScan = (blocks: Map<string, Block>): number => {
+    knownLengths.clear();
+    total = 0;
+    for (const [id, block] of blocks) {
+      const length = blockContentLength(block);
+      total += length;
+      knownLengths.set(id, { block, length });
+      if (total > threshold) {
+        latched = true;
+        knownLengths.clear();
+        total = overThreshold;
+        break;
+      }
+    }
+    lastBlocks = blocks;
+    return total;
+  };
+
+  return ({ blocks, sessionStatus, activeBlockIds }): number => {
+    if (latched) return overThreshold;
+    if (blocks === lastBlocks) return total;
+    if (!lastBlocks || sessionStatus !== 'streaming' || activeBlockIds.size === 0) {
+      return fullScan(blocks);
+    }
+
+    let changedActiveBlock = false;
+    for (const id of activeBlockIds) {
+      const block = blocks.get(id);
+      const previous = knownLengths.get(id);
+      if (previous?.block === block) continue;
+
+      changedActiveBlock = true;
+      if (!block) {
+        if (previous) {
+          total -= previous.length;
+          knownLengths.delete(id);
+        }
+        continue;
+      }
+
+      const length = blockContentLength(block);
+      total += length - (previous?.length ?? 0);
+      knownLengths.set(id, { block, length });
+      if (total > threshold) {
+        latched = true;
+        knownLengths.clear();
+        total = overThreshold;
+        lastBlocks = blocks;
+        return total;
+      }
+    }
+
+    // 新 Map 却没有活跃块身份变化，或活跃增删无法解释 Map.size，说明这是
+    // history merge / replaceBlockId 等非普通 token flush，安全回退建立基线。
+    if (!changedActiveBlock || knownLengths.size !== blocks.size) {
+      return fullScan(blocks);
+    }
+
+    lastBlocks = blocks;
+    return total;
+  };
+}
+
 const contentLengthCache = new WeakMap<Map<string, Block>, number>();
 
 /**
@@ -74,7 +172,7 @@ export function selectBlocksContentLength(
   let total = 0;
   for (const block of blocks.values()) {
     // thinking 块的正文也存在 content 字段（见 Block 类型注释）
-    total += block.content?.length ?? 0;
+    total += blockContentLength(block);
   }
   contentLengthCache.set(blocks, total);
   return total;

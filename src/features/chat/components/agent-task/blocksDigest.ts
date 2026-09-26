@@ -10,13 +10,12 @@
  * 用 WeakMap 缓存——同一 flush 内所有消费者共享一次扫描：
  * - runtimeActivity / terminalToolCount：O(1) 标量，订阅方按标量比较，
  *   纯正文流式（无新工具块、状态不翻转）时不再触发重渲染。
- * - todoBlocks：todo 工具块数组，与上一份 digest 逐元素做身份比较，
- *   全部相同时复用上一份引用（immer 结构共享保证未变块身份不变），
- *   extractSteps 只在 todo 块真正变化时重跑。
+ * - todoBlocks：todo 工具块数组，按块对象身份序列复用引用（immer 结构
+ *   共享保证未变块身份不变），extractSteps 只在 todo 块真正变化时重跑。
  *
- * WeakMap 以 Map 实例为键：旧 Map 被新 flush 淘汰后缓存条目随之回收，
- * 无需手动清理。不同 store 实例交替计算时折叠链仍按元素身份比较，
- * 语义与稳定性均不受影响。
+ * WeakMap 以 Map / Block 实例为键：旧对象被淘汰后缓存条目随之回收，
+ * 无需手动清理。todo 序列缓存不依赖“上一次调用”，因此不同 store
+ * 交错计算不会破坏各自引用稳定性。
  */
 
 import type { Block } from '../../core/types/block';
@@ -42,17 +41,36 @@ const EMPTY_DIGEST: BlocksDigest = {
 
 const EMPTY_TODO_BLOCKS: Block[] = [];
 
-/** 折叠链：跨 flush 复用 todoBlocks 数组引用 */
-let lastTodoBlocks: Block[] = EMPTY_TODO_BLOCKS;
+interface TodoSequenceNode {
+  children: WeakMap<Block, TodoSequenceNode>;
+  todoBlocks?: Block[];
+}
+
+/**
+ * 按 todo 块对象序列驻留数组引用。
+ *
+ * 每一级都以 Block 为 WeakMap key；缓存不会像模块级 lastTodoBlocks 那样
+ * 强引用某个会话最后一批 todo 块，也不会因 A → B → A 调用顺序而抖动。
+ */
+const todoSequenceRoot: TodoSequenceNode = { children: new WeakMap() };
 
 const digestCache = new WeakMap<Map<string, Block>, BlocksDigest>();
 
-function sameElements(next: Block[], prev: Block[]): boolean {
-  if (next.length !== prev.length) return false;
-  for (let i = 0; i < next.length; i++) {
-    if (next[i] !== prev[i]) return false;
+function internTodoBlocks(todoBlocks: Block[]): Block[] {
+  if (todoBlocks.length === 0) return EMPTY_TODO_BLOCKS;
+
+  let node = todoSequenceRoot;
+  for (const block of todoBlocks) {
+    let child = node.children.get(block);
+    if (!child) {
+      child = { children: new WeakMap() };
+      node.children.set(block, child);
+    }
+    node = child;
   }
-  return true;
+
+  if (!node.todoBlocks) node.todoBlocks = todoBlocks;
+  return node.todoBlocks;
 }
 
 function computeDigest(blocks: Map<string, Block>): BlocksDigest {
@@ -73,13 +91,7 @@ function computeDigest(blocks: Map<string, Block>): BlocksDigest {
     if (isTodoTool(block)) todo.push(block);
   }
 
-  const todoBlocks =
-    todo.length === 0
-      ? EMPTY_TODO_BLOCKS
-      : sameElements(todo, lastTodoBlocks)
-        ? lastTodoBlocks
-        : todo;
-  lastTodoBlocks = todoBlocks;
+  const todoBlocks = internTodoBlocks(todo);
 
   return { size: blocks.size, runtimeActivity, terminalToolCount, todoBlocks };
 }
