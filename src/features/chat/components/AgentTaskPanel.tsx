@@ -70,9 +70,8 @@ import {
   extractSteps,
   extractTaskCompletion,
   isRuntimeTool,
-  isTodoTool,
-  normalizeToolName,
 } from './agent-task/extractors';
+import { getBlocksDigest } from './agent-task/blocksDigest';
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
@@ -164,9 +163,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   const { isSmallScreen } = useBreakpoint();
   const ref = useRef<HTMLDivElement>(null);
 
-  const blocksMap = useStore(store, (s) => s.blocks);
+  // 🚀 长会话性能：不订阅整个 blocks Map——流式期间每次 flush immer 都产出
+  // 新 Map，整 Map 订阅会让本面板每 120ms 重渲染并全量扫描。改为订阅
+  // blocksDigest 的工具面标量（runtimeActivity / todoBlocks，WeakMap 按 Map
+  // 身份缓存，每次 flush 全局只扫一遍），仅在工具块构成真正变化时重渲染。
   const sessionId = useStore(store, (s) => s.sessionId);
   const streaming = useStore(store, (s) => (s.activeBlockIds?.size ?? 0) > 0);
+  const hasRuntimeActivity = useStore(store, (s) => getBlocksDigest(s.blocks).runtimeActivity);
+  const todoBlocks = useStore(store, (s) => getBlocksDigest(s.blocks).todoBlocks);
   const [workspacePage, setWorkspacePage] = useState<RuntimeDirectoryPage | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [browserDownloads, setBrowserDownloads] = useState<BrowserDownloadObservation[]>([]);
@@ -196,37 +200,25 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     }
   }, [sessionId]);
 
-  const { steps, title, isAllDone, message } = useMemo(() => {
-    const out: { toolOutput?: unknown; toolName?: string }[] = [];
-    blocksMap?.forEach((b) => { if (isTodoTool(b)) out.push(b); });
-    return extractSteps(out);
-  }, [blocksMap]);
+  // todoBlocks 引用由 digest 折叠：todo 块未变时保持同一引用，
+  // extractSteps 只在 todo 计划真正更新时重跑
+  const { steps, title, isAllDone, message } = useMemo(
+    () => extractSteps(todoBlocks),
+    [todoBlocks],
+  );
 
-  // 廉价存在性检查：即使没有 todo 计划，只要用了本地 runtime 工具面板也要出现
-  //（只比较 toolName 字符串，流式期间每帧代价可忽略）
-  const hasRuntimeActivity = useMemo(() => {
-    if (!blocksMap) return false;
-    let found = false;
-    blocksMap.forEach((b) => {
-      if (found) return;
-      if (typeof b?.toolName === 'string') {
-        const short = normalizeToolName(b.toolName);
-        if (isRuntimeTool(b.toolName) || short === 'browser_downloads' || short === 'browser_file_upload') {
-          found = true;
-        }
-      }
-    });
-    return found;
-  }, [blocksMap]);
-
-  // 展开态才做的全量提取：折叠态不展示这些区，
-  // 流式期间 blocksMap 每帧变化，无谓的全量重算会被跳过
+  // 展开态才订阅 blocks：折叠态 selector 恒返回 null（稳定引用，流式零开销），
+  // 展开态与旧实现一致按 Map 身份重算（用户主动展开的信息区代价自担）
+  const expandedBlocksMap = useStore(
+    store,
+    useCallback((s: ChatStore) => (expanded ? s.blocks : null), [expanded]),
+  );
   const expandedBlocks = useMemo(() => {
-    if (!expanded || !blocksMap) return EMPTY_BLOCKS;
+    if (!expanded || !expandedBlocksMap) return EMPTY_BLOCKS;
     const all: Block[] = [];
-    blocksMap.forEach((b) => all.push(b));
+    expandedBlocksMap.forEach((b) => all.push(b));
     return all;
-  }, [blocksMap, expanded]);
+  }, [expandedBlocksMap, expanded]);
 
   // ── 产物架（会话级 registry：generative-ui / anki-cards / note / file）──
   // 折叠态也参与：有产物但无计划/运行时，面板同样出现（pill 显示「产物 N」）
@@ -238,6 +230,14 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   }, [sessionId, registryVersion]);
   // 内联详情只对「产物即视图」的两类展开；note/file 走右侧附件预览（完整编辑器）
   const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
+  // 只订阅打开中的产物块：详情随该块流式更新刷新，关闭时订阅值恒 undefined 零噪声
+  const openArtifactBlock = useStore(
+    store,
+    useCallback(
+      (s: ChatStore) => (openArtifactId ? s.blocks.get(openArtifactId) : undefined),
+      [openArtifactId],
+    ),
+  );
   // 工作区文件：与本次会话产物的关联弱（不一定在会话中变动），默认折叠且沉到面板末尾
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
 
@@ -287,7 +287,9 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
 
   /** 手风琴详情（仅 generative-ui / anki-cards 调用） */
   const renderArtifactDetail = useCallback((entry: ArtifactEntry) => {
-    const block = blocksMap?.get(entry.artifactId);
+    const block = entry.artifactId === openArtifactId
+      ? openArtifactBlock
+      : store.getState().blocks.get(entry.artifactId);
     if (!block) {
       return (
         <div className="px-1 py-2 text-2xs text-[color:var(--text-muted)]">
@@ -327,7 +329,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
       );
     }
     return <AnkiCardsBlock block={block} store={chatStore} />;
-  }, [blocksMap, chatStore, t]);
+  }, [openArtifactId, openArtifactBlock, store, chatStore, t]);
 
   /** 在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）。 */
   const revealRuntimeFile = useCallback(async (item: ChangeItem) => {

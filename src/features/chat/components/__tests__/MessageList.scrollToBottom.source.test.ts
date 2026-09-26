@@ -77,7 +77,11 @@ describe('MessageList scroll-to-bottom source contract', () => {
   it('follows bottom via layout effect + ResizeObserver instead of a rAF polling loop', () => {
     expect(source).toContain('const followBottom = useCallback(() => {');
     expect(source).toContain('if (!el || !atBottomRef.current) return;');
-    expect(source).toContain('writeScroll(el.scrollHeight);');
+    // 2026-09-25：followBottom 增加精确状态去重（读 scrollHeight → 与上次
+    // 状态一致则跳过写入），写入仍走 writeScroll 记账
+    expect(source).toContain('const height = el.scrollHeight;');
+    expect(source).toContain('writeScroll(height);');
+    expect(source).toContain('lastFollowStateRef.current = { top: observedTopRef.current, height };');
     // 常驻 RO 跟随（不限流式），log 节点随 listEpoch remount 时用 state 重新观察
     expect(source).toContain('new ResizeObserver(() => { followBottom(); })');
     expect(source).toContain('const [logElement, setLogElement] = useState<HTMLElement | null>(null);');
@@ -108,6 +112,23 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain('writeScroll(pending.scrollTop + delta);');
     expect(source).not.toContain('initialMessageCountRef.current += insertedCount;');
     expect(source).not.toContain('historyInsertionRef');
+  });
+
+  it('preserves the reader anchor when render mode crosses a direct-render threshold', () => {
+    expect(source).toContain('const previousDirectRenderRef = useRef(useDirectRender);');
+    expect(source).toContain('previousDirectRenderRef.current !== useDirectRender');
+    expect(source).toContain('!atBottomRef.current');
+    expect(source).toContain('pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);');
+    expect(source).toContain('[messageOrder, tailWindowExpanded, useDirectRender, isStreaming, store, viewportElement, followBottom, writeScroll]');
+  });
+
+  it('loads older windows before reporting an off-window message as missing', () => {
+    expect(source).toContain('while (index < 0 && state.hasMoreHistory) {');
+    expect(source).toContain('await state.loadEarlierMessages();');
+    expect(source).toContain("const orderProgressed = order.length !== previousOrder.length");
+    expect(source).toContain('const paginationProgressed = state.hasMoreHistory !== previousHasMoreHistory;');
+    expect(source).toContain('if (!orderProgressed && !paginationProgressed) break;');
+    expect(source).not.toMatch(/for \(let page[^)]*<\s*\d+/);
   });
 
   it('gates virtualizer size-change adjustments while following', () => {

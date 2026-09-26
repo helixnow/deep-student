@@ -14,6 +14,12 @@ export interface MessageSearchBarProps {
   activeMatchIndex: number;
   activeMessageId: string | null;
   activeOccurrenceIndex: number;
+  /**
+   * 长会话窗口化：还有更早历史未加载进内存时为 true。
+   * 搜索只覆盖已加载窗口——无结果时提示用户可加载更早历史再查，
+   * 避免把"未加载"静默呈现为"无匹配"。
+   */
+  hasUnloadedHistory?: boolean;
   onQueryChange: (query: string) => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -28,6 +34,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
   activeMatchIndex,
   activeMessageId,
   activeOccurrenceIndex,
+  hasUnloadedHistory = false,
   onQueryChange,
   onPrevious,
   onNext,
@@ -84,7 +91,9 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
           current: activeMatchIndex + 1,
           count: matchCount,
         })
-      : t('messageList.search.noResults')
+      : hasUnloadedHistory
+        ? t('messageList.search.noResultsInLoadedWindow')
+        : t('messageList.search.noResults')
     : '';
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {

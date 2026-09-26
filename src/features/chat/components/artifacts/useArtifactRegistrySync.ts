@@ -11,6 +11,7 @@
 import { useEffect, useState } from 'react';
 import type { Block } from '../../core/types/block';
 import { hydrateSessionArtifacts, subscribeArtifactRegistry } from '../../core/store/artifactRegistry';
+import { getBlocksDigest } from '../agent-task/blocksDigest';
 
 /** useArtifactRegistrySync 需要的最小 store 面（blocks 读取 + 订阅） */
 export interface ArtifactRegistryStoreLike {
@@ -18,18 +19,6 @@ export interface ArtifactRegistryStoreLike {
   subscribe: (
     listener: (state: { blocks: Map<string, Block> }, prevState: { blocks: Map<string, Block> }) => void,
   ) => () => void;
-}
-
-/**
- * 终态工具块计数：size 不变的原地 toolOutput 落库也要覆盖；
- * 用计数而非 Map 引用比较，避免流式 chunk 更新触发全量重派生。
- */
-function countTerminalToolBlocks(blocks: Map<string, { toolName?: string; status: string }>): number {
-  let n = 0;
-  for (const b of blocks.values()) {
-    if (b.toolName && (b.status === 'success' || b.status === 'error')) n += 1;
-  }
-  return n;
 }
 
 export interface ArtifactRegistrySync {
@@ -52,14 +41,16 @@ export function useArtifactRegistrySync(
     });
   }, [sessionId]);
 
-  // 懒扫水合 + blocks 规模变化增量补齐（restore 分页 prepend 后新到旧块）
+  // 懒扫水合 + blocks 规模变化增量补齐（restore 分页 prepend 后新到旧块）。
+  // 🚀 终态计数走 blocksDigest（WeakMap 按 Map 身份缓存，流式期间与
+  // AgentTaskPanel 共享每次 flush 的唯一一遍扫描），不再自建全量计数。
   useEffect(() => {
     if (!store || !sessionId) return;
     hydrateSessionArtifacts(sessionId, store.getState());
-    let lastTerminalCount = countTerminalToolBlocks(store.getState().blocks);
+    let lastTerminalCount = getBlocksDigest(store.getState().blocks).terminalToolCount;
     const unsub = store.subscribe((state, prev) => {
       if (state.blocks === prev.blocks) return;
-      const terminalCount = countTerminalToolBlocks(state.blocks);
+      const terminalCount = getBlocksDigest(state.blocks).terminalToolCount;
       if (state.blocks.size !== prev.blocks.size || terminalCount !== lastTerminalCount) {
         lastTerminalCount = terminalCount;
         hydrateSessionArtifacts(sessionId, state);

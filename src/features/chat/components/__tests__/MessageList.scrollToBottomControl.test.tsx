@@ -94,6 +94,9 @@ vi.mock('@/features/chat/hooks/useChatStore', () => ({
   useMessageOrder: () => mockMessageOrder,
   useSessionStatus: () => mockSessionStatus,
   useIsDataLoaded: () => mockIsDataLoaded,
+  // 直渲染准入的内容总量选择器：测试桩无真实 blocks Map，返回 0 即可
+  //（准入仍由 mockMessageOrder 的消息数决定直渲/虚拟路径）
+  createBlocksContentLengthSelector: () => () => 0,
 }));
 
 vi.mock('@/features/chat/debug/sessionSwitchPerf', () => ({
