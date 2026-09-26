@@ -7,7 +7,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { selectBlocksContentLength } from '../useChatStore';
+import {
+  createBlocksContentLengthSelector,
+  selectBlocksContentLength,
+} from '../useChatStore';
 import type { Block } from '../../core/types';
 
 function makeBlock(id: string, content: string): Block {
@@ -49,5 +52,89 @@ describe('selectBlocksContentLength', () => {
       ['b1', makeBlock('b1', 'abcdefgh')],
     ]);
     expect(selectBlocksContentLength(next)).toBe(8);
+  });
+});
+
+describe('createBlocksContentLengthSelector', () => {
+  it('流式新 Map 只读取发生身份变化的 active block', () => {
+    let historicalReads = 0;
+    const historical = makeBlock('history', '12345');
+    Object.defineProperty(historical, 'content', {
+      configurable: true,
+      get() {
+        historicalReads += 1;
+        return '12345';
+      },
+    });
+    const active1 = makeBlock('active', 'abc');
+    const selector = createBlocksContentLengthSelector();
+    const activeBlockIds = new Set(['active']);
+    const first = new Map<string, Block>([
+      ['history', historical],
+      ['active', active1],
+    ]);
+
+    expect(selector({ blocks: first, sessionStatus: 'streaming', activeBlockIds })).toBe(8);
+    expect(historicalReads).toBe(1);
+
+    const active2 = makeBlock('active', 'abcdefgh');
+    const next = new Map(first);
+    next.set('active', active2);
+    expect(selector({ blocks: next, sessionStatus: 'streaming', activeBlockIds })).toBe(13);
+    expect(historicalReads).toBe(1);
+  });
+
+  it('Map 结构变化无法由 activeBlockIds 解释时安全回退全扫', () => {
+    const selector = createBlocksContentLengthSelector();
+    const activeBlockIds = new Set(['active']);
+    const active = makeBlock('active', 'abc');
+    const first = new Map<string, Block>([
+      ['history', makeBlock('history', '12345')],
+      ['active', active],
+    ]);
+    expect(selector({ blocks: first, sessionStatus: 'streaming', activeBlockIds })).toBe(8);
+
+    const next = new Map(first);
+    next.set('new-history', makeBlock('new-history', '1234567'));
+    expect(selector({ blocks: next, sessionStatus: 'streaming', activeBlockIds })).toBe(15);
+  });
+
+  it('超过准入阈值后锁存，后续 Map 不再读取 block content', () => {
+    const selector = createBlocksContentLengthSelector(10);
+    const first = new Map<string, Block>([
+      ['b1', makeBlock('b1', '123456')],
+      ['b2', makeBlock('b2', '123456')],
+    ]);
+    expect(selector({ blocks: first, sessionStatus: 'idle', activeBlockIds: new Set() })).toBe(11);
+
+    let reads = 0;
+    const later = makeBlock('later', 'x');
+    Object.defineProperty(later, 'content', {
+      configurable: true,
+      get() {
+        reads += 1;
+        return 'x';
+      },
+    });
+    expect(selector({
+      blocks: new Map([['later', later]]),
+      sessionStatus: 'idle',
+      activeBlockIds: new Set(),
+    })).toBe(11);
+    expect(reads).toBe(0);
+  });
+
+  it('流式结束后对新 Map 全扫，修正非活跃块变化', () => {
+    const selector = createBlocksContentLengthSelector();
+    const activeBlockIds = new Set(['active']);
+    const first = new Map<string, Block>([
+      ['history', makeBlock('history', '12345')],
+      ['active', makeBlock('active', 'abc')],
+    ]);
+    expect(selector({ blocks: first, sessionStatus: 'streaming', activeBlockIds })).toBe(8);
+
+    const idle = new Map(first);
+    idle.set('history', makeBlock('history', '1234567890'));
+    expect(selector({ blocks: idle, sessionStatus: 'idle', activeBlockIds: new Set() })).toBe(13);
   });
 });

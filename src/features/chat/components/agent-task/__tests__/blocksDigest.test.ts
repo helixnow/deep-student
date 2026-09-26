@@ -105,6 +105,20 @@ describe('getBlocksDigest', () => {
     expect(digest3.todoBlocks).toEqual([todoA, todoB2]);
   });
 
+  it('todoBlocks：不同会话交错计算后仍复用各自引用', () => {
+    const todoA = toolBlock({ id: 'a', toolName: 'todo_init' });
+    const todoB = toolBlock({ id: 'b', toolName: 'todo_init' });
+
+    const digestA1 = getBlocksDigest(toMap([todoA, contentBlock('a-body-1', 'A1')]));
+    const digestB1 = getBlocksDigest(toMap([todoB, contentBlock('b-body-1', 'B1')]));
+    const digestA2 = getBlocksDigest(toMap([todoA, contentBlock('a-body-2', 'A2')]));
+    const digestB2 = getBlocksDigest(toMap([todoB, contentBlock('b-body-2', 'B2')]));
+
+    expect(digestA2.todoBlocks).toBe(digestA1.todoBlocks);
+    expect(digestB2.todoBlocks).toBe(digestB1.todoBlocks);
+    expect(digestA1.todoBlocks).not.toBe(digestB1.todoBlocks);
+  });
+
   it('todoBlocks 清空后回到共享空数组引用', () => {
     const todoA = toolBlock({ id: 't1', toolName: 'todo_init' });
     const withTodo = getBlocksDigest(toMap([todoA]));
