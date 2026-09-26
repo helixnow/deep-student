@@ -10,6 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.71](https://github.com/helixnow/deep-student/compare/v0.9.70...v0.9.71) (2026-09-26)
+
+
+### Bug Fixes
+
+* **chat:** preserve position across history windows ([08e21fb](https://github.com/helixnow/deep-student/commit/08e21fb55da968ffd7e09176d7f672893fac08d8))
+* **chat:** reset content selector per session store ([9158659](https://github.com/helixnow/deep-student/commit/9158659dfc30a47a68510a64a59693d276d82a87))
+* **chat:** search hint for unloaded history window + history-window adapter tests ([a61b3bf](https://github.com/helixnow/deep-student/commit/a61b3bf50cf1a1a637aacd9e792fdd6edd7311e8))
+* **chat:** serialize history window backfill ([3d3972a](https://github.com/helixnow/deep-student/commit/3d3972aa8aad9ce161a4363d68c3bd9cfe832e87))
+
+
+### Performance Improvements
+
+* **chat:** block-level render skip, content-size admission, windowed history backfill ([9cbabe7](https://github.com/helixnow/deep-student/commit/9cbabe709e0fd33e5f034908bb9189603c2b2b4b))
+* **chat:** cut long-session streaming costs to O(active message) ([55a6d74](https://github.com/helixnow/deep-student/commit/55a6d747f5e89cf5c6e4347ca607351cfdbfa16f))
+* **chat:** harden long-context rendering and history windows ([8daed54](https://github.com/helixnow/deep-student/commit/8daed545220b0c88fd22e495b25d34f9dea74c52))
+* **chat:** make streaming caches session-safe ([33c76e7](https://github.com/helixnow/deep-student/commit/33c76e71f447b29fdadd1c77210e8e693e151ff6))
+
 ## [0.9.70](https://github.com/helixnow/deep-student/compare/v0.9.69...v0.9.70) (2026-09-25)
 
 
