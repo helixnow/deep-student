@@ -114,6 +114,23 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).not.toContain('historyInsertionRef');
   });
 
+  it('preserves the reader anchor when render mode crosses a direct-render threshold', () => {
+    expect(source).toContain('const previousDirectRenderRef = useRef(useDirectRender);');
+    expect(source).toContain('previousDirectRenderRef.current !== useDirectRender');
+    expect(source).toContain('!atBottomRef.current');
+    expect(source).toContain('pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);');
+    expect(source).toContain('[messageOrder, tailWindowExpanded, useDirectRender, isStreaming, store, viewportElement, followBottom, writeScroll]');
+  });
+
+  it('loads older windows before reporting an off-window message as missing', () => {
+    expect(source).toContain('while (index < 0 && state.hasMoreHistory) {');
+    expect(source).toContain('await state.loadEarlierMessages();');
+    expect(source).toContain("const orderProgressed = order.length !== previousOrder.length");
+    expect(source).toContain('const paginationProgressed = state.hasMoreHistory !== previousHasMoreHistory;');
+    expect(source).toContain('if (!orderProgressed && !paginationProgressed) break;');
+    expect(source).not.toMatch(/for \(let page[^)]*<\s*\d+/);
+  });
+
   it('gates virtualizer size-change adjustments while following', () => {
     // virtual-core 的实例属性（非构造选项）：跟随时禁止补偿写入（会被账本误判为
     // 读者滚离），阅读时保持 core 默认（仅补偿视口上方的行）

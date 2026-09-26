@@ -22,7 +22,7 @@ import { newMessageVariants } from '@/styles/motion-variants';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
-import { useMessageOrder, useSessionStatus, useIsDataLoaded, selectBlocksContentLength } from '../hooks/useChatStore';
+import { useMessageOrder, useSessionStatus, useIsDataLoaded, createBlocksContentLengthSelector } from '../hooks/useChatStore';
 import type { Block, ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -567,12 +567,32 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 🚀 直渲染准入三条件：消息数 / 总块数 / 总正文字节（见 shouldDirectRender），
   // "一次对话消息就很长"的会话按内容总量落入虚拟化路径
   const blocksCount = useStore(store, (s) => s.blocks?.size ?? 0);
-  const contentLength = useStore(store, (s) => selectBlocksContentLength(s.blocks));
+  const contentLengthSelector = useMemo(
+    () => createBlocksContentLengthSelector(DIRECT_RENDER_MAX_CONTENT_LENGTH),
+    [],
+  );
+  const contentLength = useStore(store, contentLengthSelector);
   const useDirectRender = shouldDirectRender(
     messageOrder.length,
     blocksCount,
     contentLength,
   );
+  // 直渲与虚拟化使用不同的 DOM/定位模型。读者已滚离底部时，跨过任一
+  // 准入阈值会整棵替换消息容器；提交前复用历史插入的锚点快照，提交后的
+  // 统一 layout effect 再恢复同一消息的像素偏移。吸底状态不需要补偿，仍由
+  // followBottom 维持原语义。
+  const previousDirectRenderRef = useRef(useDirectRender);
+  if (previousDirectRenderRef.current !== useDirectRender) {
+    if (
+      !storeChanged
+      && !atBottomRef.current
+      && viewportElement
+      && !pendingScrollCompensationRef.current
+    ) {
+      pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);
+    }
+    previousDirectRenderRef.current = useDirectRender;
+  }
 
   const virtualRowCount = messageOrder.length;
 
@@ -750,7 +770,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       // P1-8: 用户滚离底部期间尾部有新消息追加 → 回到底部按钮显示未读圆点
       setHasUnseenNewMessages(true);
     }
-  }, [messageOrder, tailWindowExpanded, isStreaming, store, viewportElement, followBottom, writeScroll]);
+  }, [messageOrder, tailWindowExpanded, useDirectRender, isStreaming, store, viewportElement, followBottom, writeScroll]);
 
   // 🚀 会话打开即底部锚定：在绘制前执行，避免"先见顶部再跳底部"的闪动
   useLayoutEffect(() => {
@@ -927,8 +947,27 @@ const MessageListInner: React.FC<MessageListProps> = ({
       messageId: string,
       searchOccurrenceIndex?: number,
     ): Promise<ChatMessageScrollResult> => {
-      const order = store.getState().messageOrder;
-      const index = order.indexOf(messageId);
+      let state = store.getState();
+      const sessionId = state.sessionId;
+      let order = state.messageOrder;
+      let index = order.indexOf(messageId);
+      // 尾窗未包含目标时，顺序向前补页。每次只在 messageOrder 或 hasMoreHistory
+      // 确有进展时继续；这样既能穿透任意深度的窗口历史，也不会在后端返回空页
+      // 或重复页时死循环。
+      while (index < 0 && state.hasMoreHistory) {
+        const previousOrder = order;
+        const previousHasMoreHistory = state.hasMoreHistory;
+        await state.loadEarlierMessages();
+        state = store.getState();
+        if (state.sessionId !== sessionId) return { status: 'message_not_found' };
+        order = state.messageOrder;
+        index = order.indexOf(messageId);
+        if (index >= 0) break;
+        const orderProgressed = order.length !== previousOrder.length
+          || order.some((id, orderIndex) => id !== previousOrder[orderIndex]);
+        const paginationProgressed = state.hasMoreHistory !== previousHasMoreHistory;
+        if (!orderProgressed && !paginationProgressed) break;
+      }
       if (index < 0) return { status: 'message_not_found' };
       const viewport = agentScrollStateRef.current.viewportElement;
       if (!viewport) return { status: 'view_not_ready' };
