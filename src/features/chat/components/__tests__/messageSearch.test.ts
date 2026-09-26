@@ -3,6 +3,7 @@ import {
   findMessageSearchMatches,
   findTextSearchOccurrences,
   getMessageSearchText,
+  createMessageSearchIndex,
 } from '../messageSearch';
 import type { Block, Message } from '../../core/types';
 
@@ -22,6 +23,53 @@ const makeBlock = (id: string, messageId: string, content: string): Block => ({
 });
 
 describe('message search', () => {
+  it('keeps worker counts equivalent to the current Unicode and non-overlap rules', () => {
+    const samples = [
+      ['ΟΣ', 'ΟΣ'], ['ΟΣ', 'ος'], ['ΟΣ', 'οσ'], ['ΑΣ\u0301', 'ΑΣ\u0301'],
+      ['Cafe\u0301', 'Café'], ['oﬃce', 'office'], ['ＡＢＣ', 'abc'],
+      ['İstanbul', 'i\u0307stanbul'], ['가', '가'], ['ｶﾞ', 'ガ'],
+      ['a\u00a0b', 'a b'], ['😀中文😀', '😀'], ['👨‍👩‍👧家庭', '👨‍👩‍👧'],
+      ['ﬃﬃﬃ', 'f'], ['aaaaa', 'aa'], ['  中文  ', ' 中文 '],
+    ];
+    const index = createMessageSearchIndex();
+    const message = makeMessage('message', ['first', 'second', 'missing']);
+    const messages = new Map([[message.id, message]]);
+    for (const [text, query] of samples) {
+      const blocks = new Map([
+        ['first', makeBlock('first', 'message', text)],
+        ['second', makeBlock('second', 'message', `${text} ${text}`)],
+      ]);
+      index.update({
+        messages: [{ messageId: 'message', blockIds: message.blockIds }],
+        blocks: [...blocks].map(([id, block]) => ({ id, content: block.content! })),
+        removedBlockIds: [],
+      });
+      for (const search of [query, 'absent', query, '', '   ']) {
+        expect(index.find(search)).toEqual(findMessageSearchMatches(['message'], messages, blocks, search));
+      }
+    }
+  });
+
+  it('updates only supplied blocks and removes deleted content while preserving message order', () => {
+    const index = createMessageSearchIndex();
+    index.update({
+      messages: [
+        { messageId: 'one', blockIds: ['a', 'b'] },
+        { messageId: 'two', blockIds: ['c'] },
+      ],
+      blocks: [{ id: 'a', content: 'hit' }, { id: 'b', content: 'hit hit' }, { id: 'c', content: 'none' }],
+      removedBlockIds: [],
+    });
+    expect(index.find('hit')).toHaveLength(3);
+    index.update({ blocks: [{ id: 'c', content: 'hit' }], removedBlockIds: ['a'] });
+    expect(index.find('hit')).toEqual([
+      { messageId: 'one', occurrenceIndex: 0 }, { messageId: 'one', occurrenceIndex: 1 },
+      { messageId: 'two', occurrenceIndex: 0 },
+    ]);
+    index.update({ messages: [{ messageId: 'two', blockIds: ['c'] }], blocks: [], removedBlockIds: ['b'] });
+    expect(index.find('hit')).toEqual([{ messageId: 'two', occurrenceIndex: 0 }]);
+  });
+
   it('searches message blocks in message order and normalizes case/full-width text', () => {
     const messages = [makeMessage('first', ['block-1']), makeMessage('second', ['block-2'])];
     const blocks = new Map([

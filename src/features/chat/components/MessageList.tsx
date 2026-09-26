@@ -23,7 +23,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
-import type { Block, ChatStore } from '../core/types';
+import type { ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -37,7 +37,7 @@ import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
-import { findMessageSearchMatches } from './messageSearch';
+import { useMessageSearch } from '../hooks/useMessageSearch';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
 
@@ -58,8 +58,6 @@ const VIRTUALIZATION_THRESHOLD = 80;
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
-
-const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
 /**
  * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
@@ -257,24 +255,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }, [viewportElement, hasMoreHistory, isLoadingEarlier, loadEarlierError, messageOrder.length, store]);
 
 
-  // 搜索打开时才订阅 blocks：流式输出会频繁替换 blocks Map，避免关闭搜索时
-  // 让整个消息列表跟着每个 token 重渲染。
+  // 搜索自身订阅 store，将变化块送入专用 Worker；消息列表只消费命中结果。
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
-  const searchBlocks = useStore(
-    store,
-    useCallback((state: ChatStore) => isSearchOpen ? state.blocks : EMPTY_BLOCK_MAP, [isSearchOpen]),
-  );
-  const searchMatches = useMemo(
-    () => findMessageSearchMatches(
-      messageOrder,
-      store.getState().messageMap,
-      searchBlocks,
-      searchQuery,
-    ),
-    [messageOrder, searchBlocks, searchQuery, store],
-  );
+  const searchMatches = useMessageSearch(store, isSearchOpen, searchQuery);
   const resolvedActiveSearchIndex = searchMatches.length > 0
     ? Math.min(activeSearchIndex, searchMatches.length - 1)
     : 0;
