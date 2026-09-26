@@ -569,7 +569,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const blocksCount = useStore(store, (s) => s.blocks?.size ?? 0);
   const contentLengthSelector = useMemo(
     () => createBlocksContentLengthSelector(DIRECT_RENDER_MAX_CONTENT_LENGTH),
-    [],
+    [store],
   );
   const contentLength = useStore(store, contentLengthSelector);
   const useDirectRender = shouldDirectRender(
