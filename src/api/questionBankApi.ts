@@ -527,6 +527,14 @@ export function parseImageAnswerEnvelope(raw: string | null | undefined): ImageA
   return { images, text: typeof parsed.text === 'string' ? parsed.text : '' };
 }
 
+/**
+ * 序列化图片作答信封（editor 提交路径的便捷封装）。
+ * images 非空才产生信封——空图 + 纯文本由调用方走原文本路径。
+ */
+export function encodeImageAnswerUserAnswer(images: QuestionImage[], text: string): string {
+  return encodeUserAnswer({ type: 'image_answer', images, text });
+}
+
 /** 将存量 user_answer 字符串按题型解码为结构化作答值（不可解析时回退 text/null） */
 export function decodeUserAnswer(
   questionType: QuestionType,

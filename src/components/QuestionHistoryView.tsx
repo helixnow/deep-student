@@ -15,6 +15,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { parseImageAnswerEnvelope } from '@/api/questionBankApi';
 import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -410,6 +411,19 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
 
     if (fieldName === 'status') {
       return <Badge variant="secondary">{statusLabelKeys[value] ? t(statusLabelKeys[value]) : value}</Badge>;
+    }
+
+    // 图片作答信封：显示张数标记而非原始 JSON（图片本体不在历史回放）
+    const envelope = parseImageAnswerEnvelope(value);
+    if (envelope) {
+      return (
+        <span className="whitespace-pre-wrap break-words">
+          {t('practice:editor.imageAnswerCount', { count: envelope.images.length })}
+          {envelope.text.trim() && (
+            <span className="block text-muted-foreground">{envelope.text}</span>
+          )}
+        </span>
+      );
     }
 
     if (value.length > 100 && !expanded) {
