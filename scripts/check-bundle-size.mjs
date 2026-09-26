@@ -5,6 +5,7 @@
  * 用法：
  *   node scripts/check-bundle-size.mjs              # 超限 exit 1（阻塞模式）
  *   node scripts/check-bundle-size.mjs --warn-only  # 超限只告警，exit 0（引入期）
+ *   node scripts/check-bundle-size.mjs --dist-dir /path/to/dist
  *
  * 必须先构建：npx vite build（脚本只测量，不构建）。
  *
@@ -19,20 +20,25 @@ import { existsSync, readdirSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 
-const DIST_DIR = 'dist';
+const distDirArg = process.argv.indexOf('--dist-dir');
+if (distDirArg !== -1 && (!process.argv[distDirArg + 1] || process.argv[distDirArg + 1].startsWith('--'))) {
+  console.error('error: --dist-dir requires a directory path');
+  process.exit(1);
+}
+const DIST_DIR = distDirArg === -1 ? 'dist' : process.argv[distDirArg + 1];
 const ASSETS_DIR = join(DIST_DIR, 'assets');
 /** 允许超出基线的比例（+3%）。 */
 const HEADROOM = 1.03;
 
 /**
  * 关键 chunk 预算。kind：
- *   entry   — dist/index.html <script> 引用的主入口 index-*.js
+ *   entry   — index.html 的 module script 引用的入口文件本身（不含依赖闭包）
  *   chunk   — 按文件名模式匹配（多个匹配时取最大者）
  *   total   — dist/assets 下全部 .js 的 gzip 总和
  * baselineBytes 为 gzip(level 9) 字节数。
  */
 const BUDGETS = [
-  { name: 'entry (index-*.js)', kind: 'entry', baselineBytes: 1_212_646 },
+  { name: 'entry (HTML module script)', kind: 'entry', baselineBytes: 1_212_646 },
   { name: 'init-*.js', kind: 'chunk', pattern: /^init-[\w-]+\.js$/, baselineBytes: 1_430_414 },
   { name: 'vendor-mermaid-*.js', kind: 'chunk', pattern: /^vendor-mermaid-[\w-]+\.js$/, baselineBytes: 734_881 },
   { name: 'vendor-pptx-*.js', kind: 'chunk', pattern: /^vendor-pptx-[\w-]+\.js$/, baselineBytes: 436_143 },
@@ -61,11 +67,17 @@ const sizeOf = (f) => {
   return sizeCache.get(f);
 };
 
-/** dist/index.html <script src="…/assets/index-XXXX.js"> 即主入口。 */
+/** 读取构建 HTML 中的本地 module 入口，文件名前缀由 Vite 决定。 */
 function resolveEntryFile() {
   const html = readFileSync(join(DIST_DIR, 'index.html'), 'utf8');
-  const match = html.match(/<script[^>]+src="[^"]*assets\/(index-[\w-]+\.js)"/);
-  return match ? match[1] : null;
+  for (const [tag] of html.matchAll(/<script\b[^>]*>/gi)) {
+    if (!/\btype\s*=\s*(['"])module\1/i.test(tag)) continue;
+    const src = tag.match(/\bsrc\s*=\s*(['"])(.*?)\1/i)?.[2];
+    if (!src || /^(?:[a-z][\w+.-]*:|\/\/)/i.test(src)) continue;
+    const match = src.match(/(?:^|\/)assets\/([^/?#]+\.js)(?:[?#].*)?$/);
+    if (match) return match[1];
+  }
+  return null;
 }
 
 const rows = [];
@@ -82,7 +94,7 @@ for (const budget of BUDGETS) {
       actualBytes = sizeOf(entry);
       detail = entry;
     } else {
-      violations.push(`${budget.name}: no <script src="assets/index-*.js"> in dist/index.html`);
+      violations.push(`${budget.name}: no local <script type="module" src="…/assets/*.js"> in ${join(DIST_DIR, 'index.html')}`);
     }
   } else if (budget.kind === 'chunk') {
     const matches = jsFiles.filter((f) => budget.pattern.test(f));
