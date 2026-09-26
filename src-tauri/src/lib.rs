@@ -624,7 +624,9 @@ pub fn run() {
     // Android 专用：应用内 APK 安装桥（FileProvider → 系统安装器）。
     // updater 插件不支持移动端，移动端更新由前端检查 + 该插件负责落地安装。
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(crate::apk_installer::init());
+    let builder = builder
+        .plugin(crate::apk_installer::init())
+        .plugin(crate::unified_file_manager::saf_permission_plugin());
 
     // 🔧 MCP 调试插件（通过 mcp-debug feature 启用）
     // 使用 hypothesi/mcp-server-tauri 桥接插件
