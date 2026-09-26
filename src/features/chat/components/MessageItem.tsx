@@ -14,7 +14,7 @@ import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { BlockRendererWithStore } from './BlockRenderer';
-import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
+import { ContextRefsDisplay, hasContextRefs, CONTEXT_REFS_VISIBLE_COUNT } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
 import { useVariantUI } from '../hooks/useVariantUI';
 import { useBlocksByIds } from '../hooks/useChatStore';
@@ -58,6 +58,7 @@ import { ExplainPopover } from './ExplainPopover';
 import { generateCardsFromSelection } from '../services/selectionCardGeneration';
 import { selectionToChat } from '../context/selectionRef';
 import { MessageSearchProvider } from './messageSearchContext';
+import { useMessageSearchVisibility } from '../hooks/useMessageSearchVisibility';
 
 // ============================================================================
 // 辅助函数
@@ -133,6 +134,8 @@ export interface MessageItemProps {
   isLatest?: boolean;
   /** 当前会话内搜索词，用于消息正文的具体文本高亮 */
   searchQuery?: string;
+  /** Prepare the navigation target's marks before scrolling it into view. */
+  isActiveSearchMatch?: boolean;
 }
 
 // ============================================================================
@@ -155,6 +158,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   isFirst = false,
   isLatest = false,
   searchQuery = '',
+  isActiveSearchMatch = false,
 }) => {
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
@@ -258,6 +262,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // P0-3: 选区工具栏的定位容器 = 消息根元素（position: relative），
   // SelectionToolbar 在其内部 absolute 定位、随消息一起滚动
   const messageRootRef = useRef<HTMLDivElement>(null);
+  const searchHighlightVisible = useMessageSearchVisibility(messageRootRef, Boolean(searchQuery));
 
   // P0-2: 移动端长按消息（~450ms）呼出消息下方的内联操作条（非 Sheet / 非 Portal）。
   // 多变体消息有独立的卡片工具栏，不参与。
@@ -643,8 +648,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, [message]);
   
   // 🆕 从上下文引用获取图片预览（新架构：消息只存引用，图片从 VFS 动态获取）
-  const { imagePreviews, isLoading: isLoadingImages } = useImagePreviewsFromRefs(
-    message?._meta?.contextSnapshot
+  const [imagePreviewLimit, setImagePreviewLimit] = useState(CONTEXT_REFS_VISIBLE_COUNT);
+  const requestAllImagePreviews = useCallback(() => setImagePreviewLimit(Infinity), []);
+  const { imagePreviews, isLoading: isLoadingImages, unloadedImageCount } = useImagePreviewsFromRefs(
+    isUser ? message?._meta?.contextSnapshot : undefined,
+    imagePreviewLimit,
   );
   
   // 🆕 从上下文引用获取文件预览（新架构：消息只存引用，文件从 VFS 动态获取）
@@ -853,7 +861,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }
 
   return (
-    <MessageSearchProvider query={searchQuery}>
+    <MessageSearchProvider query={searchHighlightVisible || isActiveSearchMatch ? searchQuery : ''}>
       <div
       ref={messageRootRef}
       // P0-2: 移动端长按呼出内联操作条（桌面路径 longPressBind 为空对象，零监听）
@@ -1169,6 +1177,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 filePreviews={filePreviews}
                 isLoadingImages={isLoadingImages}
                 isLoadingFiles={isLoadingFiles}
+                unloadedImageCount={unloadedImageCount}
+                onRequestAllImages={requestAllImagePreviews}
               />
             </div>
           )}
@@ -1550,7 +1560,8 @@ export const MessageItem = React.memo(MessageItemInner, (prevProps, nextProps) =
     prevProps.className === nextProps.className &&
     prevProps.isFirst === nextProps.isFirst &&
     prevProps.isLatest === nextProps.isLatest &&
-    prevProps.searchQuery === nextProps.searchQuery
+    prevProps.searchQuery === nextProps.searchQuery &&
+    prevProps.isActiveSearchMatch === nextProps.isActiveSearchMatch
   );
 });
 

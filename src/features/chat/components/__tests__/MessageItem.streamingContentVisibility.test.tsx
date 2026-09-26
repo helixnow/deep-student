@@ -94,6 +94,7 @@ vi.mock('../Variant', () => ({
 vi.mock('../ContextRefsDisplay', () => ({
   ContextRefsDisplay: () => null,
   hasContextRefs: () => false,
+  CONTEXT_REFS_VISIBLE_COUNT: 8,
 }));
 
 vi.mock('../panels', () => ({

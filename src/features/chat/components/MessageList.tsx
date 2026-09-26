@@ -1110,7 +1110,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 <MessageItem
                   messageId={messageId}
                   store={store}
-                  searchQuery={searchQuery}
+                  searchQuery={isSearchMatch ? searchQuery : ''}
+                  isActiveSearchMatch={isActiveSearchMatch}
                   isFirst={messageIndex === 0}
                   isLatest={messageIndex === messageOrder.length - 1}
                 />
@@ -1211,7 +1212,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
-                      searchQuery={searchQuery}
+                      searchQuery={isSearchMatch ? searchQuery : ''}
+                      isActiveSearchMatch={isActiveSearchMatch}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />
@@ -1224,7 +1226,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
-                      searchQuery={searchQuery}
+                      searchQuery={isSearchMatch ? searchQuery : ''}
+                      isActiveSearchMatch={isActiveSearchMatch}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />
