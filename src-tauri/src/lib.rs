@@ -685,8 +685,12 @@ pub fn run() {
     {
         log_plugin_builder = log_plugin_builder.target(Target::new(TargetKind::Stdout));
     }
-    // Android：deep_student_lib 提到 Debug，现场排查启动链问题（预检超时、迁移卡顿）所需
+    // Keep logcat available in release, but opt in to per-event diagnostics:
+    // unconditional Debug logging writes every streaming chunk to disk/logcat.
     #[cfg(target_os = "android")]
+    if cfg!(debug_assertions)
+        || std::env::var("DSTU_CONSOLE_LOG")
+            .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
     {
         log_plugin_builder =
             log_plugin_builder.level_for("deep_student_lib", log::LevelFilter::Debug);
@@ -2999,6 +3003,12 @@ fn start_vfs_index_worker(
     llm_manager: Arc<crate::llm_manager::LLMManager>,
     lance_store: Arc<crate::vfs::VfsLanceStore>,
 ) {
+    // This consumer persists vectors to Lance. Keep SQLite text ledgers and
+    // lexical retrieval available on slim builds without issuing unusable API calls.
+    if !cfg!(feature = "lance") {
+        tracing::info!("[VfsIndexWorker] Lance is not compiled in; vector worker disabled");
+        return;
+    }
     let _ = crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
@@ -3017,8 +3027,14 @@ fn start_vfs_index_worker(
                 }
             };
             let interval = std::time::Duration::from_secs(config.interval_secs.max(1) as u64);
+            // A disabled worker must not derive its wait from an expired run:
+            // that would collapse to 100ms forever after the first completed run.
+            if !config.enabled {
+                tokio::time::sleep(interval.min(std::time::Duration::from_secs(5))).await;
+                continue;
+            }
             let due = last_run.is_none_or(|last| last.elapsed() >= interval);
-            if !config.enabled || !due {
+            if !due {
                 let remaining = last_run
                     .map(|last| interval.saturating_sub(last.elapsed()))
                     .unwrap_or(interval)

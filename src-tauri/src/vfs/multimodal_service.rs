@@ -262,6 +262,14 @@ impl VfsMultimodalService {
             });
         }
 
+        // This path writes vectors; fail before blob processing or external ME
+        // requests when the build has only the SQLite text-ledger capability.
+        if !cfg!(feature = "lance") {
+            return Err(VfsError::Other(
+                "Vector indexing is unavailable: Lance is not compiled in".to_string(),
+            ));
+        }
+
         info!(
             "[VfsMultimodalService] Indexing {} pages for resource {} (type={})",
             pages.len(),
