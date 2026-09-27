@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.72](https://github.com/helixnow/deep-student/compare/v0.9.71...v0.9.72) (2026-09-27)
+
+### Features
+
+* **qbank:** support handwritten image answers for subjective and fill-blank questions, multimodal grading, and image review ([#425](https://github.com/helixnow/deep-student/pull/425), thanks @qeryuo112).
+
+### Performance Improvements
+
+* **chat:** hydrate bounded history windows, persist dirty blocks, stabilize Markdown components, and narrow task subscriptions while retaining upstream long-context optimizations.
+* **search:** coalesce streaming search to one in-flight Worker request and suspend indexing for hidden sessions.
+* **startup:** defer heavy editor, chart and FlowToken dependencies; correct built-entry bundle inspection.
+* **backend:** move synchronous uploads, document processing, Todo/Pomodoro queries and encryption work off asynchronous executors, and reduce redundant database leases.
+* **media:** share OCR concurrency limits with indexing fallback and avoid holding database connections during expensive image work.
+* **governance:** reduce backup waits and ZIP/JSON overhead; filter lexical retrieval scope before limiting results.
+
+### Bug Fixes
+
+* **qbank:** keep uploads bound to their question, preserve fill-blank text alongside images, reject unsupported image formats before saving, and restore submitted image review.
+* **qbank:** preserve GIF MIME when sending images to models and resolve synchronized attachment aliases for preview and grading.
+* **ocr:** honor the system OCR disable setting and discard late results from cancelled page processing.
+* **vfs:** reserve ordinary upload write transactions before snapshot reads and reuse existing index connections.
+* **android:** wake SAF permission processing on demand and isolate concurrent URI staging files.
+
+### Known Issues
+
+* Mixed attachment/file uploads can still encounter the existing write-lock/partial-preview issue; cancelled media tasks can resume after restart; Android query planning after restoring desktop index profiles needs further correction. See the [three open P1 findings](docs/dev/perf-audit-2026-09/ROUND3-REVIEW-2026-09-27.md).
+* Windows/Android device performance has not been re-measured; scoped validation and observed latency limits are documented in the [P2 verification report](docs/dev/perf-audit-2026-09/P2-IMPLEMENTATION-2026-09-27.md).
+
 ## [0.9.71](https://github.com/helixnow/deep-student/compare/v0.9.70...v0.9.71) (2026-09-26)
 
 
