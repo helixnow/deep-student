@@ -105,7 +105,7 @@ export function useMessageSearch(
 
     // Failure retains search availability with the same index and latest store
     // state. Do not retry the failed worker or replay its queued snapshots.
-    const useFallback = () => {
+    const activateFallback = () => {
       if (disposed || fallback) return;
       stopWorker();
       inFlight = null;
@@ -146,7 +146,7 @@ export function useMessageSearch(
         try {
           worker.postMessage(request);
         } catch {
-          useFallback();
+          activateFallback();
         }
       } else if (fallback) {
         fallback.update(update);
@@ -164,7 +164,7 @@ export function useMessageSearch(
         const completed = inFlight;
         inFlight = null;
         if ('error' in data) {
-          useFallback();
+          activateFallback();
           return;
         }
         if (pendingSearch) {
@@ -181,9 +181,9 @@ export function useMessageSearch(
       };
       worker.onerror = (event) => {
         event.preventDefault();
-        useFallback();
+        activateFallback();
       };
-      worker.onmessageerror = useFallback;
+      worker.onmessageerror = activateFallback;
     } catch {
       fallback = createMessageSearchIndex();
     }
