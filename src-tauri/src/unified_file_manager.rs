@@ -505,7 +505,9 @@ pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), A
         ))
     })?;
     let dest = persistable_saf_queue_file(app_data_dir, trimmed);
-    let tmp = dest.with_extension("uri.tmp");
+    // Producers for the same URI share the final entry, but must never share
+    // staging files: one producer's rename would consume another's temp file.
+    let tmp = dest.with_extension(format!("uri.{}.tmp", Uuid::new_v4()));
     std::fs::write(&tmp, trimmed).map_err(|e| {
         AppError::file_system(format!(
             "写入 SAF persist 队列失败: {} ({})",
@@ -1103,5 +1105,51 @@ mod tests {
         assert!(err
             .to_string()
             .contains("SAF persist 队列拒绝过长或含换行的 URI"));
+    }
+
+    #[test]
+    fn queue_persistable_saf_uri_handles_concurrent_producers() {
+        let dir = tempfile::tempdir().expect("persist queue dir");
+        let same = "content://com.android.providers.downloads.documents/document/445";
+        let other = "content://com.android.providers.downloads.documents/document/446";
+        let third = "content://com.android.providers.downloads.documents/document/447";
+        let uris = [same, same, same, same, other, third];
+        let start = std::sync::Barrier::new(uris.len());
+
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = uris
+                .into_iter()
+                .map(|uri| {
+                    let start = &start;
+                    let app_data_dir = dir.path();
+                    scope.spawn(move || {
+                        start.wait();
+                        queue_persistable_saf_uri(app_data_dir, uri)
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle
+                    .join()
+                    .expect("SAF producer must not panic")
+                    .expect("same-URI and distinct-URI producers must all commit");
+            }
+        });
+
+        for uri in [same, other, third] {
+            assert_eq!(
+                std::fs::read_to_string(persistable_saf_queue_file(dir.path(), uri))
+                    .expect("consumer-readable queue entry"),
+                uri
+            );
+        }
+        let entries = std::fs::read_dir(dir.path().join(PENDING_SAF_PERSIST_DIR))
+            .expect("queue directory")
+            .collect::<std::io::Result<Vec<_>>>()
+            .expect("queue entries");
+        assert_eq!(entries.len(), 3, "one committed entry per distinct URI");
+        assert!(entries
+            .iter()
+            .all(|entry| entry.path().extension().is_some_and(|ext| ext == "uri")));
     }
 }
