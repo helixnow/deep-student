@@ -5,7 +5,7 @@
  * IMAGE_ANSWER_MAX_EDGE（手写笔迹需要保留足够分辨率：短边 ≥1600px 对应
  * A4 纸约 200 DPI，誊写识别与用户回看都清晰），质量 0.9 的 jpeg。
  * 降采样/重编码模式与壁纸库（wallpaperLibrary.ts）一致：高质量重采样 +
- * canvas 重编码；环境不支持 canvas 时原样上传（50MB 上限兜底在后端）。
+ * canvas 重编码；环境不支持 canvas 时在回退体积上限内原样上传。
  */
 
 import { invoke } from '@tauri-apps/api/core';
@@ -128,8 +128,12 @@ export interface PreparedAnswerImage {
  * 失败挡住作答）；退回且原文件超软上限时抛错由调用方提示。
  */
 export async function compressImageAnswerImage(file: File): Promise<PreparedAnswerImage> {
-  // 白名单外（如 HEIC）或 gif：不重编码，原样走（gif canvas 会丢帧）
-  if (!(IMAGE_ANSWER_MIME_TYPES as readonly string[]).includes(file.type) || file.type === 'image/gif') {
+  // 上传与信封使用同一 MIME 契约；不能先存入 VFS 再在提交时拒绝。
+  if (!(IMAGE_ANSWER_MIME_TYPES as readonly string[]).includes(file.type)) {
+    throw new Error('不支持此图片格式，请选择 PNG、JPEG、WebP 或 GIF 图片');
+  }
+  // gif 不重编码，避免丢帧。
+  if (file.type === 'image/gif') {
     assertFallbackSize(file);
     return { file, mime: file.type };
   }
@@ -150,7 +154,7 @@ export async function compressImageAnswerImage(file: File): Promise<PreparedAnsw
   }
 
   const target = createEncodeTarget(width, height);
-  if (!target.context) {
+  if (!target?.context) {
     assertFallbackSize(file);
     return { file, mime: file.type };
   }

@@ -39,6 +39,7 @@ export const AnswerImageStrip: React.FC<AnswerImageStripProps> = ({
 }) => {
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Set<string>>(new Set());
+  const [previewImageId, setPreviewImageId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -77,40 +78,66 @@ export const AnswerImageStrip: React.FC<AnswerImageStripProps> = ({
 
   const resolveUrl = (id: string): string | undefined =>
     dataUrlCache.get(id) ?? urls[id];
+  const previewImage = images.find((img) => img.id === previewImageId);
 
   return (
-    <div className="flex flex-wrap gap-2">
-      {images.map((img) => (
-        <div
-          key={img.id}
-          className="relative w-20 h-20 rounded-md overflow-hidden border border-border/60 bg-muted/40 shrink-0"
-        >
-          {resolveUrl(img.id) ? (
-            <img
-              src={resolveUrl(img.id)}
-              alt={img.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
-              <ImageIcon size={20} />
-              {failed.has(img.id) && (
-                <span className="text-[10px] mt-1 px-1 text-center">加载失败</span>
-              )}
-            </div>
-          )}
-          {!readOnly && onRemove && (
-            <button
-              type="button"
-              aria-label="移除图片"
-              className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-foreground hover:bg-background"
-              onClick={() => onRemove(img.id)}
-            >
-              <X size={12} weight="bold" />
-            </button>
-          )}
-        </div>
-      ))}
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        {images.map((img) => (
+          <div
+            key={img.id}
+            className="relative w-20 h-20 rounded-md overflow-hidden border border-border/60 bg-muted/40 shrink-0"
+          >
+            {resolveUrl(img.id) ? (
+              <button
+                type="button"
+                aria-label={img.name}
+                aria-expanded={previewImageId === img.id}
+                className="w-full h-full"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreviewImageId((current) => current === img.id ? null : img.id);
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <img
+                  src={resolveUrl(img.id)}
+                  alt={img.name}
+                  className="w-full h-full object-cover"
+                />
+              </button>
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
+                <ImageIcon size={20} />
+                {failed.has(img.id) && (
+                  <span className="text-[10px] mt-1 px-1 text-center">加载失败</span>
+                )}
+              </div>
+            )}
+            {!readOnly && onRemove && (
+              <button
+                type="button"
+                aria-label="移除图片"
+                className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-foreground hover:bg-background"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRemove(img.id);
+                }}
+                onKeyDown={(event) => event.stopPropagation()}
+              >
+                <X size={12} weight="bold" />
+              </button>
+            )}
+          </div>
+        ))}
+      </div>
+      {previewImage && resolveUrl(previewImage.id) && (
+        <img
+          src={resolveUrl(previewImage.id)}
+          alt={previewImage.name}
+          className="max-w-full max-h-[70vh] object-contain rounded-md border border-border/60"
+        />
+      )}
     </div>
   );
 };

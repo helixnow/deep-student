@@ -1,9 +1,27 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { invoke } from '@tauri-apps/api/core';
 import {
   computeImageAnswerDimensions,
   IMAGE_ANSWER_MAX_EDGE,
   canAddImageAnswerImage,
+  compressImageAnswerImage,
+  uploadImageAnswerImage,
 } from '@/components/question-types/imageAnswerUpload';
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn() }));
+
+describe('image answer upload MIME contract', () => {
+  it.each(['image/heic', 'image/bmp', 'image/svg+xml', ''])('rejects %s before uploading an un-submittable reference', async (type) => {
+    const file = new File(['image'], 'answer.heic', { type });
+    await expect(uploadImageAnswerImage(file)).rejects.toThrow('PNG、JPEG、WebP 或 GIF');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('keeps supported GIF input within the fallback size budget', async () => {
+    const file = new File(['GIF89a'], 'answer.gif', { type: 'image/gif' });
+    await expect(compressImageAnswerImage(file)).resolves.toEqual({ file, mime: 'image/gif' });
+  });
+});
 
 describe('computeImageAnswerDimensions', () => {
   it('keeps dimensions when the long edge is within the limit', () => {

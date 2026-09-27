@@ -16,6 +16,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { parseImageAnswerEnvelope } from '@/api/questionBankApi';
+import { ImageAnswerDisplay } from '@/components/question-types/AnswerImageStrip';
 import { DsButton } from '@/components/ui/DsButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -129,7 +130,9 @@ function isCorrectRecord(item: QuestionHistory): boolean {
 
 /** 值较长时才需要展开/收起 */
 function hasLongValue(item: QuestionHistory): boolean {
-  return (item.old_value?.length ?? 0) > 100 || (item.new_value?.length ?? 0) > 100;
+  return !!parseImageAnswerEnvelope(item.old_value)
+    || !!parseImageAnswerEnvelope(item.new_value)
+    || (item.old_value?.length ?? 0) > 100 || (item.new_value?.length ?? 0) > 100;
 }
 
 // ============================================================================
@@ -413,9 +416,12 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       return <Badge variant="secondary">{statusLabelKeys[value] ? t(statusLabelKeys[value]) : value}</Badge>;
     }
 
-    // 图片作答信封：显示张数标记而非原始 JSON（图片本体不在历史回放）
+    // 折叠时只显示张数，展开后按需取图，避免一次加载整页历史图片。
     const envelope = parseImageAnswerEnvelope(value);
     if (envelope) {
+      if (expanded) {
+        return <ImageAnswerDisplay images={envelope.images} text={envelope.text} />;
+      }
       return (
         <span className="whitespace-pre-wrap break-words">
           {t('practice:editor.imageAnswerCount', { count: envelope.images.length })}
