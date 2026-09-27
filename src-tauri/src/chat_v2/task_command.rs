@@ -709,9 +709,34 @@ impl RemoteTaskManager {
 
     /// launch 侧附着会话：false = 任务已被停止/不存在，调用方应放弃启动。
     pub fn attach_session(&self, task_id: &str, session_id: &str) -> bool {
+        self.attach_session_at_generation_inner(task_id, session_id, None)
+    }
+
+    /// Attach only when the launch belongs to the current task generation.
+    /// A late Create/Steer completion must not attach a session to a newer turn.
+    pub fn attach_session_at_generation(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        expected_generation: u64,
+    ) -> bool {
+        self.attach_session_at_generation_inner(task_id, session_id, Some(expected_generation))
+    }
+
+    fn attach_session_at_generation_inner(
+        &self,
+        task_id: &str,
+        session_id: &str,
+        expected_generation: Option<u64>,
+    ) -> bool {
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         match inner.tasks.get_mut(task_id) {
-            Some(rec) if rec.status == RemoteTaskStatus::Running => {
+            Some(rec)
+                if rec.status == RemoteTaskStatus::Running
+                    && expected_generation
+                        .map(|generation| rec.binding.generation == generation)
+                        .unwrap_or(true) =>
+            {
                 rec.binding.conversation_id = Some(session_id.to_string());
                 rec.updated_at_ms = now_ms();
                 true
@@ -730,10 +755,29 @@ impl RemoteTaskManager {
         summary: &str,
         error: Option<&str>,
     ) -> Option<String> {
+        self.finish_turn_at_generation(task_id, None, status, summary, error)
+    }
+
+    /// Complete only the generation that started this turn. A stale turn may
+    /// still finish after a newer Steer has made the same task Running again.
+    pub fn finish_turn_at_generation(
+        &self,
+        task_id: &str,
+        expected_generation: Option<u64>,
+        status: RemoteTaskStatus,
+        summary: &str,
+        error: Option<&str>,
+    ) -> Option<String> {
         debug_assert!(status.is_terminal());
         let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let (route, already_cancelled, id) = {
             let rec = inner.tasks.get_mut(task_id)?;
+            if expected_generation
+                .map(|generation| rec.binding.generation != generation)
+                .unwrap_or(false)
+            {
+                return None;
+            }
             let route = RouteKey::from_binding(&rec.binding);
             let already_cancelled = rec.status == RemoteTaskStatus::Cancelled;
             if !already_cancelled {
@@ -880,6 +924,7 @@ pub fn build_session_turn(
         model_id,
         system_prompt_append,
         timeout: Duration::from_secs(DEFAULT_HARD_TIMEOUT_SECS),
+        cancellation_token: None,
     }
 }
 
@@ -1104,6 +1149,38 @@ mod tests {
         assert_eq!(
             mgr.record(&task_id).expect("recorded").status,
             RemoteTaskStatus::Cancelled
+        );
+    }
+
+    #[test]
+    fn stale_generation_cannot_finish_a_new_turn() {
+        let mgr = RemoteTaskManager::default();
+        let (task_id, first) = expect_launch(mgr.dispatch(inbound("th-1", "m1", "任务A")));
+        assert!(mgr.attach_session_at_generation(&task_id, "sess-1", first.binding.generation,));
+        assert!(mgr
+            .finish_turn_at_generation(
+                &task_id,
+                Some(first.binding.generation),
+                RemoteTaskStatus::Completed,
+                "第一轮完成",
+                None,
+            )
+            .is_some());
+
+        let (_, second) = expect_launch(mgr.dispatch(inbound("th-1", "m2", "继续任务")));
+        assert!(second.binding.generation > first.binding.generation);
+        assert!(mgr
+            .finish_turn_at_generation(
+                &task_id,
+                Some(first.binding.generation),
+                RemoteTaskStatus::Completed,
+                "迟到结果",
+                None,
+            )
+            .is_none());
+        assert_eq!(
+            mgr.record(&task_id).expect("recorded").status,
+            RemoteTaskStatus::Running
         );
     }
 

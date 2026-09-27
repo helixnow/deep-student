@@ -73,75 +73,83 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   const [unbindOpen, setUnbindOpen] = useState(false);
   const [activityLog, setActivityLog] = useState<string[]>([]);
 
-  const refresh = useCallback(async () => {
+  const refreshConfig = useCallback(async () => {
     try {
-      const [cfg, st] = await Promise.all([
-        pluginsApi.getConfig(plugin.id),
-        pluginsApi.getStatus(plugin.id),
-      ]);
-      setConfig(cfg);
-      setStatus(st);
+      setConfig(await pluginsApi.getConfig(plugin.id));
+    } catch (e) {
+      showGlobalNotification('error', getErrorMessage(e));
+    }
+  }, [plugin.id]);
+
+  const refreshStatus = useCallback(async () => {
+    try {
+      setStatus(await pluginsApi.getStatus(plugin.id));
     } catch (e) {
       showGlobalNotification('error', getErrorMessage(e));
     }
   }, [plugin.id]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void Promise.all([refreshConfig(), refreshStatus()]);
+  }, [refreshConfig, refreshStatus]);
 
   useEffect(() => {
-    let unlisteners: UnlistenFn[] = [];
+    const unlisteners: UnlistenFn[] = [];
     let cancelled = false;
 
-    (async () => {
-      const u1 = await listen<{ pluginId: string; state: PluginState; error?: string }>(
-        PLUGIN_EVENTS.stateChanged,
-        (ev) => {
-          if (ev.payload.pluginId !== plugin.id) return;
-          void refresh();
-          onPluginChange();
-        },
-      );
-      const u2 = await listen<{
-        pluginId: string;
-        pngBase64: string;
-        status: string;
-      }>(PLUGIN_EVENTS.qrcode, (ev) => {
+    const register = <T,>(event: string, handler: (event: { payload: T }) => void) => {
+      void listen<T>(event, handler)
+        .then((unlisten) => {
+          if (cancelled) {
+            unlisten();
+          } else {
+            unlisteners.push(unlisten);
+          }
+        })
+        .catch((error) => {
+          if (!cancelled) showGlobalNotification('error', getErrorMessage(error));
+        });
+    };
+
+    register<{ pluginId: string; state: PluginState; error?: string }>(
+      PLUGIN_EVENTS.stateChanged,
+      (ev) => {
         if (ev.payload.pluginId !== plugin.id) return;
         setStatus((prev) =>
           prev
-            ? {
-                ...prev,
-                qrcodePngBase64: ev.payload.pngBase64,
-                qrcodeStatus: ev.payload.status,
-                state: 'waiting_login',
-              }
+            ? { ...prev, state: ev.payload.state, lastError: ev.payload.error ?? prev.lastError,
+                qrcodePngBase64: null, qrcodeStatus: null }
             : prev,
         );
-      });
-      const u3 = await listen<{ pluginId: string; kind: string; summary: string }>(
-        PLUGIN_EVENTS.activity,
-        (ev) => {
-          if (ev.payload.pluginId !== plugin.id) return;
-          setActivityLog((prev) => [ev.payload.summary, ...prev].slice(0, 12));
-          void refresh();
-        },
-      );
-      if (cancelled) {
-        u1();
-        u2();
-        u3();
-        return;
-      }
-      unlisteners = [u1, u2, u3];
-    })();
+        void refreshStatus();
+        onPluginChange();
+      },
+    );
+    register<{ pluginId: string; pngBase64: string; status: string }>(
+      PLUGIN_EVENTS.qrcode,
+      (ev) => {
+        if (ev.payload.pluginId !== plugin.id) return;
+        setStatus((prev) =>
+          prev
+            ? { ...prev, qrcodePngBase64: ev.payload.pngBase64, qrcodeStatus: ev.payload.status }
+            : prev,
+        );
+      },
+    );
+    register<{ pluginId: string; kind: string; summary: string }>(
+      PLUGIN_EVENTS.activity,
+      (ev) => {
+        if (ev.payload.pluginId !== plugin.id) return;
+        setActivityLog((prev) => [ev.payload.summary, ...prev].slice(0, 12));
+        void refreshStatus();
+      },
+    );
 
     return () => {
       cancelled = true;
       unlisteners.forEach((u) => u());
     };
-  }, [plugin.id, refresh, onPluginChange]);
+  }, [plugin.id, refreshStatus, onPluginChange]);
 
   const currentState = status?.state ?? plugin.state;
 
@@ -154,7 +162,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
     setBusy(true);
     try {
       await pluginsApi.setConfig(plugin.id, patch);
-      await refresh();
+      await Promise.all([refreshConfig(), refreshStatus()]);
       onPluginChange();
       showGlobalNotification('success', t('settings:plugins.saved'));
     } catch (e) {
@@ -167,13 +175,13 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
   const bound = status?.bound ?? config?.bound ?? plugin.bound;
   const enabled = status?.enabled ?? config?.enabled ?? plugin.enabled;
   const qrPng = status?.qrcodePngBase64;
-  const waitingLogin = currentState === 'waiting_login' || Boolean(qrPng && !bound);
+  const waitingLogin = currentState === 'waiting_login';
 
   const toggleEnabled = async (next: boolean) => {
     setBusy(true);
     try {
       await pluginsApi.setEnabled(plugin.id, next);
-      await refresh();
+      await refreshStatus();
       onPluginChange();
       showGlobalNotification(
         'success',
@@ -236,7 +244,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                   setBusy(true);
                   try {
                     await pluginsApi.beginLogin(plugin.id);
-                    await refresh();
+                    await refreshStatus();
                     onPluginChange();
                   } catch (e) {
                     showGlobalNotification('error', getErrorMessage(e));
@@ -278,7 +286,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                   setBusy(true);
                   try {
                     await pluginsApi.cancelLogin(plugin.id);
-                    await refresh();
+                    await refreshStatus();
                     onPluginChange();
                   } catch (e) {
                     showGlobalNotification('error', getErrorMessage(e));
@@ -311,6 +319,18 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
                 disabled={busy}
                 onCheckedChange={toggleEnabled}
               />
+              {currentState === 'error' && (
+                <div className="px-1 py-2.5">
+                  <DsButton
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() => void toggleEnabled(true)}
+                  >
+                    {t('settings:plugins.reconnect')}
+                  </DsButton>
+                </div>
+              )}
               <div className="px-1 py-2.5">
                 <DsButton
                   size="sm"
@@ -324,6 +344,20 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
               </div>
             </>
           )}
+        </SettingsGroup>
+
+        <SettingsGroup title={t('settings:plugins.quick_start_title')}>
+          <ol className="list-decimal space-y-1 px-5 py-2.5 text-xs leading-relaxed text-muted-foreground/80">
+            <li>{t('settings:plugins.quick_start_model')}</li>
+            <li>{t('settings:plugins.quick_start_online')}</li>
+            <li>{t('settings:plugins.quick_start_scan')}</li>
+          </ol>
+          <p className="px-1 pb-2.5 text-xs leading-relaxed text-muted-foreground/80">
+            {t('settings:plugins.task_commands')}
+          </p>
+          <p className="px-1 pb-2.5 text-xs leading-relaxed text-muted-foreground/80">
+            {t('settings:plugins.text_only_hint')}
+          </p>
         </SettingsGroup>
 
         {/* 回复设置 */}
@@ -419,7 +453,7 @@ export const IlinkBotConfigPanel: React.FC<IlinkBotConfigPanelProps> = ({
           setBusy(true);
           try {
             await pluginsApi.unbind(plugin.id);
-            await refresh();
+            await Promise.all([refreshConfig(), refreshStatus()]);
             onPluginChange();
             showGlobalNotification('success', t('settings:plugins.ready_to_rebind'));
           } catch (e) {
@@ -469,12 +503,19 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
 
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
-    listen(PLUGIN_EVENTS.stateChanged, () => {
+    let cancelled = false;
+    void listen(PLUGIN_EVENTS.stateChanged, () => {
       void refreshList();
-    }).then((u) => {
-      unlisten = u;
-    });
+    })
+      .then((u) => {
+        if (cancelled) u();
+        else unlisten = u;
+      })
+      .catch((error) => {
+        if (!cancelled) showGlobalNotification('error', getErrorMessage(error));
+      });
     return () => {
+      cancelled = true;
       unlisten?.();
     };
   }, [refreshList]);
@@ -526,7 +567,7 @@ export const PluginsTab: React.FC<PluginsTabProps> = ({ models }) => {
           plugin={selected}
           models={models}
           onBack={() => setSelectedId(null)}
-          onPluginChange={() => void refreshList()}
+          onPluginChange={refreshList}
         />
       </div>
     );

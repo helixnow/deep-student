@@ -1,10 +1,11 @@
 //! Plugin manager: lifecycle, state machine, compile-time registry.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tauri::{AppHandle, Manager};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 use tokio_util::sync::CancellationToken;
 
 use crate::background_tasks::BACKGROUND_TASKS;
@@ -20,6 +21,7 @@ use super::types::{
 
 struct RunningHandle {
     cancel: CancellationToken,
+    generation: u64,
 }
 
 pub struct PluginManager {
@@ -27,6 +29,8 @@ pub struct PluginManager {
     handles: RwLock<HashMap<String, RunningHandle>>,
     states: RwLock<HashMap<String, PluginState>>,
     errors: RwLock<HashMap<String, String>>,
+    next_generation: AtomicU64,
+    lifecycle: Mutex<()>,
     app: AppHandle,
 }
 
@@ -46,6 +50,8 @@ impl PluginManager {
             handles: RwLock::new(HashMap::new()),
             states: RwLock::new(states),
             errors: RwLock::new(HashMap::new()),
+            next_generation: AtomicU64::new(0),
+            lifecycle: Mutex::new(()),
             app,
         }
     }
@@ -150,6 +156,7 @@ impl PluginManager {
     }
 
     pub async fn start(&self, id: &str) -> Result<PluginState, AppError> {
+        let _lifecycle = self.lifecycle.lock().await;
         if cfg!(any(target_os = "android", target_os = "ios")) {
             return Err(AppError::validation("插件仅支持桌面端"));
         }
@@ -166,12 +173,14 @@ impl PluginManager {
         self.stop_internal(id).await;
 
         let cancel = CancellationToken::new();
+        let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
         {
             let mut handles = self.handles.write().await;
             handles.insert(
                 id.to_string(),
                 RunningHandle {
                     cancel: cancel.clone(),
+                    generation,
                 },
             );
         }
@@ -193,9 +202,22 @@ impl PluginManager {
         BACKGROUND_TASKS.spawn(async move {
             let result = plugin_clone.run(ctx).await;
             let manager = manager_app.state::<PluginManager>();
-            {
+            let is_current = {
                 let mut handles = manager.handles.write().await;
-                handles.remove(&plugin_id);
+                if handles
+                    .get(&plugin_id)
+                    .is_some_and(|handle| handle.generation == generation)
+                {
+                    handles.remove(&plugin_id);
+                    true
+                } else {
+                    false
+                }
+            };
+            // A stopped run may finish after a new run has already started.
+            // Its completion must not remove or overwrite the new run.
+            if !is_current {
+                return;
             }
             match result {
                 Ok(()) => {
@@ -227,6 +249,7 @@ impl PluginManager {
     }
 
     pub async fn stop(&self, id: &str) -> Result<PluginState, AppError> {
+        let _lifecycle = self.lifecycle.lock().await;
         let _ = self.plugin(id)?;
         self.stop_internal(id).await;
         // Give run loop a moment; state will settle via task completion or force stopped
@@ -276,19 +299,36 @@ impl PluginManager {
     }
 
     pub async fn begin_login(&self, id: &str) -> Result<(), AppError> {
+        let _lifecycle = self.lifecycle.lock().await;
         if cfg!(any(target_os = "android", target_os = "ios")) {
             return Err(AppError::validation("插件仅支持桌面端"));
         }
         let plugin = self.plugin(id)?;
+        if matches!(
+            self.current_state(id).await,
+            PluginState::Starting | PluginState::WaitingLogin | PluginState::Running
+        ) {
+            return Ok(());
+        }
         // Ensure a cancel token exists for login loop
-        let cancel = {
+        let (cancel, generation) = {
             let mut handles = self.handles.write().await;
-            if let Some(h) = handles.get(id) {
-                h.cancel.clone()
+            if handles.contains_key(id) {
+                // A lifecycle operation already owns the existing handle. A
+                // second login request must not share its token or generation
+                // with the first background login flow.
+                return Ok(());
             } else {
                 let c = CancellationToken::new();
-                handles.insert(id.to_string(), RunningHandle { cancel: c.clone() });
-                c
+                let generation = self.next_generation.fetch_add(1, Ordering::Relaxed) + 1;
+                handles.insert(
+                    id.to_string(),
+                    RunningHandle {
+                        cancel: c.clone(),
+                        generation,
+                    },
+                );
+                (c, generation)
             }
         };
         self.set_state(id, PluginState::WaitingLogin, None).await;
@@ -313,12 +353,31 @@ impl PluginManager {
             };
             match plugin.begin_login(ctx).await {
                 Ok(()) => {
-                    {
+                    let is_current = {
                         let mut handles = manager.handles.write().await;
-                        handles.remove(&plugin_id);
+                        if handles
+                            .get(&plugin_id)
+                            .is_some_and(|handle| handle.generation == generation)
+                        {
+                            handles.remove(&plugin_id);
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if !is_current {
+                        return;
+                    }
+                    let app_state = manager_app.state::<AppState>();
+                    // Cancellation and duplicate login flows return Ok(()) without
+                    // persisted credentials. Only confirmed QR login activates polling.
+                    if !plugin.is_bound(&app_state.database).await {
+                        manager
+                            .set_state(&plugin_id, PluginState::Stopped, None)
+                            .await;
+                        return;
                     }
                     // Scanning is the single activation action: bind, enable, then start polling.
-                    let app_state = manager_app.state::<AppState>();
                     if let Err(e) = app_state
                         .database
                         .save_setting("plugin.ilinkbot.enabled", "true")
@@ -335,9 +394,20 @@ impl PluginManager {
                     let _ = manager.start(&plugin_id).await;
                 }
                 Err(e) => {
-                    {
+                    let is_current = {
                         let mut handles = manager.handles.write().await;
-                        handles.remove(&plugin_id);
+                        if handles
+                            .get(&plugin_id)
+                            .is_some_and(|handle| handle.generation == generation)
+                        {
+                            handles.remove(&plugin_id);
+                            true
+                        } else {
+                            false
+                        }
+                    };
+                    if !is_current {
+                        return;
                     }
                     manager
                         .set_state(&plugin_id, PluginState::Error, Some(e.to_string()))
@@ -349,6 +419,7 @@ impl PluginManager {
     }
 
     pub async fn cancel_login(&self, id: &str) -> Result<(), AppError> {
+        let _lifecycle = self.lifecycle.lock().await;
         let plugin = self.plugin(id)?;
         plugin.cancel_login().await?;
         self.stop_internal(id).await;
@@ -357,8 +428,19 @@ impl PluginManager {
     }
 
     pub async fn logout(&self, id: &str) -> Result<(), AppError> {
+        let _lifecycle = self.lifecycle.lock().await;
         let plugin = self.plugin(id)?;
-        let _ = self.stop(id).await?;
+        self.stop_internal(id).await;
+        let state = self.current_state(id).await;
+        if matches!(
+            state,
+            PluginState::Stopping
+                | PluginState::Starting
+                | PluginState::WaitingLogin
+                | PluginState::Running
+        ) {
+            self.set_state(id, PluginState::Stopped, None).await;
+        }
         let app_state = self.app.state::<AppState>();
         plugin.logout(&app_state.database).await?;
         app_state
@@ -370,6 +452,7 @@ impl PluginManager {
     }
 
     pub async fn shutdown_all(&self) {
+        let _lifecycle = self.lifecycle.lock().await;
         let ids: Vec<String> = self.plugins.keys().cloned().collect();
         for id in ids {
             self.stop_internal(&id).await;
@@ -390,9 +473,26 @@ impl PluginManager {
         };
         for info in list {
             if info.bound {
-                // Binding is the activation state. This also migrates older bindings that
-                // were saved before QR confirmation automatically enabled the plugin.
-                if let Err(e) = self.set_enabled(&info.id, true).await {
+                let setting = self
+                    .app
+                    .state::<AppState>()
+                    .database
+                    .get_setting("plugin.ilinkbot.enabled")
+                    .ok()
+                    .flatten();
+                if matches!(setting.as_deref(), Some("false" | "0")) {
+                    continue;
+                }
+                // Migrate bindings created before the enabled setting existed,
+                // while respecting an explicit user pause.
+                if setting.is_none() {
+                    let _ = self
+                        .app
+                        .state::<AppState>()
+                        .database
+                        .save_setting("plugin.ilinkbot.enabled", "true");
+                }
+                if let Err(e) = self.start(&info.id).await {
                     tracing::warn!("[plugins] auto-start {} failed: {}", info.id, e);
                 }
             }

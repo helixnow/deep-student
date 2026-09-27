@@ -1240,6 +1240,8 @@ pub struct HeadlessSessionTurn {
     pub system_prompt_append: Option<String>,
     /// 本次 turn 硬超时（防御性钳制到 [1s, `MAX_HARD_TIMEOUT_SECS`]）
     pub timeout: std::time::Duration,
+    /// Optional caller-owned token used to cancel the turn when its entry point stops.
+    pub cancellation_token: Option<CancellationToken>,
 }
 
 /// 底层执行结果
@@ -1403,7 +1405,7 @@ pub async fn run_headless_agent_turn(
         req.system_prompt_append.as_deref(),
         timeout,
         None,
-        None,
+        req.cancellation_token,
         None,
     )
     .await
