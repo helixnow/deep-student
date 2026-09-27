@@ -3243,11 +3243,13 @@ impl PdfProcessingService {
         cancel_token: &CancellationToken,
         generation: u64,
     ) -> VfsResult<String> {
-        if self.skip_stale_task_side_effects(
-            file_id,
-            Some(generation),
-            "stage_ocr_processing:start",
-        ) {
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "stage_ocr_processing:start",
+            )
+        {
             return Ok("{}".to_string());
         }
 
@@ -3438,6 +3440,18 @@ impl PdfProcessingService {
             .for_each_concurrent(MAX_OCR_CONCURRENCY, |task| task)
             .await;
 
+        // Cancelled permit waiters produce no page results. Do not persist that
+        // empty aggregate (or results belonging to a replaced pipeline).
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "stage_ocr_processing:after_pages",
+            )
+        {
+            return Ok("{}".to_string());
+        }
+
         // 6. 检查结果
         let failed = failed_pages.lock().await;
         let mut results = all_results.lock().await;
@@ -3487,8 +3501,12 @@ impl PdfProcessingService {
                 .collect::<Vec<_>>(),
             1,
         ) && success_rate >= 0.5;
-        self.update_file_ocr(file_id, &ocr_json_str, ocr_usable)
-            .await?;
+        if !self
+            .update_file_ocr(file_id, &ocr_json_str, ocr_usable, cancel_token, generation)
+            .await?
+        {
+            return Ok("{}".to_string());
+        }
 
         // 同步内存中的 ready_modes
         if ocr_usable {
@@ -3591,7 +3609,9 @@ impl PdfProcessingService {
         file_id: &str,
         ocr_json: &str,
         ocr_usable: bool,
-    ) -> VfsResult<()> {
+        cancel_token: &CancellationToken,
+        generation: u64,
+    ) -> VfsResult<bool> {
         // ★ P1-4 修复：带 busy-retry 的事务开始
         // 并发处理多文件时 BEGIN IMMEDIATE 可能因 SQLITE_BUSY 失败
         // 连接在循环内获取，避免 sleep 期间持有空闲连接导致连接池饥饿
@@ -3599,6 +3619,15 @@ impl PdfProcessingService {
             let max_retries = 3u32;
             let mut attempt = 0u32;
             loop {
+                if cancel_token.is_cancelled()
+                    || self.skip_stale_task_side_effects(
+                        file_id,
+                        Some(generation),
+                        "update_file_ocr:begin",
+                    )
+                {
+                    return Ok(false);
+                }
                 let conn = self.db.get_conn_safe()?;
                 match conn.execute("BEGIN IMMEDIATE", []) {
                     Ok(_) => break conn,
@@ -3630,6 +3659,19 @@ impl PdfProcessingService {
                 }
             }
         };
+
+        // Acquiring the connection/write lock may have waited while cancellation
+        // or a replacement pipeline invalidated this result. Recheck before SQL.
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "update_file_ocr:save",
+            )
+        {
+            conn.execute("ROLLBACK", [])?;
+            return Ok(false);
+        }
 
         let result = (|| -> VfsResult<()> {
             // 1. 更新 OCR 数据
@@ -3681,7 +3723,7 @@ impl PdfProcessingService {
                     "[PdfProcessingService] Updated OCR result for file: {} (ocr_usable={})",
                     file_id, ocr_usable
                 );
-                Ok(())
+                Ok(true)
             }
             Err(e) => {
                 let _ = conn.execute("ROLLBACK", []);
