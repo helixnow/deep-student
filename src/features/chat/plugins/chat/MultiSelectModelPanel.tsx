@@ -21,6 +21,7 @@ import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // 类型
@@ -51,6 +52,10 @@ interface ModelConfig {
   /** 是否为重排序模型 */
   isReranker?: boolean;
   is_reranker?: boolean;
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  isAudioTranscription?: boolean;
+  is_audio_transcription?: boolean;
   /** 是否收藏 */
   isFavorite?: boolean;
   is_favorite?: boolean;
@@ -128,12 +133,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
       }
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
       if (seq !== loadSeqRef.current) return;
-      const chatModels = (configs || []).filter((c) => {
-        const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
-        const isReranker = c.isReranker === true || c.is_reranker === true;
-        const isEnabled = c.enabled !== false;
-        return !isEmbedding && !isReranker && isEnabled;
-      });
+      const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
       // 加载供应商配置以获取排序信息

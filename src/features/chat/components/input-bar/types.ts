@@ -287,6 +287,8 @@ export interface InputBarUIProps {
     label: string;
     providerLabel?: string;
     iconId?: string;
+    providerId?: string;
+    isRecent?: boolean;
   }>;
   /** runtime 菜单中直接选择单模型 */
   onSelectRuntimeModel?: (modelId: string) => void;

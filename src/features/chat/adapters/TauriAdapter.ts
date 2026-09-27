@@ -39,7 +39,7 @@ import {
   resetBridgeState,
 } from '../core/middleware/eventBridge';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
-import type { AnkiCard, ModelAssignments } from '@/types';
+import type { AnkiCard, ApiConfig, ModelAssignments } from '@/types';
 import { autoSave } from '../core/middleware/autoSave';
 import { chunkBuffer } from '../core/middleware/chunkBuffer';
 import { modeRegistry } from '../registry';
@@ -97,6 +97,7 @@ import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-re
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
 import { useWorkspaceStore, resolveWorkspaceIdForSession } from '../workspace/workspaceStore';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 import {
   emitTemplateDesignerToolEvent,
   isTemplateDesignerToolName,
@@ -4850,9 +4851,10 @@ export class ChatV2TauriAdapter {
 
   private async getValidChatModelIdSet(): Promise<Set<string>> {
     try {
-      const configs = await invoke<Array<{ id?: string | null }>>('get_api_configurations');
+      const configs = await invoke<ApiConfig[]>('get_api_configurations');
       return new Set(
         (configs || [])
+          .filter(isAvailableChatModel)
           .map((config) => (typeof config?.id === 'string' ? config.id.trim() : ''))
           .filter((id) => id.length > 0)
       );

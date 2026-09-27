@@ -24,6 +24,7 @@ import {
   getVisibleVoiceInputApis,
   type VoiceInputSelectableApi,
 } from '@/voice-input/modelSelection';
+import { isChatGenerationModel } from '@/utils/chatModelEligibility';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
@@ -921,10 +922,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   // 获取所有启用的对话模型，支持包含当前已分配但被禁用的模型
   const getAllEnabledApis = (currentValue?: string) => {
-    const enabledApis = config.apiConfigs.filter(api => api.enabled && !api.isEmbedding && !api.isReranker);
+    const enabledApis = config.apiConfigs.filter(api => api.enabled && isChatGenerationModel(api));
     let candidates: (ApiConfig & { _isDisabledInList?: boolean })[] = enabledApis;
     if (currentValue && !enabledApis.some(api => api.id === currentValue)) {
-      const disabledApi = config.apiConfigs.find(api => api.id === currentValue && !api.isEmbedding && !api.isReranker);
+      const disabledApi = config.apiConfigs.find(api => api.id === currentValue && isChatGenerationModel(api));
       if (disabledApi) {
         candidates = [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
       }

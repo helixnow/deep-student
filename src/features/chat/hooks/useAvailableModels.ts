@@ -8,6 +8,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { ModelInfo } from '../utils/parseModelMentions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // 类型
@@ -44,6 +45,12 @@ interface ModelConfig {
   /** 是否为重排序模型 */
   isReranker?: boolean;
   is_reranker?: boolean;
+  /** 是否为图像生成模型 */
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  /** 是否为语音转写模型 */
+  isAudioTranscription?: boolean;
+  is_audio_transcription?: boolean;
   /** 模型最大输出 tokens */
   maxOutputTokens?: number;
   max_output_tokens?: number;
@@ -81,6 +88,8 @@ interface UseAvailableModelsReturn {
 
 let cachedModels: ModelInfo[] | null = null;
 let cacheTimestamp = 0;
+let inFlightLoad: Promise<ModelInfo[]> | null = null;
+let loadGeneration = 0;
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 分钟缓存
 
 // ============================================================================
@@ -94,12 +103,7 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
   const configs = await invoke<ModelConfig[]>('get_api_configurations');
 
   // 过滤掉嵌入模型、重排序模型和未启用的模型（供应商没有 API Key 的模型 enabled=false）
-  const chatModels = (configs || []).filter((c) => {
-    const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
-    const isReranker = c.isReranker === true || c.is_reranker === true;
-    const isEnabled = c.enabled !== false;
-    return !isEmbedding && !isReranker && isEnabled;
-  });
+  const chatModels = (configs || []).filter(isAvailableChatModel);
 
   // 转换为 ModelInfo 格式
   // 🔧 修复：使用 model 字段作为显示 ID，而非数据库 ID
@@ -143,11 +147,20 @@ export async function ensureModelsCacheLoaded(forceRefresh = false): Promise<Mod
   if (!forceRefresh && cachedModels && now - cacheTimestamp < CACHE_TTL_MS) {
     return cachedModels;
   }
+  if (inFlightLoad) return inFlightLoad;
 
-  const modelInfos = await fetchAvailableModelInfos();
-  cachedModels = modelInfos;
-  cacheTimestamp = now;
-  return modelInfos;
+  const generation = ++loadGeneration;
+  const request = fetchAvailableModelInfos().then((modelInfos) => {
+    if (generation === loadGeneration) {
+      cachedModels = modelInfos;
+      cacheTimestamp = Date.now();
+    }
+    return modelInfos;
+  }).finally(() => {
+    if (inFlightLoad === request) inFlightLoad = null;
+  });
+  inFlightLoad = request;
+  return request;
 }
 
 // ============================================================================
@@ -236,6 +249,10 @@ export function useAvailableModels(): UseAvailableModelsReturn {
 export function clearModelsCache(): void {
   cachedModels = null;
   cacheTimestamp = 0;
+  loadGeneration += 1;
+  // An old request cannot be cancelled. Detach it so the next caller starts
+  // from the new configuration; the generation guard prevents stale writes.
+  inFlightLoad = null;
 }
 
 /**

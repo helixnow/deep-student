@@ -245,6 +245,7 @@ export function useInputBarV2(
         // modelIdPinnedByUser: 标记为用户显式固定，不随全局默认变化
         state.setChatParams({
           modelId: selectedModelId,
+          model2OverrideId: selectedModelId,
           modelDisplayName: selectedModel.model || selectedModel.name,
           modelIdPinnedByUser: true,
         });

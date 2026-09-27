@@ -23,6 +23,7 @@ import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPane
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // 类型
@@ -42,6 +43,10 @@ interface ModelConfig {
   is_embedding?: boolean;
   isReranker?: boolean;
   is_reranker?: boolean;
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  isAudioTranscription?: boolean;
+  is_audio_transcription?: boolean;
   isFavorite?: boolean;
   is_favorite?: boolean;
 }
@@ -95,12 +100,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       }
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
       if (seq !== loadSeqRef.current) return;
-      const chatModels = (configs || []).filter((c) => {
-        const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
-        const isReranker = c.isReranker === true || c.is_reranker === true;
-        const isEnabled = c.enabled !== false;
-        return !isEmbedding && !isReranker && isEnabled;
-      });
+      const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
       try {
@@ -271,7 +271,6 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         void error;
       }
       setDefaultModelId(selectedModelId);
-      store.getState().setChatParams({ model2OverrideId: null });
       const modelName = models.find((m) => m.id === selectedModelId)?.name || selectedModelId;
       showGlobalNotification(
         'success',

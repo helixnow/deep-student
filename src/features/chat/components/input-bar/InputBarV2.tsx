@@ -26,6 +26,7 @@ import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props } from './types';
 import { useModelMentionAutocomplete } from './useModelMentionAutocomplete';
+import { useRecentChatModels } from '../../hooks/useRecentChatModels';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { usePdfPageRefs } from './usePdfPageRefs';
@@ -265,6 +266,7 @@ function getManualPinnedSkillIds(
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
   ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
     const { t } = useTranslation(['chatV2']);
+    const { recentModels, recordSelection } = useRecentChatModels(availableModels ?? []);
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
@@ -899,10 +901,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         model2OverrideId: model.id,
         modelDisplayName: model.model || model.name || model.id,
       });
+      recordSelection(model.id);
       setSelectedModels([]);
       setCompareMode(false);
       store.getState().setPanelState('model', false);
-    }, [setChatParams, store]);
+    }, [recordSelection, setChatParams, store]);
 
     // 🆕 对比/重试模式行点击：切换选中
     const handleToggleCompareModel = useCallback((model: ModelInfo) => {
@@ -927,8 +930,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 与正常发送路径保持一致：多模型时走 parallelModelIds，多变体并行重试
         if (multiModelSelectEnabled && modelIds.length >= 2) {
           store.getState().setPendingParallelModelIds(modelIds);
+          recordSelection(modelIds);
           await store.getState().retryMessage(retryMessageId);
         } else {
+          store.getState().setPendingParallelModelIds(null);
+          recordSelection(modelIds);
           await store.getState().retryMessage(retryMessageId, modelIds[0]);
         }
       } finally {
@@ -937,7 +943,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         store.getState().setPanelState('model', false);
         clearSelectedModels();
       }
-    }, [store, clearSelectedModels, multiModelSelectEnabled]);
+    }, [store, clearSelectedModels, multiModelSelectEnabled, recordSelection]);
 
     // 🔧 面板关闭时清理重试状态
     const handleCloseModelPanel = useCallback(() => {
@@ -1204,13 +1210,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     const runtimeModelOptions = useMemo(() => {
       if (!availableModels || availableModels.length === 0) return [];
+      const recentModelIds = new Set(recentModels.map((model) => model.id));
       return availableModels.map((model) => ({
         id: model.id,
         label: model.model || model.name || model.id,
         providerLabel: model.vendorName,
+        providerId: model.vendorId,
         iconId: model.model || model.name || model.id,
+        isRecent: recentModelIds.has(model.id),
       }));
-    }, [availableModels]);
+    }, [availableModels, recentModels]);
 
     const handleSelectRuntimeModel = useCallback((modelId: string) => {
       const selected = availableModels?.find((model) => model.id === modelId);
@@ -1363,7 +1372,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         textbookOpen={textbookOpen}
         onTextbookToggle={onTextbookToggle}
         // ★ P1（2026-09-07）：当前会话生效模型 ID（附件默认注入模式按其多模态能力取默认）
-        effectiveChatModelId={model2OverrideId || modelId}
+        effectiveChatModelId={model2OverrideId || effectiveUnpinnedModelId}
         // 模型 @mention 自动完成
         modelMentionState={modelMentionState}
         modelMentionActions={modelMentionActions}
