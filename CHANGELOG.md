@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+* **chat:** retain syntax highlighting, token colors, and copying in the default block-based streaming renderer without eagerly loading highlighting code.
 * **qbank:** keep uploads bound to their question, preserve fill-blank text alongside images, reject unsupported image formats before saving, and restore submitted image review.
 * **qbank:** preserve GIF MIME when sending images to models and resolve synchronized attachment aliases for preview and grading.
 * **ocr:** honor the system OCR disable setting and discard late results from cancelled page processing.
