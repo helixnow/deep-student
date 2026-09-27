@@ -85,14 +85,14 @@ describe('MessageList empty state source guards', () => {
     for (const empty of [zhEmpty, enEmpty]) {
       expect(Array.isArray(empty.primaryActionVariants)).toBe(true);
       expect(Array.isArray(empty.primaryActionInGroupVariants)).toBe(true);
-      expect(empty.primaryActionVariants.length).toBeGreaterThan(1);
+      expect(empty.primaryActionVariants.length).toBe(30);
       expect(empty.primaryActionInGroupVariants.length).toBe(empty.primaryActionVariants.length);
       expect(empty.primaryActionVariants).not.toContain(empty.primaryAction);
       expect(empty.primaryActionInGroupVariants.every((value: string) => value.includes('{{groupName}}'))).toBe(true);
     }
 
     expect(zhEmpty.primaryActionVariants).not.toEqual(enEmpty.primaryActionVariants);
-    expect(source).toContain('const EMPTY_STATE_VARIANT_COUNT = 6;');
+    expect(source).toContain('const EMPTY_STATE_VARIANT_COUNT = 30;');
     expect(source).toContain('const [emptyStateVariantIndex] = useState(() =>');
     expect(source).toContain("messageList.empty.primaryActionVariants");
     expect(source).toContain("messageList.empty.primaryActionInGroupVariants");

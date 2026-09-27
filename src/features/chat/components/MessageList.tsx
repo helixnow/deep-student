@@ -62,7 +62,7 @@ const BOTTOM_THRESHOLD_PX = 50;
 const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
 /** 空态主动作候选数；中英文资源保持同样长度，避免切换语言时索引失效。 */
-const EMPTY_STATE_VARIANT_COUNT = 6;
+const EMPTY_STATE_VARIANT_COUNT = 30;
 
 function getLocalizedEmptyStateVariant(value: unknown, index: number): string | undefined {
   if (!Array.isArray(value)) return undefined;
