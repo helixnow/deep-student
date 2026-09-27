@@ -16,6 +16,8 @@ import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureF
 import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
 import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
+// The blocked renderer needs the shared token palette without loading FlowToken.
+import '../../styles/flowtoken-patched.css';
 
 // Keep the shared Prism grammar bundle behind a code-only boundary. Plain prose
 // and inline code never evaluate it, and completed blocks retain memoized output.
