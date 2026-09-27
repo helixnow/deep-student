@@ -2829,9 +2829,11 @@ mod ocr_runtime_candidate_tests {
     #[test]
     fn system_ocr_candidate_respects_enabled_state_alongside_remote_engine() {
         let (remote_model, remote_config) = generic_vlm();
-        for (enabled, supported, expected_native) in
-            [(false, true, false), (true, true, true), (true, false, false)]
-        {
+        for (enabled, supported, expected_native) in [
+            (false, true, false),
+            (true, true, true),
+            (true, false, false),
+        ] {
             let candidates = build_ocr_runtime_candidates(
                 &[remote_model.clone(), system_model(enabled)],
                 std::slice::from_ref(&remote_config),

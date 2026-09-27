@@ -3663,11 +3663,7 @@ impl PdfProcessingService {
         // Acquiring the connection/write lock may have waited while cancellation
         // or a replacement pipeline invalidated this result. Recheck before SQL.
         if cancel_token.is_cancelled()
-            || self.skip_stale_task_side_effects(
-                file_id,
-                Some(generation),
-                "update_file_ocr:save",
-            )
+            || self.skip_stale_task_side_effects(file_id, Some(generation), "update_file_ocr:save")
         {
             conn.execute("ROLLBACK", [])?;
             return Ok(false);

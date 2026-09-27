@@ -1782,10 +1782,11 @@ impl VfsAttachmentRepo {
                 // Sync deduplicates equal files under the local ID. JSON payloads
                 // retain the remote ID, so both preview and grading must follow
                 // the persisted alias before reporting an attachment as missing.
-                let canonical_id = crate::data_governance::sync::SyncManager::resolve_persisted_id_alias(
-                    conn, "files", id,
-                )
-                .map_err(|e| VfsError::Database(e.to_string()))?;
+                let canonical_id =
+                    crate::data_governance::sync::SyncManager::resolve_persisted_id_alias(
+                        conn, "files", id,
+                    )
+                    .map_err(|e| VfsError::Database(e.to_string()))?;
                 if canonical_id == id {
                     return Ok(None);
                 }
