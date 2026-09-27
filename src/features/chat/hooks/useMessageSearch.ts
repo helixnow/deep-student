@@ -22,11 +22,12 @@ function sameDocuments(a: MessageSearchDocument[] | null, b: MessageSearchDocume
   });
 }
 
-/** Own one worker only while this conversation's search UI is open. */
+/** Own one worker only while this conversation's search UI is open and active. */
 export function useMessageSearch(
   store: StoreApi<ChatStore>,
   isOpen: boolean,
   query: string,
+  suspended = false,
 ): MessageSearchMatch[] {
   const [result, setResult] = useState<{
     store: StoreApi<ChatStore>;
@@ -38,12 +39,16 @@ export function useMessageSearch(
   queryRef.current = query;
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || suspended) return;
     let disposed = false;
     let worker: Worker | null = null;
     let fallback: ReturnType<typeof createMessageSearchIndex> | null = null;
     let requestId = 0;
     let activeQuery = '';
+    let queryRevision = 0;
+    let sentQueryRevision = -1;
+    let inFlight: { requestId: number; queryRevision: number } | null = null;
+    let pendingSearch = false;
     let sentMessages: MessageSearchDocument[] | null = null;
     let sentBlocks = new Map<string, string>();
     setResult(null);
@@ -51,8 +56,10 @@ export function useMessageSearch(
     const publish = (matches: MessageSearchMatch[]) => {
       const resultQuery = activeQuery;
       const resultRequestId = requestId;
+      const resultQueryRevision = queryRevision;
       setResult((previous) => {
-        if (disposed || resultRequestId !== requestId) return previous;
+        if (disposed || resultRequestId !== requestId
+          || resultQueryRevision !== queryRevision) return previous;
         if (previous?.store === store && previous.query === resultQuery
           && previous.matches.length === matches.length
           && previous.matches.every((match, index) => match.messageId === matches[index].messageId
@@ -96,14 +103,17 @@ export function useMessageSearch(
       worker = null;
     };
 
-    // Failure retains search availability with the same bounded index. Do not
-    // retry failed workers or introduce another scheduling/caching layer.
+    // Failure retains search availability with the same index and latest store
+    // state. Do not retry the failed worker or replay its queued snapshots.
     const useFallback = () => {
       if (disposed || fallback) return;
       stopWorker();
+      inFlight = null;
+      pendingSearch = false;
       fallback = createMessageSearchIndex();
       sentMessages = null;
       sentBlocks.clear();
+      sentQueryRevision = -1;
       search(activeQuery, true);
     };
 
@@ -111,18 +121,28 @@ export function useMessageSearch(
       if (disposed) return;
       const queryChanged = nextQuery !== activeQuery;
       activeQuery = nextQuery;
+      if (queryChanged) queryRevision += 1;
       if (!nextQuery.trim()) {
+        pendingSearch = false;
         if (queryChanged) {
-          requestId += 1; // Invalidate an in-flight result when the input is cleared.
           publish(EMPTY_MATCHES);
         }
         return;
       }
+      // Keep only one in-flight request. Store/query changes while it runs are
+      // represented by this flag, not copied text or precomputed deltas. On its
+      // reply, collect from the current store against the last sent snapshot.
+      if (inFlight) {
+        pendingSearch = true;
+        return;
+      }
       const update = collectUpdate();
-      if (!force && !queryChanged && !update.messages
+      if (!force && sentQueryRevision === queryRevision && !update.messages
         && update.blocks.length === 0 && update.removedBlockIds.length === 0) return;
       const request: MessageSearchRequest = { ...update, query: nextQuery, requestId: ++requestId };
+      sentQueryRevision = queryRevision;
       if (worker) {
+        inFlight = { requestId: request.requestId, queryRevision };
         try {
           worker.postMessage(request);
         } catch {
@@ -140,10 +160,22 @@ export function useMessageSearch(
         name: 'chat-message-search',
       });
       worker.onmessage = ({ data }: MessageEvent<MessageSearchResponse>) => {
-        if (disposed) return;
+        if (disposed || data.requestId !== inFlight?.requestId) return;
+        const completed = inFlight;
+        inFlight = null;
         if ('error' in data) {
           useFallback();
-        } else if (data.requestId === requestId) {
+          return;
+        }
+        if (pendingSearch) {
+          pendingSearch = false;
+          search(activeQuery);
+        }
+        // A newer query or content delta requires its own result. A status-only
+        // store update may have set pendingSearch without changing searchable
+        // text; in that case no new request was sent and this result is valid.
+        if (!inFlight && completed.requestId === requestId
+          && completed.queryRevision === queryRevision && activeQuery.trim()) {
           publish(data.matches);
         }
       };
@@ -168,13 +200,13 @@ export function useMessageSearch(
       unsubscribe();
       stopWorker();
     };
-  }, [store, isOpen]);
+  }, [store, isOpen, suspended]);
 
   useEffect(() => {
     searchRef.current?.(query);
-  }, [store, isOpen, query]);
+  }, [store, isOpen, query, suspended]);
 
-  return isOpen && result?.store === store && result.query === query
+  return isOpen && !suspended && result?.store === store && result.query === query
     ? result.matches
     : EMPTY_MATCHES;
 }

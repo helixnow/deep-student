@@ -38,6 +38,7 @@ import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
 import { useMessageSearch } from '../hooks/useMessageSearch';
+import { useStreamPreferences } from './renderers/StreamPreferencesContext';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
 
@@ -259,7 +260,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
-  const searchMatches = useMessageSearch(store, isSearchOpen, searchQuery);
+  const { suspended = false } = useStreamPreferences();
+  const searchMatches = useMessageSearch(store, isSearchOpen, searchQuery, suspended);
   const resolvedActiveSearchIndex = searchMatches.length > 0
     ? Math.min(activeSearchIndex, searchMatches.length - 1)
     : 0;
