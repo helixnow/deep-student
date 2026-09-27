@@ -506,6 +506,12 @@ impl VfsFileRepo {
         })?;
 
         let result = (|| -> VfsResult<(VfsFile, bool)> {
+            // Small uploads have no preceding blob write. Acquire the write
+            // lock before folder/dedup reads so this deferred SAVEPOINT cannot
+            // become a stale read snapshot while other uploads commit.
+            // Keep this inside the closure so failure follows rollback/release.
+            conn.execute("UPDATE files SET id = id WHERE 0", [])?;
+
             // 1. 检查文件夹存在性
             if let Some(fid) = folder_id {
                 if !VfsFolderRepo::folder_exists_with_conn(conn, fid)? {
