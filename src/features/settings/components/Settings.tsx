@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../styles/settings.css';
 import '../styles/api-config-section.css';
@@ -42,6 +42,8 @@ import '@/command-palette/styles/shortcut-settings.css';
 import { AppMenuDemo } from '@/components/ui/app-menu';
 import type { AutomationListen } from './automationSettingsApi';
 import { useSettingsNavigation } from './useSettingsNavigation';
+import { SettingsCategoryHeader } from './SettingsCategoryHeader';
+import { SettingsMobileNavigation } from './SettingsMobileNavigation';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
 import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import { APP_EVENTS, useAppEvent } from '@/events';
@@ -119,13 +121,7 @@ import {
   X,
   Info as InfoIcon,
   Stack,
-  MagnifyingGlass,
-  CaretRight,
 } from '@phosphor-icons/react';
-import {
-  settingsQuietHoverClassName,
-  settingsQuietInteractiveRowClassName,
-} from './SettingsCommon';
 import type { SettingsRightPanelType } from './hookDepsTypes';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
@@ -394,7 +390,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
   const [extra, setExtra] = useState<SettingsExtra>({});
   const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
   const isMcpLoading = activeTab === 'mcp' && loading;
-  const { sidebarNavGroups, sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
+  const { sidebarCategories, sidebarNavItems, settingsSearchIndex } = useSettingsNavigation();
+  // Keep legacy section IDs as the single navigation source of truth.
+  const activeCategory = sidebarCategories.find((category) => category.items.some((item) => item.value === activeTab));
+  const settingsNavigationId = useId();
 
   // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
   const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
@@ -684,10 +683,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       if (activeTab === 'apis' && mobileVendorDetailOpen && selectedVendor) {
         text = selectedVendor.name || activeNavItem?.label || t('settings:title');
       } else if (activeTab === 'apis') {
-        // 供应商列表态：页内「供应商列表」标题上收进顶栏（页内不再重复渲染）
-        text = t('settings:vendor_panel.list_title');
+        // 列表态以分类名为标题；具体分区由下方二级 Tab 标明。
+        text = activeCategory?.label ?? t('settings:vendor_panel.list_title');
       } else {
-        text = activeNavItem?.label ?? t('settings:title');
+        text = activeCategory?.label ?? activeNavItem?.label ?? t('settings:title');
       }
     }
     return text;
@@ -704,6 +703,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     mobileVendorDetailOpen,
     selectedVendor,
     activeNavItem,
+    activeCategory,
     t,
   ]);
 
@@ -1177,124 +1177,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     setMobileSearchQuery('');
   };
 
-  // 搜索结果：命中 label 或关键词的设置项，扁平列表点击直达对应分区
-  const mobileSearchResults = (() => {
-    const query = mobileSearchQuery.trim().toLowerCase();
-    if (!query) return [];
-    return settingsSearchIndex.filter((item) => {
-      if (item.label.toLowerCase().includes(query)) return true;
-      return item.keywords.some((keyword) => keyword.toLowerCase().includes(query));
-    });
-  })();
-
-  // P0-1 移动端分区首页：搜索框 + 分组单行入口（icon、标题、描述、右箭头）
   const renderMobileSectionList = () => (
-    <CustomScrollArea
-      className="settings-mobile-sheet-body scrollbar-none min-h-0 flex-1 w-full max-w-full"
-      viewportClassName="settings-mobile-sheet-scroll-viewport h-full"
-      trackOffsetTop={16}
-      trackOffsetBottom={16}
-      trackOffsetRight={0}
-    >
-      <div className="mx-auto w-full max-w-[40rem] space-y-4 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4 sm:px-5">
-        {/* 搜索框 */}
-        <div className="relative">
-          <MagnifyingGlass
-            aria-hidden
-            className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60"
-          />
-          <Input
-            type="search"
-            value={mobileSearchQuery}
-            onChange={(e) => setMobileSearchQuery(e.target.value)}
-            placeholder={t('settings:sidebar.search_placeholder')}
-            aria-label={t('settings:sidebar.search_placeholder')}
-            className="h-11 rounded-[14px] border-border/35 bg-[color:var(--surface-elevated)] pl-10 text-base shadow-[var(--shadow-content-subtle)]"
-          />
-        </div>
-
-        {mobileSearchQuery.trim() ? (
-          // 搜索结果态：扁平列表，点击直达对应分区
-          <div className="rounded-2xl border border-border/40 bg-background px-1.5 py-1.5">
-            {mobileSearchResults.length === 0 ? (
-              <div className="px-3 py-8 text-center text-base text-muted-foreground">
-                {t('settings:sidebar.no_results')}
-              </div>
-            ) : (
-              mobileSearchResults.map((item, index) => {
-                const sectionItem = sidebarNavItems.find((nav) => nav.value === item.tab);
-                const SectionIcon = sectionItem?.icon;
-                return (
-                  <DsButton
-                    variant="ghost"
-                    size="md"
-                    key={`${item.tab}-${item.label}-${index}`}
-                    type="button"
-                    onClick={() => openMobileSection(item.tab)}
-                    className={cn(
-                      '!flex !h-auto !min-h-12 !w-full !justify-start !whitespace-normal !border-0 !px-3 !py-1.5 text-left ui-press',
-                      settingsQuietInteractiveRowClassName,
-                      settingsQuietHoverClassName
-                    )}
-                  >
-                    {SectionIcon && <SectionIcon className="h-4 w-4 shrink-0 text-muted-foreground" />}
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-base font-medium text-foreground">{item.label}</span>
-                      {sectionItem && (
-                        <span className="block truncate text-sm text-muted-foreground/70">{sectionItem.label}</span>
-                      )}
-                    </span>
-                    <CaretRight aria-hidden className="h-3.5 w-3.5 shrink-0 text-muted-foreground/40" />
-                  </DsButton>
-                );
-              })
-            )}
-          </div>
-        ) : (
-          <nav aria-label={t('settings:title')} className="space-y-5">
-            {sidebarNavGroups.map((group, groupIndex) => (
-              <section key={`mobile-settings-group-${groupIndex}`}>
-                <h2 className="mb-2 px-2 text-md font-semibold leading-6 text-muted-foreground">
-                  {t(`settings:mobile_groups.${groupIndex}`)}
-                </h2>
-                <div className="overflow-hidden rounded-[22px] border border-border/30 bg-[color:var(--surface-elevated)] shadow-[var(--shadow-shell-soft)]">
-                  {group.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <DsButton
-                        variant="ghost"
-                        size="md"
-                        key={item.value}
-                        type="button"
-                        data-tour-id={item.tourId}
-                        onClick={() => openMobileSection(item.value)}
-                        className={cn(
-                          '!flex !h-auto !min-h-[72px] !w-full !items-center !justify-start !gap-3 !rounded-none !border-0 !border-b !border-border/35 !px-4 !py-3 text-left last:!border-b-0 ui-press',
-                          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset'
-                        )}
-                      >
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center text-muted-foreground">
-                          <Icon className="h-6 w-6" />
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block truncate text-lg font-medium leading-6 text-foreground">
-                            {item.label}
-                          </span>
-                          <span className="mt-0.5 block truncate text-ui leading-5 text-muted-foreground">
-                            {item.mobileDescription}
-                          </span>
-                        </span>
-                        <CaretRight aria-hidden className="h-5 w-5 shrink-0 text-muted-foreground/55" />
-                      </DsButton>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </nav>
-        )}
-      </div>
-    </CustomScrollArea>
+    <SettingsMobileNavigation
+      categories={sidebarCategories}
+      items={sidebarNavItems}
+      searchIndex={settingsSearchIndex}
+      query={mobileSearchQuery}
+      onQueryChange={setMobileSearchQuery}
+      onOpenTab={openMobileSection}
+    />
   );
 
   // P0-4：MCP 工具/资源预览正文（桌面 DsDialog 与移动右滑面板共用）
@@ -1415,6 +1306,24 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       )}
       data-slot={mobilePageMode ? 'mobile-settings-page-content' : undefined}
     >
+        {activeCategory && !(mobilePageMode && mobileVendorDetailOpen) && (
+          <div className="shrink-0 px-5 pt-4 lg:px-8">
+            <div className="mx-auto w-full max-w-[72rem]">
+              <SettingsCategoryHeader
+                category={activeCategory}
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                idPrefix={settingsNavigationId}
+                compact={mobilePageMode}
+              />
+            </div>
+          </div>
+        )}
+        {activeTab === 'about' && !mobilePageMode && (
+          <div className="shrink-0 px-5 pt-5 lg:px-8">
+            <h1 className="mx-auto w-full max-w-[72rem] text-xl font-semibold">{t('settings:tabs.about')}</h1>
+          </div>
+        )}
         <CustomScrollArea
           className={cn('min-h-0 flex-1 w-full max-w-full', mobilePageMode && 'scrollbar-none')}
           // OverlayScrollbars 会把 viewport 的 padding 强制写成 0，水平内边距必须放在内层。
@@ -1437,7 +1346,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           {/* 分区切换：左右对称进出，替代原先只有入场的整树重挂载 */}
           <ShellViewSwitch viewKey={activeTab} className="mx-auto w-full max-w-[72rem]">
             <React.Suspense fallback={<SettingsTabFallback />}>
-            <div className="space-y-6">
+            <div
+              className="space-y-6"
+              id={`${settingsNavigationId}-panel`}
+              role={activeCategory && !(mobilePageMode && mobileVendorDetailOpen) ? 'tabpanel' : undefined}
+              aria-labelledby={activeCategory && !(mobilePageMode && mobileVendorDetailOpen) ? `${settingsNavigationId}-tab-${activeTab}` : undefined}
+              tabIndex={0}
+            >
         {/* API配置管理 */}
         {/* API配置管理 */}
         {activeTab === 'apis' && (
@@ -1936,22 +1851,17 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               >
                 <div className="space-y-5 px-4 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4">
                   <div className="h-11 w-full animate-pulse rounded-[14px] bg-muted" />
-                  {sidebarNavGroups.map((group, groupIdx) => (
-                    <div key={groupIdx} className="space-y-2">
-                      <div className="h-4 w-20 animate-pulse rounded bg-muted" />
-                      <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
-                        {group.map((item) => (
-                          <div key={item.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
-                            <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
-                            <div className="min-w-0 flex-1 space-y-2">
-                              <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
-                              <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
-                            </div>
-                          </div>
-                        ))}
+                  <div className="overflow-hidden rounded-2xl border border-border/40 bg-background p-1">
+                    {sidebarCategories.map((category) => (
+                      <div key={category.value} className="flex min-h-[72px] items-center gap-3 border-b border-border/30 px-3 last:border-b-0">
+                        <div className="h-6 w-6 animate-pulse rounded-md bg-muted" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="h-4 w-28 max-w-[60%] animate-pulse rounded bg-muted" />
+                          <div className="h-3 w-44 max-w-[80%] animate-pulse rounded bg-muted" />
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </CustomScrollArea>
             </div>

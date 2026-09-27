@@ -782,6 +782,14 @@
     "workbench": "学习桌面",
     "document_processing": "文档处理"
   },
+  "categories": {
+    "ai": "模型与 AI",
+    "experience": "应用体验",
+    "personalization": "输入与个性化",
+    "integrations": "工具与扩展",
+    "workflow": "工作流与文档",
+    "data": "数据与系统"
+  },
   "mobile_groups": {
     "0": "模型",
     "1": "通用",

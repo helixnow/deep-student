@@ -782,6 +782,14 @@
     "workbench": "Study Desktop",
     "document_processing": "Document Processing"
   },
+  "categories": {
+    "ai": "Models & AI",
+    "experience": "App experience",
+    "personalization": "Input & personalization",
+    "integrations": "Tools & extensions",
+    "workflow": "Workflows & documents",
+    "data": "Data & system"
+  },
   "mobile_groups": {
     "0": "Models",
     "1": "General",
