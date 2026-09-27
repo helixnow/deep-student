@@ -766,6 +766,9 @@ fn guess_image_mime(base64_data: &str) -> &'static str {
         if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
             return "image/jpeg";
         }
+        if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+            return "image/gif";
+        }
         if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WEBP" {
             return "image/webp";
         }
@@ -1250,6 +1253,17 @@ mod tests {
         );
         // 兜底 JPEG
         assert_eq!(guess_image_mime(""), "image/jpeg");
+    }
+
+    #[test]
+    fn guess_image_mime_detects_bare_base64_gif_versions() {
+        // VFS returns bare base64; GIF uploads bypass canvas re-encoding.
+        for header in [b"GIF87a", b"GIF89a"] {
+            let mut bytes = header.to_vec();
+            bytes.extend_from_slice(&[1, 0, 1, 0, 0x80, 0, 0, 0, 0, 0, 0xff, 0xff]);
+            let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+            assert_eq!(guess_image_mime(&encoded), "image/gif");
+        }
     }
 
     #[test]

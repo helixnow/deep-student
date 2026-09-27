@@ -5478,6 +5478,42 @@ impl SyncManager {
         table_name: &str,
         record_id: &str,
     ) -> Result<String, SyncError> {
+        Self::resolve_alias_with_lookup(table_name, record_id, |current| {
+            Ok(aliases
+                .get(&(table_name.to_string(), current.to_string()))
+                .cloned())
+        })
+    }
+
+    /// Resolve IDs embedded in persisted payloads that cannot use SQL foreign-key
+    /// remapping (for example, attachment IDs in an image-answer envelope).
+    /// This lookup does not create sync tables or load unrelated alias records.
+    pub(crate) fn resolve_persisted_id_alias(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+    ) -> Result<String, SyncError> {
+        if !Self::table_exists_for_snapshot(conn, "__sync_id_aliases")? {
+            return Ok(record_id.to_string());
+        }
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT canonical_id FROM __sync_id_aliases
+                 WHERE table_name = ?1 AND remote_id = ?2",
+            )
+            .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))?;
+        Self::resolve_alias_with_lookup(table_name, record_id, |current| {
+            stmt.query_row(params![table_name, current], |row| row.get(0))
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))
+        })
+    }
+
+    fn resolve_alias_with_lookup(
+        table_name: &str,
+        record_id: &str,
+        mut lookup: impl FnMut(&str) -> Result<Option<String>, SyncError>,
+    ) -> Result<String, SyncError> {
         let mut current = record_id.to_string();
         let mut seen = HashSet::new();
         loop {
@@ -5489,8 +5525,8 @@ impl SyncManager {
                 );
                 return Ok(record_id.to_string());
             }
-            match aliases.get(&(table_name.to_string(), current.clone())) {
-                Some(next) => current = next.clone(),
+            match lookup(&current)? {
+                Some(next) => current = next,
                 None => return Ok(current),
             }
         }
@@ -16271,6 +16307,39 @@ mod tests {
         assert_eq!(result.success_count, 2);
         assert_eq!(conflict_result.conflicts_saved, 0);
         assert_blob_file_applied(&conn);
+    }
+
+    #[test]
+    fn persisted_id_alias_lookup_is_read_only_and_preserves_cycle_behavior() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "query_only", true).unwrap();
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "remote").unwrap(),
+            "remote"
+        );
+        conn.pragma_update(None, "query_only", false).unwrap();
+        SyncManager::ensure_id_alias_table(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO __sync_id_aliases(table_name, remote_id, canonical_id) VALUES
+                ('files', 'remote', 'intermediate'),
+                ('files', 'intermediate', 'local'),
+                ('files', 'cycle-a', 'cycle-b'),
+                ('files', 'cycle-b', 'cycle-a');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "query_only", true).unwrap();
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "remote").unwrap(),
+            "local"
+        );
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "resources", "remote").unwrap(),
+            "remote"
+        );
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "cycle-a").unwrap(),
+            "cycle-a"
+        );
     }
 
     #[test]
