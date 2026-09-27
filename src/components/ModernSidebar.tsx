@@ -115,7 +115,7 @@ interface ModernSidebarProps {
   startDragging?: (e: React.MouseEvent) => void;
   navigationHistory?: NavigationHistory;
   topbarTopMargin?: number;
-  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'readyToRelaunch' | 'performUpdateAction'>;
+  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'progress' | 'readyToRelaunch' | 'performUpdateAction'>;
 }
 
 type SidebarSectionId = 'pinned' | 'topics' | 'conversations';
@@ -1816,7 +1816,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               }}
               aria-label={
                 updater?.downloading
-                  ? t('sidebar:update.downloading')
+                  ? `${t('sidebar:update.downloading')} ${Math.round(updater.progress)}%`
                   : updater?.readyToRelaunch
                     ? t('sidebar:update.restart')
                     : t('sidebar:update.available')
@@ -1824,7 +1824,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               disabled={updater?.downloading}
             >
               {updater?.downloading ? (
-                <CircleNotch size={10} className="animate-spin" aria-hidden="true" />
+                <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                  <CircleNotch size={10} className="animate-spin" />
+                  <span>{Math.round(updater.progress)}%</span>
+                </span>
               ) : updater?.readyToRelaunch ? (
                 t('sidebar:update.restart')
               ) : t('sidebar:update.short')}
