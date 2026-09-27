@@ -13,10 +13,6 @@ import { useTranslation } from 'react-i18next';
 import {
   FolderPlus,
   FileText,
-  ClipboardText,
-  BookOpen,
-  Translate,
-  PenNib,
   ArrowClockwise,
   Pencil,
   Trash,
@@ -25,17 +21,11 @@ import {
   FolderOpen,
   Copy,
   Clipboard,
-  StackSimple,
   ArrowCounterClockwise,
   Warning,
-  FlowArrow,
   Star,
   StarHalf,
-  Monitor,
   CheckCircle,
-  Download,
-  ListChecks,
-  ArrowBendUpRight,
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -138,7 +128,8 @@ export interface LearningHubContextMenuProps {
 // ============================================================================
 
 interface MenuItemProps {
-  icon: React.ReactNode;
+  /** 高频动作的视觉锚点；次要动作省略，避免菜单每行都抢视觉注意力。 */
+  icon?: React.ReactNode;
   disabled?: boolean;
   /** 危险操作（删除 / 清空回收站等）：红字 + 红色 hover 高亮 */
   danger?: boolean;
@@ -155,7 +146,11 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, disabled, danger, onClick, ch
     disabled={disabled}
     onClick={onClick}
   >
-    <span className="wb-desk-menu-item-icon" aria-hidden="true">
+    <span
+      className="wb-desk-menu-item-icon"
+      aria-hidden="true"
+      data-empty={icon ? undefined : 'true'}
+    >
       {icon}
     </span>
     <span className="wb-desk-menu-item-label">{children}</span>
@@ -491,7 +486,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newNote')}
       </MenuItem>
       <MenuItem
-        icon={<Download size={15} weight="duotone" />}
         onClick={() => {
           onImportMarkdownNote?.(currentFolderId ?? null);
           closeMenu();
@@ -500,7 +494,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.importMarkdown')}
       </MenuItem>
       <MenuItem
-        icon={<ClipboardText size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
           closeMenu();
@@ -509,7 +502,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newExam')}
       </MenuItem>
       <MenuItem
-        icon={<BookOpen size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('textbook', currentFolderId ?? null);
           closeMenu();
@@ -518,7 +510,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newTextbook')}
       </MenuItem>
       <MenuItem
-        icon={<Translate size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('translation', currentFolderId ?? null);
           closeMenu();
@@ -527,7 +518,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newTranslation')}
       </MenuItem>
       <MenuItem
-        icon={<PenNib size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('essay', currentFolderId ?? null);
           closeMenu();
@@ -536,7 +526,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newEssay')}
       </MenuItem>
       <MenuItem
-        icon={<FlowArrow size={15} weight="duotone" />}
         onClick={() => {
           onCreateItem?.('mindmap', currentFolderId ?? null);
           closeMenu();
@@ -597,7 +586,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newNoteHere')}
       </MenuItem>
       <MenuItem
-        icon={<Download size={15} weight="duotone" />}
         onClick={() => {
           onImportMarkdownNote?.(folder.folder.id);
           closeMenu();
@@ -625,7 +613,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {/* ★ 制造副本（访达 Duplicate） */}
       {canCreate && onDuplicate && (
         <MenuItem
-          icon={<StackSimple size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => onDuplicate(target), 50);
@@ -638,7 +625,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {/* ★ 移动到… */}
       {canMove && onMoveTo && (
         <MenuItem
-          icon={<ArrowBendUpRight size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => onMoveTo(target), 50);
@@ -662,7 +648,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {/* ★ 2026-07-20：文件夹批量导出为 ZIP */}
       {onExportFolder && (
         <MenuItem
-          icon={<Download size={15} weight="duotone" />}
           onClick={() => {
             closeMenu();
             setTimeout(() => onExportFolder(folder.folder.id), 50);
@@ -742,7 +727,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {/* ★ 制造副本（访达 Duplicate） */}
         {canCreate && onDuplicate && (
           <MenuItem
-            icon={<StackSimple size={15} weight="duotone" />}
             onClick={() => {
               closeMenu();
               setTimeout(() => onDuplicate(target), 50);
@@ -755,7 +739,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {/* ★ 移动到… */}
         {canMove && onMoveTo && (
           <MenuItem
-            icon={<ArrowBendUpRight size={15} weight="duotone" />}
             onClick={() => {
               closeMenu();
               setTimeout(() => onMoveTo(target), 50);
@@ -806,10 +789,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {/* ★ 2026-01-31: 添加到桌面 - 仅资源项 */}
         {resourceItem && (
           <MenuItem
-            icon={isAddedToDesktop 
-              ? <CheckCircle size={15} weight="duotone" className="text-success" />
-              : <Monitor size={15} weight="duotone" />
-            }
+            icon={isAddedToDesktop ? <CheckCircle size={15} weight="duotone" className="text-success" /> : undefined}
             onClick={() => {
               if (!isAddedToDesktop) {
                 if (isFolder) {
@@ -839,7 +819,6 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           <>
             <MenuSeparator />
             <MenuItem
-              icon={<Download size={15} weight="duotone" />}
               onClick={() => {
                 closeMenu();
                 setTimeout(() => {
@@ -940,7 +919,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       data-phase={closing ? 'closing' : 'open'}
       className={cn(
         // 学习桌面右键菜单同款玻璃外壳（见 workbench DesktopContextMenu.css）
-        'wb-desk-menu wb-glass-lens',
+        'wb-desk-menu wb-glass-lens wb-desk-menu-sparse-icons',
         // ★ 小视口下限制高度并允许内部滚动，避免长菜单被裁剪不可达
         //   （本菜单无飞出子菜单，允许 overflow 裁剪）
         'scroll-area--native max-h-[calc(100vh-16px)] overflow-y-auto overflow-x-hidden',

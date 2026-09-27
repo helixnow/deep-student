@@ -157,6 +157,25 @@
   flex: none;
 }
 
+/*
+ * 资源右键菜单只给高频动作保留图标。无图标项仍保留同一列宽，
+ * 让整组文字对齐，同时把视觉重心留给打开/新建/编辑等主要动作。
+ */
+.wb-desk-menu-sparse-icons .wb-desk-menu-item-icon[data-empty='true'] {
+  visibility: hidden;
+}
+
+.wb-desk-menu-sparse-icons .wb-desk-menu-item-icon:not([data-empty='true']) {
+  /* 保留父级语义色（例如删除项的红色），只降低图标饱和度。 */
+  color: color-mix(in srgb, currentColor 72%, transparent 28%);
+}
+
+.wb-desk-menu-sparse-icons .wb-desk-menu-item:hover .wb-desk-menu-item-icon,
+.wb-desk-menu-sparse-icons .wb-desk-menu-item:focus .wb-desk-menu-item-icon,
+.wb-desk-menu-sparse-icons .wb-desk-menu-item[data-wb-desk-active='true'] .wb-desk-menu-item-icon {
+  color: inherit;
+}
+
 .wb-desk-menu-item-label {
   flex: 1 1 auto;
   overflow: hidden;
