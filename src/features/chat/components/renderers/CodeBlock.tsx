@@ -17,6 +17,42 @@ import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
 import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
 
+// Keep the shared Prism grammar bundle behind a code-only boundary. Plain prose
+// and inline code never evaluate it, and completed blocks retain memoized output.
+const LazySyntaxHighlighter = React.lazy(() => import('react-syntax-highlighter/dist/esm/prism'));
+
+const HighlightContent: React.FC<{ children?: ReactNode }> = ({ children }) => <>{children}</>;
+
+const HighlightedCode = React.memo(function HighlightedCode({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
+  const language = className?.replace('language-', '').toLowerCase();
+  const hasLanguage = language && !['text', 'plain', 'plaintext'].includes(language);
+
+  // The code node belongs to this component, not the lazy fallback, so loading
+  // grammars, appending streamed text and ending the stream do not replace it.
+  return (
+    <code className={className}>
+      {hasLanguage ? (
+        <React.Suspense fallback={children}>
+          <LazySyntaxHighlighter
+            language={language}
+            useInlineStyles={false}
+            PreTag={HighlightContent}
+            CodeTag="span"
+          >
+            {children}
+          </LazySyntaxHighlighter>
+        </React.Suspense>
+      ) : children}
+    </code>
+  );
+});
+
 /**
  * OS 模式拖/缩/settle 手势期让路：mermaid 解析/渲染主线程开销大，
  * 延迟重试到手势结束再跑（结果不变只是延后）。旗由 settle 桥接兜底清理，
@@ -890,7 +926,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       ) : (
         <ScrollArea orientation="both" className="code-block-scroll-area">
           <pre className="code-block code-block-inner">
-            <code className={className}>{children}</code>
+            <HighlightedCode className={className}>{rawChildren}</HighlightedCode>
           </pre>
         </ScrollArea>
       )}
