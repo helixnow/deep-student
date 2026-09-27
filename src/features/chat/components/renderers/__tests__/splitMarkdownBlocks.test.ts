@@ -13,6 +13,16 @@ describe('splitMarkdownBlocks', () => {
     expect(first[0]?.id).toBe(second[0]?.id);
   });
 
+  it('keeps a block id when the block closes and the stream completes', () => {
+    const split = createMarkdownBlockSplitter();
+    const active = split('First paragraph.', true);
+    const closed = split('First paragraph.\n\nSecond paragraph.', true);
+    const complete = split('First paragraph.\n\nSecond paragraph.', false);
+    expect(closed[0].id).toBe(active[0].id);
+    expect(complete.map((block) => block.id)).toEqual(closed.map((block) => block.id));
+    expect(complete.every((block) => block.isComplete)).toBe(true);
+  });
+
   it('treats a single-line $$...$$ as a self-closed math block', () => {
     const blocks = splitMarkdownBlocks('$$E=mc^2$$\n\n后续段落内容', false);
 
@@ -120,5 +130,32 @@ describe('createMarkdownBlockSplitter (incremental)', () => {
     const second = split(`${base}活跃内容继续增长`, true);
     expect(second.slice(0, 3).map((b) => b.id)).toEqual(first.slice(0, 3).map((b) => b.id));
     expect(second[second.length - 1]?.id).toBe(first[first.length - 1]?.id);
+  });
+
+  it('reuses finalized objects for completed prefix blocks across flushes (identity stable)', () => {
+    // 🚀 长会话性能契约：已完成块对象跨 flush 复用同一引用，
+    // MemoizedBlock 的 props 引用比较直接命中，无需逐块值比较 raw。
+    // 注意首帧就需 ≥3 个块才会进入增量路径（MIN_BLOCKS_FOR_INCREMENTAL）。
+    const split = createMarkdownBlockSplitter();
+    const base = '# 标题\n\n第一段\n\n第二段\n\n';
+    const first = split(base, true);
+    const second = split(`${base}活跃正文`, true);
+    expect(first).toHaveLength(3);
+    // 增量路径保留前 n-2 个前缀块：块 0 保持对象身份
+    expect(second[0]).toBe(first[0]);
+    // 块 1 在重解析窗口内：对象重建但 id/raw 值必须一致
+    expect(second[1].id).toBe(first[1].id);
+    expect(second[1].raw).toBe(first[1].raw);
+  });
+
+  it('keeps prefix identity stable on repeated same-content calls after stream end', () => {
+    const split = createMarkdownBlockSplitter();
+    const content = '# A\n\n段落\n\n活跃内容';
+    split(content, true);
+    const done = split(content, false);
+    const again = split(content, false);
+    expect(again[0]).toBe(done[0]);
+    // 增量路径会重解析尾部两块，但输出必须与全量解析一致
+    expect(again).toEqual(splitMarkdownBlocks(content, false));
   });
 });

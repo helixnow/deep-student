@@ -71,10 +71,8 @@ import {
   extractSources,
   extractSteps,
   extractTaskCompletion,
-  isRuntimeTool,
-  isTodoTool,
-  normalizeToolName,
 } from './agent-task/extractors';
+import { getBlocksDigest } from './agent-task/blocksDigest';
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
@@ -152,20 +150,6 @@ const SectionDivider: React.FC = () => (
 
 const EMPTY_BLOCKS: Block[] = [];
 
-const selectTodoBlocks = (state: AgentTaskStoreState): Block[] =>
-  Array.from(state.blocks.values()).filter(isTodoTool);
-
-const selectHasRuntimeActivity = (state: AgentTaskStoreState): boolean => {
-  for (const block of state.blocks.values()) {
-    if (typeof block.toolName !== 'string') continue;
-    const short = normalizeToolName(block.toolName);
-    if (isRuntimeTool(block.toolName) || short === 'browser_downloads' || short === 'browser_file_upload') {
-      return true;
-    }
-  }
-  return false;
-};
-
 // Plain text/thinking chunks contribute no task details. Keep every other block
 // and any source/tool payload, including sources attached to a content block.
 const contributesTaskDetails = (block: Block): boolean =>
@@ -187,8 +171,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   const { isSmallScreen } = useBreakpoint();
   const ref = useRef<HTMLDivElement>(null);
 
-  const todoBlocks = useStore(store, useShallow(selectTodoBlocks));
-  const hasRuntimeActivity = useStore(store, selectHasRuntimeActivity);
+  // Shared digest folds todo/runtime changes across panel and artifact consumers.
+  // Expanded details still ignore plain text chunks; only the open artifact stays live.
   const expandedBlocks = useStore(store, useShallow((state: AgentTaskStoreState) =>
     expanded ? Array.from(state.blocks.values()).filter(contributesTaskDetails) : EMPTY_BLOCKS,
   ));
@@ -197,6 +181,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
   );
   const sessionId = useStore(store, (s) => s.sessionId);
   const streaming = useStore(store, (s) => (s.activeBlockIds?.size ?? 0) > 0);
+  const hasRuntimeActivity = useStore(store, (s) => getBlocksDigest(s.blocks).runtimeActivity);
+  const todoBlocks = useStore(store, (s) => getBlocksDigest(s.blocks).todoBlocks);
   const [workspacePage, setWorkspacePage] = useState<RuntimeDirectoryPage | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [browserDownloads, setBrowserDownloads] = useState<BrowserDownloadObservation[]>([]);
@@ -226,6 +212,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     }
   }, [sessionId]);
 
+  // todoBlocks 引用由 digest 折叠：todo 块未变时保持同一引用，
+  // extractSteps 只在 todo 计划真正更新时重跑
   const { steps, title, isAllDone, message } = useMemo(
     () => extractSteps(todoBlocks),
     [todoBlocks],

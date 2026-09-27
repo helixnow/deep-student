@@ -121,7 +121,8 @@
       "previous": "Previous match",
       "next": "Next match",
       "results": "{{current}}/{{count}}",
-      "noResults": "No matches"
+      "noResults": "No matches",
+      "noResultsInLoadedWindow": "Only loaded messages searched — load earlier messages to search all"
     }
   },
   "messageItem": {

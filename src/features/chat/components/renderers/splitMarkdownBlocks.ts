@@ -30,7 +30,7 @@ export type MarkdownBlockType =
   | 'html';
 
 export interface MarkdownBlock {
-  /** 稳定 ID：基于块索引 + 内容前缀 hash，确保已完成块的 key 不变 */
+  /** 稳定 ID：基于块索引 + 类型，正文追加和块闭合不更换 key */
   id: string;
   /** 块类型 */
   type: MarkdownBlockType;
@@ -48,18 +48,6 @@ interface CoreBlock {
   closed: boolean;
   /** 块首行在被解析文本中的字符偏移（用于增量重解析定位） */
   startOffset: number;
-}
-
-/**
- * 简单字符串 hash（FNV-1a 变体），用于生成稳定 block ID
- */
-function hashStr(str: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < Math.min(str.length, 64); i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return (h >>> 0).toString(36);
 }
 
 /** 检测行是否为代码围栏开始/结束 */
@@ -338,23 +326,51 @@ function coreParse(content: string): CoreBlock[] {
 }
 
 /**
+ * 已定稿 MarkdownBlock 缓存（以 CoreBlock 对象为键）。
+ *
+ * 增量路径下前缀 CoreBlock 是同一批对象（cachedCore.slice 复用引用），
+ * 命中缓存即可跨 flush 复用同一个 MarkdownBlock 对象：
+ * - 消除每次 flush 对全部已完成块的重复对象分配（长回复 GC 压力）；
+ * - 下游 React.memo（MemoizedBlock）的 props 引用比较直接命中快路径，
+ *   无需再逐块值比较 raw。
+ * 活动流式块不进缓存（raw 每 flush 增长）；其 id 与完成后一致，闭合不换 key。
+ * 全量解析路径（非追加式变化）CoreBlock 全部为新建对象，缓存自然失效。
+ */
+const finalizedBlockCache = new WeakMap<CoreBlock, MarkdownBlock>();
+
+function finalizeCompletedBlock(block: CoreBlock, index: number): MarkdownBlock {
+  const cached = finalizedBlockCache.get(block);
+  if (cached) return cached;
+  const finalized: MarkdownBlock = {
+    id: `b${index}-${block.type}`,
+    type: block.type,
+    raw: block.raw,
+    isComplete: block.closed,
+  };
+  finalizedBlockCache.set(block, finalized);
+  return finalized;
+}
+
+/**
  * 标注阶段：分配稳定 ID 并落定 isComplete。
  *
- * 流式期间，最后一个活跃块使用不随 raw 变化的稳定 key，
- * 避免每个 chunk 都触发 React remount，打断内部动画 / diff 状态。
+ * 同一位置/类型的块从活动到完成使用相同 key；raw/isComplete 仍由
+ * 渲染器比较并更新，避免块闭合时 remount 丢失选区、图片与交互状态。
  */
 function finalizeBlocks(coreBlocks: CoreBlock[], isStreaming: boolean): MarkdownBlock[] {
   const lastIndex = coreBlocks.length - 1;
   return coreBlocks.map((block, idx) => {
-    const isActiveStreamingBlock = isStreaming && idx === lastIndex;
-    return {
-      id: isActiveStreamingBlock
-        ? `b${idx}-${block.type[0]}-streaming`
-        : `b${idx}-${block.type[0]}-${hashStr(block.raw)}`,
-      type: block.type,
-      raw: block.raw,
-      isComplete: isActiveStreamingBlock ? false : block.closed,
-    };
+    // 活动流式块（最后一个）：raw 每 flush 增长，不进缓存；id 与完成后一致
+    // （b${idx}-${type}），闭合时不 remount（上游 0f2ef301 语义）
+    if (isStreaming && idx === lastIndex) {
+      return {
+        id: `b${idx}-${block.type}`,
+        type: block.type,
+        raw: block.raw,
+        isComplete: false,
+      };
+    }
+    return finalizeCompletedBlock(block, idx);
   });
 }
 
