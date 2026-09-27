@@ -281,6 +281,14 @@ mod tests {
             )
             .unwrap();
         let remote_id = "file_remote_image_answer";
+        // A byte-identical file may have a different name on the other device.
+        // Keep this a real newer update: an identical row is correctly skipped
+        // by sync's semantic-echo guard and cannot assert an applied change.
+        let remote_name = "answer-from-other-device.gif";
+        let remote_updated_at =
+            (chrono::DateTime::parse_from_rfc3339(&local.attachment.updated_at).unwrap()
+                + chrono::Duration::milliseconds(1))
+            .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let changes = [SyncChangeWithData {
             table_name: "files".into(),
             record_id: remote_id.into(),
@@ -288,8 +296,8 @@ mod tests {
             data: Some(serde_json::json!({
                 "id": remote_id,
                 "sha256": sha256,
-                "file_name": "answer.gif",
-                "name": "answer.gif",
+                "file_name": remote_name,
+                "name": remote_name,
                 "type": "image",
                 "mime_type": "image/gif",
                 "size": local.attachment.size,
@@ -297,9 +305,9 @@ mod tests {
                 "resource_id": local.attachment.resource_id,
                 "blob_hash": local.attachment.blob_hash,
                 "created_at": local.attachment.created_at,
-                "updated_at": local.attachment.updated_at,
+                "updated_at": remote_updated_at,
             })),
-            changed_at: local.attachment.updated_at.clone(),
+            changed_at: remote_updated_at,
             change_log_id: Some(42),
             database_name: Some("vfs".into()),
             suppress_change_log: Some(true),
@@ -307,8 +315,8 @@ mod tests {
             source_seq: None,
         }];
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
-        assert_eq!(result.success_count, 1);
-        assert_eq!(result.failure_count, 0);
+        assert_eq!(result.failure_count, 0, "{result:?}");
+        assert_eq!(result.success_count, 1, "{result:?}");
         assert!(VfsAttachmentRepo::get_by_id_with_conn(&conn, remote_id)
             .unwrap()
             .is_none());
@@ -316,6 +324,14 @@ mod tests {
             SyncManager::resolve_persisted_id_alias(&conn, "files", remote_id).unwrap(),
             local.source_id
         );
+        let canonical_names: (String, String) = conn
+            .query_row(
+                "SELECT name, file_name FROM files WHERE id = ?1",
+                [&local.source_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(canonical_names, (remote_name.into(), remote_name.into()));
         drop(conn);
 
         // The persisted envelope keeps the remote ID: SQL FK remapping cannot
