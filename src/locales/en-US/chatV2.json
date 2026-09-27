@@ -104,6 +104,22 @@
       "description": "Send a message to start chatting with AI",
       "primaryAction": "What would you like to learn today?",
       "primaryActionInGroup": "What would you like to learn in \"{{groupName}}\"?",
+      "primaryActionVariants": [
+        "What would you like to make sense of today?",
+        "Which question should we explore first?",
+        "Got a question? Let’s turn it into a small win.",
+        "Which idea deserves your curiosity today?",
+        "Ready to unlock a new skill?",
+        "What puzzle shall we untangle together?"
+      ],
+      "primaryActionInGroupVariants": [
+        "What would you like to make sense of in \"{{groupName}}\"?",
+        "Which question should we explore in \"{{groupName}}\"?",
+        "Ready to turn a curiosity into a win in \"{{groupName}}\"?",
+        "What deserves the spotlight in \"{{groupName}}\" today?",
+        "Which skill shall we unlock in \"{{groupName}}\"?",
+        "What shall we untangle together in \"{{groupName}}\"?"
+      ],
       "suggestion1": "Analyze this deep learning paper and summarize its key innovations and experimental results.",
       "suggestion2": "I'm preparing for a math exam. Help me create a study outline for linear algebra.",
       "suggestion3": "Check this code for logical flaws and optimize its time complexity.",

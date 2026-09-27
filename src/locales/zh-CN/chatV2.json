@@ -104,6 +104,22 @@
       "description": "发送消息开始与 AI 对话",
       "primaryAction": "今天想学点什么？",
       "primaryActionInGroup": "在「{{groupName}}」里学点什么？",
+      "primaryActionVariants": [
+        "今天想把哪块知识点亮一下？",
+        "脑袋开机，先来一道最想搞懂的问题？",
+        "今天想学点什么，或把什么讲明白？",
+        "把一个好奇心，变成一个小收获？",
+        "知识地图想往哪儿走？",
+        "来吧，今天一起攻克哪道难题？"
+      ],
+      "primaryActionInGroupVariants": [
+        "在「{{groupName}}」里，今天想点亮哪块知识？",
+        "「{{groupName}}」准备好了，先从哪个问题聊起？",
+        "在「{{groupName}}」里，想把哪个难点讲明白？",
+        "把好奇心放进「{{groupName}}」，今天从哪一步开始？",
+        "「{{groupName}}」今天解锁什么新技能？",
+        "来吧，在「{{groupName}}」里挑战哪道题？"
+      ],
       "suggestion1": "分析这篇关于深度学习的论文，总结其核心创新点和实验结果。",
       "suggestion2": "我正在准备考研数学，请帮我创建一个线性代数的知识体系思维导图。",
       "suggestion3": "请调研2026年大语言模型的最新发展趋势，并撰写调研报告。",
