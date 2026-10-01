@@ -121,7 +121,7 @@ describe('CrepeEditor desktop block menu host wiring', () => {
     openHandle(command === 'heading-2');
     expect(menu()).not.toBeNull();
     expect(highlights().map((el) => Number(el.dataset.blockMenuTargetPos))).toEqual([expected.pos]);
-    expect(highlights()[0].style.outline).toContain('2px');
+    expect(highlights()[0].style.background).toContain('var(--primary)');
     expect(highlights()[0].style.pointerEvents).toBe('none');
     expect(dispatch).not.toHaveBeenCalled();
     fireEvent.click(action(command));

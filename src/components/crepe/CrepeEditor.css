@@ -634,8 +634,9 @@
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .tab-group ul li.selected {
-  background: hsl(var(--primary)) !important;
-  color: hsl(var(--primary-foreground)) !important;
+  /* 分组页签只是定位，不抢视觉：浅底 + 正文色，不用品牌实色块 */
+  background: hsl(var(--foreground) / 0.07) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 /* Slash 菜单保持编辑器自管滚动，仅同步核心滚动条 token 与几何。 */
@@ -706,7 +707,7 @@
 
 /* 分组标题 - 紧凑样式 */
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group h6 {
-  font-size: 10px !important;
+  font-size: 11px !important;
   font-weight: 600 !important;
   line-height: 1.2 !important;
   padding: 6px 8px 4px !important;
@@ -720,16 +721,18 @@
 
 /* 菜单项 - 紧凑样式 */
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li {
-  min-width: 140px !important;
-  padding: 6px 8px !important;
+  min-width: 180px !important;
+  min-height: 30px !important;
+  padding: 4px 8px !important;
   gap: 10px !important;
-  border-radius: var(--notes-popup-item-radius, 4px) !important;
+  border-radius: 6px !important;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li > span {
-  font-size: 13px !important;
+  font-size: 14px !important;
   font-weight: 400 !important;
   line-height: 1.3 !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li svg {
@@ -740,13 +743,16 @@
 }
 
 .crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li:hover,
-.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover {
-  background: hsl(var(--accent)) !important;
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.hover,
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active {
+  /* Notion：键盘高亮与悬停同为浅灰底，文字颜色不变 */
+  background: hsl(var(--foreground) / 0.06) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
-.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active {
-  background: hsl(var(--primary)) !important;
-  color: hsl(var(--primary-foreground)) !important;
+.crepe-editor-wrapper .milkdown .milkdown-slash-menu .menu-groups .menu-group li.active svg {
+  color: hsl(var(--foreground)) !important;
+  fill: hsl(var(--foreground)) !important;
 }
 
 /* ===== 气泡工具栏（Bubble Toolbar） ===== */
@@ -953,7 +959,7 @@
   position: fixed;
   /* 消费全局层级 token（fallback 保持旧值）；z-index 全局统一待全局代理处理 */
   z-index: var(--z-popover, 1200);
-  width: 216px;
+  width: 248px;
   /* dvh 优先 + vh 兜底：iOS 地址栏显示时 100vh 大于可视高，菜单底部会被遮挡 */
   max-height: min(380px, calc(100vh - 16px));
   max-height: min(380px, calc(100dvh - 16px));
@@ -980,9 +986,10 @@
   width: 100%;
   min-height: 30px;
   align-items: center;
+  gap: 10px;
   border: 0;
-  border-radius: var(--notes-popup-item-radius, 4px);
-  padding: 5px 8px;
+  border-radius: 6px;
+  padding: 4px 8px;
   background: transparent;
   color: inherit;
   font-size: 13px;
@@ -991,13 +998,35 @@
 }
 
 .crepe-block-menu button:hover,
-.crepe-block-menu button:focus-visible {
+.crepe-block-menu button:focus-visible,
+.crepe-block-menu button[data-active="true"] {
   outline: none;
-  background: hsl(var(--accent));
+  background: hsl(var(--foreground) / 0.06);
 }
 
 .crepe-block-menu button[data-destructive="true"] {
   color: hsl(var(--destructive));
+}
+
+.crepe-block-menu__icon {
+  flex-shrink: 0;
+  color: hsl(var(--foreground) / 0.6);
+}
+
+.crepe-block-menu button[data-destructive="true"] .crepe-block-menu__icon {
+  color: currentColor;
+}
+
+.crepe-block-menu__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crepe-block-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .crepe-block-menu__separator {

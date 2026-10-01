@@ -22,6 +22,10 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { Slice } from '@milkdown/prose/model';
 import { uploadConfig } from '@milkdown/kit/plugin/upload';
 import i18next from 'i18next';
+import {
+  TextT, TextHOne, TextHTwo, TextHThree, ListBullets, ListNumbers, CheckSquare, Quotes, Code,
+  Info, CaretRight, Copy, Trash, LinkSimple, ArrowBendUpRight, Columns, type Icon,
+} from '@phosphor-icons/react';
 
 // Crepe 样式（亮色 + 暗色主题）
 import '@milkdown/crepe/theme/common/style.css';
@@ -111,6 +115,24 @@ const BLOCK_MENU_ACTIONS: readonly BlockMenuAction[] = [
   'move-to-note',
   ...LAYOUT_COMMANDS,
 ];
+
+const BLOCK_MENU_ICONS: Partial<Record<BlockMenuAction, Icon>> = {
+  paragraph: TextT,
+  'heading-1': TextHOne,
+  'heading-2': TextHTwo,
+  'heading-3': TextHThree,
+  'bullet-list': ListBullets,
+  'ordered-list': ListNumbers,
+  'task-list': CheckSquare,
+  quote: Quotes,
+  'code-block': Code,
+  callout: Info,
+  toggle: CaretRight,
+  duplicate: Copy,
+  delete: Trash,
+  'copy-block-link': LinkSimple,
+  'move-to-note': ArrowBendUpRight,
+};
 
 function getBlockMenuActionLabel(action: BlockMenuAction): string {
   if (isLayoutCommand(action)) return layoutCommandLabel(action);
@@ -2734,19 +2756,24 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                   && (blockMenu.target.depth !== 1 || (action === 'copy-block-link' && blockMenu.target.nodes.length !== 1)) || undefined}
                 title={(action === 'copy-block-link' || action === 'move-to-note') && blockMenu.target.depth !== 1
                   ? i18next.t('notes:blockIdentity.topLevelOnly', '持久身份仅支持顶层块；嵌套块暂不支持。') : undefined}
-                // 键盘高亮：无 CSS 所有权，用内联 hover token 兜底
-                style={isActive ? { backgroundColor: 'var(--interactive-hover)' } : undefined}
                 onMouseEnter={() => setBlockMenuActiveIndex(index)}
                 onClick={() => runBlockAction(action)}
               >
-                {getBlockMenuActionLabel(action)}
+                {(() => {
+                  const ActionIcon = BLOCK_MENU_ICONS[action] ?? Columns;
+                  return <ActionIcon className="crepe-block-menu__icon" size={16} aria-hidden="true" />;
+                })()}
+                <span className="crepe-block-menu__text">{getBlockMenuActionLabel(action)}</span>
               </button>
             );
-            // duplicate 前插入分隔线（turn-into 组结束）
-            if (action === 'duplicate') {
+            // 分组：turn-into → 块操作 → 页面布局
+            if (action === 'duplicate' || action === LAYOUT_COMMANDS[0]) {
               return (
                 <React.Fragment key={action}>
                   <div className="crepe-block-menu__separator" />
+                  {action !== 'duplicate' && (
+                    <div className="crepe-block-menu__label">{i18next.t('notes:layout.label', '页面布局')}</div>
+                  )}
                   {button}
                 </React.Fragment>
               );
@@ -2762,8 +2789,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             <div key={rect.pos} data-block-menu-target-pos={rect.pos} style={{
               position: 'fixed', pointerEvents: 'none', zIndex: 'calc(var(--z-popover, 1200) - 1)',
               left: rect.left, top: rect.top, width: rect.width, height: rect.height,
-              outline: '2px solid hsl(var(--primary) / 0.65)', outlineOffset: 2,
-              background: 'hsl(var(--primary) / 0.08)', borderRadius: 4,
+              // Notion：被操作的块只铺一层浅蓝底，不描边
+              background: 'hsl(var(--primary) / 0.12)', borderRadius: 4,
             }} />
           ))}
         </div>,
