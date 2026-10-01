@@ -550,6 +550,7 @@
       "notAllowedHere": "You can't create items in this view"
     },
     "quickAccess": {
+      "materials": "Learning materials",
       "desktop": "Desktop",
       "allFiles": "All Files",
       "favorites": "Favorites",
@@ -562,12 +563,14 @@
       "files": "All Documents",
       "recent": "Recent",
       "trash": "Trash",
-      "indexStatus": "Index Status",
+      "indexStatus": "Knowledge index",
+      "indexStatusDescription": "Make materials searchable by AI",
       "expand": "Expand sidebar",
       "collapse": "Collapse sidebar",
       "resourceTypes": "Resource Types",
       "media": "Media",
       "system": "System",
+      "aiKnowledge": "AI knowledge",
       "mindmaps": "Mind Maps",
       "todos": "Todo Lists"
     },
@@ -800,6 +803,8 @@
   },
   "memory": {
     "title": "Memory Management",
+    "navTitle": "AI memory",
+    "navDescription": "Saved preferences and long-term facts",
     "setup_title": "Set Memory Storage Location",
     "setup_description": "The VFS memory system stores memories as regular note files. Please select or create a folder as the memory root directory.",
     "select_folder": "Select Existing Folder",
@@ -1009,6 +1014,8 @@
     "pending": "{{count}} pending index"
   },
   "indexStatus": {
+    "introTitle": "Knowledge index",
+    "introDescription": "Your learning materials stay in the materials library. AI can search them in chat after indexing. The index is derived search data, not a second copy of your files.",
     "state": {
       "indexed": "Indexed",
       "pending": "Pending",

@@ -59,6 +59,7 @@ import {
   Eye,
   Eraser,
   Stack,
+  Info,
 } from '@phosphor-icons/react';
 // Button 组件已替换为原生 button + Tailwind（简洁风格）
 import { cn } from '@/lib/utils';
@@ -1998,6 +1999,15 @@ export const IndexStatusView: React.FC = () => {
   return (
     <div ref={rootContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <style>{SHIMMER_KEYFRAMES}</style>
+      <div className="shrink-0 flex items-start gap-3 border-b border-border/50 bg-muted/20 px-4 py-3 lg:px-5">
+        <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <Info className="h-4 w-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-sm font-medium text-foreground">{t('indexStatus.introTitle')}</div>
+          <p className="mt-0.5 max-w-3xl text-xs leading-5 text-muted-foreground">{t('indexStatus.introDescription')}</p>
+        </div>
+      </div>
       {/* 顶部概览区 */}
       {useCompactHeader ? (
         /* ============ 紧凑布局（移动端 / 窄容器桌面窗口） ============ */
