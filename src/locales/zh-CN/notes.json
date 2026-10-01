@@ -156,7 +156,12 @@
     "icon_notes": "记录",
     "load_failed": "外观加载失败",
     "save_failed": "外观未保存，请重新选择",
-    "add_icon": "添加图标"
+    "add_icon": "添加图标",
+    "icon_random": "随机",
+    "icon_group_subjects": "学科",
+    "icon_group_study": "学习",
+    "icon_group_symbols": "符号",
+    "icon_group_nature": "自然与生活"
   },
   "renameSync": {
     "scanFailed": "标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。",

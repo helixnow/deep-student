@@ -3,11 +3,31 @@ import { NotesAPI } from '@/utils/notesApi';
 
 export const NOTE_APPEARANCE_PRESETS = ['standard', 'compact', 'wide'] as const;
 export type NoteAppearancePreset = typeof NOTE_APPEARANCE_PRESETS[number];
+/** 有名字的常用图标（选择器首组；'' 表示无图标） */
 export const NOTE_APPEARANCE_ICONS = ['', '📄', '📚', '💡', '🧪', '📝'] as const;
+
+/** 页面图标选择器的其余分组（Notion 式 emoji 面板，按学习场景挑选） */
+export const NOTE_ICON_GROUPS: ReadonlyArray<{ key: string; icons: readonly string[] }> = [
+  { key: 'subjects', icons: ['📐', '📏', '🧮', '➗', '🔢', '🧬', '⚗️', '🔬', '🔭', '🌍', '🗺️', '🏛️', '📜', '⚖️', '💻', '🖥️', '🤖', '🧠', '🎨', '🎵', '🏃', '🗣️', '🈶', '🔤'] },
+  { key: 'study', icons: ['📖', '📒', '📓', '📔', '📕', '📗', '📘', '📙', '🗂️', '📌', '📎', '🖊️', '✏️', '🖍️', '🗒️', '📋', '🗓️', '⏰', '⏳', '🎯', '🏆', '🎓', '✅', '❓'] },
+  { key: 'symbols', icons: ['⭐', '🌟', '✨', '🔥', '⚡', '💎', '❤️', '🧡', '💛', '💚', '💙', '💜', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚠️', '🚩', '🔖', '🏷️', '🔑', '🧩'] },
+  { key: 'nature', icons: ['🌱', '🌿', '🍀', '🌸', '🌻', '🌙', '☀️', '🌈', '❄️', '🌊', '⛰️', '🍎', '🍵', '☕', '🐱', '🐶', '🦊', '🐼', '🦉', '🐝', '🦋', '🐢', '🚀', '🛸'] },
+];
+
+export const ALL_NOTE_ICONS: readonly string[] = [
+  ...NOTE_APPEARANCE_ICONS.filter(Boolean),
+  ...NOTE_ICON_GROUPS.flatMap((group) => group.icons),
+];
+
+/** 页面图标：任意单个 emoji（含变体选择符/ZWJ 序列），'' 为无图标 */
+export function isValidNoteIcon(value: unknown): value is string {
+  if (value === '') return true;
+  return typeof value === 'string' && value.length <= 16 && /\p{Extended_Pictographic}/u.test(value) && !/\s/.test(value);
+}
 
 export interface NoteAppearance {
   preset: NoteAppearancePreset;
-  icon: typeof NOTE_APPEARANCE_ICONS[number];
+  icon: string;
 }
 
 const DEFAULT_APPEARANCE: NoteAppearance = { preset: 'standard', icon: '' };
@@ -23,7 +43,7 @@ export function parseNoteAppearance(value: string | null): NoteAppearance {
     const parsed = JSON.parse(value);
     return {
       preset: NOTE_APPEARANCE_PRESETS.includes(parsed?.preset) ? parsed.preset : 'standard',
-      icon: NOTE_APPEARANCE_ICONS.includes(parsed?.icon) ? parsed.icon : '',
+      icon: isValidNoteIcon(parsed?.icon) ? parsed.icon : '',
     };
   } catch {
     return DEFAULT_APPEARANCE;
@@ -90,6 +110,7 @@ async function saveAppearance(noteId: string, patch: Partial<NoteAppearance>): P
   const entry = entryFor(noteId);
   // All mounted views share this gate: no stale read or out-of-order writes.
   if (!entry.loaded || entry.snapshot.saving) return;
+  if (patch.icon !== undefined && !isValidNoteIcon(patch.icon)) return;
   const value = { ...entry.snapshot.value, ...patch };
   publish(entry, { saving: true, error: null });
   try {

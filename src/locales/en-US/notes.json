@@ -156,7 +156,12 @@
     "icon_notes": "Notes",
     "load_failed": "Could not load appearance",
     "save_failed": "Appearance was not saved. Please select again.",
-    "add_icon": "Add icon"
+    "add_icon": "Add icon",
+    "icon_random": "Random",
+    "icon_group_subjects": "Subjects",
+    "icon_group_study": "Study",
+    "icon_group_symbols": "Symbols",
+    "icon_group_nature": "Nature & life"
   },
   "renameSync": {
     "scanFailed": "The title was updated, but referring notes could not be scanned. Some wiki links may be out of date. Please check them manually.",

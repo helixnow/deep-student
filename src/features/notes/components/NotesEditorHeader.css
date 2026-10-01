@@ -223,3 +223,31 @@
   border-radius: 9999px;
   background: hsl(var(--warning));
 }
+
+/* 页面图标网格：Notion 式 emoji 面板 */
+.notes-icon-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  font-size: 20px;
+  line-height: 1;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-icon-option:hover,
+.notes-icon-option[aria-pressed='true'] {
+  background: hsl(var(--foreground) / 0.07);
+}
+
+.notes-icon-option:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-icon-option[aria-disabled='true'] {
+  cursor: wait;
+  opacity: 0.6;
+}

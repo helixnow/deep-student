@@ -2,7 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotesAPI } from '@/utils/notesApi';
-import { noteAppearanceKey, parseNoteAppearance, useNoteAppearance } from './noteAppearance';
+import { noteAppearanceKey, parseNoteAppearance, useNoteAppearance, isValidNoteIcon } from './noteAppearance';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 
 vi.mock('@/utils/notesApi', () => ({
@@ -116,5 +116,17 @@ describe('document appearance entry', () => {
     await act(async () => { finishSave(true); });
     expect(wide).toHaveFocus();
     expect(wide).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('page icon validation', () => {
+  it('accepts any single emoji and rejects text or oversized values', () => {
+    for (const icon of ['', '📐', '⚗️', '❤️', '🧑‍🔬']) expect(isValidNoteIcon(icon)).toBe(true);
+    for (const icon of ['abc', '📐 📐', 'x'.repeat(20), 42, null]) expect(isValidNoteIcon(icon)).toBe(false);
+  });
+
+  it('keeps a stored custom emoji and drops an invalid one', () => {
+    expect(parseNoteAppearance('{"preset":"wide","icon":"🦉"}')).toEqual({ preset: 'wide', icon: '🦉' });
+    expect(parseNoteAppearance('{"preset":"wide","icon":"<b>"}')).toEqual({ preset: 'wide', icon: '' });
   });
 });

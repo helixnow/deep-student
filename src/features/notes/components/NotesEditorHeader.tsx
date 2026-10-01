@@ -6,7 +6,7 @@ import { getPathToNote, type NoteContentStats } from '../notesUtils';
 import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
-import { NOTE_APPEARANCE_ICONS, NOTE_APPEARANCE_PRESETS, useNoteAppearance } from '../noteAppearance';
+import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_APPEARANCE_PRESETS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -570,7 +570,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 : t('notes:appearance.add_icon', { defaultValue: isZh ? '添加图标' : 'Add icon' })}</span>
                         </button>
                     </PopoverTrigger>
-    <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-64 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
+    <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-80 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
                             onKeyDown={(event) => {
                                 if (event.key !== 'Escape') return;
                                 if (isComposingKeyEvent(event)) {
@@ -596,12 +596,32 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 </div>
                             </fieldset>
                             <fieldset className="mt-3" disabled={appearance.loading || appearance.error === 'load'}>
-                                <legend className="mb-2 text-xs text-muted-foreground">{t('notes:appearance.icon', { defaultValue: isZh ? '页面图标' : 'Page icon' })}</legend>
+                                <div className="mb-2 flex items-center justify-between">
+                                    <legend className="text-xs text-muted-foreground">{t('notes:appearance.icon', { defaultValue: isZh ? '页面图标' : 'Page icon' })}</legend>
+                                    <DsButton variant="ghost" size="sm" className="h-6 px-2 text-xs" aria-disabled={appearance.saving}
+                                        onClick={() => {
+                                            const pool = ALL_NOTE_ICONS.filter((icon) => icon !== appearance.value.icon);
+                                            void appearance.update({ icon: pool[Math.floor(Math.random() * pool.length)] });
+                                        }}>
+                                        {t('notes:appearance.icon_random', { defaultValue: isZh ? '随机' : 'Random' })}
+                                    </DsButton>
+                                </div>
                                 <div className="flex flex-wrap gap-1">
                                     {NOTE_APPEARANCE_ICONS.map((icon, index) => (
                                         <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
                                             {icon ? <span aria-hidden="true">{icon}</span> : <X size={14} aria-hidden="true" />}
                                         </DsButton>
+                                    ))}
+                                </div>
+                                <div className="notes-icon-grid mt-2 max-h-48 overflow-y-auto pr-1">
+                                    {NOTE_ICON_GROUPS.map((group) => (
+                                        <div key={group.key} role="group" aria-label={t(`notes:appearance.icon_group_${group.key}`, { defaultValue: group.key })} className="grid grid-cols-8 gap-0.5 py-1">
+                                            {group.icons.map((icon) => (
+                                                <button key={icon} type="button" className="notes-icon-option" aria-label={icon} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>
+                                                    <span aria-hidden="true">{icon}</span>
+                                                </button>
+                                            ))}
+                                        </div>
                                     ))}
                                 </div>
                             </fieldset>
