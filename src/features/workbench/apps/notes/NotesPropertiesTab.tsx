@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { FileText } from '@phosphor-icons/react';
 import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
+import { NoteLearningRelations } from '@/features/notes/components/NoteLearningRelations';
 import { NoteCustomPropsEditor } from './NoteCustomPropsEditor';
 import { getNodeProps } from './parseTagQuery';
 import './NoteCustomPropsEditor.css';
@@ -186,11 +187,15 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
       onRetryContent={reloadContent}
       onTagsChange={readOnly ? undefined : handleTagsChange}
       beforeOutline={(
-        <NoteCustomPropsEditor
-          value={customProps}
-          readOnly={readOnly}
-          onChange={readOnly ? undefined : handleCustomPropsChange}
-        />
+        <>
+          <NoteCustomPropsEditor
+            value={customProps}
+            readOnly={readOnly}
+            onChange={readOnly ? undefined : handleCustomPropsChange}
+          />
+          {/* 与学习资源入口对齐：学习关联（前置/相关笔记）在两个宿主都可编辑 */}
+          <NoteLearningRelations noteId={note.id} readOnly={readOnly} />
+        </>
       )}
     />
   );

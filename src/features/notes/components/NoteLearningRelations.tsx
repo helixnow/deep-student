@@ -31,7 +31,7 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
     const ticket = ++sequence.current;
     try {
       const rows = await service.list(noteId);
-      if (mounted.current && ticket === sequence.current) { setRelations(rows); setError(''); }
+      if (mounted.current && ticket === sequence.current) { setRelations(Array.isArray(rows) ? rows : []); setError(''); }
     } catch (cause) { if (mounted.current && ticket === sequence.current) setError(getErrorMessage(cause)); }
     finally { if (mounted.current && ticket === sequence.current) setLoading(false); }
   }, [noteId, service]);
