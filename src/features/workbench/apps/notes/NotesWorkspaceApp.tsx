@@ -115,6 +115,7 @@ import {
   validateNoteTitle,
 } from '@/features/notes/noteInputLimits';
 import './notes-empty-states.css';
+import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
 
 // 导图视图懒加载：@xyflow/react 体积大，只有导图标签页真正展示时才拉取，
 // 避免拖入 Notes 窗口启动 chunk（加载态用下方轻量占位）
@@ -681,6 +682,8 @@ interface WorkspaceTabsProps {
   contextMenuKey: string | null;
   sidebarWidth: string;
   saveStates: Map<string, SaveState>;
+  /** 标题栏右端的笔记页面级操作位（见 NotesChromeSlotContext） */
+  actionsSlotRef?: React.Ref<HTMLDivElement>;
 }
 
 const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
@@ -695,6 +698,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
   contextMenuKey,
   sidebarWidth,
   saveStates,
+  actionsSlotRef,
 }) => {
   const { t } = useTranslation('workbench');
   const stripRef = useRef<HTMLDivElement>(null);
@@ -977,6 +981,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
         )}
       </div>
     )}
+    {actionsSlotRef && <div ref={actionsSlotRef} className="notes-tab-actions-slot notes-titlebar-actions" data-tab-actions-slot />}
   </div>
   );
 };
@@ -1038,6 +1043,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   sizeClassRef.current = sizeClass;
   const [workspaceWidth, setWorkspaceWidth] = useState(0);
   const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
+  const [notesChromeSlot, setNotesChromeSlot] = useState<HTMLDivElement | null>(null);
   const [status, setStatus] = useState(() => t('notesWorkspace.status.ready', 'Ready'));
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tabSaveStates, setTabSaveStates] = useState<Record<string, SaveState>>({});
@@ -2855,6 +2861,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           contextMenuKey={tabContextMenu?.key ?? null}
           sidebarWidth={titlebarSidebarWidth}
           saveStates={saveStates}
+          actionsSlotRef={setNotesChromeSlot}
         />,
         titlebarTarget,
       ) : null}
@@ -2887,6 +2894,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         sidebar={sizeClass === 'compact' ? null : explorerSurface}
       >
 
+      <NotesChromeSlotContext.Provider value={splitTab || sizeClass === 'compact' ? null : notesChromeSlot}>
       <main className="notes-workspace-main" data-notes-split={splitTab ? 'true' : 'false'}>
         <div className="notes-main-content" data-backlinks-open={backlinksOpen ? 'true' : 'false'} data-backlinks-overlay={backlinksOverlay ? 'true' : 'false'}>
           <PanelGroup
@@ -2992,6 +3000,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             : ''}</span>
         </footer>
       </main>
+      </NotesChromeSlotContext.Provider>
       </WorkbenchSidebarLayout>
       {/* 窄窗「文件」全屏内联子屏（移动端契约：无遮罩抽屉；顶栏返回 + Android back） */}
       {sizeClass === 'compact' && explorerOpen && (

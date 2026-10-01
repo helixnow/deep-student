@@ -547,6 +547,9 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     }
     const shell = notesShellRef.current;
     if (!shell) return undefined;
+    // 首帧同步判定（hidden/display:none 祖先下无 client rect），避免观察器首次回调前
+    // 所有已挂载标签同时占用操作位闪一下
+    setShellInViewport(shell.getClientRects().length > 0);
     const observer = new IntersectionObserver((entries) => {
       const entry = entries[entries.length - 1];
       if (entry) setShellInViewport(entry.isIntersecting);

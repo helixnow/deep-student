@@ -1400,3 +1400,14 @@
     height: 36px;
   }
 }
+
+/* 单顶栏：活动笔记的保存状态/阅读/页面▾ 并入标题栏标签带右端（对齐 Notion topbar）。
+   标题栏整体 pointer-events:none 以保留拖拽，操作位自身恢复命中。 */
+.notes-titlebar-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  padding-left: 6px;
+  pointer-events: auto;
+}
