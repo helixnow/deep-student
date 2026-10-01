@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
+import type { CrepeSelectionAction } from '@/components/crepe/types';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { shouldRequestLoadMore, mergeExpandedMarkdown, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
@@ -96,6 +97,9 @@ import {
 } from './components/outlineActiveHeadingBridge';
 import type { NotesFocusModeEventDetail } from './focusModeOwnership';
 
+
+/** 「加入聊天」浮条图标（24×24 填充，Material add_comment，Apache-2.0） */
+const ADD_TO_CHAT_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M22 4c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4V4zm-2 13.17L18.83 16H4V4h16v13.17zM13 5h-2v4H7v2h4v4h2v-4h4V9h-4z"/></svg>';
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 const SAVING_INDICATOR_DELAY_MS = 400;
 /** 焦点模式 chrome 淡出/淡入时长（与 notes-editor-chrome.css 的过渡对齐） */
@@ -240,7 +244,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   onTagsChange,
   suppressMobileToolbar = false,
 }) => {
-  const { t, i18n } = useTranslation(['notes', 'common']);
+  const { t, i18n } = useTranslation(['notes', 'common', 'chatV2']);
   
   // ========== 模式判断 ==========
   // DSTU 模式：通过 props 传入数据
@@ -525,6 +529,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const dropZoneRef = useRef<HTMLDivElement>(null);
   // P0 选区即上下文：笔记选区 → 结构化 contextRef（与 dropZone 共用同一 relative 容器）
   const selectionContainerRef = useRef<HTMLDivElement>(null);
+  // 只读（阅读模式 / 无写权限）时没有格式浮条，引用到聊天由独立选区条承接
   const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
@@ -634,6 +639,14 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       })
     );
   }, [noteId, isDstuMode, initialTitle, active?.title]);
+
+  // 选区即上下文：「加入聊天」与格式按钮同在一条选区浮条，不再另起一条工具栏
+  const selectionActions = useMemo<CrepeSelectionAction[]>(() => noteId ? [{
+    key: 'add-to-chat',
+    label: t('chatV2:selectionToolbar.addToChat', '引用到聊天'),
+    icon: ADD_TO_CHAT_ICON,
+    run: handleSelectionAddAsContext,
+  }] : [], [noteId, handleSelectionAddAsContext, t]);
 
   useEffect(() => {
     const onFindQuery = (event: Event) => {
@@ -2722,17 +2735,18 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             selectionContainerRef.current = el;
           }}
         >
-          {/* P0 选区即上下文：笔记面只启用「引用到聊天」（解释/翻译沿用 PDF 面模式，后续按需补） */}
-          <SelectionToolbar
-            selectedText={noteSelection.selectedText}
-            selectionRect={noteSelection.selectionRect}
-            isVisible={noteSelection.isVisible}
-            containerRef={selectionContainerRef}
-            onClear={noteSelection.clear}
-            onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
-            hideUnavailableActions
-            dismissOnLeaveView={null}
-          />
+          {effectiveReadOnly && (
+            <SelectionToolbar
+              selectedText={noteSelection.selectedText}
+              selectionRect={noteSelection.selectionRect}
+              isVisible={noteSelection.isVisible}
+              containerRef={selectionContainerRef}
+              onClear={noteSelection.clear}
+              onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
+              hideUnavailableActions
+              dismissOnLeaveView={null}
+            />
+          )}
           <NotesEditorHeader
             lastSaved={lastSaved}
             saveStatus={saveStatus}
@@ -2757,6 +2771,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             onFormattingChange={handleFormattingChange}
             onReady={handleEditorReady}
             readonly={effectiveReadOnly}
+            selectionActions={selectionActions}
             plugins={{
               wikilink: buildWikilinkPluginHostConfig(),
             }}

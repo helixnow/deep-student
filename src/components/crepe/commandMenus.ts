@@ -26,7 +26,18 @@ const bubbleCommands: Record<string, CrepeCommandId> = { bold: 'bold', italic: '
 
 /** Preserve Milkdown's labels/icons/keymaps; replace every document-writing onRun
  * with the same registry used by the desktop and mobile formatting controls. */
-export function wireCrepeCommandMenu(builder: CommandMenuBuilder, kind: 'slash' | 'bubble'): void {
+export interface BubbleHostAction {
+  key: string;
+  label: string;
+  icon: string;
+  run: (selectedText: string) => void;
+}
+
+export function wireCrepeCommandMenu(
+  builder: CommandMenuBuilder,
+  kind: 'slash' | 'bubble',
+  getHostActions?: () => BubbleHostAction[],
+): void {
   const invoke = (id: CrepeCommandId) => (ctx: Ctx) => {
     void executeCrepeCommand(ctx.get(editorViewCtx), id, { slash: kind === 'slash' })
       .catch(error => showGlobalNotification('error', String(error)));
@@ -37,7 +48,25 @@ export function wireCrepeCommandMenu(builder: CommandMenuBuilder, kind: 'slash' 
   }
   // The selection bubble edits inline text. Page layout belongs in the labelled
   // formatting/slash/block menus, not six indistinguishable bubble buttons.
-  if (kind === 'bubble') return;
+  if (kind === 'bubble') {
+    const actions = getHostActions?.() ?? [];
+    if (actions.length === 0) return;
+    const host = builder.addGroup('host-actions', i18next.t('notes:selection.group', { defaultValue: '更多' }));
+    for (const action of actions) host.addItem(action.key, {
+      label: action.label,
+      icon: action.icon,
+      active: () => false,
+      onRun: (ctx) => {
+        const view = ctx.get(editorViewCtx);
+        const { from, to } = view.state.selection;
+        const text = view.state.doc.textBetween(from, to, '\n', '\n').trim();
+        // 浮条只在初始化时构建一次：执行时按 key 取宿主最新的回调，避免闭包过期
+        const current = getHostActions?.().find(a => a.key === action.key) ?? action;
+        if (text) current.run(text);
+      },
+    });
+    return;
+  }
   const layouts = builder.addGroup('note-layout', i18next.t('notes:layout.label', { defaultValue: '页面布局' }));
   for (const id of LAYOUT_COMMANDS) layouts.addItem(id, {
     label: layoutCommandLabel(id), icon: CALLOUT_SLASH_ICON, active: () => false, onRun: invoke(id),

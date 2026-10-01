@@ -196,7 +196,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     className = '',
     noteId,
     plugins: pluginsOptions,
+    selectionActions,
   } = props;
+  const selectionActionsRef = useRef(selectionActions);
+  selectionActionsRef.current = selectionActions;
 
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层包装
   const containerRef = useRef<HTMLDivElement>(null); // Crepe 容器
@@ -1795,7 +1798,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             
             // 工具栏配置（使用默认）
             [CrepeFeature.Toolbar]: {
-              buildToolbar: builder => wireCrepeCommandMenu(builder, 'bubble'),
+              buildToolbar: builder => wireCrepeCommandMenu(builder, 'bubble', () => selectionActionsRef.current ?? []),
             },
             
             // LaTeX 配置

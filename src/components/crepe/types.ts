@@ -279,9 +279,21 @@ export interface CrepeEditorApi {
 /**
  * Crepe 编辑器组件属性
  */
+/** 选区浮条末尾的宿主动作（如「加入聊天」）；run 拿到当前选中的纯文本。 */
+export interface CrepeSelectionAction {
+  key: string;
+  label: string;
+  /** 24×24 viewBox 的内联 SVG 字符串（与 Crepe 自带图标同规格） */
+  icon: string;
+  run: (selectedText: string) => void;
+}
+
 export interface CrepeEditorProps {
   /** 初始 Markdown 内容 */
   defaultValue?: string;
+
+  /** 选区浮条追加的宿主动作；与格式按钮同一条浮条，不再另起一条选区工具栏 */
+  selectionActions?: CrepeSelectionAction[];
   
   /** 内容变化回调 */
   onChange?: (markdown: string) => void;
