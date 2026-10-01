@@ -186,17 +186,6 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     );
   }, [selection.contextBefore, selection.contextAfter, t]);
 
-  // 工具条「添加到聊天」：优先链路 A 同形的 locator 回调（资源引用 + page，
-  // Agent 可回读原文）；无回调或页码不可得时走 PREFILL 包装（先切聊天视图再
-  // 注入文本，payload 带 page/sourceName），不派发裸 CHAT_V2_SET_INPUT
-  const handleAddToChat = useCallback((text: string) => {
-    const page = resolveSelectionPage();
-    if (onQuoteToChat && typeof page === 'number') {
-      onQuoteToChat({ text, page });
-      return;
-    }
-    sendSelectionToChatInput({ text, sourceName: documentTitle, page });
-  }, [onQuoteToChat, documentTitle, resolveSelectionPage]);
 
   // P0 选区即上下文：选区快照 + page locator → 结构化 contextRef。
   // 动态 import 避免把 chat context 链路静态打进 PDF 侧 chunk（同制卡的纪律）。
@@ -215,6 +204,18 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       })
     );
   }, [selectionSourceId, documentTitle, resolveSelectionPage]);
+
+  // 工具条「添加到聊天」（唯一入口）：有资源 id 时走选区即上下文（选区快照 + page locator，
+  // 可点回原页）——旧实现走宿主 onQuoteToChat 的整文档引用，selectedText 只塞进 metadata
+  // 而上下文定义不读取，模型拿到的是整本书而非选区；且与「引用到聊天」两个按钮并存易混淆。
+  // 无资源 id（未入库的临时文件）时退回 PREFILL 文本注入。
+  const handleAddToChat = useCallback((text: string) => {
+    if (selectionSourceId) {
+      handleAddAsContext(text);
+      return;
+    }
+    sendSelectionToChatInput({ text, sourceName: documentTitle, page: resolveSelectionPage() });
+  }, [selectionSourceId, handleAddAsContext, documentTitle, resolveSelectionPage]);
 
   // 解释/翻译结果面板的「添加到输入框」：内容是 AI 生成文本而非原文选区，
   // 不适用 locator 引用语义，固定走 PREFILL 文本注入（此时选区已清，无页码）
@@ -237,7 +238,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
         onSaveAsNote={handleSaveAsNote}
         onMakeCards={handleMakeCards}
         onAddToChat={handleAddToChat}
-        onAddAsContext={selectionSourceId ? handleAddAsContext : undefined}
+        onAddAsContext={undefined}
         hideUnavailableActions
         placement="below"
         viewportBottomInset={isMobileLike ? MOBILE_BOTTOM_INSET_PX : 0}

@@ -38,6 +38,8 @@ vi.mock('@/stores/viewStore', () => ({
 }));
 
 vi.mock('@/hooks/useMediaQuery', () => ({ useMediaQuery: () => false }));
+const { selectionToChatMock } = vi.hoisted(() => ({ selectionToChatMock: vi.fn() }));
+vi.mock('@/features/chat/context/selectionRef', () => ({ selectionToChat: selectionToChatMock }));
 
 vi.mock('@/shared/selection', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/selection')>();
@@ -228,25 +230,26 @@ describe('cards and chat handoff', () => {
     expect(input.contextAfter).toBe('后文');
   });
 
-  it('prefers the onQuoteToChat locator callback when the selection page is known', () => {
+  it('sends the selection snapshot with its page locator (not the whole document) when the resource is known', async () => {
     const onQuoteToChat = vi.fn();
-    renderActions({ onQuoteToChat });
+    renderActions({ onQuoteToChat, selectionSourceId: 'file_lecture' });
     selectTextInsidePage();
 
     const prefills: CustomEvent[] = [];
-    const rawInputs: CustomEvent[] = [];
     const prefillListener = (e: Event) => prefills.push(e as CustomEvent);
-    const rawListener = (e: Event) => rawInputs.push(e as CustomEvent);
     window.addEventListener('PREFILL_CHAT_INPUT', prefillListener);
-    window.addEventListener('CHAT_V2_SET_INPUT', rawListener);
+    // 只有一个「添加到聊天」入口，不再与「引用到聊天」并存
+    expect(screen.queryByRole('button', { name: '引用到聊天' })).toBeNull();
     fireEvent.click(button('添加到聊天'));
     window.removeEventListener('PREFILL_CHAT_INPUT', prefillListener);
-    window.removeEventListener('CHAT_V2_SET_INPUT', rawListener);
 
-    expect(onQuoteToChat).toHaveBeenCalledWith({ text: SELECTED, page: 3 });
-    // locator 回调命中时不再走任何事件通道（既无 PREFILL 也无裸通道）
+    await waitFor(() => expect(selectionToChatMock).toHaveBeenCalledWith({
+      text: SELECTED,
+      source: { kind: 'pdf', sourceId: 'file_lecture', locator: 'page:3', title: '量子力学讲义' },
+    }));
+    // 不再走整文档引用（会丢失选区），也不走纯文本 PREFILL
+    expect(onQuoteToChat).not.toHaveBeenCalled();
     expect(prefills).toHaveLength(0);
-    expect(rawInputs).toHaveLength(0);
   });
 
   it('falls back to the PREFILL_CHAT_INPUT wrapper when no locator callback is wired', () => {
