@@ -609,7 +609,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     templateInsertionRef.current = null;
     pendingTemplatePropsRef.current = null;
     setHostBusy(!!noteId && lockedNotesRef.current.has(noteId));
-    setHostRefreshError(noteId && invalidNotesRef.current.has(noteId) ? '笔记等待刷新。' : null);
+    setHostRefreshError(noteId && invalidNotesRef.current.has(noteId) ? t('notes:host.pending_refresh', '笔记等待刷新。') : null);
     setRecoveryDraft(retained && noteId ? { noteId, ...retained } : null);
     documentRevisionRef.current = ++nextDocumentRevision;
   }, [noteId]);
@@ -772,7 +772,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
   // ========== 保存逻辑（支持 DSTU 模式） ==========
   const executeSave = useCallback(async ({ noteId: targetNoteId, content, fullContent, wasWindowed }: PendingSavePayload) => {
-    if (invalidNotesRef.current.has(targetNoteId)) throw Object.assign(new Error('笔记等待刷新，已阻止过期草稿保存。'), { isNonRetryable: true });
+    if (invalidNotesRef.current.has(targetNoteId)) throw Object.assign(new Error(t('notes:host.stale_draft_blocked', '笔记等待刷新，已阻止过期草稿保存。')), { isNonRetryable: true });
     if (readOnly) {
       return;
     }
@@ -807,7 +807,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       if (noteNeedsColumnsWriter(targetNoteId)) {
         const context = notesContextRef.current;
         const source = context?.notes.find(note => note.id === targetNoteId);
-        if (!source) throw Object.assign(new Error('笔记保存版本不可用。'), { isNonRetryable: true });
+        if (!source) throw Object.assign(new Error(t('notes:host.version_unavailable', '笔记保存版本不可用。')), { isNonRetryable: true });
         const saved = await invoke<NoteItem>('notes_update', { note: {
           id: targetNoteId, content_md: content, expected_updated_at: source.updated_at, capabilities: ['ds-columns-v1'],
         } });
@@ -945,7 +945,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       return Promise.resolve();
     }
     if (invalidNotesRef.current.has(resolvedNoteId) || (lockedNotesRef.current.has(resolvedNoteId) && !privilegedFlushRef.current)) {
-      return Promise.reject(Object.assign(new Error('笔记操作尚未完成，请刷新后重试保存。'), { isNonRetryable: true }));
+      return Promise.reject(Object.assign(new Error(t('notes:host.operation_pending', '笔记操作尚未完成，请刷新后重试保存。')), { isNonRetryable: true }));
     }
     draftByNoteRef.current.set(resolvedNoteId, content);
     const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
@@ -1629,7 +1629,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       getStorageUpdatedAt: () => notesContextRef.current?.notes.find(note => note.id === noteId)?.updated_at,
       ...(!isDstuMode ? { refreshDocumentFromDisk: async () => {
         const saved = await NotesAPI.historyCurrent(noteId!);
-        if (currentRenderedNoteRef.current !== noteId) throw new Error('笔记已切换。');
+        if (currentRenderedNoteRef.current !== noteId) throw new Error(t('notes:host.note_switched', '笔记已切换。'));
         const update = (note: NonNullable<typeof contextActive>) => note.id === noteId
           ? { ...note, content_md: saved.content_md, updated_at: saved.updated_at, title: saved.title } : note;
         notesContextRef.current?.setNotes(notes => notes.map(update));
@@ -1750,7 +1750,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     windowId: acrWindowId,
     host: {
       acquireReviewLease: () => {
-        if (!editorApi?.acquireReviewLease) throw new Error('审阅交互锁尚未就绪。');
+        if (!editorApi?.acquireReviewLease) throw new Error(t('notes:host.review_lease_not_ready', '审阅交互锁尚未就绪。'));
         return editorApi.acquireReviewLease();
       },
       resolveScope: kind => resolveNoteReviewScope(editorApi as FullDocumentSearchApi, kind),
@@ -1813,9 +1813,9 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     const draft = recoveryDraft as DurableNoteDraft & { noteId: string };
     try {
       await saveReviewAs(draft.markdown, `draft-copy:${draft.persistenceId ?? hostInstanceId}:${draft.persistenceRevision ?? 0}`,
-        draft.noteId, initialTitle ?? '恢复草稿', undefined, noteHostCoordinator.getLeaseAuth(draft.noteId));
+        draft.noteId, initialTitle ?? t('notes:host.recovered_draft_title', '恢复草稿'), undefined, noteHostCoordinator.getLeaseAuth(draft.noteId));
       await refreshWikilinkNotesCache();
-      showGlobalNotification('success', '草稿已另存为笔记。');
+      showGlobalNotification('success', t('notes:host.draft_saved_as_note', '草稿已另存为笔记。'));
     } catch (error) { showGlobalNotification('error', String(error)); }
   };
 
@@ -1849,7 +1849,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     let active = true;
     const refresh = async () => {
       try {
-        if (!api.refreshDocumentFromDisk) throw new Error('此笔记宿主尚未提供完整刷新能力。');
+        if (!api.refreshDocumentFromDisk) throw new Error(t('notes:host.refresh_unsupported', '此笔记宿主尚未提供完整刷新能力。'));
         await api.refreshDocumentFromDisk();
         if (!active) return;
         resetNoteUndo(base);
@@ -1866,7 +1866,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       id: hostInstanceId, noteId, windowId: acrWindowId, api,
       dirty: isCurrentNoteDirty,
       lock: () => {
-        if ((base.getUploadState?.().pending ?? 0) > 0) throw new Error('请等待图片上传完成或取消上传后再操作。');
+        if ((base.getUploadState?.().pending ?? 0) > 0) throw new Error(t('notes:host.wait_for_uploads', '请等待图片上传完成或取消上传后再操作。'));
         lockedNotesRef.current.add(noteId);
         cancelDebounce();
         pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(payload => payload.noteId !== noteId);
@@ -1884,7 +1884,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         privilegedFlushRef.current = true;
         try {
           await api.flushPendingSave!();
-          if (isCurrentNoteDirty()) throw new Error('笔记草稿尚未确认保存，已取消操作。');
+          if (isCurrentNoteDirty()) throw new Error(t('notes:host.draft_unconfirmed', '笔记草稿尚未确认保存，已取消操作。'));
         } finally { privilegedFlushRef.current = false; }
       },
       invalidate: () => {
@@ -1892,7 +1892,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         base.setReadonly?.(true);
         cancelDebounce();
         pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(payload => payload.noteId !== noteId);
-        setHostRefreshError('笔记已更新，正在刷新正文。');
+        setHostRefreshError(t('notes:host.refreshing', '笔记已更新，正在刷新正文。'));
       },
       refresh,
     });
@@ -2637,33 +2637,33 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         )}
       </div>
 
-      {hostRefreshError && <div role="alert" className="flex items-center gap-2 border-b px-5 py-2 text-xs">
-        <span>{hostRefreshError}</span>
+      {hostRefreshError && <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
+        <span className="flex-1">{hostRefreshError}</span>
         <DsButton variant="outline" size="sm" disabled={hostBusy} onClick={() => {
           if (noteId) void noteHostCoordinator.withLockedNotes([noteId], () => noteHostCoordinator.refreshNotes([noteId]))
             .catch(error => showGlobalNotification('error', String(error)));
-        }}>重试刷新</DsButton>
-      </div>}
-      {draftPersistenceError && <div role="alert" className="border-b px-5 py-2 text-xs">
-        草稿持久化失败：{draftPersistenceError}
+        }}>{t('notes:host.retry_refresh', '重试刷新')}</DsButton>
+      </div></div>}
+      {draftPersistenceError && <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
+        <span className="flex-1">{t('notes:host.draft_persist_failed', { defaultValue: '草稿持久化失败：{{error}}', error: draftPersistenceError })}</span>
         <DsButton variant="ghost" size="sm" onClick={() => {
           const draft = noteId ? recoveryDraftsRef.current.get(noteId) as DurableNoteDraft | undefined : undefined;
           if (noteId && draft?.persistenceId) void persistNoteDraft(noteId, draft)
             .then(() => setDraftPersistenceError(null)).catch(error => setDraftPersistenceError(String(error)));
           else if (noteId) void loadNoteDrafts(noteId).then(drafts => { setRecoveredDrafts(drafts); setDraftPersistenceError(null); })
             .catch(error => setDraftPersistenceError(String(error)));
-        }}>重试草稿存储</DsButton>
-      </div>}
-      {recoveredDrafts.length > 0 && <div className="flex flex-wrap gap-2 border-b px-5 py-2 text-xs" role="status">
-        已找到未保存草稿
+        }}>{t('notes:host.retry_draft_store', '重试草稿存储')}</DsButton>
+      </div></div>}
+      {recoveredDrafts.length > 0 && <div className="notes-banner" role="status"><div className="notes-column notes-banner-row">
+        <span className="flex-1">{t('notes:host.drafts_found', '已找到未保存草稿')}</span>
         {recoveredDrafts.map((draft, index) => <DsButton key={draft.persistenceId} variant="outline" size="sm"
-          onClick={() => { if (noteId) setRecoveryDraft({ ...draft, noteId }); }}>查看草稿 {index + 1}</DsButton>)}
-      </div>}
+          onClick={() => { if (noteId) setRecoveryDraft({ ...draft, noteId }); }}>{t('notes:host.view_draft', { defaultValue: '查看草稿 {{index}}', index: index + 1 })}</DsButton>)}
+      </div></div>}
       {recoveryDraft && recoveryDraft.noteId === noteId && (
-        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2 text-xs">
+        <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
           <span className="flex-1">{recoveryDraft.error}</span>
           <DsButton variant="outline" size="sm" onClick={() => { void copyRecoveryDraft(); }}>{t('notes:editor.copy_retained_draft', '复制保留草稿')}</DsButton>
-          <DsButton variant="outline" size="sm" onClick={() => { void saveRecoveryAs(); }}>草稿另存为笔记</DsButton>
+          <DsButton variant="outline" size="sm" onClick={() => { void saveRecoveryAs(); }}>{t('notes:host.save_draft_as_note', '草稿另存为笔记')}</DsButton>
           <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void handleManualSave().catch(() => {}); }}>{t('notes:editor.retry_current_draft', '重试保存当前正文')}</DsButton>
           <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(); }}>{t('notes:editor.restore_retained_draft', '恢复保留草稿并保存')}</DsButton>
           {recoveryDraft.previousMarkdown !== undefined && <>
@@ -2671,10 +2671,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(true); }}>{t('notes:editor.restore_previous_draft', '恢复操作前草稿')}</DsButton>
           </>}
           <DsButton variant="ghost" size="sm" onClick={() => { void discardRecoveryDraft(); }}>{t('notes:editor.discard_retained_draft', '丢弃保留草稿')}</DsButton>
-        </div>
+        </div></div>
       )}
       {(aiPersistenceError || aiRecoveryOptions.length > 0) && (
-        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2 text-xs">
+        <div role="alert" className="notes-banner" data-tone="warning"><div className="notes-column notes-banner-row">
           <span className="flex-1">{aiPersistenceError ?? t('notes:aiReview.recovery_available')}</span>
           {aiRecoveryOptions.map((option, index) => (
             <DsButton key={option.id} variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading'}
@@ -2684,15 +2684,15 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           ))}
           <DsButton variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading' || aiPersistenceStatus === 'saving'}
             onClick={() => { void retryAIReviewPersistence(); }}>{t('common:retry')}</DsButton>
-        </div>
+        </div></div>
       )}
       {aiReview?.collapsed && (
-        <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2 text-xs">
+        <div role="status" className="notes-banner"><div className="notes-column notes-banner-row">
           <span className="flex-1">{t('notes:aiDiff.suspended', 'AI 建议已收起，候选与分组决定已保留。')}</span>
           <DsButton variant="outline" size="sm" onClick={() => setAIReviewCollapsed(false)}>{t('notes:aiDiff.reopen', '继续审阅')}</DsButton>
           <DsButton variant="ghost" size="sm" onClick={() => { void copyAICandidate(); }}>{t('notes:aiDiff.copy_candidate', '复制候选')}</DsButton>
           <DsButton variant="ghost" size="sm" disabled={isAIEditApplying} onClick={() => { void handleReject(); }}>{t('notes:aiDiff.discard', '丢弃建议')}</DsButton>
-        </div>
+        </div></div>
       )}
       {/* AI 编辑 Diff：编辑器上方内联卡片区（有界高度），正文保持可见可滚动 */}
       {aiEditState.isActive && !aiReview?.collapsed && (

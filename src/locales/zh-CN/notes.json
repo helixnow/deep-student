@@ -2047,5 +2047,25 @@
   "a11y": {
     "close": "关闭",
     "clear": "清除"
+  },
+  "host": {
+    "pending_refresh": "笔记等待刷新。",
+    "stale_draft_blocked": "笔记等待刷新，已阻止过期草稿保存。",
+    "version_unavailable": "笔记保存版本不可用。",
+    "operation_pending": "笔记操作尚未完成，请刷新后重试保存。",
+    "note_switched": "笔记已切换。",
+    "review_lease_not_ready": "审阅交互锁尚未就绪。",
+    "recovered_draft_title": "恢复草稿",
+    "draft_saved_as_note": "草稿已另存为笔记。",
+    "refresh_unsupported": "此笔记宿主尚未提供完整刷新能力。",
+    "wait_for_uploads": "请等待图片上传完成或取消上传后再操作。",
+    "draft_unconfirmed": "笔记草稿尚未确认保存，已取消操作。",
+    "refreshing": "笔记已更新，正在刷新正文。",
+    "retry_refresh": "重试刷新",
+    "draft_persist_failed": "草稿持久化失败：{{error}}",
+    "retry_draft_store": "重试草稿存储",
+    "drafts_found": "已找到未保存草稿",
+    "view_draft": "查看草稿 {{index}}",
+    "save_draft_as_note": "草稿另存为笔记"
   }
 }

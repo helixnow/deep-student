@@ -247,3 +247,25 @@
 @media (max-width: 767px) {
   .notes-document-header { padding-top: 12px; }
 }
+
+/* 宿主状态横幅（刷新失败 / 草稿恢复 / AI 恢复）：与正文同一版心，一种外观 */
+.notes-banner {
+  flex-shrink: 0;
+  border-bottom: 1px solid hsl(var(--border) / 0.7);
+  background: hsl(var(--muted) / 0.45);
+  font-size: 12px;
+  line-height: 1.5;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.notes-banner[data-tone='warning'] {
+  background: hsl(var(--warning) / 0.08);
+}
+
+.notes-banner-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding-block: 6px;
+}

@@ -2048,5 +2048,25 @@
   "a11y": {
     "close": "Close",
     "clear": "Clear"
+  },
+  "host": {
+    "pending_refresh": "This note is waiting to refresh.",
+    "stale_draft_blocked": "This note is waiting to refresh; the outdated draft was not saved.",
+    "version_unavailable": "The saved version of this note is unavailable.",
+    "operation_pending": "A note operation is still in progress. Refresh and save again.",
+    "note_switched": "The note was switched.",
+    "review_lease_not_ready": "The review lock is not ready yet.",
+    "recovered_draft_title": "Recovered draft",
+    "draft_saved_as_note": "Draft saved as a new note.",
+    "refresh_unsupported": "This note view cannot fully refresh yet.",
+    "wait_for_uploads": "Wait for image uploads to finish or cancel them first.",
+    "draft_unconfirmed": "The draft has not been confirmed as saved; the action was cancelled.",
+    "refreshing": "The note was updated; refreshing the content.",
+    "retry_refresh": "Retry refresh",
+    "draft_persist_failed": "Could not store the draft: {{error}}",
+    "retry_draft_store": "Retry draft storage",
+    "drafts_found": "Unsaved drafts found",
+    "view_draft": "View draft {{index}}",
+    "save_draft_as_note": "Save draft as note"
   }
 }
