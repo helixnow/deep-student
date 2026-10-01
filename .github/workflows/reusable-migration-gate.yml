@@ -59,7 +59,7 @@ jobs:
 
       # 与 ci.yml rust-test-build 的 R07 缓解一致：链接高峰先落 swap，
       # 避免 16GB runner 在 release 长编译中被整体回收。
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.source_sha || inputs.tag_name }}
           fetch-depth: 0
@@ -70,7 +70,7 @@ jobs:
       # waiver dates. Overlay only release-gate data/tooling from the caller
       # revision; no application or migration source comes from main.
       - name: Checkout release tooling from workflow revision
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .release-tooling
