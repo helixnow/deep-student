@@ -35,6 +35,8 @@ interface TextbookPdfViewerProps {
     path?: string;
     name?: string;
     pageNumber: number;
+    /** 被引用的原文片段：跳页后闪烁高亮 */
+    quote?: string;
     requestId: number;
     /** ACR 4.0（A7）：派发方超时/卸载后为 true；stale 请求不得再兑现 */
     isStale?: () => boolean;
@@ -80,10 +82,12 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   const [pageNumber, setPageNumber] = useState<number>(1);
 
   const viewerCommandsRef = useRef<{ jumpToPage: (pageIndex: number) => void } | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const pendingFocusRef = useRef<{
     path?: string;
     name?: string;
     pageNumber: number;
+    quote?: string;
     requestId: number;
     isStale?: () => boolean;
   } | null>(null);
@@ -176,6 +180,11 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
       viewerCommandsRef.current.jumpToPage(targetPage - 1);
       setPageNumber(targetPage);
       clearPendingFocus(request.requestId);
+      if (request.quote && rootRef.current) {
+        const root = rootRef.current;
+        const quote = request.quote;
+        void import('../quoteFlash').then(({ flashQuoteOnPage }) => flashQuoteOnPage(root, targetPage, quote));
+      }
     } catch (err: unknown) {
       console.error('[TextbookPdfViewer] jumpToPage 失败:', err);
       clearPendingFocus(request.requestId);
@@ -240,7 +249,7 @@ export const TextbookPdfViewer: React.FC<TextbookPdfViewerProps> = ({
   }, [tryHandlePendingFocus]);
 
   return (
-    <div className="textbook-pdf-viewer">
+    <div className="textbook-pdf-viewer" ref={rootRef}>
       {!file && !filePath && (
         <div className="textbook-empty-state ui-rise-in">
           <BookOpen size={48} className="textbook-empty-icon" />

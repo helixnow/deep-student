@@ -636,6 +636,15 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const handleLocateResource = useCallback((item: UnifiedSourceItem) => {
     const locator = getItemResourceLocator(item);
     if (!canLocateResource(locator)) return;
+    // 有页码的 PDF / 教材来源：留在聊天页，右侧面板打开原文跳到该页并高亮命中片段
+    //（旧行为是跳去学习中心并停在第 1 页——定位信息里没有页码）
+    const pdfLikeId = locator.sourceId && /^(tb_|file_|att_)/.test(locator.sourceId) ? locator.sourceId : null;
+    if (pdfLikeId && typeof item.pageIndex === 'number' && item.pageIndex >= 0) {
+      document.dispatchEvent(new CustomEvent('pdf-ref:open', {
+        detail: { sourceId: pdfLikeId, pageNumber: item.pageIndex + 1, quote: item.snippet || undefined },
+      }));
+      return;
+    }
     try {
       window.dispatchEvent(new CustomEvent(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT as any, {
         detail: { locator, preferTab: 'manage' }

@@ -96,11 +96,11 @@ function launchResourceWindow(resourceId: string, preferredType?: string, title?
   });
 }
 
-function dispatchPdfFocus(sourceId: string, pageNumber: number): void {
+function dispatchPdfFocus(sourceId: string, pageNumber: number, quote?: string): void {
   const fire = () => {
     document.dispatchEvent(
       new CustomEvent('pdf-ref:focus', {
-        detail: { sourceId, pageNumber, path: sourceId.startsWith('/') ? sourceId : `/${sourceId}` },
+        detail: { sourceId, pageNumber, quote, path: sourceId.startsWith('/') ? sourceId : `/${sourceId}` },
       }),
     );
   };
@@ -226,7 +226,7 @@ export const WorkbenchEventBridge: React.FC = () => {
     };
 
     const onPdfRefOpen = (e: Event) => {
-      const { sourceId, pageNumber } = (e as CustomEvent<{ sourceId?: string; pageNumber?: number }>)
+      const { sourceId, pageNumber, quote } = (e as CustomEvent<{ sourceId?: string; pageNumber?: number; quote?: string }>)
         .detail ?? {};
       if (!sourceId || !Number.isFinite(pageNumber) || (pageNumber as number) <= 0) {
         // 无显式 sourceId 的引用需要扫描会话附件（legacy 深度解析），workbench 下暂不支持
@@ -239,7 +239,7 @@ export const WorkbenchEventBridge: React.FC = () => {
         return;
       }
       launchResourceWindow(sourceId);
-      dispatchPdfFocus(sourceId, pageNumber as number);
+      dispatchPdfFocus(sourceId, pageNumber as number, quote);
     };
 
     const onNavigateToNote = (e: Event) => {

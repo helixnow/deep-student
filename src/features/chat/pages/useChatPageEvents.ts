@@ -299,16 +299,20 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       const sourceId = source.sourceId;
       const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
       const isAttachmentLike = sourceId.startsWith('att_') || sourceId.startsWith('file_');
+      const isTextbook = sourceId.startsWith('tb_');
+      // 回链高亮选区原文本身（不只是跳到那一页）
+      const quote = typeof parsed?.text === 'string' && parsed.text.trim() ? parsed.text : undefined;
       const dispatchFocus = (delayMs: number) => {
         window.setTimeout(() => {
           document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
-            detail: { sourceId, pageNumber, path: dstuPath },
+            detail: { sourceId, pageNumber, quote, path: dstuPath },
           }));
         }, delayMs);
       };
-      if (isAttachmentLike) {
+      if (isAttachmentLike || isTextbook) {
+        // 教材同样留在聊天右侧面板（旧实现跳去学习中心）
         window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
-          detail: { id: sourceId, type: 'file', title: source.title || 'PDF' },
+          detail: { id: sourceId, type: isTextbook ? 'textbook' : 'file', title: source.title || 'PDF' },
         }));
       } else {
         window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', {
@@ -432,9 +436,11 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       const customEvent = event as CustomEvent<{
         sourceId?: string;
         pageNumber: number;
+        /** 被引用的原文片段：跳页后在文本层高亮 */
+        quote?: string;
       }>;
 
-      const { sourceId: rawSourceId, pageNumber } = customEvent.detail || {};
+      const { sourceId: rawSourceId, pageNumber, quote } = customEvent.detail || {};
       console.log('[ChatV2Page] pdf-ref:open received:', customEvent.detail);
       if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
 
@@ -565,6 +571,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
               detail: {
                 sourceId,
                 pageNumber,
+                quote,
                 path: dstuPath,
               },
             }));

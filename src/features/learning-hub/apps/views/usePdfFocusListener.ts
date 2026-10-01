@@ -13,6 +13,8 @@ export interface PdfFocusRequest {
   path?: string;
   name?: string;
   pageNumber: number;
+  /** 被引用的原文片段：跳页后在文本层闪烁高亮这句话 */
+  quote?: string;
   requestId: number;
   /**
    * ACR 4.0（A7）：派发方（pdfFocusAck）超时/失败后返回 true。
@@ -26,6 +28,8 @@ export interface PdfFocusEventDetail {
   targetScopeId?: string;
   sourceId?: string;
   pageNumber?: number;
+  /** 被引用的原文片段（可选） */
+  quote?: string;
   path?: string;
   acknowledge?: (handled: boolean) => void;
   /** 请求是否已被派发方判定失败（超时/卸载），见 PdfFocusRequest.isStale */
@@ -98,6 +102,7 @@ export function usePdfFocusListener({
         path: nodePath,
         name: nodeName,
         pageNumber,
+        quote: typeof customEvent.detail?.quote === 'string' ? customEvent.detail.quote : undefined,
         requestId,
         isStale: customEvent.detail?.isStale,
       });

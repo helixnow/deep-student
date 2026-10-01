@@ -2191,3 +2191,21 @@
 @media (pointer: coarse) {
   .ds-pdf-related-item { min-height: 44px; }
 }
+
+/* 引用定位：被引用的原文片段闪烁高亮（文本层 span 默认透明，这里给出底色） */
+.textLayer span.ds-pdf-quote-flash,
+.react-pdf__Page__textContent span.ds-pdf-quote-flash {
+  border-radius: 2px;
+  background: hsl(var(--warning, 45 95% 55%) / 0.42);
+  animation: ds-pdf-quote-flash 2.4s ease-out both;
+}
+
+@keyframes ds-pdf-quote-flash {
+  0%, 60% { background: hsl(var(--warning, 45 95% 55%) / 0.48); }
+  100% { background: hsl(var(--warning, 45 95% 55%) / 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .textLayer span.ds-pdf-quote-flash,
+  .react-pdf__Page__textContent span.ds-pdf-quote-flash { animation: none; }
+}
