@@ -134,6 +134,16 @@ pub(crate) fn is_usable_text_embedding(config: &ApiConfig) -> bool {
         && !(config.is_builtin && config.api_key.trim().is_empty())
 }
 
+fn warn_once_for_unusable_default(id: &str) -> bool {
+    static LAST_WARNED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    let mut last = LAST_WARNED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    if last.as_deref() == Some(id) {
+        return false;
+    }
+    *last = Some(id.to_string());
+    true
+}
+
 // ==================== RAG相关扩展方法 ====================
 
 impl LLMManager {
@@ -163,10 +173,15 @@ impl LLMManager {
                 id
             }
             Some(id) => {
-                warn!(
-                    "[RAG] Unusable embedding default: setting 'embedding.default_text_model_config_id'='{}' is missing, disabled or keyless; falling back to model_assignments/auto-detect",
-                    id
-                );
+                // 索引 worker 每个 tick 都会解析一次：同一 id 只告警一次，避免每 5 秒刷屏
+                if warn_once_for_unusable_default(&id) {
+                    warn!(
+                        "[RAG] Unusable embedding default: setting 'embedding.default_text_model_config_id'='{}' is missing, disabled or keyless; falling back to model_assignments/auto-detect",
+                        id
+                    );
+                } else {
+                    debug!("[RAG] Unusable embedding default '{}' (already warned)", id);
+                }
                 self.fallback_embedding_model_id(&configs).await?
             }
             None => self.fallback_embedding_model_id(&configs).await?,
