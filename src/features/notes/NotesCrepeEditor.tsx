@@ -641,13 +641,25 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const handleSelectionAddAsContext = useCallback((text: string) => {
     if (!noteId) return;
     const title = (isDstuMode ? initialTitle : active?.title) ?? undefined;
+    // 所在小节：选区之前最近的标题——回链时滚到这一节，而不是停在笔记开头
+    let heading: string | null = null;
+    try {
+      const view = editorApi?.getCrepe?.()?.editor.ctx.get(editorViewCtx);
+      if (view) {
+        const from = view.state.selection.from;
+        view.state.doc.nodesBetween(0, from, (node, pos) => {
+          if (node.type.name === 'heading' && pos < from) heading = node.textContent.trim() || heading;
+          return true;
+        });
+      }
+    } catch { /* 编辑器未就绪：不带定位 */ }
     void import('@/features/chat/context/selectionRef').then(({ selectionToChat }) =>
       selectionToChat({
         text,
-        source: { kind: 'note', sourceId: noteId, title },
+        source: { kind: 'note', sourceId: noteId, title, locator: heading ? `heading:${heading}` : undefined },
       })
     );
-  }, [noteId, isDstuMode, initialTitle, active?.title]);
+  }, [noteId, isDstuMode, initialTitle, active?.title, editorApi]);
 
   // 选区即上下文：「加入聊天」与格式按钮同在一条选区浮条，不再另起一条工具栏
   const selectionActions = useMemo<CrepeSelectionAction[]>(() => noteId ? [{

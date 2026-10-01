@@ -335,6 +335,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         title: source.title || source.sourceId,
       },
     }));
+    // 笔记选区带「所在小节」：打开后滚到该标题（编辑器挂载时消费挂起请求）
+    const headingMatch = source.kind === 'note' ? /^heading:(.+)$/s.exec(source.locator ?? '') : null;
+    if (headingMatch && source.sourceId) {
+      const noteId = source.sourceId;
+      const heading = headingMatch[1];
+      void import('@/features/notes/headingTargetBridge').then(({ publishNotesHeadingTarget }) =>
+        publishNotesHeadingTarget({ noteId, heading }));
+    }
   }, [t]);
 
   const handleContextRefPreview = useCallback(async (event: Event) => {
