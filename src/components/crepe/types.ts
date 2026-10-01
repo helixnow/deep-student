@@ -122,6 +122,9 @@ export interface CrepeEditorApi {
   /** 编辑器 DOM 当前是否真实持有焦点；selection 快照本身不代表用户仍在编辑。 */
   hasFocus?: () => boolean;
 
+  /** 人机仲裁信号：最近一次用户输入时刻（ms，epoch）与是否正在 IME 组合 */
+  getUserActivity?: () => { lastInputAt: number; composing: boolean };
+
   /**
    * 等待当前编辑内容持久化。Workbench ACR 会在返回 completed 前调用；
    * 基础 Crepe 可不实现，由承载笔记保存队列的上层注入。

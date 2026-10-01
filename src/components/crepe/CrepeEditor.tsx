@@ -236,6 +236,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   } = props;
   const selectionActionsRef = useRef(selectionActions);
   selectionActionsRef.current = selectionActions;
+  /** 真实用户输入（DOM 事件）才记账；agent 事务不经过 DOM 事件，天然不计入 */
+  const userActivityRef = useRef({ lastInputAt: 0, composing: false });
+  const markUserInput = useCallback(() => { userActivityRef.current.lastInputAt = Date.now(); }, []);
 
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层包装
   const containerRef = useRef<HTMLDivElement>(null); // Crepe 容器
@@ -721,6 +724,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         } catch {
           return false;
         }
+      },
+
+      getUserActivity: () => {
+        let composing = userActivityRef.current.composing;
+        try {
+          const view = crepeRef.current?.editor.ctx.get(editorViewCtx);
+          composing = composing || Boolean(view?.composing);
+        } catch { /* 编辑器未就绪 */ }
+        return { lastInputAt: userActivityRef.current.lastInputAt, composing };
       },
 
       restoreSelection: (snapshot) => {
@@ -2766,7 +2778,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       className={`crepe-editor-wrapper ${className}`}
       data-ready={isReady}
       style={{ position: 'relative', ...TYPED_PLACEHOLDER_VARS() } as React.CSSProperties}
+      onKeyDownCapture={markUserInput}
+      onInputCapture={markUserInput}
+      onCompositionStartCapture={() => { userActivityRef.current.composing = true; markUserInput(); }}
+      onCompositionEndCapture={() => { userActivityRef.current.composing = false; markUserInput(); }}
       // 🔧 基于 Pointer Events 的块拖拽（替代失效的原生 Drag & Drop）
+      onPointerDownCapture={markUserInput}
       onPointerDown={blockDragHandlers.onPointerDown}
       onPointerMove={blockDragHandlers.onPointerMove}
       onPointerUp={blockDragHandlers.onPointerUp}

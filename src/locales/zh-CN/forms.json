@@ -18,7 +18,8 @@
     "unsupported_destructive_op": "不支持的破坏类 op：{{kind}}",
     "windowed_offset_unsupported": "窗口化长笔记不支持 ProseMirror offset 锚点，请使用 end 或 afterHeading",
     "after_heading_missing_title": "afterHeading 缺少标题",
-    "heading_not_found": "未找到标题「{{heading}}」"
+    "heading_not_found": "未找到标题「{{heading}}」",
+    "paused_user_editing": "已暂停：你正在编辑此笔记，停下输入后继续"
   },
   "ocr": {
     "system_engine_description": "调用操作系统内置 OCR 引擎"

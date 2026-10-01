@@ -529,10 +529,17 @@ export function computeDestructiveMarkdown(
   };
 }
 
-/** 仅编辑器 DOM 真实持焦时视为 hot；失焦后保留的 selection 快照不算。 */
-export function isNoteEditorHot(api: Pick<CrepeEditorApi, 'hasFocus'>): boolean {
+/** 持焦且最近有输入（或正在 IME 组合）才算 hot：光标停在笔记里但人已离开不再阻塞 Agent */
+export const NOTE_HOT_INPUT_WINDOW_MS = 3000;
+
+export function isNoteEditorHot(api: Pick<CrepeEditorApi, 'hasFocus' | 'getUserActivity'>, now: number = Date.now()): boolean {
   try {
-    return api.hasFocus?.() === true;
+    const activity = api.getUserActivity?.();
+    if (activity?.composing) return true;
+    const focused = api.hasFocus?.() === true;
+    // 宿主未提供活动信号时保持旧语义（持焦即 hot）
+    if (!activity) return focused;
+    return focused && now - activity.lastInputAt < NOTE_HOT_INPUT_WINDOW_MS;
   } catch {
     return false;
   }
@@ -588,7 +595,7 @@ async function waitWhileNoteHot(
   run.reportProgress(
     step,
     totalOps,
-    '已暂停：正在编辑此笔记，切换焦点后继续',
+    i18n.t('forms:note_driver.paused_user_editing', '已暂停：你正在编辑此笔记，停下输入后继续'),
     resourceId,
   );
 
@@ -707,6 +714,16 @@ function recordMarkdownInverse(
   );
 }
 
+/** 用户正在 IME 组合时不插入（会打断候选）：等组合结束，最多 COMPOSITION_WAIT_MAX_MS 兜底 */
+const COMPOSITION_WAIT_MAX_MS = 10000;
+async function waitForCompositionEnd(run: AcrRunContext, api: CrepeEditorApi): Promise<void> {
+  const startedAt = Date.now();
+  while (api.getUserActivity?.().composing && !abortFlags.get(run.runId)
+    && Date.now() - startedAt < COMPOSITION_WAIT_MAX_MS) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 async function applyNoteInsert(
   run: AcrRunContext,
   op: AgentOp,
@@ -785,6 +802,7 @@ async function applyNoteInsert(
         };
       }
 
+      await waitForCompositionEnd(run, api);
       const mappedPos = remapInsertPos(api, pos);
       const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos);
       if (!insertedRange || insertedRange.to <= insertedRange.from) {
@@ -855,6 +873,7 @@ async function applyNoteInsert(
       };
     }
 
+    await waitForCompositionEnd(run, api);
     // R2-03：用户他处打字后，经 decoration mapping 重取插入点
     pos = remapInsertPos(api, pos);
 
