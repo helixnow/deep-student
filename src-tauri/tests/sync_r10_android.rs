@@ -32,7 +32,7 @@
 //!    content:// URI；对抗性输入的真机表现仍见手册 4.1–4.3。
 //! 4. **persistable URI grant**：ZIP/同步入口把 `content://` 原子写入
 //!    `filesDir/pending_saf_persist/<hash>.uri`（旧单文件双读）；MainActivity
-//!    前台轮询 `takePersistableUriPermission`。`ACTION_GET_CONTENT` 拒绝 persist
+//!    由原生插件唤醒、恢复前台时补扫 `takePersistableUriPermission`。`ACTION_GET_CONTENT` 拒绝 persist
 //!    时必须删队列并 warn，不得假装已授权。真机强杀/重开仍见手册 4.1–4.3。
 //!
 //! 本文件锁定宿主可测半边与源码编排；ContentResolver 真机授权不能冒充绿灯。
@@ -305,7 +305,10 @@ fn zip_command_materialization_orchestration_is_anchored() {
         "pub const PENDING_SAF_PERSIST_DIR: &str = \"pending_saf_persist\"",
         "pub fn persistable_saf_queue_file",
         "pub fn queue_persistable_saf_uri",
-        "with_extension(\"uri.tmp\")",
+        "with_extension(format!(\"uri.{}.tmp\", Uuid::new_v4()))",
+        "std::fs::write(&tmp, trimmed)",
+        "std::fs::rename(&tmp, &dest)",
+        "wake_saf_permission_queue();",
         "takePersistableUriPermission",
         "ACTION_GET_CONTENT",
     ] {
@@ -315,22 +318,35 @@ fn zip_command_materialization_orchestration_is_anchored() {
         );
     }
 
+    let commit = persist_source.find("std::fs::rename(&tmp, &dest)").unwrap();
+    let wake = persist_source.find("wake_saf_permission_queue();").unwrap();
+    assert!(commit < wake, "必须先原子提交队列，再唤醒原生扫描");
+
     let activity = read_source("mobile/android/MainActivity.kt");
     for marker in [
         "pending_saf_persist.uri",
         "PENDING_SAF_PERSIST_DIR = \"pending_saf_persist\"",
         "it.name.endsWith(\".uri\")",
         "takePersistableUriPermission",
-        "PERSIST_POLL_MS = 400L",
+        "override fun onResume()",
+        "requestSafPermissionPersist()",
+        "persistExecutor.execute",
+        "persistPendingSafUri()",
         "SecurityException",
         "likely ACTION_GET_CONTENT",
         "pending.delete()",
     ] {
         assert!(
             activity.contains(marker),
-            "MainActivity persist 轮询缺少锚点 {marker:?}——SecurityException 必须删队列，不得假装已授权"
+            "MainActivity persist 按需扫描缺少锚点 {marker:?}——SecurityException 必须删队列，不得假装已授权"
         );
     }
+
+    let plugin = read_source("mobile/android/SafPermissionPlugin.kt");
+    assert!(
+        plugin.contains("mainActivity.requestSafPermissionPersist()"),
+        "原生插件必须唤醒 MainActivity 扫描已提交的权限队列"
+    );
 }
 
 /// 重启命令壳锚定：
