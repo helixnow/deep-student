@@ -127,6 +127,7 @@
   },
   "messageItem": {
     "actions": {
+      "notePageRef": "p. {{page}}",
       "copy": "Copy",
       "copySuccess": "Copied to clipboard",
       "copyFailed": "Copy failed",

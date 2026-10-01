@@ -832,13 +832,27 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       showGlobalNotification('error', t('messageItem.actions.noContentToExport'));
       return;
     }
-    startSaveAsNote({ content: text, title: extractNoteTitle(text) });
-  }, [message, extractMessageContent, extractNoteTitle, startSaveAsNote, t]);
+    const [{ chatCitationsToNoteMarkdown }, { buildPdfRefHref }, { createCitationPattern }] = await Promise.all([
+      import('@/features/notes/noteOrigin'),
+      import('@/components/crepe/plugins/pdfRef/protocol'),
+      import('../utils/citationParser'),
+    ]);
+    const content = chatCitationsToNoteMarkdown(text, (page) => t('messageItem.actions.notePageRef', { defaultValue: '第 {{page}} 页', page }),
+      { buildPdfRefHref, createCitationPattern });
+    const state = store.getState();
+    // 来源：这条消息所在的对话——笔记属性面板可一键回到这条消息
+    startSaveAsNote({
+      content,
+      title: extractNoteTitle(text),
+      origin: { kind: 'chat', sessionId: state.sessionId, messageId, title: state.title || undefined },
+    });
+  }, [message, extractMessageContent, extractNoteTitle, startSaveAsNote, t, store, messageId]);
 
   // 划词「保存为笔记」：走同一套目录选择 + 打开笔记
   const handleSelectionSaveAsNote = useCallback((text: string) => {
-    startSaveAsNote({ content: text });
-  }, [startSaveAsNote]);
+    const state = store.getState();
+    startSaveAsNote({ content: text, origin: { kind: 'chat', sessionId: state.sessionId, messageId, title: state.title || undefined } });
+  }, [startSaveAsNote, store, messageId]);
 
   // 🆕 会话分支：从此消息处创建新会话（统一走 store.branchSession，见 branchFromMessage）
   const isBranchingRef = useRef(false);

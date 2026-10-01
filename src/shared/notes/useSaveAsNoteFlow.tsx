@@ -26,6 +26,7 @@ import { MobileSubviewChromeProvider } from '@/components/layout';
 import { FolderPickerDialog } from '@/features/learning-hub/components/finder/FolderPickerDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { saveTextAsNoteAndNotify, type SaveTextAsNoteResult } from './saveTextAsNote';
+import type { NoteOrigin } from '@/features/notes/noteOrigin';
 
 export interface SaveAsNoteRequest {
   /** 笔记正文 */
@@ -34,6 +35,8 @@ export interface SaveAsNoteRequest {
   title?: string;
   /** 标签 */
   tags?: string[];
+  /** 来源（见 saveTextAsNote） */
+  origin?: NoteOrigin;
 }
 
 export interface SaveAsNoteFolderPickerProps {
@@ -85,7 +88,7 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
     if (!request) return;
     setIsSaving(true);
     void saveTextAsNoteAndNotify(
-      { content: request.content, title: request.title, tags: request.tags, folderId },
+      { content: request.content, title: request.title, tags: request.tags, folderId, origin: request.origin },
       { openSource },
     ).then((result) => {
       setIsSaving(false);

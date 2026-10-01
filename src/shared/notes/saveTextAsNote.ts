@@ -16,6 +16,7 @@
  * 不新造文件树、不新造笔记编辑器；目录树查询用 folderApi，目录归属由后端事务保证。
  */
 
+import type { NoteOrigin } from '@/features/notes/noteOrigin';
 import i18n from '@/i18n';
 import { folderApi } from '@/dstu';
 import { emitDstuFolderChange } from '@/dstu/folderEvents';
@@ -35,6 +36,8 @@ export interface SaveTextAsNoteInput {
   folderId: string | null;
   /** 标签 */
   tags?: string[];
+  /** 来源（对话消息 / 资料页）：写入 props._origin，笔记属性面板可一键回到来源 */
+  origin?: NoteOrigin;
 }
 
 export type SaveTextAsNoteResult =
@@ -112,6 +115,12 @@ export async function saveTextAsNote(input: SaveTextAsNoteInput): Promise<SaveTe
     }
 
     const noteId = created.value.id;
+    if (input.origin) {
+      // 动态 import：shared 层不静态依赖 features/notes（与 chat 链路解耦）
+      await import('@/features/notes/noteOrigin')
+        .then(({ attachNoteOrigin }) => attachNoteOrigin(noteId, input.origin!))
+        .catch(() => false);
+    }
     const landed = input.folderId ? await resolveLandedFolder(noteId, input.folderId) : 'root';
 
     if (landed === 'folder') {

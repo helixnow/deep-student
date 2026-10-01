@@ -7,6 +7,7 @@ import '@/features/workbench/apps/notes/NoteCustomPropsEditor.css';
 import { learningPropsFromMetadata } from '../noteLearningProps';
 import { mergeNotePropEdits } from '../notePropEdits';
 import { NoteLearningRelations } from './NoteLearningRelations';
+import { NoteOriginRow } from './NoteOriginRow';
 
 /** Independent metadata baseline: never advance the owning editor's content OCC token. Key by note ID/path. */
 export function NoteLearningPropertiesSection({ node, readOnly = false }: { node: DstuNode; readOnly?: boolean }) {
@@ -75,6 +76,7 @@ export function NoteLearningPropertiesSection({ node, readOnly = false }: { node
   }, [isCurrent, liveNode, load, readOnly, refresh, t]);
 
   return <section aria-label={t('learning.section_label')}>
+    <NoteOriginRow node={liveNode ?? node} />
     {loadError && <p role="alert" className="text-xs text-destructive">{loadError}
       <button type="button" className="ml-2 underline" onClick={() => void load()}>{t('learning.reload')}</button>
     </p>}

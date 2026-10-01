@@ -2138,5 +2138,12 @@
     "use": "Use template",
     "applied": "Applied template “{{title}}”",
     "pick": "Pick a template on the left"
+  },
+  "origin": {
+    "label": "Source",
+    "chat": "From chat",
+    "resource": "From material",
+    "resource_page": "From material · p. {{page}}",
+    "open": "Go to source"
   }
 }

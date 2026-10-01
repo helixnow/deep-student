@@ -32,6 +32,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
 import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
+import { buildAnnotationSourceLine } from '../pdfAnnotationList';
 // 静态导入安全：selectionStudyActions 只依赖 @/events 与 UnifiedNotification
 // （均在主 chunk），不会把聊天/cardforge 拉进本组件的懒加载 chunk
 import { sendSelectionToChatInput } from '../selectionStudyActions';
@@ -157,12 +158,15 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     const page = resolveSelectionPage();
     if (documentTitle && typeof page === 'number') {
       const compactTitle = text.replace(/\s+/g, ' ').trim().slice(0, 30);
+      const label = t('pdf:selection.note_source', { name: documentTitle, page });
       startSaveAsNote({
         content: buildSelectionNoteContent({
           text,
-          sourceLabel: t('pdf:selection.note_source', { name: documentTitle, page }),
+          // 与批注导出同一格式：有资源 id 时来源行是 pdfref:// 回链，笔记里点击回到原页
+          sourceLabel: buildAnnotationSourceLine({ label, sourceId: selectionSourceId, page }),
         }),
         title: compactTitle || documentTitle,
+        origin: selectionSourceId ? { kind: 'resource', resourceId: selectionSourceId, page, title: documentTitle } : undefined,
       });
       return;
     }
@@ -170,7 +174,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     startSaveAsNote({
       content: documentTitle ? `> ${documentTitle}\n\n${text}` : text,
     });
-  }, [startSaveAsNote, documentTitle, resolveSelectionPage, t]);
+  }, [startSaveAsNote, documentTitle, resolveSelectionPage, t, selectionSourceId]);
 
   const handleMakeCards = useCallback((text: string) => {
     // 动态 import：selectionCardGeneration 顶层静态依赖 cardforge 的 cardAgent，

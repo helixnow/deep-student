@@ -127,6 +127,7 @@
   },
   "messageItem": {
     "actions": {
+      "notePageRef": "第 {{page}} 页",
       "copy": "复制",
       "copySuccess": "已复制到剪贴板",
       "copyFailed": "复制失败",

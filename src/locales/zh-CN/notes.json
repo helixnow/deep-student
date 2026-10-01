@@ -2137,5 +2137,12 @@
     "use": "使用模板",
     "applied": "已应用模板「{{title}}」",
     "pick": "从左侧选择一个模板"
+  },
+  "origin": {
+    "label": "来源",
+    "chat": "来自对话",
+    "resource": "来自资料",
+    "resource_page": "来自资料 · 第 {{page}} 页",
+    "open": "回到来源"
   }
 }

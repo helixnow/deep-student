@@ -19,6 +19,7 @@ import { dstu, updatedAtToVersionToken, type DstuNode } from '@/dstu';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
 import { NoteLearningRelations } from '@/features/notes/components/NoteLearningRelations';
 import { NoteCustomPropsEditor } from './NoteCustomPropsEditor';
+import { NoteOriginRow } from '@/features/notes/components/NoteOriginRow';
 import { getNodeProps } from './parseTagQuery';
 import './NoteCustomPropsEditor.css';
 
@@ -188,6 +189,7 @@ export const NotesPropertiesTab: React.FC<NotesPropertiesTabProps> = ({
       onTagsChange={readOnly ? undefined : handleTagsChange}
       beforeOutline={(
         <>
+          <NoteOriginRow node={note} />
           <NoteCustomPropsEditor
             value={customProps}
             readOnly={readOnly}

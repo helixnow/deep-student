@@ -371,3 +371,43 @@ h4.notes-learn-props-title {
   padding: 0;
   border: 0;
 }
+
+/* 笔记来源行（属性面板首行） */
+.notes-origin-row {
+  display: grid;
+  grid-template-columns: minmax(56px, 34%) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 10px 12px 0;
+  font-size: 12px;
+}
+
+.notes-origin-label {
+  padding-left: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+}
+
+.notes-origin-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.notes-origin-link:hover { background: var(--interactive-hover, hsl(var(--muted))); }
+.notes-origin-link:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+.notes-origin-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notes-origin-arrow { flex-shrink: 0; color: hsl(var(--muted-foreground)); }
