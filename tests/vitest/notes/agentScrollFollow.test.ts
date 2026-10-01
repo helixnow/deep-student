@@ -3,7 +3,7 @@
  * computeFollowScrollTop 目标位置、节流状态机、用户滚动暂停与程序滚动区分。
  * 只测状态与计算，不测真实动画帧。
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AgentScrollFollower,
   computeFollowScrollTop,
@@ -211,5 +211,51 @@ describe('AgentScrollFollower.followPos（jsdom DOM 胶水）', () => {
     expect(follower.followPos(makeView(editor, 900), 1)).toBe(true);
     follower.dispose();
     viewport.remove();
+  });
+});
+
+describe('AgentScrollFollower user intent and trailing follow', () => {
+  const makeView = (caretTop: number) => {
+    const viewport = document.createElement('div');
+    viewport.className = 'scroll-area--native';
+    const dom = document.createElement('div');
+    viewport.appendChild(dom);
+    document.body.appendChild(viewport);
+    Object.defineProperty(viewport, 'scrollHeight', { value: 5000, configurable: true });
+    Object.defineProperty(viewport, 'clientHeight', { value: 600, configurable: true });
+    viewport.getBoundingClientRect = () => ({ top: 0, bottom: 600, left: 0, right: 800, width: 800, height: 600, x: 0, y: 0, toJSON() {} });
+    const scrollTo = vi.fn();
+    viewport.scrollTo = scrollTo as unknown as typeof viewport.scrollTo;
+    return { viewport, scrollTo, view: { dom, coordsAtPos: () => ({ top: caretTop, bottom: caretTop + 20, left: 0, right: 2 }) } };
+  };
+
+  it('pauses on wheel even inside the programmatic scroll window', () => {
+    let now = 1000;
+    const follower = new AgentScrollFollower({ now: () => now, prefersReducedMotion: () => false });
+    const { viewport, scrollTo, view } = makeView(900);
+    expect(follower.followPos(view, 1)).toBe(true);
+    viewport.dispatchEvent(new Event('wheel'));
+    now += 600;
+    expect(follower.followPos(view, 2)).toBe(false);
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    follower.dispose();
+    viewport.remove();
+  });
+
+  it('performs one trailing follow for the last throttled request', () => {
+    vi.useFakeTimers();
+    let now = 1000;
+    const follower = new AgentScrollFollower({ now: () => now, prefersReducedMotion: () => false });
+    const { viewport, scrollTo, view } = makeView(900);
+    follower.followPos(view, 1);
+    now += 100;
+    expect(follower.followPos(view, 2)).toBe(false);
+    expect(follower.followPos(view, 3)).toBe(false);
+    now += 400;
+    vi.advanceTimersByTime(400);
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    follower.dispose();
+    viewport.remove();
+    vi.useRealTimers();
   });
 });
