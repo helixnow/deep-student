@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect, useId } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useLayoutEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -81,6 +81,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
+  const [resolvedPosition, setResolvedPosition] = useState<TooltipPosition>(position);
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -118,10 +119,35 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     const tooltipWidth = tooltipRef.current.offsetWidth || tooltipRect.width;
     const tooltipHeight = tooltipRef.current.offsetHeight || tooltipRect.height;
     
+    // 边界检测：防止超出视口
+    const padding = 8;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+
+    // Prefer the requested side, but flip when there is no room. Clamping alone
+    // leaves the bubble over the trigger and makes the arrow point the wrong way.
+    let nextPosition = position;
+    if (position === 'top' || position === 'bottom') {
+      const above = triggerRect.top - tooltipHeight - offset;
+      const below = triggerRect.bottom + offset;
+      const fitsAbove = above >= padding;
+      const fitsBelow = below + tooltipHeight <= viewportHeight - padding;
+      nextPosition = position === 'top'
+        ? (fitsAbove || !fitsBelow ? 'top' : 'bottom')
+        : (fitsBelow || !fitsAbove ? 'bottom' : 'top');
+    } else {
+      const before = triggerRect.left - tooltipWidth - offset;
+      const after = triggerRect.right + offset;
+      const fitsBefore = before >= padding;
+      const fitsAfter = after + tooltipWidth <= viewportWidth - padding;
+      nextPosition = position === 'left'
+        ? (fitsBefore || !fitsAfter ? 'left' : 'right')
+        : (fitsAfter || !fitsBefore ? 'right' : 'left');
+    }
+
     let top = 0;
     let left = 0;
-
-    switch (position) {
+    switch (nextPosition) {
       case 'top':
         top = triggerRect.top - tooltipHeight - offset;
         left = triggerRect.left + (triggerRect.width - tooltipWidth) / 2;
@@ -140,16 +166,12 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
         break;
     }
 
-    // 边界检测：防止超出视口
-    const padding = 8;
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
-
     const maxLeft = Math.max(padding, viewportWidth - tooltipWidth - padding);
     const maxTop = Math.max(padding, viewportHeight - tooltipHeight - padding);
     left = Math.min(Math.max(left, padding), maxLeft);
     top = Math.min(Math.max(top, padding), maxTop);
 
+    setResolvedPosition((current) => current === nextPosition ? current : nextPosition);
     setTooltipPos({ top, left });
   }, [offset, position]);
 
@@ -196,8 +218,8 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     dismissTooltip();
   };
 
-  // 当tooltip可见时计算位置
-  useEffect(() => {
+  // 在浏览器绘制前计算位置，避免 tooltip 先短暂出现在 (0, 0) 或错误的一侧。
+  useLayoutEffect(() => {
     if (isVisible) {
       calculatePosition();
     }
@@ -301,7 +323,11 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
         // 触屏：tap 切换 tooltip（无延迟），让纯提示内容在触屏可达
         if (!isTooltipDisabled && content) {
           clearShowTimer();
-          setIsVisible((prev) => !prev);
+          if (isVisible) {
+            dismissTooltip();
+          } else {
+            showTooltip();
+          }
         }
       } else {
         handleTriggerActivation();
@@ -330,7 +356,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     <div
       ref={tooltipRef}
       id={tooltipId}
-      className={`common-tooltip common-tooltip--${position} common-tooltip--${theme} ${isVisible ? 'common-tooltip--visible' : ''} ${showArrow ? 'common-tooltip--with-arrow' : ''} ${className}`}
+      className={`common-tooltip common-tooltip--${resolvedPosition} common-tooltip--${theme} ${isVisible ? 'common-tooltip--visible' : ''} ${showArrow ? 'common-tooltip--with-arrow' : ''} ${className}`}
       style={{
         position: 'fixed',
         top: tooltipPos.top,

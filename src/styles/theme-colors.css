@@ -575,18 +575,16 @@
    - Edge highlight simulating Liquid Glass refraction
    - Vibrancy-inspired foreground adaptation
    - Respects prefers-reduced-transparency
-   - Smooth transitions for all glass-related properties to prevent flashing
+   - Smooth color transitions without animating costly backdrop sampling
    ========================================= */
 
-/* Smooth transitions for sidebar surface when translucency toggles */
+/* Keep color changes smooth; backdrop filters switch discretely to avoid per-frame resampling. */
 [data-shell-surface="navigation"],
 .sidebar-shell-surface,
 .desktop-shell-titlebar,
 .desktop-shell-header-cell--nav,
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
-  transition: background-color 400ms var(--ease-shell),
-              backdrop-filter 400ms var(--ease-shell),
-              -webkit-backdrop-filter 400ms var(--ease-shell);
+  transition: background-color 400ms var(--ease-shell);
 }
 
 /* Light mode CSS fallback: retain a subtle material tint without exposing the desktop. */
@@ -607,10 +605,18 @@
 
 /* Backdrop filter: blur + saturation boost */
 :root[data-sidebar-translucent="true"] [data-shell-surface="navigation"] {
-  -webkit-backdrop-filter: blur(28px) saturate(1.8);
-  backdrop-filter: blur(28px) saturate(1.8);
+  -webkit-backdrop-filter: blur(16px) saturate(1.8);
+  backdrop-filter: blur(16px) saturate(1.8);
   /* Edge highlight — simulates Liquid Glass refraction at content boundary */
   border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Resizing already invalidates layout every frame; avoid compounding it with backdrop sampling. */
+:root[data-sidebar-translucent="true"]
+  [data-shell-role="app-shell"][data-sidebar-resizing="true"]
+  [data-shell-surface="navigation"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* Dark mode: additional tint overlay for legibility (::before to sit behind content) */
