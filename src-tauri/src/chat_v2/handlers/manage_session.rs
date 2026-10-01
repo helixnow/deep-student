@@ -2251,3 +2251,106 @@ mod tests {
         );
     }
 }
+
+
+/// 讨论过某份资料的会话（资料侧反查「相关对话」）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionReferencingResource {
+    pub session_id: String,
+    pub title: Option<String>,
+    /// 最近一次提到该资料的消息（可直接滚动定位）
+    pub message_id: String,
+    pub last_referenced_at: i64,
+}
+
+fn like_contains(needle: &str) -> String {
+    let escaped = needle.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    format!("%{escaped}%")
+}
+
+/// 查询引用过这些资料 id（sourceId / resourceId 任一）的活跃会话：
+/// 用户消息的上下文快照（meta_json）、附件、回答引用（citations_json）与正文内 [PDF@id: 标记。
+pub(crate) fn list_sessions_referencing(
+    conn: &rusqlite::Connection,
+    ids: &[String],
+    limit: usize,
+) -> rusqlite::Result<Vec<SessionReferencingResource>> {
+    use std::collections::HashMap;
+    let mut by_session: HashMap<String, SessionReferencingResource> = HashMap::new();
+    let mut stmt = conn.prepare(
+        r#"
+        SELECT h.sid, s.title, h.mid, h.ts FROM (
+            SELECT m.session_id AS sid, m.id AS mid, m.timestamp AS ts
+              FROM chat_v2_messages m
+             WHERE m.meta_json LIKE ?1 ESCAPE '\' OR m.attachments_json LIKE ?1 ESCAPE '\'
+            UNION ALL
+            SELECT m.session_id, m.id, m.timestamp
+              FROM chat_v2_blocks b JOIN chat_v2_messages m ON m.id = b.message_id
+             WHERE b.citations_json LIKE ?1 ESCAPE '\' OR b.content LIKE ?2 ESCAPE '\'
+        ) h
+        JOIN chat_v2_sessions s ON s.id = h.sid
+        WHERE s.persist_status = 'active'
+        "#,
+    )?;
+    for id in ids.iter().map(|id| id.trim()).filter(|id| !id.is_empty()) {
+        let quoted = like_contains(&format!("\"{id}\""));
+        let pdf_marker = like_contains(&format!("[PDF@{id}:"));
+        let rows = stmt.query_map(rusqlite::params![quoted, pdf_marker], |row| {
+            Ok(SessionReferencingResource {
+                session_id: row.get(0)?,
+                title: row.get(1)?,
+                message_id: row.get(2)?,
+                last_referenced_at: row.get(3)?,
+            })
+        })?;
+        for row in rows {
+            let hit = row?;
+            match by_session.get(&hit.session_id) {
+                Some(existing) if existing.last_referenced_at >= hit.last_referenced_at => {}
+                _ => { by_session.insert(hit.session_id.clone(), hit); }
+            }
+        }
+    }
+    let mut out: Vec<_> = by_session.into_values().collect();
+    out.sort_by(|a, b| b.last_referenced_at.cmp(&a.last_referenced_at));
+    out.truncate(limit);
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn chat_v2_list_sessions_referencing(
+    source_ids: Vec<String>,
+    limit: Option<u32>,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<Vec<SessionReferencingResource>, String> {
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    list_sessions_referencing(&conn, &source_ids, limit.unwrap_or(20).clamp(1, 100) as usize)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod referencing_tests {
+    use super::*;
+
+    #[test]
+    fn finds_sessions_by_context_ref_and_pdf_marker_and_skips_deleted() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE chat_v2_sessions (id TEXT PRIMARY KEY, title TEXT, persist_status TEXT);
+             CREATE TABLE chat_v2_messages (id TEXT PRIMARY KEY, session_id TEXT, timestamp INTEGER, meta_json TEXT, attachments_json TEXT);
+             CREATE TABLE chat_v2_blocks (id TEXT PRIMARY KEY, message_id TEXT, content TEXT, citations_json TEXT);
+             INSERT INTO chat_v2_sessions VALUES ('s1','复习','active'),('s2','提问','active'),('s3','旧','deleted'),('s4','无关','active');
+             INSERT INTO chat_v2_messages VALUES
+               ('m1','s1',10,'{\"contextSnapshot\":{\"userRefs\":[{\"sourceId\":\"file_a\"}]}}',NULL),
+               ('m2','s2',20,NULL,NULL),
+               ('m3','s3',30,'{\"sourceId\":\"file_a\"}',NULL),
+               ('m4','s4',40,'{\"sourceId\":\"file_ab\"}',NULL);
+             INSERT INTO chat_v2_blocks VALUES ('b2','m2','见 [PDF@file_a:12] 的推导',NULL);",
+        ).unwrap();
+        let hits = list_sessions_referencing(&conn, &["file_a".to_string()], 10).unwrap();
+        let ids: Vec<_> = hits.iter().map(|h| h.session_id.as_str()).collect();
+        assert_eq!(ids, vec!["s2", "s1"]);
+        assert_eq!(hits[0].message_id, "m2");
+    }
+}

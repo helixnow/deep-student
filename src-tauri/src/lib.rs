@@ -2099,6 +2099,7 @@ pub fn run() {
             ,crate::commands::notes_state_delete
             ,crate::commands::notes_relation_get
             ,crate::commands::notes_relation_list
+            ,crate::commands::notes_list_referencing_resource
             ,crate::commands::notes_relation_put
             ,crate::commands::notes_relation_delete
             ,crate::commands::notes_reference_status
@@ -2203,6 +2204,7 @@ pub fn run() {
             ,crate::chat_v2::handlers::block_actions::chat_v2_get_anki_cards_from_block_by_document_id
             ,crate::chat_v2::handlers::block_actions::chat_v2_upsert_streaming_block
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_sessions
+            ,crate::chat_v2::handlers::manage_session::chat_v2_list_sessions_referencing
             ,crate::chat_v2::handlers::manage_session::chat_v2_list_agent_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_count_sessions
             ,crate::chat_v2::handlers::manage_session::chat_v2_session_message_count

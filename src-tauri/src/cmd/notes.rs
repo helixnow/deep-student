@@ -721,6 +721,86 @@ pub async fn notes_relation_list(
     })
     .await
 }
+/// 引用某份资料的笔记（资料侧反查「相关笔记」）：笔记来源（props._origin）指向它，
+/// 或学习关系（note_learning_relations）关联了它。ids 可同时传 DSTU id 与 VFS 资源 id。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteReferencingResource {
+    pub note_id: String,
+    pub title: String,
+    pub updated_at: String,
+    /// origin = 从该资料摘录/保存；relation = 学习关系关联
+    pub via: String,
+}
+
+pub(crate) fn list_notes_referencing(
+    conn: &rusqlite::Connection,
+    ids: &[String],
+) -> rusqlite::Result<Vec<NoteReferencingResource>> {
+    use std::collections::BTreeMap;
+    let mut found: BTreeMap<String, NoteReferencingResource> = BTreeMap::new();
+    let mut origin_stmt = conn.prepare(
+        "SELECT id, title, updated_at FROM notes
+          WHERE deleted_at IS NULL AND json_extract(props, '$._origin') LIKE ?1 ESCAPE '\\'",
+    )?;
+    let mut relation_stmt = conn.prepare(
+        "SELECT DISTINCT n.id, n.title, n.updated_at FROM note_learning_relations r
+           JOIN notes n ON n.id = r.note_id
+          WHERE n.deleted_at IS NULL AND r.resource_id = ?1",
+    )?;
+    for id in ids.iter().map(|id| id.trim()).filter(|id| !id.is_empty()) {
+        let escaped = id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let pattern = format!("%\"resourceId\":\"{escaped}\"%");
+        for (via, rows) in [
+            ("origin", origin_stmt.query_map([&pattern], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Vec<_>>()),
+            ("relation", relation_stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Vec<_>>()),
+        ] {
+            for row in rows {
+                let (note_id, title, updated_at) = row?;
+                found.entry(note_id.clone()).or_insert(NoteReferencingResource { note_id, title, updated_at, via: via.to_string() });
+            }
+        }
+    }
+    let mut out: Vec<_> = found.into_values().collect();
+    out.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn notes_list_referencing_resource(
+    resource_ids: Vec<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<NoteReferencingResource>> {
+    note_storage(state, move |conn| {
+        list_notes_referencing(conn, &resource_ids)
+            .map_err(|e| crate::vfs::error::VfsError::Database(e.to_string()))
+    })
+    .await
+}
+
+#[cfg(test)]
+mod referencing_resource_tests {
+    use super::*;
+
+    #[test]
+    fn finds_notes_by_origin_and_relation_without_prefix_collisions() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT, updated_at TEXT, deleted_at TEXT, props TEXT);
+               CREATE TABLE note_learning_relations (id TEXT PRIMARY KEY, note_id TEXT, resource_id TEXT);
+               INSERT INTO notes VALUES
+                 ('n1','摘录','2026-10-02',NULL,'{"_origin":"{\"kind\":\"resource\",\"resourceId\":\"file_a\",\"page\":3}"}'),
+                 ('n2','关联','2026-10-01',NULL,NULL),
+                 ('n3','已删','2026-10-03','2026-10-03','{"_origin":"{\"kind\":\"resource\",\"resourceId\":\"file_a\"}"}'),
+                 ('n4','别的','2026-10-04',NULL,'{"_origin":"{\"kind\":\"resource\",\"resourceId\":\"file_ab\"}"}');
+               INSERT INTO note_learning_relations VALUES ('r1','n2','res_a');"#,
+        ).unwrap();
+        let notes = list_notes_referencing(&conn, &["file_a".to_string(), "res_a".to_string()]).unwrap();
+        let ids: Vec<_> = notes.iter().map(|n| (n.note_id.as_str(), n.via.as_str())).collect();
+        assert_eq!(ids, vec![("n1", "origin"), ("n2", "relation")]);
+    }
+}
+
 #[tauri::command]
 pub async fn notes_relation_put(
     request: NoteRelationPut,
