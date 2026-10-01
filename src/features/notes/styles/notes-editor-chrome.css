@@ -198,7 +198,7 @@
 }
 
 /* 页面级动作只在带文字的菜单中呈现，与正文格式分层。 */
-.notes-crepe-shell .notes-chrome-text-button {
+:is(.notes-crepe-shell, .notes-tab-actions-slot) .notes-chrome-text-button {
   width: auto;
   height: 28px;
   padding: 0 8px;
@@ -240,7 +240,7 @@
 }
 @media (max-width: 767.98px), (pointer: coarse) {
   .notes-page-actions button,
-  .notes-crepe-shell .notes-chrome-text-button { min-height: 44px; }
+  :is(.notes-crepe-shell, .notes-tab-actions-slot) .notes-chrome-text-button { min-height: 44px; }
 }
 .notes-editor-header-section[data-mobile-hosted='true'] { min-height: 0; border-bottom: 0; }
 .notes-editor-header-section[data-mobile-hosted='true']:empty { display: none; }
@@ -288,4 +288,14 @@
 
 .notes-ai-diff-select:disabled {
   opacity: 0.6;
+}
+
+/* 学习中心单顶栏：笔记页面级动作（保存状态/阅读/页面▾）并入标签栏右端，
+   对齐 Notion 的单一 topbar；无活动笔记时操作位为空，不占宽度。 */
+.notes-tab-actions-slot:empty { display: none; }
+.notes-tab-actions-slot {
+  margin-left: auto;
+  height: 100%;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
 }

@@ -51,6 +51,8 @@ export interface TabBarProps {
   activeTabId: string | null;
   onSwitch: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  /** 右端页面级操作位（笔记编辑器经 NotesChromeSlotContext 渲染进来） */
+  actionsSlotRef?: React.Ref<HTMLDivElement>;
   splitView?: SplitViewState | null;
   onSplitView?: (tabId: string) => void;
   onCloseSplitView?: () => void;
@@ -451,7 +453,7 @@ function useScrollOverflow(ref: React.RefObject<HTMLDivElement | null>, attached
 
 export const TabBar: React.FC<TabBarProps> = ({
   tabs, activeTabId, onSwitch, onClose, splitView, onSplitView, onCloseSplitView, setTabs,
-  onTogglePin, onCloseOthers, onCloseRight,
+  onTogglePin, onCloseOthers, onCloseRight, actionsSlotRef,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const hasTabs = tabs.length > 0;
@@ -611,6 +613,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           <CaretRight size={16} className="opacity-45" />
         </button>
       )}
+      {actionsSlotRef && <div ref={actionsSlotRef} className="notes-tab-actions-slot flex shrink-0 items-center gap-1 pl-1 pr-2" data-tab-actions-slot />}
     </div>
   );
 };

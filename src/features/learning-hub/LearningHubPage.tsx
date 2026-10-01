@@ -103,6 +103,7 @@ import {
 import { ContentCloseConfirmationHost } from '@/features/workbench/apps/content/ContentCloseConfirmation';
 import { confirmTabClose, isTabDirty, requestCloseTabs } from './closeTabGate';
 import { getCreatableFolderId } from './viewGuards';
+import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
 import {
   getQuickAccessTypeFromLauncherType,
   getQuickAccessTypeFromPath,
@@ -270,6 +271,8 @@ export const LearningHubPage: React.FC = () => {
   const [tabs, setTabs] = useState<OpenTab[]>(() => loadPersistedTabs().tabs);
   const [activeTabId, setActiveTabId] = useState<string | null>(() => loadPersistedTabs().activeTabId);
   const [splitView, setSplitView] = useState<SplitViewState | null>(null);
+  /** 标签栏右侧的笔记页面级操作位（见 NotesChromeSlotContext） */
+  const [notesChromeSlot, setNotesChromeSlot] = useState<HTMLDivElement | null>(null);
 
   // 派生状态
   const activeTab = tabs.find(t => t.tabId === activeTabId) ?? null;
@@ -1554,17 +1557,21 @@ export const LearningHubPage: React.FC = () => {
                 onTogglePin={togglePinTab}
                 onCloseOthers={closeOtherTabs}
                 onCloseRight={closeTabsToRight}
+                actionsSlotRef={setNotesChromeSlot}
               />
               <div className="flex-1 min-h-0 overflow-hidden">
-                <TabPanelContainer
-                  tabs={tabs}
-                  activeTabId={activeTabId}
-                  splitView={splitView}
-                  onClose={closeTabWithSplit}
-                  onTitleChange={updateTabTitle}
-                  onCloseSplitView={closeSplitView}
-                  className="h-full"
-                />
+                {/* 笔记页面级操作并入标签栏右侧（单条顶栏）；分屏时两侧各自保留 chrome */}
+                <NotesChromeSlotContext.Provider value={splitView || isSmallScreen ? null : notesChromeSlot}>
+                  <TabPanelContainer
+                    tabs={tabs}
+                    activeTabId={activeTabId}
+                    splitView={splitView}
+                    onClose={closeTabWithSplit}
+                    onTitleChange={updateTabTitle}
+                    onCloseSplitView={closeSplitView}
+                    className="h-full"
+                  />
+                </NotesChromeSlotContext.Provider>
               </div>
             </div>
           )}

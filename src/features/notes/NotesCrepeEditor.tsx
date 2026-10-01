@@ -13,6 +13,7 @@ import type { CrepeFormattingState } from '@/components/crepe/formattingState';
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
+import { useNotesChromeSlot } from './notesChromeSlot';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
@@ -490,6 +491,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const isSmallScreen = isViewportMobile;
   const mobileResourceMenu = useMobileResourceMenu();
   const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
+  const notesChromeSlot = useNotesChromeSlot();
   const [pageActionsOpen, setPageActionsOpen] = useState(false);
   const pageActionsRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => { setPageActionsOpen(false); }, [activeNoteKey, hasMobileResourceMenu]);
@@ -538,7 +540,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
   // 壳层可见性监听（P0 泄漏修复的数据源）。仅触屏编辑面需要，桌面纯鼠标不挂观察器。
   useEffect(() => {
-    if (!isTouchEditingSurface) {
+    // 触屏工具条与宿主标签栏操作位都只允许「当前可见」的实例占用
+    if (!isTouchEditingSurface && !notesChromeSlot) {
       setShellInViewport(true);
       return undefined;
     }
@@ -550,7 +553,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     });
     observer.observe(shell);
     return () => observer.disconnect();
-  }, [isTouchEditingSurface]);
+  }, [isTouchEditingSurface, notesChromeSlot]);
 
   // 用户在本实例内交互（聚焦/触点）时抢占工具条持有权
   useEffect(() => {
@@ -2375,6 +2378,41 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     </DsButton>)}
   </div>);
 
+  // 宿主提供标签栏操作位、本实例可见、非移动菜单宿主、非专注模式时，页面级操作并入宿主标签栏
+  const portalChrome = Boolean(notesChromeSlot) && shellInViewport && !hasMobileResourceMenu && !focusMode;
+  const chromeActions = (<>
+            <NotesSaveIndicator saveStatus={saveStatus} lastSaved={lastSaved} charCount={charCount}
+      readOnly={effectiveReadOnly} onRetrySave={effectiveReadOnly ? undefined : handleManualSave} />
+    {!isTouchEditingSurface && readingModeAction}
+    <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
+      <PopoverTrigger asChild>
+        <DsButton ref={templateTriggerRef} variant="ghost" size="sm" className="notes-chrome-text-button"
+          aria-haspopup="dialog" aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
+          <span>{t('notes:chrome.page')}</span><CaretDown size={12} />
+        </DsButton>
+      </PopoverTrigger>
+      <PopoverContent ref={pageActionsRef} align="end" className="w-64 max-h-[min(80vh,600px)] overflow-y-auto p-1"
+        aria-label={t('notes:toolbar.page_actions', 'More note actions')}
+        aria-hidden={!pageActionsOpen || undefined}
+        {...(!pageActionsOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+          event.preventDefault();
+          event.stopPropagation();
+          setPageActionsOpen(false);
+          templateTriggerRef.current?.focus();
+        }}
+        onClick={(event) => {
+          if (!(event.target as HTMLElement).closest('button')) return;
+          setPageActionsOpen(false);
+          templateTriggerRef.current?.focus();
+        }}>
+        {pageActions}
+      </PopoverContent>
+    </Popover>
+    {headerActions}
+  </>);
+
   return (
     <ErrorBoundary name="NotesEditor">
     <div
@@ -2586,41 +2624,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background"
         data-mobile-hosted={hasMobileResourceMenu || undefined}>
-        {!hasMobileResourceMenu && <div className="notes-editor-chrome-row notes-column flex items-center gap-1">
+        {!hasMobileResourceMenu && !portalChrome && <div className="notes-editor-chrome-row notes-column flex items-center gap-1">
           {/* 页面保持安静：行内格式走选区浮条 / 斜杠菜单 / 快捷键，块操作走块手柄，这里只留页面级入口 */}
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            <NotesSaveIndicator saveStatus={saveStatus} lastSaved={lastSaved} charCount={charCount}
-              readOnly={effectiveReadOnly} onRetrySave={effectiveReadOnly ? undefined : handleManualSave} />
-            {!isTouchEditingSurface && readingModeAction}
-            <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
-              <PopoverTrigger asChild>
-                <DsButton ref={templateTriggerRef} variant="ghost" size="sm" className="notes-chrome-text-button"
-                  aria-haspopup="dialog" aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
-                  <span>{t('notes:chrome.page')}</span><CaretDown size={12} />
-                </DsButton>
-              </PopoverTrigger>
-              <PopoverContent ref={pageActionsRef} align="end" className="w-64 max-h-[min(80vh,600px)] overflow-y-auto p-1"
-                aria-label={t('notes:toolbar.page_actions', 'More note actions')}
-                aria-hidden={!pageActionsOpen || undefined}
-                {...(!pageActionsOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setPageActionsOpen(false);
-                  templateTriggerRef.current?.focus();
-                }}
-                onClick={(event) => {
-                  if (!(event.target as HTMLElement).closest('button')) return;
-                  setPageActionsOpen(false);
-                  templateTriggerRef.current?.focus();
-                }}>
-                {pageActions}
-              </PopoverContent>
-            </Popover>
-            {headerActions}
+            {chromeActions}
           </div>
         </div>}
+        {portalChrome && notesChromeSlot && createPortal(chromeActions, notesChromeSlot)}
 
         {/* 模板内联面板：编辑器顶部随文档流展开（grid-rows 0fr→1fr），无浮层遮挡；
             方向键在卡片间移动、Enter 应用、Esc 收起（见 NotesTemplatePanel） */}
