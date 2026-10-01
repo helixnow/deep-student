@@ -71,6 +71,7 @@ import { useSessionSidebarContent } from './SessionSidebarContent';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
 import { StreamPreferencesProvider } from '../components/renderers/StreamPreferencesContext';
 import type { StreamingSmoothingPreset } from '../components/renderers/streamingSmoothing';
+import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
 import {
   clearHiddenDraftSessionId,
   clearHiddenDraftSessionMetadata,
@@ -1020,6 +1021,9 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     setOpenApp(prev => prev ? { ...prev, title } : null);
   }, []);
 
+  /** 面板工具栏里的笔记页面级操作位（见 NotesChromeSlotContext）：与面板标题合为一行 */
+  const [panelNotesChromeSlot, setPanelNotesChromeSlot] = useState<HTMLDivElement | null>(null);
+
   const renderOpenAppPanel = useCallback((
     options?: {
       fullScreen?: boolean;
@@ -1058,6 +1062,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {panelOpenApp.type === 'note' && <div ref={setPanelNotesChromeSlot} className="notes-tab-actions-slot flex items-center gap-1" data-tab-actions-slot />}
             <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label={t('page.openInLearningHub')} title={t('page.openInLearningHub')} className="!h-7 !w-7 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11">
               <ArrowSquareOut size={14} className="text-muted-foreground" />
             </DsButton>
@@ -1078,6 +1083,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               </div>
             }
           >
+            <NotesChromeSlotContext.Provider value={isSmallScreen && options?.fullScreen ? null : panelNotesChromeSlot}>
             <UnifiedAppPanel
               type={panelOpenApp.type}
               resourceId={panelOpenApp.id}
@@ -1087,11 +1093,12 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               isActive
               className="h-full"
             />
+            </NotesChromeSlotContext.Provider>
           </Suspense>
         </div>
       </div>
     );
-  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t]);
+  }, [openApp, handleCloseApp, handleOpenInLearningHub, handleTitleChange, isSmallScreen, t, panelNotesChromeSlot]);
 
   // ★ 处理从 openResource 触发的待打开资源
   // 简化逻辑：直接调用 handleOpenApp，不再通过事件传递
