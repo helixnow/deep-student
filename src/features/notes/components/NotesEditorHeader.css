@@ -172,9 +172,21 @@
   opacity: 1;
 }
 
+/* 触屏没有 hover：平时不占视觉（与 Notion 移动端一致），编辑标题或操作其中按钮时才出现 */
 @media (hover: none), (pointer: coarse) {
   .notes-document-affordances {
+    height: 0;
+    margin-bottom: 0;
+    overflow: hidden;
+    transition: none;
+  }
+
+  .notes-document-header:focus-within .notes-document-affordances,
+  .notes-document-affordances:has([aria-expanded='true']) {
+    height: 44px;
+    margin-bottom: 6px;
     opacity: 1;
+    overflow: visible;
   }
 }
 
