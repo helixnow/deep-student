@@ -21,7 +21,8 @@ export interface InsightsSectionProps {
 
 export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) => {
   const listId = useId();
-  const [expanded, setExpanded] = useState(true);
+  // 默认收起：侧栏以页面树为主体，灵感区只露标题与数量
+  const [expanded, setExpanded] = useState(false);
   const { t } = useTranslation('notes');
   const [items, setItems] = useState<InsightCard[]>([]);
   const [loadFailed, setLoadFailed] = useState(false);

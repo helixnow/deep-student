@@ -2580,7 +2580,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           onChange={setSelectedTags}
           className="notes-explorer-tag-filter"
         />
-        <FavoritesSection
+        {/* Notion 式：收藏区只在有收藏时出现，不用一句空态说明占掉页面树的位置 */}
+        {favorites.items.length > 0 && <FavoritesSection
           items={favorites.items}
           activeId={activeTab?.id ?? null}
           onOpen={(item) => {
@@ -2590,7 +2591,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           onUnfavorite={(item) => {
             void favorites.setFavorite(item.id, item.type, false, { path: item.path, name: item.name });
           }}
-        />
+        />}
         <InsightsSection />
         {resourceDialog?.mode === 'create-folder' && (
           <div className="notes-inline-create ui-rise-in" data-notes-inline-create>
@@ -2705,16 +2706,15 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             </div>
           </div>
         )}
-        <label className="flex items-center gap-2 px-3 py-2 text-xs">
-          <span>{t('notes:learning.view_label')}</span>
-          <select aria-label={t('notes:learning.view_selector')} className="min-w-0 flex-1 rounded border border-border bg-background p-1"
-            value={learningView} onChange={(event) => setLearningView(event.target.value as NoteLearningView | 'tree')}>
-            <option value="tree">{t('notes:learning.views.tree')}</option>
-            <option value="list">{t('notes:learning.views.list')}</option>
-            <option value="status">{t('notes:learning.views.status')}</option>
-            <option value="review">{t('notes:learning.views.review')}</option>
-          </select>
-        </label>
+        {/* 视图切换：紧凑分段按钮，替代浏览器原生下拉 */}
+        <div className="notes-view-switch" role="radiogroup" aria-label={t('notes:learning.view_selector')}>
+          {(['tree', 'list', 'status', 'review'] as const).map((view) => (
+            <button key={view} type="button" role="radio" aria-checked={learningView === view}
+              className="notes-view-switch-option" onClick={() => setLearningView(view)}>
+              {t(`notes:learning.views.${view}`)}
+            </button>
+          ))}
+        </div>
         <div className="notes-tree-host" aria-live="polite">
           {learningView !== 'tree' ? (
             loading && resources.length === 0 ? <p className="p-3 text-xs">{t('notes:editor.windowing.loading_note')}</p>
@@ -2986,11 +2986,10 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         </div>
         <footer className="notes-statusbar" data-notes-statusbar>
           <span>{status}</span>
-          <span>{activeTab
-            ? `${activeTab.type === 'note'
-              ? t('notesWorkspace.status.noteType', 'Markdown')
-              : t('notesWorkspace.status.mindmapType', 'Mind map')} · ${t(`notesWorkspace.saveState.${saveStates.get(activeTab.key) ?? 'saved'}`)}`
-            : t('notesWorkspace.status.library', 'Local library')}</span>
+          {/* 保存状态已在编辑器顶栏常驻：这里只在未保存 / 失败时提示，不重复「已保存」 */}
+          <span>{activeTab && (saveStates.get(activeTab.key) ?? 'saved') !== 'saved'
+            ? t(`notesWorkspace.saveState.${saveStates.get(activeTab.key)}`)
+            : ''}</span>
         </footer>
       </main>
       </WorkbenchSidebarLayout>

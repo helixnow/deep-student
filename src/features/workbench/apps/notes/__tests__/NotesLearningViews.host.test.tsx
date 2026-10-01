@@ -64,7 +64,7 @@ describe('NotesWorkspaceApp learning views', () => {
   it('opens the same notes and reacts to metadata-only updates across status and review views', async () => {
     render(<NotesWorkspaceApp windowId="study-test" instanceKey={null} isActive isVisible onTitleChange={vi.fn()} requestClose={vi.fn()} />);
     await screen.findByText('微积分');
-    fireEvent.change(screen.getByLabelText('笔记学习视图'), { target: { value: 'status' } });
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '笔记学习视图' })).getAllByRole('radio')[2]);
     const learningSection = screen.getByRole('heading', { name: '学习中 · 1' }).closest('section')!;
     expect(within(learningSection).getByText('微积分')).toBeInTheDocument();
     fireEvent.click(within(learningSection).getByRole('button'));
@@ -75,14 +75,14 @@ describe('NotesWorkspaceApp learning views', () => {
     act(() => data.watchers.forEach((callback) => callback({ type: 'updated', node: changed, path: changed.path })));
     expect(screen.getByRole('heading', { name: '学习中 · 0' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '已掌握 · 2' })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('笔记学习视图'), { target: { value: 'review' } });
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '笔记学习视图' })).getAllByRole('radio')[3]);
     expect(screen.getByRole('heading', { name: /近期复习.* · 0/ })).toBeInTheDocument();
     // Delayed older metadata cannot resurrect an overdue item.
     act(() => data.watchers.forEach((callback) => callback({ type: 'updated', node: data.nodes[0], path: '/n1' })));
     expect(screen.getByRole('heading', { name: /近期复习.* · 0/ })).toBeInTheDocument();
     act(() => data.watchers.forEach((callback) => callback({ type: 'updated', node: { ...data.nodes[0], updatedAt: 3 }, path: '/n1' })));
     expect(screen.getByRole('heading', { name: /近期复习.* · 1/ })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('笔记学习视图'), { target: { value: 'list' } });
+    fireEvent.click(within(screen.getByRole('radiogroup', { name: '笔记学习视图' })).getAllByRole('radio')[1]);
     const list = screen.getByLabelText('学习视图');
     expect(within(list).getAllByRole('button')).toHaveLength(2);
   });

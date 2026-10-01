@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { CaretRight } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -92,6 +93,9 @@ export const TagFilter: React.FC<TagFilterProps> = ({
 
   const selected = normalizeSelected(selectedTags);
   const selectedKeys = new Set(selected.map((tag) => tag.toLocaleLowerCase()));
+  // 侧栏以页面树为主体：标签筛选默认收起成一行，有选中标签时自动展开
+  const [expanded, setExpanded] = useState(false);
+  const open = expanded || selected.length > 0;
 
   const toggleTag = useCallback((tag: string) => {
     const key = tag.trim().toLocaleLowerCase();
@@ -133,12 +137,18 @@ export const TagFilter: React.FC<TagFilterProps> = ({
   return (
     <div className={cn('notes-tag-filter', className)} data-notes-tag-filter>
       <div className="notes-tag-filter-toolbar">
-        <span className="notes-tag-filter-label">
+        <button
+          type="button"
+          className="notes-tag-filter-label"
+          aria-expanded={open}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <CaretRight size={10} aria-hidden className="notes-tag-filter-caret" data-open={open || undefined} />
           {t('workbench:notesWorkspace.tagFilter.label')}
           {selected.length > 0 && (
             <span className="notes-tag-filter-selected-count">{selected.length}</span>
           )}
-        </span>
+        </button>
         <button
           type="button"
           className="notes-tag-filter-clear"
@@ -149,7 +159,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
         </button>
       </div>
 
-      {selected.length > 1 && (
+      {open && selected.length > 1 && (
         <p className="notes-tag-filter-hint" role="note">
           {t('workbench:notesWorkspace.tagFilter.intersectionHint', {
             defaultValue: '交集筛选：仅显示同时包含这 {{count}} 个标签的笔记',
@@ -158,7 +168,7 @@ export const TagFilter: React.FC<TagFilterProps> = ({
         </p>
       )}
 
-      {loading ? (
+      {!open ? null : loading ? (
         <div className="notes-tag-filter-status">
           {t('workbench:notesWorkspace.tagFilter.loading')}
         </div>

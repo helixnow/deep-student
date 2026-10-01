@@ -31,6 +31,8 @@ describe('TagFilter', () => {
       />,
     );
 
+    // 默认收起：先展开标签区
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('3')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /math/i }));
     expect(onChange).toHaveBeenCalledWith(['math']);
@@ -56,12 +58,14 @@ describe('TagFilter', () => {
   it('loads tags via useNoteTags when tags prop is omitted', async () => {
     render(<TagFilter selectedTags={[]} onChange={vi.fn()} />);
     await waitFor(() => expect(listTags).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('button', { name: 'math' })).toBeInTheDocument();
   });
 
   it('hides internal metadata tags returned by the notes API', async () => {
     listTags.mockResolvedValue(['math', '_system', '_purpose:systemic', 'daily_log']);
     render(<TagFilter selectedTags={[]} onChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(await screen.findByRole('button', { name: 'math' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '_system' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'daily_log' })).not.toBeInTheDocument();
@@ -79,6 +83,14 @@ describe('TagFilter', () => {
     expect(screen.getByRole('note')).toHaveTextContent('2');
   });
 
+  it('starts collapsed and expands on its own when a tag is selected', () => {
+    const tags = [{ name: 'math' }, { name: 'physics' }];
+    const { rerender } = render(<TagFilter selectedTags={[]} onChange={vi.fn()} tags={tags} />);
+    expect(screen.queryByRole('button', { name: 'math' })).toBeNull();
+    rerender(<TagFilter selectedTags={['math']} onChange={vi.fn()} tags={tags} />);
+    expect(screen.getByRole('button', { name: 'math' })).toBeInTheDocument();
+  });
+
   it('groups nested a/b tags under their prefix and toggles the full tag name', () => {
     const onChange = vi.fn();
     render(
@@ -93,6 +105,7 @@ describe('TagFilter', () => {
       />,
     );
 
+    fireEvent.click(screen.getByRole('button', { expanded: false }));
     expect(screen.getByText('math/')).toBeInTheDocument();
     const algebra = screen.getByRole('button', { name: 'math/algebra' });
     expect(algebra).toHaveTextContent('algebra');

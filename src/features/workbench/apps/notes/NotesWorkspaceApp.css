@@ -1359,3 +1359,44 @@
     transform: translateY(0);
   }
 }
+
+/* 视图切换分段按钮（文件树 / 列表 / 状态 / 复习） */
+.notes-view-switch {
+  display: flex;
+  gap: 2px;
+  margin: 4px 10px 6px;
+  padding: 2px;
+  border-radius: 7px;
+  background: hsl(var(--foreground) / 0.05);
+}
+
+.notes-view-switch-option {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 24px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+
+.notes-view-switch-option[aria-checked='true'] {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px hsl(var(--shadow-base) / 0.1);
+}
+
+.notes-view-switch-option:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .notes-view-switch-option {
+    height: 36px;
+  }
+}

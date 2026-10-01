@@ -197,3 +197,33 @@
     min-height: 44px;
   }
 }
+
+/* 折叠开关：标题本身可点，箭头指示展开状态 */
+button.notes-tag-filter-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: transparent;
+  padding: 2px 4px 2px 0;
+  cursor: pointer;
+  /* 与「收藏 / 灵感」分区标题同一字号与颜色（不继承按钮外层字体） */
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+button.notes-tag-filter-label:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.notes-tag-filter-caret {
+  transition: transform 150ms ease;
+}
+
+.notes-tag-filter-caret[data-open] {
+  transform: rotate(90deg);
+}
