@@ -6,6 +6,7 @@ import { getPathToNote, type NoteContentStats } from '../notesUtils';
 import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { NoteGlyph } from './NoteGlyph';
 import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -519,7 +520,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                             const icon = item.type === 'folder' ? (
                                 <Folder className="h-3 w-3 opacity-70" aria-hidden="true" />
                             ) : (
-                                <FileText className="h-3 w-3 opacity-70" aria-hidden="true" />
+                                <NoteGlyph noteId={item.id} size={12} fallback={<FileText className="h-3 w-3 opacity-70" aria-hidden="true" />} />
                             );
                             const label = (
                                 <span className={`truncate ${item.type === 'folder' ? 'max-w-[100px]' : 'max-w-[150px]'}`}>
@@ -558,6 +559,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 </div>
             )}
 
+            {/* Notion：图标在操作行之上，点击图标即可更换 */}
+            {hasIcon && <button type="button" className="notes-document-icon"
+                aria-label={t('notes:appearance.change_icon', { defaultValue: isZh ? '更换图标' : 'Change icon' })}
+                disabled={appearance.loading || appearance.error === 'load'}
+                onClick={() => setAppearanceOpen(true)}>
+                <span aria-hidden="true">{appearance.value.icon}</span>
+            </button>}
             {/* Notion 式页面操作行：平时隐身，悬停标题区或键盘聚焦时浮现；触屏常显 */}
             <div className="notes-document-affordances" data-has-icon={hasIcon || undefined}>
                 <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
@@ -637,7 +645,6 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                 )}
             </div>
 
-            {hasIcon && <div className="notes-document-icon" aria-hidden="true">{appearance.value.icon}</div>}
             <textarea
                 ref={titleRef}
                 rows={1}
