@@ -252,7 +252,10 @@
       "back": "Back to question sets",
       "no_results": "No matching resources",
       "previous": "Previous page",
-      "next": "Next page"
+      "next": "Next page",
+      "add": "Add link",
+      "page_n": "Page {{page}}",
+      "cancel_add": "Cancel"
     },
     "title": "Learning properties",
     "section_label": "Note learning properties",

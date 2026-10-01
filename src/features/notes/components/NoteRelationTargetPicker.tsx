@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
+import { CaretLeft, CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
 import { dstu } from '@/dstu';
 import type { AnkiLibraryListResponse } from '@/types';
 import type { NoteRelationType } from '../noteRelations';
@@ -56,21 +57,29 @@ export function NoteRelationTargetPicker({ type, disabled, onChoose }: {
     void load().catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [open, type, query, page, exam]);
-  return <div className="space-y-2">
-    <button type="button" disabled={disabled} onClick={() => setOpen(!open)}>{t('learning.relations.choose', { defaultValue: '从资源库选择' })}</button>
-    {open && <div className="space-y-2 rounded border p-2">
-      {!exam && <input className="w-full border bg-background p-1" aria-label={t('learning.relations.search', { defaultValue: '查找关联资源' })} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />}
-      {exam && <button type="button" onClick={() => { setExam(undefined); setPage(1); }}>{t('learning.relations.back', { defaultValue: '返回题目集' })}</button>}
-      {loading ? <p role="status">{t('learning.loading')}</p> : <ul className="max-h-48 space-y-1 overflow-auto">{choices.map((choice) => <li key={choice.key}>
-        <button type="button" disabled={disabled} className="w-full truncate rounded p-1 text-left hover:bg-muted" onClick={() => {
+  return <div className="notes-rel-picker">
+    <button type="button" className="notes-rel-button notes-rel-picker-toggle" disabled={disabled} aria-expanded={open} onClick={() => setOpen(!open)}>
+      <MagnifyingGlass size={12} aria-hidden="true" />{t('learning.relations.choose', { defaultValue: '从资源库选择' })}</button>
+    {open && <div className="notes-rel-picker-panel">
+      {!exam && <input className="notes-rel-input" autoFocus aria-label={t('learning.relations.search', { defaultValue: '查找关联资源' })}
+        placeholder={t('learning.relations.search', { defaultValue: '查找关联资源' })} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />}
+      {exam && <button type="button" className="notes-rel-picker-back" onClick={() => { setExam(undefined); setPage(1); }}>
+        <CaretLeft size={11} aria-hidden="true" />{t('learning.relations.back', { defaultValue: '返回题目集' })}</button>}
+      {loading ? <p role="status" className="notes-props-empty">{t('learning.loading')}</p> : choices.length > 0 && <ul className="notes-rel-picker-list">{choices.map((choice) => <li key={choice.key}>
+        <button type="button" disabled={disabled} className="notes-rel-picker-item" title={choice.label} onClick={() => {
           if (type === 'mistake' && !exam) { setExam(choice); setPage(1); return; }
           onChoose(choice.resourceId, choice.location ?? '1', choice.label); setOpen(false);
         }}>{choice.label}</button>
       </li>)}</ul>}
-      {!loading && !error && choices.length === 0 && <p>{t('learning.relations.no_results', { defaultValue: '没有匹配的资源' })}</p>}
-      <div className="flex gap-3"><button type="button" disabled={disabled || loading || page === 1} onClick={() => setPage(page - 1)}>{t('learning.relations.previous', { defaultValue: '上一页' })}</button>
-        <button type="button" disabled={disabled || loading || !more} onClick={() => setPage(page + 1)}>{t('learning.relations.next', { defaultValue: '下一页' })}</button></div>
-      {error && <p role="alert">{error}</p>}
+      {!loading && !error && choices.length === 0 && <p className="notes-props-empty">{t('learning.relations.no_results', { defaultValue: '没有匹配的资源' })}</p>}
+      {(page > 1 || more) && <div className="notes-rel-picker-pager">
+        <button type="button" className="notes-rel-icon-button" disabled={disabled || loading || page === 1} onClick={() => setPage(page - 1)}
+          aria-label={t('learning.relations.previous', { defaultValue: '上一页' })} title={t('learning.relations.previous', { defaultValue: '上一页' })}><CaretLeft size={12} aria-hidden="true" /></button>
+        <span>{page}</span>
+        <button type="button" className="notes-rel-icon-button" disabled={disabled || loading || !more} onClick={() => setPage(page + 1)}
+          aria-label={t('learning.relations.next', { defaultValue: '下一页' })} title={t('learning.relations.next', { defaultValue: '下一页' })}><CaretRight size={12} aria-hidden="true" /></button>
+      </div>}
+      {error && <p role="alert" className="notes-props-error">{error}</p>}
     </div>}
   </div>;
 }

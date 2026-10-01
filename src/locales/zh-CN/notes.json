@@ -252,7 +252,10 @@
       "back": "返回题目集",
       "no_results": "没有匹配的资源",
       "previous": "上一页",
-      "next": "下一页"
+      "next": "下一页",
+      "add": "添加关联",
+      "page_n": "第 {{page}} 页",
+      "cancel_add": "取消"
     },
     "title": "学习属性",
     "section_label": "笔记学习属性",

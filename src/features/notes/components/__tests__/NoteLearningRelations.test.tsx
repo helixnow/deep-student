@@ -24,6 +24,7 @@ describe('independent relations UI', () => {
     fireEvent.click(screen.getByRole('button', { name: '解除关系' }));
     await waitFor(() => expect(service.delete).toHaveBeenCalledWith('rel_a', 7));
     view.rerender(<NoteLearningRelations noteId="note_b" service={service} />);
+    fireEvent.click(await screen.findByRole('button', { name: '添加关联' }));
     await waitFor(() => expect(screen.getByLabelText('PDF 页码')).toHaveValue(null));
   });
   it('ignores late old-note loads and keeps invalid references visible', async () => {
@@ -40,13 +41,16 @@ describe('independent relations UI', () => {
   it('creates card and mistake locators without writing scalar note properties', async () => {
     const service = serviceFor();
     render(<NoteLearningRelations noteId="note_a" service={service} />);
+    fireEvent.click(await screen.findByRole('button', { name: '添加关联' }));
     await waitFor(() => expect(screen.getByLabelText('关系类型')).toBeEnabled());
     fireEvent.change(screen.getByLabelText('关系类型'), { target: { value: 'card' } });
     fireEvent.change(screen.getByLabelText('资源 ID（卡片填文档 ID）'), { target: { value: 'doc_a' } });
     fireEvent.change(screen.getByLabelText('卡片 ID'), { target: { value: 'card_a' } });
     fireEvent.click(screen.getByRole('button', { name: '保存关系' }));
     await waitFor(() => expect(service.put).toHaveBeenCalledWith(expect.objectContaining({ type: 'card', resource_id: 'doc_a', locator: { type: 'card', value: 'card_a' }, expected_revision: null })));
-    await waitFor(() => expect(screen.getByLabelText('关系类型')).toBeEnabled());
+    // 保存后表单收起（Notion 式），再次添加需重新展开
+    await waitFor(() => expect(screen.getByRole('button', { name: '添加关联' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: '添加关联' }));
     fireEvent.change(screen.getByLabelText('关系类型'), { target: { value: 'mistake' } });
     fireEvent.change(screen.getByLabelText('资源 ID（卡片填文档 ID）'), { target: { value: 'res_exam' } });
     fireEvent.change(screen.getByLabelText('题目 ID'), { target: { value: 'q_a' } });

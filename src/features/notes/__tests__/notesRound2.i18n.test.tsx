@@ -70,6 +70,7 @@ describe('notes round two with real English translations', () => {
     repository.list.mockResolvedValue({ ok: true, value: [] });
     view(<NoteLearningRelations noteId="english-note" service={service} />);
     await screen.findByText('No learning resources linked yet');
+    fireEvent.click(screen.getByRole('button', { name: 'Add link' }));
     expect(screen.getByRole('option', { name: 'Source PDF' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Choose from library' }));
     await screen.findByText('No matching resources');
