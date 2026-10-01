@@ -737,7 +737,7 @@
   background: var(--mm-bg-hover);
 }
 
-.ds-btn,
+:where(.mindmap-container, .mm-search-popover) .ds-btn,
 .mm-toolbar-button {
   height: 28px;
   padding: 0 8px;
@@ -753,7 +753,7 @@
   transition: background-color var(--mm-hover-transition, 120ms ease), color var(--mm-hover-transition, 120ms ease);
 }
 
-.ds-btn:hover,
+:where(.mindmap-container, .mm-search-popover) .ds-btn:hover,
 .mm-toolbar-button:hover {
   background: var(--mm-bg-hover);
 }
@@ -825,7 +825,7 @@
 }
 
 /* --- 焦点可见性：与 notes 模块同语（2px ring，offset 1） --- */
-.ds-btn:focus-visible,
+:where(.mindmap-container, .mm-search-popover) .ds-btn:focus-visible,
 .mm-toolbar-button:focus-visible,
 .mm-learning-button:focus-visible,
 .mm-view-switcher-button:focus-visible,
@@ -1902,7 +1902,7 @@
   .indent-guide,
   .drop-indicator,
   .drop-indicator-vertical,
-  .ds-btn,
+  :where(.mindmap-container, .mm-search-popover) .ds-btn,
   .mm-toolbar-button,
   .mm-learning-button,
   .mm-view-switcher-button,

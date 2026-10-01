@@ -439,7 +439,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
             if (node) updateNode(focusedNodeId, { completed: !node.completed });
             return;
           }
-          const newId = addNode(focusedNodeId, 0);
+          const newId = addNode(focusedNodeId);
           if (newId) {
             setFocusedNodeId(newId);
             setEditingNodeId(newId);
@@ -514,7 +514,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
         handled();
         if (root.id === focusedNodeId) {
           // 根节点 → 添加子节点
-          const newId = addNode(focusedNodeId, 0);
+          const newId = addNode(focusedNodeId);
           if (newId) {
             setFocusedNodeId(newId);
             setEditingNodeId(newId);
@@ -547,7 +547,7 @@ export function useMindMapKeyboard(options?: UseMindMapKeyboardOptions): void {
           indentNodes(selection);
           return;
         }
-        const newId = addNode(focusedNodeId, 0);
+        const newId = addNode(focusedNodeId);
         if (newId) {
           setFocusedNodeId(newId);
           setEditingNodeId(newId);

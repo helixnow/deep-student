@@ -487,7 +487,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         label={t('actions.addChild')}
         shortcut="Tab"
         onClick={() => exec(() => {
-          const newId = addNode(nodeId, 0);
+          const newId = addNode(nodeId);
           if (newId) {
             setFocusedNodeId(newId);
             requestAnimationFrame(() => setEditingNodeId(newId));

@@ -346,7 +346,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
               "mm-node-text inline-block whitespace-pre-wrap break-words px-1 min-h-[1.2em] rounded-sm",
               isCompleted && "line-through text-[var(--mm-text-muted)]",
             )}
-            style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
+            style={{ backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined }}
           />
         ) : (
           <InlineLatex
@@ -356,7 +356,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
               !isEditing && "opacity-100",
               isCompleted && !isEditing && "line-through text-[var(--mm-text-muted)]",
             )}
-            style={{ backgroundColor: bgColor ? `${bgColor}85` : undefined }}
+            style={{ backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined }}
           />
         )}
 
@@ -396,7 +396,7 @@ export const NodeContent: React.FC<NodeContentProps> = ({
               fontWeight: 'inherit',
               lineHeight: 'inherit',
               letterSpacing: 'inherit',
-              backgroundColor: bgColor ? `${bgColor}85` : undefined,
+              backgroundColor: bgColor ? `color-mix(in srgb, ${bgColor} 52%, transparent)` : undefined,
             }}
               className={cn(
                 "absolute top-0 h-full resize-none overflow-hidden block",

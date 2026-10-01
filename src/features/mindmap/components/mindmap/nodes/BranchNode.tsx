@@ -175,7 +175,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
   }, [data.nodeId, storeApi]);
 
   const handleCommitAndCreateChild = useCallback(() => {
-    const newId = addNode(data.nodeId, 0);
+    const newId = addNode(data.nodeId);
     if (newId) {
       setFocusedNodeId(newId);
       setEditingNodeId(newId);

@@ -98,7 +98,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
 
   const handleCommitAndCreateSibling = useCallback(() => {
     // 根节点 Enter → 子级（与非编辑快捷键一致）
-    const newId = addNode(data.nodeId, 0);
+    const newId = addNode(data.nodeId);
     if (newId) {
       setFocusedNodeId(newId);
       setEditingNodeId(newId);
@@ -106,7 +106,7 @@ export const RootNode: React.FC<NodeProps<Node<RootNodeData>>> = ({
   }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
 
   const handleCommitAndCreateChild = useCallback(() => {
-    const newId = addNode(data.nodeId, 0);
+    const newId = addNode(data.nodeId);
     if (newId) {
       setFocusedNodeId(newId);
       setEditingNodeId(newId);

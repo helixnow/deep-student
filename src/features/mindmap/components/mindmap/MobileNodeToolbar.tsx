@@ -142,7 +142,7 @@ export const MobileNodeToolbar: React.FC<MobileNodeToolbarProps> = ({
 
   const handleAddChild = useCallback(() => {
     onPanelChange(null);
-    focusAndEdit(addNode(nodeId, 0));
+    focusAndEdit(addNode(nodeId));
   }, [addNode, nodeId, focusAndEdit, onPanelChange]);
 
   const handleAddSibling = useCallback(() => {

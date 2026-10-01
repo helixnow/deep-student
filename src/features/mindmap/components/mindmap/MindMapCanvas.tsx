@@ -252,7 +252,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       rect.width <= 1 ||
       rect.height <= 1
     ) return false;
-    fitView({ padding, duration });
+    // 小图不放大超过 100%（maxZoom 2 会让三五个节点的图以 ~200% 打开）
+    fitView({ padding, duration, maxZoom: 1 });
     return true;
   }, [fitView, isCanvasReady]);
 
