@@ -311,7 +311,7 @@ export interface ComposerToolbarProps {
   runtimeModelProviderLabel?: string;
   runtimeModelIconId?: string;
   runtimeCurrentModelId?: string | null;
-  runtimeModelOptions: Array<{ id: string; label: string; providerLabel?: string; iconId?: string }>;
+  runtimeModelOptions: Array<{ id: string; label: string; providerLabel?: string; iconId?: string; providerId?: string; isRecent?: boolean }>;
   onSelectRuntimeModel?: (modelId: string) => void;
   /** 是否存在模型选择面板（决定运行时模型菜单是否可用） */
   hasModelPanel: boolean;
@@ -473,22 +473,30 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           return haystack.includes(normalizedRuntimeModelSearch);
         });
 
-    const groups = new Map<string, typeof runtimeModelOptions>();
+    const groups = new Map<string, { key: string; label: string; models: typeof runtimeModelOptions }>();
+    const recent = normalizedRuntimeModelSearch.length === 0
+      ? filteredOptions.filter((model) => model.isRecent)
+      : [];
+    if (recent.length > 0) {
+      groups.set('__recent__', { key: '__recent__', label: t('chatV2:inputBar.runtimeModelRecent'), models: recent });
+    }
     filteredOptions.forEach((model) => {
       const providerLabel = model.providerLabel?.trim() || fallbackRuntimeProviderLabel;
-      const existing = groups.get(providerLabel);
+      const providerKey = model.providerId?.trim() || providerLabel;
+      const existing = groups.get(providerKey);
       if (existing) {
-        existing.push(model);
+        existing.models.push(model);
         return;
       }
-      groups.set(providerLabel, [model]);
+      groups.set(providerKey, { key: providerKey, label: providerLabel, models: [model] });
     });
 
-    return Array.from(groups.entries()).map(([providerLabel, models]) => ({
-      providerLabel,
+    return Array.from(groups.values()).map(({ key, label, models }) => ({
+      key,
+      providerLabel: label,
       models,
     }));
-  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions]);
+  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions, t]);
 
   const handleTurnThinkingOn = useCallback(() => {
     if (enableThinking) return;
@@ -740,7 +748,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                               {groupedRuntimeModelOptions.length > 0 ? (
                                 groupedRuntimeModelOptions.map((group) => (
                                   <AppMenuGroup
-                                    key={group.providerLabel}
+                                    key={group.key}
                                     label={group.providerLabel}
                                     className="app-menu-group--natural-case"
                                   >

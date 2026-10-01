@@ -334,6 +334,7 @@
     "runtimeModelTitle": "模型",
     "runtimeModelCompareMode": "进入多选模式...",
     "runtimeModelOtherProvider": "其他",
+    "runtimeModelRecent": "最近选择",
     "runtimeModelNoResults": "未找到匹配模型",
     "chooseRuntimeModel": "选择模型",
     "stage": {
@@ -2058,6 +2059,7 @@
     "retryHint": "已选择 {{count}} 个模型",
     "compareHint": "已选择 {{count}} 个模型进行对比",
     "singleHint": "当前会话模型",
+    "recent": "最近选择",
     "setAsDefault": "设为系统默认",
     "parallelMode": "并行模式",
     "compareToggle": "对比模式",

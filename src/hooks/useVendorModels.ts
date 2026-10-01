@@ -301,7 +301,12 @@ export const useVendorModels = () => {
 
   const upsertModelProfile = useCallback(
     async (profile: ModelProfile) => {
-      const sanitized = { ...profile, id: profile.id || getUuid(), vendorId: profile.vendorId };
+      const sanitized = {
+        ...profile,
+        id: profile.id || getUuid(),
+        vendorId: profile.vendorId,
+        isFavorite: profile.isFavorite,
+      };
       const next = modelProfiles.filter(mp => mp.id !== sanitized.id);
       next.push(sanitized);
       await persistModelProfiles(next);

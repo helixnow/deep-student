@@ -172,20 +172,24 @@ export function parseModelMentions(
  */
 function buildModelLookup(models: ModelInfo[]): Map<string, string> {
   const lookup = new Map<string, string>();
+  const aliasOwners = new Map<string, string | null>();
 
   for (const model of models) {
     // 通过 ID 查找
     lookup.set(model.id.toLowerCase(), model.id);
 
-    // 通过名称查找
-    lookup.set(model.name.toLowerCase(), model.id);
-
-    // 通过别名查找
-    if (model.aliases) {
-      for (const alias of model.aliases) {
-        lookup.set(alias.toLowerCase(), model.id);
-      }
+    // 名称和别名在多个供应商之间可能相同。只有唯一拥有者才可
+    // 作为隐式 mention；精确 config ID 始终优先。
+    for (const alias of [model.name, ...(model.aliases ?? [])]) {
+      const key = alias.toLowerCase();
+      const owner = aliasOwners.get(key);
+      if (owner === undefined) aliasOwners.set(key, model.id);
+      else if (owner !== model.id) aliasOwners.set(key, null);
     }
+  }
+
+  for (const [alias, modelId] of aliasOwners) {
+    if (modelId !== null && !lookup.has(alias)) lookup.set(alias, modelId);
   }
 
   return lookup;

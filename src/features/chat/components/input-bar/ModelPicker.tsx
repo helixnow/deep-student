@@ -40,6 +40,8 @@ import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { triggerOpenSettingsModels } from '../../readiness/readinessGate';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
+import { useRecentChatModels } from '../../hooks/useRecentChatModels';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // Types
@@ -61,6 +63,10 @@ interface ApiModelConfig {
   is_embedding?: boolean;
   isReranker?: boolean;
   is_reranker?: boolean;
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  isAudioTranscription?: boolean;
+  is_audio_transcription?: boolean;
   isFavorite?: boolean;
   is_favorite?: boolean;
 }
@@ -148,6 +154,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [savingDefault, setSavingDefault] = useState(false);
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
+  const { recentModels } = useRecentChatModels(models);
 
   // ----- load -----
   const isInitialLoad = useRef(true);
@@ -158,12 +165,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         isInitialLoad.current = false;
       }
       const configs = await invoke<ApiModelConfig[]>('get_api_configurations');
-      const chatModels = (configs || []).filter((c) => {
-        const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
-        const isReranker = c.isReranker === true || c.is_reranker === true;
-        const isEnabled = c.enabled !== false;
-        return !isEmbedding && !isReranker && isEnabled;
-      });
+      const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
       try {
@@ -247,6 +249,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
       return 0;
     });
   }, [normalizedModels, searchTerm, vendorOrderMap]);
+
+  const recentOptions = useMemo(
+    () => recentModels
+      .map((model) => normalizedModels.find((candidate) => candidate.id === model.id))
+      .filter((model): model is NormalizedModel => Boolean(model)),
+    [normalizedModels, recentModels]
+  );
 
   const vendorGroups = useMemo(() => {
     const groups: { vendorId: string; vendorName: string; models: NormalizedModel[] }[] = [];
@@ -622,7 +631,16 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 {t('common:loading')}
               </div>
             ) : hasModels ? (
-              vendorGroups.map((group) => {
+              <>
+              {!searchTerm.trim() && recentOptions.length > 0 && (
+                <div className="space-y-0.5">
+                  <div className="px-[var(--menu-shell-row-padding-x)] py-1 text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]">
+                    {t('chatV2:modelPicker.recent')}
+                  </div>
+                  {recentOptions.map(renderRow)}
+                </div>
+              )}
+              {vendorGroups.map((group) => {
                 const isCollapsed = collapsedVendors.has(group.vendorId);
                 const groupSelectedCount =
                   effectiveMode === 'compare'
@@ -667,7 +685,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                     )}
                   </div>
                 );
-              })
+              })}
+              </>
             ) : (
               <div className="flex flex-col items-center gap-2 px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
                 <span>
