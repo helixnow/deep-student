@@ -273,3 +273,45 @@
 @media (prefers-reduced-motion: reduce) {
   .notes-layout-switch, .notes-layout-switch::after { transition: none; }
 }
+
+/* ── 宿主顶栏操作位：窄宽度自适应（Notion 顶栏同款：空间不够先收文字，绝不挤压图标） ──
+   容器为宿主标签栏/面板工具栏本身（.notes-tabbar-host），不看窗口宽度：
+   桌面窗口里的窄分栏、右侧栏同样生效。 */
+.notes-tabbar-host,
+.notes-titlebar-tabs {
+  container: notes-tabbar / inline-size;
+}
+
+.notes-tab-actions-slot > * {
+  flex-shrink: 0;
+}
+
+.notes-chrome-compact-icon {
+  display: none;
+}
+
+@container notes-tabbar (max-width: 560px) {
+  .notes-tab-actions-slot .notes-chrome-text-button {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .notes-tab-actions-slot .notes-chrome-text-button > span,
+  .notes-tab-actions-slot .notes-chrome-caret {
+    display: none;
+  }
+
+  .notes-tab-actions-slot .notes-chrome-compact-icon {
+    display: inline-block;
+  }
+
+  /* 已保存时整段隐藏；未保存/失败只留状态点或警示图标（悬停 title 仍有完整说明） */
+  .notes-tab-actions-slot .notes-save-indicator[data-status='saved'] {
+    display: none;
+  }
+
+  .notes-tab-actions-slot .notes-save-indicator > span:not(.notes-save-indicator-dot) {
+    display: none;
+  }
+}

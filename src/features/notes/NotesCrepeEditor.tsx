@@ -16,7 +16,7 @@ import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuCon
 import { useNotesChromeSlot } from './notesChromeSlot';
 import { NotePageLayoutOptions } from './components/NotePageLayoutOptions';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise, DotsThree } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import type { CrepeSelectionAction } from '@/components/crepe/types';
@@ -2393,7 +2393,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       <PopoverTrigger asChild>
         <DsButton ref={templateTriggerRef} variant="ghost" size="sm" className="notes-chrome-text-button"
           aria-haspopup="dialog" aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
-          <span>{t('notes:chrome.page')}</span><CaretDown size={12} />
+          <DotsThree size={16} weight="bold" className="notes-chrome-compact-icon" aria-hidden="true" />
+          <span>{t('notes:chrome.page')}</span><CaretDown size={12} className="notes-chrome-caret" />
         </DsButton>
       </PopoverTrigger>
       <PopoverContent ref={pageActionsRef} align="end" className="w-64 max-h-[min(80vh,600px)] overflow-y-auto p-1"

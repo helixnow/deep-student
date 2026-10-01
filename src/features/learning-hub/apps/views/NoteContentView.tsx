@@ -151,13 +151,15 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const contentHostRef = useRef<HTMLDivElement>(null);
   const [contentWidth, setContentWidth] = useState(0);
   const isViewportMobile = useIsMobile();
-  // A1/A2: OS min window ~980px never hits window <768; use note pane width instead.
-  const isSmallScreen = isViewportMobile || (contentWidth > 0 && contentWidth < 768);
-  // 宽编辑面并排，窄编辑面切换到完整上下文页。
+  // 「手机交互」只看真实移动视口；桌面窗口里的窄笔记栏（分栏/右侧栏）仍是桌面交互，
+  // 只在布局上收窄——否则会拿到手机端的菜单项文案、全屏子页与返回键接管（窄栏下按钮图文挤压的根因）。
+  const isSmallScreen = isViewportMobile;
+  // 宽编辑面属性栏并排；窄编辑面（<900）属性栏改为右侧浮层抽屉，正文保持可编辑。
   const [rightPanelVisible, setRightPanelVisible] = useState(false);
   // 移动端：上下文面板（大纲/标签）以 inline 子屏形式全屏呈现（移动端契约：禁用 Sheet/抽屉浮层）
   const [mobilePanelOpen, setMobilePanelOpen] = useState(false);
-  const propertiesReplaceEditor = !propertiesPanelDisabled && (isSmallScreen ? mobilePanelOpen : rightPanelVisible && contentWidth < 900);
+  const propertiesOverlay = !propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && contentWidth > 0 && contentWidth < 900;
+  const propertiesReplaceEditor = !propertiesPanelDisabled && isSmallScreen && mobilePanelOpen;
   const editorInteractive = isActive && !propertiesReplaceEditor;
 
   // 移动端子屏打开时接管 Android 返回键：先关子屏，不退出笔记
@@ -1152,7 +1154,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
       {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
         <aside
-          className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background", propertiesReplaceEditor ? "flex-1" : "w-72 shrink-0 border-l border-border")}
+          className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background border-l border-border",
+            propertiesOverlay ? "notes-properties-panel--overlay absolute inset-y-0 right-0 z-30 w-[min(320px,100%)] shadow-[-8px_0_24px_hsl(var(--shadow-base)/0.12)]" : "w-72 shrink-0")}
           aria-label={t('notes:contextPanel.title')}
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">

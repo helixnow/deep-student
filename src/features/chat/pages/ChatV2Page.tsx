@@ -1043,7 +1043,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       )}>
         <div
           className={cn(
-            'study-shell-toolbar items-center justify-between px-3 py-2 border-b shrink-0',
+            'study-shell-toolbar notes-tabbar-host items-center justify-between px-3 py-2 border-b shrink-0',
             isSmallScreen && options?.fullScreen ? 'hidden' : 'flex',
             options?.fullScreen && 'study-shell-toolbar--floating backdrop-blur-lg'
           )}
