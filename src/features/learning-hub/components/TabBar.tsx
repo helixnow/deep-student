@@ -30,6 +30,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import type { OpenTab, SplitViewState } from '../types/tabs';
 import type { ResourceType } from '../types';
 import { useTranslation } from 'react-i18next';
+import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
 import {
   NoteIcon,
   TextbookIcon,
@@ -251,7 +252,9 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         )}
       >
         {/* 图标 */}
-        <Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />
+        {tab.type === 'note'
+          ? <NoteGlyph noteId={tab.resourceId} size={14} fallback={<Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />} />
+          : <Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />}
         
         {/* 标题 */}
         <span className="min-w-0 truncate">{tab.title || t('common:untitled')}</span>

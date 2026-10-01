@@ -158,3 +158,25 @@ export function useNoteAppearance(noteId: string | undefined) {
     reload: () => noteId ? loadAppearance(noteId) : Promise.resolve(),
   };
 }
+
+/**
+ * 只读订阅页面图标（标签/侧栏/面包屑等处与 Notion 一样显示页面 emoji）。
+ * load=false 时只读已加载的缓存不发请求——供长列表在行进入视口后再置 true。
+ */
+export function useNoteIcon(noteId: string | undefined, load = true): string {
+  const subscribe = useCallback((listener: () => void) => {
+    if (!noteId) return () => {};
+    const entry = entryFor(noteId);
+    entry.listeners.add(listener);
+    return () => { entry.listeners.delete(listener); };
+  }, [noteId]);
+  const icon = useSyncExternalStore(
+    subscribe,
+    () => (noteId ? entryFor(noteId).snapshot.value.icon : ''),
+    () => '',
+  );
+  useEffect(() => {
+    if (noteId && load) void loadAppearance(noteId);
+  }, [noteId, load]);
+  return icon;
+}

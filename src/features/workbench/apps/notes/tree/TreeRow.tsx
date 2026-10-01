@@ -10,6 +10,7 @@ import {
   Star,
   TreeStructure,
 } from '@phosphor-icons/react';
+import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
 import { useTranslation } from 'react-i18next';
 import {
   BASE_INDENT_PX,
@@ -273,7 +274,7 @@ export function TreeRow({
         ) : item.kind === 'mindmap' ? (
           <TreeStructure size={15} />
         ) : (
-          <FileText size={15} />
+          <NoteGlyph noteId={item.id} size={15} fallback={<FileText size={15} />} />
         )}
       </span>
       {renaming ? (

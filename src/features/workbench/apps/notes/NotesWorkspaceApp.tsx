@@ -116,6 +116,7 @@ import {
 } from '@/features/notes/noteInputLimits';
 import './notes-empty-states.css';
 import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
+import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
 
 // 导图视图懒加载：@xyflow/react 体积大，只有导图标签页真正展示时才拉取，
 // 避免拖入 Notes 窗口启动 chunk（加载态用下方轻量占位）
@@ -498,9 +499,9 @@ const IconButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { lab
   </button>
 );
 
-const ResourceGlyph: React.FC<{ type: ResourceType; size?: number }> = ({ type, size = 15 }) =>
+const ResourceGlyph: React.FC<{ type: ResourceType; size?: number; id?: string }> = ({ type, size = 15, id }) =>
   type === 'note'
-    ? <FileText size={size} aria-hidden />
+    ? <NoteGlyph noteId={id} size={size} fallback={<FileText size={size} aria-hidden />} />
     : <TreeStructure size={size} aria-hidden />;
 
 interface WorkspacePaneProps {
@@ -894,7 +895,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
             onClick={() => onActivate(tab.key)}
             onKeyDown={(event) => handleKeyDown(event, index, tab.key)}
           >
-            <ResourceGlyph type={tab.type} size={14} />
+            <ResourceGlyph type={tab.type} id={tab.id} size={14} />
             <span>{tab.title}</span>
             {tab.pinned && (
               <PushPin
@@ -963,7 +964,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
                     onActivate(tab.key);
                   }}
                 >
-                  <ResourceGlyph type={tab.type} size={14} />
+                  <ResourceGlyph type={tab.type} id={tab.id} size={14} />
                   <span>{tab.title}</span>
                   {tab.pinned && <PushPin className="notes-tab-pin" size={11} weight="fill" aria-hidden />}
                   {overflowSaveState !== 'saved' && (
