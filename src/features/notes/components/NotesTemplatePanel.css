@@ -169,7 +169,10 @@
   background: hsl(var(--background));
 }
 
-.notes-tpl-preview .crepe-editor-wrapper { min-height: 0; }
+/* 容器必须首帧就有正高度：CrepeEditor 要等「连续 3 帧尺寸为正且稳定」才初始化，
+   高度为 0 会一直等到 3s 超时——这正是模板库打开/切换「加载很久」的原因 */
+.notes-tpl-preview .crepe-editor-wrapper,
+.notes-tpl-preview .crepe-editor-container { min-height: 160px; }
 .notes-tpl-preview .milkdown .ProseMirror { padding: 8px 32px 8px 40px; }
 .notes-tpl-editor { border-color: hsl(var(--border)); }
 .notes-tpl-editor:focus-within { border-color: hsl(var(--ring)); }

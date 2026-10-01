@@ -72,6 +72,8 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
   const [baseline, setBaseline] = useState<NoteTemplateDocument>();
   const [position, setPosition] = useState<{ from: number; to: number }>();
   const draftEditorRef = useRef<CrepeEditorApi | null>(null);
+  // 预览编辑器常驻复用：切换模板只 setMarkdown，不重建 Crepe（重建一次需完整初始化全部插件）
+  const previewApiRef = useRef<CrepeEditorApi | null>(null);
   const navRef = useRef<HTMLDivElement | null>(null);
 
   const capture = useCallback(() => {
@@ -120,6 +122,10 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
     ? template.summary : t(`notes:templates.${template.id}_summary`, template.summary);
   const rendered = selected ? renderNoteTemplate(selected.markdown, documentHost?.variables) : '';
   const docLength = baseline?.markdown.trim().length ?? 0;
+  useEffect(() => {
+    const api = previewApiRef.current;
+    if (api && api.getMarkdown() !== rendered) api.setMarkdown(rendered);
+  }, [rendered]);
 
   const close = useCallback(() => {
     onRequestClose();
@@ -294,7 +300,9 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
                   </div>}
                 </div>
                 <div className="notes-tpl-preview" aria-label={t('notes:personalTemplates.preview_label')}>
-                  <CrepeEditor key={`${selected.id}:${rendered.length}`} defaultValue={rendered} readonly />
+                  <CrepeEditor defaultValue={rendered} readonly
+                    onReady={(api) => { previewApiRef.current = api; if (api.getMarkdown() !== rendered) api.setMarkdown(rendered); }}
+                    onDestroy={() => { previewApiRef.current = null; }} />
                 </div>
                 {presetEntries.length > 0 && <p className="notes-tpl-muted notes-tpl-presets">
                   {t('notes:templateGallery.preset_note', { defaultValue: '同时填入未设置的学习属性：' })}

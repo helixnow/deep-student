@@ -6,13 +6,14 @@ vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.
 // 预览/编辑用真实 Crepe 在 jsdom 下过重：以只读文本 / 受控 textarea 代替，保留 onChange/onReady 契约
 vi.mock('@/components/crepe', () => ({
   CrepeEditor: ({ defaultValue, readonly, onChange, onReady }: {
-    defaultValue?: string; readonly?: boolean; onChange?: (value: string) => void; onReady?: (api: { getMarkdown: () => string }) => void;
+    defaultValue?: string; readonly?: boolean; onChange?: (value: string) => void;
+    onReady?: (api: { getMarkdown: () => string; setMarkdown: (markdown: string) => boolean }) => void;
   }) => {
     const [value, setValue] = React.useState(defaultValue ?? '');
     const ref = React.useRef(value); ref.current = value;
-    React.useEffect(() => { onReady?.({ getMarkdown: () => ref.current }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    React.useEffect(() => { onReady?.({ getMarkdown: () => ref.current, setMarkdown: (markdown) => { ref.current = markdown; setValue(markdown); return true; } }); }, []); // eslint-disable-line react-hooks/exhaustive-deps
     return readonly
-      ? <div data-testid="template-preview">{defaultValue}</div>
+      ? <div data-testid="template-preview">{value}</div>
       : <textarea aria-label="template-body" value={value} onChange={(event) => { setValue(event.target.value); onChange?.(event.target.value); }} />;
   },
 }));
