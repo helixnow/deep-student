@@ -82,6 +82,31 @@ export function openCrepeBlockCommandMenu(view: EditorView, actions = false): bo
     buttons[next].focus({ preventScroll: true });
     buttons[next].scrollIntoView?.({ block: 'nearest' });
   };
+  // 移动端「块菜单」兼作斜杠菜单：除转换外补齐桌面斜杠菜单的插入项，两端能力一致
+  const insertIds = actions ? [] : (['hr', 'math', 'table', 'insert-callout', 'insert-toggle'] as const);
+  const insertLabels: Record<(typeof insertIds)[number], [string, string]> = {
+    hr: ['notes:slashMenu.textGroup.divider', 'Divider'],
+    math: ['notes:slashMenu.advancedGroup.math', 'Math'],
+    table: ['notes:slashMenu.advancedGroup.table', 'Table'],
+    'insert-callout': ['notes:slashMenu.advancedGroup.callout', 'Callout'],
+    'insert-toggle': ['notes:toggle.slashLabel', 'Toggle list'],
+  };
+  for (const id of insertIds) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = 'menuitem';
+    button.dataset.command = id;
+    button.textContent = i18next.t(insertLabels[id][0], { defaultValue: insertLabels[id][1] });
+    button.disabled = !canExecuteCrepeCommand(view, id);
+    button.addEventListener('pointerdown', (event) => event.preventDefault());
+    button.addEventListener('click', () => {
+      close();
+      void executeCrepeCommand(view, id).catch(error => showGlobalNotification('error', String(error)));
+      if (!view.isDestroyed) view.focus();
+    });
+    buttons.push(button);
+    menu.appendChild(button);
+  }
   for (const id of [...Object.keys(crepeBlockCommands) as (keyof typeof crepeBlockCommands)[], ...LAYOUT_COMMANDS]) {
     if (!actions && (id === 'duplicate' || id === 'delete')) continue;
     const button = document.createElement('button');

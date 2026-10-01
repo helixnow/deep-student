@@ -193,7 +193,7 @@ export function buildMobileEditorCommands(
       const ids: Record<string, CrepeCommandId> = { bold: 'bold', italic: 'italic', strikethrough: 'strikethrough',
         h1: 'heading-1', h2: 'heading-2', h3: 'heading-3', bullet: 'bullet-list', task: 'task-list', ordered: 'ordered-list',
         codeblock: 'code-block', columns: 'insert-columns', cornell: 'insert-cornell', convertColumns: 'convert-columns',
-        convertCornell: 'convert-cornell', unwrapColumns: 'unwrap-columns' };
+        convertCornell: 'convert-cornell', convertCornellTemplate: 'convert-cornell-template', unwrapColumns: 'unwrap-columns' };
       if (action === 'generateCards' || action === 'find') return Boolean(editor);
       if (action === 'slash' || action === 'blockActions') {
         let enabled = false; withEditorView(editor, view => { enabled = canEditCrepeView(view); }); return enabled;
@@ -229,6 +229,7 @@ export function buildMobileEditorCommands(
     insertCornell: () => runEditorCommand(editor, 'insert-cornell'),
     convertColumns: () => runEditorCommand(editor, 'convert-columns'),
     convertCornell: () => runEditorCommand(editor, 'convert-cornell'),
+    convertCornellTemplate: () => runEditorCommand(editor, 'convert-cornell-template'),
     unwrapColumns: () => runEditorCommand(editor, 'unwrap-columns'),
     // 生成卡片：走与桌面工具栏同一个共享制卡入口，不新起链路；
     // 仅笔记宿主显式开启（enableGenerateCards）后暴露，未开启时按钮不渲染

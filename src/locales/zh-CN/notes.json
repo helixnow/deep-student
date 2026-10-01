@@ -1826,7 +1826,8 @@
     "image": "图片",
     "undo": "撤销",
     "redo": "重做",
-    "generateCards": "生成卡片"
+    "generateCards": "生成卡片",
+    "convertCornellTemplate": "转换康奈尔模板"
   },
   "generateCards": {
     "deckName": "笔记制卡",

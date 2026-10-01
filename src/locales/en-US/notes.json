@@ -1837,7 +1837,8 @@
     "image": "Image",
     "undo": "Undo",
     "redo": "Redo",
-    "generateCards": "Generate cards"
+    "generateCards": "Generate cards",
+    "convertCornellTemplate": "Convert Cornell template"
   },
   "generateCards": {
     "deckName": "Note cards",

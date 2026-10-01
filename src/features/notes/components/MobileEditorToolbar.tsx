@@ -53,6 +53,7 @@ export type MobileEditorToolbarCommands = {
   insertCornell?: () => void;
   convertColumns?: () => void;
   convertCornell?: () => void;
+  convertCornellTemplate?: () => void;
   unwrapColumns?: () => void;
   toggleBold: () => void;
   toggleItalic: () => void;
@@ -391,6 +392,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     ...([
       ['columns', 'insertColumns', '插入双列'], ['cornell', 'insertCornell', '插入康奈尔布局'],
       ['convertColumns', 'convertColumns', '转为双列'], ['convertCornell', 'convertCornell', '转为康奈尔布局'],
+      ['convertCornellTemplate', 'convertCornellTemplate', '转换康奈尔模板'],
       ['unwrapColumns', 'unwrapColumns', '展开为普通块'],
     ] as const).flatMap(([id, command, defaultLabel]) => commands[command] ? [{
       id, labelKey: `notes:mobileToolbar.${id}`, defaultLabel,
