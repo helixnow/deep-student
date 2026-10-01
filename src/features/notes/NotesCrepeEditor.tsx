@@ -2628,7 +2628,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background"
-        data-mobile-hosted={hasMobileResourceMenu || undefined}>
+        data-mobile-hosted={hasMobileResourceMenu || undefined}
+        data-chrome-portaled={portalChrome || undefined}>
         {!hasMobileResourceMenu && !portalChrome && <div className="notes-editor-chrome-row notes-column flex items-center gap-1">
           {/* 页面保持安静：行内格式走选区浮条 / 斜杠菜单 / 快捷键，块操作走块手柄，这里只留页面级入口 */}
           <div className="ml-auto flex shrink-0 items-center gap-1">

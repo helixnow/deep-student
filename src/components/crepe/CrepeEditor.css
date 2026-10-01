@@ -1487,6 +1487,10 @@
 .notes-crepe-shell[data-scrolled] .notes-editor-header-section {
   border-bottom-color: hsl(var(--border) / 0.8);
 }
+/* 操作已并入宿主顶栏（标签栏/面板工具栏自带底边）：此处再画线会成双线 */
+.notes-crepe-shell[data-scrolled] .notes-editor-header-section[data-chrome-portaled] {
+  border-bottom-color: transparent;
+}
 
 .notes-editor-chrome-row {
   min-height: 35px;
