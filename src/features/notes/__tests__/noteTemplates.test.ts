@@ -90,3 +90,16 @@ describe('note templates', () => {
     expect(result.startsWith('> 2026年7月19日')).toBe(true);
   });
 });
+
+describe('empty task items in templates', () => {
+  it('renders blank to-dos as real GFM task items (not literal "[ ]" text)', async () => {
+    const { unified } = await import('unified');
+    const remarkParse = (await import('remark-parse')).default;
+    const remarkGfm = (await import('remark-gfm')).default;
+    const { renderNoteTemplate, normalizeEmptyTaskItems } = await import('../noteTemplates');
+    const rendered = renderNoteTemplate('## 易错清单\n\n- [ ] \n  - [x]\n- [ ] 已有内容\n');
+    expect(rendered).toBe('## 易错清单\n\n- [ ] <br />\n  - [x] <br />\n- [ ] 已有内容\n');
+    const tree = unified().use(remarkParse).use(remarkGfm).parse(normalizeEmptyTaskItems('- [ ] \n')) as { children: Array<{ children: Array<{ checked: boolean | null }> }> };
+    expect(tree.children[0].children[0].checked).toBe(false);
+  });
+});

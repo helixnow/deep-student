@@ -172,10 +172,18 @@ export function renderNoteTemplate(
     time: variables.time ?? formatDefaultTime(variables.locale, now),
     title: variables.title ?? '',
   };
-  return templateMarkdown.replace(
+  return normalizeEmptyTaskItems(templateMarkdown.replace(
     /\{\{\s*(date|time|title)\s*\}\}/g,
     (_match, key: 'date' | 'time' | 'title') => values[key],
-  );
+  ));
+}
+
+/**
+ * GFM 不把无文字的 `- [ ]` 识别为任务项（会渲染成字面「[ ]」）。模板里的空待办
+ * 补成与编辑器自身序列化一致的 `- [ ] <br />`，应用后即为真正的空复选框。
+ */
+export function normalizeEmptyTaskItems(markdown: string): string {
+  return markdown.replace(/^(\s*[-*+] \[[ xX]\])[ \t]*$/gm, '$1 <br />');
 }
 
 export function applyNoteTemplate(
