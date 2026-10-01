@@ -130,7 +130,10 @@ export interface CrepeEditorApi {
   
   /** 聚焦编辑器 */
   focus: () => void;
-  
+
+  /** 聚焦并把光标放到正文第一个可输入位置（标题 Enter/↓ 进入正文） */
+  focusStart?: () => void;
+
   /** 获取只读状态 */
   isReadonly: () => boolean;
   

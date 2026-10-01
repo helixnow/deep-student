@@ -155,7 +155,8 @@
     "icon_experiment": "Experiment",
     "icon_notes": "Notes",
     "load_failed": "Could not load appearance",
-    "save_failed": "Appearance was not saved. Please select again."
+    "save_failed": "Appearance was not saved. Please select again.",
+    "add_icon": "Add icon"
   },
   "renameSync": {
     "scanFailed": "The title was updated, but referring notes could not be scanned. Some wiki links may be out of date. Please check them manually.",

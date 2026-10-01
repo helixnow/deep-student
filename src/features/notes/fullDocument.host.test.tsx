@@ -15,8 +15,8 @@ const state = vi.hoisted(() => ({
 vi.mock('@/features/notes/NotesContext', () => ({ useNotesOptional: () => undefined }));
 vi.mock('@/hooks/useTauriDragAndDrop', () => ({ useTauriDragAndDrop: () => ({ isDragging: false }) }));
 vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
-  NotesEditorHeader: ({ onOpenHistory, charCount }: NotesEditorHeaderProps) => (
-    <><button disabled={!onOpenHistory} onClick={onOpenHistory}>Open note history</button><span data-testid="full-count">{charCount}</span></>
+  NotesEditorHeader: ({ charCount }: NotesEditorHeaderProps) => (
+    <><span data-testid="full-count">{charCount}</span></>
   ),
 }));
 vi.mock('@/features/notes/components/NotesTemplatePanel', () => ({
@@ -162,7 +162,7 @@ describe('notes host reliability wiring', () => {
     expect(screen.getByRole('button', { name: '丢弃建议' })).toBeTruthy();
   });
 
-  it('opens the real history panel through header props and consumes Escape before focus mode', async () => {
+  it('opens the real history panel from the page menu and consumes Escape before focus mode', async () => {
     const { container } = render(<NotesCrepeEditor noteId="host-note" initialContent="original" />);
     const editor = await screen.findByRole('textbox', { name: 'test note editor' });
     act(() => editor.focus());
@@ -171,7 +171,9 @@ describe('notes host reliability wiring', () => {
     expect(shell).toHaveAttribute('data-focus-mode', 'true');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open note history' }));
+    // 历史版本属于页面级命令：从「页面」菜单进入
+    fireEvent.click(screen.getByRole('button', { name: /更多笔记操作|More note actions/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /历史版本|Version history/ }));
     const dialog = await screen.findByRole('dialog');
     await waitFor(() => expect(invoke).toHaveBeenCalledWith('notes_history_list', {
       noteId: 'host-note', cursor: null, limit: 30, pinnedOnly: false,

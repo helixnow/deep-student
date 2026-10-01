@@ -726,7 +726,21 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           debugLog.error('[CrepeEditor] focus failed:', e);
         }
       },
-      
+
+      focusStart: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return;
+        try {
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            view.dispatch(view.state.tr.setSelection(TextSelection.atStart(view.state.doc)).scrollIntoView());
+            view.focus();
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] focusStart failed:', e);
+        }
+      },
+
       isReadonly: () => {
         return crepeRef.current?.readonly ?? false;
       },

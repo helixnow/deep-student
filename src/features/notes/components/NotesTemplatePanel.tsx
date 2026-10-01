@@ -165,7 +165,7 @@ export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
         <div
           role="region"
           aria-label={t('notes:toolbar.note_templates', 'Note templates')}
-          className="notes-template-panel mx-auto max-h-[60vh] w-full max-w-[var(--notes-content-max-w)] overflow-y-auto px-5 sm:px-12"
+          className="notes-template-panel notes-column max-h-[60vh] overflow-y-auto"
           onKeyDown={(event) => {
             if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
             event.preventDefault();

@@ -215,7 +215,7 @@ export function AIDiffPanel({
         className
       )}
     >
-      <div className="mx-auto flex min-h-0 w-full max-w-[var(--notes-content-max-w)] flex-col px-5 py-2 sm:px-12">
+      <div className="notes-column flex min-h-0 flex-col py-2">
         <div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]">
           {/* 操作条：贴住 diff 区顶部，不随 diff 内容滚动 */}
           <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2">

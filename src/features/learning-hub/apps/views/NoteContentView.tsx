@@ -107,7 +107,7 @@ const NoteEditorSkeleton: React.FC<{ label: string }> = ({ label }) => (
         <Skeleton className="h-7 w-7" />
       </div>
     </div>
-    <div className="w-full max-w-[var(--notes-content-max-w,816px)] mx-auto px-5 sm:px-12 pt-7 flex flex-col">
+    <div className="notes-column pt-10 flex flex-col">
       {/* 标题行 */}
       <Skeleton className="h-9 w-1/2" />
       {/* 正文行 */}

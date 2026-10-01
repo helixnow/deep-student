@@ -11,14 +11,15 @@
   resize: none;
   overflow: hidden;
   overflow-wrap: anywhere;
-  font-size: 32px;
-  line-height: 1.3;
-  letter-spacing: 0;
+  font-size: var(--notes-doc-title-size, 40px);
+  font-weight: var(--notes-doc-title-weight, 700);
+  line-height: var(--notes-doc-title-lh, 1.2);
+  letter-spacing: -0.01em;
 }
 
-@container (max-width: 400px) {
+@container (max-width: 480px) {
   .notes-document-title {
-    font-size: 28px;
+    font-size: 30px;
   }
 }
 
@@ -150,4 +151,75 @@
   .notes-save-status-warn {
     animation: none;
   }
+}
+
+/* ── Notion 式页面操作行（添加图标 / 添加标签）──────────────────────
+ * 不占视觉：平时透明，悬停标题区或键盘聚焦其中按钮时淡入；
+ * 触屏没有 hover，常显但保持弱化。高度固定，显隐不引起正文跳动。 */
+.notes-document-affordances {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 28px;
+  margin: 0 0 6px -6px;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.notes-document-header:hover .notes-document-affordances,
+.notes-document-affordances:focus-within,
+.notes-document-affordances:has([aria-expanded='true']) {
+  opacity: 1;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .notes-document-affordances {
+    opacity: 1;
+  }
+}
+
+.notes-document-affordance {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--notes-radius-control, 5px);
+  font-size: 13px;
+  line-height: 1;
+  white-space: nowrap;
+  color: hsl(var(--muted-foreground) / 0.8);
+  background: transparent;
+  transition: background-color var(--notes-hover-transition, 120ms ease), color var(--notes-hover-transition, 120ms ease);
+}
+
+.notes-document-affordance:hover,
+.notes-document-affordance[aria-expanded='true'] {
+  background: var(--interactive-hover, hsl(var(--muted)));
+  color: hsl(var(--foreground));
+}
+
+.notes-document-affordance:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .notes-document-affordance {
+    min-height: 44px;
+  }
+}
+
+.notes-document-icon {
+  margin-bottom: 8px;
+  font-size: 56px;
+  line-height: 1.1;
+}
+
+/* 顶栏保存状态：未保存时的小圆点 */
+.notes-save-indicator-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: hsl(var(--warning));
 }

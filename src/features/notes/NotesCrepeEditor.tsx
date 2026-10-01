@@ -14,7 +14,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { createPortal } from 'react-dom';
 import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
@@ -29,7 +29,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Po
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NoteHistoryPanel } from './NoteHistoryPanel';
-import { NotesEditorToolbar } from './components/NotesEditorToolbar';
+import { NotesSaveIndicator } from './components/NotesSaveIndicator';
 import { generateCardsFromNote } from './generateCardsFromNote';
 import {
   MobileEditorToolbar,
@@ -481,8 +481,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   // 实际内容宽度（分屏 / 侧栏挤压后）决定是否切移动 chrome。
   const isCoarsePointer = useMediaQuery('(pointer: coarse)');
   const isViewportMobile = useIsMobile();
-  const [shellNarrow, setShellNarrow] = useState(false);
-  const isSmallScreen = isViewportMobile || shellNarrow;
+  // 面板窄 ≠ 手机：分屏/侧栏挤压只影响版心宽度，触屏工具条与移动菜单只由视口和指针类型决定
+  const isSmallScreen = isViewportMobile;
   const mobileResourceMenu = useMobileResourceMenu();
   const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
   const [pageActionsOpen, setPageActionsOpen] = useState(false);
@@ -528,19 +528,6 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   const noteSelection = useTextSelection(selectionContainerRef);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const notesShellRef = useRef<HTMLDivElement>(null);
-  // A1/A2: respond to available notes chrome width, not only window.innerWidth.
-  useEffect(() => {
-    const el = notesShellRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const NARROW_PX = 768;
-    const update = () => {
-      setShellNarrow(el.getBoundingClientRect().width < NARROW_PX);
-    };
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
 
 
   // 壳层可见性监听（P0 泄漏修复的数据源）。仅触屏编辑面需要，桌面纯鼠标不挂观察器。
@@ -2273,6 +2260,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onClick={() => { void openQuickAssistantWindow(); }}>
       <Robot size={16} /><span>{t('notes:toolbar.ask_agent', 'Ask Agent')}</span>
     </DsButton>
+    {noteId && <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={() => setHistoryOpen(true)}>
+      <ClockCounterClockwise size={16} /><span>{t('notes:header.history', '历史版本')}</span>
+    </DsButton>}
     <div className="notes-action-group-label">{t('notes:chrome.view')}</div>
     <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
       onClick={() => setIsFindReplaceOpen(prev => !prev)} aria-pressed={isFindReplaceOpen}>
@@ -2436,7 +2427,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
               conflictDiffOpen && 'border-b border-border',
             )}
           >
-            <div className="mx-auto w-full max-w-[var(--notes-content-max-w)] px-5 py-2 sm:px-12">
+            <div className="notes-column py-2">
               <section
                 aria-label={t('notes:editorV2.conflict_diff_title', 'My version vs remote version')}
                 className="flex max-h-[min(40vh,360px)] flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]"
@@ -2513,12 +2504,11 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       {/* 桌面编辑器风格的轻量 pane 操作栏；文档标题随正文滚动。 */}
       <div className="notes-editor-header-section sticky top-0 z-10 w-full flex-shrink-0 bg-background"
         data-mobile-hosted={hasMobileResourceMenu || undefined}>
-        {!hasMobileResourceMenu && <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
-            {/* C12/B04：阅读态不呈现一排灰色编辑按钮；阅读所需控件在右侧页面菜单 */}
-            {!effectiveReadOnly && !isTouchEditingSurface && (
-              <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
-            )}
+        {!hasMobileResourceMenu && <div className="notes-editor-chrome-row notes-column flex items-center gap-1">
+          {/* 页面保持安静：行内格式走选区浮条 / 斜杠菜单 / 快捷键，块操作走块手柄，这里只留页面级入口 */}
           <div className="ml-auto flex shrink-0 items-center gap-1">
+            <NotesSaveIndicator saveStatus={saveStatus} lastSaved={lastSaved} charCount={charCount}
+              readOnly={effectiveReadOnly} onRetrySave={effectiveReadOnly ? undefined : handleManualSave} />
             {!isTouchEditingSurface && readingModeAction}
             <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
               <PopoverTrigger asChild>
@@ -2572,7 +2562,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             内联 info bar（参与布局、不遮挡文档标题），随 pane 顶栏保持可见 */}
         {aiCheckpoint && !aiEditState.isActive && (
           <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
-            <div className="mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-2 px-5 py-1.5 sm:px-12">
+            <div className="notes-column flex items-center gap-2 py-1.5">
               <Robot size={14} className="text-primary shrink-0" />
               <span className="min-w-0 truncate text-xs text-foreground">
                 {aiCheckpoint.stale
@@ -2719,7 +2709,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       >
         {/* 编辑器内容区域 */}
         <div
-          className="notes-editor-content w-full max-w-[var(--notes-content-max-w)] mx-auto min-h-full px-5 sm:px-12 relative flex flex-col"
+          className="notes-editor-content notes-column min-h-full relative flex flex-col"
           style={{
             // P0-3：移动端底部 padding = 工具条实际高度 + 实际键盘遮挡 + safe-area + 滚过末尾余量。
             // 两个变量由 MobileEditorToolbar 写在 :root（隐藏时移除，走 fallback）。
@@ -2754,7 +2744,8 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             readOnly={effectiveReadOnly}
             tags={tags}
             onTagsChange={effectiveReadOnly ? undefined : onTagsChange}
-            onOpenHistory={noteId ? () => setHistoryOpen(true) : undefined}
+            onExitToBody={() => editorApi?.focusStart?.()}
+            autoFocusTitle={!effectiveReadOnly && isContentLoaded && !(initialValue ?? '').trim()}
           />
           <CrepeEditor
             key={contentVersionKey}

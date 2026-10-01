@@ -2,8 +2,8 @@ import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useId } f
 import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useNotesOptional } from '../NotesContext';
-import { getPathToNote, estimateReadingMinutes, type NoteContentStats } from '../notesUtils';
-import { CaretRight, Check, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal, ClockCounterClockwise } from '@phosphor-icons/react';
+import { getPathToNote, type NoteContentStats } from '../notesUtils';
+import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NOTE_APPEARANCE_ICONS, NOTE_APPEARANCE_PRESETS, useNoteAppearance } from '../noteAppearance';
@@ -56,8 +56,10 @@ interface NotesEditorHeaderProps {
     tags?: string[];
     /** 标签变更回调（DSTU 模式必传才可编辑；Context 模式回退 updateNoteTags） */
     onTagsChange?: (tags: string[]) => Promise<void> | void;
-    /** 宿主接入历史面板时提供；阅读态也允许查看历史。 */
-    onOpenHistory?: () => void;
+    /** 标题里按 Enter / 末尾按 ↓ 时，把光标送进正文开头 */
+    onExitToBody?: () => void;
+    /** 新建的空笔记：打开即聚焦标题并全选占位标题，直接输入即可命名 */
+    autoFocusTitle?: boolean;
 }
 
 export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({ 
@@ -73,7 +75,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     readOnly = false,
     tags: tagsProp,
     onTagsChange,
-    onOpenHistory,
+    onExitToBody,
+    autoFocusTitle = false,
 }) => {
     const { t, i18n } = useTranslation(['notes', 'common', 'translation']);
     const isZh = (i18n.language || '').startsWith('zh');
@@ -112,6 +115,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         return () => observer.disconnect();
     }, [titleInput]);
     const [isEditing, setIsEditing] = useState(false);
+    const autoFocusedNoteRef = useRef<string | null>(null);
     // Track pending title to prevent useEffect from reverting to old value
     const pendingTitleRef = useRef<string | null>(null);
     // Esc 还原时跳过随后 blur 触发的提交
@@ -134,6 +138,17 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         return () => cancelAnimationFrame(frame);
     }, [appearanceOpen]);
     useEffect(() => { setAppearanceOpen(false); }, [noteId]);
+    useEffect(() => {
+        if (!autoFocusTitle || !noteId || readOnly || autoFocusedNoteRef.current === noteId) return;
+        autoFocusedNoteRef.current = noteId;
+        const frame = requestAnimationFrame(() => {
+            const title = titleRef.current;
+            if (!title || document.activeElement?.closest('.ProseMirror')) return;
+            title.focus({ preventScroll: true });
+            title.select();
+        });
+        return () => cancelAnimationFrame(frame);
+    }, [autoFocusTitle, noteId, readOnly]);
     const appearanceLabel = t('notes:appearance.label', { defaultValue: isZh ? '页面外观' : 'Page appearance' });
     const presetLabels = {
         standard: t('notes:appearance.standard', { defaultValue: isZh ? '标准' : 'Standard' }),
@@ -311,9 +326,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (isComposingKeyEvent(e)) return;
-        if (e.key === 'Enter') {
+        const atEnd = e.currentTarget.selectionStart === e.currentTarget.value.length
+            && e.currentTarget.selectionEnd === e.currentTarget.value.length;
+        if (e.key === 'Enter' || (e.key === 'ArrowDown' && atEnd && onExitToBody)) {
+            // 标题与正文是同一份文档：Enter / ↓ 提交标题并把光标送进正文开头
             e.preventDefault();
             e.currentTarget.blur(); // Triggers onBlur -> handleTitleSubmit
+            onExitToBody?.();
         } else if (e.key === 'Escape') {
             // Esc 还原为已保存标题并退出编辑（blur 提交由 escapeRevertRef 短路）
             e.preventDefault();
@@ -367,74 +386,6 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     : t('notes:editor.save_status.saved');
         }
     })();
-
-    const statusClassName = (() => {
-        switch (saveStatus) {
-            case 'failed':
-            case 'conflict':
-                return 'text-destructive';
-            case 'saving':
-            case 'unsaved':
-                return 'text-muted-foreground';
-            default:
-                return 'text-muted-foreground/70';
-        }
-    })();
-
-    // 状态点颜色（.notes-save-status-dot 用 currentcolor 填充，这里按五态给 token 色）
-    const statusDotClassName = (() => {
-        switch (saveStatus) {
-            case 'saved':
-                return 'text-[hsl(var(--success))]';
-            case 'saving':
-                return 'text-[hsl(var(--info))]';
-            case 'unsaved':
-                return 'text-[hsl(var(--warning))]';
-            case 'failed':
-            case 'conflict':
-            default:
-                return 'text-destructive';
-        }
-    })();
-
-    // 仅 transient 失败提供重试。冲突时外部版本通常已胜出，盲目 flush 会再次撞锁；
-    // 恢复入口在 NoteContentView 的冲突通知「恢复我的版本」。
-    const showRetry =
-        !readOnly &&
-        !!onRetrySave &&
-        saveStatus === 'failed';
-
-    // ========== 文档统计（字数 / 词数 / 阅读时间） ==========
-    // stats 未接线时回退 charCount：词数未知，阅读时间按字符数近似（同 300/分口径）。
-    const displayCharCount = stats?.charCount ?? charCount;
-    const readingMinutes = stats
-        ? stats.readingMinutes
-        : estimateReadingMinutes(charCount ?? 0);
-    const showStats = typeof displayCharCount === 'number' && displayCharCount > 0;
-    const statsRows: Array<{ key: string; label: string; value: string }> = showStats
-        ? [
-            {
-                key: 'chars',
-                label: t('translation:stats.characters', { defaultValue: isZh ? '字数' : 'Characters' }),
-                value: String(displayCharCount),
-            },
-            ...(stats
-                ? [{
-                    key: 'words',
-                    label: t('translation:stats.words', { defaultValue: isZh ? '词数' : 'Words' }),
-                    value: String(stats.wordCount),
-                }]
-                : []),
-            {
-                key: 'reading',
-                label: t('notes:editor.stats.reading_label', { defaultValue: isZh ? '阅读时间' : 'Reading time' }),
-                value: t('notes:editor.stats.reading_value', {
-                    defaultValue: isZh ? '约 {{minutes}} 分钟' : '~{{minutes}} min',
-                    minutes: readingMinutes,
-                }),
-            },
-        ]
-        : [];
 
     // ========== P1-10：内联标签行（chips + 内联展开输入，不用 Popover） ==========
     const effectiveTags = tagsProp ?? (isDstuMode ? [] : ((contextActive?.tags as string[] | undefined) ?? []));
@@ -554,24 +505,13 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     if (!noteId) return null;
 
+    const hasIcon = Boolean(appearance.value.icon);
+    const showAddTagInline = canEditTags && effectiveTags.length === 0 && !tagInputOpen;
+
     return (
-        <header className="notes-document-header group relative pt-7 pb-3" data-notes-preset={appearance.value.preset}>
-            {appearance.value.icon && <div className="mb-2 text-3xl" aria-hidden="true">{appearance.value.icon}</div>}
-            <textarea
-                ref={titleRef}
-                rows={1}
-                className="notes-document-title w-full border-none bg-transparent p-0 font-semibold text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
-                aria-label={t('notes:header.documentTitle')}
-                value={titleInput}
-                onChange={readOnly ? undefined : handleTitleChange}
-                onBlur={readOnly ? undefined : handleTitleSubmit}
-                onKeyDown={readOnly ? undefined : handleKeyDown}
-                placeholder={t('notes:common.untitled')}
-                readOnly={readOnly}
-            />
-            
-             {/* Meta info & Breadcrumbs */}
-             <div className="mt-2 flex min-h-5 flex-wrap items-center gap-x-4 gap-y-2">
+        <header className="notes-document-header group relative pt-10 pb-2" data-notes-preset={appearance.value.preset}>
+            {showBreadcrumbs && (
+                <div className="mb-3 flex min-h-5 flex-wrap items-center">
                 {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
                 {showBreadcrumbs && (
                     <nav aria-label={t('notes:header.breadcrumbs', { defaultValue: isZh ? '笔记路径' : 'Note path' })} className="notes-document-breadcrumbs flex min-w-0 max-w-full flex-wrap items-center gap-1.5 text-xs text-muted-foreground select-none mr-auto">
@@ -616,70 +556,21 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     </nav>
                 )}
 
-                {/* Save status & word count (Right aligned) */}
-                <div
-                    className={`notes-document-meta shrink-0 ${showBreadcrumbs ? 'ml-auto' : 'ml-0'} flex items-center gap-2 text-[11px] ${saveStatus === 'saved' ? 'notes-document-meta-saved' : ''}`}
-                    aria-live="polite"
-                >
-                    {showStats && (
-                        <span className="notes-doc-stats">
-                            <span
-                                className="notes-doc-stats-trigger text-muted-foreground/60 tabular-nums outline-none focus-visible:ring-1 focus-visible:ring-[hsl(var(--ring))]"
-                                tabIndex={0}
-                                aria-label={statsRows.map((row) => `${row.label} ${row.value}`).join(', ')}
-                            >
-                                {t('notes:common.char_count', { count: displayCharCount })}
-                                {saveStatus !== 'conflict' && (
-                                    <span className="ml-2 opacity-50 select-none" aria-hidden="true">·</span>
-                                )}
-                            </span>
-                            <dl className="notes-doc-stats-detail" aria-hidden="true">
-                                {statsRows.map((row) => (
-                                    <div key={row.key} className="notes-doc-stats-row">
-                                        <dt>{row.label}</dt>
-                                        <dd>{row.value}</dd>
-                                    </div>
-                                ))}
-                            </dl>
-                        </span>
-                    )}
-                    {saveStatus !== 'conflict' && (
-                        <span className={`inline-flex items-center gap-1.5 ${statusClassName}`}>
-                            {saveStatus === 'saved' ? (
-                                <span className="notes-save-status-check" aria-hidden="true">
-                                    <Check className="h-3 w-3" weight="bold" />
-                                </span>
-                            ) : saveStatus === 'failed' ? (
-                                <span className="notes-save-status-warn" aria-hidden="true">
-                                    <WarningCircle className="h-3 w-3" weight="bold" />
-                                </span>
-                            ) : (
-                                <span className={`notes-save-status-dot ${statusDotClassName}`} data-status={saveStatus} aria-hidden="true" />
-                            )}
-                            <span>{statusLabel}</span>
-                            {showRetry && (
-                                <button
-                                    type="button"
-                                    className="underline underline-offset-2 hover:text-destructive/90 transition-colors duration-150 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:min-w-11"
-                                    onClick={() => {
-                                        void onRetrySave?.();
-                                    }}
-                                >
-                                    {t('notes:editor.save_status.retry')}
-                                </button>
-                            )}
-                        </span>
-                    )}
                 </div>
-                <div className="notes-document-actions flex flex-wrap items-center gap-1">
-                    <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
-                        <PopoverTrigger asChild>
-                            <DsButton ref={appearanceTriggerRef} variant="ghost" size="sm" className="notes-appearance-trigger gap-1.5 text-xs text-muted-foreground" aria-label={appearanceLabel} aria-haspopup="dialog" aria-controls={appearanceOpen ? `${appearanceTitleId}-panel` : undefined}>
-                                <SlidersHorizontal size={14} aria-hidden="true" />
-                                {appearanceLabel}
-                            </DsButton>
-                        </PopoverTrigger>
-                        <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-64 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
+            )}
+
+            {/* Notion 式页面操作行：平时隐身，悬停标题区或键盘聚焦时浮现；触屏常显 */}
+            <div className="notes-document-affordances" data-has-icon={hasIcon || undefined}>
+                <Popover open={appearanceOpen} onOpenChange={setAppearanceOpen}>
+                    <PopoverTrigger asChild>
+                        <button ref={appearanceTriggerRef} type="button" className="notes-document-affordance" aria-label={appearanceLabel} aria-haspopup="dialog" aria-controls={appearanceOpen ? `${appearanceTitleId}-panel` : undefined}>
+                            <SlidersHorizontal size={14} aria-hidden="true" />
+                            <span>{hasIcon
+                                ? appearanceLabel
+                                : t('notes:appearance.add_icon', { defaultValue: isZh ? '添加图标' : 'Add icon' })}</span>
+                        </button>
+                    </PopoverTrigger>
+    <PopoverContent ref={appearancePanelRef} id={`${appearanceTitleId}-panel`} tabIndex={-1} align="end" className="notes-appearance-panel w-64 p-3" aria-labelledby={appearanceTitleId} aria-busy={appearance.saving}
                             onKeyDown={(event) => {
                                 if (event.key !== 'Escape') return;
                                 if (isComposingKeyEvent(event)) {
@@ -722,16 +613,37 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 {appearance.error === 'load' && <DsButton variant="ghost" size="sm" onClick={() => void appearance.reload()}>{t('notes:editor.save_status.retry')}</DsButton>}
                             </div>}
                         </PopoverContent>
-                    </Popover>
-                    {onOpenHistory && <DsButton variant="ghost" size="sm" className="gap-1.5 text-xs text-muted-foreground" onClick={onOpenHistory}>
-                        <ClockCounterClockwise size={14} aria-hidden="true" />
-                        {t('notes:header.history', { defaultValue: isZh ? '历史版本' : 'Version history' })}
-                    </DsButton>}
-                </div>
+                </Popover>
+                {showAddTagInline && (
+                    <button
+                        ref={tagTriggerRef}
+                        type="button"
+                        className="notes-document-affordance"
+                        onClick={() => setTagInputOpen(true)}
+                        aria-label={t('notes:header.add_tags')}
+                    >
+                        <TagIcon size={14} aria-hidden="true" />
+                        <span>{t('notes:header.add_tags')}</span>
+                    </button>
+                )}
             </div>
 
+            {hasIcon && <div className="notes-document-icon" aria-hidden="true">{appearance.value.icon}</div>}
+            <textarea
+                ref={titleRef}
+                rows={1}
+                className="notes-document-title w-full border-none bg-transparent p-0 font-semibold text-foreground shadow-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0"
+                aria-label={t('notes:header.documentTitle')}
+                value={titleInput}
+                onChange={readOnly ? undefined : handleTitleChange}
+                onBlur={readOnly ? undefined : handleTitleSubmit}
+                onKeyDown={readOnly ? undefined : handleKeyDown}
+                placeholder={t('notes:common.untitled')}
+                readOnly={readOnly}
+            />
+
             {/* P1-10：标签 chips + 内联展开输入（触屏可达；桌面同样可用，不再依赖 lg 断点） */}
-            {(effectiveTags.length > 0 || canEditTags) && (
+            {(effectiveTags.length > 0 || tagInputOpen) && (
                 <div
                     className="notes-document-tags mt-2 flex flex-wrap items-center gap-1.5"
                     data-testid="notes-editor-tags"

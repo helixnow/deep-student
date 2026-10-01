@@ -77,8 +77,7 @@ describe('note appearance persistence', () => {
 
 describe('document appearance entry', () => {
   it('connects the read-only page menu to the persisted state consumed by the shell', async () => {
-    const onOpenHistory = vi.fn();
-    const view = render(<div className="notes-crepe-shell"><NotesEditorHeader noteId="appearance-header" initialTitle="Reading" lastSaved={null} readOnly onOpenHistory={onOpenHistory} /></div>);
+    const view = render(<div className="notes-crepe-shell"><NotesEditorHeader noteId="appearance-header" initialTitle="Reading" lastSaved={null} readOnly /></div>);
     fireEvent.click(screen.getByRole('button', { name: '页面外观' }));
     const wide = await screen.findByRole('button', { name: '宽幅' });
     await waitFor(() => expect(wide).not.toBeDisabled());
@@ -91,11 +90,9 @@ describe('document appearance entry', () => {
     const dialog = screen.getByRole('dialog', { name: '页面外观' });
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.getByRole('button', { name: '页面外观' })).toHaveFocus();
-    fireEvent.click(screen.getByRole('button', { name: '历史版本' }));
-    expect(onOpenHistory).toHaveBeenCalledOnce();
   });
 
-  it('omits history until the host supplies its callback', () => {
+  it('keeps page-level commands such as history out of the document header', () => {
     render(<NotesEditorHeader noteId="appearance-no-history" initialTitle="Reading" lastSaved={null} readOnly />);
     expect(screen.queryByRole('button', { name: '历史版本' })).not.toBeInTheDocument();
   });

@@ -155,7 +155,8 @@
     "icon_experiment": "实验",
     "icon_notes": "记录",
     "load_failed": "外观加载失败",
-    "save_failed": "外观未保存，请重新选择"
+    "save_failed": "外观未保存，请重新选择",
+    "add_icon": "添加图标"
   },
   "renameSync": {
     "scanFailed": "标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。",
