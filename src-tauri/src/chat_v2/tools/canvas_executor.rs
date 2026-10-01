@@ -443,12 +443,17 @@ fn note_create_error(error: VfsError) -> String {
     .to_string()
 }
 
+/// 笔记来源（props._origin，JSON 字符串）：让学习者能从笔记跳回生成它的对话/消息。
+/// 与前端 src/features/notes/noteOrigin.ts 的结构一致。
+pub(crate) const NOTE_ORIGIN_PROP_KEY: &str = "_origin";
+
 fn create_note_in_vfs(
     vfs_db: &VfsDatabase,
     title: String,
     content: String,
     tags: Vec<String>,
     folder_id: Option<String>,
+    origin: Option<serde_json::Value>,
 ) -> Result<(serde_json::Value, String), String> {
     let result_folder_id = folder_id.clone();
     let note = VfsNoteRepo::create_note_in_folder(
@@ -468,6 +473,23 @@ fn create_note_in_vfs(
         note.title
     );
     let note_id = note.id.clone();
+    if let Some(origin) = origin {
+        // 来源写入失败不影响建笔记本身（笔记已落盘），只记录告警
+        let props = serde_json::json!({ NOTE_ORIGIN_PROP_KEY: origin.to_string() });
+        if let Err(error) = VfsNoteRepo::update_note_metadata(
+            vfs_db,
+            &note_id,
+            crate::vfs::repos::note_repo::VfsNoteMetadataUpdate {
+                title: None,
+                tags: None,
+                is_favorite: None,
+                props: Some(props),
+                expected_updated_at: None,
+            },
+        ) {
+            log::warn!("[CanvasToolExecutor] Failed to record note origin for {}: {}", note_id, error);
+        }
+    }
     Ok((
         json!({
             "noteId": note_id,
@@ -1023,9 +1045,14 @@ impl CanvasToolExecutor {
             .filter(|value| !value.is_empty())
             .map(str::to_string);
 
-        // 调用 VFS 创建笔记
+        // 调用 VFS 创建笔记，并记录来源对话/消息（笔记 → 回到对话）
+        let origin = serde_json::json!({
+            "kind": "chat",
+            "sessionId": ctx.session_id,
+            "messageId": ctx.message_id,
+        });
         let (result, note_id) = tokio::task::spawn_blocking(move || {
-            create_note_in_vfs(&vfs_db, title, content, tags, folder_id)
+            create_note_in_vfs(&vfs_db, title, content, tags, folder_id, Some(origin))
         })
         .await
         .map_err(|e| format!("创建笔记任务失败: {}", e))??;
@@ -2010,8 +2037,19 @@ mod tests {
             "Completed chapter 1".to_string(),
             vec!["weekly".to_string()],
             Some(folder.id.clone()),
+            Some(serde_json::json!({ "kind": "chat", "sessionId": "sess_1", "messageId": "msg_1" })),
         )
         .expect("create note in requested folder");
+        let note = VfsNoteRepo::get_note(&db, &note_id).expect("read note").expect("note exists");
+        let origin = note
+            .props
+            .as_ref()
+            .and_then(|props| props.get(NOTE_ORIGIN_PROP_KEY))
+            .and_then(|value| value.as_str())
+            .expect("origin recorded");
+        let origin: serde_json::Value = serde_json::from_str(origin).expect("origin json");
+        assert_eq!(origin["sessionId"], "sess_1");
+        assert_eq!(origin["messageId"], "msg_1");
 
         assert_eq!(payload["success"], true);
         assert_eq!(payload["folderId"], folder.id);
@@ -2029,6 +2067,7 @@ mod tests {
             String::new(),
             Vec::new(),
             Some("missing-folder".to_string()),
+            None,
         )
         .expect_err("missing folder must fail");
         let payload: serde_json::Value =
