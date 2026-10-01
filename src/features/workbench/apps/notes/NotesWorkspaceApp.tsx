@@ -1005,6 +1005,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [query, setQuery] = useState('');
   const [learningView, setLearningView] = useState<NoteLearningView | 'tree'>('tree');
   const [learningCreateOpen, setLearningCreateOpen] = useState(false);
+  /** 从目录树右键创建时的目标文件夹；undefined = 跟随当前上下文文件夹 */
+  const [learningCreateFolderId, setLearningCreateFolderId] = useState<string | null | undefined>(undefined);
   const [tabs, setTabs] = useState<WorkspaceTab[]>(() => persistedState.tabs);
   const [activeTabKey, setActiveTabKey] = useState<string | null>(() => persistedState.activeTabKey);
   const [rightTabKey, setRightTabKey] = useState<string | null>(() => persistedState.rightTabKey);
@@ -2386,6 +2388,12 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
       label: t('notesWorkspace.context.newMindmap'),
       onSelect: () => { void createResource('mindmap', createFolderId ?? null); },
     });
+    // 与资源管理器「+」菜单对齐：右键同样能新建学习笔记（落到右键所在文件夹）
+    items.push({
+      id: 'newLearningNote',
+      label: t('notes:learning.create.title', { defaultValue: '新建学习笔记' }),
+      onSelect: () => { setLearningCreateFolderId(createFolderId ?? null); setLearningCreateOpen(true); },
+    });
     if (item.kind === 'folder' ? isStableVfsFolderId(item.id) : true) {
       items.push({
         id: 'delete',
@@ -3006,7 +3014,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           <div className="notes-files-subscreen-body">{explorerSurface}</div>
         </div>
       )}
-      {learningCreateOpen && <CreateLearningNoteDialog folderId={contextualFolderId} onClose={() => setLearningCreateOpen(false)}
+      {learningCreateOpen && <CreateLearningNoteDialog folderId={learningCreateFolderId !== undefined ? learningCreateFolderId : contextualFolderId}
+        onClose={() => { setLearningCreateOpen(false); setLearningCreateFolderId(undefined); }}
         onCreated={async (node) => { await loadResources({ blocking: false }); await openResource({ type: 'note', id: node.id }, node.name); }} />}
       <NotesSearchOverlay
         open={searchOpen}
