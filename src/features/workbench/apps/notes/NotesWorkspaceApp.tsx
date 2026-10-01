@@ -68,7 +68,6 @@ import {
 import { RENAME_SYNC_SOURCE_LIMIT, syncWikiLinksAfterNoteRename } from './wikilinkRenameSync';
 import { NotesPropertiesTab } from './NotesPropertiesTab';
 import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
-import { NoteLearningRelations } from '@/features/notes/components/NoteLearningRelations';
 import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
 import { sameNoteLearningMetadata, type NoteLearningView } from '@/features/notes/noteLearningProps';
 import { NotesGraphTab } from './graph/NotesGraphTab';
@@ -2980,7 +2979,6 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 activeResource={activeResource}
                 onRefresh={() => { void loadResources({ blocking: false }); }}
               />
-              {activeResource?.type === 'note' && <NoteLearningRelations noteId={activeResource.id} />}
               </>
             )}
             graphContent={(

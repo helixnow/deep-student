@@ -18,16 +18,19 @@ export function LegacyLearningPropsMapper({ value, disabled, onSave }: {
   const [undo, setUndo] = useState<LearningPropMappingPreview>();
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const keys = Object.keys(value).filter((key) => !Object.values(LEARNING_PROP_KEYS).includes(key as never));
+  // `_` 前缀为记忆/索引系统内部键，不作为映射来源
+  const keys = Object.keys(value).filter((key) => !key.startsWith('_') && !Object.values(LEARNING_PROP_KEYS).includes(key as never));
   const run = async (action: () => void | Promise<void>) => {
     setBusy(true); setError('');
     try { await action(); } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
   };
-  return <details className="notes-learn-section">
+  // 没有可映射的旧自由属性时不占位（撤销窗口内保留，以便回退刚完成的映射）
+  if (keys.length === 0 && !undo && !preview) return null;
+  return <details className="notes-disclosure notes-learn-mapper">
     <summary>{t('learning.mapping.title', { defaultValue: '映射旧自由属性' })}</summary>
-    <p>{t('learning.mapping.hint', { defaultValue: '选择来源与目标值，预览后应用。原属性及未知值全部保留。' })}</p>
-    <fieldset disabled={disabled || busy} className="space-y-2">
+    <p className="notes-learn-props-hint">{t('learning.mapping.hint', { defaultValue: '选择来源与目标值，预览后应用。原属性及未知值全部保留。' })}</p>
+    <fieldset disabled={disabled || busy} className="notes-disclosure-body notes-learn-mapper-body">
       {(Object.keys(LEARNING_PROP_KEYS) as LearningField[]).map((field) => <div key={field} className="space-y-1">
         <label className="notes-field">{t('learning.mapping.source', { defaultValue: '{{field}}来源属性', field: t(`learning.fields.${field}`) })}
           <select className="notes-select" value={draft[field]?.sourceKey ?? ''} onChange={(event) => {

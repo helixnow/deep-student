@@ -14,6 +14,8 @@ import { LegacyLearningPropsMapper } from '@/features/notes/components/LegacyLea
 import { LEARNING_PROP_KEYS, isLearningPropValue, type LearningField } from '@/features/notes/noteLearningProps';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
+const LEARNING_PROP_KEY_SET = new Set<string>(Object.values(LEARNING_PROP_KEYS));
+
 /** 与 tags 数量限额同一个量级；键值均有长度限制（后端亦校验兜底） */
 export const NOTE_PROPS_MAX_COUNT = 32;
 export const NOTE_PROP_KEY_MAX_CHARS = 64;
@@ -82,11 +84,15 @@ export const NoteCustomPropsEditor: React.FC<NoteCustomPropsEditorProps> = ({
   onChange,
 }) => {
   const { t } = useTranslation(['workbench', 'notes']);
+  // 学习属性已由上方友好字段呈现，`_` 前缀为系统内部键：都不在自由属性列表里重复露出原始键名
   const entries = useMemo(
-    () => Object.entries(value).map(([key, raw]) => [key, raw == null ? '' : String(raw)] as const),
+    () => Object.entries(value)
+      .filter(([key]) => !key.startsWith('_') && !LEARNING_PROP_KEY_SET.has(key.trim().toLowerCase()))
+      .map(([key, raw]) => [key, raw == null ? '' : String(raw)] as const),
     [value],
   );
-  const keys = useMemo(() => entries.map(([key]) => key), [entries]);
+  // 重名校验要覆盖被隐藏的键，避免新建同名属性静默覆盖学习/系统属性
+  const keys = useMemo(() => Object.keys(value), [value]);
 
   const [adding, setAdding] = useState(false);
   const [newKey, setNewKey] = useState('');

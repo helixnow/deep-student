@@ -360,3 +360,14 @@ h4.notes-learn-props-title {
   margin: 0;
   line-height: 1.4;
 }
+
+.notes-learn-mapper {
+  margin-top: 10px;
+  padding-left: 4px;
+}
+
+.notes-learn-mapper-body {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
