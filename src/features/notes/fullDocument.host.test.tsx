@@ -187,6 +187,26 @@ describe('notes host reliability wiring', () => {
     expect(shell).toHaveAttribute('data-focus-mode', 'false');
   });
 
+  it('offers a persistent undo for a direct agent write and refuses it once the user edits again', async () => {
+    const onSave = vi.fn(async (_markdown: string) => {});
+    render(<NotesCrepeEditor noteId="agent-note" initialTitle="Agent note" initialContent="original" onSave={onSave} />);
+    const editor = await screen.findByRole('textbox', { name: 'test note editor' });
+    fireEvent.change(editor, { target: { value: 'AI rewrite' } });
+    // AI 改写已经落盘，撤销必须把原文重新写回
+    await waitFor(() => expect(onSave.mock.calls.at(-1)?.[0]).toBe('AI rewrite'), { timeout: 4000 });
+    act(() => { window.dispatchEvent(new CustomEvent('notes:agent-applied', { detail: { noteId: 'agent-note', before: 'original', after: 'AI rewrite' } })); });
+    const undo = await screen.findByRole('button', { name: /撤销本次修改|Undo this change/ });
+    fireEvent.click(undo);
+    await waitFor(() => expect(onSave.mock.calls.at(-1)?.[0]).toBe('original'), { timeout: 4000 });
+    await waitFor(() => expect(screen.queryByRole('button', { name: /撤销本次修改|Undo this change/ })).not.toBeInTheDocument());
+
+    fireEvent.change(editor, { target: { value: 'AI again' } });
+    act(() => { window.dispatchEvent(new CustomEvent('notes:agent-applied', { detail: { noteId: 'agent-note', before: 'original', after: 'AI again' } })); });
+    fireEvent.change(editor, { target: { value: 'AI again + my edit' } });
+    fireEvent.click(await screen.findByRole('button', { name: /撤销本次修改|Undo this change/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /撤销本次修改|Undo this change/ })).toBeDisabled());
+  });
+
   it('passes the complete unsaved draft and revision from the template panel through the full-document save path', async () => {
     let hiddenTail = '\n\n## Hidden tail\nDo not truncate this section.\n';
     const onSave = vi.fn(async (_markdown: string) => {});

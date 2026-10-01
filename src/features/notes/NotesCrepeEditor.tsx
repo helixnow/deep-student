@@ -1782,6 +1782,42 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [focusMode, historyOpen, pageActionsOpen, isFindReplaceOpen, templateMenuOpen, aiReview, conflictDiffOpen]);
 
+  // Agent 直接写入（非审阅）后的撤销入口：与审阅接受后的回滚条同一外观，关掉前一直可用
+  const [agentWrite, setAgentWrite] = useState<{ before: string; after: string; stale: boolean } | null>(null);
+  useEffect(() => { setAgentWrite(null); }, [noteId]);
+  useEffect(() => {
+    const onAgentApplied = (event: Event) => {
+      const detail = (event as CustomEvent<{ noteId: string; windowId?: string; before: string; after: string }>).detail;
+      if (!detail || detail.noteId !== noteIdRef.current) return;
+      if (detail.windowId && acrWindowId && detail.windowId !== acrWindowId) return;
+      setAgentWrite((prev) => ({ before: prev && !prev.stale ? prev.before : detail.before, after: detail.after, stale: false }));
+    };
+    window.addEventListener('notes:agent-applied', onAgentApplied);
+    return () => window.removeEventListener('notes:agent-applied', onAgentApplied);
+  }, [acrWindowId]);
+  const undoAgentWrite = useCallback(async () => {
+    if (!agentWrite || !editorApi || effectiveReadOnly) return;
+    const api = editorApi as FullDocumentApi;
+    const current = api.getFullDocument?.().markdown ?? editorApi.getMarkdown();
+    const normalize = (md: string) => editorApi.normalizeMarkdown?.(md) ?? md;
+    if (normalize(current) !== normalize(agentWrite.after)) {
+      // 用户在 AI 修改之后又动过正文：不盲目覆盖，引导去历史版本
+      setAgentWrite({ ...agentWrite, stale: true });
+      showGlobalNotification('warning', t('notes:agentWrite.stale', '笔记在 AI 修改后又有改动，无法安全撤销；可在「历史版本」中恢复。'));
+      return;
+    }
+    try {
+      const baseline = api.getFullDocument?.();
+      if (api.replaceFullDocument && baseline) await api.replaceFullDocument(agentWrite.before, baseline);
+      else { editorApi.setMarkdown(agentWrite.before); await editorApi.flushPendingSave?.(); }
+      editorApi.agentFlashChange?.(agentWrite.after, agentWrite.before);
+      setAgentWrite(null);
+      showGlobalNotification('success', t('notes:agentWrite.undone', '已撤销 AI 的修改'));
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
+  }, [agentWrite, editorApi, effectiveReadOnly, t]);
+
   const copyRecoveryDraft = useCallback(async (previous = false) => {
     if (!recoveryDraft) return;
     const markdown = previous ? recoveryDraft.previousMarkdown : recoveryDraft.markdown;
@@ -2576,6 +2612,31 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
 
         {/* ★ 2.1 AI 编辑检查点栈：接受后仍可逐条回滚（顺序 undo，栈顶优先）。
             内联 info bar（参与布局、不遮挡文档标题），随 pane 顶栏保持可见 */}
+        {agentWrite && !aiEditState.isActive && (
+          <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
+            <div className="notes-column flex items-center gap-2 py-1.5">
+              <Robot size={14} className="text-primary shrink-0" />
+              <span className="min-w-0 truncate text-xs text-foreground">
+                {agentWrite.stale
+                  ? t('notes:agentWrite.stale_short', 'AI 修改后笔记又有改动，撤销请用历史版本')
+                  : t('notes:agentWrite.applied', 'AI 刚修改了这篇笔记')}
+              </span>
+              <div className="ml-auto flex flex-shrink-0 items-center gap-1">
+                <DsButton variant="ghost" size="sm" disabled={agentWrite.stale || effectiveReadOnly}
+                  className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+                  onClick={() => { void undoAgentWrite(); }}>
+                  <ArrowCounterClockwise size={12} className="mr-1" />
+                  {t('notes:agentWrite.undo', '撤销本次修改')}
+                </DsButton>
+                <DsButton variant="ghost" size="icon"
+                  className="h-6 w-6 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+                  onClick={() => setAgentWrite(null)} aria-label={t('notes:agentWrite.keep', '保留修改')}>
+                  <X size={12} />
+                </DsButton>
+              </div>
+            </div>
+          </div>
+        )}
         {aiCheckpoint && !aiEditState.isActive && (
           <div className="notes-ai-checkpoint-bar w-full border-t border-border/50 bg-[hsl(var(--primary)/0.05)] ui-rise-in" role="status">
             <div className="notes-column flex items-center gap-2 py-1.5">

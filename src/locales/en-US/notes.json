@@ -2071,5 +2071,13 @@
   },
   "agent": {
     "caret_label": "AI"
+  },
+  "agentWrite": {
+    "applied": "AI just edited this note",
+    "undo": "Undo this change",
+    "keep": "Keep changes",
+    "undone": "AI changes undone",
+    "stale": "The note changed after the AI edit, so it cannot be undone safely. Restore it from Version history instead.",
+    "stale_short": "Edited after the AI change — use Version history to undo"
   }
 }

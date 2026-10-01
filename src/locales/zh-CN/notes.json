@@ -2070,5 +2070,13 @@
   },
   "agent": {
     "caret_label": "AI"
+  },
+  "agentWrite": {
+    "applied": "AI 刚修改了这篇笔记",
+    "undo": "撤销本次修改",
+    "keep": "保留修改",
+    "undone": "已撤销 AI 的修改",
+    "stale": "笔记在 AI 修改后又有改动，无法安全撤销；可在「历史版本」中恢复。",
+    "stale_short": "AI 修改后笔记又有改动，撤销请用历史版本"
   }
 }

@@ -1164,6 +1164,10 @@ export const noteDriver: CollabDriver = {
       });
     }
 
+    // 本次运行的起点正文：结束时交给笔记宿主，提供「撤销本次修改」入口
+    let runBaseline: string | null = null;
+    try { runBaseline = readCompleteMarkdown(api); } catch { runBaseline = null; }
+
     const done: string[] = [];
     const undone: string[] = [];
     const entityIds: string[] = [resourceId];
@@ -1362,6 +1366,17 @@ export const noteDriver: CollabDriver = {
         `内容已应用，但自动保存失败：${persistenceError}`,
         resourceId,
       );
+    }
+
+    if (applied > 0 && runBaseline != null && typeof window !== 'undefined') {
+      try {
+        const after = readCompleteMarkdown(api);
+        if (after !== runBaseline) {
+          window.dispatchEvent(new CustomEvent('notes:agent-applied', {
+            detail: { noteId: resourceId, windowId: run.windowId ?? undefined, before: runBaseline, after },
+          }));
+        }
+      } catch { /* 读取失败时不提供撤销入口 */ }
     }
 
     // 结束演出：fadeRun → 3s 后 clearAll
