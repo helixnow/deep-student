@@ -396,9 +396,23 @@ impl BuiltinRetrievalExecutor {
             None
         };
 
-        // 源头去重：记忆笔记同时被 VFS 文本索引覆盖，先从知识库结果中排除，
+        // 源头去重：记忆笔记同时被 VFS 文本索引覆盖，从知识库结果中排除，
         // 避免同一条记忆以 [知识库-N] 与 [记忆-N] 双重身份出现。
-        if let Some(memory_service) = memory_service.as_ref() {
+        // 关闭记忆时同样排除：否则学习者关掉记忆后，记忆内容仍会以「知识库」身份泄露进回答。
+        let exclusion_service_owned;
+        let exclusion_service = match memory_service.as_ref() {
+            Some(service) => Some(service),
+            None if !sources.is_empty() => {
+                exclusion_service_owned = MemoryService::new(
+                    std::sync::Arc::clone(vfs_db),
+                    std::sync::Arc::clone(&lance_store),
+                    std::sync::Arc::clone(llm_manager),
+                );
+                Some(&exclusion_service_owned)
+            }
+            None => None,
+        };
+        if let Some(memory_service) = exclusion_service {
             let memory_resource_ids = memory_note_resource_ids(vfs_db, memory_service);
             if !memory_resource_ids.is_empty() {
                 sources.retain(|source| {
