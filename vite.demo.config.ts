@@ -2,7 +2,7 @@
  * Web 演示壳专用 Vite 配置（瘦身构建）
  *
  * 与主配置的差异：
- * 1. 仅构建 demo.html 入口（不含桌面主入口），输出到 dist-demo/
+ * 1. 仅构建 demo.html 与 hero.html 入口（不含桌面主入口），输出到 dist-demo/
  * 2. 通过 build.modulePreload.resolveDependencies 阻止首屏预载重型 chunk：
  *    milkdown（笔记编辑器）/ mermaid / pptx / exceljs / docx / pdfjs /
  *    recharts / xyflow / heic2any 等仅在"附件预览、图表统计、笔记、
@@ -200,6 +200,13 @@ export default defineConfig((env) => {
     build: {
       ...base.build,
       outDir: "dist-demo",
+      rollupOptions: {
+        ...(base.build?.rollupOptions ?? {}),
+        input: {
+          demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
+          hero: fileURLToPath(new URL("./hero.html", import.meta.url)),
+        },
+      },
       modulePreload: {
         ...(typeof base.build?.modulePreload === "object" ? base.build.modulePreload : {}),
         resolveDependencies(_url, deps, context) {
