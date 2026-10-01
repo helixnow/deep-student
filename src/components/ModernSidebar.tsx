@@ -109,7 +109,7 @@ interface ModernSidebarProps {
 
 export type SidebarUpdater = Pick<
   AppUpdaterController,
-  'checking' | 'available' | 'info' | 'downloading' | 'readyToRelaunch' | 'performUpdateAction'
+  'checking' | 'available' | 'info' | 'downloading' | 'progress' | 'readyToRelaunch' | 'performUpdateAction'
 >;
 
 type SidebarSectionId = 'pinned' | 'topics' | 'conversations';
@@ -1824,7 +1824,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
               }}
               aria-label={
                 updater?.downloading
-                  ? t('sidebar:update.downloading')
+                  ? `${t('sidebar:update.downloading')} ${Math.round(updater.progress)}%`
                   : updater?.readyToRelaunch
                     ? t('sidebar:update.restart')
                     : t('sidebar:update.available')
@@ -1832,7 +1832,10 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
               disabled={updater?.downloading}
             >
               {updater?.downloading ? (
-                <CircleNotch size={10} className="animate-spin" aria-hidden="true" />
+                <span className="inline-flex items-center gap-0.5" aria-hidden="true">
+                  <CircleNotch size={10} className="animate-spin" />
+                  <span>{Math.round(updater.progress)}%</span>
+                </span>
               ) : updater?.readyToRelaunch ? (
                 t('sidebar:update.restart')
               ) : t('sidebar:update.short')}

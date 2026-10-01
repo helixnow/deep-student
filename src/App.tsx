@@ -2063,6 +2063,7 @@ function App() {
     available: updater.available,
     info: updater.info,
     downloading: updater.downloading,
+    progress: updater.progress,
     readyToRelaunch: updater.readyToRelaunch,
     performUpdateAction: updater.performUpdateAction,
   }), [
@@ -2071,6 +2072,7 @@ function App() {
     updater.downloading,
     updater.info,
     updater.performUpdateAction,
+    updater.progress,
     updater.readyToRelaunch,
   ]);
   const sidebarElement = useMemo(() => (
