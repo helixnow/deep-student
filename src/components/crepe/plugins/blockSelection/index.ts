@@ -81,6 +81,11 @@ export const blockSelectionProsePlugin = () => new Plugin<BlockSelectionState>({
     },
   },
   props: {
+    // 整块选中时挂标记：块选择内部借用覆盖整块的 TextSelection（复制/删除直接可用），
+    // 但文字格式浮条不应因此弹出（Notion 块选中时同样不显示格式条），由 CSS 据此隐藏
+    attributes(state): Record<string, string> {
+      return blockSelectionKey.getState(state) ? { 'data-block-selected': 'true' } : {};
+    },
     decorations(state) {
       const sel = blockSelectionKey.getState(state);
       if (!sel) return null;

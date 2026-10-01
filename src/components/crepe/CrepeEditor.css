@@ -2574,3 +2574,8 @@
     opacity: 1;
   }
 }
+
+/* 块选择（Esc / 块手柄）时不显示文字格式浮条：它只服务于文字选区 */
+.crepe-editor-wrapper .milkdown:has(.ProseMirror[data-block-selected]) .milkdown-toolbar {
+  display: none !important;
+}

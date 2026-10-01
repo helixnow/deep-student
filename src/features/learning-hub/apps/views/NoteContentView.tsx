@@ -1157,6 +1157,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           className={cn("notes-properties-panel min-w-0 flex flex-col overflow-hidden bg-background border-l border-border",
             propertiesOverlay ? "notes-properties-panel--overlay absolute inset-y-0 right-0 z-30 w-[min(320px,100%)] shadow-[-8px_0_24px_hsl(var(--shadow-base)/0.12)]" : "w-72 shrink-0")}
           aria-label={t('notes:contextPanel.title')}
+          onKeyDown={propertiesOverlay ? (event) => {
+            // 浮层抽屉：Esc 先关抽屉，不落到正文（否则会触发正文的块选择）
+            if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setRightPanelVisible(false);
+          } : undefined}
         >
           <div className="flex h-9 flex-shrink-0 items-center justify-between border-b border-border px-2.5">
             <span className="text-xs font-medium text-foreground/80">{t('notes:contextPanel.title')}</span>
