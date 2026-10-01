@@ -1046,6 +1046,8 @@ async function applyWindowedNoteInsert(
     computed.content = api.normalizeMarkdown?.(computed.content) ?? computed.content;
     await run.pacing.tick(run.pacing.profile.instant ? 0 : 1);
     await replaceCompleteMarkdown(api, computed.content, before, baseline);
+    // 长笔记走全文写入，没有逐批演出：至少把落地的段落闪一下并滚入视口
+    try { api.agentFlashChange?.(before, computed.content); } catch { /* 演出失败不影响写入 */ }
     return { ok: true, before, after: computed.content };
   } catch (error) {
     const current = readCompleteMarkdown(api);

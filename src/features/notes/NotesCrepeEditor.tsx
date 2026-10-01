@@ -1384,7 +1384,10 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       lastSavedMapRef.current.set(currentNoteId, newContent);
 
       if (editorApi && editorApi.getMarkdown() !== newContent) {
+        const previousContent = editorApi.getMarkdown();
         editorApi.setMarkdown(newContent);
+        // 外部写入（后端 Agent、其他窗口）不再静默：变化段落闪一下并滚入视口
+        try { editorApi.agentFlashChange?.(previousContent, newContent); } catch { /* 演出失败不影响同步 */ }
       }
       unsavedDocChangeRef.current = false;
       const fullMarkdown = fullMarkdownForReporting(editorApi, newContent);
