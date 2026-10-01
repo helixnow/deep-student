@@ -23,7 +23,8 @@ vi.mock('../personalNoteTemplates', () => ({
   getCourseDefaultTemplate: () => undefined,
 }));
 vi.mock('../components/NoteRelationPreview', () => ({ NoteRelationPreview: () => null }));
-import { NotesLibraryEntry } from '../NotesLibraryView';
+import { CreateLearningNoteDialog } from '../components/CreateLearningNoteDialog';
+import { NoteLearningViews } from '../components/NoteLearningViews';
 import { CreateLearningNoteDialog } from '../components/CreateLearningNoteDialog';
 import { LegacyLearningPropsMapper } from '../components/LegacyLearningPropsMapper';
 import { NoteLearningRelations } from '../components/NoteLearningRelations';
@@ -37,13 +38,12 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 const view = (children: React.ReactNode) => render(<I18nextProvider i18n={language}>{children}</I18nextProvider>);
 
 describe('notes round two with real English translations', () => {
-  it('opens the notes library and creation form with translated labels', async () => {
+  it('renders the learning views and creation form with translated labels', async () => {
     repository.list.mockResolvedValue({ ok: true, value: [] });
-    view(<NotesLibraryEntry onOpen={vi.fn()}>Resources</NotesLibraryEntry>);
-    fireEvent.click(screen.getByRole('button', { name: 'Learning notes' }));
+    const views = view(<NoteLearningViews notes={[]} view="list" onOpen={vi.fn()} />);
     expect(await screen.findByText('No notes yet')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Search notes, courses, or chapters' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'New learning note' }));
+    views.unmount();
+    view(<CreateLearningNoteDialog onClose={vi.fn()} onCreated={vi.fn()} />);
     expect(screen.getByRole('dialog', { name: 'New learning note' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Note title' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Course default: Not set' })).toBeDisabled();

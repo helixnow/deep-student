@@ -150,6 +150,9 @@ import {
 import { useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { getSearchPlaceholderKey, matchesLiveName } from './utils/searchHonesty';
 import { pruneSelectionAgainstItems } from './stores/selectionPrune';
+import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
+import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
+import { NotesLearningViewTabs, useNotesLearningView } from './components/finder/NotesLearningViewTabs';
 
 /** ★ Bug4: canvas 模式下不应显示的特殊视图（仅显示层 fallback，不写回 store） */
 const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);
@@ -310,6 +313,9 @@ export function LearningHubSidebar({
 
   // ★ 记忆系统改造：树状图预览模式（搜索时自动切回列表）
   const [memoryTreeView, setMemoryTreeView] = useState(false);
+  // 「笔记」智能文件夹的学习分组视图（Notion 式数据库视图：同一份列表的不同投影）
+  const [notesLearningView, setNotesLearningView] = useNotesLearningView();
+  const [creatingLearningNote, setCreatingLearningNote] = useState(false);
   useEffect(() => {
     if (searchQuery.trim() && memoryTreeView) {
       setMemoryTreeView(false);
@@ -3266,6 +3272,7 @@ export function LearningHubSidebar({
       hideSearch={Boolean(quickAccessPortalTarget)}
       onNewFolder={handleNewFolder}
       onNewNote={handleNewNote}
+      onNewLearningNote={() => setCreatingLearningNote(true)}
       onImportMarkdownNote={() => {
         void handleImportMarkdownNote();
       }}
@@ -3381,6 +3388,12 @@ export function LearningHubSidebar({
                       onClick={handleNewNote}
                     >
                       {t('finder.toolbar.newNote')}
+                    </AppMenuItem>
+                    <AppMenuItem
+                      icon={<NoteIcon size={16} />}
+                      onClick={() => setCreatingLearningNote(true)}
+                    >
+                      {t('notes:learning.create.menu', { defaultValue: '新建学习笔记…' })}
                     </AppMenuItem>
                     <AppMenuItem
                       icon={<NoteIcon size={16} />}
@@ -3732,6 +3745,15 @@ export function LearningHubSidebar({
               {t('finder.search.truncatedHint', { limit: searchMeta.limit })}
             </div>
           )}
+          {currentQuickAccessType === 'notes' && mode !== 'canvas' && (
+            <NotesLearningViewTabs value={notesLearningView} onChange={setNotesLearningView} />
+          )}
+          {currentQuickAccessType === 'notes' && mode !== 'canvas' && notesLearningView !== 'list' ? (
+            <div className="min-h-0 flex-1">
+              <NoteLearningViews notes={displayedItems.filter((item) => item.type === 'note')} view={notesLearningView}
+                activeId={activeFileId} onOpen={handleOpen} />
+            </div>
+          ) : (
           <FinderFileList
             items={displayedItems}
             viewMode={isCollapsed || mode === 'canvas' ? 'list' : viewMode}
@@ -3811,11 +3833,19 @@ export function LearningHubSidebar({
             searchQuery={searchQuery}
             onClearSearch={() => setSearchQuery('')}
           />
+          )}
           </>
           )}
           </>
         )}
       
+        {creatingLearningNote && (
+          <CreateLearningNoteDialog
+            folderId={effectivePath.viewKind === 'folder' ? effectivePath.folderId : null}
+            onClose={() => setCreatingLearningNote(false)}
+            onCreated={(node) => { void handleRefresh(); onOpenApp?.(dstuNodeToResourceListItem(node, 'note')); }}
+          />
+        )}
         {/* Batch Operation Toolbar + View Mode Toggle + App Close
             canvas / 特殊系统视图（索引状态、记忆、桌面）不显示文件列表底栏，避免「0 个项目」错位 */}
         {mode === 'canvas' || effectivePath.viewKind === 'indexStatus' || effectivePath.viewKind === 'memory' || effectivePath.viewKind === 'desktop' ? null : (

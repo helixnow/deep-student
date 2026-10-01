@@ -1,0 +1,48 @@
+/* Finder「笔记」文件夹顶部的视图标签：Notion 数据库视图条同款（低调、底部指示线） */
+.nlvt {
+  display: flex;
+  flex-shrink: 0;
+  align-items: stretch;
+  gap: 2px;
+  height: 34px;
+  padding: 0 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground, currentColor) 8%, transparent);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.nlvt-tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: default;
+  transition: color 120ms ease;
+}
+
+.nlvt-tab:hover { color: hsl(var(--foreground)); }
+.nlvt-tab[aria-selected='true'] { color: hsl(var(--foreground)); font-weight: 500; }
+
+.nlvt-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  right: 6px;
+  bottom: -1px;
+  left: 6px;
+  height: 2px;
+  border-radius: 2px;
+  background: hsl(var(--foreground));
+}
+
+.nlvt-tab:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -4px; border-radius: 6px; }
+
+@media (pointer: coarse) {
+  .nlvt { height: 44px; }
+}

@@ -208,7 +208,8 @@
       "retry_props": "Retry saving properties",
       "open_partial": "Open created note",
       "props_failed": "The note content was created, but its properties have not been saved: {{error}}",
-      "invalid_title": "Enter a valid note title."
+      "invalid_title": "Enter a valid note title.",
+      "menu": "New learning note…"
     },
     "mapping": {
       "title": "Map existing custom properties",
@@ -287,7 +288,8 @@
       "tree": "File tree",
       "list": "Note list",
       "status": "Mastery status",
-      "review": "Upcoming reviews"
+      "review": "Upcoming reviews",
+      "all": "All"
     },
     "unset_group": "Not set / previous value retained",
     "review_range": "Reviews: overdue and the next 7 days",

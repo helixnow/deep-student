@@ -56,6 +56,7 @@ interface FinderQuickAccessProps {
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onNewNote?: () => void;
+  onNewLearningNote?: () => void;
   onImportMarkdownNote?: () => void;
   onNewExam?: () => void;
   onNewTextbook?: () => void;
@@ -90,6 +91,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   searchDisabled = false,
   onNewFolder,
   onNewNote,
+  onNewLearningNote,
   onImportMarkdownNote,
   onNewExam,
   onNewTextbook,
@@ -236,6 +238,11 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       {onNewNote && (
         <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewNote}>
           {t('finder.toolbar.newNote')}
+        </AppMenuItem>
+      )}
+      {onNewLearningNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewLearningNote}>
+          {t('notes:learning.create.menu', { defaultValue: '新建学习笔记…' })}
         </AppMenuItem>
       )}
       {onImportMarkdownNote && (

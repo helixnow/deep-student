@@ -1,0 +1,116 @@
+/* 笔记学习视图（Finder「笔记」文件夹的分组视图）：与 Finder 列表行同密度 */
+
+.nlv {
+  height: 100%;
+  overflow-y: auto;
+  padding: 6px 8px 16px;
+  font-size: 13px;
+}
+
+.nlv-group + .nlv-group { margin-top: 10px; }
+
+.nlv-group-label.nlv-group-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 6px 8px 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.nlv-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: hsl(var(--muted-foreground) / 50%);
+}
+
+.nlv-group[data-mastery='learning'] .nlv-dot { background: hsl(var(--primary)); }
+.nlv-group[data-mastery='mastered'] .nlv-dot { background: hsl(var(--success, 142 60% 40%)); }
+.nlv-group[data-mastery='needs-review'] .nlv-dot { background: hsl(var(--warning, 38 92% 50%)); }
+
+.nlv-empty {
+  margin: 0;
+  padding: 4px 8px 6px;
+  color: hsl(var(--muted-foreground) / 75%);
+  font-size: 12px;
+}
+
+.nlv-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nlv-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--shell-nav-row-radius, 8px);
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  transition: background-color 120ms ease;
+}
+
+.nlv-row:hover { background: var(--interactive-hover, hsl(var(--muted))); }
+.nlv-row[aria-current='true'] { background: var(--interactive-selected, hsl(var(--accent))); }
+.nlv-row:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: -2px; }
+
+.nlv-row-icon { display: inline-flex; flex-shrink: 0; color: hsl(var(--muted-foreground)); }
+
+.nlv-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nlv-row-title,
+.nlv-row-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nlv-row-sub {
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+}
+
+.nlv-row-chips {
+  display: flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.nlv-chip {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.nlv-chip[data-mastery='learning'] { background: hsl(var(--primary) / 12%); color: hsl(var(--primary)); }
+.nlv-chip[data-mastery='mastered'] { background: hsl(var(--success, 142 60% 40%) / 14%); color: hsl(var(--success, 142 60% 34%)); }
+.nlv-chip[data-due='overdue'] { background: hsl(var(--warning, 38 92% 50%) / 16%); color: hsl(var(--warning, 32 90% 38%)); }
+.nlv-chip[data-due='today'] { background: hsl(var(--primary) / 12%); color: hsl(var(--primary)); }
+
+@container (max-width: 300px) {
+  .nlv-row-chips { display: none; }
+}
+
+@media (pointer: coarse) {
+  .nlv-row { min-height: 48px; }
+}

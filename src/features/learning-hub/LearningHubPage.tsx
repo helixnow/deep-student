@@ -49,7 +49,6 @@ import { VfsErrorCode } from '@/shared/result';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
-import { NotesLibraryEntry } from '@/features/notes/NotesLibraryView';
 import { dstuNodeToResourceListItem } from './types';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
@@ -1451,7 +1450,6 @@ export const LearningHubPage: React.FC = () => {
               isSmallScreen ? 'bg-background' : 'study-shell-pane h-full',
             )}
           >
-            <NotesLibraryEntry activeId={activeTab?.resourceId} onOpen={(note) => handleOpenApp(dstuNodeToResourceListItem(note, 'note'))}>
             <LearningHubSidebar
               mode="fullscreen"
               hostId={FINDER_HOST_IDS.pageMobile}
@@ -1467,7 +1465,6 @@ export const LearningHubPage: React.FC = () => {
               activeFileId={activeTab?.resourceId}
               hideToolbarAndNav={screenPosition !== 'center'}
             />
-            </NotesLibraryEntry>
           </div>
         </MobileSlidingLayout>
         {/* ★ P4：close gate 确认对话框宿主（portal 渲染；workbench 桌面外
@@ -1497,7 +1494,6 @@ export const LearningHubPage: React.FC = () => {
           className="h-full min-h-0 overflow-hidden"
         >
           <div className={cn("study-shell-pane h-full min-h-0 overflow-hidden", hasOpenApp && "border-r border-[color:var(--shell-workspace-border)]")}>
-            <NotesLibraryEntry activeId={activeTab?.resourceId} onOpen={(note) => handleOpenApp(dstuNodeToResourceListItem(note, 'note'))}>
             <LearningHubSidebar
               mode="fullscreen"
               hostId={FINDER_HOST_IDS.page}
@@ -1515,7 +1511,6 @@ export const LearningHubPage: React.FC = () => {
               toolbarPortalTarget={desktopShellHeaderTarget}
               toolbarPortalMode="shell"
             />
-            </NotesLibraryEntry>
           </div>
         </Panel>
 
