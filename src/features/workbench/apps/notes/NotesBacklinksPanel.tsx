@@ -1018,7 +1018,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         ?? mentions
           .filter((m) => m.text === row.mention.text)
           .sort((a, b) => Math.abs(a.start - row.mention.start) - Math.abs(b.start - row.mention.start))[0]
-        ?? mentions[0]
+        // 不再退回到任意第一处提及：链错位置比明确告知「未找到」更糟
         ?? null;
       if (!target) {
         setOpenError(t('notesWorkspace.backlinks.convertMissing', {

@@ -2790,6 +2790,17 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
     }
   }, [readonly, isReady]);
 
+  /** 块链接 / 跨页移动的前置条件：与执行时同一组判断，提前置灰并说明原因（不再点了才报错） */
+  const identityActionBlockedReason = (action: BlockMenuAction, target: BlockTarget): string | undefined => {
+    if (action !== 'copy-block-link' && action !== 'move-to-note') return undefined;
+    const host = blockActionsHostRef.current;
+    if (target.depth !== 1) return i18next.t('notes:blockIdentity.topLevelOnly', '持久身份仅支持顶层块；嵌套块暂不支持。');
+    if (!host) return i18next.t('notes:blockIdentity.hostRequired', '当前笔记尚未接入完整文档块操作。');
+    if (host.isDocumentWindowed()) return i18next.t('notes:blockIdentity.fullDocumentRequired', '请先加载完整笔记，再创建块链接或跨页移动。');
+    if (action === 'copy-block-link' && target.nodes.length !== 1) return i18next.t('notes:blockIdentity.singleLink', '复制块链接时请选择一个顶层块。');
+    return undefined;
+  };
+
   return (
     <div
       ref={wrapperRef}
@@ -2841,12 +2852,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 data-active={isActive || undefined}
                 data-block-command={action}
                 data-destructive={action === 'delete' || undefined}
-                disabled={action !== 'copy-block-link' && action !== 'move-to-note'
-                  && !canExecuteCrepeCommand(blockMenu.target.view, action, { target: blockMenu.target })}
-                aria-disabled={(action === 'copy-block-link' || action === 'move-to-note')
-                  && (blockMenu.target.depth !== 1 || (action === 'copy-block-link' && blockMenu.target.nodes.length !== 1)) || undefined}
-                title={(action === 'copy-block-link' || action === 'move-to-note') && blockMenu.target.depth !== 1
-                  ? i18next.t('notes:blockIdentity.topLevelOnly', '持久身份仅支持顶层块；嵌套块暂不支持。') : undefined}
+                disabled={(action !== 'copy-block-link' && action !== 'move-to-note'
+                  && !canExecuteCrepeCommand(blockMenu.target.view, action, { target: blockMenu.target }))
+                  || Boolean(identityActionBlockedReason(action, blockMenu.target))}
+                title={identityActionBlockedReason(action, blockMenu.target)}
                 onMouseEnter={() => setBlockMenuActiveIndex(index)}
                 onClick={() => runBlockAction(action)}
               >

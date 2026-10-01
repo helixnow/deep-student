@@ -1012,6 +1012,9 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
   const [splitLayout, setSplitLayout] = useState<SplitLayout>(() => persistedState.splitLayout);
   const [backlinksOpen, setBacklinksOpen] = useState(() => persistedState.backlinksOpen);
   const [backlinksRequestedTab, setBacklinksRequestedTab] = useState<NotesBacklinksTabRequest | null>(null);
+  // 命令处理器不随面板状态重建：经 ref 读取当前是否打开、停在哪个页签（用于真正的切换语义）
+  const backlinksStateRef = useRef({ open: backlinksOpen, tab: backlinksRequestedTab?.tab });
+  backlinksStateRef.current = { open: backlinksOpen, tab: backlinksRequestedTab?.tab };
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchMode, setSearchMode] = useState<NotesSearchMode>('quick-open');
   const [explorerOpen, setExplorerOpen] = useState(() => persistedState.explorerOpen);
@@ -2075,6 +2078,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
           setBacklinksOpen((open) => !open);
           break;
         case 'toggle-outline':
+          // 已在大纲（属性）页打开时关闭，否则打开并切到大纲——原先只会打开、关不掉
+          if (backlinksStateRef.current.open && backlinksStateRef.current.tab === 'properties') {
+            setBacklinksOpen(false);
+            break;
+          }
           setBacklinksRequestedTab((request) => ({
             tab: 'properties',
             requestId: (request?.requestId ?? 0) + 1,
