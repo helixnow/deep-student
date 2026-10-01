@@ -946,7 +946,14 @@
     },
     "placeholder": {
       "default": "开始书写...",
-      "body": "输入 '/' 唤起命令菜单..."
+      "body": "输入 '/' 唤起命令菜单...",
+      "heading1": "标题 1",
+      "heading2": "标题 2",
+      "heading3": "标题 3",
+      "heading": "标题",
+      "quote": "引用",
+      "list": "列表",
+      "todo": "待办事项"
     },
     "find_replace": "查找替换",
     "find": "查找",

@@ -1019,7 +1019,14 @@
     },
     "placeholder": {
       "default": "Start writing...",
-      "body": "Type '/' to open command menu..."
+      "body": "Type '/' to open command menu...",
+      "heading1": "Heading 1",
+      "heading2": "Heading 2",
+      "heading3": "Heading 3",
+      "heading": "Heading",
+      "quote": "Empty quote",
+      "list": "List",
+      "todo": "To-do"
     },
     "find_replace": "Find & replace",
     "find": "Find",

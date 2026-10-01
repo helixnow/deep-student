@@ -2414,3 +2414,27 @@
 .crepe-editor-wrapper .ProseMirror.ds-block-selecting ::selection {
   background: transparent !important;
 }
+
+/* ===== 类型占位（Notion 式：空标题提示“标题 1”，空列表提示“列表”…） =====
+ * 文案由 CrepeEditor 写入 --ds-ph-* 变量；Crepe 自带 crepe-placeholder 负责段落/标题/引用，
+ * 列表由 plugins/typedPlaceholder 补齐。 */
+.crepe-editor-wrapper .milkdown .ProseMirror h1.crepe-placeholder::before { content: var(--ds-ph-h1) !important; }
+.crepe-editor-wrapper .milkdown .ProseMirror h2.crepe-placeholder::before { content: var(--ds-ph-h2) !important; }
+.crepe-editor-wrapper .milkdown .ProseMirror h3.crepe-placeholder::before { content: var(--ds-ph-h3) !important; }
+.crepe-editor-wrapper .milkdown .ProseMirror :is(h4, h5, h6).crepe-placeholder::before { content: var(--ds-ph-heading) !important; }
+.crepe-editor-wrapper .milkdown .ProseMirror blockquote > p.crepe-placeholder::before { content: var(--ds-ph-quote) !important; }
+
+.crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder {
+  position: relative;
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder::before {
+  position: absolute;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground) / 0.75);
+  content: var(--ds-ph-list);
+}
+
+.crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder[data-kind='todo']::before {
+  content: var(--ds-ph-todo);
+}

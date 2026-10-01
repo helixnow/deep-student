@@ -116,6 +116,20 @@ const BLOCK_MENU_ACTIONS: readonly BlockMenuAction[] = [
   ...LAYOUT_COMMANDS,
 ];
 
+/** 空块按类型提示（Notion 式）：文案经 CSS 变量传给 ::before，随语言切换 */
+const TYPED_PLACEHOLDER_VARS = () => {
+  const q = (key: string, fallback: string) => JSON.stringify(i18next.t(`notes:editor.placeholder.${key}`, fallback));
+  return {
+    '--ds-ph-h1': q('heading1', 'Heading 1'),
+    '--ds-ph-h2': q('heading2', 'Heading 2'),
+    '--ds-ph-h3': q('heading3', 'Heading 3'),
+    '--ds-ph-heading': q('heading', 'Heading'),
+    '--ds-ph-quote': q('quote', 'Empty quote'),
+    '--ds-ph-list': q('list', 'List'),
+    '--ds-ph-todo': q('todo', 'To-do'),
+  };
+};
+
 const BLOCK_MENU_ICONS: Partial<Record<BlockMenuAction, Icon>> = {
   paragraph: TextT,
   'heading-1': TextHOne,
@@ -2709,7 +2723,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
       ref={wrapperRef}
       className={`crepe-editor-wrapper ${className}`}
       data-ready={isReady}
-      style={{ position: 'relative' }}
+      style={{ position: 'relative', ...TYPED_PLACEHOLDER_VARS() } as React.CSSProperties}
       // 🔧 基于 Pointer Events 的块拖拽（替代失效的原生 Drag & Drop）
       onPointerDown={blockDragHandlers.onPointerDown}
       onPointerMove={blockDragHandlers.onPointerMove}

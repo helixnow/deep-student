@@ -24,6 +24,7 @@ import { pdfRefPlugin } from './pdfRef';
 import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
 import { blockIdentityPlugin } from './blockIdentity';
 import { blockSelectionPlugin } from './blockSelection';
+import { typedPlaceholderPlugin } from './typedPlaceholder';
 import { columnsPlugin, type ColumnsOptions } from './columns';
 import { canonicalDocumentPlugin } from '../canonicalDocument';
 import { crepeExecuteCommand, crepeCommandBindingsPlugin } from '../commandRegistry';
@@ -174,6 +175,7 @@ export const applyCrepePlugins = (
   crepe.editor.use(blockIdentityPlugin());
   // Notion 式块选择：Esc 选块、↑↓/Shift 扩选、Backspace 删除、Mod-D 复制
   crepe.editor.use(blockSelectionPlugin());
+  crepe.editor.use(typedPlaceholderPlugin());
   crepe.editor.use(canonicalDocumentPlugin).use(crepeExecuteCommand).use(crepeCommandBindingsPlugin);
 };
 
