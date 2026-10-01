@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/notes-form-controls.css';
 import ReactMarkdown from 'react-markdown';
 import {
   renderNoteTemplate, replaceWithNoteTemplate, applyPreviewedNoteTemplate, fillUnsetTemplateLearningProps,
@@ -75,11 +76,11 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
   };
   const locked = disabled || busy;
   return (
-    <section className="my-3 space-y-3 border-t border-border pt-3 text-xs" aria-label={t('personalTemplates.title')}>
-      <h3 className="font-medium">{t('personalTemplates.title')}</h3>
+    <section className="notes-learn-section" aria-label={t('personalTemplates.title')}>
+      <h3 className="notes-learn-props-title">{t('personalTemplates.title')}</h3>
       {loading ? <p role="status">{t('personalTemplates.loading')}</p> : <div className="flex flex-wrap gap-2">
         {templates.map((template) => <button type="button" key={template.id} disabled={locked}
-          className="rounded border border-border px-2 py-1" onClick={() => {
+          className="notes-btn" onClick={() => {
             setId(template.id); setTitle(template.title); setMarkdown(template.markdown); invalidatePreview();
             setExpectedRevision(template.revision ?? 0);
             setDefaultForCourse(template.defaultForCourse ?? ''); setLearningPreset(template.learningPreset ?? {});
@@ -87,31 +88,31 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
         {!templates.length && <p className="text-muted-foreground">{t('personalTemplates.empty')}</p>}
       </div>}
       <div className="flex flex-wrap gap-2">
-        <button type="button" disabled={locked} className="rounded border border-border px-2 py-1" onClick={() => {
+        <button type="button" disabled={locked} className="notes-btn" onClick={() => {
           setId(undefined); setTitle(''); setMarkdown(''); invalidatePreview();
           setExpectedRevision(undefined);
           setDefaultForCourse(''); setLearningPreset({});
         }}>{t('personalTemplates.create')}</button>
-        {documentHost && <button type="button" disabled={locked} className="rounded border border-border px-2 py-1"
+        {documentHost && <button type="button" disabled={locked} className="notes-btn"
           onClick={() => void run(() => {
             setMarkdown(documentHost.getDocument().markdown); setId(undefined); invalidatePreview();
             setExpectedRevision(undefined);
             setDefaultForCourse(''); setLearningPreset({});
           })}>{t('personalTemplates.capture_note')}</button>}
       </div>
-      <label className="block space-y-1"><span>{t('personalTemplates.name')}</span>
-        <input className="block w-full rounded border border-border bg-background p-2" maxLength={120} value={title}
+      <label className="notes-field"><span>{t('personalTemplates.name')}</span>
+        <input className="notes-input" maxLength={120} value={title}
           disabled={locked} onChange={(event) => { setTitle(event.target.value); invalidatePreview(); }} />
       </label>
-      <label className="block space-y-1"><span>{t('personalTemplates.body')}</span>
-        <textarea className="block min-h-32 w-full rounded border border-border bg-background p-2 font-mono"
+      <label className="notes-field"><span>{t('personalTemplates.body')}</span>
+        <textarea className="notes-input notes-input-mono"
           rows={6} value={markdown} disabled={locked} onChange={(event) => { setMarkdown(event.target.value); invalidatePreview(); }} />
       </label>
       <p className="text-muted-foreground">{t('personalTemplates.variables_hint', { variables: ['{{date}}', '{{time}}', '{{title}}'].join(t('personalTemplates.variable_separator')) })}</p>
       <details className="space-y-2">
         <summary>{t('personalTemplates.learning_defaults.title')}</summary>
-        <label className="block">{t('personalTemplates.learning_defaults.course')}
-          <input className="block w-full rounded border border-border bg-background p-2" maxLength={512}
+        <label className="notes-field">{t('personalTemplates.learning_defaults.course')}
+          <input className="notes-input" maxLength={512}
             disabled={locked} value={defaultForCourse} onChange={(event) => setDefaultForCourse(event.target.value)} />
         </label>
         <p className="text-muted-foreground">{t('personalTemplates.learning_defaults.hint')}</p>
@@ -123,11 +124,11 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
             return next;
           }); };
           return <label key={field} className="block">{t(`personalTemplates.learning_defaults.fields.${field}`)}
-            {field === 'mastery' ? <select className="block w-full rounded border border-border bg-background p-2"
+            {field === 'mastery' ? <select className="notes-select"
               disabled={locked} value={learningPreset[field] ?? ''} onChange={(event) => change(event.target.value)}>
               <option value="">{t('personalTemplates.learning_defaults.unset')}</option>
               {MASTERY_STATES.map((state) => <option key={state} value={state}>{t(`learning.mastery.${state}`)}</option>)}
-            </select> : <input className="block w-full rounded border border-border bg-background p-2" maxLength={512}
+            </select> : <input className="notes-input" maxLength={512}
               type={field === 'reviewDate' ? 'date' : 'text'} disabled={locked} value={learningPreset[field] ?? ''}
               onChange={(event) => change(event.target.value)} />}
           </label>;
@@ -135,21 +136,21 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
       </details>
       <div className="flex flex-wrap gap-2">
         <button type="button" disabled={locked || loading || !title.trim() || !markdown.trim()}
-          className="rounded border border-border px-2 py-1" onClick={() => void run(async () => {
+          className="notes-btn" onClick={() => void run(async () => {
             const saved = await savePersonalNoteTemplate({ id, title, markdown, defaultForCourse, learningPreset, expectedRevision });
             setId(saved.id); setExpectedRevision(saved.revision); setNotice(t('personalTemplates.saved'));
           })}>{id ? t('personalTemplates.save_changes') : t('personalTemplates.save')}</button>
-        <button type="button" disabled={locked || !markdown.trim()} className="rounded border border-border px-2 py-1"
+        <button type="button" disabled={locked || !markdown.trim()} className="notes-btn"
           onClick={() => void run(showPreview)}>{t('personalTemplates.preview')}</button>
       </div>
-      {preview && <div className="space-y-2 rounded border border-border p-3">
-        <h4 className="font-medium">{t('personalTemplates.preview_title', { title: preview.template.title })}</h4>
+      {preview && <div className="notes-learn-card">
+        <h4 className="notes-learn-props-title">{t('personalTemplates.preview_title', { title: preview.template.title })}</h4>
         {!documentHost && <p className="text-muted-foreground">{t('personalTemplates.title_variable_hint')}</p>}
         <div className="prose prose-sm max-h-64 overflow-auto break-words dark:prose-invert" aria-label={t('personalTemplates.preview_label')}>
           <ReactMarkdown>{preview.rendered}</ReactMarkdown>
         </div>
         <p className="text-muted-foreground">{t('personalTemplates.append_hint')}</p>
-        <button type="button" disabled={locked} className="rounded border border-border px-2 py-1"
+        <button type="button" disabled={locked} className="notes-btn"
           onClick={() => void run(async () => {
             if (documentHost && preview.baseline) await applyPreviewedNoteTemplate(documentHost, preview.baseline, preview.rendered, 'append');
             else await onApplyTemplate(preview.template);
@@ -157,7 +158,7 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
             setNotice(t('personalTemplates.append_requested'));
           })}>{t('personalTemplates.append')}</button>
         {documentHost && preview.baseline && <>
-          {documentHost.insertDocument && <button type="button" disabled={locked || !preview.position} className="rounded border border-border px-2 py-1"
+          {documentHost.insertDocument && <button type="button" disabled={locked || !preview.position} className="notes-btn"
             onClick={() => void run(async () => {
               await applyPreviewedNoteTemplate(documentHost, preview.baseline!, preview.rendered, 'insert', preview.position);
               setPreview(undefined); setNotice(t('personalTemplates.inserted', { defaultValue: '模板已插入所选位置' }));
@@ -167,7 +168,7 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
           </details>
           <label className="flex items-center gap-2"><input type="checkbox" checked={confirmReplace} disabled={locked}
             onChange={(event) => setConfirmReplace(event.target.checked)} />{t('personalTemplates.confirm_replace')}</label>
-          <button type="button" disabled={locked || !confirmReplace} className="rounded border border-border px-2 py-1"
+          <button type="button" disabled={locked || !confirmReplace} className="notes-btn"
             onClick={() => void run(async () => {
               await replaceWithNoteTemplate(documentHost, preview.baseline!, `${preview.rendered.trim()}\n`);
               setPreview(undefined); setConfirmReplace(false); setNotice(t('personalTemplates.replaced'));
@@ -176,7 +177,7 @@ export function PersonalNoteTemplates({ disabled, onApplyTemplate, documentHost,
         {preview.template.learningPreset && Object.keys(preview.template.learningPreset).length > 0 && <div>
           <p>{t('personalTemplates.preset_preview', { defaultValue: '属性预设（仅填入未设置字段）' })}</p>
           {Object.entries(preview.template.learningPreset).map(([field, value]) => <p key={field}>{t(`learning.fields.${field}`)}: {field === 'mastery' ? t(`learning.mastery.${value}`) : value}</p>)}
-          {learningPropsHost && preview.propsBaseline && <button type="button" disabled={locked} onClick={() => void run(async () => {
+          {learningPropsHost && preview.propsBaseline && <button type="button" className="notes-btn" disabled={locked} onClick={() => void run(async () => {
             if (learningPropsHost.getProps().noteId !== preview.propsBaseline!.noteId) throw new Error(t('personalTemplates.errors.note_changed'));
             await learningPropsHost.saveProps(fillUnsetTemplateLearningProps(preview.propsBaseline!.props, preview.template.learningPreset!), preview.propsBaseline!);
             setPreview(undefined); setNotice(t('personalTemplates.preset_applied', { defaultValue: '属性预设已保存' }));

@@ -318,3 +318,35 @@ textarea.notes-input {
 .notes-learn-preset-fill {
   justify-self: start;
 }
+
+.notes-input-mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-height: 128px;
+}
+
+.notes-learn-section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 12px 0 0;
+  padding: 12px 0 0;
+  border: 0;
+  border-top: 1px solid hsl(var(--border) / 60%);
+  font-size: 12px;
+}
+
+.notes-learn-card {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid hsl(var(--border) / 70%);
+  border-radius: 8px;
+}
+
+h3.notes-learn-props-title,
+h4.notes-learn-props-title {
+  margin: 0;
+  line-height: 1.4;
+}

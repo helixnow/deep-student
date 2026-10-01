@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/notes-form-controls.css';
 import { DsDialog, DsDialogBody, DsDialogHeader, DsDialogTitle } from '@/components/ui/DsDialog';
 import type { DstuNode } from '@/dstu';
 import { createLearningNote, finishLearningNoteCreation, LearningNoteInitializationError } from '../createLearningNote';
@@ -43,9 +44,9 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
     <DsDialogHeader><DsDialogTitle>{t('learning.create.title', { defaultValue: '新建学习笔记' })}</DsDialogTitle></DsDialogHeader>
     <DsDialogBody className="py-4">
     <fieldset disabled={busy || Boolean(pending) || Boolean(created)} className="space-y-3">
-      <label className="block">{t('learning.create.name', { defaultValue: '笔记标题' })}<input autoFocus className="block w-full border bg-background p-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-      <label className="block">{t('learning.create.course', { defaultValue: '所属课程' })}<input className="block w-full border bg-background p-2" value={effectiveCourse} onChange={(event) => { setCourse(event.target.value); setChanges((current) => ({ ...current, course: event.target.value.trim() })); }} /></label>
-      <label className="block">{t('learning.create.template', { defaultValue: '新建模板' })}<select className="block w-full border bg-background p-2" value={choice} onChange={(event) => setChoice(event.target.value)}>
+      <label className="notes-field">{t('learning.create.name', { defaultValue: '笔记标题' })}<input autoFocus className="block w-full border bg-background p-2" value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <label className="notes-field">{t('learning.create.course', { defaultValue: '所属课程' })}<input className="notes-input" value={effectiveCourse} onChange={(event) => { setCourse(event.target.value); setChanges((current) => ({ ...current, course: event.target.value.trim() })); }} /></label>
+      <label className="notes-field">{t('learning.create.template', { defaultValue: '新建模板' })}<select className="notes-select" value={choice} onChange={(event) => setChoice(event.target.value)}>
         <option value="none">{t('learning.create.blank', { defaultValue: '空白笔记' })}</option>
         <option value="course-default" disabled={!courseDefault}>{t('learning.create.default', { defaultValue: '课程默认：{{title}}', title: courseDefault?.title ?? t('learning.unset') })}</option>
         {all.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
@@ -53,12 +54,12 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
       {loading && <p role="status">{t('personalTemplates.loading')}</p>}
       {selected && <pre aria-label={t('personalTemplates.preview_label')} className="max-h-40 overflow-auto whitespace-pre-wrap">{renderNoteTemplate(selected.markdown, { title, locale: i18n.language })}</pre>}
       {(Object.keys(LEARNING_PROP_KEYS) as LearningField[]).filter((field) => field !== 'course').map((field) => <label key={field} className="block">{t(`learning.fields.${field}`)}
-        {field === 'mastery' ? <select className="block w-full border bg-background p-2" value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))}>
+        {field === 'mastery' ? <select className="notes-select" value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))}>
           <option value="">{t('learning.unset')}</option>{MASTERY_STATES.map((state) => <option key={state} value={state}>{t(`learning.mastery.${state}`)}</option>)}
-        </select> : <input className="block w-full border bg-background p-2" type={field === 'reviewDate' ? 'date' : 'text'} value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))} />}
+        </select> : <input className="notes-input" type={field === 'reviewDate' ? 'date' : 'text'} value={changes[field] ?? preset[field] ?? ''} onChange={(event) => setChanges((current) => ({ ...current, [field]: event.target.value }))} />}
       </label>)}
       <p>{t('learning.create.hint', { defaultValue: '课程默认仅在选择后应用，已填写的属性优先保留。' })}</p>
-      <div className="flex gap-3"><button type="button" disabled={!title.trim() || (choice !== 'none' && !selected)} onClick={async () => {
+      <div className="notes-learn-props-footer"><button type="button" className="notes-btn" data-variant="primary" disabled={!title.trim() || (choice !== 'none' && !selected)} onClick={async () => {
         setBusy(true); setError('');
         try {
           const node = await createLearningNote({ title, course: effectiveCourse, template: selected, folderId, changes });
@@ -66,9 +67,9 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
         } catch (cause) { if (mounted.current) { if (cause instanceof LearningNoteInitializationError) setPending(cause); setError(cause instanceof Error ? cause.message : String(cause)); } }
         finally { if (mounted.current) setBusy(false); }
       }}>{t('learning.create.submit', { defaultValue: '创建笔记' })}</button>
-        <button type="button" onClick={onClose}>{t('learning.create.cancel', { defaultValue: '取消新建' })}</button></div>
+        <button type="button" className="notes-btn" onClick={onClose}>{t('learning.create.cancel', { defaultValue: '取消新建' })}</button></div>
     </fieldset>
-    {pending && <div className="my-3 flex gap-3"><button type="button" disabled={busy} onClick={async () => {
+    {pending && <div className="notes-learn-props-footer"><button type="button" className="notes-btn" disabled={busy} onClick={async () => {
       setBusy(true); setError('');
       try { const node = await finishLearningNoteCreation(pending.node, pending.props); if (mounted.current) { setCreated(node); setPending(undefined); await onCreated(node); onClose(); } }
       catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)); }
@@ -81,7 +82,7 @@ export function CreateLearningNoteDialog({ folderId, onCreated, onClose }: {
         finally { if (mounted.current) setBusy(false); }
       }}>{t('learning.create.open_partial', { defaultValue: '打开已创建笔记' })}</button>
     </div>}
-    {created && !busy && <button type="button" onClick={async () => {
+    {created && !busy && <button type="button" className="notes-btn" onClick={async () => {
       setBusy(true); setError('');
       try { await onCreated(created); onClose(); }
       catch (cause) { if (mounted.current) setError(cause instanceof Error ? cause.message : String(cause)); }
