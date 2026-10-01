@@ -7,6 +7,7 @@
  */
 
 import React, { useCallback, useEffect, useId, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { CaretDown, Lightbulb, Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { insightConfirm, insightCorrect, insightCreateDraft, insightList, insightRunJobs } from '@/features/insights/api';
@@ -21,16 +22,20 @@ export interface InsightsSectionProps {
 export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) => {
   const listId = useId();
   const [expanded, setExpanded] = useState(true);
+  const { t } = useTranslation('notes');
   const [items, setItems] = useState<InsightCard[]>([]);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<InsightCard | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       setItems(await insightList('active'));
+      setLoadFailed(false);
     } catch {
-      // 非 Tauri 环境（demo/测试）静默降级为空列表
       setItems([]);
+      // 仅非 Tauri 环境（demo/测试）静默降级为空列表；桌面端失败要能看出来并重试
+      setLoadFailed(typeof window !== 'undefined' && Boolean((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__));
     }
   }, []);
 
@@ -81,7 +86,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
         <span className={cn('nfs-caret', !expanded && 'is-collapsed')} aria-hidden>
           <CaretDown size={12} />
         </span>
-        <span className="nfs-header-label">灵感</span>
+        <span className="nfs-header-label">{t('insights.section_title', '灵感')}</span>
         <span className="nfs-header-count" aria-hidden>{items.length}</span>
       </button>
 
@@ -89,8 +94,13 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
         <div id={listId} className="nfs-list" role="list" aria-hidden={!expanded}>
           <button type="button" className="nfs-item-main" onClick={openNew} style={{ minHeight: 28 }}>
             <span className="nfs-item-icon"><Plus size={14} /></span>
-            <span className="nfs-item-name" style={{ color: 'hsl(var(--muted-foreground))' }}>记录一条灵感…</span>
+            <span className="nfs-item-name" style={{ color: 'hsl(var(--muted-foreground))' }}>{t('insights.add_placeholder', '记录一条灵感…')}</span>
           </button>
+          {loadFailed && (
+            <button type="button" className="nfs-item-main" onClick={() => { void refresh(); }} style={{ minHeight: 28 }}>
+              <span className="nfs-item-name" style={{ color: 'hsl(var(--destructive))' }}>{t('insights.load_failed', '灵感加载失败 · 点击重试')}</span>
+            </button>
+          )}
           {items.map((card) => (
             <div key={card.id} className="nfs-item" role="listitem">
               <button
@@ -122,7 +132,7 @@ export const InsightsSection: React.FC<InsightsSectionProps> = ({ className }) =
             evidence: [],
           }}
           onSubmit={handleSubmit}
-          submitLabel={editing ? '保存修改' : '确认入库'}
+          submitLabel={editing ? t('insights.save_edit', '保存修改') : t('insights.confirm_save', '确认入库')}
         />
       )}
     </section>

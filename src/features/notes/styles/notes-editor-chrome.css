@@ -269,3 +269,23 @@
   gap: 6px 8px;
   padding-block: 6px;
 }
+
+/* AI 审阅面板的范围 / 落点下拉：与周边 ghost 按钮同尺度，不用浏览器默认外观 */
+.notes-ai-diff-select {
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 12px;
+}
+
+.notes-ai-diff-select:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.notes-ai-diff-select:disabled {
+  opacity: 0.6;
+}

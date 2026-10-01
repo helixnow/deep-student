@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import i18next from 'i18next';
 import { createOfficialDiffAdapter } from '@/components/crepe/officialDiffAdapter';
 import type { AIReviewSession } from './aiReviewModel';
 import type { OfficialReviewControls, OfficialReviewDecision } from './officialDiffContract';
@@ -42,5 +43,5 @@ export function OfficialDiffReview({ review, ...callbacks }: OfficialDiffReviewP
     // Decisions are applied by the mounted adapter after the host confirms persistence.
     // Recreate only on reopen/new session; not during an in-flight per-group commit.
   }, [review.persistenceId, review.generation, review.collapsed, review.conflict, review.resolution]);
-  return <div ref={root} className="notes-official-diff" aria-label="候选内容逐组审阅" />;
+  return <div ref={root} className="notes-official-diff" aria-label={i18next.t('notes:aiDiff.official_review_label', '候选内容逐组审阅')} />;
 }

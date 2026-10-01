@@ -140,7 +140,24 @@
       "no_diff_title": "No visible diff",
       "no_diff_description": "The AI suggestion matches the current content; accepting will make no changes."
     },
-    "review_lock": "Reviewing AI suggestion · editing paused"
+    "review_lock": "Reviewing AI suggestion · editing paused",
+    "scope": {
+      "label": "Scope",
+      "aria": "AI edit scope",
+      "selection": "Selection",
+      "block": "Current block",
+      "section": "Current section",
+      "page": "Whole page"
+    },
+    "landing": {
+      "label": "Result",
+      "aria": "Where the AI result goes",
+      "replace": "Replace",
+      "insert_below": "Insert below",
+      "save_as": "Save as new"
+    },
+    "review_hint": "Accepting a group saves it to the note immediately; other suggestions stay. Tables, toggles and callouts are reviewed per block.",
+    "official_review_label": "Review suggested changes group by group"
   },
   "appearance": {
     "label": "Page appearance",
@@ -828,7 +845,8 @@
     "hostRequired": "Full-note block operations are not available for this note yet.",
     "fullDocumentRequired": "Load the complete note before creating block links or moving blocks to another note.",
     "singleLink": "Select one top-level block to copy its link.",
-    "linkCopied": "Block link copied"
+    "linkCopied": "Block link copied",
+    "missing": "The referenced block was deleted or cannot be located."
   },
   "blockDrop": {
     "invalid": "Cannot drop here (inside its own descendant or an incompatible container)",
@@ -857,7 +875,9 @@
     "convert-cornell": "Convert to Cornell layout",
     "convert-cornell-template": "Convert Cornell template",
     "unwrap-columns": "Unwrap into regular blocks",
-    "unavailable_here": "Not available here: {{label}}"
+    "unavailable_here": "Not available here: {{label}}",
+    "enable_confirm": "After enabling columns, this note can only be edited by app versions that support the columns format. Enable it?",
+    "enable_title": "Enable columns"
   },
   "draftPersistence": {
     "save_unconfirmed": "Draft storage was not confirmed.",
@@ -2075,5 +2095,12 @@
     "undone": "AI changes undone",
     "stale": "The note changed after the AI edit, so it cannot be undone safely. Restore it from Version history instead.",
     "stale_short": "Edited after the AI change — use Version history to undo"
+  },
+  "insights": {
+    "section_title": "Insights",
+    "add_placeholder": "Capture an insight…",
+    "load_failed": "Could not load insights · Retry",
+    "save_edit": "Save changes",
+    "confirm_save": "Confirm and save"
   }
 }

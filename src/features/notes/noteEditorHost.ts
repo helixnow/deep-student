@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import i18next from 'i18next';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { EditorState } from '@milkdown/prose/state';
 import { editorViewCtx } from '@milkdown/kit/core';
@@ -110,7 +111,7 @@ function retainBlockBridge() {
       await participant.api.materializeFullDocument();
       return { focusBlock: (id: string) => participant.api.focusBlock?.(id) ?? false };
     },
-    onMissing: () => showGlobalNotification('warning', '引用的笔记块已删除或无法定位。'),
+    onMissing: () => showGlobalNotification('warning', i18next.t('notes:blockIdentity.missing', '引用的笔记块已删除或无法定位。')),
     onError: error => showGlobalNotification('error', error instanceof Error ? error.message : String(error)),
   });
   return () => { if (--bridgeUsers === 0) { stopBridge?.(); stopBridge = undefined; } };
@@ -135,7 +136,7 @@ export function bindNoteEditorHost(base: CrepeEditorApi, participant: NoteHostPa
       isDocumentWindowed: () => participant.api.isDocumentWindowed?.() === true,
       flushPendingSave: () => participant.api.flushPendingSave!(), transferService: service,
       requestLayoutCapability: async () => {
-        if (!await confirm('启用分栏后，此笔记需要支持分栏格式的版本才能编辑。是否启用？', { title: '启用分栏', kind: 'info' })) return null;
+        if (!await confirm(i18next.t('notes:layout.enable_confirm', '启用分栏后，此笔记需要支持分栏格式的版本才能编辑。是否启用？'), { title: i18next.t('notes:layout.enable_title', '启用分栏'), kind: 'info' })) return null;
         return noteHostCoordinator.withLockedNotes([participant.noteId], async () => {
           await noteHostCoordinator.flushPendingSaves([participant.noteId]);
           const current = await readNote(participant.noteId);

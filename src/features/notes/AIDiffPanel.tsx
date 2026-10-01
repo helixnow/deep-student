@@ -269,23 +269,26 @@ export function AIDiffPanel({
           </div>
 
           {review?.error && <p role="alert" className="px-3 py-2 text-sm text-destructive">{review.error}</p>}
-          {review && onScopeChange && onLandingChange && <div className="flex gap-3 px-3 py-2 text-xs">
-            <label>范围 <select aria-label="AI 编辑范围" value={review.request.scope?.kind ?? 'page'}
-              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
-              onChange={event => onScopeChange(event.target.value as AIReviewScope['kind'])}>
-              <option value="selection" disabled={!canResolveScope}>选区</option>
-              <option value="block" disabled={!canResolveScope}>当前块</option>
-              <option value="section" disabled={!canResolveScope}>当前章节</option>
-              <option value="page">整页</option>
-            </select></label>
-            <label>落点 <select aria-label="AI 结果落点" value={review.request.landing ?? 'replace'}
-              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
-              onChange={event => onLandingChange(event.target.value as AIReviewLanding)}>
-              <option value="replace">替换</option><option value="insert-below">插入下方</option>
-              <option value="save-as" disabled={!canSaveAs}>另存结果</option>
-            </select></label>
+          {review && onScopeChange && onLandingChange && <div className="flex flex-wrap items-center gap-3 px-3 py-2 text-xs text-muted-foreground">
+            <label className="inline-flex items-center gap-1.5">{t('aiDiff.scope.label', '范围')}
+              <select className="notes-ai-diff-select" aria-label={t('aiDiff.scope.aria', 'AI 编辑范围')} value={review.request.scope?.kind ?? 'page'}
+                disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+                onChange={event => onScopeChange(event.target.value as AIReviewScope['kind'])}>
+                <option value="selection" disabled={!canResolveScope}>{t('aiDiff.scope.selection', '选区')}</option>
+                <option value="block" disabled={!canResolveScope}>{t('aiDiff.scope.block', '当前块')}</option>
+                <option value="section" disabled={!canResolveScope}>{t('aiDiff.scope.section', '当前章节')}</option>
+                <option value="page">{t('aiDiff.scope.page', '整页')}</option>
+              </select></label>
+            <label className="inline-flex items-center gap-1.5">{t('aiDiff.landing.label', '落点')}
+              <select className="notes-ai-diff-select" aria-label={t('aiDiff.landing.aria', 'AI 结果落点')} value={review.request.landing ?? 'replace'}
+                disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+                onChange={event => onLandingChange(event.target.value as AIReviewLanding)}>
+                <option value="replace">{t('aiDiff.landing.replace', '替换')}</option>
+                <option value="insert-below">{t('aiDiff.landing.insert_below', '插入下方')}</option>
+                <option value="save-as" disabled={!canSaveAs}>{t('aiDiff.landing.save_as', '另存结果')}</option>
+              </select></label>
           </div>}
-          {review && <p className="px-3 py-1 text-xs text-muted-foreground">接受此组会立即保存到笔记；其余建议保留。表格、折叠块和提示块按块审阅。</p>}
+          {review && <p className="px-3 py-1 text-xs text-muted-foreground">{t('aiDiff.review_hint', '接受此组会立即保存到笔记；其余建议保留。表格、折叠块和提示块按块审阅。')}</p>}
 
           <div className="flex-shrink-0 border-b border-border/40 px-3 py-2">
             <GenerativeUIPanel intent={summaryIntent} showChrome={false} />

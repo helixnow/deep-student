@@ -140,7 +140,24 @@
       "no_diff_title": "无可见差异",
       "no_diff_description": "AI 建议与当前正文一致，接受后将不会产生变更。"
     },
-    "review_lock": "正在审阅 AI 建议 · 正文暂时锁定"
+    "review_lock": "正在审阅 AI 建议 · 正文暂时锁定",
+    "scope": {
+      "label": "范围",
+      "aria": "AI 编辑范围",
+      "selection": "选区",
+      "block": "当前块",
+      "section": "当前章节",
+      "page": "整页"
+    },
+    "landing": {
+      "label": "落点",
+      "aria": "AI 结果落点",
+      "replace": "替换",
+      "insert_below": "插入下方",
+      "save_as": "另存结果"
+    },
+    "review_hint": "接受此组会立即保存到笔记；其余建议保留。表格、折叠块和提示块按块审阅。",
+    "official_review_label": "候选内容逐组审阅"
   },
   "appearance": {
     "label": "页面外观",
@@ -801,7 +818,8 @@
     "hostRequired": "当前笔记尚未接入完整文档块操作。",
     "fullDocumentRequired": "请先加载完整笔记，再创建块链接或跨页移动。",
     "singleLink": "复制块链接时请选择一个顶层块。",
-    "linkCopied": "块链接已复制"
+    "linkCopied": "块链接已复制",
+    "missing": "引用的笔记块已删除或无法定位。"
   },
   "blockDrop": {
     "invalid": "无法放入此位置（自身后代或不兼容的容器）",
@@ -830,7 +848,9 @@
     "convert-cornell": "转为康奈尔布局",
     "convert-cornell-template": "转换康奈尔模板",
     "unwrap-columns": "展开为普通块",
-    "unavailable_here": "当前位置不可用：{{label}}"
+    "unavailable_here": "当前位置不可用：{{label}}",
+    "enable_confirm": "启用分栏后，此笔记需要支持分栏格式的版本才能编辑。是否启用？",
+    "enable_title": "启用分栏"
   },
   "draftPersistence": {
     "save_unconfirmed": "草稿持久化未确认。",
@@ -2074,5 +2094,12 @@
     "undone": "已撤销 AI 的修改",
     "stale": "笔记在 AI 修改后又有改动，无法安全撤销；可在「历史版本」中恢复。",
     "stale_short": "AI 修改后笔记又有改动，撤销请用历史版本"
+  },
+  "insights": {
+    "section_title": "灵感",
+    "add_placeholder": "记录一条灵感…",
+    "load_failed": "灵感加载失败 · 点击重试",
+    "save_edit": "保存修改",
+    "confirm_save": "确认入库"
   }
 }
