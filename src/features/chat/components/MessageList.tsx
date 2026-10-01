@@ -22,8 +22,8 @@ import { newMessageVariants } from '@/styles/motion-variants';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
-import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
-import type { Block, ChatStore } from '../core/types';
+import { useMessageOrder, useSessionStatus, useIsDataLoaded, createBlocksContentLengthSelector } from '../hooks/useChatStore';
+import type { ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -37,7 +37,8 @@ import { ArrowDown } from '@phosphor-icons/react';
 import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
-import { findMessageSearchMatches } from './messageSearch';
+import { useMessageSearch } from '../hooks/useMessageSearch';
+import { useStreamPreferences } from './renderers/StreamPreferencesContext';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
 
@@ -53,13 +54,42 @@ const VIRTUALIZER_INIT_DELAY = 0;
 
 /** 默认估算消息高度（设置为合理值，测量会覆盖）*/
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
-/** 超过该数量后启用虚拟滚动，避免长会话全量渲染 */
-const VIRTUALIZATION_THRESHOLD = 80;
+/**
+ * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16）：
+ * 配合已完成块 content-visibility 与块数/字节数准入，长会话不再依赖
+ * 直渲染路径；直渲染只保留给真正的小会话。
+ */
+const VIRTUALIZATION_THRESHOLD = 16;
+/**
+ * 直渲染准入同时受总块数约束（🚀 长会话性能）：agent 任务会话消息数不多
+ * 但每条消息带大量工具块，仅按消息数阈值会整会话直渲染，每次流式冲刷的
+ * 强制 layout/选择器成本都随总块数线性上升。Map.size 为 O(1)。
+ */
+const DIRECT_RENDER_MAX_BLOCKS = 600;
+/**
+ * 直渲染准入的内容总量上限（正文字节，含 thinking）：约束"消息不多但
+ * 单条巨长"的会话形状——这类会话按消息数/块数都会漏进直渲染，而每冲刷
+ * 的排版成本实际由总正文体量决定。超限自动落入虚拟化路径。
+ */
+const DIRECT_RENDER_MAX_CONTENT_LENGTH = 200_000;
+
+/**
+ * 直渲染准入判定（纯函数，便于单测）：三项全部满足才整会话直渲染。
+ */
+export function shouldDirectRender(
+  messageCount: number,
+  blocksCount: number,
+  contentLength: number,
+): boolean {
+  return (
+    messageCount <= VIRTUALIZATION_THRESHOLD &&
+    blocksCount <= DIRECT_RENDER_MAX_BLOCKS &&
+    contentLength <= DIRECT_RENDER_MAX_CONTENT_LENGTH
+  );
+}
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
-
-const EMPTY_BLOCK_MAP = new Map<string, Block>();
 
 /**
  * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
@@ -257,24 +287,12 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }, [viewportElement, hasMoreHistory, isLoadingEarlier, loadEarlierError, messageOrder.length, store]);
 
 
-  // 搜索打开时才订阅 blocks：流式输出会频繁替换 blocks Map，避免关闭搜索时
-  // 让整个消息列表跟着每个 token 重渲染。
+  // 搜索自身订阅 store，将变化块送入专用 Worker；消息列表只消费命中结果。
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeSearchIndex, setActiveSearchIndex] = useState(0);
-  const searchBlocks = useStore(
-    store,
-    useCallback((state: ChatStore) => isSearchOpen ? state.blocks : EMPTY_BLOCK_MAP, [isSearchOpen]),
-  );
-  const searchMatches = useMemo(
-    () => findMessageSearchMatches(
-      messageOrder,
-      store.getState().messageMap,
-      searchBlocks,
-      searchQuery,
-    ),
-    [messageOrder, searchBlocks, searchQuery, store],
-  );
+  const { suspended = false } = useStreamPreferences();
+  const searchMatches = useMessageSearch(store, isSearchOpen, searchQuery, suspended);
   const resolvedActiveSearchIndex = searchMatches.length > 0
     ? Math.min(activeSearchIndex, searchMatches.length - 1)
     : 0;
@@ -492,8 +510,36 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 是否正在流式生成
   const isStreaming = sessionStatus === 'streaming';
-  // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度
-  const useDirectRender = messageOrder.length <= VIRTUALIZATION_THRESHOLD;
+  // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度。
+  // 🚀 直渲染准入三条件：消息数 / 总块数 / 总正文字节（见 shouldDirectRender），
+  // "一次对话消息就很长"的会话按内容总量落入虚拟化路径
+  const blocksCount = useStore(store, (s) => s.blocks?.size ?? 0);
+  const contentLengthSelector = useMemo(
+    () => createBlocksContentLengthSelector(DIRECT_RENDER_MAX_CONTENT_LENGTH),
+    [store],
+  );
+  const contentLength = useStore(store, contentLengthSelector);
+  const useDirectRender = shouldDirectRender(
+    messageOrder.length,
+    blocksCount,
+    contentLength,
+  );
+  // 直渲与虚拟化使用不同的 DOM/定位模型。读者已滚离底部时，跨过任一
+  // 准入阈值会整棵替换消息容器；提交前复用历史插入的锚点快照，提交后的
+  // 统一 layout effect 再恢复同一消息的像素偏移。吸底状态不需要补偿，仍由
+  // followBottom 维持原语义。
+  const previousDirectRenderRef = useRef(useDirectRender);
+  if (previousDirectRenderRef.current !== useDirectRender) {
+    if (
+      !storeChanged
+      && !atBottomRef.current
+      && viewportElement
+      && !pendingScrollCompensationRef.current
+    ) {
+      pendingScrollCompensationRef.current = captureScrollCompensation(viewportElement);
+    }
+    previousDirectRenderRef.current = useDirectRender;
+  }
 
   const virtualRowCount = messageOrder.length;
 
@@ -598,11 +644,23 @@ const MessageListInner: React.FC<MessageListProps> = ({
     observedTopRef.current = el.scrollTop;
   }, [viewportElement]);
 
-  // 跟随写入：仅在拥有滚动所有权（atBottom）时生效
+  // 跟随写入：仅在拥有滚动所有权（atBottom）时生效。
+  // 🚀 吸底跟随去重：同一份内容增长会多次触发本函数（同一提交里
+  // useLayoutEffect 与 ResizeObserver 先后调用、滚动事件的账本补偿紧跟其后）。
+  // scrollHeight 与 scrollTop 均未变化说明视口已钉底，重写只会白写并再触发
+  // 一轮滚动事件；内容真实增长（scrollHeight 变化）或浏览器 clamp（scrollTop
+  // 偏离账本）仍会正常跟随。
+  const lastFollowStateRef = useRef<{ top: number; height: number } | null>(null);
   const followBottom = useCallback(() => {
     const el = viewportElement;
     if (!el || !atBottomRef.current) return;
-    writeScroll(el.scrollHeight);
+    const height = el.scrollHeight;
+    const last = lastFollowStateRef.current;
+    if (last && last.height === height && Math.abs(el.scrollTop - last.top) <= 0.5) {
+      return;
+    }
+    writeScroll(height);
+    lastFollowStateRef.current = { top: observedTopRef.current, height };
   }, [viewportElement, writeScroll]);
 
   // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
@@ -659,7 +717,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       // P1-8: 用户滚离底部期间尾部有新消息追加 → 回到底部按钮显示未读圆点
       setHasUnseenNewMessages(true);
     }
-  }, [messageOrder, tailWindowExpanded, isStreaming, store, viewportElement, followBottom, writeScroll]);
+  }, [messageOrder, tailWindowExpanded, useDirectRender, isStreaming, store, viewportElement, followBottom, writeScroll]);
 
   // 🚀 会话打开即底部锚定：在绘制前执行，避免"先见顶部再跳底部"的闪动
   useLayoutEffect(() => {
@@ -836,8 +894,27 @@ const MessageListInner: React.FC<MessageListProps> = ({
       messageId: string,
       searchOccurrenceIndex?: number,
     ): Promise<ChatMessageScrollResult> => {
-      const order = store.getState().messageOrder;
-      const index = order.indexOf(messageId);
+      let state = store.getState();
+      const sessionId = state.sessionId;
+      let order = state.messageOrder;
+      let index = order.indexOf(messageId);
+      // 尾窗未包含目标时，顺序向前补页。每次只在 messageOrder 或 hasMoreHistory
+      // 确有进展时继续；这样既能穿透任意深度的窗口历史，也不会在后端返回空页
+      // 或重复页时死循环。
+      while (index < 0 && state.hasMoreHistory) {
+        const previousOrder = order;
+        const previousHasMoreHistory = state.hasMoreHistory;
+        await state.loadEarlierMessages();
+        state = store.getState();
+        if (state.sessionId !== sessionId) return { status: 'message_not_found' };
+        order = state.messageOrder;
+        index = order.indexOf(messageId);
+        if (index >= 0) break;
+        const orderProgressed = order.length !== previousOrder.length
+          || order.some((id, orderIndex) => id !== previousOrder[orderIndex]);
+        const paginationProgressed = state.hasMoreHistory !== previousHasMoreHistory;
+        if (!orderProgressed && !paginationProgressed) break;
+      }
       if (index < 0) return { status: 'message_not_found' };
       const viewport = agentScrollStateRef.current.viewportElement;
       if (!viewport) return { status: 'view_not_ready' };
@@ -1034,6 +1111,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       activeMatchIndex={resolvedActiveSearchIndex}
       activeMessageId={activeSearchMessageId}
       activeOccurrenceIndex={activeSearchMatch?.occurrenceIndex ?? 0}
+      hasUnloadedHistory={hasMoreHistory}
       onQueryChange={setSearchQuery}
       onPrevious={() => moveToSearchMatch(-1)}
       onNext={() => moveToSearchMatch(1)}
@@ -1125,7 +1203,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 <MessageItem
                   messageId={messageId}
                   store={store}
-                  searchQuery={searchQuery}
+                  searchQuery={isSearchMatch ? searchQuery : ''}
+                  isActiveSearchMatch={isActiveSearchMatch}
                   isFirst={messageIndex === 0}
                   isLatest={messageIndex === messageOrder.length - 1}
                 />
@@ -1226,7 +1305,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
-                      searchQuery={searchQuery}
+                      searchQuery={isSearchMatch ? searchQuery : ''}
+                      isActiveSearchMatch={isActiveSearchMatch}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />
@@ -1239,7 +1319,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     <MessageItem
                       messageId={messageId}
                       store={store}
-                      searchQuery={searchQuery}
+                      searchQuery={isSearchMatch ? searchQuery : ''}
+                      isActiveSearchMatch={isActiveSearchMatch}
                       isFirst={virtualRow.index === 0}
                       isLatest={virtualRow.index === messageOrder.length - 1}
                     />

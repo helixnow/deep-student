@@ -19,6 +19,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -58,6 +59,7 @@ import {
 import type { BrowserDownloadObservation } from '@/features/browser/types';
 import type {
   AgentTaskStoreApi,
+  AgentTaskStoreState,
   ChangeItem,
   SourceItem,
 } from './agent-task/types';
@@ -69,10 +71,8 @@ import {
   extractSources,
   extractSteps,
   extractTaskCompletion,
-  isRuntimeTool,
-  isTodoTool,
-  normalizeToolName,
 } from './agent-task/extractors';
+import { getBlocksDigest } from './agent-task/blocksDigest';
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
@@ -150,6 +150,12 @@ const SectionDivider: React.FC = () => (
 
 const EMPTY_BLOCKS: Block[] = [];
 
+// Plain text/thinking chunks contribute no task details. Keep every other block
+// and any source/tool payload, including sources attached to a content block.
+const contributesTaskDetails = (block: Block): boolean =>
+  (block.type !== 'content' && block.type !== 'thinking') ||
+  Boolean(block.toolName || block.toolOutput || block.citations?.length);
+
 interface Props {
   store: AgentTaskStoreApi;
   /** 完整 ChatStore（产物分区读写面：registry 水合 + AnkiCardsBlock）；调用方传真实 store */
@@ -160,13 +166,23 @@ interface Props {
 export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, className }) => {
   const { t } = useTranslation('chatV2');
   const [expanded, setExpanded] = useState(false);
+  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   // 📱 小屏：面板高度受限 + 不自动展开（避免把输入栏挤出视口）
   const { isSmallScreen } = useBreakpoint();
   const ref = useRef<HTMLDivElement>(null);
 
-  const blocksMap = useStore(store, (s) => s.blocks);
+  // Shared digest folds todo/runtime changes across panel and artifact consumers.
+  // Expanded details still ignore plain text chunks; only the open artifact stays live.
+  const expandedBlocks = useStore(store, useShallow((state: AgentTaskStoreState) =>
+    expanded ? Array.from(state.blocks.values()).filter(contributesTaskDetails) : EMPTY_BLOCKS,
+  ));
+  const openArtifactBlock = useStore(store, (state) =>
+    expanded && openArtifactId ? state.blocks.get(openArtifactId) : undefined,
+  );
   const sessionId = useStore(store, (s) => s.sessionId);
   const streaming = useStore(store, (s) => (s.activeBlockIds?.size ?? 0) > 0);
+  const hasRuntimeActivity = useStore(store, (s) => getBlocksDigest(s.blocks).runtimeActivity);
+  const todoBlocks = useStore(store, (s) => getBlocksDigest(s.blocks).todoBlocks);
   const [workspacePage, setWorkspacePage] = useState<RuntimeDirectoryPage | null>(null);
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [browserDownloads, setBrowserDownloads] = useState<BrowserDownloadObservation[]>([]);
@@ -196,37 +212,12 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     }
   }, [sessionId]);
 
-  const { steps, title, isAllDone, message } = useMemo(() => {
-    const out: { toolOutput?: unknown; toolName?: string }[] = [];
-    blocksMap?.forEach((b) => { if (isTodoTool(b)) out.push(b); });
-    return extractSteps(out);
-  }, [blocksMap]);
-
-  // 廉价存在性检查：即使没有 todo 计划，只要用了本地 runtime 工具面板也要出现
-  //（只比较 toolName 字符串，流式期间每帧代价可忽略）
-  const hasRuntimeActivity = useMemo(() => {
-    if (!blocksMap) return false;
-    let found = false;
-    blocksMap.forEach((b) => {
-      if (found) return;
-      if (typeof b?.toolName === 'string') {
-        const short = normalizeToolName(b.toolName);
-        if (isRuntimeTool(b.toolName) || short === 'browser_downloads' || short === 'browser_file_upload') {
-          found = true;
-        }
-      }
-    });
-    return found;
-  }, [blocksMap]);
-
-  // 展开态才做的全量提取：折叠态不展示这些区，
-  // 流式期间 blocksMap 每帧变化，无谓的全量重算会被跳过
-  const expandedBlocks = useMemo(() => {
-    if (!expanded || !blocksMap) return EMPTY_BLOCKS;
-    const all: Block[] = [];
-    blocksMap.forEach((b) => all.push(b));
-    return all;
-  }, [blocksMap, expanded]);
+  // todoBlocks 引用由 digest 折叠：todo 块未变时保持同一引用，
+  // extractSteps 只在 todo 计划真正更新时重跑
+  const { steps, title, isAllDone, message } = useMemo(
+    () => extractSteps(todoBlocks),
+    [todoBlocks],
+  );
 
   // ── 产物架（会话级 registry：generative-ui / anki-cards / note / file）──
   // 折叠态也参与：有产物但无计划/运行时，面板同样出现（pill 显示「产物 N」）
@@ -237,7 +228,6 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     return getSessionArtifacts(sessionId);
   }, [sessionId, registryVersion]);
   // 内联详情只对「产物即视图」的两类展开；note/file 走右侧附件预览（完整编辑器）
-  const [openArtifactId, setOpenArtifactId] = useState<string | null>(null);
   // 工作区文件：与本次会话产物的关联弱（不一定在会话中变动），默认折叠且沉到面板末尾
   const [workspaceExpanded, setWorkspaceExpanded] = useState(false);
 
@@ -287,7 +277,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
 
   /** 手风琴详情（仅 generative-ui / anki-cards 调用） */
   const renderArtifactDetail = useCallback((entry: ArtifactEntry) => {
-    const block = blocksMap?.get(entry.artifactId);
+    const block = openArtifactId === entry.artifactId ? openArtifactBlock : undefined;
     if (!block) {
       return (
         <div className="px-1 py-2 text-2xs text-[color:var(--text-muted)]">
@@ -327,7 +317,7 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
       );
     }
     return <AnkiCardsBlock block={block} store={chatStore} />;
-  }, [blocksMap, chatStore, t]);
+  }, [openArtifactId, openArtifactBlock, chatStore, t]);
 
   /** 在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）。 */
   const revealRuntimeFile = useCallback(async (item: ChangeItem) => {

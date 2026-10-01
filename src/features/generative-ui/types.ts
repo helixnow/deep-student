@@ -27,6 +27,9 @@ export interface GenerativeComponentConfig<TProps extends GenerativeBlockProps =
   allowPartialRender?: boolean;
 }
 
+/** Validation/catalog metadata can load before the corresponding React UI. */
+export type GenerativeComponentSchemaConfig = Omit<GenerativeComponentConfig, 'component'>;
+
 /** Intent 文档版本：v1 基线，v1.1 增加 layout / span */
 export type GenerativeUIIntentVersion = '1' | '1.1';
 

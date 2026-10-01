@@ -1,0 +1,1046 @@
+{
+  "schemaVersion": 1,
+  "reviewDate": "2026-09-27",
+  "timezone": "Asia/Shanghai",
+  "sourceCommit": "3de1a6cda",
+  "branch": "main",
+  "environment": {
+    "os": "macOS 26.5.2",
+    "hardware": "M5 Pro / 48 GiB",
+    "nativeVersion": "0.9.68 (Build 15149, 3de1a6cd)",
+    "launch": "npm run tauri dev -- --config /tmp/deep-student-perf-verify-20260927/tauri-audit.json --no-watch",
+    "isolatedIdentifier": "com.deepstudent.perfaudit20260927",
+    "dataDir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+    "sourceEdits": false,
+    "externalModelRequests": 0,
+    "windowsDeviceRun": false,
+    "androidDeviceRun": false,
+    "timingCaveats": [
+      "Development build, one controlled sample; not release throughput benchmark.",
+      "An unrelated Rust build was active on the host; absolute CPU timings are not isolated device benchmarks.",
+      "WKWebView performance.now samples have approximately 1 ms resolution in this run."
+    ]
+  },
+  "cancelRestart": {
+    "observedAt": "2026-09-27T11:24:50.199Z",
+    "sourceCommit": "3de1a6cda",
+    "fileId": "file_x5-XkXkCt0",
+    "originalCancellationEvidence": "docs/dev/perf-audit-2026-09/OCR-VERIFICATION-2026-09-27.json:C",
+    "before": {
+      "dir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+      "before": {
+        "fileId": "file_x5-XkXkCt0",
+        "stage": "ocr_processing",
+        "progress": {
+          "stage": "ocr_processing",
+          "currentPage": 0,
+          "totalPages": 4,
+          "percent": 20,
+          "readyModes": [
+            "image"
+          ],
+          "mediaType": "pdf"
+        },
+        "startedAt": 1790495437356
+      },
+      "settings": {
+        "ocr": true,
+        "index": false
+      }
+    },
+    "native": {
+      "version": "0.9.68 (Build 15149, 3de1a6cd)",
+      "dir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+      "status": {
+        "fileId": "file_x5-XkXkCt0",
+        "stage": "completed",
+        "progress": {
+          "stage": "completed",
+          "totalPages": 4,
+          "percent": 100,
+          "readyModes": [
+            "image",
+            "ocr"
+          ],
+          "mediaType": "pdf"
+        },
+        "startedAt": 1790495437356,
+        "completedAt": 1790508229363
+      }
+    },
+    "mock": {
+      "startedAt": "2026-09-27T11:13:42.194Z",
+      "hold": true,
+      "requests": 4,
+      "completed": 0,
+      "disconnected": 4,
+      "active": 0,
+      "peak": 4,
+      "records": [
+        {
+          "id": 1,
+          "receivedAt": "2026-09-27T11:18:48.962Z",
+          "model": "deepseek-ai/DeepSeek-OCR",
+          "stream": false,
+          "bytes": 262055,
+          "disconnectedAt": "2026-09-27T11:23:48.928Z"
+        },
+        {
+          "id": 2,
+          "receivedAt": "2026-09-27T11:18:48.971Z",
+          "model": "deepseek-ai/DeepSeek-OCR",
+          "stream": false,
+          "bytes": 262115,
+          "disconnectedAt": "2026-09-27T11:23:48.938Z"
+        },
+        {
+          "id": 3,
+          "receivedAt": "2026-09-27T11:18:48.971Z",
+          "model": "deepseek-ai/DeepSeek-OCR",
+          "stream": false,
+          "bytes": 261955,
+          "disconnectedAt": "2026-09-27T11:23:48.963Z"
+        },
+        {
+          "id": 4,
+          "receivedAt": "2026-09-27T11:18:48.971Z",
+          "model": "deepseek-ai/DeepSeek-OCR",
+          "stream": false,
+          "bytes": 261579,
+          "disconnectedAt": "2026-09-27T11:23:48.974Z"
+        }
+      ]
+    },
+    "restartLog": [
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Found 1 stuck tasks at startup, resetting to pending",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Reset stuck file file_x5-XkXkCt0 to pending",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Auto-resuming 1 recovered tasks",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Detected media type: Pdf for file: file_x5-XkXkCt0",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline started for file: file_x5-XkXkCt0 (type: Pdf, from stage: OcrProcessing)",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Auto-resumed pipeline for recovered file: file_x5-XkXkCt0",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Pages already compressed for file: file_x5-XkXkCt0, ready_modes: [\"image\"]",
+      "[2026-09-27][19:18:48][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Starting OCR processing for file: file_x5-XkXkCt0",
+      "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] OCR processing completed for file file_x5-XkXkCt0: success=4, failed=0",
+      "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Updated OCR result for file: file_x5-XkXkCt0 (ocr_usable=true)",
+      "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] OCR processing completed for file: file_x5-XkXkCt0",
+      "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Automatic vector indexing disabled for file: file_x5-XkXkCt0",
+      "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline completed for file: file_x5-XkXkCt0 (type: Pdf)",
+      "[2026-09-27][19:24:50][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] vfs_get_pdf_processing_status: file_id=file_x5-XkXkCt0"
+    ],
+    "unexpectedRequestsConfirmed": true,
+    "harnessLimitation": "The mock was held through the 300-second client timeout before final capture. Four unexpected restarted requests are proven; successful OCR completion is not claimed. The initial drain assertion expected four active requests and failed after these timeouts; no rerun was performed.",
+    "settingsRestored": true,
+    "evidenceLevel": "real macOS native application + loopback HTTP requests",
+    "resolvedOutcome": "The four remote requests timed out; local system OCR actually completed all four pages despite its disabled model setting. This does not validate successful remote OCR completion.",
+    "timeoutReviewKey": "systemOcrFallback"
+  },
+  "systemOcrFallback": {
+    "reviewedAt": "2026-09-27T11:28:38.914931+00:00",
+    "reviewType": "read-only postmortem; no requests rerun or application/configuration/database mutations",
+    "sourceResult": "/tmp/deep-student-perf-round3-20260927/runtime/cancel-restart-result.json",
+    "fileId": "file_x5-XkXkCt0",
+    "sourceCommit": "3de1a6cda",
+    "nativeVersion": "0.9.68 (Build 15149, 3de1a6cd)",
+    "isolatedDataDir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+    "mock": {
+      "requests": 4,
+      "completed": 0,
+      "disconnected": 4,
+      "active": 0,
+      "peak": 4
+    },
+    "storedFile": {
+      "name": "ocr-3ccfc9565636-C.pdf",
+      "status": "completed",
+      "progress": {
+        "stage": "completed",
+        "totalPages": 4,
+        "percent": 100.0,
+        "readyModes": [
+          "image",
+          "ocr"
+        ],
+        "mediaType": "pdf"
+      },
+      "ocrTotalPages": 4,
+      "ocrCompletedAt": "2026-09-27T11:23:49.361855+00:00",
+      "pages": [
+        {
+          "pageIndex": 0,
+          "blockCount": 1,
+          "utf8Bytes": 1331,
+          "unicodeCodepoints": 1271,
+          "nonEmpty": true,
+          "bboxes": [
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 1.0,
+              "height": 1.0
+            }
+          ]
+        },
+        {
+          "pageIndex": 1,
+          "blockCount": 1,
+          "utf8Bytes": 1318,
+          "unicodeCodepoints": 1272,
+          "nonEmpty": true,
+          "bboxes": [
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 1.0,
+              "height": 1.0
+            }
+          ]
+        },
+        {
+          "pageIndex": 2,
+          "blockCount": 1,
+          "utf8Bytes": 1328,
+          "unicodeCodepoints": 1272,
+          "nonEmpty": true,
+          "bboxes": [
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 1.0,
+              "height": 1.0
+            }
+          ]
+        },
+        {
+          "pageIndex": 3,
+          "blockCount": 1,
+          "utf8Bytes": 1334,
+          "unicodeCodepoints": 1282,
+          "nonEmpty": true,
+          "bboxes": [
+            {
+              "x": 0.0,
+              "y": 0.0,
+              "width": 1.0,
+              "height": 1.0
+            }
+          ]
+        }
+      ]
+    },
+    "modelSetting": {
+      "key": "ocr.available_models",
+      "updatedAt": "2026-09-27T07:22:57.822861+00:00",
+      "models": [
+        {
+          "configId": "perf-local-ocr-20260927",
+          "model": "deepseek-ai/DeepSeek-OCR",
+          "engineType": "deepseek_ocr",
+          "name": "Local OCR audit fixture",
+          "isFree": true,
+          "enabled": true,
+          "priority": 0
+        },
+        {
+          "configId": "__system_ocr__",
+          "model": "system",
+          "engineType": "system_ocr",
+          "name": "系统 OCR (macOS Vision)",
+          "isFree": true,
+          "enabled": false,
+          "priority": 1
+        }
+      ]
+    },
+    "logs": [
+      {
+        "text": "[2026-09-27][19:23:48][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 0）"
+      },
+      {
+        "text": "[2026-09-27][19:23:48][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 1）"
+      },
+      {
+        "text": "[2026-09-27][19:23:48][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 2）"
+      },
+      {
+        "text": "[2026-09-27][19:23:48][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 3）"
+      },
+      {
+        "text": "[2026-09-27][19:23:49][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 2, 1328 chars）"
+      },
+      {
+        "text": "[2026-09-27][19:23:49][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 0, 1331 chars）"
+      },
+      {
+        "text": "[2026-09-27][19:23:49][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 1, 1318 chars）"
+      },
+      {
+        "text": "[2026-09-27][19:23:49][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 3, 1334 chars）"
+      },
+      {
+        "text": "[2026-09-27][19:23:49][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] OCR processing completed for file file_x5-XkXkCt0: success=4, failed=0"
+      }
+    ],
+    "conclusion": {
+      "httpTimeoutMisclassifiedAsSuccess": false,
+      "actualSuccessfulEngine": "macOS Vision via unconditional system_ocr_full_page fallback",
+      "systemOcrWasExplicitlyDisabled": true,
+      "defect": "PDF/page fallback checks platform support only and bypasses explicit system_ocr enabled=false",
+      "sourceReferences": [
+        {
+          "path": "src-tauri/src/llm_manager/exam_engine.rs",
+          "line": 865,
+          "description": "unconditional native fallback after remote errors"
+        },
+        {
+          "path": "src-tauri/src/llm_manager/exam_engine.rs",
+          "line": 871,
+          "description": "requires non-empty actual native OCR text before success"
+        },
+        {
+          "path": "src-tauri/src/llm_manager/mod.rs",
+          "line": 2676,
+          "description": "normal candidate construction filters enabled models"
+        },
+        {
+          "path": "src-tauri/src/llm_manager/mod.rs",
+          "line": 6562,
+          "description": "remote-only candidate API removes SystemOcr"
+        }
+      ],
+      "minimalFix": "Gate page fallback on the enabled native OCR candidate using existing ordered-model configuration; preserve nonempty-text success semantics and existing shared concurrency slots. Verify disabled and enabled native fallback cases."
+    },
+    "limitations": [
+      "Model config was read after settings restoration, but its persisted updated_at (07:22:57 UTC) predates restart and timeout (11:18-11:23 UTC).",
+      "Log chars values are Rust string byte lengths; stored utf8Bytes match them.",
+      "This review does not evaluate OCR accuracy.",
+      "Cancellation/restart resurrection is a separate proven defect and was not rerun."
+    ]
+  },
+  "mixedUpload": {
+    "evidenceLevel": "real macOS native application + readonly SQLite + page-image IPC",
+    "startedAt": "2026-09-27T11:27:48.414Z",
+    "finishedAt": "2026-09-27T11:28:01.516Z",
+    "preflight": {
+      "version": "0.9.68 (Build 15149, 3de1a6cd)",
+      "dir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+      "ocr": "false",
+      "index": "false"
+    },
+    "inputs": [
+      {
+        "label": "attachment-A",
+        "command": "vfs_upload_attachment",
+        "name": "ocr-a180ae02531d-A.pdf",
+        "bytes": 215991
+      },
+      {
+        "label": "attachment-B",
+        "command": "vfs_upload_attachment",
+        "name": "ocr-a180ae02531d-B1.pdf",
+        "bytes": 220834
+      },
+      {
+        "label": "file-C",
+        "command": "vfs_upload_file",
+        "name": "ocr-a180ae02531d-B2.pdf",
+        "bytes": 221138
+      }
+    ],
+    "jobs": {
+      "attachment-A": {
+        "done": true,
+        "elapsedMs": 12246,
+        "error": null,
+        "sourceId": "att_dsZApVX4Vn",
+        "isNew": true
+      },
+      "attachment-B": {
+        "done": true,
+        "elapsedMs": 652,
+        "error": "Database error: database is locked",
+        "sourceId": null,
+        "isNew": null
+      },
+      "file-C": {
+        "done": true,
+        "elapsedMs": 12891.999999999884,
+        "error": null,
+        "sourceId": "file_g7483IeSMj",
+        "isNew": true
+      }
+    },
+    "baselineGetAppVersion": {
+      "count": 10,
+      "minMs": 0,
+      "medianMs": 0.9999999999417923,
+      "p95Ms": 1.0000000001164153,
+      "maxMs": 1.0000000001164153
+    },
+    "duringGetAppVersion": {
+      "count": 76,
+      "minMs": 0,
+      "medianMs": 1.0,
+      "p95Ms": 2,
+      "maxMs": 2.0000000001164153
+    },
+    "allJobsDone": true,
+    "databaseReadOnly": true,
+    "databaseRows": [
+      {
+        "id": "att_dsZApVX4Vn",
+        "fileName": "ocr-a180ae02531d-A.pdf",
+        "pageCount": 4,
+        "previewTotalPages": 4,
+        "storedPageIndices": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "isTruncated": false,
+        "status": "completed_with_issues",
+        "readyModes": [
+          "image"
+        ],
+        "failedStages": [
+          {
+            "stage": "ocr_processing",
+            "message": "该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+            "retriable": true
+          }
+        ],
+        "hasOcrPayload": false
+      },
+      {
+        "id": "file_g7483IeSMj",
+        "fileName": "ocr-a180ae02531d-B2.pdf",
+        "pageCount": 4,
+        "previewTotalPages": 4,
+        "storedPageIndices": [
+          2,
+          3
+        ],
+        "isTruncated": false,
+        "status": "completed_with_issues",
+        "readyModes": [
+          "image"
+        ],
+        "failedStages": [
+          {
+            "stage": "ocr_processing",
+            "message": "该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+            "retriable": true
+          }
+        ],
+        "hasOcrPayload": false
+      }
+    ],
+    "pageImageApi": {
+      "resourceId": "res_70J9r8ALO7",
+      "ok": true,
+      "results": [
+        {
+          "pageIndex": 0,
+          "ok": false,
+          "error": "页码越界: page_index=0, total_pages=4"
+        },
+        {
+          "pageIndex": 1,
+          "ok": false,
+          "error": "页码越界: page_index=1, total_pages=4"
+        },
+        {
+          "pageIndex": 2,
+          "ok": true,
+          "mimeType": "image/jpeg",
+          "size": 52254,
+          "base64Length": 69672
+        },
+        {
+          "pageIndex": 3,
+          "ok": true,
+          "mimeType": "image/jpeg",
+          "size": 52144,
+          "base64Length": 69528
+        }
+      ]
+    },
+    "logs": [
+      "[2026-09-27][19:27:48][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] vfs_upload_attachment: name=ocr-a180ae02531d-A.pdf, mime_type=application/pdf, folder_id=None",
+      "[2026-09-27][19:27:48][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] vfs_upload_attachment: name=ocr-a180ae02531d-B1.pdf, mime_type=application/pdf, folder_id=None",
+      "[2026-09-27][19:27:48][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] vfs_upload_file: name=ocr-a180ae02531d-B2.pdf, mime_type=application/pdf, folder_id=None",
+      "[2026-09-27][19:27:48][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] PDF detected, triggering preview render: ocr-a180ae02531d-B2.pdf",
+      "[2026-09-27][19:27:48][WARN][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] upload_with_folder busy (attempt 1/4), retry in 80ms: Database error: database is locked",
+      "[2026-09-27][19:27:48][INFO][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] PDF detected, triggering preview render: ocr-a180ae02531d-A.pdf",
+      "[2026-09-27][19:27:48][WARN][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] upload_with_folder busy (attempt 2/4), retry in 160ms: Database error: database is locked",
+      "[2026-09-27][19:27:48][WARN][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] upload_with_folder busy (attempt 3/4), retry in 320ms: Database error: database is locked",
+      "[2026-09-27][19:27:54][WARN][deep_student_lib::cmd::notes] Notes editor lease cleanup: Database error: database is locked",
+      "[2026-09-27][19:27:54][WARN][deep_student_lib::vfs::repos::pdf_preview] [PDF-Preview] Failed to render page 0: Database error: database is locked",
+      "[2026-09-27][19:27:58][WARN][deep_student_lib::cmd::notes] Notes editor lease cleanup: Database error: database is locked",
+      "[2026-09-27][19:28:00][WARN][deep_student_lib::vfs::repos::pdf_preview] [PDF-Preview] Failed to render page 1: Database error: database is locked",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] Uploaded new attachment: att_dsZApVX4Vn (215991 bytes, mode: inline)",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::repos::attachment_repo] [VFS::AttachmentRepo] Created folder_item for attachment: att_dsZApVX4Vn -> folder Some(\"fld_ECVkCq2wG-\")",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] Attachment uploaded: source_id=att_dsZApVX4Vn, hash=4c464ca4571cb1bb, folder=Some(\"fld_ECVkCq2wG-\")",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] Auto-synced 4 units for attachment att_dsZApVX4Vn",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] Starting media pipeline for attachment: att_dsZApVX4Vn (pdf=true, image=false, is_new=true, resume=false)",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Detected media type: Pdf for file: att_dsZApVX4Vn",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline started for file: att_dsZApVX4Vn (type: Pdf, from stage: OcrProcessing)",
+      "[2026-09-27][19:28:00][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Starting page compression for file: att_dsZApVX4Vn (4 pages)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::repos::pdf_preview] [PDF-Preview] Rendered 2 pages successfully (truncated: false)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::repos::file_repo] [VFS::FileRepo] Created file with doc data: file_g7483IeSMj (name: ocr-a180ae02531d-B2.pdf, type: document, has_text: false, has_preview: true)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] File uploaded: file_g7483IeSMj (type=document, folder=Some(\"fld_ECVkCq2wG-\"), has_text=false)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] Auto-synced 1 units for file file_g7483IeSMj",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::handlers] [VFS::handlers] Starting media pipeline for file: file_g7483IeSMj (pdf=true, image=false)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Detected media type: Pdf for file: file_g7483IeSMj",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline started for file: file_g7483IeSMj (type: Pdf, from stage: OcrProcessing)",
+      "[2026-09-27][19:28:01][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Starting page compression for file: file_g7483IeSMj (4 pages)",
+      "[2026-09-27][19:28:02][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Page compression completed for file file_g7483IeSMj: 2 compressed, 0 skipped",
+      "[2026-09-27][19:28:02][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Page compression completed for file: file_g7483IeSMj, ready_modes: [\"image\"]",
+      "[2026-09-27][19:28:02][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] OCR skipped for file file_g7483IeSMj: enabled=false, ocr_scanned_pdf=true, current_model_multimodal=false, skip_reason=text_len>=threshold_or_disabled, text_len=0, threshold=100",
+      "[2026-09-27][19:28:02][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Automatic vector indexing disabled for file: file_g7483IeSMj",
+      "[2026-09-27][19:28:02][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline completed for file: file_g7483IeSMj (type: Pdf)",
+      "[2026-09-27][19:28:03][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Page compression completed for file att_dsZApVX4Vn: 4 compressed, 0 skipped",
+      "[2026-09-27][19:28:03][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Page compression completed for file: att_dsZApVX4Vn, ready_modes: [\"image\"]",
+      "[2026-09-27][19:28:03][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] OCR skipped for file att_dsZApVX4Vn: enabled=false, ocr_scanned_pdf=true, current_model_multimodal=false, skip_reason=text_len>=threshold_or_disabled, text_len=0, threshold=100",
+      "[2026-09-27][19:28:03][INFO][deep_student_lib::vfs::pdf_processing_service] [PdfProcessingService] Automatic vector indexing disabled for file: att_dsZApVX4Vn",
+      "[2026-09-27][19:28:03][INFO][deep_student_lib::vfs::pdf_processing_service] [MediaProcessingService] Pipeline completed for file: att_dsZApVX4Vn (type: Pdf)"
+    ],
+    "conclusion": "One attachment upload failed with database locked; ordinary file retained only pages 2 and 3 and missing page-image requests failed. Light IPC was responsive during this sample.",
+    "rootCauseScope": "Native lock errors and missing pages are observed. The Blob-mutex/DB-lock cycle and attachment snapshot-upgrade risk are established by static call order; no mutex ownership trace or SQLite extended error code was collected.",
+    "rawRunPath": "/tmp/deep-student-perf-round3-20260927/runtime/mixed-upload"
+  },
+  "frontend": {
+    "searchQueueExtreme": {
+      "runtime": "v26.5.0",
+      "platform": "darwin",
+      "initialCharacters": 500000,
+      "updateCount": 21,
+      "productionFlushIntervalMs": 32,
+      "lastSentAt": 663.9388329999999,
+      "completedAt": 1654.738375,
+      "postStreamWaitMs": 990.799542,
+      "acceptedDuringStream": 0,
+      "discardedResponses": 20,
+      "events": [
+        {
+          "requestId": 1,
+          "matches": 29411,
+          "cpuMs": 111.366708,
+          "atMs": 111.810875,
+          "accepted": false,
+          "latestRequestId": 4
+        },
+        {
+          "requestId": 2,
+          "matches": 29411,
+          "cpuMs": 85.037834,
+          "atMs": 197.025083,
+          "accepted": false,
+          "latestRequestId": 6
+        },
+        {
+          "requestId": 3,
+          "matches": 29411,
+          "cpuMs": 90.42875000000004,
+          "atMs": 287.592042,
+          "accepted": false,
+          "latestRequestId": 9
+        },
+        {
+          "requestId": 4,
+          "matches": 29411,
+          "cpuMs": 89.020375,
+          "atMs": 376.759708,
+          "accepted": false,
+          "latestRequestId": 12
+        },
+        {
+          "requestId": 5,
+          "matches": 29411,
+          "cpuMs": 76.55670800000001,
+          "atMs": 453.367708,
+          "accepted": false,
+          "latestRequestId": 14
+        },
+        {
+          "requestId": 6,
+          "matches": 29411,
+          "cpuMs": 83.0335,
+          "atMs": 536.460167,
+          "accepted": false,
+          "latestRequestId": 17
+        },
+        {
+          "requestId": 7,
+          "matches": 29411,
+          "cpuMs": 67.81716700000004,
+          "atMs": 604.356167,
+          "accepted": false,
+          "latestRequestId": 19
+        },
+        {
+          "requestId": 8,
+          "matches": 29411,
+          "cpuMs": 68.11408299999994,
+          "atMs": 672.598708,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 9,
+          "matches": 29411,
+          "cpuMs": 82.56708299999991,
+          "atMs": 755.2742499999999,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 10,
+          "matches": 29411,
+          "cpuMs": 69.41337499999997,
+          "atMs": 824.755667,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 11,
+          "matches": 29411,
+          "cpuMs": 78.09729199999992,
+          "atMs": 902.9784579999999,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 12,
+          "matches": 29411,
+          "cpuMs": 70.06062500000007,
+          "atMs": 973.1150829999999,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 13,
+          "matches": 29411,
+          "cpuMs": 64.65612499999997,
+          "atMs": 1037.827542,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 14,
+          "matches": 29411,
+          "cpuMs": 86.06933299999992,
+          "atMs": 1124.0115,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 15,
+          "matches": 29411,
+          "cpuMs": 91.20179099999996,
+          "atMs": 1215.294458,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 16,
+          "matches": 29411,
+          "cpuMs": 73.17920800000002,
+          "atMs": 1288.520375,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 17,
+          "matches": 29411,
+          "cpuMs": 77.6345409999999,
+          "atMs": 1366.267333,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 18,
+          "matches": 29411,
+          "cpuMs": 65.80591600000002,
+          "atMs": 1432.1221249999999,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 19,
+          "matches": 29411,
+          "cpuMs": 83.07558300000005,
+          "atMs": 1515.326417,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 20,
+          "matches": 29411,
+          "cpuMs": 76.51595900000007,
+          "atMs": 1591.964375,
+          "accepted": false,
+          "latestRequestId": 21
+        },
+        {
+          "requestId": 21,
+          "matches": 29411,
+          "cpuMs": 62.71849999999995,
+          "atMs": 1654.738375,
+          "accepted": true,
+          "latestRequestId": 21
+        }
+      ]
+    },
+    "searchQueueControl": {
+      "runtime": "v26.5.0",
+      "platform": "darwin",
+      "initialCharacters": 50000,
+      "updateCount": 21,
+      "productionFlushIntervalMs": 32,
+      "lastSentAt": 663.876625,
+      "completedAt": 675.4649579999999,
+      "postStreamWaitMs": 11.58833299999992,
+      "acceptedDuringStream": 20,
+      "discardedResponses": 0,
+      "events": [
+        {
+          "requestId": 1,
+          "matches": 2941,
+          "cpuMs": 21.671499999999995,
+          "atMs": 22.19554199999999,
+          "accepted": true,
+          "latestRequestId": 1
+        },
+        {
+          "requestId": 2,
+          "matches": 2941,
+          "cpuMs": 11.13825,
+          "atMs": 44.185582999999994,
+          "accepted": true,
+          "latestRequestId": 2
+        },
+        {
+          "requestId": 3,
+          "matches": 2941,
+          "cpuMs": 10.846499999999992,
+          "atMs": 77.33816699999998,
+          "accepted": true,
+          "latestRequestId": 3
+        },
+        {
+          "requestId": 4,
+          "matches": 2941,
+          "cpuMs": 10.013459000000012,
+          "atMs": 109.753583,
+          "accepted": true,
+          "latestRequestId": 4
+        },
+        {
+          "requestId": 5,
+          "matches": 2941,
+          "cpuMs": 10.227915999999993,
+          "atMs": 142.41866699999997,
+          "accepted": true,
+          "latestRequestId": 5
+        },
+        {
+          "requestId": 6,
+          "matches": 2941,
+          "cpuMs": 7.7533750000000055,
+          "atMs": 171.892083,
+          "accepted": true,
+          "latestRequestId": 6
+        },
+        {
+          "requestId": 7,
+          "matches": 2941,
+          "cpuMs": 8.906292000000008,
+          "atMs": 207.29700000000003,
+          "accepted": true,
+          "latestRequestId": 7
+        },
+        {
+          "requestId": 8,
+          "matches": 2941,
+          "cpuMs": 8.039457999999968,
+          "atMs": 238.28591699999998,
+          "accepted": true,
+          "latestRequestId": 8
+        },
+        {
+          "requestId": 9,
+          "matches": 2941,
+          "cpuMs": 8.435334000000012,
+          "atMs": 272.096333,
+          "accepted": true,
+          "latestRequestId": 9
+        },
+        {
+          "requestId": 10,
+          "matches": 2941,
+          "cpuMs": 9.713708999999994,
+          "atMs": 306.70079200000004,
+          "accepted": true,
+          "latestRequestId": 10
+        },
+        {
+          "requestId": 11,
+          "matches": 2941,
+          "cpuMs": 8.008041999999989,
+          "atMs": 338.020833,
+          "accepted": true,
+          "latestRequestId": 11
+        },
+        {
+          "requestId": 12,
+          "matches": 2941,
+          "cpuMs": 8.137541999999996,
+          "atMs": 371.42258300000003,
+          "accepted": true,
+          "latestRequestId": 12
+        },
+        {
+          "requestId": 13,
+          "matches": 2941,
+          "cpuMs": 7.455083999999999,
+          "atMs": 405.419917,
+          "accepted": true,
+          "latestRequestId": 13
+        },
+        {
+          "requestId": 14,
+          "matches": 2941,
+          "cpuMs": 7.518958999999995,
+          "atMs": 437.78175,
+          "accepted": true,
+          "latestRequestId": 14
+        },
+        {
+          "requestId": 15,
+          "matches": 2941,
+          "cpuMs": 11.316582999999923,
+          "atMs": 474.462292,
+          "accepted": true,
+          "latestRequestId": 15
+        },
+        {
+          "requestId": 16,
+          "matches": 2941,
+          "cpuMs": 7.545832999999902,
+          "atMs": 503.35383300000007,
+          "accepted": true,
+          "latestRequestId": 16
+        },
+        {
+          "requestId": 17,
+          "matches": 2941,
+          "cpuMs": 8.354832999999985,
+          "atMs": 538.027083,
+          "accepted": true,
+          "latestRequestId": 17
+        },
+        {
+          "requestId": 18,
+          "matches": 2941,
+          "cpuMs": 7.243291999999997,
+          "atMs": 570.712542,
+          "accepted": true,
+          "latestRequestId": 18
+        },
+        {
+          "requestId": 19,
+          "matches": 2941,
+          "cpuMs": 8.702082999999902,
+          "atMs": 605.836917,
+          "accepted": true,
+          "latestRequestId": 19
+        },
+        {
+          "requestId": 20,
+          "matches": 2941,
+          "cpuMs": 9.31574999999998,
+          "atMs": 641.596958,
+          "accepted": true,
+          "latestRequestId": 20
+        },
+        {
+          "requestId": 21,
+          "matches": 2941,
+          "cpuMs": 11.414375000000064,
+          "atMs": 675.4649579999999,
+          "accepted": true,
+          "latestRequestId": 21
+        }
+      ]
+    },
+    "suspendedSearch": {
+      "environment": "Node v26.5.0 / jsdom / React renderHook; esbuild bundle of production hook + StreamPreferencesProvider; capturing Worker transport",
+      "suspended": true,
+      "storeUpdates": 10,
+      "workerRequestsDuringSuspension": 10,
+      "terminatedWhileSuspended": 0,
+      "terminatedAfterClose": 1
+    },
+    "limitations": [
+      "Node production algorithm/React hook harnesses; not WKWebView measurements.",
+      "Queue timing posts match counts, not complete result arrays.",
+      "500000 characters is an extreme single-block boundary, not the default answer size."
+    ]
+  },
+  "platform": {
+    "slimPlanner": {
+      "execution": "production planner included by absolute path; no network and no Tauri app",
+      "lance_compiled": false,
+      "mixed_plan": {
+        "imageFallbackChain": [],
+        "imageFallbackUnavailableReason": "no healthy multimodal observation model or OCR engine is available if image embedding misses",
+        "queryModality": "mixed",
+        "routes": [
+          {
+            "dimension": null,
+            "fetchLimit": 15,
+            "kind": "full_text",
+            "modality": "text",
+            "modelConfigId": null,
+            "profileId": null,
+            "routeId": "fts",
+            "weight": 1.0
+          },
+          {
+            "dimension": 128,
+            "expectedModelFingerprint": "matching-desktop-te",
+            "fetchLimit": 15,
+            "kind": "text_embedding",
+            "modality": "text",
+            "modelConfigId": "model-desktop-te",
+            "profileId": "desktop-te",
+            "routeId": "textembedding:desktop-te",
+            "weight": 1.0
+          },
+          {
+            "dimension": 128,
+            "expectedModelFingerprint": "matching-desktop-me",
+            "fetchLimit": 15,
+            "kind": "multimodal_text",
+            "modality": "multimodal",
+            "modelConfigId": "model-desktop-me",
+            "profileId": "desktop-me",
+            "routeId": "multimodaltext:desktop-me",
+            "weight": 1.0
+          },
+          {
+            "dimension": 128,
+            "expectedModelFingerprint": "matching-desktop-me",
+            "fetchLimit": 15,
+            "kind": "multimodal_image",
+            "modality": "multimodal",
+            "modelConfigId": "model-desktop-me",
+            "profileId": "desktop-me",
+            "routeId": "multimodalimage:desktop-me",
+            "weight": 1.0
+          }
+        ],
+        "topK": 5
+      },
+      "mixed_vector_routes": 3,
+      "profile_precondition": "restored active text and multimodal profiles with matching enabled model configurations",
+      "text_plan": {
+        "imageFallbackChain": [],
+        "queryModality": "text",
+        "routes": [
+          {
+            "dimension": null,
+            "fetchLimit": 15,
+            "kind": "full_text",
+            "modality": "text",
+            "modelConfigId": null,
+            "profileId": null,
+            "routeId": "fts",
+            "weight": 1.0
+          },
+          {
+            "dimension": 128,
+            "expectedModelFingerprint": "matching-desktop-te",
+            "fetchLimit": 15,
+            "kind": "text_embedding",
+            "modality": "text",
+            "modelConfigId": "model-desktop-te",
+            "profileId": "desktop-te",
+            "routeId": "textembedding:desktop-te",
+            "weight": 1.0
+          },
+          {
+            "dimension": 128,
+            "expectedModelFingerprint": "matching-desktop-me",
+            "fetchLimit": 15,
+            "kind": "multimodal_text",
+            "modality": "multimodal",
+            "modelConfigId": "model-desktop-me",
+            "profileId": "desktop-me",
+            "routeId": "multimodaltext:desktop-me",
+            "weight": 1.0
+          }
+        ],
+        "topK": 5
+      },
+      "text_vector_routes": 2
+    },
+    "safSameUri": {
+      "execution": "deterministic macOS filesystem interleaving of the production write-then-rename sequence; not Android/app run",
+      "production_location": "src-tauri/src/unified_file_manager.rs:507-523",
+      "schedule": [
+        "writer A closes fixed temp",
+        "writer B closes same temp",
+        "writer A renames temp to queue",
+        "writer B renames missing temp"
+      ],
+      "attempts": {
+        "first": {
+          "ok": true
+        },
+        "second": {
+          "ok": false,
+          "errno": 2,
+          "error": "[Errno 2] No such file or directory: '/tmp/deep-student-perf-round3-20260927/platform/saf-same-uri/103fd2924d90303e.uri.tmp' -> '/tmp/deep-student-perf-round3-20260927/platform/saf-same-uri/103fd2924d90303e.uri'"
+        }
+      },
+      "queue_entry_preserved": true,
+      "source_changed": false,
+      "api_or_network_calls": 0
+    },
+    "limitations": [
+      "No Android device or network embedding request was run.",
+      "Planner uses actual production planner with synthetic eligible capabilities; runtime and restore reachability is static proof.",
+      "SAF reproduces producer filesystem operations on macOS, not Android UI."
+    ]
+  },
+  "staticOnlyFollowups": [
+    {
+      "id": "R3-08",
+      "subject": "heavy synchronous upload phase remains on async workers",
+      "evidence": "handlers.rs 1722 / 2408 / 2629 / 2694",
+      "runtimeLimit": "No global lightweight IPC slowdown in this mixed upload sample; no large-file worker saturation measurement."
+    },
+    {
+      "id": "R3-09",
+      "subject": "idle and nested database connection leases",
+      "evidence": "handlers.rs 2450-2552 / 7608-7645; index_service.rs 128",
+      "runtimeLimit": "Pool exhaustion or backup barrier failure was not reproduced. The inspected LearningHub attachment batch entry is limited to three and the DSTU upload tool is Serial; no global three-upload/download limit is established."
+    }
+  ],
+  "cleanup": {
+    "ocrEnabled": false,
+    "indexingEnabled": false,
+    "ownedMockStopped": true,
+    "devAppAndBridgeKeptRunning": true,
+    "testFilesRetainedInIsolatedData": true,
+    "finalNativeReadback": {
+      "version": "0.9.68 (Build 15149, 3de1a6cd)",
+      "ocr": "false",
+      "index": "false",
+      "dataDir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA"
+    }
+  },
+  "recordedAt": "2026-09-27T11:30:33.747707+00:00"
+}

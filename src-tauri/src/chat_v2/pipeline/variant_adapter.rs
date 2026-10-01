@@ -154,19 +154,19 @@ impl VariantLLMAdapter {
     }
 
     fn append_text_segment(&self, block_id: &str, text: &str) {
-        let segment = self
-            .text_segments
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+        let mut segments = self.text_segments.lock().unwrap_or_else(|e| e.into_inner());
+        let Some(segment) = segments
             .iter_mut()
             .rev()
             .find(|segment| segment.block_id == block_id)
-            .map(|segment| {
-                segment.content.push_str(text);
-                segment.clone()
-            });
-        if let Some(segment) = segment {
-            self.sync_text_segment(segment);
+        else {
+            return;
+        };
+        segment.content.push_str(text);
+        // 上下文仍逐增量同步，取消/超时无需等 finalize 也能保存完整尾部。
+        // 仅首次注册块时克隆元数据和首段文本，后续不再复制整个累计字符串。
+        if !self.ctx.append_interleaved_block_content(block_id, text) {
+            self.sync_text_segment(segment.clone());
         }
     }
 
@@ -779,6 +779,42 @@ mod tests {
     fn variant_content_end_result_carries_authoritative_text() {
         let result = authoritative_content_result("complete variant tail".to_string());
         assert_eq!(result["content"], json!("complete variant tail"));
+    }
+
+    #[test]
+    fn retains_incremental_variant_text_when_adapter_drops_before_complete() {
+        let emitter = Arc::new(ChatV2EventEmitter::new_windowless_for_test(
+            "sess_variant_partial".to_string(),
+        ));
+        let ctx = Arc::new(VariantExecutionContext::new(
+            "var_partial",
+            "model_partial",
+            "msg_variant_partial",
+            Arc::new(SharedContext::default()),
+            emitter,
+            &CancellationToken::new(),
+        ));
+        {
+            let adapter = VariantLLMAdapter::new(
+                Arc::clone(&ctx),
+                true,
+                None,
+                None,
+                crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+            );
+            for text in ["hello", " ", "世界", "!"] {
+                adapter.on_content_chunk(text);
+            }
+            let blocks = ctx.get_interleaved_blocks();
+            assert_eq!(blocks.len(), 1);
+            assert_eq!(blocks[0].content.as_deref(), Some("hello 世界!"));
+            // 模拟取消/超时丢弃流，不调用 on_complete / finalize_all。
+        }
+        let blocks = ctx.get_interleaved_blocks();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].content.as_deref(), Some("hello 世界!"));
+        assert_eq!(blocks[0].block_index, 0);
+        assert_eq!(ctx.block_ids(), ctx.get_interleaved_block_ids());
     }
 
     #[test]

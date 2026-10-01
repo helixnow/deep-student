@@ -389,7 +389,7 @@ export async function update(
   path: string,
   content: string,
   resourceType: string,
-  options?: { expectedUpdatedAtMs?: number },
+  options?: { expectedUpdatedAtMs?: number; lease?: { participant_id: string; token: string } },
 ): Promise<Result<DstuNode>> {
   try {
     // ★ R3：携带乐观锁基线（毫秒时间戳），后端据此拒绝覆盖更新的版本
@@ -398,6 +398,7 @@ export async function update(
       content,
       resourceType,
       expectedUpdatedAtMs: options?.expectedUpdatedAtMs ?? null,
+      ...(options?.lease ? { lease: options.lease } : {}),
     });
     console.log(LOG_PREFIX, 'update() 返回新的 resourceHash:', {
       path,

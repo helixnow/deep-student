@@ -42,7 +42,7 @@ impl ChatV2Pipeline {
             .map(|vfs_db| vfs_db.blobs_dir().to_path_buf());
 
         // 从数据库加载消息
-        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, &ctx.session_id)?;
+        let messages = ChatV2Repo::get_session_message_ids_with_conn(&conn, &ctx.session_id)?;
 
         if messages.is_empty() {
             log::debug!(
@@ -65,7 +65,7 @@ impl ChatV2Pipeline {
         .collect();
         let messages: Vec<_> = messages
             .into_iter()
-            .filter(|m| !exclude_ids.contains(m.id.as_str()))
+            .filter(|id| !exclude_ids.contains(id.as_str()))
             .collect();
 
         // 🆕 活跃 compaction 记录 id：作为 microcompact 锚点的世代（lineage）
@@ -79,7 +79,7 @@ impl ChatV2Pipeline {
         // 🆕 P1: 应用 compaction 视图 — 隐藏 tail_start 之前的原始消息，
         // 返回一条 system 摘要伪消息。原消息仍在 DB 中（供"展开原文"）。
         let (compaction_summary_msg, messages) =
-            super::compaction::apply_compaction_view(&conn, &ctx.session_id, messages);
+            super::compaction::apply_compaction_view_to_ids(&conn, &ctx.session_id, messages);
 
         if messages.is_empty() {
             log::debug!(
@@ -105,6 +105,14 @@ impl ChatV2Pipeline {
         } else {
             messages
         };
+        let messages_to_load =
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, &ctx.session_id, &messages_to_load)?;
+        let message_ids: Vec<_> = messages_to_load
+            .iter()
+            .map(|message| message.id.clone())
+            .collect();
+        let (mut blocks_by_message, replay_map) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &message_ids)?;
         let active_variant_artifacts = active_variant_artifacts_by_user(&messages_to_load);
 
         // Wave2-A r5 #8：本趟三个技能重放门禁消费点聚合到的 digest mismatch
@@ -125,11 +133,8 @@ impl ChatV2Pipeline {
         // （live 时注入消息 push 在 chat_history 末尾，位于本轮 user 消息前）
         let mut last_user_message_index: Option<usize> = None;
         for message in messages_to_load {
-            // 加载该消息的所有块
-            let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id)?;
-            // V20260806 B 层：读取重放旁路三列（列不存在/全 NULL 时为空表，
-            // 下方各消费点回退旧重建路径）
-            let replay_map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id)?;
+            // The window's blocks/replay were loaded in bounded batches above.
+            let blocks = blocks_by_message.remove(&message.id).unwrap_or_default();
             // 🔧 ROUND-01-pipeline #1：多变体消息只重放 active variant 的块，
             // 禁止把所有变体的 CONTENT join 在一起
             let blocks = filter_blocks_for_active_variant(&message, blocks);
@@ -2093,10 +2098,12 @@ mod replay_consistency_tests {
             .live_user_llm_content()
             .expect("compiled current user message");
         assert!(live_wrapped.contains("编辑后的新问题"));
-        edit_ctx.interleaved_blocks =
-            vec![content_block("msg_edit_a1", "blk_edit_a1", "新回答", 0)];
+        edit_ctx.add_interleaved_block(content_block("msg_edit_a1", "blk_edit_a1", "新回答", 0));
 
-        pipeline.save_intermediate_results(&edit_ctx).await.unwrap();
+        pipeline
+            .save_intermediate_results(&mut edit_ctx)
+            .await
+            .unwrap();
 
         // 下一轮回放：用户消息 = 编辑轮 live 发送的新包装（字节相等）
         let mut ctx = next_turn_ctx(session_id);

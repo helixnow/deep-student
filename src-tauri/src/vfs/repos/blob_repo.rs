@@ -87,6 +87,15 @@ impl VfsBlobRepo {
         let hash = Self::compute_hash(data);
         debug!("[VFS::BlobRepo] Computed hash: {}", hash);
 
+        // An enclosing upload SAVEPOINT is deferred. Reserve its write lock
+        // before the first read, or concurrent preview writes can invalidate
+        // that read snapshot (SQLITE_BUSY_SNAPSHOT bypasses busy_timeout).
+        // Keep the existing blob-mutex -> SQLite order; an outer BEGIN IMMEDIATE
+        // would invert it. WHERE 0 changes no rows or reference counts.
+        if !conn.is_autocommit() {
+            conn.execute("UPDATE blobs SET ref_count = ref_count WHERE 0", [])?;
+        }
+
         let pending: bool = conn.query_row(
             "SELECT EXISTS(
                  SELECT 1 FROM __file_deletion_journal

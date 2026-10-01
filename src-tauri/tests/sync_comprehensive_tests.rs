@@ -500,13 +500,13 @@ mod tests {
             assert!(!merged);
         }
 
-        // --- Max value (exercised via "questions"."attempt_count") ---
+        // --- Max value: only monotonic review counters, not resettable question stats ---
 
         #[test]
         fn test_max_value() {
             let (result, merged, _) = merge_field(
-                "questions",
-                "attempt_count",
+                "review_plans",
+                "total_reviews",
                 Some(&json!(10)),
                 Some(&json!(7)),
             );
@@ -520,8 +520,8 @@ mod tests {
         #[test]
         fn test_max_value_reverse() {
             let (result, merged, _) = merge_field(
-                "questions",
-                "attempt_count",
+                "review_plans",
+                "total_reviews",
                 Some(&json!(3)),
                 Some(&json!(15)),
             );
@@ -919,12 +919,18 @@ mod tests {
                 .collect();
 
             let expected = vec![
+                "note_tags",
+                "note_links",
                 "path_cache",
                 "chat_v2_session_mistakes",
                 "chat_v2_session_tags",
                 "review_session_mistakes",
                 "llm_usage_daily",
                 "vfs_embedding_dims",
+                "revocation_epochs",
+                "note_state",
+                "note_review_save_receipts",
+                "note_editor_lease_acks",
             ];
             for name in &expected {
                 let found = tables_with_composite_pk

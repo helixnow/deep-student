@@ -415,6 +415,13 @@ export default defineConfig(({ command, mode }) => ({
             return 'vite-runtime';
           }
           if (!id.includes('node_modules')) return;
+          // Keep React DOM and its scheduler in one dependency-only chunk.
+          // Splitting scheduler into vendor-micro let Rollup place React DOM in
+          // vendor-recharts, creating a cycle that invoked scheduler before its
+          // CommonJS exports were initialized (startup stuck on the HTML logo).
+          if (/node_modules\/(react|react-dom|react-is|scheduler|use-sync-external-store)\//.test(id)) {
+            return 'vendor-react';
+          }
           // 微型通用库必须显式归组（先于各重库规则）：
           // 否则 manualChunks 函数式的"独占依赖合并"会把 uuid / es-toolkit
           // 卷进 vendor-mermaid / vendor-recharts 等重 chunk——首屏代码
@@ -423,12 +430,10 @@ export default defineConfig(({ command, mode }) => ({
           if (
             id.includes('node_modules/uuid/') ||
             id.includes('node_modules/es-toolkit/') ||
-            id.includes('node_modules/scheduler/') ||
             id.includes('node_modules/nanoid/') ||
             id.includes('node_modules/dompurify/') ||
             id.includes('node_modules/invariant/') ||
             id.includes('node_modules/tippy.js/') ||
-            id.includes('node_modules/use-sync-external-store/') ||
             id.includes('node_modules/react-redux/') ||
             id.includes('node_modules/reselect/') ||
             id.includes('node_modules/redux/') ||

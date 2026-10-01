@@ -10,20 +10,24 @@ import React from 'react';
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 
+let mockStreamingContent = '';
+
 vi.mock('@/features/chat/components/ChatContainer', async () => {
-  const { useStreamPreferences } = await vi.importActual<
+  const { useStreamPreferences, useSuspendedStreamContent } = await vi.importActual<
     typeof import('@/features/chat/components/renderers/StreamPreferencesContext')
   >('@/features/chat/components/renderers/StreamPreferencesContext');
 
   const ChatContainer: React.FC<{ sessionId: string; className?: string }> = ({ sessionId }) => {
     const prefs = useStreamPreferences();
+    const content = useSuspendedStreamContent(mockStreamingContent, true);
     return (
       <div
         data-testid="mock-chat-container"
         data-session-id={sessionId}
         data-preset={prefs.preset ?? ''}
         data-mode={prefs.mode ?? ''}
-      />
+        data-suspended={String(Boolean(prefs.suspended))}
+      >{content}</div>
     );
   };
   return { ChatContainer, default: ChatContainer };
@@ -56,6 +60,7 @@ function sandboxInput(title: string): SandboxSessionInput {
 }
 
 beforeEach(() => {
+  mockStreamingContent = '';
   useSandboxWorkbenchStore.setState({
     activeSession: null,
     isOpen: false,
@@ -71,6 +76,23 @@ afterEach(() => {
 });
 
 describe('ChatSessionSurface', () => {
+  it('holds streaming content while suspended and catches up when visible again', () => {
+    mockStreamingContent = 'first';
+    const { rerender } = render(<ChatSessionSurface sessionId="sess_1" />);
+    const inner = screen.getByTestId('mock-chat-container');
+    expect(inner.textContent).toBe('first');
+
+    rerender(<ChatSessionSurface sessionId="sess_1" isVisible={false} isSuspended />);
+    mockStreamingContent = 'first second third';
+    rerender(<ChatSessionSurface sessionId="sess_1" isVisible={false} isSuspended />);
+    expect(inner.getAttribute('data-suspended')).toBe('true');
+    expect(inner.textContent).toBe('first');
+
+    rerender(<ChatSessionSurface sessionId="sess_1" isVisible />);
+    expect(inner.getAttribute('data-suspended')).toBe('false');
+    expect(inner.textContent).toBe('first second third');
+  });
+
   it('renders the session container and scopes the window DOM by sessionId', () => {
     const { container } = render(<ChatSessionSurface sessionId="sess_1" />);
 

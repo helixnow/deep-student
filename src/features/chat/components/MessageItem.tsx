@@ -14,10 +14,10 @@ import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { DsButton } from '@/components/ui/DsButton';
 import { BlockRendererWithStore } from './BlockRenderer';
-import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
+import { ContextRefsDisplay, hasContextRefs, CONTEXT_REFS_VISIBLE_COUNT } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
 import { useVariantUI } from '../hooks/useVariantUI';
-import { useBlocksByIds } from '../hooks/useChatStore';
+import { useBlocksSegmentMeta, type BlockSegmentMeta } from '../hooks/useChatStore';
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
@@ -58,6 +58,7 @@ import { ExplainPopover } from './ExplainPopover';
 import { generateCardsFromSelection } from '../services/selectionCardGeneration';
 import { selectionToChat } from '../context/selectionRef';
 import { MessageSearchProvider } from './messageSearchContext';
+import { useMessageSearchVisibility } from '../hooks/useMessageSearchVisibility';
 
 // ============================================================================
 // 辅助函数
@@ -133,6 +134,8 @@ export interface MessageItemProps {
   isLatest?: boolean;
   /** 当前会话内搜索词，用于消息正文的具体文本高亮 */
   searchQuery?: string;
+  /** Prepare the navigation target's marks before scrolling it into view. */
+  isActiveSearchMatch?: boolean;
 }
 
 // ============================================================================
@@ -155,6 +158,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   isFirst = false,
   isLatest = false,
   searchQuery = '',
+  isActiveSearchMatch = false,
 }) => {
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
@@ -181,10 +185,40 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     retryAllVariants,
   } = useVariantUI({ store, messageId });
 
-  // 订阅当前消息实际显示的块，确保晚到的 content 更新会触发消息级重新分段渲染。
-  const displayBlocks = useBlocksByIds(store, displayBlockIds);
-  const getDisplayBlocks = useCallback((): Block[] => displayBlocks, [displayBlocks]);
-  const hasSources = useMemo(() => hasSourcesInBlocks(displayBlocks), [displayBlocks]);
+  // 🚀 流式性能（2026-09-24）：订阅「分段结构指纹」而非块对象身份。
+  // 流式块每 flush 换对象身份（content 增长），按身份订阅会让整条
+  // MessageItem 每 120ms 全量重渲染（分段归组 + 十余个派生）。指纹
+  // 只含决定分段结构/布尔派生的标量字段，正文增长被完全屏蔽；
+  // 可见正文由 BlockRendererWithStore 的单块订阅负责。
+  const segmentMetas = useBlocksSegmentMeta(store, displayBlockIds);
+
+  // 正文只在事件回调/派生布尔里按需读取，不经订阅（避免流式噪声）。
+  // getDisplayBlocks 每次调用从 getState() 取当前块，语义与之前一致
+  // （原实现依赖 displayBlocks 已是最新），只是读取时机从 render
+  // 推迟到回调执行——对这些回调而言结果相同。
+  const getDisplayBlocks = useCallback((): Block[] => {
+    const state = store.getState();
+    return displayBlockIds
+      .map((id) => state.blocks.get(id))
+      .filter((block): block is Block => block !== undefined);
+  }, [store, displayBlockIds]);
+
+  // hasSources 复用原 hasSourcesInBlocks 判定（防规则漂移），但用
+  // 指纹元信息组装最小 Block 适配——其判定只读 type/status/citations/
+  // toolOutput，这些在指纹里均有忠实对应（正文/来源内容不参与判定）。
+  const hasSources = useMemo(() => {
+    const adapted = segmentMetas.map((meta) =>
+      ({
+        id: meta.id,
+        type: meta.type,
+        status: meta.status,
+        content: '',
+        citations: meta.hasCitations ? [{}] : undefined,
+        toolOutput: meta.hasToolOutput ? {} : undefined,
+      }) as unknown as Block
+    );
+    return hasSourcesInBlocks(adapted);
+  }, [segmentMetas]);
 
 
   // 🔧 P1修复：使用响应式订阅替代直接调用 getState()
@@ -258,6 +292,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   // P0-3: 选区工具栏的定位容器 = 消息根元素（position: relative），
   // SelectionToolbar 在其内部 absolute 定位、随消息一起滚动
   const messageRootRef = useRef<HTMLDivElement>(null);
+  const searchHighlightVisible = useMessageSearchVisibility(messageRootRef, Boolean(searchQuery));
 
   // P0-2: 移动端长按消息（~450ms）呼出消息下方的内联操作条（非 Sheet / 非 Portal）。
   // 多变体消息有独立的卡片工具栏，不参与。
@@ -416,14 +451,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, [getDisplayBlocks]);
 
   const assistantBlocks = useMemo(() => {
-    if (isUser) return [] as Block[];
-    return displayBlocks;
-  }, [displayBlocks, isUser]);
+    if (isUser) return [] as BlockSegmentMeta[];
+    return segmentMetas;
+  }, [segmentMetas, isUser]);
 
   const hasConsumableAssistantContent = useMemo(() => {
     if (isUser) return false;
-    return extractMessageContent().length > 0;
-  }, [extractMessageContent, isUser]);
+    // 与复制内容的正文/思考/工具回退类型一致，直接消费已订阅的空值状态。
+    // getState 回调引用稳定，不能用它作为正文从空变为非空的依赖。
+    return assistantBlocks.some((block) =>
+      !block.isEmpty && (block.type === 'content' || block.type === 'thinking' || block.type === 'mcp_tool')
+    );
+  }, [assistantBlocks, isUser]);
 
   const assistantFailureDetails = useMemo(() => {
     if (isUser) return null;
@@ -434,7 +473,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     const variantError = activeVariant?.error?.trim();
     if (variantError) return variantError;
 
-    const blockError = assistantBlocks.find((block) => typeof block.error === 'string' && block.error.trim().length > 0)?.error?.trim();
+    const blockError = assistantBlocks.find((block) => block.error)?.error;
     return blockError || null;
   }, [activeVariant?.error, assistantBlocks, isUser, message?._meta?.terminalError]);
 
@@ -643,8 +682,11 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }, [message]);
   
   // 🆕 从上下文引用获取图片预览（新架构：消息只存引用，图片从 VFS 动态获取）
-  const { imagePreviews, isLoading: isLoadingImages } = useImagePreviewsFromRefs(
-    message?._meta?.contextSnapshot
+  const [imagePreviewLimit, setImagePreviewLimit] = useState(CONTEXT_REFS_VISIBLE_COUNT);
+  const requestAllImagePreviews = useCallback(() => setImagePreviewLimit(Infinity), []);
+  const { imagePreviews, isLoading: isLoadingImages, unloadedImageCount } = useImagePreviewsFromRefs(
+    isUser ? message?._meta?.contextSnapshot : undefined,
+    imagePreviewLimit,
   );
   
   // 🆕 从上下文引用获取文件预览（新架构：消息只存引用，文件从 VFS 动态获取）
@@ -853,7 +895,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   }
 
   return (
-    <MessageSearchProvider query={searchQuery}>
+    <MessageSearchProvider query={searchHighlightVisible || isActiveSearchMatch ? searchQuery : ''}>
       <div
       ref={messageRootRef}
       // P0-2: 移动端长按呼出内联操作条（桌面路径 longPressBind 为空对象，零监听）
@@ -983,8 +1025,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     }
 
                     // 助手消息：需要分组渲染（时间线块 vs 普通块）
-                    // 🔧 即时获取 blocks 用于分组判断（不触发订阅）
-                    const blocks = displayBlocks;
+                    // 🚀 用分段结构指纹做归组（流式性能：正文增长不重跑归组）
+                    const blocks = segmentMetas;
 
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
@@ -1037,7 +1079,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         // 非时间线类型块
                         // 🔧 P2修复：如果是 content 块且内容为空或只有空白，视为时间线块的一部分
                         // 避免 LLM 在工具调用之间返回的空内容分隔时间线
-                        const isEmptyContent = block.type === 'content' && (!block.content || block.content.trim() === '');
+                        // 🚀 流式性能：用指纹 isEmpty（标量）判定，正文内容不参与
+                        const isEmptyContent = block.type === 'content' && block.isEmpty;
                         
                         // 🔧 P3修复：流式进行中的块（pending/running）即使内容为空也必须渲染
                         // 否则 BlockRenderer 不会挂载，无法订阅后续 chunk 更新
@@ -1169,6 +1212,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 filePreviews={filePreviews}
                 isLoadingImages={isLoadingImages}
                 isLoadingFiles={isLoadingFiles}
+                unloadedImageCount={unloadedImageCount}
+                onRequestAllImages={requestAllImagePreviews}
               />
             </div>
           )}
@@ -1550,7 +1595,8 @@ export const MessageItem = React.memo(MessageItemInner, (prevProps, nextProps) =
     prevProps.className === nextProps.className &&
     prevProps.isFirst === nextProps.isFirst &&
     prevProps.isLatest === nextProps.isLatest &&
-    prevProps.searchQuery === nextProps.searchQuery
+    prevProps.searchQuery === nextProps.searchQuery &&
+    prevProps.isActiveSearchMatch === nextProps.isActiveSearchMatch
   );
 });
 

@@ -117,6 +117,13 @@ export interface ChatParams {
   modelId: string;
   /** 模型显示名称（如 "Qwen/Qwen3-8B"，用于前端显示） */
   modelDisplayName?: string;
+  /**
+   * 用户是否为该会话显式固定了模型。
+   * - true：modelId 是用户手选，随会话持久化，不随全局默认变化。
+   * - false/undefined：modelId 仅是显示快照，发送时以全局默认模型为准，
+   *   切换"模型分配"后会话跟随新默认。旧会话 JSON 无此字段按 false 处理。
+   */
+  modelIdPinnedByUser?: boolean;
   /** 温度（0-2，默认 0.7） */
   temperature: number;
   /** Top-P 核采样（0-1，默认 0.9） */
@@ -185,6 +192,7 @@ export function createDefaultChatParams(): ChatParams {
   return {
     modelId: '',
     modelDisplayName: '',
+    modelIdPinnedByUser: false,
     temperature: 0.7,
     topP: 0.9,
     frequencyPenalty: 0,

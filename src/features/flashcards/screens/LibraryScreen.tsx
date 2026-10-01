@@ -3,17 +3,20 @@
  * 支持防抖即时搜索、状态筛选 chips、客户端排序、多选批量操作（shift 连选）、
  * 行内展开编辑与行内删除确认 —— 全部内联交互，无弹窗。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
   CaretLeft,
   CaretRight,
+  DotsThree,
+  FloppyDisk,
   MagnifyingGlass,
   Pause,
   Play,
   Plus,
   PlusCircle,
+  SlidersHorizontal,
   Stack,
   Trash,
   Tray,
@@ -21,6 +24,8 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/components/ui/app-menu/AppMenu';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { UiPresence } from '@/components/ui/UiPresence';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
@@ -37,6 +42,7 @@ import {
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
 import type { ReviewEditTemplate } from '../reviewCardEditFields';
 import { LibraryCardRow } from '../library/LibraryCardRow';
+import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 import {
   countDueCards,
   matchesStatusFilter,
@@ -74,6 +80,7 @@ function toReviewContent(card: AnkiLibraryCard) {
 
 export const LibraryScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
+  const { isSmallScreen } = useBreakpoint();
   const translate = t as Translate;
   const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
 
@@ -118,8 +125,10 @@ export const LibraryScreen: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteCandidateId, setDeleteCandidateId] = useState<string | null>(null);
   const [bulkDeleteArmed, setBulkDeleteArmed] = useState(false);
-  // 手动新建：内联展开的正/背面输入（与行内编辑同口径，无弹窗）
+  // 新建：桌面内联展开；移动宿主接管标题/返回/保存，内容区只展示表单。
   const [composerOpen, setComposerOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const filtersId = useId();
   const [draftFront, setDraftFront] = useState('');
   const [draftBack, setDraftBack] = useState('');
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -419,6 +428,52 @@ export const LibraryScreen: React.FC = () => {
     });
   }, [importing, importApkg, translate]);
 
+  const closeComposer = useCallback(() => {
+    if (!creating) setComposerOpen(false);
+  }, [creating]);
+  const mobileChrome = useFlashcardsMobileChrome({
+    title: t(composerOpen ? 'library.create.new' : 'library.title'),
+    subtitle: composerOpen ? undefined : loading ? t('library.loading') : t('library.total', { count: total }),
+    onBack: composerOpen ? closeComposer : undefined,
+    rightActions: composerOpen ? (
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.save')} disabled={!draftValid || creating} onClick={handleSubmitDraft}>
+        <FloppyDisk size={20} />
+      </DsButton>
+    ) : <>
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.new')} onClick={() => setComposerOpen(true)}>
+        <Plus size={20} />
+      </DsButton>
+      <AppMenu>
+        <AppMenuTrigger asChild>
+          <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('common:more')}><DotsThree size={22} /></DsButton>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={200}>
+          <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
+          <AppMenuItem icon={<ArrowClockwise size={18} />} disabled={loading} onClick={() => void refresh()}>{t('library.refresh')}</AppMenuItem>
+        </AppMenuContent>
+      </AppMenu>
+    </>,
+  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, importing, handleImportApkg, refresh]);
+
+  // A phone composer is a subpage of the library: keep its draft/list state here,
+  // while the host owns the title, back and save action.
+  if (mobileChrome && composerOpen) {
+    return <CustomScrollArea className="min-h-0 flex-1">
+      <div className="wb-fc-screen fc-lib-mobile-composer">
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          {t('library.create.frontLabel')}
+          <textarea autoFocus rows={5} value={draftFront} onChange={(event) => setDraftFront(event.target.value)} placeholder={t('library.create.frontPlaceholder')} className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal" />
+        </label>
+        <label className="flex flex-col gap-2 text-sm font-medium">
+          {t('library.create.backLabel')}
+          <textarea rows={5} value={draftBack} onChange={(event) => setDraftBack(event.target.value)} placeholder={t('library.create.backPlaceholder')} className="w-full resize-y rounded-md border border-border bg-background p-3 text-base font-normal" />
+        </label>
+        <p className="text-xs text-muted-foreground">{t(creating ? 'library.create.saving' : 'library.create.hint')}</p>
+        {actionError && <p role="alert" className="text-sm text-destructive">{actionError}</p>}
+      </div>
+    </CustomScrollArea>;
+  }
+
   const pageCount = Math.max(1, Math.ceil(total / FLASHCARDS_LIBRARY_PAGE_SIZE));
   const initialLoading = loading && !loaded;
 
@@ -448,10 +503,41 @@ export const LibraryScreen: React.FC = () => {
     />
   );
 
-  return (
-    <div className="wb-fc-screen">
-      <header className="wb-fc-header" data-align="end">
-        <div className="min-w-0">
+  // Phone filters scroll with the cards; the composer uses its own subpage.
+  const ListContainer = isSmallScreen ? 'div' : CustomScrollArea;
+  const creationActions = (
+    <>
+      <DsButton
+        type="button"
+        variant={composerOpen ? 'default' : 'primary'}
+        iconOnly={isSmallScreen}
+        aria-label={composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
+        onClick={() => setComposerOpen((open) => !open)}
+        aria-expanded={composerOpen}
+        className="fc-lib-create-cta text-sm"
+      >
+        {composerOpen ? <X size={18} /> : <Plus size={18} />}
+        {!isSmallScreen && (composerOpen ? translate('library.create.cancel') : translate('library.create.new'))}
+      </DsButton>
+      <DsButton
+        type="button"
+        variant="default"
+        iconOnly={isSmallScreen}
+        aria-label={importing ? translate('library.import.running') : translate('library.import.apkg')}
+        disabled={importing}
+        onClick={handleImportApkg}
+        title={translate('library.import.hint')}
+        className="fc-lib-create-cta text-sm"
+      >
+        <UploadSimple size={18} />
+        {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.apkg'))}
+      </DsButton>
+    </>
+  );
+  const content = (
+    <div className="wb-fc-screen fc-lib-screen">
+      {!mobileChrome && <header className="wb-fc-header" data-align="end">
+        <div className="fc-lib-heading min-w-0">
           <h2 className="wb-fc-title">
             {t('library.title')}
           </h2>
@@ -461,18 +547,22 @@ export const LibraryScreen: React.FC = () => {
               : translate('library.total', { count: total })}
           </p>
         </div>
+        <div className="fc-lib-header-actions">
         <DsButton
           type="button"
           variant="ghost"
           size="sm"
+          iconOnly={isSmallScreen}
+          aria-label={t('library.refresh')}
           disabled={loading}
           onClick={() => void refresh()}
           className="shrink-0 text-sm [@media(pointer:coarse)]:!min-h-11"
         >
           <ArrowClockwise size={15} />
-          {t('library.refresh')}
+          {!isSmallScreen && t('library.refresh')}
         </DsButton>
-      </header>
+        </div>
+      </header>}
 
       <div className="wb-fc-toolbar">
         <div className="wb-fc-search relative min-w-0 flex-1">
@@ -492,34 +582,26 @@ export const LibraryScreen: React.FC = () => {
             className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"
           />
         </div>
-        <DsButton type="button" variant="default" onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
+        {!isSmallScreen && <DsButton type="button" variant="default" aria-label={t('library.search')} onClick={handleSearchNow} className="text-sm [@media(pointer:coarse)]:!min-h-11">
           {t('library.search')}
-        </DsButton>
+        </DsButton>}
+        {isSmallScreen && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            aria-label={translate('library.filter.label')}
+            aria-expanded={filtersOpen}
+            aria-controls={filtersId}
+            onClick={() => setFiltersOpen((open) => !open)}
+            className="relative"
+          >
+            <SlidersHorizontal size={18} />
+            {statusFilter !== 'all' || sortKey !== 'default' ? <span className="fc-lib-filter-dot" /> : null}
+          </DsButton>
+        )}
       </div>
 
-      <div className="fc-lib-create">
-        <DsButton
-          type="button"
-          variant={composerOpen ? 'default' : 'primary'}
-          onClick={() => setComposerOpen((open) => !open)}
-          aria-expanded={composerOpen}
-          className="fc-lib-create-cta text-sm"
-        >
-          <Plus size={15} />
-          {composerOpen ? translate('library.create.cancel') : translate('library.create.new')}
-        </DsButton>
-        <DsButton
-          type="button"
-          variant="default"
-          disabled={importing}
-          onClick={handleImportApkg}
-          title={translate('library.import.hint')}
-          className="fc-lib-create-cta text-sm"
-        >
-          <UploadSimple size={15} />
-          {importing ? translate('library.import.running') : translate('library.import.apkg')}
-        </DsButton>
-      </div>
+      {!mobileChrome && <div className="fc-lib-create">{creationActions}</div>}
 
       {composerOpen ? (
         <div className="fc-lib-composer">
@@ -553,7 +635,7 @@ export const LibraryScreen: React.FC = () => {
         </div>
       ) : null}
 
-      <div className="fc-lib-filters">
+      <div id={filtersId} className="fc-lib-filters" hidden={isSmallScreen && !filtersOpen}>
         <div
           className="fc-lib-filters-group"
           role="group"
@@ -734,7 +816,7 @@ export const LibraryScreen: React.FC = () => {
         </div>
       ) : null}
 
-      <CustomScrollArea className="wb-fc-list min-h-0 flex-1">
+      <ListContainer className="wb-fc-list min-h-0 flex-1">
         {loadError ? (
           <div role="alert" className="wb-fc-empty">
             <p className="break-words text-destructive">{loadError}</p>
@@ -776,7 +858,7 @@ export const LibraryScreen: React.FC = () => {
                 <p className="max-w-md text-xs text-muted-foreground">
                   {translate('library.emptyHint')}
                 </p>
-                <div className="fc-lib-empty-actions">
+                {!mobileChrome && <div className="fc-lib-empty-actions">
                   <DsButton
                     type="button"
                     variant="primary"
@@ -796,7 +878,7 @@ export const LibraryScreen: React.FC = () => {
                     <UploadSimple size={15} />
                     {importing ? translate('library.import.running') : translate('library.import.apkg')}
                   </DsButton>
-                </div>
+                </div>}
               </>
             )}
           </div>
@@ -898,7 +980,7 @@ export const LibraryScreen: React.FC = () => {
             ) : null}
           </div>
         )}
-      </CustomScrollArea>
+      </ListContainer>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 text-xs text-muted-foreground">
         <span>{translate('library.page', { page, pages: pageCount })}</span>
@@ -931,4 +1013,5 @@ export const LibraryScreen: React.FC = () => {
       </footer>
     </div>
   );
+  return isSmallScreen ? <CustomScrollArea>{content}</CustomScrollArea> : content;
 };

@@ -1,5 +1,144 @@
 use super::*;
 
+#[cfg(test)]
+mod incremental_save_tests {
+    use super::*;
+    use crate::chat_v2::pipeline::history::replay_test_support::{
+        content_block, next_turn_ctx, replay_test_pipeline,
+    };
+    use crate::chat_v2::types::ChatSession;
+
+    #[tokio::test]
+    async fn intermediate_saves_write_only_changed_payloads_and_retain_dirty_on_rollback() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_incremental_save";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        conn.execute_batch("CREATE TABLE perf_payload_writes (block_id TEXT);
+            CREATE TRIGGER perf_insert AFTER INSERT ON chat_v2_blocks
+            WHEN NEW.id LIKE 'blk_dirty_%' BEGIN
+                INSERT INTO perf_payload_writes VALUES (NEW.id); END;
+            CREATE TRIGGER perf_update AFTER UPDATE OF content, status, tool_output ON chat_v2_blocks
+            WHEN NEW.id LIKE 'blk_dirty_%' BEGIN
+                INSERT INTO perf_payload_writes VALUES (NEW.id); END;").unwrap();
+        let mut ctx = next_turn_ctx(session_id);
+        ctx.options.skip_user_message_save = Some(true);
+        for index in 0..50 {
+            ctx.add_interleaved_block(content_block(
+                &ctx.assistant_message_id,
+                &format!("blk_dirty_{index:03}"),
+                &format!("payload {index}"),
+                index,
+            ));
+            pipeline.save_intermediate_results(&mut ctx).await.unwrap();
+        }
+        let writes: i64 = conn
+            .query_row("SELECT COUNT(*) FROM perf_payload_writes", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            writes, 50,
+            "unchanged old payloads must not be written each round"
+        );
+
+        // Anki created outside the pipeline must keep its payload and position.
+        let mut anki = content_block(
+            &ctx.assistant_message_id,
+            "blk_external_anki",
+            "external payload",
+            7,
+        );
+        anki.block_type = block_types::ANKI_CARDS.into();
+        ChatV2Repo::create_block_with_conn(&conn, &anki).unwrap();
+        pipeline.save_intermediate_results(&mut ctx).await.unwrap();
+        let message = ChatV2Repo::get_message_with_conn(&conn, &ctx.assistant_message_id)
+            .unwrap()
+            .unwrap();
+        assert!(message.block_ids.contains(&anki.id));
+        assert_eq!(
+            ChatV2Repo::get_block_with_conn(&conn, &anki.id)
+                .unwrap()
+                .unwrap()
+                .content,
+            anki.content
+        );
+
+        let mut changed = ctx.interleaved_blocks.last().unwrap().clone();
+        changed.content = Some("replacement using the same block ID".into());
+        ctx.add_interleaved_block(changed.clone());
+        conn.execute_batch(
+            "CREATE TRIGGER perf_reject BEFORE UPDATE ON chat_v2_blocks
+            WHEN NEW.id = 'blk_dirty_049' BEGIN SELECT RAISE(ABORT, 'forced rollback'); END;",
+        )
+        .unwrap();
+        assert!(pipeline.save_intermediate_results(&mut ctx).await.is_err());
+        assert!(ctx.dirty_interleaved_block_ids.contains(&changed.id));
+        assert_eq!(
+            ChatV2Repo::get_block_with_conn(&conn, &changed.id)
+                .unwrap()
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("payload 49")
+        );
+        conn.execute_batch("DROP TRIGGER perf_reject").unwrap();
+        pipeline.save_intermediate_results(&mut ctx).await.unwrap();
+        assert!(ctx.dirty_interleaved_block_ids.is_empty());
+        assert_eq!(
+            ChatV2Repo::get_block_with_conn(&conn, &changed.id)
+                .unwrap()
+                .unwrap()
+                .content,
+            changed.content
+        );
+        let writes: i64 = conn
+            .query_row("SELECT COUNT(*) FROM perf_payload_writes", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(writes, 51);
+
+        // Deferred constraints fail at COMMIT, after all payload writes succeeded.
+        // The failed save must rollback before returning its connection to the pool.
+        conn.execute_batch(
+            "CREATE TABLE perf_parent (id INTEGER PRIMARY KEY);
+            CREATE TABLE perf_deferred (parent_id INTEGER REFERENCES perf_parent(id)
+                DEFERRABLE INITIALLY DEFERRED);
+            CREATE TRIGGER perf_commit_reject AFTER UPDATE ON chat_v2_blocks
+            WHEN NEW.id = 'blk_dirty_049' BEGIN INSERT INTO perf_deferred VALUES (999); END;",
+        )
+        .unwrap();
+        changed.content = Some("after failed commit".into());
+        ctx.add_interleaved_block(changed.clone());
+        assert!(pipeline.save_intermediate_results(&mut ctx).await.is_err());
+        assert!(ctx.dirty_interleaved_block_ids.contains(&changed.id));
+        assert_eq!(
+            ChatV2Repo::get_block_with_conn(&conn, &changed.id)
+                .unwrap()
+                .unwrap()
+                .content
+                .as_deref(),
+            Some("replacement using the same block ID")
+        );
+        conn.execute_batch("DROP TRIGGER perf_commit_reject")
+            .unwrap();
+        pipeline.save_intermediate_results(&mut ctx).await.unwrap();
+        assert!(ctx.dirty_interleaved_block_ids.is_empty());
+        assert_eq!(
+            ChatV2Repo::get_block_with_conn(&conn, &changed.id)
+                .unwrap()
+                .unwrap()
+                .content,
+            changed.content
+        );
+    }
+}
+
 fn build_replay_skill_payload_snapshot(
     options: &SendOptions,
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
@@ -214,6 +353,7 @@ impl ChatV2Pipeline {
         conn: &rusqlite::Connection,
         ctx: &PipelineContext,
         user_block_id: Option<&str>,
+        dirty_blocks: Option<&std::collections::HashSet<String>>,
     ) -> ChatV2Result<()> {
         use crate::chat_v2::repo::BlockReplayData;
 
@@ -232,6 +372,9 @@ impl ChatV2Pipeline {
             let Some(block_id) = result.block_id.as_deref() else {
                 continue;
             };
+            if dirty_blocks.is_some_and(|dirty| !dirty.contains(block_id)) {
+                continue;
+            }
             let Some(tool_call_id) = result.tool_call_id.clone().filter(|id| !id.is_empty()) else {
                 continue;
             };
@@ -361,7 +504,7 @@ impl ChatV2Pipeline {
     /// - 两者都使用 INSERT OR REPLACE，不会冲突
     pub(crate) async fn save_intermediate_results(
         &self,
-        ctx: &PipelineContext,
+        ctx: &mut PipelineContext,
     ) -> ChatV2Result<()> {
         // 如果没有块需要保存，直接返回
         if ctx.interleaved_blocks.is_empty() {
@@ -389,8 +532,21 @@ impl ChatV2Pipeline {
                         "[ChatV2::pipeline] Failed to commit intermediate save transaction: {}",
                         e
                     );
+                    // SQLite may leave the transaction open after a failed COMMIT.
+                    // Do not return that transaction to the pool or clear dirty state.
+                    if !conn.is_autocommit() {
+                        if let Err(rollback_error) = conn.execute("ROLLBACK", []) {
+                            log::error!(
+                                "[ChatV2::pipeline] Rollback after COMMIT failure: {}",
+                                rollback_error
+                            );
+                        }
+                    }
                     ChatV2Error::Database(format!("Failed to commit transaction: {}", e))
                 })?;
+                // Never acknowledge dirty payloads before COMMIT succeeds.
+                ctx.dirty_interleaved_block_ids.clear();
+                ctx.intermediate_save_committed = true;
                 log::debug!(
                     "[ChatV2::pipeline] Intermediate save committed: message_id={}, blocks={}",
                     ctx.assistant_message_id,
@@ -427,7 +583,7 @@ impl ChatV2Pipeline {
     /// 返回是否最终保存成功（仅用于调用方日志分支）。
     pub(crate) async fn save_intermediate_results_with_retry(
         &self,
-        ctx: &PipelineContext,
+        ctx: &mut PipelineContext,
         stage: &str,
     ) -> bool {
         let first_err = match self.save_intermediate_results(ctx).await {
@@ -497,17 +653,19 @@ impl ChatV2Pipeline {
             user_block_id = Self::existing_user_content_block_id(conn, &ctx.user_message_id);
         }
 
-        // 1. 保存助手消息（如果不存在则创建）
-        // 🔧 Preserve `anki_cards` blocks created outside of `ctx.interleaved_blocks`.
-        //
-        // `ChatV2Repo::create_message_with_conn` 使用 ON CONFLICT(id) DO UPDATE SET，
-        // 是原地更新而非 DELETE+INSERT，不会触发 CASCADE 删除。
-        // 但仍保留 anki_cards 块的保存逻辑以防 block_ids 列表覆盖。
-        let preserved_anki_cards_blocks: Vec<MessageBlock> =
-            ChatV2Repo::get_message_blocks_with_conn(conn, &ctx.assistant_message_id)?
-                .into_iter()
-                .filter(|b| b.block_type == block_types::ANKI_CARDS)
-                .collect();
+        // Message upsert does not delete blocks. Preserve externally-created
+        // Anki positions using IDs only; do not read/rewrite every saved payload.
+        let preserved_anki_cards_blocks: Vec<(u32, String)> = {
+            let mut statement = conn.prepare(
+                "SELECT block_index, id FROM chat_v2_blocks
+                 WHERE message_id = ?1 AND block_type = ?2",
+            )?;
+            let rows = statement.query_map(
+                rusqlite::params![ctx.assistant_message_id, block_types::ANKI_CARDS],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )?;
+            rows.collect::<Result<_, _>>()?
+        };
 
         let interleaved_block_ids: Vec<String> = ctx
             .interleaved_blocks
@@ -524,8 +682,8 @@ impl ChatV2Pipeline {
             // 收集需要插入的 anki_cards 块及其原始位置
             let mut anki_inserts: Vec<(u32, String)> = preserved_anki_cards_blocks
                 .iter()
-                .filter(|b| !interleaved_id_set.contains(b.id.as_str()))
-                .map(|b| (b.block_index, b.id.clone()))
+                .filter(|(_, id)| !interleaved_id_set.contains(id.as_str()))
+                .cloned()
                 .collect();
             anki_inserts.sort_by_key(|(idx, _)| *idx);
 
@@ -574,44 +732,27 @@ impl ChatV2Pipeline {
         };
         ChatV2Repo::create_message_with_conn(conn, &assistant_msg)?;
 
-        // 2. 保存所有已生成的块
+        // 2. First save materializes all blocks; later saves write only explicit
+        // mutations, including replacements using the same ID. Final flush stays full.
         for (index, block) in ctx.interleaved_blocks.iter().enumerate() {
+            if ctx.intermediate_save_committed
+                && !ctx.dirty_interleaved_block_ids.contains(&block.id)
+            {
+                continue;
+            }
             let mut block_to_save = block.clone();
             block_to_save.block_index = index as u32;
             ChatV2Repo::create_block_with_conn(conn, &block_to_save)?;
         }
 
-        // 3. Re-insert preserved `anki_cards` blocks deleted by the assistant message REPLACE.
-        //    🔧 修复：保持 anki_cards 块的原始 block_index，不再追加到末尾
-        if !preserved_anki_cards_blocks.is_empty() {
-            let interleaved_block_id_set: std::collections::HashSet<&str> = ctx
-                .interleaved_blocks
-                .iter()
-                .map(|b| b.id.as_str())
-                .collect();
-
-            for preserved in preserved_anki_cards_blocks {
-                // If the pipeline already has the same block id, prefer the pipeline version.
-                if interleaved_block_id_set.contains(preserved.id.as_str()) {
-                    continue;
-                }
-
-                // 保持原始 block_index 不变，这样刷新后位置不会跳到末尾
-                let block_to_save = preserved;
-
-                if let Err(e) = ChatV2Repo::create_block_with_conn(conn, &block_to_save) {
-                    log::error!(
-                        "[ChatV2::pipeline] Failed to re-insert preserved anki_cards block: message_id={}, block_id={}, err={:?}",
-                        ctx.assistant_message_id,
-                        block_to_save.id,
-                        e
-                    );
-                }
-            }
-        }
-
         // 4. V20260806 B 层：块行就位后补写重放旁路三列
-        self.persist_replay_sidecar(conn, ctx, user_block_id.as_deref())?;
+        self.persist_replay_sidecar(
+            conn,
+            ctx,
+            user_block_id.as_deref(),
+            ctx.intermediate_save_committed
+                .then_some(&ctx.dirty_interleaved_block_ids),
+        )?;
 
         log::debug!(
             "[ChatV2::pipeline] Intermediate save: message_id={}, blocks={}, user_saved={}",
@@ -656,6 +797,16 @@ impl ChatV2Pipeline {
             Ok(()) => {
                 conn.execute("COMMIT", []).map_err(|e| {
                     log::error!("[ChatV2::pipeline] Failed to commit transaction: {}", e);
+                    // SQLite may leave the transaction open after a failed COMMIT.
+                    // Do not return that transaction to the pool or clear dirty state.
+                    if !conn.is_autocommit() {
+                        if let Err(rollback_error) = conn.execute("ROLLBACK", []) {
+                            log::error!(
+                                "[ChatV2::pipeline] Rollback after COMMIT failure: {}",
+                                rollback_error
+                            );
+                        }
+                    }
                     ChatV2Error::Database(format!("Failed to commit transaction: {}", e))
                 })?;
                 log::debug!(
@@ -1272,7 +1423,7 @@ impl ChatV2Pipeline {
         }
 
         // V20260806 B 层：块行就位后补写重放旁路三列
-        self.persist_replay_sidecar(conn, ctx, user_block_id.as_deref())?;
+        self.persist_replay_sidecar(conn, ctx, user_block_id.as_deref(), None)?;
 
         log::info!(
             "[ChatV2::pipeline] Results saved: session={}, user_msg={}, assistant_msg={}, blocks={}, content_len={}",

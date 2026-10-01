@@ -130,6 +130,37 @@ export interface QuestionImage {
   hash: string;
 }
 
+// ============================================================================
+// 图片作答信封（image_answer）契约，与 Rust qbank_grading::parse_image_answer_envelope 对齐
+//
+// 主观题（short_answer/essay/calculation/proof）与填空题可提交手写答案图片：
+// user_answer 为 {"type":"image_answer","images":[QuestionImage…],"text":…}。
+// 信封只存 VFS 附件 ID 引用（绝不放 base64——user_answer 进 content hash 云同步
+// 与历史渲染）。约束与作文批改对齐：1-6 张，mime 限 png/jpeg/webp/gif。
+// ============================================================================
+
+/** 信封允许的图片 MIME（与后端白名单一致；题目图片编辑器同款集合） */
+export const IMAGE_ANSWER_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
+/** 图片作答上限（张），与作文批改 MAX_IMAGES_PER_KIND 对齐 */
+export const IMAGE_ANSWER_MAX_IMAGES = 6;
+
+/** 校验并收窄信封 images 元素（字段齐全 + mime 白名单） */
+export function isValidImageAnswerImage(value: unknown): value is QuestionImage {
+  if (!value || typeof value !== 'object') return false;
+  const { id, name, mime, hash } = value as Record<string, unknown>;
+  return typeof id === 'string' && id.trim() !== ''
+    && typeof name === 'string'
+    && typeof hash === 'string'
+    && (IMAGE_ANSWER_MIME_TYPES as readonly string[]).includes(String(mime));
+}
+
+/** 结构化图片作答值（UserAnswerValue 的 image_answer 变体载荷） */
+export interface ImageAnswerPayload {
+  images: QuestionImage[];
+  text: string;
+}
+
 export interface Question {
   id: string;
   cardId?: string;
@@ -434,6 +465,8 @@ export function getNextQuestionIndex(
 // - fill_blank: 多空为 JSON 数组字符串 ["ans1","ans2"]（后端兼容旧单串）
 // - matching:   JSON 字符串 {"pairs":[{"left":"L1","right":"R1"}]}
 // - ordering:   JSON 数组字符串 ["B","A","C"]
+// - 图片作答:    信封 JSON {"type":"image_answer","images":[…],"text":…}（主观题/填空题，
+//               images 为 VFS 附件引用；1-6 张；见 IMAGE_ANSWER_* 常量）
 // - 其余题型:   原始文本
 // ============================================================================
 
@@ -444,6 +477,7 @@ export type UserAnswerValue =
   | { type: 'fill_blank'; blanks: string[] }
   | { type: 'matching'; pairs: MatchingPair[] }
   | { type: 'ordering'; order: string[] }
+  | { type: 'image_answer'; images: QuestionImage[]; text: string }
   | { type: 'text'; value: string };
 
 /** 将结构化作答值序列化为 user_answer 字符串（提交给 qbank_submit_answer） */
@@ -462,9 +496,43 @@ export function encodeUserAnswer(value: UserAnswerValue): string {
       return JSON.stringify({ pairs: value.pairs });
     case 'ordering':
       return JSON.stringify(value.order);
+    case 'image_answer': {
+      // 信封必须先经校验：images 为空/超上限/含非法元素时编码失败，
+      // 由调用方回退为 text 提交而不是发出一个后端无法解析的信封。
+      const images = value.images.filter(isValidImageAnswerImage);
+      if (images.length === 0 || images.length > IMAGE_ANSWER_MAX_IMAGES || images.length !== value.images.length) {
+        throw new Error('invalid image_answer payload');
+      }
+      return JSON.stringify({ type: 'image_answer', images, text: value.text ?? '' });
+    }
     case 'text':
       return value.value;
   }
+}
+
+/**
+ * 宽松解析图片作答信封（只认 {"type":"image_answer",…} 形态）。
+ * 与 decodeUserAnswer 不同：本函数不区分题型，供展示/评判侧对任意
+ * user_answer 文本探测；结构非法或非信封一律返回 null，调用方走原文本。
+ */
+export function parseImageAnswerEnvelope(raw: string | null | undefined): ImageAnswerPayload | null {
+  if (raw == null) return null;
+  const trimmed = raw.trim();
+  if (!trimmed.startsWith('{')) return null;
+  const parsed = tryParseJson(trimmed) as { type?: unknown; images?: unknown; text?: unknown } | undefined;
+  if (!parsed || parsed.type !== 'image_answer' || !Array.isArray(parsed.images)) return null;
+  const images = parsed.images.filter(isValidImageAnswerImage);
+  if (images.length === 0 || images.length !== (parsed.images as unknown[]).length) return null;
+  if (images.length > IMAGE_ANSWER_MAX_IMAGES) return null;
+  return { images, text: typeof parsed.text === 'string' ? parsed.text : '' };
+}
+
+/**
+ * 序列化图片作答信封（editor 提交路径的便捷封装）。
+ * images 非空才产生信封——空图 + 纯文本由调用方走原文本路径。
+ */
+export function encodeImageAnswerUserAnswer(images: QuestionImage[], text: string): string {
+  return encodeUserAnswer({ type: 'image_answer', images, text });
 }
 
 /** 将存量 user_answer 字符串按题型解码为结构化作答值（不可解析时回退 text/null） */
@@ -474,6 +542,15 @@ export function decodeUserAnswer(
 ): UserAnswerValue | null {
   if (raw == null || raw.trim() === '') return null;
   const trimmed = raw.trim();
+
+  // 图片作答信封只在主观题/填空题上解码；其他题型收到信封属于数据错位，
+  // 回退 text 保底展示原始 JSON 而不是误构造可提交的图片作答。
+  if (isSubjectiveQuestionType(questionType)) {
+    const envelope = parseImageAnswerEnvelope(trimmed);
+    if (envelope) {
+      return { type: 'image_answer', images: envelope.images, text: envelope.text };
+    }
+  }
 
   switch (questionType) {
     case 'true_false': {
@@ -691,6 +768,18 @@ const WRONG: LocalGradingResult = { isCorrect: false, needsManualGrading: false 
 const MANUAL: LocalGradingResult = { isCorrect: null, needsManualGrading: true };
 
 /**
+ * 后端 check_answer_correctness 一律交 AI 评判的题型（主观题 + 填空）。
+ * 图片作答信封只在这些题型上合法。
+ */
+export function isSubjectiveQuestionType(questionType: QuestionType): boolean {
+  return questionType === 'short_answer'
+    || questionType === 'essay'
+    || questionType === 'calculation'
+    || questionType === 'proof'
+    || questionType === 'fill_blank';
+}
+
+/**
  * 本地判分纯函数，与后端 QuestionBankService::check_answer_correctness 规则一致：
  * - single/multiple/indefinite_choice：选项键比较（全对才 correct）
  * - true_false：布尔宽松解析
@@ -786,6 +875,9 @@ export function gradeAnswerLocally(
       return equal ? CORRECT : WRONG;
     }
     case 'fill_blank': {
+      // 图片作答信封：旁路结构化逐空判分（信封 JSON 会被下方 JSON 解析
+      // 当作答案数组误判为 WRONG），一律交 AI 评判——与后端口径一致。
+      if (parseImageAnswerEnvelope(userAnswer)) return MANUAL;
       if (isFillBlankStructuredData(structured) && structured.blanks.length > 0) {
         const blanks = structured.blanks;
         const parsed = tryParseJson(user);
@@ -824,6 +916,9 @@ export function gradeAnswerLocally(
     case 'essay':
     case 'calculation':
     case 'proof':
+      // 图片作答信封：本地无可判分内容，一律交 AI 评判
+      // （后端权威口径这些题型本来就不做字符串比对）。
+      if (parseImageAnswerEnvelope(userAnswer)) return MANUAL;
       return MANUAL;
     default: {
       // other：精确匹配判正确，否则手动批改

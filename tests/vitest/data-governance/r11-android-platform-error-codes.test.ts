@@ -4,6 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 
 import { parseCommandErrorEnvelope } from '@/api/tauriClient';
 import {
@@ -144,7 +145,12 @@ describe('CI Vitest 堆上限不把 4GB worker 顶死当产品红', () => {
     const ciYml = readFileSync(resolve(process.cwd(), '.github/workflows/ci.yml'), 'utf-8');
     expect(vitestConfig).toContain("process.env.CI ? '--max-old-space-size=6144'");
     expect(vitestConfig).toContain('maxForks: 2');
-    expect(ciYml).toContain("NODE_OPTIONS: '--max-old-space-size=6144'");
+    const workflow = parseYaml(ciYml);
+    const job = workflow.jobs['frontend-tests'];
+    const testStep = job.steps.find((step: { run?: string }) => step.run?.includes('vitest run'));
+    expect(testStep).toBeDefined();
+    expect(testStep.env?.NODE_OPTIONS ?? job.env?.NODE_OPTIONS ?? workflow.env?.NODE_OPTIONS)
+      .toBe('--max-old-space-size=6144');
     expect(vitestConfig).not.toContain('testTimeout: 0');
   });
 });

@@ -1,0 +1,320 @@
+{
+  "pass": true,
+  "appVersion": "0.9.68 (Build 15148, 95a00941)",
+  "nativeDataDir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+  "environment": "macOS WKWebView / production Tauri IPC / isolated native data / loopback-only OCR",
+  "startedAt": "2026-09-27T07:50:24.277Z",
+  "finishedAt": "2026-09-27T07:50:47.944Z",
+  "inputRun": "3ccfc9565636",
+  "model": {
+    "id": "perf-local-ocr-20260927",
+    "model": "deepseek-ai/DeepSeek-OCR",
+    "baseUrl": "http://127.0.0.1:17424/v1",
+    "isEmbedding": false,
+    "ocrEngine": "deepseek_ocr"
+  },
+  "settingsAfterExperiment": {
+    "ocr.enabled": false,
+    "indexing.enabled": false,
+    "note": "Restored by successful script finally calls; system OCR explicitly disabled during preflight."
+  },
+  "A": {
+    "pass": true,
+    "pdfPages": 4,
+    "requests": 0,
+    "ocrPages": 0,
+    "hasOcrPayload": false
+  },
+  "B": {
+    "pass": true,
+    "files": 6,
+    "pagesEach": 4,
+    "uploadScheduling": "Promise.all: six native vfs_upload_file calls concurrently, no retries",
+    "heldRequests": 4,
+    "heldActive": 4,
+    "heldPeak": 4,
+    "finalOcrPages": [
+      4,
+      4,
+      4,
+      4,
+      4,
+      4
+    ]
+  },
+  "C": {
+    "pass": true,
+    "cancelReturned": true,
+    "requestsBeforeRelease": 4,
+    "hasPayloadBeforeRelease": false,
+    "hasPayloadAfterRelease": false,
+    "hasPayloadAfterD": false,
+    "finalOcrPages": 0,
+    "scope": "Cancelled queued primary PDF pipeline; does not prove every index-stage cancellation or generation replacement race."
+  },
+  "D": {
+    "pass": true,
+    "newMainPdfPages": 4,
+    "totalRequests": 28,
+    "totalCompleted": 28,
+    "active": 0,
+    "peak": 4,
+    "disconnected": 0
+  },
+  "inputs": {
+    "A": {
+      "fileId": "file_MJnBJ2PC06",
+      "pages": 4,
+      "isNew": true
+    },
+    "B2": {
+      "fileId": "file_HKbnKzyJaV",
+      "pages": 4,
+      "isNew": true
+    },
+    "B5": {
+      "fileId": "file_VB9sbgSl16",
+      "pages": 4,
+      "isNew": true
+    },
+    "B3": {
+      "fileId": "file_8qrF4s4r7Z",
+      "pages": 4,
+      "isNew": true
+    },
+    "B4": {
+      "fileId": "file_B7z3unY9OP",
+      "pages": 4,
+      "isNew": true
+    },
+    "B6": {
+      "fileId": "file_f6kVxU4-Lq",
+      "pages": 4,
+      "isNew": true
+    },
+    "B1": {
+      "fileId": "file_WQ9hjspBOf",
+      "pages": 4,
+      "isNew": true
+    },
+    "C": {
+      "fileId": "file_x5-XkXkCt0",
+      "pages": 4,
+      "isNew": true
+    },
+    "D": {
+      "fileId": "file_n_Hr5-tsHu",
+      "pages": 4,
+      "isNew": true
+    }
+  },
+  "rawEvidence": "/tmp/deep-student-perf-verify-20260927/ocr/run-2026-09-27T07-50-23-456Z/verification.json",
+  "previousFailures": {
+    "cancelledEmptyOcrWrite": {
+      "summary": {
+        "sourceCommit": "acc1e4b65",
+        "A": {
+          "pass": true,
+          "requests": 0
+        },
+        "B": {
+          "requests": 24,
+          "completed": 24,
+          "active": 0,
+          "peak": 4,
+          "disconnected": 0
+        },
+        "C": {
+          "pass": false,
+          "cancelReturned": true,
+          "newRequestsWhileQueued": 0,
+          "row": {
+            "id": "file_77DMNKjlLp",
+            "processing_status": "ocr_processing",
+            "label": "C",
+            "hasOcrPayload": true,
+            "ocrPages": 0
+          }
+        },
+        "D": {
+          "executed": false
+        }
+      },
+      "rawEvidence": "/tmp/deep-student-perf-verify-20260927/ocr/run-2026-09-27T07-22-57-856Z/verification.json"
+    },
+    "parallelUploadBusy": {
+      "appVersion": "0.9.68 (Build 15147, f09d2ede)",
+      "pass": false,
+      "error": "Error: vfs_upload_file: Database error: database is locked",
+      "ARequests": 0,
+      "mockRequests": 0,
+      "CAndDExecuted": false,
+      "rawEvidence": "/tmp/deep-student-perf-verify-20260927/ocr/run-2026-09-27T07-35-55-268Z/verification.json"
+    }
+  },
+  "limitations": [
+    "macOS WKWebView debug development application; no Windows or Android device performance run.",
+    "OCR response is deterministic loopback fixture; no external or paid model requested.",
+    "No embedding model configured; OCR/index fallback completion tested, not successful external vector embedding.",
+    "The final two fixes were not rechecked on the Android cross target; the prior shared-OCR fix was.",
+    "The cancelled file retained its existing processing_status marker; the assertions cover OCR requests and OCR payload, not every cancellation UI/state transition.",
+    "The native upload error did not include an extended SQLite error code; SQLITE_BUSY_SNAPSHOT 517 was reproduced separately."
+  ],
+  "sourceCommits": {
+    "cancelledOcrWrite": "f09d2edeb",
+    "uploadWriteReservation": "95a009417"
+  },
+  "controlledSqlExperiments": {
+    "deferredSnapshot": {
+      "error": "database is locked",
+      "sqliteErrorCode": 517,
+      "sqliteErrorName": "SQLITE_BUSY_SNAPSHOT",
+      "elapsedMs": 0.009,
+      "busyTimeoutMs": 5000,
+      "journalMode": "wal"
+    },
+    "zeroRowWriteReservation": {
+      "changedRows": 0,
+      "totalChangesDelta": 0,
+      "triggerRows": 0,
+      "competingWriterWhileReserved": "SQLITE_BUSY",
+      "writerAfterRelease": "committed"
+    }
+  },
+  "finalFiles": [
+    {
+      "label": "A",
+      "id": "file_MJnBJ2PC06",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": false,
+      "ocrPages": 0,
+      "ocrPageIndices": []
+    },
+    {
+      "label": "B2",
+      "id": "file_HKbnKzyJaV",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "B5",
+      "id": "file_VB9sbgSl16",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "B3",
+      "id": "file_8qrF4s4r7Z",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "B4",
+      "id": "file_B7z3unY9OP",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "B6",
+      "id": "file_f6kVxU4-Lq",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "B1",
+      "id": "file_WQ9hjspBOf",
+      "processing_status": "completed_with_issues",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "label": "C",
+      "id": "file_x5-XkXkCt0",
+      "processing_status": "ocr_processing",
+      "page_count": 4,
+      "hasOcrPayload": false,
+      "ocrPages": 0,
+      "ocrPageIndices": []
+    },
+    {
+      "label": "D",
+      "id": "file_n_Hr5-tsHu",
+      "processing_status": "completed",
+      "page_count": 4,
+      "hasOcrPayload": true,
+      "ocrPages": 4,
+      "ocrPageIndices": [
+        0,
+        1,
+        2,
+        3
+      ]
+    }
+  ],
+  "regressionChecks": [
+    {
+      "commit": "f09d2edeb",
+      "macOSCargoCheckPassed": true,
+      "testModule": "vfs::pdf_processing_service::tests",
+      "passed": 11,
+      "failed": 0
+    },
+    {
+      "commit": "95a009417",
+      "macOSCargoCheckPassed": true,
+      "testModule": "vfs::upload_saga::tests",
+      "passed": 9,
+      "failed": 0,
+      "newConcurrentWriterTests": 2
+    }
+  ],
+  "historicalEvidenceDirectoryPresent": false
+}

@@ -378,6 +378,8 @@ impl RequestAdapter for GenericOpenAIAdapter {
             }
         }
         body.remove("effort");
+        // 2C 自定义请求体扩展
+        super::merge_extra_body(body, config);
     }
 }
 

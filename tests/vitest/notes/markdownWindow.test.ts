@@ -21,6 +21,31 @@ const numberedLines = (count: number) =>
   Array.from({ length: count }, (_, index) => `line ${index + 1}`);
 
 describe('markdownWindow helpers', () => {
+  it('keeps an entire columns envelope and its nested toggle across initial and expanded boundaries', () => {
+    const columns = [':::ds-columns{version=1 layout=cornell}', '', ':::column', '', '> [!toggle]- Fold', '> first', '>', '> last', '',
+      ':::end-column', '', ':::column', '', 'right', '', ':::end-column', '', ':::end-ds-columns'];
+    const source = [...numberedLines(98), '', ...columns, '', ...numberedLines(500)].join('\n');
+    const initial = createMarkdownWindow(source, 106);
+    expect(initial.loadedMarkdown).toContain(':::end-ds-columns');
+    expect(initial.loadedMarkdown).toContain('> last');
+    expect(composeWindowedSave(initial.loadedMarkdown, source, initial.loadedLineCount, true)).toBe(source);
+    const prefix = source.split('\n').slice(0, 98).join('\n');
+    const expanded = expandMarkdownWindow(source, prefix, 98, 7);
+    expect(expanded.loadedMarkdown).toBe(initial.loadedMarkdown);
+  });
+
+  it('keeps lazy toggle continuation and nested quotes together without swallowing the next root', () => {
+    const source = [...numberedLines(98), '', '> [!toggle]- Fold', '> first', 'lazy continuation', '>', '> > nested', '> tail', '', '# After', 'end'].join('\n');
+    const projected = createMarkdownWindow(source, 101);
+    expect(projected.loadedMarkdown).toContain('> tail');
+    expect(projected.loadedMarkdown).not.toContain('# After');
+    expect(composeWindowedSave(projected.loadedMarkdown, source, projected.loadedLineCount, true)).toBe(source);
+  });
+
+  it('does not interpret quoted or fenced columns markers as root envelopes', () => {
+    const source = [...numberedLines(98), '```', ':::ds-columns{version=1 layout=equal}', '```', '', ...numberedLines(500)].join('\n');
+    expect(createMarkdownWindow(source, 100).loadedLineCount).toBe(101);
+  });
   it('clamps initial line window settings to safe bounds', () => {
     expect(clampInitialLineWindow(undefined)).toBe(DEFAULT_INITIAL_LINE_WINDOW);
     expect(clampInitialLineWindow(null)).toBe(DEFAULT_INITIAL_LINE_WINDOW);
@@ -111,7 +136,7 @@ describe('markdownWindow helpers', () => {
   });
 
   it('extends through blockquote and list continuation lines', () => {
-    const blockquote = createMarkdownWindow([...numberedLines(99), '> one', '> two', 'after'].join('\n'), 100);
+    const blockquote = createMarkdownWindow([...numberedLines(99), '> one', '> two', '', 'after'].join('\n'), 100);
     expect(blockquote.loadedLineCount).toBe(101);
     expect(blockquote.loadedMarkdown).not.toContain('after');
 

@@ -4,9 +4,30 @@
  */
 
 import type { Crepe } from '@milkdown/crepe';
-import type { AgentHighlightMeta } from './plugins/agentHighlight';
+import type { AgentHighlightMeta, AgentHighlightState } from './plugins/agentHighlight';
 import type { CrepePluginsOptions } from './plugins';
 import type { CrepeFormattingState } from './formattingState';
+import type { BlockTransferService } from './blockTransfer/service';
+import type { CrepeCommandId, CrepeCommandRequest } from './commandRegistry';
+
+export interface CrepeDocumentCapabilities {
+  noteId: string;
+  /** Confirmed by the backend for this document, not inferred from its content. */
+  writable: boolean;
+  capabilities: readonly string[];
+}
+export interface CrepeUploadState { pending: number; running: number; failed: number; reviewLeases: number }
+
+export interface CrepeBlockActionsHost {
+  /** Live complete Markdown authority, never just the visible window. */
+  getFullMarkdown(): string;
+  isDocumentWindowed(): boolean;
+  /** Must reject on failed persistence; called before publishing a copied link. */
+  flushPendingSave(): Promise<void>;
+  transferService: BlockTransferService;
+  /** User-triggered format opt-in; returns the backend-confirmed current-page grant. */
+  requestLayoutCapability?: () => Promise<CrepeDocumentCapabilities | null>;
+}
 
 export type CrepeSelectionSnapshot = {
   from: number;
@@ -22,7 +43,23 @@ export type CrepeAgentInsertResult = {
 export type CrepeFullDocumentReplaceOptions = {
   /** Full-document OCC precondition. The write must be rejected if it no longer matches. */
   expectedMarkdown: string;
+  /** Notes hosts carry the original editor identity/revision through to the window composer. */
+  baseline?: FullDocumentSnapshot;
 };
+
+/** A live complete draft, including unsaved edits and the unloaded suffix. */
+export interface FullDocumentSnapshot {
+  readonly noteId: string;
+  readonly revision: number;
+  readonly markdown: string;
+}
+
+/** NotesCrepeEditor supplies this after the owning view extends the base editor API. */
+export interface FullDocumentApi extends CrepeEditorApi {
+  getFullDocument: () => FullDocumentSnapshot;
+  /** Returns the actual canonical draft and its revision after confirmed persistence. */
+  replaceFullDocument: (markdown: string, baseline: FullDocumentSnapshot) => Promise<FullDocumentSnapshot>;
+}
 
 export type { AgentHighlightMeta };
 
@@ -30,14 +67,41 @@ export type { AgentHighlightMeta };
  * Crepe 编辑器对外暴露的 API
  */
 export interface CrepeEditorApi {
+  /** Storage OCC token installed with this editor's current baseline. */
+  getStorageUpdatedAt?: () => string | undefined;
+  /** Backend-confirmed grant for the current note; null closes layout writes. */
+  setDocumentCapabilities?: (capabilities: CrepeDocumentCapabilities | null) => void;
+  /** Plain export of the loaded document. Windowed hosts must materialize first. */
+  getPlainMarkdown?: () => string;
+  /** Blocks user input/new uploads without cancelling in-flight uploads. Release in finally. */
+  acquireReviewLease?: () => () => void;
+  getUploadState?: () => CrepeUploadState;
+  subscribeCommandState?: (listener: () => void) => () => void;
+  executeCommand?: (command: CrepeCommandId, request?: CrepeCommandRequest) => Promise<boolean>;
+  canExecuteCommand?: (command: CrepeCommandId, request?: CrepeCommandRequest) => boolean;
+  /** Device picker routed through the same mapped upload lifecycle as paste/drop. */
+  insertImageFromDevice?: () => void;
+  /** Bind after NotesCrepeEditor has attached the complete-document/save lifecycle. */
+  configureBlockActions?: (host: CrepeBlockActionsHost | null) => void;
+  /** Root IDs only. Host materializes a windowed note before calling this. */
+  focusBlock?: (blockId: string) => boolean;
+  /** Format metadata for an upgraded but empty note; does not generate IDs on open. */
+  setBlockIdentityMode?: (enabled: boolean) => void;
   /** 获取当前 Markdown 内容 */
   getMarkdown: () => string;
   
   /** 设置 Markdown 内容（会替换当前内容） */
   setMarkdown: (markdown: string) => boolean;
 
-  /** Full persisted document, which may be larger than the editor's loaded line window. */
+  /** Parse/serialize without mutation; rejects schema content loss before returning canonical Markdown. */
+  normalizeMarkdown?: (markdown: string) => string;
+
+  /** Live complete draft (not disk content), including edits in the loaded line window. */
   getFullMarkdown?: () => string;
+
+  /** Notes host contract; base Crepe editors do not own a note or its save lifecycle. */
+  getFullDocument?: FullDocumentApi['getFullDocument'];
+  replaceFullDocument?: FullDocumentApi['replaceFullDocument'];
 
   /** Whether getMarkdown() currently represents only a visible prefix of the document. */
   isDocumentWindowed?: () => boolean;
@@ -119,6 +183,9 @@ export interface CrepeEditorApi {
    * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）
    */
   agentSignal: (meta: AgentHighlightMeta) => void;
+
+  /** Read mapped AI caret/ranges without importing editor runtime into callers. */
+  getAgentHighlightState?: () => AgentHighlightState | null;
 
   /**
    * ACR 4.0：破坏类直改（note_replace/note_set）后的变更区域演出。

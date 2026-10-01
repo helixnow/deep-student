@@ -1,6 +1,8 @@
+import { tableColumnSchema, tableBlockPropsSchema } from '../schema';
+export { tableColumnSchema, tableBlockPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import {
   Table,
@@ -15,28 +17,11 @@ import { cn } from '@/utils/cn';
 import { generativeUIRegistry } from '../registry';
 import { formatGenerativeStatValue } from '../utils/formatGenerativeNumber';
 
-const TABLE_ALIGN = ['left', 'center', 'right'] as const;
-
 const ALIGN_CLASS = {
   left: 'text-left',
   center: 'text-center',
   right: 'text-right',
 } as const;
-
-export const tableColumnSchema = z.object({
-  key: z.string().min(1).max(40),
-  label: z.string().min(1).max(80),
-  align: z.enum(TABLE_ALIGN).optional(),
-});
-
-export const tableBlockPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().max(120).optional(),
-  columns: z.array(tableColumnSchema).min(1).max(12),
-  rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(0).max(50),
-  emptyLabel: z.string().max(80).optional(),
-  caption: z.string().max(200).optional(),
-});
 
 export type TableColumn = z.infer<typeof tableColumnSchema>;
 export type TableBlockProps = z.infer<typeof tableBlockPropsSchema>;

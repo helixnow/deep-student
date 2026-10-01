@@ -72,6 +72,26 @@
   font-size: 12px;
 }
 
+.fc-lib-filters[hidden] {
+  display: none;
+}
+
+.fc-lib-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+}
+
+.fc-lib-filter-dot {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
 .fc-lib-filters-group {
   display: flex;
   flex-wrap: wrap;
@@ -204,10 +224,9 @@
   color: hsl(var(--muted-foreground));
 }
 
-/* 收件箱区头：暖色提示「还没进调度」，与下方到期队列拉开视觉层级 */
+/* 队列标题区：用标题与分隔线区分入队状态。 */
 .fc-lib-queue-head[data-queue='inbox'] {
-  background: color-mix(in hsl, hsl(var(--warning)) 9%, transparent 91%);
-  border-bottom-color: color-mix(in hsl, hsl(var(--warning)) 30%, hsl(var(--border)) 70%);
+  background: transparent;
 }
 
 .fc-lib-queue-head[data-queue='scheduled'] {
@@ -245,21 +264,9 @@
   margin-left: auto;
 }
 
-/* 收件箱分区整体着淡暖底色；行自身背景默认透明，hover/选中态照常覆盖其上 */
+/* 行自身背景透明，hover/选中态沿用列表样式。 */
 .fc-lib-queue-section[data-queue='inbox'] {
-  background: color-mix(in hsl, hsl(var(--warning)) 4%, transparent 96%);
-}
-
-/* 收件箱行左缘 2px 暖色标带（伪元素承载，不与行焦点环 box-shadow 冲突） */
-.fc-lib-queue-section[data-queue='inbox'] .fc-lib-row::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 2px;
-  background: color-mix(in hsl, hsl(var(--warning)) 55%, transparent 45%);
-  pointer-events: none;
+  background: transparent;
 }
 
 /* 分区之间留出呼吸缝 */
@@ -582,6 +589,193 @@
   }
 }
 
+/* ===== 移动端库页 ======================================================== */
+@media (max-width: 767.98px) {
+  .fc-lib-screen {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .fc-lib-screen > .wb-fc-list {
+    flex: none;
+    border: 0;
+    border-top: 1px solid hsl(var(--border) / 0.6);
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .fc-lib-screen .wb-fc-search input {
+    border-radius: 8px;
+    background: hsl(var(--muted) / 0.35);
+  }
+
+  .fc-lib-screen .wb-fc-empty {
+    min-height: 0;
+    padding: 24px 0 16px;
+    gap: 10px;
+  }
+
+  .fc-lib-empty-actions {
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+  }
+
+  .fc-lib-empty-actions .fc-lib-create-cta {
+    width: auto;
+    font-size: var(--font-size-xs, 12px);
+    padding-inline: 10px;
+  }
+
+  .fc-lib-create {
+    flex-direction: row;
+    align-items: stretch;
+  }
+
+  .fc-lib-create > .fc-lib-create-cta {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  .fc-lib-screen .wb-fc-toolbar {
+    flex-wrap: nowrap;
+  }
+
+  .fc-lib-filters {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    padding-block: 4px;
+    border-top: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .fc-lib-filters-group {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 1px 1px 3px;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .fc-lib-filters-group::-webkit-scrollbar {
+    display: none;
+  }
+
+  .fc-lib-chip {
+    flex: 0 0 auto;
+    min-height: 44px;
+    border: 0;
+    border-radius: 6px;
+    padding-inline: 10px;
+    font-size: var(--font-size-xs, 12px);
+  }
+
+  .fc-lib-kbd-hint {
+    display: none;
+  }
+
+  .fc-lib-result-count {
+    margin-left: 0;
+  }
+
+  .fc-lib-bulkbar {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .fc-lib-bulkbar-count {
+    width: 100%;
+  }
+
+  .fc-lib-bulkbar > button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .fc-lib-bulkbar-spacer {
+    display: none;
+  }
+
+  .fc-lib-list-head {
+    min-height: 44px;
+    padding-inline: 0;
+    background: transparent;
+  }
+
+  .fc-lib-queue-head {
+    align-items: flex-start;
+    padding: 9px 12px;
+  }
+
+  .fc-lib-queue-cta {
+    width: 100%;
+    margin: 2px 0 0;
+    justify-content: center;
+  }
+
+  .fc-lib-row-main {
+    display: grid;
+    grid-template-columns: 24px minmax(0, 1fr) 44px;
+    align-items: start;
+    gap: 6px;
+  }
+
+  .fc-lib-row {
+    padding-inline: 0;
+  }
+
+  .fc-lib-row-main > .min-w-0 {
+    min-width: 0;
+  }
+
+  .fc-lib-row-actions {
+    opacity: 1;
+    width: auto;
+    flex-direction: column;
+    gap: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
+
+  .fc-lib-primary-action {
+    width: var(--touch-target-size, 44px);
+    padding: 0;
+    justify-content: center;
+  }
+
+  .fc-lib-primary-action > span,
+  .fc-lib-row:not([data-expanded='true']) .fc-lib-secondary-action {
+    display: none;
+  }
+
+  .fc-lib-row[data-expanded='true'] .fc-lib-row-actions {
+    grid-column: 2 / -1;
+    flex-direction: row;
+    justify-content: flex-end;
+  }
+
+  .fc-lib-expand-body {
+    padding: 10px 0 4px;
+  }
+
+  .fc-lib-expand-actions {
+    align-items: stretch;
+  }
+
+  .fc-lib-expand-actions button {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
+  .fc-lib-meta > div {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fc-lib-expand,
   .fc-lib-row,
@@ -598,4 +792,9 @@
   .fc-lib-skeleton {
     animation: none;
   }
+}
+
+.fc-lib-mobile-composer {
+  height: auto;
+  gap: 20px;
 }

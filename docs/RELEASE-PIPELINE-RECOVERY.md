@@ -179,7 +179,8 @@ skipped 当作通过，仅允许按变更路径明确跳过的 Provider job。�
 `RELEASE_PLEASE_TOKEN` 可配置为 release bot/GitHub App token，使 bot PR 变更直接
 触发 PR CI。未配置时，Release PR workflow 使用 GITHUB_TOKEN 并显式 dispatch
 CI 到准备后的 PR 分支，避免因防递归/待批准 PR event 而没有验证信号。合并后的
-main push CI 仍然是发布的权威证据。
+main push CI 仍然是发布的权威证据。fallback 按准备后的完整 SHA 查询 CI，已有
+排队中、运行中或成功的验证时复用；失败或待批准的 PR event 不阻止重新 dispatch。
 
 ## 发布身份和渠道
 
@@ -225,4 +226,40 @@ docker run --rm --mount type=bind,source="$PWD",target=/workspace,readonly \
 - `cargo test --lib data_governance::migration --locked -j 2`：194 passed。
 - `cargo clippy --all-targets --locked -j 2 -- -D clippy::correctness` 通过，保留已有非阻塞 warnings。
 - TypeScript、ESLint errors、许可证、rustfmt、actionlint、ShellCheck、diff whitespace 检查通过。
-- 尚未部署到 GitHub；真实跨平台发布/恢复演练需在提交上线后完成。
+- 上述为部署前的本地验收；后续线上验证结果见下节。
+
+### 首次线上验收补充
+
+- 54667f588 已上线新流水线，b377d5fbb 恢复 Vitest 主进程的 6GiB 预算；四个前端分片已在线通过。
+- 完整 Rust archive、Linux Clippy、Windows 沙箱、迁移以及 WebDAV/S3/FTP Provider 验证均已在线通过。
+- Rust 分片新增 Xvfb + D-Bus 会话，提供桌面测试所需的显示环境；nextest 使用 `--no-fail-fast` 一次收集所有失败。后续工具执行器集成测试改用已有 headless 事件接口，避免在 Rust 测试线程创建桌面事件循环。
+- 修正环境漂移测试对 macOS/ARM 主机的隐含假设，更新出题工具 600 秒超时及单调计数字段的旧测试契约。
+- 首次完整分片还发现 E2EE 认领的迟到写入覆盖问题，经维护者确认纳入修复。新版通过独立 pending 登记保护在途写入，登记不按 TTL 强行抢占；崩溃残留的处理见用户指南「数据管理与云同步」。
+- 云存储 178 项、环境指纹 12 项、工具超时契约本地通过；同步综合测试首次补验遇本机磁盘不足，使用独立精简 profile 构建目录后 59 项通过，E2EE 认领竞态集成测试 4 项通过。
+- `69c3e1c6a` 修复应用面板测试未用 `act()` 完成打开 effect 导致搜索输入偶发被清空的问题，27 项面板测试本地通过。
+- `fa096a07f` 的 Migration Nightly（run `35508195985`）成功。发现 Release PR 未变化时会重复 dispatch 同一 SHA 的完整 CI，fallback 已增加现有运行查询，并取消重复排队的 run `35509285726`。
+- 完整 Rust 分片 run `35508262376` 执行 7,019 项，6,996 项通过、23 项失败；三个 Provider 均通过。后续候选 run `35509574016` 重现这些失败，并暴露 10,000 条写入用例在并行负载下超过 30 秒的波动。
+- 第二轮修复覆盖：新增 VFS/聊天表的同步分类、整数软删除时间戳的确定性回放、工具包取消时保留已完成结果、headless 待办通知，以及目录游标/迁移版本/资源类型和真实同步 fixture 的旧契约。搜索测试实际连接本地 SearXNG mock 并验证请求、来源与注入文本。
+- 10,000 条写入用例保留 30 秒性能断言，通过 `src-tauri/.config/nextest.toml` 独占当前 nextest 执行槽位，避免同 runner 的其他测试干扰计时。
+- 第二轮本地验证：六组集成测试 143 项、同步综合测试 59 项、目录分页 4 项、迁移集合 2 项、资源类型 1 项、同步模块 215 项均通过；`cargo check --lib`、rustfmt 与 diff 检查通过。
+- main `8f7f787ce` 的完整 CI（run `35512557653`）成功，包含八个 Rust 分片、三个 Provider、Windows 沙箱、前端和迁移门禁。普通提交触发的 Release 仅完成身份判断，尚未发布新版本。
+- 发布 PR 的同批修复 CI（run `35512624980`）仅余画像并发更新测试失败：笔记元数据在事务外读取后，竞争写入替换并删除旧正文资源，导致后续读取报 `Resource NotFound`。笔记更新已将元数据/CAS 检查移入读取正文的同一 SAVEPOINT 快照，保留已有冲突/数据库锁重试；新候选完整门禁及各平台发布仍待验收。
+- 该竞态修复的本地回归：画像 19 项、笔记仓库 32 项、每日日志 7 项通过；线上失败的画像并发更新用例额外连续运行 10 次通过。
+
+### v0.9.63 实际发布验收进度
+
+- 竞态修复 `d80b89bb7` 的 main CI（`35514651109`）及候选 dispatch CI（`35514728942`）均成功。GitHub 未将 dispatch 的检查计入 PR required checks；维护者批准原先 `action_required` 的 PR 事件后，正式 PR CI（`35514732157`）成功，#404 自动合并。
+- 发布提交 `2687bc53229d09db653ccd16795ce216709d051a` 的 main push CI（`35517783501`）成功，自动 Release（`35519238647`）创建 `v0.9.63` 草稿并进入真实构建。
+- Release 的源码/版本预检、exact-SHA CI、前端及完整迁移门禁、四个桌面平台构建与发布均成功，`v0.9.63` 已公开。实际保存平台产物、provenance、`native-*` 和 `release-complete-*` 检查点；尚未完成线上跨 run 恢复演练。
+- 独立 Android 运行 `35524235072` 的 APK 编译及签名成功，发布在 `Delete old APK from Release` 步骤失败；桌面发布自动触发的 `35528439643` 全部成功，APK 已上传 GitHub 和 R2。
+- 下载 R2 实际分发的 APK，其 SHA-256 与 GitHub release asset digest 一致。包内版本为 `0.9.63 / 14649`，minSdk 24、targetSdk 36，主库 94,306,608 字节；主库和 PDFium 均为 AArch64、ELF LOAD 段 16KB 对齐。
+- 成品检查发现应用内更新安装器缺少 Manifest 的 `REQUEST_INSTALL_PACKAGES` 权限，影响 Android 8+ 请求安装更新包。`4d046534e` 为 CI 和本地构建补齐权限注入，CI 增加签名成品的 `aapt dump permissions` 检查。actionlint、shell 语法及发布/恢复测试通过（57 passed，2 个 Linux 专属测试在 macOS 跳过）。
+- 修复包运行 `35554894076` 的编译、签名、成品权限检查、GitHub/R2 发布和 CDN 刷新均成功。重新下载公开 APK 确认权限存在，版本仍为 `0.9.63 / 14649`，签名证书与原包一致；下载站文件 SHA-256 为 `b0ca0c5f3ffa352b91c84a8e2883a14fe700fbb0b10cc8bc199b0bfa98dbfcfb`，与 GitHub asset digest 一致。同版本补包需要手动重新下载覆盖安装；未进行 Android 设备启动测试，不能据此排除用户反馈中的其他运行时问题。
+
+### 2026-09-21：PC 启动停在 Logo
+
+- 下载 Release `35519238647` 的真实 `frontend-dist`，执行入口即报 `Cannot set properties of undefined (setting 'unstable_now')`：`vendor-micro` 中的 scheduler 经 `vendor-recharts` 中的 React DOM 提前调用，CommonJS exports 尚未初始化。错误发生在 main.tsx 执行与 React 挂载之前，HTML 初始 Logo 因此一直保留；原有 React 错误边界和启动预检超时无法覆盖。
+- `vite.config.ts` 将 React、React DOM、scheduler、react-is 和 use-sync-external-store 放入独立 `vendor-react`，移除 scheduler/use-sync-external-store 的 micro 分包规则，解除这组运行时依赖的循环。
+- 新增 `node scripts/ci/check-frontend-startup.mjs [dist目录]`，在 JSDOM 中执行**已经打包的真实入口图**并检查 React 替换初始占位。IPC 保持 pending，不模拟业务初始化成功。该检查已接入 CI build 与发布 frontend 阶段；它稳定拒绝旧发布产物，修复产物在 Node 22 下通过。此门禁不替代 WebView/后端实测。
+- 实际桌面验证使用 `npm run tauri dev`、独立 identifier `com.deepstudent.startup-audit` 和生产前端静态服务：旧产物复现 Logo 卡住；修复产物进入首次使用引导及完整学习桌面。未使用 demo/hero 或 tauri-lab，未修改用户原数据目录。Windows 安装包尚未实机验证；修复还需随下一发布候选交付。
+- 验证：生产 Vite 构建、旧产物失败/新产物成功的入口对照、真实 macOS 桌面启动、actionlint 和发布/恢复脚本回归（57 passed，2 个 Linux 专属测试跳过）。

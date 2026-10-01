@@ -33,6 +33,7 @@ import {
 } from './backlinksBackend';
 import { isContentDirty } from '../content/contentDirtyRegistry';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import './NotesBacklinksPanel.css';
 import './notes-backlinks-extras.css';
@@ -1092,12 +1093,15 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
   }, []);
 
   const onPanelKeyDown = useCallback((event: React.KeyboardEvent<HTMLElement>) => {
-    if (event.key !== 'Escape') return;
+    if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
+    // React events from a portalled preview still bubble through this component.
+    if (!(event.target instanceof HTMLElement) || !event.currentTarget.contains(event.target)) return;
     // 属性页内的输入控件（如标签输入）用 Esc 取消编辑，不应关闭整个面板
     const target = event.target as HTMLElement;
     if (
       target.tagName === 'INPUT' ||
       target.tagName === 'TEXTAREA' ||
+      target.tagName === 'SELECT' ||
       target.isContentEditable
     ) {
       return;
@@ -1106,6 +1110,25 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
     event.stopPropagation();
     onClose();
   }, [onClose]);
+
+  const onTabListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
+    const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const index = tabs.indexOf(event.target as HTMLButtonElement);
+    if (index < 0) return;
+    let next: number;
+    switch (event.key) {
+      case 'ArrowRight': next = (index + 1) % tabs.length; break;
+      case 'ArrowLeft': next = (index - 1 + tabs.length) % tabs.length; break;
+      case 'Home': next = 0; break;
+      case 'End': next = tabs.length - 1; break;
+      default: return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    tabs[next].focus();
+    tabs[next].click();
+  };
 
   if (!open) return null;
 
@@ -1183,6 +1206,7 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
           <div
             className="notes-backlinks-panel-tabs"
             role="tablist"
+            onKeyDown={onTabListKeyDown}
             aria-label={t('notesWorkspace.backlinks.panelAria', { defaultValue: '笔记信息面板' })}
           >
             {hasPropertiesTab && (
@@ -1192,6 +1216,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                 id={`${titleId}-tab-properties`}
                 className="notes-backlinks-panel-tab"
                 aria-selected={resolvedTab === 'properties'}
+                aria-controls={`${titleId}-panel-properties`}
+                tabIndex={resolvedTab === 'properties' ? 0 : -1}
                 onClick={() => switchTab('properties')}
               >
                 {t('notesWorkspace.backlinks.tabProperties', { defaultValue: '属性' })}
@@ -1203,6 +1229,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
               id={`${titleId}-tab-links`}
               className="notes-backlinks-panel-tab"
               aria-selected={resolvedTab === 'links'}
+              aria-controls={`${titleId}-panel-links`}
+              tabIndex={resolvedTab === 'links' ? 0 : -1}
               onClick={() => switchTab('links')}
             >
               {t('notesWorkspace.backlinks.tabLinks', { defaultValue: '链接' })}
@@ -1214,6 +1242,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
                 id={`${titleId}-tab-graph`}
                 className="notes-backlinks-panel-tab"
                 aria-selected={resolvedTab === 'graph'}
+                aria-controls={`${titleId}-panel-graph`}
+                tabIndex={resolvedTab === 'graph' ? 0 : -1}
                 onClick={() => switchTab('graph')}
               >
                 {t('notesWorkspace.backlinks.tabGraph', { defaultValue: '图谱' })}
@@ -1258,36 +1288,44 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
         </div>
       )}
 
-      {hasPropertiesTab && resolvedTab === 'properties' ? (
+      {/* Keep property drafts mounted when switching tabs; hidden panels leave the focus order. */}
+      {hasPropertiesTab && (
         <div
+          id={`${titleId}-panel-properties`}
           className="notes-backlinks-panel-properties"
           role="tabpanel"
+          hidden={resolvedTab !== 'properties'}
           aria-labelledby={`${titleId}-tab-properties`}
         >
           {propertiesContent}
         </div>
-      ) : hasGraphTab && resolvedTab === 'graph' ? (
+      )}
+      {hasGraphTab && (
         <div
+          id={`${titleId}-panel-graph`}
           className="notes-backlinks-panel-graph"
           role="tabpanel"
+          hidden={resolvedTab !== 'graph'}
+          tabIndex={0}
           aria-labelledby={`${titleId}-tab-graph`}
         >
-          {graphContent}
+          {resolvedTab === 'graph' && graphContent}
         </div>
-      ) : (
+      )}
       <CustomScrollArea
         className="notes-backlinks-panel-body"
+        hidden={resolvedTab !== 'links'}
         viewportProps={{
           'aria-live': 'polite',
           ...(hasExtraTabs
-            ? { role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links` }
+            ? { id: `${titleId}-panel-links`, role: 'tabpanel' as const, 'aria-labelledby': `${titleId}-tab-links`, tabIndex: 0 }
             : {}),
         }}
         trackOffsetTop={4}
         trackOffsetBottom={6}
         trackOffsetRight={3}
       >
-        {!canShowLinks ? (
+        {resolvedTab !== 'links' ? null : !canShowLinks ? (
           <div className="notes-backlinks-panel-message">
             <FileText size={22} aria-hidden="true" />
             {t('notesWorkspace.backlinks.noActiveNote')}
@@ -1541,9 +1579,8 @@ export const NotesBacklinksPanel: React.FC<NotesBacklinksPanelProps> = ({
             )}
           </>
         )}
-        {openError && <p className="notes-backlinks-panel-open-error" role="alert">{openError}</p>}
+        {resolvedTab === 'links' && openError && <p className="notes-backlinks-panel-open-error" role="alert">{openError}</p>}
       </CustomScrollArea>
-      )}
     </aside>
   );
 };

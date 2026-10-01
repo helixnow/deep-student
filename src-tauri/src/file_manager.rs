@@ -54,26 +54,34 @@ impl FileManager {
     /// - Claude: 推荐 ≤1.15MP（1568x1568），长边 >1568px 自动缩放
     /// - Gemini: Token 效率比 GPT-4o 高 3.5x
     pub fn adjust_image_quality_base64(&self, base64_data: &str, vision_quality: &str) -> String {
-        // high 质量不压缩
         if vision_quality == "high" {
             return base64_data.to_string();
         }
-
-        // 解码 base64 数据
-        let decoded = match general_purpose::STANDARD.decode(base64_data) {
-            Ok(d) => d,
-            Err(e) => {
-                error!("⚠️ [图片压缩] Base64 解码失败: {}", e);
+        let image_data = match general_purpose::STANDARD.decode(base64_data) {
+            Ok(data) => data,
+            Err(error) => {
+                error!("⚠️ [图片压缩] Base64 解码失败: {}", error);
                 return base64_data.to_string();
             }
         };
+        general_purpose::STANDARD
+            .encode(self.adjust_image_quality_bytes(image_data, vision_quality))
+    }
+
+    /// Apply the same quality policy directly to owned encoded image bytes.
+    /// No-op/failure paths return the original buffer; media preprocessing avoids
+    /// the base64 encode/decode round trip used by the IPC compatibility wrapper.
+    pub fn adjust_image_quality_bytes(&self, image_data: Vec<u8>, vision_quality: &str) -> Vec<u8> {
+        if vision_quality == "high" {
+            return image_data;
+        }
 
         // 加载图片
-        let img = match image::load_from_memory(&decoded) {
+        let img = match image::load_from_memory(&image_data) {
             Ok(i) => i,
             Err(e) => {
                 error!("⚠️ [图片压缩] 图片加载失败: {}", e);
-                return base64_data.to_string();
+                return image_data;
             }
         };
 
@@ -92,12 +100,12 @@ impl FileManager {
                     (1024u32, 75u8, "auto->medium")
                 } else {
                     // 小图片不需要压缩
-                    return base64_data.to_string();
+                    return image_data;
                 }
             }
             _ => {
                 // 未知策略，默认不压缩
-                return base64_data.to_string();
+                return image_data;
             }
         };
 
@@ -105,9 +113,9 @@ impl FileManager {
         let needs_resize = width > max_dimension || height > max_dimension;
 
         // 如果图片已经很小且不需要缩放，检查是否需要重编码
-        if !needs_resize && decoded.len() < 500_000 {
+        if !needs_resize && image_data.len() < 500_000 {
             // 小于 500KB 且尺寸合适，不压缩
-            return base64_data.to_string();
+            return image_data;
         }
 
         // 执行缩放（如果需要）
@@ -132,13 +140,12 @@ impl FileManager {
         let mut buffer = Cursor::new(Vec::new());
         if let Err(e) = processed_img.write_to(&mut buffer, ImageOutputFormat::Jpeg(jpeg_quality)) {
             error!("⚠️ [图片压缩] JPEG 编码失败: {}", e);
-            return base64_data.to_string();
+            return image_data;
         }
 
         let compressed_data = buffer.into_inner();
-        let compressed_base64 = general_purpose::STANDARD.encode(&compressed_data);
 
-        let original_size = decoded.len();
+        let original_size = image_data.len();
         let compressed_size = compressed_data.len();
         let compression_ratio = (1.0 - compressed_size as f64 / original_size as f64) * 100.0;
 
@@ -154,7 +161,7 @@ impl FileManager {
             compression_ratio
         );
 
-        compressed_base64
+        compressed_data
     }
 
     /// 获取自适应的应用数据目录（带可写性检测）
@@ -1467,5 +1474,56 @@ mod note_asset_path_tests {
             FileManager::portable_relative_path(path),
             "notes_assets/_global/note-1/image.png"
         );
+    }
+}
+
+#[cfg(test)]
+mod image_quality_tests {
+    use super::*;
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let image = DynamicImage::new_rgb8(width, height);
+        let mut buffer = Cursor::new(Vec::new());
+        image.write_to(&mut buffer, ImageOutputFormat::Png).unwrap();
+        buffer.into_inner()
+    }
+
+    #[test]
+    fn bytes_quality_preserves_original_on_noop_or_invalid_image() {
+        let manager = FileManager::new(PathBuf::new()).unwrap();
+        let image = png(64, 32);
+        for quality in ["high", "low", "medium", "auto", "unknown"] {
+            assert_eq!(
+                manager.adjust_image_quality_bytes(image.clone(), quality),
+                image
+            );
+        }
+        let invalid = b"not an image".to_vec();
+        assert_eq!(
+            manager.adjust_image_quality_bytes(invalid.clone(), "low"),
+            invalid
+        );
+        assert_eq!(
+            manager.adjust_image_quality_base64("not base64!", "low"),
+            "not base64!"
+        );
+    }
+
+    #[test]
+    fn bytes_quality_matches_base64_policy_and_limits_dimensions() {
+        let manager = FileManager::new(PathBuf::new()).unwrap();
+        let image = png(1200, 900);
+        let bytes = manager.adjust_image_quality_bytes(image.clone(), "low");
+        assert_eq!(
+            image::guess_format(&bytes).unwrap(),
+            image::ImageFormat::Jpeg
+        );
+        assert_eq!(
+            image::load_from_memory(&bytes).unwrap().dimensions(),
+            (768, 576)
+        );
+        let base64 =
+            manager.adjust_image_quality_base64(&general_purpose::STANDARD.encode(image), "low");
+        assert_eq!(general_purpose::STANDARD.decode(base64).unwrap(), bytes);
     }
 }

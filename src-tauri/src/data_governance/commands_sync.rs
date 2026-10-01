@@ -252,15 +252,19 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
 
             let upper_sql = sql.to_ascii_uppercase();
             let lower_name = name.to_ascii_lowercase();
+            // 匹配 " AFTER UPDATE " 与 " AFTER UPDATE OF <col> "（列限定触发器，
+            // 如 trg__change_log_note_document_revisions_pin），BEFORE 同理。
+            let is_update = upper_sql.contains(" AFTER UPDATE ")
+                || upper_sql.contains(" BEFORE UPDATE ")
+                || upper_sql.contains(" AFTER UPDATE OF ")
+                || upper_sql.contains(" BEFORE UPDATE OF ")
+                || lower_name.ends_with("_update");
             let op = if upper_sql.contains(" AFTER INSERT ")
                 || upper_sql.contains(" BEFORE INSERT ")
                 || lower_name.ends_with("_insert")
             {
                 Some("insert")
-            } else if upper_sql.contains(" AFTER UPDATE ")
-                || upper_sql.contains(" BEFORE UPDATE ")
-                || lower_name.ends_with("_update")
-            {
+            } else if is_update {
                 Some("update")
             } else if upper_sql.contains(" AFTER DELETE ")
                 || upper_sql.contains(" BEFORE DELETE ")
@@ -279,6 +283,13 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
         for table in &expected {
             let ops = trigger_ops.get(table);
             for required in ["insert", "update", "delete"] {
+                // 设计上豁免的 op（如 note_document_revisions 的 delete，剪枝不回放
+                // 他设备）跳过，见 TableClassification::change_log_trigger_exempt。
+                if classification::TableClassification::change_log_trigger_exempt(
+                    db_name, table, required,
+                ) {
+                    continue;
+                }
                 if !ops.is_some_and(|set| set.contains(required)) {
                     issues.push(format!(
                         "{}.{} 缺少 __change_log {} 触发器",
@@ -2306,6 +2317,18 @@ pub async fn data_governance_export_sync_data(
     window: Window,
     output_path: Option<String>,
 ) -> Result<SyncExportResponse, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        export_sync_data_blocking(&app, &window, output_path)
+    })
+    .await
+    .map_err(|error| format!("同步导出任务异常退出: {}", error))?
+}
+
+fn export_sync_data_blocking(
+    app: &tauri::AppHandle,
+    window: &Window,
+    output_path: Option<String>,
+) -> Result<SyncExportResponse, String> {
     info!("[data_governance] 导出同步数据");
 
     let active_dir = get_active_data_dir(&app)?;
@@ -2366,13 +2389,9 @@ pub async fn data_governance_export_sync_data(
     // 构建导出数据（使用带完整数据的变更）
     let export_data = SyncExportData {
         manifest,
-        pending_changes: all_enriched_changes.clone(),
+        pending_changes: all_enriched_changes,
         exported_at: chrono::Utc::now().to_rfc3339(),
     };
-
-    // 序列化
-    let json = serde_json::to_string_pretty(&export_data)
-        .map_err(|e| format!("序列化导出数据失败: {}", e))?;
 
     // 确定输出路径（虚拟 URI 先导出到本地临时文件，再复制到目标 URI）
     let mut target_virtual_uri: Option<String> = None;
@@ -2403,8 +2422,8 @@ pub async fn data_governance_export_sync_data(
         std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
     }
 
-    // 写入文件（本地）
-    std::fs::write(&output, &json).map_err(|e| format!("写入文件失败: {}", e))?;
+    // 直接写入缓冲文件，避免与记录集合同时持有整份 JSON 字符串。
+    write_sync_export_data(&output, &export_data)?;
 
     let mut final_output_path = output.to_string_lossy().to_string();
     if let Some(target_uri) = target_virtual_uri {
@@ -2420,14 +2439,14 @@ pub async fn data_governance_export_sync_data(
     info!(
         "[data_governance] 同步数据已导出: path={}, changes={}",
         final_output_path,
-        all_enriched_changes.len()
+        export_data.pending_changes.len()
     );
 
     Ok(SyncExportResponse {
         success: true,
         output_path: final_output_path,
         manifest_databases: export_data.manifest.databases.len(),
-        pending_changes_count: all_enriched_changes.len(),
+        pending_changes_count: export_data.pending_changes.len(),
     })
 }
 
@@ -2440,6 +2459,34 @@ pub struct SyncExportData {
     pub pending_changes: Vec<SyncChangeWithData>,
     /// 导出时间
     pub exported_at: String,
+}
+
+fn write_sync_export_data(path: &Path, data: &SyncExportData) -> Result<(), String> {
+    use std::io::Write;
+
+    let file = std::fs::File::create(path).map_err(|error| format!("写入文件失败: {}", error))?;
+    let mut writer = std::io::BufWriter::new(file);
+    serde_json::to_writer_pretty(&mut writer, data).map_err(|error| {
+        if error.is_io() {
+            format!("写入文件失败: {}", error)
+        } else {
+            format!("序列化导出数据失败: {}", error)
+        }
+    })?;
+    writer
+        .flush()
+        .map_err(|error| format!("写入文件失败: {}", error))
+}
+
+fn read_sync_import_data(path: &Path) -> Result<SyncExportData, String> {
+    let file = std::fs::File::open(path).map_err(|error| format!("读取文件失败: {}", error))?;
+    serde_json::from_reader(std::io::BufReader::new(file)).map_err(|error| {
+        if error.is_io() {
+            format!("读取文件失败: {}", error)
+        } else {
+            format!("解析导入数据失败: {}", error)
+        }
+    })
 }
 
 /// 同步导出响应
@@ -2479,7 +2526,7 @@ pub async fn data_governance_import_sync_data(
     // 恢复/迁移/同步串行化，避免并发写导致的数据不一致。此前 import 完全没有这两道
     // 防护。复用与上传/下载同步一致的模式。
     check_maintenance_mode(&app)?;
-    let _permit = tokio::time::timeout(
+    let permit = tokio::time::timeout(
         std::time::Duration::from_secs(SYNC_LOCK_TIMEOUT_SECS),
         BACKUP_GLOBAL_LIMITER.clone().acquire_owned(),
     )
@@ -2492,6 +2539,21 @@ pub async fn data_governance_import_sync_data(
     })?
     .map_err(|_| "获取全局数据治理锁失败".to_string())?;
 
+    tauri::async_runtime::spawn_blocking(move || {
+        // 阻塞任务不可被外层 future 取消；许可必须随实际数据库工作一起存活。
+        let _permit = permit;
+        import_sync_data_blocking(&app, &window, input_path, strategy)
+    })
+    .await
+    .map_err(|error| format!("同步导入任务异常退出: {}", error))?
+}
+
+fn import_sync_data_blocking(
+    app: &tauri::AppHandle,
+    window: &Window,
+    input_path: String,
+    strategy: Option<String>,
+) -> Result<SyncImportResponse, String> {
     let app_data_dir = get_app_data_dir(&app)?;
     let active_dir = get_active_data_dir(&app)?;
 
@@ -2513,23 +2575,12 @@ pub async fn data_governance_import_sync_data(
             (input_file, None)
         };
 
-    // 读取文件
-    let json =
-        std::fs::read_to_string(&input_file_path).map_err(|e| format!("读取文件失败: {}", e));
-    let json = match json {
-        Ok(v) => v,
+    // 从缓冲文件反序列化，不同时保留整份原始 JSON 字符串。
+    let import_data = match read_sync_import_data(&input_file_path) {
+        Ok(data) => data,
         Err(e) => {
             cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
             return Err(e);
-        }
-    };
-
-    // 解析（v2 格式含完整数据）
-    let import_data: SyncExportData = match serde_json::from_str(&json) {
-        Ok(data) => data,
-        Err(err) => {
-            cleanup_temp_sync_file(cleanup_path.as_ref(), "sync_import");
-            return Err(format!("解析导入数据失败: {}", err));
         }
     };
 
@@ -5798,6 +5849,62 @@ pub async fn data_governance_list_unsynced_items(
 mod tests {
     use super::*;
 
+    #[test]
+    fn manual_sync_json_buffered_roundtrip_preserves_record_data() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("sync.json");
+        let record =
+            serde_json::json!({ "id": "record-1", "content": "多语言正文\n".repeat(4096) });
+        let data = SyncExportData {
+            manifest: SyncManager::new("test-device".into()).create_manifest(HashMap::new()),
+            pending_changes: vec![SyncChangeWithData {
+                table_name: "messages".into(),
+                record_id: "record-1".into(),
+                operation: super::super::sync::ChangeOperation::Update,
+                data: Some(record.clone()),
+                changed_at: "2026-09-27T00:00:00Z".into(),
+                change_log_id: Some(1),
+                database_name: Some("chat_v2".into()),
+                suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
+            }],
+            exported_at: "2026-09-27T00:00:00Z".into(),
+        };
+
+        write_sync_export_data(&path, &data).expect("buffered export");
+        let restored = read_sync_import_data(&path).expect("buffered import");
+        assert_eq!(restored.manifest.device_id, data.manifest.device_id);
+        assert_eq!(restored.exported_at, data.exported_at);
+        assert_eq!(restored.pending_changes.len(), 1);
+        assert_eq!(restored.pending_changes[0].data.as_ref(), Some(&record));
+        assert_eq!(
+            restored.pending_changes[0].database_name.as_deref(),
+            Some("chat_v2")
+        );
+    }
+
+    #[test]
+    fn manual_sync_json_retains_read_parse_and_write_error_categories() {
+        let dir = tempfile::tempdir().expect("temporary directory");
+        let path = dir.path().join("sync.json");
+        assert!(read_sync_import_data(&path)
+            .unwrap_err()
+            .starts_with("读取文件失败:"));
+        std::fs::write(&path, b"{broken").expect("malformed fixture");
+        assert!(read_sync_import_data(&path)
+            .unwrap_err()
+            .starts_with("解析导入数据失败:"));
+        let data = SyncExportData {
+            manifest: SyncManager::new("test-device".into()).create_manifest(HashMap::new()),
+            pending_changes: Vec::new(),
+            exported_at: "2026-09-27T00:00:00Z".into(),
+        };
+        assert!(write_sync_export_data(dir.path(), &data)
+            .unwrap_err()
+            .starts_with("写入文件失败:"));
+    }
+
     // ============ [R04-sync-e2ee] 记录级上传加密一致性策略 ============
 
     const ENCRYPTION_MARKER_KEY: &str = ".encryption-marker";
@@ -6208,6 +6315,105 @@ mod tests {
 
         let err = validate_sync_registry_drift(temp.path()).unwrap_err();
         assert!(err.contains("vfs.review_history 存在 __change_log 触发器"));
+    }
+
+    /// 豁免表（note_document_revisions）设计上没有 delete 触发器（剪枝不回放
+    /// 他设备），预检应放行；pin 触发器是 AFTER UPDATE OF pinned，应识别为 update。
+    #[test]
+    fn registry_drift_preflight_allows_exempt_delete_and_update_of_trigger() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL
+            );
+            CREATE TABLE note_document_revisions (
+                id TEXT PRIMARY KEY,
+                note_id TEXT,
+                pinned INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            CREATE TRIGGER trg__change_log_note_document_revisions_insert
+            AFTER INSERT ON note_document_revisions
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('note_document_revisions', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg__change_log_note_document_revisions_pin
+            AFTER UPDATE OF pinned ON note_document_revisions
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('note_document_revisions', NEW.id, 'UPDATE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        // delete 豁免 + pin 触发器算 update → 不应因这两样报错。
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "豁免 delete + UPDATE OF pin 触发器应通过预检，实际: {:?}",
+            result.err()
+        );
+    }
+
+    /// 未豁免表若只有 AFTER UPDATE OF 触发器而缺标准 update，仍应识别出 update
+    /// 已覆盖（列限定触发器同样是 update 证据）。
+    #[test]
+    fn registry_drift_preflight_update_of_counts_as_update_op() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL
+            );
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                pinned INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            CREATE TRIGGER trg__change_log_notes_insert
+            AFTER INSERT ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg__change_log_notes_pin
+            AFTER UPDATE OF pinned ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', NEW.id, 'UPDATE');
+            END;
+            CREATE TRIGGER trg__change_log_notes_delete
+            AFTER DELETE ON notes
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('notes', OLD.id, 'DELETE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "UPDATE OF 触发器应被识别为 update，不应误报缺 update，实际: {:?}",
+            result.err()
+        );
     }
 }
 

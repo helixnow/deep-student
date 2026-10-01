@@ -141,6 +141,8 @@
     "full_write_occ_failed": "笔记正文已变化，全文写入 OCC 校验失败",
     "full_replace_not_confirmed": "编辑器未确认全文替换",
     "flush_capability_missing": "编辑器未提供持久化确认能力",
-    "full_replace_persist_failed": "笔记全文替换未通过持久化验证"
+    "full_replace_persist_failed": "笔记全文替换未通过持久化验证",
+    "refresh_after_note_switch": "笔记已切换，无法刷新原编辑器。",
+    "refresh_after_commit_failed": "笔记更新已提交，但刷新失败；请重试刷新后继续编辑。"
   }
 }

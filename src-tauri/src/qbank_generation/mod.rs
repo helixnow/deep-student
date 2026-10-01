@@ -124,9 +124,11 @@ async fn execute_generation_task(
     emit_current_task(&app, &vfs_db, &task_id);
 
     let exam_id = request.exam_id.clone();
+    let debug_log_dir = llm.build_debug_persist_config().map(|c| c.log_dir);
     let deps = pipeline::QbankGenerationDeps {
         llm,
         vfs_db: vfs_db.clone(),
+        debug_log_dir,
     };
     let result = pipeline::run_qbank_generation(request, deps).await;
     let pipeline_elapsed = task_start.elapsed();

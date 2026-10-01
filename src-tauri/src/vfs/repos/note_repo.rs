@@ -553,6 +553,10 @@ impl VfsNoteRepo {
                 note_id, resource_result.resource_id
             );
 
+            let format =
+                super::note_format_repo::NoteFormatRepo::detect(&note_id, &params.content)?;
+            super::note_format_repo::NoteFormatRepo::insert(conn, &format)?;
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, &note_id, "created")?;
             Ok(VfsNote {
                 id: note_id,
                 resource_id: resource_result.resource_id,
@@ -615,29 +619,44 @@ impl VfsNoteRepo {
         note_id: &str,
         params: VfsUpdateNoteParams,
     ) -> VfsResult<VfsNote> {
-        // 1. 获取当前笔记（在 SAVEPOINT 外获取，减少事务持有时间）
-        let current_note =
-            Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
-                resource_type: "Note".to_string(),
-                id: note_id.to_string(),
-            })?;
+        Self::update_note_with_format(conn, note_id, params, None)
+    }
 
-        // ★ S-002 修复：乐观锁冲突检测
-        // 如果调用方提供了 expected_updated_at，则与当前记录的 updated_at 比较。
-        // 不匹配说明记录在读取后被其他操作修改过，返回 Conflict 错误。
-        if let Some(ref expected) = params.expected_updated_at {
-            if !expected.is_empty() && *expected != current_note.updated_at {
-                warn!(
-                    "[VFS::NoteRepo] Optimistic lock conflict for note {}: expected updated_at='{}', actual='{}'",
-                    note_id, expected, current_note.updated_at
-                );
-                return Err(VfsError::Conflict {
-                    key: "notes.conflict".to_string(),
-                    message: "The note has been updated elsewhere, please refresh.".to_string(),
-                });
-            }
+    /// Only the explicit, lossless per-page migration may supply a format upgrade.
+    pub(crate) fn update_note_with_format(
+        conn: &Connection,
+        note_id: &str,
+        params: VfsUpdateNoteParams,
+        format_upgrade: Option<super::note_format_repo::NoteFormat>,
+    ) -> VfsResult<VfsNote> {
+        Self::update_note_authorized(conn, note_id, params, format_upgrade, &[])
+    }
+
+    pub fn update_note_with_capabilities(
+        conn: &Connection,
+        note_id: &str,
+        params: VfsUpdateNoteParams,
+        capabilities: &[String],
+    ) -> VfsResult<VfsNote> {
+        if params
+            .expected_updated_at
+            .as_deref()
+            .is_none_or(str::is_empty)
+        {
+            return Err(super::note_format_repo::invalid(
+                "Capability-aware saves require expected_updated_at",
+            ));
         }
+        Self::update_note_authorized(conn, note_id, params, None, capabilities)
+    }
 
+    fn update_note_authorized(
+        conn: &Connection,
+        note_id: &str,
+        params: VfsUpdateNoteParams,
+        format_upgrade: Option<super::note_format_repo::NoteFormat>,
+        capabilities: &[String],
+    ) -> VfsResult<VfsNote> {
         // ★ M-011 修复 + 2026-07 防御性校验：空标题/超长/控制字符、tags 形状
         // （在 SAVEPOINT 外提前校验，避免先建新资源再回滚的无谓开销）
         if let Some(ref title) = params.title {
@@ -657,9 +676,47 @@ impl VfsNoteRepo {
         })?;
 
         let result = (|| -> VfsResult<VfsNote> {
+            super::note_lease_repo::NoteLeaseRepo::check_write(conn, note_id)?;
+            // Read the note and its resource in the same SQLite snapshot. A
+            // concurrent update replaces and deletes the old resource; reading
+            // the note before this savepoint could leave a dangling resource ID.
+            let current_note =
+                Self::get_note_with_conn(conn, note_id)?.ok_or_else(|| VfsError::NotFound {
+                    resource_type: "Note".to_string(),
+                    id: note_id.to_string(),
+                })?;
+
+            if let Some(ref expected) = params.expected_updated_at {
+                if !expected.is_empty() && *expected != current_note.updated_at {
+                    warn!(
+                        "[VFS::NoteRepo] Optimistic lock conflict for note {}: expected updated_at='{}', actual='{}'",
+                        note_id, expected, current_note.updated_at
+                    );
+                    return Err(VfsError::Conflict {
+                        key: "notes.conflict".to_string(),
+                        message: "The note has been updated elsewhere, please refresh.".to_string(),
+                    });
+                }
+            }
+
+            if let Some(content) = &params.content {
+                if format_upgrade.is_none() {
+                    super::note_format_repo::NoteFormatRepo::validate_write_capabilities(
+                        conn,
+                        note_id,
+                        content,
+                        capabilities,
+                    )?;
+                }
+            }
+
             // CAS tokens must advance even when two writes land in the same
             // millisecond; otherwise a stale expected_updated_at can still
             // match after the first writer commits.
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
+            if let Some(format) = &format_upgrade {
+                super::note_format_repo::NoteFormatRepo::insert(conn, format)?;
+            }
             let now = next_updated_at(&current_note.updated_at);
 
             // 2. 处理内容更新（版本管理）
@@ -760,11 +817,15 @@ impl VfsNoteRepo {
             }
 
             // ★ 2026-06-12 修复（审阅问题 S5）：resource_id 切换成功后，清理旧资源。
-            // 笔记没有版本表，旧资源切换后即无人引用；不清理会在每次内容编辑时
+            // 历史自带正文、不依赖 resources；不清理会在每次内容编辑时
             // 泄漏一行 resources（含完整笔记内容）+ 残留向量索引单元。
             // 仅当确实无其他笔记引用时删除（防御历史无盐共享数据）。
             if new_resource_id.is_some() && current_note.resource_id != *final_resource_id {
                 let old_rid = &current_note.resource_id;
+                // A note resource is replaced on every edit. Relationships track
+                // the live resource identity, before the old resource is reclaimed.
+                conn.execute("UPDATE note_learning_relations SET resource_id=?1, revision=revision+1, updated_at=?2 WHERE resource_id=?3 AND invalidated_at IS NULL AND NOT EXISTS (SELECT 1 FROM notes WHERE resource_id=?3)",
+                    params![final_resource_id, now, old_rid])?;
                 let note_refs: i64 = conn.query_row(
                     "SELECT COUNT(*) FROM notes WHERE resource_id = ?1",
                     params![old_rid],
@@ -796,6 +857,16 @@ impl VfsNoteRepo {
             }
 
             info!("[VFS::NoteRepo] Updated note: {}", note_id);
+            super::note_revision_repo::NoteRevisionRepo::snapshot(
+                conn,
+                note_id,
+                if format_upgrade.is_some() {
+                    "format_migration"
+                } else {
+                    "edit"
+                },
+            )?;
+            super::note_relation_repo::NoteRelationRepo::invalidate_missing_blocks(conn, note_id)?;
 
             // 4. 返回更新后的笔记
             Ok(VfsNote {
@@ -1496,6 +1567,7 @@ impl VfsNoteRepo {
                     }
                 })?;
 
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
             // 2. 原子化重命名恢复：避免「先查重后更新」并发 TOCTOU
             let mut restored_title: Option<String> = None;
             for idx in 0..1000usize {
@@ -1565,6 +1637,7 @@ impl VfsNoteRepo {
                 0
             };
 
+            super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "trash_restore")?;
             Ok((note.title, new_title, folder_items_restored))
         })();
 
@@ -1894,9 +1967,28 @@ impl VfsNoteRepo {
 
     /// 原子更新笔记元数据（使用现有连接）。
     ///
-    /// 所有校验先于写入完成，最终只发出一条 UPDATE；若提供
-    /// `expected_updated_at`，同一条 UPDATE 同时执行 CAS。
+    /// 元数据与完整历史快照在同一 SAVEPOINT 内提交；实际元数据仍用一条
+    /// UPDATE 写入，并在提供 `expected_updated_at` 时保留原有 CAS。
     pub fn update_note_metadata_with_conn(
+        conn: &Connection,
+        note_id: &str,
+        update: VfsNoteMetadataUpdate,
+    ) -> VfsResult<VfsNote> {
+        super::note_revision_repo::NoteRevisionRepo::transaction(conn, || {
+            let document_update =
+                update.title.is_some() || update.tags.is_some() || update.props.is_some();
+            if document_update {
+                super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "baseline")?;
+            }
+            let note = Self::update_note_metadata_uncommitted(conn, note_id, update)?;
+            if document_update {
+                super::note_revision_repo::NoteRevisionRepo::snapshot(conn, note_id, "metadata")?;
+            }
+            Ok(note)
+        })
+    }
+
+    fn update_note_metadata_uncommitted(
         conn: &Connection,
         note_id: &str,
         update: VfsNoteMetadataUpdate,

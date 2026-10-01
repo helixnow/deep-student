@@ -14,19 +14,21 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { createPortal } from 'react-dom';
 import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, DotsThree, Cards } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { shouldRequestLoadMore, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
+import { shouldRequestLoadMore, mergeExpandedMarkdown, type MarkdownLoadMoreResult } from '@/features/notes/markdownWindow';
 import { useNotesOptional } from './NotesContext';
+import { NoteFormatGate } from './NoteFormatGate';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Popover';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
+import { NoteHistoryPanel } from './NoteHistoryPanel';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
 import { generateCardsFromNote } from './generateCardsFromNote';
 import {
@@ -40,11 +42,21 @@ import {
 } from './findQueryBridge';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
 import { isMacOS } from '../../utils/platform';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { useTauriDragAndDrop } from '../../hooks/useTauriDragAndDrop';
-import { useCanvasAIEditHandler } from './hooks/useCanvasAIEditHandler';
+import { useAIReview } from './aiReview';
+import { createFullDocumentApi, assertNoteContentSize, fullDocumentRecoveryStore, type FullDocumentSearchApi, type FullDocumentApi, type FullDocumentViewHost, type RetainedNoteDraft } from './fullDocument';
+import { noteHostCoordinator } from './noteHostCoordinator';
+import { bindNoteEditorHost, applyNoteFormat, readNoteFormat, resetNoteUndo, noteNeedsColumnsWriter, applyReviewedNote } from './noteEditorHost';
+import { resolveNoteReviewScope, saveReviewAs } from './noteReviewHost';
+import { newDurableDraft, persistNoteDraft, loadNoteDrafts, deleteNoteDraft, type DurableNoteDraft } from './noteDraftPersistence';
+import { isReviewShortcut } from './aiReviewModel';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { computeDiffLines } from './hooks/useAIEditState';
 import { AIDiffPanel, DiffHunksView } from './AIDiffPanel';
 import { dstu } from '@/dstu';
+import { NotesAPI, type NoteItem } from '@/utils/notesApi';
+import { invoke } from '@tauri-apps/api/core';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { registerContentDirtyChecker, type ContentSaveState } from '@/features/workbench/apps/content/contentDirtyRegistry';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
@@ -72,7 +84,9 @@ import {
 } from './wikilinkNotesCache';
 import '@/styles/notes-typography.css';
 import './styles/notes-editor-chrome.css';
-import { applyNoteTemplate } from './noteTemplates';
+import { applyNoteTemplate, fillUnsetTemplateLearningProps, type NoteTemplate, type NoteTemplateLearningPropsHost } from './noteTemplates';
+import { captureTemplateInsertion, templateDocumentHost, type TemplateInsertionBookmark } from './noteTemplateHost';
+import { useTemplateLearningPropsHost } from './useTemplateLearningPropsHost';
 import { NotesTemplatePanel } from './components/NotesTemplatePanel';
 import { dispatchTypedEvent } from '@/events/registry';
 import {
@@ -91,11 +105,14 @@ const prefersReducedMotion = (): boolean =>
   typeof window !== 'undefined' &&
   typeof window.matchMedia === 'function' &&
   window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-/** 与后端 dstu_update 的 MAX_CONTENT_SIZE 保持一致（1MB） */
-const MAX_NOTE_CONTENT_BYTES = 1024 * 1024;
+let nextDocumentRevision = 0;
 
 /** 字数统计：非空白字符数（中文场景下与用户"字数"心智一致） */
 const countNoteChars = (markdown: string): number => markdown.replace(/\s/g, '').length;
+const fullMarkdownForReporting = (api: CrepeEditorApi | null, fallback: string): string | undefined => {
+  try { return api?.getFullMarkdown?.() ?? fallback; }
+  catch { return undefined; } // An unavailable complete draft must not be presented as a prefix total.
+};
 
 // ── 移动端底部工具条单实例门控 ──
 // 多个可见编辑器实例（分屏/多面板）各自 portal 一条 fixed 工具条到 body，
@@ -127,6 +144,8 @@ const getMobileToolbarOwner = () => mobileToolbarOwnerId;
 type PendingSavePayload = {
   noteId: string;
   content: string;
+  fullContent?: string;
+  wasWindowed?: boolean;
 };
 
 export type NotesEditorWindowingState = {
@@ -192,7 +211,13 @@ export interface NotesCrepeEditorProps {
   suppressMobileToolbar?: boolean;
 }
 
-export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
+export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = (props) => {
+  const context = useNotesOptional();
+  const noteId = props.initialContent !== undefined ? props.noteId : context?.active?.id;
+  return <NoteFormatGate noteId={noteId}><NotesCrepeEditorBody {...props} /></NoteFormatGate>;
+};
+
+const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   initialContent,
   initialTitle,
   onSave: dstuOnSave,
@@ -224,6 +249,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   
   // ========== Context 获取（可选） ==========
   const notesContext = useNotesOptional();
+  const notesContextRef = useRef(notesContext);
+  notesContextRef.current = notesContext;
   const contextActive = notesContext?.active;
   const saveNoteContent = notesContext?.saveNoteContent;
   const createNote = notesContext?.createNote;
@@ -241,6 +268,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [editorApi, setEditorApi] = useState<CrepeEditorApi | null>(null);
   const lifecycleApiRef = useRef<CrepeEditorApi | null>(null);
+  const baseApiRef = useRef<CrepeEditorApi | null>(null);
+  const hostInstanceId = useId();
+  const lockedNotesRef = useRef(new Set<string>());
+  const invalidNotesRef = useRef(new Set<string>());
+  const privilegedFlushRef = useRef(false);
+  const [hostBusy, setHostBusy] = useState(false);
+  const [hostRefreshError, setHostRefreshError] = useState<string | null>(null);
   const editorNoteIdRef = useRef<string | null>(null);
   const pendingSaveQueueRef = useRef<PendingSavePayload[]>([]);
   const inFlightSaveRef = useRef<Promise<void> | null>(null);
@@ -278,11 +312,35 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const prevNoteIdRef = useRef<string | null>(null);
   const isUnmountedRef = useRef(false);
   const programmaticUpdateRef = useRef(false);
+  const projectingFullViewRef = useRef(false);
+  const projectedMarkdownRef = useRef<string | null>(null);
+  const fullViewMaterializedRef = useRef(false);
+  const documentRevisionRef = useRef(0);
+  const currentRenderedNoteRef = useRef<string | null>(null);
+  currentRenderedNoteRef.current = (isDstuMode ? dstuNoteId : active?.id) ?? null;
+  const recoveryDraftsRef = useRef(fullDocumentRecoveryStore(acrWindowId));
+  recoveryDraftsRef.current = fullDocumentRecoveryStore(acrWindowId);
+  const [recoveryDraft, setRecoveryDraft] = useState<(RetainedNoteDraft & { noteId: string }) | null>(null);
+  const [recoveredDrafts, setRecoveredDrafts] = useState<DurableNoteDraft[]>([]);
+  const [draftPersistenceError, setDraftPersistenceError] = useState<string | null>(null);
+  const retainFailedDraft = useCallback((targetNoteId: string, markdown: string, error: unknown, previousMarkdown?: string) => {
+    const entry = newDurableDraft(markdown, error instanceof Error ? error.message : String(error), previousMarkdown,
+      acrWindowId ?? hostInstanceId, recoveryDraftsRef.current.get(targetNoteId));
+    recoveryDraftsRef.current.set(targetNoteId, entry);
+    void persistNoteDraft(targetNoteId, entry).catch(failure => {
+      if (!isUnmountedRef.current && currentRenderedNoteRef.current === targetNoteId) setDraftPersistenceError(String(failure));
+    });
+    if (!isUnmountedRef.current && currentRenderedNoteRef.current === targetNoteId) {
+      setRecoveryDraft({ noteId: targetNoteId, ...entry });
+    }
+  }, [acrWindowId, hostInstanceId]);
   // C1：ProseMirror 事务产生的同步“文档已变”信号。onChange 有 250ms 合并窗口，
   // 在此之前 isCurrentNoteDirty 不能把刚输入的内容判为 clean。
   const unsavedDocChangeRef = useRef(false);
   const loadMoreInFlightRef = useRef(false);
   const lastAppliedWindowLineCountRef = useRef<number | null>(null);
+  const windowingStateRef = useRef(windowingState);
+  windowingStateRef.current = windowingState;
   const isComposingRef = useRef(false); // IME 合成状态追踪
   const contentChangedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null); // 内容变化事件防抖
   const saveRetryCountRef = useRef(0); // 🔒 审计修复: 自动保存重试计数（指数退避）
@@ -294,7 +352,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const findReplaceContainerRef = useRef<HTMLDivElement | null>(null);
 
   // 字数统计（非空白字符数，防抖更新）
-  const [charCount, setCharCount] = useState(0);
+  const [charCount, setCharCount] = useState<number | undefined>(undefined);
 
   // 切换笔记/内容加载后初始化字数（依赖 id 而非 content：编辑中的字数由 handleChange 防抖更新）
   // ★ F10 修复：不再依赖 initialContent。保存成功会回流新的 initialContent，
@@ -304,7 +362,10 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const initialCharSourceRef = useRef('');
   initialCharSourceRef.current = isDstuMode ? (initialContent ?? '') : (active?.content_md ?? '');
   useEffect(() => {
-    setCharCount(countNoteChars(initialCharSourceRef.current));
+    const api = editorNoteIdRef.current === activeNoteKey ? lifecycleApiRef.current : null;
+    const full = api ? fullMarkdownForReporting(api, initialCharSourceRef.current)
+      : windowingStateRef.current?.hasMore ? undefined : initialCharSourceRef.current;
+    setCharCount(full === undefined ? undefined : countNoteChars(full));
   }, [activeNoteKey]);
 
   // 阅读模式状态（防止手机滑动时弹出键盘）
@@ -313,11 +374,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const focusModeOwnerId = useId();
   const focusModeRef = useRef(false);
   const [templateMenuOpen, setTemplateMenuOpen] = useState(false);
-  // C12/B04：阅读态隐藏格式工具条后，制卡作为全文操作留在页面菜单
+  const [historyOpen, setHistoryOpen] = useState(false);
+  useEffect(() => { setHistoryOpen(false); setTemplateMenuOpen(false); }, [activeNoteKey]);
+  // 制卡是全文操作；桌面统一放页面菜单，触屏编辑态使用底部工具条。
   const [generatingCards, setGeneratingCards] = useState(false);
   const templatePanelId = useId();
   const templateTriggerRef = useRef<HTMLButtonElement | null>(null);
-  const effectiveReadOnly = readOnly || readingMode;
+  const templateInsertionRef = useRef<TemplateInsertionBookmark | null>(null);
+  const effectiveReadOnly = readOnly || readingMode || hostBusy || hostRefreshError !== null;
+  const learningPropsHost = useTemplateLearningPropsHost(activeNoteKey, effectiveReadOnly);
+  const pendingTemplatePropsRef = useRef<{ template: NoteTemplate; markdown: string;
+    baseline: ReturnType<NoteTemplateLearningPropsHost['getProps']>; next: Record<string, unknown> } | null>(null);
+  const userReadOnlyRef = useRef(readOnly || readingMode);
+  userReadOnlyRef.current = readOnly || readingMode;
 
   // 进入只读/阅读模式时收起模板面板（应用入口已禁用，避免留下无效面板）
   useEffect(() => {
@@ -373,28 +442,38 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (focusModeRef.current) publishFocusMode(false);
   }, [publishFocusMode]);
 
-  useEffect(() => {
-    if (!focusMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setFocusMode(false);
-    };
-    window.addEventListener('keydown', onKeyDown, true);
-    return () => window.removeEventListener('keydown', onKeyDown, true);
-  }, [focusMode]);
-
-  const applyTemplate = useCallback((markdown: string) => {
+  const applyTemplate = useCallback(async (template: NoteTemplate) => {
     if (!editorApi || effectiveReadOnly) return;
     // 模板变量：{{date}} / {{time}} 按界面语言本地化，{{title}} 取当前笔记标题
     const noteTitle = (isDstuMode ? initialTitle : contextActive?.title) ?? '';
-    editorApi.setMarkdown(applyNoteTemplate(editorApi.getMarkdown(), markdown, {
-      title: noteTitle,
-      locale: i18n?.resolvedLanguage ?? i18n?.language,
-    }));
-    editorApi.focus();
-    setTemplateMenuOpen(false);
-  }, [editorApi, effectiveReadOnly, isDstuMode, initialTitle, contextActive?.title, i18n]);
+    try {
+      const api = editorApi as FullDocumentApi;
+      const baseline = api.getFullDocument();
+      const pending = pendingTemplatePropsRef.current;
+      if (pending && pending.template === template && pending.baseline.noteId === baseline.noteId && pending.markdown === baseline.markdown) {
+        await learningPropsHost.saveProps(pending.next, pending.baseline);
+        pendingTemplatePropsRef.current = null;
+        setTemplateMenuOpen(false);
+        return;
+      }
+      const propsBaseline = template.learningPreset ? learningPropsHost.getProps() : undefined;
+      const saved = await api.replaceFullDocument(applyNoteTemplate(baseline.markdown, template.markdown, {
+        title: noteTitle,
+        locale: i18n?.resolvedLanguage ?? i18n?.language,
+      }), baseline);
+      if (propsBaseline && template.learningPreset) {
+        const next = fillUnsetTemplateLearningProps(propsBaseline.props, template.learningPreset);
+        pendingTemplatePropsRef.current = { template, markdown: saved.markdown, baseline: propsBaseline, next };
+        await learningPropsHost.saveProps(next, propsBaseline);
+        pendingTemplatePropsRef.current = null;
+      }
+      api.focus();
+      setTemplateMenuOpen(false);
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+  }, [editorApi, effectiveReadOnly, isDstuMode, initialTitle, contextActive?.title, i18n, learningPropsHost]);
 
   // 移动端底部工具条：小屏（与壳层 <768 断点一致）或触屏主指针，且处于编辑态。
   // P0-2：仅看 (pointer: coarse) 会漏掉「窄窗桌面/模拟器」，与壳层断点对齐。
@@ -407,6 +486,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const mobileResourceMenu = useMobileResourceMenu();
   const hasMobileResourceMenu = isSmallScreen && mobileResourceMenu !== undefined;
   const [pageActionsOpen, setPageActionsOpen] = useState(false);
+  const pageActionsRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { setPageActionsOpen(false); }, [activeNoteKey, hasMobileResourceMenu]);
+  useEffect(() => {
+    if (!pageActionsOpen) return;
+    const frame = requestAnimationFrame(() => {
+      pageActionsRef.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [pageActionsOpen]);
   const isTouchEditingSurface = isSmallScreen || isCoarsePointer;
   // 📱 P0 泄漏修复：编辑器壳层不可见（保活 tab display:none、三屏滑动移出
   // 视口、切换到其他应用视图）时必须收回 body 级工具条，否则它会悬浮在
@@ -502,7 +590,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
   };
 
-  // C12/B04：制卡入口在阅读态由页面菜单承载（格式条已隐藏）
+  // 页面菜单的制卡使用完整文档，与移动端共用生成链路。
   const handleGenerateCards = useCallback(() => {
     if (!editorApi || generatingCards) return;
     setGeneratingCards(true);
@@ -521,6 +609,31 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
+  useEffect(() => {
+    const retained = noteId ? recoveryDraftsRef.current.get(noteId) : undefined;
+    setIsFindReplaceOpen(false);
+    setFindInitialQuery('');
+    fullViewMaterializedRef.current = false;
+    templateInsertionRef.current = null;
+    pendingTemplatePropsRef.current = null;
+    setHostBusy(!!noteId && lockedNotesRef.current.has(noteId));
+    setHostRefreshError(noteId && invalidNotesRef.current.has(noteId) ? '笔记等待刷新。' : null);
+    setRecoveryDraft(retained && noteId ? { noteId, ...retained } : null);
+    documentRevisionRef.current = ++nextDocumentRevision;
+  }, [noteId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRecoveredDrafts([]);
+    setDraftPersistenceError(null);
+    if (noteId) void loadNoteDrafts(noteId).then(drafts => {
+      if (cancelled) return;
+      // Hydration only offers candidates. It never replaces the live document or
+      // a failure captured while storage was loading.
+      setRecoveredDrafts(drafts);
+    }).catch(error => { if (!cancelled) setDraftPersistenceError(String(error)); });
+    return () => { cancelled = true; };
+  }, [noteId]);
 
   // P0 选区即上下文：笔记选区 → 结构化 contextRef 注入聊天。
   // 动态 import 避免把 chat context 链路静态打进笔记 chunk。
@@ -538,7 +651,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     const onFindQuery = (event: Event) => {
       const detail = (event as CustomEvent<Partial<NotesFindQuery>>).detail;
-      if (!detail?.query || (detail.noteId && detail.noteId !== noteIdRef.current)) return;
+      if (!detail?.query || (detail.noteId && detail.noteId !== noteId)) return;
       const query = detail.noteId
         ? consumeNotesFindQuery(detail.noteId) ?? detail.query
         : detail.query;
@@ -546,13 +659,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       setIsFindReplaceOpen(true);
     };
     window.addEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
-    const pending = consumeNotesFindQuery(noteIdRef.current);
+    const pending = consumeNotesFindQuery(noteId);
     if (pending) {
       setFindInitialQuery(pending);
       setIsFindReplaceOpen(true);
     }
     return () => window.removeEventListener(NOTES_FIND_QUERY_EVENT, onFindQuery);
-  }, []);
+  }, [noteId]);
 
   useEffect(() => {
     const onConflict = (event: Event) => {
@@ -658,14 +771,17 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   const oversizeNotifiedRef = useRef<Set<string>>(new Set());
 
   // ========== 保存逻辑（支持 DSTU 模式） ==========
-  const executeSave = useCallback(async ({ noteId: targetNoteId, content }: PendingSavePayload) => {
+  const executeSave = useCallback(async ({ noteId: targetNoteId, content, fullContent, wasWindowed }: PendingSavePayload) => {
+    if (invalidNotesRef.current.has(targetNoteId)) throw Object.assign(new Error('笔记等待刷新，已阻止过期草稿保存。'), { isNonRetryable: true });
     if (readOnly) {
       return;
     }
     // ★ Y8 修复：前端预检内容大小，与后端 1MB 限制对齐。
     // 之前超限内容只会在后端静默失败并无限重试，用户无感知。
-    if (content.length > MAX_NOTE_CONTENT_BYTES / 4 &&
-        new TextEncoder().encode(content).length > MAX_NOTE_CONTENT_BYTES) {
+    try {
+      assertNoteContentSize(fullContent ?? content);
+    } catch (error) {
+      retainFailedDraft(targetNoteId, fullContent ?? content, error);
       if (!oversizeNotifiedRef.current.has(targetNoteId)) {
         oversizeNotifiedRef.current.add(targetNoteId);
         showGlobalNotification(
@@ -673,8 +789,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           t('notes:actions.content_too_large')
         );
       }
-      const error = new Error('Note content exceeds 1MB limit');
-      (error as Error & { isNonRetryable?: boolean }).isNonRetryable = true;
       throw error;
     }
     if (isDstuMode) {
@@ -690,16 +804,36 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       await saveTarget(content);
     } else {
       // Context 模式：调用 NotesContext.saveNoteContent
-      if (saveNoteContent) {
+      if (noteNeedsColumnsWriter(targetNoteId)) {
+        const context = notesContextRef.current;
+        const source = context?.notes.find(note => note.id === targetNoteId);
+        if (!source) throw Object.assign(new Error('笔记保存版本不可用。'), { isNonRetryable: true });
+        const saved = await invoke<NoteItem>('notes_update', { note: {
+          id: targetNoteId, content_md: content, expected_updated_at: source.updated_at, capabilities: ['ds-columns-v1'],
+        } });
+        context?.setNotes(notes => notes.map(note => note.id === targetNoteId ? saved : note));
+        context?.setActive(note => note?.id === targetNoteId ? saved : note);
+      } else if (saveNoteContent) {
         await saveNoteContent(targetNoteId, content);
       }
     }
     oversizeNotifiedRef.current.delete(targetNoteId);
+    const retained = recoveryDraftsRef.current.get(targetNoteId) as DurableNoteDraft | undefined;
+    if (retained?.markdown === (fullContent ?? content)) {
+      if (retained.persistenceId) void deleteNoteDraft(targetNoteId, retained).catch(error => {
+        if (!isUnmountedRef.current) setDraftPersistenceError(String(error));
+      });
+      recoveryDraftsRef.current.delete(targetNoteId);
+      if (!isUnmountedRef.current && currentRenderedNoteRef.current === targetNoteId) setRecoveryDraft(null);
+    }
     // ★ A6-18：仅当笔记仍被跟踪（草稿仍在或为当前笔记）时回写快照。
     // 否则切换笔记后保存完成会把已清理的条目重新塞回 Map，长会话下
     // lastSavedMapRef 持有大量历史笔记全文，内存无界增长。
+    const liveApi = lifecycleApiRef.current;
+    const savedContent = wasWindowed && fullContent !== undefined && targetNoteId === editorNoteIdRef.current && liveApi?.isDocumentWindowed?.() === false
+      ? (liveApi.normalizeMarkdown?.(fullContent) ?? fullContent) : content;
     if (draftByNoteRef.current.has(targetNoteId) || targetNoteId === noteIdRef.current) {
-      lastSavedMapRef.current.set(targetNoteId, content);
+      lastSavedMapRef.current.set(targetNoteId, savedContent);
     } else {
       lastSavedMapRef.current.delete(targetNoteId);
     }
@@ -707,9 +841,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       setLastSaved(new Date());
       setSaveError(null);
       const draft = draftByNoteRef.current.get(targetNoteId);
-      setIsDirty(unsavedDocChangeRef.current || (typeof draft === 'string' && draft !== content));
+      setIsDirty(unsavedDocChangeRef.current || (typeof draft === 'string' && draft !== savedContent));
     }
-  }, [isDstuMode, saveNoteContent, readOnly, t]);
+  }, [isDstuMode, saveNoteContent, readOnly, t, retainFailedDraft]);
 
   const dequeuePending = () => {
     if (!pendingSaveQueueRef.current.length) {
@@ -748,6 +882,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             saveRetryCountRef.current = 0;
             terminalErrorsByNote.delete(payload.noteId);
           } catch (error) {
+            retainFailedDraft(payload.noteId, payload.fullContent ?? payload.content, error);
             const flagged = error as Error & { isNoteConflict?: boolean; isNonRetryable?: boolean };
             if (flagged?.isNoteConflict || flagged?.isNonRetryable) {
               console.warn('[NotesCrepeEditor] ⚠️ 保存已放弃（冲突或不可重试）:', error);
@@ -802,12 +937,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     })();
     inFlightSaveRef.current = promise;
     return promise;
-  }, [executeSave, t]);
+  }, [executeSave, t, retainFailedDraft]);
 
   const queueSave = useCallback((content: string, overrideNoteId?: string | null) => {
     const resolvedNoteId = overrideNoteId ?? noteIdRef.current;
     if (!resolvedNoteId) {
       return Promise.resolve();
+    }
+    if (invalidNotesRef.current.has(resolvedNoteId) || (lockedNotesRef.current.has(resolvedNoteId) && !privilegedFlushRef.current)) {
+      return Promise.reject(Object.assign(new Error('笔记操作尚未完成，请刷新后重试保存。'), { isNonRetryable: true }));
     }
     draftByNoteRef.current.set(resolvedNoteId, content);
     const lastSavedSnapshot = lastSavedMapRef.current.get(resolvedNoteId) ?? '';
@@ -827,9 +965,24 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
     
     pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter((item) => item.noteId !== resolvedNoteId);
-    pendingSaveQueueRef.current.push({ noteId: resolvedNoteId, content });
+    const liveApi = lifecycleApiRef.current;
+    let fullContent = content;
+    let wasWindowed = false;
+    try {
+      if (!isUnmountedRef.current && editorNoteIdRef.current === resolvedNoteId && currentRenderedNoteRef.current === resolvedNoteId) {
+        wasWindowed = liveApi?.isDocumentWindowed?.() === true;
+        if (wasWindowed && liveApi) {
+          fullContent = mergeExpandedMarkdown(liveApi.getMarkdown(), content, liveApi.getFullMarkdown?.() ?? content);
+        }
+      }
+    } catch (error) {
+      retainFailedDraft(resolvedNoteId, content, error);
+      if (!isUnmountedRef.current && currentRenderedNoteRef.current === resolvedNoteId) setSaveError('failed');
+      return Promise.reject(error);
+    }
+    pendingSaveQueueRef.current.push({ noteId: resolvedNoteId, content, fullContent, wasWindowed });
     return runPendingSave();
-  }, [runPendingSave]);
+  }, [runPendingSave, retainFailedDraft]);
 
   const flushNoteDraft = useCallback((targetNoteId?: string | null) => {
     const resolvedNoteId = targetNoteId ?? noteIdRef.current;
@@ -867,7 +1020,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       } else {
         dstuSaveByNoteRef.current.delete(prevId);
       }
-      // 保存已入队，清理旧笔记的草稿/快照条目，避免 Map 无限增长
+      // Failed content remains available in the recovery map, including oversized drafts.
       draftByNoteRef.current.delete(prevId);
       lastSavedMapRef.current.delete(prevId);
     }
@@ -893,10 +1046,13 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   useEffect(() => {
     const isNewNote = noteId !== lastInitializedNoteIdRef.current;
 
-    cancelDebounce();
-    // 切篇后即时脏标记属于上一篇的文档事务，重置避免污染新篇判断
-    unsavedDocChangeRef.current = false;
-    contentRef.current = initialValue;
+    if (isNewNote) {
+      cancelDebounce();
+      programmaticUpdateRef.current = false;
+      // Save acknowledgements must not reset newer live edits or their debounce.
+      unsavedDocChangeRef.current = false;
+      contentRef.current = initialValue;
+    }
     
     // 🔧 关键修复：只在以下情况重置 draftByNoteRef 和 lastSavedMapRef：
     // 1. noteId 变化（切换到新笔记）
@@ -904,7 +1060,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (noteId && isNewNote) {
       // 检查是否已有草稿（用户可能之前编辑过但未保存）
       const existingDraft = draftByNoteRef.current.get(noteId);
-      const hasExistingDraft = existingDraft !== undefined && existingDraft !== '';
+      const hasExistingDraft = existingDraft !== undefined;
       
       if (hasExistingDraft) {
         // 只更新 lastSavedMapRef（用于比较），不覆盖用户的草稿
@@ -922,7 +1078,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       // 1. 当前 draftByNoteRef 为空或未设置（内容尚未加载）
       // 2. 且 initialValue 不为空（真正的内容加载完成）
       const currentDraft = draftByNoteRef.current.get(noteId);
-      const isDraftEmpty = currentDraft === undefined || currentDraft === '';
+      const isDraftEmpty = currentDraft === undefined || (currentDraft === '' && lastSavedMapRef.current.get(noteId) === '' && !unsavedDocChangeRef.current);
       const isInitialValueValid = initialValue && initialValue.length > 0;
       
       if (isDraftEmpty && isInitialValueValid) {
@@ -977,6 +1133,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           : 'saved';
 
   const handleChange = useCallback((markdown: string) => {
+    if (projectingFullViewRef.current || projectedMarkdownRef.current === markdown) return;
+    projectedMarkdownRef.current = null;
     if (effectiveReadOnly) {
       return;
     }
@@ -989,7 +1147,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         const lastSavedSnapshot = lastSavedMapRef.current.get(noteId) ?? '';
         setIsDirty(markdown !== lastSavedSnapshot);
       }
-      setCharCount(countNoteChars(markdown));
+      const full = fullMarkdownForReporting(lifecycleApiRef.current, markdown);
+      setCharCount(full === undefined ? undefined : countNoteChars(full));
       return;
     }
     contentRef.current = markdown;
@@ -1002,7 +1161,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     saveTimerRef.current = setTimeout(() => {
       // ★ F4 修复：保存失败已在 runPendingSave 内部重试并通知用户，
       // 这里兜底 catch 防止 rejection 进入全局 unhandledrejection 上报
-      queueSave(markdown).catch(() => {});
+      queueSave(markdown, noteId).catch(() => {});
     }, AUTO_SAVE_DEBOUNCE_MS);
     
     // IME 合成期间跳过实时事件派发，避免卡顿
@@ -1021,10 +1180,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     // 与 NotesContextPanel 按 noteId 过滤的逻辑不匹配，导致大纲无法实时更新）
     const eventNoteId = noteId;
     contentChangedTimerRef.current = setTimeout(() => {
-      if (isUnmountedRef.current) return;
-      setCharCount(countNoteChars(markdown));
-      window.dispatchEvent(new CustomEvent('notes:content-changed', {
-        detail: { noteId: eventNoteId, content: markdown }
+      if (isUnmountedRef.current || currentRenderedNoteRef.current !== eventNoteId) return;
+      const fullMarkdown = fullMarkdownForReporting(lifecycleApiRef.current, markdown);
+      setCharCount(fullMarkdown === undefined ? undefined : countNoteChars(fullMarkdown));
+      if (fullMarkdown !== undefined) window.dispatchEvent(new CustomEvent('notes:content-changed', {
+        detail: { noteId: eventNoteId, content: fullMarkdown }
       }));
     }, 500);
   }, [noteId, queueSave, effectiveReadOnly]);
@@ -1032,6 +1192,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // C1：事务级同步通知。不序列化全文，只置标志；UI 的“未保存”指示立即反映，
   // 关闭/外部更新判断也从此刻起视为 dirty（无需等待 250ms onChange）。
   const handleDocumentChange = useCallback(() => {
+    if (projectingFullViewRef.current) return;
+    projectedMarkdownRef.current = null;
+    documentRevisionRef.current = ++nextDocumentRevision;
     if (effectiveReadOnly) {
       return;
     }
@@ -1152,6 +1315,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         const draft = draftByNoteRef.current.get(currentNoteId);
         const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
         const isDirty =
+          unsavedDocChangeRef.current ||
           (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
           pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
           inFlightSaveRef.current !== null;
@@ -1197,6 +1361,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         const draft = draftByNoteRef.current.get(currentNoteId);
         const lastSavedSnapshot = lastSavedMapRef.current.get(currentNoteId) ?? '';
         const isDirty =
+          unsavedDocChangeRef.current ||
           (typeof draft === 'string' && draft !== lastSavedSnapshot) ||
           pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
           inFlightSaveRef.current !== null;
@@ -1213,13 +1378,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       }
 
       contentRef.current = newContent;
+      documentRevisionRef.current = ++nextDocumentRevision;
+      fullViewMaterializedRef.current = false;
       draftByNoteRef.current.set(currentNoteId, newContent);
       lastSavedMapRef.current.set(currentNoteId, newContent);
 
       if (editorApi && editorApi.getMarkdown() !== newContent) {
         editorApi.setMarkdown(newContent);
       }
-      setCharCount(countNoteChars(newContent));
+      unsavedDocChangeRef.current = false;
+      const fullMarkdown = fullMarkdownForReporting(editorApi, newContent);
+      setCharCount(fullMarkdown === undefined ? undefined : countNoteChars(fullMarkdown));
+      if (fullMarkdown !== undefined) window.dispatchEvent(new CustomEvent('notes:content-changed', { detail: { noteId: currentNoteId, content: fullMarkdown } }));
       setLastSaved(new Date());
       // 外部版本已应用：清掉失败/冲突态与脏标记，避免 Header 仍显示 Conflict/Unsaved
       if (!isUnmountedRef.current) {
@@ -1270,7 +1440,9 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   useEffect(() => {
     if (!editorApi || !noteId) return;
-    const scroll = (heading: string) => {
+    const scroll = async (heading: string) => {
+      try { await (editorApi as FullDocumentSearchApi).materializeFullDocument(); }
+      catch (error) { showGlobalNotification('error', String(error)); return; }
       // Level 0 asks Crepe to match the heading text across all heading levels.
       // 精确匹配谓词与 [[Note#Heading]] 补全/解析共用同一套规范化
       //（大小写、全半角、中文标点、空白折叠），避免锚点漂移。
@@ -1354,6 +1526,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // 键盘快捷键（注册在 document 上，处理后 stopPropagation 防止命令系统重复触发）
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!isReviewShortcut(e) || isComposingRef.current) return;
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         const activeEl = document.activeElement as HTMLElement | null;
         const isEditorFocused = !!activeEl && !!dropZoneRef.current?.contains(activeEl);
@@ -1450,11 +1623,26 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 编辑器就绪回调
   const handleEditorReady = useCallback((api: CrepeEditorApi) => {
-    const lifecycleApi: CrepeEditorApi = {
+    baseApiRef.current = api;
+    const lifecycleApi: FullDocumentViewHost = {
       ...api,
+      getStorageUpdatedAt: () => notesContextRef.current?.notes.find(note => note.id === noteId)?.updated_at,
+      ...(!isDstuMode ? { refreshDocumentFromDisk: async () => {
+        const saved = await NotesAPI.historyCurrent(noteId!);
+        if (currentRenderedNoteRef.current !== noteId) throw new Error('笔记已切换。');
+        const update = (note: NonNullable<typeof contextActive>) => note.id === noteId
+          ? { ...note, content_md: saved.content_md, updated_at: saved.updated_at, title: saved.title } : note;
+        notesContextRef.current?.setNotes(notes => notes.map(update));
+        notesContextRef.current?.setActive(note => note ? update(note) : note);
+        window.dispatchEvent(new CustomEvent('notes:external-updated', { detail: {
+          noteId, content: saved.content_md, force: true, windowId: acrWindowId,
+        } }));
+      } } : {}),
       flushPendingSave: async () => {
-        const targetNoteId = noteIdRef.current;
-        if (!targetNoteId) return;
+        const targetNoteId = noteId;
+        if (!targetNoteId || currentRenderedNoteRef.current !== targetNoteId) {
+          throw new Error(t('notes:fullDocument.errors.stale_editor'));
+        }
 
         // Crepe 的 onChange 有 250ms 合并窗口。ACR 不能在它尚未回调时
         // 就把视觉插入误报为“已自动保存”，因此直接以编辑器当前全文刷新草稿。
@@ -1467,17 +1655,62 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       },
     };
 
-    const sharedApi = extendEditorApi?.(lifecycleApi) ?? lifecycleApi;
+    const extended = extendEditorApi?.(lifecycleApi) ?? lifecycleApi;
+    const sharedApi = createFullDocumentApi(extended, {
+      noteId: noteId ?? '',
+      isCurrent: () => !isUnmountedRef.current && currentRenderedNoteRef.current === noteId && lifecycleApiRef.current === sharedApi,
+      revision: () => documentRevisionRef.current,
+      isWindowed: () => extended.isDocumentWindowed?.() ?? windowingStateRef.current?.hasMore === true,
+      retainFailure: (markdown, error, previousMarkdown) => { if (noteId) retainFailedDraft(noteId, markdown, error, previousMarkdown); },
+      projectView: (apply) => {
+        if (!noteId) return;
+        const before = api.getMarkdown();
+        const full = extended.getFullMarkdown?.() ?? before;
+        const project = (prefix: string) => {
+          const canonicalPrefix = api.normalizeMarkdown?.(prefix) ?? prefix;
+          const merged = mergeExpandedMarkdown(before, canonicalPrefix, full);
+          return api.normalizeMarkdown?.(merged) ?? merged;
+        };
+        const savedPrefix = lastSavedMapRef.current.get(noteId) ?? before;
+        const wasDirty = unsavedDocChangeRef.current || (api.normalizeMarkdown?.(savedPrefix) ?? savedPrefix) !== before;
+        let saved = project(savedPrefix);
+        cancelDebounce();
+        projectingFullViewRef.current = true;
+        let next: string;
+        try { next = apply(); } finally { projectingFullViewRef.current = false; }
+        fullViewMaterializedRef.current = true;
+        if (!wasDirty) saved = next;
+        projectedMarkdownRef.current = next;
+        contentRef.current = next;
+        draftByNoteRef.current.set(noteId, next);
+        lastSavedMapRef.current.set(noteId, saved);
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.map((payload) => {
+          if (payload.noteId !== noteId) return payload;
+          const fullContent = project(payload.content);
+          return { ...payload, content: fullContent, fullContent };
+        });
+        unsavedDocChangeRef.current = false;
+        setIsDirty(next !== saved);
+        setCharCount(countNoteChars(next));
+        window.dispatchEvent(new CustomEvent('notes:content-changed', { detail: { noteId, content: next } }));
+        if (next !== saved) saveTimerRef.current = setTimeout(() => { void queueSave(next, noteId).catch(() => {}); }, AUTO_SAVE_DEBOUNCE_MS);
+      },
+    });
     setEditorApi(sharedApi);
     lifecycleApiRef.current = sharedApi;
     editorNoteIdRef.current = noteId ?? null;
+    if (extended.getFullMarkdown || !windowingStateRef.current?.hasMore) {
+      const fullMarkdown = sharedApi.getFullMarkdown();
+      setCharCount(countNoteChars(fullMarkdown));
+      window.dispatchEvent(new CustomEvent('notes:content-changed', { detail: { noteId, content: fullMarkdown } }));
+    }
     onEditorReady?.(sharedApi);
     onEditorApiReady?.(sharedApi);
     // 将 Crepe API 设置到 Context（仅 Context 模式）
     if (!isDstuMode && setEditor) {
       setEditor(sharedApi);
     }
-  }, [isDstuMode, noteId, extendEditorApi, onEditorReady, onEditorApiReady, setEditor]);
+  }, [isDstuMode, noteId, extendEditorApi, onEditorReady, onEditorApiReady, setEditor, retainFailedDraft, t, queueSave, acrWindowId]);
 
   useEffect(() => {
     return () => {
@@ -1487,13 +1720,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       onEditorApiReady?.(null, previousApi ?? undefined);
     };
   }, [onEditorReady, onEditorApiReady]);
-
-  // AI 编辑保存回调（用于 Canvas AI 编辑后自动保存）
-  // DSTU / workbench：走 props.onSave（NoteContentView.handleSave）；
-  // legacy Context Canvas：走 saveNoteContent。
-  const handleAISave = useCallback(async (content: string) => {
-    await queueSave(content);
-  }, [queueSave]);
 
   // ACR R1-13：DSTU 下 hasSelection/isContentLoaded 恒为 true，故 workbench note 窗
   // 同样监听 canvas:ai-edit-request → AIDiffPanel；legacy Context 条件不变。
@@ -1506,13 +1732,92 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     checkpoints: aiCheckpoints,
     rollbackCheckpoint,
     dismissCheckpoint,
-  } = useCanvasAIEditHandler({
+    session: aiReview,
+    setCollapsed: setAIReviewCollapsed,
+    decideGroup: decideAIReviewGroup,
+    copyCandidate: copyAICandidate,
+    persistenceStatus: aiPersistenceStatus,
+    persistenceError: aiPersistenceError,
+    retryPersistence: retryAIReviewPersistence,
+    recoveryOptions: aiRecoveryOptions,
+    restoreCandidate: restoreAICandidate,
+    officialReviewProps,
+    scopeProps,
+  } = useAIReview({
     noteId,
     editorApi,
-    onSave: handleAISave,
     enabled: hasSelection && isContentLoaded,
     windowId: acrWindowId,
+    host: {
+      acquireReviewLease: () => {
+        if (!editorApi?.acquireReviewLease) throw new Error('审阅交互锁尚未就绪。');
+        return editorApi.acquireReviewLease();
+      },
+      resolveScope: kind => resolveNoteReviewScope(editorApi as FullDocumentSearchApi, kind),
+      applyDocument: (markdown, baseline) => applyReviewedNote(editorApi as FullDocumentSearchApi, markdown, baseline),
+      saveAs: (markdown, operationId, baseline) => noteHostCoordinator.withLockedNotes(
+        baseline ? [noteId!, baseline.noteId] : [noteId!], async () => {
+          await noteHostCoordinator.flushPendingSaves(baseline ? [noteId!, baseline.noteId] : [noteId!]);
+          return saveReviewAs(markdown, operationId, noteId!, initialTitle ?? active?.title ?? '', baseline, noteHostCoordinator.getLeaseAuth(noteId));
+        }),
+    },
   });
+
+  // One Escape closes one surface. Bubble after popovers/editor handlers, never during IME.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !isReviewShortcut(event) || isComposingRef.current) return;
+      if (!notesShellRef.current?.contains(document.activeElement) && !focusMode) return;
+      if (historyOpen || pageActionsOpen || document.querySelector('[data-state="open"][role="dialog"], [data-state="open"][role="menu"]')) return;
+      if (isFindReplaceOpen) return;
+      if (templateMenuOpen) { event.preventDefault(); setTemplateMenuOpen(false); return; }
+      if (conflictDiffOpen) { event.preventDefault(); setConflictDiffOpen(false); return; }
+      if (aiReview && !aiReview.collapsed) return; // AIDiffPanel consumes this key.
+      if (focusMode) { event.preventDefault(); setFocusMode(false); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [focusMode, historyOpen, pageActionsOpen, isFindReplaceOpen, templateMenuOpen, aiReview, conflictDiffOpen]);
+
+  const copyRecoveryDraft = useCallback(async (previous = false) => {
+    if (!recoveryDraft) return;
+    const markdown = previous ? recoveryDraft.previousMarkdown : recoveryDraft.markdown;
+    if (markdown !== undefined && !await copyTextToClipboard(markdown)) showGlobalNotification('error', t('notes:fullDocument.errors.copy_failed'));
+  }, [recoveryDraft, t]);
+  const restoreRecoveryDraft = useCallback(async (previous = false) => {
+    if (!recoveryDraft || !editorApi || effectiveReadOnly) return;
+    const markdown = previous ? recoveryDraft.previousMarkdown : recoveryDraft.markdown;
+    if (markdown === undefined) return;
+    try {
+      const api = editorApi as FullDocumentApi;
+      const baseline = api.getFullDocument();
+      if (baseline.noteId !== recoveryDraft.noteId) return;
+      await api.replaceFullDocument(markdown, baseline);
+      recoveryDraftsRef.current.delete(baseline.noteId);
+      setRecoveryDraft(null);
+    } catch (error) { showGlobalNotification('error', error instanceof Error ? error.message : String(error)); }
+  }, [recoveryDraft, editorApi, effectiveReadOnly]);
+
+  const discardRecoveryDraft = async () => {
+    if (!recoveryDraft) return;
+    try {
+      const durable = recoveryDraft as DurableNoteDraft & { noteId: string };
+      if (durable.persistenceId) await deleteNoteDraft(durable.noteId, durable);
+      recoveryDraftsRef.current.delete(recoveryDraft.noteId);
+      setRecoveredDrafts(drafts => drafts.filter(draft => draft.persistenceId !== durable.persistenceId));
+      setRecoveryDraft(null);
+    } catch (error) { setDraftPersistenceError(String(error)); }
+  };
+  const saveRecoveryAs = async () => {
+    if (!recoveryDraft) return;
+    const draft = recoveryDraft as DurableNoteDraft & { noteId: string };
+    try {
+      await saveReviewAs(draft.markdown, `draft-copy:${draft.persistenceId ?? hostInstanceId}:${draft.persistenceRevision ?? 0}`,
+        draft.noteId, initialTitle ?? '恢复草稿', undefined, noteHostCoordinator.getLeaseAuth(draft.noteId));
+      await refreshWikilinkNotesCache();
+      showGlobalNotification('success', '草稿已另存为笔记。');
+    } catch (error) { showGlobalNotification('error', String(error)); }
+  };
 
   const captureViewportMetrics = useCallback(() => {
     const viewport = scrollViewportRef.current;
@@ -1537,6 +1842,68 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     );
   }, []);
 
+  useEffect(() => {
+    if (!editorApi || !noteId || !baseApiRef.current) return;
+    const base = baseApiRef.current;
+    const api = editorApi as FullDocumentSearchApi & FullDocumentViewHost;
+    let active = true;
+    const refresh = async () => {
+      try {
+        if (!api.refreshDocumentFromDisk) throw new Error('此笔记宿主尚未提供完整刷新能力。');
+        await api.refreshDocumentFromDisk();
+        if (!active) return;
+        resetNoteUndo(base);
+        if (base.setDocumentCapabilities) applyNoteFormat(base, await readNoteFormat(noteId));
+        invalidNotesRef.current.delete(noteId);
+        base.setReadonly?.(userReadOnlyRef.current || lockedNotesRef.current.has(noteId));
+        setHostRefreshError(null);
+      } catch (error) {
+        if (active) setHostRefreshError(error instanceof Error ? error.message : String(error));
+        throw error;
+      }
+    };
+    const release = bindNoteEditorHost(base, {
+      id: hostInstanceId, noteId, windowId: acrWindowId, api,
+      dirty: isCurrentNoteDirty,
+      lock: () => {
+        if ((base.getUploadState?.().pending ?? 0) > 0) throw new Error('请等待图片上传完成或取消上传后再操作。');
+        lockedNotesRef.current.add(noteId);
+        cancelDebounce();
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(payload => payload.noteId !== noteId);
+        const unlock = base.acquireReviewLease?.();
+        base.setReadonly?.(true);
+        setHostBusy(true);
+        return () => {
+          lockedNotesRef.current.delete(noteId);
+          unlock?.();
+          if (active) { base.setReadonly?.(userReadOnlyRef.current || invalidNotesRef.current.has(noteId)); setHostBusy(false); }
+        };
+      },
+      settle: async () => { await inFlightSaveRef.current; },
+      flush: async () => {
+        privilegedFlushRef.current = true;
+        try {
+          await api.flushPendingSave!();
+          if (isCurrentNoteDirty()) throw new Error('笔记草稿尚未确认保存，已取消操作。');
+        } finally { privilegedFlushRef.current = false; }
+      },
+      invalidate: () => {
+        invalidNotesRef.current.add(noteId);
+        base.setReadonly?.(true);
+        cancelDebounce();
+        pendingSaveQueueRef.current = pendingSaveQueueRef.current.filter(payload => payload.noteId !== noteId);
+        setHostRefreshError('笔记已更新，正在刷新正文。');
+      },
+      refresh,
+    });
+    if (base.setDocumentCapabilities) void readNoteFormat(noteId).then(format => {
+      if (active) applyNoteFormat(base, format);
+    }).catch(error => {
+      if (active) { invalidNotesRef.current.add(noteId); base.setReadonly?.(true); setHostRefreshError(String(error)); }
+    });
+    return () => { active = false; release(); };
+  }, [editorApi, noteId, hostInstanceId, acrWindowId, isCurrentNoteDirty]);
+
   // ACR R1-13：把真实 isDirty 接入 contentDirtyRegistry（probe / canClose）
   useEffect(() => {
     if (!dirtyRegistryKey) return;
@@ -1552,9 +1919,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       return;
     }
     const wasDirty = isCurrentNoteDirty();
+    if (currentRenderedNoteRef.current !== noteId || lifecycleApiRef.current !== editorApi) return;
     const selection = editorApi.captureSelection?.() ?? null;
     const viewportMetrics = captureViewportMetrics();
 
+    cancelDebounce();
     programmaticUpdateRef.current = true;
     editorApi.setMarkdown(result.loadedMarkdown);
     contentRef.current = result.loadedMarkdown;
@@ -1562,9 +1931,11 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     if (!wasDirty) {
       lastSavedMapRef.current.set(noteId, result.loadedMarkdown);
     }
-    setCharCount(countNoteChars(result.loadedMarkdown));
+    try { setCharCount(countNoteChars(editorApi.getFullMarkdown?.() ?? result.loadedMarkdown)); }
+    catch { setCharCount(undefined); }
 
     requestAnimationFrame(() => {
+      if (currentRenderedNoteRef.current !== noteId || lifecycleApiRef.current !== editorApi) return;
       const viewport = scrollViewportRef.current;
       if (viewport && viewportMetrics) {
         viewport.scrollTop = viewportMetrics.scrollTop;
@@ -1572,13 +1943,16 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       editorApi.restoreSelection?.(selection);
       lastAppliedWindowLineCountRef.current = result.loadedLineCount;
       programmaticUpdateRef.current = false;
+      if (wasDirty) void queueSave(editorApi.getMarkdown(), noteId).catch(() => {});
     });
-  }, [captureViewportMetrics, editorApi, isCurrentNoteDirty, noteId]);
+  }, [captureViewportMetrics, editorApi, isCurrentNoteDirty, noteId, queueSave]);
 
   const handleWindowScroll = useCallback(() => {
     if (
       !windowingState?.enabled ||
       !windowingState.hasMore ||
+      editorApi?.isDocumentWindowed?.() === false ||
+      isFindReplaceOpen ||
       windowingState.isLoadingMore ||
       loadMoreInFlightRef.current ||
       !editorApi ||
@@ -1593,16 +1967,18 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
 
     loadMoreInFlightRef.current = true;
-    void onRequestLoadMore(editorApi.getMarkdown())
+    const source = editorApi.getMarkdown();
+    void onRequestLoadMore(source)
       .then((result) => {
-        if (result) {
-          applyWindowExpansion(result);
+        if (result && !fullViewMaterializedRef.current && currentRenderedNoteRef.current === noteId && lifecycleApiRef.current === editorApi) {
+          applyWindowExpansion({ ...result, loadedMarkdown: mergeExpandedMarkdown(source, editorApi.getMarkdown(), result.loadedMarkdown) });
         }
       })
+      .catch((error) => showGlobalNotification('error', error instanceof Error ? error.message : String(error)))
       .finally(() => {
         loadMoreInFlightRef.current = false;
       });
-  }, [applyWindowExpansion, captureViewportMetrics, editorApi, onRequestLoadMore, windowingState]);
+  }, [applyWindowExpansion, captureViewportMetrics, editorApi, onRequestLoadMore, windowingState, noteId, isFindReplaceOpen]);
 
   // ── 大纲滚动跟随：rAF 节流地广播视口顶部附近的当前标题 ──
   const activeHeadingRafRef = useRef<number | null>(null);
@@ -1703,7 +2079,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
 
   // 处理大纲滚动事件
   useEffect(() => {
-    const handleScrollToHeading = (e: CustomEvent<{ text: string; normalizedText?: string; level: number; occurrence?: number; noteId?: string }>) => {
+    const handleScrollToHeading = async (e: CustomEvent<{ text: string; normalizedText?: string; level: number; occurrence?: number; noteId?: string }>) => {
       // ★ Y2 修复：事件携带 noteId 时按当前笔记过滤，
       // 防止多个可见编辑器实例（分屏/多面板）同时响应滚动
       if (e.detail.noteId && noteIdRef.current && e.detail.noteId !== noteIdRef.current) {
@@ -1746,6 +2122,8 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         },
       });
       if (editorApi?.scrollToHeading) {
+        try { await (editorApi as FullDocumentSearchApi).materializeFullDocument(); }
+        catch (error) { showGlobalNotification('error', String(error)); return; }
         editorApi.scrollToHeading(
           e.detail.text,
           e.detail.level,
@@ -1859,136 +2237,70 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   // DSTU 模式下始终渲染，Context 模式下需要 noteId
   if (!isDstuMode && !noteId) return null;
 
-  const pageActions = (<>
-            {!readOnly && (
-              <CommonTooltip content={t('notes:toolbar.note_templates', 'Note templates')} position="bottom">
-                <DsButton
-                  ref={templateTriggerRef}
-                  role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                  variant="ghost"
-                  iconOnly
-                  size="sm"
-                  className={cn(
-                    'h-7 w-7 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-                    templateMenuOpen
-                      ? 'bg-[var(--interactive-hover)] text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => setTemplateMenuOpen((prev) => !prev)}
-                  aria-label={t('notes:toolbar.note_templates', 'Note templates')}
-                  aria-expanded={templateMenuOpen}
-                  aria-controls={templatePanelId}
-                >
-                  <NoteBlank size={16} />
-                {isTouchEditingSurface && <span>{t('notes:toolbar.note_templates', 'Note templates')}</span>}
-                </DsButton>
-              </CommonTooltip>
-            )}
-            {/* C12：仅在阅读态（格式工具条已隐藏）把制卡放入页面菜单，避免编辑态重复入口 */}
-            {effectiveReadOnly && (
-            <CommonTooltip content={t('notes:toolbar.generateCards', '生成卡片')} position="bottom">
-              <DsButton
-                role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                onClick={handleGenerateCards}
-                disabled={!editorApi || generatingCards}
-                aria-busy={generatingCards || undefined}
-                aria-label={t('notes:toolbar.generateCards', '生成卡片')}
-              >
-                <Cards size={16} />
-                {isTouchEditingSurface && <span>{t('notes:toolbar.generateCards', '生成卡片')}</span>}
-              </DsButton>
-            </CommonTooltip>
-            )}
-            <CommonTooltip content={t('notes:toolbar.ask_agent', 'Ask Agent')} position="bottom">
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                onClick={() => { void openQuickAssistantWindow(); }}
-                role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                aria-label={t('notes:toolbar.ask_agent', 'Ask Agent')}
-              >
-                <Robot size={16} />
-              {isTouchEditingSurface && <span>{t('notes:toolbar.ask_agent', 'Ask Agent')}</span>}
-                </DsButton>
-            </CommonTooltip>
-            {/* 查找替换按钮 */}
-            <CommonTooltip content={t('notes:toolbar.find_replace')} position="bottom">
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className={cn(
-                  'h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
-                  isFindReplaceOpen ? 'bg-[var(--interactive-hover)] text-foreground' : 'text-muted-foreground hover:text-foreground'
-                )}
-                onClick={() => setIsFindReplaceOpen((prev) => !prev)}
-                role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                aria-label={t('notes:toolbar.find_replace')}
-                aria-pressed={isFindReplaceOpen}
-              >
-                <MagnifyingGlass size={16} />
-              {isTouchEditingSurface && <span>{t('notes:toolbar.find_replace')}</span>}
-                </DsButton>
-            </CommonTooltip>
-            {/* 阅读模式切换按钮 - 仅在非外部 readOnly 时显示 */}
-            {!readOnly && (
-              <CommonTooltip
-                content={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
-                position="bottom"
-              >
-                <DsButton
-                  variant="ghost"
-                  iconOnly
-                  size="sm"
-                  className={cn(
-                    "h-7 w-7 flex-shrink-0 transition-colors [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11",
-                    readingMode
-                      ? "bg-[var(--interactive-hover)] text-foreground"
-                      : "text-muted-foreground hover:text-foreground"
-                  )}
-                  onClick={() => {
-                    const next = !readingMode;
-                    // 进入阅读模式时先 flush 草稿，防止丢失未保存内容
-                    if (next) {
-                      void flushNoteDraft().catch(() => {});
-                    }
-                    setReadingMode(next);
-                    // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
-                  }}
-                  aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
-                  aria-pressed={readingMode}
-                  role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                >
-                  {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
-                {isTouchEditingSurface && <span>{readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}</span>}
-                </DsButton>
-              </CommonTooltip>
-            )}
-            <CommonTooltip
-              content={`${focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')} (${isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'})`}
-              position="bottom"
-            >
-              <DsButton
-                variant="ghost"
-                iconOnly
-                size="sm"
-                className="h-7 w-7 flex-shrink-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
-                onClick={toggleFocusMode}
-                role={hasMobileResourceMenu ? 'menuitem' : undefined}
-                aria-label={focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}
-                aria-pressed={focusMode}
-              >
-                {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
-              {isTouchEditingSurface && <span>{focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}</span>}
-                </DsButton>
-            </CommonTooltip>
-  </>);
+  const readingModeAction = !readOnly && (
+    <DsButton variant="ghost" size="sm" className="notes-chrome-text-button"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      aria-label={readingMode ? t('notes:toolbar.editing_mode') : t('notes:toolbar.reading_mode')}
+      aria-pressed={readingMode}
+      onClick={() => {
+        if (!readingMode) void flushNoteDraft().catch(() => {});
+        setReadingMode(prev => !prev);
+      }}>
+      {readingMode ? <PencilLine size={15} /> : <BookOpen size={15} />}
+      <span>{readingMode ? t('notes:chrome.edit') : t('notes:chrome.read')}</span>
+    </DsButton>
+  );
+  const pageActions = (<div className="notes-page-actions">
+    <div className="notes-action-group-label">{t('notes:chrome.note_tools')}</div>
+    {!readOnly && <DsButton variant="ghost" size="sm" disabled={effectiveReadOnly || !editorApi}
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      aria-expanded={templateMenuOpen} aria-controls={templatePanelId}
+      onClick={() => {
+        if (!templateMenuOpen && editorApi) {
+          try { templateInsertionRef.current = captureTemplateInsertion(editorApi as FullDocumentSearchApi); }
+          catch (error) { templateInsertionRef.current = null; showGlobalNotification('error', String(error)); }
+        }
+        setTemplateMenuOpen(prev => !prev);
+      }}>
+      <NoteBlank size={16} /><span>{t('notes:toolbar.note_templates', 'Note templates')}</span>
+    </DsButton>}
+    {(!isTouchEditingSurface || effectiveReadOnly) && <DsButton variant="ghost" size="sm"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={handleGenerateCards} disabled={!editorApi || generatingCards} aria-busy={generatingCards || undefined}>
+      <Cards size={16} /><span>{t('notes:toolbar.generateCards', '生成卡片')}</span>
+    </DsButton>}
+    <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={() => { void openQuickAssistantWindow(); }}>
+      <Robot size={16} /><span>{t('notes:toolbar.ask_agent', 'Ask Agent')}</span>
+    </DsButton>
+    <div className="notes-action-group-label">{t('notes:chrome.view')}</div>
+    <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={() => setIsFindReplaceOpen(prev => !prev)} aria-pressed={isFindReplaceOpen}>
+      <MagnifyingGlass size={16} /><span>{t('notes:toolbar.find_replace')}</span>
+      <kbd>{isMacOS() ? '⌘F' : 'Ctrl+F'}</kbd>
+    </DsButton>
+    {(isTouchEditingSurface || hasMobileResourceMenu) && readingModeAction}
+    <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={toggleFocusMode} aria-pressed={focusMode}>
+      {focusMode ? <CornersIn size={16} /> : <CornersOut size={16} />}
+      <span>{focusMode ? t('notes:toolbar.exit_focus_mode', 'Exit focus mode') : t('notes:toolbar.focus_mode', 'Focus mode')}</span>
+      <kbd>{isMacOS() ? '⌘⇧U' : 'Ctrl+Shift+U'}</kbd>
+    </DsButton>
+    {windowingState?.hasMore && <DsButton variant="ghost" size="sm" disabled={hostBusy || !editorApi}
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={() => { void (editorApi as FullDocumentSearchApi).materializeFullDocument().catch(error => showGlobalNotification('error', String(error))); }}>
+      <span>{t('notes:chrome.load_full_document')}</span>
+    </DsButton>}
+    <div className="notes-action-group-label">{t('notes:chrome.export')}</div>
+    {(['plain', 'layout'] as const).map(layout => <DsButton key={layout} variant="ghost" size="sm"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined} disabled={!editorApi || !noteId}
+      onClick={() => {
+        if (noteId) void import('@/features/learning-hub/utils/exportResource').then(({ exportResourceById }) =>
+          exportResourceById(noteId, i18n.getFixedT(null, 'learningHub'), acrWindowId, layout));
+      }}>
+      <DownloadSimple size={16} /><span>{t(`notes:chrome.export_${layout}`)}</span>
+    </DsButton>)}
+  </div>);
 
   return (
     <ErrorBoundary name="NotesEditor">
@@ -2203,27 +2515,37 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         data-mobile-hosted={hasMobileResourceMenu || undefined}>
         {!hasMobileResourceMenu && <div className="notes-editor-chrome-row mx-auto flex w-full max-w-[var(--notes-content-max-w)] items-center gap-1 px-5 sm:px-12">
             {/* C12/B04：阅读态不呈现一排灰色编辑按钮；阅读所需控件在右侧页面菜单 */}
-            {!effectiveReadOnly && (
+            {!effectiveReadOnly && !isTouchEditingSurface && (
               <NotesEditorToolbar editor={editorApi} readOnly={effectiveReadOnly} activeStates={formattingState} noteId={noteId} />
             )}
           <div className="ml-auto flex shrink-0 items-center gap-1">
-            {isTouchEditingSurface ? (
-              <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
-                <PopoverTrigger asChild>
-                  <DsButton variant="ghost" size="icon" iconOnly className="h-11 w-11"
-                    aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
-                    <DotsThree size={22} />
-                  </DsButton>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="notes-page-actions w-60"
-                  aria-label={t('notes:toolbar.page_actions', 'More note actions')}
-                  onClick={(event) => {
-                    if ((event.target as HTMLElement).closest('button')) setPageActionsOpen(false);
-                  }}>
-                  {pageActions}
-                </PopoverContent>
-              </Popover>
-            ) : pageActions}
+            {!isTouchEditingSurface && readingModeAction}
+            <Popover open={pageActionsOpen} onOpenChange={setPageActionsOpen}>
+              <PopoverTrigger asChild>
+                <DsButton ref={templateTriggerRef} variant="ghost" size="sm" className="notes-chrome-text-button"
+                  aria-haspopup="dialog" aria-label={t('notes:toolbar.page_actions', 'More note actions')}>
+                  <span>{t('notes:chrome.page')}</span><CaretDown size={12} />
+                </DsButton>
+              </PopoverTrigger>
+              <PopoverContent ref={pageActionsRef} align="end" className="w-64 max-h-[min(80vh,600px)] overflow-y-auto p-1"
+                aria-label={t('notes:toolbar.page_actions', 'More note actions')}
+                aria-hidden={!pageActionsOpen || undefined}
+                {...(!pageActionsOpen ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setPageActionsOpen(false);
+                  templateTriggerRef.current?.focus();
+                }}
+                onClick={(event) => {
+                  if (!(event.target as HTMLElement).closest('button')) return;
+                  setPageActionsOpen(false);
+                  templateTriggerRef.current?.focus();
+                }}>
+                {pageActions}
+              </PopoverContent>
+            </Popover>
             {headerActions}
           </div>
         </div>}
@@ -2232,12 +2554,17 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             方向键在卡片间移动、Enter 应用、Esc 收起（见 NotesTemplatePanel） */}
         {!readOnly && (
           <NotesTemplatePanel
+            key={noteId}
             open={templateMenuOpen}
             onRequestClose={() => setTemplateMenuOpen(false)}
-            onApplyTemplate={(template) => applyTemplate(template.markdown)}
+            onApplyTemplate={applyTemplate}
             disabled={effectiveReadOnly || !editorApi}
             panelId={templatePanelId}
             triggerRef={templateTriggerRef}
+            documentHost={editorApi && !effectiveReadOnly ? templateDocumentHost(editorApi as FullDocumentSearchApi,
+              () => templateInsertionRef.current,
+              { title: (isDstuMode ? initialTitle : contextActive?.title) ?? '', locale: i18n?.resolvedLanguage ?? i18n?.language }) : undefined}
+            learningPropsHost={!effectiveReadOnly ? learningPropsHost : undefined}
           />
         )}
 
@@ -2307,14 +2634,80 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
         )}
       </div>
 
+      {hostRefreshError && <div role="alert" className="flex items-center gap-2 border-b px-5 py-2 text-xs">
+        <span>{hostRefreshError}</span>
+        <DsButton variant="outline" size="sm" disabled={hostBusy} onClick={() => {
+          if (noteId) void noteHostCoordinator.withLockedNotes([noteId], () => noteHostCoordinator.refreshNotes([noteId]))
+            .catch(error => showGlobalNotification('error', String(error)));
+        }}>重试刷新</DsButton>
+      </div>}
+      {draftPersistenceError && <div role="alert" className="border-b px-5 py-2 text-xs">
+        草稿持久化失败：{draftPersistenceError}
+        <DsButton variant="ghost" size="sm" onClick={() => {
+          const draft = noteId ? recoveryDraftsRef.current.get(noteId) as DurableNoteDraft | undefined : undefined;
+          if (noteId && draft?.persistenceId) void persistNoteDraft(noteId, draft)
+            .then(() => setDraftPersistenceError(null)).catch(error => setDraftPersistenceError(String(error)));
+          else if (noteId) void loadNoteDrafts(noteId).then(drafts => { setRecoveredDrafts(drafts); setDraftPersistenceError(null); })
+            .catch(error => setDraftPersistenceError(String(error)));
+        }}>重试草稿存储</DsButton>
+      </div>}
+      {recoveredDrafts.length > 0 && <div className="flex flex-wrap gap-2 border-b px-5 py-2 text-xs" role="status">
+        已找到未保存草稿
+        {recoveredDrafts.map((draft, index) => <DsButton key={draft.persistenceId} variant="outline" size="sm"
+          onClick={() => { if (noteId) setRecoveryDraft({ ...draft, noteId }); }}>查看草稿 {index + 1}</DsButton>)}
+      </div>}
+      {recoveryDraft && recoveryDraft.noteId === noteId && (
+        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2 text-xs">
+          <span className="flex-1">{recoveryDraft.error}</span>
+          <DsButton variant="outline" size="sm" onClick={() => { void copyRecoveryDraft(); }}>{t('notes:editor.copy_retained_draft', '复制保留草稿')}</DsButton>
+          <DsButton variant="outline" size="sm" onClick={() => { void saveRecoveryAs(); }}>草稿另存为笔记</DsButton>
+          <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void handleManualSave().catch(() => {}); }}>{t('notes:editor.retry_current_draft', '重试保存当前正文')}</DsButton>
+          <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(); }}>{t('notes:editor.restore_retained_draft', '恢复保留草稿并保存')}</DsButton>
+          {recoveryDraft.previousMarkdown !== undefined && <>
+            <DsButton variant="outline" size="sm" onClick={() => { void copyRecoveryDraft(true); }}>{t('notes:editor.copy_previous_draft', '复制操作前草稿')}</DsButton>
+            <DsButton variant="outline" size="sm" disabled={effectiveReadOnly || isSaving} onClick={() => { void restoreRecoveryDraft(true); }}>{t('notes:editor.restore_previous_draft', '恢复操作前草稿')}</DsButton>
+          </>}
+          <DsButton variant="ghost" size="sm" onClick={() => { void discardRecoveryDraft(); }}>{t('notes:editor.discard_retained_draft', '丢弃保留草稿')}</DsButton>
+        </div>
+      )}
+      {(aiPersistenceError || aiRecoveryOptions.length > 0) && (
+        <div role="alert" className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border px-5 py-2 text-xs">
+          <span className="flex-1">{aiPersistenceError ?? t('notes:aiReview.recovery_available')}</span>
+          {aiRecoveryOptions.map((option, index) => (
+            <DsButton key={option.id} variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading'}
+              onClick={() => { void restoreAICandidate(option.id); }}>
+              {t('notes:aiReview.restore_candidate', { index: index + 1, date: new Date(option.createdAt).toLocaleString() })}
+            </DsButton>
+          ))}
+          <DsButton variant="outline" size="sm" disabled={aiPersistenceStatus === 'loading' || aiPersistenceStatus === 'saving'}
+            onClick={() => { void retryAIReviewPersistence(); }}>{t('common:retry')}</DsButton>
+        </div>
+      )}
+      {aiReview?.collapsed && (
+        <div role="status" className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2 text-xs">
+          <span className="flex-1">{t('notes:aiDiff.suspended', 'AI 建议已收起，候选与分组决定已保留。')}</span>
+          <DsButton variant="outline" size="sm" onClick={() => setAIReviewCollapsed(false)}>{t('notes:aiDiff.reopen', '继续审阅')}</DsButton>
+          <DsButton variant="ghost" size="sm" onClick={() => { void copyAICandidate(); }}>{t('notes:aiDiff.copy_candidate', '复制候选')}</DsButton>
+          <DsButton variant="ghost" size="sm" disabled={isAIEditApplying} onClick={() => { void handleReject(); }}>{t('notes:aiDiff.discard', '丢弃建议')}</DsButton>
+        </div>
+      )}
       {/* AI 编辑 Diff：编辑器上方内联卡片区（有界高度），正文保持可见可滚动 */}
-      {aiEditState.isActive && (
+      {aiEditState.isActive && !aiReview?.collapsed && (
         <AIDiffPanel
+          {...officialReviewProps}
+          {...scopeProps}
           state={aiEditState}
-          onAccept={handleAccept}
+          review={aiReview}
+          onAccept={() => { void handleAccept(); }}
+          onApplySelected={() => { void handleAccept(false); }}
           onReject={handleReject}
+          onSuspend={() => setAIReviewCollapsed(true)}
+          onCopy={() => { void copyAICandidate(); }}
+          onDecideGroup={decideAIReviewGroup}
+          readOnly={effectiveReadOnly}
           isApplying={isAIEditApplying}
-          suspendShortcuts={isFindReplaceOpen}
+          suspendShortcuts={historyOpen || isFindReplaceOpen || templateMenuOpen || pageActionsOpen || conflictDiffOpen}
+          canHandleShortcut={() => !isComposingRef.current && !!notesShellRef.current?.contains(document.activeElement)}
         />
       )}
 
@@ -2343,7 +2736,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           <SelectionToolbar
             selectedText={noteSelection.selectedText}
             selectionRect={noteSelection.selectionRect}
-            isVisible={noteSelection.isVisible && !effectiveReadOnly}
+            isVisible={noteSelection.isVisible}
             containerRef={selectionContainerRef}
             onClear={noteSelection.clear}
             onAddAsContext={noteId ? handleSelectionAddAsContext : undefined}
@@ -2361,6 +2754,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             readOnly={effectiveReadOnly}
             tags={tags}
             onTagsChange={effectiveReadOnly ? undefined : onTagsChange}
+            onOpenHistory={noteId ? () => setHistoryOpen(true) : undefined}
           />
           <CrepeEditor
             key={contentVersionKey}
@@ -2400,6 +2794,19 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           )}
         </div>
       </CustomScrollArea>
+
+      {noteId && <NoteHistoryPanel noteId={noteId} open={historyOpen} onOpenChange={setHistoryOpen}
+        withOverwrite={operation => noteHostCoordinator.withLockedNotes([noteId], operation)}
+        beforeOverwrite={async () => {
+          await noteHostCoordinator.flushPendingSaves([noteId]);
+          return true;
+        }}
+        onRestoredCurrent={async () => {
+          noteHostCoordinator.invalidateNotes([noteId]);
+          await noteHostCoordinator.refreshNotes([noteId]);
+        }}
+        onRestoredCopy={() => { void refreshWikilinkNotesCache(); }}
+      />}
 
       <MobileEditorToolbar
         visible={showMobileToolbar}
