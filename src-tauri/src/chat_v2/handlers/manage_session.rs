@@ -2354,3 +2354,33 @@ mod referencing_tests {
         assert_eq!(hits[0].message_id, "m2");
     }
 }
+
+
+/// 会话检索范围（学习者选定的课程/文件夹）：知识库检索的硬过滤，见 builtin_retrieval_executor。
+#[tauri::command]
+pub async fn chat_v2_get_rag_scope(
+    session_id: String,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<Vec<String>, String> {
+    Ok(crate::chat_v2::tools::builtin_retrieval_executor::load_session_rag_scope(&db, &session_id)
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn chat_v2_set_rag_scope(
+    session_id: String,
+    folder_ids: Vec<String>,
+    db: State<'_, Arc<ChatV2Database>>,
+) -> Result<(), String> {
+    let ids: Vec<String> = folder_ids.into_iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect();
+    let value = if ids.is_empty() { None } else { Some(serde_json::to_string(&ids).map_err(|e| e.to_string())?) };
+    let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT INTO chat_v2_session_state (session_id, rag_library_ids_json, updated_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT(session_id) DO UPDATE SET rag_library_ids_json = excluded.rag_library_ids_json",
+        rusqlite::params![session_id, value, chrono::Utc::now().to_rfc3339()],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}

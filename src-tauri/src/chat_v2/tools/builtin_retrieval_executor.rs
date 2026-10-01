@@ -219,7 +219,14 @@ impl BuiltinRetrievalExecutor {
             None if query_image_base64.is_some() => QueryModality::Image,
             None => QueryModality::Text,
         };
-        let folder_ids = vec_arg(&["folder_ids", "folderIds"]);
+        // 学习者为本会话选定的检索范围（课程/文件夹）是硬过滤：模型自带的 folder_ids
+        // 只能在范围内收窄，不能越出。范围文件夹递归展开（检索器的 folder 过滤为精确匹配）。
+        let folder_ids = apply_session_rag_scope(
+            ctx.chat_v2_db.as_deref(),
+            ctx.vfs_db.as_deref(),
+            &ctx.session_id,
+            vec_arg(&["folder_ids", "folderIds"]),
+        );
         let resource_ids = vec_arg(&["resource_ids", "resourceIds"]);
         let resource_types = vec_arg(&["resource_types", "resourceTypes"]);
         // P2-8：top_k 上限与前端 schema 对齐（builtinMcpServer.ts）：
@@ -1977,5 +1984,84 @@ mod tests {
             Some("tb_123")
         );
         assert_eq!(preferred_read_resource_id(None, None), None);
+    }
+}
+
+
+/// 读取会话检索范围（chat_v2_session_state.rag_library_ids_json，文件夹 id 列表）。
+pub(crate) fn load_session_rag_scope(
+    chat_db: &crate::chat_v2::database::ChatV2Database,
+    session_id: &str,
+) -> Option<Vec<String>> {
+    let conn = chat_db.get_conn_safe().ok()?;
+    let raw: Option<String> = conn
+        .query_row(
+            "SELECT rag_library_ids_json FROM chat_v2_session_state WHERE session_id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+    let ids: Vec<String> = serde_json::from_str(raw.as_deref()?).ok()?;
+    let ids: Vec<String> = ids.into_iter().filter(|id| !id.trim().is_empty()).collect();
+    (!ids.is_empty()).then_some(ids)
+}
+
+/// 会话范围 ∩ 模型参数：无范围 → 原样；有范围 → 递归展开后与模型的 folder_ids 取交集，
+/// 交集为空或模型未指定 → 整个范围。
+pub(crate) fn scope_folder_ids(
+    scope_expanded: &[String],
+    model_folder_ids: Option<Vec<String>>,
+) -> Option<Vec<String>> {
+    if scope_expanded.is_empty() {
+        return model_folder_ids;
+    }
+    if let Some(model) = model_folder_ids.filter(|ids| !ids.is_empty()) {
+        let allowed: std::collections::HashSet<&str> = scope_expanded.iter().map(String::as_str).collect();
+        let narrowed: Vec<String> = model.into_iter().filter(|id| allowed.contains(id.as_str())).collect();
+        if !narrowed.is_empty() {
+            return Some(narrowed);
+        }
+    }
+    Some(scope_expanded.to_vec())
+}
+
+fn apply_session_rag_scope(
+    chat_db: Option<&crate::chat_v2::database::ChatV2Database>,
+    vfs_db: Option<&crate::vfs::database::VfsDatabase>,
+    session_id: &str,
+    model_folder_ids: Option<Vec<String>>,
+) -> Option<Vec<String>> {
+    let (Some(chat_db), Some(vfs_db)) = (chat_db, vfs_db) else {
+        return model_folder_ids;
+    };
+    let Some(scope) = load_session_rag_scope(chat_db, session_id) else {
+        return model_folder_ids;
+    };
+    let mut expanded: Vec<String> = Vec::new();
+    for folder_id in &scope {
+        expanded.push(folder_id.clone());
+        if let Ok(ids) = crate::vfs::repos::folder_repo::VfsFolderRepo::get_folder_ids_recursive(vfs_db, folder_id) {
+            expanded.extend(ids);
+        }
+    }
+    expanded.sort();
+    expanded.dedup();
+    scope_folder_ids(&expanded, model_folder_ids)
+}
+
+#[cfg(test)]
+mod session_scope_tests {
+    use super::scope_folder_ids;
+
+    #[test]
+    fn scope_is_a_hard_filter_that_model_args_can_only_narrow() {
+        let scope = vec!["fld_course".to_string(), "fld_ch1".to_string()];
+        assert_eq!(scope_folder_ids(&[], Some(vec!["x".into()])), Some(vec!["x".to_string()]));
+        assert_eq!(scope_folder_ids(&[], None), None);
+        assert_eq!(scope_folder_ids(&scope, None), Some(scope.clone()));
+        assert_eq!(scope_folder_ids(&scope, Some(vec!["fld_ch1".into()])), Some(vec!["fld_ch1".to_string()]));
+        // 模型试图越出范围 → 回落到整个范围，而不是放开全库
+        assert_eq!(scope_folder_ids(&scope, Some(vec!["fld_other".into()])), Some(scope.clone()));
     }
 }
