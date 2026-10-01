@@ -2420,6 +2420,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_set_indexing_config
             ,crate::vfs::handlers::vfs_get_indexing_config
             ,crate::vfs::handlers::vfs_get_all_index_status
+            ,crate::vfs::handlers::vfs_get_embedding_readiness
             // VFS 统一索引 Unit 级命令（2026-06-12 补注册：前端 vfsUnifiedIndexApi/unifiedIndexStore 已在调用）
             ,crate::vfs::index_handlers::vfs_unified_index_status
             ,crate::vfs::index_handlers::vfs_get_resource_units
@@ -3014,6 +3015,8 @@ fn start_vfs_index_worker(
     let _ = crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
+        // 嵌入可用性的上一次观测：None=尚未观测；变为可用（含启动后首次可用）时复活配置类失败项
+        let mut embedding_was_configured: Option<bool> = None;
         loop {
             if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
                 break;
@@ -3064,6 +3067,20 @@ fn start_vfs_index_worker(
             // Keep jobs pending while a capability is unconfigured. Configuration
             // changes are picked up by a later tick without exhausting retry_count.
             let text_embedding_configured = llm_manager.get_embedding_model_config().await.is_ok();
+            if text_embedding_configured && embedding_was_configured != Some(true) {
+                match crate::vfs::repos::embedding_repo::VfsIndexStateRepo::revive_config_blocked(&vfs_db) {
+                    Ok(0) => {}
+                    Ok(revived) => tracing::info!(
+                        "[VfsIndexWorker] Embedding model available; revived {} config-blocked resources",
+                        revived
+                    ),
+                    Err(error) => tracing::warn!(
+                        "[VfsIndexWorker] Failed to revive config-blocked resources: {}",
+                        error
+                    ),
+                }
+            }
+            embedding_was_configured = Some(text_embedding_configured);
             if text_embedding_configured {
                 last_embedding_unconfigured_log = None;
                 match full.process_pending_batch(config.batch_size).await {

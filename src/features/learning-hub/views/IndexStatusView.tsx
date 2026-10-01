@@ -1,4 +1,5 @@
 import { DsButton } from '@/components/ui/DsButton';
+import { EmbeddingReadinessBanner } from '../components/EmbeddingReadinessBanner';
 import { pLimit } from '@/utils/concurrency';
 import { Input } from '@/components/ui/shad/Input';
 import IndexDiagnosticPanel from './IndexDiagnosticPanel';
@@ -1998,6 +1999,7 @@ export const IndexStatusView: React.FC = () => {
   return (
     <div ref={rootContainerRef} className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       <style>{SHIMMER_KEYFRAMES}</style>
+      <EmbeddingReadinessBanner />
       {/* 顶部概览区 */}
       {useCompactHeader ? (
         /* ============ 紧凑布局（移动端 / 窄容器桌面窗口） ============ */

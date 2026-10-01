@@ -124,6 +124,16 @@ fn embedding_cooldown_key(config: &ApiConfig, api_key: &str) -> String {
     key_fingerprint(vendor, api_key)
 }
 
+/// 可用于文本向量化的配置：已启用、嵌入能力、非多模态/重排；
+/// 内置配置在未注入编译期 Key 的构建里 api_key 为空，视为不可用（本地服务可无 Key，不受影响）。
+pub(crate) fn is_usable_text_embedding(config: &ApiConfig) -> bool {
+    config.enabled
+        && config.is_embedding
+        && !config.is_multimodal
+        && !config.is_reranker
+        && !(config.is_builtin && config.api_key.trim().is_empty())
+}
+
 // ==================== RAG相关扩展方法 ====================
 
 impl LLMManager {
@@ -141,12 +151,20 @@ impl LLMManager {
 
         let configs = self.get_api_configs().await?;
 
-        // M13 fix: 如果没有显式设置默认维度，尝试智能回退
+        // M13 fix: 如果没有显式设置默认维度，尝试智能回退。
+        // 默认键指向的配置「存在但不可用」（已禁用 / 能力不匹配 / 内置配置缺编译期 Key）
+        // 与悬空引用同样处理：落入回退链，而不是让全部索引以配置错误失败。
         let embedding_model_id = match embedding_model_id_opt {
-            Some(id) if configs.iter().any(|config| config.id == id) => id,
+            Some(id)
+                if configs
+                    .iter()
+                    .any(|config| config.id == id && is_usable_text_embedding(config)) =>
+            {
+                id
+            }
             Some(id) => {
                 warn!(
-                    "[RAG] Dangling embedding default: setting 'embedding.default_text_model_config_id' points to nonexistent config '{}'; falling back to model_assignments/auto-detect",
+                    "[RAG] Unusable embedding default: setting 'embedding.default_text_model_config_id'='{}' is missing, disabled or keyless; falling back to model_assignments/auto-detect",
                     id
                 );
                 self.fallback_embedding_model_id(&configs).await?
@@ -177,7 +195,10 @@ impl LLMManager {
         // 兼容模型分配里的 embedding 槽：若已配置则回写维度默认键，消除双轨不一致。
         if let Ok(assignments) = self.get_model_assignments().await {
             if let Some(id) = assignments.embedding_model_config_id {
-                if configs.iter().any(|config| config.id == id) {
+                if configs
+                    .iter()
+                    .any(|config| config.id == id && is_usable_text_embedding(config))
+                {
                     info!(
                         "[RAG] Falling back to model_assignments.embedding_model_config_id={}",
                         id
@@ -219,28 +240,29 @@ impl LLMManager {
 
         // 尝试从已启用的 API 配置中找到嵌入模型
         if let Ok(configs) = self.get_api_configs().await {
-            let embedding_configs: Vec<_> = configs
+            let mut embedding_configs: Vec<_> = configs
                 .iter()
-                .filter(|c| c.enabled && c.is_embedding && !c.is_multimodal && !c.is_reranker)
+                .filter(|c| is_usable_text_embedding(c))
                 .collect();
-
-            if embedding_configs.len() == 1 {
-                // 只有一个嵌入模型，自动使用
-                let config = embedding_configs[0];
+            // 多个可用配置时不再拒绝（拒绝 = 整个知识库静默停摆）：按稳定顺序选一个并
+            // 写回默认键；用户可随时在「嵌入维度管理」改选。用户自建配置优先于内置配置。
+            embedding_configs.sort_by(|a, b| {
+                a.is_builtin
+                    .cmp(&b.is_builtin)
+                    .then_with(|| a.name.cmp(&b.name))
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            if let Some(config) = embedding_configs.first() {
                 info!(
-                    "[RAG] Auto-detected single embedding model: id={}, name={}",
-                    config.id, config.name
+                    "[RAG] Auto-selected embedding model: id={}, name={} ({} usable)",
+                    config.id,
+                    config.name,
+                    embedding_configs.len()
                 );
                 let _ = self
                     .db
                     .save_setting("embedding.default_text_model_config_id", &config.id);
                 return Some(config.id.clone());
-            } else if embedding_configs.len() > 1 {
-                // Debug only: VfsIndexWorker polls every few seconds; INFO here floods logs.
-                debug!(
-                    "[RAG] Found {} embedding models, cannot auto-select. User must configure default.",
-                    embedding_configs.len()
-                );
             }
         }
 

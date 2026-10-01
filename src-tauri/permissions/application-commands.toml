@@ -867,6 +867,7 @@ commands.allow = [
   "vfs_get_blob_base64",
   "vfs_get_default_embedding_dimension",
   "vfs_get_dimension_range",
+  "vfs_get_embedding_readiness",
   "vfs_get_embedding_stats",
   "vfs_get_file",
   "vfs_get_file_blob_path",

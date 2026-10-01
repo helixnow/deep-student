@@ -1006,7 +1006,8 @@
     "indexing": "索引中…",
     "indexingWithProgress": "索引中 {{progress}}%",
     "failed": "{{count}} 项索引失败",
-    "pending": "{{count}} 项待索引"
+    "pending": "{{count}} 项待索引",
+    "embeddingMissing": "知识库未启用 · 配置嵌入模型"
   },
   "indexStatus": {
     "state": {
@@ -1439,5 +1440,10 @@
     "nav_aborted": "files 导航已中止",
     "run_not_found": "files run 不存在或已结束",
     "run_ended": "run 已结束"
+  },
+  "embeddingReadiness": {
+    "title": "知识库尚未启用：没有可用的嵌入模型",
+    "body": "资料可以上传和阅读，但无法被向量化，对话时检索不到。配置嵌入模型后，失败和待处理的资料会自动重新索引。",
+    "action": "配置嵌入模型"
   }
 }

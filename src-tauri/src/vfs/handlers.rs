@@ -4464,6 +4464,38 @@ fn has_vfs_index_units_table(conn: &rusqlite::Connection) -> bool {
     .unwrap_or(false)
 }
 
+/// 文本嵌入就绪性：知识库能否向量化。供资源库状态条 / 索引状态页 / 聊天知识库开关
+/// 显示「未配置嵌入模型」横幅与一键前往配置——否则索引静默停摆，学习者无从得知原因。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbeddingReadiness {
+    pub ready: bool,
+    pub model_config_id: Option<String>,
+    pub model_name: Option<String>,
+    /// 不可用原因（后端配置错误文案，已本地化）
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn vfs_get_embedding_readiness(
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
+) -> Result<EmbeddingReadiness, String> {
+    Ok(match llm_manager.get_embedding_model_config().await {
+        Ok(config) => EmbeddingReadiness {
+            ready: true,
+            model_config_id: Some(config.id),
+            model_name: Some(if config.name.trim().is_empty() { config.model } else { config.name }),
+            reason: None,
+        },
+        Err(error) => EmbeddingReadiness {
+            ready: false,
+            model_config_id: None,
+            model_name: None,
+            reason: Some(error.message),
+        },
+    })
+}
+
 /// 获取所有资源的向量化状态
 #[tauri::command]
 pub async fn vfs_get_all_index_status(

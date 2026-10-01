@@ -344,6 +344,9 @@ impl VfsDimensionRepo {
     }
 }
 
+/// 识别「嵌入配置类」失败的 index_error（与 rag_extension 的配置错误文案对应）
+const CONFIG_BLOCKED_ERROR_SQL: &str = "index_error LIKE '%嵌入模型配置%' OR index_error LIKE '%嵌入配置%' OR index_error LIKE '%未配置默认嵌入维度%'";
+
 pub struct VfsIndexStateRepo;
 
 impl VfsIndexStateRepo {
@@ -476,6 +479,29 @@ impl VfsIndexStateRepo {
         )?;
 
         Ok(())
+    }
+
+    /// 嵌入配置恢复可用后，复活「因配置错误失败」的资源：回到 pending、重试计数清零，
+    /// 连同其失败的文本索引单元。配置错误不是资源本身的问题，不应耗尽重试次数后永久失败。
+    /// 返回复活的资源数。
+    pub fn revive_config_blocked(db: &VfsDatabase) -> VfsResult<usize> {
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        let matcher = CONFIG_BLOCKED_ERROR_SQL;
+        let unit_sql = format!(
+            "UPDATE vfs_index_units SET text_state = 'pending', text_error = NULL
+             WHERE text_state = 'failed'
+               AND resource_id IN (SELECT id FROM resources WHERE index_state = ?1 AND ({matcher}))"
+        );
+        tx.execute(&unit_sql, params![INDEX_STATE_FAILED])?;
+        let resource_sql = format!(
+            "UPDATE resources
+             SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
+             WHERE index_state = ?2 AND ({matcher})"
+        );
+        let revived = tx.execute(&resource_sql, params![INDEX_STATE_PENDING, INDEX_STATE_FAILED])?;
+        tx.commit()?;
+        Ok(revived)
     }
 
     pub fn mark_disabled(db: &VfsDatabase, resource_id: &str) -> VfsResult<()> {
@@ -1043,6 +1069,45 @@ mod tests {
 
         assert_eq!(dim.dimension, 768);
         assert_eq!(dim.modality, MODALITY_TEXT);
+    }
+
+    #[test]
+    fn test_revive_config_blocked_only_touches_embedding_config_failures() {
+        let (_temp_dir, db) = setup_test_db();
+        let conn = db.get_conn_safe().unwrap();
+        for id in ["res_a", "res_b", "res_c"] {
+            conn.execute(
+                "INSERT INTO resources (id, hash, type, storage_mode, data, created_at, updated_at) VALUES (?1, ?1, 'note', 'inline', 'x', 0, 0)",
+                params![id],
+            ).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO vfs_index_units (id, resource_id, unit_index, text_content, text_required, text_state, mm_required, mm_state, created_at, updated_at) VALUES ('u_a', 'res_a', 0, 'x', 1, 'failed', 0, 'disabled', 0, 0)",
+            [],
+        ).unwrap();
+        drop(conn);
+        VfsIndexStateRepo::mark_failed(&db, "res_a", "获取嵌入模型配置失败: 默认文本嵌入配置已禁用或能力协议不匹配").unwrap();
+        VfsIndexStateRepo::mark_failed(&db, "res_b", "找不到嵌入模型配置，请检查维度绑定的模型是否存在").unwrap();
+        VfsIndexStateRepo::mark_failed(&db, "res_c", "PDF 解析失败").unwrap();
+
+        assert_eq!(VfsIndexStateRepo::revive_config_blocked(&db).unwrap(), 2);
+
+        let conn = db.get_conn_safe().unwrap();
+        let row = |id: &str| conn.query_row(
+            "SELECT index_state, COALESCE(index_retry_count, 0), index_error FROM resources WHERE id = ?1",
+            params![id],
+            |r| Ok((r.get::<_, String>(0)?, r.get::<_, i32>(1)?, r.get::<_, Option<String>>(2)?)),
+        ).unwrap();
+        assert_eq!(row("res_a"), (INDEX_STATE_PENDING.to_string(), 0, None));
+        assert_eq!(row("res_b"), (INDEX_STATE_PENDING.to_string(), 0, None));
+        // 资源自身的失败（非配置问题）保持原样，仍按重试退避处理
+        assert_eq!(row("res_c").0, INDEX_STATE_FAILED);
+        assert_eq!(row("res_c").1, 1);
+        let unit_state: String = conn.query_row("SELECT text_state FROM vfs_index_units WHERE id = 'u_a'", [], |r| r.get(0)).unwrap();
+        assert_eq!(unit_state, "pending");
+        drop(conn);
+        // 幂等：再次执行不再命中
+        assert_eq!(VfsIndexStateRepo::revive_config_blocked(&db).unwrap(), 0);
     }
 
     #[test]

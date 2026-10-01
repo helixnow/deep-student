@@ -1006,7 +1006,8 @@
     "indexing": "Indexing…",
     "indexingWithProgress": "Indexing {{progress}}%",
     "failed": "{{count}} failed to index",
-    "pending": "{{count}} pending index"
+    "pending": "{{count}} pending index",
+    "embeddingMissing": "Knowledge base off · set up embeddings"
   },
   "indexStatus": {
     "state": {
@@ -1439,5 +1440,10 @@
     "nav_aborted": "Files navigation aborted",
     "run_not_found": "Files run does not exist or has already finished",
     "run_ended": "Run already finished"
+  },
+  "embeddingReadiness": {
+    "title": "Knowledge base is off: no usable embedding model",
+    "body": "You can upload and read materials, but they can’t be vectorized or retrieved in chat. Once an embedding model is configured, failed and pending items are re-indexed automatically.",
+    "action": "Configure embeddings"
   }
 }

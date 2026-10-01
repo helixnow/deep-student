@@ -12,12 +12,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowsClockwise, Clock, WarningCircle } from '@phosphor-icons/react';
+import { ArrowsClockwise, Clock, Plugs, WarningCircle } from '@phosphor-icons/react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { getAllIndexStatus } from '@/api/vfsUnifiedIndexApi';
 import { MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
+import { openEmbeddingSettings, useEmbeddingReadiness } from '../../embeddingReadiness';
 
 interface IndexStatusMiniBarProps {
   collapsed?: boolean;
@@ -37,6 +38,7 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   onOpenIndexStatus,
 }) => {
   const { t } = useTranslation('learningHub');
+  const readiness = useEmbeddingReadiness();
   const [summary, setSummary] = useState<MiniSummary | null>(null);
   const [batchProgress, setBatchProgress] = useState<number | null>(null);
   // 原生多模态索引（mm_index_progress）与文本批量索引是两条独立事件流
@@ -146,7 +148,10 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   const failedCount = summary?.failedCount ?? 0;
   const pendingCount = summary?.pendingCount ?? 0;
 
-  if (!isIndexing && failedCount === 0 && pendingCount === 0) {
+  // 嵌入模型不可用时，「N 项失败 / 待索引」只是症状：直接告诉学习者原因并一键去配置
+  const embeddingBlocked = readiness?.ready === false && (failedCount > 0 || pendingCount > 0);
+
+  if (!embeddingBlocked && !isIndexing && failedCount === 0 && pendingCount === 0) {
     return null;
   }
 
@@ -154,7 +159,11 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   let label: string;
   let toneClass: string;
 
-  if (isIndexing) {
+  if (embeddingBlocked) {
+    icon = <Plugs size={14} />;
+    label = t('indexMiniBar.embeddingMissing', { defaultValue: '知识库未启用 · 配置嵌入模型', count: failedCount + pendingCount });
+    toneClass = 'text-warning';
+  } else if (isIndexing) {
     icon = <ArrowsClockwise size={14} className="animate-spin" />;
     label = activeProgress !== null
       ? t('indexMiniBar.indexingWithProgress', { progress: Math.round(activeProgress) })
@@ -173,8 +182,9 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
   const button = (
     <button
       type="button"
-      onClick={onOpenIndexStatus}
+      onClick={embeddingBlocked ? openEmbeddingSettings : onOpenIndexStatus}
       aria-label={label}
+      title={embeddingBlocked ? (readiness?.reason ?? undefined) : undefined}
       className={cn(
         'flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12px] leading-none transition-colors',
         '[@media(pointer:coarse)]:!min-h-11',
