@@ -714,6 +714,13 @@ function recordMarkdownInverse(
   );
 }
 
+/** 结构化块的停留/显现时长：≈ 半个打字间隔每字，夹在 [5, 40] 个打字间隔 */
+export function structuredDwellMs(profile: PacingProfile, length: number): number {
+  if (profile.instant || profile.typeIntervalMs <= 0 || profile.opIntervalMs <= 0) return 0;
+  const raw = (length * profile.typeIntervalMs) / 2;
+  return Math.round(Math.min(40 * profile.typeIntervalMs, Math.max(5 * profile.typeIntervalMs, raw)));
+}
+
 /** 用户正在 IME 组合时不插入（会打断候选）：等组合结束，最多 COMPOSITION_WAIT_MAX_MS 兜底 */
 const COMPOSITION_WAIT_MAX_MS = 10000;
 async function waitForCompositionEnd(run: AcrRunContext, api: CrepeEditorApi): Promise<void> {
@@ -759,10 +766,6 @@ async function applyNoteInsert(
     // 块级流式：按顶层 Markdown 块逐段解析插入，保留结构的同时呈现
     // 渐进演出（AI 光标、滚动跟随、节奏与逐块进度），替代一次性整段落地。
     const segments = splitMarkdownIntoSegments(text);
-    const baseCost =
-      profile.opIntervalMs > 0
-        ? profile.typeIntervalMs / profile.opIntervalMs
-        : 1;
     let structuredChars = 0;
     let structuredFrom: number | null = null;
     let structuredFailed: string | null = null;
@@ -787,24 +790,12 @@ async function applyNoteInsert(
         };
       }
 
-      // 节拍按片段长度加权（限制在 0.5–6 倍批间隔），长列表/代码块停顿更久
-      const weight = Math.max(
-        0.5,
-        Math.min(6, segments[si]!.length / Math.max(1, profile.typeBatchMax)),
-      );
-      await run.pacing.tick(profile.instant ? 0 : Math.max(0.05, baseCost * weight));
-      if (abortFlags.get(run.runId)) {
-        return {
-          ok: false,
-          reason: 'aborted',
-          startPos: structuredFrom ?? startPos,
-          endPos: pos,
-        };
-      }
-
       await waitForCompositionEnd(run, api);
       const mappedPos = remapInsertPos(api, pos);
-      const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos);
+      // 每块先落地、再按字数停留：停留时长同时作为该块逐行显现的动画时长，
+      // 上一块显现完下一块才出现（normal ≈ 12ms/字，夹在 5–40 个打字间隔之间）
+      const dwellMs = structuredDwellMs(profile, segments[si]!.length);
+      const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos, dwellMs || undefined);
       if (!insertedRange || insertedRange.to <= insertedRange.from) {
         structuredFailed = `编辑器未确认第 ${si + 1}/${segments.length} 段结构化插入`;
         break;
@@ -818,6 +809,7 @@ async function applyNoteInsert(
         `${op.label}（${Math.min(structuredChars, text.length)}/${text.length}）`,
         run.target.resourceId,
       );
+      if (dwellMs > 0) await run.pacing.tick(dwellMs / profile.opIntervalMs);
     }
 
     if (structuredFailed == null && structuredFrom != null) {

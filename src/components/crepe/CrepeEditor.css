@@ -2159,6 +2159,34 @@
   }
 }
 
+/* ACR：结构化块的逐行显现（打字感）。
+ * 行内元素的 mask 在 box-decoration-break: slice 下把各行片段视作首尾相接的一条带，
+ * 左→右推进的渐变边界因此按行依次扫过；时长由 driver 的停留时长经 --agent-reveal-ms 传入。 */
+@property --agent-reveal-p {
+  syntax: '<percentage>';
+  inherits: false;
+  initial-value: 108%;
+}
+
+.crepe-editor-wrapper .agent-reveal {
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(var(--agent-reveal-p) - 8%), transparent var(--agent-reveal-p));
+  mask-image: linear-gradient(90deg, #000 calc(var(--agent-reveal-p) - 8%), transparent var(--agent-reveal-p));
+  animation: acr-agent-reveal var(--agent-reveal-ms, 400ms) linear both;
+}
+
+@keyframes acr-agent-reveal {
+  from { --agent-reveal-p: 0%; }
+  to { --agent-reveal-p: 108%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-editor-wrapper .agent-reveal {
+    animation: none;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
 /* ACR 4.0：破坏类直改（note_replace/note_set）变更段落一次渐隐 flash */
 .crepe-editor-wrapper .agent-flash {
   border-radius: 2px;

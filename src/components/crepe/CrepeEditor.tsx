@@ -1262,7 +1262,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         return result;
       },
 
-      agentInsertMarkdown: (markdown: string, pos: number) => {
+      agentInsertMarkdown: (markdown: string, pos: number, revealMs?: number) => {
         const crepe = crepeRef.current;
         if (!crepe || !markdown) return null;
         try {
@@ -1291,6 +1291,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               type: 'insert',
               from,
               to,
+              revealMs,
             } satisfies AgentHighlightMeta);
             view.dispatch(tr);
             // 插入点保持在块边界（下一批结构块从这里接着插，不能劈开段落）；

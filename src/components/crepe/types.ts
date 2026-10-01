@@ -186,7 +186,7 @@ export interface CrepeEditorApi {
    * 在块边界插入并解析 Markdown，保留列表、标题、公式等文档结构。
    * 失败时返回 null，调用方可降级为纯文本插入。
    */
-  agentInsertMarkdown?: (markdown: string, pos: number) => CrepeAgentInsertResult | null;
+  agentInsertMarkdown?: (markdown: string, pos: number, revealMs?: number) => CrepeAgentInsertResult | null;
 
   /**
    * ACR agent 透传 agentHighlight 插件 meta（caret / fadeRun / clearAll 等）

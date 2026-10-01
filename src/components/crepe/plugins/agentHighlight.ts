@@ -26,7 +26,7 @@ import { $prose } from '@milkdown/utils';
 
 export type AgentHighlightMeta =
   | { type: 'caret'; pos: number }
-  | { type: 'insert'; from: number; to: number }
+  | { type: 'insert'; from: number; to: number; /** 逐行显现时长（ms）；缺省不做显现动画 */ revealMs?: number }
   /** ACR 4.0：破坏类直改后的变更区域一次性渐隐高亮（不参与 fadeRun） */
   | { type: 'flash'; from: number; to: number }
   | { type: 'clearAll' }
@@ -36,6 +36,7 @@ export interface AgentInsertedRange {
   from: number;
   to: number;
   fading: boolean;
+  revealMs?: number;
 }
 
 export interface AgentFlashRange {
@@ -86,17 +87,20 @@ function buildDecorations(
 ): DecorationSet {
   const decos: Decoration[] = [];
 
-  for (const range of ranges) {
-    if (range.from >= range.to) continue;
+  // 只有最新一块做逐行显现：旧块在新块落地时去掉 reveal 类（不重播、不闪烁）
+  const latest = ranges.length - 1;
+  ranges.forEach((range, index) => {
+    if (range.from >= range.to) return;
     const from = clampPos(doc, range.from);
     const to = clampPos(doc, range.to);
-    if (from >= to) continue;
+    if (from >= to) return;
+    const reveal = !range.fading && index === latest && (range.revealMs ?? 0) > 0;
     decos.push(
-      Decoration.inline(from, to, {
-        class: range.fading ? 'agent-inserted-fading' : 'agent-inserted',
-      }),
+      Decoration.inline(from, to, reveal
+        ? { class: 'agent-inserted agent-reveal', style: `--agent-reveal-ms: ${Math.round(range.revealMs!)}ms` }
+        : { class: range.fading ? 'agent-inserted-fading' : 'agent-inserted' }),
     );
-  }
+  });
 
   for (const flash of flashes) {
     if (flash.from >= flash.to) continue;
@@ -187,7 +191,7 @@ export const agentHighlightPlugin = $prose(() =>
                 : [...value.ranges];
               const ranges =
                 from < to
-                  ? [...mappedExisting, { from, to, fading: false }]
+                  ? [...mappedExisting, { from, to, fading: false, revealMs: meta.revealMs }]
                   : mappedExisting;
               // 插入后 AI 光标落在新文本末尾
               return withDecorations(tr.doc, to, ranges, mapFlashes(tr, value.flashes));
