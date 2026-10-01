@@ -597,6 +597,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     void generateCardsFromNote({
       editor: editorApi,
       noteTitle: isDstuMode ? initialTitle : contextActive?.title,
+      noteId: isDstuMode ? dstuNoteId : active?.id,
       translate: (key: string, defaultValue: string) => {
         const result = t(key, { defaultValue });
         return typeof result === 'string' ? result : defaultValue;
@@ -604,7 +605,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     }).finally(() => {
       setGeneratingCards(false);
     });
-  }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t]);
+  }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t, dstuNoteId, active?.id]);
 
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;

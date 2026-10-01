@@ -11091,6 +11091,7 @@ fn build_generation_options(
         };
 
     AnkiGenerationOptions {
+        source_ref: None,
         deck_name: deck_name.to_string(),
         note_type: note_type.to_string(),
         enable_images: false,
@@ -14562,6 +14563,8 @@ mod tests {
     ) -> crate::database::AnkiLibraryCardRecord {
         crate::database::AnkiLibraryCardRecord {
             library_card: crate::models::AnkiLibraryCard {
+                source_session_id: None,
+                source_ref: None,
                 card,
                 source_type: Some("document".to_string()),
                 source_id: Some("source-1".to_string()),

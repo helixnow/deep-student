@@ -6,6 +6,7 @@
  * 而不必依赖 chatV2 命名空间的 selectionToolbar.* 文案。
  */
 import { cardAgent } from '@/components/anki/cardforge';
+import type { CardSourceRef } from '@/components/anki/cardforge/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -15,6 +16,8 @@ export const MIN_CONTENT_LENGTH_FOR_CARDS = 10;
 
 export interface GenerateCardsFromTextInput {
   content: string;
+  /** 来源（笔记 / 资料页）：卡片库可据此回到来源 */
+  sourceRef?: CardSourceRef;
   deckName: string;
   /** 传给模型的额外要求（题型偏好、覆盖重点等） */
   requirements?: string;
@@ -49,6 +52,7 @@ export async function generateCardsFromText(
     // startGeneration 不依赖已退役的 ChatV2AnkiAdapter 或事件监听初始化。
     const result = await cardAgent.startGeneration({
       content,
+      sourceRef: input.sourceRef,
       maxCards: input.maxCards,
       options: {
         deckName: input.deckName,

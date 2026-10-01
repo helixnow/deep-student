@@ -315,6 +315,10 @@ fn map_anki_library_record_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Anki
             suspended: row.get::<_, i32>(18)? != 0,
             enqueued: row.get::<_, i32>(19)? != 0,
             is_due: row.get::<_, i32>(20)? != 0,
+            source_session_id: row
+                .get::<_, Option<String>>(22)?
+                .filter(|value| !value.trim().is_empty()),
+            source_ref: None,
         },
         locator: AnkiLibraryCardLocator {
             document_id: row.get(21)?,
@@ -7803,7 +7807,9 @@ impl Database {
                      AND COALESCE(fs.suspended, 0) = 0
                      AND fs.due_ms <= ?
                     THEN 1 ELSE 0
-                END
+                END,
+                dt.source_session_id,
+                json_extract(dt.anki_generation_options_json, '$.source_ref')
              FROM anki_cards ac
              INNER JOIN document_tasks dt ON dt.id = ac.task_id
              LEFT JOIN fsrs_card_states fs
@@ -7862,6 +7868,12 @@ impl Database {
                 suspended: row.get::<_, i32>(18)? != 0,
                 enqueued: row.get::<_, i32>(19)? != 0,
                 is_due: row.get::<_, i32>(20)? != 0,
+                source_session_id: row
+                    .get::<_, Option<String>>(21)?
+                    .filter(|value| !value.trim().is_empty()),
+                source_ref: row
+                    .get::<_, Option<String>>(22)?
+                    .and_then(|raw| serde_json::from_str(&raw).ok()),
             })
         })?;
 
@@ -8669,6 +8681,51 @@ mod tests {
                 assert_eq!(receipt.2, None);
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn list_anki_library_cards_exposes_generation_source_and_session() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let task = DocumentTask {
+            id: "task-src".to_string(),
+            document_id: "doc-src".to_string(),
+            original_document_name: "源笔记".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: "2026-10-01T00:00:00Z".to_string(),
+            updated_at: "2026-10-01T00:00:00Z".to_string(),
+            error_message: None,
+            anki_generation_options_json: r#"{"deck_name":"源笔记","source_ref":{"kind":"note","id":"note_abc","title":"源笔记"}}"#.to_string(),
+        };
+        let card = AnkiCard {
+            id: "card-src".to_string(),
+            task_id: task.id.clone(),
+            front: "Q".to_string(),
+            back: "A".to_string(),
+            text: None,
+            tags: vec![],
+            images: vec![],
+            is_error_card: false,
+            error_content: None,
+            created_at: "2026-10-01T00:00:01Z".to_string(),
+            updated_at: "2026-10-01T00:00:01Z".to_string(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(&task, &[card])?;
+        db.get_conn_safe()?.execute(
+            "UPDATE document_tasks SET source_session_id = 'sess_1' WHERE id = 'task-src'",
+            [],
+        )?;
+        let (items, total) = db.list_anki_library_cards(None, None, None, 1, 10)?;
+        assert_eq!(total, 1);
+        assert_eq!(items[0].source_session_id.as_deref(), Some("sess_1"));
+        let source_ref = items[0].source_ref.as_ref().expect("source_ref");
+        assert_eq!(source_ref["kind"], "note");
+        assert_eq!(source_ref["id"], "note_abc");
         Ok(())
     }
 

@@ -1260,6 +1260,10 @@ pub struct TemplateDescription {
 // ANKI相关结构体
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnkiGenerationOptions {
+    /// 制卡来源（如 {"kind":"note","id":"note_x","title":"…"}）：随选项落 document_tasks，
+    /// 卡片库据此「查看来源」回到笔记/资料。旧任务无此字段（默认 None）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<serde_json::Value>,
     pub deck_name: String,
     pub note_type: String,
     pub enable_images: bool,
@@ -1407,6 +1411,12 @@ pub struct AnkiLibraryCard {
     pub card: AnkiCard,
     pub source_type: Option<String>,
     pub source_id: Option<String>,
+    /// 生成该卡的聊天会话（document_tasks.source_session_id）
+    #[serde(default)]
+    pub source_session_id: Option<String>,
+    /// 生成该卡的来源资源（AnkiGenerationOptions.source_ref）
+    #[serde(default)]
+    pub source_ref: Option<serde_json::Value>,
     pub state_id: Option<String>,
     pub state: Option<i32>,
     pub due_ms: Option<i64>,

@@ -126,6 +126,8 @@
     },
     "source": {
       "chat": "来自对话",
+      "note": "来自笔记",
+      "resource": "来自资料",
       "task": "来自制卡任务",
       "apkg": "APKG 导入"
     },

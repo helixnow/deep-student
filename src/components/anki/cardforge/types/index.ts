@@ -30,9 +30,19 @@ export type TaskAction = 'pause' | 'resume' | 'retry' | 'cancel';
 // ============================================================================
 
 /** generate_cards 输入 */
+/** 制卡来源：随生成选项落库，卡片库「查看来源」据此回到笔记 / 资料页 */
+export interface CardSourceRef {
+  kind: 'note' | 'resource';
+  id: string;
+  title?: string;
+  page?: number;
+}
+
 export interface GenerateCardsInput {
   /** 学习材料内容 */
   content: string;
+  /** 来源（笔记 / 资料页），可选 */
+  sourceRef?: CardSourceRef;
   /** 可选，指定使用的模板 ID 列表 */
   templates?: string[];
   /**

@@ -129,6 +129,7 @@ impl EnhancedAnkiService {
         }
 
         let mut options = options.unwrap_or_else(|| AnkiGenerationOptions {
+            source_ref: None,
             deck_name: "默认牌组".to_string(),
             note_type: "Basic".to_string(),
             enable_images: false,
@@ -1133,6 +1134,7 @@ mod tests {
 
         // create tasks without starting streaming
         let options = AnkiGenerationOptions {
+            source_ref: None,
             deck_name: "Default".to_string(),
             note_type: "Basic".to_string(),
             enable_images: false,
@@ -1220,6 +1222,7 @@ mod tests {
         let dps = DocumentProcessingService::new(db.clone());
 
         let options = AnkiGenerationOptions {
+            source_ref: None,
             deck_name: "Default".to_string(),
             note_type: "Basic".to_string(),
             enable_images: false,

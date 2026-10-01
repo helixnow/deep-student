@@ -838,6 +838,8 @@ mod tests {
 
     fn library_card(id: &str, updated_at: &str, enqueued: bool) -> AnkiLibraryCard {
         AnkiLibraryCard {
+            source_session_id: None,
+            source_ref: None,
             card: AnkiCard {
                 id: id.to_string(),
                 updated_at: updated_at.to_string(),

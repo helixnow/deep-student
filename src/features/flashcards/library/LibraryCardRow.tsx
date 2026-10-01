@@ -61,6 +61,17 @@ const RATING_LABEL_KEY: Record<number, string> = {
 
 const RESET_DISARM_MS = 4000;
 
+/** 打开制卡来源：笔记走 DSTU_OPEN_NOTE（两种壳都有宿主），资料走 openResource（+ 跳页） */
+function openCardSource(ref: { kind?: string; id?: string; title?: string; page?: number }): void {
+  if (!ref.id) return;
+  if (ref.kind === 'note') {
+    window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', { detail: { noteId: ref.id, source: 'flashcards-library' } }));
+    return;
+  }
+  void import('@/features/notes/noteOrigin').then(({ navigateToNoteOrigin }) =>
+    navigateToNoteOrigin({ kind: 'resource', resourceId: ref.id!, page: ref.page, title: ref.title }));
+}
+
 /** 懒加载 workbench chat 入口，避免把整条聊天依赖链拉进库视图。 */
 function jumpToChatSession(sessionId: string): void {
   void import('@/features/workbench/apps/chat/newSession')
@@ -207,13 +218,15 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
     [editable, template],
   );
 
-  const sourceKey = sourceLabelKey(card.sourceType);
-  // 仅 chat_session 来源有干净的跳转入口（sourceId 即会话 id）
-  const sourceSessionId = card.sourceType === 'chat_session'
-    && typeof card.sourceId === 'string'
-    && card.sourceId.trim().length > 0
-    ? card.sourceId.trim()
-    : null;
+  // 来源优先级：制卡来源笔记 / 资料页 > 生成它的聊天会话 > 旧版 chat_session 来源。
+  // 旧实现只认 sourceType==='chat_session'，而后端从不写该值——「查看来源」从未出现。
+  const sourceRef = card.sourceRef && typeof card.sourceRef.id === 'string' && card.sourceRef.id ? card.sourceRef : null;
+  const legacySessionId = card.sourceType === 'chat_session' && typeof card.sourceId === 'string' && card.sourceId.trim()
+    ? card.sourceId.trim() : null;
+  const sourceSessionId = sourceRef ? null : (card.sourceSessionId?.trim() || legacySessionId);
+  const sourceKey = sourceRef
+    ? (sourceRef.kind === 'note' ? 'library.source.note' : 'library.source.resource')
+    : sourceSessionId ? 'library.source.chat' : sourceLabelKey(card.sourceType);
   const relativeDue = card.enqueued && !card.suspended
     ? formatRelativeDue(card.dueMs, locale)
     : null;
@@ -573,8 +586,17 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                     <div>
                       <dt>{translate('library.meta.source')}</dt>
                       <dd className="flex items-center gap-1.5">
-                        {translate(sourceKey)}
-                        {sourceSessionId ? (
+                        {translate(sourceKey)}{sourceRef?.title ? ` · ${sourceRef.title}` : ''}
+                        {sourceRef ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                            onClick={() => openCardSource(sourceRef)}
+                          >
+                            <ArrowSquareOut size={11} aria-hidden="true" />
+                            {translate('library.viewSource')}
+                          </button>
+                        ) : sourceSessionId ? (
                           <button
                             type="button"
                             className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"

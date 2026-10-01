@@ -126,6 +126,8 @@
     },
     "source": {
       "chat": "From chat",
+      "note": "From note",
+      "resource": "From material",
       "task": "From card-generation task",
       "apkg": "Imported from APKG"
     },

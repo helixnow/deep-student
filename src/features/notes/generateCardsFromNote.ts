@@ -21,6 +21,8 @@ export interface GenerateCardsFromNoteInput {
   editor?: CrepeEditorApi | null;
   /** 当前笔记标题；用作牌组名，缺省时回退到通用牌组 */
   noteTitle?: string | null;
+  /** 当前笔记 id：记录为卡片来源，卡片库「查看来源」回到这篇笔记 */
+  noteId?: string | null;
   translate?: NoteCardsTranslate;
 }
 
@@ -54,6 +56,7 @@ export async function generateCardsFromNote(
 
   return generateCardsFromText({
     content: readNoteMarkdown(input.editor),
+    sourceRef: input.noteId ? { kind: 'note', id: input.noteId, title: title || undefined } : undefined,
     deckName: title && title.length > 0 ? title : tr('notes:generateCards.deckName', '笔记制卡'),
     requirements: tr(
       'notes:generateCards.requirements',

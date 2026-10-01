@@ -380,7 +380,7 @@ export class CardAgent {
         const documentId = await invoke<string>('start_enhanced_document_processing', {
           documentContent: input.content,
           originalDocumentName: input.options?.deckName || 'Default',
-          options: backendOptions,
+          options: input.sourceRef ? { ...backendOptions, source_ref: input.sourceRef } : backendOptions,
         });
         cardCollector.setDocumentId(documentId);
 
@@ -461,7 +461,7 @@ export class CardAgent {
       const documentId = await invoke<string>('start_enhanced_document_processing', {
         documentContent: input.content,
         originalDocumentName: input.options?.deckName || 'Default',
-        options: prepared.options,
+        options: input.sourceRef ? { ...prepared.options, source_ref: input.sourceRef } : prepared.options,
       });
 
       return { ok: true, documentId };
