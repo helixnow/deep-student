@@ -11,6 +11,7 @@
  * “已开始”，该适配器已随 Chat V2 工具桥退役删除。
  */
 
+import type { CardSourceRef } from '@/components/anki/cardforge/types';
 import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cardAgent } from '@/components/anki/cardforge';
@@ -38,6 +39,8 @@ export interface GenerateCardsFromSelectionInput {
   contextBefore?: string;
   contextAfter?: string;
   maxCards?: number;
+  /** 来源资料页（PDF 划词）：卡片库可据此回到原页 */
+  sourceRef?: CardSourceRef;
   t: TFunction;
 }
 
@@ -121,6 +124,7 @@ export async function generateCardsFromSelection(
     const result = await cardAgent.startGeneration({
       content,
       maxCards,
+      sourceRef: input.sourceRef,
       options: {
         deckName: t('selectionToolbar.makeCardsDeckName'),
         customRequirements: t(
