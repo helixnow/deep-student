@@ -127,7 +127,9 @@ export function probeTarget(target: AcrTarget): ProbeResult {
   const driver = stageManager.getDriver(target.typeId);
   if (driver) {
     try {
-      driverState = driver.probe(target);
+      // 带上已解析的宿主窗口：driver 按同一窗口取编辑器，与随后 apply 使用的 windowId 一致，
+      // 避免 probe 探的是「最近注册实例」而写入落到另一实例
+      driverState = driver.probe(target.windowId ? target : { ...target, windowId: win.id });
     } catch (err) {
       console.warn('[ACR] driver.probe failed:', err);
       driverProbeFailed = true;
