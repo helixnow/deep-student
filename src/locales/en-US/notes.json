@@ -1068,13 +1068,11 @@
       "reset": "Reset"
     },
     "bubble": {
-      "ask_ai": "Ask AI",
       "reset": "Reset",
       "apply": "Apply"
     },
     "placeholder_hints": {
-      "heading": "Heading {{level}}",
-      "body": "Press '/' for commands, or '++' for AI autocomplete..."
+      "heading": "Heading {{level}}"
     },
     "image": {
       "alt_prompt": "Image alt text",
@@ -1158,7 +1156,6 @@
     },
     "generative": {
       "label": "AI mode",
-      "enabled": "Generating · {{mode}}",
       "disabled": "Generative off",
       "profile_placeholder": "Select style",
       "badge": "AI · {{mode}}",
@@ -1182,7 +1179,6 @@
       "prompt_text": "Annotation text",
       "prompt_author": "Author"
     },
-    "ai_stop": "Stop generating",
     "portaled_to_canvas": "Editor is open in canvas",
     "portaled_hint": "Edit this note in the canvas",
     "deleted_with_unsaved_changes": "The resource was deleted. Unsaved content remains in this window; copy it before closing.",
@@ -1680,7 +1676,6 @@
     "export_md_desc": "Portable text format for migration",
     "export_json": "Backup (JSON)",
     "export_json_desc": "Save full structure for restore",
-    "export_coming": "Export is in development, stay tuned",
     "shortcuts": {
       "title": "Keyboard shortcuts",
       "sibling": "Add sibling node",
@@ -1937,8 +1932,6 @@
     "remove_success": "Reference removed",
     "add_to_folder": "Will be added to current folder",
     "add_to_root": "Will be added to root",
-    "enter_textbook_id": "Enter textbook ID (selector coming soon)",
-    "enter_mistake_id": "Enter mistake ID (selector coming soon)",
     "to_chat_pending": "Feature in development",
     "open_source": "Open Original Content",
     "send_to_chat": "Send to Conversation",
@@ -2046,9 +2039,7 @@
   "tips": {
     "versionHistory": "Version history is available in the Notes panel"
   },
-  "ai": {
-    "continue_not_available": "AI continuation is unavailable. Use the chat panel to start an edit."
-  },
+  "ai": {},
   "a11y": {
     "close": "Close",
     "clear": "Clear"

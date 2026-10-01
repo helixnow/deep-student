@@ -9,7 +9,6 @@ vi.mock('@/features/notes/NoteFormatGate', () => ({ NoteFormatGate: ({ children 
 
 let latestOnChange: ((markdown: string) => void) | null = null;
 let latestOnDocumentChange: (() => void) | null = null;
-let toolbarApi: CrepeEditorApi | null = null;
 let latestOnRetrySave: (() => Promise<void>) | undefined;
 let currentMarkdown = '';
 
@@ -53,12 +52,6 @@ vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
   },
 }));
 
-vi.mock('@/features/notes/components/NotesEditorToolbar', () => ({
-  NotesEditorToolbar: ({ editor }: { editor: CrepeEditorApi }) => {
-    toolbarApi = editor;
-    return <div data-testid="toolbar" />;
-  },
-}));
 
 vi.mock('@/features/notes/components/FindReplacePanel', () => ({
   FindReplacePanel: () => <div data-testid="find-replace" />,
@@ -152,7 +145,6 @@ describe('NotesCrepeEditor save queue', () => {
   beforeEach(() => {
     latestOnChange = null;
     latestOnDocumentChange = null;
-    toolbarApi = null;
     latestOnRetrySave = undefined;
     currentMarkdown = '';
     vi.clearAllMocks();

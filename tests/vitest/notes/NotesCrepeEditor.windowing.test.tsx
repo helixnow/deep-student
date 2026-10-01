@@ -70,9 +70,6 @@ vi.mock('@/features/notes/components/NotesEditorHeader', () => ({
   NotesEditorHeader: () => <div data-testid="header" />,
 }));
 
-vi.mock('@/features/notes/components/NotesEditorToolbar', () => ({
-  NotesEditorToolbar: () => <div data-testid="toolbar" />,
-}));
 
 vi.mock('@/features/notes/components/FindReplacePanel', () => ({
   FindReplacePanel: () => <div data-testid="find-replace" />,

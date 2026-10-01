@@ -137,7 +137,7 @@ export async function insertImageFromDevice(
  * 移动端制卡的 in-flight 守卫。
  *
  * 命令对象在宿主每次渲染时重建，闭包变量守不住双击；按编辑器实例记在模块级，
- * 与桌面 NotesEditorToolbar 的 generatingCards state 等效（触屏双击只发一个任务）。
+ * 防重入：触屏双击只发一个制卡任务。
  */
 const cardsInFlightEditors = new WeakSet<object>();
 /** 编辑器尚未就绪时也要防抖，此时没有可作键的实例 */

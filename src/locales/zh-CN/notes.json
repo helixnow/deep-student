@@ -994,13 +994,11 @@
       "reset": "重置"
     },
     "bubble": {
-      "ask_ai": "向 AI 询问",
       "reset": "重置",
       "apply": "应用"
     },
     "placeholder_hints": {
-      "heading": "标题 {{level}}",
-      "body": "输入 '/' 呼出命令，连续输入 '++' 触发续写…"
+      "heading": "标题 {{level}}"
     },
     "image": {
       "alt_prompt": "图片替代文本",
@@ -1084,7 +1082,6 @@
     },
     "generative": {
       "label": "AI 模式",
-      "enabled": "AI 续写 · {{mode}}",
       "disabled": "生成模式已关闭",
       "profile_placeholder": "选择生成风格",
       "badge": "AI · {{mode}}",
@@ -1108,7 +1105,6 @@
       "prompt_text": "批注内容",
       "prompt_author": "作者"
     },
-    "ai_stop": "停止续写",
     "portaled_to_canvas": "编辑器已在白板中打开",
     "portaled_hint": "在白板中编辑此笔记",
     "deleted_with_unsaved_changes": "资源已被删除；窗口保留未保存内容，请复制内容后再关闭。",
@@ -1669,7 +1665,6 @@
     "export_md_desc": "通用文本格式，适合迁移",
     "export_json": "备份数据 (JSON)",
     "export_json_desc": "保存完整结构以备恢复",
-    "export_coming": "导出功能开发中，敬请期待",
     "shortcuts": {
       "title": "键盘快捷键",
       "sibling": "新建同级节点",
@@ -1936,8 +1931,6 @@
     "remove_success": "已移除引用",
     "add_to_folder": "将添加到当前文件夹",
     "add_to_root": "将添加到根目录",
-    "enter_textbook_id": "请输入教材 ID（即将实现选择器）",
-    "enter_mistake_id": "请输入错题 ID（即将实现选择器）",
     "to_chat_pending": "功能开发中",
     "open_source": "打开原始内容",
     "send_to_chat": "发送到对话",
@@ -2045,9 +2038,7 @@
   "tips": {
     "versionHistory": "版本历史可在笔记面板中查看和回滚"
   },
-  "ai": {
-    "continue_not_available": "AI 续写命令暂不可用，请使用聊天面板发起编辑。"
-  },
+  "ai": {},
   "a11y": {
     "close": "关闭",
     "clear": "清除"

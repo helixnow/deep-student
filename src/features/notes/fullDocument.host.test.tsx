@@ -35,7 +35,6 @@ vi.mock('./aiReview', async (importOriginal) => {
     })),
   };
 });
-vi.mock('@/features/notes/components/NotesEditorToolbar', () => ({ NotesEditorToolbar: () => null }));
 vi.mock('@/features/notes/components/MobileEditorToolbar', () => ({ MobileEditorToolbar: () => null }));
 vi.mock('@/features/generative-ui/components/GenerativeUIPanel', () => ({ GenerativeUIPanel: () => null }));
 vi.mock('@/components/custom-scroll-area', () => ({ CustomScrollArea: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));

@@ -14,7 +14,7 @@ import {
   type GenerateCardsFromTextResult,
 } from '@/features/anki/generateCardsFromText';
 
-/** 与 NotesEditorToolbar 的 tr 同形：key + 兜底文案 */
+/** i18n 小工具：key + 兜底文案 */
 export type NoteCardsTranslate = (key: string, defaultValue: string) => string;
 
 export interface GenerateCardsFromNoteInput {
