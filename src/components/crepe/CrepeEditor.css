@@ -376,10 +376,12 @@
 
 /* 行内代码 — pill：muted 底 + 中性文字色，不与错误/危险状态混淆。 */
 .crepe-editor-wrapper :not(pre) > code {
-  background: hsl(var(--muted));
+  /* Notion 尺度：更淡的底、左右 0.4em、85% 字号（文字保持中性色，不借用危险红） */
+  background: hsl(var(--foreground) / 0.07);
   color: var(--crepe-color-inline-code, var(--notes-inline-code-color, hsl(var(--foreground) / 0.86)));
-  padding: 0.1em var(--notes-inline-code-pad-x, 0.2em);
+  padding: 0.2em 0.4em;
   border-radius: var(--notes-inline-code-radius, 4px);
+  font-size: 0.85em;
 }
 
 /* 引用块 — 3px 前景竖线、不斜体、正常前景
@@ -387,8 +389,8 @@
  * 40px 缩进挤掉 11% 正文宽度）；reset 的 ::before 圆角竖条与 border-left 并存
  * 会成双竖线，一并屏蔽。 */
 .crepe-editor-wrapper .milkdown .ProseMirror blockquote {
-  border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground));
-  padding-left: 1rem;
+  border-left: var(--notes-blockquote-border-w, 3px) solid hsl(var(--foreground) / 0.85);
+  padding-left: 14px;
   margin-left: 0;
   font-style: normal;
   color: hsl(var(--foreground));
@@ -398,19 +400,19 @@
   content: none;
 }
 
-/* 链接 */
+/* 链接 — Notion 式：沿用正文色 + 淡下划线，悬停加深；不在正文里铺满品牌蓝 */
 .crepe-editor-wrapper a {
-  color: hsl(var(--primary));
+  color: inherit;
   text-decoration: underline;
+  text-decoration-color: hsl(var(--foreground) / 0.35);
+  text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   cursor: pointer;
-  transition: color var(--notes-hover-transition, 120ms ease), opacity var(--notes-hover-transition, 120ms ease);
+  transition: text-decoration-color var(--notes-hover-transition, 120ms ease);
 }
 
 .crepe-editor-wrapper a:hover {
-  /* 悬停时使用 primary 的更深/更亮版本，而非 primary-foreground */
-  color: hsl(var(--primary));
-  opacity: 0.8;
+  text-decoration-color: hsl(var(--foreground) / 0.75);
 }
 
 /* 列表 */
@@ -533,13 +535,13 @@
 /* ===== 暗色模式正文复核（V4）===== */
 /* 颜色均走 token；暗色下 foreground/border/muted 自动翻转，无需改数值。 */
 .dark .crepe-editor-wrapper blockquote {
-  border-left-color: hsl(var(--foreground));
+  border-left-color: hsl(var(--foreground) / 0.85);
   color: hsl(var(--foreground));
   font-style: normal;
 }
 
 .dark .crepe-editor-wrapper :not(pre) > code {
-  background: hsl(var(--muted));
+  background: hsl(var(--foreground) / 0.1);
   color: var(--crepe-color-inline-code, var(--notes-inline-code-color, hsl(var(--foreground) / 0.86)));
 }
 
