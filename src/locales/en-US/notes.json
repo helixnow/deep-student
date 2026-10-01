@@ -2068,5 +2068,8 @@
     "drafts_found": "Unsaved drafts found",
     "view_draft": "View draft {{index}}",
     "save_draft_as_note": "Save draft as note"
+  },
+  "agent": {
+    "caret_label": "AI"
   }
 }

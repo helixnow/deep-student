@@ -101,6 +101,7 @@
 
   --notes-agent-insert-bg: hsl(var(--info) / 0.16);
   --notes-agent-insert-ring: hsl(var(--info) / 0.2);
+  --notes-agent-flash-bg: hsl(var(--info) / 0.3);
   --notes-agent-caret-color: hsl(var(--info));
   --notes-agent-caret-label-fg: hsl(var(--info));
   --notes-agent-caret-label-bg: color-mix(in hsl, hsl(var(--info)) 10%, hsl(var(--background)));
@@ -116,6 +117,7 @@
 
   --notes-agent-insert-bg: hsl(var(--info) / 0.22);
   --notes-agent-insert-ring: hsl(var(--info) / 0.26);
+  --notes-agent-flash-bg: hsl(var(--info) / 0.34);
   --notes-agent-caret-label-bg: color-mix(in hsl, hsl(var(--info)) 24%, hsl(var(--background)));
   --notes-agent-caret-label-border: hsl(var(--info) / 0.45);
 }

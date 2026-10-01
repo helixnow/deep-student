@@ -2151,11 +2151,11 @@
 @keyframes acr-agent-inserted-fade {
   from {
     background-color: var(--notes-agent-insert-bg, hsl(var(--info) / 0.16));
-    opacity: 1;
+    box-shadow: 0 0 0 1px var(--notes-agent-insert-ring, hsl(var(--info) / 0.2));
   }
   to {
     background-color: hsl(var(--info) / 0);
-    opacity: 1;
+    box-shadow: 0 0 0 1px hsl(var(--info) / 0);
   }
 }
 
@@ -2235,10 +2235,11 @@
   width: 2px;
   height: 100%;
   /* ACR 4.1：双色纵向渐变 + 静态微光（渐变/阴影 paint 一次，呼吸只动 opacity） */
+  /* 品牌色 → 协作色的真双色渐变（两端分别取 --primary 与 caret token，明暗由 token 翻转） */
   background: linear-gradient(
     180deg,
-    var(--notes-agent-caret-color, hsl(var(--acr-a, var(--primary)))),
-    hsl(var(--acr-b, var(--info, 210 90% 55%)))
+    hsl(var(--acr-a, var(--primary))),
+    var(--notes-agent-caret-color, hsl(var(--acr-b, var(--info, 210 90% 55%))))
   );
   box-shadow: 0 0 6px hsl(var(--acr-b, var(--info, 210 90% 55%)) / 0.5);
   border-radius: 1px;
@@ -2284,21 +2285,7 @@
   box-shadow: 0 0 0 1.5px var(--notes-search-match-active-ring, hsl(var(--warning) / 0.65));
 }
 
-.dark .crepe-editor-wrapper .agent-inserted,
-.dark .crepe-editor-wrapper .agent-inserted-fading {
-  background-color: var(--notes-agent-insert-bg, hsl(var(--info) / 0.22));
-  box-shadow: 0 0 0 1px var(--notes-agent-insert-ring, hsl(var(--info) / 0.26));
-}
-
-.dark .crepe-editor-wrapper .acr-ai-caret__bar {
-  background-color: var(--notes-agent-caret-color, hsl(var(--info)));
-}
-
-.dark .crepe-editor-wrapper .acr-ai-caret__label {
-  color: var(--notes-agent-caret-label-fg, hsl(var(--info)));
-  background: var(--notes-agent-caret-label-bg, hsl(var(--background)));
-  border-color: var(--notes-agent-caret-label-border, hsl(var(--info) / 0.45));
-}
+/* ACR 高亮/光标的暗色差异全部由 notes-typography.css 的 :root.dark token 承担 */
 
 @media (prefers-reduced-motion: reduce) {
   .crepe-editor-wrapper .acr-ai-caret__bar {
@@ -2308,6 +2295,7 @@
   .crepe-editor-wrapper .agent-inserted-fading {
     animation: none;
     background-color: hsl(var(--info) / 0.08);
+    box-shadow: none;
   }
   /* ACR 4.0：flash 走静态短高亮（由 driver 的 clearAll 收尾清除） */
   .crepe-editor-wrapper .agent-flash {

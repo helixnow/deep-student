@@ -2067,5 +2067,8 @@
     "drafts_found": "已找到未保存草稿",
     "view_draft": "查看草稿 {{index}}",
     "save_draft_as_note": "草稿另存为笔记"
+  },
+  "agent": {
+    "caret_label": "AI"
   }
 }

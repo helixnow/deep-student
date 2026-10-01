@@ -18,6 +18,7 @@
  * 设计：docs/dev/acr/DESIGN.md §5.2 / ROUND1 R1-12
  */
 
+import i18next from 'i18next';
 import { Plugin, PluginKey } from '@milkdown/prose/state';
 import { Decoration, DecorationSet } from '@milkdown/prose/view';
 import type { Node as ProseNode } from '@milkdown/prose/model';
@@ -66,7 +67,7 @@ function createCaretWidget(): HTMLElement {
 
   const label = document.createElement('span');
   label.className = 'acr-ai-caret__label';
-  label.textContent = 'AI';
+  label.textContent = i18next.t('notes:agent.caret_label', 'AI');
   root.appendChild(label);
 
   return root;
@@ -212,9 +213,9 @@ export const agentHighlightPlugin = $prose(() =>
               return withDecorations(tr.doc, caretPos, ranges, flashes);
             }
             case 'fadeRun': {
+              // 本轮写完：插入区开始淡出，AI 光标随即收起（不在原地继续闪烁 3s）
               const ranges = value.ranges.map((r) => ({ ...r, fading: true }));
-              const caretPos = value.caretPos;
-              return withDecorations(tr.doc, caretPos, ranges, value.flashes);
+              return withDecorations(tr.doc, null, ranges, value.flashes);
             }
             default:
               break;
