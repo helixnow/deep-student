@@ -68,13 +68,14 @@ describe('API key clearing confirmation', () => {
     const input = await screen.findByDisplayValue('legacy-key');
     expect(input).toBeInTheDocument();
 
-    const clearButton = screen.getByRole('button', { name: /common:siliconflow.clear_button/ });
+    // react-i18next 走全局别名 mock，按 zh-CN 语言包解析出真实文案而非原始 key。
+    const clearButton = screen.getByRole('button', { name: /^清除$/ });
     fireEvent.click(clearButton);
 
     expect(TauriAPI.deleteSetting).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: /common:siliconflow.clear_confirm_button/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^确认清除$/ })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /common:siliconflow.clear_confirm_button/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^确认清除$/ }));
 
     await waitFor(() => {
       expect(TauriAPI.deleteSetting).toHaveBeenCalledWith('builtin-siliconflow.api_key');
@@ -172,7 +173,7 @@ describe('API key clearing confirmation', () => {
     render(<SiliconFlowSection variant="inline" onCreateConfig={vi.fn()} />);
 
     const input = await screen.findByDisplayValue('sf-key');
-    const revealButton = screen.getByRole('button', { name: /common:siliconflow.show_api_key/ });
+    const revealButton = screen.getByRole('button', { name: /^显示API密钥$/ });
 
     expect(input).toHaveClass('api-key-field__input');
     expect(input).not.toHaveClass('pr-12');
@@ -225,7 +226,7 @@ describe('API key clearing confirmation', () => {
     vi.useFakeTimers();
     render(<SiliconFlowSection variant="inline" onCreateConfig={vi.fn()} />);
 
-    const input = screen.getByPlaceholderText(/siliconflow\.api_key_placeholder_local/);
+    const input = screen.getByPlaceholderText('输入您的 SiliconFlow API 密钥');
     fireEvent.paste(input, { clipboardData: { getData: () => '  sk-silicon-pasted\n' } });
 
     expect(TauriAPI.saveSetting).not.toHaveBeenCalledWith('builtin-siliconflow.api_key', 'sk-silicon-pasted');

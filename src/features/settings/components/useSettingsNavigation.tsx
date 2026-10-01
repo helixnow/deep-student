@@ -52,6 +52,19 @@ export type SettingsSidebarNavItem = {
   mobileAccent?: string;
 };
 
+/**
+ * 设置页一级分类。
+ *
+ * child items 继续使用旧的 tab value，方便保留深链接、事件跳转和已有的
+ * lazy render 分支；分类只负责收敛导航层级。
+ */
+export type SettingsSidebarCategory = {
+  value: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  items: SettingsSidebarNavItem[];
+};
+
 export type SettingsSearchIndexItem = {
   tab: string;
   label: string;
@@ -59,7 +72,7 @@ export type SettingsSearchIndexItem = {
 };
 
 export function useSettingsNavigation() {
-  const { t } = useTranslation(['settings', 'common', 'data']);
+  const { t } = useTranslation(['settings', 'common', 'data', 'workbench']);
 
   const isMobile = isMobilePlatform();
   const hidePlugins = isMobile;
@@ -213,7 +226,53 @@ export function useSettingsNavigation() {
 
   const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
 
-  const settingsSearchIndex = useMemo<SettingsSearchIndexItem[]>(() => [
+  const sidebarCategories = useMemo<SettingsSidebarCategory[]>(() => {
+    const itemByValue = new Map(sidebarNavItems.map((item) => [item.value, item]));
+    const pick = (values: string[]) => values
+      .map((value) => itemByValue.get(value))
+      .filter((item): item is SettingsSidebarNavItem => Boolean(item));
+
+    return [
+      {
+        value: 'ai',
+        label: t('settings:categories.ai'),
+        icon: Robot,
+        items: pick(['apis', 'models', 'params']),
+      },
+      {
+        value: 'experience',
+        label: t('settings:categories.experience'),
+        icon: SlidersHorizontal,
+        items: pick(['general', 'appearance', 'workbench', 'shortcuts']),
+      },
+      {
+        value: 'personalization',
+        label: t('settings:categories.personalization'),
+        icon: Brain,
+        items: pick(['voice-input', 'memory']),
+      },
+      {
+        value: 'integrations',
+        label: t('settings:categories.integrations'),
+        icon: Plug,
+        items: pick(['mcp', 'search', 'plugins']),
+      },
+      {
+        value: 'workflow',
+        label: t('settings:categories.workflow'),
+        icon: ClockCountdown,
+        items: pick(['automation', 'document-processing']),
+      },
+      {
+        value: 'data',
+        label: t('settings:categories.data'),
+        icon: Shield,
+        items: pick(['statistics', 'data-governance']),
+      },
+    ].filter((category) => category.items.length > 0);
+  }, [sidebarNavItems, t]);
+
+  const settingDetails = useMemo<SettingsSearchIndexItem[]>(() => [
     { tab: 'appearance', label: t('settings:appearance.theme.title'), keywords: ['theme', 'dark', 'light', 'appearance'] },
     { tab: 'appearance', label: t('settings:appearance.font.title'), keywords: ['font', 'typeface'] },
     { tab: 'appearance', label: t('settings:appearance.font.size_label'), keywords: ['font size'] },
@@ -281,17 +340,40 @@ export function useSettingsNavigation() {
     { tab: 'data-governance', label: t('data:governance.title'), keywords: ['data governance', 'import', 'export'] },
     { tab: 'data-governance', label: t('data:governance.backup'), keywords: ['backup', 'export'] },
     { tab: 'data-governance', label: t('data:governance.restore'), keywords: ['restore', 'import'] },
-    { tab: 'params', label: t('settings:params.temperature'), keywords: ['temperature', 'model params'] },
-    { tab: 'params', label: t('settings:params.top_p'), keywords: ['top p', 'nucleus sampling'] },
+    { tab: 'params', label: t('common:settings.chat_stream.card_title'), keywords: ['timeout', 'stream', '超时', '流式'] },
+    { tab: 'params', label: t('settings:cards.search_settings_title'), keywords: ['fts', 'semantic', 'search', '语义搜索'] },
     ...(!hideShortcuts
       ? [{ tab: 'shortcuts', label: t('settings:tabs.shortcuts'), keywords: ['shortcuts', 'keyboard', 'hotkey'] }]
       : []),
     { tab: 'about', label: t('settings:tabs.about'), keywords: ['about', 'version', 'acknowledgements'] },
   ], [t, hidePlugins, hideShortcuts, hideWorkbench]);
 
+  // Index section titles as well as individual controls, so old names remain
+  // discoverable after their entries move into categories.
+  const settingsSearchIndex = useMemo<SettingsSearchIndexItem[]>(() => {
+    const categoryByTab = new Map(sidebarCategories.flatMap((category) =>
+      category.items.map((item) => [item.value, category.label] as const)));
+    const sectionEntries = sidebarNavItems.map((item) => ({
+      tab: item.value,
+      label: item.label,
+      keywords: [item.value, categoryByTab.get(item.value) ?? ''],
+    }));
+    const entries = new Map<string, SettingsSearchIndexItem>();
+    for (const item of [...sectionEntries, ...settingDetails]) {
+      const key = `${item.tab}:${item.label}`;
+      const existing = entries.get(key);
+      entries.set(key, {
+        ...item,
+        keywords: [...new Set([...(existing?.keywords ?? []), ...item.keywords])],
+      });
+    }
+    return [...entries.values()];
+  }, [sidebarCategories, sidebarNavItems, settingDetails]);
+
   return {
     sidebarNavGroups,
     sidebarNavItems,
+    sidebarCategories,
     settingsSearchIndex,
   };
 }

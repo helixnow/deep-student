@@ -27,6 +27,8 @@ const NS_BUNDLES: Record<string, Dict> = {
 };
 
 function lookupPath(root: Dict, path: string): string | undefined {
+  // Some locale bundles keep dotted keys flat; i18next resolves these too.
+  if (typeof root[path] === 'string') return root[path] as string;
   const parts = path.split('.');
   let cur: unknown = root;
   for (const part of parts) {
