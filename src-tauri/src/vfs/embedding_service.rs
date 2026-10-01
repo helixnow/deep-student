@@ -521,6 +521,13 @@ impl VfsEmbeddingPipeline {
             ));
         }
 
+        // Fail before paying for embeddings when this build cannot store them.
+        if !cfg!(feature = "lance") {
+            return Err(VfsError::Other(
+                "Vector indexing is unavailable: Lance is not compiled in".to_string(),
+            ));
+        }
+
         // 1. 生成嵌入
         let result = self
             .embedding_service

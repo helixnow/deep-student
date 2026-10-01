@@ -46,6 +46,7 @@ import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { getToolVisual } from '@/features/chat/utils/toolVisual';
 import { TextShimmer } from '../ui/TextShimmer';
 import { ToolActivitySweep } from '../ui/ToolActivitySweep';
+import { useBlocksByIds } from '../../hooks/useChatStore';
 import { CompletionCard, extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
 import {
   getShellCommandDescriptor,
@@ -1607,33 +1608,9 @@ export const ActivityTimelineWithStore: React.FC<ActivityTimelineWithStoreProps>
   onContinue,
   onOpenNote,
 }) => {
-  // 🔧 P0修复：缓存上次结果，用于 shallow 比较（参考 useMessageBlocks 模式）
-  const prevBlocksRef = useRef<Block[]>([]);
-
-  // 🔧 P0修复：使用 useCallback 稳定选择器函数，在选择器内部进行缓存比较
-  // 这是 zustand 推荐的模式，确保返回稳定引用避免无限循环
-  const blocks = useStore(
-    store,
-    useCallback(
-      (s: ChatStore) => {
-        const newBlocks = blockIds
-          .map((id) => s.blocks.get(id))
-          .filter((b): b is Block => b !== undefined);
-
-        // 如果块数量和内容都相同，返回之前的引用（避免无限循环）
-        if (
-          newBlocks.length === prevBlocksRef.current.length &&
-          newBlocks.every((b, i) => b === prevBlocksRef.current[i])
-        ) {
-          return prevBlocksRef.current;
-        }
-
-        prevBlocksRef.current = newBlocks;
-        return newBlocks;
-      },
-      [blockIds]
-    )
-  );
+  // 🚀 长会话性能：改用 useBlocksByIds（零分配身份快路径 + 稳定 id 引用折叠），
+  // 替换原先每次 flush 都 map/filter 重建数组的内联 selector（参考 useMessageBlocks 模式）
+  const blocks = useBlocksByIds(store, blockIds);
 
   // 🔧 P0修复：使用稳定的选择器订阅 isStreaming 状态
   const isStreamingSelector = useCallback(

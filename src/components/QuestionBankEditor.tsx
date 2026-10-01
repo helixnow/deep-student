@@ -56,6 +56,7 @@ import {
   Crop,
   ImageIcon,
   Trash,
+  Camera,
 } from '@phosphor-icons/react';
 
 import type {
@@ -67,8 +68,16 @@ import type {
   Question,
   QuestionBankStats,
   SubmitResult,
+  ImageAnswerPayload,
 } from '@/api/questionBankApi';
 import { getNextQuestionIndex, parseNumericInput } from '@/api/questionBankApi';
+import {
+  encodeImageAnswerUserAnswer,
+  isSubjectiveQuestionType,
+  parseImageAnswerEnvelope,
+  IMAGE_ANSWER_MAX_IMAGES,
+  IMAGE_ANSWER_MIME_TYPES,
+} from '@/api/questionBankApi';
 import {
   getPracticeSessionKey,
   useQuestionBankStore,
@@ -93,6 +102,10 @@ import {
   NumericAnswer,
   FillBlankAnswer,
   StructuredAnswerSummary,
+  AnswerImageStrip,
+  ImageAnswerDisplay,
+  canAddImageAnswerImage,
+  uploadImageAnswerImage,
 } from '@/components/question-types';
 
 export interface QuestionBankEditorProps {
@@ -652,6 +665,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const [orderingOrder, setOrderingOrder] = useState<string[]>([]);
   const [pendingNavigationIndex, setPendingNavigationIndex] = useState<number | null>(null);
 
+  // 图片作答（主观题/填空题）：压缩上传后的信封引用 + 上传中状态
+  const [answerImages, setAnswerImages] = useState<QuestionImage[]>([]);
+  const [isUploadingAnswerImage, setIsUploadingAnswerImage] = useState(false);
+  const answerImageInputRef = useRef<HTMLInputElement | null>(null);
+  const answerImageUploadRef = useRef<symbol | null>(null);
+  // 已提交的信封回显（结果卡只读缩略图；切题/重做时清空）
+  const [submittedImageAnswer, setSubmittedImageAnswer] = useState<ImageAnswerPayload | null>(null);
+
   // 题目图片预览
   const [questionImageUrls, setQuestionImageUrls] = useState<Record<string, string>>({});
   // ref 镜像：题目切换 effect 里读取最新缓存，避免把 questionImageUrls 放进依赖导致循环
@@ -952,6 +973,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     return matches ? matches.length : 1;
   }, [qType, fillBlankData, currentQuestion]);
 
+  // 图片作答开关：仅主观题 + 填空题（后端判分口径一律走 AI 评判的题型）
+  const imageAnswerEnabled = useMemo(
+    () => isSubjectiveQuestionType(qType),
+    [qType]
+  );
+
   // 题目切换时重置答题状态
   // 切题同时取消进行中的 AI 判分流（resetAiGrading 内部会向后端发送取消），避免上一题的流串到新题
   useEffect(() => {
@@ -963,6 +990,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     // （经 ref 读取，避免 orderingData 引用变化触发本 effect —— 见 orderingItemsSignature 注释）
     setMatchingPairs([]);
     setOrderingOrder(orderingDataRef.current ? orderingDataRef.current.items.map((item) => item.key) : []);
+    // 图片作答状态重置；切回有已提交图片信封的题时按信封回显（只读）
+    answerImageUploadRef.current = null;
+    setIsUploadingAnswerImage(false);
+    setAnswerImages([]);
+    setSubmittedImageAnswer(
+      isSubjectiveQuestionType(qType)
+        ? parseImageAnswerEnvelope(currentQuestion?.userAnswer ?? null)
+        : null
+    );
     resetAiGrading();
     // 初始化笔记文本
     setNoteText(currentQuestion?.userNote || '');
@@ -1016,8 +1052,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       };
       loadImages();
     }
-    return () => { cancelled = true; };
-  }, [currentIndex, currentQuestion?.id, fillBlankCount, orderingItemsSignature, imageRefreshKey, resetAiGrading]);
+    return () => {
+      cancelled = true;
+      answerImageUploadRef.current = null;
+    };
+  }, [sessionId, practiceSessionKey, currentIndex, currentQuestion?.id, qType, fillBlankCount, orderingItemsSignature, imageRefreshKey, resetAiGrading]);
 
   // 题目搜索过滤
   const filteredQuestionIndices = useMemo(() => {
@@ -1056,7 +1095,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
   // 提前定义 canSubmit 以供提交与键盘快捷键使用
   const canSubmit = useMemo(() => {
-    if (submitResult) return false;
+    if (submitResult || isUploadingAnswerImage) return false;
+    // 图片作答：有图即可提交（文本/逐空输入可留空）
+    if (answerImages.length > 0) return true;
     const isMulti = qType === 'multiple_choice' || qType === 'indefinite_choice';
     if (isMulti) {
       return selectedOptions.size > 0;
@@ -1079,39 +1120,83 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       return orderingOrder.length > 1;
     }
     return selectedAnswer.trim().length > 0;
-  }, [qType, selectedAnswer, selectedOptions, submitResult, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder]);
+  }, [qType, selectedAnswer, selectedOptions, submitResult, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, answerImages, isUploadingAnswerImage]);
+
+  // 图片作答上传：压缩 → vfs_upload_attachment → 信封引用（题目图片同款路径）
+  const handleAnswerImageSelect = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0 || answerImageUploadRef.current || submitInFlightRef.current || submitResult) return;
+    const remaining = IMAGE_ANSWER_MAX_IMAGES - answerImages.length;
+    if (remaining <= 0) {
+      showGlobalNotification('warning', t('editor.imageAnswerLimit', { count: IMAGE_ANSWER_MAX_IMAGES, defaultValue: `最多上传 ${IMAGE_ANSWER_MAX_IMAGES} 张图片` }));
+      return;
+    }
+    const list = Array.from(files).slice(0, remaining);
+    const upload = Symbol('answer-image-upload');
+    answerImageUploadRef.current = upload;
+    setIsUploadingAnswerImage(true);
+    try {
+      const uploaded = await Promise.all(list.map(uploadImageAnswerImage));
+      if (answerImageUploadRef.current !== upload) return;
+      setAnswerImages(prev => [...prev, ...uploaded]);
+    } catch (err) {
+      if (answerImageUploadRef.current !== upload) return;
+      debugLog.error('[QuestionBankEditor] answer image upload failed:', err);
+      showGlobalNotification('error', err instanceof Error ? err.message : String(err));
+    } finally {
+      if (answerImageUploadRef.current === upload) {
+        answerImageUploadRef.current = null;
+        setIsUploadingAnswerImage(false);
+        if (answerImageInputRef.current) answerImageInputRef.current.value = '';
+      }
+    }
+  }, [answerImages.length, submitResult, t]);
+
+  const removeAnswerImage = useCallback((id: string) => {
+    setAnswerImages(prev => prev.filter(img => img.id !== id));
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     if (!currentQuestion || !onSubmitAnswer || !canSubmit) return;
     // 防重入：isSubmitting state 在同一帧内读到旧值，双击/连点/Enter 连按会触发两次提交
-    if (isSubmitting || submitInFlightRef.current) return;
-    
-    const isMulti = qType === 'multiple_choice' || qType === 'indefinite_choice';
-    
-    // user_answer 序列化（与后端判分契约一致）
-    let answer: string;
-    if (qType === 'fill_blank') {
-      // 多空 JSON 数组 ["a","b"]，单空保留裸字符串（兼容旧数据）
-      answer = encodeFillBlankUserAnswer(fillBlankAnswers);
-    } else if (isMulti) {
-      answer = Array.from(selectedOptions).sort().join('');
-    } else if (qType === 'matching' && matchingData) {
-      answer = encodeMatchingUserAnswer(matchingPairs);
-    } else if (qType === 'ordering' && orderingData) {
-      answer = encodeOrderingUserAnswer(orderingOrder);
-    } else if (qType === 'numeric') {
-      answer = selectedAnswer.trim();
-    } else {
-      answer = selectedAnswer;
-    }
-    
-    if (!answer.trim()) return;
-    
+    if (isSubmitting || submitInFlightRef.current || answerImageUploadRef.current) return;
+
     submitInFlightRef.current = true;
     setIsSubmitting(true);
     try {
+      const isMulti = qType === 'multiple_choice' || qType === 'indefinite_choice';
+
+      // user_answer 序列化（与后端判分契约一致）
+      let answer: string;
+      if (qType === 'fill_blank') {
+        // 逐空文字与图片属于同一份作答，保留空位编号供 AI 判分与回看。
+        answer = answerImages.length > 0
+          ? encodeImageAnswerUserAnswer(answerImages, fillBlankAnswers.some(value => value.trim())
+            ? fillBlankAnswers.map((value, index) => `${index + 1}. ${value}`).join('\n')
+            : '')
+          : encodeFillBlankUserAnswer(fillBlankAnswers);
+      } else if (isMulti) {
+        answer = Array.from(selectedOptions).sort().join('');
+      } else if (qType === 'matching' && matchingData) {
+        answer = encodeMatchingUserAnswer(matchingPairs);
+      } else if (qType === 'ordering' && orderingData) {
+        answer = encodeOrderingUserAnswer(orderingOrder);
+      } else if (qType === 'numeric') {
+        answer = selectedAnswer.trim();
+      } else if (answerImages.length > 0) {
+        // 主观题：有图走信封（selectedAnswer 作为信封 text 补充）
+        answer = encodeImageAnswerUserAnswer(answerImages, selectedAnswer);
+      } else {
+        answer = selectedAnswer;
+      }
+
+      if (!answer.trim()) return;
+
+      // 图片作答：仅在提交成功后更新只读回显。
+      const pendingEnvelope = parseImageAnswerEnvelope(answer);
+
       const result = await onSubmitAnswer(currentQuestion.id, answer, currentQuestion.questionType);
       setSubmitResult(result);
+      setSubmittedImageAnswer(pendingEnvelope);
 
       // 主观题：自动触发 AI 评判
       if (result.needsManualGrading && result.submissionId) {
@@ -1157,6 +1242,11 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
         });
       }
       
+      // 图片作答已落信封：清空编辑区引用（回显由 submittedImageAnswer 承担）
+      if (pendingEnvelope) {
+        setAnswerImages([]);
+      }
+
       // 连对与已作答集合由 store 统一推进（null = 主观题待判定，不中断连对）；
       // 返回值是同帧快照，里程碑与完成判定都读它，避免 setState 异步导致的错位。
       const progress = recordPracticeSessionAnswer(
@@ -1207,7 +1297,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       submitInFlightRef.current = false;
       setIsSubmitting(false);
     }
-  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, onSubmitAnswer, onRefreshQuestion, onGradingResolved, recordPracticeSessionAnswer, practiceSessionOwner, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, onTimerRunningChange, t, isSubmitting]);
+  }, [currentQuestion, canSubmit, qType, selectedAnswer, selectedOptions, fillBlankAnswers, matchingData, matchingPairs, orderingData, orderingOrder, answerImages, onSubmitAnswer, onRefreshQuestion, onGradingResolved, recordPracticeSessionAnswer, practiceSessionOwner, totalQuestions, resolvedElapsedTime, resetAiGrading, startAiGrading, onTimerRunningChange, t, isSubmitting]);
 
   // 重做当前题目
   const handleRetry = useCallback(() => {
@@ -1218,6 +1308,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     setMatchingPairs([]);
     setOrderingOrder(orderingData ? orderingData.items.map((item) => item.key) : []);
     setAnswerRevealed(false);
+    answerImageUploadRef.current = null;
+    setIsUploadingAnswerImage(false);
+    setAnswerImages([]);
+    setSubmittedImageAnswer(null);
     resetAiGrading();
   }, [fillBlankCount, orderingData, resetAiGrading]);
 
@@ -1335,7 +1429,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const isFavorite = currentQuestion?.isFavorite ?? false;
 
   const hasUnsavedNote = isEditingNote && noteText !== lastSavedNote;
-  const hasUnsavedDraft = canSubmit || hasUnsavedNote;
+  const hasUnsavedDraft = canSubmit || isUploadingAnswerImage || hasUnsavedNote;
 
   useEffect(() => {
     onDraftDirtyChange?.(hasUnsavedDraft);
@@ -1813,6 +1907,64 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   ) : null;
 
   // ========== 答题输入区（移动端与桌面端共用，覆盖全部题型） ==========
+
+  // 图片作答控件（主观题/填空题）：上传按钮 + 缩略图条 + 隐藏 file input
+  // 限定可提交的图片格式；移动端仍可从系统选择器拍照。已提交后隐藏编辑控件，
+  // 只读缩略图由结果卡区域的 ImageAnswerDisplay 呈现。
+  const renderImageAnswerControls = () => {
+    if (!imageAnswerEnabled) return null;
+    const disabled = !!submitResult || isUploadingAnswerImage || isSubmitting;
+    return (
+      <div className="space-y-2">
+        {!submitResult && submittedImageAnswer && (
+          <ImageAnswerDisplay
+            images={submittedImageAnswer.images}
+            text={submittedImageAnswer.text}
+          />
+        )}
+        {answerImages.length > 0 && (
+          <AnswerImageStrip
+            images={answerImages}
+            readOnly={!!submitResult}
+            onRemove={removeAnswerImage}
+          />
+        )}
+        {!submitResult && (
+          <div className="flex items-center gap-2">
+            <DsButton
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={disabled || !canAddImageAnswerImage(answerImages.length)}
+              onClick={() => answerImageInputRef.current?.click()}
+              className="[@media(pointer:coarse)]:!min-h-11"
+            >
+              {isUploadingAnswerImage
+                ? <CircleNotch size={16} className="animate-spin" />
+                : <Camera size={16} />}
+              <span className="text-xs">
+                {t('editor.imageAnswerUpload', { defaultValue: '拍照/上传手写答案' })}
+              </span>
+            </DsButton>
+            <span className="text-xs text-muted-foreground">
+              {answerImages.length}/{IMAGE_ANSWER_MAX_IMAGES}
+            </span>
+          </div>
+        )}
+        <input
+          ref={answerImageInputRef}
+          type="file"
+          accept={IMAGE_ANSWER_MIME_TYPES.join(',')}
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void handleAnswerImageSelect(e.target.files);
+          }}
+        />
+      </div>
+    );
+  };
+
   const renderAnswerInput = () => {
     if (isChoiceQuestion && currentQuestion.options) {
       return (
@@ -1880,34 +2032,43 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     }
     if (qType === 'fill_blank') {
       return (
-        <FillBlankAnswer
-          answers={fillBlankAnswers}
-          onChange={setFillBlankAnswers}
-          blanks={fillBlankData}
-          submitted={!!submitResult}
-        />
+        <div className="space-y-3">
+          <FillBlankAnswer
+            answers={fillBlankAnswers}
+            onChange={setFillBlankAnswers}
+            blanks={fillBlankData}
+            submitted={!!submitResult}
+          />
+          {renderImageAnswerControls()}
+        </div>
       );
     }
     if (qType === 'short_answer') {
       return (
-        <Input
+        <div className="space-y-3">
+          <Input
+            value={selectedAnswer}
+            onChange={(e) => setSelectedAnswer(e.target.value)}
+            placeholder={t('editor.answerPlaceholder')}
+            disabled={!!submitResult}
+            className="h-11 [@media(pointer:coarse)]:text-[16px]"
+          />
+          {renderImageAnswerControls()}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-3">
+        <Textarea
           value={selectedAnswer}
           onChange={(e) => setSelectedAnswer(e.target.value)}
           placeholder={t('editor.answerPlaceholder')}
           disabled={!!submitResult}
-          className="h-11 [@media(pointer:coarse)]:text-[16px]"
+          rows={4}
+          className="resize-none [@media(pointer:coarse)]:text-[16px]"
         />
-      );
-    }
-    return (
-      <Textarea
-        value={selectedAnswer}
-        onChange={(e) => setSelectedAnswer(e.target.value)}
-        placeholder={t('editor.answerPlaceholder')}
-        disabled={!!submitResult}
-        rows={4}
-        className="resize-none [@media(pointer:coarse)]:text-[16px]"
-      />
+        {imageAnswerEnabled && renderImageAnswerControls()}
+      </div>
     );
   };
 
@@ -1987,6 +2148,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           extraClassName
         )}
       >
+        {/* 图片作答回显：本次提交是信封时只读展示缩略图 + 文字补充 */}
+        {submittedImageAnswer && (
+          <ImageAnswerDisplay
+            images={submittedImageAnswer.images}
+            text={submittedImageAnswer.text}
+          />
+        )}
         {submitResult.needsManualGrading ? (
           <>
             {/* AI 评判中 */}

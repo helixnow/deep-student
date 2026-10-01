@@ -150,4 +150,35 @@ describe('useBlocksSegmentMeta', () => {
 
     expect(readHistoricalContent).toHaveBeenCalledTimes(readsAfterMount);
   });
+
+  it('stays render-free across multiple content flushes, then catches a later structure change', () => {
+    // 2026-09-25 快路径契约：身份快路径的比较基准随每次 flush 前移，
+    // 连续多次纯正文冲刷保持零重渲染，此后的结构变化仍必须被捕获
+    const store = createChatStore('sess_meta_7');
+    seedBlocks(store, [makeContentBlock('b1', 'a')]);
+
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount++;
+      return useBlocksSegmentMeta(store, ['b1']);
+    });
+    const firstRef = result.current;
+    const rendersAfterSeed = renderCount;
+
+    for (let i = 0; i < 3; i++) {
+      act(() => {
+        const prev = store.getState().blocks.get('b1')!;
+        seedBlocks(store, [{ ...prev, content: prev.content + ` chunk${i}`, updatedAt: Date.now() }]);
+      });
+      expect(result.current).toBe(firstRef);
+    }
+    expect(renderCount).toBe(rendersAfterSeed);
+
+    act(() => {
+      const prev = store.getState().blocks.get('b1')!;
+      seedBlocks(store, [{ ...prev, status: 'success' }]);
+    });
+    expect(result.current).not.toBe(firstRef);
+    expect(result.current[0].status).toBe('success');
+  });
 });

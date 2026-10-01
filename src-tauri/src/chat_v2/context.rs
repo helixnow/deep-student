@@ -336,6 +336,9 @@ pub(crate) struct PipelineContext {
     pub(crate) interleaved_block_ids: Vec<String>,
     /// 所有轮次产生的块内容（与 interleaved_block_ids 对应）
     pub(crate) interleaved_blocks: Vec<MessageBlock>,
+    /// Payloads changed since the last committed intermediate transaction.
+    pub(crate) dirty_interleaved_block_ids: std::collections::HashSet<String>,
+    pub(crate) intermediate_save_committed: bool,
     /// 全局块索引计数器（确保块按时序排序）
     pub(crate) global_block_index: u32,
 
@@ -461,6 +464,8 @@ impl PipelineContext {
             // Interleaved Thinking 支持
             interleaved_block_ids: Vec::new(),
             interleaved_blocks: Vec::new(),
+            dirty_interleaved_block_ids: std::collections::HashSet::new(),
+            intermediate_save_committed: false,
             global_block_index: 0,
             pending_reasoning_for_api: None,
             round_text_by_tool_call_id: HashMap::new(),
@@ -510,6 +515,9 @@ impl PipelineContext {
 
     /// 添加工具调用结果
     pub(crate) fn add_tool_results(&mut self, results: Vec<ToolResultInfo>) {
+        // Replay sidecars can change independently of the visible payload.
+        self.dirty_interleaved_block_ids
+            .extend(results.iter().filter_map(|result| result.block_id.clone()));
         self.tool_results.extend(results);
     }
 
@@ -776,6 +784,7 @@ impl PipelineContext {
     /// ## 返回
     /// 块被分配的 block_index
     pub(crate) fn add_interleaved_block(&mut self, mut block: MessageBlock) -> u32 {
+        self.dirty_interleaved_block_ids.insert(block.id.clone());
         // 🔧 幂等保护：同一块 ID 只收集一次。
         // attempt_completion 路径 / 取消收尾路径可能对同一轮的 thinking/content 块
         // 重复收集，重复 ID 会导致 block_ids 列表出现重复项。

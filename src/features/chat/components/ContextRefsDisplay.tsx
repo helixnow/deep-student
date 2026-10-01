@@ -63,6 +63,9 @@ export interface ContextRefsDisplayProps {
   isLoadingImages?: boolean;
   /** 文件是否正在加载 */
   isLoadingFiles?: boolean;
+  /** Image refs whose payload is deferred while the row is collapsed. */
+  unloadedImageCount?: number;
+  onRequestAllImages?: () => void;
 }
 
 // ============================================================================
@@ -135,7 +138,7 @@ function getResourceIconComponent(typeId: string): React.FC<ResourceIconProps> {
 // ============================================================================
 
 /** 默认显示的最大引用数量（折叠时） */
-const DEFAULT_VISIBLE_COUNT = 8; // 增加显示数量，因为网格布局能容纳更多
+export const CONTEXT_REFS_VISIBLE_COUNT = 8;
 
 interface ContextRefItemProps {
   ref_: ContextRef;
@@ -294,6 +297,8 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
   filePreviews = [],
   isLoadingImages = false,
   isLoadingFiles = false,
+  unloadedImageCount = 0,
+  onRequestAllImages,
 }) => {
   const { t } = useTranslation('chatV2');
 
@@ -342,10 +347,11 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
   const handleOpenImageViewer = useCallback((imageId: string) => {
     const index = imagePreviews.findIndex((p) => p.id === imageId);
     if (index !== -1) {
+      onRequestAllImages?.();
       setCurrentImageIndex(index);
       setImageViewerOpen(true);
     }
-  }, [imagePreviews]);
+  }, [imagePreviews, onRequestAllImages]);
 
   // ★ 处理文件点击
   const handleFileClick = useCallback((file: FilePreview) => {
@@ -360,7 +366,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
   }, []);
 
   // 没有引用、图片、文件时不渲染
-  const hasContent = normalRefs.length > 0 || imagePreviews.length > 0 || filePreviews.length > 0;
+  const hasContent = normalRefs.length > 0 || imagePreviews.length > 0 || filePreviews.length > 0 || unloadedImageCount > 0;
   if (!hasContent && !isLoadingImages && !isLoadingFiles) {
     return null;
   }
@@ -418,9 +424,10 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
   ];
 
   // 折叠逻辑
-  const needsCollapse = allItems.length > DEFAULT_VISIBLE_COUNT;
-  const visibleItems = (needsCollapse && !isExpanded) ? allItems.slice(0, DEFAULT_VISIBLE_COUNT) : allItems;
-  const hiddenCount = allItems.length - visibleItems.length;
+  const itemCount = allItems.length + unloadedImageCount;
+  const needsCollapse = unloadedImageCount > 0 || itemCount > CONTEXT_REFS_VISIBLE_COUNT || (isExpanded && isLoadingImages);
+  const visibleItems = !isExpanded ? allItems.slice(0, CONTEXT_REFS_VISIBLE_COUNT) : allItems;
+  const hiddenCount = itemCount - visibleItems.length;
 
   return (
     <div className={cn('flex flex-col items-end gap-2', className)}>
@@ -444,7 +451,10 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
         <DsButton
           variant="ghost"
           size="sm"
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={() => {
+            if (!isExpanded) onRequestAllImages?.();
+            setIsExpanded(!isExpanded);
+          }}
           // ★ 低-13：去掉 !py-0.5 压缩，恢复 sm 尺寸的默认高度（触控更易命中）
           className="!px-2 [@media(pointer:coarse)]:!min-h-11 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
@@ -461,7 +471,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
         <InlineImageViewer
           images={imageUrls}
           currentIndex={currentImageIndex}
-          isOpen={imageViewerOpen}
+          isOpen={imageViewerOpen && !isLoadingImages}
           onClose={() => setImageViewerOpen(false)}
           onNext={() => setCurrentImageIndex((prev) => (prev + 1) % imageUrls.length)}
           onPrev={() => setCurrentImageIndex((prev) => (prev - 1 + imageUrls.length) % imageUrls.length)}

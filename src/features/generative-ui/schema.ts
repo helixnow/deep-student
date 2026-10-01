@@ -379,3 +379,149 @@ export function parseGenerativeUIIntentRecovered(
     warnings: recovered.warnings,
   };
 }
+
+// Extended built-in block schemas. Kept free of React/chart/editor imports.
+
+export const flashcardPreviewPropsSchema = z.object({
+  id: z.string().optional(),
+  front: z.string().min(1).max(500),
+  back: z.string().min(1).max(1000),
+  tags: z.array(z.string().max(40)).max(8).optional(),
+  deckName: z.string().max(80).optional(),
+});
+
+export const reviewCalendarPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().max(120).optional(),
+  days: z
+    .array(
+      z.object({
+        date: z.string().min(1).max(20),
+        label: z.string().max(40).optional(),
+        dueCount: z.number().min(0),
+        completedCount: z.number().min(0).optional(),
+      }),
+    )
+    .min(1)
+    .max(14),
+});
+
+export const mistakeAnalysisPropsSchema = z.object({
+  id: z.string().optional(),
+  topic: z.string().min(1).max(120),
+  errorRate: z.number().min(0).max(100),
+  mistakeCount: z.number().min(0).optional(),
+  suggestion: z.string().max(500),
+  severity: z.enum(['low', 'medium', 'high']).optional().default('medium'),
+});
+
+const GENERATIVE_EMBED_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+export const mindmapEmbedPropsSchema = z
+  .object({
+    id: z.string().optional(),
+    mindmapId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
+    versionId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
+    title: z.string().max(120).optional(),
+    height: z.number().min(200).max(600).optional().default(280),
+  })
+  .refine((data) => Boolean(data.mindmapId || data.versionId), {
+    message: 'mindmapId or versionId is required',
+  });
+
+export const paperDigestPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1).max(300),
+  authors: z.string().max(200).optional(),
+  venue: z.string().max(120).optional(),
+  year: z.number().int().min(1900).max(2100).optional(),
+  citationLabel: z.string().max(40).optional(),
+  citationCount: z.number().min(0).optional(),
+  keyFindings: z.array(z.string().min(1).max(300)).max(8).optional(),
+  abstractExcerpt: z.string().max(500).optional(),
+});
+
+export const researchPlanStepSchema = z.object({
+  label: z.string().min(1).max(200),
+  status: z.enum(['pending', 'active', 'done']).optional().default('pending'),
+});
+
+export const researchPlanPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().min(1).max(160),
+  round: z.number().int().min(1).optional(),
+  steps: z.array(researchPlanStepSchema).min(1).max(12),
+});
+
+export const researchReportPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().max(200).optional(),
+  body: z.string().min(1).max(12000),
+  density: z.enum(['compact', 'normal']).optional().default('normal'),
+});
+
+export const MARKDOWN_TITLE_MAX = 120;
+
+export const MARKDOWN_BODY_MAX = 20000;
+
+export const markdownPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().max(MARKDOWN_TITLE_MAX).optional(),
+  body: z.string().min(1).max(MARKDOWN_BODY_MAX),
+  variant: z.enum(['default', 'compact']).optional(),
+});
+
+export const CHART_KINDS = ['bar', 'line', 'pie'] as const;
+
+export const chartSeriesSchema = z.object({
+  name: z.string().max(40),
+  values: z.array(z.number()),
+});
+
+export const chartBlockPropsSchema = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().max(120).optional(),
+    kind: z.enum(CHART_KINDS),
+    categories: z.array(z.string()).min(1).max(24),
+    series: z.array(chartSeriesSchema).min(1).max(8).optional(),
+    unit: z.string().max(16).optional(),
+  })
+  .refine(
+    (data) =>
+      (data.series ?? []).every((item) => item.values.length === data.categories.length),
+    { message: 'series.values.length must equal categories.length', path: ['series'] },
+  );
+
+export const STEPS_STATUSES = ['pending', 'active', 'done', 'error', 'skipped'] as const;
+
+export const stepsStepSchema = z.object({
+  id: z.string().optional(),
+  label: z.string().min(1).max(160),
+  description: z.string().max(300).optional(),
+  status: z.enum(STEPS_STATUSES).default('pending'),
+  durationLabel: z.string().max(40).optional(),
+});
+
+export const stepsBlockPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().max(120).optional(),
+  steps: z.array(stepsStepSchema).min(1).max(20),
+});
+
+const TABLE_ALIGN = ['left', 'center', 'right'] as const;
+
+export const tableColumnSchema = z.object({
+  key: z.string().min(1).max(40),
+  label: z.string().min(1).max(80),
+  align: z.enum(TABLE_ALIGN).optional(),
+});
+
+export const tableBlockPropsSchema = z.object({
+  id: z.string().optional(),
+  title: z.string().max(120).optional(),
+  columns: z.array(tableColumnSchema).min(1).max(12),
+  rows: z.array(z.record(z.string(), z.union([z.string(), z.number()]))).min(0).max(50),
+  emptyLabel: z.string().max(80).optional(),
+  caption: z.string().max(200).optional(),
+});

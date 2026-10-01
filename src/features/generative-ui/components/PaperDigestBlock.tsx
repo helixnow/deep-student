@@ -1,21 +1,11 @@
+import { paperDigestPropsSchema } from '../schema';
+export { paperDigestPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
-
-export const paperDigestPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().min(1).max(300),
-  authors: z.string().max(200).optional(),
-  venue: z.string().max(120).optional(),
-  year: z.number().int().min(1900).max(2100).optional(),
-  citationLabel: z.string().max(40).optional(),
-  citationCount: z.number().min(0).optional(),
-  keyFindings: z.array(z.string().min(1).max(300)).max(8).optional(),
-  abstractExcerpt: z.string().max(500).optional(),
-});
 
 export type PaperDigestBlockProps = z.infer<typeof paperDigestPropsSchema>;
 

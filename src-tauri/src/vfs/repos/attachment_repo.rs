@@ -1778,8 +1778,26 @@ impl VfsAttachmentRepo {
     ) -> VfsResult<Option<VfsAttachmentContentSource>> {
         let attachment = match Self::get_by_id_with_conn(conn, id)? {
             Some(a) => a,
-            None => return Ok(None),
+            None => {
+                // Sync deduplicates equal files under the local ID. JSON payloads
+                // retain the remote ID, so both preview and grading must follow
+                // the persisted alias before reporting an attachment as missing.
+                let canonical_id =
+                    crate::data_governance::sync::SyncManager::resolve_persisted_id_alias(
+                        conn, "files", id,
+                    )
+                    .map_err(|e| VfsError::Database(e.to_string()))?;
+                if canonical_id == id {
+                    return Ok(None);
+                }
+                match Self::get_by_id_with_conn(conn, &canonical_id)? {
+                    Some(a) => a,
+                    None => return Ok(None),
+                }
+            }
         };
+        // original_path fallbacks below must use the canonical file row as well.
+        let id = attachment.id.as_str();
 
         if let Some(resource_id) = &attachment.resource_id {
             // Inline 模式：从 resources.data 获取

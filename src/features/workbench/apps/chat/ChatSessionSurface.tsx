@@ -12,8 +12,7 @@
  * - StreamPreferencesProvider 为 React Context，逐窗独立。
  *
  * O16 窗口内体验（全部在适配层，零 legacy 改动）：
- * - 流式降频平滑：不可见降档经 useDeferredStreamPreset 延迟下档（瞬时遮挡不骤停），
- *   可见性回归立即回 balanced 全速补渲；
+ * - 隐藏窗口暂停纯视觉流式提交，store 保留全部内容，恢复可见后立即补齐；
  * - 缩放稳定锚点：useResizeScrollAnchor 在窗口几何变化时保持消息流距底距离，
  *   吸底不被顶飞、翻阅位置不漂移；
  * - 窄窗紧凑布局 + 焦点/输入隔离视觉：wb-chat-surface 容器查询与
@@ -42,9 +41,11 @@ export interface ChatSessionSurfaceProps {
   sessionId: string;
   /** 窗口是否为焦点（lifecycle === 'focused'）；驱动输入区焦点确认视觉 */
   isActive?: boolean;
-  /** 窗口是否可见（focused | visible）；false 时流式渲染降频 */
+  /** 窗口是否可见（focused | visible）；用于 preset 展示状态 */
   isVisible?: boolean;
-  /** scheduler 节流建议；>0 时可见窗也降 silky（拖拽/非焦点让帧） */
+  /** background 窗口暂停流式视觉提交；不暂停 store / adapter */
+  isSuspended?: boolean;
+  /** scheduler 节流建议；用于拖缩暂停及 preset 展示状态 */
   renderThrottleMs?: number;
   className?: string;
 }
@@ -57,6 +58,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
   sessionId,
   isActive = false,
   isVisible = true,
+  isSuspended = false,
   renderThrottleMs = 0,
   className,
 }) => {
@@ -75,10 +77,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
     activateSandboxOwner(sandboxOwnerKey);
   }, [activateSandboxOwner, sandboxOwnerKey]);
 
-  // 与 ChatV2Page 的 StreamPreferencesProvider preset="balanced" mode="blocked"
-  // 保持一致；不可见窗口延迟降档为 silky（commitIntervalMs 48ms），
-  // token 缓冲不丢，可见性回归立即切回 balanced 全速补渲。
-  // renderThrottleMs>0（拖拽活动 / 非焦点可见）立即 silky，让帧给跟手。
+  // preset 保留给调试 / profiler 展示；真正的隐藏流式暂停由 suspended 驱动。
   const preset = useDeferredStreamPreset(isVisible, renderThrottleMs);
 
   // 壳层拖/缩：同步挂 data-wb-render-paused（CSS 停动画）；流式另走 imperative 检查
@@ -88,7 +87,7 @@ export const ChatSessionSurface: React.FC<ChatSessionSurfaceProps> = ({
   useResizeScrollAnchor(rootRef);
 
   return (
-    <StreamPreferencesProvider preset={preset} mode="blocked">
+    <StreamPreferencesProvider preset={preset} mode="blocked" suspended={isSuspended}>
       <div
         ref={rootRef}
         data-wb-chat-session={sessionId}

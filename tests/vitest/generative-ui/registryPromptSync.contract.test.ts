@@ -30,9 +30,9 @@ describe('generativeUI registryPromptSync contract', () => {
     }
   });
 
-  it('blocks/index registers each type exactly once in source', () => {
+  it('shared schema metadata declares each rendered type exactly once', () => {
     const src = fs.readFileSync(
-      path.join(process.cwd(), 'src/features/generative-ui/blocks/index.ts'),
+      path.join(process.cwd(), 'src/features/generative-ui/blockSchemas.ts'),
       'utf8',
     );
     const matches = src.match(/type:\s*'([^']+)'/g) ?? [];

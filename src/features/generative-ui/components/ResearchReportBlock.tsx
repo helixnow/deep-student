@@ -1,6 +1,8 @@
+import { researchReportPropsSchema } from '../schema';
+export { researchReportPropsSchema } from '../schema';
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { cn } from '@/lib/utils';
 import { GenerativeMarkdownBody } from './GenerativeMarkdownBody';
 import {
@@ -8,13 +10,6 @@ import {
   RESEARCH_REPORT_CITATION_PATTERN,
 } from '../utils/parseResearchReportCitations';
 import { sanitizeGenerativeMarkdown } from '../utils/sanitizeGenerativeMarkdown';
-
-export const researchReportPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().max(200).optional(),
-  body: z.string().min(1).max(12000),
-  density: z.enum(['compact', 'normal']).optional().default('normal'),
-});
 
 export type ResearchReportBlockProps = z.infer<typeof researchReportPropsSchema>;
 

@@ -16,6 +16,44 @@ import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureF
 import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
 import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
+// The blocked renderer needs the shared token palette without loading FlowToken.
+import '../../styles/flowtoken-patched.css';
+
+// Keep the shared Prism grammar bundle behind a code-only boundary. Plain prose
+// and inline code never evaluate it, and completed blocks retain memoized output.
+const LazySyntaxHighlighter = React.lazy(() => import('react-syntax-highlighter/dist/esm/prism'));
+
+const HighlightContent: React.FC<{ children?: ReactNode }> = ({ children }) => <>{children}</>;
+
+const HighlightedCode = React.memo(function HighlightedCode({
+  children,
+  className,
+}: {
+  children: string;
+  className?: string;
+}) {
+  const language = className?.replace('language-', '').toLowerCase();
+  const hasLanguage = language && !['text', 'plain', 'plaintext'].includes(language);
+
+  // The code node belongs to this component, not the lazy fallback, so loading
+  // grammars, appending streamed text and ending the stream do not replace it.
+  return (
+    <code className={className}>
+      {hasLanguage ? (
+        <React.Suspense fallback={children}>
+          <LazySyntaxHighlighter
+            language={language}
+            useInlineStyles={false}
+            PreTag={HighlightContent}
+            CodeTag="span"
+          >
+            {children}
+          </LazySyntaxHighlighter>
+        </React.Suspense>
+      ) : children}
+    </code>
+  );
+});
 
 /**
  * OS 模式拖/缩/settle 手势期让路：mermaid 解析/渲染主线程开销大，
@@ -220,6 +258,18 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
 // ============================================================================
 // CodeBlock 主组件
 // ============================================================================
+
+/**
+ * 🚀 长会话性能：非流式消息的代码块容器启用渲染跳过（content-visibility）。
+ * 离屏代码块（Shiki/mermaid/KaTeX 重 DOM）不再参与每帧 layout/paint，
+ * 直渲染模式下流式冲刷的强制 layout 只覆盖可视区。contain-intrinsic-size
+ * 的 auto 前缀让浏览器记住上次渲染尺寸，未渲染时回落 220px。
+ * 流式中的消息不启用：活动内容必须真实参与吸底跟随的 layout。
+ */
+const IDLE_CODE_SHELL_STYLE: React.CSSProperties = {
+  contentVisibility: 'auto',
+  containIntrinsicSize: 'auto 220px',
+};
 
 export const CodeBlock: React.FC<CodeBlockProps> = ({
   children,
@@ -825,6 +875,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       header={header}
       stickyHeader
       bodyClassName="code-block-body-shell"
+      style={isStreaming ? undefined : IDLE_CODE_SHELL_STYLE}
     >
       {showRichRenderer && richRendererKind ? (
         <RichCodeRenderer kind={richRendererKind} source={codeContent} />
@@ -877,7 +928,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       ) : (
         <ScrollArea orientation="both" className="code-block-scroll-area">
           <pre className="code-block code-block-inner">
-            <code className={className}>{children}</code>
+            <HighlightedCode className={className}>{rawChildren}</HighlightedCode>
           </pre>
         </ScrollArea>
       )}

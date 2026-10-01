@@ -140,3 +140,89 @@ export function findMessageSearchMatches(
     return matches;
   });
 }
+
+/** Only searchable text crosses the worker boundary, never tool payloads. */
+export interface MessageSearchDocument {
+  messageId: string;
+  blockIds: readonly string[];
+}
+
+export interface MessageSearchUpdate {
+  messages?: MessageSearchDocument[];
+  blocks: Array<{ id: string; content: string }>;
+  removedBlockIds: string[];
+}
+
+export interface MessageSearchRequest extends MessageSearchUpdate {
+  requestId: number;
+  query: string;
+}
+
+export type MessageSearchResponse =
+  | { requestId: number; matches: MessageSearchMatch[] }
+  | { requestId: number; error: string };
+
+/**
+ * Search-lifetime index, shared by the worker and its unavailable-worker fallback.
+ * Keep the existing per-grapheme normalization: whole-string lowercasing changes
+ * context-sensitive characters such as Greek final sigma. Navigation only needs
+ * counts; source-offset allocation remains in findTextSearchOccurrences above.
+ */
+export function createMessageSearchIndex() {
+  let messages: MessageSearchDocument[] = [];
+  const blocks = new Map<string, {
+    content: string;
+    normalizedText: string;
+    query: string | null;
+    count: number;
+  }>();
+
+  return {
+    update(update: MessageSearchUpdate): void {
+      if (update.messages) messages = update.messages;
+      for (const id of update.removedBlockIds) blocks.delete(id);
+      for (const { id, content } of update.blocks) {
+        if (blocks.get(id)?.content === content) continue;
+        let normalizedText = '';
+        if (content.trim()) {
+          for (const segment of getSearchSourceSegments(content)) {
+            normalizedText += normalizeMessageSearchText(segment.value);
+          }
+        }
+        blocks.set(id, { content, normalizedText, query: null, count: 0 });
+      }
+    },
+
+    find(query: string): MessageSearchMatch[] {
+      // Match both normalizations in findMessageSearchMatches -> text helper.
+      const normalizedQuery = normalizeMessageSearchText(query.trim());
+      if (!normalizedQuery) return [];
+      const textQuery = normalizeMessageSearchText(normalizedQuery.trim());
+      if (!textQuery) return [];
+      const matches: MessageSearchMatch[] = [];
+      for (const message of messages) {
+        let occurrenceIndex = 0;
+        for (const blockId of message.blockIds) {
+          const block = blocks.get(blockId);
+          if (!block) continue;
+          if (block.query !== textQuery) {
+            let count = 0;
+            let searchStart = 0;
+            while (searchStart < block.normalizedText.length) {
+              const start = block.normalizedText.indexOf(textQuery, searchStart);
+              if (start < 0) break;
+              searchStart = start + textQuery.length;
+              count += 1;
+            }
+            block.query = textQuery;
+            block.count = count;
+          }
+          for (let i = 0; i < block.count; i += 1) {
+            matches.push({ messageId: message.messageId, occurrenceIndex: occurrenceIndex++ });
+          }
+        }
+      }
+      return matches;
+    },
+  };
+}

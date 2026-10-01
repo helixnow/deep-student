@@ -30,12 +30,12 @@ use futures::stream::{self, StreamExt};
 use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, OwnedSemaphorePermit, RwLock, Semaphore};
 use tokio::time::sleep;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
@@ -53,7 +53,7 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
     }
 }
 use crate::file_manager::FileManager;
-use crate::llm_manager::LLMManager;
+use crate::llm_manager::{LLMManager, MAX_OCR_CONCURRENCY};
 use crate::models::PdfOcrTextBlock;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
@@ -64,7 +64,7 @@ use crate::vfs::ocr_utils::{
     classify_pdf_content, has_valid_ocr_pages, has_valid_text, parse_ocr_pages_json, PdfContentKind,
 };
 use crate::vfs::repos::pdf_preview::{render_pdf_preview_with_progress, PdfPreviewConfig};
-use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo};
+use crate::vfs::repos::{VfsBlobRepo, VfsFileRepo, VfsIndexingConfigRepo};
 use crate::vfs::types::PdfPreviewJson;
 use crate::vfs::unit_builder::UnitBuildInput;
 
@@ -371,14 +371,57 @@ pub type PdfProcessingErrorEvent = MediaProcessingErrorEvent;
 // OCR 处理常量
 // ============================================================================
 
-/// OCR 最大并发数
-const MAX_OCR_CONCURRENCY: usize = 4;
 /// OCR 最大重试次数
 const MAX_OCR_RETRY_ATTEMPTS: usize = 3;
 /// 初始退避时间（毫秒）
 const INITIAL_BACKOFF_MS: u64 = 1000;
 /// 最大退避时间（毫秒）
 const MAX_BACKOFF_MS: u64 = 20_000;
+
+/// Waiting for bounded work must not keep cancelled files queued behind OCR.
+async fn acquire_processing_slot(
+    semaphore: Arc<Semaphore>,
+    cancel_token: &CancellationToken,
+) -> VfsResult<Option<OwnedSemaphorePermit>> {
+    tokio::select! {
+        biased;
+        _ = cancel_token.cancelled() => Ok(None),
+        permit = semaphore.acquire_owned() => permit
+            .map(Some)
+            .map_err(|error| VfsError::Other(format!("Processing semaphore closed: {error}"))),
+    }
+}
+
+/// Read and transcode one image on the blocking pool. Acquire capacity before
+/// reading/decoding so parallel files cannot allocate unbounded decoded images.
+async fn compress_image_path(
+    file_manager: Arc<FileManager>,
+    semaphore: Arc<Semaphore>,
+    path: PathBuf,
+    cancel_token: &CancellationToken,
+) -> VfsResult<Option<(usize, Vec<u8>)>> {
+    let Some(permit) = acquire_processing_slot(semaphore, cancel_token).await? else {
+        return Ok(None);
+    };
+    let cancel_token = cancel_token.clone();
+    tokio::task::spawn_blocking(move || {
+        // The permit belongs to the closure: dropping/aborting the async waiter
+        // must not release CPU capacity while an already-started codec still runs.
+        let _permit = permit;
+        if cancel_token.is_cancelled() {
+            return Ok(None);
+        }
+        let image_data = std::fs::read(path)?;
+        let original_size = image_data.len();
+        let compressed = file_manager.adjust_image_quality_bytes(image_data, "low");
+        if cancel_token.is_cancelled() {
+            return Ok(None);
+        }
+        Ok(Some((original_size, compressed)))
+    })
+    .await
+    .map_err(|error| VfsError::Other(format!("Image compression task failed: {error}")))?
+}
 
 // ============================================================================
 // OCR 结果类型
@@ -456,6 +499,10 @@ pub struct PdfProcessingService {
     llm_manager: Arc<LLMManager>,
     /// 文件管理器（用于图片路径解析）
     file_manager: Arc<FileManager>,
+    /// 跨文件共享 OCR 许可，不再以数据库连接池作为意外限流。
+    ocr_semaphore: Arc<Semaphore>,
+    /// CPU 编解码独立限额；不会因网络 OCR 等待而占住转码容量。
+    image_processing_semaphore: Arc<Semaphore>,
     /// 运行中的任务追踪：file_id -> (CancellationToken, generation)
     /// ★ P0 修复：增加 generation 标识，避免 cancel+restart 竞态条件
     running_tasks: DashMap<String, (CancellationToken, u64)>,
@@ -478,11 +525,18 @@ impl PdfProcessingService {
         llm_manager: Arc<LLMManager>,
         file_manager: Arc<FileManager>,
     ) -> Self {
+        let ocr_semaphore = llm_manager.ocr_semaphore();
         Self {
             db,
             settings_db,
             llm_manager,
             file_manager,
+            ocr_semaphore,
+            image_processing_semaphore: Arc::new(Semaphore::new(
+                std::thread::available_parallelism()
+                    .map_or(1, usize::from)
+                    .min(MAX_OCR_CONCURRENCY),
+            )),
             running_tasks: DashMap::new(),
             generation_counter: AtomicU64::new(0),
             app_handle: RwLock::new(None),
@@ -779,6 +833,7 @@ impl PdfProcessingService {
                 },
             )
             .map_err(|e| VfsError::Database(format!("Failed to get file info: {}", e)))?;
+        drop(conn);
 
         let total_pages = page_count.unwrap_or(0) as usize;
         let ocr_config = self.load_ocr_config();
@@ -824,14 +879,16 @@ impl PdfProcessingService {
             }
 
             // 获取 preview_json
-            let preview_json: Option<String> = conn
-                .query_row(
+            let preview_json: Option<String> = {
+                let conn = self.db.get_conn_safe()?;
+                conn.query_row(
                     "SELECT preview_json FROM files WHERE id = ?1",
                     params![file_id],
                     |row| row.get(0),
                 )
                 .optional()
-                .map_err(|e| VfsError::Database(format!("Failed to get preview_json: {}", e)))?;
+                .map_err(|e| VfsError::Database(format!("Failed to get preview_json: {}", e)))?
+            };
 
             if let Some(ref pj) = preview_json {
                 // 检查是否已经有压缩版本
@@ -1031,16 +1088,16 @@ impl PdfProcessingService {
                 .await;
 
                 // 获取 preview_json 用于 OCR 处理（可能已更新了压缩版本）
-                let preview_json: Option<String> = conn
-                    .query_row(
+                let preview_json: Option<String> = {
+                    let conn = self.db.get_conn_safe()?;
+                    conn.query_row(
                         "SELECT preview_json FROM files WHERE id = ?1",
                         params![file_id],
                         |row| row.get(0),
                     )
                     .optional()
-                    .map_err(|e| {
-                        VfsError::Database(format!("Failed to get preview_json: {}", e))
-                    })?;
+                    .map_err(|e| VfsError::Database(format!("Failed to get preview_json: {}", e)))?
+                };
 
                 if let Some(ref pj) = preview_json {
                     // 执行 OCR 处理（复用预渲染图片）
@@ -1271,6 +1328,7 @@ impl PdfProcessingService {
                         .is_some()
             })
             .unwrap_or(false);
+        drop(conn);
 
         // 图片上传后原图已存在 resources 表，image 模式立即就绪
         // 压缩是优化（减小 base64 体积），不应阻塞用户发送
@@ -1346,7 +1404,14 @@ impl PdfProcessingService {
             if compression_config.enabled {
                 if let Some(ref bh) = blob_hash {
                     match self
-                        .stage_image_compression(file_id, bh, file_size, &compression_config)
+                        .stage_image_compression(
+                            file_id,
+                            bh,
+                            file_size,
+                            &compression_config,
+                            &cancel_token,
+                            generation,
+                        )
                         .await
                     {
                         Ok(_compressed) => {
@@ -1377,8 +1442,10 @@ impl PdfProcessingService {
                     }
                 } else {
                     // 没有 blob_hash，检查是否有 inline 内容
-                    let base64_content =
-                        VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?;
+                    let base64_content = {
+                        let conn = self.db.get_conn_safe()?;
+                        VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?
+                    };
                     if base64_content.is_some() {
                         if !ready_modes.contains(&"image".to_string()) {
                             ready_modes.push("image".to_string());
@@ -1395,7 +1462,11 @@ impl PdfProcessingService {
                 let has_content = if blob_hash.is_some() {
                     true
                 } else {
-                    VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?.is_some()
+                    {
+                        let conn = self.db.get_conn_safe()?;
+                        VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?
+                    }
+                    .is_some()
                 };
                 if has_content && !ready_modes.contains(&"image".to_string()) {
                     ready_modes.push("image".to_string());
@@ -1511,7 +1582,10 @@ impl PdfProcessingService {
                 }
             } else {
                 let blobs_dir = self.db.blobs_dir();
-                let base64_content = VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?;
+                let base64_content = {
+                    let conn = self.db.get_conn_safe()?;
+                    VfsFileRepo::get_content_with_conn(&conn, blobs_dir, file_id)?
+                };
                 if let Some(data) = base64_content {
                     match self
                         .stage_image_ocr_with_base64(file_id, data, mt, &cancel_token, generation)
@@ -1687,6 +1761,8 @@ impl PdfProcessingService {
         blob_hash: &str,
         _file_size: Option<i64>,
         _config: &ImageCompressionConfig,
+        cancel_token: &CancellationToken,
+        generation: u64,
     ) -> VfsResult<bool> {
         // ★ P0 改造：移除大小阈值检查，对所有图片都进行压缩
         // 原因：发送时不再压缩，必须在预处理阶段完成
@@ -1736,37 +1812,40 @@ impl PdfProcessingService {
                 id: blob_hash.to_string(),
             })?;
 
-        // 读取原始图片
-        let image_data = tokio::fs::read(&blob_path).await?;
-        let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
-
-        // ★ P0 改造：强制使用 `low` 质量进行压缩
-        // 与发送时的默认策略保持一致（多图/PDF 场景）
-        let compressed_base64 = self
-            .file_manager
-            .adjust_image_quality_base64(&base64_data, "low");
-
-        let original_size = base64_data.len();
-        let compressed_size = compressed_base64.len();
+        drop(conn);
+        let Some((original_size, compressed_data)) = compress_image_path(
+            Arc::clone(&self.file_manager),
+            Arc::clone(&self.image_processing_semaphore),
+            blob_path,
+            cancel_token,
+        )
+        .await?
+        else {
+            return Ok(false);
+        };
+        let compressed_size = compressed_data.len();
+        let conn = self.db.get_conn_safe()?;
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "image_compression:save",
+            )
+        {
+            return Ok(false);
+        }
 
         // 如果压缩后没有显著减少（<10%），使用原始图片但标记为"已压缩"
         // 这样发送时就知道不需要再压缩
-        let (_final_data, final_hash) = if compressed_size >= original_size * 9 / 10 {
+        let final_hash = if compressed_size >= original_size * 9 / 10 {
             info!(
                 "[MediaProcessingService] Compression not effective for file {}: {} -> {} bytes, using original",
                 file_id, original_size, compressed_size
             );
             // 使用原始数据，但仍然标记 compressed_blob_hash 为原始 hash
             // 这样 VFS 解析时知道已经处理过了
-            (image_data.clone(), blob_hash.to_string())
+            blob_hash.to_string()
         } else {
-            // 解码压缩后的数据
-            let compressed_data = base64::engine::general_purpose::STANDARD
-                .decode(&compressed_base64)
-                .map_err(|e| {
-                    VfsError::Other(format!("Failed to decode compressed image: {}", e))
-                })?;
-
             // 计算压缩后的哈希
             let mut hasher = Sha256::new();
             hasher.update(&compressed_data);
@@ -1792,7 +1871,7 @@ impl PdfProcessingService {
                 compressed_hash
             );
 
-            (compressed_data, compressed_hash)
+            compressed_hash
         };
 
         // 更新文件记录，标记压缩已完成
@@ -1874,15 +1953,14 @@ impl PdfProcessingService {
         cancel_token: &CancellationToken,
         generation: u64,
     ) -> VfsResult<()> {
-        use base64::Engine;
         use sha2::{Digest, Sha256};
 
         let mut preview: PdfPreviewJson = serde_json::from_str(preview_json)
             .map_err(|e| VfsError::Serialization(format!("Failed to parse preview_json: {}", e)))?;
 
+        let app_handle = self.get_app_handle().await;
         let conn = self.db.get_conn_safe()?;
         let blobs_dir = self.db.blobs_dir();
-        let app_handle = self.get_app_handle().await;
         let has_text: bool = conn
             .query_row(
                 "SELECT extracted_text IS NOT NULL FROM files WHERE id = ?1",
@@ -1891,6 +1969,7 @@ impl PdfProcessingService {
             )
             .unwrap_or(0)
             != 0;
+        drop(conn);
         let mut ready_modes = Vec::new();
         if has_text {
             ready_modes.push("text".to_string());
@@ -1913,6 +1992,7 @@ impl PdfProcessingService {
             // 旧实现只看 hash 是否已设，而检测端 check_pdf_pages_need_compression
             // 还会校验物理文件 → hash 已设但 blob 丢失（历史误清扫/磁盘损坏）时
             // 每次启动都被标记"需要压缩"却永远不被修复，死循环不自愈。
+            let conn = self.db.get_conn_safe()?;
             let mut stale_compressed_hash: Option<String> = None;
             if let Some(ref existing) = page.compressed_blob_hash {
                 if !existing.trim().is_empty()
@@ -1938,27 +2018,34 @@ impl PdfProcessingService {
                     }
                 };
 
-            // 读取原始图片
-            let image_data = match tokio::fs::read(&blob_path).await {
-                Ok(data) => data,
-                Err(e) => {
+            drop(conn);
+            let (original_size, compressed_data) = match compress_image_path(
+                Arc::clone(&self.file_manager),
+                Arc::clone(&self.image_processing_semaphore),
+                blob_path,
+                cancel_token,
+            )
+            .await
+            {
+                Ok(Some(compressed)) => compressed,
+                Ok(None) => break,
+                Err(error) => {
                     warn!(
-                        "[PdfProcessingService] Failed to read page {} blob: {}",
-                        index, e
+                        "[PdfProcessingService] Failed to compress page {}: {}",
+                        index, error
                     );
                     continue;
                 }
             };
-
-            let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
-            let original_size = base64_data.len();
-
-            // 使用 low 质量进行压缩
-            let compressed_base64 = self
-                .file_manager
-                .adjust_image_quality_base64(&base64_data, "low");
-
-            let compressed_size = compressed_base64.len();
+            let compressed_size = compressed_data.len();
+            let conn = self.db.get_conn_safe()?;
+            if cancel_token.is_cancelled() {
+                break;
+            }
+            if self.skip_stale_task_side_effects(file_id, Some(generation), "page_compression:save")
+            {
+                return Ok(());
+            }
 
             // 检查压缩效果
             if compressed_size >= original_size * 9 / 10 {
@@ -1970,16 +2057,6 @@ impl PdfProcessingService {
                     index
                 );
             } else {
-                // 解码并存储压缩后的图片
-                let compressed_data = base64::engine::general_purpose::STANDARD
-                    .decode(&compressed_base64)
-                    .map_err(|e| {
-                        VfsError::Other(format!(
-                            "Failed to decode compressed page {}: {}",
-                            index, e
-                        ))
-                    })?;
-
                 // 计算压缩后的哈希
                 let mut hasher = Sha256::new();
                 hasher.update(&compressed_data);
@@ -2031,6 +2108,8 @@ impl PdfProcessingService {
                 }
             }
 
+            drop(conn);
+
             // 发送进度事件（统一事件）
             // ★ P1-1 修复：压缩范围 5%-20%
             if app_handle.is_some() {
@@ -2057,6 +2136,11 @@ impl PdfProcessingService {
         let updated_preview_json = serde_json::to_string(&preview)
             .map_err(|e| VfsError::Other(format!("Failed to serialize preview_json: {}", e)))?;
 
+        let conn = self.db.get_conn_safe()?;
+        if self.skip_stale_task_side_effects(file_id, Some(generation), "page_compression:preview")
+        {
+            return Ok(());
+        }
         conn.execute(
             "UPDATE files SET preview_json = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![updated_preview_json, file_id],
@@ -2089,6 +2173,8 @@ impl PdfProcessingService {
                 resource_type: "Blob".to_string(),
                 id: blob_hash.to_string(),
             })?;
+
+        drop(conn);
 
         // 读取图片并转为 base64
         let image_data = tokio::fs::read(&blob_path).await?;
@@ -2130,10 +2216,17 @@ impl PdfProcessingService {
             )
             .optional()?
             .flatten();
+        drop(conn);
         info!(
             "[OCR_DIAG] file->resource mapping: file_id={} -> resource_id={:?}",
             file_id, resource_id_check
         );
+
+        let Some(permit) =
+            acquire_processing_slot(Arc::clone(&self.ocr_semaphore), cancel_token).await?
+        else {
+            return Ok(String::new());
+        };
 
         // 调用 OCR API
         use crate::llm_manager::ImagePayload;
@@ -2161,6 +2254,7 @@ impl PdfProcessingService {
                 );
                 VfsError::Other(format!("OCR API call failed: {}", e))
             })?;
+        drop(permit);
 
         if cancel_token.is_cancelled()
             || self.skip_stale_task_side_effects(
@@ -2193,6 +2287,8 @@ impl PdfProcessingService {
             );
             return Ok(ocr_text);
         }
+
+        let conn = self.db.get_conn_safe()?;
 
         // 存储 OCR 结果到关联的 resource.ocr_text
         let rows_affected = conn.execute(
@@ -2851,6 +2947,16 @@ impl PdfProcessingService {
             return Ok(());
         }
 
+        // The upload pipeline is automatic indexing, so honor the same setting
+        // as the background indexer before it can trigger fallback OCR.
+        if !VfsIndexingConfigRepo::get_bool(&self.db, "indexing.enabled", true)? {
+            info!(
+                "[PdfProcessingService] Automatic vector indexing disabled for file: {}",
+                file_id
+            );
+            return Ok(());
+        }
+
         info!(
             "[PdfProcessingService] Starting vector indexing for file: {}",
             file_id
@@ -3137,11 +3243,13 @@ impl PdfProcessingService {
         cancel_token: &CancellationToken,
         generation: u64,
     ) -> VfsResult<String> {
-        if self.skip_stale_task_side_effects(
-            file_id,
-            Some(generation),
-            "stage_ocr_processing:start",
-        ) {
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "stage_ocr_processing:start",
+            )
+        {
             return Ok("{}".to_string());
         }
 
@@ -3191,7 +3299,7 @@ impl PdfProcessingService {
         let completed_counter = Arc::new(AtomicUsize::new(0));
         let failed_pages = Arc::new(Mutex::new(Vec::<(usize, String)>::new()));
         let all_results = Arc::new(Mutex::new(Vec::<OcrPageResult>::new()));
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(MAX_OCR_CONCURRENCY));
+        let semaphore = Arc::clone(&self.ocr_semaphore);
 
         // 发送初始进度
         // ★ P1-1 修复：OCR 范围 20%-75%
@@ -3240,44 +3348,32 @@ impl PdfProcessingService {
                 let generation_for_task = generation;
 
                 async move {
-                    // ★ P0 修复：正确处理信号量获取错误，避免 panic
-                    let _permit = match semaphore.acquire().await {
-                        Ok(permit) => permit,
-                        Err(e) => {
-                            error!("[PdfProcessingService] Failed to acquire semaphore: {}", e);
-                            failed_pages.lock().await.push((page_index, format!("Semaphore error: {}", e)));
+                    let permit = match acquire_processing_slot(semaphore, &cancel_token).await {
+                        Ok(Some(permit)) => permit,
+                        Ok(None) => return,
+                        Err(error) => {
+                            failed_pages.lock().await.push((page_index, error.to_string()));
                             return;
                         }
                     };
 
-                    // 检查取消
                     if cancel_token.is_cancelled() {
                         return;
                     }
 
-                    // 获取 blob 文件路径
-                    let conn = match db.get_conn_safe() {
-                        Ok(c) => c,
-                        Err(e) => {
-                            failed_pages.lock().await.push((page_index, e.to_string()));
-                            return;
-                        }
-                    };
-
-                    let blob_path = match VfsBlobRepo::get_blob_path_with_conn(
-                        &conn,
-                        &blobs_dir,
-                        &blob_hash,
-                    ) {
-                        Ok(Some(path)) => path,
-                        Ok(None) => {
-                            let err = format!("Blob not found: {}", blob_hash);
-                            error!("[PdfProcessingService] {}", err);
-                            failed_pages.lock().await.push((page_index, err));
-                            return;
-                        }
-                        Err(e) => {
-                            failed_pages.lock().await.push((page_index, e.to_string()));
+                    // Return an owned path before any error reporting/network await.
+                    // The connection is dropped on success, missing blobs and query errors.
+                    let blob_path_result = (|| -> Result<_, String> {
+                        let conn = db.get_conn_safe().map_err(|error| error.to_string())?;
+                        VfsBlobRepo::get_blob_path_with_conn(&conn, &blobs_dir, &blob_hash)
+                            .map_err(|error| error.to_string())?
+                            .ok_or_else(|| format!("Blob not found: {}", blob_hash))
+                    })();
+                    let blob_path = match blob_path_result {
+                        Ok(path) => path,
+                        Err(error) => {
+                            error!("[PdfProcessingService] {}", error);
+                            failed_pages.lock().await.push((page_index, error));
                             return;
                         }
                     };
@@ -3291,6 +3387,7 @@ impl PdfProcessingService {
                         &cancel_token,
                     )
                     .await;
+                    drop(permit);
 
                     match ocr_result {
                         Ok(blocks) => {
@@ -3343,6 +3440,18 @@ impl PdfProcessingService {
             .for_each_concurrent(MAX_OCR_CONCURRENCY, |task| task)
             .await;
 
+        // Cancelled permit waiters produce no page results. Do not persist that
+        // empty aggregate (or results belonging to a replaced pipeline).
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(
+                file_id,
+                Some(generation),
+                "stage_ocr_processing:after_pages",
+            )
+        {
+            return Ok("{}".to_string());
+        }
+
         // 6. 检查结果
         let failed = failed_pages.lock().await;
         let mut results = all_results.lock().await;
@@ -3392,8 +3501,12 @@ impl PdfProcessingService {
                 .collect::<Vec<_>>(),
             1,
         ) && success_rate >= 0.5;
-        self.update_file_ocr(file_id, &ocr_json_str, ocr_usable)
-            .await?;
+        if !self
+            .update_file_ocr(file_id, &ocr_json_str, ocr_usable, cancel_token, generation)
+            .await?
+        {
+            return Ok("{}".to_string());
+        }
 
         // 同步内存中的 ready_modes
         if ocr_usable {
@@ -3496,7 +3609,9 @@ impl PdfProcessingService {
         file_id: &str,
         ocr_json: &str,
         ocr_usable: bool,
-    ) -> VfsResult<()> {
+        cancel_token: &CancellationToken,
+        generation: u64,
+    ) -> VfsResult<bool> {
         // ★ P1-4 修复：带 busy-retry 的事务开始
         // 并发处理多文件时 BEGIN IMMEDIATE 可能因 SQLITE_BUSY 失败
         // 连接在循环内获取，避免 sleep 期间持有空闲连接导致连接池饥饿
@@ -3504,6 +3619,15 @@ impl PdfProcessingService {
             let max_retries = 3u32;
             let mut attempt = 0u32;
             loop {
+                if cancel_token.is_cancelled()
+                    || self.skip_stale_task_side_effects(
+                        file_id,
+                        Some(generation),
+                        "update_file_ocr:begin",
+                    )
+                {
+                    return Ok(false);
+                }
                 let conn = self.db.get_conn_safe()?;
                 match conn.execute("BEGIN IMMEDIATE", []) {
                     Ok(_) => break conn,
@@ -3535,6 +3659,15 @@ impl PdfProcessingService {
                 }
             }
         };
+
+        // Acquiring the connection/write lock may have waited while cancellation
+        // or a replacement pipeline invalidated this result. Recheck before SQL.
+        if cancel_token.is_cancelled()
+            || self.skip_stale_task_side_effects(file_id, Some(generation), "update_file_ocr:save")
+        {
+            conn.execute("ROLLBACK", [])?;
+            return Ok(false);
+        }
 
         let result = (|| -> VfsResult<()> {
             // 1. 更新 OCR 数据
@@ -3586,7 +3719,7 @@ impl PdfProcessingService {
                     "[PdfProcessingService] Updated OCR result for file: {} (ocr_usable={})",
                     file_id, ocr_usable
                 );
-                Ok(())
+                Ok(true)
             }
             Err(e) => {
                 let _ = conn.execute("ROLLBACK", []);
@@ -3848,6 +3981,64 @@ impl Ord for ProcessingStage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn cancelled_compression_does_not_read_or_decode_the_file() {
+        let token = CancellationToken::new();
+        token.cancel();
+        let result = compress_image_path(
+            Arc::new(FileManager::new(PathBuf::new()).unwrap()),
+            Arc::new(Semaphore::new(1)),
+            PathBuf::from("this-image-must-not-be-read.png"),
+            &token,
+        )
+        .await
+        .unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn processing_slots_are_shared_and_waits_are_cancellable() {
+        let slots = Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY));
+        let token = CancellationToken::new();
+        let mut active = Vec::new();
+        for _ in 0..MAX_OCR_CONCURRENCY {
+            active.push(
+                acquire_processing_slot(Arc::clone(&slots), &token)
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        assert_eq!(slots.available_permits(), 0);
+        let cancelled = CancellationToken::new();
+        cancelled.cancel();
+        assert!(tokio::time::timeout(
+            Duration::from_millis(100),
+            acquire_processing_slot(Arc::clone(&slots), &cancelled),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .is_none());
+        active.pop();
+        assert!(acquire_processing_slot(Arc::clone(&slots), &token)
+            .await
+            .unwrap()
+            .is_some());
+    }
+
+    #[tokio::test]
+    async fn cancelled_processing_does_not_consume_a_free_slot() {
+        let slots = Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY));
+        let token = CancellationToken::new();
+        token.cancel();
+        assert!(acquire_processing_slot(Arc::clone(&slots), &token)
+            .await
+            .unwrap()
+            .is_none());
+        assert_eq!(slots.available_permits(), MAX_OCR_CONCURRENCY);
+    }
 
     #[test]
     fn test_processing_stage_as_str() {

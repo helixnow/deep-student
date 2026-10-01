@@ -757,6 +757,7 @@ fn default_min_reader_version() -> u32 {
 }
 
 /// 同步管理器
+#[derive(Clone)]
 pub struct SyncManager {
     /// 本地设备 ID
     device_id: String,
@@ -787,8 +788,9 @@ pub struct SyncManager {
     /// 所有清单 payload 与文件级对象共用会话密钥；解密对端对象时按容器头
     /// salt 缓存派生结果。
     #[cfg(feature = "data_governance")]
-    file_cipher:
+    file_cipher: std::sync::Arc<
         std::sync::Mutex<Option<std::sync::Arc<crate::crypto::backup_crypto::FileCipherSession>>>,
+    >,
 }
 
 impl SyncManager {
@@ -799,7 +801,7 @@ impl SyncManager {
             #[cfg(feature = "data_governance")]
             encryption_password: None,
             #[cfg(feature = "data_governance")]
-            file_cipher: std::sync::Mutex::new(None),
+            file_cipher: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -812,7 +814,7 @@ impl SyncManager {
         Self {
             device_id: crate::cloud_storage::normalize_device_id(&device_id),
             encryption_password: password,
-            file_cipher: std::sync::Mutex::new(None),
+            file_cipher: std::sync::Arc::new(std::sync::Mutex::new(None)),
         }
     }
 
@@ -5478,6 +5480,42 @@ impl SyncManager {
         table_name: &str,
         record_id: &str,
     ) -> Result<String, SyncError> {
+        Self::resolve_alias_with_lookup(table_name, record_id, |current| {
+            Ok(aliases
+                .get(&(table_name.to_string(), current.to_string()))
+                .cloned())
+        })
+    }
+
+    /// Resolve IDs embedded in persisted payloads that cannot use SQL foreign-key
+    /// remapping (for example, attachment IDs in an image-answer envelope).
+    /// This lookup does not create sync tables or load unrelated alias records.
+    pub(crate) fn resolve_persisted_id_alias(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+    ) -> Result<String, SyncError> {
+        if !Self::table_exists_for_snapshot(conn, "__sync_id_aliases")? {
+            return Ok(record_id.to_string());
+        }
+        let mut stmt = conn
+            .prepare_cached(
+                "SELECT canonical_id FROM __sync_id_aliases
+                 WHERE table_name = ?1 AND remote_id = ?2",
+            )
+            .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))?;
+        Self::resolve_alias_with_lookup(table_name, record_id, |current| {
+            stmt.query_row(params![table_name, current], |row| row.get(0))
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))
+        })
+    }
+
+    fn resolve_alias_with_lookup(
+        table_name: &str,
+        record_id: &str,
+        mut lookup: impl FnMut(&str) -> Result<Option<String>, SyncError>,
+    ) -> Result<String, SyncError> {
         let mut current = record_id.to_string();
         let mut seen = HashSet::new();
         loop {
@@ -5489,8 +5527,8 @@ impl SyncManager {
                 );
                 return Ok(record_id.to_string());
             }
-            match aliases.get(&(table_name.to_string(), current.clone())) {
-                Some(next) => current = next.clone(),
+            match lookup(&current)? {
+                Some(next) => current = next,
                 None => return Ok(current),
             }
         }
@@ -9782,28 +9820,38 @@ impl SyncManager {
     ///
     /// 临时文件放系统临时目录（drop 自动清理），避免污染被扫描的数据目录。
     #[cfg(feature = "data_governance")]
-    fn encrypt_upload_object(
+    async fn encrypt_upload_object(
         &self,
         path: &std::path::Path,
     ) -> Result<Option<(tempfile::TempPath, String, u64)>, SyncError> {
-        let Some(cipher) = self.file_cipher()? else {
+        if !self.encryption_enabled() {
             return Ok(None);
-        };
-        let tmp = tempfile::Builder::new()
-            .prefix("dsbk-up-")
-            .suffix(".tmp")
-            .tempfile()
-            .map_err(|e| SyncError::Database(format!("创建加密临时文件失败: {}", e)))?
-            .into_temp_path();
-        cipher
-            .encrypt_file(path, &tmp)
-            .map_err(|e| SyncError::Database(format!("加密上传对象失败 {:?}: {}", path, e)))?;
-        let cipher_sha256 = crate::backup_common::calculate_file_hash(&tmp)
-            .map_err(|e| SyncError::Database(format!("计算密文哈希失败: {}", e)))?;
-        let cipher_size = std::fs::metadata(&tmp)
-            .map(|m| m.len())
-            .map_err(|e| SyncError::Database(format!("读取密文大小失败: {}", e)))?;
-        Ok(Some((tmp, cipher_sha256, cipher_size)))
+        }
+        let manager = self.clone();
+        let path = path.to_path_buf();
+        // 每个文件完成后才继续原串行上传；首次 KDF、流式加密与哈希共用一个阻塞单元。
+        tokio::task::spawn_blocking(move || {
+            let Some(cipher) = manager.file_cipher()? else {
+                return Ok(None);
+            };
+            let tmp = tempfile::Builder::new()
+                .prefix("dsbk-up-")
+                .suffix(".tmp")
+                .tempfile()
+                .map_err(|e| SyncError::Database(format!("创建加密临时文件失败: {}", e)))?
+                .into_temp_path();
+            cipher
+                .encrypt_file(&path, &tmp)
+                .map_err(|e| SyncError::Database(format!("加密上传对象失败 {:?}: {}", path, e)))?;
+            let cipher_sha256 = crate::backup_common::calculate_file_hash(&tmp)
+                .map_err(|e| SyncError::Database(format!("计算密文哈希失败: {}", e)))?;
+            let cipher_size = std::fs::metadata(&tmp)
+                .map(|m| m.len())
+                .map_err(|e| SyncError::Database(format!("读取密文大小失败: {}", e)))?;
+            Ok(Some((tmp, cipher_sha256, cipher_size)))
+        })
+        .await
+        .map_err(|e| SyncError::Database(format!("加密上传任务异常退出: {}", e)))?
     }
 
     /// [R07-file-e2ee] 选择实际上传的文件与要写入清单的密文元数据。
@@ -9885,7 +9933,11 @@ impl SyncManager {
             return Ok(());
         };
 
-        let Some(cipher) = self.file_cipher()? else {
+        let manager = self.clone();
+        let cipher = tokio::task::spawn_blocking(move || manager.file_cipher())
+            .await
+            .map_err(|e| SyncError::Database(format!("同步加密会话任务异常退出: {}", e)))??;
+        let Some(cipher) = cipher else {
             return Err(SyncError::Database(crate::cloud_storage::sync_e2ee_error(
                 crate::cloud_storage::SYNC_E2EE_PASSWORD_REQUIRED_CODE,
                 format!(
@@ -9916,28 +9968,41 @@ impl SyncManager {
         .await
         .map_err(|e| SyncError::Network(format!("下载加密对象 {label} 失败: {e}")))?;
 
-        // 解密到 dest 同目录临时文件，成功且明文哈希匹配后才原子替换 dest。
-        let plain_tmp = tempfile::Builder::new()
-            .prefix(".dsbk-pt-")
-            .suffix(".tmp")
-            .tempfile_in(parent)
-            .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
-            .into_temp_path();
-        cipher.decrypt_file(&cipher_part, &plain_tmp).map_err(|e| {
-            SyncError::Database(crate::cloud_storage::sync_e2ee_error(
-                crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
-                format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"),
-            ))
-        })?;
-        if let Some(expected_plain) = expected_plain_sha256 {
-            let actual = crate::backup_common::calculate_file_hash(&plain_tmp)
-                .map_err(|e| SyncError::Database(format!("计算 {label} 明文哈希失败: {e}")))?;
-            if actual != expected_plain {
-                return Err(SyncError::Database(format!(
-                    "{label} 解密后明文哈希不匹配: 期望 {expected_plain}, 实际 {actual}"
-                )));
+        // 对端盐的 KDF、流式解密与哈希在同一阻塞单元；失败不改已有目标。
+        let parent = parent.to_path_buf();
+        let expected_plain_sha256 = expected_plain_sha256.map(str::to_owned);
+        let task_label = label.to_owned();
+        let cipher_for_task = cipher_part.clone();
+        let plain_tmp = tokio::task::spawn_blocking(move || {
+            let label = task_label;
+            let plain_tmp = tempfile::Builder::new()
+                .prefix(".dsbk-pt-")
+                .suffix(".tmp")
+                .tempfile_in(parent)
+                .map_err(|e| SyncError::Database(format!("创建解密临时文件失败: {}", e)))?
+                .into_temp_path();
+            cipher
+                .decrypt_file(&cipher_for_task, &plain_tmp)
+                .map_err(|e| {
+                    SyncError::Database(crate::cloud_storage::sync_e2ee_error(
+                        crate::cloud_storage::SYNC_E2EE_WRONG_PASSWORD_CODE,
+                        format!("解密 {label} 失败（密码不一致或数据损坏）: {e}"),
+                    ))
+                })?;
+            if let Some(expected_plain) = expected_plain_sha256 {
+                let actual = crate::backup_common::calculate_file_hash(&plain_tmp)
+                    .map_err(|e| SyncError::Database(format!("计算 {label} 明文哈希失败: {e}")))?;
+                if actual != expected_plain {
+                    return Err(SyncError::Database(format!(
+                        "{label} 解密后明文哈希不匹配: 期望 {expected_plain}, 实际 {actual}"
+                    )));
+                }
             }
-        }
+            Ok::<_, SyncError>(plain_tmp)
+        })
+        .await
+        .map_err(|e| SyncError::Database(format!("解密下载任务异常退出: {}", e)))??;
+        // 提交留在持有同步许可的调用方：future 被取消后，阻塞任务只能产生临时文件。
         plain_tmp
             .persist(dest)
             .map_err(|e| SyncError::Database(format!("替换 {label} 目标文件失败: {e}")))?;
@@ -10309,7 +10374,7 @@ impl SyncManager {
                         ws_id,
                         snapshot_hash
                     );
-                    let encrypted = match self.encrypt_upload_object(&snapshot) {
+                    let encrypted = match self.encrypt_upload_object(&snapshot).await {
                         Ok(encrypted) => encrypted,
                         Err(e) => {
                             let _ = std::fs::remove_file(&snapshot);
@@ -10722,7 +10787,7 @@ impl SyncManager {
 
                 // [R07-file-e2ee] 加密开启时上传 DSBK 密文（对象 key 仍是明文
                 // hash 路径，保留内容寻址去重）；密文哈希/大小写入清单。
-                let encrypted = match self.encrypt_upload_object(path) {
+                let encrypted = match self.encrypt_upload_object(path).await {
                     Ok(encrypted) => encrypted,
                     Err(e) => {
                         tracing::error!("[sync] blob 加密失败: {}: {}", hash, e);
@@ -11293,7 +11358,7 @@ impl SyncManager {
                 // [R07-file-e2ee] 对象 key 保持明文哈希（内容寻址去重）；加密开启
                 // 时上传 DSBK 密文并把密文哈希/大小写入清单。
                 let remote_key = format!("{}/{}", Self::ASSET_OBJECTS_PREFIX, sha256);
-                let encrypted = match self.encrypt_upload_object(path) {
+                let encrypted = match self.encrypt_upload_object(path).await {
                     Ok(encrypted) => encrypted,
                     Err(e) => {
                         tracing::warn!("[sync] 资产加密失败（跳过）: {}: {}", key, e);
@@ -16274,6 +16339,39 @@ mod tests {
     }
 
     #[test]
+    fn persisted_id_alias_lookup_is_read_only_and_preserves_cycle_behavior() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.pragma_update(None, "query_only", true).unwrap();
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "remote").unwrap(),
+            "remote"
+        );
+        conn.pragma_update(None, "query_only", false).unwrap();
+        SyncManager::ensure_id_alias_table(&conn).unwrap();
+        conn.execute_batch(
+            "INSERT INTO __sync_id_aliases(table_name, remote_id, canonical_id) VALUES
+                ('files', 'remote', 'intermediate'),
+                ('files', 'intermediate', 'local'),
+                ('files', 'cycle-a', 'cycle-b'),
+                ('files', 'cycle-b', 'cycle-a');",
+        )
+        .unwrap();
+        conn.pragma_update(None, "query_only", true).unwrap();
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "remote").unwrap(),
+            "local"
+        );
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "resources", "remote").unwrap(),
+            "remote"
+        );
+        assert_eq!(
+            SyncManager::resolve_persisted_id_alias(&conn, "files", "cycle-a").unwrap(),
+            "cycle-a"
+        );
+    }
+
+    #[test]
     fn regression_p3_5_files_same_sha_is_aliased_to_existing_file() {
         let conn = create_vfs_blob_fk_test_db();
         conn.execute(
@@ -16977,6 +17075,33 @@ mod tests {
                 .unwrap(),
         ));
         manager
+    }
+
+    #[tokio::test]
+    async fn encrypted_file_upload_reuses_session_and_preserves_payload() {
+        let manager = encrypted_manager("file-worker-device", "test-password");
+        let cloned = manager.clone();
+        let original_cipher = manager.file_cipher().unwrap().unwrap();
+        let cloned_cipher = cloned.file_cipher().unwrap().unwrap();
+        assert!(std::sync::Arc::ptr_eq(&original_cipher, &cloned_cipher));
+
+        let dir = tempfile::tempdir().unwrap();
+        let source = dir.path().join("input.bin");
+        let plaintext = "streamed file 数据\n".repeat(1024);
+        std::fs::write(&source, plaintext.as_bytes()).unwrap();
+        let (encrypted, hash, size) = cloned
+            .encrypt_upload_object(&source)
+            .await
+            .unwrap()
+            .expect("encrypted upload");
+        assert_eq!(std::fs::metadata(&encrypted).unwrap().len(), size);
+        assert_eq!(
+            crate::backup_common::calculate_file_hash(&encrypted).unwrap(),
+            hash
+        );
+        let restored = dir.path().join("restored.bin");
+        original_cipher.decrypt_file(&encrypted, &restored).unwrap();
+        assert_eq!(std::fs::read(restored).unwrap(), plaintext.as_bytes());
     }
 
     fn is_dsbk(data: &[u8]) -> bool {

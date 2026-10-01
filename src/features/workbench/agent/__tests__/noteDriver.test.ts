@@ -276,6 +276,14 @@ describe('computeDestructiveMarkdown', () => {
 });
 
 describe('remapInsertPos', () => {
+  it('uses the mounted editor API to read the mapped caret without loading Milkdown', () => {
+    const api = {
+      getCrepe: () => null,
+      getDocEndPos: () => 80,
+      getAgentHighlightState: () => ({ caretPos: 37, ranges: [], flashes: [], decorations: null as never }),
+    };
+    expect(remapInsertPos(api, 15)).toBe(37);
+  });
   it('无 highlight 时回退 fallback 并钳制到 doc end', () => {
     const api = {
       getDocEndPos: () => 80,

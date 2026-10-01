@@ -712,6 +712,22 @@ impl BackupJobContext {
         let _ = self.manager.persist_job(&self.job_id);
     }
 
+    /// ZIP 续传由目标文件与清单校验决定，只保存标量进度，不重复持久化文件名。
+    pub fn update_zip_checkpoint(&self, current_index: usize, total_items: usize) {
+        self.manager.with_state(&self.job_id, |state| {
+            let mut runtime = safe_lock(&state.runtime);
+            let checkpoint = runtime
+                .checkpoint
+                .get_or_insert_with(|| JobCheckpoint::new(total_items));
+            // 兼容旧版 ZIP 检查点；其他任务继续使用 update_checkpoint 保留逐项语义。
+            checkpoint.processed_items.clear();
+            checkpoint.current_index = current_index;
+            checkpoint.total_items = total_items;
+            checkpoint.last_updated = Utc::now();
+        });
+        let _ = self.manager.persist_job(&self.job_id);
+    }
+
     /// 设置部分输出路径
     pub fn set_partial_output(&self, path: &str) {
         self.manager.with_state(&self.job_id, |state| {
@@ -1355,6 +1371,40 @@ impl BackupJobManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn zip_checkpoint_retains_resume_path_and_scalar_progress_without_names() {
+        let manager = BackupJobManager::new_for_tests();
+        let ctx = manager.create_job(BackupJobKind::Import);
+        let mut legacy = JobCheckpoint::new(5000);
+        legacy.mark_processed("assets/previous.bin");
+        legacy.set_partial_output("/tmp/zip-import-resume");
+        ctx.restore_checkpoint(legacy);
+
+        ctx.update_zip_checkpoint(4000, 5000);
+        let checkpoint = ctx.get_checkpoint().expect("ZIP checkpoint");
+        let encoded = serde_json::to_vec(&checkpoint).expect("serialize checkpoint");
+        let restored: JobCheckpoint =
+            serde_json::from_slice(&encoded).expect("restore persisted checkpoint");
+        assert!(restored.processed_items.is_empty());
+        assert_eq!(restored.current_index, 4000);
+        assert_eq!(restored.total_items, 5000);
+        assert_eq!(
+            restored.partial_output.as_deref(),
+            Some("/tmp/zip-import-resume")
+        );
+    }
+
+    #[test]
+    fn database_checkpoint_still_retains_processed_items() {
+        let manager = BackupJobManager::new_for_tests();
+        let ctx = manager.create_job(BackupJobKind::Import);
+        ctx.init_checkpoint(2);
+        ctx.update_checkpoint("chat_v2");
+        ctx.update_checkpoint("vfs");
+        assert_eq!(ctx.get_processed_items(), vec!["chat_v2", "vfs"]);
+        assert!(ctx.is_item_processed("chat_v2"));
+    }
 
     #[test]
     fn terminal_state_reentry_is_rejected_to_deduplicate_notifications() {

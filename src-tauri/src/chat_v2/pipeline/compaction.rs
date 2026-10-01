@@ -1304,6 +1304,24 @@ pub fn apply_compaction_view(
     session_id: &str,
     messages: Vec<ChatMessage>,
 ) -> (Option<LegacyChatMessage>, Vec<ChatMessage>) {
+    apply_compaction_view_by_id(conn, session_id, messages, |message| message.id.as_str())
+}
+
+/// Select the same compaction view before materializing the final history window.
+pub(super) fn apply_compaction_view_to_ids(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    message_ids: Vec<String>,
+) -> (Option<LegacyChatMessage>, Vec<String>) {
+    apply_compaction_view_by_id(conn, session_id, message_ids, String::as_str)
+}
+
+fn apply_compaction_view_by_id<T>(
+    conn: &rusqlite::Connection,
+    session_id: &str,
+    messages: Vec<T>,
+    message_id: impl Fn(&T) -> &str,
+) -> (Option<LegacyChatMessage>, Vec<T>) {
     let summary_ids = (|| -> rusqlite::Result<HashSet<String>> {
         let mut stmt = conn.prepare(
             "SELECT DISTINCT b.message_id
@@ -1317,10 +1335,10 @@ pub fn apply_compaction_view(
         )?;
         rows.collect()
     })();
-    let messages = match summary_ids {
+    let messages: Vec<T> = match summary_ids {
         Ok(ids) => messages
             .into_iter()
-            .filter(|message| !ids.contains(&message.id))
+            .filter(|message| !ids.contains(message_id(message)))
             .collect(),
         Err(error) => {
             warn!(
@@ -1380,7 +1398,7 @@ pub fn apply_compaction_view(
 
     let Some(tail_index) = messages
         .iter()
-        .position(|message| message.id == record.tail_start_message_id)
+        .position(|message| message_id(message) == record.tail_start_message_id)
     else {
         warn!(
             "[compaction] tail boundary missing for session={} compaction={}; using raw history",
@@ -1407,6 +1425,103 @@ mod tests {
     use crate::tools::ToolRegistry;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn lightweight_compaction_view_preserves_boundaries_and_fallbacks() {
+        let (_dir, pipeline) = super::super::history::replay_test_support::replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_light_compaction";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &crate::chat_v2::types::ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let mut raw_ids = Vec::new();
+        for index in 0..8 {
+            let mut message = ChatMessage::new_user(session_id.into(), Vec::new());
+            message.id = format!("msg_light_{index}");
+            message.timestamp = 1_000;
+            ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+            raw_ids.push(message.id);
+        }
+        let mut summary = ChatMessage::new_assistant(session_id.into());
+        summary.id = "msg_light_summary".into();
+        summary.timestamp = 2_000;
+        ChatV2Repo::create_message_with_conn(&conn, &summary).unwrap();
+        let mut summary_block = MessageBlock::new_content(summary.id.clone(), 0);
+        summary_block.block_type = block_types::COMPACTION_SUMMARY.into();
+        summary_block.content = Some("Earlier conversation summary".into());
+        ChatV2Repo::create_block_with_conn(&conn, &summary_block).unwrap();
+
+        let read_ids = || ChatV2Repo::get_session_message_ids_with_conn(&conn, session_id).unwrap();
+        // Summary artifacts stay hidden even before any active compaction is selected.
+        let (none, ids) = apply_compaction_view_to_ids(&conn, session_id, read_ids());
+        assert!(none.is_none());
+        assert_eq!(ids, raw_ids);
+        let record = CompactionRecord {
+            id: "cmp_light".into(),
+            session_id: session_id.into(),
+            summary_message_id: summary.id.clone(),
+            tail_start_message_id: raw_ids[2].clone(),
+            tail_start_time_created: 1_000,
+            reason: "manual".into(),
+            is_auto: false,
+            is_overflow: false,
+            tokens_before: None,
+            tokens_after: None,
+            model_id: None,
+            model_config_id: None,
+            previous_compaction_id: None,
+            range_start_message_id: Some(raw_ids[0].clone()),
+            range_end_message_id: Some(raw_ids[2].clone()),
+            compacted_message_count: Some(2),
+            created_at: 2_000,
+        };
+        ChatV2Repo::create_compaction_with_conn(&conn, &record).unwrap();
+        ChatV2Repo::set_session_last_compaction_with_conn(&conn, session_id, &record.id).unwrap();
+        let full = ChatV2Repo::get_session_messages_with_conn(&conn, session_id).unwrap();
+        let (full_summary, full_tail) = apply_compaction_view(&conn, session_id, full);
+        let (light_summary, light_tail) =
+            apply_compaction_view_to_ids(&conn, session_id, read_ids());
+        assert_eq!(
+            light_summary.as_ref().map(|message| &message.content),
+            full_summary.as_ref().map(|message| &message.content)
+        );
+        assert_eq!(
+            light_tail,
+            full_tail
+                .into_iter()
+                .map(|message| message.id)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(light_tail, raw_ids[2..]);
+        // The real boundary is outside this eventual two-message window;
+        // checking it before the window must still retain the valid summary.
+        let window = &light_tail[light_tail.len() - 2..];
+        assert!(!window.contains(&record.tail_start_message_id));
+        assert!(light_summary.is_some());
+        let hydrated =
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, session_id, window).unwrap();
+        assert_eq!(hydrated[0].id, raw_ids[6]);
+
+        let without_tail: Vec<_> = read_ids()
+            .into_iter()
+            .filter(|id| id != &record.tail_start_message_id)
+            .collect();
+        let (none, ids) = apply_compaction_view_to_ids(&conn, session_id, without_tail);
+        assert!(none.is_none());
+        assert_eq!(ids.len(), 7);
+
+        summary_block.content = Some(" ".into());
+        ChatV2Repo::update_block_with_conn(&conn, &summary_block).unwrap();
+        let (none, ids) = apply_compaction_view_to_ids(&conn, session_id, read_ids());
+        assert!(none.is_none());
+        assert_eq!(ids, raw_ids);
+        ChatV2Repo::clear_session_last_compaction_with_conn(&conn, session_id).unwrap();
+        let (none, ids) = apply_compaction_view_to_ids(&conn, session_id, read_ids());
+        assert!(none.is_none());
+        assert_eq!(ids, raw_ids);
+    }
 
     #[test]
     fn missing_model_is_rejected_before_compaction_effects() {

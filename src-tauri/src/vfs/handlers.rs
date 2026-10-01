@@ -1677,6 +1677,22 @@ pub async fn vfs_upload_attachment(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> Result<VfsUploadAttachmentResult, String> {
+    let vfs_db = Arc::clone(vfs_db.inner());
+    let pdf_processing_service = Arc::clone(pdf_processing_service.inner());
+    tokio::task::spawn_blocking(move || {
+        upload_attachment_blocking(app, params, vfs_db, pdf_processing_service)
+    })
+    .await
+    .map_err(|e| format!("Attachment upload task failed: {}", e))?
+}
+
+/// 解码、解析、文件 I/O 和 SQLite 操作统一在 blocking 线程执行。
+fn upload_attachment_blocking(
+    app: AppHandle,
+    params: VfsUploadAttachmentParamsExt,
+    vfs_db: Arc<VfsDatabase>,
+    pdf_processing_service: Arc<PdfProcessingService>,
+) -> Result<VfsUploadAttachmentResult, String> {
     log::info!(
         "[VFS::handlers] vfs_upload_attachment: name={}, mime_type={}, folder_id={:?}",
         params.name,
@@ -1691,7 +1707,7 @@ pub async fn vfs_upload_attachment(
     let target_folder_id = match params.folder_id {
         Some(ref id) if !id.is_empty() => Some(id.clone()),
         _ => {
-            let config = AttachmentConfig::new(vfs_db.inner().clone());
+            let config = AttachmentConfig::new(Arc::clone(&vfs_db));
             Some(
                 config
                     .get_or_create_root_folder()
@@ -1733,7 +1749,7 @@ pub async fn vfs_upload_attachment(
         if result.is_new && !has_transcript {
             spawn_audio_transcription_if_applicable(
                 &app,
-                vfs_db.inner().clone(),
+                Arc::clone(&vfs_db),
                 result.source_id.clone(),
                 result.attachment.resource_id.clone(),
                 params.name.clone(),
@@ -1758,7 +1774,7 @@ pub async fn vfs_upload_attachment(
 
     // ★ P2 修复：上传后自动同步 Units 以触发索引
     if let Some(ref resource_id) = result.attachment.resource_id {
-        let index_service = VfsIndexService::new(vfs_db.inner().clone());
+        let index_service = VfsIndexService::new(Arc::clone(&vfs_db));
         let input = UnitBuildInput {
             resource_id: resource_id.clone(),
             resource_type: "attachment".to_string(),
@@ -1895,7 +1911,7 @@ pub async fn vfs_upload_attachment(
     // ★ v2.1 修复：不仅新上传需要处理，重用但未完成的也需要继续处理
     if (result.is_new || needs_processing) && (is_pdf || is_image) {
         let file_id = result.source_id.clone();
-        let media_service = pdf_processing_service.inner().clone();
+        let media_service = Arc::clone(&pdf_processing_service);
         let start_stage = if is_pdf {
             Some(ProcessingStage::OcrProcessing)
         } else {
@@ -2385,15 +2401,30 @@ pub async fn vfs_upload_file(
     database: State<'_, Arc<crate::database::Database>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> Result<VfsUploadFileResult, String> {
+    // 保留命令签名；OCR 由导入后的异步 Pipeline 处理。
+    let _ = &llm_manager;
+    let vfs_db = Arc::clone(vfs_db.inner());
+    let database = Arc::clone(database.inner());
+    let pdf_processing_service = Arc::clone(pdf_processing_service.inner());
+    tokio::task::spawn_blocking(move || {
+        upload_file_blocking(app, params, vfs_db, database, pdf_processing_service)
+    })
+    .await
+    .map_err(|e| format!("File upload task failed: {}", e))?
+}
+
+fn upload_file_blocking(
+    app: AppHandle,
+    params: VfsUploadFileParams,
+    vfs_db: Arc<VfsDatabase>,
+    database: Arc<crate::database::Database>,
+    pdf_processing_service: Arc<PdfProcessingService>,
+) -> Result<VfsUploadFileResult, String> {
     use crate::document_parser::DocumentParser;
     use crate::vfs::repos::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
     use crate::vfs::repos::VfsFileRepo;
     use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
     use sha2::{Digest, Sha256};
-
-    // ★ 2026-02 重构：llm_manager 参数保留用于未来图片 OCR 支持
-    // 当前 PDF OCR 由 Pipeline 异步处理，图片 OCR 暂不支持
-    let _ = &llm_manager;
 
     // 加载 OCR 策略配置
     let ocr_config = OcrStrategyConfig::load_from_db(&database);
@@ -2476,7 +2507,7 @@ pub async fn vfs_upload_file(
 
             if needs_processing {
                 let file_id = file.id.clone();
-                let media_service = pdf_processing_service.inner().clone();
+                let media_service = Arc::clone(&pdf_processing_service);
                 let start_stage = if is_pdf {
                     Some(ProcessingStage::OcrProcessing)
                 } else {
@@ -2508,11 +2539,28 @@ pub async fn vfs_upload_file(
         }
     }
 
+    // 去重检查结束即归还连接；默认目录解析自行借用连接。
+    drop(conn);
+    let target_folder_id = match params.folder_id {
+        Some(ref id) if !id.is_empty() => Some(id.clone()),
+        _ => {
+            let config = AttachmentConfig::new(Arc::clone(&vfs_db));
+            Some(
+                config
+                    .get_or_create_root_folder()
+                    .map_err(|e| e.to_string())?,
+            )
+        }
+    };
+
+    // 预览和后续保存复用一个连接，失败时仍可用同一连接补偿预览引用。
+    let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+
     // ★ TD-03：上传原子性保障（最小 saga + savepoint，替代旧 TODO(transaction)）
     //
     // 事务边界：
-    // - PDF 预览渲染与根目录解析使用**独立连接**、先于事务执行；
-    //   它们的副作用（预览页 blob 的 ref +1）记入 UploadSaga 补偿账本。
+    // - 根目录解析已完成；PDF 预览渲染复用保存连接、先于事务执行；
+    //   预览页 blob 的 ref +1 记入 UploadSaga 补偿账本。
     // - store_blob（主 blob 落库）与 create_file_with_doc_data_in_folder
     //   （resources/files/folder_items）在**同一连接**的 SAVEPOINT 内执行，
     //   失败整体回滚；已原子 rename 落盘、且 DB 行随回滚消失的物理文件由
@@ -2536,23 +2584,13 @@ pub async fn vfs_upload_file(
             );
 
             {
-                let vfs_db_clone = vfs_db.inner().clone();
-                let blobs_dir_clone = blobs_dir.to_path_buf();
-                let content_clone = content.clone();
-                match tokio::task::spawn_blocking(move || {
-                    let conn = vfs_db_clone.get_conn_safe().map_err(|e| e.to_string())?;
-                    render_pdf_preview(
-                        &conn,
-                        &blobs_dir_clone,
-                        &content_clone,
-                        &PdfPreviewConfig::default(),
-                    )
-                    .map_err(|e| e.to_string())
-                })
-                .await
-                {
+                // 已在 blocking 线程，无需再复制 PDF 并持有第二个连接。
+                // 保留原先预览任务 panic 时降级为无预览上传的语义。
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    render_pdf_preview(&conn, blobs_dir, &content, &PdfPreviewConfig::default())
+                })) {
                     Ok(Ok(result)) => {
-                        // 页面 blob 已在独立连接上提交，登记入补偿账本：
+                        // 页面 blob 已在 SAVEPOINT 之外提交，登记入补偿账本：
                         // 后续任一步失败即回退这些引用（守卫式，仅归零才删文件）
                         if let Some(ref preview) = result.preview_json {
                             saga.record_preview_blobs(preview);
@@ -2577,8 +2615,8 @@ pub async fn vfs_upload_file(
                         log::warn!("[VFS::handlers] PDF preview failed: {}", e);
                         (None, None, None)
                     }
-                    Err(e) => {
-                        log::warn!("[VFS::handlers] PDF render task panicked: {}", e);
+                    Err(_) => {
+                        log::warn!("[VFS::handlers] PDF preview rendering panicked");
                         (None, None, None)
                     }
                 }
@@ -2672,22 +2710,6 @@ pub async fn vfs_upload_file(
             }
         };
 
-    // 解析目标文件夹（可能在独立连接上创建根目录，必须在 savepoint 之外）
-    let target_folder_id = match params.folder_id {
-        Some(ref id) if !id.is_empty() => Some(id.clone()),
-        _ => {
-            let config = AttachmentConfig::new(vfs_db.inner().clone());
-            match config.get_or_create_root_folder() {
-                Ok(id) => Some(id),
-                Err(e) => {
-                    // ★ TD-03：此前这里直接 `?` 返回，泄漏已渲染的预览页 blob
-                    saga.abort(&conn, blobs_dir);
-                    return Err(e.to_string());
-                }
-            }
-        }
-    };
-
     // ★ TD-03：主 blob 落库 + 文件三表写入在同一连接的 SAVEPOINT 内，失败整体回滚。
     // 闭包内无 .await、无其他连接写入（避免持写锁期间跨连接死锁）。
     let saga_result =
@@ -2730,7 +2752,7 @@ pub async fn vfs_upload_file(
                 e
             );
             // savepoint 已回滚 blobs/resources/files/folder_items 行；
-            // 补偿：1) 预览页 blob 引用（独立连接已提交，逐个回退）
+            // 补偿：1) 预览页 blob 引用（事务外已提交，逐个回退）
             saga.abort(&conn, blobs_dir);
             // 2) 主 blob 物理文件（行随回滚消失 → 本次新写，删除；
             //    去重复用时行仍在 → 保留，不删共享 blob）
@@ -2805,6 +2827,9 @@ pub async fn vfs_upload_file(
         }
     }
 
+    // 保存及页级字段写回已完成；索引和后台任务自行获取所需连接。
+    drop(conn);
+
     // 判断是否需要触发 Pipeline OCR（用于状态返回）
     let needs_image_ocr = is_image && ocr_config.enabled && ocr_config.ocr_images;
     let needs_pdf_ocr = is_pdf
@@ -2829,7 +2854,7 @@ pub async fn vfs_upload_file(
     let mut index_error: Option<String> = None;
 
     if let Some(ref resource_id) = file.resource_id {
-        let index_service = VfsIndexService::new(vfs_db.inner().clone());
+        let index_service = VfsIndexService::new(Arc::clone(&vfs_db));
         let input = UnitBuildInput {
             resource_id: resource_id.clone(),
             resource_type: "file".to_string(),
@@ -2943,7 +2968,7 @@ pub async fn vfs_upload_file(
         let audio_base64 = BASE64.encode(&content);
         spawn_audio_transcription_if_applicable(
             &app,
-            vfs_db.inner().clone(),
+            Arc::clone(&vfs_db),
             file.id.clone(),
             file.resource_id.clone(),
             params.name.clone(),
@@ -2966,7 +2991,7 @@ pub async fn vfs_upload_file(
     let is_image = params.mime_type.starts_with("image/");
     if is_pdf || is_image {
         let file_id = file.id.clone();
-        let media_service = pdf_processing_service.inner().clone();
+        let media_service = Arc::clone(&pdf_processing_service);
         let start_stage = if is_pdf {
             Some(ProcessingStage::OcrProcessing)
         } else {
@@ -7557,10 +7582,6 @@ pub async fn vfs_download_paper(
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> Result<VfsDownloadPaperResult, String> {
-    use crate::vfs::repos::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
-    use crate::vfs::repos::VfsFileRepo;
-    use sha2::{Digest, Sha256};
-
     log::info!(
         "[VFS::download_paper] Downloading '{}' from: {}",
         params.title,
@@ -7592,8 +7613,26 @@ pub async fn vfs_download_paper(
     let pdf_bytes = response
         .bytes()
         .await
-        .map_err(|e| format!("Read failed: {}", e))?
-        .to_vec();
+        .map_err(|e| format!("Read failed: {}", e))?;
+
+    let vfs_db = Arc::clone(vfs_db.inner());
+    let pdf_processing_service = Arc::clone(pdf_processing_service.inner());
+    tokio::task::spawn_blocking(move || {
+        save_downloaded_paper_blocking(params, &pdf_bytes, vfs_db, pdf_processing_service)
+    })
+    .await
+    .map_err(|e| format!("Paper save task failed: {}", e))?
+}
+
+fn save_downloaded_paper_blocking(
+    params: VfsDownloadPaperParams,
+    pdf_bytes: &[u8],
+    vfs_db: Arc<VfsDatabase>,
+    pdf_processing_service: Arc<PdfProcessingService>,
+) -> Result<VfsDownloadPaperResult, String> {
+    use crate::vfs::repos::pdf_preview::{render_pdf_preview, PdfPreviewConfig};
+    use crate::vfs::repos::VfsFileRepo;
+    use sha2::{Digest, Sha256};
 
     // PDF 签名验证
     if pdf_bytes.len() < 4 || &pdf_bytes[..4] != b"%PDF" {
@@ -7602,7 +7641,7 @@ pub async fn vfs_download_paper(
 
     // SHA256 去重
     let mut hasher = Sha256::new();
-    hasher.update(&pdf_bytes);
+    hasher.update(pdf_bytes);
     let sha256 = format!("{:x}", hasher.finalize());
 
     let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
@@ -7621,29 +7660,18 @@ pub async fn vfs_download_paper(
     }
 
     // ★ TD-03：与 vfs_upload_file 相同的最小 saga——
-    // 预览渲染（独立连接）先行并登记补偿账本；主 blob 落库 + 文件三表写入
+    // 预览渲染（复用当前连接、在事务外）先行并登记补偿账本；主 blob 落库 + 文件三表写入
     // 在同一连接 SAVEPOINT 内整体回滚；索引失败置显式可重试状态。
     use crate::vfs::VfsBlobRepo;
     let blobs_dir = vfs_db.blobs_dir();
     let mut saga = crate::vfs::upload_saga::UploadSaga::new();
 
-    // PDF 预览 + 文本提取（spawn_blocking 避免阻塞 tokio 线程；须在 savepoint 之外）
+    // PDF 预览 + 文本提取（当前已在 blocking 线程；须在 savepoint 之外）
     let (preview_json, extracted_text, page_count) = {
-        let vfs_db_clone = vfs_db.inner().clone();
-        let blobs_dir_clone = blobs_dir.to_path_buf();
-        let pdf_bytes_clone = pdf_bytes.clone();
-        match tokio::task::spawn_blocking(move || {
-            let conn = vfs_db_clone.get_conn_safe().map_err(|e| e.to_string())?;
-            render_pdf_preview(
-                &conn,
-                &blobs_dir_clone,
-                &pdf_bytes_clone,
-                &PdfPreviewConfig::default(),
-            )
-            .map_err(|e| e.to_string())
-        })
-        .await
-        {
+        // 保留原先预览任务 panic 时的降级路径，不再复制整个下载内容。
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            render_pdf_preview(&conn, blobs_dir, pdf_bytes, &PdfPreviewConfig::default())
+        })) {
             Ok(Ok(result)) => {
                 if let Some(ref preview) = result.preview_json {
                     saga.record_preview_blobs(preview);
@@ -7662,8 +7690,8 @@ pub async fn vfs_download_paper(
                 log::warn!("[VFS::download_paper] PDF preview failed: {}", e);
                 (None, None, None)
             }
-            Err(e) => {
-                log::warn!("[VFS::download_paper] PDF render task panicked: {}", e);
+            Err(_) => {
+                log::warn!("[VFS::download_paper] PDF preview rendering panicked");
                 (None, None, None)
             }
         }
@@ -7686,7 +7714,7 @@ pub async fn vfs_download_paper(
             let blob_hash = VfsBlobRepo::store_blob_with_conn(
                 &conn,
                 blobs_dir,
-                &pdf_bytes,
+                pdf_bytes,
                 Some("application/pdf"),
                 None,
             )?
@@ -7737,11 +7765,14 @@ pub async fn vfs_download_paper(
         saga.abort(&conn, blobs_dir);
     }
 
+    // 保存和补偿结束后归还连接，避免索引同步额外占用一个连接。
+    drop(conn);
+
     // 索引
     if let Some(ref resource_id) = file.resource_id {
         use crate::vfs::index_service::VfsIndexService;
         use crate::vfs::unit_builder::UnitBuildInput;
-        let index_service = VfsIndexService::new((*vfs_db).clone());
+        let index_service = VfsIndexService::new(Arc::clone(&vfs_db));
         let input = UnitBuildInput {
             resource_id: resource_id.clone(),
             resource_type: "file".to_string(),
@@ -7776,7 +7807,7 @@ pub async fn vfs_download_paper(
     {
         use crate::vfs::pdf_processing_service::ProcessingStage;
         let file_id = file.id.clone();
-        let service = (*pdf_processing_service).clone();
+        let service = Arc::clone(&pdf_processing_service);
         tokio::spawn(async move {
             let _ = service
                 .start_pipeline(&file_id, Some(ProcessingStage::OcrProcessing))

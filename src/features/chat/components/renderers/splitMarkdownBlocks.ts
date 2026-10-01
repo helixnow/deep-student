@@ -326,6 +326,32 @@ function coreParse(content: string): CoreBlock[] {
 }
 
 /**
+ * 已定稿 MarkdownBlock 缓存（以 CoreBlock 对象为键）。
+ *
+ * 增量路径下前缀 CoreBlock 是同一批对象（cachedCore.slice 复用引用），
+ * 命中缓存即可跨 flush 复用同一个 MarkdownBlock 对象：
+ * - 消除每次 flush 对全部已完成块的重复对象分配（长回复 GC 压力）；
+ * - 下游 React.memo（MemoizedBlock）的 props 引用比较直接命中快路径，
+ *   无需再逐块值比较 raw。
+ * 活动流式块不进缓存（raw 每 flush 增长）；其 id 与完成后一致，闭合不换 key。
+ * 全量解析路径（非追加式变化）CoreBlock 全部为新建对象，缓存自然失效。
+ */
+const finalizedBlockCache = new WeakMap<CoreBlock, MarkdownBlock>();
+
+function finalizeCompletedBlock(block: CoreBlock, index: number): MarkdownBlock {
+  const cached = finalizedBlockCache.get(block);
+  if (cached) return cached;
+  const finalized: MarkdownBlock = {
+    id: `b${index}-${block.type}`,
+    type: block.type,
+    raw: block.raw,
+    isComplete: block.closed,
+  };
+  finalizedBlockCache.set(block, finalized);
+  return finalized;
+}
+
+/**
  * 标注阶段：分配稳定 ID 并落定 isComplete。
  *
  * 同一位置/类型的块从活动到完成使用相同 key；raw/isComplete 仍由
@@ -334,13 +360,17 @@ function coreParse(content: string): CoreBlock[] {
 function finalizeBlocks(coreBlocks: CoreBlock[], isStreaming: boolean): MarkdownBlock[] {
   const lastIndex = coreBlocks.length - 1;
   return coreBlocks.map((block, idx) => {
-    const isActiveStreamingBlock = isStreaming && idx === lastIndex;
-    return {
-      id: `b${idx}-${block.type}`,
-      type: block.type,
-      raw: block.raw,
-      isComplete: isActiveStreamingBlock ? false : block.closed,
-    };
+    // 活动流式块（最后一个）：raw 每 flush 增长，不进缓存；id 与完成后一致
+    // （b${idx}-${type}），闭合时不 remount（上游 0f2ef301 语义）
+    if (isStreaming && idx === lastIndex) {
+      return {
+        id: `b${idx}-${block.type}`,
+        type: block.type,
+        raw: block.raw,
+        isComplete: false,
+      };
+    }
+    return finalizeCompletedBlock(block, idx);
   });
 }
 
