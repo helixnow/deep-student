@@ -139,7 +139,8 @@
       "operation": "操作",
       "no_diff_title": "无可见差异",
       "no_diff_description": "AI 建议与当前正文一致，接受后将不会产生变更。"
-    }
+    },
+    "review_lock": "正在审阅 AI 建议 · 正文暂时锁定"
   },
   "appearance": {
     "label": "页面外观",

@@ -139,7 +139,8 @@
       "operation": "Operation",
       "no_diff_title": "No visible diff",
       "no_diff_description": "The AI suggestion matches the current content; accepting will make no changes."
-    }
+    },
+    "review_lock": "Reviewing AI suggestion · editing paused"
   },
   "appearance": {
     "label": "Page appearance",

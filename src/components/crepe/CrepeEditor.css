@@ -2454,3 +2454,31 @@
 .crepe-editor-wrapper .milkdown .ProseMirror .ds-typed-placeholder[data-kind='todo']::before {
   content: var(--ds-ph-todo);
 }
+
+/* ===== 审阅期间正文锁定的可见状态 =====
+ * AI 建议审阅打开时 live 编辑器被设为 inert（不可交互）。原先没有任何视觉提示，
+ * 用户在打字中途突然失去焦点却不知原因：这里淡化正文并在右上角给出锁定说明。 */
+.crepe-editor-wrapper .ProseMirror[inert] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transition: opacity 160ms ease;
+}
+
+.crepe-editor-wrapper:has(.ProseMirror[inert]) {
+  position: relative;
+}
+
+.crepe-editor-wrapper:has(.ProseMirror[inert])::after {
+  content: var(--ds-review-lock-label, 'Reviewing AI suggestion · editing paused');
+  position: absolute;
+  top: 4px;
+  right: 0;
+  z-index: 2;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 18px;
+  color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.1);
+  pointer-events: none;
+}

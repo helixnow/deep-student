@@ -128,6 +128,7 @@ const TYPED_PLACEHOLDER_VARS = () => {
     '--ds-ph-quote': q('quote', 'Empty quote'),
     '--ds-ph-list': q('list', 'List'),
     '--ds-ph-todo': q('todo', 'To-do'),
+    '--ds-review-lock-label': JSON.stringify(i18next.t('notes:aiDiff.review_lock', 'Reviewing AI suggestion · editing paused')),
   };
 };
 
