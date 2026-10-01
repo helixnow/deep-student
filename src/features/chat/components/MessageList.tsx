@@ -23,7 +23,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded, createBlocksContentLengthSelector } from '../hooks/useChatStore';
-import type { ChatStore } from '../core/types';
+import type { Block, ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -90,6 +90,25 @@ export function shouldDirectRender(
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
+
+const EMPTY_BLOCK_MAP = new Map<string, Block>();
+
+/** 空态主动作候选数；中英文资源保持同样长度，避免切换语言时索引失效。 */
+const EMPTY_STATE_VARIANT_COUNT = 30;
+
+function getLocalizedEmptyStateVariant(value: unknown, index: number): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const candidate = value[index];
+  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+/**
+ * returnObjects 的数组插值依赖 i18next 版本；这里再补一次分组名插值，
+ * 确保自定义语言包或延迟加载期间也不会把 {{groupName}} 直接展示给用户。
+ */
+function interpolateEmptyStateGroupName(template: string, groupName: string): string {
+  return template.replace(/\{\{\s*groupName\s*\}\}/g, () => groupName);
+}
 
 /**
  * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
@@ -227,6 +246,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   const { t } = useTranslation('chatV2');
   const scrollToBottomLabel = t('messageList.scrollToBottom');
+
+  // 空态文案只在本次挂载时抽取一次，避免组件因滚动/流式状态重渲染而不断换话术。
+  const [emptyStateVariantIndex] = useState(() =>
+    Math.floor(Math.random() * EMPTY_STATE_VARIANT_COUNT),
+  );
 
   // 用户偏好减少动效时跳过消息入场动画（framer variants 无法被 CSS 媒体查询覆盖）
   const prefersReducedMotion = useReducedMotion();
@@ -1066,11 +1090,31 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 空状态
   if (forceEmptyPreview || messageOrder.length === 0) {
-    const emptyStatePrimaryAction = emptyStateGroupName
+    const variantKey = emptyStateGroupName
+      ? 'messageList.empty.primaryActionInGroupVariants'
+      : 'messageList.empty.primaryActionVariants';
+    const interpolationOptions = emptyStateGroupName
+      ? { groupName: emptyStateGroupName }
+      : undefined;
+    const fallback = emptyStateGroupName
       ? t('messageList.empty.primaryActionInGroup', {
           groupName: emptyStateGroupName,
         })
       : t('messageList.empty.primaryAction');
+    const localizedVariants = t(variantKey, {
+      ...interpolationOptions,
+      returnObjects: true,
+      defaultValue: [],
+    });
+    const localizedVariant = getLocalizedEmptyStateVariant(
+      localizedVariants,
+      emptyStateVariantIndex,
+    );
+    const emptyStatePrimaryAction = localizedVariant
+      ? emptyStateGroupName
+        ? interpolateEmptyStateGroupName(localizedVariant, emptyStateGroupName)
+        : localizedVariant
+      : fallback;
 
     return (
       <div
