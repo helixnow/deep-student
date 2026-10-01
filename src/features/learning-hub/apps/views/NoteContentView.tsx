@@ -1097,7 +1097,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           <div className="h-full w-2/5 bg-primary animate-[progress-indeterminate_1.5s_ease-in-out_infinite]" />
         </div>
       )}
-      <main className={cn("flex-1 min-w-0 min-h-0 flex-col", propertiesReplaceEditor ? "hidden" : "flex")} data-note-content-area>
+      <div className={cn("flex-1 min-w-0 min-h-0 flex-col", propertiesReplaceEditor ? "hidden" : "flex")} data-note-content-area>
         {isContentReady ? (
           <NotesCrepeEditor
             initialContent={visibleContent}
@@ -1148,7 +1148,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         ) : (
           <NoteEditorSkeleton label={t('notes:editor.windowing.loading_note')} />
         )}
-      </main>
+      </div>
 
       {!propertiesPanelDisabled && !isSmallScreen && rightPanelVisible && (
         <aside

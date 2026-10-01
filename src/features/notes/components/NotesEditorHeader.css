@@ -167,6 +167,7 @@
 }
 
 .notes-document-header:hover .notes-document-affordances,
+.notes-document-header:focus-within .notes-document-affordances,
 .notes-document-affordances:focus-within,
 .notes-document-affordances:has([aria-expanded='true']) {
   opacity: 1;
