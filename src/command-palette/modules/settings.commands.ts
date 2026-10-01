@@ -16,6 +16,16 @@ import {
 } from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { setPendingSettingsRoute } from '@/utils/pendingSettingsTab';
+
+/** 备份 / 恢复都在「设置 › 数据治理 › 备份」完成（含任务进度、校验与回滚）。
+ *  旧实现派发 COMMAND_PALETTE_BACKUP_DATA / RESTORE_DATA，但从无监听方：命令点了无反应。 */
+function openBackupSettings(): void {
+  const route = { tab: 'data-governance' as const, dataGovernanceTab: 'backup' };
+  setPendingSettingsRoute(route);
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+  dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
+}
 
 /** Helper: get localized keywords array for a given command key */
 const kw = (key: string): string[] =>
@@ -102,7 +112,7 @@ export const settingsCommands: Command[] = [
     get keywords() { return kw('settings.backup'); },
     priority: 80,
     execute: () => {
-      window.dispatchEvent(new CustomEvent('COMMAND_PALETTE_BACKUP_DATA'));
+      openBackupSettings();
     },
   },
   {
@@ -114,7 +124,7 @@ export const settingsCommands: Command[] = [
     get keywords() { return kw('settings.restore'); },
     priority: 79,
     execute: () => {
-      window.dispatchEvent(new CustomEvent('COMMAND_PALETTE_RESTORE_DATA'));
+      openBackupSettings();
     },
   },
   {
