@@ -2397,3 +2397,20 @@
     inset: -10px -8px -28px;
   }
 }
+
+
+/* ===== 块选择（Esc 选块，plugins/blockSelection） =====
+ * 选中块铺浅蓝底；块选择期间隐藏 caret 与原生文本高亮，避免两层高亮叠加。 */
+.crepe-editor-wrapper .ProseMirror .ds-block-selected {
+  background: hsl(var(--primary) / 0.12);
+  border-radius: 4px;
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.12);
+}
+
+.crepe-editor-wrapper .ProseMirror.ds-block-selecting {
+  caret-color: transparent !important;
+}
+
+.crepe-editor-wrapper .ProseMirror.ds-block-selecting ::selection {
+  background: transparent !important;
+}
