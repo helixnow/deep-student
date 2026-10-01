@@ -1140,6 +1140,14 @@
     },
     "image": {
       "load_failed": "图片加载失败"
+    },
+    "code": {
+      "copy": "复制",
+      "preview": "预览",
+      "edit_source": "编辑",
+      "hide_source": "收起",
+      "search_language": "搜索语言",
+      "no_language": "没有匹配的语言"
     }
   },
   "find": {

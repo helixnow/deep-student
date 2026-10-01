@@ -1133,6 +1133,21 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           ? 'unsaved'
           : 'saved';
 
+  /** 原文规范化结果按基线缓存：每个保存基线只解析一次，不在每次按键时重算 */
+  const normalizedBaselineRef = useRef<{ noteId: string; raw: string; normalized: string | null } | null>(null);
+  const isPureReserialization = useCallback((targetNoteId: string, raw: string, markdown: string): boolean => {
+    const api = lifecycleApiRef.current;
+    if (!api?.normalizeMarkdown || !raw) return false;
+    let cached = normalizedBaselineRef.current;
+    if (!cached || cached.noteId !== targetNoteId || cached.raw !== raw) {
+      let normalized: string | null = null;
+      try { normalized = api.normalizeMarkdown(raw); } catch { normalized = null; }
+      cached = { noteId: targetNoteId, raw, normalized };
+      normalizedBaselineRef.current = cached;
+    }
+    return cached.normalized !== null && cached.normalized === markdown;
+  }, []);
+
   const handleChange = useCallback((markdown: string) => {
     if (projectingFullViewRef.current || projectedMarkdownRef.current === markdown) return;
     projectedMarkdownRef.current = null;
@@ -1156,6 +1171,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     if (noteId) {
       draftByNoteRef.current.set(noteId, markdown);
       const lastSavedSnapshot = lastSavedMapRef.current.get(noteId) ?? '';
+      // 打开即改写防护：编辑器把磁盘原文重新序列化（如 [a, b] → \[a, b]）不算用户修改。
+      // 仅当序列化结果恰好等于「原文规范化」时采纳为新基线、不保存；真实编辑（含 Agent）必然不等，照常保存。
+      if (markdown !== lastSavedSnapshot && isPureReserialization(noteId, lastSavedSnapshot, markdown)) {
+        lastSavedMapRef.current.set(noteId, markdown);
+        setIsDirty(false);
+        return;
+      }
       setIsDirty(markdown !== lastSavedSnapshot);
     }
     cancelDebounce();
@@ -1188,7 +1210,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
         detail: { noteId: eventNoteId, content: fullMarkdown }
       }));
     }, 500);
-  }, [noteId, queueSave, effectiveReadOnly]);
+  }, [noteId, queueSave, effectiveReadOnly, isPureReserialization]);
 
   // C1：事务级同步通知。不序列化全文，只置标志；UI 的“未保存”指示立即反映，
   // 关闭/外部更新判断也从此刻起视为 dirty（无需等待 250ms onChange）。
@@ -2115,6 +2137,9 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
   }, [showMobileToolbar]);
 
   const handleViewportScroll = useCallback(() => {
+    // Notion 式：顶栏平时无分隔线，正文滚到顶栏下方后才显现（直接写 DOM 属性，不触发重渲染）
+    const viewport = scrollViewportRef.current;
+    if (viewport) notesShellRef.current?.toggleAttribute('data-scrolled', viewport.scrollTop > 4);
     handleWindowScroll();
     publishActiveHeading();
     handleMobileToolbarScroll();

@@ -1214,6 +1214,14 @@
     },
     "image": {
       "load_failed": "Failed to load image"
+    },
+    "code": {
+      "copy": "Copy",
+      "preview": "Preview",
+      "edit_source": "Edit",
+      "hide_source": "Hide",
+      "search_language": "Search language",
+      "no_language": "No result"
     }
   },
   "tree": {

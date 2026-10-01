@@ -1848,6 +1848,15 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
             // 代码块：自动换行（保留语言选择 / 复制按钮等默认配置）
             [CrepeFeature.CodeMirror]: {
               extensions: [EditorView.lineWrapping],
+              // Notion 式：公式 / Mermaid 等带预览的块默认只显示渲染结果，点切换才露出源码
+              previewOnlyByDefault: true,
+              copyText: i18next.t('notes:crepe.code.copy', { defaultValue: 'Copy' }),
+              previewLabel: i18next.t('notes:crepe.code.preview', { defaultValue: 'Preview' }),
+              previewToggleText: (previewOnly: boolean) => previewOnly
+                ? i18next.t('notes:crepe.code.edit_source', { defaultValue: 'Edit' })
+                : i18next.t('notes:crepe.code.hide_source', { defaultValue: 'Hide' }),
+              searchPlaceholder: i18next.t('notes:crepe.code.search_language', { defaultValue: 'Search language' }),
+              noResultText: i18next.t('notes:crepe.code.no_language', { defaultValue: 'No result' }),
             },
 
             // 图片上传配置 + 破图占位

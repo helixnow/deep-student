@@ -316,7 +316,7 @@
   font-size: var(--notes-heading-h1-size, 1.875em);
   font-weight: var(--notes-heading-h1-weight, 600);
   line-height: var(--notes-heading-h1-lh, 1.3);
-  margin-top: 1.6em;
+  margin-top: 1.1em;
   margin-bottom: 0.15em;
 }
 
@@ -324,7 +324,7 @@
   font-size: var(--notes-heading-h2-size, 1.5em);
   font-weight: var(--notes-heading-h2-weight, 600);
   line-height: var(--notes-heading-h2-lh, 1.3);
-  margin-top: 1.3em;
+  margin-top: 0.95em;
   margin-bottom: 0.15em;
 }
 
@@ -332,7 +332,7 @@
   font-size: var(--notes-heading-h3-size, 1.25em);
   font-weight: var(--notes-heading-h3-weight, 600);
   line-height: var(--notes-heading-h3-lh, 1.3);
-  margin-top: 1em;
+  margin-top: 0.8em;
   margin-bottom: 0.1em;
 }
 
@@ -340,7 +340,7 @@
   font-size: var(--notes-heading-h4-size, 1.125em);
   font-weight: var(--notes-heading-h4-weight, 600);
   line-height: var(--notes-heading-h4-lh, 1.35);
-  margin-top: 0.9em;
+  margin-top: 0.75em;
   margin-bottom: 0.1em;
 }
 
@@ -348,7 +348,7 @@
   font-size: var(--notes-heading-h5-size, 1em);
   font-weight: var(--notes-heading-h5-weight, 600);
   line-height: var(--notes-heading-h5-lh, 1.4);
-  margin-top: 0.8em;
+  margin-top: 0.7em;
   margin-bottom: 0.1em;
 }
 
@@ -356,7 +356,7 @@
   font-size: var(--notes-heading-h6-size, 1em);
   font-weight: var(--notes-heading-h6-weight, 500);
   line-height: var(--notes-heading-h6-lh, 1.4);
-  margin-top: 0.8em;
+  margin-top: 0.7em;
   margin-bottom: 0.1em;
   color: hsl(var(--muted-foreground));
 }
@@ -1383,6 +1383,15 @@
   color: hsl(var(--foreground) / 0.6) !important;
 }
 
+/* 已勾选的待办：品牌色填充（Notion 式），不再是像被禁用的深色方块。
+ * 图标 fill 被上方通用规则写死为前景色，这里连同 svg/path 一起覆盖。 */
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper .label.checked,
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper .label.checked svg,
+.crepe-editor-wrapper .milkdown .milkdown-list-item-block li .label-wrapper .label.checked svg path {
+  color: hsl(var(--primary)) !important;
+  fill: hsl(var(--primary)) !important;
+}
+
 /* 强制所有列表使用深色 - 通过在 ul/ol 上设置 color，marker 会继承 */
 .crepe-editor-wrapper ul,
 .crepe-editor-wrapper ol,
@@ -1452,8 +1461,14 @@
 /* ===== 顶部工具栏样式 ===== */
 .notes-editor-header-section {
   min-height: 36px;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid transparent;
   background: hsl(var(--background) / 0.96);
+  transition: border-color 150ms ease;
+}
+
+/* 正文滚到顶栏下方才出现分隔线（NotesCrepeEditor 在滚动时切换 data-scrolled） */
+.notes-crepe-shell[data-scrolled] .notes-editor-header-section {
+  border-bottom-color: hsl(var(--border) / 0.8);
 }
 
 .notes-editor-chrome-row {
@@ -2483,4 +2498,58 @@
   color: hsl(var(--primary));
   background: hsl(var(--primary) / 0.1);
   pointer-events: none;
+}
+
+/* ===== 公式 / Mermaid 等「仅预览」块：Notion 式呈现 =====
+ * previewOnlyByDefault 下源码区 .codemirror-host.hidden：去掉代码块外壳，只留渲染结果；
+ * 工具按钮悬停浮现，悬停整块铺浅底提示可交互。普通代码块（源码可见）不受影响。 */
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) {
+  position: relative;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 2px 0 !important;
+  border-radius: 6px;
+  transition: background-color var(--notes-hover-transition, 120ms ease);
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden):hover {
+  background: hsl(var(--foreground) / 0.035) !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) > .tools {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) > .tools .language-button {
+  display: none;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden):hover > .tools,
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) > .tools:focus-within {
+  opacity: 1;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) .preview-panel,
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) .preview {
+  background: transparent !important;
+  border: none !important;
+  margin: 0 !important;
+  padding: 6px 0 !important;
+}
+
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) .preview-divider,
+.crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) .preview-label {
+  display: none !important;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .crepe-editor-wrapper .milkdown .milkdown-code-block:has(> .codemirror-host.hidden) > .tools {
+    opacity: 1;
+  }
 }
