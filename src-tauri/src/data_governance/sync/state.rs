@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 
 use super::SyncError;
 
@@ -231,9 +231,12 @@ impl SyncStateStore {
         cloud_existing_seq: Option<u64>,
     ) -> Result<u64, SyncError> {
         self.with_conn(|conn| {
-            let tx = conn.unchecked_transaction().map_err(|e| {
-                SyncError::Database(format!("开始 tombstone 事件序号事务失败: {}", e))
-            })?;
+            // Reserve the writer before reading: a DEFERRED read→write upgrade
+            // can fail immediately under contention, bypassing busy_timeout.
+            let tx =
+                Transaction::new_unchecked(conn, TransactionBehavior::Immediate).map_err(|e| {
+                    SyncError::Database(format!("开始 tombstone 事件序号事务失败: {}", e))
+                })?;
             if let Some(existing) = tx
                 .query_row(
                     "SELECT seq FROM tombstone_event_publish
@@ -551,11 +554,9 @@ impl SyncStateStore {
 
 /// 串行化会写入共享 `sync_state.db` 的测试（仅测试编译，产品行为不变）。
 ///
-/// `reserve_tombstone_event_seq_with_existing` 在 DEFERRED 事务里做
-/// SELECT→INSERT 锁升级；`open_default` 每次调用都开新连接指向同一个
-/// 磁盘库，两个并发连接同时升级时 SQLite 的死锁检测会绕过 busy_timeout
-/// 直接返回 `database is locked`。并行测试 harness 是唯一常态触发场景，
-/// 所以在会写库的测试入口处取该锁串行执行。
+/// `open_default` 的独立连接指向同一个磁盘库；保留该锁以隔离共用默认库的
+/// 单元测试数据。生产序号分配使用 IMMEDIATE 事务协调独立连接/进程，
+/// 不依赖这个进程内测试锁保证正确性。
 #[cfg(test)]
 pub(crate) fn test_write_lock() -> &'static tokio::sync::Mutex<()> {
     static LOCK: std::sync::OnceLock<tokio::sync::Mutex<()>> = std::sync::OnceLock::new();
@@ -590,5 +591,74 @@ mod tests {
         assert_eq!(first, 1);
         assert_eq!(retry, first);
         assert_eq!(next, 8);
+    }
+
+    #[test]
+    fn tombstone_sequence_waits_for_writer_before_reading() {
+        use std::cell::RefCell;
+        use std::sync::mpsc;
+
+        thread_local! {
+            static BUSY_HANDSHAKE: RefCell<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>> =
+                const { RefCell::new(None) };
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sync_state.db");
+        let writer = Connection::open(&path).unwrap();
+        SyncStateStore::init(&writer).unwrap();
+        let contender = Connection::open(&path).unwrap();
+        writer
+            .execute_batch(
+                "BEGIN IMMEDIATE;
+             INSERT INTO tombstone_event_publish
+             (instance_id, device_id, kind, operation_id, seq, created_at)
+             VALUES ('instance', 'device', 'assets', 'operation-a', 1, 'now');",
+            )
+            .unwrap();
+
+        let (waiting_tx, waiting_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            BUSY_HANDSHAKE.with(|slot| {
+                *slot.borrow_mut() = Some((waiting_tx, release_rx));
+            });
+            contender
+                .busy_handler(Some(|_| {
+                    BUSY_HANDSHAKE.with(|slot| {
+                        let channels = slot.borrow();
+                        let (waiting, release) = channels.as_ref().unwrap();
+                        waiting.send(()).is_ok() && release.recv().is_ok()
+                    })
+                }))
+                .unwrap();
+            let store = SyncStateStore {
+                conn: Arc::new(Mutex::new(contender)),
+            };
+            store.reserve_tombstone_event_seq("instance", "device", "assets", "operation-b", 0)
+        });
+
+        // A deferred SELECT→INSERT upgrade fails immediately, bypassing the
+        // busy handler. An immediate transaction waits before taking a read
+        // lock, so the first writer can commit while the contender is paused.
+        let waiting = waiting_rx.recv_timeout(std::time::Duration::from_secs(10));
+        let committed = writer.execute_batch("COMMIT");
+        if committed.is_err() {
+            writer.execute_batch("ROLLBACK").unwrap();
+        }
+        let _ = release_tx.send(());
+        drop(release_tx);
+        let result = worker.join().unwrap();
+
+        assert!(
+            waiting.is_ok(),
+            "contending transaction must wait for the writer: {result:?}"
+        );
+        committed.expect("contender must not hold a read lock while waiting");
+        assert_eq!(
+            result.unwrap(),
+            2,
+            "sequence must include the writer's committed event"
+        );
     }
 }
