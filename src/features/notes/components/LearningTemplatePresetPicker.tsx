@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import '../styles/notes-form-controls.css';
 import { getCourseDefaultTemplate, loadPersonalNoteTemplates, PERSONAL_NOTE_TEMPLATES_CHANGED, type PersonalNoteTemplate } from '../personalNoteTemplates';
 import type { NoteLearningProps } from '../noteLearningProps';
 
@@ -34,30 +35,30 @@ export function LearningTemplatePresetPicker({ course, disabled, onChoose }: {
   useEffect(() => setSelectedId(''), [course]);
   const courseDefault = getCourseDefaultTemplate(templates, course);
   const selected = templates.find((template) => template.id === selectedId) ?? courseDefault;
-  return <details className="space-y-2" onToggle={(event) => setOpen(event.currentTarget.open)}>
+  return <details className="notes-disclosure notes-learn-presets" onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary>{t('learning.presets.title')}</summary>
-    {open && <>
-      {loading && <p role="status">{t('learning.presets.loading')}</p>}
-      {courseDefault && <p>{t('learning.presets.course_default', { title: courseDefault.title })}</p>}
-      <label className="block">{t('learning.presets.select_label')}
-        <select className="w-full rounded border border-border bg-background p-1.5" value={selected?.id ?? ''}
+    {open && <div className="notes-disclosure-body">
+      {loading && <p role="status" className="notes-props-empty">{t('learning.presets.loading')}</p>}
+      {courseDefault && <p className="notes-learn-props-hint">{t('learning.presets.course_default', { title: courseDefault.title })}</p>}
+      <label className="notes-field"><span>{t('learning.presets.select_label')}</span>
+        <select className="notes-select" value={selected?.id ?? ''}
           disabled={disabled || loading} onChange={(event) => setSelectedId(event.target.value)}>
           <option value="" disabled>{t('learning.presets.select_placeholder')}</option>
           {templates.map((template) => <option key={template.id} value={template.id}>{template.title}</option>)}
         </select>
       </label>
-      {selected && <dl className="space-y-1" aria-label={t('learning.presets.preview_label')}>
+      {selected && <dl className="notes-learn-preset-preview" aria-label={t('learning.presets.preview_label')}>
         {Object.entries(selected.learningPreset ?? {}).map(([field, value]) => <div key={field}>
-          <dt className="inline">{t('learning.presets.field_label', { field: t(`learning.fields.${field}`) })}</dt>
-          <dd className="inline">{field === 'mastery' ? t(`learning.mastery.${value}`, { defaultValue: value }) : value}</dd>
+          <dt>{t('learning.presets.field_label', { field: t(`learning.fields.${field}`) })}</dt>
+          <dd>{field === 'mastery' ? t(`learning.mastery.${value}`, { defaultValue: value }) : value}</dd>
         </div>)}
         {!Object.keys(selected.learningPreset ?? {}).length && <div>{t('learning.presets.empty')}</div>}
       </dl>}
-      <p className="text-muted-foreground">{t('learning.presets.hint')}</p>
-      <button type="button" className="rounded border border-border px-2 py-1"
+      <p className="notes-learn-props-hint">{t('learning.presets.hint')}</p>
+      <button type="button" className="notes-btn notes-learn-preset-fill"
         disabled={disabled || loading || !selected || !Object.keys(selected.learningPreset ?? {}).length}
         onClick={() => selected && onChoose(selected.learningPreset ?? {})}>{t('learning.presets.fill')}</button>
-      {error && <p role="alert">{error}<button type="button" onClick={() => setReload((v) => v + 1)}>{t('personalTemplates.reload')}</button></p>}
-    </>}
+      {error && <p role="alert" className="notes-props-error">{error}<button type="button" className="notes-btn" data-variant="ghost" onClick={() => setReload((v) => v + 1)}>{t('personalTemplates.reload')}</button></p>}
+    </div>}
   </details>;
 }

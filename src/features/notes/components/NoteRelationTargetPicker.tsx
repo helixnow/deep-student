@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CaretLeft, CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
+import '../styles/notes-form-controls.css';
+import './NoteLearningRelations.css';
 import { dstu } from '@/dstu';
 import type { AnkiLibraryListResponse } from '@/types';
 import type { NoteRelationType } from '../noteRelations';
@@ -58,10 +60,10 @@ export function NoteRelationTargetPicker({ type, disabled, onChoose }: {
     return () => { active = false; };
   }, [open, type, query, page, exam]);
   return <div className="notes-rel-picker">
-    <button type="button" className="notes-rel-button notes-rel-picker-toggle" disabled={disabled} aria-expanded={open} onClick={() => setOpen(!open)}>
+    <button type="button" className="notes-btn notes-rel-picker-toggle" disabled={disabled} aria-expanded={open} onClick={() => setOpen(!open)}>
       <MagnifyingGlass size={12} aria-hidden="true" />{t('learning.relations.choose', { defaultValue: '从资源库选择' })}</button>
     {open && <div className="notes-rel-picker-panel">
-      {!exam && <input className="notes-rel-input" autoFocus aria-label={t('learning.relations.search', { defaultValue: '查找关联资源' })}
+      {!exam && <input className="notes-input" autoFocus aria-label={t('learning.relations.search', { defaultValue: '查找关联资源' })}
         placeholder={t('learning.relations.search', { defaultValue: '查找关联资源' })} value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />}
       {exam && <button type="button" className="notes-rel-picker-back" onClick={() => { setExam(undefined); setPage(1); }}>
         <CaretLeft size={11} aria-hidden="true" />{t('learning.relations.back', { defaultValue: '返回题目集' })}</button>}

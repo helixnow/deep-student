@@ -1,5 +1,5 @@
 /* 学习资源关系（属性面板）：与 .notes-props-* 同一视觉语言——12px 灰色分区标题、
- * 悬停行背景、行尾悬停操作、紧凑表单。不依赖浏览器原生控件外观。 */
+ * 悬停行背景、行尾悬停操作、紧凑表单。通用控件见 styles/notes-form-controls.css。 */
 
 .notes-rel {
   padding: 10px 12px;
@@ -15,13 +15,12 @@
   line-height: 1.4;
 }
 
-.notes-rel .notes-props-count + .notes-rel-icon-button,
-.notes-rel .notes-props-header > .notes-rel-icon-button:last-child {
-  margin-left: 4px;
-}
-
 .notes-rel .notes-props-header > h3 + .notes-rel-icon-button {
   margin-left: auto;
+}
+
+.notes-rel .notes-props-count + .notes-rel-icon-button {
+  margin-left: 4px;
 }
 
 .notes-rel-icon-button {
@@ -55,9 +54,7 @@
 }
 
 .notes-rel-icon-button:focus-visible,
-.notes-rel-button:focus-visible,
-.notes-rel-picker-item:focus-visible,
-.notes-rel-manual > summary:focus-visible {
+.notes-rel-picker-item:focus-visible {
   outline: 2px solid hsl(var(--ring));
   outline-offset: -2px;
 }
@@ -145,7 +142,10 @@
   margin-top: 6px;
 }
 
-/* 表单 */
+.notes-rel .notes-props-empty {
+  margin-top: 6px;
+}
+
 .notes-rel-form {
   display: grid;
   gap: 8px;
@@ -155,54 +155,6 @@
   border: 1px solid hsl(var(--border) / 70%);
   border-radius: 8px;
   background: hsl(var(--muted) / 30%);
-}
-
-.notes-rel-field {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.notes-rel-field > span {
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-}
-
-.notes-rel-input {
-  box-sizing: border-box;
-  width: 100%;
-  min-width: 0;
-  height: 28px;
-  padding: 0 8px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font: inherit;
-  font-size: 12px;
-  outline: none;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
-}
-
-.notes-rel-input:focus-visible {
-  border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 20%);
-}
-
-.notes-rel-input::placeholder {
-  color: hsl(var(--muted-foreground) / 70%);
-}
-
-.notes-rel-select {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 26px;
-  background-image: linear-gradient(45deg, transparent 50%, hsl(var(--muted-foreground)) 50%),
-    linear-gradient(135deg, hsl(var(--muted-foreground)) 50%, transparent 50%);
-  background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%;
-  background-size: 4px 4px, 4px 4px;
-  background-repeat: no-repeat;
-  cursor: pointer;
 }
 
 .notes-rel-selected {
@@ -216,83 +168,10 @@
   white-space: nowrap;
 }
 
-.notes-rel-manual > summary {
-  width: fit-content;
-  border-radius: 4px;
-  color: hsl(var(--muted-foreground));
-  font-size: 11px;
-  list-style: none;
-  cursor: pointer;
-}
-
-.notes-rel-manual > summary::-webkit-details-marker {
-  display: none;
-}
-
-.notes-rel-manual > summary::before {
-  content: '';
-  display: inline-block;
-  width: 0;
-  height: 0;
-  margin-right: 5px;
-  border-top: 3.5px solid transparent;
-  border-bottom: 3.5px solid transparent;
-  border-left: 5px solid currentColor;
-  vertical-align: 1px;
-  transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
-}
-
-.notes-rel-manual[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.notes-rel-manual > summary:hover {
-  color: hsl(var(--foreground));
-}
-
-.notes-rel-manual[open] > .notes-rel-field {
-  margin-top: 6px;
-}
-
 .notes-rel-form-actions {
   display: flex;
   justify-content: flex-end;
   gap: 6px;
-}
-
-.notes-rel-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 10px;
-  border: 1px solid hsl(var(--border));
-  border-radius: 6px;
-  background: hsl(var(--background));
-  color: hsl(var(--foreground));
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 120ms ease, opacity 120ms ease;
-}
-
-.notes-rel-button:hover:not(:disabled) {
-  background: var(--interactive-hover, hsl(var(--muted)));
-}
-
-.notes-rel-button[data-variant='primary'] {
-  border-color: transparent;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-}
-
-.notes-rel-button[data-variant='primary']:hover:not(:disabled) {
-  background: hsl(var(--primary) / 88%);
-}
-
-.notes-rel-button:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 /* 资源库选择器 */
@@ -378,22 +257,15 @@
   font-size: 11px;
 }
 
-.notes-rel .notes-props-empty {
-  margin-top: 6px;
-}
-
 @media (pointer: coarse) {
   .notes-rel-row-actions { opacity: 1; }
   .notes-rel-icon-button { width: 44px; height: 44px; }
-  .notes-rel-input { height: 44px; font-size: 16px; }
-  .notes-rel-button { height: 44px; }
   .notes-rel-picker-item { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .notes-rel-row,
-  .notes-rel-row-actions,
-  .notes-rel-manual > summary::before {
+  .notes-rel-row-actions {
     transition: none;
   }
 }

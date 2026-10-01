@@ -8,6 +8,7 @@ import { NoteRelationPreview } from './NoteRelationPreview';
 import { NoteRelationTargetPicker } from './NoteRelationTargetPicker';
 import { NoteRelationTitle } from './NoteRelationTitle';
 import { ArrowClockwise, ArrowSquareOut, Cards, FilePdf, LinkBreak, LinkSimple, PencilSimple, Plus, Question, WarningCircle } from '@phosphor-icons/react';
+import '../styles/notes-form-controls.css';
 import './NoteLearningRelations.css';
 
 export function NoteLearningRelations(props: { noteId: string; readOnly?: boolean; service?: NoteRelationsService }) {
@@ -119,22 +120,22 @@ function RelationsForNote({ noteId, readOnly, service = noteRelationsService }: 
       <Plus size={12} aria-hidden="true" />{t('learning.relations.add', { defaultValue: '添加关联' })}
     </button>}
     {showForm && <fieldset disabled={locked} className="notes-rel-form">
-      <label className="notes-rel-field"><span>{t('learning.relations.type', { defaultValue: '关系类型' })}</span>
-        <select className="notes-rel-input notes-rel-select" value={type} onChange={(event) => { setType(event.target.value as NoteRelationType); setLocation(''); setResourceId(''); setSelectedLabel(''); }}>
+      <label className="notes-field"><span>{t('learning.relations.type', { defaultValue: '关系类型' })}</span>
+        <select className="notes-input notes-select" value={type} onChange={(event) => { setType(event.target.value as NoteRelationType); setLocation(''); setResourceId(''); setSelectedLabel(''); }}>
           <option value="source">{typeLabel('source')}</option><option value="card">{typeLabel('card')}</option><option value="mistake">{typeLabel('mistake')}</option>
         </select></label>
       <NoteRelationTargetPicker key={`${type}:${editing?.id ?? 'new'}`} type={type} disabled={locked} onChoose={(id, target, label) => { setResourceId(id); setLocation(target); setSelectedLabel(label); }} />
       {selectedLabel && <p className="notes-rel-selected">{selectedLabel}</p>}
-      <details className="notes-rel-manual"><summary>{t('learning.relations.manual', { defaultValue: '按资源 ID 关联' })}</summary>
-        <label className="notes-rel-field"><span>{t('learning.relations.resource_id', { defaultValue: '资源 ID（卡片填文档 ID）' })}</span>
-          <input className="notes-rel-input" value={resourceId} onChange={(event) => { setResourceId(event.target.value); setSelectedLabel(''); }} /></label>
+      <details className="notes-disclosure"><summary>{t('learning.relations.manual', { defaultValue: '按资源 ID 关联' })}</summary>
+        <label className="notes-field"><span>{t('learning.relations.resource_id', { defaultValue: '资源 ID（卡片填文档 ID）' })}</span>
+          <input className="notes-input" value={resourceId} onChange={(event) => { setResourceId(event.target.value); setSelectedLabel(''); }} /></label>
       </details>
-      <label className="notes-rel-field"><span>{locatorLabel}</span>
-        <input className="notes-rel-input" type={type === 'source' ? 'number' : 'text'} min={1} step={1} value={location} onChange={(event) => setLocation(event.target.value)} /></label>
+      <label className="notes-field"><span>{locatorLabel}</span>
+        <input className="notes-input" type={type === 'source' ? 'number' : 'text'} min={1} step={1} value={location} onChange={(event) => setLocation(event.target.value)} /></label>
       <div className="notes-rel-form-actions">
-        <button type="button" className="notes-rel-button" onClick={resetDraft}>
+        <button type="button" className="notes-btn" onClick={resetDraft}>
           {editing ? t('learning.relations.cancel', { defaultValue: '取消编辑关系' }) : t('learning.relations.cancel_add', { defaultValue: '取消' })}</button>
-        <button type="button" className="notes-rel-button" data-variant="primary" disabled={!resourceId.trim() || !location.trim()} onClick={() => void run(async () => {
+        <button type="button" className="notes-btn" data-variant="primary" disabled={!resourceId.trim() || !location.trim()} onClick={() => void run(async () => {
           if (type === 'source' && (!Number.isInteger(Number(location)) || Number(location) < 1)) throw new Error(t('learning.relations.invalid_page', { defaultValue: '请输入从 1 开始的有效页码。' }));
           await service.put({ id: editing?.id ?? `nrel_${nanoid()}`, note_id: noteId, block_id: editing?.block_id ?? null, type,
             resource_id: resourceId.trim(), locator: type === 'source' ? { type: 'page', value: Number(location) } : { type: type === 'card' ? 'card' : 'question', value: location.trim() }, expected_revision: editing?.revision ?? null });

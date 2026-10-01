@@ -6,6 +6,7 @@ import {
   type LearningField,
 } from '../noteLearningProps';
 import { LearningTemplatePresetPicker } from './LearningTemplatePresetPicker';
+import '../styles/notes-form-controls.css';
 
 /** Mount under a note-id key. Live metadata refreshes must not discard the user's draft. */
 export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
@@ -40,31 +41,31 @@ export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
     } finally { setSaving(false); }
   };
   return (
-    <fieldset className="my-3 space-y-2 text-xs" disabled={disabled || readOnly || saving}>
-      <legend className="font-medium">{t('learning.title')}</legend>
+    <fieldset className="notes-learn-props" disabled={disabled || readOnly || saving}>
+      <legend className="notes-learn-props-title">{t('learning.title')}</legend>
       {(Object.keys(LEARNING_PROP_KEYS) as LearningField[]).map((field) => {
         const raw = value[LEARNING_PROP_KEYS[field]];
         const invalid = raw !== undefined && current[field] === undefined;
         const inputValue = changes[field] ?? current[field] ?? '';
         return (
-          <label key={field} className="block space-y-1">
-            <span>{t(`learning.fields.${field}`)}</span>
+          <label key={field} className="notes-learn-prop">
+            <span className="notes-learn-prop-label">{t(`learning.fields.${field}`)}</span>
             {field === 'mastery' ? (
-              <select className="w-full rounded border border-border bg-background p-1.5" value={inputValue}
+              <select className="notes-select" data-ghost value={inputValue}
                 onChange={(event) => edit(field, event.target.value)}>
                 <option value="">{t('learning.unset')}</option>
                 {MASTERY_STATES.map((state) => <option key={state} value={state}>{t(`learning.mastery.${state}`)}</option>)}
               </select>
             ) : (
-              <input className="w-full rounded border border-border bg-background p-1.5"
+              <input className="notes-input" data-ghost placeholder={t('learning.unset')}
                 type={field === 'reviewDate' ? 'date' : 'text'} maxLength={512} value={inputValue}
                 onChange={(event) => edit(field, event.target.value)} />
             )}
-            {invalid && <span className="block text-muted-foreground">{t('learning.legacy_value', { value: String(raw) })}</span>}
+            {invalid && <span className="notes-learn-prop-note">{t('learning.legacy_value', { value: String(raw) })}</span>}
           </label>
         );
       })}
-      <p className="text-muted-foreground">{t('learning.legacy_hint')}</p>
+      <p className="notes-learn-props-hint">{t('learning.legacy_hint')}</p>
       {!readOnly && <LearningTemplatePresetPicker course={changes.course ?? current.course ?? ''} disabled={disabled}
         onChoose={(preset) => { baseline.current ??= value; setSaved(false); setChanges((draft) => {
           const next = { ...draft };
@@ -75,13 +76,15 @@ export function NoteLearningPropsFields({ value, disabled, readOnly, onSave }: {
           }
           return next;
         }); }} />}
-      {!readOnly && <button type="button" className="rounded border border-border px-2 py-1"
-        disabled={disabled || Object.keys(changes).length === 0} onClick={() => void save()}>{t(saving ? 'learning.saving' : 'learning.save')}</button>}
-      {!readOnly && <p role="status" className="text-muted-foreground">
-        {saving ? t('learning.saving') : Object.keys(changes).length > 0 ? t('learning.unsaved') : saved ? t('learning.saved') : ''}
-      </p>}
-      {error && <p role="alert" className="text-destructive">{error}</p>}
-      {(error || failedSave) && <button type="button" onClick={() => { baseline.current = value; setError(''); setFailedSave(false); }}>{t('learning.confirm_latest', { defaultValue: '已核对最新值，保留草稿重试' })}</button>}
+      {!readOnly && <div className="notes-learn-props-footer">
+        <p role="status" className="notes-learn-props-status">
+          {saving ? t('learning.saving') : Object.keys(changes).length > 0 ? t('learning.unsaved') : saved ? t('learning.saved') : ''}
+        </p>
+        <button type="button" className="notes-btn" data-variant="primary"
+          disabled={disabled || Object.keys(changes).length === 0} onClick={() => void save()}>{t(saving ? 'learning.saving' : 'learning.save')}</button>
+      </div>}
+      {error && <p role="alert" className="notes-props-error">{error}</p>}
+      {(error || failedSave) && <button type="button" className="notes-btn" data-variant="ghost" onClick={() => { baseline.current = value; setError(''); setFailedSave(false); }}>{t('learning.confirm_latest', { defaultValue: '已核对最新值，保留草稿重试' })}</button>}
     </fieldset>
   );
 }

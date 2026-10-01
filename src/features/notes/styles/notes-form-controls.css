@@ -1,0 +1,320 @@
+/* 笔记模块通用表单控件：属性面板、学习属性、关系、模板与新建对话框共用。
+ * 28px 控件高度、6px 圆角、token 色；触屏 44px / 16px 防 iOS 缩放。 */
+
+.notes-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.notes-field > span {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-input,
+.notes-select {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.notes-input:focus-visible,
+.notes-select:focus-visible {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 20%);
+}
+
+.notes-input::placeholder {
+  color: hsl(var(--muted-foreground) / 70%);
+}
+
+.notes-input:disabled,
+.notes-select:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+textarea.notes-input {
+  height: auto;
+  min-height: 56px;
+  padding: 6px 8px;
+  resize: vertical;
+}
+
+.notes-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 26px;
+  background-image: linear-gradient(45deg, transparent 50%, hsl(var(--muted-foreground)) 50%),
+    linear-gradient(135deg, hsl(var(--muted-foreground)) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 9px) 50%;
+  background-size: 4px 4px, 4px 4px;
+  background-repeat: no-repeat;
+  cursor: pointer;
+}
+
+/* Notion 式属性值：平时无框，悬停浅底、聚焦出框 */
+.notes-input[data-ghost],
+.notes-select[data-ghost] {
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.notes-input[data-ghost]:hover:not(:disabled),
+.notes-select[data-ghost]:hover:not(:disabled) {
+  background-color: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.notes-input[data-ghost]:focus-visible,
+.notes-select[data-ghost]:focus-visible {
+  border-color: hsl(var(--ring));
+  background-color: hsl(var(--background));
+}
+
+.notes-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 120ms ease, opacity 120ms ease;
+}
+
+.notes-btn:hover:not(:disabled) {
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.notes-btn[data-variant='primary'] {
+  border-color: transparent;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.notes-btn[data-variant='primary']:hover:not(:disabled) {
+  background: hsl(var(--primary) / 88%);
+}
+
+.notes-btn[data-variant='ghost'] {
+  border-color: transparent;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-btn[data-variant='ghost']:hover:not(:disabled) {
+  color: hsl(var(--foreground));
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.notes-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.notes-btn:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .notes-input,
+  .notes-select {
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .notes-btn {
+    height: 44px;
+  }
+}
+
+/* 学习属性：Notion 式属性行（左标签 / 右值），值控件平时无框 */
+.notes-learn-props {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+  font-size: 12px;
+}
+
+.notes-learn-props-title {
+  margin-bottom: 4px;
+  padding: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.notes-learn-prop {
+  display: grid;
+  grid-template-columns: minmax(56px, 34%) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.notes-learn-prop-label {
+  overflow: hidden;
+  padding-left: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-learn-prop-note {
+  grid-column: 2;
+  padding: 0 8px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-learn-props-hint {
+  margin: 4px 0 0;
+  padding-left: 4px;
+  color: hsl(var(--muted-foreground) / 80%);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.notes-learn-props-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.notes-learn-props-status {
+  flex: 1;
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+
+.notes-learn-props-status:empty {
+  visibility: hidden;
+}
+
+@media (pointer: coarse) {
+  .notes-learn-prop {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    min-height: 0;
+    margin-bottom: 6px;
+  }
+
+  .notes-learn-prop-note {
+    grid-column: 1;
+  }
+}
+
+/* 轻量折叠项（替代原生 details 外观） */
+.notes-disclosure > summary {
+  width: fit-content;
+  border-radius: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  list-style: none;
+  cursor: pointer;
+}
+
+.notes-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.notes-disclosure > summary::before {
+  content: '';
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin-right: 5px;
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  border-left: 5px solid currentColor;
+  vertical-align: 1px;
+  transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.notes-disclosure[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.notes-disclosure > summary:hover {
+  color: hsl(var(--foreground));
+}
+
+
+.notes-disclosure > summary:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.notes-disclosure[open] > summary {
+  margin-bottom: 6px;
+}
+
+.notes-disclosure-body {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notes-disclosure > summary::before { transition: none; }
+}
+
+.notes-learn-presets {
+  margin-top: 6px;
+  padding-left: 4px;
+}
+
+.notes-learn-preset-preview {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: hsl(var(--muted) / 40%);
+  font-size: 11px;
+}
+
+.notes-learn-preset-preview > div {
+  display: flex;
+  gap: 6px;
+}
+
+.notes-learn-preset-preview dt {
+  color: hsl(var(--muted-foreground));
+}
+
+.notes-learn-preset-preview dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notes-learn-preset-fill {
+  justify-self: start;
+}
