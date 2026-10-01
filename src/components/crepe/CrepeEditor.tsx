@@ -17,6 +17,7 @@ import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { EditorView } from '@codemirror/view';
 import { editorViewCtx, parserCtx, serializerCtx } from '@milkdown/kit/core';
 import { normalizeMarkdown } from './normalizeMarkdown';
+import { minimalReplace } from './minimalReplace';
 import { TextSelection } from '@milkdown/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
 import { Slice } from '@milkdown/prose/model';
@@ -690,8 +691,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         try {
           setBlockMenu(null);
           uploadsRef.current?.cancelAll();
+          // 最小差异替换：只重建真正变化的区间（结果与 replaceAll 同一文档），
+          // 未变化的段落/图片/代码块 NodeView 保留，选区与滚动按映射保持，不再整篇闪烁
+          let applied = false;
+          try {
+            crepe.editor.action((ctx) => {
+              const view = ctx.get(editorViewCtx);
+              const next = ctx.get(parserCtx)(markdown);
+              if (!next) return;
+              const tr = minimalReplace(view.state, next);
+              if (tr) view.dispatch(tr);
+              applied = true;
+            });
+          } catch (diffError) {
+            debugLog.warn('[CrepeEditor] minimal setMarkdown failed, falling back to replaceAll:', diffError);
+          }
           // Milkdown 版本类型差异，运行时兼容
-          (crepe.editor as any).action(replaceAll(markdown));
+          if (!applied) (crepe.editor as any).action(replaceAll(markdown));
           identityOriginalRef.current = markdown;
           return true;
         } catch (e) {
