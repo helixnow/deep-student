@@ -2899,7 +2899,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                 onCreateNote={() => { void createResource('note'); }}
                 onOpenSearch={() => openSearchOverlay('quick-open')}
                 onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
-                onAskAgent={() => { void openQuickAssistantWindow(); }}
+                onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
               />
             </Panel>
             {splitTab && (
@@ -2933,7 +2933,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
                     onCreateNote={() => { void createResource('note'); }}
                     onOpenSearch={() => openSearchOverlay('quick-open')}
                     onImport={() => setLibraryDialog({ open: true, tab: 'import' })}
-                    onAskAgent={() => { void openQuickAssistantWindow(); }}
+                    onAskAgent={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', String(error))); }}
                   />
                 </Panel>
               </>

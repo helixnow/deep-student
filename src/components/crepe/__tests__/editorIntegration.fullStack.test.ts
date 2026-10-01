@@ -120,6 +120,18 @@ describe('formal toggle + identity + columns + command registry', () => {
     } finally { await f.destroy(); }
   });
 
+  it('toggles a heading or code block back to text instead of reporting the lit button as unavailable', async () => {
+    const f = await mount('# Title');
+    try {
+      f.view.dispatch(f.view.state.tr.setSelection(TextSelection.create(f.view.state.doc, 3)));
+      expect(canExecuteCrepeCommand(f.view, 'heading-1', { toggle: true })).toBe(true);
+      expect(await executeCrepeCommand(f.view, 'heading-1', { toggle: true })).toBe(true);
+      expect(f.view.state.doc.firstChild!.type.name).toBe('paragraph');
+      expect(await executeCrepeCommand(f.view, 'heading-2', { toggle: true })).toBe(true);
+      expect(f.view.state.doc.firstChild!.attrs.level).toBe(2);
+    } finally { await f.destroy(); }
+  });
+
   it('shares pure canExecute and execution across registered Milkdown and slash commands', async () => {
     const f = await mount('/toggle');
     try {

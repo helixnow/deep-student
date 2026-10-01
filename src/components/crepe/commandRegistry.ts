@@ -118,9 +118,17 @@ function prepare(view: EditorView, id: CrepeCommandId, request: CrepeCommandRequ
   let applied = false;
   if (id in crepeBlockCommands) {
     if (!target) return null;
-    applied = request.toggle && ['bullet-list', 'ordered-list', 'task-list', 'quote'].includes(id)
-      ? toggleCrepeBlockFormat(projection, target, id as 'bullet-list' | 'ordered-list' | 'task-list' | 'quote')
-      : crepeBlockCommands[id as keyof typeof crepeBlockCommands](projection, target);
+    // 切换语义：已经是同级标题 / 代码块时转回正文（与列表、引用的 toggle 一致；
+    // 否则移动工具条上亮着的 H1 按钮因「无变化」被判不可用，无法退回正文）
+    const headingLevel = /^heading-(\d)$/.exec(id)?.[1];
+    const alreadyThatBlock = request.toggle && target.nodes.length > 0 && target.nodes.every((node) =>
+      headingLevel ? node.type.name === 'heading' && node.attrs.level === Number(headingLevel)
+        : id === 'code-block' && node.type.name === 'code_block');
+    applied = alreadyThatBlock
+      ? crepeBlockCommands.paragraph(projection, target)
+      : request.toggle && ['bullet-list', 'ordered-list', 'task-list', 'quote'].includes(id)
+        ? toggleCrepeBlockFormat(projection, target, id as 'bullet-list' | 'ordered-list' | 'task-list' | 'quote')
+        : crepeBlockCommands[id as keyof typeof crepeBlockCommands](projection, target);
   } else if (isLayoutCommand(id)) {
     applied = noteLayoutCommand(id)(state, capture, projection);
     if (output) inheritLayoutIdentity(state.doc, output);

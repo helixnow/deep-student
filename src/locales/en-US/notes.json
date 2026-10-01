@@ -776,7 +776,8 @@
     "note_templates": "Note templates",
     "focus_mode": "Focus mode",
     "exit_focus_mode": "Exit focus mode",
-    "label": "Formatting"
+    "label": "Formatting",
+    "ask_agent_failed": "Could not open the assistant window: {{error}}"
   },
   "templates": {
     "lecture": "Lecture notes",
@@ -854,7 +855,8 @@
     "convert-columns": "Convert to two columns",
     "convert-cornell": "Convert to Cornell layout",
     "convert-cornell-template": "Convert Cornell template",
-    "unwrap-columns": "Unwrap into regular blocks"
+    "unwrap-columns": "Unwrap into regular blocks",
+    "unavailable_here": "Not available here: {{label}}"
   },
   "draftPersistence": {
     "save_unconfirmed": "Draft storage was not confirmed.",
@@ -2067,7 +2069,8 @@
     "retry_draft_store": "Retry draft storage",
     "drafts_found": "Unsaved drafts found",
     "view_draft": "View draft {{index}}",
-    "save_draft_as_note": "Save draft as note"
+    "save_draft_as_note": "Save draft as note",
+    "ai_update_deferred": "The AI update was not applied because this note has unsaved changes. If a conflict appears after saving, compare and pick a version there."
   },
   "agent": {
     "caret_label": "AI"

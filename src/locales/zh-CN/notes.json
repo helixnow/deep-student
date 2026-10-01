@@ -749,7 +749,8 @@
     "note_templates": "笔记模板",
     "focus_mode": "专注模式",
     "exit_focus_mode": "退出专注模式",
-    "label": "格式化"
+    "label": "格式化",
+    "ask_agent_failed": "无法打开助手窗口：{{error}}"
   },
   "templates": {
     "lecture": "听课笔记",
@@ -827,7 +828,8 @@
     "convert-columns": "转为双列",
     "convert-cornell": "转为康奈尔布局",
     "convert-cornell-template": "转换康奈尔模板",
-    "unwrap-columns": "展开为普通块"
+    "unwrap-columns": "展开为普通块",
+    "unavailable_here": "当前位置不可用：{{label}}"
   },
   "draftPersistence": {
     "save_unconfirmed": "草稿持久化未确认。",
@@ -2066,7 +2068,8 @@
     "retry_draft_store": "重试草稿存储",
     "drafts_found": "已找到未保存草稿",
     "view_draft": "查看草稿 {{index}}",
-    "save_draft_as_note": "草稿另存为笔记"
+    "save_draft_as_note": "草稿另存为笔记",
+    "ai_update_deferred": "AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。"
   },
   "agent": {
     "caret_label": "AI"

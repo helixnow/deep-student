@@ -67,6 +67,7 @@ import { parseWorkbenchDragData, WB_RESOURCE_MIME } from '@/features/workbench/h
 import { insertWikilink } from '@/components/crepe/plugins/wikilink/autocomplete';
 import { editorViewCtx } from '@milkdown/kit/core';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
+import { isMobilePlatform } from '@/utils/platform';
 import {
   consumeNotesHeadingTarget,
   NOTES_HEADING_TARGET_EVENT,
@@ -1320,11 +1321,14 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           pendingSaveQueueRef.current.some((p) => p.noteId === currentNoteId) ||
           inFlightSaveRef.current !== null;
         if (isDirty) {
-          console.warn('[NotesCrepeEditor] ⚠️ canvas 更新到达时存在未保存修改，跳过静默覆盖');
+          // 不覆盖用户正在输入的内容，但要让用户知道：AI 的更新没有落到这份草稿上
+          showGlobalNotification('warning', t('notes:host.ai_update_deferred', 'AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。'));
           return;
         }
         // 更新编辑器内容
+        const previousContent = editorApi.getMarkdown();
         editorApi.setMarkdown(newContent);
+        try { editorApi.agentFlashChange?.(previousContent, newContent); } catch { /* 演出失败不影响同步 */ }
         // 更新本地引用，避免被误判为未保存
         contentRef.current = newContent;
         draftByNoteRef.current.set(currentNoteId, newContent);
@@ -1337,7 +1341,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     return () => {
       window.removeEventListener('canvas:content-changed', handleCanvasContentChanged);
     };
-  }, [editorApi]);
+  }, [editorApi, t]);
 
   // ★ R3 修复：监听外部更新事件（其他面板/AI 工具/冲突解决），原位刷新编辑器内容。
   // force=false：仅在编辑器无未保存修改时应用（watch 静默同步，避免覆盖正在输入的内容）；
@@ -2308,10 +2312,11 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onClick={handleGenerateCards} disabled={!editorApi || generatingCards} aria-busy={generatingCards || undefined}>
       <Cards size={16} /><span>{t('notes:toolbar.generateCards', '生成卡片')}</span>
     </DsButton>}
-    <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
-      onClick={() => { void openQuickAssistantWindow(); }}>
+    {/* 快捷助手窗口仅桌面端可用（移动端后端为空实现）：移动端不展示，桌面失败要告知 */}
+    {!isMobilePlatform() && <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', t('notes:toolbar.ask_agent_failed', { defaultValue: '无法打开助手窗口：{{error}}', error: String(error) }))); }}>
       <Robot size={16} /><span>{t('notes:toolbar.ask_agent', 'Ask Agent')}</span>
-    </DsButton>
+    </DsButton>}
     {noteId && <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
       onClick={() => setHistoryOpen(true)}>
       <ClockCounterClockwise size={16} /><span>{t('notes:header.history', '历史版本')}</span>

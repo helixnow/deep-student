@@ -1,7 +1,7 @@
 import type { Ctx } from '@milkdown/ctx';
 import { editorViewCtx } from '@milkdown/kit/core';
 import i18next from 'i18next';
-import { executeCrepeCommand, LAYOUT_COMMANDS, type CrepeCommandId } from './commandRegistry';
+import { executeCrepeCommand, isLayoutCommand, LAYOUT_COMMANDS, type CrepeCommandId } from './commandRegistry';
 import { CALLOUT_SLASH_ICON } from './plugins/slashMenuExtras';
 import { showGlobalNotification } from '../UnifiedNotification';
 
@@ -40,6 +40,12 @@ export function wireCrepeCommandMenu(
 ): void {
   const invoke = (id: CrepeCommandId) => (ctx: Ctx) => {
     void executeCrepeCommand(ctx.get(editorViewCtx), id, { slash: kind === 'slash' })
+      .then((applied) => {
+        // 菜单项对当前位置不适用（如在分栏外「展开为普通块」）：明确告知，而不是静默无事发生
+        if (applied === false && isLayoutCommand(id)) {
+          showGlobalNotification('info', i18next.t('notes:layout.unavailable_here', { defaultValue: '当前位置不可用：{{label}}', label: layoutCommandLabel(id) }));
+        }
+      })
       .catch(error => showGlobalNotification('error', String(error)));
   };
   for (const group of builder.build()) for (const item of group.items) {

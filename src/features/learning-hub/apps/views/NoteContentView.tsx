@@ -1,4 +1,4 @@
-import { insertImageFromDevice } from '@/features/notes/mobileEditorCommands';
+import { insertImageFromDevice, runEditorCommand } from '@/features/notes/mobileEditorCommands';
 /**
  * NoteContentView - 笔记内容视图
  *
@@ -1020,7 +1020,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       },
       [COMMAND_EVENTS.NOTES_INSERT_MATH]: () => {
         if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
-        editorApiRef.current?.insertAtCursor('\n$$\n\n$$\n');
+        // 与斜杠菜单「公式」同一命令（LaTeX 块），不再插入字面 $$
+        runEditorCommand(editorApiRef.current, 'math');
       },
       [COMMAND_EVENTS.NOTES_INSERT_TABLE]: () => {
         if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
@@ -1037,10 +1038,6 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       [COMMAND_EVENTS.NOTES_INSERT_IMAGE]: () => {
         if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
         void insertImageFromDevice(editorApiRef.current, noteId);
-      },
-      [COMMAND_EVENTS.AI_CONTINUE_WRITING]: () => {
-        if (!editorInteractive || readOnly || editorApiRef.current?.isReadonly()) return;
-        showGlobalNotification('info', t('notes:ai.continue_not_available'));
       },
     },
     true
