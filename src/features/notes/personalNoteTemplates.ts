@@ -103,3 +103,19 @@ export function savePersonalNoteTemplate(input: {
   pendingWrite = operation.catch(() => undefined);
   return operation;
 }
+
+/** 删除个人模板（与保存共用串行写队列；expectedRevision 不符视为冲突）。 */
+export function deletePersonalNoteTemplate(id: `personal:${string}`, expectedRevision?: number): Promise<void> {
+  const operation = pendingWrite.then(async () => {
+    const templates = await loadPersonalNoteTemplates();
+    const existing = templates.find((item) => item.id === id);
+    if (!existing) return;
+    if (expectedRevision !== undefined && (existing.revision ?? 0) !== expectedRevision) {
+      throw new Error(i18n.t('notes:personalTemplates.errors.version_conflict', { defaultValue: '模板已被修改，请重新选择模板并核对后再保存。' }));
+    }
+    await saveSetting(PERSONAL_NOTE_TEMPLATES_KEY, JSON.stringify(templates.filter((item) => item.id !== id)));
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event(PERSONAL_NOTE_TEMPLATES_CHANGED));
+  });
+  pendingWrite = operation.catch(() => undefined);
+  return operation;
+}

@@ -2114,5 +2114,26 @@
     "load_failed": "灵感加载失败 · 点击重试",
     "save_edit": "保存修改",
     "confirm_save": "确认入库"
+  },
+  "templateGallery": {
+    "title": "模板",
+    "builtin": "内置模板",
+    "mine": "我的模板",
+    "empty_mine": "还没有自己的模板",
+    "new": "新建模板",
+    "save_current": "将当前笔记存为模板",
+    "course_default": "{{course}} 默认",
+    "body_placeholder": "像写笔记一样编写模板内容，输入 / 插入块…",
+    "variables": "可用变量（直接在内容里输入）：",
+    "cancel": "取消",
+    "edit": "编辑",
+    "delete": "删除",
+    "delete_confirm": "删除模板「{{title}}」？",
+    "preset_note": "同时填入未设置的学习属性：",
+    "replace": "替换全文",
+    "replace_confirm": "将用此模板替换整篇笔记（当前 {{count}} 字）。",
+    "use": "使用模板",
+    "applied": "已应用模板「{{title}}」",
+    "pick": "从左侧选择一个模板"
   }
 }

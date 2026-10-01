@@ -2115,5 +2115,26 @@
     "load_failed": "Could not load insights · Retry",
     "save_edit": "Save changes",
     "confirm_save": "Confirm and save"
+  },
+  "templateGallery": {
+    "title": "Templates",
+    "builtin": "Built-in",
+    "mine": "My templates",
+    "empty_mine": "No templates of your own yet",
+    "new": "New template",
+    "save_current": "Save current note as template",
+    "course_default": "Default for {{course}}",
+    "body_placeholder": "Write the template like a note; type / for blocks…",
+    "variables": "Variables (type them in the content):",
+    "cancel": "Cancel",
+    "edit": "Edit",
+    "delete": "Delete",
+    "delete_confirm": "Delete template “{{title}}”?",
+    "preset_note": "Also fills unset learning properties:",
+    "replace": "Replace all",
+    "replace_confirm": "This replaces the whole note ({{count}} characters) with the template.",
+    "use": "Use template",
+    "applied": "Applied template “{{title}}”",
+    "pick": "Pick a template on the left"
   }
 }

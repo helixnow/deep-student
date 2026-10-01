@@ -125,6 +125,16 @@ textarea.notes-input {
   background: var(--interactive-hover, hsl(var(--muted)));
 }
 
+.notes-btn[data-variant='danger'] {
+  border-color: transparent;
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground, 0 0% 100%));
+}
+
+.notes-btn[data-variant='danger']:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 88%);
+}
+
 .notes-btn:disabled {
   opacity: 0.45;
   cursor: default;

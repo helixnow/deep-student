@@ -1,218 +1,336 @@
 /**
- * 笔记模板内联面板（自 NotesCrepeEditor 抽出）。
+ * 笔记模板库（Notion 式模板选择器）。
  *
- * - 编辑器顶部随文档流展开（grid-rows 0fr→1fr），无浮层遮挡；
- * - 方向键 / Home / End 在模板卡片间移动焦点（roving tabindex），Enter 应用；
- * - Esc 收起并把焦点还给触发按钮；
- * - prefers-reduced-motion 下跳过展开/收起过渡。
+ * 居中对话框：左栏「内置模板 / 我的模板」，右栏用与正文同一套 Crepe 排版渲染的实时预览；
+ * 底部「使用模板」（追加，空白笔记即直接成为正文）/ 插入到光标处 / 替换全文（二次确认）。
+ * 个人模板在同一对话框内用真实编辑器编辑——不暴露 Markdown 源码。
+ *
+ * 并发保护：打开时捕获文档基线与插入点；应用走 applyPreviewedNoteTemplate，
+ * 基线之后笔记有任何变化（含 Agent 写入）都会失败关闭并重新捕获，绝不覆盖新内容。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NoteBlank } from '@phosphor-icons/react';
-import { cn } from '@/lib/utils';
-import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
-import { getNoteTemplates, type NoteTemplate, type NoteTemplateDocumentHost, type NoteTemplateLearningPropsHost } from '../noteTemplates';
-import { PersonalNoteTemplates } from './PersonalNoteTemplates';
-
-/** 模板内联面板收起动画时长（200ms 过渡 + 少量缓冲后卸载） */
-const TEMPLATE_PANEL_EXIT_MS = 220;
-
-const prefersReducedMotion = (): boolean =>
-  typeof window !== 'undefined' &&
-  typeof window.matchMedia === 'function' &&
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+import { NoteBlank, Plus, PencilSimple, Trash, FloppyDisk } from '@phosphor-icons/react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/shad/Dialog';
+import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
+import {
+  applyPreviewedNoteTemplate, fillUnsetTemplateLearningProps, getNoteTemplates, renderNoteTemplate,
+  type NoteTemplate, type NoteTemplateApplyMode, type NoteTemplateDocument, type NoteTemplateDocumentHost, type NoteTemplateLearningPropsHost,
+} from '../noteTemplates';
+import {
+  deletePersonalNoteTemplate, loadPersonalNoteTemplates, savePersonalNoteTemplate, PERSONAL_NOTE_TEMPLATES_CHANGED,
+  type PersonalNoteTemplate,
+} from '../personalNoteTemplates';
+import { LEARNING_PROP_KEYS, MASTERY_STATES, type LearningField, type NoteLearningProps } from '../noteLearningProps';
+import '../styles/notes-form-controls.css';
+import './NotesTemplatePanel.css';
 
 export interface NotesTemplatePanelProps {
-  /** 展开状态（父组件受控） */
+  /** 打开状态（父组件受控） */
   open: boolean;
-  /** Esc 或应用模板后请求收起 */
+  /** Esc / 关闭 / 应用模板后请求收起 */
   onRequestClose: () => void;
-  /** 应用模板（父组件负责渲染变量并写入编辑器） */
+  /** 无 documentHost 时的回退：父组件负责渲染变量并追加到正文 */
   onApplyTemplate: (template: NoteTemplate) => void | Promise<void>;
-  /** Optional full-document host enables capture and preview-confirmed replacement. */
+  /** 完整文档宿主：启用预览基线、插入到光标处与替换全文 */
   documentHost?: NoteTemplateDocumentHost;
   learningPropsHost?: NoteTemplateLearningPropsHost;
-  /** 卡片禁用（只读 / 编辑器未就绪） */
+  /** 只读 / 编辑器未就绪 */
   disabled?: boolean;
   /** aria-controls 关联 id（由触发按钮持有） */
   panelId: string;
-  /** 收起后焦点归还目标（模板触发按钮） */
+  /** 关闭后焦点归还目标（模板触发按钮） */
   triggerRef?: React.RefObject<HTMLButtonElement | null>;
 }
 
+type Selection = { kind: 'builtin' | 'personal'; id: string } | null;
+interface Draft {
+  id?: PersonalNoteTemplate['id'];
+  expectedRevision?: number;
+  title: string;
+  markdown: string;
+  defaultForCourse: string;
+  learningPreset: NoteLearningProps;
+}
+
+const VARIABLES = ['{{title}}', '{{date}}', '{{time}}'];
+
 export const NotesTemplatePanel: React.FC<NotesTemplatePanelProps> = ({
-  open,
-  onRequestClose,
-  onApplyTemplate,
-  disabled = false,
-  panelId,
-  triggerRef,
-  documentHost,
-  learningPropsHost,
+  open, onRequestClose, onApplyTemplate, disabled = false, panelId, triggerRef, documentHost, learningPropsHost,
 }) => {
   const { t, i18n } = useTranslation(['notes']);
-  // mounted 控制 DOM 挂载（收起动画结束后卸载），expanded 驱动过渡目标态
-  const [mounted, setMounted] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-  const cardRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const gridRef = useRef<HTMLDivElement | null>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [applyError, setApplyError] = useState<string | null>(null);
-  const [applying, setApplying] = useState(false);
-  const apply = async (template: NoteTemplate) => {
-    if (disabled || applying) return;
-    setApplying(true);
-    setApplyError(null);
-    try { await onApplyTemplate(template); }
-    catch (error) { setApplyError(error instanceof Error ? error.message : String(error)); }
-    finally { setApplying(false); }
-  };
+  const builtins = getNoteTemplates(i18n?.resolvedLanguage ?? i18n?.language ?? 'en-US');
+  const [personal, setPersonal] = useState<PersonalNoteTemplate[]>([]);
+  const [loadingPersonal, setLoadingPersonal] = useState(false);
+  const [selection, setSelection] = useState<Selection>(null);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [confirm, setConfirm] = useState<'replace' | 'delete' | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [baseline, setBaseline] = useState<NoteTemplateDocument>();
+  const [position, setPosition] = useState<{ from: number; to: number }>();
+  const draftEditorRef = useRef<CrepeEditorApi | null>(null);
+  const navRef = useRef<HTMLDivElement | null>(null);
 
+  const capture = useCallback(() => {
+    try {
+      setBaseline(documentHost?.getDocument());
+      setPosition(documentHost?.getInsertionPoint?.());
+    } catch { setBaseline(undefined); setPosition(undefined); }
+  }, [documentHost]);
+
+  // 打开时：捕获基线（对话框抢焦点前），默认选中第一个内置模板
   useEffect(() => {
-    if (open) {
-      setMounted(true);
-      setActiveIndex(0);
-      if (prefersReducedMotion()) {
-        setExpanded(true);
-        return;
-      }
-      // 先以 0fr 挂载，下一帧再切 1fr，保证入场有过渡
-      const raf = requestAnimationFrame(() => setExpanded(true));
-      return () => cancelAnimationFrame(raf);
-    }
-    setExpanded(false);
-    if (prefersReducedMotion()) {
-      setMounted(false);
-      return;
-    }
-    const timer = window.setTimeout(() => setMounted(false), TEMPLATE_PANEL_EXIT_MS);
-    return () => window.clearTimeout(timer);
+    if (!open) return;
+    capture();
+    setSelection((current) => current ?? (builtins[0] ? { kind: 'builtin', id: builtins[0].id } : null));
+    setDraft(null); setConfirm(null); setError('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在每次打开时初始化
   }, [open]);
 
-  const templates = getNoteTemplates(i18n?.resolvedLanguage ?? i18n?.language ?? 'en-US');
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    const load = async () => {
+      setLoadingPersonal(true);
+      try {
+        const stored = await loadPersonalNoteTemplates();
+        if (!cancelled) setPersonal(stored);
+      } catch (cause) {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : String(cause));
+      } finally { if (!cancelled) setLoadingPersonal(false); }
+    };
+    void load();
+    window.addEventListener(PERSONAL_NOTE_TEMPLATES_CHANGED, load);
+    return () => { cancelled = true; window.removeEventListener(PERSONAL_NOTE_TEMPLATES_CHANGED, load); };
+  }, [open]);
 
-  /** 网格列数（按第一行 offsetTop 相同的卡片数推算，供 ↑/↓ 跨行移动） */
-  const measureColumns = useCallback((): number => {
-    const cards = cardRefs.current.filter(Boolean) as HTMLButtonElement[];
-    if (cards.length <= 1) return 1;
-    const firstTop = cards[0].offsetTop;
-    let columns = 0;
-    for (const card of cards) {
-      if (Math.abs(card.offsetTop - firstTop) > 1) break;
-      columns += 1;
-    }
-    return Math.max(1, columns);
-  }, []);
+  const selected: NoteTemplate | PersonalNoteTemplate | undefined = useMemo(() => {
+    if (!selection) return undefined;
+    return selection.kind === 'builtin'
+      ? builtins.find((item) => item.id === selection.id)
+      : personal.find((item) => item.id === selection.id);
+  }, [builtins, personal, selection]);
+  const selectedPersonal = selection?.kind === 'personal' ? selected as PersonalNoteTemplate | undefined : undefined;
+  const templateTitle = (template: NoteTemplate) => template.id.startsWith('personal:')
+    ? template.title : t(`notes:templates.${template.id}`, template.title);
+  const templateSummary = (template: NoteTemplate) => template.id.startsWith('personal:')
+    ? template.summary : t(`notes:templates.${template.id}_summary`, template.summary);
+  const rendered = selected ? renderNoteTemplate(selected.markdown, documentHost?.variables) : '';
+  const docLength = baseline?.markdown.trim().length ?? 0;
 
-  const focusCard = useCallback((index: number) => {
-    const count = templates.length;
-    if (count === 0) return;
-    const clamped = Math.min(Math.max(index, 0), count - 1);
-    setActiveIndex(clamped);
-    cardRefs.current[clamped]?.focus();
-  }, [templates.length]);
+  const close = useCallback(() => {
+    onRequestClose();
+    window.setTimeout(() => triggerRef?.current?.focus(), 0);
+  }, [onRequestClose, triggerRef]);
 
-  const handleGridKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
-    const count = templates.length;
-    if (count === 0) return;
-    let next: number | null = null;
-    switch (event.key) {
-      case 'ArrowRight':
-        next = (activeIndex + 1) % count;
-        break;
-      case 'ArrowLeft':
-        next = (activeIndex - 1 + count) % count;
-        break;
-      case 'ArrowDown': {
-        const columns = measureColumns();
-        next = Math.min(activeIndex + columns, count - 1);
-        break;
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await action(); }
+    catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      capture(); // 笔记已变化：刷新基线，用户确认后可直接重试
+    } finally { setBusy(false); }
+  };
+
+  const apply = (mode: NoteTemplateApplyMode) => selected && void run(async () => {
+    if (documentHost && baseline) {
+      await applyPreviewedNoteTemplate(documentHost, baseline, rendered, mode, position);
+      // 模板属性：只填入笔记尚未设置的学习属性（与 Notion 应用模板属性一致）
+      if (selected.learningPreset && Object.keys(selected.learningPreset).length > 0 && learningPropsHost) {
+        const propsBaseline = learningPropsHost.getProps();
+        await learningPropsHost.saveProps(fillUnsetTemplateLearningProps(propsBaseline.props, selected.learningPreset), propsBaseline);
       }
-      case 'ArrowUp': {
-        const columns = measureColumns();
-        next = Math.max(activeIndex - columns, 0);
-        break;
-      }
-      case 'Home':
-        next = 0;
-        break;
-      case 'End':
-        next = count - 1;
-        break;
-      default:
-        return;
+    } else {
+      await onApplyTemplate(selected);
     }
+    showGlobalNotification('success', t('notes:templateGallery.applied', { defaultValue: '已应用模板「{{title}}」', title: templateTitle(selected) }));
+    close();
+  });
+
+  const startEdit = (next: Draft) => { setDraft(next); setConfirm(null); setError(''); };
+  const saveDraft = () => draft && void run(async () => {
+    const markdown = draftEditorRef.current?.getMarkdown() ?? draft.markdown;
+    const saved = await savePersonalNoteTemplate({
+      id: draft.id, expectedRevision: draft.expectedRevision, title: draft.title, markdown,
+      defaultForCourse: draft.defaultForCourse, learningPreset: draft.learningPreset,
+    });
+    setPersonal((current) => [...current.filter((item) => item.id !== saved.id), saved]);
+    setSelection({ kind: 'personal', id: saved.id });
+    setDraft(null);
+    showGlobalNotification('success', t('notes:personalTemplates.saved'));
+  });
+  const removeSelected = () => selectedPersonal && void run(async () => {
+    await deletePersonalNoteTemplate(selectedPersonal.id, selectedPersonal.revision ?? 0);
+    setPersonal((current) => current.filter((item) => item.id !== selectedPersonal.id));
+    setSelection(builtins[0] ? { kind: 'builtin', id: builtins[0].id } : null);
+    setConfirm(null);
+  });
+
+  // ↑/↓ 在左栏条目间移动焦点并同步选中
+  const onNavKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+    const items = Array.from(navRef.current?.querySelectorAll<HTMLButtonElement>('[data-template-item]') ?? []);
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = items[Math.min(Math.max(index + (event.key === 'ArrowDown' ? 1 : -1), 0), items.length - 1)];
+    if (!next) return;
     event.preventDefault();
-    if (next !== null) focusCard(next);
-  }, [activeIndex, focusCard, measureColumns, templates.length]);
+    next.focus();
+    next.click();
+  };
 
-  if (!mounted) return null;
+  const item = (template: NoteTemplate, kind: 'builtin' | 'personal') => {
+    const active = selection?.kind === kind && selection.id === template.id && !draft;
+    const course = kind === 'personal' ? (template as PersonalNoteTemplate).defaultForCourse : undefined;
+    return (
+      <button key={template.id} type="button" data-template-item className="notes-tpl-item" aria-pressed={active}
+        onClick={() => { setSelection({ kind, id: template.id }); setDraft(null); setConfirm(null); setError(''); }}>
+        <NoteBlank size={15} aria-hidden="true" className="notes-tpl-item-icon" />
+        <span className="notes-tpl-item-title">{templateTitle(template)}</span>
+        {course && <span className="notes-tpl-item-badge">{t('notes:templateGallery.course_default', { defaultValue: '{{course}} 默认', course })}</span>}
+      </button>
+    );
+  };
+
+  const presetEntries = Object.entries(selected?.learningPreset ?? {}) as Array<[LearningField, string]>;
 
   return (
-    <div
-      id={panelId}
-      aria-hidden={!open || undefined}
-      {...(!open ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
-      className={cn(
-        'grid transition-[grid-template-rows,opacity] duration-200 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] will-change-[grid-template-rows]',
-        'motion-reduce:transition-none',
-        expanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0',
-      )}
-    >
-      <div className="min-h-0 overflow-hidden">
-        <div
-          role="region"
-          aria-label={t('notes:toolbar.note_templates', 'Note templates')}
-          className="notes-template-panel notes-column max-h-[60vh] overflow-y-auto"
-          onKeyDown={(event) => {
-            if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
-            event.preventDefault();
-            event.stopPropagation();
-            onRequestClose();
-            triggerRef?.current?.focus();
-          }}
-        >
-          <div className="notes-template-panel__head">
-            <span className="notes-template-panel__label">
-              {t('notes:toolbar.note_templates', 'Note templates')}
-            </span>
-            <span className="notes-template-panel__hint">
-              {t('notes:templates.insert_hint', '插入到当前笔记末尾')}
-            </span>
-          </div>
-          <div
-            ref={gridRef}
-            className="notes-template-panel__grid"
-            onKeyDown={handleGridKeyDown}
-          >
-            {templates.map((template, index) => (
-              <button
-                key={template.id}
-                ref={(el) => { cardRefs.current[index] = el; }}
-                type="button"
-                className="notes-template-card"
-                disabled={disabled || applying}
-                tabIndex={index === activeIndex ? 0 : -1}
-                onFocus={() => setActiveIndex(index)}
-                 onClick={() => { void apply(template); }}
-              >
-                <span className="notes-template-card__title">
-                  <NoteBlank size={13} aria-hidden className="notes-template-card__icon" />
-                  {t(`notes:templates.${template.id}`, template.title)}
-                </span>
-                <span className="notes-template-card__summary">
-                  {t(`notes:templates.${template.id}_summary`, template.summary)}
-                </span>
+    <Dialog open={open} onOpenChange={(next) => { if (!next) close(); }}>
+      <DialogContent id={panelId} className="notes-tpl-dialog" aria-labelledby={`${panelId}-title`}>
+        <div className="notes-tpl-layout">
+          <nav className="notes-tpl-nav" ref={navRef} onKeyDown={onNavKeyDown} aria-label={t('notes:templateGallery.title', { defaultValue: '模板' })}>
+            <DialogTitle id={`${panelId}-title`} className="notes-tpl-heading">{t('notes:templateGallery.title', { defaultValue: '模板' })}</DialogTitle>
+            <p className="notes-tpl-group-label">{t('notes:templateGallery.builtin', { defaultValue: '内置模板' })}</p>
+            {builtins.map((template) => item(template, 'builtin'))}
+            <p className="notes-tpl-group-label">{t('notes:templateGallery.mine', { defaultValue: '我的模板' })}</p>
+            {loadingPersonal && personal.length === 0
+              ? <p className="notes-tpl-muted" role="status">{t('notes:personalTemplates.loading')}</p>
+              : personal.length === 0 && <p className="notes-tpl-muted">{t('notes:templateGallery.empty_mine', { defaultValue: '还没有自己的模板' })}</p>}
+            {personal.map((template) => item(template, 'personal'))}
+            <div className="notes-tpl-nav-actions">
+              <button type="button" className="notes-tpl-nav-action" disabled={busy}
+                onClick={() => startEdit({ title: '', markdown: '', defaultForCourse: '', learningPreset: {} })}>
+                <Plus size={13} aria-hidden="true" />{t('notes:templateGallery.new', { defaultValue: '新建模板' })}
               </button>
-            ))}
-          </div>
-           {applyError && <p role="alert" className="text-sm text-destructive">{applyError}</p>}
-           <PersonalNoteTemplates disabled={disabled || applying} onApplyTemplate={onApplyTemplate} documentHost={documentHost} learningPropsHost={learningPropsHost} />
+              {documentHost && <button type="button" className="notes-tpl-nav-action" disabled={busy || !baseline?.markdown.trim()}
+                onClick={() => startEdit({ title: documentHost.variables?.title ?? '', markdown: baseline?.markdown ?? '', defaultForCourse: '', learningPreset: {} })}>
+                <FloppyDisk size={13} aria-hidden="true" />{t('notes:templateGallery.save_current', { defaultValue: '将当前笔记存为模板' })}
+              </button>}
+            </div>
+          </nav>
+
+          <section className="notes-tpl-main">
+            {draft ? (
+              <>
+                <div className="notes-tpl-main-head">
+                  <input className="notes-tpl-title-input" value={draft.title} maxLength={120} autoFocus={!draft.id}
+                    aria-label={t('notes:personalTemplates.name')}
+                    placeholder={t('notes:personalTemplates.untitled')}
+                    onChange={(event) => setDraft({ ...draft, title: event.target.value })} />
+                </div>
+                <div className="notes-tpl-preview notes-tpl-editor">
+                  <CrepeEditor key={draft.id ?? 'new'} defaultValue={draft.markdown}
+                    placeholder={t('notes:templateGallery.body_placeholder', { defaultValue: '像写笔记一样编写模板内容，输入 / 插入块…' })}
+                    onReady={(api) => { draftEditorRef.current = api; }}
+                    onDestroy={() => { draftEditorRef.current = null; }}
+                    onChange={(markdown) => setDraft((current) => current ? { ...current, markdown } : current)} />
+                </div>
+                <p className="notes-tpl-muted notes-tpl-vars">
+                  {t('notes:templateGallery.variables', { defaultValue: '可用变量（直接在内容里输入）：' })}
+                  {VARIABLES.map((variable) => <code key={variable}>{variable}</code>)}
+                </p>
+                <details className="notes-disclosure notes-tpl-defaults">
+                  <summary>{t('notes:personalTemplates.learning_defaults.title')}</summary>
+                  <div className="notes-disclosure-body">
+                    <label className="notes-field"><span>{t('notes:personalTemplates.learning_defaults.course')}</span>
+                      <input className="notes-input" maxLength={512} value={draft.defaultForCourse}
+                        onChange={(event) => setDraft({ ...draft, defaultForCourse: event.target.value })} /></label>
+                    {(Object.keys(LEARNING_PROP_KEYS) as LearningField[]).map((field) => {
+                      const change = (value: string) => setDraft((current) => {
+                        if (!current) return current;
+                        const next = { ...current.learningPreset };
+                        if (value) Object.assign(next, { [field]: value }); else delete next[field];
+                        return { ...current, learningPreset: next };
+                      });
+                      return <label key={field} className="notes-field"><span>{t(`notes:personalTemplates.learning_defaults.fields.${field}`)}</span>
+                        {field === 'mastery'
+                          ? <select className="notes-select" value={draft.learningPreset[field] ?? ''} onChange={(event) => change(event.target.value)}>
+                            <option value="">{t('notes:personalTemplates.learning_defaults.unset')}</option>
+                            {MASTERY_STATES.map((state) => <option key={state} value={state}>{t(`notes:learning.mastery.${state}`)}</option>)}
+                          </select>
+                          : <input className="notes-input" maxLength={512} type={field === 'reviewDate' ? 'date' : 'text'}
+                            value={draft.learningPreset[field] ?? ''} onChange={(event) => change(event.target.value)} />}
+                      </label>;
+                    })}
+                    <p className="notes-tpl-muted">{t('notes:personalTemplates.learning_defaults.hint')}</p>
+                  </div>
+                </details>
+                <footer className="notes-tpl-footer">
+                  {error && <p role="alert" className="notes-tpl-error">{error}</p>}
+                  <button type="button" className="notes-btn" disabled={busy} onClick={() => { setDraft(null); setError(''); }}>
+                    {t('notes:templateGallery.cancel', { defaultValue: '取消' })}</button>
+                  <button type="button" className="notes-btn" data-variant="primary"
+                    disabled={busy || !draft.title.trim() || !draft.markdown.trim()} onClick={saveDraft}>
+                    {draft.id ? t('notes:personalTemplates.save_changes') : t('notes:personalTemplates.save')}</button>
+                </footer>
+              </>
+            ) : selected ? (
+              <>
+                <div className="notes-tpl-main-head">
+                  <div className="notes-tpl-main-title">
+                    <h3>{templateTitle(selected)}</h3>
+                    {templateSummary(selected) && <p>{templateSummary(selected)}</p>}
+                  </div>
+                  {selectedPersonal && <div className="notes-tpl-main-actions">
+                    <button type="button" className="notes-btn" data-variant="ghost" disabled={busy}
+                      onClick={() => startEdit({ id: selectedPersonal.id, expectedRevision: selectedPersonal.revision ?? 0, title: selectedPersonal.title,
+                        markdown: selectedPersonal.markdown, defaultForCourse: selectedPersonal.defaultForCourse ?? '', learningPreset: selectedPersonal.learningPreset ?? {} })}>
+                      <PencilSimple size={13} aria-hidden="true" />{t('notes:templateGallery.edit', { defaultValue: '编辑' })}</button>
+                    <button type="button" className="notes-btn" data-variant="ghost" disabled={busy} onClick={() => setConfirm('delete')}>
+                      <Trash size={13} aria-hidden="true" />{t('notes:templateGallery.delete', { defaultValue: '删除' })}</button>
+                  </div>}
+                </div>
+                <div className="notes-tpl-preview" aria-label={t('notes:personalTemplates.preview_label')}>
+                  <CrepeEditor key={`${selected.id}:${rendered.length}`} defaultValue={rendered} readonly />
+                </div>
+                {presetEntries.length > 0 && <p className="notes-tpl-muted notes-tpl-presets">
+                  {t('notes:templateGallery.preset_note', { defaultValue: '同时填入未设置的学习属性：' })}
+                  {presetEntries.map(([field, value]) => <span key={field} className="notes-tpl-chip">
+                    {t(`notes:learning.fields.${field}`)} · {field === 'mastery' ? t(`notes:learning.mastery.${value}`, { defaultValue: value }) : value}</span>)}
+                </p>}
+                <footer className="notes-tpl-footer">
+                  {error && <p role="alert" className="notes-tpl-error">{error}</p>}
+                  {confirm === 'replace' ? <>
+                    <p className="notes-tpl-confirm">{t('notes:templateGallery.replace_confirm', { defaultValue: '将用此模板替换整篇笔记（当前 {{count}} 字）。', count: docLength })}</p>
+                    <button type="button" className="notes-btn" disabled={busy} onClick={() => setConfirm(null)}>{t('notes:templateGallery.cancel', { defaultValue: '取消' })}</button>
+                    <button type="button" className="notes-btn" data-variant="danger" disabled={busy} onClick={() => apply('replace')}>
+                      {t('notes:personalTemplates.replace')}</button>
+                  </> : confirm === 'delete' ? <>
+                    <p className="notes-tpl-confirm">{t('notes:templateGallery.delete_confirm', { defaultValue: '删除模板「{{title}}」？', title: selected.title })}</p>
+                    <button type="button" className="notes-btn" disabled={busy} onClick={() => setConfirm(null)}>{t('notes:templateGallery.cancel', { defaultValue: '取消' })}</button>
+                    <button type="button" className="notes-btn" data-variant="danger" disabled={busy} onClick={removeSelected}>
+                      {t('notes:templateGallery.delete', { defaultValue: '删除' })}</button>
+                  </> : <>
+                    {documentHost && baseline && docLength > 0 && <button type="button" className="notes-btn" data-variant="ghost"
+                      disabled={disabled || busy} onClick={() => setConfirm('replace')}>{t('notes:templateGallery.replace', { defaultValue: '替换全文' })}</button>}
+                    {documentHost?.insertDocument && baseline && position && docLength > 0 && <button type="button" className="notes-btn"
+                      disabled={disabled || busy} onClick={() => apply('insert')}>{t('notes:personalTemplates.insert', { defaultValue: '插入当前位置' })}</button>}
+                    <button type="button" className="notes-btn" data-variant="primary" disabled={disabled || busy || !rendered.trim()}
+                      onClick={() => apply('append')}>
+                      {docLength > 0 ? t('notes:personalTemplates.append') : t('notes:templateGallery.use', { defaultValue: '使用模板' })}</button>
+                  </>}
+                </footer>
+              </>
+            ) : (
+              <p className="notes-tpl-muted">{t('notes:templateGallery.pick', { defaultValue: '从左侧选择一个模板' })}</p>
+            )}
+          </section>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

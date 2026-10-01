@@ -60,13 +60,16 @@ function select(text: string) {
   expect(from).toBeGreaterThanOrEqual(0);
   act(() => view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, from + text.length))));
 }
-async function previewTemplate(text: string) {
+/** 模板库对话框：预置一个个人模板，打开后选中它（打开即捕获文档基线与插入点） */
+async function openPersonalTemplate(markdown: string, learningPreset?: Record<string, string>) {
+  localStorage.setItem('notes.personalTemplates.v1', JSON.stringify([{ id: 'personal:it', title: 'IT template', summary: '', markdown, revision: 1, ...(learningPreset ? { learningPreset } : {}) }]));
   fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.page_actions', 'More note actions') }));
   fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.note_templates', 'Note templates') }));
-  const body = await screen.findByLabelText(i18n.t('notes:personalTemplates.body'));
-  fireEvent.change(body, { target: { value: text } });
-  fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:personalTemplates.preview') }));
+  fireEvent.click(await screen.findByRole('button', { name: 'IT template' }));
   expect(screen.queryAllByRole('alert').map(el => el.textContent)).toEqual([]);
+}
+async function previewTemplate(text: string) {
+  await openPersonalTemplate(text);
   await screen.findByRole('button', { name: '插入当前位置' });
 }
 describe('real Notes host entrances', () => {
@@ -104,14 +107,9 @@ describe('real Notes host entrances', () => {
   it('fills preset fields without replacing existing user props and sends their fresh CAS token', async () => {
     mocks.get.mockResolvedValue({ ok: true, value: node({ study_course: 'User course', custom: 'keep' }) });
     await mount('target\n'); select('target');
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.page_actions', 'More note actions') }));
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:toolbar.note_templates', 'Note templates') }));
-    fireEvent.change(await screen.findByLabelText(i18n.t('notes:personalTemplates.body')), { target: { value: 'template' } });
-    fireEvent.change(screen.getByLabelText(i18n.t('notes:personalTemplates.learning_defaults.fields.course')), { target: { value: 'Preset course' } });
-    fireEvent.change(screen.getByLabelText(i18n.t('notes:personalTemplates.learning_defaults.fields.chapter')), { target: { value: 'New chapter' } });
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:personalTemplates.preview') }));
-    expect(screen.queryAllByRole('alert').map(el => el.textContent)).toEqual([]);
-    fireEvent.click(await screen.findByRole('button', { name: '应用属性预设' }));
+    await openPersonalTemplate('template', { course: 'Preset course', chapter: 'New chapter' });
+    // 应用模板时自动只填入未设置的学习属性
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('notes:personalTemplates.append') }));
     await waitFor(() => expect(mocks.metadata).toHaveBeenCalledWith('/note_host', { props: { study_course: 'User course', custom: 'keep', study_chapter: 'New chapter' } }, '2026-09-22T00:00:00.000Z'));
   });
 
