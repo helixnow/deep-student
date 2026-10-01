@@ -1260,7 +1260,8 @@
   },
   "pdfRef": {
     "openFailedTitle": "Cannot Open PDF Reference",
-    "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete."
+    "openFailedDesc": "Could not find a previewable PDF file. It may have been removed or the reference information is incomplete.",
+    "textbookTitle": "Textbook"
   },
   "contextRef": {
     "type": {

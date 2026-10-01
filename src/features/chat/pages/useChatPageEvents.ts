@@ -554,6 +554,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       try {
         const dstuPath = sourceId.startsWith('/') ? sourceId : `/${sourceId}`;
         const isAttachmentLike = sourceId.startsWith('att_') || sourceId.startsWith('file_');
+        // 教材同样在聊天右侧面板打开：旧实现派发 NAVIGATE_TO_VIEW 把学习者踢出聊天页
+        //（且 openResource 延迟 150ms 才打开，冷启动时跳页事件可能落空）
+        const isTextbook = sourceId.startsWith('tb_');
 
         // 多次派发 focus，兼容面板挂载较慢的情况
         const dispatchFocus = (delayMs: number) => {
@@ -568,13 +571,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
           }, delayMs);
         };
 
-        if (isAttachmentLike) {
-          // 走附件预览通道（与"点击附件"一致）
+        if (isAttachmentLike || isTextbook) {
+          // 走附件预览通道（与"点击附件"一致），留在聊天页
           window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
             detail: {
               id: sourceId,
-              type: 'file',
-              title: 'PDF',
+              type: isTextbook ? 'textbook' : 'file',
+              title: isTextbook ? t('pdfRef.textbookTitle', { defaultValue: '教材' }) : 'PDF',
             },
           }));
           dispatchFocus(0);

@@ -1260,7 +1260,8 @@
   },
   "pdfRef": {
     "openFailedTitle": "无法打开 PDF 引用",
-    "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整"
+    "openFailedDesc": "未找到可预览的 PDF 文件，可能已被移除或引用信息不完整",
+    "textbookTitle": "教材"
   },
   "contextRef": {
     "type": {
