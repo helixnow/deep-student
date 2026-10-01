@@ -2734,6 +2734,16 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
             dropZoneRef.current = el;
             selectionContainerRef.current = el;
           }}
+          onMouseDown={(event) => {
+            // Notion 式：点正文下方空白 → 光标到文末（必要时补一个空段落）
+            if (event.button !== 0 || effectiveReadOnly) return;
+            const target = event.target as HTMLElement;
+            if (target.closest('.ProseMirror, button, input, textarea, a, [role="menu"], [role="dialog"], .notes-document-header, .milkdown-block-handle')) return;
+            const editorEl = event.currentTarget.querySelector('.ProseMirror');
+            if (!editorEl || event.clientY <= editorEl.getBoundingClientRect().bottom) return;
+            event.preventDefault();
+            editorApi?.focusEnd?.();
+          }}
         >
           {effectiveReadOnly && (
             <SelectionToolbar

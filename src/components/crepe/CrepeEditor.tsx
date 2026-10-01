@@ -780,6 +780,29 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         }
       },
 
+      focusEnd: () => {
+        const crepe = crepeRef.current;
+        if (!crepe) return;
+        try {
+          crepe.editor.action((ctx) => {
+            const view = ctx.get(editorViewCtx);
+            const { doc, schema } = view.state;
+            const last = doc.lastChild;
+            const tr = view.state.tr;
+            const editable = !readonlyRef.current && view.editable;
+            if (editable && last && !(last.type === schema.nodes.paragraph && last.content.size === 0)) {
+              const paragraph = schema.nodes.paragraph?.createAndFill();
+              if (paragraph) tr.insert(doc.content.size, paragraph);
+            }
+            tr.setSelection(TextSelection.atEnd(tr.doc));
+            view.dispatch(tr.scrollIntoView());
+            view.focus();
+          });
+        } catch (e) {
+          debugLog.error('[CrepeEditor] focusEnd failed:', e);
+        }
+      },
+
       isReadonly: () => {
         return crepeRef.current?.readonly ?? false;
       },

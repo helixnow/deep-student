@@ -134,6 +134,9 @@ export interface CrepeEditorApi {
   /** 聚焦并把光标放到正文第一个可输入位置（标题 Enter/↓ 进入正文） */
   focusStart?: () => void;
 
+  /** 点击正文下方空白：光标到文末；末块不是空段落时先补一个（Notion 式） */
+  focusEnd?: () => void;
+
   /** 获取只读状态 */
   isReadonly: () => boolean;
   
