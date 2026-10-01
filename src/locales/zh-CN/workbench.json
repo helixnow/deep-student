@@ -1196,5 +1196,8 @@
       "streak": "连续 {{count}} 天达标",
       "statsButton": "统计"
     }
+  },
+  "bridge": {
+    "knowledgeLocateFailed": "无法定位该知识来源"
   }
 }

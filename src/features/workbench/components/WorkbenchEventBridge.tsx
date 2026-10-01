@@ -13,6 +13,10 @@
  * - context-ref:preview      → vfs 解析 sourceId 后走 CHAT_OPEN_ATTACHMENT_PREVIEW
  * - pdf-ref:open             → launch textbook/file 窗 + 延迟派发 pdf-ref:focus
  * - navigateToNote / navigateToTranslation / navigateToEssay → launch 内容窗
+ * - navigateToExamSheet      → launch 题目集窗
+ * - NAVIGATE_TO_VIEW{openResource} → launch 对应资源窗（聊天「在学习中心打开」、导图嵌入、快捷助手资源）
+ * - DSTU_NAVIGATE_TO_KNOWLEDGE_BASE → 知识库来源：打开该文档；记忆来源：文件应用 › 记忆视图
+ *   （这三类在经典壳由 App 视图切换消费；工作台下无人处理，点击毫无反应）
  *
  * 注：旧版 Anki 面板事件桥接已拆除。
  */
@@ -260,6 +264,42 @@ export const WorkbenchEventBridge: React.FC = () => {
       if (essayId) launchResourceWindow(essayId, 'essay');
     };
 
+    const onNavigateToExamSheet = (e: Event) => {
+      const sessionId = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
+      if (sessionId) launchResourceWindow(sessionId, 'exam');
+    };
+
+    const onNavigateToView = (e: Event) => {
+      const openResource = (e as CustomEvent<{ openResource?: string }>).detail?.openResource;
+      if (typeof openResource !== 'string' || !openResource.trim()) return;
+      const resourceId = openResource.trim().replace(/^\/+/, '');
+      if (resourceId) launchResourceWindow(resourceId);
+    };
+
+    const onNavigateToKnowledgeBase = (e: Event) => {
+      const detail = (e as CustomEvent<{
+        preferTab?: string;
+        locator?: { sourceId?: string; resourceId?: string; resourceType?: string; title?: string };
+      }>).detail ?? {};
+      if (detail.preferTab === 'memory') {
+        // 记忆定位 id 已由派发方写入 pendingMemoryLocate，记忆视图挂载后消费
+        void workbenchBus.activate({
+          typeId: 'files',
+          instanceKey: '',
+          action: 'openQuickAccess',
+          payload: { type: 'memory' },
+          fallbackLaunch: { typeId: 'files', reason: 'api' },
+        });
+        return;
+      }
+      const id = detail.locator?.sourceId || detail.locator?.resourceId;
+      if (id) {
+        launchResourceWindow(id, detail.locator?.resourceType, detail.locator?.title);
+        return;
+      }
+      announceBridgeFailure(i18n.t('workbench:bridge.knowledgeLocateFailed', { defaultValue: '无法定位该知识来源' }));
+    };
+
     window.addEventListener('navigate-to-session', onNavigateToSession);
     window.addEventListener('CHAT_V2_SET_INPUT', onSetInput);
     window.addEventListener('CHAT_NEW_SESSION', onNewSession);
@@ -270,6 +310,9 @@ export const WorkbenchEventBridge: React.FC = () => {
     window.addEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
     window.addEventListener('navigateToTranslation', onNavigateToTranslation);
     window.addEventListener('navigateToEssay', onNavigateToEssay);
+    window.addEventListener('navigateToExamSheet', onNavigateToExamSheet);
+    window.addEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+    window.addEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     return () => {
       window.removeEventListener('navigate-to-session', onNavigateToSession);
       window.removeEventListener('CHAT_V2_SET_INPUT', onSetInput);
@@ -281,6 +324,9 @@ export const WorkbenchEventBridge: React.FC = () => {
       window.removeEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
       window.removeEventListener('navigateToTranslation', onNavigateToTranslation);
       window.removeEventListener('navigateToEssay', onNavigateToEssay);
+      window.removeEventListener('navigateToExamSheet', onNavigateToExamSheet);
+      window.removeEventListener('NAVIGATE_TO_VIEW', onNavigateToView);
+      window.removeEventListener('DSTU_NAVIGATE_TO_KNOWLEDGE_BASE', onNavigateToKnowledgeBase);
     };
   }, []);
 

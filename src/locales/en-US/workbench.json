@@ -1196,5 +1196,8 @@
       "streak": "{{count}}-day streak",
       "statsButton": "Stats"
     }
+  },
+  "bridge": {
+    "knowledgeLocateFailed": "Could not locate this knowledge source"
   }
 }
