@@ -111,6 +111,7 @@
     "todo_title": "继续学习",
     "tag": "快速学习",
     "mistake_tag": "快速收录",
+    "mistake_set_name": "速答错题",
     "need_content": "请先输入或粘贴学习内容"
   },
   "prompts": {

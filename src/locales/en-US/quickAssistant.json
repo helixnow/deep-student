@@ -111,6 +111,7 @@
     "todo_title": "Continue learning",
     "tag": "quick-learning",
     "mistake_tag": "quick-capture",
+    "mistake_set_name": "Quick-answer mistakes",
     "need_content": "Type or paste learning content first"
   },
   "prompts": {
