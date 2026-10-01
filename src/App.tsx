@@ -28,7 +28,7 @@ const AnkiTasksApp = React.lazy(() =>
 );
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
-import { ModernSidebar } from './components/ModernSidebar';
+import { ModernSidebar, type SidebarUpdater } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
@@ -523,6 +523,7 @@ const getMaxAliveViews = (): number => {
     return MAX_ALIVE_VIEWS_DESKTOP;
   }
 };
+
 
 function App() {
   // 全面接入新引擎统一管理（在 App 级别避免再手绑流事件）
@@ -2057,18 +2058,29 @@ function App() {
   // 管理题目图片URL的生命周期
 
   // 渲染侧边栏导航 - 现代化风格
-  const noopToggle = useCallback(() => {}, []);
+  const sidebarUpdater = useMemo<SidebarUpdater>(() => ({
+    checking: updater.checking,
+    available: updater.available,
+    info: updater.info,
+    downloading: updater.downloading,
+    readyToRelaunch: updater.readyToRelaunch,
+    performUpdateAction: updater.performUpdateAction,
+  }), [
+    updater.available,
+    updater.checking,
+    updater.downloading,
+    updater.info,
+    updater.performUpdateAction,
+    updater.readyToRelaunch,
+  ]);
   const sidebarElement = useMemo(() => (
     <ModernSidebar
       currentView={currentView}
       onViewChange={handleViewChange}
       sidebarCollapsed={leftPanelCollapsed}
-      onToggleSidebar={noopToggle}
-      startDragging={startDragging}
-      topbarTopMargin={topbarTopMargin}
-      updater={updater}
+      updater={sidebarUpdater}
     />
-  ), [currentView, handleViewChange, leftPanelCollapsed, noopToggle, startDragging, topbarTopMargin, updater]);
+  ), [currentView, handleViewChange, leftPanelCollapsed, sidebarUpdater]);
 
   const settingsShellSidebarElement = useMemo(() => (
     <SettingsShellSidebar
@@ -2122,7 +2134,8 @@ function App() {
     currentView,
   }), [currentView, desktopChatHeaderTarget, desktopPageHeaderTarget]);
 
-  // 侧栏内容类型：同时作为侧栏包裹层的 key，类型变化时重挂载并重播入场动画
+  // 侧栏内容类型：各类侧栏首次访问后保持挂载，切换时只改变可见性。
+  // 主 ModernSidebar 因此不会在 settings/todo/desktop-page 往返时重建并重复拉取会话。
   const desktopShellSidebarKind = currentView === 'settings'
     ? 'settings'
     : currentView === 'todo'
@@ -2130,13 +2143,24 @@ function App() {
     : currentView === 'learning-hub' || currentView === 'template-management'
     ? 'desktop-page'
     : 'main';
-  const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'
-    ? settingsShellSidebarElement
-    : desktopShellSidebarKind === 'todo'
-    ? todoShellSidebarElement
-    : desktopShellSidebarKind === 'desktop-page'
-    ? desktopPageShellSidebarElement
-    : sidebarElement;
+  type DesktopShellSidebarKind = typeof desktopShellSidebarKind;
+  const [mountedDesktopShellSidebarKinds, setMountedDesktopShellSidebarKinds] = useState<Set<DesktopShellSidebarKind>>(
+    () => new Set<DesktopShellSidebarKind>(['main']),
+  );
+  useEffect(() => {
+    setMountedDesktopShellSidebarKinds((mountedKinds) => {
+      if (mountedKinds.has(desktopShellSidebarKind)) return mountedKinds;
+      const next = new Set(mountedKinds);
+      next.add(desktopShellSidebarKind);
+      return next;
+    });
+  }, [desktopShellSidebarKind]);
+  const desktopShellSidebarLayers = [
+    ['main', sidebarElement],
+    ['settings', settingsShellSidebarElement],
+    ['todo', todoShellSidebarElement],
+    ['desktop-page', desktopPageShellSidebarElement],
+  ] as const satisfies ReadonlyArray<readonly [DesktopShellSidebarKind, React.ReactNode]>;
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
@@ -2695,6 +2719,33 @@ function App() {
     </Suspense>
   ), [showImportConversation, handleImportConversationSuccess, setCurrentView]);
 
+  // 保活视图层的内容必须保持稳定引用：ViewLayerRenderer 的 memo 以 children
+  // 引用做比较，若每次 App 重渲染都新建元素，已访问的隐藏视图会跟着重渲染，
+  // 表现为访问页面越多、切换越卡。以下内容统一 useMemo 收口。
+  const todoContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>
+  ), []);
+
+  const sandboxWorkbenchContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <MobilePageScaffold><LazySandboxWorkbenchPage /></MobilePageScaffold>
+    </Suspense>
+  ), []);
+
+  const crepeDemoContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <MobilePageScaffold><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></MobilePageScaffold>
+    </Suspense>
+  ), [setCurrentView]);
+
+  const chatV2TestContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>
+  ), []);
+
+  const llmPlaygroundContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}><LazyLLMOutputPlayground /></Suspense>
+  ), []);
+
   // 🚀 使用抽取的 ViewLayerRenderer 组件
   const renderViewLayer = (
     view: CurrentView,
@@ -2925,10 +2976,22 @@ function App() {
             style={{ width: 'var(--shell-navigation-width)' }}
           >
             <div className="desktop-shell-sidebar-motion-surface">
-              {/* key 按侧栏类型：整组内容替换时重挂载并播放入场动画（与视图切换同款观感） */}
-              <div key={desktopShellSidebarKind} className="desktop-shell-content-enter h-full w-full">
-                {desktopShellSidebarElement}
-              </div>
+              {desktopShellSidebarLayers.map(([kind, element]) => {
+                const isActive = kind === desktopShellSidebarKind;
+                if (!isActive && !mountedDesktopShellSidebarKinds.has(kind)) return null;
+                return (
+                  <div
+                    key={kind}
+                    hidden={!isActive}
+                    aria-hidden={!isActive}
+                    data-sidebar-layer={kind}
+                    className={cn('h-full w-full', isActive && 'desktop-shell-content-enter')}
+                    style={!isActive ? { contentVisibility: 'hidden' } : undefined}
+                  >
+                    {element}
+                  </div>
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -3066,21 +3129,21 @@ function App() {
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}
 
-              {renderViewLayer('sandbox-workbench', <Suspense fallback={<PageLoadingFallback />}><MobilePageScaffold><LazySandboxWorkbenchPage /></MobilePageScaffold></Suspense>)}
+              {renderViewLayer('sandbox-workbench', sandboxWorkbenchContent)}
 
               {renderViewLayer('pdf-reader', pdfReaderContent)}
 
               {/* 待办事项独立页面 */}
-              {renderViewLayer('todo', <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>)}
+              {renderViewLayer('todo', todoContent)}
 
               {/* 闪卡复习（传统壳入口） */}
               {renderViewLayer('flashcards', flashcardsContent)}
 
-              {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><MobilePageScaffold><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></MobilePageScaffold></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('crepe-demo', crepeDemoContent)}
 
-              {import.meta.env.DEV && renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('chat-v2-test', chatV2TestContent)}
 
-              {import.meta.env.DEV && renderViewLayer('llm-playground', <Suspense fallback={<PageLoadingFallback />}><LazyLLMOutputPlayground /></Suspense>)}
+              {import.meta.env.DEV && renderViewLayer('llm-playground', llmPlaygroundContent)}
 
               {/* Chat V2 正式入口 */}
               {renderViewLayer('chat-v2', chatV2Content)}

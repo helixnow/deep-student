@@ -98,25 +98,19 @@ import {
   WorkbenchSidebarScroll,
 } from '@/features/workbench/components/sidebar';
 
-interface NavigationHistory {
-  canGoBack: boolean;
-  canGoForward: boolean;
-  goBack: () => void;
-  goForward: () => void;
-}
-
 interface ModernSidebarProps {
   currentView: CurrentView;
   onViewChange: (view: CurrentView) => void;
   /** Workbench Chat 窗口只保留会话管理，不显示全局应用入口。 */
   navigationScope?: 'full' | 'chat';
   sidebarCollapsed?: boolean;
-  onToggleSidebar?: () => void;
-  startDragging?: (e: React.MouseEvent) => void;
-  navigationHistory?: NavigationHistory;
-  topbarTopMargin?: number;
-  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'readyToRelaunch' | 'performUpdateAction'>;
+  updater?: SidebarUpdater;
 }
+
+export type SidebarUpdater = Pick<
+  AppUpdaterController,
+  'checking' | 'available' | 'info' | 'downloading' | 'readyToRelaunch' | 'performUpdateAction'
+>;
 
 type SidebarSectionId = 'pinned' | 'topics' | 'conversations';
 const SIDEBAR_SESSION_PREVIEW_LIMIT = 5;
@@ -406,7 +400,7 @@ export function reorderSidebarSessionGroups(groups: SessionGroup[], sourceGroupI
   }));
 }
 
-export const ModernSidebar: React.FC<ModernSidebarProps> = ({
+const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   currentView,
   onViewChange,
   navigationScope = 'full',
@@ -1009,6 +1003,22 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, [currentView, handleViewChange, newSessionShortcutLabel, shouldShowMacDesktopNewSessionShortcut]);
 
   const prefersReducedMotion = useReducedMotion();
+  const [nowMinute, setNowMinute] = useState(() => Math.floor(Date.now() / 60_000));
+
+  useEffect(() => {
+    if (sidebarCollapsed) return;
+    const updateNowMinute = () => setNowMinute(Math.floor(Date.now() / 60_000));
+    const delay = 60_000 - (Date.now() % 60_000);
+    let interval: ReturnType<typeof setInterval> | null = null;
+    const timeout = setTimeout(() => {
+      updateNowMinute();
+      interval = setInterval(updateNowMinute, 60_000);
+    }, delay);
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, [sidebarCollapsed]);
 
   const renderRecentSessionRow = useCallback((session: ChatSession, collapsed = false) => {
     const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
@@ -1022,7 +1032,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     const relativeTime = (() => {
       const ts = new Date(session.updatedAt ?? session.createdAt).getTime();
-      const diffMs = Date.now() - ts;
+      const diffMs = nowMinute * 60_000 - ts;
       const diffMins = Math.floor(diffMs / 60000);
       const diffHours = Math.floor(diffMs / 3600000);
       const diffDays = Math.floor(diffMs / 86400000);
@@ -1041,7 +1051,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       return (
         <motion.div
           key={session.id}
-          layout={prefersReducedMotion ? false : 'position'}
           initial={false}
           animate={{ opacity: 1, y: 0 }}
           className="relative px-0.5 py-0.5"
@@ -1088,7 +1097,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       // 兄弟行经 layout 平滑补位；hover 后 20ms 触发会话预取（见 sessionPrefetch.ts）
       <motion.div
         key={session.id}
-        layout={prefersReducedMotion ? false : 'position'}
         initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
         animate={{ opacity: 1, y: 0 }}
         exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
@@ -1313,7 +1321,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         )}
       </motion.div>
     );
-  }, [activeSessionId, beginDeleteConfirmation, blockingContinueLabel, blockingSessionIdSet, cancelRecentSessionRename, clearRecentGroupDragState, confirmingArchiveSessionId, confirmingDeleteSessionId, currentView, draggedSessionId, editingRecentSessionId, editingRecentSessionTitle, handleRecentSessionArchive, handleRecentSessionDelete, handleRecentSessionDragStart, handleRecentSessionOpen, handleRecentSessionPinToggle, openRecentSessionMenuId, prefersReducedMotion, recentRenameError, renamingRecentSessionId, resetDeleteConfirmation, saveRecentSessionRename, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
+  }, [activeSessionId, beginDeleteConfirmation, blockingContinueLabel, blockingSessionIdSet, cancelRecentSessionRename, clearRecentGroupDragState, confirmingArchiveSessionId, confirmingDeleteSessionId, currentView, draggedSessionId, editingRecentSessionId, editingRecentSessionTitle, handleRecentSessionArchive, handleRecentSessionDelete, handleRecentSessionDragStart, handleRecentSessionOpen, handleRecentSessionPinToggle, nowMinute, openRecentSessionMenuId, prefersReducedMotion, recentRenameError, renamingRecentSessionId, resetDeleteConfirmation, saveRecentSessionRename, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
 
   const pinnedRecentSessions = useMemo(
     () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
@@ -1434,7 +1442,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         >
           {group.sessions.length > 0 ? (
             <>
-              <AnimatePresence initial={false} mode="popLayout">
+              <AnimatePresence initial={false}>
                 {visibleSessions.map((session) => renderRecentSessionRow(session, !isExpanded))}
               </AnimatePresence>
               {hasSessionOverflow ? (
@@ -1664,7 +1672,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   <nav aria-label={t('sidebar:aria.pinned_sessions')}>
                     <div className="space-y-0.5" role="list">
                       {pinnedRecentGroups.map((group) => renderRecentGroup(group))}
-                      <AnimatePresence initial={false} mode="popLayout">
+                      <AnimatePresence initial={false}>
                         {pinnedRecentSessions.map((session) => renderRecentSessionRow(session))}
                       </AnimatePresence>
                     </div>
@@ -1738,7 +1746,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             {!isConversationsSectionCollapsed ? (
               <nav aria-label={t('sidebar:aria.conversation_sessions')}>
                 <div className="space-y-0.5" role="list">
-                  <AnimatePresence initial={false} mode="popLayout">
+                  <AnimatePresence initial={false}>
                     {visibleConversationSessions.map((session) => renderRecentSessionRow(session))}
                   </AnimatePresence>
                   {hasConversationSessionOverflow ? (
@@ -1836,3 +1844,5 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     </WorkbenchSidebarSurface>
   );
 };
+
+export const ModernSidebar = React.memo(ModernSidebarImpl);

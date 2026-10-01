@@ -5,7 +5,7 @@
  * 用于诊断保活机制是否生效和页面重新加载问题。
  */
 
-import { debugLog } from '../debugMasterSwitch';
+import { debugLog, debugMasterSwitch } from '../debugMasterSwitch';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -53,6 +53,13 @@ class PageLifecycleTracker {
   }> = new Map();
 
   /**
+   * 调试总开关关闭时，追踪器完全不记录，供调用方跳过额外测量工作。
+   */
+  isEnabled(): boolean {
+    return debugMasterSwitch.isEnabled();
+  }
+
+  /**
    * 记录页面生命周期事件
    */
   log(
@@ -62,6 +69,8 @@ class PageLifecycleTracker {
     detail?: string,
     options?: { duration?: number; captureStack?: boolean }
   ): void {
+    if (!this.isEnabled()) return;
+
     const now = Date.now();
     const id = `pl_${++this.idCounter}_${now}`;
     
