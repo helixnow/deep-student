@@ -284,7 +284,18 @@ export default defineConfig(({ command, mode }) => ({
         },
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 以及仓库根下的生成/产物目录：下面开了 polling，监听集合里每多一个文件都会被
+      // 每 300ms 轮询一次。tmp/ 曾堆积 ~89 万个基准测试产物，轮询直接占满 dev server
+      // 主线程，单个模块转换排队 40s+，表现为应用长时间卡在启动/加载中。
+      ignored: [
+        "**/src-tauri/**",
+        "**/tmp/**",
+        "**/dist/**",
+        "**/dist-demo/**",
+        "**/video/**",
+        "**/benchmarks/**",
+        "**/node-compile-cache/**",
+      ],
       // 4. 使用 polling 模式解决路径含空格时 FSEvents 不工作的问题
       usePolling: true,
       interval: 300,
