@@ -14,6 +14,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import {
   Plus,
   TextIndent,
@@ -46,6 +47,13 @@ import './MobileEditorToolbar.css';
 
 /** 全部命令由宿主回调注入，不直接依赖编辑器实例 */
 export type MobileEditorToolbarCommands = {
+  subscribeState?: (listener: () => void) => () => void;
+  canExecute?: (action: string) => boolean;
+  insertColumns?: () => void;
+  insertCornell?: () => void;
+  convertColumns?: () => void;
+  convertCornell?: () => void;
+  unwrapColumns?: () => void;
   toggleBold: () => void;
   toggleItalic: () => void;
   /** 可选：宿主未接线时按钮仍展示，点击为 no-op */
@@ -160,6 +168,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
   const [bottomOffset, setBottomOffset] = useState(0);
   const [insertOpen, setInsertOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
+  const [, refreshCommands] = useState(0);
+  useEffect(() => commands.subscribeState?.(() => refreshCommands(value => value + 1)), [commands.subscribeState]);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const tr = useCallback(
@@ -170,6 +180,25 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     },
     [t],
   );
+
+  useEffect(() => {
+    if (!visible) setInsertOpen(false);
+  }, [visible]);
+
+  useEffect(() => {
+    if (!insertOpen) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || isComposingKeyEvent(event)) return;
+      event.preventDefault();
+      setInsertOpen(false);
+      const root = rootRef.current;
+      if (root?.querySelector('.mobile-editor-toolbar__insert-row')?.contains(document.activeElement)) {
+        root.querySelector<HTMLButtonElement>('[data-action="insert-toggle"]')?.focus();
+      }
+    };
+    document.addEventListener('keydown', dismiss);
+    return () => document.removeEventListener('keydown', dismiss);
+  }, [insertOpen]);
 
   useEffect(() => {
     if (!visible) return;
@@ -199,8 +228,14 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
     if (!visible || typeof document === 'undefined') return;
     const rootStyle = document.documentElement.style;
     rootStyle.setProperty('--mobile-toolbar-keyboard-offset', `${bottomOffset}px`);
-    rootStyle.setProperty('--mobile-toolbar-height', `${rootRef.current?.offsetHeight ?? 52}px`);
+    const toolbar = rootRef.current;
+    const updateHeight = () => rootStyle.setProperty('--mobile-toolbar-height', `${toolbar?.offsetHeight ?? 52}px`);
+    updateHeight();
+    // Expanded rows reflow on rotation/window resize even if keyboard offset is unchanged.
+    const observer = new ResizeObserver(updateHeight);
+    if (toolbar) observer.observe(toolbar);
     return () => {
+      observer.disconnect();
       rootStyle.removeProperty('--mobile-toolbar-keyboard-offset');
       rootStyle.removeProperty('--mobile-toolbar-height');
     };
@@ -351,8 +386,17 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       : []),
   ];
 
-  // 内联块插入条（替代仅插 `/` 的旧交互；slash 菜单保留为兜底入口）
+  // 内联块插入条；更多菜单只展示 UI，不向正文插入触发字符。
   const insertItems: ToolbarItem[] = [
+    ...([
+      ['columns', 'insertColumns', '插入双列'], ['cornell', 'insertCornell', '插入康奈尔布局'],
+      ['convertColumns', 'convertColumns', '转为双列'], ['convertCornell', 'convertCornell', '转为康奈尔布局'],
+      ['unwrapColumns', 'unwrapColumns', '展开为普通块'],
+    ] as const).flatMap(([id, command, defaultLabel]) => commands[command] ? [{
+      id, labelKey: `notes:mobileToolbar.${id}`, defaultLabel,
+      icon: <SquaresFour size={ICON_SIZE} weight={ICON_WEIGHT} aria-hidden />,
+      onAction: commands[command]!,
+    }] : []),
     {
       id: 'image',
       labelKey: 'notes:mobileToolbar.image',
@@ -433,6 +477,7 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
         aria-pressed={isToggleable ? isActive : undefined}
         data-action={item.id}
         data-active={isActive ? 'true' : undefined}
+        disabled={commands.canExecute ? !commands.canExecute(item.id) : undefined}
         // 避免点按钮抢走编辑器焦点（P0-1：触屏走 pointer/touch，不触发 mousedown）
         onMouseDown={preventFocusSteal}
         onPointerDown={preventFocusSteal}
@@ -461,6 +506,8 @@ export const MobileEditorToolbar: React.FC<MobileEditorToolbarProps> = ({
       aria-label={toolbarLabel}
       data-testid="mobile-editor-toolbar"
       data-collapsed={isCollapsed ? 'true' : undefined}
+      aria-hidden={isCollapsed || undefined}
+      {...(isCollapsed ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
       data-expanded={expanded ? 'true' : undefined}
       data-inserting={insertOpen ? 'true' : undefined}
       style={

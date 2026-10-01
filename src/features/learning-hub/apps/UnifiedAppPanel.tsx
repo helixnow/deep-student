@@ -58,6 +58,8 @@ export interface UnifiedAppPanelProps {
   isActive?: boolean;
   /** Workbench hosts can request focus after their internal tab becomes active. */
   focusOnActive?: boolean;
+  /** Limits explicitly scoped navigation requests to this reader instance. */
+  focusScopeId?: string;
   /** Editor save state for a parent tab strip; optional outside the workbench. */
   onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, used to bind ACR to the exact editor instance. */
@@ -93,6 +95,7 @@ export interface ContentViewProps {
   isActive?: boolean;
   /** Request focus when this note view becomes the active workbench tab. */
   focusOnActive?: boolean;
+  focusScopeId?: string;
   /** Report the current editor save state to an owning tab strip. */
   onSaveStateChange?: (state: ContentSaveState) => void;
   /** Owning Workbench window, absent in standalone Learning Hub views. */
@@ -158,6 +161,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   readOnly,
   isActive,
   focusOnActive = false,
+  focusScopeId,
   onSaveStateChange,
   hostWindowId,
   reloadNonce = 0,
@@ -292,13 +296,14 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       readOnly,
       isActive,
       focusOnActive,
+      focusScopeId,
       onSaveStateChange: handleSaveStateChange,
       hostWindowId,
       propertiesPanelDisabled,
       externalSettingsNavigation,
       externalSettingsOpen,
     };
-  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
+  }, [node, hasOnClose, handleClose, handleTitleChange, readOnly, isActive, focusOnActive, focusScopeId, handleSaveStateChange, hostWindowId, propertiesPanelDisabled, externalSettingsNavigation, externalSettingsOpen]);
 
   // ★ 性能：memo 化视图元素。元素引用不变时 React 会直接跳过该子树的重渲染
   //（即使子组件未包 React.memo），使父级因 className/闭包变化引起的重渲染不再波及内容视图

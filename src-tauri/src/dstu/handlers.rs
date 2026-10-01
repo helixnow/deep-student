@@ -66,6 +66,7 @@ use super::handler_utils::{
     update_mindmap_content_with_occ,
 };
 
+use crate::vfs::repos::note_lease_repo::{NoteLeaseAuth, NoteLeaseRepo};
 use crate::vfs::{
     canonical_folder_item_type, repos::VfsMindMapRepo, VfsBlobRepo, VfsCreateEssaySessionParams,
     VfsCreateExamSheetParams, VfsCreateMindMapParams, VfsCreateNoteParams, VfsDatabase,
@@ -1324,6 +1325,8 @@ pub async fn dstu_update(
     content: String,
     resource_type: String,
     expected_updated_at_ms: Option<i64>,
+    lease: Option<NoteLeaseAuth>,
+    webview: tauri::Webview,
     window: Window,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> Result<DstuNode, String> {
@@ -1395,16 +1398,26 @@ pub async fn dstu_update(
                 None
             };
 
-            let updated_note = match VfsNoteRepo::update_note(
-                &vfs_db,
-                &id,
-                VfsUpdateNoteParams {
-                    content: Some(content),
-                    title: None,
-                    tags: None,
-                    expected_updated_at,
-                },
-            ) {
+            let update_params = VfsUpdateNoteParams {
+                content: Some(content),
+                title: None,
+                tags: None,
+                expected_updated_at,
+            };
+            let updated_note = match if let Some(auth) = lease.as_ref() {
+                let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+                NoteLeaseRepo::authorized(
+                    &conn,
+                    auth,
+                    webview.label(),
+                    NoteLeaseRepo::now(),
+                    true,
+                    || VfsNoteRepo::update_note_with_conn(&conn, &id, update_params.clone()),
+                )
+                .map_err(|e| e.to_string())
+            } else {
+                VfsNoteRepo::update_note(&vfs_db, &id, update_params).map_err(|e| e.to_string())
+            } {
                 Ok(n) => {
                     log::info!(
                         "[DSTU::handlers] dstu_update: SUCCESS - type=note, id={}",
@@ -1418,7 +1431,7 @@ pub async fn dstu_update(
                         id,
                         e
                     );
-                    return Err(e.to_string());
+                    return Err(e);
                 }
             };
 

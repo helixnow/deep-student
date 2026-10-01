@@ -181,7 +181,7 @@ describe('LibraryScreen', () => {
     fireEvent.change(screen.getByPlaceholderText('搜索正面 / 背面 / 标签'), {
       target: { value: ' needle ' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: '搜索卡片' }), { key: 'Enter' });
     expect(await screen.findByText('front search-result')).toBeInTheDocument();
     expect(mocks.listCards).toHaveBeenLastCalledWith({
       search: 'needle',
@@ -206,7 +206,7 @@ describe('LibraryScreen', () => {
     fireEvent.change(screen.getByPlaceholderText('搜索正面 / 背面 / 标签'), {
       target: { value: 'latest' },
     });
-    fireEvent.click(screen.getByRole('button', { name: '搜索' }));
+    fireEvent.keyDown(screen.getByRole('searchbox', { name: '搜索卡片' }), { key: 'Enter' });
     searchResult.resolve(response([card('latest')], 1, 1));
     expect(await screen.findByText('front latest')).toBeInTheDocument();
 

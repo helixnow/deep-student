@@ -7,6 +7,7 @@
  */
 
 import i18next from 'i18next';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 import {
   createSuggestOverlay,
@@ -80,6 +81,7 @@ function attachGlobalClose(): void {
     closeWikilinkCandidatePicker();
   };
   const onKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       closeWikilinkCandidatePicker();

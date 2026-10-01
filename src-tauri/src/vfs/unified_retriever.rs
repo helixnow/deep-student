@@ -895,7 +895,7 @@ impl VfsUnifiedRetriever {
         fetch_limit: usize,
     ) -> VfsResult<Vec<RetrievalHit>> {
         let terms = extract_lexical_terms(query);
-        if terms.is_empty() {
+        if terms.is_empty() || fetch_limit == 0 {
             return Ok(Vec::new());
         }
         let patterns = terms
@@ -909,11 +909,47 @@ impl VfsUnifiedRetriever {
         let segment_match_any = lexical_match_any_sql("s.content_text", terms.len());
         let unit_match_count = lexical_match_count_sql("u.text_content", terms.len());
         let unit_match_any = lexical_match_any_sql("u.text_content", terms.len());
-        let limit_parameter = terms.len() + 2;
+        let mut parameters = Vec::with_capacity(patterns.len() + 5);
+        parameters.push(SqlValue::Text(query.to_string()));
+        parameters.extend(patterns.into_iter().map(SqlValue::Text));
+        // Match resource_repo's type aliases and unknown-type fallback without
+        // materializing resources.data for every candidate.
+        let resource_type_sql = "CASE
+            WHEN lower(r.type) = 'insightcard' THEN 'insight_card'
+            WHEN lower(r.type) IN ('note', 'textbook', 'exam', 'translation', 'essay',
+                 'image', 'file', 'retrieval', 'mindmap', 'insight_card') THEN lower(r.type)
+            ELSE 'file' END";
+        // The latest live membership wins, including the canonical source ID.
+        let folder_sql = "(SELECT fi.folder_id FROM folder_items fi
+            WHERE fi.deleted_at IS NULL
+              AND (fi.item_id = r.id OR fi.item_id = COALESCE(r.source_id, r.id))
+            ORDER BY fi.created_at DESC, fi.id DESC LIMIT 1)";
+        let mut scope_sql = String::new();
+        for (values, expression) in [
+            (request.resource_ids.as_ref(), "r.id"),
+            (request.resource_types.as_ref(), resource_type_sql),
+            (request.folder_ids.as_ref(), folder_sql),
+        ] {
+            if let Some(values) = values {
+                // One bound JSON array avoids SQLite's variable limit for large scopes.
+                parameters.push(SqlValue::Text(serde_json::to_string(values).map_err(
+                    |err| VfsError::Other(format!("Invalid retrieval scope: {err}")),
+                )?));
+                scope_sql.push_str(&format!(
+                    " AND ({expression}) IN (SELECT value FROM json_each(?{}))",
+                    parameters.len()
+                ));
+            }
+        }
+        parameters.push(SqlValue::Integer(scan_limit as i64));
+        let limit_parameter = parameters.len();
         let sql = format!(
-            "SELECT embedding_id, resource_id, chunk_index, unit_index, content_text,
-                    metadata_json, image_blob_hash
+            "SELECT lexical.embedding_id, lexical.resource_id, lexical.chunk_index,
+                    lexical.unit_index, lexical.content_text, lexical.metadata_json,
+                    lexical.image_blob_hash, r.type, r.source_id, r.metadata_json,
+                    {folder_sql} AS folder_id, b.relative_path
              FROM (
+               SELECT * FROM (
                  SELECT s.lance_row_id AS embedding_id, u.resource_id AS resource_id,
                         s.segment_index AS chunk_index, u.unit_index AS unit_index,
                         COALESCE(s.content_text, '') AS content_text,
@@ -924,11 +960,12 @@ impl VfsUnifiedRetriever {
                         0 AS source_rank, s.updated_at AS rank_updated
                  FROM vfs_index_segments s
                  JOIN vfs_index_units u ON u.id = s.unit_id
-                 LEFT JOIN resources r ON r.id = u.resource_id
+                 JOIN resources r ON r.id = u.resource_id
                  WHERE s.modality = 'text'
                    AND ({segment_match_any})
-                   AND (r.id IS NULL OR (r.deleted_at IS NULL
-                        AND COALESCE(r.index_state, 'pending') <> 'disabled'))
+                   AND r.deleted_at IS NULL
+                   AND COALESCE(r.index_state, 'pending') <> 'disabled'
+                   {scope_sql}
                    AND (
                         s.index_profile_id IS NULL OR (
                             u.text_profile_id = s.index_profile_id
@@ -949,18 +986,19 @@ impl VfsUnifiedRetriever {
                         {unit_match_count} AS match_count,
                         1 AS source_rank, u.updated_at AS rank_updated
                  FROM vfs_index_units u
-                 LEFT JOIN resources r ON r.id = u.resource_id
+                 JOIN resources r ON r.id = u.resource_id
                  WHERE ({unit_match_any})
-                   AND (r.id IS NULL OR (r.deleted_at IS NULL
-                        AND COALESCE(r.index_state, 'pending') <> 'disabled'))
+                   AND r.deleted_at IS NULL
+                   AND COALESCE(r.index_state, 'pending') <> 'disabled'
+                   {scope_sql}
+               )
+               ORDER BY exact_rank, match_count DESC, source_rank, rank_updated DESC, embedding_id
+               LIMIT ?{limit_parameter}
              ) lexical
-             ORDER BY exact_rank, match_count DESC, source_rank, rank_updated DESC, embedding_id
-             LIMIT ?{limit_parameter}"
+             JOIN resources r ON r.id = lexical.resource_id
+             LEFT JOIN blobs b ON b.hash = lexical.image_blob_hash
+             ORDER BY exact_rank, match_count DESC, source_rank, rank_updated DESC, embedding_id"
         );
-        let mut parameters = Vec::with_capacity(patterns.len() + 2);
-        parameters.push(SqlValue::Text(query.to_string()));
-        parameters.extend(patterns.into_iter().map(SqlValue::Text));
-        parameters.push(SqlValue::Integer(scan_limit as i64));
         let conn = db.get_conn_safe()?;
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt
@@ -973,66 +1011,51 @@ impl VfsUnifiedRetriever {
                     row.get::<_, String>(4)?,
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, Option<String>>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, Option<String>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
         drop(conn);
 
-        let resource_filter = request
-            .resource_ids
-            .as_ref()
-            .map(|values| values.iter().map(String::as_str).collect::<HashSet<_>>());
-        let type_filter = request
-            .resource_types
-            .as_ref()
-            .map(|values| values.iter().map(String::as_str).collect::<HashSet<_>>());
-        let folder_filter = request
-            .folder_ids
-            .as_ref()
-            .map(|values| values.iter().map(String::as_str).collect::<HashSet<_>>());
         let mut hits = Vec::new();
         let mut seen = HashSet::new();
-        for (embedding_id, resource_id, chunk_index, unit_index, text, metadata, blob_hash) in rows
+        for (
+            embedding_id,
+            resource_id,
+            chunk_index,
+            unit_index,
+            text,
+            metadata,
+            blob_hash,
+            resource_type,
+            source_id,
+            resource_metadata,
+            folder_id,
+            blob_path,
+        ) in rows
         {
-            if resource_filter
-                .as_ref()
-                .is_some_and(|filter| !filter.contains(resource_id.as_str()))
-            {
-                continue;
-            }
-            let Some(resource) = VfsResourceRepo::get_resource(db, &resource_id)? else {
-                continue;
-            };
-            let resource_type = resource.resource_type.to_string();
-            if type_filter
-                .as_ref()
-                .is_some_and(|filter| !filter.contains(resource_type.as_str()))
-            {
-                continue;
-            }
-            let folder_id = resource_folder_id(db, &resource_id, resource.source_id.as_deref())?;
-            if folder_filter.as_ref().is_some_and(|filter| {
-                !folder_id
-                    .as_deref()
-                    .is_some_and(|folder| filter.contains(folder))
-            }) {
-                continue;
-            }
-            let title = resource
-                .metadata
+            let resource_type = crate::vfs::VfsResourceType::from_str(&resource_type)
+                .unwrap_or(crate::vfs::VfsResourceType::File)
+                .to_string();
+            let resource_metadata = resource_metadata.as_deref().and_then(|value| {
+                serde_json::from_str::<crate::vfs::VfsResourceMetadata>(value).ok()
+            });
+            let title = resource_metadata
                 .as_ref()
                 .and_then(|metadata| metadata.title.clone().or_else(|| metadata.name.clone()));
             let metadata_value = metadata
                 .as_deref()
                 .and_then(|value| serde_json::from_str(value).ok())
                 .unwrap_or(Value::Null);
-            let image_url = blob_hash.as_deref().and_then(|hash| {
-                VfsBlobRepo::get_blob_path(db, hash)
-                    .ok()
-                    .flatten()
-                    .map(|path| path.to_string_lossy().to_string())
-            });
+            // Same blobs_dir + stored relative_path resolution as VfsBlobRepo,
+            // joined once rather than opening another pooled connection per hit.
+            let image_url =
+                blob_path.map(|path| db.blobs_dir().join(path).to_string_lossy().to_string());
             let identity = RetrievalIdentity {
                 resource_id: resource_id.clone(),
                 chunk_index,
@@ -1047,7 +1070,7 @@ impl VfsUnifiedRetriever {
                 text,
                 title,
                 resource_type: Some(resource_type),
-                source_id: resource.source_id,
+                source_id,
                 folder_id,
                 blob_hash,
                 image_url,
@@ -2453,6 +2476,150 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].identity.resource_id, created.resource_id);
         assert!(hits[0].embedding_id.starts_with("unit:"));
+    }
+
+    #[test]
+    fn lexical_scope_is_applied_before_candidate_limit() {
+        use crate::vfs::repos::index_segment_repo::{self, CreateSegmentInput};
+
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        for index in 0..31 {
+            let resource = create_lexical_unit(
+                &db,
+                &format!("outside_{index}"),
+                &format!("outside {index} needle"),
+                0,
+            );
+            db.get_conn_safe()
+                .unwrap()
+                .execute(
+                    "UPDATE vfs_index_units SET text_content = 'needle' WHERE resource_id = ?1",
+                    params![resource],
+                )
+                .unwrap();
+        }
+        let mut targets = Vec::new();
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute_batch(
+            "INSERT INTO folders (id, title, created_at, updated_at)
+            VALUES ('scope_old', 'Old', 1, 1), ('scope_current', 'Current', 2, 2)",
+        )
+        .unwrap();
+        for index in 0..3 {
+            let source = format!("inside_{index}");
+            let resource = create_lexical_unit(&db, &source, &format!("inside {index} needle"), 0);
+            conn.execute(
+                "UPDATE resources SET type = 'image' WHERE id = ?1",
+                params![resource],
+            )
+            .unwrap();
+            // A newer source-ID membership supersedes an older resource-ID membership.
+            conn.execute(
+                "INSERT INTO folder_items (id, folder_id, item_type, item_id, created_at)
+                VALUES (?1, 'scope_old', 'image', ?2, 1), (?3, 'scope_current', 'image', ?4, 2)",
+                params![
+                    format!("old_{index}"),
+                    resource,
+                    format!("current_{index}"),
+                    source
+                ],
+            )
+            .unwrap();
+            targets.push(resource);
+        }
+        // Exercise both UNION branches; duplicate segment/unit identities stay deduplicated.
+        let units = conn
+            .prepare("SELECT id, text_content FROM vfs_index_units")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        for (unit_id, text) in units {
+            index_segment_repo::create(
+                &conn,
+                CreateSegmentInput {
+                    lance_row_id: format!("lexical_{unit_id}"),
+                    unit_id,
+                    segment_index: 0,
+                    modality: "text".into(),
+                    embedding_dim: 128,
+                    content_text: Some(text),
+                    content_hash: None,
+                    start_pos: None,
+                    end_pos: None,
+                    metadata_json: None,
+                },
+            )
+            .unwrap();
+        }
+        drop(conn);
+        for kind in ["resource", "type", "folder", "combined"] {
+            let mut request = UnifiedRetrievalRequest::text("needle", 3);
+            if kind == "resource" || kind == "combined" {
+                request.resource_ids = Some(targets.clone());
+            }
+            if kind == "type" || kind == "combined" {
+                request.resource_types = Some(vec!["image".into()]);
+            }
+            if kind == "folder" || kind == "combined" {
+                request.folder_ids = Some(vec!["scope_current".into()]);
+            }
+            let hits = VfsUnifiedRetriever::execute_fts_route(&db, "needle", &request, 3).unwrap();
+            assert_eq!(hits.len(), 3, "scope: {kind}");
+            assert!(hits
+                .iter()
+                .all(|hit| targets.contains(&hit.identity.resource_id)));
+            assert!(hits
+                .iter()
+                .all(|hit| hit.folder_id.as_deref() == Some("scope_current")));
+            assert!(hits.iter().all(|hit| hit
+                .title
+                .as_deref()
+                .is_some_and(|title| title.starts_with("inside_"))));
+        }
+        let mut request = UnifiedRetrievalRequest::text("needle", 3);
+        request.folder_ids = Some(vec!["scope_old".into()]);
+        assert!(
+            VfsUnifiedRetriever::execute_fts_route(&db, "needle", &request, 3)
+                .unwrap()
+                .is_empty()
+        );
+        request.folder_ids = None;
+        request.resource_ids = Some(Vec::new());
+        assert!(
+            VfsUnifiedRetriever::execute_fts_route(&db, "needle", &request, 3)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn lexical_type_scope_preserves_legacy_aliases_and_unknown_fallback() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        for (index, raw_type, canonical) in [
+            (0, "InsightCard", "insight_card"),
+            (1, "IMAGE", "image"),
+            (2, "unknown", "file"),
+        ] {
+            let resource =
+                create_lexical_unit(&db, &format!("type_{index}"), &format!("needle {index}"), 0);
+            db.get_conn_safe()
+                .unwrap()
+                .execute(
+                    "UPDATE resources SET type = ?1 WHERE id = ?2",
+                    params![raw_type, resource],
+                )
+                .unwrap();
+            let mut request = UnifiedRetrievalRequest::text("needle", 3);
+            request.resource_types = Some(vec![canonical.into()]);
+            let hits = VfsUnifiedRetriever::execute_fts_route(&db, "needle", &request, 3).unwrap();
+            assert_eq!(hits.len(), 1);
+            assert_eq!(hits[0].identity.resource_id, resource);
+            assert_eq!(hits[0].resource_type.as_deref(), Some(canonical));
+        }
     }
 
     #[test]

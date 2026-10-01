@@ -21,6 +21,7 @@ import { Copy, Trash, Download, MagnifyingGlass, CaretDown, CaretRight, Warning,
 import { Switch } from '@/components/ui/shad/Switch';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { debugMasterSwitch } from '../debugMasterSwitch';
 
 // ============================================================================
 // 常量
@@ -73,7 +74,7 @@ export interface ToolCallLogEntry {
 
 let logIdCounter = 0;
 const globalLogs: ToolCallLogEntry[] = [];
-const globalListeners = new Set<(entry: ToolCallLogEntry) => void>();
+const globalListeners = new Set<() => void>();
 
 export function pushToolCallLog(
   level: ToolCallLogLevel,
@@ -81,6 +82,7 @@ export function pushToolCallLog(
   summary: string,
   opts?: Partial<Pick<ToolCallLogEntry, 'detail' | 'toolName' | 'toolCallId' | 'blockId' | 'sequenceId' | 'durationMs'>>,
 ): void {
+  if (!debugMasterSwitch.isEnabled()) return;
   const entry: ToolCallLogEntry = {
     id: `tcl-${++logIdCounter}`,
     ts: Date.now(),
@@ -91,7 +93,7 @@ export function pushToolCallLog(
   };
   globalLogs.push(entry);
   if (globalLogs.length > MAX_LOGS) globalLogs.splice(0, globalLogs.length - MAX_LOGS);
-  globalListeners.forEach((fn) => fn(entry));
+  globalListeners.forEach((fn) => fn());
 }
 
 function snapshotLogs(): ToolCallLogEntry[] {
@@ -144,10 +146,6 @@ function handleWindowEvent(e: Event): void {
   );
 }
 
-// 模块加载时即注册全局监听器（确保不遗漏早期事件）
-if (typeof window !== 'undefined') {
-  window.addEventListener(TOOLCALL_LIFECYCLE_EVENT, handleWindowEvent);
-}
 
 /**
  * 便捷发射函数（避免每次手写 CustomEvent）
@@ -156,9 +154,10 @@ export function emitToolCallDebug(
   level: ToolCallLogLevel,
   phase: ToolCallLogPhase,
   summary: string,
-  opts?: Partial<Pick<ToolCallLogEntry, 'detail' | 'toolName' | 'toolCallId' | 'blockId' | 'sequenceId' | 'durationMs'>>,
+  opts?: Partial<Pick<ToolCallLogEntry, 'detail' | 'toolName' | 'toolCallId' | 'blockId' | 'sequenceId' | 'durationMs'>> | (() => Partial<ToolCallLogEntry>),
 ): void {
-  pushToolCallLog(level, phase, summary, opts);
+  if (!debugMasterSwitch.isEnabled()) return;
+  pushToolCallLog(level, phase, summary, typeof opts === 'function' ? opts() : opts);
 }
 
 // ============================================================================
@@ -196,6 +195,7 @@ function resetTracker(): void {
  * 避免跨轮次 preparing/completion 计数器比较产生假阳性
  */
 export function resetRound(): void {
+  if (!debugMasterSwitch.isEnabled()) return;
   // 清理上一轮残留的 inflight 工具（超时未完成的）
   const staleCount = inflightTools.size;
   if (staleCount > 0) {
@@ -212,6 +212,7 @@ export function resetRound(): void {
 }
 
 export function trackPreparing(toolCallId: string, toolName: string): void {
+  if (!debugMasterSwitch.isEnabled()) return;
   inflightTools.set(toolCallId, {
     toolCallId,
     toolName,
@@ -221,6 +222,7 @@ export function trackPreparing(toolCallId: string, toolName: string): void {
 }
 
 export function trackStart(toolCallId: string, blockId?: string, toolName?: string): void {
+  if (!debugMasterSwitch.isEnabled()) return;
   let t = inflightTools.get(toolCallId);
   // 🔧 回填：如果没有 preparing 事件（如 image_gen、approval、直接调用），
   // 创建一个补录的 InflightTool 条目，确保 trackEnd 能正常输出计时日志
@@ -242,6 +244,7 @@ export function trackStart(toolCallId: string, blockId?: string, toolName?: stri
 }
 
 export function trackEnd(toolCallId: string, success: boolean): void {
+  if (!debugMasterSwitch.isEnabled()) return;
   const t = inflightTools.get(toolCallId);
   if (!t) return;
   t.endedAt = Date.now();
@@ -306,9 +309,22 @@ export function trackEnd(toolCallId: string, success: boolean): void {
   }
 }
 
-// 定期检测超时（preparing 后迟迟未收到 start）
-if (typeof window !== 'undefined') {
-  setInterval(() => {
+// Detailed collection follows the existing diagnostic switch, including timers
+// and retained payloads. Product error reporting is independent of this plugin.
+let timeoutTimer: ReturnType<typeof setInterval> | undefined;
+function setCollectorEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener(TOOLCALL_LIFECYCLE_EVENT, handleWindowEvent);
+  if (timeoutTimer !== undefined) clearInterval(timeoutTimer);
+  timeoutTimer = undefined;
+  if (!enabled) {
+    resetTracker();
+    clearLogs();
+    globalListeners.forEach((listener) => listener());
+    return;
+  }
+  window.addEventListener(TOOLCALL_LIFECYCLE_EVENT, handleWindowEvent);
+  timeoutTimer = setInterval(() => {
     const now = Date.now();
     for (const [, t] of inflightTools) {
       if (!t.startedAt && !t.warnedTimeout && now - t.preparingAt > PREPARE_TIMEOUT_MS) {
@@ -321,6 +337,14 @@ if (typeof window !== 'undefined') {
       }
     }
   }, 5000);
+}
+const stopSwitchListener = debugMasterSwitch.addListener(setCollectorEnabled);
+setCollectorEnabled(debugMasterSwitch.isEnabled());
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    stopSwitchListener();
+    setCollectorEnabled(false);
+  });
 }
 
 // ============================================================================
@@ -419,7 +443,7 @@ const ToolCallLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   useEffect(() => {
     if (!isActivated) return;
     setLogs(snapshotLogs());
-    const handler = (_entry: ToolCallLogEntry) => {
+    const handler = () => {
       setLogs(snapshotLogs());
     };
     globalListeners.add(handler);

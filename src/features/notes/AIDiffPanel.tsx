@@ -8,11 +8,28 @@ import { GenerativeUIPanel } from '@/features/generative-ui/components/Generativ
 import { buildAIDiffSummaryIntent } from '@/features/generative-ui/utils/buildAIDiffSummaryIntent';
 import { isMacOS } from '@/utils/platform';
 import type { AIEditState, CanvasEditOperation, DiffLine } from './hooks/useAIEditState';
+import { isReviewShortcut, type AIReviewSession, type AIReviewDecision } from './aiReviewModel';
+import { OfficialDiffReview, type OfficialDiffReviewProps } from './OfficialDiffReview';
+import type { AIReviewLanding, AIReviewScope } from './officialDiffContract';
 
-interface AIDiffPanelProps {
+export interface AIDiffPanelProps {
   state: AIEditState;
   onAccept: () => void;
   onReject: () => void;
+  onSuspend: () => void;
+  onCopy?: () => void;
+  onApplySelected?: () => void;
+  review?: AIReviewSession | null;
+  onDecideGroup?: (id: number, decision: AIReviewDecision) => void;
+  onReviewDecision?: OfficialDiffReviewProps['onReviewDecision'];
+  onReviewReady?: OfficialDiffReviewProps['onReviewReady'];
+  onReviewError?: OfficialDiffReviewProps['onReviewError'];
+  onScopeChange?: (kind: AIReviewScope['kind']) => void;
+  onLandingChange?: (landing: AIReviewLanding) => void;
+  canResolveScope?: boolean;
+  canSaveAs?: boolean;
+  readOnly?: boolean;
+  canHandleShortcut?: () => boolean;
   isApplying?: boolean;
   className?: string;
   /**
@@ -114,6 +131,15 @@ export function AIDiffPanel({
   state,
   onAccept,
   onReject,
+  onSuspend,
+  onCopy,
+  review,
+  onReviewDecision,
+  onReviewReady,
+  onReviewError,
+  onScopeChange, onLandingChange, canResolveScope = false, canSaveAs = false,
+  readOnly = false,
+  canHandleShortcut,
   isApplying = false,
   className,
   suspendShortcuts = false,
@@ -131,8 +157,9 @@ export function AIDiffPanel({
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Accept 应用中锁定快捷键，防止重复触发；已被其他面板消费的事件不再处理
-    if (isApplying || e.defaultPrevented) return;
+    if (isApplying || !isReviewShortcut(e) || suspendShortcuts || canHandleShortcut?.() === false) return;
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      if (readOnly) return;
       e.preventDefault();
       onAccept();
       return;
@@ -141,9 +168,10 @@ export function AIDiffPanel({
       // Esc 优先级：查找替换等面板打开时让位（宿主经 suspendShortcuts 声明）
       if (suspendShortcuts) return;
       e.preventDefault();
-      onReject();
+      e.stopPropagation();
+      onSuspend();
     }
-  }, [isApplying, suspendShortcuts, onAccept, onReject]);
+  }, [isApplying, suspendShortcuts, onAccept, onSuspend, readOnly, canHandleShortcut]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);
@@ -190,7 +218,7 @@ export function AIDiffPanel({
       <div className="mx-auto flex min-h-0 w-full max-w-[var(--notes-content-max-w)] flex-col px-5 py-2 sm:px-12">
         <div className="flex min-h-0 flex-col overflow-hidden rounded-[var(--radius-shell-control,12px)] border border-border bg-card shadow-[0_1px_3px_hsl(var(--shadow-base)/0.08)]">
           {/* 操作条：贴住 diff 区顶部，不随 diff 内容滚动 */}
-          <div className="flex flex-shrink-0 items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2">
+          <div className="flex flex-shrink-0 flex-wrap items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2">
             <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
               <Robot size={14} className="text-primary" />
             </div>
@@ -212,9 +240,11 @@ export function AIDiffPanel({
               <span className="mx-1">{t('aiDiff.accept')}</span>
               <span className="mx-0.5">·</span>
               <kbd className="rounded border bg-muted px-1.5 py-0.5 text-[10px]">Esc</kbd>
-              <span className="ml-1">{t('aiDiff.reject')}</span>
+              <span className="ml-1">{t('aiDiff.suspend', '收起')}</span>
             </div>
-            <div className="flex flex-shrink-0 items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <DsButton variant="ghost" size="sm" onClick={onCopy}>{t('aiDiff.copy_candidate', '复制候选')}</DsButton>
+              <DsButton variant="ghost" size="sm" onClick={onSuspend}>{t('aiDiff.suspend', '收起')}</DsButton>
               <DsButton
                 variant="outline"
                 size="sm"
@@ -223,27 +253,49 @@ export function AIDiffPanel({
                 className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] hover:border-[hsl(var(--destructive)/0.4)] hover:text-[hsl(var(--destructive))] motion-reduce:transition-none"
               >
                 <X size={13} className="mr-1" />
-                {t('aiDiff.reject')}
+                {t('aiDiff.discard', '丢弃建议')}
               </DsButton>
               <DsButton
                 size="sm"
                 onClick={onAccept}
-                disabled={isApplying}
+                disabled={isApplying || readOnly}
                 aria-busy={isApplying}
                 className="h-7 [@media(pointer:coarse)]:!min-h-11 ui-press transition-colors duration-150 ease-[var(--dropdown-ease,cubic-bezier(0.22,1,0.36,1))] motion-reduce:transition-none"
               >
                 <Check size={13} className="mr-1" />
-                {t('aiDiff.accept')}
+                {review?.error ? t('aiDiff.retry', '重试应用') : t('aiDiff.accept_remaining', '应用未拒绝的建议')}
               </DsButton>
             </div>
           </div>
+
+          {review?.error && <p role="alert" className="px-3 py-2 text-sm text-destructive">{review.error}</p>}
+          {review && onScopeChange && onLandingChange && <div className="flex gap-3 px-3 py-2 text-xs">
+            <label>范围 <select aria-label="AI 编辑范围" value={review.request.scope?.kind ?? 'page'}
+              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+              onChange={event => onScopeChange(event.target.value as AIReviewScope['kind'])}>
+              <option value="selection" disabled={!canResolveScope}>选区</option>
+              <option value="block" disabled={!canResolveScope}>当前块</option>
+              <option value="section" disabled={!canResolveScope}>当前章节</option>
+              <option value="page">整页</option>
+            </select></label>
+            <label>落点 <select aria-label="AI 结果落点" value={review.request.landing ?? 'replace'}
+              disabled={isApplying || !!review.decisions.length || !!review.retryDecision}
+              onChange={event => onLandingChange(event.target.value as AIReviewLanding)}>
+              <option value="replace">替换</option><option value="insert-below">插入下方</option>
+              <option value="save-as" disabled={!canSaveAs}>另存结果</option>
+            </select></label>
+          </div>}
+          {review && <p className="px-3 py-1 text-xs text-muted-foreground">接受此组会立即保存到笔记；其余建议保留。表格、折叠块和提示块按块审阅。</p>}
 
           <div className="flex-shrink-0 border-b border-border/40 px-3 py-2">
             <GenerativeUIPanel intent={summaryIntent} showChrome={false} />
           </div>
 
           <CustomScrollArea className="min-h-0 flex-1" viewportClassName="py-1">
-            {diffLines.length === 0 ? (
+            {review && onReviewDecision && onReviewReady && onReviewError ? (
+              <OfficialDiffReview review={review} onReviewDecision={onReviewDecision}
+                onReviewReady={onReviewReady} onReviewError={onReviewError} />
+            ) : diffLines.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
                 {t('aiDiff.no_changes')}
               </div>

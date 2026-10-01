@@ -295,6 +295,46 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         // --- DerivedRebuild ---
         TableClassification {
             database: "vfs",
+            table_name: "note_tags",
+            primary_key: "note_id,tag",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Normalized tag index maintained from notes.tags by SQLite triggers",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_links",
+            primary_key: "source_id,position",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Link graph rebuilt from note content by VfsNoteRepo::rebuild_note_links",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "notes_fts",
+            primary_key: "(virtual)",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "FTS5 virtual table; rebuilt from notes",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "insight_fts",
+            primary_key: "(virtual)",
+            category: SyncCategory::DerivedRebuild,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "FTS5 virtual table; rebuilt from insights and insight revisions",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "path_cache",
             primary_key: "item_type,item_id",
             category: SyncCategory::DerivedRebuild,
@@ -386,6 +426,16 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
         // --- LocalRuntime ---
         TableClassification {
             database: "vfs",
+            table_name: "qbank_generation_tasks",
+            primary_key: "id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Device-local generation jobs and recoverable draft results; accepted questions sync separately",
+        },
+        TableClassification {
+            database: "vfs",
             table_name: "question_history",
             primary_key: "id",
             category: SyncCategory::LocalRuntime,
@@ -454,7 +504,88 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Local idempotency receipts for automation todo side effects",
         },
-        // --- BackupOnly ---
+        // --- Notes persistent local state and shared learning relationships ---
+        TableClassification {
+            database: "vfs",
+            table_name: "note_transfer_operations",
+            primary_key: "operation_id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Device-local transaction receipts and undo/CAS tokens; included in database backup",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_state",
+            primary_key: "note_id,state_type,state_key",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Local review/draft CAS state including tombstones; included in database backup",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_learning_relations",
+            primary_key: "id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Shared relation identity + updated_at LWW; revision is a reconstructed local CAS token. Missing VFS or cross-database Anki targets stay explicit invalid references; never fabricate target resources",
+        },
+        // --- Document transport ---
+        TableClassification {
+            database: "vfs",
+            table_name: "note_history_retention",
+            primary_key: "id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Device-local history retention policy",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_review_save_operations",
+            primary_key: "operation_id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Local save-as retry identities",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_review_save_receipts",
+            primary_key: "operation_id,expected_updated_at",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Local CAS response receipts",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_document_revisions",
+            primary_key: "version_id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Immutable full-document versions; version_id identity, seq/edit_bucket local; pins merge by retention union (remote false never releases a local pin); pruning is local; divergent same-ID payloads are quarantined",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_document_formats",
+            primary_key: "note_id",
+            category: SyncCategory::RowSync,
+            conflict_policy: ConflictPolicyClass::Lww,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Document format gate follows its note; unsupported future formats reject writes",
+        },
         TableClassification {
             database: "vfs",
             table_name: "mindmap_versions",
@@ -464,6 +595,57 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             business_unique_keys: "",
             has_json_blobs: false,
             merge_notes: "Version history, backup only",
+        },
+        // --- Notes editor coordination: one mounted editor per WebView ---
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_participants",
+            primary_key: "id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Live editor registration bound to a WebView label; expires locally",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_leases",
+            primary_key: "token",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Cross-WebView write lease; meaningless on another device",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_lease_notes",
+            primary_key: "note_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Notes fenced by the local lease token",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_lease_acks",
+            primary_key: "token,participant_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Per-participant freeze/flush acknowledgements for one local operation",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "note_editor_write_grants",
+            primary_key: "token",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Grant row that exists only inside the authorized write transaction",
         },
         TableClassification {
             database: "vfs",
@@ -578,6 +760,76 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             merge_notes: "Workspace registry",
         },
         // --- LocalRuntime ---
+        TableClassification {
+            database: "chat_v2",
+            table_name: "chat_v2_goals",
+            primary_key: "session_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Local continuation and budget state; syncing a conversation must not resume its goal on another device",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "connector_operations",
+            primary_key: "operation_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "session_id,idempotency_key",
+            has_json_blobs: true,
+            merge_notes: "Local external-side-effect ledger, account binding and confirmation state",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "completion_outbox",
+            primary_key: "delivery_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "run_id",
+            has_json_blobs: true,
+            merge_notes: "Local worker completion delivery claims and retry state",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "revocation_epochs",
+            primary_key: "kind,task_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Device-local delegated-grant revocation authority",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "budget_snapshots",
+            primary_key: "root_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: true,
+            merge_notes: "Local task-tree budget recovery snapshots",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "skill_usage",
+            primary_key: "usage_id",
+            category: SyncCategory::LocalRuntime,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Local skill activation and run audit statistics",
+        },
+        TableClassification {
+            database: "chat_v2",
+            table_name: "skill_candidates",
+            primary_key: "candidate_id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "trace_hash",
+            has_json_blobs: true,
+            merge_notes: "Experience drafts and local review/publishing state, retained in backups",
+        },
         TableClassification {
             database: "chat_v2",
             table_name: "chat_v2_session_state",
@@ -919,6 +1171,19 @@ impl TableClassification {
             .into_iter()
             .filter(|c| c.category == SyncCategory::RowSync)
             .collect()
+    }
+
+    /// RowSync tables that deliberately omit one `__change_log` operation trigger.
+    ///
+    /// `note_document_revisions` keeps pruning local (see its merge notes): a
+    /// delete trigger would replay a local prune onto every other device. Pins do
+    /// sync through the dedicated `trg__change_log_note_document_revisions_pin`
+    /// UPDATE trigger. Every other RowSync table must carry insert/update/delete.
+    pub fn change_log_trigger_exempt(database: &str, table_name: &str, operation: &str) -> bool {
+        matches!(
+            (database, table_name, operation),
+            ("vfs", "note_document_revisions", "delete")
+        )
     }
 
     /// Get tables for which checksum should be computed (RowSync + FileSync only)

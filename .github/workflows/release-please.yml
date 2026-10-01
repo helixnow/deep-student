@@ -81,5 +81,13 @@ jobs:
           BOT_TOKEN_CONFIGURED: ${{ secrets.RELEASE_PLEASE_TOKEN != '' }}
         run: |
           if [ "$BOT_TOKEN_CONFIGURED" != true ]; then
+            SHA=$(git rev-parse HEAD)
+            EXISTING=$(gh run list --workflow ci.yml --commit "$SHA" --limit 100 \
+              --json databaseId,status,conclusion \
+              --jq '[.[] | select(.status == "queued" or .status == "pending" or .status == "in_progress" or .conclusion == "success")] | .[0].databaseId // empty')
+            if [ -n "$EXISTING" ]; then
+              echo "CI for prepared PR $SHA already exists: run $EXISTING"
+              exit 0
+            fi
             gh workflow run ci.yml --ref "$PR_BRANCH"
           fi

@@ -158,6 +158,8 @@ pub trait RequestAdapter: Send + Sync {
         if let Some(ref verbosity) = config.verbosity {
             body.insert("verbosity".to_string(), json!(verbosity));
         }
+        // 2C 自定义请求体扩展
+        merge_extra_body(body, config);
     }
 
     // ============ 第三阶段扩展接口 ============
@@ -207,6 +209,33 @@ pub enum PassbackPolicy {
     ReasoningDetails,
     /// 不回传思维链
     NoPassback,
+}
+
+/// 2C 自定义请求体扩展：把 `config.extra_body` 合并进 `body`。
+///
+/// 安全约束：
+/// - 空 key 跳过；
+/// - 已存在的 key 跳过（不覆盖 model/messages/stream/temperature 等标准字段）；
+/// - 打 debug 日志便于排障。
+///
+/// 所有 `apply_common_params` 的实现（默认 trait 方法 + 各 adapter override）都应在
+/// 末尾调用本函数，确保 2C 逃生口对整个 adapter 生态一致生效。
+pub(crate) fn merge_extra_body(body: &mut Map<String, Value>, config: &ApiConfig) {
+    if let Some(ref extra) = config.extra_body {
+        for (key, value) in extra.iter() {
+            if key.is_empty() {
+                continue;
+            }
+            if body.contains_key(key) {
+                log::debug!(
+                    "extra_body key {:?} skipped: already present in request body",
+                    key
+                );
+                continue;
+            }
+            body.insert(key.clone(), value.clone());
+        }
+    }
 }
 
 /// 适配器注册表
@@ -542,5 +571,75 @@ mod tests {
         assert!(!body.contains_key("enable_thinking"));
         assert!(!body.contains_key("thinking_budget"));
         assert_eq!(body.get("temperature"), Some(&serde_json::json!(1.0)));
+    }
+
+    /// 2C 回归：extra_body 中的 key-value 会被原样合并进请求体，
+    /// 但**不得覆盖**已有标准字段（model / messages / stream / temperature / min_p 等）。
+    #[test]
+    fn test_extra_body_merges_without_overwriting_existing_fields() {
+        let adapter = get_adapter(None, None, "general");
+
+        let mut extra = serde_json::Map::new();
+        extra.insert("reasoning_effort".to_string(), json!("high"));
+        extra.insert("custom_flag".to_string(), json!(true));
+        extra.insert("nested".to_string(), json!({"a": 1}));
+        // 试图覆盖 model 和 temperature —— 必须被拒绝
+        extra.insert("model".to_string(), json!("hijacked-model"));
+        extra.insert("temperature".to_string(), json!(99.9));
+        // 空 key 必须被跳过
+        extra.insert("".to_string(), json!("bogus"));
+
+        let mut config = ApiConfig {
+            model: "qwen3.7-max".to_string(),
+            temperature: 0.7,
+            min_p: Some(0.05),
+            extra_body: Some(extra),
+            ..Default::default()
+        };
+
+        let mut body = serde_json::Map::new();
+        body.insert("model".to_string(), json!("qwen3.7-max"));
+        body.insert("messages".to_string(), json!([]));
+        body.insert("stream".to_string(), json!(true));
+        body.insert("temperature".to_string(), json!(config.temperature));
+
+        adapter.apply_common_params(&mut body, &config);
+
+        // 新增的 key 被合并
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert_eq!(body.get("custom_flag"), Some(&json!(true)));
+        assert_eq!(body.get("nested"), Some(&json!({"a": 1})));
+
+        // 已有字段未被覆盖
+        assert_eq!(body.get("model"), Some(&json!("qwen3.7-max")));
+        assert_eq!(body.get("temperature"), Some(&json!(0.7)));
+
+        // 空 key 未被插入
+        assert!(!body.contains_key(""));
+
+        // min_p 照常工作（2C 不影响 apply_common_params 既有逻辑）
+        assert_eq!(body.get("min_p"), Some(&json!(0.05)));
+
+        // extra_body 本身不应作为字段被插入
+        assert!(!body.contains_key("extra_body"));
+
+        // 可变性：config 未被修改
+        config.extra_body = None;
+    }
+
+    /// 2C 回归：extra_body 为 None 时 apply_common_params 不应插入任何额外字段。
+    #[test]
+    fn test_extra_body_none_is_noop() {
+        let adapter = get_adapter(None, None, "general");
+        let config = ApiConfig {
+            model: "gpt-5.4-mini".to_string(),
+            extra_body: None,
+            ..Default::default()
+        };
+        let mut body = serde_json::Map::new();
+        body.insert("model".to_string(), json!("gpt-5.4-mini"));
+        let before = body.len();
+        adapter.apply_common_params(&mut body, &config);
+        assert_eq!(body.len(), before, "no extra keys should be inserted");
     }
 }

@@ -1011,6 +1011,7 @@ fn try_finalize_task_completion(
     ) {
         // executor 防闪退保存过旧 output，这里立即覆盖；失败由末轮
         // save_results 兜底（同内容 upsert）
+        ctx.dirty_interleaved_block_ids.insert(block.id.clone());
         if let Err(error) = ChatV2Repo::update_block_v2(db, &block) {
             log::warn!(
                 "[Finalizer] failed to persist finalization to block {} \

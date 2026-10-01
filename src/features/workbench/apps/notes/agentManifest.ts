@@ -200,7 +200,9 @@ export function createNotesAgentManifest(
         const editor = getNoteEditor(active.id, ctx.windowId);
         let markdown = '';
         try {
-          markdown = editor?.getFullMarkdown?.() ?? editor?.getMarkdown() ?? '';
+          markdown = editor?.getFullDocument?.().markdown
+            ?? editor?.getFullMarkdown?.()
+            ?? (editor?.isDocumentWindowed?.() ? '' : editor?.getMarkdown() ?? '');
         } catch {
           markdown = '';
         }

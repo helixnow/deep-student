@@ -1050,6 +1050,7 @@ impl CloudSyncManager {
     /// 协议写入，并发的另一台设备要么看见租约、要么看见已发布的标记而失败，
     /// 不会用无校验子的 v1 覆盖别人刚认领的 v2。
     pub async fn persist_encryption_marker(&self) -> Result<EncryptionMarker> {
+        super::e2ee_claim::ensure_no_pending_claims(&*self.storage, ENCRYPTION_MARKER_FILE).await?;
         let (state, raw) = self.read_encryption_marker_state_with_raw().await?;
         match state {
             EncryptionMarkerState::Present(existing) => {
@@ -1114,6 +1115,7 @@ impl CloudSyncManager {
         &self,
         password: &str,
     ) -> Result<EncryptionMarker> {
+        super::e2ee_claim::ensure_no_pending_claims(&*self.storage, ENCRYPTION_MARKER_FILE).await?;
         let (state, raw) = self.read_encryption_marker_state_with_raw().await?;
         let marker = match state {
             EncryptionMarkerState::Absent => {

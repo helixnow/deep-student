@@ -179,8 +179,8 @@ function CompressedBreadcrumbs({
           size="sm"
           onClick={() => onBreadcrumbClick(0)}
           className={cn('!h-auto !min-w-0 !px-1 !py-0 text-ui font-medium tracking-tight text-foreground/55 hover:text-foreground', CRUMB_TOUCH_HIT_CLASS)}
-          title={parentCrumb?.name}
-          aria-label={parentCrumb?.name || '…'}
+          title={breadcrumbs[0]?.name}
+          aria-label={breadcrumbs[0]?.name || '…'}
         >
           …
         </DsButton>
@@ -446,7 +446,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   const searchField = onSearchChange ? (
     <div
       className={cn(
-        'pointer-events-auto relative shrink-0',
+        'pointer-events-auto relative min-w-[80px] shrink',
         isCompact ? 'w-[128px]' : titlebarMode ? 'w-[168px]' : 'ml-1 w-[180px]'
       )}
     >
@@ -477,7 +477,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     />
   );
 
-  // 标题栏模式：左侧 = 导航 + 功能；中间可点面包屑相对整窗居中；右侧 = 搜索
+  // 标题栏模式：面包屑使用两侧控件之间的剩余空间，避免绝对定位压住操作。
   if (titlebarMode) {
     return (
       <div
@@ -485,28 +485,15 @@ export const FinderToolbar = React.memo(function FinderToolbar({
         data-wb-size={sizeClass}
         className="finder-toolbar pointer-events-none relative h-full shrink-0 bg-transparent py-0 pl-1 pr-2"
       >
-        {/* OS 窗口槽从 traffic inset 后开始；全局 shell 槽则按自身宽度居中。 */}
-        <div
-          className="pointer-events-none absolute inset-y-0 z-0 flex items-center justify-center"
-          style={{
-            left: titlebarMode === 'window'
-              ? 'calc(50% - (var(--wb-macos-traffic-lights-inset, 72px) / 2))'
-              : '50%',
-            width: 'min(42%, 280px)',
-            transform: 'translateX(-50%)',
-          }}
-        >
-          {breadcrumbCenter}
-        </div>
-
         <div className="relative z-10 flex h-full min-w-0 items-center gap-1.5">
           {/* 左侧：导航 + 功能（原右侧按钮） */}
           <div className="flex shrink-0 items-center gap-1.5">
             {navButtons}
             {utilityButtons}
           </div>
-          {/* 中间留给绝对定位标题 */}
-          <div className="min-w-0 flex-1" aria-hidden />
+          <div className="flex min-w-0 flex-1 justify-center overflow-hidden px-1">
+            {breadcrumbCenter}
+          </div>
           {/* 右侧：搜索（访达常见） */}
           {searchField}
         </div>

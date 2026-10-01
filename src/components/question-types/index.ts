@@ -15,3 +15,17 @@ export { OrderingEditor, type OrderingEditorProps, type OrderingEditorValue } fr
 export { NumericEditor, type NumericEditorProps, type NumericEditorValue } from './NumericEditor';
 export { BlanksEditor, type BlanksEditorProps } from './BlanksEditor';
 export { StructuredAnswerSummary, type StructuredAnswerSummaryProps } from './StructuredAnswerSummary';
+export {
+  AnswerImageStrip,
+  ImageAnswerDisplay,
+  type AnswerImageStripProps,
+  type ImageAnswerDisplayProps,
+} from './AnswerImageStrip';
+export {
+  canAddImageAnswerImage,
+  compressImageAnswerImage,
+  computeImageAnswerDimensions,
+  fetchImageAnswerDataUrl,
+  uploadImageAnswerImage,
+  IMAGE_ANSWER_MAX_EDGE,
+} from './imageAnswerUpload';

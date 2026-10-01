@@ -9,6 +9,7 @@
  */
 
 import i18next from 'i18next';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
 import type { EditorView } from '@milkdown/prose/view';
 import { $prose } from '@milkdown/utils';
@@ -388,6 +389,7 @@ export function createWikilinkAutocompletePlugin(config: WikilinkPluginConfig = 
       },
       props: {
         handleKeyDown(view, event) {
+          if (view.composing || isComposingKeyEvent(event)) return false;
           if (!overlay.isOpen() || !active) return false;
 
           if (event.key === 'Escape') {

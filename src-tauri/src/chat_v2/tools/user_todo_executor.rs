@@ -260,6 +260,10 @@ fn with_undo_contract(
 ///
 /// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：载荷含 entityIds；runId = toolCallId。
 fn emit_todo_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    // Headless tool execution persists the same changes without a UI to refresh.
+    let Some(window) = ctx.tauri_window.as_ref() else {
+        return;
+    };
     // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai" 兼容旧持久化事件）
     let payload = json!({
         "source": "agent",
@@ -267,7 +271,7 @@ fn emit_todo_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]
         "entityIds": entity_ids,
         "runId": ctx.run_id(),
     });
-    if let Err(e) = ctx.window_ref().emit("todo://changed", payload) {
+    if let Err(e) = window.emit("todo://changed", payload) {
         log::debug!("[UserTodoExecutor] Failed to emit todo://changed: {}", e);
     }
 }

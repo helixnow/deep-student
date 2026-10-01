@@ -41,12 +41,15 @@ use tokio::sync::Mutex as TokioMutex;
 // use chrono::Utc;
 use regex::Regex;
 use std::sync::LazyLock;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, Semaphore};
 use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
 pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
+
+/// PDF/图片预处理与索引兜底共用的 OCR 并发容量。
+pub(crate) const MAX_OCR_CONCURRENCY: usize = 4;
 
 // ============================================================
 // 流式事件出口（G01-b：LLM 流式层去 Window 依赖）
@@ -2824,6 +2827,33 @@ mod ocr_runtime_candidate_tests {
     }
 
     #[test]
+    fn system_ocr_candidate_respects_enabled_state_alongside_remote_engine() {
+        let (remote_model, remote_config) = generic_vlm();
+        for (enabled, supported, expected_native) in [
+            (false, true, false),
+            (true, true, true),
+            (true, false, false),
+        ] {
+            let candidates = build_ocr_runtime_candidates(
+                &[remote_model.clone(), system_model(enabled)],
+                std::slice::from_ref(&remote_config),
+                OcrTaskType::FreeText,
+                supported,
+            );
+            assert_eq!(
+                candidates
+                    .iter()
+                    .any(|candidate| matches!(candidate, OcrRuntimeCandidate::SystemOcr)),
+                expected_native
+            );
+            assert!(candidates.iter().any(|candidate| matches!(
+                candidate,
+                OcrRuntimeCandidate::Remote { config, .. } if config.id == remote_config.id
+            )));
+        }
+    }
+
+    #[test]
     fn readonly_ocr_inspection_uses_native_default_until_explicit_engine_list_exists() {
         assert!(inspect_free_text_ocr_available_from_settings(
             None,
@@ -2980,6 +3010,17 @@ pub struct ApiConfig {
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
     #[serde(default, alias = "context_window")]
     pub context_window: Option<u32>,
+    /// 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+    ///
+    /// 用户在设置 UI 上以 key-value 形式声明的额外字段，会被原样合并进
+    /// 最终发送到 API 的请求体。用于塞进任何 LLM 方言 / 未来新出的参数，
+    /// 而不需要硬编码到 `RequestAdapter`。
+    ///
+    /// 安全约束：合并发生在 `apply_common_params` 末尾，已存在的标准字段
+    /// （model/messages/stream/temperature 等）**不会**被这里覆盖 ——
+    /// 只有当 key 在 body 中尚不存在时才会插入。
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Map<String, Value>>,
 }
 
 impl Default for ApiConfig {
@@ -3030,6 +3071,7 @@ impl Default for ApiConfig {
             is_favorite: false,
             max_tokens_limit: None,
             context_window: None,
+            extra_body: None,
         }
     }
 }
@@ -3184,6 +3226,12 @@ pub struct ModelProfile {
     /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
     #[serde(default, alias = "context_window")]
     pub context_window: Option<u32>,
+    /// 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+    ///
+    /// 用户在设置 UI 上以 key-value 形式声明的额外字段，会被原样合并进
+    /// 最终发送到 API 的请求体。详见 `ApiConfig::extra_body`。
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Map<String, Value>>,
 }
 
 impl Default for ModelProfile {
@@ -3224,6 +3272,7 @@ impl Default for ModelProfile {
             is_favorite: false,
             max_tokens_limit: None,
             context_window: None,
+            extra_body: None,
         }
     }
 }
@@ -3799,6 +3848,8 @@ pub struct LLMManager {
     db: Arc<Database>,
     openai_codex_auth: CodexAuthManager,
     file_manager: Arc<FileManager>,
+    /// 由调用服务获取许可，LLM 请求方法不重复获取。
+    ocr_semaphore: Arc<Semaphore>,
     crypto_service: CryptoService,
     cancel_registry: Arc<TokioMutex<HashSet<String>>>,
     cancel_channels: Arc<TokioMutex<std::collections::HashMap<String, watch::Sender<bool>>>>,
@@ -4230,6 +4281,7 @@ impl LLMManager {
             db,
             openai_codex_auth,
             file_manager,
+            ocr_semaphore: Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY)),
             crypto_service,
             cancel_registry: Arc::new(TokioMutex::new(HashSet::new())),
             cancel_channels: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
@@ -4241,6 +4293,11 @@ impl LLMManager {
     // 对外暴露 HTTP 客户端，便于独立管线重用统一配置的客户端
     pub fn get_http_client(&self) -> Client {
         self.client.clone()
+    }
+
+    /// 为媒体预处理和索引兜底提供同一组 OCR 许可。
+    pub(crate) fn ocr_semaphore(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.ocr_semaphore)
     }
 
     pub fn openai_codex_auth(&self) -> CodexAuthManager {
@@ -5942,6 +5999,7 @@ impl LLMManager {
                 .context_window
                 .or(capability_overrides.context_window),
             supports_openai_responses: vendor.supports_openai_responses,
+            extra_body: profile.extra_body.clone(),
         };
 
         Ok(ResolvedModelConfig {
@@ -6048,6 +6106,7 @@ impl LLMManager {
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
                 verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
             });
         }
 
@@ -6147,6 +6206,7 @@ impl LLMManager {
                     is_favorite: false,
                     max_tokens_limit: None,
                     context_window: None,
+                    extra_body: None,
                 })
                 .collect());
         }
@@ -6211,6 +6271,7 @@ impl LLMManager {
                 reasoning_split: None,
                 effort: None,
                 verbosity: None,
+                extra_body: None,
             })
             .collect())
     }
@@ -6314,6 +6375,7 @@ impl LLMManager {
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
                 verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
             });
         }
 

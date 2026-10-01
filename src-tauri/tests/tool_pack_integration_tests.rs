@@ -21,7 +21,6 @@ use tokio::time::{timeout, Duration};
 use tokio_util::sync::CancellationToken;
 
 struct ToolPackTestHarness {
-    _app: tauri::App,
     registry: Arc<ToolExecutorRegistry>,
     context: ExecutionContext,
 }
@@ -41,21 +40,6 @@ impl AdmittedToolDispatcher for DirectTestDispatcher {
     }
 }
 
-fn create_default_runtime_window(label: &str) -> (tauri::App, tauri::Window) {
-    // Tauri 2.10 does not expose tauri::test::mock_context / noop_assets to
-    // dependency integration tests unless the dependency feature is enabled.
-    // Use the crate context and public WebviewWindowBuilder default runtime.
-    let app = tauri::Builder::default()
-        .build(tauri::generate_context!())
-        .expect("failed to build default-runtime tauri app");
-    let webview_window =
-        tauri::WebviewWindowBuilder::new(&app, label, tauri::WebviewUrl::default())
-            .build()
-            .expect("failed to build default-runtime window");
-    let window = webview_window.as_ref().window();
-    (app, window)
-}
-
 fn create_tool_pack_registry() -> Arc<ToolExecutorRegistry> {
     Arc::new_cyclic(|weak| {
         ToolExecutorRegistry::from_vec(vec![
@@ -73,9 +57,9 @@ fn create_execution_context(
     block_id: &str,
     registry: Arc<ToolExecutorRegistry>,
 ) -> ToolPackTestHarness {
-    let (app, window) = create_default_runtime_window("tool-pack-test");
-    let emitter = Arc::new(ChatV2EventEmitter::new(
-        window.clone(),
+    // These tests exercise executor results and database effects, using the
+    // same windowless event sink as the production headless runtime.
+    let emitter = Arc::new(ChatV2EventEmitter::new_headless(
         "phase-3-session".to_string(),
     ));
     let context = ExecutionContext::new(
@@ -84,18 +68,14 @@ fn create_execution_context(
         block_id.to_string(),
         emitter,
         Arc::new(ToolRegistry::new()),
-        Some(window),
+        None,
     )
     .with_admitted_tool_dispatcher(Arc::new(DirectTestDispatcher {
         registry: registry.clone(),
     }))
     .with_feature_flags(true, true, true);
 
-    ToolPackTestHarness {
-        _app: app,
-        registry,
-        context,
-    }
+    ToolPackTestHarness { registry, context }
 }
 
 struct Phase3ConcurrencyProbeExecutor {
@@ -405,7 +385,7 @@ async fn tool_pack_harness_constructs_execution_context() {
     assert_eq!(harness.context.session_id, "phase-3-session");
     assert_eq!(harness.context.message_id, "phase-3-message");
     assert_eq!(harness.context.block_id, "harness-block");
-    assert_eq!(harness.context.window_ref().label(), "tool-pack-test");
+    assert!(harness.context.tauri_window.is_none());
     assert_eq!(harness.context.emitter.session_id(), "phase-3-session");
     assert!(harness.registry.has_specific_executor("builtin-tool_pack"));
 }
@@ -582,8 +562,6 @@ async fn tool_pack_vfs_write_load_does_not_surface_sqlite_busy_or_database_locke
         .collect();
     assert!(block_ids.contains(&"write-pack-tool_pack-0"));
     assert!(block_ids.contains(&"write-pack-tool_pack-19"));
-
-    let _keep_app_alive = &harness._app;
 }
 
 #[tokio::test]
@@ -614,8 +592,6 @@ async fn tool_pack_repeated_vfs_write_load_remains_free_of_sqlite_lock_errors() 
         let results = result.output["results"].as_array().unwrap();
         assert_eq!(results.len(), 20);
         assert_no_sqlite_lock_errors(results);
-
-        let _keep_app_alive = &harness._app;
     }
 }
 
@@ -761,7 +737,7 @@ async fn tool_pack_executes_subtools_concurrently_and_respects_max_concurrency()
 }
 
 #[tokio::test]
-async fn tool_pack_subtool_timeout_isolated_to_one_failed_result() {
+async fn tool_pack_deadline_cancels_only_unfinished_subtools() {
     let fast_completed = Arc::new(AtomicBool::new(false));
     let fast_notify = Arc::new(Notify::new());
     let registry = create_timeout_registry(fast_completed.clone(), fast_notify.clone());
@@ -774,6 +750,7 @@ async fn tool_pack_subtool_timeout_isolated_to_one_failed_result() {
         ]
     }));
 
+    let started = Instant::now();
     let result = timeout(
         Duration::from_secs(5),
         registry.execute(&call, &harness.context),
@@ -781,6 +758,7 @@ async fn tool_pack_subtool_timeout_isolated_to_one_failed_result() {
     .await
     .expect("pack timeout test should not hang")
     .expect("pack should return aggregate result");
+    assert!(started.elapsed() >= Duration::from_secs(1));
 
     let output = result.output;
     let results = output["results"].as_array().unwrap();
@@ -796,7 +774,7 @@ async fn tool_pack_subtool_timeout_isolated_to_one_failed_result() {
             && item["error"]
                 .as_str()
                 .unwrap_or_default()
-                .contains("timeout")
+                .contains("TOOL_CANCELLED")
     }));
     assert!(fast_completed.load(Ordering::SeqCst));
 }
@@ -856,6 +834,4 @@ async fn tool_pack_parent_cancellation_preserves_completed_results() {
                 .to_ascii_lowercase()
                 .contains("cancel")
     }));
-
-    let _keep_app_alive = &harness._app;
 }

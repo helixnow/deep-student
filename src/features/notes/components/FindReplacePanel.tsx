@@ -1,22 +1,27 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, X, CaretUp, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import { editorViewCtx } from '@milkdown/kit/core';
 import { undo as pmUndo, redo as pmRedo } from '@milkdown/prose/history';
 import type { EditorView } from '@milkdown/prose/view';
+import type { Node as ProseNode } from '@milkdown/prose/model';
+import type { FullDocumentSearchApi, FullDocumentSnapshot } from '../fullDocument';
+import { revealToggleAtPosition } from '@/components/crepe/plugins/toggle/view';
 import {
-  searchHighlightKey,
+  setSearchHighlight,
   collectSearchMatches,
+  collectSearchMatchesAsync,
   replaceAllSearchMatches,
   compileSearchRegex,
-  expandReplacement,
   type SearchMatch,
   type SearchOptions,
 } from '@/components/crepe/plugins/searchHighlight';
+import './FindReplacePanel.css';
 
 export interface FindReplacePanelProps {
   editorApi: CrepeEditorApi | null;
@@ -35,7 +40,7 @@ export interface FindReplacePanelProps {
 /** 退场过渡时长，与 --dropdown-close-dur（150ms）对齐；含少量缓冲防止过早卸载 */
 const EXIT_FALLBACK_MS = 180;
 
-/** 📱 触屏：24px 图标按钮放大到 ≥44px 触控目标（面板为 flex 布局，输入框 min-w-0 自动收缩） */
+/** 触屏图标保留真实 44px 命中区；窄面板由容器查询把选项移到下一行。 */
 const COARSE_ICON_BTN = '[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11';
 
 function prefersReducedMotion(): boolean {
@@ -63,8 +68,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   const [isClosing, setIsClosing] = useState(false);
   /** 替换成功的短暂反馈文案（约 1.6s 后淡出复位） */
   const [replaceFeedback, setReplaceFeedback] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [documentTick, setDocumentTick] = useState(0);
+  const abortRef = useRef<AbortController | null>(null);
+  const resultsRef = useRef<{ doc: ProseNode; matches: SearchMatch[]; baseline?: FullDocumentSnapshot } | null>(null);
+  const restoreFoldsRef = useRef<() => void>(() => {});
+  const replacingRef = useRef(false);
 
   const findInputRef = useRef<HTMLInputElement>(null);
+  const scopeHintId = useId();
+  const replaceRowId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const closeTimerRef = useRef<number | null>(null);
   const feedbackTimerRef = useRef<number | null>(null);
@@ -110,6 +124,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   }, []);
 
   const requestClose = useCallback(() => {
+    abortRef.current?.abort();
     if (closeTimerRef.current !== null) return;
     if (prefersReducedMotion()) {
       onClose();
@@ -163,7 +178,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     return view;
   }, [editorApi]);
 
-  /** 推送查询状态到高亮插件，返回最新匹配列表 */
+  /** Navigation only reuses matches from the exact document searched. */
   const syncHighlight = useCallback((
     query: string,
     activeIndex: number,
@@ -171,15 +186,17 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   ): SearchMatch[] => {
     const view = getView();
     if (!view) return [];
-    const matches = collectSearchMatches(view.state.doc, query, options);
+    const result = resultsRef.current;
+    const matches = result?.doc === view.state.doc ? result.matches : [];
     const clamped = matches.length === 0 ? 0 : ((activeIndex % matches.length) + matches.length) % matches.length;
-    view.dispatch(view.state.tr.setMeta(searchHighlightKey, {
+    setSearchHighlight(view, {
       query,
       activeIndex: clamped,
       caseSensitive: options.caseSensitive ?? false,
       wholeWord: options.wholeWord ?? false,
       useRegex: options.useRegex ?? false,
-    }));
+      matches,
+    });
     setMatchCount(matches.length);
     setCurrentIndex(clamped);
     lastActiveFromRef.current = matches[clamped]?.from ?? lastActiveFromRef.current;
@@ -188,6 +205,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
 
   /** 滚动当前匹配到视口中央（不抢输入框焦点） */
   const scrollToMatch = useCallback((match: SearchMatch | undefined) => {
+    restoreFoldsRef.current();
+    restoreFoldsRef.current = () => {};
     if (!match) return;
     const view = getView();
     if (!view) return;
@@ -196,6 +215,32 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
       const el = domInfo.node instanceof HTMLElement
         ? domInfo.node
         : domInfo.node.parentElement;
+      // Reveal only local DOM state. Never click a fold control (some schemas
+      // persist that action). Restoring these attributes also supports nested folds.
+      const restores: Array<() => void> = [revealToggleAtPosition(view, match.from)];
+      let ancestor = el;
+      while (ancestor && ancestor !== view.dom) {
+        if (ancestor.matches('.crepe-callout')) {
+          const fold = ancestor;
+          const attrs = ['data-callout-collapsed'];
+          for (const name of attrs) {
+            const value = fold.getAttribute(name);
+            restores.push(() => value === null ? fold.removeAttribute(name) : fold.setAttribute(name, value));
+          }
+          fold.setAttribute('data-callout-collapsed', 'false');
+          fold.querySelectorAll<HTMLElement>(':scope > .crepe-callout__body, :scope > .crepe-callout__header button[aria-expanded]').forEach((body) => {
+            for (const name of ['inert', 'aria-hidden', 'aria-expanded']) {
+              const value = body.getAttribute(name);
+              restores.push(() => value === null ? body.removeAttribute(name) : body.setAttribute(name, value));
+            }
+            body.removeAttribute('inert');
+            if (body.hasAttribute('aria-hidden')) body.setAttribute('aria-hidden', 'false');
+            if (body.hasAttribute('aria-expanded')) body.setAttribute('aria-expanded', 'true');
+          });
+        }
+        ancestor = ancestor.parentElement;
+      }
+      restoreFoldsRef.current = () => restores.reverse().forEach((restore) => restore());
       el?.scrollIntoView({
         block: 'center',
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
@@ -208,50 +253,99 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
   // 正则模式下查询是否为非法表达式（面板显示"无效正则"而非"无匹配"）
   const regexInvalid =
     useRegex && findText.length > 0 && compileSearchRegex(findText, caseSensitive) === null;
+  useEffect(() => { setSearchError(null); }, [findText, caseSensitive, wholeWord, useRegex]);
 
-  // 查询词 / 选项变化时实时刷新高亮；活跃匹配尽量停留在上次位置附近
+  // Search the live draft, including the tail. Cancel terminates regex workers.
   useEffect(() => {
     const options: SearchOptions = { caseSensitive, wholeWord, useRegex };
+    const controller = new AbortController();
+    abortRef.current = controller;
+    resultsRef.current = null;
+    setMatchCount(0);
+    syncHighlight('', 0);
+    const run = async () => {
+      const api = editorApi as FullDocumentSearchApi | null;
+      if (!api || !findText || regexInvalid) { setBusy(false); return; }
+      setBusy(true);
+      if (api.isDocumentWindowed?.()) {
+        if (!api.materializeFullDocument) throw new Error('full_document_unavailable');
+        await api.materializeFullDocument(controller.signal);
+      }
+      if (controller.signal.aborted) return;
+      const view = getView();
+      if (!view) { setBusy(false); return; }
+      const doc = view.state.doc;
+      const baseline = api.getFullDocument?.();
+      const matches = useRegex
+        ? await collectSearchMatchesAsync(doc, findText, options, controller.signal)
+        : collectSearchMatches(doc, findText, options);
+      if (controller.signal.aborted || view.state.doc !== doc) return;
+      resultsRef.current = { doc, matches, baseline };
+      const anchor = lastActiveFromRef.current;
+      const nearest = anchor === null ? 0 : matches.findIndex((m) => m.from >= anchor);
+      const index = nearest < 0 ? Math.max(0, matches.length - 1) : nearest;
+      syncHighlight(findText, index, options);
+      scrollToMatch(matches[index]);
+      setBusy(false);
+    };
+    void run().catch((error) => {
+      if (controller.signal.aborted) return;
+      setBusy(false);
+      setSearchError(error instanceof Error ? error.message : String(error));
+    });
+    return () => controller.abort();
+  }, [findText, caseSensitive, wholeWord, useRegex, getView, syncHighlight, scrollToMatch, documentTick, editorApi, regexInvalid]);
+
+  useEffect(() => {
     const view = getView();
-    const matches = view ? collectSearchMatches(view.state.doc, findText, options) : [];
-    let targetIndex = 0;
-    const anchor = lastActiveFromRef.current;
-    if (anchor !== null && matches.length > 0) {
-      const nearest = matches.findIndex((m) => m.from >= anchor);
-      targetIndex = nearest === -1 ? matches.length - 1 : nearest;
+    if (!view) return;
+    const onChange = () => {
+      resultsRef.current = null;
+      if (!replacingRef.current) setDocumentTick((tick) => tick + 1);
+    };
+    view.dom?.addEventListener('notes-search-document-changed', onChange);
+    const scrollParents: Array<{ el: HTMLElement; top: number; left: number }> = [];
+    let parent = view.dom?.parentElement;
+    while (parent) {
+      if (parent.scrollHeight > parent.clientHeight) scrollParents.push({ el: parent, top: parent.scrollTop, left: parent.scrollLeft });
+      parent = parent.parentElement;
     }
-    syncHighlight(findText, targetIndex, options);
-    if (findText && matches.length > 0) {
-      scrollToMatch(matches[targetIndex]);
-    }
-  }, [findText, caseSensitive, wholeWord, useRegex, getView, syncHighlight, scrollToMatch]);
+    return () => {
+      view.dom?.removeEventListener('notes-search-document-changed', onChange);
+      restoreFoldsRef.current();
+      // Search never changes PM selection; replacement mappings preserve it.
+      for (const { el, top, left } of scrollParents) { el.scrollTop = top; el.scrollLeft = left; }
+    };
+  }, [getView]);
 
   // 卸载时清除高亮
   useEffect(() => {
     return () => {
       const view = getView();
       if (view) {
-        view.dispatch(view.state.tr.setMeta(searchHighlightKey, { query: '' }));
+        setSearchHighlight(view, { query: '' });
       }
     };
   }, [getView]);
 
   const navigate = useCallback((direction: 1 | -1) => {
-    if (!findText) return;
+    if (!findText || busy) return;
     const view = getView();
     if (!view) return;
     const options: SearchOptions = { caseSensitive, wholeWord, useRegex };
-    const matches = collectSearchMatches(view.state.doc, findText, options);
+    const result = resultsRef.current;
+    const matches = result?.doc === view.state.doc ? result.matches : [];
     if (matches.length === 0) return;
     const next = ((currentIndex + direction) % matches.length + matches.length) % matches.length;
     syncHighlight(findText, next, options);
     scrollToMatch(matches[next]);
-  }, [findText, caseSensitive, wholeWord, useRegex, currentIndex, getView, syncHighlight, scrollToMatch]);
+  }, [findText, caseSensitive, wholeWord, useRegex, currentIndex, getView, syncHighlight, scrollToMatch, busy]);
 
   // F3 / Shift+F3 全局导航；面板已开时 Cmd/Ctrl+F 重新聚焦查找框（VS Code 行为）
   // Cmd/Ctrl+Z / Shift+Z / Y：焦点在查找框时仍把撤销/重做交给编辑器（替换必须可撤销）
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || isComposingKeyEvent(e)) return;
       // C5：隐藏/非活动实例不消费全局快捷键
       if (!ownsGlobalInput()) return;
       if (e.key === 'F3') {
@@ -274,6 +368,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         target instanceof Node
         && (findInputRef.current?.closest('[role="search"]')?.contains(target) ?? false);
       if (!inPanel) return;
+      if (readOnly || busy) return;
       if (key === 'z' && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -294,95 +389,84 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
     };
     document.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown, true);
-  }, [navigate, getView, ownsGlobalInput]);
+  }, [navigate, getView, ownsGlobalInput, readOnly, busy]);
 
   /** 替换当前匹配（正则模式展开 $1..$9 / $& / $$） */
-  const handleReplaceCurrent = useCallback(() => {
-    if (readOnly || !findText) return;
+  const replaceMatches = useCallback(async (all: boolean) => {
+    if (readOnly || !findText || busy || replacingRef.current) return;
     const view = getView();
-    if (!view) return;
-    const options: SearchOptions = { caseSensitive, wholeWord, useRegex };
-    const matches = collectSearchMatches(view.state.doc, findText, options);
-    if (matches.length === 0) return;
-    const idx = Math.min(currentIndex, matches.length - 1);
-    const target = matches[idx];
-    const replaceTr = view.state.tr.insertText(expandReplacement(replaceText, target), target.from, target.to);
-    replaceTr.setMeta('addToHistory', true);
-    view.dispatch(replaceTr);
-    // 替换后重新计算，停留在同一索引（即下一个匹配）
-    const remaining = collectSearchMatches(view.state.doc, findText, options);
-    const nextIdx = remaining.length === 0 ? 0 : Math.min(idx, remaining.length - 1);
-    syncHighlight(findText, nextIdx, options);
-    scrollToMatch(remaining[nextIdx]);
-    showReplaceFeedback(1);
-  }, [readOnly, findText, replaceText, caseSensitive, wholeWord, useRegex, currentIndex, getView, syncHighlight, scrollToMatch, showReplaceFeedback]);
-
-  /** 全部替换（从后往前避免位置偏移） */
-  const handleReplaceAll = useCallback(() => {
-    if (readOnly || !findText) return;
-    const view = getView();
-    if (!view) return;
-    const options: SearchOptions = { caseSensitive, wholeWord, useRegex };
-    const matches = collectSearchMatches(view.state.doc, findText, options);
-    if (matches.length === 0) return;
-    const tr = replaceAllSearchMatches(view.state.tr, matches, replaceText);
-    tr.setMeta('addToHistory', true);
-    view.dispatch(tr);
-    syncHighlight(findText, 0, options);
-    showReplaceFeedback(matches.length);
-  }, [readOnly, findText, replaceText, caseSensitive, wholeWord, useRegex, getView, syncHighlight, showReplaceFeedback]);
+    const result = resultsRef.current;
+    if (!view || result?.doc !== view.state.doc || !result.matches.length) return;
+    const api = editorApi as FullDocumentSearchApi;
+    const matches = all ? result.matches : [result.matches[Math.min(currentIndex, result.matches.length - 1)]];
+    replacingRef.current = true;
+    setBusy(true);
+    setSearchError(null);
+    try {
+      if (!api.applyFullDocumentTransaction || !result.baseline) throw new Error('full_document_unavailable');
+      await api.applyFullDocumentTransaction(replaceAllSearchMatches(view.state.tr, matches, replaceText), result.baseline);
+      showReplaceFeedback(matches.length);
+    } catch (error) {
+      setSearchError(error instanceof Error ? error.message : String(error));
+    } finally {
+      replacingRef.current = false;
+      setBusy(false);
+      setDocumentTick((tick) => tick + 1);
+    }
+  }, [readOnly, findText, busy, getView, editorApi, currentIndex, replaceText, showReplaceFeedback]);
+  const handleReplaceCurrent = useCallback(() => { void replaceMatches(false); }, [replaceMatches]);
+  const handleReplaceAll = useCallback(() => { void replaceMatches(true); }, [replaceMatches]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.defaultPrevented || isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
-      // C10：中文候选确认（isComposing/keyCode 229）不触发查找导航
-      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       // Enter / Shift+Enter 在匹配间正反向循环
       e.preventDefault();
       navigate(e.shiftKey ? -1 : 1);
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      requestClose();
     }
   };
 
   /** 替换输入框：Enter 替换当前，Cmd/Ctrl+Enter 全部替换 */
   const handleReplaceKeyDown = (e: React.KeyboardEvent) => {
+    if (e.defaultPrevented || isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
-      // C10：候选确认不触发替换
-      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       e.preventDefault();
       if (e.metaKey || e.ctrlKey) {
         handleReplaceAll();
       } else {
         handleReplaceCurrent();
       }
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      requestClose();
     }
   };
 
-  const replaceDisabled = readOnly || !findText || matchCount === 0;
-  // C7/R06：长文按窗口加载时，查找只覆盖可见片段；范围必须对用户可见，
-  // 不能让“前缀无匹配”被读成“全篇无匹配”。
-  const windowed = editorApi?.isDocumentWindowed?.() ?? false;
+  const replaceDisabled = readOnly || busy || !findText || regexInvalid || matchCount === 0;
+  // Searches are published only after the complete draft has been materialized.
+  const scopeHint = t('notes:findReplace.scopeFullDraft', {
+    defaultValue: '范围：当前笔记完整草稿；不跨段落或内嵌对象匹配。',
+  });
   const panelLabel = t('notes:findReplace.panelLabel');
   const findLabel = t('notes:findReplace.findLabel');
   const replaceLabel = t('notes:findReplace.replaceLabel');
   const noMatchText = regexInvalid
     ? t('notes:editorV2.find_invalid_regex', { defaultValue: '无效正则表达式' })
-    : windowed
-      ? t('notes:findReplace.noMatchLoadedPortion', { defaultValue: '已加载部分无匹配（长文）' })
-      : t('notes:findReplace.noMatch', { defaultValue: '无匹配结果' });
+    : t('notes:findReplace.noMatch', { defaultValue: '无匹配结果' });
 
   return (
     <div
       role="search"
       ref={rootRef}
       aria-label={panelLabel}
+      aria-busy={busy}
+      {...(isClosing ? ({ inert: '' } as unknown as React.HTMLAttributes<HTMLDivElement>) : {})}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || isComposingKeyEvent(event) || event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        requestClose();
+      }}
       data-state={isClosing ? 'closing' : 'open'}
       className={cn(
-        'relative z-40 flex w-full flex-shrink-0 flex-col overflow-hidden',
+        'notes-find-replace relative z-40 flex w-full flex-shrink-0 flex-col overflow-hidden',
         'border-b border-border/60 bg-background',
         'shadow-[0_2px_8px_hsl(var(--shadow-base)/0.06)]',
         // 入场：token 驱动 drop-in（150ms，--dropdown-ease；ui-motion 已内置 reduced-motion 降级）。
@@ -394,12 +478,12 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         className,
       )}
     >
-      <div className="flex items-center gap-1 px-2 py-1">
+      <div className="notes-find-replace__find-row flex items-center gap-1 px-2 py-1">
         {!readOnly ? (
           <DsButton
             variant="ghost"
             size="sm"
-            className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
+            className={cn('notes-find-replace__toggle h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => setIsReplaceMode(!isReplaceMode)}
             title={isReplaceMode
               ? t('notes:findReplace.hideReplace')
@@ -408,6 +492,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               ? t('notes:findReplace.hideReplace')
               : t('notes:findReplace.showReplace')}
             aria-expanded={isReplaceMode}
+            aria-controls={isReplaceMode ? replaceRowId : undefined}
           >
             {/* 收起时向右、展开时向下（Typora/VS Code 语义） */}
             <CaretRight
@@ -418,10 +503,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             />
           </DsButton>
         ) : (
-          <div className="w-6 flex-shrink-0" />
+          <div className="notes-find-replace__toggle w-6 flex-shrink-0" aria-hidden="true" />
         )}
 
-        <div className="relative flex w-full min-w-0 max-w-[320px] items-center">
+        <div className="notes-find-replace__input relative flex w-full min-w-0 max-w-[320px] items-center">
           <MagnifyingGlass className="absolute left-2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
             ref={findInputRef}
@@ -436,7 +521,8 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
               ? t('notes:editorV2.find_regex_placeholder', { defaultValue: '查找（正则）…' })
               : t('notes:findReplace.findPlaceholder')}
             aria-label={findLabel}
-            aria-invalid={findText.length > 0 && (matchCount === 0 || regexInvalid)}
+            aria-invalid={regexInvalid}
+            aria-describedby={scopeHintId}
             value={findText}
             onChange={(e) => setFindText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -446,17 +532,23 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         {(findText || replaceFeedback) && (
           <span
             className={cn(
-              'flex-shrink-0 whitespace-nowrap px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
-              replaceFeedback
-                ? 'text-[hsl(var(--success))]'
-                : matchCount > 0
-                  ? 'text-muted-foreground'
-                  : 'text-[hsl(var(--destructive)/0.85)]',
+              'notes-find-replace__status px-1 text-[10px] tabular-nums [@media(pointer:coarse)]:text-xs',
+              regexInvalid
+                ? 'text-[hsl(var(--destructive)/0.85)]'
+                : replaceFeedback
+                  ? 'text-[hsl(var(--success))]'
+                  : matchCount > 0
+                    ? 'text-muted-foreground'
+                    : 'text-[hsl(var(--destructive)/0.85)]',
             )}
             aria-live="polite"
             aria-atomic="true"
           >
-            {replaceFeedback ? (
+            {busy ? (
+              <span>{t('notes:findReplace.searchingFullDraft', { defaultValue: '正在处理全文…' })}</span>
+            ) : regexInvalid ? (
+              <span key="invalid-regex" className="inline-block ui-rise-in">{noMatchText}</span>
+            ) : replaceFeedback ? (
               <span key={replaceFeedback} className="inline-block ui-rise-in">
                 {replaceFeedback}
               </span>
@@ -466,14 +558,19 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
                 {`${currentIndex + 1}/${matchCount}`}
               </span>
             ) : (
-              <span key="no-match" className="inline-block ui-rise-in" title={noMatchText}>
-                {regexInvalid ? noMatchText : '0/0'}
+              <span key="no-match" className="inline-block ui-rise-in" title={noMatchText} aria-label={noMatchText}>
+                0/0
               </span>
             )}
           </span>
         )}
 
-        <div className="ml-auto flex flex-shrink-0 items-center gap-0.5">
+        <div className="notes-find-replace__actions ml-auto flex flex-shrink-0 flex-wrap items-center gap-0.5">
+          {busy && !replacingRef.current && <DsButton variant="ghost" size="sm" onClick={() => {
+            abortRef.current?.abort();
+            setBusy(false);
+            setSearchError('search_cancelled');
+          }}>{t('common:cancel', { defaultValue: '取消' })}</DsButton>}
           <DsButton
             variant="ghost"
             size="sm"
@@ -517,7 +614,7 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             size="sm"
             className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(-1)}
-            disabled={matchCount === 0}
+            disabled={busy || regexInvalid || matchCount === 0}
             title={t('notes:findReplace.prev')}
             aria-label={t('notes:findReplace.prev')}
           >
@@ -528,39 +625,39 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
             size="sm"
             className={cn('h-6 w-6 p-0', COARSE_ICON_BTN)}
             onClick={() => navigate(1)}
-            disabled={matchCount === 0}
+            disabled={busy || regexInvalid || matchCount === 0}
             title={t('notes:findReplace.next')}
             aria-label={t('notes:findReplace.next')}
           >
             <CaretDown className="h-4 w-4" />
           </DsButton>
-          <div className="mx-0.5 h-4 w-[1px] bg-border/60" aria-hidden="true" />
-          <DsButton
-            variant="ghost"
-            size="sm"
-            className={cn('h-6 w-6 p-0 text-muted-foreground hover:text-foreground', COARSE_ICON_BTN)}
-            onClick={requestClose}
-            aria-label={t('common:close')}
-          >
-            <X className="h-4 w-4" />
-          </DsButton>
         </div>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          className={cn('notes-find-replace__close h-6 w-6 p-0 text-muted-foreground hover:text-foreground', COARSE_ICON_BTN)}
+          onClick={requestClose}
+          aria-label={t('common:close')}
+        >
+          <X className="h-4 w-4" />
+        </DsButton>
       </div>
 
       {isReplaceMode && !readOnly && (
-        <div className="ui-rise-in flex items-center gap-1 px-2 pb-1">
-          <div className="w-6 flex-shrink-0" /> {/* Spacer to align with input above */}
-          <div className="relative flex w-full min-w-0 max-w-[320px] items-center">
+        <div id={replaceRowId} className="notes-find-replace__replace-row ui-rise-in flex items-center gap-1 px-2 pb-1">
+          <div className="notes-find-replace__spacer w-6 flex-shrink-0" aria-hidden="true" />
+          <div className="notes-find-replace__input relative flex w-full min-w-0 max-w-[320px] items-center">
             <Input
               className="h-7 text-xs pl-2 bg-transparent border-none focus-visible:ring-1 [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:text-base"
               placeholder={t('notes:findReplace.replacePlaceholder')}
               aria-label={replaceLabel}
+              aria-describedby={scopeHintId}
               value={replaceText}
               onChange={(e) => setReplaceText(e.target.value)}
               onKeyDown={handleReplaceKeyDown}
             />
           </div>
-          <div className="flex flex-shrink-0 items-center gap-1">
+          <div className="notes-find-replace__replace-actions flex flex-shrink-0 flex-wrap items-center gap-1">
             <DsButton
               variant="secondary"
               size="sm"
@@ -582,6 +679,15 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           </div>
         </div>
       )}
+      <p id={scopeHintId} className="px-3 pb-1 text-[10px] text-muted-foreground" aria-live="polite">
+        {scopeHint}
+      </p>
+      {searchError && <p role="alert" className="px-3 pb-1 text-xs text-destructive">{t(`notes:findReplace.errors.${searchError}`, {
+        defaultValue: searchError === 'search_timeout' ? '正则搜索超时，已终止。请简化表达式。'
+          : searchError === 'search_cancelled' ? '已取消搜索。修改查询可重新搜索。'
+          : searchError === 'search_worker_failed' ? '无法启动正则搜索，请重试。'
+          : searchError === 'full_document_unavailable' ? '全文尚未就绪，请重试。' : searchError,
+      })}</p>}
     </div>
   );
 };

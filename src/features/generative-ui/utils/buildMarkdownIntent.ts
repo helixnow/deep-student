@@ -3,7 +3,7 @@
  */
 
 import type { GenerativeUIIntent } from '../types';
-import { MARKDOWN_BODY_MAX, MARKDOWN_TITLE_MAX } from '../components/MarkdownBlock';
+import { MARKDOWN_BODY_MAX, MARKDOWN_TITLE_MAX } from '../schema';
 
 export interface MarkdownIntentLabels {
   empty: string;

@@ -892,6 +892,8 @@ mod tests {
             "subagent_call" => NO_TOOL_TIMEOUT_SECS,
             "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
             "tool_pack" => 600,
+            // Question generation was deliberately extended for multi-round LLM work.
+            "qbank_generate_questions" => 600,
             "ptc_run" => 600,
             "local_shell_execute" => NO_TOOL_TIMEOUT_SECS,
             _ => {

@@ -3,6 +3,7 @@
  */
 
 import { Plugin, PluginKey, TextSelection } from '@milkdown/prose/state';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { EditorView } from '@milkdown/prose/view';
 import { $prose } from '@milkdown/utils';
 
@@ -170,6 +171,7 @@ export function createMentionAutocompletePlugin(config: MentionPluginConfig = {}
       },
       props: {
         handleKeyDown(view, event) {
+          if (view.composing || isComposingKeyEvent(event)) return false;
           if (!overlay.isOpen() || !active) return false;
 
           if (event.key === 'Escape') {

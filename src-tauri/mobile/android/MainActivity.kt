@@ -3,8 +3,6 @@ package com.deepstudent.app
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.util.Log
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
@@ -12,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.io.File
+import java.util.concurrent.Executors
 
 // NOTE: 此文件有受控副本 src-tauri/mobile/android/MainActivity.kt。
 // 重新执行 `tauri android init` 后请从受控副本同步本文件。
@@ -24,16 +23,13 @@ class MainActivity : TauriActivity() {
   /**
    * Tauri dialog 走 Activity Result API，[onActivityResult] 拦截不到授权回调。
    * Rust 把待 persist 的 `content://` 原子写入 [filesDir]/pending_saf_persist/ 下的 *.uri 文件，
-   * 并双读旧单文件 pending_saf_persist.uri。前台立刻尝试并每 400ms 轮询。
+   * 并双读旧单文件 pending_saf_persist.uri。入队后由原生插件唤醒，onResume 补扫。
+   * 文件 I/O 和权限调用在串行工作线程执行，不占用 UI 线程。
    * `ACTION_GET_CONTENT` 常常不可 persist：SecurityException 必须删队列并 warn，
    * 不得假装已授权。
    */
-  private val persistHandler = Handler(Looper.getMainLooper())
-  private val persistPoll = object : Runnable {
-    override fun run() {
-      persistPendingSafUri()
-      persistHandler.postDelayed(this, PERSIST_POLL_MS)
-    }
+  private val persistExecutor = Executors.newSingleThreadExecutor { task ->
+    Thread(task, "saf-permission-persist")
   }
 
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -99,14 +95,23 @@ class MainActivity : TauriActivity() {
     super.onResume()
     // 页面若发生过重载，JS 端会退回 fallback 值；恢复前台时重新注入真实值。
     applySafeAreaToWebView()
-    persistPendingSafUri()
-    persistHandler.removeCallbacks(persistPoll)
-    persistHandler.postDelayed(persistPoll, PERSIST_POLL_MS)
+    requestSafPermissionPersist()
   }
 
-  override fun onPause() {
-    persistHandler.removeCallbacks(persistPoll)
-    super.onPause()
+  override fun onDestroy() {
+    // 已提交的任务完成后退出；持久队列仍由下次 onResume 恢复。
+    persistExecutor.shutdown()
+    super.onDestroy()
+  }
+
+  internal fun requestSafPermissionPersist() {
+    persistExecutor.execute {
+      try {
+        persistPendingSafUri()
+      } catch (error: Exception) {
+        Log.w(TAG, "pending SAF persist scan failed; queue retained for resume", error)
+      }
+    }
   }
 
   private fun persistPendingSafUri() {
@@ -191,6 +196,5 @@ class MainActivity : TauriActivity() {
     private const val TAG = "DeepStudentSaf"
     private const val PENDING_SAF_PERSIST_FILE = "pending_saf_persist.uri"
     private const val PENDING_SAF_PERSIST_DIR = "pending_saf_persist"
-    private const val PERSIST_POLL_MS = 400L
   }
 }

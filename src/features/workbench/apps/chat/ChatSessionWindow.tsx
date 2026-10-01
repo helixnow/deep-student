@@ -3,7 +3,7 @@
  *
  * instanceKey = sessionId，一会话一窗（workbenchBus 按 instanceKey 去重聚焦）。
  * 渲染面复用 ChatSessionSurface（P7/O16：store 按 sessionId 隔离、
- * adapter 引用计数、流式降频与拖缩暂停都在 surface 内），
+ * adapter 引用计数、隐藏窗口流式暂停与拖缩暂停都在 surface 内），
  * 因此与 Chat 单例窗口（全局 currentSessionId）互不干扰——
  * 同一会话同时出现在两个窗口时共享同一 store，消息流实时同步。
  *
@@ -21,6 +21,7 @@ export const ChatSessionWindow: React.FC<AppWindowProps> = ({
   instanceKey,
   isActive,
   isVisible,
+  isSuspended = false,
   renderThrottleMs = 0,
   onTitleChange,
 }) => {
@@ -85,6 +86,7 @@ export const ChatSessionWindow: React.FC<AppWindowProps> = ({
         sessionId={sessionId}
         isActive={isActive}
         isVisible={isVisible}
+        isSuspended={isSuspended}
         renderThrottleMs={renderThrottleMs}
         className="h-full"
       />

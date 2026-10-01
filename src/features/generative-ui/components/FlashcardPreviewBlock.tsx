@@ -1,16 +1,10 @@
+import { flashcardPreviewPropsSchema } from '../schema';
+export { flashcardPreviewPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
-import { z } from 'zod';
-
-export const flashcardPreviewPropsSchema = z.object({
-  id: z.string().optional(),
-  front: z.string().min(1).max(500),
-  back: z.string().min(1).max(1000),
-  tags: z.array(z.string().max(40)).max(8).optional(),
-  deckName: z.string().max(80).optional(),
-});
+import type { z } from 'zod';
 
 export type FlashcardPreviewProps = z.infer<typeof flashcardPreviewPropsSchema>;
 

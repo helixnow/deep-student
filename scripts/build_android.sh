@@ -180,6 +180,7 @@ inject_android_permissions() {
     local PERMISSIONS=(
         "android.permission.RECORD_AUDIO"
         "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.REQUEST_INSTALL_PACKAGES"
     )
     local changed=false
 
@@ -200,7 +201,7 @@ inject_android_permissions() {
     done
 
     if [[ "$changed" == true ]]; then
-        info "✓ Android microphone permissions injected"
+        info "✓ Android microphone and APK installation permissions injected"
     fi
 }
 
@@ -263,24 +264,21 @@ inject_apk_file_provider() {
     fi
 }
 
-# 同步受控 MainActivity.kt（含 A-5 返回键接管 + SA-1 真实安全区注入）到生成工程。
+# 同步受控 MainActivity + SAF 唤醒插件到生成工程。
 # tauri android init 会生成裸模板 MainActivity，缺失这两段逻辑会导致
 # 返回手势直接退出 App、安全区退回猜测值。受控副本是单一事实源。
 sync_main_activity() {
-    local SRC="$REPO_ROOT/src-tauri/mobile/android/MainActivity.kt"
-    local DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/MainActivity.kt"
-    if [[ ! -f "$SRC" ]]; then
-        warn "受控 MainActivity.kt 不存在: $SRC"
-        return
-    fi
-    if [[ ! -d "$(dirname "$DST")" ]]; then
-        warn "Android 工程 java 目录不存在; MainActivity 同步跳过"
-        return
-    fi
-    if ! cmp -s "$SRC" "$DST" 2>/dev/null; then
-        cp "$SRC" "$DST"
-        info "✓ MainActivity.kt 已从受控副本同步"
-    fi
+    local FILE SRC DST
+    for FILE in MainActivity.kt SafPermissionPlugin.kt; do
+        SRC="$REPO_ROOT/src-tauri/mobile/android/$FILE"
+        DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/$FILE"
+        [[ -f "$SRC" ]] || die "受控 Android 文件不存在: $SRC"
+        [[ -d "$(dirname "$DST")" ]] || die "Android 工程 java 目录不存在: $(dirname "$DST")"
+        if ! cmp -s "$SRC" "$DST" 2>/dev/null; then
+            cp "$SRC" "$DST"
+            info "✓ $FILE 已从受控副本同步"
+        fi
+    done
 }
 
 # 显式声明键盘 softInputMode（tauri android init 重新生成工程后仍能保住该配置）。

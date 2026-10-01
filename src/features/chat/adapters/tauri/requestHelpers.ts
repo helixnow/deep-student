@@ -12,8 +12,13 @@ export const FULL_HISTORY_RETRY_BASE_MS = 500;
  * History backfill page size: aligned with backend chat_v2_load_messages_page default limit.
  */
 export const HISTORY_BACKFILL_PAGE_SIZE = 100;
-/** Max backfill pages (100 pages = 10k messages). */
-export const HISTORY_BACKFILL_MAX_PAGES = 100;
+/**
+ * Max backfill pages per session open (🚀 2026-09-25 长会话内存窗口化：由 100
+ * 收紧到 5 = 500 条）。回填方向为从尾窗起点向更早历史倒序推进；触顶后停止
+ * 自动回填（fullHistoryLoadComplete 不置位），更早历史由滚动向上补页按既有
+ * 机制续拉。≤500 条消息的会话行为与全量回填完全一致。
+ */
+export const HISTORY_BACKFILL_MAX_PAGES = 5;
 
 export interface NormalizedChatModelSelection {
   /** Stable/base chat model, usually the session default assignment. */

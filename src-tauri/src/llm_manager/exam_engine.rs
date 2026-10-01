@@ -858,11 +858,16 @@ impl LLMManager {
             }
         }
 
-        // ★ C（2026-09-07）：远程链全失败后追加本地系统 OCR 兜底。
-        // 此前 PDF/索引路径的引擎链刻意不含 SystemOcr（get_ocr_configs_by_priority
-        // 过滤），用户在设置中启用的"系统 OCR (Windows OCR)"在本路径形同虚设，
-        // 且全链 4xx 后没有任何免费兜底可用。这里以全页文本卡兜底：本地、免费、离线。
-        if crate::ocr_adapters::system_ocr::is_platform_supported() {
+        // The remote-only page API excludes native candidates. Reuse the normal
+        // enabled candidate list before falling back so an explicit System OCR
+        // disable (including one made during the remote request) is respected.
+        let system_ocr_enabled = self
+            .get_free_text_ocr_candidates_by_priority()
+            .await
+            .unwrap_or_default()
+            .iter()
+            .any(|candidate| matches!(candidate, super::OcrRuntimeCandidate::SystemOcr));
+        if system_ocr_enabled {
             info!(
                 "[OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page {}）",
                 page_index

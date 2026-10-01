@@ -10,6 +10,156 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.72](https://github.com/helixnow/deep-student/compare/v0.9.71...v0.9.72) (2026-09-27)
+
+### Features
+
+* **qbank:** support handwritten image answers for subjective and fill-blank questions, multimodal grading, and image review ([#425](https://github.com/helixnow/deep-student/pull/425), thanks @qeryuo112).
+
+### Performance Improvements
+
+* **chat:** hydrate bounded history windows, persist dirty blocks, stabilize Markdown components, and narrow task subscriptions while retaining upstream long-context optimizations.
+* **search:** coalesce streaming search to one in-flight Worker request and suspend indexing for hidden sessions.
+* **startup:** defer heavy editor, chart and FlowToken dependencies; correct built-entry bundle inspection.
+* **backend:** move synchronous uploads, document processing, Todo/Pomodoro queries and encryption work off asynchronous executors, and reduce redundant database leases.
+* **media:** share OCR concurrency limits with indexing fallback and avoid holding database connections during expensive image work.
+* **governance:** reduce backup waits and ZIP/JSON overhead; filter lexical retrieval scope before limiting results.
+
+### Bug Fixes
+
+* **chat:** retain syntax highlighting, token colors, and copying in the default block-based streaming renderer without eagerly loading highlighting code.
+* **qbank:** keep uploads bound to their question, preserve fill-blank text alongside images, reject unsupported image formats before saving, and restore submitted image review.
+* **qbank:** preserve GIF MIME when sending images to models and resolve synchronized attachment aliases for preview and grading.
+* **ocr:** honor the system OCR disable setting and discard late results from cancelled page processing.
+* **vfs:** reserve ordinary upload write transactions before snapshot reads and reuse existing index connections.
+* **android:** wake SAF permission processing on demand and isolate concurrent URI staging files.
+
+### Known Issues
+
+* Mixed attachment/file uploads can still encounter the existing write-lock/partial-preview issue; cancelled media tasks can resume after restart; Android query planning after restoring desktop index profiles needs further correction. See the [three open P1 findings](docs/dev/perf-audit-2026-09/ROUND3-REVIEW-2026-09-27.md).
+* Windows/Android device performance has not been re-measured; scoped validation and observed latency limits are documented in the [P2 verification report](docs/dev/perf-audit-2026-09/P2-IMPLEMENTATION-2026-09-27.md).
+
+## [0.9.71](https://github.com/helixnow/deep-student/compare/v0.9.70...v0.9.71) (2026-09-26)
+
+
+### Bug Fixes
+
+* **chat:** preserve position across history windows ([08e21fb](https://github.com/helixnow/deep-student/commit/08e21fb55da968ffd7e09176d7f672893fac08d8))
+* **chat:** reset content selector per session store ([9158659](https://github.com/helixnow/deep-student/commit/9158659dfc30a47a68510a64a59693d276d82a87))
+* **chat:** search hint for unloaded history window + history-window adapter tests ([a61b3bf](https://github.com/helixnow/deep-student/commit/a61b3bf50cf1a1a637aacd9e792fdd6edd7311e8))
+* **chat:** serialize history window backfill ([3d3972a](https://github.com/helixnow/deep-student/commit/3d3972aa8aad9ce161a4363d68c3bd9cfe832e87))
+
+
+### Performance Improvements
+
+* **chat:** block-level render skip, content-size admission, windowed history backfill ([9cbabe7](https://github.com/helixnow/deep-student/commit/9cbabe709e0fd33e5f034908bb9189603c2b2b4b))
+* **chat:** cut long-session streaming costs to O(active message) ([55a6d74](https://github.com/helixnow/deep-student/commit/55a6d747f5e89cf5c6e4347ca607351cfdbfa16f))
+* **chat:** harden long-context rendering and history windows ([8daed54](https://github.com/helixnow/deep-student/commit/8daed545220b0c88fd22e495b25d34f9dea74c52))
+* **chat:** make streaming caches session-safe ([33c76e7](https://github.com/helixnow/deep-student/commit/33c76e71f447b29fdadd1c77210e8e693e151ff6))
+
+## [0.9.70](https://github.com/helixnow/deep-student/compare/v0.9.69...v0.9.70) (2026-09-25)
+
+
+### Bug Fixes
+
+* **chat:** preserve streaming renderer behavior without remount churn ([0f2ef30](https://github.com/helixnow/deep-student/commit/0f2ef3015f1aa54305d8f567684e9ef2560e008d))
+* **chat:** reclaim excess session cache and complete manager events ([46ff59d](https://github.com/helixnow/deep-student/commit/46ff59dfea5aa44b54adf11786be59323e642e87))
+* **chat:** serialize batched event delivery and retain per-variant chunks ([02b1521](https://github.com/helixnow/deep-student/commit/02b1521f23f4cf0ae9442ce299cdc69e871ab22c))
+* **ci:** build MinIO fixtures from verified releases ([516b63f](https://github.com/helixnow/deep-student/commit/516b63f518fac584f061cff8f2c28b021ea62bcf))
+* **ci:** restore MinIO provider contract fixtures ([7f42397](https://github.com/helixnow/deep-student/commit/7f423977c9e1d03c0694a57aa0cb3b490e8baef1))
+
+
+### Performance Improvements
+
+* **backend:** cap temp_sessions memory and move document parsing off the async executor ([dbf87fb](https://github.com/helixnow/deep-student/commit/dbf87fb55ed4eaf21602ee8a15875018d108207a))
+* **chat:** append variant text snapshots incrementally ([2860886](https://github.com/helixnow/deep-student/commit/2860886ed66c0c6d612d9ddb8951ed7370a7412d))
+* **chat:** avoid retaining chat state in chunk buffering ([ed1d037](https://github.com/helixnow/deep-student/commit/ed1d037dec52c59783e581d2324f1c8252b26691))
+* **chat:** batch streaming content/thinking chunks at the IPC boundary ([61c71ab](https://github.com/helixnow/deep-student/commit/61c71abc0e14fb01a797b59aec2e14f1b88718e4))
+* **chat:** eliminate streaming jank and reduce memory footprint ([ecaed01](https://github.com/helixnow/deep-student/commit/ecaed019921ec6ec122c629ef6cebbf66d81d980))
+* **chat:** replace 1s polling hooks with event-driven sync; gate stream-complete token log ([cbddba4](https://github.com/helixnow/deep-student/commit/cbddba41bc71f2f971daed0a503864e45e88019e))
+* **chat:** slow streaming store updates to 120ms and defer flowtoken animation until stream end ([03bc72d](https://github.com/helixnow/deep-student/commit/03bc72d0bcec6e5f9a731202917fdde4b5ea1643))
+* **chat:** subscribe MessageItem to segment-structure fingerprint, not block identity ([dc7f0a3](https://github.com/helixnow/deep-student/commit/dc7f0a3d77f3787850c335744372e66cf0570a04))
+
+## [0.9.69](https://github.com/helixnow/deep-student/compare/v0.9.68...v0.9.69) (2026-09-24)
+
+
+### Bug Fixes
+
+* **chat:** resolve same-name model across vendors by config ID ([#417](https://github.com/helixnow/deep-student/issues/417)) ([471082d](https://github.com/helixnow/deep-student/commit/471082dd259ac30cca259e73103a6ee4737d02cf))
+
+## [0.9.68](https://github.com/helixnow/deep-student/compare/v0.9.67...v0.9.68) (2026-09-23)
+
+
+### Bug Fixes
+
+* **chat,sync:** pin chat model per session and fix drift precheck ([#415](https://github.com/helixnow/deep-student/issues/415)) ([15b9043](https://github.com/helixnow/deep-student/commit/15b9043097b99774513383fff51213450f0263d2))
+
+## [0.9.67](https://github.com/helixnow/deep-student/compare/v0.9.66...v0.9.67) (2026-09-23)
+
+
+### Features
+
+* **qbank:** AI 出题原始返回完整落盘与失败日志取证 ([#407](https://github.com/helixnow/deep-student/issues/407)) ([66f2748](https://github.com/helixnow/deep-student/commit/66f2748208cd2c40d11316c30d9d1618d70e512c))
+* **qwen:** add xhigh/max thinking-depth presets with error-hint fallback ([#412](https://github.com/helixnow/deep-student/issues/412)) ([1a8297d](https://github.com/helixnow/deep-student/commit/1a8297d5ae0373ee37f25ab4b3095fcc6082b1b0))
+
+
+### Bug Fixes
+
+* **flashcards:** unify mobile page titles actions and navigation ([#413](https://github.com/helixnow/deep-student/issues/413)) ([7321dfb](https://github.com/helixnow/deep-student/commit/7321dfb207c00fd85e2375cd8b814e6338a01ff9))
+* **mcp:** omit JSON-RPC params field when None instead of sending null ([#411](https://github.com/helixnow/deep-student/issues/411)) ([71d22c6](https://github.com/helixnow/deep-student/commit/71d22c6f9a927458112e3e119e02c492bc176338))
+
+## [0.9.66](https://github.com/helixnow/deep-student/compare/v0.9.65...v0.9.66) (2026-09-23)
+
+
+### Features
+
+* **mcp,qwen:** MCP unrestricted mode and Qwen reasoning controls ([af7f368](https://github.com/helixnow/deep-student/commit/af7f36879cb70fa7571f0a15509333f081522438))
+
+
+### Bug Fixes
+
+* **ui:** align flashcards with mobile visual system ([6076859](https://github.com/helixnow/deep-student/commit/60768595753063815fdcf0e19d43682d8a1e604e))
+* **ui:** use shared mobile scrollbar styling ([db661be](https://github.com/helixnow/deep-student/commit/db661beb0a2a980de8e848a23215ed7527f6f069))
+
+## [0.9.65](https://github.com/helixnow/deep-student/compare/v0.9.64...v0.9.65) (2026-09-22)
+
+
+### Features
+
+* **notes:** improve editing reliability and add local history ([502a0ce](https://github.com/helixnow/deep-student/commit/502a0ce390bea3236251a4fb41a77586cc43f861))
+* **notes:** integrate structured editing and simplify note controls ([fcfdca9](https://github.com/helixnow/deep-student/commit/fcfdca9e75666d497ae3b8d57a05d2eec889149a))
+
+
+### Bug Fixes
+
+* **notes:** keep drafts, info-panel tabs and narrow-pane search usable ([3852cdb](https://github.com/helixnow/deep-student/commit/3852cdb80105977a2409f2011565ff53b04fe5c0))
+* **notes:** restore the AI review accept path and cover it with real controls ([3701ea9](https://github.com/helixnow/deep-student/commit/3701ea9cf5a2899be35ee36149e120432b5d01f1))
+* **sync:** classify the new note tables and stop replay echoes ([977f2c9](https://github.com/helixnow/deep-student/commit/977f2c979ac849648dc5f25add07e8d1519a3058))
+* **ui:** harden shared dialogs, focus traps and reader targeting ([94b1629](https://github.com/helixnow/deep-student/commit/94b1629f6093cf7e0723b3ccae9c80be0ab750ef))
+* **ui:** make focus traps layout-agnostic and stop losing trailing placeholders ([596b86a](https://github.com/helixnow/deep-student/commit/596b86abc725edef5420e92a4ce704ea99435965))
+
+## [0.9.64](https://github.com/helixnow/deep-student/compare/v0.9.63...v0.9.64) (2026-09-21)
+
+
+### Bug Fixes
+
+* **android:** declare permission for in-app APK installation ([4d04653](https://github.com/helixnow/deep-student/commit/4d046534e7f28cf2b3d895103131f75e209af17d))
+* **startup:** keep React runtime in one production chunk ([c7248a2](https://github.com/helixnow/deep-student/commit/c7248a222191eef28b5f175d4a7217289594240e))
+
+## [0.9.63](https://github.com/helixnow/deep-student/compare/v0.9.62...v0.9.63) (2026-09-20)
+
+
+### Bug Fixes
+
+* **ci:** make release builds resumable and resource bounded ([54667f5](https://github.com/helixnow/deep-student/commit/54667f5889b5b8f8a889b40e04d8a7ff8ca68e5d))
+* **ci:** preserve Vitest coordinator heap budget ([b377d5f](https://github.com/helixnow/deep-student/commit/b377d5fbb33bc393087d176302272b1f89f9f619))
+* **ci:** provide headless runtime and align Rust contracts ([fa096a0](https://github.com/helixnow/deep-student/commit/fa096a07f16371f38d8fc8b304288de7c61f65b9))
+* **ci:** reuse existing release PR validation ([916f3eb](https://github.com/helixnow/deep-student/commit/916f3ebd50af9673e47af60f6999d2614b87dd82))
+* **notes:** read update state within one transaction snapshot ([d80b89b](https://github.com/helixnow/deep-student/commit/d80b89bb79363bf358f660e1532b5559433d7eb9))
+* **sync:** classify local state and preserve deletion timestamps ([23abd4b](https://github.com/helixnow/deep-student/commit/23abd4b26df792e1f9f9ce52a5b1a2bb5de19856))
+* **sync:** fence in-flight encryption marker claims ([753e63f](https://github.com/helixnow/deep-student/commit/753e63f4072a48de54fd7cb64e181f50355b075d))
+* **tools:** preserve cancelled pack results in headless runs ([32cea33](https://github.com/helixnow/deep-student/commit/32cea33b1e933e9f2acae15ca0cfb04b7021bebe))
+
 ## [0.9.62](https://github.com/helixnow/deep-student/compare/v0.9.61...v0.9.62) (2026-09-17)
 
 

@@ -371,6 +371,7 @@ pub fn run() {
         // 在前端 bundle 执行前安装极小的错误桥，覆盖入口脚本加载失败/白屏。
         // main.tsx 成功启动后会注销这些监听，再由统一 errorReporter 接管。
         if matches!(payload.event(), tauri::webview::PageLoadEvent::Started) {
+            crate::cmd::notes::cleanup_note_editor_leases(webview.app_handle().clone(), None, Some(webview.label().to_owned()));
             let _ = webview.eval(
                 r#"
                 (() => {
@@ -584,6 +585,15 @@ pub fn run() {
     };
 
     let builder = builder
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                crate::cmd::notes::cleanup_note_editor_leases(
+                    window.app_handle().clone(),
+                    Some(window.label().to_owned()),
+                    None,
+                );
+            }
+        })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -614,7 +624,9 @@ pub fn run() {
     // Android 专用：应用内 APK 安装桥（FileProvider → 系统安装器）。
     // updater 插件不支持移动端，移动端更新由前端检查 + 该插件负责落地安装。
     #[cfg(target_os = "android")]
-    let builder = builder.plugin(crate::apk_installer::init());
+    let builder = builder
+        .plugin(crate::apk_installer::init())
+        .plugin(crate::unified_file_manager::saf_permission_plugin());
 
     // 🔧 MCP 调试插件（通过 mcp-debug feature 启用）
     // 使用 hypothesi/mcp-server-tauri 桥接插件
@@ -675,8 +687,12 @@ pub fn run() {
     {
         log_plugin_builder = log_plugin_builder.target(Target::new(TargetKind::Stdout));
     }
-    // Android：deep_student_lib 提到 Debug，现场排查启动链问题（预检超时、迁移卡顿）所需
+    // Keep logcat available in release, but opt in to per-event diagnostics:
+    // unconditional Debug logging writes every streaming chunk to disk/logcat.
     #[cfg(target_os = "android")]
+    if cfg!(debug_assertions)
+        || std::env::var("DSTU_CONSOLE_LOG")
+            .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
     {
         log_plugin_builder =
             log_plugin_builder.level_for("deep_student_lib", log::LevelFilter::Debug);
@@ -1168,6 +1184,22 @@ pub fn run() {
                 std::sync::Mutex::new(sentry_guard),
             )));
             app.manage(state);
+            // Reset process-local editor membership after restart, then expire
+            // lost heartbeats without relying on a renderer remaining alive.
+            if let Some(db) = app.state::<crate::commands::AppState>().vfs_db.clone() {
+                if let Ok(conn) = db.get_conn_safe() {
+                    crate::vfs::repos::note_lease_repo::NoteLeaseRepo::cleanup(&conn, i64::MAX, None, None)
+                        .map_err(|e| format!("Notes lease startup cleanup: {}", e))?;
+                }
+                let lease_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+                    loop {
+                        interval.tick().await;
+                        crate::cmd::notes::cleanup_note_editor_leases(lease_app.clone(), None, None);
+                    }
+                });
+            }
 
             // 插件系统（编译期注册；依赖 AppState）
             {
@@ -2004,6 +2036,8 @@ pub fn run() {
             crate::commands::mcp_stdio_close,
             crate::commands::save_mcp_config,
             crate::commands::reload_mcp_client,
+            crate::commands::get_mcp_stdio_allow_unapproved,
+            crate::commands::set_mcp_stdio_allow_unapproved,
             crate::commands::get_mcp_config,
             crate::commands::import_mcp_config,
             crate::commands::export_mcp_config,
@@ -2034,6 +2068,41 @@ pub fn run() {
             ,crate::commands::notes_delete_asset
             ,crate::commands::notes_resolve_asset_path
             ,crate::commands::notes_restore
+            ,crate::commands::notes_history_list
+            ,crate::commands::notes_history_get
+            ,crate::commands::notes_history_set_pinned
+            ,crate::commands::notes_history_restore_copy
+            ,crate::commands::notes_history_current
+            ,crate::commands::notes_history_restore_selection_copy
+            ,crate::commands::notes_history_restore_current
+            ,crate::commands::notes_history_get_retention
+            ,crate::commands::notes_history_set_retention
+            ,crate::commands::notes_enable_columns
+            ,crate::commands::notes_review_save_as
+            ,crate::commands::notes_transfer_blocks
+            ,crate::commands::notes_editor_register
+            ,crate::commands::notes_editor_heartbeat
+            ,crate::commands::notes_editor_unregister
+            ,crate::commands::notes_editor_begin
+            ,crate::commands::notes_editor_lease_status
+            ,crate::commands::notes_editor_freeze_ack
+            ,crate::commands::notes_editor_flush
+            ,crate::commands::notes_editor_finish
+            ,crate::commands::notes_editor_refresh_ack
+            ,crate::commands::notes_editor_release
+            ,crate::commands::notes_undo_transfer
+            ,crate::commands::notes_get_format
+            ,crate::commands::notes_migrate_blocks
+            ,crate::commands::notes_state_get
+            ,crate::commands::notes_state_list
+            ,crate::commands::notes_state_put
+            ,crate::commands::notes_state_delete
+            ,crate::commands::notes_relation_get
+            ,crate::commands::notes_relation_list
+            ,crate::commands::notes_relation_put
+            ,crate::commands::notes_relation_delete
+            ,crate::commands::notes_reference_status
+            ,crate::commands::notes_invalidate_resource_refs
             ,crate::commands::notes_assets_index_scan
             ,crate::commands::notes_assets_scan_orphans
             ,crate::commands::notes_assets_bulk_delete
@@ -2936,6 +3005,12 @@ fn start_vfs_index_worker(
     llm_manager: Arc<crate::llm_manager::LLMManager>,
     lance_store: Arc<crate::vfs::VfsLanceStore>,
 ) {
+    // This consumer persists vectors to Lance. Keep SQLite text ledgers and
+    // lexical retrieval available on slim builds without issuing unusable API calls.
+    if !cfg!(feature = "lance") {
+        tracing::info!("[VfsIndexWorker] Lance is not compiled in; vector worker disabled");
+        return;
+    }
     let _ = crate::background_tasks::spawn(async move {
         let mut last_run: Option<std::time::Instant> = None;
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
@@ -2954,8 +3029,14 @@ fn start_vfs_index_worker(
                 }
             };
             let interval = std::time::Duration::from_secs(config.interval_secs.max(1) as u64);
+            // A disabled worker must not derive its wait from an expired run:
+            // that would collapse to 100ms forever after the first completed run.
+            if !config.enabled {
+                tokio::time::sleep(interval.min(std::time::Duration::from_secs(5))).await;
+                continue;
+            }
             let due = last_run.is_none_or(|last| last.elapsed() >= interval);
-            if !config.enabled || !due {
+            if !due {
                 let remaining = last_run
                     .map(|last| interval.saturating_sub(last.elapsed()))
                     .unwrap_or(interval)

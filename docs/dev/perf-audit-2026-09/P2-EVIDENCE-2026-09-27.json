@@ -1,0 +1,1992 @@
+{
+  "date": "2026-09-27",
+  "timezone": "Asia/Shanghai",
+  "status": "six_p2_implemented_with_scoped_verification",
+  "sourceCommit": "0506ad07c023bf2ac15e40b4a85be9923edb4756",
+  "commits": [
+    {
+      "commit": "b152cbac2",
+      "issues": [
+        "R3-04",
+        "R3-07"
+      ]
+    },
+    {
+      "commit": "110551824",
+      "issues": [
+        "R3-05",
+        "R3-06"
+      ]
+    },
+    {
+      "commit": "0506ad07c",
+      "issues": [
+        "R3-08",
+        "R3-09"
+      ]
+    }
+  ],
+  "environment": {
+    "os": "macOS 26.5.2",
+    "hardware": "M5 Pro / 48 GiB",
+    "nativeVersion": "0.9.68 (Build 15153, 0506ad07)",
+    "identifier": "com.deepstudent.perfaudit20260927",
+    "dataDirectory": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+    "launch": "VITE_DS_UI_BRIDGE=1 CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=2 npm run tauri dev -- --config /tmp/deep-student-perf-verify-20260927/tauri-audit.json --no-watch",
+    "measurementCaveat": "Development app, single runs, no pre/post timing control. Android compilation overlapped part of native testing. Windows/Android device performance not measured."
+  },
+  "frontend": {
+    "date": "2026-09-27",
+    "commit": "110551824",
+    "vitest": {
+      "command": "npx vitest run src/features/chat/hooks/__tests__/useMessageSearch.test.tsx src/features/chat/components/__tests__/messageSearch.test.ts src/features/chat/components/__tests__/MessageList.scrollToBottomControl.test.tsx --pool=forks --maxWorkers=1 --minWorkers=1 --reporter=dot",
+      "preceding_check": "git diff --check",
+      "result": "passed",
+      "test_files_passed": 3,
+      "tests_passed": 28,
+      "duration_seconds": 3.91,
+      "started_local": "2026-09-27 19:39:55 Asia/Shanghai",
+      "exit_code": 0,
+      "raw_stdout_log_path": null,
+      "evidence_note": "Result was returned in the execution tool transcript; stdout was not redirected or tee-saved to a separate file. This JSON is a result summary, not a reconstructed raw log."
+    },
+    "typescript": {
+      "command": "node node_modules/typescript/bin/tsc --noEmit --pretty false -p /tmp/deep-student-perf-round3-20260927/frontend/fix/tsconfig.search.json",
+      "result": "passed",
+      "exit_code": 0,
+      "stdout": "",
+      "config_path": "/tmp/deep-student-perf-round3-20260927/frontend/fix/tsconfig.search.json",
+      "config_exists": true,
+      "config": {
+        "extends": "/Users/heli/code/deep-student/tsconfig.json",
+        "compilerOptions": {
+          "composite": false,
+          "types": [
+            "node"
+          ],
+          "typeRoots": [
+            "/Users/heli/code/deep-student/node_modules/@types"
+          ]
+        },
+        "files": [
+          "/Users/heli/code/deep-student/src/features/chat/hooks/useMessageSearch.ts",
+          "/Users/heli/code/deep-student/node_modules/vite/client.d.ts"
+        ],
+        "include": [],
+        "exclude": [],
+        "references": []
+      },
+      "raw_stdout_log_path": null,
+      "scope": "Targeted useMessageSearch.ts type check with its transitive type dependencies, not a full-project type check.",
+      "preflight_note": "The first temporary config could not resolve node and vite/client type libraries from /tmp. The config was corrected to use the repository typeRoots and an explicit vite/client.d.ts file; the successful command above then exited 0. No production source or test expectations were changed to resolve this tooling setup issue."
+    }
+  },
+  "wkWebView": {
+    "id": 622,
+    "ok": true,
+    "value": {
+      "environment": "real Tauri WKWebView; independent React mount of production hook + production createChatStore; real instrumented Worker; no adapter or persistent session",
+      "visibilityStart": "visible",
+      "stages": [
+        {
+          "name": "extreme",
+          "characters": 500000,
+          "appends": 20,
+          "requests": 3,
+          "responses": 3,
+          "maxInFlight": 1,
+          "latestMatches": 20,
+          "lastAppendMs": 706,
+          "completeMs": 1330,
+          "afterAppendWaitMs": 624,
+          "worker": {
+            "posts": [
+              {
+                "requestId": 1,
+                "query": "hit",
+                "at": 460142,
+                "blocks": 1,
+                "characters": 500000,
+                "fullSnapshot": true
+              },
+              {
+                "requestId": 2,
+                "query": "hit",
+                "at": 460604,
+                "blocks": 1,
+                "characters": 500056,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 3,
+                "query": "hit",
+                "at": 461053,
+                "blocks": 1,
+                "characters": 500080,
+                "fullSnapshot": false
+              }
+            ],
+            "responses": [
+              {
+                "requestId": 1,
+                "at": 460604,
+                "matches": 0
+              },
+              {
+                "requestId": 2,
+                "at": 461053,
+                "matches": 14
+              },
+              {
+                "requestId": 3,
+                "at": 461462,
+                "matches": 20
+              }
+            ],
+            "inFlight": 0,
+            "peak": 1,
+            "terminated": true
+          }
+        },
+        {
+          "name": "control",
+          "characters": 50000,
+          "appends": 20,
+          "requests": 18,
+          "responses": 18,
+          "maxInFlight": 1,
+          "latestMatches": 20,
+          "lastAppendMs": 732,
+          "completeMs": 768,
+          "afterAppendWaitMs": 36,
+          "worker": {
+            "posts": [
+              {
+                "requestId": 1,
+                "query": "hit",
+                "at": 461469,
+                "blocks": 1,
+                "characters": 50000,
+                "fullSnapshot": true
+              },
+              {
+                "requestId": 2,
+                "query": "hit",
+                "at": 461521,
+                "blocks": 1,
+                "characters": 50008,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 3,
+                "query": "hit",
+                "at": 461562,
+                "blocks": 1,
+                "characters": 50012,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 4,
+                "query": "hit",
+                "at": 461603,
+                "blocks": 1,
+                "characters": 50016,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 5,
+                "query": "hit",
+                "at": 461648,
+                "blocks": 1,
+                "characters": 50020,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 6,
+                "query": "hit",
+                "at": 461689,
+                "blocks": 1,
+                "characters": 50024,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 7,
+                "query": "hit",
+                "at": 461731,
+                "blocks": 1,
+                "characters": 50028,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 8,
+                "query": "hit",
+                "at": 461773,
+                "blocks": 1,
+                "characters": 50036,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 9,
+                "query": "hit",
+                "at": 461814,
+                "blocks": 1,
+                "characters": 50040,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 10,
+                "query": "hit",
+                "at": 461855,
+                "blocks": 1,
+                "characters": 50044,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 11,
+                "query": "hit",
+                "at": 461896,
+                "blocks": 1,
+                "characters": 50048,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 12,
+                "query": "hit",
+                "at": 461938,
+                "blocks": 1,
+                "characters": 50052,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 13,
+                "query": "hit",
+                "at": 461979,
+                "blocks": 1,
+                "characters": 50056,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 14,
+                "query": "hit",
+                "at": 462021,
+                "blocks": 1,
+                "characters": 50064,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 15,
+                "query": "hit",
+                "at": 462063,
+                "blocks": 1,
+                "characters": 50068,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 16,
+                "query": "hit",
+                "at": 462103,
+                "blocks": 1,
+                "characters": 50072,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 17,
+                "query": "hit",
+                "at": 462145,
+                "blocks": 1,
+                "characters": 50076,
+                "fullSnapshot": false
+              },
+              {
+                "requestId": 18,
+                "query": "hit",
+                "at": 462187,
+                "blocks": 1,
+                "characters": 50080,
+                "fullSnapshot": false
+              }
+            ],
+            "responses": [
+              {
+                "requestId": 1,
+                "at": 461521,
+                "matches": 0
+              },
+              {
+                "requestId": 2,
+                "at": 461562,
+                "matches": 2
+              },
+              {
+                "requestId": 3,
+                "at": 461603,
+                "matches": 3
+              },
+              {
+                "requestId": 4,
+                "at": 461648,
+                "matches": 4
+              },
+              {
+                "requestId": 5,
+                "at": 461689,
+                "matches": 5
+              },
+              {
+                "requestId": 6,
+                "at": 461731,
+                "matches": 6
+              },
+              {
+                "requestId": 7,
+                "at": 461773,
+                "matches": 7
+              },
+              {
+                "requestId": 8,
+                "at": 461814,
+                "matches": 9
+              },
+              {
+                "requestId": 9,
+                "at": 461855,
+                "matches": 10
+              },
+              {
+                "requestId": 10,
+                "at": 461896,
+                "matches": 11
+              },
+              {
+                "requestId": 11,
+                "at": 461938,
+                "matches": 12
+              },
+              {
+                "requestId": 12,
+                "at": 461979,
+                "matches": 13
+              },
+              {
+                "requestId": 13,
+                "at": 462021,
+                "matches": 14
+              },
+              {
+                "requestId": 14,
+                "at": 462063,
+                "matches": 16
+              },
+              {
+                "requestId": 15,
+                "at": 462103,
+                "matches": 17
+              },
+              {
+                "requestId": 16,
+                "at": 462145,
+                "matches": 18
+              },
+              {
+                "requestId": 17,
+                "at": 462187,
+                "matches": 19
+              },
+              {
+                "requestId": 18,
+                "at": 462229,
+                "matches": 20
+              }
+            ],
+            "inFlight": 0,
+            "peak": 1,
+            "terminated": true
+          }
+        }
+      ],
+      "suspension": {
+        "appendsWhileSuspended": 10,
+        "requestsWhileSuspended": 0,
+        "oldWorkerTerminated": true,
+        "queryAfterResume": "late",
+        "matchesAfterResume": 10,
+        "resumeRequests": 1,
+        "resumeFullSnapshot": true
+      },
+      "visibilityEnd": "visible",
+      "version": "0.9.68 (Build 15149, 3de1a6cd)",
+      "success": true
+    }
+  },
+  "frontendHarnessInitialFailure": {
+    "preserved_rpc_result_path": "/tmp/deep-student-perf-round3-20260927/frontend/fix/wk-search-initial-harness-error.json",
+    "preserved_rpc_result": {
+      "ok": false,
+      "error": "eval timeout (15s)"
+    },
+    "observed_page_result": "Timed out: worker start; workers array empty; fixture cleanup completed.",
+    "observed_cause": "The initial harness mixed Vite React dependency graphs by importing React/ReactDOM without matching version parameters. The bridge error inspection showed Invalid hook call and differing Vite dependency versions. The harness was changed to use the same current dependency graph; production code and assertions were unchanged.",
+    "failure_console_log_path": null,
+    "failure_evidence_note": "The preserved file contains the bridge 15-second eval timeout. The later page result and React error diagnosis were observed in the tool transcript, not saved as a separate raw console log."
+  },
+  "rust": {
+    "executable": "/Users/heli/code/deep-student/src-tauri/target/debug/deps/deep_student_lib-33d849fb55d8d655",
+    "results": [
+      {
+        "module": "llm_manager::ocr_runtime_candidate_tests",
+        "exitCode": 0,
+        "summary": "test result: ok. 4 passed; 0 failed;",
+        "passed": 4,
+        "failed": 0,
+        "log": "/tmp/deep-student-p2-20260927/llm_manager-ocr_runtime_candidate_tests.log",
+        "preservedTestOutput": [
+          "test llm_manager::ocr_runtime_candidate_tests::readonly_ocr_inspection_uses_native_default_until_explicit_engine_list_exists ... ok",
+          "test llm_manager::ocr_runtime_candidate_tests::readonly_ocr_inspection_accepts_enabled_remote_vlm_and_legacy_selection ... ok",
+          "test llm_manager::ocr_runtime_candidate_tests::system_ocr_is_native_free_text_candidate_but_never_structured ... ok",
+          "test llm_manager::ocr_runtime_candidate_tests::system_ocr_candidate_respects_enabled_state_alongside_remote_engine ... ok",
+          "test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 6153 filtered out; finished in 0.00s"
+        ]
+      },
+      {
+        "module": "unified_file_manager::tests",
+        "exitCode": 0,
+        "summary": "test result: ok. 6 passed; 0 failed;",
+        "passed": 6,
+        "failed": 0,
+        "log": "/tmp/deep-student-p2-20260927/unified_file_manager-tests.log",
+        "preservedTestOutput": [
+          "test unified_file_manager::tests::ensure_enough_temp_space_requires_double_source_size ... ok",
+          "test unified_file_manager::tests::digest_copy_roundtrip_matches_reread ... ok",
+          "test unified_file_manager::tests::ensure_identical_copy_rejects_size_or_hash_mismatch ... ok",
+          "test unified_file_manager::tests::queue_persistable_saf_uri_writes_content_only ... ok",
+          "test unified_file_manager::tests::reject_double_encoded_virtual_uri_keeps_raw_content_ok ... ok",
+          "test unified_file_manager::tests::queue_persistable_saf_uri_handles_concurrent_producers ... ok",
+          "test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 6151 filtered out; finished in 0.00s"
+        ]
+      },
+      {
+        "module": "vfs::index_service::tests",
+        "exitCode": 0,
+        "summary": "test result: ok. 5 passed; 0 failed;",
+        "passed": 5,
+        "failed": 0,
+        "log": "/tmp/deep-student-p2-20260927/vfs-index_service-tests.log",
+        "preservedTestOutput": [
+          "test vfs::index_service::tests::reset_unit_index_mm_mode_updates_unit_and_resource_atomically ... ok",
+          "test vfs::index_service::tests::reset_unit_index_both_mode_updates_all_four_states ... ok",
+          "test vfs::index_service::tests::reset_unit_index_text_mode_updates_unit_and_resource_atomically ... ok",
+          "test vfs::index_service::tests::reset_unit_index_unknown_mode_writes_nothing ... ok",
+          "test vfs::index_service::tests::sync_resource_units_uses_single_pool_connection ... ok",
+          "test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 6152 filtered out; finished in 2.82s"
+        ]
+      },
+      {
+        "module": "vfs::upload_saga::tests",
+        "exitCode": 0,
+        "summary": "test result: ok. 9 passed; 0 failed;",
+        "passed": 9,
+        "failed": 0,
+        "log": "/tmp/deep-student-p2-20260927/vfs-upload_saga-tests.log",
+        "preservedTestOutput": [
+          "test vfs::upload_saga::tests::test_failure_after_blob_rolls_back_row_and_cleans_file ... ok",
+          "test vfs::upload_saga::tests::test_failed_upload_retry_is_idempotent ... ok",
+          "test vfs::upload_saga::tests::test_failure_after_dedup_blob_keeps_shared_blob ... ok",
+          "test vfs::upload_saga::tests::test_failure_after_file_row_rolls_back_everything ... ok",
+          "test vfs::upload_saga::tests::test_saga_abort_only_releases_refs_created_by_this_call ... ok",
+          "test vfs::upload_saga::tests::test_index_failure_enters_retryable_state_and_sync_is_idempotent ... ok",
+          "test vfs::upload_saga::tests::test_sync_units_rolls_back_partial_writes_on_failure ... ok",
+          "test vfs::upload_saga::tests::upload_with_blob_waits_for_concurrent_writer ... ok",
+          "test vfs::upload_saga::tests::upload_without_blob_waits_for_concurrent_writer ... ok",
+          "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 6148 filtered out; finished in 4.97s"
+        ]
+      }
+    ]
+  },
+  "macCompileChecks": [
+    {
+      "command": "CARGO_INCREMENTAL=0 cargo check --lib --locked -j 2",
+      "cwd": "src-tauri",
+      "result": "passed",
+      "durationSecondsFromCargo": 195,
+      "log": "/tmp/deep-student-p2-20260927/cargo-check-platform.log",
+      "cargoSummary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3m 15s"
+      ]
+    },
+    {
+      "command": "CARGO_INCREMENTAL=0 cargo check --lib --locked -j 2",
+      "cwd": "src-tauri",
+      "result": "passed",
+      "durationSecondsFromCargo": 99,
+      "log": "/tmp/deep-student-p2-20260927/cargo-check-upload.log",
+      "cargoSummary": [
+        "    Finished `dev` profile [unoptimized + debuginfo] target(s) in 1m 39s"
+      ]
+    }
+  ],
+  "android": {
+    "status": "passed",
+    "head": "0506ad07c023bf2ac15e40b4a85be9923edb4756",
+    "started_at": "2026-09-27T19:58:04+08:00",
+    "cwd": "/Users/heli/code/deep-student/src-tauri",
+    "command": [
+      "cargo",
+      "check",
+      "--lib",
+      "--target",
+      "aarch64-linux-android",
+      "--no-default-features",
+      "--features",
+      "mobile-slim",
+      "--locked",
+      "-j",
+      "2"
+    ],
+    "environment": {
+      "CARGO_INCREMENTAL": "0",
+      "CC_aarch64_linux_android": "/Users/heli/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang",
+      "CXX_aarch64_linux_android": "/Users/heli/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang++",
+      "AR_aarch64_linux_android": "/Users/heli/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/llvm-ar",
+      "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER": "/Users/heli/Library/Android/sdk/ndk/27.0.12077973/toolchains/llvm/prebuilt/darwin-x86_64/bin/aarch64-linux-android24-clang"
+    },
+    "log": "/tmp/deep-student-p2-20260927/cargo-check-android.log",
+    "scope": "Android Rust mobile-slim cargo check only; no APK linking, installation, device or performance verification",
+    "worktree_before": " M .release-please-manifest.json\n M CHANGELOG.md\n M legal/THIRD_PARTY_NOTICES.txt\n M package-lock.json\n M package.json\n M src-tauri/Cargo.lock\n M src-tauri/Cargo.toml\n M src-tauri/tauri.conf.json\n?? docs/dev/perf-audit-2026-09/README.md\n",
+    "pid": 72487,
+    "exit_code": 0,
+    "elapsed_seconds": 275.929,
+    "finished_at": "2026-09-27T20:02:40+08:00",
+    "worktree_after": " M .release-please-manifest.json\n M CHANGELOG.md\n M legal/THIRD_PARTY_NOTICES.txt\n M package-lock.json\n M package.json\n M src-tauri/Cargo.lock\n M src-tauri/Cargo.toml\n M src-tauri/tauri.conf.json\n?? docs/dev/perf-audit-2026-09/README.md\n"
+  },
+  "native": {
+    "initial400Run": {
+      "startedAt": "2026-09-27T11:56:46.702Z",
+      "expectedCommit": "0506ad07",
+      "run": "f23bb5a24ba4",
+      "environment": "macOS real Tauri dev native IPC + readonly SQLite, isolated slotA",
+      "inputs": {
+        "ocr-disabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-disabled.pdf",
+          "bytes": 237067,
+          "pages": 4
+        },
+        "ocr-enabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-enabled.pdf",
+          "bytes": 237053,
+          "pages": 4
+        },
+        "attachment": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-attachment.pdf",
+          "bytes": 473894,
+          "pages": 8
+        },
+        "file": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-file.pdf",
+          "bytes": 1194104,
+          "pages": 20
+        },
+        "office": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-office.docx",
+          "bytes": 291078,
+          "paragraphs": 12000,
+          "xmlBytes": 2125069,
+          "marker": "p2-native-docx-f23bb5a24ba4"
+        }
+      },
+      "checks": {
+        "ocrDisabled": {
+          "fileId": "file_l03MFxLkXt",
+          "elapsedMs": 1392,
+          "status": {
+            "fileId": "file_l03MFxLkXt",
+            "stage": "completed",
+            "progress": {
+              "stage": "completed",
+              "totalPages": 4,
+              "percent": 100,
+              "readyModes": [
+                "image"
+              ],
+              "mediaType": "pdf"
+            },
+            "startedAt": 1790510208526,
+            "completedAt": 1790510210932
+          },
+          "rows": [
+            {
+              "id": "file_l03MFxLkXt",
+              "file_name": "p2-f23bb5a24ba4-ocr-disabled.pdf",
+              "page_count": 4,
+              "processing_status": "completed",
+              "processing_progress": "{\"stage\":\"completed\",\"totalPages\":4,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\"}",
+              "processing_error": null,
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "ocrPages": []
+            }
+          ],
+          "mock": {
+            "kind": "p2-fast-failure",
+            "startedAt": "2026-09-27T11:50:09.308Z",
+            "requests": 4,
+            "records": [
+              {
+                "id": 1,
+                "at": "2026-09-27T11:56:50.912Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 280203
+              },
+              {
+                "id": 2,
+                "at": "2026-09-27T11:56:50.923Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 281287
+              },
+              {
+                "id": 3,
+                "at": "2026-09-27T11:56:50.923Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 281411
+              },
+              {
+                "id": 4,
+                "at": "2026-09-27T11:56:50.930Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 281075
+              }
+            ]
+          }
+        }
+      },
+      "version": "0.9.68 (Build 15153, 0506ad07)",
+      "originalSettings": {
+        "models": "[{\"configId\":\"perf-local-ocr-20260927\",\"model\":\"deepseek-ai/DeepSeek-OCR\",\"engineType\":\"deepseek_ocr\",\"name\":\"Local OCR audit fixture\",\"isFree\":true,\"enabled\":true,\"priority\":0},{\"configId\":\"__system_ocr__\",\"model\":\"system\",\"engineType\":\"system_ocr\",\"name\":\"系统 OCR (macOS Vision)\",\"isFree\":true,\"enabled\":false,\"priority\":1}]",
+        "ocr": "false",
+        "scanned": "true",
+        "index": "false"
+      },
+      "pass": false,
+      "error": "Error: enabled case remote request count",
+      "settingsRestored": true,
+      "finishedAt": "2026-09-27T11:56:55.097Z"
+    },
+    "fallbackAndPdfRun": {
+      "startedAt": "2026-09-27T11:58:59.929Z",
+      "expectedCommit": "0506ad07",
+      "run": "9ae2c2015845",
+      "environment": "macOS real Tauri dev native IPC + readonly SQLite, isolated slotA",
+      "inputs": {
+        "ocr-disabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-9ae2c2015845-ocr-disabled.pdf",
+          "bytes": 198689,
+          "pages": 4
+        },
+        "ocr-enabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-9ae2c2015845-ocr-enabled.pdf",
+          "bytes": 198695,
+          "pages": 4
+        },
+        "attachment": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-attachment.pdf",
+          "bytes": 473894,
+          "pages": 8
+        },
+        "file": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-file.pdf",
+          "bytes": 1194104,
+          "pages": 20
+        },
+        "office": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-office.docx",
+          "bytes": 291078,
+          "paragraphs": 12000,
+          "xmlBytes": 2125069,
+          "marker": "p2-native-docx-f23bb5a24ba4"
+        },
+        "recovery-primer": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-9ae2c2015845-recovery-primer.pdf",
+          "bytes": 50105,
+          "pages": 1
+        }
+      },
+      "checks": {
+        "recoveryPrimer": {
+          "fileId": "file_sLX-tXpOQf",
+          "elapsedMs": 337,
+          "status": {
+            "fileId": "file_sLX-tXpOQf",
+            "stage": "completed",
+            "progress": {
+              "stage": "completed",
+              "totalPages": 1,
+              "percent": 100,
+              "readyModes": [
+                "image",
+                "ocr"
+              ],
+              "mediaType": "pdf"
+            },
+            "startedAt": 1790510340658,
+            "completedAt": 1790510341490
+          },
+          "rows": [
+            {
+              "id": "file_sLX-tXpOQf",
+              "file_name": "p2-9ae2c2015845-recovery-primer.pdf",
+              "page_count": 1,
+              "processing_status": "completed",
+              "processing_progress": "{\"stage\":\"completed\",\"totalPages\":1,\"percent\":100.0,\"readyModes\":[\"image\",\"ocr\"],\"mediaType\":\"pdf\"}",
+              "processing_error": null,
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0
+              ],
+              "ocrPages": [
+                {
+                  "pageIndex": 0,
+                  "textLength": 1184
+                }
+              ]
+            }
+          ],
+          "mock": {
+            "kind": "p2-server-failure",
+            "startedAt": "2026-09-27T11:58:33.844Z",
+            "requests": 1,
+            "records": [
+              {
+                "id": 1,
+                "at": "2026-09-27T11:59:01.304Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 239403
+              }
+            ]
+          }
+        },
+        "ocrEnabled": {
+          "fileId": "file_rp-f7y7ptj",
+          "elapsedMs": 1340.000000000029,
+          "status": {
+            "fileId": "file_rp-f7y7ptj",
+            "stage": "completed",
+            "progress": {
+              "stage": "completed",
+              "totalPages": 4,
+              "percent": 100,
+              "readyModes": [
+                "image",
+                "ocr"
+              ],
+              "mediaType": "pdf"
+            },
+            "startedAt": 1790510342939,
+            "completedAt": 1790510345745
+          },
+          "rows": [
+            {
+              "id": "file_rp-f7y7ptj",
+              "file_name": "p2-9ae2c2015845-ocr-enabled.pdf",
+              "page_count": 4,
+              "processing_status": "completed",
+              "processing_progress": "{\"stage\":\"completed\",\"totalPages\":4,\"percent\":100.0,\"readyModes\":[\"image\",\"ocr\"],\"mediaType\":\"pdf\"}",
+              "processing_error": null,
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "ocrPages": [
+                {
+                  "pageIndex": 0,
+                  "textLength": 1180
+                },
+                {
+                  "pageIndex": 1,
+                  "textLength": 1184
+                },
+                {
+                  "pageIndex": 2,
+                  "textLength": 1185
+                },
+                {
+                  "pageIndex": 3,
+                  "textLength": 1195
+                }
+              ]
+            }
+          ],
+          "mock": {
+            "kind": "p2-server-failure",
+            "startedAt": "2026-09-27T11:58:33.844Z",
+            "requests": 5,
+            "records": [
+              {
+                "id": 1,
+                "at": "2026-09-27T11:59:01.304Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 239403
+              },
+              {
+                "id": 2,
+                "at": "2026-09-27T11:59:05.417Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 238863
+              },
+              {
+                "id": 3,
+                "at": "2026-09-27T11:59:05.445Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240243
+              },
+              {
+                "id": 4,
+                "at": "2026-09-27T11:59:05.453Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240287
+              },
+              {
+                "id": 5,
+                "at": "2026-09-27T11:59:05.455Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240151
+              }
+            ]
+          }
+        },
+        "ocrDisabled": {
+          "fileId": "file_bhGMIMeJc0",
+          "elapsedMs": 1333,
+          "status": {
+            "fileId": "file_bhGMIMeJc0",
+            "stage": "completed",
+            "progress": {
+              "stage": "completed",
+              "totalPages": 4,
+              "percent": 100,
+              "readyModes": [
+                "image"
+              ],
+              "mediaType": "pdf"
+            },
+            "startedAt": 1790510347346,
+            "completedAt": 1790510349863
+          },
+          "rows": [
+            {
+              "id": "file_bhGMIMeJc0",
+              "file_name": "p2-9ae2c2015845-ocr-disabled.pdf",
+              "page_count": 4,
+              "processing_status": "completed",
+              "processing_progress": "{\"stage\":\"completed\",\"totalPages\":4,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\"}",
+              "processing_error": null,
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0,
+                1,
+                2,
+                3
+              ],
+              "ocrPages": []
+            }
+          ],
+          "mock": {
+            "kind": "p2-server-failure",
+            "startedAt": "2026-09-27T11:58:33.844Z",
+            "requests": 9,
+            "records": [
+              {
+                "id": 1,
+                "at": "2026-09-27T11:59:01.304Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 239403
+              },
+              {
+                "id": 2,
+                "at": "2026-09-27T11:59:05.417Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 238863
+              },
+              {
+                "id": 3,
+                "at": "2026-09-27T11:59:05.445Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240243
+              },
+              {
+                "id": 4,
+                "at": "2026-09-27T11:59:05.453Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240287
+              },
+              {
+                "id": 5,
+                "at": "2026-09-27T11:59:05.455Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240151
+              },
+              {
+                "id": 6,
+                "at": "2026-09-27T11:59:09.787Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 238895
+              },
+              {
+                "id": 7,
+                "at": "2026-09-27T11:59:09.796Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240275
+              },
+              {
+                "id": 8,
+                "at": "2026-09-27T11:59:09.815Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240319
+              },
+              {
+                "id": 9,
+                "at": "2026-09-27T11:59:09.841Z",
+                "model": "deepseek-ai/DeepSeek-OCR",
+                "stream": false,
+                "bytes": 240179
+              }
+            ]
+          }
+        },
+        "attachment": {
+          "fileId": "att_1Ma3sL7WK2",
+          "elapsedMs": 2714,
+          "status": {
+            "fileId": "att_1Ma3sL7WK2",
+            "stage": "completed_with_issues",
+            "progress": {
+              "stage": "completed_with_issues",
+              "totalPages": 8,
+              "percent": 100,
+              "readyModes": [
+                "image"
+              ],
+              "mediaType": "pdf",
+              "failedStages": [
+                {
+                  "stage": "ocr_processing",
+                  "message": "该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+                  "retriable": true
+                }
+              ]
+            },
+            "error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+            "startedAt": 1790510352733,
+            "completedAt": 1790510357551
+          },
+          "rows": [
+            {
+              "id": "att_1Ma3sL7WK2",
+              "file_name": "p2-f23bb5a24ba4-attachment.pdf",
+              "page_count": 8,
+              "processing_status": "completed_with_issues",
+              "processing_progress": "{\"stage\":\"completed_with_issues\",\"totalPages\":8,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\",\"failedStages\":[{\"stage\":\"ocr_processing\",\"message\":\"该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试\",\"retriable\":true}]}",
+              "processing_error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7
+              ],
+              "ocrPages": []
+            }
+          ],
+          "probes": [
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            }
+          ]
+        },
+        "file": {
+          "fileId": "file_oqhRoeehMD",
+          "elapsedMs": 9297,
+          "status": {
+            "fileId": "file_oqhRoeehMD",
+            "stage": "completed_with_issues",
+            "progress": {
+              "stage": "completed_with_issues",
+              "totalPages": 20,
+              "percent": 100,
+              "readyModes": [
+                "image"
+              ],
+              "mediaType": "pdf",
+              "failedStages": [
+                {
+                  "stage": "ocr_processing",
+                  "message": "该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+                  "retriable": true
+                }
+              ]
+            },
+            "error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+            "startedAt": 1790510367008,
+            "completedAt": 1790510398703
+          },
+          "rows": [
+            {
+              "id": "file_oqhRoeehMD",
+              "file_name": "p2-f23bb5a24ba4-file.pdf",
+              "page_count": 20,
+              "processing_status": "completed_with_issues",
+              "processing_progress": "{\"stage\":\"completed_with_issues\",\"totalPages\":20,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\",\"failedStages\":[{\"stage\":\"ocr_processing\",\"message\":\"该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试\",\"retriable\":true}]}",
+              "processing_error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试",
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19
+              ],
+              "ocrPages": []
+            }
+          ],
+          "probes": [
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 0.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2.000000000029104,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 3,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.0000000000291038,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 3,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            },
+            {
+              "elapsedMs": 3,
+              "found": true
+            },
+            {
+              "elapsedMs": 2.000000000029104,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            }
+          ]
+        },
+        "office": {
+          "fileId": "file_Z0cO843zHm",
+          "elapsedMs": 91.0000000000291,
+          "status": {
+            "fileId": "file_Z0cO843zHm",
+            "stage": "pending",
+            "progress": {
+              "stage": "pending",
+              "percent": 0,
+              "readyModes": []
+            }
+          },
+          "rows": [
+            {
+              "id": "file_Z0cO843zHm",
+              "file_name": "p2-f23bb5a24ba4-office.docx",
+              "page_count": null,
+              "processing_status": null,
+              "processing_progress": null,
+              "processing_error": null,
+              "extractedTextLength": 0,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [],
+              "ocrPages": []
+            }
+          ],
+          "probes": [
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999708962,
+              "found": true
+            }
+          ]
+        }
+      },
+      "version": "0.9.68 (Build 15153, 0506ad07)",
+      "originalSettings": {
+        "models": "[{\"configId\":\"perf-local-ocr-20260927\",\"model\":\"deepseek-ai/DeepSeek-OCR\",\"engineType\":\"deepseek_ocr\",\"name\":\"Local OCR audit fixture\",\"isFree\":true,\"enabled\":true,\"priority\":0},{\"configId\":\"__system_ocr__\",\"model\":\"system\",\"engineType\":\"system_ocr\",\"name\":\"系统 OCR (macOS Vision)\",\"isFree\":true,\"enabled\":false,\"priority\":1}]",
+        "ocr": "false",
+        "scanned": "true",
+        "index": "false"
+      },
+      "harnessCorrection": "Previous HTTP 400 ends the existing chain before native fallback; use HTTP 503. First recover the existing open breaker with one page after its cooldown, then test enabled before disabled. No production code or result assertions changed.",
+      "pass": false,
+      "error": "Error: Office extraction missing start/end",
+      "restoredSettings": {
+        "models": "[{\"configId\":\"perf-local-ocr-20260927\",\"model\":\"deepseek-ai/DeepSeek-OCR\",\"engineType\":\"deepseek_ocr\",\"name\":\"Local OCR audit fixture\",\"isFree\":true,\"enabled\":true,\"priority\":0},{\"configId\":\"__system_ocr__\",\"model\":\"system\",\"engineType\":\"system_ocr\",\"name\":\"系统 OCR (macOS Vision)\",\"isFree\":true,\"enabled\":false,\"priority\":1}]",
+        "ocr": "false",
+        "scanned": "true",
+        "index": "false"
+      },
+      "settingsRestored": true,
+      "finishedAt": "2026-09-27T11:59:59.354Z"
+    },
+    "correctedOfficeRun": {
+      "startedAt": "2026-09-27T12:02:50.668Z",
+      "expectedCommit": "0506ad07",
+      "run": "f23bb5a24ba4-office-rels",
+      "environment": "macOS real Tauri dev native IPC + readonly SQLite, isolated slotA",
+      "inputs": {
+        "ocr-disabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-disabled.pdf",
+          "bytes": 237067,
+          "pages": 4
+        },
+        "ocr-enabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-enabled.pdf",
+          "bytes": 237053,
+          "pages": 4
+        },
+        "attachment": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-attachment.pdf",
+          "bytes": 473894,
+          "pages": 8
+        },
+        "file": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-file.pdf",
+          "bytes": 1194104,
+          "pages": 20
+        },
+        "office": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-office-with-rels.docx",
+          "bytes": 291328,
+          "paragraphs": 12000,
+          "xmlBytes": 2125069,
+          "marker": "p2-native-docx-f23bb5a24ba4"
+        }
+      },
+      "checks": {
+        "office": {
+          "fileId": "file_znzGbhIG4F",
+          "elapsedMs": 853,
+          "status": {
+            "fileId": "file_znzGbhIG4F",
+            "stage": "pending",
+            "progress": {
+              "stage": "pending",
+              "percent": 0,
+              "readyModes": []
+            }
+          },
+          "rows": [
+            {
+              "id": "file_znzGbhIG4F",
+              "file_name": "p2-f23bb5a24ba4-office-with-rels.docx",
+              "page_count": null,
+              "processing_status": null,
+              "processing_progress": null,
+              "processing_error": null,
+              "extractedTextLength": 1740889,
+              "hasOfficeStart": true,
+              "hasOfficeEnd": true,
+              "previewIndices": [],
+              "ocrPages": []
+            }
+          ],
+          "probes": [
+            {
+              "elapsedMs": 3,
+              "found": true
+            },
+            {
+              "elapsedMs": 22,
+              "found": true
+            },
+            {
+              "elapsedMs": 184.0000000000582,
+              "found": true
+            },
+            {
+              "elapsedMs": 10.999999999941792,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 1.9999999999417923,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            },
+            {
+              "elapsedMs": 2,
+              "found": true
+            }
+          ]
+        }
+      },
+      "version": "0.9.68 (Build 15153, 0506ad07)",
+      "fixtureCorrection": "Added only word/_rels/document.xml.rels required by installed docx-rs 0.4.19; original 12,000 paragraphs and first/last assertions unchanged. Original failing file preserved.",
+      "pass": true,
+      "finishedAt": "2026-09-27T12:02:51.867Z"
+    },
+    "paperDownloadRun": {
+      "startedAt": "2026-09-27T12:00:46.585Z",
+      "expectedCommit": "0506ad07",
+      "run": "f23bb5a24ba4",
+      "environment": "macOS real Tauri dev native IPC + readonly SQLite, isolated slotA",
+      "inputs": {
+        "ocr-disabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-disabled.pdf",
+          "bytes": 237067,
+          "pages": 4
+        },
+        "ocr-enabled": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-ocr-enabled.pdf",
+          "bytes": 237053,
+          "pages": 4
+        },
+        "attachment": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-attachment.pdf",
+          "bytes": 473894,
+          "pages": 8
+        },
+        "file": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-file.pdf",
+          "bytes": 1194104,
+          "pages": 20
+        },
+        "office": {
+          "path": "/tmp/deep-student-p2-20260927/native/fixtures/p2-f23bb5a24ba4-office.docx",
+          "bytes": 291078,
+          "paragraphs": 12000,
+          "xmlBytes": 2125069,
+          "marker": "p2-native-docx-f23bb5a24ba4"
+        }
+      },
+      "checks": {
+        "paperDownload": {
+          "elapsedMs": 1882,
+          "value": {
+            "success": true,
+            "fileId": "file_DOWIVLlMzj",
+            "fileName": "P2 public PDF fixture f23bb5a24ba4.pdf",
+            "sizeBytes": 13264,
+            "pageCount": 1,
+            "error": null
+          },
+          "rows": [
+            {
+              "id": "file_DOWIVLlMzj",
+              "file_name": "P2 public PDF fixture f23bb5a24ba4.pdf",
+              "page_count": 1,
+              "processing_status": "page_compression",
+              "processing_progress": "{\"stage\":\"page_compression\",\"currentPage\":0,\"totalPages\":1,\"percent\":5.0,\"readyModes\":[\"text\"],\"mediaType\":\"pdf\"}",
+              "processing_error": null,
+              "extractedTextLength": 14,
+              "hasOfficeStart": false,
+              "hasOfficeEnd": false,
+              "previewIndices": [
+                0
+              ],
+              "ocrPages": []
+            }
+          ]
+        }
+      },
+      "version": "0.9.68 (Build 15153, 0506ad07)",
+      "pass": true,
+      "finishedAt": "2026-09-27T12:00:48.955Z"
+    },
+    "uploadMetrics": {
+      "attachment": {
+        "uploadDurationMs": 2714,
+        "sampleCount": 28,
+        "medianMs": 1.0,
+        "p95NearestRankMs": 2,
+        "maxMs": 2,
+        "errors": 0,
+        "probeCommand": "vfs_get_pdf_processing_status",
+        "probeFileId": "file_x5-XkXkCt0",
+        "probeIntervalAfterCompletionMs": 100
+      },
+      "file": {
+        "uploadDurationMs": 9297,
+        "sampleCount": 92,
+        "medianMs": 1.0000000000291038,
+        "p95NearestRankMs": 2.000000000029104,
+        "maxMs": 3,
+        "errors": 0,
+        "probeCommand": "vfs_get_pdf_processing_status",
+        "probeFileId": "file_x5-XkXkCt0",
+        "probeIntervalAfterCompletionMs": 100
+      },
+      "office": {
+        "uploadDurationMs": 853,
+        "sampleCount": 8,
+        "medianMs": 2.5,
+        "p95NearestRankMs": 184.0000000000582,
+        "maxMs": 184.0000000000582,
+        "errors": 0,
+        "probeCommand": "vfs_get_pdf_processing_status",
+        "probeFileId": "file_x5-XkXkCt0",
+        "probeIntervalAfterCompletionMs": 100
+      }
+    },
+    "fallbackLogExcerpts": [
+      "[2026-09-27][19:59:01][INFO][deep_student_lib::ocr_circuit_breaker] [CircuitBreaker] 冷却期已过，进入 HalfOpen 试探状态",
+      "[2026-09-27][19:59:01][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 0）",
+      "[2026-09-27][19:59:01][INFO][deep_student_lib::ocr_circuit_breaker] [CircuitBreaker] 请求成功，从 HalfOpen 恢复到 Closed",
+      "[2026-09-27][19:59:01][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 0, 1216 chars）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 0）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 1）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 2）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 所有远程引擎失败，尝试本地系统 OCR 兜底（page 3）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 0, 1210 chars）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 1, 1214 chars）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 3, 1225 chars）",
+      "[2026-09-27][19:59:05][INFO][deep_student_lib::llm_manager::exam_engine] [OCR] 系统 OCR 兜底成功（page 2, 1215 chars）"
+    ],
+    "finalDatabaseReadback": {
+      "mode": "readonly SQLite",
+      "officeCharacters": 1740889,
+      "officeParagraphs": 12000,
+      "allParagraphsInOrder": true,
+      "rows": [
+        {
+          "id": "file_DOWIVLlMzj",
+          "page_count": 1,
+          "processing_status": "completed_with_issues",
+          "processing_progress": "{\"stage\":\"completed_with_issues\",\"totalPages\":1,\"percent\":100.0,\"readyModes\":[\"text\",\"image\"],\"mediaType\":\"pdf\",\"failedStages\":[{\"stage\":\"ocr_processing\",\"message\":\"该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试\",\"retriable\":true}]}",
+          "processing_error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试"
+        },
+        {
+          "id": "file_znzGbhIG4F",
+          "page_count": null,
+          "processing_status": null,
+          "processing_progress": null,
+          "processing_error": null
+        },
+        {
+          "id": "att_1Ma3sL7WK2",
+          "page_count": 8,
+          "processing_status": "completed_with_issues",
+          "processing_progress": "{\"stage\":\"completed_with_issues\",\"totalPages\":8,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\",\"failedStages\":[{\"stage\":\"ocr_processing\",\"message\":\"该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试\",\"retriable\":true}]}",
+          "processing_error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试"
+        },
+        {
+          "id": "file_oqhRoeehMD",
+          "page_count": 20,
+          "processing_status": "completed_with_issues",
+          "processing_progress": "{\"stage\":\"completed_with_issues\",\"totalPages\":20,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\",\"failedStages\":[{\"stage\":\"ocr_processing\",\"message\":\"该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试\",\"retriable\":true}]}",
+          "processing_error": "ocr_processing: 该 PDF 缺少文本层且自动 OCR 未启用，内容无法被检索。请在 设置 → OCR 中启用扫描版 PDF OCR（并配置多模态/OCR 模型）后重试"
+        },
+        {
+          "id": "file_rp-f7y7ptj",
+          "page_count": 4,
+          "processing_status": "completed",
+          "processing_progress": "{\"stage\":\"completed\",\"totalPages\":4,\"percent\":100.0,\"readyModes\":[\"image\",\"ocr\"],\"mediaType\":\"pdf\"}",
+          "processing_error": null
+        },
+        {
+          "id": "file_bhGMIMeJc0",
+          "page_count": 4,
+          "processing_status": "completed",
+          "processing_progress": "{\"stage\":\"completed\",\"totalPages\":4,\"percent\":100.0,\"readyModes\":[\"image\"],\"mediaType\":\"pdf\"}",
+          "processing_error": null
+        }
+      ],
+      "intermediateTasks": []
+    },
+    "finalRuntimeReadback": {
+      "checkedAt": "2026-09-27T12:03:58.499Z",
+      "bridge": {
+        "connected": true,
+        "clients": 1
+      },
+      "version": "0.9.68 (Build 15153, 0506ad07)",
+      "dataDir": "/Users/heli/Library/Application Support/com.deepstudent.perfaudit20260927/slots/slotA",
+      "settings": {
+        "models": "[{\"configId\":\"perf-local-ocr-20260927\",\"model\":\"deepseek-ai/DeepSeek-OCR\",\"engineType\":\"deepseek_ocr\",\"name\":\"Local OCR audit fixture\",\"isFree\":true,\"enabled\":true,\"priority\":0},{\"configId\":\"__system_ocr__\",\"model\":\"system\",\"engineType\":\"system_ocr\",\"name\":\"系统 OCR (macOS Vision)\",\"isFree\":true,\"enabled\":false,\"priority\":1}]",
+        "ocr": "false",
+        "scanned": "true",
+        "index": "false"
+      },
+      "unfinishedJobs": 0,
+      "activeProbes": 0,
+      "harnessGlobalsReleased": true
+    },
+    "interpretation": [
+      "Initial HTTP 400 fixture cannot validate fallback because the existing code returns before native fallback on 4xx. The subsequent enabled case was additionally blocked by the breaker opened by the disabled case.",
+      "Corrected HTTP 503 fixture used a successful one-page recovery probe after cooldown, then four enabled and four disabled pages. Both four-page assertions passed; total mock requests 9.",
+      "The combined corrected run later failed on the DOCX fixture; its pass=false is preserved. Office and paper were verified independently instead of rerunning already-passed cases.",
+      "Original DOCX lacked word/_rels/document.xml.rels required by installed docx-rs 0.4.19; the original failure and file were retained. Adding that one ZIP part left all 12,000 paragraphs unchanged. The corrected native upload passed; readonly database verification found all paragraph numbers 0..11999 in order.",
+      "The Office business-read maximum was 184 ms (8 samples); no backend-only attribution or improvement claim is supported.",
+      "The PDF inputs reached completed_with_issues because OCR was deliberately off for scanned documents; all preview pages were saved. This does not test the P1 mixed-upload lock cycle."
+    ]
+  },
+  "cleanup": {
+    "tauriProcessGroup": 69493,
+    "previousTauriProcessGroup": 23693,
+    "bridgeProcessGroup": 68635,
+    "identifier": "com.deepstudent.perfaudit20260927",
+    "sourceCommit": "0506ad07c",
+    "mockStopped": true,
+    "mockPid": 73319,
+    "previousMockPid": 70304,
+    "mockScript": "/tmp/deep-student-p2-20260927/native/failing-ocr-503.mjs",
+    "processReadback": {
+      "tauriProcessGroup": {
+        "pid": 69493,
+        "present": true,
+        "process": "69493 69493 npm run tauri dev --config /tmp/deep-student-perf-verify-20260927/tauri-audit.json --no-watch"
+      },
+      "bridgeProcessGroup": {
+        "pid": 68635,
+        "present": true,
+        "process": "68635 68635 node scripts/dev/ui-bridge-server.mjs"
+      },
+      "mockPid": {
+        "pid": 73319,
+        "present": false,
+        "process": ""
+      },
+      "verifiedAt": "2026-09-27T12:11:18.751481+00:00"
+    }
+  },
+  "openP1": [
+    {
+      "id": "R3-01",
+      "issue": "附件长写事务与 Blob 锁交错，造成上传失败及预览缺页"
+    },
+    {
+      "id": "R3-02",
+      "issue": "已取消任务缺少持久取消状态，重启重新执行 OCR"
+    },
+    {
+      "id": "R3-03",
+      "issue": "无 Lance 的 mobile-slim 查询仍规划无收益向量请求"
+    }
+  ],
+  "notVerified": [
+    "Windows/Android device performance, startup, memory and system background lifecycle",
+    "Android SAF permission, wakeup and onResume flow; APK linking/installation",
+    "Full MessageList search navigation and release FPS; whole-project TypeScript",
+    "200 MiB upper-bound upload, cancellation response and mixed upload/download/backup maintenance contention",
+    "P1 fixes; production deployment; full-platform optimality"
+  ]
+}

@@ -61,6 +61,19 @@ vi.mock('@/debug-panel/debugMasterSwitch', () => ({
   debugLog: console,
 }));
 
+// Typography does not need live session prefetch or adapter subscriptions.
+vi.mock('@/features/chat/core/session/sessionPrefetch', () => ({
+  beginSessionHoverPrefetch: vi.fn(),
+  cancelSessionHoverPrefetch: vi.fn(),
+}));
+vi.mock('@/features/chat/hooks/useSessionSidebarIndicators', () => {
+  const state = { streamingSessionIds: [], blockingSessionIds: [], unreadSessionIds: [] };
+  return {
+    useSessionSidebarIndicators: (selector: (value: typeof state) => unknown) => selector(state),
+    markSessionSidebarIndicatorSeen: vi.fn(),
+  };
+});
+
 vi.mock('../components/groups/GroupEditorDialog', () => ({
   PRESET_ICONS: [],
 }));

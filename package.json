@@ -1,6 +1,6 @@
 {
   "name": "deep-student",
-  "version": "0.9.62",
+  "version": "0.9.72",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
@@ -76,7 +76,8 @@
     "licenses:check": "node scripts/check-license-compliance.mjs",
     "check:licenses": "npm run licenses:check",
     "test:lifecycle-gate": "node scripts/lifecycle-score-gate.mjs",
-    "registry:sync": "node scripts/sync-model-registry.mjs"
+    "registry:sync": "node scripts/sync-model-registry.mjs",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -88,13 +89,13 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "3.2.2",
     "@lobehub/icons": "5.6.0",
-    "@milkdown/crepe": "7.21.3",
-    "@milkdown/kit": "7.21.3",
-    "@milkdown/plugin-automd": "7.21.3",
-    "@milkdown/prose": "7.21.3",
-    "@milkdown/transformer": "7.21.3",
-    "@milkdown/utils": "7.21.3",
-    "@nvq/flowtoken": "^2.0.6",
+    "@milkdown/crepe": "7.22.1",
+    "@milkdown/kit": "7.22.1",
+    "@milkdown/plugin-automd": "7.22.1",
+    "@milkdown/prose": "7.22.1",
+    "@milkdown/transformer": "7.22.1",
+    "@milkdown/utils": "7.22.1",
+    "@nvq/flowtoken": "2.0.6",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -185,8 +186,8 @@
     "prosemirror-history": "^1.4.1",
     "prosemirror-dropcursor": "^1.8.1",
     "prosemirror-gapcursor": "^1.3.2",
-    "@milkdown/core": "7.21.3",
-    "@milkdown/ctx": "7.21.3"
+    "@milkdown/core": "7.22.1",
+    "@milkdown/ctx": "7.22.1"
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
@@ -218,6 +219,7 @@
     "globals": "^15.14.0",
     "globby": "^16.1.1",
     "jsdom": "^24.0.0",
+    "patch-package": "8.0.1",
     "postcss": "^8.5.14",
     "rollup-plugin-visualizer": "^7.0.1",
     "sharp": "^0.34.2",

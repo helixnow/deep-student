@@ -14,7 +14,10 @@ import { useTranslation } from 'react-i18next';
 import { CaretLeft, SidebarSimple, WarningCircle, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
+import { invoke } from '@tauri-apps/api/core';
+import { noteNeedsColumnsWriter } from '@/features/notes/noteEditorHost';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
+import { NoteLearningPropertiesSection } from '@/features/notes/components/NoteLearningPropertiesSection';
 import { reportError, toVfsError, VfsError, VfsErrorCode } from '@/shared/result';
 import i18n from '@/i18n';
 import { dstu, updatedAtToVersionToken } from '@/dstu';
@@ -32,6 +35,7 @@ import { coarseHitClassFor28 } from '@/components/ui/coarseHit';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import type { CrepeEditorApi } from '@/components/crepe';
+import { assertFullDocumentBaseline, assertNoteContentSize, type FullDocumentViewHost } from '@/features/notes/fullDocument';
 import {
   DEFAULT_INITIAL_LINE_WINDOW,
   composeWindowedSave,
@@ -252,6 +256,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const savingContentNoteIdRef = useRef<string | null>(null);
 
   const noteId = node.id;
+  const renderedNoteIdRef = useRef(noteId);
+  renderedNoteIdRef.current = noteId;
 
   // ========== 加载笔记内容（提取为可复用函数，支持重试） ==========
   const loadNoteContent = useCallback(async () => {
@@ -343,11 +349,12 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   const onTitleChangeRef = useRef(onTitleChange);
   onTitleChangeRef.current = onTitleChange;
 
-  const refreshFromDisk = useCallback(async (forceApply: boolean) => {
+  const refreshFromDisk = useCallback(async (forceApply: boolean, requireSuccess = false) => {
     const currentNoteId = node.id;
     const { nodeResult, contentResult } = await readOccSafeNoteSnapshot(node.path);
     // 防竞态：期间切换了笔记则放弃
     if (loadingNoteIdRef.current !== null && loadingNoteIdRef.current !== currentNoteId) {
+      if (requireSuccess) throw new Error(i18n.t('backend_errors:note_content.refresh_after_note_switch', { defaultValue: '笔记已切换，无法刷新原编辑器。' }));
       return;
     }
     const diskUpdatedAt = nodeResult.ok && nodeResult.value
@@ -366,6 +373,9 @@ const NoteContentView: React.FC<ContentViewProps> = ({
         );
       }
       return;
+    }
+    if (requireSuccess && (!nodeResult.ok || !nodeResult.value || !contentResult.ok)) {
+      throw new Error(i18n.t('backend_errors:note_content.refresh_after_commit_failed', { defaultValue: '笔记更新已提交，但刷新失败；请重试刷新后继续编辑。' }));
     }
     if (!contentResult.ok) {
       if (diskUpdatedAt !== null) {
@@ -586,6 +596,20 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
     savingContentNoteIdRef.current = savedNoteId;
     try {
+      if (noteNeedsColumnsWriter(savedNoteId)) {
+        const saved = await invoke<{ updated_at: string }>('notes_update', { note: {
+          id: savedNoteId, content_md: saveContent,
+          expected_updated_at: updatedAtToVersionToken(lastKnownUpdatedAtRef.current), capabilities: ['ds-columns-v1'],
+        } }).catch(error => {
+          const failure = toVfsError(error);
+          throw Object.assign(new Error(failure.toUserMessage()), {
+            isNoteConflict: failure.code === VfsErrorCode.CONFLICT,
+            isNonRetryable: failure.code === VfsErrorCode.CONFLICT,
+          });
+        });
+        applySuccess(new Date(saved.updated_at).getTime());
+        return;
+      }
       const result = await dstu.update(node.path, saveContent, node.type, {
         expectedUpdatedAtMs: lastKnownUpdatedAtRef.current ?? undefined,
       });
@@ -804,7 +828,13 @@ const NoteContentView: React.FC<ContentViewProps> = ({
 
   // Share full-document operations with toolbar, AI edits and the noteDriver registry.
   const extendEditorApi = useCallback((api: CrepeEditorApi): CrepeEditorApi => {
+      const assertCurrentNote = () => {
+        if (renderedNoteIdRef.current !== node.id || loadingNoteIdRef.current !== node.id) {
+          throw new Error(i18n.t('backend_errors:note_content.stale_editor_write_rejected', { defaultValue: '笔记实例已切换，拒绝写入过期编辑器' }));
+        }
+      };
       const getLiveFullMarkdown = () => {
+        assertCurrentNote();
         const visible = api.getMarkdown();
         const currentWindow = markdownWindowRef.current;
         return currentWindow
@@ -816,22 +846,43 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             )
           : visible;
       };
-      const acrApi: CrepeEditorApi = {
+      const acrApi: FullDocumentViewHost = {
         ...api,
+        getStorageUpdatedAt: () => updatedAtToVersionToken(lastKnownUpdatedAtRef.current) ?? undefined,
+        refreshDocumentFromDisk: () => refreshFromDiskRef.current(true, true),
+        acceptFullDocumentView: (markdown) => {
+          assertCurrentNote();
+          fullContentRef.current = markdown;
+          const lines = getMarkdownLineCount(markdown);
+          setMarkdownWindow({ loadedMarkdown: markdown, loadedLineCount: lines, totalLineCount: lines, hasMore: false });
+          setContent(markdown);
+        },
         getFullMarkdown: getLiveFullMarkdown,
         isDocumentWindowed: () => markdownWindowRef.current?.hasMore === true,
         replaceFullMarkdown: async (markdown, options) => {
-          if (loadingNoteIdRef.current !== node.id) {
-            throw new Error(i18n.t('backend_errors:note_content.stale_editor_write_rejected', { defaultValue: '笔记实例已切换，拒绝写入过期编辑器' }));
-          }
+          assertCurrentNote();
           if (api.isReadonly()) {
             throw new Error(i18n.t('backend_errors:note_content.editor_readonly', { defaultValue: '笔记编辑器为只读状态' }));
           }
 
-          const previousFull = getLiveFullMarkdown();
-          const previousBackingFull = fullContentRef.current;
+          // Snapshot the LIVE draft before changing either the editor or its projection.
+          // loadedMarkdown is a saved/projected value and may omit the last unsaved edits.
+          const owner = editorApiRef.current;
+          const previousDocument = owner?.getFullDocument?.();
+          if (options.baseline && previousDocument) {
+            assertFullDocumentBaseline(previousDocument, options.baseline);
+          }
+          const previousFull = previousDocument?.markdown ?? getLiveFullMarkdown();
+          const previousVisible = api.getMarkdown();
           if (previousFull !== options.expectedMarkdown) {
             throw new Error(i18n.t('backend_errors:note_content.full_write_occ_failed', { defaultValue: '笔记正文已变化，全文写入 OCC 校验失败' }));
+          }
+          assertNoteContentSize(markdown);
+          // A legal serializer rewrite is expected; dropped AST content is rejected by preflight.
+          markdown = api.normalizeMarkdown?.(markdown) ?? markdown;
+          assertNoteContentSize(markdown);
+          if (!api.flushPendingSave) {
+            throw new Error(i18n.t('backend_errors:note_content.flush_capability_missing', { defaultValue: '编辑器未提供持久化确认能力' }));
           }
 
           const previousWindow = markdownWindowRef.current;
@@ -851,18 +902,31 @@ const NoteContentView: React.FC<ContentViewProps> = ({
           setContentNoteId(node.id);
           setMarkdownWindow(fullWindow);
 
-          if (!api.setMarkdown(markdown) || api.getMarkdown() !== markdown) {
-            fullContentRef.current = previousBackingFull;
-            setContent(previousBackingFull);
-            setMarkdownWindow(previousWindow);
-            if (previousWindow) api.setMarkdown(previousWindow.loadedMarkdown);
-            throw new Error(i18n.t('backend_errors:note_content.full_replace_not_confirmed', { defaultValue: '编辑器未确认全文替换' }));
-          }
-          if (!api.flushPendingSave) {
-            throw new Error(i18n.t('backend_errors:note_content.flush_capability_missing', { defaultValue: '编辑器未提供持久化确认能力' }));
+          try {
+            if (!api.setMarkdown(markdown) || api.getMarkdown() !== markdown) {
+              throw new Error(i18n.t('backend_errors:note_content.full_replace_not_confirmed', { defaultValue: '编辑器未确认全文替换' }));
+            }
+          } catch (error) {
+            // This rollback is synchronous: only the attempted parser transaction has run.
+            // Storage failures below retain the candidate via the shared host recovery flow.
+            assertCurrentNote();
+            if (editorApiRef.current === owner) {
+              fullContentRef.current = previousFull;
+              setContent(previousFull);
+              const totalLineCount = getMarkdownLineCount(previousFull);
+              setMarkdownWindow({
+                loadedMarkdown: previousVisible,
+                loadedLineCount: getMarkdownLineCount(previousVisible),
+                totalLineCount,
+                hasMore: previousWindow?.hasMore ?? false,
+              });
+              api.setMarkdown(previousVisible);
+            }
+            throw error;
           }
 
           await api.flushPendingSave();
+          assertCurrentNote();
           if (persistedContentRef.current !== markdown) {
             throw new Error(i18n.t('backend_errors:note_content.full_replace_persist_failed', { defaultValue: '笔记全文替换未通过持久化验证' }));
           }
@@ -991,6 +1055,11 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   // 防止旧笔记内容被初始化进新笔记的草稿并被自动保存。
   const isContentReady = content !== null && contentNoteId === node.id;
   const visibleContent = markdownWindow?.loadedMarkdown ?? (content ?? '');
+  let outlineContent = isContentReady ? (content ?? '') : '';
+  if (isContentReady) {
+    try { outlineContent = editorApiRef.current?.getFullMarkdown?.() ?? outlineContent; }
+    catch { /* The previous editor can still be disposing during a note switch. */ }
+  }
 
   // 首次加载直接渲染单内容区骨架，加载完成时内容原位替换，避免布局跳动。
 
@@ -1096,7 +1165,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
             </DsButton>
           </div>
           <div className="min-h-0 flex-1 overflow-hidden">
-            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={isContentReady ? visibleContent : ''} onTagsChange={readOnly ? undefined : handleTagsChange} />
+            <NotesContextPanel noteId={noteId} title={title} createdAt={node.createdAt} updatedAt={lastKnownUpdatedAt ?? node.updatedAt} tags={tags} content={outlineContent} onTagsChange={readOnly ? undefined : handleTagsChange}
+              beforeOutline={<NoteLearningPropertiesSection key={`${noteId}:${node.path}`} node={node} readOnly={readOnly} />} />
           </div>
         </aside>
       )}
@@ -1129,9 +1199,10 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               createdAt={node.createdAt}
               updatedAt={lastKnownUpdatedAt ?? node.updatedAt}
               tags={tags}
-              content={isContentReady ? (visibleContent) : ''}
+              content={outlineContent}
               onTagsChange={readOnly ? undefined : handleTagsChange}
               onHeadingNavigate={() => setMobilePanelOpen(false)}
+              beforeOutline={<NoteLearningPropertiesSection key={`${noteId}:${node.path}`} node={node} readOnly={readOnly} />}
             />
           </div>
         </div>

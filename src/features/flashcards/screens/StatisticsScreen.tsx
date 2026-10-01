@@ -30,6 +30,7 @@ import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
+import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 const DAILY_WINDOW_DAYS = 14;
 
@@ -256,9 +257,18 @@ export const StatisticsScreen: React.FC = () => {
     [i18n.language],
   );
 
+  const mobileChrome = useFlashcardsMobileChrome({
+    title: t('statistics.title'),
+    rightActions: (
+      <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('statistics.refresh')} disabled={loading} onClick={handleRefresh}>
+        <ArrowClockwise size={20} />
+      </DsButton>
+    ),
+  }, [t, loading, handleRefresh]);
+
   return (
     <div className="wb-fc-screen">
-      <header className="wb-fc-header">
+      {!mobileChrome && <header className="wb-fc-header">
         <div className="min-w-0">
           <h2 className="wb-fc-title">{t('statistics.title')}</h2>
           <p className="wb-fc-subtitle">
@@ -278,7 +288,7 @@ export const StatisticsScreen: React.FC = () => {
           <ArrowClockwise size={15} />
           {t('statistics.refresh')}
         </DsButton>
-      </header>
+      </header>}
 
       {error ? (
         // 统计加载失败时调度设置必须保持可用：它读写独立的 scheduler_config

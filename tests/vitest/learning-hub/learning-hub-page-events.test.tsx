@@ -23,7 +23,10 @@ vi.mock('react-i18next', async () => {
   return {
     ...actual,
     useTranslation: () => ({
-      t: (key: string, fallback?: string) => fallback ?? key,
+      // Mirror i18next's two overloads: a literal fallback or an options object.
+      t: (key: string, fallback?: string | { defaultValue?: string }) => (
+        typeof fallback === 'string' ? fallback : fallback?.defaultValue ?? key
+      ),
     }),
   };
 });
@@ -72,13 +75,11 @@ vi.mock('@/features/learning-hub/apps/TabPanelContainer', () => ({
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ COMMAND_EVENTS: {}, useCommandEvents: vi.fn() }));
 vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn() }));
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
-vi.mock('@/features/learning-hub/hooks', async () => {
-  const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
-  return {
-    ...actual,
-    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
-  };
-});
+// Keep the real event hook; importing the hooks barrel inside a mock would also
+// initialize the chat adapter before its injection hook could be replaced.
+vi.mock('@/features/learning-hub/hooks/useVfsContextInject', () => ({
+  useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
+}));
 
 import LearningHubPage from '@/features/learning-hub/LearningHubPage';
 

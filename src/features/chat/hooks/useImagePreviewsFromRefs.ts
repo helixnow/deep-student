@@ -54,6 +54,8 @@ export interface UseImagePreviewsFromRefsResult {
   isLoading: boolean;
   /** 加载错误信息 */
   error: string | null;
+  /** References intentionally deferred until the user expands the attachment row. */
+  unloadedImageCount: number;
 }
 
 // ============================================================================
@@ -85,24 +87,31 @@ function buildPreviewDataUrl(data: string, mimeType: string): string | null {
  * @returns 图片预览列表和加载状态
  */
 export function useImagePreviewsFromRefs(
-  contextSnapshot?: ContextSnapshot
+  contextSnapshot?: ContextSnapshot,
+  maxCount = Infinity,
 ): UseImagePreviewsFromRefsResult {
   const [imagePreviews, setImagePreviews] = useState<ImagePreview[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadedRefs, setLoadedRefs] = useState<ContextRef[] | null>(null);
 
   // 提取图片类型的引用
   const imageRefs = useMemo(() => {
     if (!contextSnapshot?.userRefs) return [];
     return contextSnapshot.userRefs.filter(isImageRef);
-  }, [contextSnapshot]);
+  }, [contextSnapshot?.userRefs]);
+  const requestedRefs = useMemo(() => imageRefs.slice(0, maxCount), [imageRefs, maxCount]);
+  // Reuse previews when expanding this same snapshot. A different ref list gets
+  // a new cache, so edited/deleted attachments cannot reuse stale image data.
+  const previewsByRef = useMemo(() => new Map<ContextRef, ImagePreview[]>(), [imageRefs]);
 
   // 异步加载图片内容
   useEffect(() => {
-    if (imageRefs.length === 0) {
+    if (requestedRefs.length === 0) {
       setImagePreviews([]);
       setIsLoading(false);
       setError(null);
+      setLoadedRefs(requestedRefs);
       return;
     }
 
@@ -116,13 +125,14 @@ export function useImagePreviewsFromRefs(
       // 在异步流程中收集错误，统一在结束时（仍挂载才）写入 state，
       // 避免旧一轮加载覆盖新一轮的状态（竞态）
       let partialError: string | null = null;
+      const pendingRefs = requestedRefs.filter((ref) => !previewsByRef.has(ref));
 
       // 🔧 调试：开始加载图片
       window.dispatchEvent(new CustomEvent('debug:chatv2-image-preview', {
         detail: {
           stage: 'load_start',
-          imageRefsCount: imageRefs.length,
-          imageRefs: imageRefs.map(r => ({ resourceId: r.resourceId, typeId: r.typeId })),
+          imageRefsCount: pendingRefs.length,
+          imageRefs: pendingRefs.map(r => ({ resourceId: r.resourceId, typeId: r.typeId })),
         }
       }));
 
@@ -132,7 +142,7 @@ export function useImagePreviewsFromRefs(
       const allVfsRefs: Array<{ contextRef: ContextRef; vfsRef: VfsResourceRef }> = [];
 
       // Step 1: 从每个 ContextRef 获取 VfsContextRefData，提取 VfsResourceRef
-      for (const ref of imageRefs) {
+      for (const ref of pendingRefs) {
         if (abortController.signal.aborted) break;
 
         try {
@@ -226,12 +236,16 @@ export function useImagePreviewsFromRefs(
       }
 
       if (isMounted) {
+        for (const ref of pendingRefs) {
+          previewsByRef.set(ref, previews.filter((preview) => preview.ref === ref));
+        }
+        const requestedPreviews = requestedRefs.flatMap((ref) => previewsByRef.get(ref) ?? []);
         // 🔧 调试：加载完成
         window.dispatchEvent(new CustomEvent('debug:chatv2-image-preview', {
           detail: {
             stage: 'load_complete',
-            previewsCount: previews.length,
-            previews: previews.map(p => ({
+            previewsCount: requestedPreviews.length,
+            previews: requestedPreviews.map(p => ({
               id: p.id,
               name: p.name,
               mimeType: p.mimeType,
@@ -241,9 +255,10 @@ export function useImagePreviewsFromRefs(
           }
         }));
         
-        setImagePreviews(previews);
+        setImagePreviews(requestedPreviews);
         setError(partialError);
         setIsLoading(false);
+        setLoadedRefs(requestedRefs);
       }
     };
 
@@ -253,9 +268,14 @@ export function useImagePreviewsFromRefs(
       isMounted = false;
       abortController.abort();
     };
-  }, [imageRefs]);
+  }, [requestedRefs, previewsByRef]);
 
-  return { imagePreviews, isLoading, error };
+  return {
+    imagePreviews,
+    isLoading: requestedRefs.length > 0 && (isLoading || loadedRefs !== requestedRefs),
+    error,
+    unloadedImageCount: imageRefs.length - requestedRefs.length,
+  };
 }
 
 export default useImagePreviewsFromRefs;

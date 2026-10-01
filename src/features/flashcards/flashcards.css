@@ -238,6 +238,13 @@
   transition: width 320ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
+.wb-fc-session-toolbar {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
 /* --- 计数徽标 / 连击 --- */
 .wb-fc-chip {
   display: inline-flex;
@@ -772,6 +779,98 @@
   .wb-fc-keycap,
   .wb-fc-shortcut-hint {
     display: none;
+  }
+}
+
+/* ===== 移动端页面布局（与 mobile shell 的 768px 断点对齐） =====
+ * 页面标题与主要动作由统一顶栏承载，同级页面从共享抽屉切换。 */
+@media (max-width: 767.98px) {
+  .wb-fc-body {
+    min-height: 0;
+  }
+
+  .wb-fc-screen {
+    gap: 8px;
+    padding: 8px calc(16px + var(--mobile-safe-area-right, 0px))
+      calc(16px + var(--mobile-safe-area-bottom, 0px))
+      calc(16px + var(--mobile-safe-area-left, 0px));
+  }
+
+  .wb-fc-row {
+    padding: 12px;
+  }
+
+  .wb-fc-card-stage {
+    min-height: 0;
+  }
+
+  .wb-fc-card {
+    min-height: 0;
+    border-radius: 8px;
+  }
+
+  .wb-fc-card,
+  .wb-fc-card:hover:not([aria-disabled='true']),
+  .wb-fc-edit-panel {
+    box-shadow: none;
+    border-color: hsl(var(--border) / 0.6);
+  }
+
+  .wb-fc-card-content {
+    padding: 16px;
+  }
+
+  .wb-fc-card [data-render-mode='plain'] > div > .text-sm {
+    font-size: var(--font-size-lg, 1.125rem);
+    font-weight: 400;
+    line-height: 1.65;
+  }
+
+  .wb-fc-session {
+    overflow-y: auto;
+    gap: 8px;
+    padding-top: 4px;
+  }
+
+  .wb-fc-session-notice {
+    align-items: center;
+    flex-shrink: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: hsl(var(--muted-foreground));
+    font-size: var(--font-size-caption, 11px);
+  }
+
+  .wb-fc-session-notice > span > svg {
+    display: none;
+  }
+
+  .wb-fc-session > .wb-fc-card-stage {
+    min-height: 8rem;
+  }
+
+  .wb-fc-keycap,
+  .wb-fc-shortcut-hint {
+    display: none;
+  }
+
+  .wb-fc-session-progress {
+    height: 4px;
+  }
+
+  .wb-fc-ratebar[data-mode='rate'] {
+    gap: 6px;
+  }
+
+  .wb-fc-rate-btn {
+    min-height: 56px;
+    padding-inline: 2px;
+  }
+
+  .wb-fc-summary-panel {
+    width: 100%;
+    max-width: none;
   }
 }
 
