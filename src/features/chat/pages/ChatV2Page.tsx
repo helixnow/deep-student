@@ -72,6 +72,7 @@ import { compareSessionsForSidebar } from '../utils/sessionPin';
 import { StreamPreferencesProvider } from '../components/renderers/StreamPreferencesContext';
 import type { StreamingSmoothingPreset } from '../components/renderers/streamingSmoothing';
 import { NotesChromeSlotContext } from '@/features/notes/notesChromeSlot';
+import { KbScopePickerHost } from '../kbScope/KbScopePickerHost';
 import {
   clearHiddenDraftSessionId,
   clearHiddenDraftSessionMetadata,
@@ -1256,6 +1257,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
         onPointerDownCapture={handleSandboxOwnerActivation}
         onFocusCapture={handleSandboxOwnerActivation}
       >
+      <KbScopePickerHost />
       {/* 页面级错误隔离：SessionBrowser / GroupEditor / 次级面板等线程外区域的
           运行时错误在此兜底，避免打穿到 App ViewLayer 白屏整页。
           resetKey：切换会话时自动清除错误态并 remount 子树 */}

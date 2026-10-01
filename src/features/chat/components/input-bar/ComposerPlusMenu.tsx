@@ -9,6 +9,7 @@
  * 技能与连接器跳转到内联面板。行高 ≥44px 满足触控目标。
  */
 
+import { requestKbScopePicker, useKbScope } from '../../kbScope/kbScope';
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -27,6 +28,7 @@ import {
   SlidersHorizontal,
   Sparkle,
   Warning,
+  FolderSimple,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -318,6 +320,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                       >
                         {t('chatV2:inputBar.plusMenu.kbProactive')}
                       </AppMenuSwitchItem>
+                      {sessionId && <KbScopeMenuItem sessionId={sessionId} className={mobileItemClass} />}
                     </AppMenuGroup>
                   </>
                 )}
@@ -388,6 +391,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   >
                     {t('chatV2:inputBar.plusMenu.kbProactive')}
                   </AppMenuSwitchItem>
+                  {sessionId && <KbScopeMenuItem sessionId={sessionId} className={mobileItemClass} />}
                 </>
               )}
 
@@ -530,6 +534,7 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
                   >
                     {t('chatV2:inputBar.plusMenu.kbProactive')}
                   </AppMenuSwitchItem>
+                  {sessionId && <KbScopeMenuItem sessionId={sessionId} />}
                 </AppMenuSubContent>
               </AppMenuSub>
             )}
@@ -686,3 +691,22 @@ export const ComposerPlusMenu: React.FC<ComposerPlusMenuProps> = React.memo(({
 ComposerPlusMenu.displayName = 'ComposerPlusMenu';
 
 export default ComposerPlusMenu;
+
+
+/** 知识库「检索范围」：显示当前范围，点击打开文件夹选择器（由 KbScopePickerHost 承载） */
+const KbScopeMenuItem: React.FC<{ sessionId: string; className?: string }> = ({ sessionId, className }) => {
+  const { t } = useTranslation(['chatV2']);
+  const scope = useKbScope(sessionId);
+  return (
+    <AppMenuItem
+      className={className}
+      icon={<FolderSimple className="w-4 h-4" />}
+      onClick={() => requestKbScopePicker(sessionId)}
+      data-testid="plus-menu-kb-scope"
+    >
+      {scope.label
+        ? t('chatV2:inputBar.plusMenu.kbScopeOnly', { defaultValue: '只检索：{{name}}', name: scope.label })
+        : t('chatV2:inputBar.plusMenu.kbScopeAll', { defaultValue: '检索范围：全部资料' })}
+    </AppMenuItem>
+  );
+};
