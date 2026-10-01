@@ -83,16 +83,18 @@ const REUSE_CASES: readonly ReuseCase[] = [
   },
   {
     source: 'src/features/notes/components/NotesEditorHeader.tsx',
-    keys: [
-      'translation:stats.characters',
-      'translation:stats.words',
-      'notes:notifications.tagStateSaveFailed',
-    ],
+    keys: ['notes:notifications.tagStateSaveFailed'],
     removedKeys: [
       'notes:editor.stats.chars_label',
       'notes:editor.stats.words_label',
       'notes:header.tags_save_failed',
     ],
+  },
+  {
+    // 文档统计已从标题区移到顶栏保存状态；词数不再展示
+    source: 'src/features/notes/components/NotesSaveIndicator.tsx',
+    keys: ['translation:stats.characters'],
+    removedKeys: ['notes:editor.stats.chars_label', 'notes:editor.stats.words_label'],
   },
   {
     source: 'src/features/settings/components/McpToolsSection.tsx',

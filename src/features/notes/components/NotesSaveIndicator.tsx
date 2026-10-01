@@ -24,7 +24,7 @@ export const NotesSaveIndicator: React.FC<NotesSaveIndicatorProps> = ({
     readOnly = false,
     onRetrySave,
 }) => {
-    const { t } = useTranslation(['notes', 'common']);
+    const { t } = useTranslation(['notes', 'common', 'translation']);
     const label = (() => {
         switch (saveStatus) {
             case 'saving': return t('notes:editor.save_status.saving');
@@ -36,7 +36,7 @@ export const NotesSaveIndicator: React.FC<NotesSaveIndicatorProps> = ({
     })();
     const details = [
         lastSaved ? t('notes:editor.save_status.saved_at', { time: lastSaved.toLocaleTimeString() }) : null,
-        typeof charCount === 'number' && charCount > 0 ? t('notes:common.char_count', { count: charCount }) : null,
+        typeof charCount === 'number' && charCount > 0 ? `${t('translation:stats.characters', 'Characters')} ${charCount}` : null,
         typeof charCount === 'number' && charCount > 0
             ? t('notes:editor.stats.reading_value', { defaultValue: '~{{minutes}} min', minutes: estimateReadingMinutes(charCount) })
             : null,
