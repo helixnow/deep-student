@@ -2381,6 +2381,13 @@ pub async fn chat_v2_set_rag_scope(
          ON CONFLICT(session_id) DO UPDATE SET rag_library_ids_json = excluded.rag_library_ids_json",
         rusqlite::params![session_id, value, chrono::Utc::now().to_rfc3339()],
     )
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| {
+        // 会话尚未落库（新建后未发送任何消息）：给出可执行的提示而不是原始外键错误
+        if e.to_string().contains("FOREIGN KEY") {
+            "会话尚未保存，请先发送一条消息后再设置检索范围".to_string()
+        } else {
+            e.to_string()
+        }
+    })?;
     Ok(())
 }
