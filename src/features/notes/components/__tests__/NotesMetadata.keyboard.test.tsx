@@ -82,7 +82,7 @@ describe.each([{ isComposing: true }, { keyCode: 229 }])('note metadata IME (%j)
 
   it('does not let the document Popover handler close appearance during IME Escape', async () => {
     render(<NotesEditorHeader noteId="ime-appearance" initialTitle="Title" lastSaved={null} />);
-    const trigger = screen.getByRole('button', { name: 'notes:appearance.label' });
+    const trigger = screen.getByRole('button', { name: 'notes:appearance.icon' });
     fireEvent.click(trigger);
     const panel = screen.getByRole('dialog');
     fireEvent.keyDown(panel, { key: 'Escape', ...composition });

@@ -25,12 +25,22 @@ export function isValidNoteIcon(value: unknown): value is string {
   return typeof value === 'string' && value.length <= 16 && /\p{Extended_Pictographic}/u.test(value) && !/\s/.test(value);
 }
 
+/** Notion 页面菜单的三种字体风格：默认无衬线 / 衬线 / 等宽 */
+export const NOTE_FONT_STYLES = ['default', 'serif', 'mono'] as const;
+export type NoteFontStyle = typeof NOTE_FONT_STYLES[number];
+
 export interface NoteAppearance {
+  /** 旧版三档互斥预设；保留仅为兼容读取，排版以 smallText/fullWidth 为准 */
   preset: NoteAppearancePreset;
   icon: string;
+  /** Notion「小字号」：正文 14px，版心不变 */
+  smallText: boolean;
+  /** Notion「全宽」：取消 708px 版心上限 */
+  fullWidth: boolean;
+  font: NoteFontStyle;
 }
 
-const DEFAULT_APPEARANCE: NoteAppearance = { preset: 'standard', icon: '' };
+const DEFAULT_APPEARANCE: NoteAppearance = { preset: 'standard', icon: '', smallText: false, fullWidth: false, font: 'default' };
 
 /** Display preferences, shared by every host of this note; not document metadata. */
 export function noteAppearanceKey(noteId: string): string {
@@ -41,9 +51,14 @@ export function parseNoteAppearance(value: string | null): NoteAppearance {
   if (!value) return DEFAULT_APPEARANCE;
   try {
     const parsed = JSON.parse(value);
+    const preset: NoteAppearancePreset = NOTE_APPEARANCE_PRESETS.includes(parsed?.preset) ? parsed.preset : 'standard';
     return {
-      preset: NOTE_APPEARANCE_PRESETS.includes(parsed?.preset) ? parsed.preset : 'standard',
+      preset,
       icon: isValidNoteIcon(parsed?.icon) ? parsed.icon : '',
+      // 旧预设迁移：compact → 小字号、wide → 全宽；显式布尔值优先
+      smallText: typeof parsed?.smallText === 'boolean' ? parsed.smallText : preset === 'compact',
+      fullWidth: typeof parsed?.fullWidth === 'boolean' ? parsed.fullWidth : preset === 'wide',
+      font: NOTE_FONT_STYLES.includes(parsed?.font) ? parsed.font : 'default',
     };
   } catch {
     return DEFAULT_APPEARANCE;

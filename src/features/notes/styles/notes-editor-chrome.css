@@ -299,3 +299,80 @@
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
+
+/* 页面 ▾ 菜单顶部排版区（Notion 同款）：字体三卡 + 小字号/全宽开关 */
+.notes-layout-options {
+  padding: 6px 6px 4px;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  margin-bottom: 2px;
+}
+.notes-page-actions .notes-layout-fonts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.notes-page-actions .notes-layout-font {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: auto;
+  min-height: 0;
+  padding: 6px 0 5px;
+  border-radius: 6px;
+  color: hsl(var(--muted-foreground));
+  transition: background-color 120ms ease, color 120ms ease;
+}
+.notes-page-actions .notes-layout-font:hover:not(:disabled) { background: var(--interactive-hover, hsl(var(--muted))); }
+.notes-page-actions .notes-layout-font[aria-checked='true'] { color: hsl(var(--primary)); }
+.notes-layout-font-sample { font-size: 22px; line-height: 1.15; color: hsl(var(--foreground)); }
+.notes-layout-font[aria-checked='true'] .notes-layout-font-sample { color: hsl(var(--primary)); }
+.notes-page-actions .notes-layout-font-label { font-size: 11px; }
+.notes-layout-font--default { font-family: var(--font-family); }
+.notes-layout-font--serif { font-family: 'Iowan Old Style', 'Charter', Georgia, 'Songti SC', ui-serif, serif; }
+.notes-layout-font--mono { font-family: 'SF Mono', ui-monospace, Menlo, Consolas, monospace; }
+.notes-page-actions .notes-layout-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+}
+.notes-page-actions .notes-layout-toggle:hover:not(:disabled) { background: var(--interactive-hover, hsl(var(--muted))); }
+.notes-layout-switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 26px;
+  height: 14px;
+  border-radius: 999px;
+  background: hsl(var(--muted-foreground) / 0.35);
+  transition: background-color 150ms ease;
+}
+.notes-layout-switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: hsl(var(--background));
+  box-shadow: 0 1px 2px hsl(var(--shadow-base, 0 0% 0%) / 0.2);
+  transition: transform 150ms var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+.notes-layout-toggle[aria-checked='true'] .notes-layout-switch { background: hsl(var(--primary)); }
+.notes-layout-toggle[aria-checked='true'] .notes-layout-switch::after { transform: translateX(12px); }
+.notes-layout-options button:disabled { opacity: 0.5; }
+@media (max-width: 767.98px), (pointer: coarse) {
+  .notes-page-actions .notes-layout-toggle { min-height: 44px; }
+  .notes-page-actions .notes-layout-font { min-height: 56px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notes-layout-switch, .notes-layout-switch::after { transition: none; }
+}

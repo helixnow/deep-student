@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef,
 import { createPortal } from 'react-dom';
 import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuContext';
 import { useNotesChromeSlot } from './notesChromeSlot';
+import { NotePageLayoutOptions } from './components/NotePageLayoutOptions';
 import { useTranslation } from 'react-i18next';
 import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
@@ -2325,6 +2326,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     </DsButton>
   );
   const pageActions = (<div className="notes-page-actions">
+    <NotePageLayoutOptions noteId={noteId ?? undefined} showFullWidth={!isTouchEditingSurface} />
     <div className="notes-action-group-label">{t('notes:chrome.note_tools')}</div>
     {!readOnly && <DsButton variant="ghost" size="sm" disabled={effectiveReadOnly || !editorApi}
       role={hasMobileResourceMenu ? 'menuitem' : undefined}
@@ -2406,7 +2408,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
           templateTriggerRef.current?.focus();
         }}
         onClick={(event) => {
-          if (!(event.target as HTMLElement).closest('button')) return;
+          if (!(event.target as HTMLElement).closest('button:not([data-keep-open])')) return;
           setPageActionsOpen(false);
           templateTriggerRef.current?.focus();
         }}>
@@ -2427,7 +2429,7 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     >
       {hasMobileResourceMenu && mobileResourceMenu?.element && shellInViewport && !suppressMobileToolbar && createPortal(
         <div onClick={(event) => {
-          if ((event.target as HTMLElement).closest('button')) mobileResourceMenu.close();
+          if ((event.target as HTMLElement).closest('button:not([data-keep-open])')) mobileResourceMenu.close();
         }}>{pageActions}{headerActions}</div>, mobileResourceMenu.element,
       )}
       {/* 内容加载中遮罩 - 覆盖在编辑器上方 */}

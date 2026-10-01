@@ -11,6 +11,7 @@
   resize: none;
   overflow: hidden;
   overflow-wrap: anywhere;
+  font-family: var(--notes-font-family, inherit);
   font-size: var(--notes-doc-title-size, 40px);
   font-weight: var(--notes-doc-title-weight, 700);
   line-height: var(--notes-doc-title-lh, 1.2);

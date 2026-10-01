@@ -160,11 +160,7 @@
     "official_review_label": "Review suggested changes group by group"
   },
   "appearance": {
-    "label": "Page appearance",
     "layout": "Layout",
-    "standard": "Standard",
-    "compact": "Compact",
-    "wide": "Wide",
     "icon": "Page icon",
     "icon_none": "No icon",
     "icon_document": "Document",
@@ -179,7 +175,13 @@
     "icon_group_subjects": "Subjects",
     "icon_group_study": "Study",
     "icon_group_symbols": "Symbols",
-    "icon_group_nature": "Nature & life"
+    "icon_group_nature": "Nature & life",
+    "change_icon": "Change icon",
+    "font_default": "Default",
+    "font_serif": "Serif",
+    "font_mono": "Mono",
+    "small_text": "Small text",
+    "full_width": "Full width"
   },
   "renameSync": {
     "scanFailed": "The title was updated, but referring notes could not be scanned. Some wiki links may be out of date. Please check them manually.",

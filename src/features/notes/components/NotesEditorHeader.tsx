@@ -6,7 +6,7 @@ import { getPathToNote, type NoteContentStats } from '../notesUtils';
 import { CaretRight, CircleNotch, Folder, FileText, WarningCircle, Tag as TagIcon, X, Plus, SlidersHorizontal } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
-import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_APPEARANCE_PRESETS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
+import { ALL_NOTE_ICONS, NOTE_APPEARANCE_ICONS, NOTE_ICON_GROUPS, useNoteAppearance } from '../noteAppearance';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerContentDirtyChecker, registerContentSaveHandler } from '@/features/workbench/apps/content/contentDirtyRegistry';
@@ -149,12 +149,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
         });
         return () => cancelAnimationFrame(frame);
     }, [autoFocusTitle, noteId, readOnly]);
-    const appearanceLabel = t('notes:appearance.label', { defaultValue: isZh ? '页面外观' : 'Page appearance' });
-    const presetLabels = {
-        standard: t('notes:appearance.standard', { defaultValue: isZh ? '标准' : 'Standard' }),
-        compact: t('notes:appearance.compact', { defaultValue: isZh ? '紧凑' : 'Compact' }),
-        wide: t('notes:appearance.wide', { defaultValue: isZh ? '宽幅' : 'Wide' }),
-    };
+    // 排版（小字号/全宽/字体）已移入页面 ▾ 菜单（Notion 同款），此处只管页面图标
+    const appearanceLabel = t('notes:appearance.icon', { defaultValue: isZh ? '页面图标' : 'Page icon' });
     const iconLabels = [
         t('notes:appearance.icon_none', { defaultValue: isZh ? '无图标' : 'No icon' }),
         t('notes:appearance.icon_document', { defaultValue: isZh ? '文档' : 'Document' }),
@@ -509,7 +505,10 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
     const showAddTagInline = canEditTags && effectiveTags.length === 0 && !tagInputOpen;
 
     return (
-        <header className="notes-document-header group relative pt-10 pb-2" data-notes-preset={appearance.value.preset}>
+        <header className="notes-document-header group relative pt-10 pb-2" data-notes-preset={appearance.value.preset}
+            data-notes-small-text={appearance.value.smallText ? 'true' : undefined}
+            data-notes-full-width={appearance.value.fullWidth ? 'true' : undefined}
+            data-notes-font={appearance.value.font}>
             {showBreadcrumbs && (
                 <div className="mb-3 flex min-h-5 flex-wrap items-center">
                 {/* Breadcrumbs (Left aligned) - Only show if nested in folders */}
@@ -566,7 +565,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                         <button ref={appearanceTriggerRef} type="button" className="notes-document-affordance" aria-label={appearanceLabel} aria-haspopup="dialog" aria-controls={appearanceOpen ? `${appearanceTitleId}-panel` : undefined}>
                             <SlidersHorizontal size={14} aria-hidden="true" />
                             <span>{hasIcon
-                                ? appearanceLabel
+                                ? t('notes:appearance.change_icon', { defaultValue: isZh ? '更换图标' : 'Change icon' })
                                 : t('notes:appearance.add_icon', { defaultValue: isZh ? '添加图标' : 'Add icon' })}</span>
                         </button>
                     </PopoverTrigger>
@@ -584,21 +583,9 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 setAppearanceOpen(false);
                                 appearanceTriggerRef.current?.focus();
                             }}>
-                            <h3 id={appearanceTitleId} className="mb-3 text-sm font-medium">{appearanceLabel}</h3>
-                            <fieldset disabled={appearance.loading || appearance.error === 'load'}>
-                                <legend className="mb-2 text-xs text-muted-foreground">{t('notes:appearance.layout', { defaultValue: isZh ? '排版' : 'Layout' })}</legend>
-                                <div className="flex gap-1">
-                                    {NOTE_APPEARANCE_PRESETS.map((preset) => (
-                                        <DsButton key={preset} variant="ghost" size="sm" className="notes-appearance-option flex-1 text-xs" aria-pressed={appearance.value.preset === preset} aria-disabled={appearance.saving} onClick={() => void appearance.update({ preset })}>
-                                            {presetLabels[preset]}
-                                        </DsButton>
-                                    ))}
-                                </div>
-                            </fieldset>
-                            <fieldset className="mt-3" disabled={appearance.loading || appearance.error === 'load'}>
-                                <div className="mb-2 flex items-center justify-between">
-                                    <legend className="text-xs text-muted-foreground">{t('notes:appearance.icon', { defaultValue: isZh ? '页面图标' : 'Page icon' })}</legend>
-                                    <DsButton variant="ghost" size="sm" className="h-6 px-2 text-xs" aria-disabled={appearance.saving}
+                            <div className="mb-2 flex items-center justify-between">
+                                <h3 id={appearanceTitleId} className="text-sm font-medium">{appearanceLabel}</h3>
+                                    <DsButton variant="ghost" size="sm" className="h-6 px-2 text-xs" disabled={appearance.loading || appearance.error === 'load'} aria-disabled={appearance.saving}
                                         onClick={() => {
                                             const pool = ALL_NOTE_ICONS.filter((icon) => icon !== appearance.value.icon);
                                             void appearance.update({ icon: pool[Math.floor(Math.random() * pool.length)] });
@@ -606,6 +593,8 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                         {t('notes:appearance.icon_random', { defaultValue: isZh ? '随机' : 'Random' })}
                                     </DsButton>
                                 </div>
+                            <fieldset disabled={appearance.loading || appearance.error === 'load'}>
+                                <legend className="sr-only">{appearanceLabel}</legend>
                                 <div className="flex flex-wrap gap-1">
                                     {NOTE_APPEARANCE_ICONS.map((icon, index) => (
                                         <DsButton key={icon} variant="ghost" size="icon" iconOnly className="notes-appearance-option" aria-label={iconLabels[index]} title={iconLabels[index]} aria-pressed={appearance.value.icon === icon} aria-disabled={appearance.saving} onClick={() => void appearance.update({ icon })}>

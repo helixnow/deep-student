@@ -48,8 +48,8 @@
      与 UI/正文的无衬线栈割裂，且 400 字重衬线在移动端辨识度差。
      标题/正文/代码统一走项目字体变量（--font-family 已含 PingFang SC 等中文回退），
      与阅读态 .prose-note 同源（阅读态不定义标题字体族，继承正文）。 */
-  --crepe-font-default: var(--font-family);
-  --crepe-font-title: var(--font-family);
+  --crepe-font-default: var(--notes-font-family, var(--font-family));
+  --crepe-font-title: var(--notes-font-family, var(--font-family));
   --crepe-font-code: var(--font-mono);
 }
 
@@ -530,6 +530,23 @@
 .crepe-editor-wrapper th {
   background: var(--notes-table-header-bg, hsl(var(--muted) / 0.5));
   font-weight: 600;
+}
+
+/* Notion 表格规格：14px / 1.5、单元格 7px 9px、行高 ≈34px。需压过 Crepe 的
+   `.milkdown .milkdown-table-block td`（padding 4px 16px）与 reset 的段落 4px 内边距，
+   否则一行叠成 41px，表格显得松垮。 */
+.crepe-editor-wrapper .milkdown .milkdown-table-block th,
+.crepe-editor-wrapper .milkdown .milkdown-table-block td {
+  padding: 7px 9px;
+  border-color: hsl(var(--border));
+  font-size: 14px;
+  line-height: 1.5;
+  vertical-align: top;
+}
+.crepe-editor-wrapper .milkdown .milkdown-table-block :is(th, td) p {
+  padding: 0;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 /* ===== 暗色模式正文复核（V4）===== */

@@ -160,11 +160,7 @@
     "official_review_label": "候选内容逐组审阅"
   },
   "appearance": {
-    "label": "页面外观",
     "layout": "排版",
-    "standard": "标准",
-    "compact": "紧凑",
-    "wide": "宽幅",
     "icon": "页面图标",
     "icon_none": "无图标",
     "icon_document": "文档",
@@ -179,7 +175,13 @@
     "icon_group_subjects": "学科",
     "icon_group_study": "学习",
     "icon_group_symbols": "符号",
-    "icon_group_nature": "自然与生活"
+    "icon_group_nature": "自然与生活",
+    "change_icon": "更换图标",
+    "font_default": "默认",
+    "font_serif": "衬线",
+    "font_mono": "等宽",
+    "small_text": "小字号",
+    "full_width": "全宽"
   },
   "renameSync": {
     "scanFailed": "标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。",
