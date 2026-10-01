@@ -1281,11 +1281,20 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               to,
             } satisfies AgentHighlightMeta);
             view.dispatch(tr);
+            // 插入点保持在块边界（下一批结构块从这里接着插，不能劈开段落）；
+            // 可见 AI 光标则落到最后一个文本块末尾，避免在两段之间单独占一行跳动。
+            const visual = TextSelection.findFrom(view.state.doc.resolve(to), -1, true)?.head ?? to;
+            if (visual !== to) {
+              view.dispatch(view.state.tr.setMeta(agentHighlightKey, {
+                type: 'caret',
+                pos: visual,
+              } satisfies AgentHighlightMeta));
+            }
             result = { from, to, cursor: to };
             // ACR 4.0：结构化插入同样参与滚动跟随
             const follower = agentFollowerRef.current
               ?? (agentFollowerRef.current = new AgentScrollFollower());
-            follower.followPos(view, to);
+            follower.followPos(view, visual);
           });
           return result;
         } catch (e) {
@@ -1306,13 +1315,23 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
               view = ctx.get(editorViewCtx);
             }
             if (!view) return;
-            const tr = view.state.tr.setMeta(agentHighlightKey, meta);
+            let signal = meta;
+            if (meta.type === 'caret') {
+              // 块边界上的 caret 会被渲染成段间孤立的一行：就近收进文本块
+              const pos = Math.max(0, Math.min(meta.pos, view.state.doc.content.size));
+              const $pos = view.state.doc.resolve(pos);
+              if (!$pos.parent.inlineContent) {
+                const near = TextSelection.findFrom($pos, -1, true) ?? TextSelection.findFrom($pos, 1, true);
+                if (near) signal = { ...meta, pos: near.head };
+              }
+            }
+            const tr = view.state.tr.setMeta(agentHighlightKey, signal);
             view.dispatch(tr);
             // ACR 4.0：caret 落点（run 起始/重定位）也做一次跟随
-            if (meta.type === 'caret') {
+            if (signal.type === 'caret') {
               const follower = agentFollowerRef.current
                 ?? (agentFollowerRef.current = new AgentScrollFollower());
-              follower.followPos(view, meta.pos);
+              follower.followPos(view, signal.pos);
             }
           });
         } catch (e) {

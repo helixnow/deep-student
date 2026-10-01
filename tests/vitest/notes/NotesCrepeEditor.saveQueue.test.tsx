@@ -199,15 +199,15 @@ describe('NotesCrepeEditor save queue', () => {
     expect(onSaveStateChange).toHaveBeenLastCalledWith('saved');
   });
 
-  it('shares host full-document operations with internal toolbar and external consumers', async () => {
+  it('shares host full-document operations with every external consumer', async () => {
+    // 常驻格式条已移除；宿主扩展后的同一个 API 必须同时交给所有消费方
     const onEditorReady = vi.fn();
     const onEditorApiReady = vi.fn();
     render(<NotesCrepeEditor initialContent="visible prefix" noteId="note-1"
       extendEditorApi={(api) => ({ ...api, getFullMarkdown: () => 'visible prefix\nhidden tail' })}
       onEditorReady={onEditorReady} onEditorApiReady={onEditorApiReady} />);
-    await waitFor(() => expect(toolbarApi?.getFullMarkdown?.()).toBe('visible prefix\nhidden tail'));
-    expect(onEditorReady).toHaveBeenLastCalledWith(toolbarApi);
-    expect(onEditorApiReady).toHaveBeenLastCalledWith(toolbarApi);
+    await waitFor(() => expect(onEditorApiReady.mock.lastCall?.[0]?.getFullMarkdown?.()).toBe('visible prefix\nhidden tail'));
+    expect(onEditorReady).toHaveBeenLastCalledWith(onEditorApiReady.mock.lastCall?.[0]);
   });
 
   it('drains the latest draft after unmount while an older save is in flight', async () => {
