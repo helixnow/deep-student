@@ -24,6 +24,8 @@ export interface GeneratedQuestionDraft {
   smiles?: string;
   /** SMILES 结构名称（如 "乙醇"） */
   smiles_caption?: string;
+  /** 出处（流水线填写的 JSON：{"resourceIds":[…]}），导入后写入题目 source_ref */
+  source_ref?: string;
 }
 
 export interface QuestionGenerationSpec {

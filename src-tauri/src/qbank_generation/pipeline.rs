@@ -161,6 +161,12 @@ pub async fn run_qbank_generation(
 
     response.skipped_references = references.skipped.clone();
     response.used_reference_count = references.used_count();
+    // 出处：题目依据的资料库参考资料（不信任模型自带的 source_ref）
+    let source_ref = (!request.reference_file_ids.is_empty())
+        .then(|| serde_json::json!({ "resourceIds": request.reference_file_ids }).to_string());
+    for draft in response.drafts.iter_mut() {
+        draft.source_ref = source_ref.clone();
+    }
     Ok(Some(response))
 }
 

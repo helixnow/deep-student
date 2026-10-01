@@ -184,6 +184,8 @@ export interface Question {
   images?: QuestionImage[];
   /** 结构化题目数据（新题型契约，snake_case 与后端对齐） */
   structured_data?: QuestionStructuredData | null;
+  /** 出处（JSON，如 {"resourceIds":[…]}，AI 出题依据的资料） */
+  sourceRef?: string | null;
   // AI 评判缓存
   ai_feedback?: string;
   ai_score?: number;

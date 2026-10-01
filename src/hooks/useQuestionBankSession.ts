@@ -43,6 +43,7 @@ interface StoreQuestion {
   ai_feedback?: string | null;
   ai_score?: number | null;
   ai_graded_at?: string | null;
+  source_ref?: string | null;
   /**
    * 新题型（true_false/matching/ordering/numeric）的结构化数据。
    * 本 hook 只负责透传，不做解析；契约类型见 questionBankApi.QuestionStructuredData。
@@ -126,6 +127,7 @@ function convertToApiQuestion(q: StoreQuestion): Question {
     ai_feedback: q.ai_feedback,
     ai_score: q.ai_score,
     ai_graded_at: q.ai_graded_at,
+    sourceRef: q.source_ref ?? null,
   };
   // 透传新题型结构化数据（不做穷举解析；组件侧经 parse*Data 收窄校验）
   if (q.structured_data !== undefined) {

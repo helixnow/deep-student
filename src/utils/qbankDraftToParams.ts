@@ -43,7 +43,7 @@ export function buildCreateParams(draft: GeneratedQuestionDraft, examId: string)
     question_label: null,
     card_id: null,
     source_type: 'ai_generated',
-    source_ref: null,
+    source_ref: draft.source_ref ?? null,
     images: null,
     parent_id: null,
   };

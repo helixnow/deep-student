@@ -685,5 +685,18 @@
     "unsupported_hint": "qbank driver 仅支持导航 op（qbank_focus_question）；数据修改请用领域工具",
     "nav_aborted": "qbank 导航已中止",
     "run_not_found": "run {{runId}} aborted"
+  },
+  "followUp": {
+    "stem": "题目：",
+    "options": "选项：",
+    "answer": "正确答案：",
+    "explanation": "解析：",
+    "mine": "我的答案：",
+    "askWrong": "这道题我做错了，请指出我的错误思路，讲清考点，再给我一道巩固练习。",
+    "ask": "请帮我讲解这道题的考点与解题思路。",
+    "similarPrompt": "请基于下面这道题，生成 2 道考查同一知识点、难度相近的同类题，并加入题目集（id: {{examId}}）。",
+    "askAction": "问 AI 讲解",
+    "similarAction": "生成同类题",
+    "sourceAction": "出处"
   }
 }

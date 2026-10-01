@@ -107,6 +107,10 @@ pub struct GeneratedQuestionDraft {
     /// SMILES 结构的名称/说明（可选，如 "2-甲基丙烷"、"苯"）
     #[serde(default)]
     pub smiles_caption: Option<String>,
+    /// 出处（JSON：{"resourceIds":[…]}，题目依据的资料库参考资料）——由出题流水线填写，
+    /// 不信任模型输出；导入题库后写入 questions.source_ref，题目详情可回到资料。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_ref: Option<String>,
 }
 
 /// 生成的选项
@@ -711,6 +715,7 @@ mod tests {
         answer: &str,
     ) -> GeneratedQuestionDraft {
         GeneratedQuestionDraft {
+            source_ref: None,
             question_type: question_type.to_string(),
             content: content.to_string(),
             options: options.map(|opts| {

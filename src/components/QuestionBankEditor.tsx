@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { QuestionFollowUpBar } from './practice/QuestionFollowUpBar';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
@@ -2391,6 +2392,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 )}
               </div>
             )}
+
+            {/* 追问：问 AI 讲解 / 生成同类题 / 回到出处（错题 → 对话闭环） */}
+            <QuestionFollowUpBar question={currentQuestion} examId={sessionId}
+              userAnswer={selectedAnswer} isCorrect={submitResult?.isCorrect} />
 
             {/* AI 解析按钮（客观题） */}
             <div className="pt-2 border-t border-foreground/[0.06]">

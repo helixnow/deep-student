@@ -685,5 +685,18 @@
     "unsupported_hint": "The qbank driver only supports navigation ops (qbank_focus_question); use domain tools to modify data",
     "nav_aborted": "Qbank navigation aborted",
     "run_not_found": "run {{runId}} aborted"
+  },
+  "followUp": {
+    "stem": "Question: ",
+    "options": "Options:",
+    "answer": "Correct answer: ",
+    "explanation": "Explanation: ",
+    "mine": "My answer: ",
+    "askWrong": "I got this question wrong. Point out where my reasoning failed, explain the concept, then give me one practice question.",
+    "ask": "Please explain the concept and solution approach for this question.",
+    "similarPrompt": "Based on the question below, create 2 similar questions testing the same concept at a similar difficulty, and add them to the question set (id: {{examId}}).",
+    "askAction": "Ask AI",
+    "similarAction": "Similar questions",
+    "sourceAction": "Source"
   }
 }
