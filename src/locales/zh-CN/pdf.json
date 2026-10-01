@@ -228,5 +228,16 @@
     "submit": "打开",
     "cancel": "取消",
     "incorrect": "密码错误，请重试"
+  },
+  "related": {
+    "tab": "关联",
+    "notes": "相关笔记",
+    "sessions": "相关对话",
+    "loading": "正在查找…",
+    "noNotes": "还没有笔记引用这份资料。划词「保存为笔记」或在笔记属性里关联它。",
+    "noSessions": "还没有对话讨论过这份资料。",
+    "viaOrigin": "摘录",
+    "viaRelation": "关联",
+    "untitledSession": "未命名对话"
   }
 }

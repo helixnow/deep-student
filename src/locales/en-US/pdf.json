@@ -228,5 +228,16 @@
     "submit": "Open",
     "cancel": "Cancel",
     "incorrect": "Incorrect password. Please try again"
+  },
+  "related": {
+    "tab": "Related",
+    "notes": "Related notes",
+    "sessions": "Related chats",
+    "loading": "Looking…",
+    "noNotes": "No notes reference this material yet. Use “Save as note” on a selection, or link it from a note’s properties.",
+    "noSessions": "No chats have discussed this material yet.",
+    "viaOrigin": "Excerpt",
+    "viaRelation": "Linked",
+    "untitledSession": "Untitled chat"
   }
 }

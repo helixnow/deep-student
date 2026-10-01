@@ -40,6 +40,7 @@ import {
   CaretUp,
   GridFour,
   Highlighter,
+  LinkSimple,
   House,
   CaretDoubleLeft,
   CaretDoubleRight,
@@ -84,6 +85,7 @@ const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
 // 侧栏批注面板（筛选/导出为笔记/回链）同样懒加载：它静态依赖 shared/notes
 // 的目录选择流程（FolderPickerDialog），不能随 PDF 主 chunk 打包。
 const PdfAnnotationsPanel = React.lazy(() => import('./PdfAnnotationsPanel'));
+const PdfRelatedPanel = React.lazy(() => import('./PdfRelatedPanel'));
 
 /** PDF 目录项 */
 interface OutlineItem {
@@ -108,7 +110,7 @@ type ViewMode = 'single' | 'dual';
 type ZoomMode = PdfFitMode;
 
 /** 侧边栏模式（桌面端目录/缩略图/书签/批注合并为同一侧栏的 tab） */
-type SidebarMode = 'none' | 'outline' | 'thumbnails' | 'bookmarks' | 'highlights';
+type SidebarMode = 'none' | 'outline' | 'thumbnails' | 'bookmarks' | 'highlights' | 'related';
 
 /** 高亮批注
  *
@@ -3135,6 +3137,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     thumbnails: t('pdf:toolbar.thumbnails'),
     bookmarks: t('pdf:bookmark.bookmarkList'),
     highlights: t('pdf:toolbar.highlights'),
+    related: t('pdf:related.tab', { defaultValue: '关联' }),
   };
 
   // 书签 tab 内容（桌面侧栏 / 移动子屏共用）。
@@ -3532,6 +3535,19 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       {highlights.length > 0 && <span className="ds-pdf__sidebar-tab-count">{highlights.length}</span>}
                     </DsButton>
                   )}
+                  {selectionSourceId && (
+                    <DsButton
+                      variant="ghost"
+                      role="tab"
+                      aria-selected={sidebarMode === 'related'}
+                      className={`ds-pdf__sidebar-tab ${sidebarMode === 'related' ? 'active' : ''}`}
+                      onClick={() => setSidebarMode('related')}
+                      title={sidebarTabLabels.related}
+                      aria-label={sidebarTabLabels.related}
+                    >
+                      <LinkSimple size={15} />
+                    </DsButton>
+                  )}
                   <DsButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm ds-pdf__sidebar-close" onClick={() => setSidebarMode('none')} aria-label={t('pdf:a11y.close')}>
                     <X size={14} />
                   </DsButton>
@@ -3590,6 +3606,11 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
 
                 {/* 批注 */}
                 {sidebarMode === 'highlights' && renderHighlightList()}
+
+                {/* 关联：引用此资料的笔记 / 讨论过它的对话 */}
+                {sidebarMode === 'related' && selectionSourceId && (
+                  <React.Suspense fallback={null}><PdfRelatedPanel sourceId={selectionSourceId} /></React.Suspense>
+                )}
               </div>
             )}
           </div>
@@ -3774,6 +3795,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   {t('pdf:toolbar.highlight_tab')}
                 </DsButton>
               )}
+              {selectionSourceId && (
+                <DsButton
+                  variant="ghost"
+                  role="tab"
+                  aria-selected={sidebarMode === 'related'}
+                  className={`ds-pdf__mobile-panel-tab [@media(pointer:coarse)]:!min-h-11 ${sidebarMode === 'related' ? 'active' : ''}`}
+                  onClick={() => setSidebarMode('related')}
+                >
+                  {sidebarTabLabels.related}
+                </DsButton>
+              )}
             </div>
             <span className="ds-pdf__mobile-panel-spacer" aria-hidden="true" />
           </div>
@@ -3835,6 +3867,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           )}
 
           {sidebarMode === 'bookmarks' && renderBookmarkList(() => setSidebarMode('none'))}
+          {sidebarMode === 'related' && selectionSourceId && (
+            <React.Suspense fallback={null}><PdfRelatedPanel sourceId={selectionSourceId} /></React.Suspense>
+          )}
 
           {sidebarMode === 'highlights' && renderHighlightList(() => setSidebarMode('none'))}
         </div>

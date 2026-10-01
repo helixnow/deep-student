@@ -22,10 +22,10 @@ const viewerSource = read('src/features/pdf/components/EnhancedPdfViewer.tsx');
 const textbookViewerSource = read('src/features/pdf/components/TextbookPdfViewer.tsx');
 
 describe('EnhancedPdfViewer mobile panel tabs keep 44px coarse-pointer targets', () => {
-  it('renders exactly the four segmented tabs (outline/thumbnails/bookmarks/highlights)', () => {
+  it('renders exactly the five segmented tabs (outline/thumbnails/bookmarks/highlights/related)', () => {
     // 排除容器类 ds-pdf__mobile-panel-tabs（结尾带 s）
     const tabOccurrences = viewerSource.match(/ds-pdf__mobile-panel-tab(?!s)/g) ?? [];
-    expect(tabOccurrences).toHaveLength(4);
+    expect(tabOccurrences).toHaveLength(5);
   });
 
   it('every mobile panel tab carries the coarse-pointer !min-h-11 (44px) utility', () => {
@@ -33,8 +33,8 @@ describe('EnhancedPdfViewer mobile panel tabs keep 44px coarse-pointer targets',
       viewerSource.match(
         /ds-pdf__mobile-panel-tab \[@media\(pointer:coarse\)\]:!min-h-11/g,
       ) ?? [];
-    // 四个 tab 一个都不能少：书签 tab 缩水就是本契约要拦的回归
-    expect(guarded).toHaveLength(4);
+    // 五个 tab 一个都不能少：书签 tab 缩水就是本契约要拦的回归（关联 tab 2026-10 加入）
+    expect(guarded).toHaveLength(5);
   });
 
   it('keeps the bookmarks tab wired in both the mobile panel and the desktop sidebar', () => {
