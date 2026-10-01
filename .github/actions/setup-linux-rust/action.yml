@@ -32,7 +32,7 @@ runs:
     - shell: bash
       if: inputs.resources == 'true'
       run: bash scripts/ci/prepare-sccache.sh
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
       if: inputs.resources == 'true'
       with:
         workspaces: src-tauri
