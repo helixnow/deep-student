@@ -1,0 +1,43 @@
+diff --git a/node_modules/@nvq/flowtoken/dist/components/AnimatedMarkdown.js b/node_modules/@nvq/flowtoken/dist/components/AnimatedMarkdown.js
+index 3aee4e6..2b25552 100644
+--- a/node_modules/@nvq/flowtoken/dist/components/AnimatedMarkdown.js
++++ b/node_modules/@nvq/flowtoken/dist/components/AnimatedMarkdown.js
+@@ -52,11 +52,14 @@ const react_1 = __importStar(require("react"));
+ const react_markdown_1 = __importDefault(require("react-markdown"));
+ const remark_gfm_1 = __importDefault(require("remark-gfm"));
+ const rehype_raw_1 = __importDefault(require("rehype-raw"));
+-const docco_1 = __importDefault(require("react-syntax-highlighter/dist/esm/styles/hljs/docco"));
+ const SplitText_1 = __importDefault(require("./SplitText"));
+ const AnimatedImage_1 = __importDefault(require("./AnimatedImage"));
+ const animations_1 = require("../utils/animations");
+-const DefaultCode_1 = __importDefault(require("./DefaultCode"));
++// Keep prose and inline code independent of the syntax highlighter and icon barrel.
++// Preserve native import() here: compiling it to require() would remove the split.
++const LazyDefaultCode = react_1.default.lazy(() => import("./DefaultCode.js").then((module) => ({
++    default: module.default.default || module.default,
++})));
+ const DEFAULT_CUSTOM_COMPONENTS = {};
+ // Function to create animation style object - extracted outside of component
+ const createAnimationStyle = (animation, animationDuration, animationTimingFunction) => ({
+@@ -70,7 +73,6 @@ const MemoizedText = react_1.default.memo(({ children, animation, animationDurat
+ const MemoizedList = react_1.default.memo(({ children, style, }) => (react_1.default.createElement("li", { className: "custom-li", style: style }, children)));
+ const MarkdownAnimateText = ({ content, sep = "diff", animation: animationName = "none", animationDuration = "1s", animationTimingFunction = "ease-in-out", codeStyle = null, customComponents = DEFAULT_CUSTOM_COMPONENTS, imgHeight = "20rem", isStreaming = false, }) => {
+     const animation = animations_1.animations[animationName] || animationName;
+-    codeStyle = codeStyle || docco_1.default.docco;
+     // Memoize the animation style to avoid recreating it on every render
+     const animationStyle = (0, react_1.useMemo)(() => createAnimationStyle(animation, animationDuration, animationTimingFunction), [animation, animationDuration, animationTimingFunction]);
+     // Enhanced hidePartialCustomComponents function that also handles tag attributes
+@@ -189,7 +191,12 @@ const MarkdownAnimateText = ({ content, sep = "diff", animation: animationName =
+             return (react_1.default.createElement("em", Object.assign({}, props), animateText(props.children)));
+         }, code: (_a) => {
+             var { node, className, children } = _a, props = __rest(_a, ["node", "className", "children"]);
+-            return (react_1.default.createElement(DefaultCode_1.default, Object.assign({ node: node, className: className, style: animationStyle, codeStyle: codeStyle, animateText: animateText, animation: animation, animationDuration: animationDuration, animationTimingFunction: animationTimingFunction }, props), children));
++            if (!className || !className.startsWith("language-")) {
++                return react_1.default.createElement("code", Object.assign({}, props, { className: "ft-inline-code" }), animateText(children));
++            }
++            return react_1.default.createElement(react_1.default.Suspense, {
++                fallback: react_1.default.createElement("code", Object.assign({}, props, { className: className }), children),
++            }, react_1.default.createElement(LazyDefaultCode, Object.assign({ node: node, className: className, style: animationStyle, codeStyle: codeStyle, animateText: animateText, animation: animation, animationDuration: animationDuration, animationTimingFunction: animationTimingFunction }, props), children));
+         }, hr: (_a) => {
+             var { node } = _a, props = __rest(_a, ["node"]);
+             return react_1.default.createElement("hr", Object.assign({}, props));

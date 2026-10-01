@@ -141,6 +141,8 @@
     "full_write_occ_failed": "Note content has changed; full-document write failed OCC validation",
     "full_replace_not_confirmed": "Editor did not confirm the full-document replacement",
     "flush_capability_missing": "Editor does not provide persistence confirmation capability",
-    "full_replace_persist_failed": "Full-document replacement failed persistence verification"
+    "full_replace_persist_failed": "Full-document replacement failed persistence verification",
+    "refresh_after_note_switch": "The note switched; the previous editor cannot be refreshed.",
+    "refresh_after_commit_failed": "The note update was committed but the refresh failed; retry the refresh before continuing to edit."
   }
 }

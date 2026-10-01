@@ -312,6 +312,10 @@ pub fn is_mcp_available_sync() -> bool {
 
 /// MCP 子进程允许继承的平台最小环境变量集合。
 /// 其余父进程环境（含各类密钥）一律不继承；额外变量须由已审批配置显式声明。
+///
+/// 1A 扩充：在原"最小必需"基础上加入常用开发工具链和代理变量，
+/// 解决 nvm/fnm/volta 装的 Node 起不来、npx 首次下载无代理卡死的问题。
+/// 这些都是非敏感的"路径/配置"类变量，不含 TOKEN/SECRET/KEY。
 fn minimal_child_env_keys() -> &'static [&'static str] {
     #[cfg(windows)]
     {
@@ -321,6 +325,7 @@ fn minimal_child_env_keys() -> &'static [&'static str] {
             "PATHEXT",
             "SystemRoot",
             "SYSTEMROOT",
+            "SYSTEMDRIVE",
             "WINDIR",
             "COMSPEC",
             "TEMP",
@@ -328,18 +333,95 @@ fn minimal_child_env_keys() -> &'static [&'static str] {
             "USERPROFILE",
             "APPDATA",
             "LOCALAPPDATA",
+            "PROGRAMFILES",
+            "PROGRAMFILES(X86)",
+            "PROGRAMDATA",
+            "PUBLIC",
             "HOMEDRIVE",
             "HOMEPATH",
-            "PROGRAMFILES",
             "NUMBER_OF_PROCESSORS",
             "OS",
+            "PSMODULEPATH",
+            // Node 工具链（nvm-windows / fnm / volta / scoop / chocolatey）
+            "NODE_PATH",
+            "NPM_CONFIG_PREFIX",
+            "NPM_CONFIG_CACHE",
+            "NPM_CONFIG_USERCONFIG",
+            "NPM_CONFIG_GLOBALCONFIG",
+            "NVM_HOME",
+            "NVM_SYMLINK",
+            "VOLTA_HOME",
+            "FNM_DIR",
+            "FNM_LOGLEVEL",
+            "FNM_MULTISHELL_PATH",
+            "FNM_NODE_DIST_MIRROR",
+            "FNM_COREPACK_ENABLED",
+            "FNM_RESOLVE_ENGINES",
+            "FNM_VERSION_FILE_STRATEGY",
+            "SCOOP",
+            "CHOCOLATEYINSTALL",
+            // Python 工具链
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "PIP_CONFIG_FILE",
+            "UV_CACHE_DIR",
+            "UV_PYTHON_INSTALL_MIRROR",
+            // 代理（npx / uvx 首次下载必须）
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "all_proxy",
         ]
     }
 
     #[cfg(not(windows))]
     {
         &[
-            "PATH", "HOME", "TMPDIR", "TEMP", "TMP", "LANG", "LC_ALL", "USER", "SHELL",
+            "PATH",
+            "HOME",
+            "TMPDIR",
+            "TEMP",
+            "TMP",
+            "LANG",
+            "LC_ALL",
+            "LC_CTYPE",
+            "USER",
+            "SHELL",
+            // XDG
+            "XDG_CONFIG_HOME",
+            "XDG_DATA_HOME",
+            "XDG_CACHE_HOME",
+            "XDG_RUNTIME_DIR",
+            // Node 工具链
+            "NODE_PATH",
+            "NPM_CONFIG_PREFIX",
+            "NPM_CONFIG_CACHE",
+            "NVM_DIR",
+            "VOLTA_HOME",
+            "FNM_DIR",
+            "FNM_MULTISHELL_PATH",
+            // Python 工具链
+            "PYTHONHOME",
+            "PYTHONPATH",
+            "PIP_CONFIG_FILE",
+            "UV_CACHE_DIR",
+            // SSH / GPG（某些 MCP 需要 git 克隆）
+            "SSH_AUTH_SOCK",
+            "SSH_AGENT_PID",
+            "GPG_AGENT_INFO",
+            // 代理
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "ALL_PROXY",
+            "http_proxy",
+            "https_proxy",
+            "no_proxy",
+            "all_proxy",
         ]
     }
 }
@@ -372,10 +454,17 @@ pub async fn create_stdio_transport(
             "Command path uses an unsupported extended-length form and cannot be spawned: {command}"
         )));
     }
+
+    // 1C 诊断日志增强：spawn 前把完整命令 / 参数 / cwd / env 键名 / framing 全部打出来
+    // 便于用户反馈 bug 时无需猜测环境问题（RULES.txt 第 5 条）
+    let env_keys: Vec<&str> = env.keys().map(|k| k.as_str()).collect();
     log::info!(
-        "Spawning MCP process: {} {:?} with {} env vars",
+        "Spawning MCP process: command={:?} args={:?} cwd={:?} framing={:?} env_from_config={:?} env_count={}",
         command,
         args,
+        working_dir,
+        framing,
+        env_keys,
         env.len()
     );
 
@@ -416,13 +505,38 @@ pub async fn create_stdio_transport(
 
     let mut child = cmd.spawn().map_err(|e| {
         use std::io::ErrorKind;
+        // 1C 诊断日志增强：把 raw_os_error / ErrorKind / PATH 前 200 字符全部打进日志
+        let raw_errno = e.raw_os_error().map(|c| c.to_string()).unwrap_or_else(|| "none".into());
+        let path_preview: String = std::env::var("PATH")
+            .unwrap_or_default()
+            .chars()
+            .take(200)
+            .collect();
+        log::error!(
+            "MCP spawn failed: command={:?} args={:?} cwd={:?} kind={:?} raw_os_error={} err={} PATH[0..200]={:?}",
+            command,
+            args,
+            working_dir,
+            e.kind(),
+            raw_errno,
+            e,
+            path_preview
+        );
         let mut message =
-            format!("Failed to spawn process \"{}\": {}", command, e);
+            format!("Failed to spawn process \"{}\": {} (kind={:?}, os_error={})", command, e, e.kind(), raw_errno);
         if e.kind() == ErrorKind::NotFound {
             message.push_str(" — ensure the executable exists and is reachable via PATH. If you rely on Node.js tooling, install it and run \"npm install -g @modelcontextprotocol/server-filesystem\".");
         }
         McpError::TransportError(message)
     })?;
+
+    // 1C：spawn 成功后记录 PID 便于和日志里后续的 stdout/stderr EOF 对齐
+    let child_pid = child.id();
+    log::info!(
+        "MCP process spawned: command={:?} pid={:?}",
+        command,
+        child_pid
+    );
 
     let stdin = child
         .stdin
@@ -446,7 +560,14 @@ pub async fn create_stdio_transport(
     // 启动 stdout 读取任务（根据分帧格式，支持自动回退）
     let recv_tx_clone = recv_tx.clone();
     let framing_format = framing.clone();
+    let command_for_stdout_log = command.clone();
     tokio::spawn(async move {
+        // 1C：跟踪是否收到过任何消息 / 第一条消息前累计的字节数，
+        // 便于在子进程"启动后立刻 EOF"时判断是崩溃还是 framing 错乱
+        let mut saw_any_message = false;
+        let mut pre_first_message_bytes: usize = 0;
+        const MAX_PREVIEW_BYTES: usize = 1024;
+        let mut early_preview: String = String::new();
         // 实现：如果在 JSONL 模式下侦测到以 Content-Length: 开头的行，则切换到 Content-Length 解帧
         match framing_format {
             super::config::McpFraming::JsonLines => {
@@ -460,6 +581,17 @@ pub async fn create_stdio_transport(
                             let trimmed = buffer.trim_end().to_string();
                             if trimmed.is_empty() {
                                 continue;
+                            }
+                            if !saw_any_message {
+                                pre_first_message_bytes += trimmed.len();
+                                if early_preview.len() < MAX_PREVIEW_BYTES {
+                                    let remaining = MAX_PREVIEW_BYTES - early_preview.len();
+                                    let take = remaining.min(trimmed.len());
+                                    if !early_preview.is_empty() {
+                                        early_preview.push('\n');
+                                    }
+                                    early_preview.push_str(&trimmed[..take]);
+                                }
                             }
                             if trimmed.starts_with("Content-Length:") {
                                 log::warn!("MCP stdout indicates Content-Length framing while configured JSONL → fallback to Content-Length framing");
@@ -515,11 +647,13 @@ pub async fn create_stdio_transport(
                                 }
                                 // 后续消息正常 Content-Length 解帧（内部仍带 JSONL 兜底）
                                 run_content_length_read_loop(reader, recv_tx_clone.clone()).await;
+                                saw_any_message = true;
                                 break;
                             } else {
                                 if recv_tx_clone.send(trimmed).is_err() {
                                     break;
                                 }
+                                saw_any_message = true;
                             }
                         }
                         Err(e) => {
@@ -533,7 +667,18 @@ pub async fn create_stdio_transport(
                 let reader = BufReader::new(stdout);
                 // 内部带「首行即 JSON → 回退 JSONL」兜底
                 run_content_length_read_loop(reader, recv_tx_clone.clone()).await;
+                saw_any_message = true;
             }
+        }
+        // 1C：若 EOF 时一条消息都没收到，说明子进程在 initialize 前就退出了
+        // 把累计到的前 1KB 预览打出来，让用户直接看到崩溃输出而不是干等超时
+        if !saw_any_message {
+            log::warn!(
+                "MCP stdout EOF before any message: command={:?} pre_first_message_bytes={} preview={:?}",
+                command_for_stdout_log,
+                pre_first_message_bytes,
+                early_preview
+            );
         }
         log::info!("MCP stdout reader terminated");
     });
@@ -970,5 +1115,130 @@ mod tests {
         assert_eq!(rx.recv().await.as_deref(), Some("{\"id\":2}"));
         assert_eq!(rx.recv().await.as_deref(), Some("{\"id\":3}"));
         assert!(rx.recv().await.is_none());
+    }
+
+    /// 1C 回归：spawn 失败时错误消息必须携带 ErrorKind 和 raw_os_error，
+    /// 便于用户反馈 bug 时无需猜测环境问题。
+    #[tokio::test]
+    async fn test_spawn_failure_error_contains_diagnostics() {
+        // 用一个几乎不可能存在的命令触发 NotFound
+        let bogus = "definitely-not-a-real-mcp-cmd-9f3b7a";
+        let env = std::collections::HashMap::new();
+        let result = create_stdio_transport(
+            bogus,
+            &[],
+            &super::super::config::McpFraming::JsonLines,
+            &env,
+            None,
+        )
+        .await;
+        let err = match result {
+            Ok(_) => panic!("expected spawn to fail for bogus command"),
+            Err(e) => e,
+        };
+        let msg = format!("{}", err);
+        // 必须包含 "kind=NotFound" 与 "os_error=" 字样（1C 增强）
+        assert!(
+            msg.contains("kind=NotFound"),
+            "error should mention kind=NotFound, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains("os_error="),
+            "error should mention os_error=, got: {}",
+            msg
+        );
+        assert!(
+            msg.contains(bogus),
+            "error should echo the offending command, got: {}",
+            msg
+        );
+    }
+
+    /// 1A 回归：白名单必须包含 Windows 开发工具链与代理变量，
+    /// 且不得包含敏感凭证类变量（API_KEY / TOKEN / SECRET / PASSWORD）。
+    #[cfg(windows)]
+    #[test]
+    fn test_minimal_child_env_keys_includes_dev_toolchain_and_proxy() {
+        let keys = minimal_child_env_keys();
+        let set: std::collections::HashSet<&str> = keys.iter().copied().collect();
+        // 开发工具链
+        for required in [
+            "SYSTEMDRIVE",
+            "PROGRAMDATA",
+            "PUBLIC",
+            "PSMODULEPATH",
+            "NODE_PATH",
+            "NPM_CONFIG_PREFIX",
+            "NPM_CONFIG_CACHE",
+            "NVM_HOME",
+            "NVM_SYMLINK",
+            "VOLTA_HOME",
+            "FNM_DIR",
+        ] {
+            assert!(set.contains(required), "missing required key: {}", required);
+        }
+        // 代理（大小写两套）
+        for proxy in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+        ] {
+            assert!(set.contains(proxy), "missing proxy key: {}", proxy);
+        }
+        // 敏感变量必须仍然被排除
+        for sensitive in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GITHUB_TOKEN",
+            "AWS_SECRET_ACCESS_KEY",
+        ] {
+            assert!(
+                !set.contains(sensitive),
+                "sensitive key should NOT be whitelisted: {}",
+                sensitive
+            );
+        }
+    }
+
+    /// 1A 回归：POSIX 白名单必须包含开发工具链与代理变量，且不含敏感变量。
+    #[cfg(not(windows))]
+    #[test]
+    fn test_minimal_child_env_keys_posix_includes_dev_toolchain_and_proxy() {
+        let keys = minimal_child_env_keys();
+        let set: std::collections::HashSet<&str> = keys.iter().copied().collect();
+        for required in [
+            "NVM_DIR",
+            "VOLTA_HOME",
+            "FNM_DIR",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+            "SSH_AUTH_SOCK",
+        ] {
+            assert!(set.contains(required), "missing required key: {}", required);
+        }
+        for proxy in [
+            "HTTP_PROXY",
+            "HTTPS_PROXY",
+            "NO_PROXY",
+            "http_proxy",
+            "https_proxy",
+        ] {
+            assert!(set.contains(proxy), "missing proxy key: {}", proxy);
+        }
+        for sensitive in [
+            "OPENAI_API_KEY",
+            "ANTHROPIC_API_KEY",
+            "GITHUB_TOKEN",
+            "AWS_SECRET_ACCESS_KEY",
+        ] {
+            assert!(
+                !set.contains(sensitive),
+                "sensitive key should NOT be whitelisted: {}",
+                sensitive
+            );
+        }
     }
 }

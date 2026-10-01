@@ -37,6 +37,11 @@ interface BufferedChunk {
   timestamp: number;
 }
 
+type ChunkBufferStoreWriter = Pick<
+  ChatStore,
+  'sessionId' | 'updateBlockContent' | 'batchUpdateBlockContent'
+>;
+
 /**
  * 🔧 P1修复：按会话分组的缓冲结构
  * 每个会话维护独立的 store 引用、缓冲区和定时器
@@ -47,7 +52,7 @@ interface BufferedChunk {
  * 稳定闭包，因此即使 flush 时快照字段已过期，写入仍作用于当前 store。
  */
 interface SessionBuffer {
-  store: ChatStore;
+  store: ChunkBufferStoreWriter;
   buffers: Map<string, BufferedChunk>;
   flushTimerId: ReturnType<typeof setTimeout> | null;
 }
@@ -75,16 +80,24 @@ class ChunkBufferImpl {
    */
   setStore(store: ChatStore): void {
     const sessionId = store.sessionId;
+    // 只保留稳定 action，避免把整份 Zustand 状态快照（包括旧消息/块 Map）
+    // 固定在全局 chunkBuffer 中直到会话销毁。会话初始化清空 store 后，旧快照
+    // 否则仍可能被这里额外保留到下一次流式事件。
+    const writer: ChunkBufferStoreWriter = {
+      sessionId,
+      updateBlockContent: store.updateBlockContent,
+      batchUpdateBlockContent: store.batchUpdateBlockContent,
+    };
     
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, {
-        store,
+        store: writer,
         buffers: new Map(),
         flushTimerId: null,
       });
     } else {
       const session = this.sessions.get(sessionId)!;
-      session.store = store;
+      session.store = writer;
     }
   }
 

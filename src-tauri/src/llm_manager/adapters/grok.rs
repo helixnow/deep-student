@@ -176,10 +176,12 @@ impl RequestAdapter for GrokAdapter {
         false
     }
 
-    fn apply_common_params(&self, _body: &mut Map<String, Value>, _config: &ApiConfig) {
+    fn apply_common_params(&self, body: &mut Map<String, Value>, config: &ApiConfig) {
         // xAI API 参数表中没有 min_p / top_k / repetition_penalty，
         // 注入会有 400/静默失效风险，一律不发送。
         // Grok 也不使用 reasoning_split, effort, verbosity。
+        // 2C 自定义请求体扩展（用户显式声明的字段可以绕过上面的保守策略）
+        super::merge_extra_body(body, config);
     }
 }
 

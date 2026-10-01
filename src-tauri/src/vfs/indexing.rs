@@ -2163,6 +2163,7 @@ impl VfsFullIndexingService {
             if let Some(note_id) = resource.source_id.as_deref() {
                 match VfsNoteRepo::get_note_with_conn(&conn, note_id)? {
                     Some(note) if note.deleted_at.is_some() => {
+                        drop(conn);
                         // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
                         self.delete_resource_index(resource_id).await?;
                         VfsIndexStateRepo::mark_disabled_with_reason(
@@ -2179,6 +2180,7 @@ impl VfsFullIndexingService {
                     Some(_) => {}
                     None => {
                         if should_disable_index_for_missing_note(&resource) {
+                            drop(conn);
                             // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
                             self.delete_resource_index(resource_id).await?;
                             VfsIndexStateRepo::mark_disabled_with_reason(
@@ -2239,6 +2241,9 @@ impl VfsFullIndexingService {
             }
             _ => !has_valid_text(content.as_deref(), 1),
         };
+        // Content recovery can wait for OCR capacity and network responses.
+        // Keep owned input data, not a pooled SQLite connection, across awaits.
+        drop(conn);
         if needs_content_recovery
             && matches!(
                 resource.resource_type,
@@ -2321,7 +2326,11 @@ impl VfsFullIndexingService {
         // 4. 分块
         // ★ 2026-01 优化：优先尝试按页分块以保留 page_index 信息
         // 使用 resolve_indexable_pages 从数据库获取按页信息（支持 textbooks.ocr_pages_json 等）
-        let chunks = if let Some(pages) = resolve_indexable_pages(&conn, &resource) {
+        let pages = {
+            let conn = self.db.get_conn_safe()?;
+            resolve_indexable_pages(&conn, &resource)
+        };
+        let chunks = if let Some(pages) = pages {
             info!(
                 "[VfsFullIndexingService] Using page-aware chunking for {} ({} pages)",
                 resource_id,
@@ -3020,12 +3029,19 @@ impl VfsFullIndexingService {
                             mime: mime_type.clone(),
                             base64,
                         };
+                        drop(conn);
 
                         info!(
                             "[try_auto_ocr] Calling OCR for image {} ({})",
                             resource.id, mime_type
                         );
 
+                        let permit = self
+                            .llm_manager
+                            .ocr_semaphore()
+                            .acquire_owned()
+                            .await
+                            .map_err(|e| VfsError::Other(format!("OCR semaphore closed: {}", e)))?;
                         let result = self
                             .llm_manager
                             .call_ocr_model_raw_prompt(
@@ -3034,11 +3050,13 @@ impl VfsFullIndexingService {
                             )
                             .await
                             .map_err(|e| VfsError::Other(format!("OCR 调用失败: {}", e)))?;
+                        drop(permit);
 
                         let ocr_text = result.assistant_message.trim().to_string();
 
                         if !ocr_text.is_empty() {
                             // 缓存到 resources.ocr_text
+                            let conn = self.db.get_conn_safe()?;
                             if let Err(e) = conn.execute(
                                 "UPDATE resources SET ocr_text = ?1 WHERE id = ?2",
                                 rusqlite::params![ocr_text, resource.id],
@@ -3187,6 +3205,9 @@ impl VfsFullIndexingService {
             }
         }
 
+        // The remaining OCR work only needs owned file metadata. Reacquire a
+        // connection after all network requests finish to store the result.
+        drop(conn);
         let mime_type = mime_type_opt.unwrap_or_default();
 
         // 3. 对于 File 类型，检查 MIME 类型
@@ -3306,14 +3327,21 @@ impl VfsFullIndexingService {
                 };
 
                 let path_str = blob_path.to_string_lossy().to_string();
-                match llm_manager
+                let permit = match llm_manager.ocr_semaphore().acquire_owned().await {
+                    Ok(permit) => permit,
+                    Err(error) => {
+                        return (page_index, None, format!("OCR semaphore closed: {}", error));
+                    }
+                };
+                let result = llm_manager
                     .call_ocr_page_with_fallback(
                         &path_str,
                         page_index,
                         crate::ocr_adapters::OcrTaskType::FreeText,
                     )
-                    .await
-                {
+                    .await;
+                drop(permit);
+                match result {
                     Ok(cards) => {
                         let blocks: Vec<PdfOcrTextBlock> = cards
                             .iter()
@@ -3432,6 +3460,7 @@ impl VfsFullIndexingService {
         let ocr_json_str = serde_json::to_string(&ocr_json)
             .map_err(|e| VfsError::Other(format!("Failed to serialize OCR result: {}", e)))?;
 
+        let conn = self.db.get_conn_safe()?;
         conn.execute(
             "UPDATE files SET ocr_pages_json = ?1, updated_at = datetime('now') WHERE id = ?2",
             rusqlite::params![ocr_json_str, file_id],
@@ -3602,6 +3631,12 @@ impl VfsFullIndexingService {
                 resource.id, mime_type
             );
 
+            let permit = self
+                .llm_manager
+                .ocr_semaphore()
+                .acquire_owned()
+                .await
+                .map_err(|e| VfsError::Other(format!("OCR semaphore closed: {}", e)))?;
             let result = self
                 .llm_manager
                 .call_ocr_model_raw_prompt(
@@ -3610,6 +3645,7 @@ impl VfsFullIndexingService {
                 )
                 .await
                 .map_err(|e| VfsError::Other(format!("OCR 调用失败: {}", e)))?;
+            drop(permit);
 
             let ocr_text = result.assistant_message.trim().to_string();
 

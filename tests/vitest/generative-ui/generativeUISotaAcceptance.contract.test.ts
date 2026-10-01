@@ -269,11 +269,16 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   {
     id: 'round40-eighteen-blocks-registered',
     check: () =>
-      fileContains('src/features/generative-ui/blocks/index.ts', [
+      fileContains('src/features/generative-ui/blockSchemas.ts', [
         "type: 'markdown'",
         "type: 'chart'",
         "type: 'steps'",
         "type: 'table'",
+      ]) &&
+      fileContains('src/features/generative-ui/blocks/index.ts', [
+        "import { BUILTIN_GENERATIVE_BLOCK_SCHEMAS } from '../blockSchemas'",
+        'for (const config of BUILTIN_GENERATIVE_BLOCK_SCHEMAS)',
+        'generativeUIRegistry.register({ ...config, component: components[config.type] })',
       ]),
   },
   {
@@ -470,6 +475,10 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
         'store.actions.reset(',
       ]) &&
       fileContains('src/features/generative-ui/components/MindmapEmbedBlock.tsx', [
+        "import { mindmapEmbedPropsSchema } from '../schema'",
+      ]) &&
+      fileContains('src/features/generative-ui/schema.ts', [
+        'export const mindmapEmbedPropsSchema',
         'GENERATIVE_EMBED_ID_RE',
       ]),
   },

@@ -1,0 +1,54 @@
+.ProseMirror:has(> .ds-note-columns) {
+  container-type: inline-size;
+  container-name: ds-note-editor;
+}
+
+.ProseMirror .ds-note-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+  margin-block: 1rem;
+}
+
+.ProseMirror .ds-note-columns[data-layout="cornell"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+}
+
+.ProseMirror .ds-note-column {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+
+/* The table itself owns overflow. Never make the whole page/column scroll. */
+.ProseMirror .ds-note-column table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.ProseMirror .ds-note-column :is(.tableWrapper, .milkdown-table-block, pre) {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+@media (max-width: 767px) {
+  .ProseMirror .ds-note-columns,
+  .ProseMirror .ds-note-columns[data-layout="cornell"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Split panes also need the narrow layout on a desktop sized viewport. */
+@container ds-note-editor (max-width: 600px) {
+  .ProseMirror .ds-note-columns,
+  .ProseMirror .ds-note-columns[data-layout="cornell"] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

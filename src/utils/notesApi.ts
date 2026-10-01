@@ -16,6 +16,8 @@
  * @see src/features/notes/NotesContext.tsx for DSTU integration
  */
 import { invoke } from '@tauri-apps/api/core';
+import type { DstuNode } from '@/dstu/types';
+import type { NoteLeaseAuth } from '@/features/notes/noteHostCoordinator';
 
 /** 默认学科分区：笔记资产/命令统一使用的占位 subject */
 const GLOBAL_SUBJECT = '_global';
@@ -41,7 +43,7 @@ export interface NotesDbStats {
   db_path: string;
   file_size_bytes: number;
   total_notes: number;
-  /** 版本历史已移除（V20260214），恒为 0，仅为兼容保留 */
+  /** 本地完整文档历史版本数 */
   total_versions: number;
   /** notes_assets 目录下文件总数 */
   total_assets: number;
@@ -96,7 +98,81 @@ export interface NotesMentionSearchResult {
 // ★ 2026-02 清理：NoteOutgoingLink, NoteLinksResult 已移除
 // note_links 系统在 VFS 模式下不维护，getLinks/listVectorStatus 后端命令不存在
 
+export interface NoteHistorySummary {
+  version_id: string;
+  note_id: string;
+  parent_version_id: string | null;
+  restored_from_version_id: string | null;
+  title: string;
+  source: string;
+  created_at: string;
+  pinned: boolean;
+  content_bytes: number;
+}
+
+export interface NoteHistoryRevision extends NoteHistorySummary {
+  content_md: string;
+  tags: string[];
+  props: Record<string, string | number | boolean> | null;
+  asset_refs: Array<{ kind: 'notes_asset' | 'external_resource' | 'remote_url'; value: string }>;
+  content_format: string;
+  format_version: number;
+  serializer_version: string;
+}
+
+export interface NoteHistoryPage {
+  items: NoteHistorySummary[];
+  next_cursor: number | null;
+}
+
+/** Inclusive, one-based source lines. Backend slices the immutable version. */
+export interface NoteHistorySelection { start_line: number; end_line: number }
+export interface NoteHistoryCurrent {
+  content_md: string;
+  updated_at: string;
+  title: string;
+}
+export interface NoteHistoryRetention {
+  /** 0 disables edit coalescing. Pins and migration baselines are exempt. */
+  edit_bucket_seconds: number;
+  /** null means keep all ordinary edit versions. */
+  max_edit_versions: number | null;
+}
+
 export const NotesAPI = {
+  async historyList(noteId: string, cursor?: number | null, limit = 30, pinnedOnly = false): Promise<NoteHistoryPage> {
+    return invoke<NoteHistoryPage>('notes_history_list', { noteId, cursor: cursor ?? null, limit, pinnedOnly });
+  },
+  /** 只读预览；可能被合并的普通版本可通过 historySetPinned 主动保留。 */
+  async historyGet(noteId: string, versionId: string): Promise<NoteHistoryRevision> {
+    return invoke<NoteHistoryRevision>('notes_history_get', { noteId, versionId });
+  },
+  /** 解除固定不立即删除版本或附件；也可管理旧预览和恢复操作产生的本地保留。 */
+  async historySetPinned(noteId: string, versionId: string, pinned: boolean): Promise<NoteHistorySummary> {
+    return invoke<NoteHistorySummary>('notes_history_set_pinned', { noteId, versionId, pinned });
+  },
+  /** 创建资源库根目录副本，返回可供宿主打开的 DSTU 节点；原文与草稿不变。 */
+  async historyRestoreCopy(noteId: string, versionId: string, selection?: NoteHistorySelection): Promise<DstuNode> {
+    // Use a distinct command: older Tauri handlers ignore extra arguments, which
+    // would silently restore the whole document when selection is unsupported.
+    return selection
+      ? invoke<DstuNode>('notes_history_restore_selection_copy', { noteId, versionId, selection })
+      : invoke<DstuNode>('notes_history_restore_copy', { noteId, versionId });
+  },
+  async historyCurrent(noteId: string): Promise<NoteHistoryCurrent> {
+    return invoke<NoteHistoryCurrent>('notes_history_current', { noteId });
+  },
+  /** Atomic CAS + pinned before_restore snapshot; selection replaces the current
+   * document with the selected historical lines, as shown in the preview. */
+  async historyRestoreCurrent(noteId: string, versionId: string, expectedUpdatedAt: string, selection?: NoteHistorySelection, lease?: NoteLeaseAuth): Promise<DstuNode> {
+    return invoke<DstuNode>('notes_history_restore_current', { noteId, versionId, expectedUpdatedAt, selection: selection ?? null, ...(lease ? { lease } : {}) });
+  },
+  async historyGetRetention(): Promise<NoteHistoryRetention> {
+    return invoke<NoteHistoryRetention>('notes_history_get_retention');
+  },
+  async historySetRetention(policy: NoteHistoryRetention): Promise<NoteHistoryRetention> {
+    return invoke<NoteHistoryRetention>('notes_history_set_retention', { policy });
+  },
   // ★ 2026-01 清理：RAG Operations 已移除，VFS RAG 完全替代
   // ragInspectSubject, ragAddFromContent, ragUpdateContent, ragQuery,
   // ragDeleteDocument, ragReembedDocument, ragReembedAll, ragMigrateFilenames,
@@ -217,13 +293,11 @@ export const NotesAPI = {
    * 导出笔记库为统一 ZIP 格式（Markdown + 元数据）
    * 该格式兼容常见 Markdown 编辑器
    *
-   * 注意：includeVersions 已废弃 —— 版本历史表已删除（V20260214），
-   * 该开关不再产生任何版本数据，仅为兼容旧调用保留。
+   * includeVersions 包含全部保留历史、版本血缘和历史引用附件。
    */
   async exportNotes(options: { outputPath?: string; includeVersions?: boolean } = {}): Promise<NotesExportSummary> {
     const payload = {
       output_path: options.outputPath,
-      // @deprecated 版本历史已移除，此参数不再生效
       include_versions: options.includeVersions ?? true,
     };
     try {
@@ -237,7 +311,7 @@ export const NotesAPI = {
   /**
    * 导出单条笔记为统一 ZIP 格式
    *
-   * 注意：includeVersions 已废弃（同 exportNotes）。
+   * includeVersions 默认包含全部保留历史（同 exportNotes）。
    */
   async exportSingleNote(options: { noteId: string; outputPath?: string; includeVersions?: boolean }): Promise<NotesExportSummary> {
     const payload = {
@@ -245,7 +319,6 @@ export const NotesAPI = {
       subject: GLOBAL_SUBJECT,
       note_id: options.noteId,
       output_path: options.outputPath,
-      // @deprecated 版本历史已移除，此参数不再生效
       include_versions: options.includeVersions ?? true,
     };
     try {

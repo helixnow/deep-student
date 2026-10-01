@@ -132,13 +132,11 @@ vi.mock('@/debug-panel/hooks/usePageLifecycle', () => ({ usePageMount: vi.fn(), 
 vi.mock('@/debug-panel/debugMasterSwitch', () => ({ debugLog: { log: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock('@/utils/concurrency', () => ({ pLimit: () => async (task: () => Promise<unknown>) => task() }));
 vi.mock('@/features/learning-hub/components/ImportProgressModal', () => ({ ImportProgressModal: () => null }));
-vi.mock('@/features/learning-hub/hooks', async () => {
-  const actual = await vi.importActual<typeof import('@/features/learning-hub/hooks')>('@/features/learning-hub/hooks');
-  return {
-    ...actual,
-    useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
-  };
-});
+// Navigation does not need chat injection; mock its leaf module so importing
+// the shared hooks entrypoint cannot initialize the unrelated chat adapter.
+vi.mock('@/features/learning-hub/hooks/useVfsContextInject', () => ({
+  useVfsContextInject: () => ({ injectToChat: vi.fn(), canInject: () => false, isInjecting: false }),
+}));
 vi.mock('@/command-palette/hooks/useCommandEvents', () => ({ useCommandEvents: vi.fn() }));
 
 import { LearningHubSidebar } from '@/features/learning-hub/LearningHubSidebar';

@@ -1,22 +1,10 @@
+import { mindmapEmbedPropsSchema } from '../schema';
+export { mindmapEmbedPropsSchema } from '../schema';
 import React, { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { MindMapErrorBoundary } from '@/features/mindmap/MindMapErrorBoundary';
-
-const GENERATIVE_EMBED_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-export const mindmapEmbedPropsSchema = z
-  .object({
-    id: z.string().optional(),
-    mindmapId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
-    versionId: z.string().min(1).max(128).regex(GENERATIVE_EMBED_ID_RE).optional(),
-    title: z.string().max(120).optional(),
-    height: z.number().min(200).max(600).optional().default(280),
-  })
-  .refine((data) => Boolean(data.mindmapId || data.versionId), {
-    message: 'mindmapId or versionId is required',
-  });
 
 export type MindmapEmbedBlockProps = z.infer<typeof mindmapEmbedPropsSchema>;
 

@@ -3233,7 +3233,7 @@ dependencies = [
 
 [[package]]
 name = "deep-student"
-version = "0.9.62"
+version = "0.9.72"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -3293,6 +3293,7 @@ dependencies = [
  "pptx-to-md",
  "proptest",
  "protoc-bin-vendored",
+ "pulldown-cmark",
  "qrcode",
  "quick-xml 0.37.5",
  "r2d2",

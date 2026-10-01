@@ -14,6 +14,7 @@ export const PDF_FOCUS_ACK_TIMEOUT_MS = 1500;
 export async function requestPdfPageFocus(
   resourceId: string,
   page: number,
+  targetScopeId?: string,
 ): Promise<ActivationResult> {
   if (typeof document === 'undefined' || typeof window === 'undefined') {
     return { handled: false, code: 'ACTION_UNAVAILABLE', hint: 'PDF 预览表面未挂载' };
@@ -31,6 +32,7 @@ export async function requestPdfPageFocus(
     };
     const timeout = window.setTimeout(() => finish(false), PDF_FOCUS_ACK_TIMEOUT_MS);
     const detail: PdfFocusEventDetail = {
+      targetScopeId,
       sourceId: resourceId,
       pageNumber: page,
       path: resourceId.startsWith('/') ? resourceId : `/${resourceId}`,

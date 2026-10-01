@@ -1,0 +1,11 @@
+FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1 AS minio-amd64
+ADD --checksum=sha256:53e2a2cb16c5366ea6fbbc479c19ddb4c6a0948273e752f740fb1fbf27bb817c --chmod=0755 https://github.com/minio/minio/releases/download/RELEASE.2025-04-22T22-12-26Z/minio.linux-amd64.RELEASE.2025-04-22T22-12-26Z /usr/local/bin/minio
+ADD --checksum=sha256:ac90da87a35641be5a0ac75d49de5161ddb47d629b5ba01261b0ae9e00aea15f --chmod=0755 https://github.com/minio/mc/releases/download/RELEASE.2025-04-16T18-13-26Z/mc.linux-amd64.RELEASE.2025-04-16T18-13-26Z /usr/local/bin/mc
+
+FROM alpine:3.22.1@sha256:4bcff63911fcb4448bd4fdacec207030997caf25e9bea4045fa6c8c44de311d1 AS minio-arm64
+ADD --checksum=sha256:6c2f3142c94240206123177f4ba1e360daa5d1e0a4962e90757ef4f92c3ab57c --chmod=0755 https://github.com/minio/minio/releases/download/RELEASE.2025-04-22T22-12-26Z/minio.linux-arm64.RELEASE.2025-04-22T22-12-26Z /usr/local/bin/minio
+ADD --checksum=sha256:61bb88e7435919834478ddd4d405a6de6d2c227079da5e8ee9655147398819a0 --chmod=0755 https://github.com/minio/mc/releases/download/RELEASE.2025-04-16T18-13-26Z/mc.linux-arm64.RELEASE.2025-04-16T18-13-26Z /usr/local/bin/mc
+
+ARG TARGETARCH
+FROM minio-${TARGETARCH}
+ENTRYPOINT ["/usr/local/bin/minio"]

@@ -1,21 +1,11 @@
+import { researchPlanStepSchema, researchPlanPropsSchema } from '../schema';
+export { researchPlanStepSchema, researchPlanPropsSchema } from '../schema';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { cn } from '@/lib/utils';
 import { CheckCircle, Circle, CircleNotch } from '@phosphor-icons/react';
 import { formatGenerativeNumber } from '../utils/formatGenerativeNumber';
-
-export const researchPlanStepSchema = z.object({
-  label: z.string().min(1).max(200),
-  status: z.enum(['pending', 'active', 'done']).optional().default('pending'),
-});
-
-export const researchPlanPropsSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().min(1).max(160),
-  round: z.number().int().min(1).optional(),
-  steps: z.array(researchPlanStepSchema).min(1).max(12),
-});
 
 export type ResearchPlanBlockProps = z.infer<typeof researchPlanPropsSchema>;
 

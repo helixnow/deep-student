@@ -66,6 +66,18 @@ function RenameHarness({
 }
 
 describe('NotesWorkspaceTree rename', () => {
+  it.each([{ isComposing: true }, { keyCode: 229 }])('keeps title composition intact (%j)', (composition) => {
+    const onRename = vi.fn();
+    render(<RenameHarness onRename={onRename} />);
+    fireEvent.doubleClick(screen.getByRole('treeitem', { name: '笔记：Alpha' }));
+    const input = screen.getByRole('textbox', { name: '重命名' });
+    fireEvent.change(input, { target: { value: '中文标题' } });
+    for (const key of ['Enter', 'Escape']) expect(fireEvent.keyDown(input, { key, ...composition })).toBe(true);
+    expect(input).toHaveValue('中文标题');
+    expect(onRename).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(onRename).toHaveBeenCalledExactlyOnceWith('note_1', '中文标题');
+  });
   it('enters rename on double-click, commits with Enter', () => {
     const onRename = vi.fn();
     render(<RenameHarness onRename={onRename} />);

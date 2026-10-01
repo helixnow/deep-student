@@ -429,6 +429,45 @@ pub const PENDING_SAF_PERSIST_FILE: &str = "pending_saf_persist.uri";
 /// 并发导入/导出不得互相覆盖。
 pub const PENDING_SAF_PERSIST_DIR: &str = "pending_saf_persist";
 
+#[cfg(target_os = "android")]
+struct SafPermissionHandle(tauri::plugin::PluginHandle<tauri::Wry>);
+
+/// 原生插件只通知 MainActivity 扫描持久队列，不传递或缓存 URI grant。
+#[cfg(target_os = "android")]
+pub(crate) fn saf_permission_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("saf-permission")
+        .setup(|app, api| {
+            let handle =
+                api.register_android_plugin("com.deepstudent.app", "SafPermissionPlugin")?;
+            tauri::Manager::manage(app, SafPermissionHandle(handle));
+            Ok(())
+        })
+        .build()
+}
+
+#[cfg(target_os = "android")]
+fn wake_saf_permission_queue() {
+    use tauri::Manager;
+
+    let Some(app) = crate::get_global_app_handle() else {
+        log::warn!("SAF persist wake skipped before app setup; queue retained for resume");
+        return;
+    };
+    let Some(state) = app.try_state::<SafPermissionHandle>() else {
+        log::warn!("SAF persist plugin unavailable; queue retained for resume");
+        return;
+    };
+    let plugin = state.0.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(error) = plugin
+            .run_mobile_plugin_async::<serde_json::Value>("persistPending", serde_json::json!({}))
+            .await
+        {
+            log::warn!("SAF persist wake failed; queue retained for resume: {error}");
+        }
+    });
+}
+
 fn persistable_saf_entry_name(uri: &str) -> String {
     use sha2::{Digest, Sha256};
     let digest = Sha256::digest(uri.as_bytes());
@@ -466,7 +505,9 @@ pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), A
         ))
     })?;
     let dest = persistable_saf_queue_file(app_data_dir, trimmed);
-    let tmp = dest.with_extension("uri.tmp");
+    // Producers for the same URI share the final entry, but must never share
+    // staging files: one producer's rename would consume another's temp file.
+    let tmp = dest.with_extension(format!("uri.{}.tmp", Uuid::new_v4()));
     std::fs::write(&tmp, trimmed).map_err(|e| {
         AppError::file_system(format!(
             "写入 SAF persist 队列失败: {} ({})",
@@ -481,7 +522,11 @@ pub fn queue_persistable_saf_uri(app_data_dir: &Path, uri: &str) -> Result<(), A
             dest.display(),
             e
         ))
-    })
+    })?;
+    // 必须先提交队列文件，再发唤醒；失败或 Activity 切换不会丢失持久条目。
+    #[cfg(target_os = "android")]
+    wake_saf_permission_queue();
+    Ok(())
 }
 
 /// 从任意路径（本地路径、Windows 反斜杠路径或 content:// URI）中安全提取文件名。
@@ -1060,5 +1105,51 @@ mod tests {
         assert!(err
             .to_string()
             .contains("SAF persist 队列拒绝过长或含换行的 URI"));
+    }
+
+    #[test]
+    fn queue_persistable_saf_uri_handles_concurrent_producers() {
+        let dir = tempfile::tempdir().expect("persist queue dir");
+        let same = "content://com.android.providers.downloads.documents/document/445";
+        let other = "content://com.android.providers.downloads.documents/document/446";
+        let third = "content://com.android.providers.downloads.documents/document/447";
+        let uris = [same, same, same, same, other, third];
+        let start = std::sync::Barrier::new(uris.len());
+
+        std::thread::scope(|scope| {
+            let handles: Vec<_> = uris
+                .into_iter()
+                .map(|uri| {
+                    let start = &start;
+                    let app_data_dir = dir.path();
+                    scope.spawn(move || {
+                        start.wait();
+                        queue_persistable_saf_uri(app_data_dir, uri)
+                    })
+                })
+                .collect();
+            for handle in handles {
+                handle
+                    .join()
+                    .expect("SAF producer must not panic")
+                    .expect("same-URI and distinct-URI producers must all commit");
+            }
+        });
+
+        for uri in [same, other, third] {
+            assert_eq!(
+                std::fs::read_to_string(persistable_saf_queue_file(dir.path(), uri))
+                    .expect("consumer-readable queue entry"),
+                uri
+            );
+        }
+        let entries = std::fs::read_dir(dir.path().join(PENDING_SAF_PERSIST_DIR))
+            .expect("queue directory")
+            .collect::<std::io::Result<Vec<_>>>()
+            .expect("queue entries");
+        assert_eq!(entries.len(), 3, "one committed entry per distinct URI");
+        assert!(entries
+            .iter()
+            .all(|entry| entry.path().extension().is_some_and(|ext| ext == "uri")));
     }
 }

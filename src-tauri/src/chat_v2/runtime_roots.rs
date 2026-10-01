@@ -3613,16 +3613,32 @@ mod tests {
         let first = list_runtime_directory_page("workspace", &root, Path::new(""), 0, 2)
             .expect("first page");
         assert_eq!(first.entries.len(), 2);
-        assert_eq!(first.entries[0].kind, "directory");
-        assert_eq!(first.entries[0].relative_path, "context-folder");
         assert!(first.truncated);
-        assert_eq!(first.next_cursor.as_deref(), Some("2"));
+        // The cursor counts raw directory entries, including hidden entries;
+        // read_dir ordering varies across filesystems.
+        let cursor = first
+            .next_cursor
+            .as_ref()
+            .unwrap()
+            .parse::<usize>()
+            .unwrap();
+        assert_eq!(cursor, first.scanned);
         assert!(first.entries.iter().all(|entry| entry.name != ".env"));
 
-        let second = list_runtime_directory_page("workspace", &root, Path::new(""), 2, 2)
+        let second = list_runtime_directory_page("workspace", &root, Path::new(""), cursor, 2)
             .expect("second page");
         assert_eq!(second.entries.len(), 1);
         assert!(!second.truncated);
+        let entries: Vec<_> = first.entries.iter().chain(&second.entries).collect();
+        assert!(entries
+            .iter()
+            .any(|entry| { entry.kind == "directory" && entry.relative_path == "context-folder" }));
+        let names: std::collections::BTreeSet<_> =
+            entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert_eq!(
+            names,
+            ["a.txt", "b.txt", "context-folder"].into_iter().collect()
+        );
     }
 
     #[test]

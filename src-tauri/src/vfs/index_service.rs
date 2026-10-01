@@ -129,7 +129,13 @@ impl VfsIndexService {
         let resource_id = input.resource_id.clone();
         let units = self.sync_resource_units_with_conn(&conn, input)?;
         if !units.is_empty() {
-            VfsIndexStateRepo::mark_pending(&self.db, &resource_id)?;
+            VfsIndexStateRepo::set_index_state_with_conn(
+                &conn,
+                &resource_id,
+                embedding_repo::INDEX_STATE_PENDING,
+                None,
+                None,
+            )?;
         }
         Ok(units)
     }
@@ -514,6 +520,47 @@ mod tests {
             )
             .unwrap();
         (text_state, mm_state, index_state, mm_index_state)
+    }
+
+    /// 同步和资源调度状态更新只借一个连接，池压力下也不嵌套等待。
+    #[test]
+    fn sync_resource_units_uses_single_pool_connection() {
+        let (_tmp, service) = setup();
+        let resource_id = "res_sync_single_connection";
+        seed_indexed_unit(&service, resource_id);
+
+        // VfsDatabase 的池上限为 15；保留 14 个租约，仅留一个给同步操作。
+        // 不用耗时断言：旧实现会在 mark_pending 再借连接时失败。
+        let held_connections: Vec<_> = (0..14).map(|_| service.db.get_conn().unwrap()).collect();
+        let units = service
+            .sync_resource_units(UnitBuildInput {
+                resource_id: resource_id.to_string(),
+                resource_type: "note".to_string(),
+                data: Some("updated note content".to_string()),
+                ocr_text: None,
+                ocr_pages_json: None,
+                blob_hash: None,
+                page_count: None,
+                extracted_text: None,
+                preview_json: None,
+            })
+            .expect("同步单元和 pending 状态应复用唯一可用连接");
+        assert_eq!(units.len(), 1);
+        assert_eq!(
+            units[0].text_content.as_deref(),
+            Some("updated note content")
+        );
+
+        let conn = service.db.get_conn().unwrap();
+        let index_state: String = conn
+            .query_row(
+                "SELECT index_state FROM resources WHERE id = ?1",
+                [resource_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_state, embedding_repo::INDEX_STATE_PENDING);
+        drop(held_connections);
     }
 
     /// N07 回归：reset 后 Unit 状态与资源调度状态必须同事务可见。

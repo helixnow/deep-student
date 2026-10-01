@@ -1,3 +1,7 @@
+import i18n from '@/i18n';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+
 export const DEFAULT_INITIAL_LINE_WINDOW = 600;
 export const MIN_INITIAL_LINE_WINDOW = 100;
 export const MAX_INITIAL_LINE_WINDOW = 5000;
@@ -74,7 +78,7 @@ export function expandMarkdownWindow(
   const requestedBoundary = Math.min(safeLoadedLineCount + appendCount, totalLineCount);
   const nextBoundary = adjustMarkdownBoundary(lines, requestedBoundary);
   const appendedLines = lines.slice(safeLoadedLineCount, nextBoundary);
-  const loadedMarkdown = joinWindowWithSuffixLines(currentLoadedMarkdown, appendedLines);
+  const loadedMarkdown = joinWindowWithSuffixLines(currentLoadedMarkdown, appendedLines, safeLoadedLineCount > 0);
 
   return {
     loadedMarkdown,
@@ -101,7 +105,17 @@ export function composeWindowedSave(
     return editorMarkdown;
   }
 
-  return joinWindowWithSuffixLines(editorMarkdown, suffixLines);
+  return joinWindowWithSuffixLines(editorMarkdown, suffixLines, safeLoadedLineCount > 0);
+}
+
+/** Retain edits made while the parent fetched/expanded a window (its backing cursor already advanced). */
+export function mergeExpandedMarkdown(source: string, current: string, expanded: string): string {
+  if (current === source) return expanded;
+  if (expanded === source) return current;
+  if (expanded.startsWith(`${source}\n`)) return current + expanded.slice(source.length);
+  // Empty source can represent a window containing no lines (the parent's join omits a separator).
+  if (!source) return current ? `${current}\n${expanded}` : expanded;
+  throw new Error(i18n.t('notes:fullDocument.errors.window_changed'));
 }
 
 export function shouldRequestLoadMore(
@@ -121,12 +135,12 @@ export function shouldRequestLoadMore(
  * 无修改 round-trip 不再保持原文。按行数组传递（而非 join 后的字符串）
  * 同时消除「right === "" 是没有行还是单个空行」的歧义。
  */
-function joinWindowWithSuffixLines(left: string, rightLines: string[]): string {
+function joinWindowWithSuffixLines(left: string, rightLines: string[], hasLeftLines = true): string {
   if (rightLines.length === 0) {
     return left;
   }
   const right = rightLines.join('\n');
-  if (!left) {
+  if (!hasLeftLines && !left) {
     return right;
   }
   return `${left}\n${right}`;
@@ -134,6 +148,7 @@ function joinWindowWithSuffixLines(left: string, rightLines: string[]): string {
 
 function adjustMarkdownBoundary(lines: string[], requestedBoundary: number): number {
   let boundary = Math.min(Math.max(0, requestedBoundary), lines.length);
+  const containers = protectedContainerSpans(lines);
 
   for (let guard = 0; guard < lines.length && boundary < lines.length; guard += 1) {
     const nextBoundary = Math.max(
@@ -143,6 +158,7 @@ function adjustMarkdownBoundary(lines: string[], requestedBoundary: number): num
       extendHtmlBoundary(lines, boundary),
       extendTableBoundary(lines, boundary),
       extendContinuationBoundary(lines, boundary),
+      ...containers.filter(span => span.start < boundary && boundary < span.end).map(span => span.end),
     );
 
     if (nextBoundary === boundary) {
@@ -152,6 +168,38 @@ function adjustMarkdownBoundary(lines: string[], requestedBoundary: number): num
   }
 
   return boundary;
+}
+
+const boundaryParser = unified().use(remarkParse);
+/** Source positions keep lazy/nested quote bodies and whole layout envelopes
+ * together. Fenced/escaped delimiter lookalikes are not root paragraphs. */
+function protectedContainerSpans(lines: string[]): Array<{ start: number; end: number }> {
+  const source = lines.join('\n');
+  if (!/^(?: {0,3}>|:::ds-columns|<!-- ds:block-id=)/m.test(source)) return [];
+  const nodes = boundaryParser.parse(source).children;
+  const spans: Array<{ start: number; end: number }> = [];
+  const marker = (node: typeof nodes[number]) => node.type === 'paragraph' && node.children.length === 1
+    && node.children[0].type === 'text' && node.position
+    && source.slice(node.position.start.offset, node.position.end.offset) === node.children[0].value
+      ? node.children[0].value : '';
+  let columnsStart: number | undefined;
+  let columnsDepth = 0;
+  nodes.forEach((node, index) => {
+    if (!node.position) return;
+    if (node.type === 'blockquote') spans.push({ start: node.position.start.line - 1, end: node.position.end.line });
+    const delimiter = marker(node);
+    if (delimiter.startsWith(':::ds-columns')) {
+      if (columnsDepth++ === 0) columnsStart = node.position.start.line - 1;
+    } else if (delimiter === ':::end-ds-columns' && columnsDepth > 0 && --columnsDepth === 0) {
+      spans.push({ start: columnsStart!, end: node.position.end.line });
+      columnsStart = undefined;
+    }
+    if (node.type === 'html' && /^<!-- ds:block-id=[A-Za-z0-9_-]+ -->\s*$/.test(node.value) && nodes[index + 1]?.position) {
+      spans.push({ start: node.position.start.line - 1, end: nodes[index + 1].position!.end.line });
+    }
+  });
+  if (columnsStart !== undefined) spans.push({ start: columnsStart, end: lines.length });
+  return spans;
 }
 
 function extendFenceBoundary(lines: string[], boundary: number): number {

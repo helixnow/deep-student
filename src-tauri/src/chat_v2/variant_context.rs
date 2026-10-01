@@ -564,6 +564,21 @@ impl VariantExecutionContext {
         index
     }
 
+    /// 同步流式文本增量，避免每个 token 都替换一份完整的累计块。
+    /// 返回 false 表示该块尚未注册，调用方需先提供完整的块元数据。
+    pub(crate) fn append_interleaved_block_content(&self, block_id: &str, text: &str) -> bool {
+        let mut blocks = self
+            .interleaved_blocks
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        let Some(block) = blocks.iter_mut().rev().find(|block| block.id == block_id) else {
+            return false;
+        };
+        block.content.get_or_insert_with(String::new).push_str(text);
+        block.ended_at = Some(chrono::Utc::now().timestamp_millis());
+        true
+    }
+
     pub fn get_interleaved_blocks(&self) -> Vec<MessageBlock> {
         self.interleaved_blocks
             .lock()

@@ -4544,8 +4544,8 @@ impl LLMManager {
         }
     }
 
-    /// 从 DB 读取 debug 持久化配置
-    fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
+    /// 从 DB 读取 debug 持久化配置（LLM 请求体与出题原始返回落盘共用开关）
+    pub(crate) fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
         let enabled = self
             .db
             .get_setting("debug.persist_logs")

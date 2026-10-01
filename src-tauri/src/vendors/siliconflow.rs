@@ -148,6 +148,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     reasoning_split: None,
                     effort: None,
                     verbosity: None,
+                    extra_body: None,
                 });
             }
         }

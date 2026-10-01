@@ -102,6 +102,7 @@ const toToolbarPreviewType = (type: PreviewType): ToolbarPreviewType => {
 const FileContentViewInner: React.FC<ContentViewProps> = ({
   node,
   isActive = true,
+  focusScopeId,
   // onClose 暂未使用，保留接口以便后续扩展
 }) => {
   const { t } = useTranslation(['learningHub', 'common', 'pdf']);
@@ -279,6 +280,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
   // ★ 使用共享 Hook 监听 PDF 页码跳转事件
   const [focusRequest, handleFocusHandled] = usePdfFocusListener({
+    focusScopeId,
     enabled: isPdf,
     nodeId: node.id,
     nodeSourceId: node.sourceId,

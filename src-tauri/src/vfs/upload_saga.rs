@@ -248,6 +248,75 @@ mod tests {
             .unwrap_or(false)
     }
 
+    fn assert_upload_waits_for_concurrent_writer(with_blob: bool) {
+        let (_tmp, db) = setup();
+        let conn = db.get_conn_safe().unwrap();
+        conn.busy_timeout(std::time::Duration::from_secs(2))
+            .unwrap();
+        let writer = db.get_conn_safe().unwrap();
+        writer.execute_batch("BEGIN IMMEDIATE").unwrap();
+
+        // Model a preview/pipeline write on another pooled connection. A
+        // deferred read -> write upgrade fails immediately instead of waiting.
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            writer.execute_batch("COMMIT").unwrap();
+        });
+        let data = b"upload concurrent writer regression";
+        let hash = VfsBlobRepo::compute_hash(data);
+        let result = with_savepoint(&conn, "upload_concurrent_writer", || {
+            let blob_hash = if with_blob {
+                Some(
+                    VfsBlobRepo::store_blob_with_conn(
+                        &conn,
+                        db.blobs_dir(),
+                        data,
+                        Some("application/pdf"),
+                        None,
+                    )?
+                    .hash,
+                )
+            } else {
+                None
+            };
+            VfsFileRepo::create_file_with_doc_data_in_folder_outcome(
+                &conn,
+                &hash,
+                "concurrent-upload.pdf",
+                data.len() as i64,
+                "document",
+                Some("application/pdf"),
+                blob_hash.as_deref(),
+                None,
+                None,
+                None,
+                None,
+                Some(4),
+            )
+        });
+        release.join().unwrap();
+        let (file, created) = result.expect("upload must wait before establishing a read snapshot");
+        assert!(created);
+        assert!(conn.is_autocommit(), "upload must release its transaction");
+        assert!(VfsFileRepo::get_file_with_conn(&conn, &file.id)
+            .unwrap()
+            .is_some());
+        assert_eq!(count_by_hash(&conn, "resources", "hash", &hash), 1);
+        if with_blob {
+            assert_eq!(blob_ref_count(&conn, &hash), Some(1));
+        }
+    }
+
+    #[test]
+    fn upload_without_blob_waits_for_concurrent_writer() {
+        assert_upload_waits_for_concurrent_writer(false);
+    }
+
+    #[test]
+    fn upload_with_blob_waits_for_concurrent_writer() {
+        assert_upload_waits_for_concurrent_writer(true);
+    }
+
     /// 故障点 1：blob 落盘 + 落库之后、创建文件行之前失败。
     /// 期望：savepoint 回滚 blobs 行，补偿删除本次新写的物理文件，不留孤儿。
     #[test]
