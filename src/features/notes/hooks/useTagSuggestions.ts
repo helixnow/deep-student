@@ -70,6 +70,8 @@ export function useTagSuggestions({
     const lowerCurrent = new Set(currentTags.map((tag) => tag.toLowerCase()));
     const q = query.trim().toLowerCase();
     return availableTags
+      // `_` 前缀是记忆/索引系统写入的内部标签（_system、_hits:N、_last_hit:…），不对用户提示
+      .filter((tag) => !tag.startsWith('_'))
       .filter((tag) => !lowerCurrent.has(tag.toLowerCase()))
       .filter((tag) => !q || tag.toLowerCase().includes(q))
       .slice(0, limit);

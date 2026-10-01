@@ -739,8 +739,11 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                 className="h-6 w-32 rounded-full border border-border/60 bg-transparent px-2 text-[11px] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[hsl(var(--ring))] [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-40 [@media(pointer:coarse)]:text-base"
                             />
                             {(isLoadingTagSuggestions || tagSuggestions.length > 0) && (
+                                // 定位交给外层普通 div：OverlayScrollbars 会给宿主强加 position:relative，
+                                // 直接在 ScrollArea 上写 absolute 会失效，下拉掉回文档流把页头撑高
+                                <div className="ui-rise-in absolute left-0 top-full z-30 mt-1 w-56 overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-[var(--notes-popover-shadow,0_8px_24px_hsl(var(--shadow-base)/0.14))]">
                                 <CustomScrollArea
-                                    className="ui-rise-in absolute left-0 top-full z-30 mt-1 max-h-[176px] w-44 overflow-hidden rounded-[var(--notes-radius-popup,12px)] border border-border bg-popover text-popover-foreground shadow-[var(--notes-popover-shadow,0_8px_24px_hsl(var(--shadow-base)/0.14))]"
+                                    className="max-h-[220px]"
                                     viewportClassName="p-1"
                                     fullHeight={false}
                                 >
@@ -779,6 +782,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                                         </div>
                                     )}
                                 </CustomScrollArea>
+                                </div>
                             )}
                         </span>
                     ) : (
