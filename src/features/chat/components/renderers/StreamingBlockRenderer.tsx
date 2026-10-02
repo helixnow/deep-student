@@ -56,6 +56,32 @@ const COMPLETED_BLOCK_STYLE: React.CSSProperties = {
 };
 
 /**
+ * WebKit（macOS WKWebView）里，窗口不在前台 / 被切走期间挂载的 content-visibility:auto
+ * 块，回到前台后可能一直被判为「视口外」而不绘制——视口里的消息只剩一个空灰框
+ * （实测：发送后切去别的应用，回来用户气泡是空的）。窗口重新可见或获得焦点时
+ * 让这些块重新判定一次：先 visible 再下一帧恢复 auto。只在可见性变化时触发。
+ */
+let contentVisibilityRefreshInstalled = false;
+function installContentVisibilityRefresh(): void {
+  if (contentVisibilityRefreshInstalled || typeof document === 'undefined') return;
+  contentVisibilityRefreshInstalled = true;
+  const refresh = () => {
+    if (document.visibilityState !== 'visible') return;
+    const blocks = Array.from(
+      document.querySelectorAll<HTMLElement>('.stream-block[style*="content-visibility"]'),
+    );
+    if (blocks.length === 0) return;
+    blocks.forEach((el) => { el.style.contentVisibility = 'visible'; });
+    requestAnimationFrame(() => {
+      blocks.forEach((el) => { el.style.contentVisibility = 'auto'; });
+    });
+  };
+  document.addEventListener('visibilitychange', refresh);
+  window.addEventListener('focus', refresh);
+}
+installContentVisibilityRefresh();
+
+/**
  * 单个 markdown 块的 memo 渲染器。
  * - 已完成块：只要 raw 不变就跳过重渲染
  * - 活跃块（流式中最后一个块）：每次内容变化都重渲染
