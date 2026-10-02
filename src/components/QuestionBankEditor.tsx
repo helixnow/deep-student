@@ -382,6 +382,7 @@ interface OptionButtonProps {
   optionKey: string;
   content: string;
   isSelected: boolean;
+  /** 整题判定（无标准答案时由 AI 评判给出；null = 待判定） */
   isCorrect?: boolean | null;
   isSubmitted: boolean;
   correctAnswer?: string;
@@ -396,6 +397,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
   optionKey,
   content,
   isSelected,
+  isCorrect,
   isSubmitted,
   correctAnswer,
   onSelect,
@@ -403,10 +405,17 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
   shortcutHint,
 }) => {
   const { t } = useTranslation('practice');
+  // 扫描/OCR 导入的试卷常没有答案：此时不能拿空答案比对（会把选对的也标成「错误」），
+  // 选中项的对错跟随整题判定（AI 评判），判定前保持中性。
+  const hasAnswerKey = Boolean(correctAnswer?.trim());
   // 大小写归一：后端返回小写字母答案时也能正确高亮
-  const isThisCorrect = correctAnswer?.toUpperCase().includes(optionKey.toUpperCase());
-  const isWrong = isSubmitted && isSelected && !isThisCorrect;
+  const isThisCorrect = hasAnswerKey
+    ? correctAnswer!.toUpperCase().includes(optionKey.toUpperCase())
+    : isSelected && isCorrect === true;
+  const isWrong = isSubmitted && isSelected && (hasAnswerKey ? !isThisCorrect : isCorrect === false);
   const showCorrect = isSubmitted && isThisCorrect;
+  // 已提交、待 AI 判定：保留选中态，不提前给对错
+  const isPendingVerdict = isSubmitted && isSelected && !showCorrect && !isWrong;
 
   const handleClick = React.useCallback(() => onSelect(optionKey), [onSelect, optionKey]);
 
@@ -425,6 +434,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
         showCorrect && 'bg-success/[0.08] dark:bg-success/[0.15]',
         // 答错：轻微 shake
         isWrong && 'bg-destructive/[0.08] dark:bg-destructive/[0.15] qbank-anim-shake',
+        isPendingVerdict && 'bg-primary/[0.07] dark:bg-primary/[0.15] ring-1 ring-inset ring-primary/40',
         isSubmitted && !isSelected && !isThisCorrect && 'opacity-50',
         'disabled:cursor-default'
       )}
@@ -442,6 +452,7 @@ const OptionButton: React.FC<OptionButtonProps> = React.memo(({
           showCorrect && 'bg-success text-success-foreground qbank-anim-pop',
           // 错误 - 红色填充
           isWrong && 'bg-destructive text-destructive-foreground',
+          isPendingVerdict && 'bg-primary text-primary-foreground',
           // 已提交非选中非正确
           isSubmitted && !isSelected && !isThisCorrect && 'border border-foreground/[0.08] text-foreground/35'
         )}>
@@ -1981,6 +1992,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   : selectedAnswer === opt.key
               }
               isSubmitted={!!submitResult}
+              isCorrect={submitResult?.isCorrect ?? null}
               correctAnswer={submitResult?.correctAnswer}
               onSelect={handleOptionClick}
               type={isMultiSelect ? 'multiple' : 'single'}
