@@ -457,6 +457,42 @@ impl VfsPomodoroRepo {
         })
     }
 
+    /// `[start, end)` 本地日期区间内每天的专注秒数（work 类型 completed + interrupted
+    /// 的 actual_duration，与 `get_daily_stats` 同口径），键为 `YYYY-MM-DD`。
+    /// 供题库打卡日历显示当天学习时长；接收已有连接，便于调用方复用同一连接。
+    pub fn focus_seconds_by_local_date(
+        conn: &rusqlite::Connection,
+        start: chrono::NaiveDate,
+        end_exclusive: chrono::NaiveDate,
+    ) -> VfsResult<std::collections::BTreeMap<String, i64>> {
+        let start_utc = Self::local_date_start_utc(start)?;
+        let end_utc = Self::local_date_start_utc(end_exclusive)?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT created_at, actual_duration
+            FROM pomodoro_records
+            WHERE type = 'work' AND status IN ('completed', 'interrupted')
+              AND created_at >= ?1 AND created_at < ?2 AND deleted_at IS NULL
+            "#,
+        )?;
+        let rows: Vec<(String, i64)> = stmt
+            .query_map(params![start_utc, end_utc], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .filter_map(log_and_skip_err)
+            .collect();
+        let mut by_date = std::collections::BTreeMap::new();
+        for (created_at, actual_duration) in rows {
+            let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&created_at) else {
+                continue;
+            };
+            let date = dt.with_timezone(&chrono::Local).date_naive();
+            if date < start || date >= end_exclusive {
+                continue;
+            }
+            *by_date.entry(date.format("%Y-%m-%d").to_string()).or_insert(0) += actual_duration.max(0);
+        }
+        Ok(by_date)
+    }
+
     /// 近 N 天（含今天）的按日聚合统计，按本地日期分桶。
     ///
     /// 仅统计 work 类型：completed 计入完成数；focus_seconds 累加
@@ -1075,6 +1111,34 @@ mod tests {
             },
         )
         .expect("create todo item")
+    }
+
+    #[test]
+    fn focus_seconds_by_local_date_sums_work_focus_only() {
+        let (_tmp, db) = setup_test_db();
+        VfsPomodoroRepo::create_record(&db, record_params(None, "work", "completed")).unwrap();
+        let mut interrupted = record_params(None, "work", "interrupted");
+        interrupted.actual_duration = 600;
+        VfsPomodoroRepo::create_record(&db, interrupted).unwrap();
+        VfsPomodoroRepo::create_record(&db, record_params(None, "short_break", "completed")).unwrap();
+
+        let today = chrono::Local::now().date_naive();
+        let conn = db.get_conn_safe().unwrap();
+        let by_date = VfsPomodoroRepo::focus_seconds_by_local_date(
+            &conn,
+            today,
+            today + chrono::Duration::days(1),
+        )
+        .unwrap();
+        assert_eq!(by_date.get(&today.format("%Y-%m-%d").to_string()), Some(&2100));
+
+        let yesterday_only = VfsPomodoroRepo::focus_seconds_by_local_date(
+            &conn,
+            today - chrono::Duration::days(1),
+            today,
+        )
+        .unwrap();
+        assert!(yesterday_only.is_empty());
     }
 
     fn record_params(

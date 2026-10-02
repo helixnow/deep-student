@@ -3018,6 +3018,22 @@ impl QuestionBankService {
         }
         .map_err(|e| AppError::database(e.to_string()))?;
 
+        // 当天番茄专注时长（番茄钟不分题目集，按本地日期汇总）；读取失败不影响打卡日历
+        let focus_by_date = match (
+            chrono::NaiveDate::parse_from_str(&start_date, "%Y-%m-%d"),
+            chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d"),
+        ) {
+            (Ok(start), Ok(end)) => {
+                crate::vfs::repos::pomodoro_repo::VfsPomodoroRepo::focus_seconds_by_local_date(&conn, start, end)
+                    .unwrap_or_else(|e| {
+                        warn!("[QuestionBankService] pomodoro focus lookup failed: {}", e);
+                        Default::default()
+                    })
+            }
+            _ => Default::default(),
+        };
+        let month_focus_seconds: u32 = focus_by_date.values().sum::<i64>().clamp(0, u32::MAX as i64) as u32;
+
         let mut days: Vec<DailyCheckIn> = Vec::new();
         let mut month_total_questions = 0u32;
 
@@ -3027,13 +3043,18 @@ impl QuestionBankService {
             let correct_count: i64 = row.get(2).unwrap_or(0);
 
             month_total_questions += question_count as u32;
+            let study_duration_seconds = focus_by_date
+                .get(&date)
+                .copied()
+                .unwrap_or(0)
+                .clamp(0, u32::MAX as i64) as u32;
 
             days.push(DailyCheckIn {
                 date,
                 exam_id: exam_id.map(|s| s.to_string()),
                 question_count: question_count as u32,
                 correct_count: correct_count as u32,
-                study_duration_seconds: 0, // 暂不支持时长统计
+                study_duration_seconds,
                 target_achieved: question_count as u32 >= target,
             });
         }
@@ -3051,6 +3072,7 @@ impl QuestionBankService {
             streak_days,
             month_check_in_days: days.len() as u32,
             month_total_questions,
+            month_focus_seconds,
         })
     }
 
@@ -3516,6 +3538,9 @@ pub struct CheckInCalendar {
     pub month_check_in_days: u32,
     /// 本月总做题数
     pub month_total_questions: u32,
+    /// 本月番茄专注总时长（秒）
+    #[serde(default)]
+    pub month_focus_seconds: u32,
 }
 
 #[cfg(test)]

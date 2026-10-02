@@ -194,7 +194,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
   const calendarDays = useMemo(() => {
     const daysInMonth = getDaysInMonth(calendarYear, calendarMonth);
     const firstDay = getFirstDayOfMonth(calendarYear, calendarMonth);
-    const days: Array<{ day: number | null; checkIn?: { question_count: number; target_achieved: boolean } }> = [];
+    const days: Array<{ day: number | null; checkIn?: { question_count: number; target_achieved: boolean; study_duration_seconds: number } }> = [];
     
     // 填充前面的空白
     for (let i = 0; i < firstDay; i++) {
@@ -210,6 +210,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
         checkIn: checkIn ? {
           question_count: checkIn.question_count,
           target_achieved: checkIn.target_achieved,
+          study_duration_seconds: checkIn.study_duration_seconds ?? 0,
         } : undefined,
       });
     }
@@ -217,6 +218,14 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
     return days;
   }, [calendarYear, calendarMonth, activeCheckInCalendar]);
   
+  // 番茄专注时长：不足 1 小时按分钟，否则按小时（一位小数）
+  const formatFocus = useCallback((seconds: number) => {
+    const minutes = Math.round(seconds / 60);
+    return minutes < 60
+      ? t('daily.focusMinutes', { count: minutes })
+      : t('daily.focusHours', { count: Math.round(minutes / 6) / 10 });
+  }, [t]);
+
   // 判断是否是今天
   const isToday = (day: number) => {
     return day === today.getDate() 
@@ -528,7 +537,12 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                     {item.checkIn && (
                       <span
                         className="max-w-full truncate px-0.5 text-[10px] leading-none text-muted-foreground"
-                        title={t('daily.questionsCount', { count: item.checkIn.question_count })}
+                        title={item.checkIn.study_duration_seconds >= 60
+                          ? t('daily.dayFocusTitle', {
+                            questions: t('daily.questionsCount', { count: item.checkIn.question_count }),
+                            focus: formatFocus(item.checkIn.study_duration_seconds),
+                          })
+                          : t('daily.questionsCount', { count: item.checkIn.question_count })}
                       >
                         {t('daily.questionsCount', { count: item.checkIn.question_count })}
                       </span>
@@ -553,6 +567,12 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 <div className="font-bold text-lg">{activeCheckInCalendar.month_total_questions}</div>
                 <div className="text-muted-foreground text-xs">{t('daily.monthQuestions')}</div>
               </div>
+              {(activeCheckInCalendar.month_focus_seconds ?? 0) >= 60 && (
+                <div className="text-center">
+                  <div className="font-bold text-lg">{formatFocus(activeCheckInCalendar.month_focus_seconds ?? 0)}</div>
+                  <div className="text-muted-foreground text-xs">{t('daily.monthFocus')}</div>
+                </div>
+              )}
               <div className="text-center">
                 <div className="text-base font-semibold text-warning">{activeCheckInCalendar.streak_days}</div>
                 <div className="text-muted-foreground text-xs">{t('daily.streak')}</div>

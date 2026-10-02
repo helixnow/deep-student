@@ -861,6 +861,8 @@ export interface CheckInCalendar {
   streak_days: number;
   month_check_in_days: number;
   month_total_questions: number;
+  /** 本月番茄专注总时长（秒）；旧后端缺省 */
+  month_focus_seconds?: number;
 }
 
 type PracticeRequestKind = 'timed' | 'mock_exam' | 'mock_exam_submit' | 'daily' | 'paper' | 'calendar';
