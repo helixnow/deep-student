@@ -1887,14 +1887,33 @@ function App() {
   const handlePrefillChatInput = useCallback((detail: {
     content: string;
     autoSend?: boolean;
+    newSession?: boolean;
   }) => {
-    const { content, autoSend } = detail ?? {};
+    const { content, autoSend, newSession } = detail ?? {};
     if (!content) return;
 
     setCurrentView('chat-v2');
-    setTimeout(() => {
-      dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend });
-    }, 150);
+    if (!newSession) {
+      setTimeout(() => {
+        dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend });
+      }, 150);
+      return;
+    }
+    // 新会话就绪（current-session-changed）后再填入；3s 兜底，避免填进旧会话或丢失
+    const previousSessionId = sessionManager.getCurrentSessionId();
+    let done = false;
+    const fill = () => {
+      if (done) return;
+      done = true;
+      unsubscribe();
+      window.clearTimeout(fallbackTimer);
+      setTimeout(() => dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend }), 150);
+    };
+    const unsubscribe = sessionManager.subscribe((event) => {
+      if (event.type === 'current-session-changed' && event.sessionId && event.sessionId !== previousSessionId) fill();
+    });
+    const fallbackTimer = window.setTimeout(fill, 3000);
+    requestAnimationFrame(() => dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION));
   }, [setCurrentView]);
 
   // ★ irec 相关事件监听已废弃（图谱模块已移除）

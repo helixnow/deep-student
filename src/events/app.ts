@@ -145,6 +145,8 @@ export interface LearningHubOpenNoteDetail {
 export interface PrefillChatInputDetail {
   content: string;
   autoSend?: boolean;
+  /** 先新建会话再填入（周报复盘等独立话题，不混进当前对话） */
+  newSession?: boolean;
 }
 
 export interface ChatV2SetInputDetail {

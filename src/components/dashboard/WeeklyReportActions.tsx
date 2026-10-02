@@ -6,7 +6,7 @@ import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChartLineUp, ChatCircleText } from '@phosphor-icons/react';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
-import { sendSelectionToChatInput } from '@/features/pdf/selectionStudyActions';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 async function buildReport(t: (key: string, options?: Record<string, unknown>) => string) {
@@ -52,13 +52,18 @@ export const WeeklyReportActions: React.FC = () => {
         type="button"
         className={linkClass}
         disabled={busy}
-        onClick={() => void run(({ title, markdown }) => sendSelectionToChatInput({
-          text: tr('weekly_report.chat_prompt', {
-            title,
-            report: markdown,
-            defaultValue: '这是我的{{title}}（来自本地学习记录）：\n\n{{report}}\n\n请帮我复盘：指出最值得关注的 2–3 个问题，并给出下周可执行的学习安排。',
-          }),
-        }))}
+        onClick={() => void run(({ title, markdown }) => {
+          // 复盘是独立话题：新开对话再填入，不混进当前会话
+          dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+            content: tr('weekly_report.chat_prompt', {
+              title,
+              report: markdown,
+              defaultValue: '这是我的{{title}}（来自本地学习记录）：\n\n{{report}}\n\n请帮我复盘：指出最值得关注的 2–3 个问题，并给出下周可执行的学习安排。',
+            }),
+            autoSend: false,
+            newSession: true,
+          });
+        })}
       >
         <ChatCircleText size={13} aria-hidden="true" />
         {tr('weekly_report.chat', { defaultValue: '与 AI 复盘' })}
