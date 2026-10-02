@@ -137,14 +137,22 @@
   font-weight: 500;
   line-height: 1.35;
   color: hsl(var(--foreground));
-  white-space: nowrap;
+  /* 收起态最多两行（桌面同移动端）：带操作按钮时 320px 内单行放不下
+     「已开始制卡，可在制卡任务台查看进度」这类提示，单行省略读不到关键信息 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-height: 1.35em;
-  transition: max-height 250ms var(--ease-standard), white-space 0ms 250ms;
+  max-height: 2.7em;
+  transition: max-height 250ms var(--ease-standard);
 }
 
 .unified-notification-text.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: break-word;
