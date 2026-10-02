@@ -357,8 +357,109 @@ fn segment_without_overlap(
     Ok(segments)
 }
 
-/// 分割过长的段落：先按句末标点切句，超预算的单句按字符硬切。
+/// 分割过长的段落：多行段落（表格 / 词表 / 列表）先按行聚合，单行不拆；
+/// 其余先按句末标点切句，超预算的单句按字符硬切。
 fn split_long_paragraph(
+    paragraph: &str,
+    max_tokens: usize,
+    snap_boundaries: bool,
+) -> Result<Vec<String>, AppError> {
+    let lines: Vec<&str> = paragraph
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    if lines.len() > 1 {
+        return split_by_lines(&lines, max_tokens, snap_boundaries);
+    }
+    split_by_sentences(paragraph, max_tokens, snap_boundaries)
+}
+
+/// 识别制表符 / 竖线表格的表头：前 3 行里第一个与下一行列数相同（≥2 列）的行。
+fn detect_table_header<'a>(lines: &[&'a str]) -> Option<&'a str> {
+    let columns = |line: &str| -> usize {
+        if line.contains('\t') {
+            line.split('\t').count()
+        } else if line.trim_start().starts_with('|') {
+            line.matches('|').count()
+        } else {
+            0
+        }
+    };
+    lines.windows(2).take(3).find_map(|pair| {
+        let n = columns(pair[0]);
+        (n >= 2 && n == columns(pair[1])).then_some(pair[0])
+    })
+}
+
+/// 按行聚合分段：表格行、词表行绝不从中间切断（按句末标点切会在例句译文的「。」处
+/// 把一行拆进两段，被切断的词两边都不完整，模型直接丢掉——60 词只出 45 张卡）。
+/// 表格在后续每段开头重复表头，模型才知道每列是什么。
+fn split_by_lines(
+    lines: &[&str],
+    max_tokens: usize,
+    snap_boundaries: bool,
+) -> Result<Vec<String>, AppError> {
+    let header = detect_table_header(lines);
+    let header_tokens = header.map(estimate_tokens).unwrap_or(0);
+    // 表头本身就吃掉大半预算时不重复，避免每段只剩一两行
+    let repeat_header = header.filter(|_| header_tokens * 4 < max_tokens);
+
+    let mut segments = Vec::new();
+    let mut current = String::new();
+    let mut current_tokens = 0;
+    let mut current_has_rows = false;
+    let mut header_seen = false;
+
+    for &line in lines {
+        let line_tokens = estimate_tokens(line);
+        let is_header = header == Some(line) && !header_seen;
+        if is_header {
+            header_seen = true;
+        }
+
+        if line_tokens > max_tokens {
+            if current_has_rows {
+                segments.push(current.trim_end().to_string());
+            }
+            current.clear();
+            current_tokens = 0;
+            current_has_rows = false;
+            segments.extend(split_by_sentences(line, max_tokens, snap_boundaries)?);
+            continue;
+        }
+
+        if current_tokens + line_tokens > max_tokens && current_has_rows {
+            segments.push(current.trim_end().to_string());
+            current.clear();
+            current_tokens = 0;
+            current_has_rows = false;
+            if let (Some(h), true) = (repeat_header, header_seen) {
+                current.push_str(h);
+                current.push('\n');
+                current_tokens = header_tokens;
+            }
+        }
+
+        current.push_str(line);
+        current.push('\n');
+        current_tokens += line_tokens;
+        if !is_header {
+            current_has_rows = true;
+        }
+    }
+
+    if current_has_rows || segments.is_empty() {
+        let tail = current.trim_end();
+        if !tail.is_empty() {
+            segments.push(tail.to_string());
+        }
+    }
+
+    Ok(segments)
+}
+
+/// 按句末标点切句聚合，超预算的单句按字符硬切。
+fn split_by_sentences(
     paragraph: &str,
     max_tokens: usize,
     snap_boundaries: bool,
@@ -936,6 +1037,44 @@ fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 词表（制表符表格，单元格里有「。」）：分段只在行边界，每个词恰好出现一次，
+    /// 后续段开头重复表头。回归：按句末标点切把行拆进两段，60 词只出 45 张卡。
+    #[test]
+    fn glossary_table_segments_keep_rows_whole_and_repeat_header() {
+        let header = "单词\t音标\t词性\t中文释义\t例句(英)\t例句译文";
+        let mut table = format!("=== 词汇 Unit07 ===\n{header}\n");
+        for i in 0..60 {
+            table.push_str(&format!(
+                "word{i}\t/wɜːd{i}/\tv.\t释义{i}，含义说明\tThis is example sentence number {i} for the word.\t这是第{i}个例句的译文。还有一句。\n"
+            ));
+        }
+        let segments = segment_without_overlap(&table, 400, false).unwrap();
+        assert!(segments.len() > 2, "应切成多段: {}", segments.len());
+
+        let mut seen = std::collections::BTreeMap::new();
+        for (idx, segment) in segments.iter().enumerate() {
+            for line in segment.lines() {
+                if line.starts_with("word") {
+                    assert_eq!(line.matches('\t').count(), 5, "行被切断: {line}");
+                    *seen.entry(line.split('\t').next().unwrap().to_string()).or_insert(0) += 1;
+                }
+            }
+            if idx > 0 {
+                assert!(segment.starts_with(header), "第 {idx} 段缺表头");
+            }
+        }
+        assert_eq!(seen.len(), 60);
+        assert!(seen.values().all(|&count| count == 1));
+    }
+
+    #[test]
+    fn single_line_paragraph_still_splits_by_sentence() {
+        let paragraph = "这是一句很长的话。".repeat(200);
+        let segments = segment_without_overlap(&paragraph, 300, false).unwrap();
+        assert!(segments.len() > 1);
+        assert!(segments.iter().all(|seg| seg.ends_with('。')));
+    }
 
     /// 构造测试用的最小 AnkiGenerationOptions。
     /// 通过 serde 反序列化构造：新增 `#[serde(default)]` 字段不会破坏本测试。
