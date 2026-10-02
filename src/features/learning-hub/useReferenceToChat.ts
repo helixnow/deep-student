@@ -21,6 +21,7 @@
  * @see 24-LRFS统一入口模型与访达式资源管理器.md Prompt 7
  */
 
+import { mimeTypeFromFileName } from '@/hooks/useTauriDragAndDrop';
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -320,7 +321,10 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
           mindmap: 'application/json',
         };
         // 优先使用资源元数据中的真实 MIME，兜底走类型映射
+        // 「导入资料」统一归为 textbook 类型，PPTX/DOCX/EPUB 也在其中：先看扩展名，
+        // 否则全被当成 PDF，默认选中不存在的「图片」注入模式、附件一直「未就绪」
         const realMimeType = (typeof metadata?.mimeType === 'string' && metadata.mimeType)
+          || mimeTypeFromFileName(displayName)
           || vfsMimeTypes[sourceType]
           || 'application/octet-stream';
         // SSOT 媒体识别：MIME OR 扩展名（覆盖空 mime 的 .png 等）
@@ -358,10 +362,8 @@ export function useReferenceToChat(): UseReferenceToChatReturn {
         window.dispatchEvent(new CustomEvent('CHAT_V2_OPEN_ATTACHMENT_PANEL'));
 
         // 5. 通知用户
-        const message = createResult.isNew
-          ? t('notes:reference.to_chat_created_new')
-          : t('notes:reference.to_chat_reused');
-        showGlobalNotification('success', t('notes:reference.to_chat_success'), message);
+        // 新建/复用上下文引用是内部细节，对学习者只说结果
+        showGlobalNotification('success', t('notes:reference.to_chat_success'));
 
         console.log(LOG_PREFIX, 'Reference added to chat:', contextRef);
 

@@ -19,6 +19,8 @@
     "open": "Open",
     "preview": "Preview",
     "referenceToChat": "Reference to Chat",
+    "makeCards": "Make Flashcards from This",
+    "makeCardsPrompt": "Make a set of review flashcards from the referenced \"{{name}}\": cover core concepts, key formulas/equations and common pitfalls, one point per card.",
     "copyTitle": "Copy Title",
     "copyId": "Copy ID",
     "copy": "Copy",

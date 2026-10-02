@@ -14,6 +14,8 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { MemoryFolderBanner } from './components/MemoryFolderBanner';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {
@@ -2797,10 +2799,10 @@ export function LearningHubSidebar({
   }, [deleteTarget, executePermanentDelete, executeEmptyTrash, items, t, clearSelection, handleRefresh]);
 
   // ★ 右键「引用到对话」→ injectToChat（对齐批量注入契约）
-  const handleReferenceToChat = useCallback(async (target: ContextMenuTarget) => {
+  const handleReferenceToChat = useCallback(async (target: ContextMenuTarget): Promise<boolean> => {
     if (!canInject()) {
       showGlobalNotification('warning', t('finder.multiSelect.noChatSession'));
-      return;
+      return false;
     }
 
     const typeMap: Record<string, VfsResourceType> = {
@@ -2829,12 +2831,12 @@ export function LearningHubSidebar({
       sourceId = item.itemId || item.id;
       name = item.itemId || item.id;
     } else {
-      return;
+      return false;
     }
 
     if (!sourceId || !sourceType) {
       showGlobalNotification('warning', t('error.unsupportedResourceType', { type: 'unknown' }));
-      return;
+      return false;
     }
 
     const result = await injectToChat({
@@ -2846,7 +2848,36 @@ export function LearningHubSidebar({
     if (result.success && result.contextRef && onReferenceToChat) {
       onReferenceToChat(result.contextRef);
     }
+    return result.success;
   }, [canInject, injectToChat, onReferenceToChat, t]);
+
+  // 资料 → 闪卡一步入口：新开一个对话（不混进正在进行的话题）→ 引用这份资料 →
+  // 切到聊天并预填制卡指令（不自动发送，便于改数量/模板）。
+  const handleMakeCards = useCallback(async (target: ContextMenuTarget) => {
+    const previousSessionId = sessionManager.getCurrentSessionId();
+    const newSessionReady = new Promise<boolean>((resolve) => {
+      const timer = window.setTimeout(() => { unsubscribe(); resolve(false); }, 4000);
+      const unsubscribe = sessionManager.subscribe((event) => {
+        if (event.type === 'current-session-changed' && event.sessionId
+          && event.sessionId !== previousSessionId && sessionManager.has(event.sessionId)) {
+          window.clearTimeout(timer);
+          unsubscribe();
+          resolve(true);
+        }
+      });
+    });
+    dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
+    // 新会话没起来（极少见）就退回当前会话，不让入口失效
+    await newSessionReady;
+    const ok = await handleReferenceToChat(target);
+    if (!ok) return;
+    const name = target.type === 'resource'
+      ? target.resource.title
+      : target.type === 'folderItem' ? (target.item.itemId || target.item.id) : '';
+    dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, {
+      content: t('contextMenu.makeCardsPrompt', { name }),
+    });
+  }, [handleReferenceToChat, t]);
 
   // ★ 批量添加到对话（将选中的文件引用发送到 Chat V2 附件区域）
   const handleBatchAddToChat = useCallback(async () => {
@@ -3997,6 +4028,7 @@ export function LearningHubSidebar({
         onReferenceToChat={
           canAddToChatInCurrentView ? handleReferenceToChat : undefined
         }
+        onMakeCards={canAddToChatInCurrentView ? handleMakeCards : undefined}
         onMoveTo={canMoveInCurrentView ? handleMoveTo : undefined}
       />
       

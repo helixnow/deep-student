@@ -12,6 +12,7 @@
  * @see 24-LRFS统一入口模型与访达式资源管理器.md - Prompt 10
  */
 
+import { mimeTypeFromFileName } from '@/hooks/useTauriDragAndDrop';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -210,7 +211,10 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           mindmap: 'application/json',
         };
         // 优先使用资源元数据中的真实 MIME，兜底走类型映射
+        // 「导入资料」统一归为 textbook 类型，PPTX/DOCX/EPUB 也在其中：先看扩展名，
+        // 否则全被当成 PDF，默认选中不存在的「图片」注入模式、附件一直「未就绪」
         const realMimeType = (typeof metadata?.mimeType === 'string' && metadata.mimeType)
+          || mimeTypeFromFileName(name)
           || vfsMimeTypes[sourceType]
           || 'application/octet-stream';
         // SSOT 媒体识别：MIME OR 扩展名（覆盖空 mime 的 .png 等）
@@ -246,10 +250,8 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         };
         store.getState().addAttachment(attachmentMeta);
 
-        const message = createResult.isNew
-          ? t('notes:reference.to_chat_created_new')
-          : t('notes:reference.to_chat_reused');
-        showGlobalNotification('success', t('notes:reference.to_chat_success'), message);
+        // 新建/复用上下文引用是内部细节，对学习者只说结果
+        showGlobalNotification('success', t('notes:reference.to_chat_success'));
 
         // ★ Bug2 修复：通知 InputBar 打开附件面板，让用户看到已添加的资源
         // 注意：批量注入时由调用方统一派发一次，避免 N 次事件

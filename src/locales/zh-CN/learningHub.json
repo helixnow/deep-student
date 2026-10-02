@@ -19,6 +19,8 @@
     "open": "打开",
     "preview": "预览",
     "referenceToChat": "引用到对话",
+    "makeCards": "用这份资料制卡",
+    "makeCardsPrompt": "请根据我引用的《{{name}}》制作一组复习闪卡：覆盖核心概念、关键公式/方程式和易错点，一张卡只考一个知识点。",
     "copyTitle": "复制标题",
     "copyId": "复制 ID",
     "copy": "复制",

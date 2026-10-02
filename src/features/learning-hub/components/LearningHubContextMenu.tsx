@@ -26,6 +26,7 @@ import {
   Star,
   StarHalf,
   CheckCircle,
+  Cards,
 } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
@@ -98,6 +99,8 @@ export interface LearningHubContextMenuProps {
   onDeleteResource?: (resource: ResourceListItem) => void;
   /** 引用到对话 */
   onReferenceToChat?: (target: ContextMenuTarget) => void;
+  /** 引用到对话并预填制卡指令（资料 → 闪卡的一步入口） */
+  onMakeCards?: (target: ContextMenuTarget) => void;
   /** 复制（写入 Finder 内部剪贴板，配合粘贴/Cmd+V） */
   onCopy?: (target: ContextMenuTarget) => void;
   /** ★ 制造副本（对标访达 Duplicate：原地复制一份） */
@@ -189,6 +192,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
   onRenameResource,
   onDeleteResource,
   onReferenceToChat,
+  onMakeCards,
   onCopy,
   onDuplicate,
   onPaste,
@@ -708,6 +712,19 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             }}
           >
             {t('contextMenu.referenceToChat')}
+          </MenuItem>
+        )}
+
+        {/* 用这份资料制卡 */}
+        {canAddToChat && onMakeCards && !isFolder && (
+          <MenuItem
+            icon={<Cards size={15} weight="duotone" />}
+            onClick={() => {
+              onMakeCards(target);
+              closeMenu();
+            }}
+          >
+            {t('contextMenu.makeCards')}
           </MenuItem>
         )}
         

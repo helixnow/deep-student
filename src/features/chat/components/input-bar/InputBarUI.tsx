@@ -1686,6 +1686,15 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
   useEffect(() => {
     const handleOpenAttachmentPanel = () => {
+      // 聊天页不在前台（学习资源页「引用到对话」）时不弹：面板是 fixed 浮层，会盖在当前页面中间。
+      // 引用照常进入待发送区，切回聊天即可在输入框看到。
+      // 隐藏的视图层是 visibility:hidden + content-visibility:hidden（几何仍在），按可见性判断。
+      const anchor = inputContainerRef.current;
+      if (!anchor) return;
+      const visible = typeof anchor.checkVisibility === 'function'
+        ? anchor.checkVisibility({ visibilityProperty: true, opacityProperty: true, contentVisibilityAuto: true })
+        : getComputedStyle(anchor).visibility !== 'hidden';
+      if (!visible) return;
       if (!panelStatesRef.current.attachment) {
         onSetPanelState('attachment', true);
       }

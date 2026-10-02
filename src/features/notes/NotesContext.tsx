@@ -1666,9 +1666,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             // 4. 通知用户
             notify({
                 title: t('notes:reference.to_chat_success'),
-                description: syncResult.isNew 
-                    ? t('notes:reference.to_chat_created_new')
-                    : t('notes:reference.to_chat_reused'),
                 variant: 'success',
             });
 

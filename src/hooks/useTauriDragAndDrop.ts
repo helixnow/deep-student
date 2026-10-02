@@ -28,6 +28,12 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   zip: 'application/zip', rar: 'application/vnd.rar', '7z': 'application/x-7z-compressed',
 };
 
+/** 按文件名扩展名推断 MIME（未知扩展名返回 undefined） */
+export function mimeTypeFromFileName(name: string | null | undefined): string | undefined {
+  const match = /\.([a-z0-9]+)$/i.exec(name ?? '');
+  return match ? EXTENSION_TO_MIME[match[1].toLowerCase()] : undefined;
+}
+
 // ============================================================================
 // 🔧 Windows WebView2 兼容：全局 dragover/drop 事件 preventDefault
 // WebView2 需要 document 级别的 dragover preventDefault 才会允许 drop 事件触发。
