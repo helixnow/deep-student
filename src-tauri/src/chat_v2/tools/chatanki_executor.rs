@@ -3291,6 +3291,12 @@ impl ChatAnkiToolExecutor {
             }
             cards.push(card);
         }
+        // 卡片上的 templateId 决定渲染/导出用哪个模板：未知 id 会让卡片挂在
+        // 不存在的模板上（预览回退、导出字段错配）。整批拒绝（与
+        // cardContentRequired 同为原子语义），不静默降级为无模板。
+        if let Err(error) = validate_agent_card_template_ids(db, &cards) {
+            return Ok(finish_chatanki_failure(call, ctx, start_time, error));
+        }
 
         let (mutation_target, inserted) = match run_preflighted_card_mutation(
             ctx.chat_v2_db.as_deref(),
@@ -7011,7 +7017,7 @@ impl ChatAnkiToolExecutor {
         let template_selection =
             match resolve_template_selection(ctx, &goal, &template_mode, template_id, template_ids)
             {
-                Ok(selection) => selection,
+                Ok(selection) => normalize_template_selection(selection),
                 Err(error_msg) => {
                     ctx.emit_tool_call_error(&error_msg);
                     let result = ToolResultInfo::failure(
@@ -8097,7 +8103,12 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     );
 
     // 模板策略：只要解析出了单模板 template_id（包括 all/multiple 下的降维选择），就按该模板驱动字段抽取。
-    let single_template_id = resolve_single_template_id(params.template_id.as_deref());
+    // template_ids 只剩一个有效 id 时同样走单模板分支（见 effective_single_template_id），
+    // 启动阶段已经归一过，这里再兜一次防御。
+    let single_template_id = effective_single_template_id(
+        params.template_id.as_deref(),
+        params.template_ids.as_deref(),
+    );
     let template = if let Some(tid) = single_template_id {
         if !matches!(params.template_mode, ChatAnkiTemplateMode::Single) {
             log::info!(
@@ -8890,6 +8901,53 @@ fn resolve_single_template_id(template_id: Option<&str>) -> Option<&str> {
     template_id.map(str::trim).filter(|s| !s.is_empty())
 }
 
+/// 解析"实际驱动生成的单模板"：显式 template_id 优先；否则 template_ids
+///（去空、去重后）恰好只剩一个时，同样视为单模板。
+///
+/// templateMode=multiple 只给一个 id、或 templateMode=all 只有一个启用模板时，
+/// 生成选项必须与 single 完全一致（template_id / template_fields /
+/// field_extraction_rules / custom prompt 均取自该模板）。否则会落入
+/// "单条目多模板"：`is_multi_template` 为 false → prompt 要求输出默认
+/// front/back/tags，而 `parse_and_save_card` 却按模板自身字段校验 → 自定义字段
+/// 模板（design-* 等）的卡片全部字段错配。
+fn effective_single_template_id<'a>(
+    template_id: Option<&'a str>,
+    template_ids: Option<&'a [String]>,
+) -> Option<&'a str> {
+    if let Some(tid) = resolve_single_template_id(template_id) {
+        return Some(tid);
+    }
+    let mut unique: Vec<&str> = template_ids?
+        .iter()
+        .map(|id| id.trim())
+        .filter(|id| !id.is_empty())
+        .collect();
+    unique.sort_unstable();
+    unique.dedup();
+    if unique.len() == 1 {
+        Some(unique[0])
+    } else {
+        None
+    }
+}
+
+/// 把"有效模板集合只有一个"的选择归一为 single 形态
+///（template_id=Some(id), template_ids=None），使下游 UI 元数据、
+/// effective templateMode 与后台管线的生成选项三者一致。
+fn normalize_template_selection(selection: TemplateSelection) -> TemplateSelection {
+    if resolve_single_template_id(selection.template_id.as_deref()).is_some() {
+        return selection;
+    }
+    match effective_single_template_id(None, selection.template_ids.as_deref()).map(str::to_string)
+    {
+        Some(tid) => TemplateSelection {
+            template_id: Some(tid),
+            template_ids: None,
+        },
+        None => selection,
+    }
+}
+
 fn collect_requested_template_ids(
     template_id: Option<String>,
     template_ids: Option<Vec<String>>,
@@ -8915,6 +8973,45 @@ fn collect_requested_template_ids(
     ids.sort();
     ids.dedup();
     ids
+}
+
+/// 校验 agent 传入卡片的 templateId 均存在于模板库。
+///
+/// 返回的错误是给模型看的纯文本（带出具体缺失 id 与修正路径），不是
+/// `blocks.ankiCards.errors.*` key——key 的通用描述无法指明是哪个 id。
+fn validate_agent_card_template_ids(
+    db: &crate::database::Database,
+    cards: &[crate::models::AnkiCard],
+) -> Result<(), String> {
+    let mut ids: Vec<&str> = cards
+        .iter()
+        .filter_map(|card| card.template_id.as_deref())
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .collect();
+    ids.sort_unstable();
+    ids.dedup();
+    let mut missing: Vec<&str> = Vec::new();
+    for id in ids {
+        match db.get_custom_template_by_id(id) {
+            Ok(Some(_)) => {}
+            Ok(None) => missing.push(id),
+            Err(error) => {
+                return Err(format!(
+                    "failed to load template {} while validating chatanki_add_cards: {}; retry later",
+                    id, error
+                ));
+            }
+        }
+    }
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "unknown templateId: {}; no cards were added. Use a templateId returned by chatanki_list_templates, or omit templateId to keep the document's default fields",
+            missing.join(", ")
+        ))
+    }
 }
 
 fn infer_single_template_id_from_cards(cards: &[crate::models::AnkiCard]) -> Option<String> {
@@ -19137,6 +19234,169 @@ mod tests {
         );
         assert_eq!(resolve_single_template_id(Some("   ")), None);
         assert_eq!(resolve_single_template_id(None), None);
+    }
+
+    #[test]
+    fn test_effective_single_template_id_collapses_single_entry_sets() {
+        let one = vec![" design-manuscript ".to_string()];
+        assert_eq!(
+            effective_single_template_id(None, Some(&one)),
+            Some("design-manuscript")
+        );
+        // 去空 + 去重后只剩一个
+        let dup = vec!["tpl-a".to_string(), " tpl-a".to_string(), "  ".to_string()];
+        assert_eq!(
+            effective_single_template_id(None, Some(&dup)),
+            Some("tpl-a")
+        );
+        let two = vec!["tpl-a".to_string(), "tpl-b".to_string()];
+        assert_eq!(effective_single_template_id(None, Some(&two)), None);
+        assert_eq!(effective_single_template_id(None, None), None);
+        // 显式 template_id 永远优先
+        assert_eq!(
+            effective_single_template_id(Some("tpl-x"), Some(&two)),
+            Some("tpl-x")
+        );
+    }
+
+    #[test]
+    fn test_normalize_template_selection_single_entry_becomes_single_mode() {
+        // templateMode=multiple 只给一个 id / templateMode=all 只有一个启用模板
+        let normalized = normalize_template_selection(TemplateSelection {
+            template_id: None,
+            template_ids: Some(vec!["design-manuscript".to_string()]),
+        });
+        assert_eq!(normalized.template_id.as_deref(), Some("design-manuscript"));
+        assert!(normalized.template_ids.is_none());
+        assert_eq!(
+            derive_effective_template_mode(&normalized).as_str(),
+            ChatAnkiTemplateMode::Single.as_str()
+        );
+
+        let multi = normalize_template_selection(TemplateSelection {
+            template_id: None,
+            template_ids: Some(vec!["tpl-a".to_string(), "tpl-b".to_string()]),
+        });
+        assert!(multi.template_id.is_none());
+        assert_eq!(multi.template_ids.as_ref().map(Vec::len), Some(2));
+        assert_eq!(
+            derive_effective_template_mode(&multi).as_str(),
+            ChatAnkiTemplateMode::Multiple.as_str()
+        );
+    }
+
+    /// 回归：multiple+单 id 的生成选项必须与 single 模式逐字段一致——
+    /// 此前 template 为 None，template_fields 落成默认 front/back/tags，
+    /// 与按模板自身字段校验的 parse_and_save_card 错配。
+    #[test]
+    fn test_multiple_with_one_template_id_matches_single_mode_options() {
+        let mut template = make_chatanki_template(
+            "design-manuscript",
+            "Manuscript",
+            "custom fields",
+            "Basic",
+            true,
+        );
+        template.fields = vec![
+            "Question".to_string(),
+            "Answer".to_string(),
+            "Source".to_string(),
+        ];
+        template.generation_prompt = "manuscript prompt".to_string();
+        let templates = [template];
+        let load = |tid: &str| templates.iter().find(|t| t.id == tid);
+        let tuning = ChatAnkiGenerationTuning::default();
+        let build = |selection: TemplateSelection| {
+            let selection = normalize_template_selection(selection);
+            let tid = effective_single_template_id(
+                selection.template_id.as_deref(),
+                selection.template_ids.as_deref(),
+            )
+            .map(str::to_string);
+            let template = tid.as_deref().and_then(load);
+            build_generation_options(
+                "goal",
+                "Deck",
+                "Basic",
+                "content",
+                template,
+                Some(10),
+                None,
+                &tuning,
+                None,
+            )
+        };
+
+        let single = build(TemplateSelection {
+            template_id: Some("design-manuscript".to_string()),
+            template_ids: None,
+        });
+        let multiple_one = build(TemplateSelection {
+            template_id: None,
+            template_ids: Some(vec!["design-manuscript".to_string()]),
+        });
+        // 管线内的防御路径（未经启动阶段归一）同样命中单模板
+        let raw_ids = vec!["design-manuscript".to_string()];
+        assert_eq!(
+            effective_single_template_id(None, Some(&raw_ids)),
+            Some("design-manuscript")
+        );
+
+        let expected_fields = vec![
+            "Question".to_string(),
+            "Answer".to_string(),
+            "Source".to_string(),
+        ];
+        for opts in [&single, &multiple_one] {
+            assert_eq!(opts.template_id.as_deref(), Some("design-manuscript"));
+            assert_eq!(opts.template_fields.as_ref(), Some(&expected_fields));
+            assert_eq!(
+                opts.custom_anki_prompt.as_deref(),
+                Some("manuscript prompt")
+            );
+            assert!(opts.template_ids.is_none());
+            assert!(opts.template_fields_by_id.is_none());
+            assert!(opts.field_extraction_rules_by_id.is_none());
+            assert!(!crate::anki_protocol::is_multi_template(opts));
+        }
+        // 规则按 key 集合比较（HashMap 不做序列化比对）
+        let rule_keys = |o: &AnkiGenerationOptions| {
+            let mut keys: Vec<String> = o
+                .field_extraction_rules
+                .as_ref()
+                .map(|r| r.keys().cloned().collect())
+                .unwrap_or_default();
+            keys.sort();
+            keys
+        };
+        assert_eq!(rule_keys(&single), rule_keys(&multiple_one));
+        let mut expected_keys = expected_fields.clone();
+        expected_keys.sort();
+        assert_eq!(rule_keys(&single), expected_keys);
+    }
+
+    #[test]
+    fn test_validate_agent_card_template_ids_rejects_unknown_ids() {
+        let (db, _tmp) = make_test_db();
+        db.create_custom_template_with_id(
+            "tpl-known-add",
+            &make_chatanki_template_request("Known add"),
+        )
+        .expect("create template");
+
+        let mut known = make_chatanki_card("c1", "", "f", "b");
+        known.template_id = Some("tpl-known-add".to_string());
+        let mut none = make_chatanki_card("c2", "", "f2", "b2");
+        none.template_id = None;
+        assert!(validate_agent_card_template_ids(&db, &[known.clone(), none]).is_ok());
+
+        let mut missing = make_chatanki_card("c3", "", "f3", "b3");
+        missing.template_id = Some("tpl-missing-add".to_string());
+        let err = validate_agent_card_template_ids(&db, &[known, missing])
+            .expect_err("unknown template id must be rejected");
+        assert!(err.contains("tpl-missing-add"));
+        assert!(!err.contains("tpl-known-add"));
+        assert!(err.contains("chatanki_list_templates"));
     }
 
     #[test]
