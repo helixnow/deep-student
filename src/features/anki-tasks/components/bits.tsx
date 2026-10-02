@@ -26,8 +26,19 @@ export const PropRow: React.FC<{
   </div>
 );
 
-export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean }> = ({ group, paused }) => {
+export const StatusTag: React.FC<{ group: SessionGroup; paused?: boolean; noCards?: boolean }> = ({ group, paused, noCards }) => {
   const { t } = useTranslation('anki');
+  // 跑完却一张卡都没出（内容过短/无可提炼知识点）：不能显示成绿色「已完成」，学习者会以为卡已生成
+  if (group === 'completed' && noCards) {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-sm text-muted-foreground bg-muted"
+        title={t('taskDashboard.statusNoCardsHint', { defaultValue: '处理完成，但没有生成卡片：内容可能过短或缺少可记忆的知识点' })}
+      >
+        {t('taskDashboard.statusNoCards', { defaultValue: '未出卡' })}
+      </span>
+    );
+  }
   const config = {
     active: {
       text: paused ? t('taskDashboard.statusPaused') : t('taskDashboard.statusActive'),

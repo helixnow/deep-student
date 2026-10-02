@@ -299,7 +299,9 @@ describe('AnkiTasksApp failed+running 混合态归 active', () => {
     const name = await screen.findByText('warned doc');
     const row = name.closest('[data-agent-entity]') as HTMLElement;
 
-    expect(within(row).getByText(dashboard.statusDone)).toBeInTheDocument();
+    // 夹具为 0 张卡（避免排行榜同名条目）：completed 分组下显示「未出卡」而非绿色「已完成」
+    expect(within(row).getByText(dashboard.statusNoCards)).toBeInTheDocument();
+    expect(within(row).queryByText(dashboard.statusDone)).not.toBeInTheDocument();
     expect(within(row).getByTestId('wb-at-warning-badge')).toHaveTextContent('2');
   });
 });

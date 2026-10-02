@@ -744,6 +744,8 @@
     "chartDocs": "文档",
     "statusActive": "进行中",
     "statusFailed": "失败",
+    "statusNoCards": "未出卡",
+    "statusNoCardsHint": "处理完成，但没有生成卡片：内容可能过短或缺少可记忆的知识点",
     "statusDone": "已完成",
     "statusPaused": "已暂停",
     "docsRanking": "文档制卡排行",

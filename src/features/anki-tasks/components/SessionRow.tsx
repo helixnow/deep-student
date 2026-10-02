@@ -306,7 +306,7 @@ export const SessionRow: React.FC<{
 
         {/* 状态（宽度与表头 60/72px 对齐，避免小屏列错位） */}
         <div className="w-[60px] sm:w-[72px] flex-shrink-0">
-          <StatusTag group={group} paused={group === 'active' && session.activeTasks === 0 && session.pausedTasks > 0} />
+          <StatusTag group={group} paused={group === 'active' && session.activeTasks === 0 && session.pausedTasks > 0} noCards={session.totalCards === 0} />
         </div>
 
         {/* 卡片数 */}

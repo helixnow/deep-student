@@ -732,6 +732,8 @@
     "chartDocs": "Documents",
     "statusActive": "Active",
     "statusFailed": "Failed",
+    "statusNoCards": "No cards",
+    "statusNoCardsHint": "Finished without cards: the content may be too short or lack memorable facts",
     "statusDone": "Completed",
     "statusPaused": "Paused",
     "docsRanking": "Top Documents",
