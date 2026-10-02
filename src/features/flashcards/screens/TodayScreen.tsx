@@ -161,8 +161,19 @@ export const TodayScreen: React.FC = () => {
   const progress = todayTarget > 0 ? doneToday / todayTarget : 0;
   const progressPercent = Math.round(progress * 100);
   const learningCount = stats == null ? null : stats.learning + stats.relearning;
+  // 新生成的卡默认停在卡片库「待入队」，不进复习统计：单独取卡片库总数，
+  // 否则有卡却显示「卡片库还是空的」，学习者以为卡片丢了
+  const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    invoke<{ total?: number }>('list_anki_library_cards', { request: { page: 1, pageSize: 1 } })
+      .then((res) => { if (!cancelled) setLibraryTotal(typeof res?.total === 'number' ? res.total : null); })
+      .catch(() => { if (!cancelled) setLibraryTotal(null); });
+    return () => { cancelled = true; };
+  }, [stats?.total]);
+  const pendingEnqueue = stats != null && libraryTotal != null ? Math.max(0, libraryTotal - stats.total) : 0;
   // 卡库为空：走建库引导，而不是「今日全部完成」
-  const libraryEmpty = stats != null && stats.total === 0;
+  const libraryEmpty = stats != null && stats.total === 0 && pendingEnqueue === 0;
   const showDoneState = doneToday > 0 && !libraryEmpty;
 
   const mobileChrome = useFlashcardsMobileChrome({
@@ -324,7 +335,7 @@ export const TodayScreen: React.FC = () => {
             </div>
           ) : dueCards.length === 0 ? (
             <div className="wb-fc-list wb-fcx-empty-section">
-              <div className="wb-fc-empty gap-3" data-state={libraryEmpty ? 'library-empty' : showDoneState ? 'done' : 'idle'}>
+              <div className="wb-fc-empty gap-3" data-state={libraryEmpty ? 'library-empty' : pendingEnqueue > 0 && !showDoneState ? 'pending-enqueue' : showDoneState ? 'done' : 'idle'}>
                 <div className="wb-fcx-empty-icon" data-tone={showDoneState ? 'done' : 'idle'}>
                   {showDoneState
                     ? <CheckCircle size={28} weight="duotone" />
@@ -334,21 +345,29 @@ export const TodayScreen: React.FC = () => {
                   <p className="font-medium text-foreground">
                     {libraryEmpty
                       ? t('today.libraryEmpty')
-                      : showDoneState ? t('today.allDone') : t('today.empty')}
+                      : pendingEnqueue > 0 && !showDoneState
+                        ? t('today.pendingEnqueue', { count: pendingEnqueue, defaultValue: '{{count}} 张新卡还没加入复习' })
+                        : showDoneState ? t('today.allDone') : t('today.empty')}
                   </p>
                   <p className="mx-auto max-w-md text-xs text-muted-foreground">
-                    {libraryEmpty ? t('today.libraryEmptyHint') : t('today.emptyHint')}
+                    {libraryEmpty
+                      ? t('today.libraryEmptyHint')
+                      : pendingEnqueue > 0 && !showDoneState
+                        ? t('today.pendingEnqueueHint', { defaultValue: '新生成的卡片先放在卡片库的「待入队」里，加入复习后才会出现在每天的复习中。' })
+                        : t('today.emptyHint')}
                   </p>
                 </div>
                 <div className="wb-fcx-empty-actions">
                   <DsButton
                     type="button"
-                    variant={libraryEmpty ? 'primary' : 'default'}
+                    variant={libraryEmpty || pendingEnqueue > 0 ? 'primary' : 'default'}
                     onClick={() => setScreen('library')}
                     className="wb-fcx-empty-cta text-sm [@media(pointer:coarse)]:!min-h-11"
                   >
                     <Books size={15} weight="duotone" />
-                    {t('today.goLibrary')}
+                    {pendingEnqueue > 0 && !showDoneState
+                      ? t('today.goEnqueue', { defaultValue: '去加入复习' })
+                      : t('today.goLibrary')}
                   </DsButton>
                   <DsButton
                     type="button"
