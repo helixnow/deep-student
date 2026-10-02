@@ -9,6 +9,7 @@ import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { 
   getNextQuestionIndex,
+  getPracticeStartIndex,
   type Question,
   type PracticeMode,
   type QuestionType,
@@ -1218,7 +1219,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     requestViewMode('practice', () => {
       setStorePracticeMode(mode);
       if (tag) setSelectedTag(tag);
-      const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
+      const nextIdx = getPracticeStartIndex(questions, currentIndex, mode, tag);
       navigate(nextIdx);
     }, mode !== practiceMode || (mode === 'by_tag' && tag !== selectedTag));
   }, [questions, currentIndex, navigate, requestViewMode, setStorePracticeMode, practiceMode, selectedTag]);
@@ -1563,7 +1564,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           });
           return;
         }
-        const nextIndex = getNextQuestionIndex(questions, currentIndex, mode, tag);
+        const nextIndex = getPracticeStartIndex(questions, currentIndex, mode, tag);
         const target = questions[nextIndex];
         if (!requestViewMode('practice', () => {
           setElapsedTime(0);
@@ -1631,7 +1632,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         if (idx >= 0) navigate(idx);
       }
     } else {
-      const nextIdx = getNextQuestionIndex(questions, currentIndex, mode, tag);
+      const nextIdx = getPracticeStartIndex(questions, currentIndex, mode, tag);
       navigate(nextIdx);
     }
     switchViewMode('practice');

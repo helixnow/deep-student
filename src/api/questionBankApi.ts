@@ -394,6 +394,26 @@ function checkAnswerCorrectness(userAnswer: string, correctAnswer?: string, ques
   return normalizeAnswer(userAnswer) === normalizeAnswer(correctAnswer);
 }
 
+/**
+ * 进入练习（启动 / 切换模式）时的起始题。
+ *
+ * getNextQuestionIndex 是「答完去下一题」语义；启动时直接调用它，顺序练习每次进入都会
+ * 跳过当前题——未作答就离开再回来，Q1→Q2→Q3 一路被跳过。顺序模式下当前题尚未作答
+ * 时停在当前题；其余模式沿用各自的选题规则。
+ */
+export function getPracticeStartIndex(
+  questions: Question[],
+  currentIndex: number,
+  mode: PracticeMode,
+  tag?: string
+): number {
+  if (mode === 'sequential' && questions.length > 0) {
+    const safeCurrentIndex = Math.min(Math.max(currentIndex, 0), questions.length - 1);
+    if (!(questions[safeCurrentIndex].attemptCount ?? 0)) return safeCurrentIndex;
+  }
+  return getNextQuestionIndex(questions, currentIndex, mode, tag);
+}
+
 export function getNextQuestionIndex(
   questions: Question[],
   currentIndex: number,

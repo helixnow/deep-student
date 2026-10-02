@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getNextQuestionIndex, type Question } from '@/api/questionBankApi';
+import { getNextQuestionIndex, getPracticeStartIndex, type Question } from '@/api/questionBankApi';
 
 function question(
   id: string,
@@ -44,5 +44,18 @@ describe('getNextQuestionIndex', () => {
 
     expect(getNextQuestionIndex(questions, 1, 'by_tag', 'algebra')).toBe(0);
     expect(getNextQuestionIndex(questions, 0, 'by_tag', '__untagged__')).toBe(2);
+  });
+});
+
+describe('getPracticeStartIndex', () => {
+  const qs = (attempts: number[]) => attempts.map((attemptCount, i) => ({ id: `q${i}`, attemptCount } as Question));
+
+  it('sequential stays on an unanswered current question instead of skipping it', () => {
+    expect(getPracticeStartIndex(qs([0, 0, 0]), 0, 'sequential')).toBe(0);
+    expect(getPracticeStartIndex(qs([1, 0, 0]), 1, 'sequential')).toBe(1);
+  });
+
+  it('sequential moves on once the current question was answered', () => {
+    expect(getPracticeStartIndex(qs([1, 0, 0]), 0, 'sequential')).toBe(1);
   });
 });
