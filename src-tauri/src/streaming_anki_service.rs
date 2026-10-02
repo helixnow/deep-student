@@ -597,6 +597,23 @@ fn json_fragment_balanced(fragment: &str) -> bool {
     depth == 0 && !in_string
 }
 
+/// 紧凑输出上限（词表模式 2400）不得低于本段实际需要：一段 14 行、每行 7 个字段的
+/// 词表要输出的卡远超 2400 token，触顶后整段 JSON 截断、只剩 0–1 张（60 词实测出 36 张）。
+/// 下限按段长估算（输出约为输入的 1.5 倍 + 结构开销），推理模型再留思考余量，
+/// 最终受模型输出上限约束。
+fn compact_output_budget(cap: u32, segment: &str, reasoning: bool, model_limit: u32) -> u32 {
+    let chars = segment.chars().count() as u32;
+    let floor = chars.saturating_mul(3) / 2 + 600;
+    let mut budget = cap.max(floor);
+    if reasoning {
+        budget = budget.saturating_add(4096);
+    }
+    if model_limit > 0 {
+        budget = budget.min(model_limit);
+    }
+    budget
+}
+
 impl StreamingAnkiService {
     pub fn new(db: Arc<Database>, llm_manager: Arc<LLMManager>) -> Self {
         // 生产路径不 panic：带超时配置构建失败时（极罕见，TLS 初始化异常等）
@@ -733,10 +750,18 @@ impl StreamingAnkiService {
         };
 
         // 确定API参数
-        let max_tokens = options
-            .max_output_tokens_override
-            .or(options.max_tokens)
-            .unwrap_or(api_config.max_output_tokens);
+        let max_tokens = match options.max_output_tokens_override {
+            Some(cap) => compact_output_budget(
+                cap,
+                &task.content_segment,
+                api_config.supports_reasoning,
+                crate::llm_manager::effective_max_tokens(
+                    api_config.max_output_tokens,
+                    api_config.max_tokens_limit,
+                ),
+            ),
+            None => options.max_tokens.unwrap_or(api_config.max_output_tokens),
+        };
         let temperature = options
             .temperature_override
             .or(options.temperature)
@@ -3532,6 +3557,20 @@ impl StreamingAnkiService {
 
 #[cfg(test)]
 mod tests {
+    use super::compact_output_budget;
+
+    #[test]
+    fn compact_output_budget_grows_with_segment_and_reasoning() {
+        let segment = "词".repeat(2200);
+        // 2200 字的词表段：不能停在 2400
+        assert!(compact_output_budget(2400, &segment, false, 32_000) >= 3900);
+        // 推理模型额外留思考余量
+        assert!(compact_output_budget(2400, &segment, true, 32_000) >= 7900);
+        // 短段保持原紧凑上限；始终受模型上限约束
+        assert_eq!(compact_output_budget(2400, "short", false, 32_000), 2400);
+        assert_eq!(compact_output_budget(2400, &segment, true, 4000), 4000);
+    }
+
     use super::*;
 
     fn make_template(id: &str, name: &str) -> TemplateDescription {

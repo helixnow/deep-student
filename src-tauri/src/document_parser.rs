@@ -288,6 +288,15 @@ impl From<base64::DecodeError> for ParsingError {
 /// 文档解析器结构体
 pub struct DocumentParser;
 
+/// 表头行判定：至少两列、每格都是短文本且不是数字。
+fn looks_like_header_row(line: &str) -> bool {
+    let cells: Vec<&str> = line.split('\t').map(str::trim).filter(|c| !c.is_empty()).collect();
+    cells.len() >= 2
+        && cells
+            .iter()
+            .all(|c| c.chars().count() <= 24 && c.parse::<f64>().is_err())
+}
+
 impl DocumentParser {
     /// 创建新的文档解析器实例
     pub fn new() -> Self {
@@ -2503,6 +2512,7 @@ impl DocumentParser {
             // 54 / 55 词），制卡规模、漏卡核对都要靠这个数
             let mut sheet_body = String::new();
             let mut sheet_rows = 0usize;
+            let mut first_row_is_header = false;
 
             // 获取工作表范围
             if let Ok(range) = workbook.worksheet_range(sheet_name) {
@@ -2538,16 +2548,22 @@ impl DocumentParser {
 
                     // 只添加非空行
                     if !line.trim().is_empty() {
+                        if sheet_rows == 0 {
+                            first_row_is_header = looks_like_header_row(&line);
+                        }
                         Self::push_excel_text_bounded(&mut sheet_body, &line)?;
                         Self::push_excel_text_bounded(&mut sheet_body, "\n")?;
                         sheet_rows += 1;
                     }
                 }
             }
-            Self::push_excel_text_bounded(
-                &mut text_content,
-                &format!("=== {} · {} 行 ===\n", sheet_name, sheet_rows),
-            )?;
+            // 首行像表头时分开写，避免把表头也数成一条（实测「61 词」）
+            let heading = if first_row_is_header && sheet_rows >= 2 {
+                format!("=== {} · 表头 1 行 + 数据 {} 行 ===\n", sheet_name, sheet_rows - 1)
+            } else {
+                format!("=== {} · {} 行 ===\n", sheet_name, sheet_rows)
+            };
+            Self::push_excel_text_bounded(&mut text_content, &heading)?;
             Self::push_excel_text_bounded(&mut text_content, &sheet_body)?;
         }
 
@@ -4414,7 +4430,7 @@ mod tests {
         let text = parser
             .extract_excel_from_bytes("词表.xlsx", workbook)
             .expect("extract xlsx text");
-        assert!(text.starts_with("=== Sheet1 · 3 行 ===\n单词\t释义"), "{text}");
+        assert!(text.starts_with("=== Sheet1 · 表头 1 行 + 数据 2 行 ===\n单词\t释义"), "{text}");
         assert!(text.contains("ambiguous\t模棱两可的"));
     }
 
