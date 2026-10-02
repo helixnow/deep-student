@@ -27,6 +27,8 @@ const FIRED_CAP = 1000;
 const DAILY_DIGEST_STORAGE_KEY = 'todo-daily-digest-date-v1';
 /** 早间汇总从该小时起触发（避免凌晨打扰） */
 const DAILY_DIGEST_FROM_HOUR = 7;
+/** 学习到期早间汇总（卡片 / 错题 / 笔记三条复习线，与首页「今日学习」同口径） */
+const LEARNING_DIGEST_STORAGE_KEY = 'learning-daily-digest-date-v1';
 /** 精确定时器 clamp 上限：更远的提醒到点后重算（也天然覆盖睡眠期间的漂移） */
 const EXACT_TIMER_MAX_MS = 30 * 60 * 1000;
 /** 精确定时器附加缓冲：确保触发时提醒时间确实已过 */
@@ -241,6 +243,41 @@ async function checkDailyDueDigest(now: Date): Promise<void> {
   }
 }
 
+/**
+ * 学习到期早间汇总：每天 7 点后第一次检查时，若有到期卡片 / 错题 / 笔记，发一条汇总。
+ * 此前只有待办会提醒，FSRS 卡片、SM-2 错题与笔记复习日期到期都没人告诉学习者。
+ */
+export async function checkDailyLearningDigest(now: Date): Promise<void> {
+  if (now.getHours() < DAILY_DIGEST_FROM_HOUR) return;
+  const today = localDateString(now);
+  try {
+    if (localStorage.getItem(LEARNING_DIGEST_STORAGE_KEY) === today) return;
+  } catch {
+    return;
+  }
+  try {
+    const { loadTodayLearning } = await import('@/features/learning-today/todayLearning');
+    const due = await loadTodayLearning(now);
+    const total = due.cards + due.mistakes + due.notes;
+    if (total > 0) {
+      // 非用户主动订阅的提醒：遵循全局通知策略（默认仅后台时通知；前台时首页「今日」已可见）
+      const { sendSystemNotification: sendByPolicy } = await import('@/utils/systemNotification');
+      await sendByPolicy(
+        i18n.t('todo:learningDigest.title', { count: total, defaultValue: '今日有 {{count}} 项待复习' }),
+        i18n.t('todo:learningDigest.body', {
+          cards: due.cards,
+          mistakes: due.mistakes,
+          notes: due.notes,
+          defaultValue: '卡片 {{cards}} 张、错题 {{mistakes}} 道、笔记 {{notes}} 篇',
+        }),
+      );
+    }
+    localStorage.setItem(LEARNING_DIGEST_STORAGE_KEY, today);
+  } catch (e) {
+    console.warn('[TodoReminder] Learning digest failed:', e);
+  }
+}
+
 // ============================================================================
 // 核心检查与调度
 // ============================================================================
@@ -277,6 +314,7 @@ async function checkReminders(): Promise<void> {
   try {
     // ★ 3.1 每日到期早间汇总（独立于到点提醒，有自己的每日去重）
     await checkDailyDueDigest(new Date());
+    await checkDailyLearningDigest(new Date());
 
     const items = await listReminderItems();
     const now = Date.now();

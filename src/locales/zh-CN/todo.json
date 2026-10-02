@@ -538,6 +538,10 @@
     "missedBodyMore": "{{titles}} 等，另有 {{rest}} 条",
     "titleJoin": "、"
   },
+  "learningDigest": {
+    "title": "今日有 {{count}} 项待复习",
+    "body": "卡片 {{cards}} 张、错题 {{mistakes}} 道、笔记 {{notes}} 篇"
+  },
   "dailyDigest": {
     "title": "今日有 {{count}} 项待办到期",
     "bodyMore": "{{titles}} 等，另有 {{rest}} 项"
