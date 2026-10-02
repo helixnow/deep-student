@@ -15,6 +15,7 @@ import {
   Check,
   DotsThree,
   FolderPlus,
+  Plus,
   List,
   MagnifyingGlass,
   SortAscending,
@@ -49,6 +50,8 @@ interface FinderToolbarProps {
   searchDisabled?: boolean;
   onNewFolder?: () => void;
   onRefresh?: () => void;
+  /** 「新建」菜单内容（FinderCreateMenuItems）；桌面壳下快捷访问栏不带 + 按钮，入口放顶栏 */
+  createMenuItems?: React.ReactNode;
   titlebarMode?: false | 'shell' | 'window';
 }
 
@@ -255,6 +258,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
   searchDisabled = false,
   onNewFolder,
   onRefresh,
+  createMenuItems,
   titlebarMode = false,
 }: FinderToolbarProps) {
   const { t } = useTranslation('learningHub');
@@ -384,14 +388,36 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     </AppMenu>
   ) : null;
 
+  const createMenu = createMenuItems ? (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="pointer-events-auto relative !h-8 !w-8 !p-1.5 [@media(pointer:coarse)]:!h-10 [@media(pointer:coarse)]:!w-10 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-1 [@media(pointer:coarse)]:after:content-[''] rounded-xl bg-[color:var(--interactive-hover)]/70 text-foreground/70 hover:bg-background"
+          title={t('finder.toolbar.new')}
+          aria-label={t('finder.toolbar.new')}
+        >
+          <Plus size={16} weight="bold" />
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" className="min-w-[180px]">
+        {createMenuItems}
+      </AppMenuContent>
+    </AppMenu>
+  ) : null;
+
   const utilityButtons = isCompact ? (
     <>
       {viewModeToggle}
+      {createMenu}
       {overflowMenu}
     </>
   ) : (
     <>
       {viewModeToggle}
+      {createMenu}
 
       {onSortChange && (
         <AppMenu open={sortMenuOpen} onOpenChange={setSortMenuOpen}>

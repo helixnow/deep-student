@@ -98,6 +98,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import {
   FinderToolbar,
   FinderQuickAccess,
+  FinderCreateMenuItems,
   FinderFileList,
   FinderBatchToolbar,
   FinderQuickLook,
@@ -3650,6 +3651,19 @@ export function LearningHubSidebar({
             searchDisabled={!canSearchInCurrentView}
             onNewFolder={canCreateInCurrentView ? handleNewFolder : undefined}
             onRefresh={handleRefresh}
+            createMenuItems={quickAccessPortalTarget && canCreateInCurrentView ? (
+              <FinderCreateMenuItems
+                onNewFolder={handleNewFolder}
+                onNewNote={handleNewNote}
+                onNewLearningNote={() => setCreatingLearningNote(true)}
+                onImportMarkdownNote={() => { void handleImportMarkdownNote(); }}
+                onNewExam={handleNewExam}
+                onNewTextbook={handleNewTextbook}
+                onNewTranslation={handleNewTranslation}
+                onNewEssay={handleNewEssay}
+                onNewMindMap={handleNewMindMap}
+              />
+            ) : undefined}
             titlebarMode={toolbarPortalTarget ? toolbarPortalMode : false}
           />
           );

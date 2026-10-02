@@ -76,6 +76,82 @@ interface FinderQuickAccessProps {
   hideSearch?: boolean;
 }
 
+export interface FinderCreateMenuItemsProps {
+  onNewFolder?: () => void;
+  onNewNote?: () => void;
+  onNewLearningNote?: () => void;
+  onImportMarkdownNote?: () => void;
+  onNewExam?: () => void;
+  onNewTextbook?: () => void;
+  onNewTranslation?: () => void;
+  onNewEssay?: () => void;
+  onNewMindMap?: () => void;
+}
+
+/** 学习资源「新建」菜单项：快捷访问侧栏与顶栏 + 菜单共用 */
+export function FinderCreateMenuItems({
+  onNewFolder,
+  onNewNote,
+  onNewLearningNote,
+  onImportMarkdownNote,
+  onNewExam,
+  onNewTextbook,
+  onNewTranslation,
+  onNewEssay,
+  onNewMindMap,
+}: FinderCreateMenuItemsProps) {
+  const { t } = useTranslation(['learningHub', 'common']);
+  return (
+    <>
+      {onNewFolder && (
+        <AppMenuItem icon={<FolderIcon size={16} />} onClick={onNewFolder}>
+          {t('finder.toolbar.newFolder')}
+        </AppMenuItem>
+      )}
+      {onNewNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewNote}>
+          {t('finder.toolbar.newNote')}
+        </AppMenuItem>
+      )}
+      {onNewLearningNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewLearningNote}>
+          {t('notes:learning.create.menu', { defaultValue: '新建学习笔记…' })}
+        </AppMenuItem>
+      )}
+      {onImportMarkdownNote && (
+        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onImportMarkdownNote}>
+          {t('finder.toolbar.importMarkdown')}
+        </AppMenuItem>
+      )}
+      {onNewExam && (
+        <AppMenuItem icon={<ExamIcon size={16} />} onClick={onNewExam}>
+          {t('finder.toolbar.newExam')}
+        </AppMenuItem>
+      )}
+      {onNewTextbook && (
+        <AppMenuItem icon={<TextbookIcon size={16} />} onClick={onNewTextbook}>
+          {t('finder.toolbar.newTextbook')}
+        </AppMenuItem>
+      )}
+      {onNewTranslation && (
+        <AppMenuItem icon={<TranslationIcon size={16} />} onClick={onNewTranslation}>
+          {t('finder.toolbar.newTranslation')}
+        </AppMenuItem>
+      )}
+      {onNewEssay && (
+        <AppMenuItem icon={<EssayIcon size={16} />} onClick={onNewEssay}>
+          {t('finder.toolbar.newEssay')}
+        </AppMenuItem>
+      )}
+      {onNewMindMap && (
+        <AppMenuItem icon={<MindmapIcon size={16} />} onClick={onNewMindMap}>
+          {t('finder.toolbar.newMindMap')}
+        </AppMenuItem>
+      )}
+    </>
+  );
+}
+
 /**
  * FinderQuickAccess 快捷导航组件
  * 使用 React.memo 优化，避免父组件状态变化时不必要的重渲染
@@ -229,53 +305,17 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
   // 新建菜单项（展开/收起两种布局共用）
   const createMenuItems = (
-    <>
-      {onNewFolder && (
-        <AppMenuItem icon={<FolderIcon size={16} />} onClick={onNewFolder}>
-          {t('finder.toolbar.newFolder')}
-        </AppMenuItem>
-      )}
-      {onNewNote && (
-        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewNote}>
-          {t('finder.toolbar.newNote')}
-        </AppMenuItem>
-      )}
-      {onNewLearningNote && (
-        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onNewLearningNote}>
-          {t('notes:learning.create.menu', { defaultValue: '新建学习笔记…' })}
-        </AppMenuItem>
-      )}
-      {onImportMarkdownNote && (
-        <AppMenuItem icon={<NoteIcon size={16} />} onClick={onImportMarkdownNote}>
-          {t('finder.toolbar.importMarkdown')}
-        </AppMenuItem>
-      )}
-      {onNewExam && (
-        <AppMenuItem icon={<ExamIcon size={16} />} onClick={onNewExam}>
-          {t('finder.toolbar.newExam')}
-        </AppMenuItem>
-      )}
-      {onNewTextbook && (
-        <AppMenuItem icon={<TextbookIcon size={16} />} onClick={onNewTextbook}>
-          {t('finder.toolbar.newTextbook')}
-        </AppMenuItem>
-      )}
-      {onNewTranslation && (
-        <AppMenuItem icon={<TranslationIcon size={16} />} onClick={onNewTranslation}>
-          {t('finder.toolbar.newTranslation')}
-        </AppMenuItem>
-      )}
-      {onNewEssay && (
-        <AppMenuItem icon={<EssayIcon size={16} />} onClick={onNewEssay}>
-          {t('finder.toolbar.newEssay')}
-        </AppMenuItem>
-      )}
-      {onNewMindMap && (
-        <AppMenuItem icon={<MindmapIcon size={16} />} onClick={onNewMindMap}>
-          {t('finder.toolbar.newMindMap')}
-        </AppMenuItem>
-      )}
-    </>
+    <FinderCreateMenuItems
+      onNewFolder={onNewFolder}
+      onNewNote={onNewNote}
+      onNewLearningNote={onNewLearningNote}
+      onImportMarkdownNote={onImportMarkdownNote}
+      onNewExam={onNewExam}
+      onNewTextbook={onNewTextbook}
+      onNewTranslation={onNewTranslation}
+      onNewEssay={onNewEssay}
+      onNewMindMap={onNewMindMap}
+    />
   );
 
   const renderSectionTitle = (title: string) => {
