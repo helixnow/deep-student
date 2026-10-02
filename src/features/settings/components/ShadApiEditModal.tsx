@@ -42,9 +42,9 @@ import {
   qwenBudgetToEffort,
   qwenEffortToBudget,
   resolveDeepSeekReasoningControl,
-  resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
 } from './deepseekReasoningControls';
+import { resolveReasoningControl } from '@/utils/reasoning';
 import {
   defaultApiProtocolForModelAdapter,
   getAllowedApiProtocolsForModelAdapter,
@@ -253,13 +253,17 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         : normalizeDeepSeekV4Effort(formData.reasoningEffort, isOfficialDeepSeekEndpoint(formData));
   const profileReasoningControl = useMemo(
     () =>
-      resolveDeepSeekRuntimeReasoningControl({
+      resolveReasoningControl({
         model: formData.model,
+        modelId: formData.model,
+        // 设置页表单里用户显式选择的适配器即渠道身份（与后端 get_adapter 同源语义）
+        adapterId: formData.modelAdapter,
         providerType: formData.providerType,
         providerScope: formData.providerScope,
         baseUrl: formData.baseUrl,
+        supportsReasoning: formData.supportsReasoning,
       }),
-    [formData.baseUrl, formData.model, formData.providerScope, formData.providerType]
+    [formData.baseUrl, formData.model, formData.modelAdapter, formData.providerScope, formData.providerType, formData.supportsReasoning]
   );
   const normalizedProfileReasoningSelection = useMemo(
     () =>
@@ -1445,6 +1449,22 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none">
                   {formData.modelAdapter === 'general' && (
                     <div className="space-y-6">
+                      {/* 方案 D：generic 渠道思考强度开关 —— 打开后按档位（reasoning_effort）
+                          自定义思考强度；关闭时仅保留 thinking_budget 兜底输入。 */}
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.supportsReasoning ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                        <div className="space-y-1">
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, supportsReasoning: !prev.supportsReasoning }))}>{t('settings:api.modal.reasoning.generic_effort_toggle', '思考强度支持')}</Label>
+                          <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.generic_effort_toggle_hint', '开启后可为该模型选择思考强度档位（low/medium/high/xhigh，以 reasoning_effort 发送）；关闭时仅支持 thinking_budget 兜底。')}</p>
+                        </div>
+                        <Switch
+                          checked={!!formData.supportsReasoning}
+                          onCheckedChange={checked => setFormData(prev => ({
+                            ...prev,
+                            supportsReasoning: checked,
+                            reasoningEffort: checked ? prev.reasoningEffort : undefined,
+                          }))}
+                        />
+                      </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         {profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">

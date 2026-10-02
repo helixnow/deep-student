@@ -52,11 +52,11 @@ import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
   qwenEffortToBudget,
-  resolveDeepSeekRuntimeReasoningControl,
   resolveDeepSeekRuntimeReasoningSelection,
   type DeepSeekReasoningControlKind,
   type DeepSeekReasoningOptionValue,
 } from '@/utils/deepseekReasoningControls';
+import { resolveReasoningControl } from '@/utils/reasoning';
 
 /**
  * InputBarV2 - V2 输入栏入口组件
@@ -126,7 +126,8 @@ const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Re
   'mistral-effort': { low: 'low', medium: 'medium', high: 'high' },
   'ernie-effort': { high: 'high', max: 'max' },
   'qwen-budget-effort': { low: 'low', medium: 'medium', high: 'high' },
-  'qwen-effort': { low: 'low', medium: 'medium', high: 'high' },
+  'qwen-effort': { low: 'low', medium: 'medium', xhigh: 'xhigh' },
+  'moonshot-effort': { low: 'low', high: 'high', max: 'max' },
   'toggle-only': {},
 };
 
@@ -573,31 +574,36 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
     const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
 
+    const runtimeModelSupportsReasoning = useMemo(
+      () => resolveModelReasoningSupport(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo]
+    );
+
     const thinkingControl = useMemo(
       () =>
-        resolveDeepSeekRuntimeReasoningControl({
+        resolveReasoningControl({
           model: activeRuntimeModelInfo?.model ?? model2OverrideId ?? modelDisplayName ?? effectiveUnpinnedModelId,
           modelId: activeRuntimeModelInfo?.id ?? model2OverrideId ?? effectiveUnpinnedModelId,
+          adapterId: activeRuntimeModelInfo?.resolvedAdapterId as string | undefined,
           providerType: activeRuntimeModelInfo?.providerType,
           providerScope: activeRuntimeModelInfo?.providerScope,
           baseUrl: activeRuntimeModelInfo?.baseUrl,
+          supportsReasoning: runtimeModelSupportsReasoning,
         }),
       [
         activeRuntimeModelInfo?.model,
         activeRuntimeModelInfo?.id,
+        activeRuntimeModelInfo?.resolvedAdapterId,
         activeRuntimeModelInfo?.providerType,
         activeRuntimeModelInfo?.providerScope,
         activeRuntimeModelInfo?.baseUrl,
+        runtimeModelSupportsReasoning,
         model2OverrideId,
         modelDisplayName,
         effectiveUnpinnedModelId,
       ]
     );
 
-    const runtimeModelSupportsReasoning = useMemo(
-      () => resolveModelReasoningSupport(activeRuntimeModelInfo),
-      [activeRuntimeModelInfo]
-    );
     const effectiveEnableThinking = runtimeModelSupportsReasoning && enableThinking;
     const effectiveReasoningEffort = reasoningEffort ?? (activeRuntimeModelInfo?.reasoningEffort as string | undefined);
     const effectiveThinkingBudget = thinkingBudget ?? (activeRuntimeModelInfo?.thinkingBudget as number | undefined);

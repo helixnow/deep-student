@@ -58,12 +58,16 @@ impl GenericOpenAIAdapter {
             || config.base_url.to_lowercase().contains("siliconflow.com")
     }
 
-    fn siliconflow_budget_from_effort(effort: &str) -> Option<i32> {
+    /// SiliconFlow 宿主 effort 归一：官方接受 low/medium/high/xhigh/max
+    /// （low/medium→high、xhigh→max 的映射由服务端处理）。
+    /// none/unset/未配置 返回 None（关闭语义由 enable_thinking 承载）。
+    fn normalize_siliconflow_effort(effort: &str) -> Option<&'static str> {
         match effort.trim().to_lowercase().as_str() {
-            "minimal" | "low" => Some(2048),
-            "medium" => Some(8192),
-            "high" => Some(16384),
-            "xhigh" | "max" => Some(32768),
+            "minimal" | "low" => Some("low"),
+            "medium" => Some("medium"),
+            "high" => Some("high"),
+            "xhigh" => Some("xhigh"),
+            "max" | "ultra" => Some("max"),
             _ => None,
         }
     }
@@ -234,24 +238,33 @@ impl RequestAdapter for GenericOpenAIAdapter {
         if Self::is_siliconflow(config) && (config.supports_reasoning || config.is_reasoning) {
             let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
             body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
-            body.remove("reasoning_effort");
             body.remove("reasoning");
             body.remove("thinking");
 
+            // 2026-10：SiliconFlow 在 API 层文档化 reasoning_effort（适用 DeepSeek-V4
+            // 系、GLM-5.2 等）。按产品规则 effort 为主路径且与 thinking_budget 互斥；
+            // thinking_budget 仅在未配置 effort 时兜底（宿主范围 128–32768）。
             if enable_thinking_value {
-                let budget = config.thinking_budget.or_else(|| {
-                    get_trimmed_effort(config).and_then(Self::siliconflow_budget_from_effort)
-                });
-                if let Some(budget) = budget {
-                    body.insert(
-                        "thinking_budget".to_string(),
-                        json!(budget.clamp(128, 32768)),
-                    );
-                } else {
-                    body.remove("thinking_budget");
+                match get_trimmed_effort(config).and_then(Self::normalize_siliconflow_effort) {
+                    Some(effort) => {
+                        body.insert("reasoning_effort".to_string(), json!(effort));
+                        body.remove("thinking_budget");
+                    }
+                    None => {
+                        body.remove("reasoning_effort");
+                        if let Some(budget) = config.thinking_budget {
+                            body.insert(
+                                "thinking_budget".to_string(),
+                                json!(budget.clamp(128, 32768)),
+                            );
+                        } else {
+                            body.remove("thinking_budget");
+                        }
+                    }
                 }
             } else {
                 body.remove("thinking_budget");
+                body.remove("reasoning_effort");
             }
 
             return false;
@@ -862,8 +875,9 @@ mod tests {
     }
 
     #[test]
-    fn test_siliconflow_glm_depth_uses_budget_dialect() {
+    fn test_siliconflow_glm_effort_primary_budget_fallback() {
         let adapter = GenericOpenAIAdapter;
+        // effort 已配置：走 reasoning_effort 主路径，budget 被移除（互斥）。
         let config = ApiConfig {
             provider_type: Some("siliconflow".to_string()),
             provider_scope: Some("siliconflow".to_string()),
@@ -879,14 +893,37 @@ mod tests {
         };
         let mut body = Map::new();
         body.insert("temperature".to_string(), json!(0.7));
-        body.insert("reasoning_effort".to_string(), json!("high"));
+        body.insert("thinking_budget".to_string(), json!(16384));
 
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
-        assert_eq!(body.get("thinking_budget"), Some(&json!(16384)));
-        assert!(!body.contains_key("reasoning_effort"));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(!body.contains_key("thinking_budget"));
         assert!(body.contains_key("temperature"));
+    }
+
+    #[test]
+    fn test_siliconflow_budget_fallback_without_effort() {
+        let adapter = GenericOpenAIAdapter;
+        // 未配置 effort：thinking_budget 兜底（宿主范围 128–32768）。
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            model: "THUDM/GLM-5.2".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(true),
+            thinking_budget: Some(999_999),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(body.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!body.contains_key("reasoning_effort"));
     }
 
     #[test]

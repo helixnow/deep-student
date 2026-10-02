@@ -12,9 +12,12 @@ export type DeepSeekReasoningControlKind =
   // 2A Qwen 思考强度（新增）：DashScope / SiliconFlow 上 Qwen 混合思考模型
   // - qwen-budget-effort: 五档预设（低/中/高/超高/最高），映射到 thinking_budget 数值
   //   (1024/4096/16384/32768/65536)；xhigh/max 仅在部分模型文档上限内有效
-  // - qwen-effort: 预留位，未来若 DashScope 开放 reasoning_effort 字符串时使用
+  // - qwen-effort: Qwen3.8 系（2026-10 千问AI平台官方文档）——顶层 reasoning_effort
+  //   档位（low/medium/xhigh，默认 xhigh）；与 thinking_budget 互斥，budget 只做兜底
   | 'qwen-budget-effort'
   | 'qwen-effort'
+  // Kimi K3（2026-10 官方文档）：始终思考不可关闭，effort 可选 low/high/max（默认 max）
+  | 'moonshot-effort'
   | 'toggle-only';
 
 export type DeepSeekReasoningOptionValue = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -63,13 +66,13 @@ export const DEEPSEEK_V32_EFFORT_BUDGETS: Record<'low' | 'medium' | 'high' | 'xh
   xhigh: 32768,
 };
 
-const V4_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const V4_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
   { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
-const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
@@ -77,55 +80,55 @@ const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 ];
 
 /** GPT-5.6 在 xhigh 之上原生支持 max 档，不能复用 codex 档位表。 */
-const GPT56_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const GPT56_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   ...OPENAI_CODEX_EFFORT_OPTIONS,
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
-const LOW_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const LOW_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
 ];
 
-const LOW_MEDIUM_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const LOW_MEDIUM_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
 ];
 
-const MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'minimal', labelKey: 'settings:api.modal.reasoning.effort.minimal', defaultLabel: 'Minimal' },
   ...LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
 ];
 
-const MEDIUM_HIGH_XHIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const MEDIUM_HIGH_XHIGH_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
 ];
 
-const HIGH_ONLY_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const HIGH_ONLY_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
 ];
 
-const CLAUDE_ADAPTIVE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const CLAUDE_ADAPTIVE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   ...LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
-const CLAUDE_XHIGH_ADAPTIVE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const CLAUDE_XHIGH_ADAPTIVE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   ...LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
-const GLM_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const GLM_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   ...MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
-const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
@@ -136,7 +139,7 @@ const ERNIE_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 //
 // 注意：xhigh 和 max 仅在部分模型（qwen3.7-max / qwen3-max / qwen-plus / qwen3.8）文档上限内有效；
 // qwen-turbo / qwen-flash 等较小模型可能返回 400 错误，由 chat 错误处理提醒用户降档。
-const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.qwen.depth.low', defaultLabel: '低 (1024)' },
   { value: 'medium', labelKey: 'settings:api.modal.qwen.depth.medium', defaultLabel: '中 (4096)' },
   { value: 'high', labelKey: 'settings:api.modal.qwen.depth.high', defaultLabel: '高 (16384)' },
@@ -144,7 +147,7 @@ const QWEN_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'max', labelKey: 'settings:api.modal.qwen.depth.max', defaultLabel: '最高 (262144)' },
 ];
 
-const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+export const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.deepseek.depth.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
@@ -207,7 +210,7 @@ function isGemini3ModelId(modelId: string): boolean {
   return modelId.includes('gemini-3') || modelId.includes('gemini3');
 }
 
-function isGemini3FlashModelId(modelId: string): boolean {
+export function isGemini3FlashModelId(modelId: string): boolean {
   return isGemini3ModelId(modelId) && modelId.includes('flash');
 }
 
@@ -245,7 +248,7 @@ function parseNamedModelVersion(modelId: string, family: string): [number, numbe
   return adjacentMajor === undefined ? undefined : [adjacentMajor, 0];
 }
 
-function isClaudeAdaptiveModelId(modelId: string): boolean {
+export function isClaudeAdaptiveModelId(modelId: string): boolean {
   if (modelId.includes('fable') || modelId.includes('mythos')) return true;
   for (const family of ['opus', 'sonnet', 'haiku']) {
     const version = parseNamedModelVersion(modelId, family);
@@ -259,7 +262,7 @@ function isClaudeAdaptiveModelId(modelId: string): boolean {
   return false;
 }
 
-function isClaudeXHighEffortModelId(modelId: string): boolean {
+export function isClaudeXHighEffortModelId(modelId: string): boolean {
   for (const family of ['opus', 'sonnet', 'fable', 'mythos']) {
     const version = parseNamedModelVersion(modelId, family);
     if (!version) continue;
@@ -271,7 +274,7 @@ function isClaudeXHighEffortModelId(modelId: string): boolean {
   return false;
 }
 
-function isClaudeAlwaysOnModelId(modelId: string): boolean {
+export function isClaudeAlwaysOnModelId(modelId: string): boolean {
   return modelId.includes('fable') || modelId.includes('mythos');
 }
 
@@ -281,32 +284,32 @@ function parseVersionAfterPrefix(modelId: string, prefix: string): [number, numb
   return [Number(match[1]), Number(match[2] ?? 0)];
 }
 
-function isGlm52OrLaterModelId(modelId: string): boolean {
+export function isGlm52OrLaterModelId(modelId: string): boolean {
   const version = parseVersionAfterPrefix(modelId, 'glm');
   return !!version && (version[0] > 5 || (version[0] === 5 && version[1] >= 2));
 }
 
-function isGrok43OrLaterModelId(modelId: string): boolean {
+export function isGrok43OrLaterModelId(modelId: string): boolean {
   if (modelId.includes('non-reasoning')) return false;
   if (modelId === 'grok-latest' || modelId.endsWith('/grok-latest')) return true;
   const version = parseVersionAfterPrefix(modelId, 'grok');
   return !!version && (version[0] > 4 || (version[0] === 4 && version[1] >= 3));
 }
 
-function isGrokMultiAgentModelId(modelId: string): boolean {
+export function isGrokMultiAgentModelId(modelId: string): boolean {
   return /grok-4[.-]20[\w.-]*multi-agent/.test(modelId);
 }
 
-function isMistralEffortModelId(modelId: string): boolean {
+export function isMistralEffortModelId(modelId: string): boolean {
   if (modelId.includes('magistral')) return false;
   return modelId.includes('mistral-medium') || modelId.includes('mistral-small-4') || modelId.includes('mistral-small-latest');
 }
 
-function isErnieEffortModelId(modelId: string): boolean {
+export function isErnieEffortModelId(modelId: string): boolean {
   return modelId.includes('ernie-5') || modelId.includes('ernie-x1');
 }
 
-function isQwenForcedThinkingModelId(modelId: string): boolean {
+export function isQwenForcedThinkingModelId(modelId: string): boolean {
   if (modelId.includes('qwq')) return true;
   if (/qwen3[.-]7-max-preview(?:[-_/]|$)/.test(modelId)) return true;
   if (/qwen3[.-]7-max-(?:2026-05-17|20260517)(?:[-_/]|$)/.test(modelId)) return true;
@@ -318,7 +321,7 @@ function isQwenForcedThinkingModelId(modelId: string): boolean {
 // 与 isQwenForcedThinkingModelId 互补：这里返回 true 的模型可以被关闭思考。
 // 覆盖：qwen3.5/3.6/3.7 非 thinking 变体、qwen-plus/turbo/flash（qwen3 商业家族）、
 // qwen3-max 非 preview 变体。vendor 前缀（Qwen/Qwen3-…）也算。
-function isQwenHybridThinkingModelId(modelId: string): boolean {
+export function isQwenHybridThinkingModelId(modelId: string): boolean {
   if (!modelId) return false;
   const id = modelId.toLowerCase();
   // 强制思考模型不算 hybrid（它们没有关闭开关）
@@ -341,7 +344,7 @@ function isQwenHybridThinkingModelId(modelId: string): boolean {
   return false;
 }
 
-function isLegacyKimiForcedThinkingModelId(modelId: string): boolean {
+export function isLegacyKimiForcedThinkingModelId(modelId: string): boolean {
   return (
     modelId.includes('kimi-k2-thinking') ||
     modelId.includes('kimi-thinking-preview') ||
@@ -358,13 +361,13 @@ function isLegacyKimiForcedThinkingModelId(modelId: string): boolean {
  * 之类误判）。后端适配器仅在 moonshot 供应商下生效，前端没有供应商上下文，
  * 因此额外要求模型名包含 kimi/moonshot。
  */
-function isKimiK3OrLaterModelId(modelId: string): boolean {
+export function isKimiK3OrLaterModelId(modelId: string): boolean {
   if (!modelId.includes('kimi') && !modelId.includes('moonshot')) return false;
   const match = modelId.match(/(?:^|[^a-z0-9])k(\d+)/);
   return !!match && Number(match[1]) >= 3;
 }
 
-function isForcedThinkingModelId(modelId: string): boolean {
+export function isForcedThinkingModelId(modelId: string): boolean {
   if (
     isGemini3ModelId(modelId) ||
     (modelId.includes('gemini-2.5') && modelId.includes('pro')) ||
@@ -385,7 +388,7 @@ function isForcedThinkingModelId(modelId: string): boolean {
   return /(?:^|[/_-])minimax-m2(?:[.\-_/]|$)/.test(modelId);
 }
 
-function resolveOpenAiEffortControl(
+export function resolveOpenAiEffortControl(
   modelId: string,
   providerForcesThinking = false
 ): DeepSeekReasoningControl {
@@ -696,9 +699,12 @@ export function resolveDeepSeekRuntimeReasoningSelection(
       'gemini-flash-effort': 'low',
       'anthropic-adaptive-effort': 'high',
       'glm-effort': 'max',
+      // grok 4.3 旧默认 low；4.5+ 的新默认 high 由渠道 control.defaultValue 承载
       'grok-effort': 'low',
       'mistral-effort': 'low',
       'ernie-effort': 'high',
+      'moonshot-effort': 'max',
+      'qwen-effort': 'xhigh',
     };
     const fallback =
       input.control.defaultValue ??

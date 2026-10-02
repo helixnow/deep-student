@@ -20,7 +20,8 @@ describe('ShadApiEditModal reasoning controls', () => {
       'utf8'
     );
 
-    expect(source).toContain('resolveDeepSeekRuntimeReasoningControl');
+    // 方案 D：设置页改走渠道并行注册表（adapterId=modelAdapter）
+    expect(source).toContain('resolveReasoningControl');
     expect(source).toContain('const profileReasoningOptions = profileReasoningControl.options.map');
     expect(source).toContain("const profileUsesDiscreteEffort = profileReasoningControl.kind !== 'toggle-only'");
 

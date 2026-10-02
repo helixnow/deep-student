@@ -28,6 +28,8 @@ interface ModelConfig {
   providerType?: string;
   providerScope?: string;
   baseUrl?: string;
+  resolvedAdapterId?: string;
+  resolved_adapter_id?: string;
   isMultimodal?: boolean;
   /** 是否为推理模型（支持 thinking/reasoning） */
   isReasoning?: boolean;
@@ -114,6 +116,7 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
     providerType: config.providerType,
     providerScope: config.providerScope,
     baseUrl: config.baseUrl,
+    resolvedAdapterId: config.resolvedAdapterId ?? config.resolved_adapter_id,
     // 生成别名：包含名称、模型标识符
     aliases: [
       config.name?.toLowerCase(),

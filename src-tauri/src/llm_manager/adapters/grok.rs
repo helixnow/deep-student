@@ -138,20 +138,26 @@ impl RequestAdapter for GrokAdapter {
         if Self::supports_reasoning_effort(&config.model) {
             let is_multi_agent = Self::is_grok420_multi_agent(&config.model);
             let requires_reasoning = Self::requires_reasoning(&config.model);
+            // 2026-10 官方文档：xhigh 仅 grok-4.6+ 支持（4.5 收到 xhigh 会静默按 high），
+            // multi-agent 的 effort 语义为协作 agent 数量（同样接受 xhigh）。
+            let supports_xhigh = is_multi_agent
+                || Self::parse_grok_version(&config.model)
+                    .map(|(major, minor)| major > 4 || (major == 4 && minor >= 6))
+                    .unwrap_or(false);
             let requested_effort = if enable_thinking == Some(false) {
                 Some(if requires_reasoning { "low" } else { "none" })
             } else {
                 get_trimmed_effort(config)
             };
             if let Some(effort) = requested_effort {
-                // multi-agent 额外支持 xhigh；Grok 4.5+ 不接受 none。
+                // Grok 4.5+ 不接受 none（不可关闭）。
                 // 可关闭推理的旧模型仍按 none / low / medium / high 归一化。
                 let normalized = match effort.to_lowercase().as_str() {
                     "none" if requires_reasoning => "low",
                     "none" => "none",
                     "minimal" | "low" => "low",
                     "medium" => "medium",
-                    "xhigh" if is_multi_agent => "xhigh",
+                    "xhigh" if supports_xhigh => "xhigh",
                     "high" | "xhigh" | "max" => "high",
                     _ => "low",
                 };
@@ -414,4 +420,32 @@ mod tests {
         assert!(!body.contains_key("top_k"));
         assert!(!body.contains_key("repetition_penalty"));
     }
+
+    #[test]
+    fn test_grok46_xhigh_passthrough() {
+        let adapter = GrokAdapter;
+        let config = ApiConfig {
+            model: "grok-4.6".to_string(),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("xhigh")));
+    }
+
+    #[test]
+    fn test_grok45_xhigh_falls_back_to_high() {
+        // 4.5 不支持 xhigh（官方会静默按 high），客户端直接归一为 high。
+        let adapter = GrokAdapter;
+        let config = ApiConfig {
+            model: "grok-4.5".to_string(),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+    }
+
 }

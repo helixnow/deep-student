@@ -3021,6 +3021,12 @@ pub struct ApiConfig {
     /// 只有当 key 在 body 中尚不存在时才会插入。
     #[serde(default)]
     pub extra_body: Option<serde_json::Map<String, Value>>,
+    /// 渠道并行思考强度（方案 D）：`get_adapter` 解析出的适配器 id。
+    ///
+    /// 只随 `get_api_configurations` 下发给前端做渠道查找（前端不再靠模型名猜渠道），
+    /// 不参与反序列化与持久化——每次读取时由命令层重算，存量存储无需迁移。
+    #[serde(default, skip_deserializing)]
+    pub resolved_adapter_id: Option<String>,
 }
 
 impl Default for ApiConfig {
@@ -3072,6 +3078,7 @@ impl Default for ApiConfig {
             max_tokens_limit: None,
             context_window: None,
             extra_body: None,
+            resolved_adapter_id: None,
         }
     }
 }
@@ -5932,6 +5939,7 @@ impl LLMManager {
         };
 
         let runtime = ApiConfig {
+            resolved_adapter_id: None,
             id: profile.id.clone(),
             name: profile.label.clone(),
             vendor_id: Some(vendor.id.clone()),
@@ -6152,6 +6160,7 @@ impl LLMManager {
             return Ok(old_configs
                 .into_iter()
                 .map(|old| ApiConfig {
+                    resolved_adapter_id: None,
                     id: old.id,
                     name: old.name,
                     vendor_id: None,
@@ -6217,6 +6226,7 @@ impl LLMManager {
         Ok(old_configs
             .into_iter()
             .map(|old| ApiConfig {
+                resolved_adapter_id: None,
                 id: old.id,
                 name: old.name,
                 vendor_id: None,
