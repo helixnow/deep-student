@@ -432,15 +432,15 @@ export const CONTROL_TYPE_GROUPS: ControlTypeGroup[] = [
   {
     id: 'tooltip',
     title: '气泡提示',
-    note: 'CommonTooltip 是目标；shad Tooltip 几乎只剩对照页。',
+    note: 'shad Tooltip 是唯一实现；CommonTooltip 仅作迁移适配层。',
     families: [
       family(
         'common-tooltip',
         'CommonTooltip',
         'src/components/shared/CommonTooltip.tsx',
-        355,
-        '~355 引用 / 47 文件',
-        '深/浅气泡 + 可选箭头 + 快捷键帽。样例是常显静态，不需要悬停。',
+        80,
+        '~136 引用 / 69 文件（适配层，待迁移）',
+        '已并入 shad Tooltip，仅做 props 翻译。反色气泡 + 可选箭头 + 快捷键帽。样例是常显静态，不需要悬停。',
         [
           ['dark', 'dark', 'tooltip-dark'],
           ['light', 'light', 'tooltip-light'],
@@ -449,11 +449,11 @@ export const CONTROL_TYPE_GROUPS: ControlTypeGroup[] = [
       ),
       family(
         'shad-tooltip',
-        'shad Tooltip（遗留）',
+        'shad Tooltip（唯一实现）',
         'src/components/ui/shad/Tooltip.tsx',
-        2,
-        '几乎不用',
-        '兼容 API。新代码应走 CommonTooltip。',
+        330,
+        '全部 Tooltip',
+        'shadcn 兼容 API + 箭头 / 快捷键帽 / 浮层抑制 / Esc 关闭。新代码走这里。',
         [['legacy', '遗留气泡', 'tooltip-shad']],
       ),
     ],

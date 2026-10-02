@@ -1,6 +1,6 @@
 {
   "name": "deep-student",
-  "version": "0.9.72",
+  "version": "0.9.73",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "typecheck:native": "tsgo --noEmit -p tsconfig.json",
     "typecheck:strict": "tsc --noEmit -p tsconfig.strict.json",
     "analyze": "ANALYZE=1 npm run build",
-    "prebuild": "npm run version:generate && npm run licenses:check && npm run typecheck",
+    "prebuild": "npm run version:generate",
     "build": "vite build",
     "build:all": "bash ./scripts/build_all.sh",
     "build:ios": "npm run icons:ios && npm run icons:ios:opaque && tauri ios build",
@@ -63,8 +63,8 @@
     "test:unit:ui": "vitest --config vitest.config.ts --ui",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
-    "lint:css": "stylelint \"src/**/*.css\" \"src/**/*.module.css\"",
-    "lint:css:fix": "stylelint \"src/**/*.css\" \"src/**/*.module.css\" --fix",
+    "lint:css": "stylelint \"src/**/*.css\" \"src/**/*.module.css\" \"public/boot.css\"",
+    "lint:css:fix": "stylelint \"src/**/*.css\" \"src/**/*.module.css\" \"public/boot.css\" --fix",
     "lint:components": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: warn'",
     "lint:components:strict": "eslint src/ --rule 'no-restricted-imports: error' --rule 'ds-components/no-native-button: error'",
     "check:bundle-size": "node scripts/check-bundle-size.mjs",
@@ -95,6 +95,7 @@
     "@milkdown/prose": "7.22.1",
     "@milkdown/transformer": "7.22.1",
     "@milkdown/utils": "7.22.1",
+    "@modelcontextprotocol/sdk": "^1.17.4",
     "@nvq/flowtoken": "2.0.6",
     "@phosphor-icons/react": "^2.1.10",
     "@radix-ui/react-checkbox": "^1.3.3",
@@ -191,7 +192,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.18.0",
-    "@modelcontextprotocol/sdk": "^1.17.4",
     "@playwright/experimental-ct-react": "^1.55.0",
     "@playwright/test": "^1.55.0",
     "@tauri-apps/cli": "^2.8.4",

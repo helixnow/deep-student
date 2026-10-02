@@ -236,6 +236,7 @@ fn default_wake_runner(app: tauri::AppHandle) -> WakeRunner {
                     model_id: None,
                     system_prompt_append: Some(WAKE_TURN_SYSTEM_APPEND.to_string()),
                     timeout: Duration::from_secs(WAKE_TURN_TIMEOUT_SECS),
+                    cancellation_token: None,
                 },
             )
             .await

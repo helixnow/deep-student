@@ -116,7 +116,6 @@ body {
   transition:
     width var(--resize-dur) var(--resize-ease),
     padding var(--resize-dur) var(--resize-ease);
-  will-change: width;
 }
 
 .desktop-shell-header-cell--workspace {
@@ -124,9 +123,7 @@ body {
   border: 0;
   box-shadow: none;
   transition: padding-left var(--resize-dur) var(--resize-ease),
-              background-color 400ms var(--ease-shell),
-              backdrop-filter 400ms var(--ease-shell),
-              -webkit-backdrop-filter 400ms var(--ease-shell);
+              background-color 400ms var(--ease-shell);
 }
 
 .desktop-shell-toolbar-group {
@@ -361,9 +358,7 @@ body {
 .desktop-shell-workspace {
   background: var(--shell-workspace-panel);
   box-shadow: none;
-  transition: background-color 400ms var(--ease-shell),
-              backdrop-filter 400ms var(--ease-shell),
-              -webkit-backdrop-filter 400ms var(--ease-shell);
+  transition: background-color 400ms var(--ease-shell);
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
@@ -384,25 +379,22 @@ body {
 
 /*
  * 桌面壳层内容入场动画（transitions-dev 观感语言，与标题栏 TextSwap 成组）：
- * 淡入 + 上移 8px 归位 + blur 2px 聚焦，只动 opacity/transform/filter。
+ * 淡入 + 上移 8px 归位，只动 opacity/transform，避免逐帧重采样。
  * 三处消费：视图层激活（ViewLayerRenderer 激活时挂类）、侧栏内容整体替换、
  * 设置页 tab 切换（后两者靠 keyed 重挂载重触发）。
  * 用 animation 而非 transition：激活/重挂载即重播；离场侧不做动画，
  * visibility:hidden 同帧生效是刻意行为。
- * 不设 fill-mode：动画结束回到元素静止样式，避免 filter 残留在视图层上
- * 形成常驻 containing block，影响 fixed 定位后代。
+ * 不设 fill-mode：动画结束回到元素静止样式。
  */
 @keyframes desktop-shell-content-enter {
   from {
     opacity: 0;
     transform: translateY(var(--text-swap-translate-y, 8px));
-    filter: blur(var(--text-swap-blur, 2px));
   }
 
   to {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 }
 
@@ -414,13 +406,11 @@ body {
   from {
     opacity: 1;
     transform: translateY(0);
-    filter: blur(0);
   }
 
   to {
     opacity: 0;
     transform: translateY(calc(-1 * var(--text-swap-translate-y, 8px)));
-    filter: blur(var(--text-swap-blur, 2px));
   }
 }
 
@@ -561,7 +551,7 @@ body {
   transition:
     width var(--resize-dur) var(--resize-ease),
     transform var(--resize-dur) var(--resize-ease);
-  will-change: width, transform;
+  will-change: transform;
 }
 
 [data-shell-role="app-shell"][data-sidebar-visible="false"]

@@ -116,5 +116,6 @@ cd src-tauri && cargo tree --format "{p} {l}"
 - `cd src-tauri && cargo fetch --locked`：更新通知前先准备完整的锁定 Cargo 源码缓存。
 - `npm run licenses:generate`：离线读取锁文件与实际依赖源码，生成确定性的第三方通知。
 - `npm run licenses:check`：校验 Cargo/NPM 锁文件 SHA-256、未知生产许可证、PDFium 法律材料和 Tauri 资源映射。
-- `npm run build`：在类型检查前自动执行许可证校验；通知过期或资源缺失会阻止发布构建。
+- `npm run typecheck` / `npm run typecheck:native`：分别执行 TypeScript 权威检查与原生快速检查。
+- `npm run build`：生成版本信息并构建前端产物；许可证与类型检查由 CI 的独立必需任务执行，本地发布前请显式运行上述校验命令。
 - 应用“设置 → 关于 → 开源项目致谢”可直接查看项目 AGPL 全文与第三方许可证全文。

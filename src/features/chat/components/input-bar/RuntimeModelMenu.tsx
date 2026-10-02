@@ -21,6 +21,7 @@ import {
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ChatStore } from '../../core/types';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // Types
@@ -40,6 +41,10 @@ interface ModelConfig {
   is_embedding?: boolean;
   isReranker?: boolean;
   is_reranker?: boolean;
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  isAudioTranscription?: boolean;
+  is_audio_transcription?: boolean;
   isFavorite?: boolean;
   is_favorite?: boolean;
 }
@@ -87,12 +92,7 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
   const loadModels = useCallback(async () => {
     try {
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
-      const chatModels = (configs || []).filter((c) => {
-        const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
-        const isReranker = c.isReranker === true || c.is_reranker === true;
-        const isEnabled = c.enabled !== false;
-        return !isEmbedding && !isReranker && isEnabled;
-      });
+      const chatModels = (configs || []).filter(isAvailableChatModel);
       setModels(chatModels);
 
       try {

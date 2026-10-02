@@ -2,7 +2,9 @@ import React from 'react';
 import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useSessionLifecycle, type UseSessionLifecycleDeps } from '@/features/chat/pages/useSessionLifecycle';
+import { retainSessionListStore, useSessionListStore } from '@/features/chat/stores/sessionListStore';
 import type { ChatSession } from '@/features/chat/types/session';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 const { createSessionWithDefaultsMock, invokeMock, sessionManagerGetMock } = vi.hoisted(() => ({
   createSessionWithDefaultsMock: vi.fn(),
@@ -96,15 +98,9 @@ function createDeps(overrides: Partial<UseSessionLifecycleDeps> = {}): UseSessio
     setIsLoading: vi.fn(),
     setTotalSessionCount: vi.fn(),
     setUngroupedSessionCount: vi.fn(),
-    setHasMoreSessions: vi.fn(),
     setIsInitialLoading: vi.fn(),
-    setIsLoadingMore: vi.fn(),
-    setShowChatControl: vi.fn(),
-    isLoadingMore: false,
-    hasMoreSessions: true,
     sessionsRef,
     t: ((key: string, fallback?: string) => fallback ?? key) as UseSessionLifecycleDeps['t'],
-    PAGE_SIZE: 50,
     LAST_SESSION_KEY: 'chat-v2-last-session-id',
     ...overrides,
   };
@@ -119,6 +115,7 @@ describe('useSessionLifecycle hidden draft creation', () => {
     createSessionWithDefaultsMock.mockReset();
     invokeMock.mockReset();
     sessionManagerGetMock.mockReset();
+    useSessionListStore.getState().setSnapshot([], false);
   });
 
   it('does not create another session while the current session is a hidden draft', async () => {
@@ -220,4 +217,73 @@ describe('useSessionLifecycle hidden draft creation', () => {
     }));
     expect(deps.setCurrentSessionId).toHaveBeenCalledWith('sess_group_draft');
   });
+
+  it('shares sidebar/page initial queries and keeps draft startup plus counts independent', async () => {
+    let resolveRows!: (rows: ChatSession[]) => void;
+    const rowsPromise = new Promise<ChatSession[]>((resolve) => { resolveRows = resolve; });
+    const row: ChatSession = {
+      id: 'sess_existing', mode: 'chat', title: 'Existing',
+      persistStatus: 'active', createdAt: '2026-09-20', updatedAt: '2026-09-20',
+      metadata: { workspaceId: 'workspace-1', branchedFrom: { sessionId: 'source' } },
+    };
+    invokeMock.mockImplementation((command: string, args: { groupId?: string }) => {
+      if (command === 'chat_v2_list_sessions') return args.groupId === '*' ? Promise.resolve([]) : rowsPromise;
+      if (command === 'chat_v2_list_groups') return Promise.resolve([]);
+      if (command === 'chat_v2_count_sessions') return Promise.resolve(args.groupId === '' ? 7 : 11);
+      return Promise.resolve(null);
+    });
+    useSessionListStore.setState({ isLoaded: false });
+    createSessionWithDefaultsMock.mockResolvedValueOnce(buildDraftSession('sess_shared_draft'));
+    const releaseSidebar = retainSessionListStore();
+    const deps = createDeps({ setSessions: useSessionListStore.getState().setSessions });
+    let api: ReturnType<typeof useSessionLifecycle> | null = null;
+    let renders = 0;
+    function Harness() {
+      useSessionListStore((state) => state.sessions);
+      renders += 1;
+      api = useSessionLifecycle(deps);
+      return null;
+    }
+    const { unmount } = render(<Harness />);
+    try {
+      await act(async () => {
+        const pageLoad = api!.loadSessions();
+        expect(invokeMock.mock.calls.filter(([command]) => command === 'chat_v2_list_sessions')).toHaveLength(2);
+        resolveRows([row]);
+        await pageLoad;
+      });
+      expect(invokeMock.mock.calls.filter(([command]) => command === 'chat_v2_list_sessions')).toHaveLength(2);
+      expect(deps.setTotalSessionCount).toHaveBeenCalledWith(11);
+      expect(deps.setUngroupedSessionCount).toHaveBeenCalledWith(7);
+      expect(deps.setCurrentSessionId).toHaveBeenCalledWith('sess_shared_draft');
+      expect(useSessionListStore.getState().sessions[0].metadata).toEqual(row.metadata);
+      const before = renders;
+      await act(async () => { await useSessionListStore.getState().refresh(); });
+      expect(renders).toBe(before);
+    } finally {
+      unmount();
+      releaseSidebar();
+    }
+  });
+
+
+  it('reports an initial list failure and leaves the shared list retryable', async () => {
+    vi.mocked(showGlobalNotification).mockClear();
+    invokeMock.mockImplementation((command: string) => command === 'chat_v2_list_sessions'
+      ? Promise.reject(new Error('offline')) : Promise.resolve(command === 'chat_v2_list_groups' ? [] : 0));
+    useSessionListStore.setState({ isLoaded: false });
+    createSessionWithDefaultsMock.mockResolvedValueOnce(buildDraftSession('sess_failed_list_draft'));
+    const deps = createDeps({ setSessions: useSessionListStore.getState().setSessions });
+    let api: ReturnType<typeof useSessionLifecycle> | null = null;
+    function Harness() {
+      api = useSessionLifecycle(deps);
+      return null;
+    }
+    render(<Harness />);
+    await act(async () => { await api!.loadSessions(); });
+    expect(showGlobalNotification).toHaveBeenCalledWith('error', 'page.loadSessionsFailed');
+    expect(useSessionListStore.getState().isLoaded).toBe(false);
+    expect(deps.setIsInitialLoading).toHaveBeenCalledWith(false);
+  });
+
 });

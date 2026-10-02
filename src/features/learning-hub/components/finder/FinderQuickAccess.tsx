@@ -190,23 +190,34 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     ? t('finder.search.placeholderDisabled')
     : searchPlaceholder || t('finder.search.placeholder');
 
-  const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
+  const quickAccessItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; description?: string; count?: number; color?: string }[] = [
     { type: 'desktop', icon: Desktop, label: t('finder.quickAccess.desktop') },
     { type: 'allFiles', icon: Files, label: t('finder.quickAccess.allFiles') },
     { type: 'recent', icon: ClockCounterClockwise, label: t('finder.quickAccess.recent'), count: recentCount },
     { type: 'favorites', icon: Star, label: t('finder.quickAccess.favorites'), count: favoriteCount },
   ];
 
-  const systemItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; count?: number; color?: string }[] = [
+  const systemItems: { type: QuickAccessType; CustomIcon?: React.FC<ResourceIconProps>; icon?: any; label: string; description?: string; count?: number; color?: string }[] = [
     { type: 'trash', icon: Trash, label: t('finder.quickAccess.trash'), count: trashCount },
-    { type: 'indexStatus', icon: Database, label: t('finder.quickAccess.indexStatus') },
-    { type: 'memory', icon: Brain, label: t('memory.title') },
+    {
+      type: 'indexStatus',
+      icon: Database,
+      label: t('finder.quickAccess.indexStatus'),
+      description: t('finder.quickAccess.indexStatusDescription'),
+    },
+    {
+      type: 'memory',
+      icon: Brain,
+      label: t('memory.navTitle'),
+      description: t('memory.navDescription'),
+    },
   ];
 
   const renderNavButton = (
     type: QuickAccessType,
     Icon: React.ComponentType<{ className?: string }> | undefined,
     label: string,
+    description: string | undefined,
     count?: number,
     iconColor?: string,
     CustomIcon?: React.FC<ResourceIconProps>
@@ -233,6 +244,15 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
     // 展开态统一走对话标准的 desktop-shell-nav-row 行配方
     // （fillContainer 壳位与窗口内自持宽度两种模式共用同一行样式）
+    const renderedLabel = description ? (
+      <span className="min-w-0 flex-1">
+        <span className="desktop-shell-sidebar-row-title block min-w-0 truncate leading-4">{label}</span>
+        <span className="desktop-shell-sidebar-row-description block min-w-0 truncate text-2xs leading-4 text-[color:var(--shell-navigation-muted)]">{description}</span>
+      </span>
+    ) : (
+      <WorkbenchSidebarRowLabel>{label}</WorkbenchSidebarRowLabel>
+    );
+
     if (!collapsed) {
       return (
         <WorkbenchSidebarRow
@@ -247,7 +267,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
             </span>
           ) : null}
         >
-          <WorkbenchSidebarRowLabel>{label}</WorkbenchSidebarRowLabel>
+          {renderedLabel}
         </WorkbenchSidebarRow>
       );
     }
@@ -291,7 +311,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
       return (
         <CommonTooltip 
           key={type} 
-          content={<p>{label}{count !== undefined && count > 0 ? ` (${count})` : ''}</p>} 
+          content={<div><p>{label}{count !== undefined && count > 0 ? ` (${count})` : ''}</p>{description && <p className="mt-1 text-xs opacity-80">{description}</p>}</div>} 
           position="right" 
           offset={8}
         >
@@ -472,19 +492,20 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         <CustomScrollArea className="min-h-0 flex-1" viewportClassName="h-full w-full min-h-0">
           {/* OverlayScrollbars 会清零 viewport padding，边距放在内层 */}
           <div className={fillContainer ? 'px-2 py-1' : 'px-1.5 pb-2'}>
+            {renderSectionTitle(t('finder.quickAccess.materials'))}
             <div className="space-y-0.5">
               {quickAccessItems.map((item) => (
                 <React.Fragment key={item.type}>
-                  {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
+                  {renderNavButton(item.type, item.icon, item.label, item.description, item.count, item.color, item.CustomIcon)}
                 </React.Fragment>
               ))}
             </div>
 
-            {renderSectionTitle(t('finder.quickAccess.system'))}
+            {renderSectionTitle(t('finder.quickAccess.aiKnowledge'))}
             <div className="space-y-0.5">
               {systemItems.map((item) => (
                 <React.Fragment key={item.type}>
-                  {renderNavButton(item.type, item.icon, item.label, item.count, item.color, item.CustomIcon)}
+                  {renderNavButton(item.type, item.icon, item.label, item.description, item.count, item.color, item.CustomIcon)}
                 </React.Fragment>
               ))}
             </div>

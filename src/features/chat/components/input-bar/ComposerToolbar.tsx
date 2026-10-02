@@ -114,12 +114,10 @@ function ResizingThinkingLabel({ text }: { text: string }) {
 
 function ContextWindowUsageRing({
   usage,
-  sessionUsage,
   t,
   disabled,
 }: {
   usage: ContextWindowUsage;
-  sessionUsage?: SessionUsageSummary | null;
   t: TFunction;
   disabled: boolean;
 }) {
@@ -133,71 +131,34 @@ function ContextWindowUsageRing({
   const ringRadius = 6.75;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
+  // hover 只回答"还剩多少"：一行摘要。明细（进度条 / 上限 / 会话累计 /
+  // 压缩状态 / 压缩动作）由点击后的 ContextUsagePopover 独占——两处不再
+  // 各画一份同构卡片，避免以后改一处漏一处。
+  // 内容层用 --tooltip-* 族：tooltip 外壳是反色的，页面语义 token
+  // （--text-secondary / --button-utility-hover）落上去会掉到 ~2:1 对比度。
+  // 不加 whitespace-nowrap：--font-size-scale 调大时这一行会超过 CommonTooltip
+  // 的 300px maxWidth，不可换行就被裁掉；允许换行则退化成两行而不是丢内容。
   const tooltipContent = (
-    <div className="w-48 p-1.5 text-xs">
-      <div className="flex items-center justify-between gap-3">
-        <span className="font-semibold text-[color:var(--text-primary)]">
-          {t('chatV2:tokenUsage.contextWindow')}
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="text-[color:var(--tooltip-text-secondary)]">
+        {t('chatV2:tokenUsage.contextWindow')}
+      </span>
+      <span className="font-mono tabular-nums text-[color:var(--tooltip-foreground)]">
+        {usage.usedLabel}
+        <span className="text-[color:var(--tooltip-text-muted)]">
+          {' / '}
+          {formatContextTokenAmount(usage.limitTokens)}
         </span>
-        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-2xs leading-none tabular-nums text-[color:var(--text-secondary)]">
-          {usage.usedPercent}%
-        </span>
-      </div>
-      <div
-        data-testid="context-window-usage-tooltip-bar"
-        className="mb-2.5 mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--button-utility-hover)] ring-1 ring-[color:var(--input-shell-border)]"
+      </span>
+      <span
+        data-testid="context-window-usage-hover-percent"
+        className="rounded-full border border-[color:var(--tooltip-chip-border)] bg-[color:var(--tooltip-chip-surface)] px-1.5 py-0.5 font-mono text-2xs leading-none tabular-nums text-[color:var(--tooltip-text-secondary)]"
       >
-        <div
-          className="h-full rounded-full transition-[width] duration-150"
-          style={{ width: `${usage.usedPercent}%`, background: contextUsageColor }}
-        />
-      </div>
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[color:var(--text-secondary)]">
-            {t('chatV2:tokenUsage.contextUsedPercent', { percent: usage.usedPercent })}
-          </span>
-          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-            {t('chatV2:tokenUsage.contextUsedTokens', { tokens: usage.usedLabel })}
-          </span>
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <span className="text-[color:var(--text-secondary)]">
-            {t('chatV2:tokenUsage.contextRemainingPercent', { percent: usage.remainingPercent })}
-          </span>
-          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-            {t('chatV2:tokenUsage.contextRemainingTokens', { tokens: usage.remainingLabel })}
-          </span>
-        </div>
-      </div>
-      {usage.usedPercent >= 75 && (
-        <p className="mt-2 border-t border-[color:var(--input-shell-border)] pt-2 text-[11px] leading-snug text-[color:var(--text-secondary)]">
-          {t('chatV2:tokenUsage.contextHighWaterHint')}
-        </p>
-      )}
-      {/* ★ 1.2 本会话累计（token / 费用） */}
-      {sessionUsage && sessionUsage.totalTokens > 0 && (
-        <div className="mt-2 space-y-1.5 border-t border-[color:var(--input-shell-border)] pt-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-[color:var(--text-secondary)]">
-              {t('chatV2:tokenUsage.sessionTotal')}
-            </span>
-            <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-              {formatContextTokenAmount(sessionUsage.totalTokens)}
-            </span>
-          </div>
-          {typeof sessionUsage.estimatedCostUsd === 'number' && sessionUsage.estimatedCostUsd > 0 && (
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[color:var(--text-secondary)]">
-                {t('chatV2:tokenUsage.sessionCost')}
-              </span>
-              <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
-                ${sessionUsage.estimatedCostUsd.toFixed(sessionUsage.estimatedCostUsd < 0.1 ? 4 : 2)}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+        {usage.usedPercent}%
+      </span>
+      <span className="text-[color:var(--tooltip-text-muted)]">
+        {t('chatV2:contextUsagePopover.viewDetails')}
+      </span>
     </div>
   );
 
@@ -311,7 +272,7 @@ export interface ComposerToolbarProps {
   runtimeModelProviderLabel?: string;
   runtimeModelIconId?: string;
   runtimeCurrentModelId?: string | null;
-  runtimeModelOptions: Array<{ id: string; label: string; providerLabel?: string; iconId?: string }>;
+  runtimeModelOptions: Array<{ id: string; label: string; providerLabel?: string; iconId?: string; providerId?: string; isRecent?: boolean }>;
   onSelectRuntimeModel?: (modelId: string) => void;
   /** 是否存在模型选择面板（决定运行时模型菜单是否可用） */
   hasModelPanel: boolean;
@@ -473,22 +434,30 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           return haystack.includes(normalizedRuntimeModelSearch);
         });
 
-    const groups = new Map<string, typeof runtimeModelOptions>();
+    const groups = new Map<string, { key: string; label: string; models: typeof runtimeModelOptions }>();
+    const recent = normalizedRuntimeModelSearch.length === 0
+      ? filteredOptions.filter((model) => model.isRecent)
+      : [];
+    if (recent.length > 0) {
+      groups.set('__recent__', { key: '__recent__', label: t('chatV2:inputBar.runtimeModelRecent'), models: recent });
+    }
     filteredOptions.forEach((model) => {
       const providerLabel = model.providerLabel?.trim() || fallbackRuntimeProviderLabel;
-      const existing = groups.get(providerLabel);
+      const providerKey = model.providerId?.trim() || providerLabel;
+      const existing = groups.get(providerKey);
       if (existing) {
-        existing.push(model);
+        existing.models.push(model);
         return;
       }
-      groups.set(providerLabel, [model]);
+      groups.set(providerKey, { key: providerKey, label: providerLabel, models: [model] });
     });
 
-    return Array.from(groups.entries()).map(([providerLabel, models]) => ({
-      providerLabel,
+    return Array.from(groups.values()).map(({ key, label, models }) => ({
+      key,
+      providerLabel: label,
       models,
     }));
-  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions]);
+  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions, t]);
 
   const handleTurnThinkingOn = useCallback(() => {
     if (enableThinking) return;
@@ -582,7 +551,6 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
           >
             <ContextWindowUsageRing
               usage={contextWindowUsage}
-              sessionUsage={sessionUsage}
               t={t}
               disabled={tooltipDisabled}
             />
@@ -740,7 +708,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
                               {groupedRuntimeModelOptions.length > 0 ? (
                                 groupedRuntimeModelOptions.map((group) => (
                                   <AppMenuGroup
-                                    key={group.providerLabel}
+                                    key={group.key}
                                     label={group.providerLabel}
                                     className="app-menu-group--natural-case"
                                   >

@@ -1,32 +1,32 @@
 /**
- * useSmoothWheel — 给鼠标滚轮加上"惯性 / 缓动"手感
+ * useSmoothWheel — 滚轮 delta 归一化
  *
- * 浏览器原生不会对鼠标滚轮做平滑。CSS `scroll-behavior: smooth` 也只
- * 影响编程滚动（scrollTo/scrollIntoView 等），对用户滚轮无效。
+ * 滚动本身完全交给浏览器原生：
+ * - 不用 `preventDefault`，监听器保持 `passive: true`
+ * - 不做 JS 缓动循环（历史实现会用 rAF 把 scrollTop 逼近目标）
+ * - 不区分鼠标滚轮 / 触控板，原生 momentum 与系统层同步最好
  *
- * 本 hook 拦截鼠标滚轮事件，把 deltaY 累加到一个目标 scrollTop，再用
- * rAF 把当前 scrollTop 缓动逼近目标，从而获得  VSCode 那种顺滑感。
+ * 这么改的原因：自造缓动绕过了原生滚动时间轴，滚动与渲染可能差一帧；
+ * `passive: false` 全局接管滚轮会与嵌套滚动容器（代码块、来源面板）和
+ * 虚拟化器抢同一事件源；"鼠标 vs 触控板"的判定依赖 deltaY 是否为整数，
+ * 在开启系统平滑滚动的 macOS 上会误判成鼠标，反而给触控板惯性二次缓动。
  *
- * 设计要点：
- * 1. 仅拦截"鼠标滚轮"，不动触控板。
- *    macOS 触控板的 momentum 来自系统层，再加一层 JS 缓动会变粘且漂移。
- * 2. iOS WebView 直接退出（保留原生橡皮筋 + inertia）。
- * 3. 边界处不拦截，允许浏览器/父级处理 overscroll。
- * 4. 与外部 scrollTop 改写（ResizeObserver 跟底、scrollToBottom）协作：
- *    若检测到外部改写，重置 target 避免被拽回。
- * 5. passive: false（必须 preventDefault）。但事件不停止传播，已有的
- *    "向上滚释放粘底"监听仍然能收到。
+ * 保留的只有 deltaMode 归一化（行/页模式 → 像素），供调用方做与设备无关的
+ * 阈值比较。当前调用方 MessageList 暂未消费，属于留作平台出口。
  */
 
 import { useEffect, useRef } from 'react';
-import { detectScrollPlatform } from '@/lib/scroll-platform';
 
 export interface SmoothWheelOptions {
-  /** 缓动系数 0..1，越大越接近原生（snappy）。默认 0.2。 */
-  intensity?: number;
-  /** 关闭开关。iOS 永远视为关闭。默认 true。 */
+  /** 关闭开关。默认 true。 */
   enabled?: boolean;
-  /** 用户向上滚（释放粘底等场景）回调。 */
+  /**
+   * 归一化后的向上滚回调（像素量，负值向上）。
+   *
+   * ⚠️ 吸底解除不要挂在这里：跟随解除由 MessageList 的账本分类器在 scroll
+   * 事件里判定，任何设备都覆盖；在 wheel 里加设备专属意图监听是该仓库
+   * 刻意移除的设计（见 MessageList.scrollToBottom.source.test.ts）。
+   */
   onUserScrollUp?: () => void;
   /**
    * 解析真正可滚动元素。OverlayScrollbars 场景下 host !== viewport，
@@ -36,49 +36,40 @@ export interface SmoothWheelOptions {
   getScrollElement?: () => HTMLElement | null;
 }
 
+/** 行模式下一行约 16px：用于把 deltaMode=1/2 折算成像素做阈值判断 */
+const LINE_HEIGHT_PX = 16;
+
+/** 低于该像素量视为滚动噪声（触控板微抖），不触发回调 */
+const INTENT_EPSILON_PX = 0.5;
+
 /**
- * 仅拦截鼠标滚轮，触控板放行。
- *
- * macOS 触控板的 momentum 来自系统层，不应被 JS 二次缓动。
- *
- * 判定策略（Tauri WKWebView / Chromium 均适用）：
- *   1. deltaMode != 0（行/页模式）→ 必然是滚轮
- *   2. wheelDeltaY 是 120 的整数倍 → 标准鼠标滚轮（每格 120）
- *   3. 兜底：deltaY 是整数且绝对值 >= 10 → 鼠标（触控板 deltaY 几乎都是小数）
- *
- * 注意：macOS 开启"平滑滚动"时，一格鼠标滚轮可能被系统拆成多个小事件，
- * 此时 wheelDeltaY 可能不是 120 的倍数，兜底规则会捕获这些事件。
+ * 把任意 deltaMode 的 deltaY 折算成像素，供与设备无关的阈值比较使用。
+ * 不修改事件本身——原生滚动照常按浏览器自己的解释进行。
  */
-function isMouseWheel(e: WheelEvent): boolean {
-  if (e.deltaMode !== 0) return true;
-  const wd = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
-  if (typeof wd === 'number' && wd !== 0) {
-    if (Math.abs(wd) % 120 === 0) return true;
+export function normalizeWheelDeltaY(event: {
+  deltaMode: number;
+  deltaY: number;
+  clientHeight?: number;
+}): number {
+  if (event.deltaMode === 1 /* DOM_DELTA_LINE */) return event.deltaY * LINE_HEIGHT_PX;
+  if (event.deltaMode === 2 /* DOM_DELTA_PAGE */) {
+    return event.deltaY * (event.clientHeight || LINE_HEIGHT_PX * 20);
   }
-  // 兜底：触控板 deltaY 几乎都是小数（如 3.14、7.5），鼠标是整数
-  return Number.isInteger(e.deltaY) && Math.abs(e.deltaY) >= 10;
+  return event.deltaY;
 }
 
 export function useSmoothWheel(
   hostElement: HTMLElement | null,
   options: SmoothWheelOptions = {},
 ): void {
-  const {
-    intensity = 0.2,
-    enabled = true,
-    onUserScrollUp,
-    getScrollElement,
-  } = options;
+  const { enabled = true, onUserScrollUp, getScrollElement } = options;
 
   // 通过 ref 把可变选项带进闭包，避免每次值变都重挂监听
-  const optsRef = useRef({ intensity, onUserScrollUp, getScrollElement });
-  optsRef.current = { intensity, onUserScrollUp, getScrollElement };
+  const optsRef = useRef({ onUserScrollUp, getScrollElement });
+  optsRef.current = { onUserScrollUp, getScrollElement };
 
   useEffect(() => {
     if (!enabled || !hostElement) return;
-
-    const platform = detectScrollPlatform();
-    if (platform.preferNativeScrollbars) return;
 
     const resolveScrollEl = (): HTMLElement | null => {
       const custom = optsRef.current.getScrollElement?.();
@@ -89,127 +80,24 @@ export function useSmoothWheel(
       return inner ?? hostElement;
     };
 
-    let target = 0;
-    let lastApplied = 0;
-    let rafId = 0;
-    let active = false;
-
-    const stop = () => {
-      if (rafId) cancelAnimationFrame(rafId);
-      rafId = 0;
-      active = false;
-    };
-
-    const tick = () => {
-      const el = resolveScrollEl();
-      if (!el) {
-        stop();
-        return;
-      }
-      // 外部改写检测：与上一帧写入差 > 1 视为外部介入，对齐到当前位置
-      if (Math.abs(el.scrollTop - lastApplied) > 1) {
-        target = el.scrollTop;
-      }
-      const max = el.scrollHeight - el.clientHeight;
-      if (target < 0) target = 0;
-      if (target > max) target = max;
-
-      const cur = el.scrollTop;
-      const diff = target - cur;
-      if (Math.abs(diff) < 0.5) {
-        el.scrollTop = target;
-        lastApplied = target;
-        stop();
-        return;
-      }
-      const next = cur + diff * optsRef.current.intensity;
-      el.scrollTop = next;
-      lastApplied = next;
-      rafId = requestAnimationFrame(tick);
-    };
-
-    // ★ 性能：overflowY 计算样式缓存。wheel 事件是高频路径（触控板可达
-    // 每秒上百个事件），逐节点 getComputedStyle 会在 passive:false 监听里
-    // 同步强制样式计算。聊天内嵌套滚动容器（代码块/思维链面板）的
-    // overflow 样式是静态的，用 WeakMap 缓存一次即可；scrollTop/scrollHeight
-    // 属于动态值仍每次实读
-    const overflowYCache = new WeakMap<HTMLElement, string>();
-    const getOverflowY = (node: HTMLElement): string => {
-      let value = overflowYCache.get(node);
-      if (value === undefined) {
-        value = getComputedStyle(node).overflowY;
-        overflowYCache.set(node, value);
-      }
-      return value;
-    };
-
-    // 事件目标到 viewport 之间若存在还能朝滚动方向继续滚的嵌套滚动容器
-    // （思维链/来源面板、可滚动代码块等），滚轮应交给它原生消费；
-    // capture + preventDefault 拦截会让嵌套容器永远滚不动
-    const hasNestedScrollableTarget = (e: WheelEvent, viewport: HTMLElement): boolean => {
-      let node: Element | null = e.target instanceof Element ? e.target : null;
-      while (node && node !== viewport && node !== hostElement) {
-        if (node instanceof HTMLElement && node.scrollHeight > node.clientHeight + 1) {
-          const overflowY = getOverflowY(node);
-          if (overflowY === 'auto' || overflowY === 'scroll') {
-            const canScrollUp = e.deltaY < 0 && node.scrollTop > 0;
-            const canScrollDown =
-              e.deltaY > 0 && node.scrollTop + node.clientHeight < node.scrollHeight - 1;
-            if (canScrollUp || canScrollDown) return true;
-          }
-        }
-        node = node.parentElement;
-      }
-      return false;
-    };
-
     const onWheel = (e: WheelEvent) => {
-      // 横滚不处理，让浏览器自己来
+      // 横滚不处理
       if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
 
-      // ★ 性能：触控板向下滚（阅读时最高频路径）本 hook 从头到尾不做任何事，
-      // 提前零成本放行，跳过 DOM 遍历 / layout 读取
-      const mouseWheel = isMouseWheel(e);
-      const scrollingUp = e.deltaY < 0;
-      if (!mouseWheel && !scrollingUp) return;
+      const deltaY = normalizeWheelDeltaY({
+        deltaMode: e.deltaMode,
+        deltaY: e.deltaY,
+        // WheelEvent 继承 UIEvent，没有 clientHeight；页模式折算取视口元素高度
+        clientHeight: resolveScrollEl()?.clientHeight,
+      });
+      // 只关心向上滚，向下滚由原生滚动 + 吸底跟随自然处理
+      if (deltaY >= -INTENT_EPSILON_PX) return;
 
-      const el = resolveScrollEl();
-      if (!el) return;
-      const max = el.scrollHeight - el.clientHeight;
-      if (max <= 0) return;
-      if (hasNestedScrollableTarget(e, el)) return; // 嵌套滚动容器优先原生消费
-      // 向上滚意图必须在"触控板放行"之前上报：流式吸底期间若不第一时间
-      // 释放跟随，吸底 rAF 每帧写回底部，触控板的小步原生滚动永远逃不出去
-      if (scrollingUp) optsRef.current.onUserScrollUp?.();
-      if (!mouseWheel) return; // 触控板：放行原生
-
-      // 边界放行（允许父级 overscroll / 软弹回）
-      if (
-        (e.deltaY < 0 && el.scrollTop <= 0) ||
-        (e.deltaY > 0 && el.scrollTop >= max)
-      ) {
-        return;
-      }
-
-      e.preventDefault();
-
-      if (!active) {
-        target = el.scrollTop;
-        lastApplied = el.scrollTop;
-        active = true;
-      }
-
-      target += e.deltaY;
-      if (target < 0) target = 0;
-      if (target > max) target = max;
-
-      if (!rafId) rafId = requestAnimationFrame(tick);
+      optsRef.current.onUserScrollUp?.();
     };
 
-    hostElement.addEventListener('wheel', onWheel, { passive: false, capture: true });
-    return () => {
-      hostElement.removeEventListener('wheel', onWheel as EventListener, { capture: true });
-      stop();
-    };
+    // passive: true —— 不 preventDefault，让原生滚动与嵌套滚动容器原生接管
+    hostElement.addEventListener('wheel', onWheel, { passive: true });
+    return () => hostElement.removeEventListener('wheel', onWheel);
   }, [hostElement, enabled]);
 }

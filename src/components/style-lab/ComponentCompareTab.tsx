@@ -19,7 +19,6 @@ import {
   SelectItem as ShadSelectItem,
 } from '@/components/ui/shad/Select';
 import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
-// eslint-disable-next-line no-restricted-imports
 import {
   Tooltip as ShadTooltip,
   TooltipContent as ShadTooltipContent,

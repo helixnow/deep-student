@@ -24,6 +24,8 @@ import {
   SETTINGS_NAV_ITEM_LABEL_CLASS_NAME,
 } from './sidebarSettings';
 import { revealSettingsSection } from './settingsSearchReveal';
+import type { SettingsSidebarCategory } from './useSettingsNavigation';
+import { SettingsAboutFooter } from './SettingsAboutFooter';
 
 export interface SettingsSidebarProps {
   isSmallScreen: boolean;
@@ -35,6 +37,8 @@ export interface SettingsSidebarProps {
   setSidebarSearchFocused: (v: boolean) => void;
   settingsSearchIndex: Array<{ label: string; keywords: string[]; tab: string }>;
   sidebarNavItems: Array<{ value: string; label: string; icon: React.ComponentType<{ className?: string }> }>;
+  /** 一级分类；省略时保留旧的平铺导航，便于嵌入方和旧测试渐进迁移。 */
+  sidebarCategories?: SettingsSidebarCategory[];
   activeTab: string;
   setActiveTab: (tab: string) => void;
   setSidebarOpen: (v: boolean) => void;
@@ -51,6 +55,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   setSidebarSearchFocused,
   settingsSearchIndex,
   sidebarNavItems,
+  sidebarCategories,
   activeTab,
   setActiveTab,
   setSidebarOpen,
@@ -93,8 +98,11 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   const tabLabelMap = useMemo(() => {
     const map = new Map<string, string>();
     sidebarNavItems.forEach((item) => map.set(item.value, item.label));
+    sidebarCategories?.forEach((category) => {
+      category.items.forEach((item) => map.set(item.value, `${category.label} / ${item.label}`));
+    });
     return map;
-  }, [sidebarNavItems]);
+  }, [sidebarNavItems, sidebarCategories]);
 
   const activateSearchResult = (item: { label: string; tab: string }) => {
     setActiveTab(item.tab);
@@ -175,7 +183,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
         ) : null}
       </div>
 
-      {/* 设置搜索入口（11 个 tab / 上千个设置项的快速定位；索引见 useSettingsNavigation） */}
+      {/* 设置搜索入口：结果直接定位到分类内的设置项 */}
       {!isCollapsed && (
         <div className="shrink-0 px-2 pb-1">
           <div className="relative">
@@ -283,43 +291,52 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
               </div>
             )
           ) : (
-          <ul className="space-y-0.5">
-            {sidebarNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.value;
+            <ul className="space-y-0.5" data-settings-category-list={sidebarCategories?.length ? '' : undefined}>
+              {(sidebarCategories?.length ? sidebarCategories : sidebarNavItems).map((item) => {
+                const Icon = item.icon;
+                const category = sidebarCategories?.find((entry) => entry.value === item.value);
+                const isActive = category
+                  ? category.items.some((child) => child.value === activeTab)
+                  : activeTab === item.value;
+                const targetTab = category?.items[0]?.value ?? item.value;
 
-              return (
-                <li key={item.value}>
-                  <WorkbenchSidebarRow
-                    rowType="nav"
-                    isActive={isActive}
-                    // 收起态（以及任何只剩图标的窄形态）下标签文字不渲染，
-                    // 没有 aria-label 读屏就只念「按钮」
-                    aria-label={item.label}
-                    aria-current={isActive ? 'page' : undefined}
-                    onClick={isActive ? undefined : () => {
-                      setActiveTab(item.value as any);
-                      if (isSmallScreen) setSidebarOpen(false);
-                    }}
-                    className={isActive ? 'cursor-default' : undefined}
-                    title={undefined}
-                    leftSlot={<Icon className="h-[18px] w-[18px] flex-shrink-0" />}
-                  >
-                    {!isCollapsed && (
-                      <WorkbenchSidebarRowLabel>
-                        <span className={SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}>
-                        {item.label}
-                        </span>
-                      </WorkbenchSidebarRowLabel>
-                    )}
-                  </WorkbenchSidebarRow>
-                </li>
-              );
-            })}
-          </ul>
+                return (
+                  <li key={item.value}>
+                    <WorkbenchSidebarRow
+                      rowType="nav"
+                      isActive={isActive}
+                      aria-label={item.label}
+                      aria-current={isActive ? 'page' : undefined}
+                      onClick={isActive ? undefined : () => {
+                        setActiveTab(targetTab);
+                        if (isSmallScreen) setSidebarOpen(false);
+                      }}
+                      className={isActive ? 'cursor-default' : undefined}
+                      title={undefined}
+                      leftSlot={<Icon className="h-[18px] w-[18px] flex-shrink-0" />}
+                    >
+                      {!isCollapsed && (
+                        <WorkbenchSidebarRowLabel>
+                          <span className={SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}>{item.label}</span>
+                        </WorkbenchSidebarRowLabel>
+                      )}
+                    </WorkbenchSidebarRow>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </CustomScrollArea>
+      {Boolean(sidebarCategories?.length) && !isCollapsed && (
+        <SettingsAboutFooter
+          active={activeTab === 'about'}
+          onOpen={() => {
+            setActiveTab('about');
+            if (isSmallScreen) setSidebarOpen(false);
+          }}
+        />
+      )}
     </WorkbenchSidebarSurface>
   );
 

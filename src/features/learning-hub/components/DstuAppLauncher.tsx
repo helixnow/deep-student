@@ -181,7 +181,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
   const systemItems = [
     { type: 'trash', CustomIcon: TrashIcon, label: t('learningHub:apps.trash') },
     { type: 'indexStatus', CustomIcon: IndexStatusIcon, label: t('learningHub:finder.quickAccess.indexStatus') },
-    { type: 'memory', CustomIcon: MemoryIcon, label: t('learningHub:memory.title') },
+    { type: 'memory', CustomIcon: MemoryIcon, label: t('learningHub:memory.navTitle') },
   ];
 
   const renderEmbeddedNavItem = (item: { type: string; CustomIcon?: React.FC<ResourceIconProps>; label: string }) => {
@@ -385,6 +385,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           {t('sidebar:mobile_drawer.section_learning')}
         </span>
       )}
+      {renderSectionTitle(t('learningHub:finder.quickAccess.materials'))}
       <nav aria-label={t('learningHub:title')} className="space-y-0.5">
         {quickAccessItems.map(renderNavItem)}
       </nav>
@@ -392,7 +393,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
       <nav className="space-y-0.5">{resourceTypeItems.map(renderNavItem)}</nav>
       {renderSectionTitle(t('learningHub:finder.quickAccess.media'))}
       <nav className="space-y-0.5">{mediaItems.map(renderNavItem)}</nav>
-      {renderSectionTitle(t('learningHub:apps.system'))}
+      {renderSectionTitle(t('learningHub:finder.quickAccess.aiKnowledge'))}
       <nav className="space-y-0.5">{systemItems.map(renderNavItem)}</nav>
     </>
   );
@@ -416,7 +417,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           <div className="space-y-1">{resourceTypeItems.map(renderLegacyNavItem)}</div>
           {renderSectionTitle(t('learningHub:finder.quickAccess.media'))}
           <div className="space-y-1">{mediaItems.map(renderLegacyNavItem)}</div>
-          {renderSectionTitle(t('learningHub:apps.system'))}
+          {renderSectionTitle(t('learningHub:finder.quickAccess.aiKnowledge'))}
           <div className="space-y-1">{systemItems.map(renderLegacyNavItem)}</div>
         </div>
       </CustomScrollArea>

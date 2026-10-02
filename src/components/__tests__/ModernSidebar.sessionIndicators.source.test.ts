@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 const modernSidebarSource = readFileSync(
   resolve(process.cwd(), 'src/components/ModernSidebar.tsx'),
   'utf-8'
-);
+) + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
 const appSource = readFileSync(
   resolve(process.cwd(), 'src/App.tsx'),
   'utf-8'

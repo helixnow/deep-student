@@ -23,7 +23,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { clearPdfPageCache } from './renderers/MarkdownRenderer';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded, createBlocksContentLengthSelector } from '../hooks/useChatStore';
-import type { ChatStore } from '../core/types';
+import type { Block, ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
@@ -55,11 +55,14 @@ const VIRTUALIZER_INIT_DELAY = 0;
 /** 默认估算消息高度（设置为合理值，测量会覆盖）*/
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /**
- * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16）：
- * 配合已完成块 content-visibility 与块数/字节数准入，长会话不再依赖
- * 直渲染路径；直渲染只保留给真正的小会话。
+ * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16，2026-10-02 回退到 50）：
+ * 配合已完成块 content-visibility，长会话渲染开销已被 content-visibility 吃掉，
+ * 直渲染不再需要靠"更早切虚拟化"来兜底；16 这个值对含代码块的短会话反而有害——
+ * 估算高度 120px 与真实高度（代码块常差 3 倍）不符，进入虚拟化后要经历一轮
+ * 测量修正抖动。回退到 50 让真正需要虚拟化的大会话才付这笔成本。
+ * 块数/字节数准入不受影响：它们各自封住"消息少但块多/单条巨长"的形状。
  */
-const VIRTUALIZATION_THRESHOLD = 16;
+const VIRTUALIZATION_THRESHOLD = 50;
 /**
  * 直渲染准入同时受总块数约束（🚀 长会话性能）：agent 任务会话消息数不多
  * 但每条消息带大量工具块，仅按消息数阈值会整会话直渲染，每次流式冲刷的
@@ -90,6 +93,25 @@ export function shouldDirectRender(
 
 /** 距底 ≤ 该值视为"在底部"（滚回底部时恢复吸底跟随的灵敏度，主流聊天产品同级） */
 const BOTTOM_THRESHOLD_PX = 50;
+
+const EMPTY_BLOCK_MAP = new Map<string, Block>();
+
+/** 空态主动作候选数；中英文资源保持同样长度，避免切换语言时索引失效。 */
+const EMPTY_STATE_VARIANT_COUNT = 30;
+
+function getLocalizedEmptyStateVariant(value: unknown, index: number): string | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const candidate = value[index];
+  return typeof candidate === 'string' && candidate.trim().length > 0 ? candidate : undefined;
+}
+
+/**
+ * returnObjects 的数组插值依赖 i18next 版本；这里再补一次分组名插值，
+ * 确保自定义语言包或延迟加载期间也不会把 {{groupName}} 直接展示给用户。
+ */
+function interpolateEmptyStateGroupName(template: string, groupName: string): string {
+  return template.replace(/\{\{\s*groupName\s*\}\}/g, () => groupName);
+}
 
 /**
  * 助手消息轻量入场：复用 motion.css 共享类 .chat-msg-enter（fade + 4px 上移，
@@ -227,6 +249,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   const { t } = useTranslation('chatV2');
   const scrollToBottomLabel = t('messageList.scrollToBottom');
+
+  // 空态文案只在本次挂载时抽取一次，避免组件因滚动/流式状态重渲染而不断换话术。
+  const [emptyStateVariantIndex] = useState(() =>
+    Math.floor(Math.random() * EMPTY_STATE_VARIANT_COUNT),
+  );
 
   // 用户偏好减少动效时跳过消息入场动画（framer variants 无法被 CSS 媒体查询覆盖）
   const prefersReducedMotion = useReducedMotion();
@@ -860,12 +887,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => resizeObserver.disconnect();
   }, [logElement, followBottom]);
 
-  // 🖱️ 平滑滚轮惯性（纯手感层）：其写入不记账，自然被分类为用户滚动，
-  // 无需再向上滚回调与跟随判定耦合
-  useSmoothWheel(containerRef.current, {
-    // 直接提供已知 viewport，避免缓动循环每帧 querySelector
-    getScrollElement: () => viewportElement,
-  });
+  // 🖱️ 滚轮 delta 归一化。滚动完全走浏览器原生：监听器 passive、不 preventDefault、
+  // 无 JS 缓动循环。吸底解除不靠这里的意图上报——账本分类器在 scroll 事件里
+  // 判定读者滚动（见下方 onScroll），任何设备都覆盖，也无需与嵌套滚动容器抢事件。
+  useSmoothWheel(containerRef.current);
 
   // ==========================================================================
   // A45-5（docs/dev/acr/ACR-4.5.md）：agent 程序化滚动到指定消息
@@ -1066,11 +1091,31 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 空状态
   if (forceEmptyPreview || messageOrder.length === 0) {
-    const emptyStatePrimaryAction = emptyStateGroupName
+    const variantKey = emptyStateGroupName
+      ? 'messageList.empty.primaryActionInGroupVariants'
+      : 'messageList.empty.primaryActionVariants';
+    const interpolationOptions = emptyStateGroupName
+      ? { groupName: emptyStateGroupName }
+      : undefined;
+    const fallback = emptyStateGroupName
       ? t('messageList.empty.primaryActionInGroup', {
           groupName: emptyStateGroupName,
         })
       : t('messageList.empty.primaryAction');
+    const localizedVariants = t(variantKey, {
+      ...interpolationOptions,
+      returnObjects: true,
+      defaultValue: [],
+    });
+    const localizedVariant = getLocalizedEmptyStateVariant(
+      localizedVariants,
+      emptyStateVariantIndex,
+    );
+    const emptyStatePrimaryAction = localizedVariant
+      ? emptyStateGroupName
+        ? interpolateEmptyStateGroupName(localizedVariant, emptyStateGroupName)
+        : localizedVariant
+      : fallback;
 
     return (
       <div

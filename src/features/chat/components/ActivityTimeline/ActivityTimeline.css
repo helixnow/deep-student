@@ -97,3 +97,71 @@ button.timeline-node-dot {
 .thinking-summary-trigger:focus-visible {
   background: transparent;
 }
+
+/* ============================================================================
+   思考链三态 — thinking / expanded / collapsed
+   ----------------------------------------------------------------------------
+   thinking（中间态）：固定高度预览窗 + 上下渐隐，流式推理不再无限撑高消息；
+                      用户一旦手动点过触发器就升级为 expanded（全部展开）。
+   expanded：撤掉高度限制与渐隐，摘要行 sticky 挂顶，长链滚动时始终可见。
+   collapsed：无内容，只留单行摘要（此时不挂顶，避免单行吸顶的视觉噪声）。
+   ============================================================================ */
+
+.activity-timeline-thinking-peek {
+  max-height: var(--chat-thinking-peek-height, 8.5rem);
+
+  /* 中间态要能自动跟随最新推理 → 必须是可滚动容器，滚动条藏起来只留渐隐 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+
+  /* 两端恒定渐隐：固定窗口的语义就是"内容从这里进出"，少了任何一头都会读成
+     内容被硬切。渐隐用 mask 而非叠加色块——思考链背景透明，叠色在深色模式下
+     会留色带。-webkit- 前缀保留给 Android WebView，与本文件既有前缀写法一致。 */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--chat-thinking-peek-fade, 18px),
+    #000 calc(100% - var(--chat-thinking-peek-fade, 18px)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0,
+    #000 var(--chat-thinking-peek-fade, 18px),
+    #000 calc(100% - var(--chat-thinking-peek-fade, 18px)),
+    transparent 100%
+  );
+}
+
+.activity-timeline-thinking-peek::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+
+/* 贴底时底部渐隐要真的盖住字，就得让末段沉进渐隐带：
+   尾部 padding + 末段 margin 加起来原本正好填满 18px，渐隐全打在空白上。 */
+.activity-timeline-thinking-peek > .activity-timeline-thinking-content {
+  padding-bottom: 0;
+}
+
+.activity-timeline-thinking-peek .thinking-chain-content:last-child .markdown-content > *:last-child,
+.activity-timeline-thinking-peek .thinking-chain-content:last-child > *:last-child {
+  margin-bottom: 0;
+}
+
+.activity-timeline-thinking-peek--expanded {
+  max-height: none;
+  overflow: visible;
+  -webkit-mask-image: none;
+  mask-image: none;
+}
+
+.thinking-summary-row--pinned {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+
+  /* 必须不透明：思维链内容从摘要行下方滚过 */
+  background: var(--surface-root);
+}

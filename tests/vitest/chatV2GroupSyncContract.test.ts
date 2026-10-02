@@ -20,9 +20,13 @@ describe('chat v2 group sync contract', () => {
       'utf-8'
     );
 
-    // ModernSidebar 的会话/分组数据来自 useSidebarSessionData，
-    // 该 hook 订阅 chat-v2:groups-updated 并去抖刷新
+    const storeSource = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/stores/sessionListStore.ts'), 'utf-8'
+    );
+    // The hook retains a shared listener; group mutations also refresh sessions
+    // because archiving a group cascades to its sessions.
     expect(sidebarSource).toContain('useSidebarSessionData');
-    expect(sessionHookSource).toContain("window.addEventListener('chat-v2:groups-updated', scheduleRefresh)");
+    expect(sessionHookSource).toContain("retainSessionListStore");
+    expect(storeSource).toContain("window.addEventListener('chat-v2:groups-updated', handleMutation)");
   });
 });

@@ -16,7 +16,7 @@
  *
  * iOS 无分发渠道，保持外链提示。
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { isMobilePlatform, isAndroid } from '../utils/platform';
 import { openLink } from '../utils/urlOpener';
 import { showGlobalNotification } from '../components/UnifiedNotification';
@@ -795,7 +795,7 @@ export function useAppUpdater(): AppUpdaterController {
     return () => clearTimeout(timer);
   }, [checkForUpdate]);
 
-  return {
+  return useMemo(() => ({
     ...state,
     isMobile: mobile,
     canInstallInApp: mobile && android,
@@ -806,5 +806,5 @@ export function useAppUpdater(): AppUpdaterController {
     dismiss,
     skipVersion,
     setNeverRemind,
-  };
+  }), [state, mobile, android, checkForUpdate, downloadAndInstall, relaunchApp, performUpdateAction, dismiss, skipVersion, setNeverRemind]);
 }

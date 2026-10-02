@@ -18,6 +18,7 @@ import {
   isVoiceInputProviderSupported,
 } from '@/voice-input/modelSelection';
 import { ensureModelsCacheLoaded, getCachedModels } from '../hooks/useAvailableModels';
+import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
 // ============================================================================
 // 类型
@@ -40,7 +41,7 @@ export interface AutoAssignResult {
 
 /** 是否为可用的对话模型（非 embedding、非 reranker、已启用） */
 function isChatModel(api: ApiConfig): boolean {
-  return api.enabled && !api.isEmbedding && !api.isReranker;
+  return isAvailableChatModel(api);
 }
 
 /** 是否为可用的嵌入模型 */

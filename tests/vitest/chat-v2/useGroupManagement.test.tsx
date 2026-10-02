@@ -38,6 +38,26 @@ describe('useGroupManagement', () => {
     setGroupsCacheMock.mockReset();
   });
 
+  it('does not broadcast mutations after reading groups, but does after rename and archive', async () => {
+    const updated = { ...activeGroup, name: 'Renamed' };
+    invokeMock.mockImplementation((command: string) => Promise.resolve(
+      command === 'chat_v2_list_groups' ? [activeGroup] : updated
+    ));
+    const onUpdate = vi.fn();
+    window.addEventListener('chat-v2:groups-updated', onUpdate);
+    const { result } = renderHook(() => useGroupManagement());
+    try {
+      await act(async () => { await result.current.loadGroups(); });
+      expect(onUpdate).not.toHaveBeenCalled();
+      await act(async () => { await result.current.updateGroup(activeGroup.id, { name: 'Renamed' }); });
+      expect(onUpdate).toHaveBeenCalledTimes(1);
+      await act(async () => { await result.current.archiveGroup(activeGroup.id); });
+      expect(onUpdate).toHaveBeenCalledTimes(2);
+    } finally {
+      window.removeEventListener('chat-v2:groups-updated', onUpdate);
+    }
+  });
+
   it('archives groups through update_group instead of deleting or ungrouping sessions', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_groups') {

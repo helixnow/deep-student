@@ -25,7 +25,8 @@ export function useGroupManagement(workspaceId?: string) {
     const sorted = sortGroups(next);
     setGroups(sorted);
     setGroupsCache(sorted);
-    emitGroupListUpdated();
+    // Loading is a read, not a mutation: broadcasting here causes another
+    // session-list request while the initial sidebar/page load is in flight.
   }, []);
 
   const loadGroups = useCallback(async () => {

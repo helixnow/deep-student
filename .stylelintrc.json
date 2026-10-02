@@ -34,6 +34,18 @@
         "alpha-value-notation": null,
         "comment-empty-line-before": null
       }
+    },
+    {
+      "comment": "启动面：类名必须与 index.html 静态占位符逐字一致（BEM 由交接契约决定，不是命名偏好）；mask 需要 -webkit- 前缀与 !important 才能覆盖老 Android WebView。",
+      "files": ["public/boot.css"],
+      "rules": {
+        "declaration-no-important": null,
+        "property-no-vendor-prefix": null,
+        "selector-class-pattern": null,
+        "selector-max-specificity": null,
+        "comment-empty-line-before": null,
+        "rule-empty-line-before": null
+      }
     }
   ]
 }

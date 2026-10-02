@@ -35,7 +35,18 @@ export function WorkbenchSidebarFixed({ children, className, ...props }: React.H
   return <div data-workbench-sidebar-fixed className={cn('shrink-0 px-2 pb-2 pt-0.5', className)} {...props}>{children}</div>;
 }
 
-export function WorkbenchSidebarScroll({ children, className }: React.PropsWithChildren<{ className?: string }>) {
+/**
+ * 侧栏滚动区。
+ *
+ * `scrollRegion` 只作为 `data-sidebar-scroll-region` 的取值：会话列表是默认的
+ * `sessions`，其它复用同一滚动壳的宿主（模板管理导航）传自己的名字，避免同一
+ * 壳位出现多个语义不同的 `sessions` 标记。
+ */
+export function WorkbenchSidebarScroll({
+  children,
+  className,
+  scrollRegion = 'sessions',
+}: React.PropsWithChildren<{ className?: string; scrollRegion?: string }>) {
   return (
     <div className="min-h-0 flex-1 w-full">
       <CustomScrollArea
@@ -48,7 +59,7 @@ export function WorkbenchSidebarScroll({ children, className }: React.PropsWithC
         viewportClassName="h-full w-full"
         viewportProps={{
           'data-workbench-sidebar-scroll': true,
-          'data-sidebar-scroll-region': 'sessions',
+          'data-sidebar-scroll-region': scrollRegion,
         } as React.HTMLAttributes<HTMLDivElement>}
       >
         {children}

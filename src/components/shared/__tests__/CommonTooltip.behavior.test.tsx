@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { CommonTooltip } from '../CommonTooltip';
@@ -8,6 +8,7 @@ import { OverlayCoordinatorProvider, useOverlayCoordinator } from '../OverlayCoo
 describe('CommonTooltip', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('waits for the default hover intent delay before showing tooltip content', () => {
@@ -46,6 +47,71 @@ describe('CommonTooltip', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('立即显示');
   });
 
+  it('flips to the available side when the requested side is outside the viewport', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+      if (this.tagName === 'BUTTON') {
+        return {
+          x: 300,
+          y: 10,
+          top: 10,
+          right: 340,
+          bottom: 30,
+          left: 300,
+          width: 40,
+          height: 20,
+          toJSON: () => ({}),
+        } as DOMRect;
+      }
+      return {
+        x: 0,
+        y: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        width: 0,
+        height: 0,
+        toJSON: () => ({}),
+      } as DOMRect;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function () {
+      return this.getAttribute('role') === 'tooltip' ? 200 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function () {
+      return this.getAttribute('role') === 'tooltip' ? 100 : 0;
+    });
+
+    render(
+      <CommonTooltip content="下方提示" position="top" delay={0}>
+        <button type="button">详情</button>
+      </CommonTooltip>,
+    );
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: '详情' }));
+
+    await waitFor(() => {
+      const tooltip = screen.getByRole('tooltip');
+      expect(tooltip).toHaveAttribute('data-side', 'bottom');
+      expect(tooltip).toHaveStyle({ top: '38px', left: '220px' });
+    });
+  });
+
+  it('links the trigger to the visible bubble via aria-describedby', () => {
+    render(
+      <CommonTooltip content="键盘可达提示" delay={0}>
+        <button type="button">帮助</button>
+      </CommonTooltip>,
+    );
+
+    const trigger = screen.getByRole('button', { name: '帮助' });
+    expect(trigger).not.toHaveAttribute('aria-describedby');
+
+    fireEvent.mouseEnter(trigger);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(trigger).toHaveAttribute('aria-describedby', tooltip.id);
+  });
+
   it('dismisses a visible tooltip when Escape is pressed', () => {
     render(
       <CommonTooltip content="可关闭提示" delay={0}>
@@ -61,7 +127,7 @@ describe('CommonTooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it('keeps the tooltip mounted during its short exit transition, then unmounts it', () => {
+  it('keeps the tooltip mounted during its exit transition, then unmounts it', () => {
     vi.useFakeTimers();
 
     render(
@@ -76,11 +142,13 @@ describe('CommonTooltip', () => {
 
     fireEvent.mouseLeave(trigger);
 
+    // 退场中：视觉节点仍在 DOM，但已对 AT 隐藏。
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
 
+    // 退场时长与共享浮层动效 token 对齐（--dropdown-close-dur，缺省 150ms）。
     act(() => {
-      vi.advanceTimersByTime(49);
+      vi.advanceTimersByTime(149);
     });
     expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
 

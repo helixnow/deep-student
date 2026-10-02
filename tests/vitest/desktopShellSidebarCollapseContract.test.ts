@@ -104,10 +104,13 @@ describe('desktop shell sidebar collapse contract', () => {
   it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
     expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
     expect(appSource).toContain(": currentView === 'todo'");
-    expect(appSource).toContain("const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'");
-    expect(appSource).toContain(": desktopShellSidebarKind === 'todo'");
-    expect(appSource).toContain('? todoShellSidebarElement');
-    expect(appSource).toContain(': sidebarElement;');
+    // 侧栏按类型分层常驻（DesktopShellSidebarLayers），路由只决定哪一层可见，
+    // 因此桌面外壳对所有路由都渲染同一个轨道，而不是按路由换整棵子树。
+    expect(appSource).toContain('const desktopShellSidebarLayers = useMemo(() => [');
+    expect(appSource).toContain("['main', sidebarElement],");
+    expect(appSource).toContain("['settings', settingsShellSidebarElement],");
+    expect(appSource).toContain("['todo', todoShellSidebarElement],");
+    expect(appSource).toContain("['desktop-page', desktopPageShellSidebarElement],");
     expect(appSource).toContain('{!isSmallScreen && !workbenchActive ? (');
     expect(appSource).not.toContain("{!isSmallScreen && currentView !== 'settings' ? (");
     expect(appSource).toContain('className="desktop-shell-sidebar-track t-resize"');
@@ -115,7 +118,9 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain("style={{ width: 'var(--shell-navigation-width)' }}");
     expect(appSource).toContain('<DesktopSidebarResizeHandle');
     expect(appSource).toContain('{!isSmallScreen && !workbenchActive && !leftPanelCollapsed ? (');
-    expect(appSource).toContain('{desktopShellSidebarElement}');
+    expect(appSource).toContain('<DesktopShellSidebarLayers');
+    expect(appSource).toContain('activeKind={desktopShellSidebarKind}');
+    expect(appSource).toContain('layers={desktopShellSidebarLayers}');
   });
 
   it('lets the sidebar render as a fill-content shell so the outer app column owns the collapse animation', () => {
@@ -153,8 +158,7 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
     expect(appSource).toContain("onBack={() => setCurrentView('chat-v2')}");
     expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
-    expect(appSource).toContain("const desktopShellSidebarElement = desktopShellSidebarKind === 'settings'");
-    expect(appSource).toContain('? settingsShellSidebarElement');
+    expect(appSource).toContain("['settings', settingsShellSidebarElement],");
   });
 
   it('keeps desktop settings content inside the shared workspace boundary instead of drawing its own shell', () => {

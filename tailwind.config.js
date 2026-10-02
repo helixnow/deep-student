@@ -7,6 +7,10 @@ module.exports = {
 	content: [
 		'./index.html',
 		'./src/**/*.{ts,tsx,js,jsx}',
+		'!./src/**/__tests__/**',
+		'!./src/**/*.test.*',
+		'!./src/button-audit/**',
+		'!./src/mcp-debug/**',
 	],
 	theme: {
 		// 统一断点配置（断点单一来源见 src/config/breakpoints.ts，数值需与之保持一致）

@@ -254,8 +254,10 @@ impl IlinkClient {
                     .await
                     .map_err(|e| AppError::validation(format!("解析 getupdates 失败: {}", e)))
             }
-            Err(e) if e.is_timeout() || e.is_request() => {
-                // Client-side long-poll timeout ⇒ empty success
+            Err(e) if is_idle_long_poll_timeout(&e) => {
+                // Only a request timeout after connection is established is an
+                // empty response. DNS, connection and TLS failures must reach
+                // the retry/status path.
                 Ok(GetUpdatesResponse {
                     ret: Some(0),
                     errcode: None,
@@ -333,6 +335,10 @@ impl IlinkClient {
     }
 }
 
+fn is_idle_long_poll_timeout(error: &reqwest::Error) -> bool {
+    error.is_timeout() && !error.is_connect()
+}
+
 impl Default for IlinkClient {
     fn default() -> Self {
         Self::new()
@@ -362,5 +368,41 @@ mod tests {
         assert!(is_session_expired(Some(-14), None));
         assert!(is_session_expired(None, Some(-14)));
         assert!(!is_session_expired(Some(0), None));
+    }
+
+    #[tokio::test]
+    async fn connection_failure_is_not_an_empty_success() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/ilink/bot/getupdates")
+            .with_status(503)
+            .with_body("temporarily unavailable")
+            .create_async()
+            .await;
+        let client = IlinkClient {
+            http: Client::builder().no_proxy().build().expect("test client"),
+        };
+        let creds = IlinkCredentials {
+            token: "test-token".into(),
+            base_url: server.url(),
+            get_updates_buf: "existing-cursor".into(),
+            ..Default::default()
+        };
+
+        let result = client.get_updates(&creds, 1).await;
+        assert!(
+            result.is_err(),
+            "HTTP failure must enter backoff, not look online"
+        );
+        assert_eq!(creds.get_updates_buf, "existing-cursor");
+        mock.assert_async().await;
+    }
+
+    #[test]
+    fn outbound_chunks_preserve_unicode_and_order() {
+        let text = "微信入口🧑‍💻\n继续学习";
+        let chunks = chunk_text(text, 3);
+        assert!(chunks.iter().all(|chunk| chunk.chars().count() <= 3));
+        assert_eq!(chunks.concat(), text);
     }
 }

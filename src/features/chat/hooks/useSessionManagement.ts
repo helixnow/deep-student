@@ -1,9 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { useShallow } from 'zustand/react/shallow';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionManager } from '../core/session/sessionManager';
 import { SESSION_LIST_PAGE_SIZE } from '../core/constants';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
+import { retainSessionListStore, useSessionListStore } from '../stores/sessionListStore';
 import type { ChatSession } from '../types/session';
 import type { SessionGroup } from '../types/group';
 
@@ -51,8 +53,8 @@ export const groupSessionsByTime = (sessions: ChatSession[]): Map<TimeGroup, Cha
 // 与 useSessionLifecycle.loadSessions 相同的查询策略：
 // - 已分组会话全量（groupId='*'）
 // - 未分组会话分页（SESSION_LIST_PAGE_SIZE）
-// 并订阅 chat-v2:sessions-updated / chat-v2:groups-updated / window focus，
-// 保证任意表面的增删改都会让消费方收敛到同一份数据。
+// 数据、刷新与全局事件监听由模块级 sessionListStore 持有，组件卸载不会丢失缓存，
+// 多个侧栏实例也只会共享一套 IPC 刷新和事件订阅。
 // ============================================================================
 
 export interface SidebarSessionData {
@@ -61,7 +63,7 @@ export interface SidebarSessionData {
   /** 未分组会话是否还有更多分页 */
   hasMoreUngrouped: boolean;
   isLoadingMore: boolean;
-  /** 首次加载是否已完成（无论成败） */
+  /** 是否已取得会话列表响应；首次全部失败时保留重试能力 */
   isLoaded: boolean;
   loadMoreUngrouped: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -70,133 +72,29 @@ export interface SidebarSessionData {
   setGroups: React.Dispatch<React.SetStateAction<SessionGroup[]>>;
 }
 
-const SIDEBAR_REFRESH_DEBOUNCE_MS = 120;
+// Sidebar actions are fire-and-forget. The store logs failures and preserves
+// cached data; the page calls the raw actions so it can also show a toast.
+const loadMoreSidebarSessions = () => useSessionListStore.getState().loadMoreUngrouped().catch(() => {});
+const refreshSidebarSessions = () => useSessionListStore.getState().refresh().catch(() => {});
 
 export function useSidebarSessionData(): SidebarSessionData {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
-  const [groups, setGroups] = useState<SessionGroup[]>([]);
-  const [hasMoreUngrouped, setHasMoreUngrouped] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [isLoaded, setIsLoaded] = useState(false);
-
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
-  // generation 防乱序：仅接受最后一次 refresh 的结果
-  const refreshGenerationRef = useRef(0);
-  const loadingMoreRef = useRef(false);
-
-  const refresh = useCallback(async () => {
-    const generation = ++refreshGenerationRef.current;
-    const [groupedResult, ungroupedResult, groupsResult] = await Promise.allSettled([
-      invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'active',
-        groupId: '*',
-        limit: 10000,
-        offset: 0,
-      }),
-      invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'active',
-        groupId: '',
-        limit: SESSION_LIST_PAGE_SIZE,
-        offset: 0,
-      }),
-      invoke<SessionGroup[]>('chat_v2_list_groups', { status: 'active' }),
-    ]);
-
-    if (generation !== refreshGenerationRef.current) return;
-
-    const grouped = groupedResult.status === 'fulfilled' && Array.isArray(groupedResult.value)
-      ? groupedResult.value
-      : null;
-    const ungrouped = ungroupedResult.status === 'fulfilled' && Array.isArray(ungroupedResult.value)
-      ? ungroupedResult.value
-      : null;
-
-    if (grouped || ungrouped) {
-      const mergedById = new Map<string, ChatSession>();
-      [...(grouped ?? []), ...(ungrouped ?? [])].forEach((session) => {
-        mergedById.set(session.id, session);
-      });
-      const merged = [...mergedById.values()].sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''));
-      setSessions(merged);
-      setHasMoreUngrouped((ungrouped?.length ?? 0) >= SESSION_LIST_PAGE_SIZE);
-    } else {
-      console.warn('[useSidebarSessionData] Failed to load sessions:',
-        groupedResult.status === 'rejected' ? getErrorMessage(groupedResult.reason) : 'invalid payload');
-    }
-
-    if (groupsResult.status === 'fulfilled' && Array.isArray(groupsResult.value)) {
-      setGroups(groupsResult.value);
-    } else {
-      console.warn('[useSidebarSessionData] Failed to load groups:',
-        groupsResult.status === 'rejected' ? getErrorMessage(groupsResult.reason) : 'invalid payload');
-    }
-
-    setIsLoaded(true);
-  }, []);
-
-  const loadMoreUngrouped = useCallback(async () => {
-    if (loadingMoreRef.current) return;
-    loadingMoreRef.current = true;
-    setIsLoadingMore(true);
-    try {
-      // 动态用当前未分组数量做 offset，避免删除/移动后跳过会话
-      const offset = sessionsRef.current.filter((s) => !s.groupId).length;
-      const result = await invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'active',
-        groupId: '',
-        limit: SESSION_LIST_PAGE_SIZE,
-        offset,
-      });
-      if (Array.isArray(result) && result.length > 0) {
-        setSessions((prev) => {
-          const known = new Set(prev.map((s) => s.id));
-          return [...prev, ...result.filter((s) => !known.has(s.id))];
-        });
-      }
-      setHasMoreUngrouped(Array.isArray(result) && result.length >= SESSION_LIST_PAGE_SIZE);
-    } catch (error: unknown) {
-      console.warn('[useSidebarSessionData] Failed to load more sessions:', getErrorMessage(error));
-    } finally {
-      loadingMoreRef.current = false;
-      setIsLoadingMore(false);
-    }
-  }, []);
+  const data = useSessionListStore(useShallow((state) => ({
+    sessions: state.sessions,
+    groups: state.groups,
+    hasMoreUngrouped: state.hasMoreUngrouped,
+    isLoadingMore: state.isLoadingMore,
+    isLoaded: state.isLoaded,
+    loadMoreUngrouped: loadMoreSidebarSessions,
+    refresh: refreshSidebarSessions,
+    setSessions: state.setSessions,
+    setGroups: state.setGroups,
+  })));
 
   useEffect(() => {
-    void refresh();
+    return retainSessionListStore();
+  }, []);
 
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const scheduleRefresh = () => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        timer = null;
-        void refresh();
-      }, SIDEBAR_REFRESH_DEBOUNCE_MS);
-    };
-
-    window.addEventListener('chat-v2:sessions-updated', scheduleRefresh);
-    window.addEventListener('chat-v2:groups-updated', scheduleRefresh);
-    window.addEventListener('focus', scheduleRefresh);
-    return () => {
-      if (timer) clearTimeout(timer);
-      window.removeEventListener('chat-v2:sessions-updated', scheduleRefresh);
-      window.removeEventListener('chat-v2:groups-updated', scheduleRefresh);
-      window.removeEventListener('focus', scheduleRefresh);
-    };
-  }, [refresh]);
-
-  return {
-    sessions,
-    groups,
-    hasMoreUngrouped,
-    isLoadingMore,
-    isLoaded,
-    loadMoreUngrouped,
-    refresh,
-    setSessions,
-    setGroups,
-  };
+  return data;
 }
 
 /**

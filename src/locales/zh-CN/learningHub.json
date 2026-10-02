@@ -550,6 +550,7 @@
       "notAllowedHere": "当前视图不支持新建资源"
     },
     "quickAccess": {
+      "materials": "学习资料",
       "desktop": "桌面",
       "allFiles": "全部文件",
       "favorites": "收藏",
@@ -562,12 +563,14 @@
       "files": "全部文档",
       "recent": "最近",
       "trash": "回收站",
-      "indexStatus": "向量化状态",
+      "indexStatus": "知识库索引",
+      "indexStatusDescription": "将学习资料转换为可检索内容",
       "expand": "展开导航栏",
       "collapse": "收起导航栏",
       "resourceTypes": "资源类型",
       "media": "媒体",
       "system": "系统",
+      "aiKnowledge": "AI 知识",
       "mindmaps": "知识导图",
       "todos": "待办列表"
     },
@@ -800,6 +803,8 @@
   },
   "memory": {
     "title": "记忆管理",
+    "navTitle": "AI 记忆",
+    "navDescription": "保存偏好与长期事实",
     "setup_title": "设置记忆存储位置",
     "setup_description": "VFS 记忆系统将记忆存储为普通笔记文件。请选择或创建一个文件夹作为记忆根目录。",
     "select_folder": "选择现有文件夹",
@@ -1010,6 +1015,8 @@
     "embeddingMissing": "知识库未启用 · 配置嵌入模型"
   },
   "indexStatus": {
+    "introTitle": "知识库索引",
+    "introDescription": "学习资料保存在资料库中；完成索引后，AI 才能在对话中检索这些内容。索引是检索用的派生数据，不会生成另一份资料。",
     "state": {
       "indexed": "已索引",
       "pending": "待索引",

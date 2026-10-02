@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
@@ -7,6 +7,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ChatSession } from '../types/session';
+import { retainSessionListStore, useSessionListStore } from '../stores/sessionListStore';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 import {
@@ -42,14 +43,9 @@ export interface UseSessionLifecycleDeps {
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setTotalSessionCount: React.Dispatch<React.SetStateAction<number | null>>;
   setUngroupedSessionCount: React.Dispatch<React.SetStateAction<number | null>>;
-  setHasMoreSessions: React.Dispatch<React.SetStateAction<boolean>>;
   setIsInitialLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
-  isLoadingMore: boolean;
-  hasMoreSessions: boolean;
   sessionsRef: React.MutableRefObject<ChatSession[]>;
   t: TFunction<any, any>;
-  PAGE_SIZE: number;
   LAST_SESSION_KEY: string;
 }
 
@@ -57,11 +53,11 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   const {
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
-    setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore,
-    isLoadingMore, hasMoreSessions, sessionsRef,
-    t, PAGE_SIZE, LAST_SESSION_KEY,
+    setUngroupedSessionCount, setIsInitialLoading, sessionsRef,
+    t, LAST_SESSION_KEY,
   } = deps;
+
+  useEffect(() => retainSessionListStore(), []);
 
   const loadUngroupedCount = useCallback(async () => {
     try {
@@ -255,34 +251,17 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     draftSessionPromise.catch(() => {});
 
     try {
-      // 并行获取：所有已分组会话 + 未分组首页 + 计数
-      const [groupedResult, ungroupedResult, totalCount, ungroupedCount] = await Promise.all([
-        // groupId="*" 表示 group_id IS NOT NULL，一次性加载所有已分组会话
-        invoke<ChatSession[]>('chat_v2_list_sessions', {
-          status: 'active',
-          groupId: '*',
-          limit: 10000,
-          offset: 0,
-        }),
-        // 未分组会话分页加载
-        invoke<ChatSession[]>('chat_v2_list_sessions', {
-          status: 'active',
-          groupId: '',
-          limit: PAGE_SIZE,
-          offset: 0,
-        }),
+      // Sidebar and page join one cached/in-flight list request. Counts are
+      // independent: a failed count must not discard an otherwise usable list.
+      const [listResult, totalCount, ungroupedCount] = await Promise.allSettled([
+        useSessionListStore.getState().ensureLoaded(),
         invoke<number>('chat_v2_count_sessions', { status: 'active' }),
         invoke<number>('chat_v2_count_sessions', { status: 'active', groupId: '' }),
       ]);
-
-      const allSessions = [...groupedResult, ...ungroupedResult]
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-      setSessions(allSessions);
-      emitSessionListUpdated();
-      setTotalSessionCount(totalCount);
-      setUngroupedSessionCount(ungroupedCount);
-      // "加载更多"只针对未分组会话
-      setHasMoreSessions(ungroupedResult.length >= PAGE_SIZE);
+      if (listResult.status === 'rejected') throw listResult.reason;
+      const allSessions = useSessionListStore.getState().sessions;
+      if (totalCount.status === 'fulfilled') setTotalSessionCount(totalCount.value);
+      if (ungroupedCount.status === 'fulfilled') setUngroupedSessionCount(ungroupedCount.value);
 
       // 启动行为：进入一个隐藏 draft。它不进入左侧列表，只有首条消息后才转正。
       let sessionToSelect: string | null = null;
@@ -305,40 +284,18 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       setIsInitialLoading(false);
     }
   }, [
-    getOrCreateHiddenDraftSession, PAGE_SIZE, setCurrentSessionId, setHasMoreSessions,
-    setIsInitialLoading, setSessions, setTotalSessionCount, setUngroupedSessionCount, t,
+    getOrCreateHiddenDraftSession, setCurrentSessionId, setIsInitialLoading,
+    setTotalSessionCount, setUngroupedSessionCount, t,
   ]);
 
-  // P1-22: 加载更多会话（无限滚动分页）
-  // 🔧 分组懒加载修复：只加载更多未分组会话，已分组会话在初始加载时已全量获取
-  // 🔧 批判性修复：使用 sessionsRef 动态计算 offset，避免删除/移动会话后 ref 漂移导致跳过会话
+  // The page and sidebar share pagination and its in-flight guard as well.
   const loadMoreSessions = useCallback(async () => {
-    if (isLoadingMore || !hasMoreSessions) return;
-
-    setIsLoadingMore(true);
     try {
-      // 动态计算当前已加载的未分组会话数量作为 offset
-      const currentUngroupedLoaded = sessionsRef.current.filter(s => !s.groupId).length;
-      const result = await invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'active',
-        groupId: '',
-        limit: PAGE_SIZE,
-        offset: currentUngroupedLoaded,
-      });
-
-      if (result.length > 0) {
-        setSessions(prev => [...prev, ...result]);
-        emitSessionListUpdated();
-      }
-      // 如果返回数量小于 PAGE_SIZE，说明没有更多数据
-      setHasMoreSessions(result.length >= PAGE_SIZE);
-    } catch (error) {
-      console.error('[ChatV2Page] Failed to load more sessions:', getErrorMessage(error));
+      await useSessionListStore.getState().loadMoreUngrouped();
+    } catch {
       showGlobalNotification('warning', t('page.loadMoreSessionsFailed'));
-    } finally {
-      setIsLoadingMore(false);
     }
-  }, [isLoadingMore, hasMoreSessions, PAGE_SIZE, sessionsRef, setHasMoreSessions, setIsLoadingMore, setSessions, t]);
+  }, [t]);
 
   // ========== 🔧 P1修复：基于消息数量判断是否为空对话 ==========
   // 问题：原逻辑基于标题判断，但标题是后端异步生成的，导致有消息也不能新建
@@ -371,7 +328,6 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
           try {
             const draftSession = await getOrCreateHiddenDraftSession();
             setSessions([]);
-            emitSessionListUpdated();
             setTotalSessionCount(0);
             setUngroupedSessionCount(0);
             setCurrentSessionId(draftSession.id);

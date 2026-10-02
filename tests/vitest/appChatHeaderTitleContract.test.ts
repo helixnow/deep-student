@@ -211,7 +211,15 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain(': desktopHeaderNavHotzoneLabel;');
     expect(appSource).toContain('newSessionLabel={desktopHeaderNewSessionTooltipLabel}');
     expect(appSource).toContain('aria-label={desktopHeaderNewSessionTooltipLabel}');
-    expect(groupManagementSource).toContain('setGroupsCache(sorted);\n    emitGroupListUpdated();');
+    // 读取分组列表不是变更：applyGroups 只写缓存不广播，避免初次加载期间
+    // 再触发一轮会话列表请求；真正的变更（增删改归档）仍需广播。
+    expect(groupManagementSource).toContain('setGroupsCache(sorted);');
+    const applyGroupsSource = groupManagementSource.slice(
+      groupManagementSource.indexOf('const applyGroups = useCallback'),
+      groupManagementSource.indexOf('const loadGroups = useCallback')
+    );
+    expect(applyGroupsSource).not.toContain('emitGroupListUpdated');
+    expect(groupManagementSource.match(/emitGroupListUpdated\(\);/g)?.length).toBeGreaterThan(0);
     expect(chatPageEventsSource).toContain('const getCurrentSessionGroupId = useCallback(() => {');
     expect(chatPageEventsSource).toContain('const groupId = getCurrentStore()?.getState().groupId;');
     expect(chatPageEventsSource).toContain('createSession(getCurrentSessionGroupId());');

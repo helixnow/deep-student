@@ -1,0 +1,125 @@
+/* 启动面（boot surface）——唯一「进程启动 → 首帧真实界面」之间显示的视觉。
+ *
+ * 契约（tests/vitest/startup/bootSurface.contract.test.ts 守护）：
+ * 1. 本文件是 boot 视觉的唯一来源。index.html 的静态占位符与 React 首帧
+ *    （src/boot/BootShell.tsx）共用同一套类名与同一份样式，交接必须无可见跳变。
+ * 2. 启动面是静态的：不放文案、不放进度、不放 spinner。Apple HIG 与 Android
+ *    SplashScreen API 都是这条要求——进度属于应用内的界面，不属于启动面；
+ *    而「确认安全状态/启动前安全检查」这类过程旁白只在失败路径出现
+ *    （RecoveryShell / ComponentRecoveryShell）。
+ */
+
+:root {
+  color-scheme: dark;
+
+  --boot-bg: #0f1317;
+  --boot-logo-opacity: 0.68;
+  --boot-shine-opacity: 0.42;
+  --boot-shimmer-dur: 2800ms;
+  --boot-shimmer-delay: 650ms;
+}
+
+html[data-boot-theme='light'] {
+  color-scheme: light;
+
+  --boot-bg: #f7f8fa;
+  --boot-logo-opacity: 0.62;
+  --boot-shine-opacity: 0.28;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--boot-bg);
+  overflow: hidden;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+.boot-loading {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  box-sizing: border-box;
+  padding: 24px;
+  background: var(--boot-bg);
+}
+
+.boot-loading__logo-wrap {
+  position: relative;
+  width: clamp(44px, 11vw, 60px);
+  aspect-ratio: 1;
+}
+
+.boot-loading__logo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: var(--boot-logo-opacity);
+  filter: invert(1);
+}
+
+html[data-boot-theme='light'] .boot-loading__logo {
+  filter: none;
+}
+
+.boot-loading__logo--shine {
+  position: absolute;
+  inset: 0;
+  opacity: var(--boot-shine-opacity);
+  filter: invert(1);
+  /* A restrained diagonal sweep keeps the mark legible while communicating startup progress. */
+  -webkit-mask-image: linear-gradient(
+    120deg,
+    transparent 0%,
+    transparent 43%,
+    black 50%,
+    transparent 57%,
+    transparent 100%
+  );
+  -webkit-mask-size: 260% 260%;
+  -webkit-mask-repeat: no-repeat;
+  -webkit-mask-position: 125% 125%;
+  mask-image: linear-gradient(
+    120deg,
+    transparent 0%,
+    transparent 43%,
+    black 50%,
+    transparent 57%,
+    transparent 100%
+  );
+  mask-size: 260% 260%;
+  mask-repeat: no-repeat;
+  mask-position: 125% 125%;
+  animation: boot-shimmer var(--boot-shimmer-dur) linear var(--boot-shimmer-delay) infinite;
+  pointer-events: none;
+}
+
+html[data-boot-theme='light'] .boot-loading__logo--shine {
+  filter: invert(1);
+}
+
+@keyframes boot-shimmer {
+  0%,
+  14% {
+    -webkit-mask-position: 125% 125%;
+    mask-position: 125% 125%;
+  }
+  64%,
+  100% {
+    -webkit-mask-position: -25% -25%;
+    mask-position: -25% -25%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .boot-loading__logo--shine {
+    animation: none !important;
+    display: none;
+  }
+}

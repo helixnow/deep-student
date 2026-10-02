@@ -15,8 +15,15 @@ describe('shouldDirectRender', () => {
     expect(shouldDirectRender(0, 0, 0)).toBe(true);
   });
 
-  it('消息数超限（>16）→ 虚拟化', () => {
-    expect(shouldDirectRender(17, 40, 50_000)).toBe(false);
+  it('消息数超限（>50）→ 虚拟化', () => {
+    expect(shouldDirectRender(51, 40, 50_000)).toBe(false);
+  });
+
+  it('短会话仍直渲染：含代码块时估算高度偏差不再提前进虚拟化', () => {
+    // 16~50 条是虚拟化的坏区间：行高估算 120px 对代码块偏差可达数倍，
+    // 进虚拟化要付一轮测量修正抖动；这些会话用 content-visibility 已经够
+    expect(shouldDirectRender(30, 120, 80_000)).toBe(true);
+    expect(shouldDirectRender(50, 200, 120_000)).toBe(true);
   });
 
   it('块数超限（>600，agent 任务会话形状）→ 虚拟化', () => {
@@ -29,6 +36,6 @@ describe('shouldDirectRender', () => {
   });
 
   it('边界值恰好等于上限 → 仍直渲染', () => {
-    expect(shouldDirectRender(16, 600, 200_000)).toBe(true);
+    expect(shouldDirectRender(50, 600, 200_000)).toBe(true);
   });
 });

@@ -284,9 +284,8 @@ export default defineConfig(({ command, mode }) => ({
         },
     watch: {
       // 3. tell vite to ignore watching `src-tauri`
-      // 以及仓库根下的生成/产物目录：下面开了 polling，监听集合里每多一个文件都会被
-      // 每 300ms 轮询一次。tmp/ 曾堆积 ~89 万个基准测试产物，轮询直接占满 dev server
-      // 主线程，单个模块转换排队 40s+，表现为应用长时间卡在启动/加载中。
+      // 以及仓库根下的生成/产物目录（开轮询时监听集合里每个文件都会被周期性 stat；
+      // tmp/ 曾堆积 ~89 万个基准测试产物，轮询直接占满 dev server 主线程）。
       ignored: [
         "**/src-tauri/**",
         "**/tmp/**",
@@ -296,8 +295,12 @@ export default defineConfig(({ command, mode }) => ({
         "**/benchmarks/**",
         "**/node-compile-cache/**",
       ],
-      // 4. 使用 polling 模式解决路径含空格时 FSEvents 不工作的问题
-      usePolling: true,
+      // 4. 默认使用原生文件监听（macOS FSEvents / Linux inotify）。
+      //    usePolling 会对整个仓库按 interval 全量轮询，是 dev/HMR 最大的开销来源；
+      //    仓库路径含空格时原生监听会失效，自动回退轮询；VITE_USE_POLLING=1/0 可显式覆盖。
+      usePolling: process.env.VITE_USE_POLLING
+        ? process.env.VITE_USE_POLLING === '1'
+        : process.cwd().includes(' '),
       interval: 300,
     },
     // Dev-only proxy to bypass CORS for remote MCP providers (ModelScope etc.)
@@ -394,6 +397,9 @@ export default defineConfig(({ command, mode }) => ({
   
   // 配置Web Worker构建选项
   build: {
+    // Bundle 体积门禁会在构建后自行以 gzip(level 9) 统计产物，
+    // 无需让 Vite 重复计算压缩体积。
+    reportCompressedSize: false,
     // 仅在发布流水线明确准备上传时生成 hidden source map。
     // 上传脚本成功后会删除 .map，避免源码随 Tauri 安装包分发。
     sourcemap:
@@ -403,15 +409,10 @@ export default defineConfig(({ command, mode }) => ({
     target: 'esnext', // 支持 top-level await 和其他现代 ES 特性
     rollupOptions: {
       external: [],
-      // MPA：demo.html 为纯浏览器演示壳入口（src/demo/main.tsx），
-      // 不依赖 Tauri 后端；dev 下直接访问 /demo.html，build 时显式产出。
+      // 桌面生产构建只产出主应用。纯浏览器 demo/hero 由
+      // vite.demo.config.ts 的独立构建负责，避免拖慢常规生产构建。
       input: {
         main: fileURLToPath(new URL("./index.html", import.meta.url)),
-        demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
-        // WorkBuddy 风格落地页：Mac 窗壳居中内嵌 demo.html（纯静态，无 JS bundle）
-        hero: fileURLToPath(new URL("./hero.html", import.meta.url)),
-        "preview-charts": fileURLToPath(new URL("./preview-charts.html", import.meta.url)),
-        "button-audit": fileURLToPath(new URL("./button-audit.html", import.meta.url)),
       },
       output: {
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk

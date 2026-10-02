@@ -31,7 +31,7 @@ import {
 } from './logging/errorReporter';
 import { getStartupRecoveryStatus } from './features/data-recovery/dataRecoveryApi';
 import { RecoveryShell } from './features/data-recovery/RecoveryShell';
-import { StartupPreflight } from './features/data-recovery/StartupPreflight';
+import { BootShell } from './boot/BootShell';
 import { ComponentRecoveryShell } from './features/data-recovery/ComponentRecoveryShell';
 import {
   clearRecoveryDebugScenario,
@@ -497,7 +497,37 @@ if (IS_POMODORO_MINI_WINDOW) {
       </ErrorBoundary>,
     );
   } else {
-  root.render(<StartupPreflight />);
+  // ★ 启动面（业界通则：启动过程只有一个视觉面）
+  // React 首帧渲染与 index.html 静态占位符完全一致的 BootShell，交接处零跳变；
+  // 启动闸门在后台跑，只有需要用户介入的失败路径才切到恢复壳。此前这里渲染
+  // StartupPreflight（「正在确认数据状态 / 启动前安全检查…」），健康启动时它只
+  // 存在几百毫秒就被应用顶掉——用户看到的是一闪而过的过程旁白，既像报错又像卡顿，
+  // 而且 data 命名空间懒加载期间文案还会先显示原始 key。安全检查属于失败路径，
+  // 已在 RecoveryShell / ComponentRecoveryShell 里，不该出现在正常启动链路上。
+  root.render(<BootShell />);
+
+  // 预检与维护状态互不依赖：并发发起，总时长取 max 而非 sum（此前串行，慢设备上
+  // 白等第二个 IPC 的时间直接加在首帧之前）。维护状态的 catch 兜底保持不变。
+  const maintenanceStatusPromise = withTimeout(
+    getMaintenanceStatus(),
+    MAINTENANCE_STATUS_TIMEOUT_MS,
+    'Maintenance status',
+  ).catch((error) => ({
+    // 诚实兜底：维护状态不可用时不伪装成 vfs 核心组件 blocked（旧实现会把
+    // 瞬态 IPC 失败误导成「vfs 数据损坏」恢复屏），而是如实标记来源组件。
+    is_in_maintenance_mode: false,
+    blocked_components: [],
+    component_health: {
+      components: [{
+        component: 'maintenance_status',
+        status: 'blocked' as const,
+        reason: `Maintenance status unavailable: ${String(error)}`,
+        dependency: null,
+      }],
+    },
+    component_issues: [],
+  }));
+
   void getStartupRecoveryStatusWithTimeout()
     .then(async (status) => {
       if (status.recovery_required) {
@@ -505,25 +535,7 @@ if (IS_POMODORO_MINI_WINDOW) {
         return;
       }
 
-      const maintenanceStatus = await withTimeout(
-        getMaintenanceStatus(),
-        MAINTENANCE_STATUS_TIMEOUT_MS,
-        'Maintenance status',
-      ).catch((error) => ({
-        // 诚实兜底：维护状态不可用时不伪装成 vfs 核心组件 blocked（旧实现会把
-        // 瞬态 IPC 失败误导成「vfs 数据损坏」恢复屏），而是如实标记来源组件。
-        is_in_maintenance_mode: false,
-        blocked_components: [],
-        component_health: {
-          components: [{
-            component: 'maintenance_status',
-            status: 'blocked' as const,
-            reason: `Maintenance status unavailable: ${String(error)}`,
-            dependency: null,
-          }],
-        },
-        component_issues: [],
-      }));
+      const maintenanceStatus = await maintenanceStatusPromise;
       const componentHealth = maintenanceStatus.component_health?.components ?? [];
       useSystemStatusStore.getState().setComponentHealth(componentHealth);
       const coreRecoveryRequired = componentHealth.some(

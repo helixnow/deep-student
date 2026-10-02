@@ -29,6 +29,10 @@ export class Channel<T = unknown> {
 /** 部分插件用于注册回调并获取 rid */
 export const transformCallback = (_callback?: (...args: unknown[]) => void): number => 0;
 
+/** Tauri v2 asset URL helper（CT 环境无 IPC，直接回显原路径） */
+export const convertFileSrc = (filePath: string, protocol = 'asset'): string =>
+  `${protocol}://localhost/${String(filePath).replace(/^\/+/, '')}`;
+
 /** 插件事件监听注册（返回空监听器） */
 export const addPluginListener = async (_plugin: string, _event: string, _cb: unknown) => ({
   unregister: async () => {},

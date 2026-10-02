@@ -3,7 +3,7 @@
  *
  * 两路保证：
  * 1. 全局事件 `qbank_generation_task_event`（AppHandle::emit，窗口销毁不受影响）
- * 2. 轮询兜底：跟踪中的非终态任务每 5s 主动查一次，补齐「事件早于监听注册」竞态
+ * 2. 轮询兜底：仅存在非终态任务时每 30s 主动查一次，补齐「事件早于监听注册」竞态
  *
  * 完成 / 失败时发全局通知；同一任务只通知一次（notifiedRef 去重）。
  */
@@ -25,7 +25,7 @@ import {
 export const QBANK_GENERATION_TASK_EVENT = 'qbank_generation_task_event';
 
 /** 轮询间隔（毫秒） */
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 30_000;
 
 export function useQbankGenerationTasks(): void {
   const { t } = useTranslation(['exam_sheet']);
@@ -86,27 +86,70 @@ export function useQbankGenerationTasks(): void {
 
   // 2) 轮询兜底（仅跟踪非终态任务）
   useEffect(() => {
-    const timer = setInterval(() => {
+    let disposed = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const inFlightTaskIds = new Set<string>();
+
+    const getActiveTasks = () => {
       const tasks = useQbankGenerationStore.getState().tasks;
-      const active = Object.values(tasks).filter(
+      return Object.values(tasks).filter(
         (task) => !isTerminalTaskStatus(task.status),
       );
+    };
+
+    const pollActiveTasks = () => {
+      const active = getActiveTasks();
       for (const task of active) {
+        if (inFlightTaskIds.has(task.id)) continue;
+        inFlightTaskIds.add(task.id);
+
         void invoke<QbankGenerationTask | null>('qbank_get_generation_task', {
           taskId: task.id,
         })
           .then((view) => {
-            if (view) handleTask(view);
+            if (!disposed && view) handleTask(view);
           })
           .catch((error) => {
+            if (disposed) return;
             debugLog.warn(
               '[useQbankGenerationTasks] 轮询任务失败:',
               task.id,
               error,
             );
+          })
+          .finally(() => {
+            inFlightTaskIds.delete(task.id);
           });
       }
-    }, POLL_INTERVAL_MS);
-    return () => clearInterval(timer);
+    };
+
+    const stopPolling = () => {
+      if (timer === null) return;
+      clearInterval(timer);
+      timer = null;
+    };
+
+    const syncPolling = () => {
+      const hasActiveTasks = getActiveTasks().length > 0;
+      if (!hasActiveTasks) {
+        stopPolling();
+        return;
+      }
+      if (timer !== null) return;
+
+      // 立即补一次可能早于事件监听注册的状态，再以低频 interval 兜底。
+      pollActiveTasks();
+      timer = setInterval(pollActiveTasks, POLL_INTERVAL_MS);
+    };
+
+    const unsubscribe = useQbankGenerationStore.subscribe(syncPolling);
+    syncPolling();
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+      stopPolling();
+      inFlightTaskIds.clear();
+    };
   }, [handleTask]);
 }
