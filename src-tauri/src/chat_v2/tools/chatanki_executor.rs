@@ -5696,9 +5696,18 @@ impl ChatAnkiToolExecutor {
             resolve_route_decision(None, None, &VfsContextRefData::default())
         };
 
+        // 规模指标要算上引用资料的正文：只看内联 content 时，引用一份 60 词的词表得到
+        // chars=0 / entryLikeLines=0、推荐 maxCards=2，模型只能自己估规模（实测说成 55 词）。
+        let metrics_text = match (
+            ref_data.as_ref().filter(|rd| !rd.refs.is_empty()),
+            ctx.vfs_db.as_ref().and_then(|db| db.get_conn_safe().ok()),
+        ) {
+            (Some(rd), Some(conn)) => collect_ref_text_for_metrics(&conn, rd, &content),
+            _ => content.clone(),
+        };
         let output = build_analyze_output(
             args.goal.as_deref(),
-            &content,
+            &metrics_text,
             ref_data.as_ref(),
             &decision,
             &warnings,
@@ -9238,6 +9247,38 @@ impl RoutePlan {
 /// PDF）：文件引用只取 files.extracted_text 的开头片段（SQL substr，不整段
 /// 读入），其余引用用快照 snippet。采样为空本身就是有效信号（说明提取文本
 /// 缺失，可能需要 VLM）。
+/// 规模指标用的全文：内联文本 + 引用文件的提取文本（各自封顶，防超大资料拖慢分析）。
+const ANALYZE_METRICS_MAX_CHARS: usize = 200_000;
+
+fn collect_ref_text_for_metrics(conn: &Connection, ref_data: &VfsContextRefData, content: &str) -> String {
+    let mut out = content.trim().to_string();
+    for r in ref_data.refs.iter() {
+        let remaining = ANALYZE_METRICS_MAX_CHARS.saturating_sub(out.chars().count());
+        if remaining == 0 {
+            break;
+        }
+        let text: Option<String> = match r.resource_type {
+            VfsResourceType::File => conn
+                .query_row(
+                    "SELECT substr(extracted_text, 1, ?2) FROM files WHERE id = ?1",
+                    rusqlite::params![r.source_id, remaining as i64],
+                    |row| row.get(0),
+                )
+                .ok()
+                .flatten(),
+            VfsResourceType::Image => None,
+            _ => r.snippet.clone(),
+        };
+        if let Some(text) = text.filter(|t| !t.trim().is_empty()) {
+            if !out.is_empty() {
+                out.push_str("\n\n");
+            }
+            out.push_str(&safe_truncate_chars(text.trim(), remaining));
+        }
+    }
+    out
+}
+
 fn sample_ref_text_for_routing(
     conn: &Connection,
     ref_data: &VfsContextRefData,
@@ -16574,6 +16615,47 @@ mod tests {
             )
             .expect("count deleted FSRS rows");
         assert_eq!(remaining_fsrs, 0);
+    }
+
+    /// 预分析的规模指标算上引用文件正文：引用 60 词的词表不再得到 entryLikeLines=0、推荐 2 张。
+    #[test]
+    fn test_analyze_metrics_include_referenced_file_text() {
+        let conn = Connection::open_in_memory().expect("memory db");
+        conn.execute_batch("CREATE TABLE files (id TEXT PRIMARY KEY, extracted_text TEXT);")
+            .expect("files table");
+        let mut table = String::from("单词\t音标\t词性\t中文释义\n");
+        for i in 0..60 {
+            table.push_str(&format!("word{i}\t/w{i}/\tv.\t释义{i}\n"));
+        }
+        conn.execute(
+            "INSERT INTO files (id, extracted_text) VALUES ('file_vocab', ?1)",
+            rusqlite::params![table],
+        )
+        .expect("insert file");
+        let rd = VfsContextRefData {
+            refs: vec![VfsResourceRef {
+                source_id: "file_vocab".to_string(),
+                resource_hash: String::new(),
+                resource_type: VfsResourceType::File,
+                name: "词表.xlsx".to_string(),
+                resource_id: None,
+                snippet: None,
+                inject_modes: None,
+            }],
+            truncated: false,
+            total_count: 1,
+        };
+        let text = collect_ref_text_for_metrics(&conn, &rd, "");
+        assert!(text.lines().count() >= 61);
+        let output = build_analyze_output(
+            None,
+            &text,
+            Some(&rd),
+            &RouteDecision::forced(ChatAnkiRoute::SimpleText),
+            &[],
+        );
+        assert!(output["metrics"]["nonEmptyLines"].as_u64().unwrap() >= 61);
+        assert!(output["recommended"]["maxCards"].as_u64().unwrap() >= 30);
     }
 
     /// add_cards 补进来的卡与生成完成时同一口径进复习：按所属会话 + 文档入队。
