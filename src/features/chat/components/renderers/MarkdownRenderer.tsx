@@ -989,12 +989,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               citationIndex={citationIndex}
               onNavigate={handleBadgeNavigate}
             />
-            {/* 页面图本身也可点：与徽章同样回到原文（学习者更习惯点图） */}
+            {/* 页面图本身也可点：点击由容器的 [data-citation] 委托统一处理（不在此重复触发），
+                这里只补键盘可达与指针样式 */}
             <div
               role="button"
               tabIndex={0}
               className="citation-image-open"
-              onClick={handleBadgeNavigate}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault();

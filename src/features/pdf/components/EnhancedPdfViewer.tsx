@@ -2829,14 +2829,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     }
   }, [numPages, pageRowCount, initialPage, getRowIndexForPage, pageVirtualizer]);
 
-  // 滚动监听：使用虚拟列表数据更新当前页码，避免频繁 DOM 查询
+  // 滚动监听：使用虚拟列表数据更新当前页码，避免频繁 DOM 查询。
+  // 在 document 上捕获滚动、事件发生时再比对当前页面容器：滚动视口由 CustomScrollArea
+  //（OverlayScrollbars）初始化时替换，直接挂在当时的 ref 元素上会挂到旧元素，
+  // 之后滚动 / 引用跳页都不再更新页码（页码框停在 1）。
   useEffect(() => {
-    const container = pageContainerRef.current;
-    if (!container || numPages === 0) return;
+    if (numPages === 0) return;
 
     let rafId: number;
 
-    const handleScroll = () => {
+    const handleScroll = (event: Event) => {
+      const container = pageContainerRef.current;
+      if (!container || event.target !== container) return;
       if (scrollIdleTimerRef.current !== null) {
         window.clearTimeout(scrollIdleTimerRef.current);
       }
@@ -2872,9 +2876,9 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       });
     };
 
-    container.addEventListener('scroll', handleScroll, { passive: true });
+    document.addEventListener('scroll', handleScroll, { passive: true, capture: true });
     return () => {
-      container.removeEventListener('scroll', handleScroll);
+      document.removeEventListener('scroll', handleScroll, { capture: true });
       cancelAnimationFrame(rafId);
       if (scrollIdleTimerRef.current !== null) {
         window.clearTimeout(scrollIdleTimerRef.current);

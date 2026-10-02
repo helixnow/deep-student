@@ -343,9 +343,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   // typeIndex 由 sourceAdapter 按跨块全局顺序分配，与 `[类型-N]` 契约一致
   const citationLookup = useMemo(() => {
     const map = new Map<string, UnifiedSourceItem>();
+    // 同一页的文本命中与页图命中可能共用一个编号（如两条都是 [图片-4]）：
+    // 优先保留能打开原文的那条（有 file_/tb_/att_ 源 ID），否则先到先得
+    const openable = (item: UnifiedSourceItem) => /^(tb_|file_|att_|mm_|note_)/.test(item.sourceId ?? '');
     for (const item of allSources) {
       if (item.citationType && item.typeIndex != null) {
-        map.set(`${item.citationType}:${item.typeIndex}`, item);
+        const key = `${item.citationType}:${item.typeIndex}`;
+        const existing = map.get(key);
+        if (!existing || (!openable(existing) && openable(item))) {
+          map.set(key, item);
+        }
       }
     }
     return map;

@@ -1150,7 +1150,12 @@ impl VfsUnifiedRetriever {
                     .flatten()
                     .map(|path| path.to_string_lossy().to_string())
             });
-            let source_id = row.source_id.or(resource.source_id);
+            // 多模态向量行的 source_id 存的是内部资源 ID（res_…），前端无法据此打开原文：
+            // 这种情况改用资源的源对象 ID（file_/tb_/note_…）
+            let source_id = match row.source_id {
+                Some(id) if id != row.resource_id && !id.starts_with("res_") => Some(id),
+                other => resource.source_id.clone().or(other),
+            };
             // 资源元数据常不带标题（资源库导入的文件）：回退到源对象显示名，避免来源卡显示「Page N」
             let title = resource
                 .metadata
