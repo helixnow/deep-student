@@ -1,0 +1,65 @@
+/*
+ * 精简版 .prose 排版。
+ *
+ * 项目未安装 @tailwindcss/typography，`prose prose-sm` 原本是空类；Tailwind preflight
+ * 又把 ul/ol 的符号与缩进、标题与段落间距全部清零——Markdown 预览里的嵌套列表因此
+ * 渲染成没有层级的平铺文本（「操作系统课堂笔记」的多级要点完全看不出结构）。
+ * 这里只补最基本的块级排版；`.not-prose` 区域（代码块、表格、公式容器）不受影响。
+ */
+.prose :where(p, ul, ol, blockquote, pre, table, hr):not(:where(.not-prose, .not-prose *)) {
+  margin-top: 0.6em;
+  margin-bottom: 0.6em;
+}
+
+.prose :where(ul):not(:where(.not-prose, .not-prose *)) {
+  list-style-type: disc;
+  padding-left: 1.4em;
+}
+
+.prose :where(ol):not(:where(.not-prose, .not-prose *)) {
+  list-style-type: decimal;
+  padding-left: 1.6em;
+}
+
+.prose :where(ul ul, ol ul):not(:where(.not-prose, .not-prose *)) {
+  list-style-type: circle;
+}
+
+.prose :where(li):not(:where(.not-prose, .not-prose *)) {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+.prose :where(li > ul, li > ol):not(:where(.not-prose, .not-prose *)) {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+.prose :where(li)::marker {
+  color: hsl(var(--muted-foreground));
+}
+
+.prose :where(h1, h2, h3, h4):not(:where(.not-prose, .not-prose *)) {
+  font-weight: 650;
+  line-height: 1.3;
+  margin-top: 1.2em;
+  margin-bottom: 0.5em;
+}
+
+.prose :where(h1):not(:where(.not-prose, .not-prose *)) { font-size: 1.5em; }
+.prose :where(h2):not(:where(.not-prose, .not-prose *)) { font-size: 1.25em; }
+.prose :where(h3):not(:where(.not-prose, .not-prose *)) { font-size: 1.1em; }
+
+.prose :where(blockquote):not(:where(.not-prose, .not-prose *)) {
+  border-left: 3px solid hsl(var(--border));
+  padding-left: 0.9em;
+  color: hsl(var(--muted-foreground));
+}
+
+.prose :where(hr):not(:where(.not-prose, .not-prose *)) {
+  border-top: 1px solid hsl(var(--border));
+}
+
+.prose :where(:first-child):not(:where(.not-prose, .not-prose *)) {
+  margin-top: 0;
+}

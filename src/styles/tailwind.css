@@ -13,6 +13,9 @@
 /* Native-feel: focus rings, hover scale, and transition cadence. */
 @import './native-feel/interaction.css';
 
+/* 精简版 .prose（未装 typography 插件时 Markdown 预览的列表/标题排版；特异性高于 preflight） */
+@import './prose-lite.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
