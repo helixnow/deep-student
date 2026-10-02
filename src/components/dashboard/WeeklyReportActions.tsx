@@ -24,11 +24,11 @@ export const WeeklyReportActions: React.FC = () => {
   const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'weekly-report' });
   const [busy, setBusy] = useState(false);
 
-  const run = useCallback(async (use: (report: { title: string; markdown: string }) => void) => {
+  const run = useCallback(async (consume: (report: { title: string; markdown: string }) => void) => {
     if (busy) return;
     setBusy(true);
     try {
-      use(await buildReport(tr));
+      consume(await buildReport(tr));
     } catch (error: unknown) {
       console.error('[WeeklyReport] build failed:', error);
       showGlobalNotification('error', tr('weekly_report.failed', { defaultValue: '周报生成失败' }));
