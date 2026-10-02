@@ -26,7 +26,8 @@ vi.mock('react-i18next', () => {
 vi.mock('@xyflow/react', () => ({
   ReactFlow: () => <div data-testid="embed-flow" />,
   ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  useReactFlow: () => ({ fitView: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn() }),
+  useReactFlow: () => ({ fitView: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn(), setCenter: vi.fn(), getZoom: () => 1 }),
+  useNodesInitialized: () => true,
 }));
 vi.mock('@/features/mindmap/components/mindmap/nodes', () => ({ nodeTypes: {} }));
 vi.mock('@/features/mindmap/components/mindmap/edges', () => ({ edgeTypes: {} }));
