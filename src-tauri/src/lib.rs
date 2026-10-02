@@ -3022,6 +3022,11 @@ fn start_vfs_index_worker(
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
         // 嵌入可用性的上一次观测：None=尚未观测；变为可用（含启动后首次可用）时复活配置类失败项
         let mut embedding_was_configured: Option<bool> = None;
+        match crate::vfs::repos::embedding_repo::VfsIndexStateRepo::requeue_paged_pdfs_once(&vfs_db) {
+            Ok(0) => {}
+            Ok(n) => tracing::info!("[VfsIndexWorker] Requeued {} multi-page PDFs for per-page indexing", n),
+            Err(error) => tracing::warn!("[VfsIndexWorker] Paged PDF requeue migration failed: {}", error),
+        }
         loop {
             if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
                 break;

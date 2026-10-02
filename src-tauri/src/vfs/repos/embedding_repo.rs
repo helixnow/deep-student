@@ -504,6 +504,34 @@ impl VfsIndexStateRepo {
         Ok(revived)
     }
 
+    /// 一次性迁移：把多页 PDF 资源重新排队建索引（逐页单元 / 第 0 页不再挂全文 / 旧数据按页重提文字）。
+    /// 以 vfs_indexing_config 键去重，只执行一次；返回重新排队的资源数。
+    pub fn requeue_paged_pdfs_once(db: &VfsDatabase) -> VfsResult<usize> {
+        const KEY: &str = "migration.pdf_paged_units_v1";
+        if VfsIndexingConfigRepo::get_config(db, KEY)?.is_some() {
+            return Ok(0);
+        }
+        let mut conn = db.get_conn_safe()?;
+        let tx = conn.transaction()?;
+        let requeued = tx.execute(
+            "UPDATE resources
+             SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
+             WHERE deleted_at IS NULL
+               AND COALESCE(index_state, 'pending') IN ('indexed', 'failed')
+               AND id IN (SELECT resource_id FROM files
+                          WHERE deleted_at IS NULL AND COALESCE(page_count, 0) > 1
+                            AND resource_id IS NOT NULL)",
+            params![INDEX_STATE_PENDING],
+        )?;
+        // 迁移标记不是用户可调的索引配置，绕过 validate_config 直接写入（同一事务）
+        tx.execute(
+            "INSERT OR REPLACE INTO vfs_indexing_config (key, value, updated_at) VALUES (?1, 'done', ?2)",
+            params![KEY, chrono::Utc::now().timestamp_millis()],
+        )?;
+        tx.commit()?;
+        Ok(requeued)
+    }
+
     pub fn mark_disabled(db: &VfsDatabase, resource_id: &str) -> VfsResult<()> {
         Self::set_index_state(db, resource_id, INDEX_STATE_DISABLED, None, None)
     }
@@ -1069,6 +1097,32 @@ mod tests {
 
         assert_eq!(dim.dimension, 768);
         assert_eq!(dim.modality, MODALITY_TEXT);
+    }
+
+    #[test]
+    fn requeue_paged_pdfs_runs_once_and_only_for_multi_page_files() {
+        let (_temp_dir, db) = setup_test_db();
+        {
+            let conn = db.get_conn_safe().unwrap();
+            for id in ["res_pdf", "res_one", "res_note"] {
+                conn.execute(
+                    "INSERT INTO resources (id, hash, type, storage_mode, data, index_state, created_at, updated_at) VALUES (?1, ?1, 'file', 'inline', 'x', 'indexed', 0, 0)",
+                    params![id],
+                ).unwrap();
+            }
+            for (id, res, pages) in [("file_pdf", "res_pdf", 3), ("file_one", "res_one", 1)] {
+                conn.execute(
+                    "INSERT INTO files (id, resource_id, sha256, file_name, size, page_count, created_at, updated_at) VALUES (?1, ?2, ?1, 'a.pdf', 1, ?3, '0', '0')",
+                    params![id, res, pages],
+                ).unwrap();
+            }
+        }
+        assert_eq!(VfsIndexStateRepo::requeue_paged_pdfs_once(&db).unwrap(), 1);
+        let state: String = db.get_conn_safe().unwrap()
+            .query_row("SELECT index_state FROM resources WHERE id = 'res_pdf'", [], |r| r.get(0)).unwrap();
+        assert_eq!(state, INDEX_STATE_PENDING);
+        // 第二次不再执行
+        assert_eq!(VfsIndexStateRepo::requeue_paged_pdfs_once(&db).unwrap(), 0);
     }
 
     #[test]
