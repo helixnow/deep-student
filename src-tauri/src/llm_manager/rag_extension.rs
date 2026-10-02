@@ -321,32 +321,18 @@ impl LLMManager {
             .map_err(|e| AppError::configuration(format!("读取多模态嵌入模型配置失败: {}", e)))?;
 
         let configs = self.get_api_configs().await?;
-        // 与文本嵌入同一回退链：维度管理默认 → 模型分配的 VL 槽位 → 唯一可用的多模态嵌入配置。
-        // 此前没设维度默认就直接报错，在模型分配里选了多模态嵌入模型也不会生效，
-        // 资料页图永远不做多模态索引。
+        // 维度管理未设默认时，回退到「模型分配」里用户明确选的多模态嵌入模型（同为显式选择）。
+        // 此前直接报错：在模型分配里选了多模态嵌入也不生效。不做「唯一可用配置」自动启用——
+        // 多模态索引按页调用付费接口，必须由用户显式开启。
         let Some(setting_id) = setting_id else {
             return match self.fallback_vl_embedding_model_id(&configs).await {
                 Ok(id) => configs
                     .into_iter()
                     .find(|config| config.id == id)
                     .ok_or_else(|| AppError::configuration("找不到多模态嵌入模型配置")),
-                Err(_) => {
-                    let mut usable = configs.into_iter().filter(|config| {
-                        config.enabled && config.is_embedding && config.is_multimodal && !config.is_reranker
-                    });
-                    match (usable.next(), usable.next()) {
-                        (Some(only), None) => {
-                            info!("[RAG] Auto-selected the only multimodal embedding config {}", only.id);
-                            let _ = self
-                                .db
-                                .save_setting("embedding.default_multimodal_model_config_id", &only.id);
-                            Ok(only)
-                        }
-                        _ => Err(AppError::configuration(
-                            "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
-                        )),
-                    }
-                }
+                Err(_) => Err(AppError::configuration(
+                    "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
+                )),
             };
         };
         let vl_embedding_model_id = if configs.iter().any(|config| config.id == setting_id) {

@@ -1637,6 +1637,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_vl_embedding_default_uses_explicit_assignment() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("vl-emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("an explicit model assignment enables multimodal indexing");
+        assert_eq!(config.id, "vl-emb-test");
+        assert_eq!(saved_vl_embedding_default(&manager).as_deref(), Some("vl-emb-test"));
+    }
+
+    #[tokio::test]
     async fn dangling_vl_embedding_default_rejects_text_only_assignment() {
         let temp_dir = TempDir::new().expect("temp dir");
         let manager = create_test_llm_manager(&temp_dir);
