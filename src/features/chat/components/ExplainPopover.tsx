@@ -23,6 +23,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { MarkdownRenderer } from './renderers/MarkdownRenderer';
 
 // ============================================================================
 // 类型
@@ -237,9 +238,15 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
                 </button>
               </div>
             ) : explanation ? (
-              <p className="text-ui text-foreground leading-relaxed whitespace-pre-wrap">
-                {explanation}
-              </p>
+              // 模型按 Markdown 作答（加粗小标题 / 列表 / 公式），按聊天同款渲染，不再露出 ** 原文；
+              // 聊天的 Markdown 排版（段距 / 列表符号）挂在 .chat-v2 作用域下，PDF 等宿主里也要带上。
+              // 弹层是紧凑场景：正文回到 UI 字号 1rem（根字号 14px）/ 1.6 行高（内联样式压过 .chat-v2 自身的变量定义）
+              <div
+                className="chat-v2"
+                style={{ '--chat-body-font-size': '1rem', '--chat-md-line-height': '1.6' } as React.CSSProperties}
+              >
+                <MarkdownRenderer content={explanation} className="text-ui text-foreground" />
+              </div>
             ) : isLoading ? (
               <ExplainThinkingIndicator label={t('explainPopover.thinking')} />
             ) : null}
