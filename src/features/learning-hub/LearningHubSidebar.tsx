@@ -1768,9 +1768,33 @@ export function LearningHubSidebar({
     // 移除 e.target === e.currentTarget 检查，因为虚拟滚动列表内部的空白区域可能不是容器本身
     // 项的右键已通过 handleContextMenu 处理并调用 stopPropagation 阻止冒泡
     e.preventDefault();
-    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    // 键盘触发（Enter/Space）或程序化点击时事件坐标为 (0,0)：按触发元素位置弹出，
+    // 否则菜单落在窗口左上角盖住红绿灯
+    const anchor = e.clientX === 0 && e.clientY === 0 && e.currentTarget instanceof Element
+      ? e.currentTarget.getBoundingClientRect()
+      : null;
+    setContextMenuPosition(anchor ? { x: anchor.left, y: anchor.bottom + 4 } : { x: e.clientX, y: e.clientY });
     setContextMenuTarget({ type: 'empty' });
     setContextMenuOpen(true);
+  };
+
+  // 空状态「新建」：按类型过滤的视图（全部作文 / 全部笔记…）直接新建该类型，
+  // 其余视图弹出与右键相同的新建菜单
+  const handleEmptyStateCreate = (e: React.MouseEvent) => {
+    const typeFilter = effectivePath.typeFilter;
+    const direct: Partial<Record<string, () => Promise<void>>> = {
+      note: handleNewNote,
+      exam: handleNewExam,
+      translation: handleNewTranslation,
+      essay: handleNewEssay,
+      mindmap: handleNewMindMap,
+    };
+    const create = typeFilter ? direct[typeFilter] : undefined;
+    if (create) {
+      void create();
+      return;
+    }
+    handleContainerContextMenu(e);
   };
 
   // 右键菜单 - 进入文件夹
@@ -3782,6 +3806,7 @@ export function LearningHubSidebar({
             multiSelectMode={multiSelectActive}
             onContainerClick={mode === 'canvas' ? (isMultiSelectMode ? clearSelection : undefined) : clearSelection}
             onContainerContextMenu={mode === 'canvas' ? undefined : handleContainerContextMenu}
+            onEmptyCreate={mode === 'canvas' ? undefined : handleEmptyStateCreate}
             onMoveItem={mode === 'canvas' ? undefined : handleMoveItem}
             onMoveItems={mode === 'canvas' ? undefined : handleMoveItems}
             isLoading={isLoading}

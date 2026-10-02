@@ -289,6 +289,8 @@ interface FinderFileListProps {
   onContainerClick?: () => void;
   /** 空白区域右键菜单 */
   onContainerContextMenu?: (e: React.MouseEvent) => void;
+  /** 空状态「新建」按钮（缺省时打开与右键相同的新建菜单） */
+  onEmptyCreate?: (e: React.MouseEvent) => void;
   /** 单个项目移动（单选拖拽） */
   onMoveItem?: (itemId: string, targetFolderId: string | null) => void;
   /** 多个项目移动（多选拖拽） */
@@ -358,6 +360,7 @@ export function FinderFileList({
   onContextMenu,
   onContainerClick,
   onContainerContextMenu,
+  onEmptyCreate,
   onMoveItem,
   onMoveItems,
   isLoading,
@@ -1152,7 +1155,7 @@ export function FinderFileList({
             className="mt-4 [@media(pointer:coarse)]:!min-h-11"
             onClick={(e) => {
               e.stopPropagation();
-              onContainerContextMenu(e);
+              (onEmptyCreate ?? onContainerContextMenu)(e);
             }}
           >
             <Plus size={14} className="mr-1.5" />
