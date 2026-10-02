@@ -19848,6 +19848,7 @@ mod tests {
             },
             warnings: vec![],
             card_ids: vec!["card-a".to_string(), "card-b".to_string()],
+            review_enqueue: None,
         };
         let output = serde_json::to_value(&result).expect("serialize import result");
         assert_eq!(

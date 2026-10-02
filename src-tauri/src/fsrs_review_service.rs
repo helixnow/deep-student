@@ -662,6 +662,59 @@ impl FsrsStateBeforeSnapshot {
     }
 }
 
+/// 外部导入卡片的初始 FSRS 调度快照（由 APKG 导入器从 Anki 调度列换算）。
+///
+/// 字段与 `fsrs_card_states` 同名列一一对应；`new_card` 等价于普通入队的新卡。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FsrsImportedSchedule {
+    pub state: FsrsState,
+    pub stability: Option<f64>,
+    pub difficulty: Option<f64>,
+    pub elapsed_days: f64,
+    pub scheduled_days: f64,
+    pub reps: i32,
+    pub lapses: i32,
+    pub due_ms: i64,
+    pub last_review_ms: Option<i64>,
+    pub suspended: bool,
+}
+
+impl FsrsImportedSchedule {
+    /// 新卡：New、无稳定度/难度、立即到期。
+    pub fn new_card(now_ms: i64, suspended: bool) -> Self {
+        Self {
+            state: FsrsState::New,
+            stability: None,
+            difficulty: None,
+            elapsed_days: 0.0,
+            scheduled_days: 0.0,
+            reps: 0,
+            lapses: 0,
+            due_ms: now_ms,
+            last_review_ms: None,
+            suspended,
+        }
+    }
+}
+
+/// [`FsrsReviewService::enqueue_imported_cards_in_tx`] 的统计结果。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FsrsImportEnqueueSummary {
+    /// 新建 FSRS 状态数（含新卡与带历史的卡）
+    pub enqueued: u32,
+    /// 已有存活状态而跳过的卡数
+    pub skipped: u32,
+    /// 以非 New 状态（沿用 Anki 复习历史）建档的卡数
+    pub with_history: u32,
+    /// 以暂停状态建档的卡数（Anki 中已暂停）
+    pub suspended: u32,
+}
+
+enum StateInsertOutcome {
+    Inserted(String),
+    AlreadyLive,
+}
+
 /// FSRS 复习服务
 pub struct FsrsReviewService {
     db: Arc<Database>,
@@ -958,13 +1011,7 @@ impl FsrsReviewService {
             });
         }
 
-        // 确保默认牌组存在
-        tx.execute(
-            "INSERT OR IGNORE INTO anki_decks (id, name, description, config_json, created_at, updated_at, local_version)
-             VALUES (?1, 'Default', 'Default flashcard deck for FSRS reviews', '{\"desired_retention\":0.9}', ?2, ?2, 0)",
-            params![DEFAULT_DECK_ID, now_rfc],
-        )
-        .map_err(|e| AppError::database(format!("确保默认牌组失败: {}", e)))?;
+        Self::ensure_default_deck(&tx, &now_rfc)?;
 
         let mut enqueued = 0u32;
         let mut skipped = 0u32;
@@ -976,90 +1023,27 @@ impl FsrsReviewService {
                 skipped += 1;
                 continue;
             }
-
-            // 校验卡片存在（不修改 anki_cards）
-            let exists: bool = tx
-                .query_row(
-                    "SELECT 1
-                     FROM anki_cards ac
-                     INNER JOIN document_tasks dt ON dt.id = ac.task_id
-                     WHERE ac.id = ?1
-                       AND ac.deleted_at IS NULL
-                       AND dt.deleted_at IS NULL
-                     LIMIT 1",
-                    params![card_id],
-                    |_| Ok(true),
-                )
-                .optional()
-                .map_err(|e| AppError::database(format!("查询 anki_cards 失败: {}", e)))?
-                .unwrap_or(false);
-
-            if !exists {
-                return Err(AppError::not_found(format!(
-                    "anki card not found: {}",
-                    card_id
-                )));
-            }
-
-            let existing: Option<(String, Option<String>)> = tx
-                .query_row(
-                    "SELECT id, deleted_at FROM fsrs_card_states WHERE anki_card_id = ?1",
-                    params![card_id],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()
-                .map_err(|e| AppError::database(format!("查询 fsrs_card_states 失败: {}", e)))?;
-
-            if let Some((state_id, deleted_at)) = existing {
-                if deleted_at.is_none() {
+            match Self::insert_state_in_tx(
+                &tx,
+                card_id,
+                None,
+                scheduler_config.desired_retention,
+                now_ms,
+                &now_rfc,
+            )? {
+                StateInsertOutcome::AlreadyLive => {
                     skipped += 1;
                     if let Some(state) = Self::load_state_by_anki_card(&tx, card_id)? {
                         states.push(state);
                     }
-                    continue;
                 }
-
-                // A remote DELETE is represented as a tombstone. If the parent
-                // card is live again, enqueue starts a fresh scheduling history.
-                tx.execute(
-                    "DELETE FROM fsrs_review_logs WHERE card_state_id = ?1",
-                    params![state_id],
-                )
-                .map_err(|e| AppError::database(format!("清理已删除复习日志失败: {}", e)))?;
-                tx.execute(
-                    "DELETE FROM fsrs_card_states WHERE id = ?1",
-                    params![state_id],
-                )
-                .map_err(|e| AppError::database(format!("清理已删除卡片状态失败: {}", e)))?;
-            }
-
-            let id = uuid::Uuid::new_v4().to_string();
-            tx.execute(
-                "INSERT INTO fsrs_card_states (
-                    id, anki_card_id, deck_id, state, stability, difficulty,
-                    elapsed_days, scheduled_days, reps, lapses, due_ms, last_review_ms,
-                    suspended, fsrs_params_version, desired_retention, created_at, updated_at
-                 ) VALUES (
-                    ?1, ?2, ?3, 0, NULL, NULL,
-                    0, 0, 0, 0, ?4, NULL,
-                    0, ?5, ?6, ?7, ?7
-                 )",
-                params![
-                    id,
-                    card_id,
-                    DEFAULT_DECK_ID,
-                    now_ms, // 新卡立即到期
-                    FSRS_PARAMS_VERSION,
-                    scheduler_config.desired_retention,
-                    now_rfc,
-                ],
-            )
-            .map_err(|e| AppError::database(format!("插入 fsrs_card_states 失败: {}", e)))?;
-
-            enqueued += 1;
-            enqueued_state_ids.push(id.clone());
-            if let Some(state) = Self::load_state_by_id(&tx, &id)? {
-                states.push(state);
+                StateInsertOutcome::Inserted(id) => {
+                    enqueued += 1;
+                    enqueued_state_ids.push(id.clone());
+                    if let Some(state) = Self::load_state_by_id(&tx, &id)? {
+                        states.push(state);
+                    }
+                }
             }
         }
 
@@ -1083,6 +1067,160 @@ impl FsrsReviewService {
             states,
             review_cards,
         }))
+    }
+
+    /// 确保默认牌组存在（入队写入的 deck_id 依赖它）。
+    fn ensure_default_deck(conn: &rusqlite::Connection, now_rfc: &str) -> Result<()> {
+        conn.execute(
+            "INSERT OR IGNORE INTO anki_decks (id, name, description, config_json, created_at, updated_at, local_version)
+             VALUES (?1, 'Default', 'Default flashcard deck for FSRS reviews', '{\"desired_retention\":0.9}', ?2, ?2, 0)",
+            params![DEFAULT_DECK_ID, now_rfc],
+        )
+        .map_err(|e| AppError::database(format!("确保默认牌组失败: {}", e)))?;
+        Ok(())
+    }
+
+    /// 单卡入队写入（所有入队入口共用，必须在调用方事务内执行）：
+    /// - 卡片（及其 document_task）不存在/已删除 → NotFound；
+    /// - 已有存活状态 → `AlreadyLive`（幂等跳过，不改动既有调度）；
+    /// - 远端删除留下的 tombstone → 清理旧状态与日志后重新建档；
+    /// - `seed` 为 None 时按新卡（New、立即到期）建档，否则按导入的调度快照建档。
+    fn insert_state_in_tx(
+        conn: &rusqlite::Connection,
+        card_id: &str,
+        seed: Option<&FsrsImportedSchedule>,
+        desired_retention: f64,
+        now_ms: i64,
+        now_rfc: &str,
+    ) -> Result<StateInsertOutcome> {
+        // 校验卡片存在（不修改 anki_cards）
+        let exists: bool = conn
+            .query_row(
+                "SELECT 1
+                 FROM anki_cards ac
+                 INNER JOIN document_tasks dt ON dt.id = ac.task_id
+                 WHERE ac.id = ?1
+                   AND ac.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL
+                 LIMIT 1",
+                params![card_id],
+                |_| Ok(true),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询 anki_cards 失败: {}", e)))?
+            .unwrap_or(false);
+
+        if !exists {
+            return Err(AppError::not_found(format!(
+                "anki card not found: {}",
+                card_id
+            )));
+        }
+
+        let existing: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT id, deleted_at FROM fsrs_card_states WHERE anki_card_id = ?1",
+                params![card_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询 fsrs_card_states 失败: {}", e)))?;
+
+        if let Some((state_id, deleted_at)) = existing {
+            if deleted_at.is_none() {
+                return Ok(StateInsertOutcome::AlreadyLive);
+            }
+
+            // A remote DELETE is represented as a tombstone. If the parent
+            // card is live again, enqueue starts a fresh scheduling history.
+            conn.execute(
+                "DELETE FROM fsrs_review_logs WHERE card_state_id = ?1",
+                params![state_id],
+            )
+            .map_err(|e| AppError::database(format!("清理已删除复习日志失败: {}", e)))?;
+            conn.execute(
+                "DELETE FROM fsrs_card_states WHERE id = ?1",
+                params![state_id],
+            )
+            .map_err(|e| AppError::database(format!("清理已删除卡片状态失败: {}", e)))?;
+        }
+
+        let new_card = FsrsImportedSchedule::new_card(now_ms, false);
+        let seed = seed.unwrap_or(&new_card);
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO fsrs_card_states (
+                id, anki_card_id, deck_id, state, stability, difficulty,
+                elapsed_days, scheduled_days, reps, lapses, due_ms, last_review_ms,
+                suspended, fsrs_params_version, desired_retention, created_at, updated_at
+             ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6,
+                ?7, ?8, ?9, ?10, ?11, ?12,
+                ?13, ?14, ?15, ?16, ?16
+             )",
+            params![
+                id,
+                card_id,
+                DEFAULT_DECK_ID,
+                seed.state.as_i32(),
+                seed.stability,
+                seed.difficulty,
+                seed.elapsed_days,
+                seed.scheduled_days,
+                seed.reps,
+                seed.lapses,
+                seed.due_ms,
+                seed.last_review_ms,
+                seed.suspended as i32,
+                FSRS_PARAMS_VERSION,
+                desired_retention,
+                now_rfc,
+            ],
+        )
+        .map_err(|e| AppError::database(format!("插入 fsrs_card_states 失败: {}", e)))?;
+        Ok(StateInsertOutcome::Inserted(id))
+    }
+
+    /// 外部导入（APKG）入队：在**调用方的导入事务内**为每张新卡建立 FSRS 状态，
+    /// 使卡片写入与入队同成同败。语义与 [`Self::enqueue_cards`] 一致（共用
+    /// [`Self::insert_state_in_tx`]）：已有存活状态跳过（幂等），`None` 种子按新卡建档。
+    pub fn enqueue_imported_cards_in_tx(
+        conn: &rusqlite::Connection,
+        cards: &[(String, Option<FsrsImportedSchedule>)],
+    ) -> Result<FsrsImportEnqueueSummary> {
+        let mut summary = FsrsImportEnqueueSummary::default();
+        if cards.is_empty() {
+            return Ok(summary);
+        }
+        let now = Utc::now();
+        let now_rfc = now.to_rfc3339();
+        let now_ms = now.timestamp_millis();
+        let scheduler_config = Self::load_scheduler_config(conn, DEFAULT_DECK_ID)?;
+        Self::ensure_default_deck(conn, &now_rfc)?;
+        for (card_id, seed) in cards {
+            match Self::insert_state_in_tx(
+                conn,
+                card_id,
+                seed.as_ref(),
+                scheduler_config.desired_retention,
+                now_ms,
+                &now_rfc,
+            )? {
+                StateInsertOutcome::AlreadyLive => summary.skipped += 1,
+                StateInsertOutcome::Inserted(_) => {
+                    summary.enqueued += 1;
+                    if let Some(seed) = seed {
+                        if seed.state != FsrsState::New {
+                            summary.with_history += 1;
+                        }
+                        if seed.suspended {
+                            summary.suspended += 1;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(summary)
     }
 
     fn load_review_cards_for_states(

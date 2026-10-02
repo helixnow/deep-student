@@ -92,8 +92,10 @@ pub async fn import_apkg_to_library(
 
     let result = tokio::task::spawn_blocking(move || {
         let path = validate_apkg_path(&path)?;
+        // 卡片库导入即入队：导入的卡直接进入应用内复习（Anki 进度沿用，见 anki_sched_to_fsrs）
         ApkgImporterService::new(database)
             .with_media_dir(media_dir)
+            .with_review_enqueue()
             .import_path(&path, None)
     })
     .await
@@ -177,6 +179,7 @@ mod tests {
             media_report: Default::default(),
             warnings: vec![],
             card_ids: vec!["card-1".to_string(), "card-2".to_string()],
+            review_enqueue: None,
         };
 
         assert_eq!(
@@ -223,6 +226,7 @@ mod tests {
             },
             warnings: vec!["媒体清单声明的条目在包内缺失，已跳过: 0 (a.png)".to_string()],
             card_ids: vec!["card-1".to_string()],
+            review_enqueue: None,
         };
         let value = serde_json::to_value(&result).expect("serialize command response");
         assert_eq!(value["importedTemplates"], 1);

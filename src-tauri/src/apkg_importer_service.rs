@@ -1,4 +1,5 @@
 use crate::database::Database;
+use crate::fsrs_review_service::{FsrsImportedSchedule, FsrsReviewService, FsrsState};
 use crate::models::{AppError, AppErrorType};
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -117,6 +118,22 @@ pub struct ApkgImportResult {
     pub warnings: Vec<String>,
     #[serde(skip)]
     pub card_ids: Vec<String>,
+    /// 导入后加入 FSRS 复习队列的统计（仅启用 [`ApkgImporterService::with_review_enqueue`]
+    /// 时存在；None 不序列化，保持旧契约）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_enqueue: Option<ApkgReviewEnqueueReport>,
+}
+
+/// APKG 导入后的复习入队报告。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ApkgReviewEnqueueReport {
+    /// 新建 FSRS 状态的卡数（= 加入复习的卡数）
+    pub enqueued: usize,
+    /// 沿用 Anki 复习进度（学习中/复习中）而非新卡建档的卡数
+    pub with_history: usize,
+    /// 在 Anki 中已暂停、导入后保持暂停的卡数
+    pub suspended: usize,
 }
 
 /// 一组同原因的媒体跳过统计。`count` 是全量计数；
@@ -195,6 +212,8 @@ pub struct ApkgImporterService {
     db: Arc<Database>,
     /// 媒体落盘目录（None = 保持旧行为：不导入媒体，仅统计 media_skipped）
     media_dir: Option<PathBuf>,
+    /// 导入事务内同时为每张卡建立 FSRS 调度状态（卡片库导入入口开启）
+    enqueue_for_review: bool,
 }
 
 impl ApkgImporterService {
@@ -202,7 +221,15 @@ impl ApkgImporterService {
         Self {
             db,
             media_dir: None,
+            enqueue_for_review: false,
         }
+    }
+
+    /// 导入即入队：卡片写入与 FSRS 状态建档在同一事务内完成。
+    /// Anki 中复习中/学习中的卡沿用其进度（见 [`anki_sched_to_fsrs`]），新卡按 New 入队。
+    pub fn with_review_enqueue(mut self) -> Self {
+        self.enqueue_for_review = true;
+        self
     }
 
     /// 启用媒体导入：包内媒体按清单文件名解出到 `media_dir`，
@@ -312,7 +339,13 @@ impl ApkgImporterService {
         limits: ImportLimits,
     ) -> Result<ApkgImportResult, AppError> {
         let parsed = parse_archive(reader, limits, self.media_dir.as_deref())?;
-        persist_package(&self.db, parsed, source_name, session_id)
+        persist_package(
+            &self.db,
+            parsed,
+            source_name,
+            session_id,
+            self.enqueue_for_review,
+        )
     }
 }
 
@@ -346,6 +379,8 @@ struct ParsedPackage {
     /// deepStudentTemplateId → 可重建的模板定义（供本地缺失时导入）
     template_candidates: Vec<TemplateImportCandidate>,
     warnings: Vec<String>,
+    /// `col.crt`：集合创建时间（unix 秒，Anki 日切点）。复习卡 due 以此为第 0 天。
+    collection_crt_secs: Option<i64>,
 }
 
 struct ParsedCard {
@@ -357,6 +392,8 @@ struct ParsedCard {
     images: Vec<String>,
     extra_fields: HashMap<String, String>,
     template_id: Option<String>,
+    /// Anki 原始调度列（包缺调度列时为 None），供导入即入队换算 FSRS 初始状态
+    anki_sched: Option<CardSchedState>,
 }
 
 /// 从 APKG 模型元数据重建 Deep Student 模板所需的最小信息。
@@ -1437,6 +1474,12 @@ fn parse_collection_database(
             ),
         ));
     }
+    // col.crt 在 legacy 与现代 schema 中均存在；读取失败（极简合成包）时
+    // 复习卡 due 无法换算，退化为「立即到期」。
+    let collection_crt_secs: Option<i64> = conn
+        .query_row("SELECT crt FROM col LIMIT 1", [], |row| row.get(0))
+        .ok()
+        .filter(|crt: &i64| *crt > 0);
     if sched_metadata_cards > 0 {
         warnings.push(format!(
             "已将 {sched_metadata_cards} 张卡片的 Anki 复习进度保存为卡片元数据（AnkiSchedType/AnkiIvl/AnkiReps 等），再导出 APKG 时会回写调度信息"
@@ -1451,6 +1494,7 @@ fn parse_collection_database(
         media_report: ApkgMediaReport::default(),
         template_candidates,
         warnings,
+        collection_crt_secs,
     })
 }
 
@@ -1502,6 +1546,7 @@ fn flush_note_group(
         if swap_front_back {
             std::mem::swap(&mut card.front, &mut card.back);
         }
+        card.anki_sched = row.sched;
         if let Some(sched) = row.sched.filter(|sched| sched.has_review_progress()) {
             // 键名与 ANKI_SCHED_METADATA_KEYS / 导出端 card_sched_restore 保持一致
             for (key, value) in [
@@ -2195,6 +2240,7 @@ fn map_card(
         images,
         extra_fields,
         template_id: model.template_id.clone(),
+        anki_sched: None,
     })
 }
 
@@ -2209,6 +2255,7 @@ fn persist_package(
     package: ParsedPackage,
     source_name: &str,
     session_id: Option<&str>,
+    enqueue_for_review: bool,
 ) -> Result<ApkgImportResult, AppError> {
     let document_id = format!("apkg-{}", Uuid::new_v4());
     let task_id = format!("apkg-task-{}", Uuid::new_v4());
@@ -2231,6 +2278,14 @@ fn persist_package(
     let template_candidates = package.template_candidates;
     let mut warnings = package.warnings;
     let mut card_ids = Vec::with_capacity(imported_cards);
+    let collection_crt_secs = package.collection_crt_secs;
+    let now_ms = chrono::Utc::now().timestamp_millis();
+    let mut review_seeds: Vec<(String, Option<FsrsImportedSchedule>)> =
+        Vec::with_capacity(if enqueue_for_review {
+            imported_cards
+        } else {
+            0
+        });
 
     let mut conn = db.get_conn_safe().map_err(|error| {
         database_error(format!(
@@ -2300,8 +2355,32 @@ fn persist_package(
                 imported_cards
             ))
         })?;
+        if enqueue_for_review {
+            let seed = card
+                .anki_sched
+                .map(|sched| anki_sched_to_fsrs(&sched, collection_crt_secs, now_ms));
+            review_seeds.push((card_id.clone(), seed));
+        }
         card_ids.push(card_id);
     }
+    // 导入即入队：与卡片写入同一事务，入队失败则整次导入回滚（不会留下「导入了但没入队」的半成品）。
+    let review_enqueue = if enqueue_for_review {
+        let summary = FsrsReviewService::enqueue_imported_cards_in_tx(&tx, &review_seeds).map_err(
+            |error| {
+                database_error(format!(
+                    "Failed to enqueue imported APKG cards for review: {}",
+                    error.message
+                ))
+            },
+        )?;
+        Some(ApkgReviewEnqueueReport {
+            enqueued: summary.enqueued as usize,
+            with_history: summary.with_history as usize,
+            suspended: summary.suspended as usize,
+        })
+    } else {
+        None
+    };
     tx.commit().map_err(|error| {
         database_error(format!("Failed to commit APKG import transaction: {error}"))
     })?;
@@ -2322,7 +2401,74 @@ fn persist_package(
         media_report,
         warnings,
         card_ids,
+        review_enqueue,
     })
+}
+
+/// Anki 调度列中「due 是 unix 秒时间戳」的判定阈值（≈2001-09）。
+/// 天数制 due（距 crt 的天数）远小于此值；学习队列（queue=1）的 due 是时间戳。
+const ANKI_DUE_TIMESTAMP_THRESHOLD: i64 = 1_000_000_000;
+/// 导入卡缺少 FSRS 难度历史时的中性难度（FSRS 难度区间 1..=10）。
+const IMPORTED_NEUTRAL_DIFFICULTY: f64 = 5.0;
+const MS_PER_DAY: i64 = 86_400_000;
+
+/// 把 Anki（SM-2）调度列换算为 FSRS 初始状态。
+///
+/// Anki 语义：`type` 0=new 1=learning 2=review 3=relearning；`queue` -1=暂停、
+/// -2/-3=埋藏、0=new、1=学习（due 为 unix 秒）、2=复习（due 为距 `col.crt` 的天数）、
+/// 3=跨日学习（due 为天数）；`ivl` 正数为天、负数为秒。
+///
+/// 换算规则（刻意保持简单，首次在本应用评分后由 FSRS 自行校正）：
+/// - new → New、立即到期；
+/// - review → Review，稳定度 ≈ max(ivl, 1) 天，难度取中性 5.0，
+///   `scheduled_days = ivl`，due = crt + due 天，上次复习 ≈ due - ivl（不晚于现在）；
+/// - learning/relearning → Learning/Relearning，稳定度 max(ivl, 1) 天（短期稳定度
+///   需要正数基准），due 按时间戳或天数换算；
+/// - reps/lapses 沿用 Anki；queue=-1 → 暂停；埋藏是临时状态，不沿用；
+/// - 缺 `crt` 时天数制 due 无法换算 → 立即到期。
+fn anki_sched_to_fsrs(
+    sched: &CardSchedState,
+    collection_crt_secs: Option<i64>,
+    now_ms: i64,
+) -> FsrsImportedSchedule {
+    let suspended = sched.queue == -1;
+    let state = match sched.card_type {
+        1 => FsrsState::Learning,
+        2 => FsrsState::Review,
+        3 => FsrsState::Relearning,
+        _ => FsrsState::New,
+    };
+    if state == FsrsState::New {
+        return FsrsImportedSchedule::new_card(now_ms, suspended);
+    }
+
+    let due_ms = if sched.due > ANKI_DUE_TIMESTAMP_THRESHOLD {
+        sched.due.saturating_mul(1000)
+    } else {
+        match collection_crt_secs {
+            Some(crt) => crt
+                .saturating_mul(1000)
+                .saturating_add(sched.due.saturating_mul(MS_PER_DAY)),
+            None => now_ms,
+        }
+    };
+    let ivl_days = sched.ivl.max(0);
+    let stability = (ivl_days as f64).max(1.0);
+    let last_review_ms = due_ms
+        .saturating_sub(ivl_days.saturating_mul(MS_PER_DAY))
+        .min(now_ms);
+    FsrsImportedSchedule {
+        state,
+        stability: Some(stability),
+        difficulty: Some(IMPORTED_NEUTRAL_DIFFICULTY),
+        elapsed_days: 0.0,
+        scheduled_days: ivl_days as f64,
+        reps: sched.reps.clamp(0, i32::MAX as i64) as i32,
+        lapses: sched.lapses.clamp(0, i32::MAX as i64) as i32,
+        due_ms,
+        last_review_ms: Some(last_review_ms),
+        suspended,
+    }
 }
 
 /// 补建本地缺失的 Deep Student 模板；返回成功创建数。
@@ -3879,6 +4025,7 @@ mod tests {
             media_report: ApkgMediaReport::default(),
             warnings: vec![],
             card_ids: vec!["card".to_string()],
+            review_enqueue: None,
         };
         let value = serde_json::to_value(result).expect("serialize result");
         assert_eq!(value["documentId"], "doc");
@@ -4503,6 +4650,288 @@ mod tests {
             std::fs::read(second_media_dir.path().join("map.png")).expect("map bytes"),
             b"map-bytes"
         );
+    }
+
+    /// legacy collection with `col.crt` and full Anki scheduling columns.
+    /// cards: (card_id, note_id, [type, queue, due, ivl, factor, reps, lapses]).
+    fn make_sched_collection(crt: Option<i64>, cards: &[(i64, i64, [i64; 7])]) -> Vec<u8> {
+        let file = NamedTempFile::new().expect("collection tempfile");
+        let conn = Connection::open(file.path()).expect("collection sqlite");
+        conn.execute_batch(
+            "PRAGMA journal_mode = DELETE;
+             CREATE TABLE col (crt INTEGER NOT NULL, models TEXT NOT NULL, decks TEXT NOT NULL);
+             CREATE TABLE notes (
+                 id INTEGER PRIMARY KEY, mid INTEGER NOT NULL, tags TEXT NOT NULL, flds TEXT NOT NULL
+             );
+             CREATE TABLE cards (
+                 id INTEGER PRIMARY KEY, nid INTEGER NOT NULL, did INTEGER NOT NULL, ord INTEGER NOT NULL,
+                 type INTEGER NOT NULL, queue INTEGER NOT NULL, due INTEGER NOT NULL,
+                 ivl INTEGER NOT NULL, factor INTEGER NOT NULL, reps INTEGER NOT NULL,
+                 lapses INTEGER NOT NULL
+             );",
+        )
+        .expect("collection schema");
+        let models = json!({ "100": model_json(0, &[("Front", 0), ("Back", 1)]) });
+        conn.execute(
+            "INSERT INTO col (crt, models, decks) VALUES (?1, ?2, ?3)",
+            params![
+                crt.unwrap_or(0),
+                models.to_string(),
+                json!({ "1": { "name": "Imported" } }).to_string()
+            ],
+        )
+        .expect("collection col");
+        for (id, nid, sched) in cards {
+            conn.execute(
+                "INSERT OR IGNORE INTO notes (id, mid, tags, flds) VALUES (?1, 100, '', ?2)",
+                params![nid, format!("front {nid}\u{1f}back {nid}")],
+            )
+            .expect("collection note");
+            conn.execute(
+                "INSERT INTO cards (id, nid, did, ord, type, queue, due, ivl, factor, reps, lapses)
+                 VALUES (?1, ?2, 1, 0, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                params![
+                    id, nid, sched[0], sched[1], sched[2], sched[3], sched[4], sched[5], sched[6]
+                ],
+            )
+            .expect("collection card");
+        }
+        conn.close().expect("close collection sqlite");
+        std::fs::read(file.path()).expect("read collection sqlite")
+    }
+
+    #[derive(Debug)]
+    struct ImportedFsrsRow {
+        anki_card_id: String,
+        state: i32,
+        stability: Option<f64>,
+        difficulty: Option<f64>,
+        scheduled_days: f64,
+        reps: i32,
+        lapses: i32,
+        due_ms: i64,
+        last_review_ms: Option<i64>,
+        suspended: bool,
+    }
+
+    /// FSRS rows keyed by the original Anki card id (AnkiCardId extra field).
+    fn fsrs_rows_by_anki_id(
+        db: &Arc<Database>,
+        document_id: &str,
+    ) -> HashMap<i64, ImportedFsrsRow> {
+        let conn = db.get_conn_safe().expect("conn");
+        let mut stmt = conn
+            .prepare(
+                "SELECT ac.extra_fields_json, s.anki_card_id, s.state, s.stability, s.difficulty,
+                        s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms, s.suspended
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards ac ON ac.id = s.anki_card_id
+                 WHERE ac.source_id = ?1 AND s.deleted_at IS NULL",
+            )
+            .expect("prepare fsrs rows");
+        let rows = stmt
+            .query_map(params![document_id], |row| {
+                let extra: String = row.get(0)?;
+                Ok((
+                    extra,
+                    ImportedFsrsRow {
+                        anki_card_id: row.get(1)?,
+                        state: row.get(2)?,
+                        stability: row.get(3)?,
+                        difficulty: row.get(4)?,
+                        scheduled_days: row.get(5)?,
+                        reps: row.get(6)?,
+                        lapses: row.get(7)?,
+                        due_ms: row.get(8)?,
+                        last_review_ms: row.get(9)?,
+                        suspended: row.get::<_, i32>(10)? != 0,
+                    },
+                ))
+            })
+            .expect("query fsrs rows");
+        let mut out = HashMap::new();
+        for row in rows {
+            let (extra, state) = row.expect("fsrs row");
+            let extra: HashMap<String, String> = serde_json::from_str(&extra).expect("extra");
+            let anki_id: i64 = extra["AnkiCardId"].parse().expect("AnkiCardId");
+            assert!(out.insert(anki_id, state).is_none(), "duplicate FSRS state");
+        }
+        out
+    }
+
+    #[test]
+    fn review_enqueue_carries_anki_progress_into_fsrs_queue() {
+        let (db, _dir) = setup_migrated_db();
+        let now_secs = chrono::Utc::now().timestamp();
+        // collection created 100 days ago; review `due` is day number since crt.
+        let crt = now_secs - 100 * 86_400;
+        let learning_due = now_secs - 60;
+        let collection = make_sched_collection(
+            Some(crt),
+            &[
+                // new
+                (10, 1, [0, 0, 1, 0, 0, 0, 0]),
+                // review, due in 5 days
+                (11, 2, [2, 2, 105, 10, 2500, 6, 1]),
+                // learning, due one minute ago (unix seconds)
+                (12, 3, [1, 1, learning_due, 0, 2500, 1, 0]),
+                // suspended review
+                (13, 4, [2, -1, 90, 30, 2300, 12, 3]),
+                // review, overdue by 2 days
+                (14, 5, [2, 2, 98, 7, 2500, 4, 0]),
+            ],
+        );
+        let apkg = make_apkg(vec![("collection.anki2", collection)]);
+        let result = ApkgImporterService::new(db.clone())
+            .with_review_enqueue()
+            .import_bytes(&apkg, Some("sched.apkg"), None)
+            .expect("import scheduled APKG");
+        assert_eq!(result.imported_cards, 5);
+        assert_eq!(
+            result.review_enqueue,
+            Some(ApkgReviewEnqueueReport {
+                enqueued: 5,
+                with_history: 4,
+                suspended: 1,
+            })
+        );
+        let value = serde_json::to_value(&result).expect("serialize");
+        assert_eq!(value["reviewEnqueue"]["enqueued"], 5);
+        assert_eq!(value["reviewEnqueue"]["withHistory"], 4);
+
+        let rows = fsrs_rows_by_anki_id(&db, &result.document_id);
+        assert_eq!(rows.len(), 5);
+        let day_ms = 86_400_000i64;
+        let crt_ms = crt * 1000;
+
+        let new = &rows[&10];
+        assert_eq!(new.state, FsrsState::New.as_i32());
+        assert_eq!((new.stability, new.difficulty, new.reps), (None, None, 0));
+        assert!(!new.suspended);
+
+        let review = &rows[&11];
+        assert_eq!(review.state, FsrsState::Review.as_i32());
+        assert_eq!(review.due_ms, crt_ms + 105 * day_ms);
+        assert_eq!(review.last_review_ms, Some(crt_ms + 95 * day_ms));
+        assert_eq!(review.stability, Some(10.0));
+        assert_eq!(review.difficulty, Some(5.0));
+        assert_eq!(review.scheduled_days, 10.0);
+        assert_eq!((review.reps, review.lapses), (6, 1));
+        assert!(!review.suspended);
+
+        let learning = &rows[&12];
+        assert_eq!(learning.state, FsrsState::Learning.as_i32());
+        assert_eq!(learning.due_ms, learning_due * 1000);
+        assert_eq!(learning.reps, 1);
+
+        let suspended = &rows[&13];
+        assert_eq!(suspended.state, FsrsState::Review.as_i32());
+        assert!(suspended.suspended);
+        assert_eq!(suspended.due_ms, crt_ms + 90 * day_ms);
+        assert_eq!((suspended.reps, suspended.lapses), (12, 3));
+
+        // Due queue: new + learning + overdue review; future review and suspended excluded.
+        let fsrs = FsrsReviewService::new(db.clone());
+        let due = fsrs.get_due(Some(50)).expect("due queue");
+        let due_ids = due
+            .iter()
+            .map(|card| card.state.anki_card_id.clone())
+            .collect::<HashSet<_>>();
+        let expected = [10, 12, 14]
+            .iter()
+            .map(|id| rows[id].anki_card_id.clone())
+            .collect::<HashSet<_>>();
+        assert_eq!(due_ids, expected);
+
+        // Rating the overdue review card continues Anki's history.
+        let overdue = due
+            .iter()
+            .find(|card| card.state.anki_card_id == rows[&14].anki_card_id)
+            .expect("overdue review card");
+        let rated = fsrs
+            .rate(&overdue.state.id, 3, Some(800), None)
+            .expect("rate imported review card");
+        assert_eq!(rated.card_state.reps, 5);
+        assert_eq!(rated.card_state.state, FsrsState::Review.as_i32());
+        assert!(rated.card_state.due_ms > chrono::Utc::now().timestamp_millis());
+
+        // Idempotent: explicit enqueue of the same cards creates no duplicate states.
+        let again = fsrs
+            .enqueue_cards(&result.card_ids)
+            .expect("re-enqueue imported cards");
+        assert_eq!((again.enqueued, again.skipped), (0, 5));
+
+        // Re-importing the package yields a fresh document with its own states only.
+        let second = ApkgImporterService::new(db.clone())
+            .with_review_enqueue()
+            .import_bytes(&apkg, Some("sched.apkg"), None)
+            .expect("re-import scheduled APKG");
+        assert_ne!(second.document_id, result.document_id);
+        assert_eq!(second.review_enqueue.map(|r| r.enqueued), Some(5));
+        assert_eq!(fsrs_rows_by_anki_id(&db, &second.document_id).len(), 5);
+        let conn = db.get_conn_safe().expect("conn");
+        let (total, distinct): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), COUNT(DISTINCT anki_card_id) FROM fsrs_card_states
+                 WHERE deleted_at IS NULL",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .expect("count states");
+        assert_eq!((total, distinct), (10, 10));
+    }
+
+    #[test]
+    fn import_without_review_enqueue_leaves_cards_unqueued() {
+        let (db, _dir) = setup_migrated_db();
+        let collection =
+            make_sched_collection(Some(1_600_000_000), &[(10, 1, [2, 2, 10, 5, 2500, 3, 0])]);
+        let apkg = make_apkg(vec![("collection.anki2", collection)]);
+        let result = ApkgImporterService::new(db.clone())
+            .import_bytes(&apkg, Some("plain.apkg"), None)
+            .expect("import");
+        assert_eq!(result.review_enqueue, None);
+        assert!(serde_json::to_value(&result)
+            .expect("json")
+            .get("reviewEnqueue")
+            .is_none());
+        assert!(fsrs_rows_by_anki_id(&db, &result.document_id).is_empty());
+    }
+
+    #[test]
+    fn anki_sched_conversion_handles_missing_crt_relearning_and_day_learning() {
+        let now_ms = 1_800_000_000_000i64;
+        let sched = |card_type, queue, due, ivl| CardSchedState {
+            card_type,
+            queue,
+            due,
+            ivl,
+            factor: 2500,
+            reps: 3,
+            lapses: 1,
+        };
+        // Missing crt: day-number due cannot be resolved → due now.
+        let review = anki_sched_to_fsrs(&sched(2, 2, 400, 12), None, now_ms);
+        assert_eq!(review.state, FsrsState::Review);
+        assert_eq!(review.due_ms, now_ms);
+        assert_eq!(review.last_review_ms, Some(now_ms - 12 * MS_PER_DAY));
+        // Relearning in the intraday queue: due is a unix timestamp.
+        let relearn = anki_sched_to_fsrs(&sched(3, 1, 1_799_999_000, 3), Some(1), now_ms);
+        assert_eq!(relearn.state, FsrsState::Relearning);
+        assert_eq!(relearn.due_ms, 1_799_999_000_000);
+        assert_eq!(relearn.stability, Some(3.0));
+        // Day-learning queue (3): due is a day number relative to crt.
+        let crt = 1_700_000_000i64;
+        let day_learn = anki_sched_to_fsrs(&sched(1, 3, 50, 0), Some(crt), now_ms);
+        assert_eq!(day_learn.state, FsrsState::Learning);
+        assert_eq!(day_learn.due_ms, crt * 1000 + 50 * MS_PER_DAY);
+        assert_eq!(day_learn.stability, Some(1.0));
+        // Suspended new card stays New but suspended; buried cards are not suspended.
+        let new_suspended = anki_sched_to_fsrs(&sched(0, -1, 7, 0), Some(crt), now_ms);
+        assert_eq!(new_suspended.state, FsrsState::New);
+        assert!(new_suspended.suspended);
+        assert_eq!(new_suspended.reps, 0);
+        assert!(!anki_sched_to_fsrs(&sched(2, -2, 50, 4), Some(crt), now_ms).suspended);
     }
 
     #[test]
