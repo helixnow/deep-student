@@ -1792,6 +1792,34 @@ impl VfsIndexingService {
 // VfsFullIndexingService - 集成嵌入生成和 Lance 存储的完整索引服务
 // ============================================================================
 
+/// 从 PDF 原文件按页重提文字（页间换页符）并回写 files.extracted_text；非 PDF / 失败返回 None
+fn reextract_pdf_page_text(
+    conn: &rusqlite::Connection,
+    blobs_dir: &std::path::Path,
+    resource_id: &str,
+    blob_hash: &str,
+) -> Option<String> {
+    let path = VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash).ok()??;
+    let bytes = std::fs::read(&path).ok()?;
+    if !bytes.starts_with(b"%PDF") {
+        return None;
+    }
+    let pdfium = crate::pdfium_utils::load_pdfium().ok()?;
+    let text = crate::pdfium_utils::extract_text_from_pdf_bytes(pdfium, &bytes).ok()?;
+    if !text.contains(crate::pdfium_utils::PDF_PAGE_SEPARATOR) {
+        return None;
+    }
+    if let Err(error) = conn.execute(
+        "UPDATE files SET extracted_text = ?1 WHERE resource_id = ?2",
+        rusqlite::params![text, resource_id],
+    ) {
+        warn!("[VfsIndexing] 回写逐页文字失败 resource={}: {}", resource_id, error);
+    } else {
+        info!("[VfsIndexing] 已为旧 PDF 重提逐页文字 resource={}", resource_id);
+    }
+    Some(text)
+}
+
 /// VFS 完整索引服务
 ///
 /// 扩展 VfsIndexingService，集成嵌入生成和 Lance 向量存储。
@@ -2013,6 +2041,18 @@ impl VfsFullIndexingService {
                     )
                     .optional()?
                     .unwrap_or((None, None, None, None, None));
+
+                // 旧版导入的多页 PDF 文字没有页分隔符，只能整篇一个单元：从原文件按页重提一次并回写，
+                // 之后即可逐页建索引（引用精确到页、多模态按页向量化）。每个文件只会发生一次。
+                let extracted_text = match (&extracted_text, &blob_hash, page_count) {
+                    (Some(text), Some(hash), Some(pages))
+                        if pages > 1 && !text.contains(crate::pdfium_utils::PDF_PAGE_SEPARATOR) =>
+                    {
+                        reextract_pdf_page_text(&conn, self.db.blobs_dir(), resource_id, hash)
+                            .or_else(|| extracted_text.clone())
+                    }
+                    _ => extracted_text,
+                };
 
                 let ocr_text: Option<String> = conn
                     .query_row(
@@ -2321,12 +2361,40 @@ impl VfsFullIndexingService {
             return Ok((0, 0));
         }
 
-        let content = content.unwrap();
+        let mut content = content.unwrap();
+
+        // 资源已按页拆成多个文本 Unit（PDF 逐页构建）时，主流程只索引第 0 页自己的文字，
+        // 其余页由 index_additional_pending_text_units 逐页索引。否则全文会整体挂在第 0 页上，
+        // 第 1 页的分块等于全书，任何问题都先命中第 1 页、引用页码也错。
+        let per_page_units = {
+            let conn = self.db.get_conn_safe()?;
+            let units = index_unit_repo::get_by_resource(&conn, resource_id)?;
+            let text_units = units
+                .iter()
+                .filter(|u| u.text_content.as_deref().is_some_and(|t| !t.trim().is_empty()))
+                .count();
+            if units.len() > 1 && text_units > 0 {
+                Some(
+                    units
+                        .iter()
+                        .find(|u| u.unit_index == 0)
+                        .and_then(|u| u.text_content.clone())
+                        .unwrap_or_default(),
+                )
+            } else {
+                None
+            }
+        };
+        if let Some(first_page_text) = per_page_units.as_ref() {
+            content = first_page_text.clone();
+        }
 
         // 4. 分块
         // ★ 2026-01 优化：优先尝试按页分块以保留 page_index 信息
         // 使用 resolve_indexable_pages 从数据库获取按页信息（支持 textbooks.ocr_pages_json 等）
-        let pages = {
+        let pages = if per_page_units.is_some() {
+            None
+        } else {
             let conn = self.db.get_conn_safe()?;
             resolve_indexable_pages(&conn, &resource)
         };
