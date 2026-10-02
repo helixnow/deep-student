@@ -40,8 +40,9 @@ const PDF_SHORT_REF_PATTERN = /\[(pdf)\s*第(\d+)页\]/gi;
  * - [思维导图:mm_xxx] 当前导图
  * - [思维导图:mv_xxx] 历史版本
  * - [思维导图:mm_xxx:标题] / [思维导图:mv_xxx:标题]
+ * - [思维导图:mm_xxx#节点文字:标题]（节点定位提示，`#` 紧贴 ID；与 mindmapCitationParser 同步）
  */
-const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap):((?:mm_|mv_)[a-zA-Z0-9_-]+)(?::([^\]]+))?\]/gi;
+const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap):((?:mm_|mv_)[a-zA-Z0-9_-]+)(?:#([^:\]\n]+))?(?::([^\]]+))?\]/gi;
 
 /**
  * 题目集引用正则表达式（全局匹配）
@@ -140,12 +141,13 @@ export function makeCitationRemarkPlugin() {
           MINDMAP_CITATION_PATTERN.lastIndex = 0;
           while ((match = MINDMAP_CITATION_PATTERN.exec(value)) !== null) {
             const mindmapId = match[2];
-            const title = match[3]?.trim();
+            const nodeHint = match[3]?.trim() || undefined;
+            const title = match[4]?.trim();
             matches.push({
               type: 'mindmap',
               index: match.index,
               length: match[0].length,
-              data: { mindmapId, title, isVersion: mindmapId.startsWith('mv_') },
+              data: { mindmapId, title, nodeHint, isVersion: mindmapId.startsWith('mv_') },
             });
           }
 
@@ -232,12 +234,14 @@ export function makeCitationRemarkPlugin() {
               });
             } else if (m.type === 'mindmap') {
               // 思维导图引用节点
-              const { mindmapId, title, isVersion } = m.data;
+              const { mindmapId, title, nodeHint, isVersion } = m.data;
               const titleAttr = title ? ` data-mindmap-title="${encodeURIComponent(title)}"` : '';
+              // 无提示时不输出该属性：旧引用的 HTML 与之前逐字节一致
+              const nodeAttr = nodeHint ? ` data-mindmap-node="${encodeURIComponent(nodeHint)}"` : '';
               const idAttrName = isVersion ? 'data-mindmap-version-id' : 'data-mindmap-id';
               parts.push({
                 type: 'html',
-                value: `<span data-mindmap-citation="true" ${idAttrName}="${mindmapId}"${titleAttr} class="mindmap-citation-placeholder">[思维导图]</span>`,
+                value: `<span data-mindmap-citation="true" ${idAttrName}="${mindmapId}"${titleAttr}${nodeAttr} class="mindmap-citation-placeholder">[思维导图]</span>`,
               });
             } else if (m.type === 'qbank') {
               // 题目集引用节点

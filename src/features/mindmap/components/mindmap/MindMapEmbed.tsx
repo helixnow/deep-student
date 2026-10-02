@@ -40,6 +40,7 @@ import { ensureInitialized } from '../../init';
 import { nodeTypes } from './nodes';
 import { edgeTypes } from './edges';
 import type { MindMapDocument, VfsMindMap } from '../../types';
+import { expandAncestorsInTree, resolveMindmapNodeTarget } from '../../utils/nodeTarget';
 
 // ============================================================================
 // 类型定义
@@ -61,6 +62,11 @@ export interface MindMapEmbedProps {
   showOpenButton?: boolean;
   /** 外部传入的显示标题（加载期间 fallback 显示） */
   displayTitle?: string;
+  /**
+   * 节点定位提示（引用 `[思维导图:mm_xxx#节点:标题]` 的 `#` 段：节点 ID 或文字）。
+   * 命中时预览展开其祖先、选中高亮并居中该节点；未命中则按原样整图预览。
+   */
+  focusNodeHint?: string;
 }
 
 interface LoadState {
@@ -107,17 +113,22 @@ function countNodes(node: MindMapDocument['root']): number {
 interface MindMapEmbedInnerProps {
   document: MindMapDocument;
   metadata: VfsMindMap | null;
+  /** 引用定位到的节点（已在 document 中展开祖先） */
+  targetNodeId?: string | null;
 }
+
+/** 预览居中目标节点时的最小缩放（整图 fit 很小时仍看得清目标） */
+const EMBED_TARGET_MIN_ZOOM = 0.75;
 
 // ★ 2026-07-08（审计 27-P1-2）：提为模块级常量。
 // 原先是组件体内每次渲染新建的 {} 字面量，又被列入布局 useMemo 的依赖数组，
 // 导致 memo 实质失效——每次父组件重渲染（聊天流式输出期间高频发生）都会全量重跑布局引擎。
 const EMBED_MEASURED_NODE_HEIGHTS: Record<string, number> = Object.freeze({});
 
-const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
+const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetNodeId }) => {
   ensureInitialized();
   const { t } = useTranslation('mindmap');
-  const { fitView, zoomIn, zoomOut } = useReactFlow();
+  const { fitView, zoomIn, zoomOut, setCenter, getZoom } = useReactFlow();
   const hasFitView = useRef(false);
   // 触屏（粗指针）设备：嵌入卡片放行单指滑动给聊天滚动；响应运行时输入设备变化
   const isCoarsePointer = useCoarsePointer();
@@ -230,10 +241,12 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
     // ★ 2026-02 修复：标记所有节点为 embed 模式，禁止节点组件写入全局 store 的 measuredNodeHeights
     layoutResult.nodes.forEach(node => {
       node.data = { ...node.data, isEmbed: true };
+      // 引用定位目标：沿用节点的选中态外观作为静态高亮
+      if (targetNodeId && node.id === targetNodeId) node.selected = true;
     });
 
     return layoutResult;
-  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, styleId]);
+  }, [document, layoutEngine, layoutDirection, measuredNodeHeights, styleId, targetNodeId]);
 
   // 初始化时及布局切换后自适应视图
   useEffect(() => {
@@ -243,10 +256,21 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
       // 延迟执行 fitView，确保 ReactFlow 已完成初始化
       const timer = setTimeout(() => {
         fitView({ padding: 0.15, duration: 0 });
+        // 有定位目标：整图 fit 后再居中到目标节点（右下「适应」按钮可回到全图）
+        const target = targetNodeId ? nodes.find(n => n.id === targetNodeId) : undefined;
+        if (target) {
+          const width = target.measured?.width || target.width || 100;
+          const height = target.measured?.height || target.height || 36;
+          setCenter(target.position.x + width / 2, target.position.y + height / 2, {
+            zoom: Math.max(getZoom(), EMBED_TARGET_MIN_ZOOM),
+            duration: 0,
+          });
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
-  }, [nodes.length, fitView, isBothLayout]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首次/布局切换时 fit；nodes 引用变化不重跑
+  }, [nodes.length, fitView, isBothLayout, targetNodeId, setCenter, getZoom]);
 
   return (
     <div className="w-full h-full relative">
@@ -335,6 +359,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
   openLabel,
   showOpenButton = true,
   displayTitle,
+  focusNodeHint,
 }) => {
   const { t } = useTranslation('mindmap');
   const [state, setState] = useState<LoadState>({
@@ -472,6 +497,19 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
     };
   }, [displayTitle, t, targetId, reloadNonce]);
 
+  // 引用定位：解析目标节点，并在只读副本中展开其祖先（不影响导图本身的折叠状态）
+  const { targetNodeId, previewDocument } = useMemo(() => {
+    const doc = state.document;
+    if (!doc?.root || !focusNodeHint) return { targetNodeId: null, previewDocument: doc };
+    const target = resolveMindmapNodeTarget(doc.root, { text: focusNodeHint });
+    if (!target) return { targetNodeId: null, previewDocument: doc };
+    const root = expandAncestorsInTree(doc.root, target.nodeId);
+    return {
+      targetNodeId: target.nodeId,
+      previewDocument: root === doc.root ? doc : { ...doc, root },
+    };
+  }, [state.document, focusNodeHint]);
+
   // 打开思维导图
   const handleOpen = useCallback(() => {
     // ★ 2026-02-13 修复：版本引用时跳转到父导图，而不是跳过
@@ -576,8 +614,9 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
       {/* ReactFlow 容器 */}
       <ReactFlowProvider>
         <MindMapEmbedInner
-          document={state.document!}
+          document={previewDocument!}
           metadata={state.metadata}
+          targetNodeId={targetNodeId}
         />
       </ReactFlowProvider>
 

@@ -39,6 +39,7 @@ import { UiPresence } from '@/components/ui/UiPresence';
 import { CanvasZoomIndicator } from './CanvasZoomIndicator';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
+import { NODE_LOCATE_REQUEST_TTL_MS } from '../../utils/nodeTarget';
 import {
   resolveDropTarget,
   dropOrientationForDirection,
@@ -141,6 +142,9 @@ function getNodeScreenBounds(
   };
 }
 
+/** 引用回链定位时的最小缩放：整图 fit 后很小的缩放下居中仍看不清目标节点 */
+const NODE_LOCATE_MIN_ZOOM = 0.85;
+
 export interface MindMapCanvasHandle {
   getViewport: () => { x: number; y: number; zoom: number };
   setViewport: (viewport: { x: number; y: number; zoom: number }) => void;
@@ -173,6 +177,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const agentUpdatedIds = useMindMapStore(s => s.agentUpdatedIds);
   /** ACR R2-02：driver 演出结束 requestAgentFitView → 一次 fitView（禁每 op） */
   const agentFitViewNonce = useMindMapStore(s => s.agentFitViewNonce);
+  /** 引用回链定位：locateNode 发出的居中请求 */
+  const nodeLocateRequest = useMindMapStore(s => s.nodeLocateRequest);
   const setSelection = useMindMapStore(s => s.setSelection);
   const storeApi = useMindMapStoreApi();
   // 保守框选：左键拖空白仍平移；Shift+拖框选（不改既有平移习惯）
@@ -1073,6 +1079,38 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       prevFocusedNodeId.current = null;
     }
   }, [focusedNodeId, ensureNodeVisible]);
+
+  // 引用回链定位：强制居中目标节点（不同于 ensureNodeVisible 的「仅屏外才居中」）。
+  // 请求可能早于画布挂载/首帧 fitView 发出：等画布就绪后延迟执行，压过首帧 fit；
+  // 过期请求（切视图重挂载）直接丢弃，不重放。
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+  const handledLocateNonceRef = useRef(0);
+  useEffect(() => {
+    const request = nodeLocateRequest;
+    if (!request || request.nonce === handledLocateNonceRef.current) return;
+    if (Date.now() - request.requestedAt > NODE_LOCATE_REQUEST_TTL_MS) {
+      handledLocateNonceRef.current = request.nonce;
+      return;
+    }
+    if (!isCanvasReady || nodes.length === 0) return;
+    hasFitView.current = true;
+    prevFocusedNodeId.current = request.nodeId;
+    const timer = setTimeout(() => {
+      const layoutNode = nodesRef.current.find(n => n.id === request.nodeId);
+      if (!layoutNode) return;
+      handledLocateNonceRef.current = request.nonce;
+      const rendered = getNodes().find(n => n.id === request.nodeId);
+      const width = rendered?.measured?.width || rendered?.width || layoutNode.width || 100;
+      const height = rendered?.measured?.height || rendered?.height || layoutNode.height || 36;
+      const currentZoom = normalizeMindMapViewport({ x: 0, y: 0, zoom: getZoom() })?.zoom ?? 1;
+      setCenter(layoutNode.position.x + width / 2, layoutNode.position.y + height / 2, {
+        zoom: Math.max(currentZoom, NODE_LOCATE_MIN_ZOOM),
+        duration: 300,
+      });
+    }, 280);
+    return () => clearTimeout(timer);
+  }, [nodeLocateRequest, isCanvasReady, nodes.length, getNodes, getZoom, setCenter]);
 
   // ACR R2-02：批量演出结束一次 fitView（DESIGN §4.3 normal 档）
   const prevAgentFitViewNonce = useRef(agentFitViewNonce);

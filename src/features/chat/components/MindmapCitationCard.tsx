@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { TreeStructure } from '@phosphor-icons/react';
 import { MindMapEmbed } from '@/features/mindmap/components/mindmap/MindMapEmbed';
+import { publishMindmapNodeTarget } from '@/features/mindmap/nodeTargetBridge';
 
 // ============================================================================
 // 类型定义
@@ -29,6 +30,8 @@ export interface MindmapCitationCardProps {
   className?: string;
   /** 嵌入式预览高度（默认 280px） */
   embedHeight?: number;
+  /** 节点定位提示（[思维导图:mm_xxx#节点:标题] 的 `#` 段：节点 ID 或文字） */
+  nodeHint?: string;
 }
 
 // ============================================================================
@@ -49,13 +52,16 @@ export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
   displayTitle,
   className,
   embedHeight = 280,
+  nodeHint,
 }) => {
   const { t } = useTranslation('common');
   const handleOpen = useCallback((id: string) => {
+    // 先登记节点定位（导图实例加载完成后展开祖先/居中/高亮），再打开导图
+    if (nodeHint) publishMindmapNodeTarget({ mindmapId: id, text: nodeHint });
     window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
       detail: { id, type: 'mindmap', title: displayTitle },
     }));
-  }, [displayTitle]);
+  }, [displayTitle, nodeHint]);
 
   return (
     <div className={cn('my-3 w-full', className)}>
@@ -69,6 +75,7 @@ export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
         onOpen={handleOpen}
         openLabel={t('actions.open')}
         displayTitle={displayTitle}
+        focusNodeHint={nodeHint}
       />
     </div>
   );
@@ -83,6 +90,8 @@ export interface MindmapCitationBadgeProps {
   mindmapId: string;
   /** 显示标题 */
   title?: string;
+  /** 节点定位提示 */
+  nodeHint?: string;
   /** 点击回调 */
   onClick?: () => void;
   /** 自定义类名 */
@@ -97,6 +106,7 @@ export interface MindmapCitationBadgeProps {
 export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
   mindmapId,
   title,
+  nodeHint,
   onClick,
   className,
 }) => {
@@ -110,7 +120,10 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
       return;
     }
 
-    // 在右侧面板打开预览
+    // 在右侧面板打开预览（带节点提示时登记定位；版本 ID 无法直接打开实例，不定位）
+    if (nodeHint && mindmapId.startsWith('mm_')) {
+      publishMindmapNodeTarget({ mindmapId, text: nodeHint });
+    }
     window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
       detail: {
         id: mindmapId,
@@ -118,7 +131,7 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
         title: title || t('mindmapCitation.mindmap'),
       },
     }));
-  }, [mindmapId, title, onClick, t]);
+  }, [mindmapId, title, nodeHint, onClick, t]);
 
   return (
     <DsButton

@@ -947,7 +947,7 @@ export const myCustomSkill: SkillDefinition = {
 
 | 引用类型 | 格式 | 正则常量 | 渲染组件 | 跳转事件 | 主题色 |
 |---------|------|---------|---------|---------|--------|
-| 思维导图 | `[思维导图:mm_xxx:标题]` / `[思维导图:mv_xxx:标题]` | `MINDMAP_CITATION_PATTERN` | `MindmapCitationCard` | `NAVIGATE_TO_VIEW`（仅 mm_，mv_ 仅预览） | 紫色 (violet) |
+| 思维导图 | `[思维导图:mm_xxx:标题]` / `[思维导图:mv_xxx:标题]`；可选节点提示 `[思维导图:mm_xxx#节点文字或ID:标题]`（`#` 紧贴 ID，→ `data-mindmap-node`，预览高亮 + 打开后经 `nodeTargetBridge` 展开/居中/flash） | `MINDMAP_CITATION_PATTERN` | `MindmapCitationCard` | `NAVIGATE_TO_VIEW`（仅 mm_，mv_ 仅预览） | 紫色 (violet) |
 | 题目集 | `[题目集:session_id:名称]` | `QBANK_CITATION_PATTERN` | `QbankCitationBadge` | `navigateToExamSheet` | 翡翠绿 (emerald) |
 | 普通引用 | `[知识库-1]` | `CITATION_PATTERN` | `CitationBadge` | `citationEvents` | 主题色 |
 | PDF 页面 | `[PDF@id:3]` | `PDF_REF_PATTERN` | 内联链接 | `pdf-ref:open` | 蓝色 |

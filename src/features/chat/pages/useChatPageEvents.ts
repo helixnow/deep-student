@@ -255,7 +255,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
    * retrieval 快照资源的 data 是 serializeSelectionRefData 产出的 JSON 字符串，
    * 解析出 source（kind/sourceId/locator/title）后按来源类型路由：
    * - pdf：打开对应面板/资源窗 + pdf-ref:focus 三连发跳页（复用 pdf-ref:open 链路）
-   * - mindmap / note：右侧附件面板打开（导图节点级聚焦暂无事件，MVP 只开到导图）
+   * - mindmap / note：右侧附件面板打开；导图 locator `node:<id>` 经 nodeTargetBridge
+   *   定位到节点（展开祖先/居中/高亮），节点已删除时退化为按选区原文匹配
    * - message：当前会话内 scrollToMessage 定位
    */
   const handleSelectionRefPreview = useCallback(async (rawData: unknown) => {
@@ -328,6 +329,15 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     }
 
     // mindmap / note：右侧附件面板打开
+    if (source.kind === 'mindmap') {
+      const nodeMatch = /^node:(.+)$/s.exec(source.locator ?? '');
+      const quote = typeof parsed?.text === 'string' ? parsed.text : undefined;
+      if (nodeMatch || quote?.trim()) {
+        const mindmapId = source.sourceId;
+        void import('@/features/mindmap/nodeTargetBridge').then(({ publishMindmapNodeTarget }) =>
+          publishMindmapNodeTarget({ mindmapId, nodeId: nodeMatch?.[1], text: quote }));
+      }
+    }
     window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
       detail: {
         id: source.sourceId,

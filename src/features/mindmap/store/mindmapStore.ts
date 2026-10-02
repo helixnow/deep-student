@@ -335,6 +335,15 @@ export interface MindMapStoreState {
   requestAgentFitView: () => void;
 
   /**
+   * 引用回链定位（瞬态，不进 history/draft/持久化）：聊天引用 / 知识库命中
+   * 打开导图后请求「展开祖先 + 选中 + 居中」某节点。画布/大纲订阅 nonce，
+   * requestedAt 用于过期判断（切视图重挂载不重放陈旧请求）。
+   */
+  nodeLocateRequest: { nodeId: string; nonce: number; requestedAt: number } | null;
+  /** 展开祖先、退出不含该节点的分支专注、选中并聚焦，再发出居中请求；节点不存在返回 false */
+  locateNode: (nodeId: string) => boolean;
+
+  /**
    * ACR R1-11：agent 专用薄封装（skipHistory，不污染用户 undo 栈）。
    * 既有 addNode/deleteNode/moveNode 签名不变。
    */
@@ -1119,6 +1128,7 @@ export function createMindMapStore(): MindMapStoreApi {
       agentExitingIds: new Set<string>(),
       agentUpdatedIds: new Set<string>(),
       agentFitViewNonce: 0,
+      nodeLocateRequest: null,
 
       // 渲染配置初始状态
       layoutId: 'tree',
@@ -1392,6 +1402,7 @@ export function createMindMapStore(): MindMapStoreApi {
           state.agentExitingIds = new Set(); // ACR 4.0 A4 瞬态
           state.agentUpdatedIds = new Set(); // ACR 4.0 A4 瞬态
           state.agentFitViewNonce = 0; // ACR R2-02
+          state.nodeLocateRequest = null;
           state.layoutId = 'tree';
           state.layoutDirection = 'right';
           state.styleId = 'default';
@@ -1622,6 +1633,30 @@ export function createMindMapStore(): MindMapStoreApi {
         set((state) => {
           state.agentFitViewNonce += 1;
         });
+      },
+
+      locateNode: (nodeId: string) => {
+        const before = get();
+        if (!findNodeById(before.document.root, nodeId)) return false;
+        // 分支专注根不包含目标节点时退出专注，否则定位后节点仍不可见
+        if (before.viewRootId && before.viewRootId !== nodeId) {
+          const scopeRoot = findNodeById(before.document.root, before.viewRootId);
+          if (!scopeRoot || !findNodeById(scopeRoot, nodeId)) before.setViewRootId(null);
+        }
+        before.expandToNode(nodeId, { silent: true });
+        set((state) => {
+          state.focusedNodeId = nodeId;
+          state.editingNodeId = null;
+          state.editingNoteNodeId = null;
+          state.selection = [nodeId];
+          state.selectionAnchorId = nodeId;
+          state.nodeLocateRequest = {
+            nodeId,
+            nonce: (state.nodeLocateRequest?.nonce ?? 0) + 1,
+            requestedAt: Date.now(),
+          };
+        });
+        return true;
       },
 
       // ACR R1-11：等价 addNode + applyMutation({ skipHistory: true })

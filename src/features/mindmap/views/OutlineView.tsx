@@ -34,6 +34,7 @@ import {
   resolveGoalEntryOffset,
 } from '../utils/outlineCaret';
 import { collectTopLevelNodeIds, getAncestors } from '../utils/node/traverse';
+import { NODE_LOCATE_REQUEST_TTL_MS } from '../utils/nodeTarget';
 import {
   flattenOutlineTree,
   resolveSearchPathIds,
@@ -133,6 +134,8 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   /** ACR 4.0 A4：delete 退场 / update 内容更新高亮（与画布同步） */
   const agentExitingIds = useMindMapStore(state => state.agentExitingIds);
   const agentUpdatedIds = useMindMapStore(state => state.agentUpdatedIds);
+  /** 引用回链定位：locateNode 发出的请求，大纲侧滚入视口中央 */
+  const nodeLocateRequest = useMindMapStore(state => state.nodeLocateRequest);
 
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [dragGroupIds, setDragGroupIds] = useState<string[]>([]);
@@ -544,6 +547,18 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     });
     return () => cancelAnimationFrame(raf);
   }, [currentSearchResultId]);
+
+  // 引用回链定位：目标行滚到视口中央（窗口化未挂载时按估算行高定位）；过期请求不重放
+  const handledLocateNonceRef = useRef(0);
+  useEffect(() => {
+    const request = nodeLocateRequest;
+    if (!request || request.nonce === handledLocateNonceRef.current) return;
+    handledLocateNonceRef.current = request.nonce;
+    if (Date.now() - request.requestedAt > NODE_LOCATE_REQUEST_TTL_MS) return;
+    // 等展开祖先后的行挂载完成
+    const timer = setTimeout(() => scrollFocusedRowIntoView(), 60);
+    return () => clearTimeout(timer);
+  }, [nodeLocateRequest, scrollFocusedRowIntoView]);
 
   // 背诵复习导航（难点优先）：背诵模式下行内没有输入框聚焦 effect，
   // focusedNodeId 变化时由视图层滚动到目标行（窗口外时按估算定位）

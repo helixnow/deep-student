@@ -82,6 +82,7 @@ const markdownSanitizeSchema = {
       'dataMindmapId',
       'dataMindmapVersionId',
       'dataMindmapTitle',
+      'dataMindmapNode',
       'dataQbankCitation',
       'dataQbankSessionId',
       'dataQbankTitle',
@@ -916,11 +917,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         // ★ 2026-02 修复：读取 LLM 提供的标题信息，在加载期间显示
         const rawTitle = props['data-mindmap-title'] as string | undefined;
         const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
+        // 节点定位提示（[思维导图:mm_xxx#节点:标题]），旧引用无此属性
+        const rawNodeHint = props['data-mindmap-node'] as string | undefined;
+        const nodeHint = rawNodeHint ? decodeURIComponent(rawNodeHint) : undefined;
         return (
           <MindmapCitationCard
             mindmapId={mindmapId}
             versionId={mindmapVersionId}
             displayTitle={displayTitle}
+            nodeHint={nodeHint}
             embedHeight={280}
           />
         );

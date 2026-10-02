@@ -19,6 +19,11 @@ export interface ParsedMindmapCitation {
   mindmapId: string;
   /** 可选的标题（如果 LLM 提供了） */
   title?: string;
+  /**
+   * 可选的节点定位提示（`#` 紧跟 ID 之后）：节点 ID 或节点文字。
+   * 打开导图时据此展开祖先、居中并高亮该节点。
+   */
+  nodeHint?: string;
   /** 在原文中的起始位置 */
   start: number;
   /** 在原文中的结束位置 */
@@ -37,11 +42,16 @@ export interface ParsedMindmapCitation {
  * - [导图:mm_xxx] - 简写格式
  * - [思维导图:mm_xxx:标题] - 带标题格式
  * - [MindMap:mm_xxx] - 英文格式
+ * - [思维导图:mm_xxx#节点文字:标题] / [思维导图:mm_xxx#node_id] - 定位到具体节点
+ *
+ * ★ 2026-10 扩展：节点定位提示。`#` 紧贴 ID（ID 字符集不含 `#`，旧引用不可能命中），
+ *   提示段不含 `:` / `]`；标题段仍是第一个 `:` 之后的全部内容（标题里的 `#` 不受影响，
+ *   如 `[思维导图:mm_x:C# 基础]` 解析结果与旧版完全一致）。
  * 
  * ★ 2026-02-12 扩展：支持 `mv_` 历史版本引用
  * ★ 2026-01-31 修复：ID 支持 `-` 字符（nanoid 生成的 ID 可能包含 `-`）
  */
-const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap):((?:mm_|mv_)[a-zA-Z0-9_-]+)(?::([^\]]+))?\]/gi;
+const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap):((?:mm_|mv_)[a-zA-Z0-9_-]+)(?:#([^:\]\n]+))?(?::([^\]]+))?\]/gi;
 
 /**
  * 思维导图 ID 验证正则
@@ -74,7 +84,8 @@ export function parseMindmapCitations(text: string): ParsedMindmapCitation[] {
 
   while ((match = MINDMAP_CITATION_PATTERN.exec(text)) !== null) {
     const mindmapId = match[2];
-    const title = match[3]; // 可选的标题
+    const nodeHint = match[3]?.trim() || undefined; // 可选的节点定位提示
+    const title = match[4]; // 可选的标题
 
     // 验证 ID 格式
     if (MINDMAP_ID_PATTERN.test(mindmapId)) {
@@ -82,6 +93,7 @@ export function parseMindmapCitations(text: string): ParsedMindmapCitation[] {
         fullMatch: match[0],
         mindmapId,
         title: title?.trim(),
+        ...(nodeHint ? { nodeHint } : {}),
         start: match.index,
         end: match.index + match[0].length,
       });
@@ -124,11 +136,17 @@ export function isValidMindmapId(id: string): boolean {
  * @param title - 可选的标题
  * @returns 引用文本
  */
-export function generateMindmapCitation(mindmapId: string, title?: string): string {
+export function generateMindmapCitation(mindmapId: string, title?: string, nodeHint?: string): string {
+  // 提示段不允许 `:` / `]` / 换行（会截断语法），替换为全角/空格
+  const hint = nodeHint
+    ?.replace(/:/g, '：')
+    .replace(/[\]\n]/g, ' ')
+    .trim();
+  const idPart = hint ? `${mindmapId}#${hint}` : mindmapId;
   if (title) {
-    return `[思维导图:${mindmapId}:${title}]`;
+    return `[思维导图:${idPart}:${title}]`;
   }
-  return `[思维导图:${mindmapId}]`;
+  return `[思维导图:${idPart}]`;
 }
 
 /**

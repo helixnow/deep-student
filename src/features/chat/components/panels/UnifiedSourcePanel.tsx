@@ -27,6 +27,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { TextShimmer } from '../ui/TextShimmer';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
+import { publishMindmapNodeTarget } from '@/features/mindmap/nodeTargetBridge';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { MultimodalSourceCard, resolveMultimodalImageSrc } from './MultimodalSourceCard';
 import {
@@ -642,6 +643,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
     if (pdfLikeId && typeof item.pageIndex === 'number' && item.pageIndex >= 0) {
       document.dispatchEvent(new CustomEvent('pdf-ref:open', {
         detail: { sourceId: pdfLikeId, pageNumber: item.pageIndex + 1, quote: item.snippet || undefined },
+      }));
+      return;
+    }
+    // 导图来源：留在聊天页，右侧打开导图，并按命中片段（缩进大纲）定位到对应节点
+    const mindmapId = locator.sourceId?.startsWith('mm_') ? locator.sourceId : null;
+    if (mindmapId) {
+      const chunkText = item.raw?.chunk_text || item.snippet || '';
+      if (chunkText) publishMindmapNodeTarget({ mindmapId, chunkText });
+      window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+        detail: { id: mindmapId, type: 'mindmap', title: locator.title || item.title || mindmapId },
       }));
       return;
     }

@@ -34,4 +34,23 @@ describe('citationRemarkPlugin mindmap citations', () => {
     expect(htmlNode?.value).toContain('data-mindmap-version-id="mv_old123"');
     expect(htmlNode?.value).not.toContain('data-mindmap-id=');
   });
+
+  it('renders old citations exactly as before (no node attribute)', () => {
+    const children = runPlugin('[思维导图:mm_abc123:C# 基础]');
+    const htmlNode = children.find((node: any) => node.type === 'html');
+
+    expect(htmlNode?.value).toBe(
+      `<span data-mindmap-citation="true" data-mindmap-id="mm_abc123" data-mindmap-title="${encodeURIComponent('C# 基础')}" class="mindmap-citation-placeholder">[思维导图]</span>`,
+    );
+  });
+
+  it('emits data-mindmap-node for #node hints', () => {
+    const children = runPlugin('定位 [思维导图:mm_abc123#梯度同步:第 3 章] 末尾');
+    const htmlNode = children.find((node: any) => node.type === 'html');
+
+    expect(htmlNode?.value).toContain('data-mindmap-id="mm_abc123"');
+    expect(htmlNode?.value).toContain(`data-mindmap-title="${encodeURIComponent('第 3 章')}"`);
+    expect(htmlNode?.value).toContain(`data-mindmap-node="${encodeURIComponent('梯度同步')}"`);
+    expect(children[children.length - 1]).toMatchObject({ type: 'text', value: ' 末尾' });
+  });
 });
