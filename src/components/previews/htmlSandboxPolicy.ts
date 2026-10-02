@@ -65,15 +65,24 @@ export function sanitizeCssForPreview(css: string, _mode: HtmlSandboxMode): stri
 export function sanitizeHtmlForPreview(html: string, mode: HtmlSandboxMode): string {
   if (!html) return '';
   const isFullDoc = /^\s*(<!doctype|<html[\s>])/i.test(html.trim());
-  const forbidTags =
-    mode === 'chat-safe'
-      ? ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link']
-      : ['script', 'iframe', 'embed', 'object', 'form', 'base'];
+  if (mode === 'template-safe') {
+    // 卡片模板与 Anki 一致：保留模板脚本、onclick 与 data-* 属性（选择题标出正确项、
+    // 填空点击揭示、翻面交互都依赖它们）。隔离边界是 iframe 本身：sandbox 仅
+    // allow-scripts（无同源，不能访问宿主）+ CSP connect-src 'none'（不能联网）。
+    return DOMPurify.sanitize(html, {
+      WHOLE_DOCUMENT: isFullDoc,
+      ADD_TAGS: ['style', 'meta', 'script'],
+      ADD_ATTR: ['onclick'],
+      FORBID_TAGS: ['iframe', 'embed', 'object', 'form', 'base'],
+      FORBID_ATTR: ['onerror', 'onload', 'onmouseover', 'onfocus', 'onblur'],
+      ALLOW_DATA_ATTR: true,
+    });
+  }
 
   return DOMPurify.sanitize(html, {
     WHOLE_DOCUMENT: isFullDoc,
     ADD_TAGS: ['style', 'meta'],
-    FORBID_TAGS: forbidTags,
+    FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'base', 'link'],
     FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
     ALLOW_DATA_ATTR: false,
   });
