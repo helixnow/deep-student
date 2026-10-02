@@ -7167,7 +7167,7 @@ impl ChatAnkiToolExecutor {
         let message_id_for_persist = message_id.clone();
         let anki_db_for_persist = anki_db.clone();
         let session_id_for_persist = session_id.clone();
-        let doc_name_for_persist = derive_document_name_from_goal(&goal);
+        let doc_name_for_persist = derive_document_name(Some(&deck_name), &goal);
 
         let pre_doc_id_for_spawn = pre_allocated_document_id.clone();
         tokio::spawn(async move {
@@ -7272,6 +7272,14 @@ struct BackgroundParams {
     initial_warnings: Vec<Value>,
     /// 取消令牌：kill switch / 聊天取消触发时走非破坏性取消（保留已生成卡片）
     cancel_token: CancellationToken,
+}
+
+/// 任务台/卡片库里显示的文档名：显式牌组名（如「有机化学::烯烃加成」）比整段学习目标更好认。
+fn derive_document_name(deck_name: Option<&str>, goal: &str) -> String {
+    match deck_name.map(str::trim) {
+        Some(deck) if !deck.is_empty() && !deck.eq_ignore_ascii_case("default") => deck.to_string(),
+        _ => derive_document_name_from_goal(goal),
+    }
 }
 
 fn derive_document_name_from_goal(goal: &str) -> String {
@@ -7382,7 +7390,7 @@ fn ensure_cancelled_document_session(
 /// 管线在生成开始前（内容解析阶段/启动前）被取消时的统一收尾：
 /// 占位 Cancelled 任务 + 块落终态 + UI 事件，已生成内容不受影响。
 fn finish_pipeline_cancelled_before_generation(params: &BackgroundParams) {
-    let document_name = derive_document_name_from_goal(&params.goal);
+    let document_name = derive_document_name(Some(&params.deck_name), &params.goal);
     if let Err(e) = ensure_cancelled_document_session(
         &params.anki_db,
         &params.pre_allocated_document_id,
@@ -7466,7 +7474,7 @@ fn decide_pipeline_timeout(
 }
 
 async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<(), String> {
-    let document_name_for_errors = derive_document_name_from_goal(&params.goal);
+    let document_name_for_errors = derive_document_name(Some(&params.deck_name), &params.goal);
     // 0) 取消语义贯通：管线尚未做任何事时就已被取消（kill switch / 聊天取消）。
     if params.cancel_token.is_cancelled() {
         log::warn!(
@@ -8300,7 +8308,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
     }
     let enhanced = EnhancedAnkiService::new(params.anki_db.clone(), params.llm_manager.clone());
     // 使用 goal 作为文档名称，而不是硬编码 "chatanki"
-    let doc_name = derive_document_name_from_goal(&params.goal);
+    let doc_name = derive_document_name(Some(&params.deck_name), &params.goal);
     let request = AnkiDocumentGenerationRequest {
         document_content: content_text,
         original_document_name: Some(doc_name),

@@ -412,6 +412,16 @@ fn is_placeholder_card(json_value: &Value) -> bool {
         })
 }
 
+/// 牌组名 → 兜底标签。`Default`/空牌组不产生标签；Anki 标签不允许空白，空白替换为 `_`
+/// （`学科::主题` 的层级写法与 Anki 标签层级一致，原样保留）。
+fn deck_tag(deck_name: &str) -> Option<String> {
+    let deck = deck_name.trim();
+    if deck.is_empty() || deck.eq_ignore_ascii_case("default") {
+        return None;
+    }
+    Some(deck.split_whitespace().collect::<Vec<_>>().join("_"))
+}
+
 /// 错误卡 `error_content` 中原始输出的保留上限（字符）。修复任务需要原始片段才能修，
 /// 只存报错信息时模型无料可修、会为报错文本本身制卡。
 const ERROR_CARD_RAW_PREVIEW_CHARS: usize = 2000;
@@ -2156,6 +2166,12 @@ impl StreamingAnkiService {
             .map(|tag| self.clean_template_placeholders(tag))
             .filter(|tag| !tag.is_empty())
             .collect();
+        // 模型没打标签时用牌组名兜底：卡片库按标签检索，多科目卡片才不会混成一堆
+        if cleaned_tags.is_empty() {
+            if let Some(tag) = deck_tag(&options.deck_name) {
+                cleaned_tags.push(tag);
+            }
+        }
         let mut cleaned_extra_fields: std::collections::HashMap<String, String> = extra_fields
             .iter()
             .map(|(k, v)| (k.clone(), self.clean_template_placeholders(v)))
@@ -3785,6 +3801,14 @@ mod tests {
             "缺少 template_id",
             "{\"Question\": \"什么是拉格朗日中值定理\"}"
         )));
+    }
+
+    #[test]
+    fn deck_tag_skips_default_and_normalizes_whitespace() {
+        assert_eq!(deck_tag("Default"), None);
+        assert_eq!(deck_tag("  "), None);
+        assert_eq!(deck_tag("有机化学::烯烃加成"), Some("有机化学::烯烃加成".to_string()));
+        assert_eq!(deck_tag("Organic Chem::Alkenes"), Some("Organic_Chem::Alkenes".to_string()));
     }
 
     #[test]

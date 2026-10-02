@@ -230,7 +230,7 @@ export const chatAnkiSkill: SkillDefinition = {
           },
           deckName: {
             type: 'string',
-            description: '可选：导出/同步默认牌组名称（不传则使用 Default 或用户设置）',
+            description: '强烈建议填写：按「学科::主题」命名（如「有机化学::烯烃的加成反应」「考研英语::Unit07 词汇」）。用作任务名、导出/同步牌组，并作为未打标签卡片的标签，卡片库据此按科目检索；不填则落入 Default、与其他科目混在一起',
           },
           noteType: {
             type: 'string',
@@ -330,7 +330,7 @@ export const chatAnkiSkill: SkillDefinition = {
         properties: {
           goal: { type: 'string', description: '学习目标（会影响拆卡粒度/卡片风格）' },
           content: { type: 'string', description: '必需：要制卡的文本/Markdown' },
-          deckName: { type: 'string', description: '可选：默认牌组名称' },
+          deckName: { type: 'string', description: '强烈建议填写：按「学科::主题」命名（如「有机化学::烯烃的加成反应」），用作任务名、牌组与未打标签卡片的标签' },
           noteType: { type: 'string', description: '可选：默认笔记类型' },
           templateId: {
             type: 'string',
