@@ -16,6 +16,7 @@ import {
   CaretRight,
 } from '@phosphor-icons/react';
 import { GradingStreamRenderer } from '../../essay-grading/GradingStreamRenderer';
+import { inferGradingPhase } from '../../essay-grading/gradingPhase';
 import type { SuggestionChange } from '../../essay-grading/suggestionAnchors';
 import { cn } from '@/lib/utils';
 
@@ -53,17 +54,8 @@ interface ResultPanelProps {
     onNext: () => void;
     onSelect?: (index: number) => void;
   };
-}
-
-type GradingPhase = 'preparing' | 'annotating' | 'scoring' | 'polishing' | 'model_essay';
-
-/** 根据已生成内容推断当前批改阶段（批注 → 评分 → 润色 → 范文） */
-function inferGradingPhase(content: string): GradingPhase {
-  if (!content) return 'preparing';
-  if (/<section-model-essay/i.test(content)) return 'model_essay';
-  if (/<section-polish/i.test(content)) return 'polishing';
-  if (/<score\b/i.test(content)) return 'scoring';
-  return 'annotating';
+  /** 原文收起时轮次切换只能在结果区进行：各断点都显示前后翻页 */
+  navigateRoundsInHeader?: boolean;
 }
 
 /** 错误/部分结果统一使用的细边框语义色条 */
@@ -126,6 +118,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   onSaveMistakes,
   isSavingMistakes,
   roundNavigation,
+  navigateRoundsInHeader = false,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
@@ -148,6 +141,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   );
 
   const showEmptyState = !gradingResult && !isGrading && !error;
+  // 有结果后标题行并入分段 Tab 行，省出一整行给正文
+  const headerInTabs = Boolean(gradingResult);
   // 无批改结果 / 批改进行中都没有可提炼的错点，按钮 disabled 并说明原因
   const generateCardsDisabledReason = isGrading
     ? t('essay_grading:make_cards.disabled_grading')
@@ -155,127 +150,159 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
       ? t('essay_grading:make_cards.disabled_no_result')
       : null;
 
-  return (
-    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200 group/target">
-      {/* Toolbar - 简洁风格 */}
-      <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/30 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
-        <div className="flex items-center gap-3 min-w-0">
-          {/* 标题 - 简洁风格简洁 */}
-          <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
-            <Pen size={14} />
-            <span>{t('essay_grading:result_section.title')}</span>
-          </div>
-          
-          {currentRound > 0 && (
-            <div className="flex items-center gap-0.5 shrink-0">
-              {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
-                  <CaretLeft size={12} />
-                </DsButton>
-              )}
-              <span className="text-xs text-muted-foreground/60 tabular-nums">
-                {roundNavigation && roundNavigation.total > 1 ? (
-                  <>
-                    <span className="md:hidden">{t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })}</span>
-                    <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
-                  </>
-                ) : (
-                  t('essay_grading:round.label', { number: currentRound })
-                )}
-              </span>
-              {roundNavigation && roundNavigation.total > 1 && (
-                <DsButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="md:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11">
-                  <CaretRight size={12} />
-                </DsButton>
-              )}
-            </div>
-          )}
-          
-          {/* 流式进度反馈：spinner + 阶段感文案 + 已生成字数 */}
-          {isGrading && gradingPhase && (
-            <div className="flex items-center gap-1.5 text-xs text-primary/70 min-w-0 truncate">
-              <CircleNotch size={12} className="animate-spin motion-reduce:animate-none shrink-0" />
-              <span className="truncate">{t(`essay_grading:progress.phase_${gradingPhase}`)}</span>
-              {charCount > 0 && (
-                <span className="text-muted-foreground/50 tabular-nums whitespace-nowrap">
-                  · {t('essay_grading:progress.chars_generated', { count: charCount })}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 操作按钮 - 常显弱化，避免 hover 才可发现 */}
-        <div className="flex items-center gap-1">
-          {gradingResult && (
+  const hasRoundPages = Boolean(roundNavigation && roundNavigation.total > 1);
+  const roundButtonClass = cn(
+    !navigateRoundsInHeader && 'md:hidden',
+    '!h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+  );
+  const roundFraction = roundNavigation
+    ? t('essay_grading:round.label_fraction', { current: currentRound, total: roundNavigation.total })
+    : '';
+  const roundMeta = currentRound > 0 ? (
+    <div className="flex items-center gap-0.5 shrink-0">
+      {hasRoundPages && roundNavigation && (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={roundNavigation.onPrev}
+          disabled={roundNavigation.currentIndex <= 0}
+          aria-label={t('common:aria.previous_round')}
+          className={roundButtonClass}
+        >
+          <CaretLeft size={12} />
+        </DsButton>
+      )}
+      <span className="text-xs text-muted-foreground/60 tabular-nums">
+        {hasRoundPages ? (
+          navigateRoundsInHeader ? roundFraction : (
             <>
-              <CommonTooltip content={copied ? t('essay_grading:result_section.copied_feedback') : t('essay_grading:result_section.copy')}>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={handleCopy}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                  aria-label={t('essay_grading:result_section.copy')}
-                >
-                  {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
-                </DsButton>
-              </CommonTooltip>
-              {onSaveAsNote && !isGrading && (
-                <CommonTooltip content={t('essay_grading:result_section.save_as_note')}>
-                  <DsButton
-                    variant="ghost"
-                    size="icon"
-                    iconOnly
-                    onClick={onSaveAsNote}
-                    className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                    aria-label={t('essay_grading:result_section.save_as_note')}
-                  >
-                    <Notebook size={14} />
-                  </DsButton>
-                </CommonTooltip>
-              )}
-              <CommonTooltip content={t('essay_grading:result_section.export')}>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={onExportResult}
-                  className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-                  aria-label={t('essay_grading:result_section.export')}
-                >
-                  <Download size={14} />
-                </DsButton>
-              </CommonTooltip>
+              <span className="md:hidden">{roundFraction}</span>
+              <span className="hidden md:inline">{t('essay_grading:round.label', { number: currentRound })}</span>
             </>
+          )
+        ) : (
+          t('essay_grading:round.label', { number: currentRound })
+        )}
+      </span>
+      {hasRoundPages && roundNavigation && (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={roundNavigation.onNext}
+          disabled={roundNavigation.currentIndex >= roundNavigation.total - 1}
+          aria-label={t('common:aria.next_round')}
+          className={roundButtonClass}
+        >
+          <CaretRight size={12} />
+        </DsButton>
+      )}
+    </div>
+  ) : null;
+
+  // 流式进度反馈：spinner + 阶段感文案 + 已生成字数
+  const progressMeta = isGrading && gradingPhase ? (
+    <div className="flex items-center gap-1.5 text-xs text-primary/70 min-w-0 truncate">
+      <CircleNotch size={12} className="animate-spin motion-reduce:animate-none shrink-0" />
+      <span className="truncate">{t(`essay_grading:progress.phase_${gradingPhase}`)}</span>
+      {charCount > 0 && (
+        <span className="text-muted-foreground/50 tabular-nums whitespace-nowrap">
+          · {t('essay_grading:progress.chars_generated', { count: charCount })}
+        </span>
+      )}
+    </div>
+  ) : null;
+
+  // 操作按钮 - 常显弱化，避免 hover 才可发现
+  const resultActions = gradingResult ? (
+    <div className="flex items-center gap-1">
+      <CommonTooltip content={copied ? t('essay_grading:result_section.copied_feedback') : t('essay_grading:result_section.copy')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={handleCopy}
+          className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          aria-label={t('essay_grading:result_section.copy')}
+        >
+          {copied ? <Check size={14} className="text-success" /> : <Copy size={14} />}
+        </DsButton>
+      </CommonTooltip>
+      {onSaveAsNote && !isGrading && (
+        <CommonTooltip content={t('essay_grading:result_section.save_as_note')}>
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            onClick={onSaveAsNote}
+            className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+            aria-label={t('essay_grading:result_section.save_as_note')}
+          >
+            <Notebook size={14} />
+          </DsButton>
+        </CommonTooltip>
+      )}
+      <CommonTooltip content={t('essay_grading:result_section.export')}>
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={onExportResult}
+          className="!h-7 !w-7 text-muted-foreground/50 transition-colors duration-150 hover:bg-[var(--interactive-hover)] hover:text-foreground motion-reduce:transition-none [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+          aria-label={t('essay_grading:result_section.export')}
+        >
+          <Download size={14} />
+        </DsButton>
+      </CommonTooltip>
+    </div>
+  ) : null;
+
+  const banners = (
+    <>
+      {isPartialResult && gradingResult && !isGrading && !error && (
+        <StatusBanner
+          tone="warning"
+          title={t('essay_grading:partial_result.label')}
+          description={t('essay_grading:partial_result.hint')}
+        />
+      )}
+      {/* 错误提示 - 细边框语义色条 */}
+      {error && !isGrading && (
+        <StatusBanner
+          tone="error"
+          title={t('essay_grading:errors.grading_failed')}
+          description={error}
+        >
+          {canRetry && onRetry && (
+            <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
+              <ArrowClockwise size={12} />
+              {t('essay_grading:actions.retry')}
+            </DsButton>
           )}
+        </StatusBanner>
+      )}
+    </>
+  );
+
+  return (
+    <div className="flex flex-col h-full min-h-0 flex-1 basis-1/2 min-w-0 overflow-hidden transition-all duration-200">
+      {!headerInTabs && (
+        <div className="flex h-[41px] shrink-0 items-center justify-between border-b border-border/30 px-3 [@media(pointer:coarse)]:h-11 sm:px-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 text-sm text-foreground/70 shrink-0">
+              <Pen size={14} />
+              <span>{t('essay_grading:result_section.title')}</span>
+            </div>
+            {roundMeta}
+            {progressMeta}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Content */}
       <div className="flex-1 min-h-0 flex flex-col relative" ref={ref}>
-        {isPartialResult && gradingResult && !isGrading && !error && (
-          <StatusBanner
-            tone="warning"
-            title={t('essay_grading:partial_result.label')}
-            description={t('essay_grading:partial_result.hint')}
-          />
-        )}
-        {/* 错误提示 - 细边框语义色条 */}
-        {error && !isGrading && (
-          <StatusBanner
-            tone="error"
-            title={t('essay_grading:errors.grading_failed')}
-            description={error}
-          >
-            {canRetry && onRetry && (
-              <DsButton variant="default" size="sm" onClick={onRetry} className="mt-2.5 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11">
-                <ArrowClockwise size={12} />
-                {t('essay_grading:actions.retry')}
-              </DsButton>
-            )}
-          </StatusBanner>
-        )}
+        {!headerInTabs && banners}
 
         {showEmptyState ? (
           /* 空状态 - 未开始批改时的居中引导 */
@@ -304,16 +331,15 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               onApplySuggestion={onApplySuggestion}
               onUndoSuggestion={onUndoSuggestion}
               appliedSuggestionKeys={appliedSuggestionKeys}
+              toolbarAccessory={headerInTabs ? (
+                <>
+                  {progressMeta}
+                  {roundMeta}
+                  {resultActions}
+                </>
+              ) : undefined}
+              banner={headerInTabs ? banners : undefined}
             />
-          </div>
-        )}
-
-        {/* Floating Status Bar - 简洁风格（流式中字数已在顶栏显示，避免重复） */}
-        {gradingResult && !isGrading && (
-          <div className="absolute bottom-3 right-4 flex items-center pointer-events-none opacity-0 group-hover/target:opacity-100 [@media(pointer:coarse)]:opacity-100 transition-opacity duration-200 motion-reduce:transition-none">
-            <span className="text-xs text-muted-foreground/50 tabular-nums">
-              {charCount} {t('essay_grading:stats.characters')}
-            </span>
           </div>
         )}
       </div>

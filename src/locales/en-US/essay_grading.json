@@ -9,6 +9,18 @@
     "placeholder": "Enter or paste the essay to be graded...",
     "drag_hint": "Drag and drop images for OCR recognition"
   },
+  "input_summary": {
+    "word_count": "{{count}} words",
+    "word_count_one": "{{count}} word",
+    "word_count_other": "{{count}} words",
+    "han_count": "{{count}} characters",
+    "han_count_one": "{{count}} character",
+    "han_count_other": "{{count}} characters",
+    "edit": "Edit essay",
+    "view": "View essay",
+    "collapse": "Collapse essay",
+    "regrade": "Grade again"
+  },
   "result_section": {
     "title": "Grading Result",
     "placeholder": "Grading result will appear here",

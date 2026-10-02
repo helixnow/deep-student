@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Pen } from '@phosphor-icons/react';
 import { InputPanel } from './InputPanel';
+import { InputSummaryBar } from './InputSummaryBar';
 import { ResultPanel } from './ResultPanel';
 import { InlineSettingsPanel } from './InlineSettingsPanel';
 import { useWbSysSize } from '@/features/workbench/apps/system/useWbSysSize';
@@ -9,6 +10,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import { inferGradingPhase, type GradingPhase } from '@/essay-grading/gradingPhase';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { SuggestionChange } from '@/essay-grading/suggestionAnchors';
 import type { UploadedImage } from '../EssayGradingWorkbench';
@@ -105,17 +107,6 @@ interface GradingMainProps {
 /** 主区窄于该宽度时退回上下分栏（与翻译工作台同阈值） */
 const NARROW_LAYOUT_THRESHOLD = 500;
 
-export type GradingPhase = 'preparing' | 'annotating' | 'scoring' | 'polishing' | 'model_essay';
-
-/** 根据已生成内容推断当前批改阶段（与 ResultPanel 的推断口径一致：批注 → 评分 → 润色 → 范文） */
-function inferGradingPhase(content: string): GradingPhase {
-  if (!content) return 'preparing';
-  if (/<section-model-essay/i.test(content)) return 'model_essay';
-  if (/<section-polish/i.test(content)) return 'polishing';
-  if (/<score\b/i.test(content)) return 'scoring';
-  return 'annotating';
-}
-
 export const GradingMain: React.FC<GradingMainProps> = ({
   inputText,
   setInputText,
@@ -207,8 +198,19 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   // 未测得宽度前（首帧）以容器分级兜底，避免闪一帧上下布局
   const isSplit = !isSmallScreen
     && (mainAreaWidth > 0 ? mainAreaWidth >= NARROW_LAYOUT_THRESHOLD : true);
-  // 小屏下批改结果区是否"有内容可看"：无内容时折叠为占位条，把高度让给输入区
+  // 批改结果区是否"有内容可看"：无内容时折叠为占位条，把高度让给输入区
   const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || currentRound > 0;
+  // 结果优先：有结果后原文收成摘要条，点「编辑原文」才展开；每次开始批改重新收起
+  const [inputExpanded, setInputExpanded] = React.useState(false);
+  useEffect(() => {
+    if (isGrading) setInputExpanded(false);
+  }, [isGrading]);
+  const inputCollapsed = resultActive && !inputExpanded;
+  const expandInput = React.useCallback(() => setInputExpanded(true), []);
+  const collapseInput = React.useCallback(() => setInputExpanded(false), []);
+  const canGrade = (inputText ?? '').trim().length > 0 || uploadedImages.length > 0;
+  const modeName = modes.find((mode) => mode.id === modeId)?.name;
+  const modelName = (models.find((model) => model.id === modelId) ?? models.find((model) => model.is_default))?.name;
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
 
@@ -276,6 +278,20 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       topicImages={topicImages}
       onTopicFilesDropped={onTopicFilesDropped}
       onRemoveTopicImage={onRemoveTopicImage}
+      onCollapse={resultActive ? collapseInput : undefined}
+    />
+  );
+
+  const inputSummaryBar = (
+    <InputSummaryBar
+      modeName={modeName}
+      modelName={modelName}
+      textStats={inputTextStats}
+      isGrading={isGrading}
+      canGrade={canGrade}
+      onExpand={expandInput}
+      onGrade={onGrade}
+      onCancelGrading={onCancelGrading}
     />
   );
 
@@ -301,6 +317,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       isSavingMistakes={isSavingMistakes}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
+      navigateRoundsInHeader={inputCollapsed}
     />
   );
 
@@ -373,17 +390,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
 
       <div className={cn('flex flex-1 min-h-0', useSettingsPage && showPromptEditor && 'hidden')}>
         <div ref={mainAreaRef} className="flex-1 min-w-0 h-full">
-          {isSplit ? (
-            <HorizontalResizable
-              initial={0.5}
-              minLeft={0.3}
-              minRight={0.3}
-              className="bg-background"
-              left={inputPanel}
-              right={resultPanel}
-            />
-          ) : isSmallScreen && !resultActive ? (
-            /* 小屏且尚无批改内容：输入区占满，结果区折叠为占位条（开始批改后自动展开为上下分栏） */
+          {!resultActive ? (
+            /* 尚无批改内容：输入区占满，结果区折叠为占位条（开始批改后切到结果优先） */
             <div className="flex h-full min-h-0 flex-col bg-background">
               <div className="flex-1 min-h-0 [&>*]:!h-full [&>*]:!min-h-0 [&>*]:!basis-auto [&>*]:!flex-none">
                 {inputPanel}
@@ -394,6 +402,20 @@ export const GradingMain: React.FC<GradingMainProps> = ({
                 <span className="ml-auto text-muted-foreground/40">{t('essay_grading:result_empty.title')}</span>
               </div>
             </div>
+          ) : inputCollapsed ? (
+            <div className="flex h-full min-h-0 flex-col bg-background">
+              {inputSummaryBar}
+              <div className="flex flex-1 min-h-0">{resultPanel}</div>
+            </div>
+          ) : isSplit ? (
+            <HorizontalResizable
+              initial={0.5}
+              minLeft={0.3}
+              minRight={0.3}
+              className="bg-background"
+              left={inputPanel}
+              right={resultPanel}
+            />
           ) : (
             /* 小屏固定 40/60 上下堆叠不可拖（fixed 模式无手柄）；桌面窄容器仍可拖 */
             <VerticalResizable

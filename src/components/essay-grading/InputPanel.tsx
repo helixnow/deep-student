@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Textarea } from '../ui/shad/Textarea';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
@@ -16,6 +17,7 @@ import {
   X,
   FileText,
   CaretDown,
+  CaretUp,
   ClipboardText,
   UploadSimple,
   Sparkle,
@@ -23,20 +25,17 @@ import {
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
+import { GRADING_PHASE_ORDER, type GradingPhase } from '@/essay-grading/gradingPhase';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
+import { useInlineConfirm } from './useInlineConfirm';
 
 /** ★ F-2: 作文最大字符数限制（约 5 万字符） */
 export const ESSAY_MAX_CHARS = 50000;
 
-/** 批改阶段顺序（与 GradingMain 推断口径一致），用于锁定提示条的阶段进度点 */
-const GRADING_PHASES = ['preparing', 'annotating', 'scoring', 'polishing', 'model_essay'] as const;
-export type GradingPhaseId = (typeof GRADING_PHASES)[number];
-
-/** 内联二段确认的自动复位时间 */
-const INLINE_CONFIRM_TIMEOUT_MS = 3000;
+export type GradingPhaseId = GradingPhase;
 
 /** 触屏命中区扩展：28px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
 const COARSE_HIT =
@@ -107,46 +106,8 @@ interface InputPanelProps {
   topicImages?: UploadedImage[];
   onTopicFilesDropped?: (files: File[]) => void;
   onRemoveTopicImage?: (imageId: string) => void;
-}
-
-/**
- * 内联二段确认：第一次点击进入"确认？"态，3 秒无操作自动复位，再次点击才执行。
- * 替代模态确认框（DsAlertDialog），桌面与移动统一交互。
- */
-function useInlineConfirm(onConfirm: () => void) {
-  const [armed, setArmed] = useState(false);
-  const timerRef = useRef<number | null>(null);
-
-  const clearTimer = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => clearTimer, [clearTimer]);
-
-  const handleClick = useCallback(() => {
-    if (armed) {
-      clearTimer();
-      setArmed(false);
-      onConfirm();
-      return;
-    }
-    setArmed(true);
-    clearTimer();
-    timerRef.current = window.setTimeout(() => {
-      setArmed(false);
-      timerRef.current = null;
-    }, INLINE_CONFIRM_TIMEOUT_MS);
-  }, [armed, clearTimer, onConfirm]);
-
-  const reset = useCallback(() => {
-    clearTimer();
-    setArmed(false);
-  }, [clearTimer]);
-
-  return { armed, handleClick, reset };
+  /** 结果优先布局下展开的原文：提供时工具栏显示「收起原文」 */
+  onCollapse?: () => void;
 }
 
 /** OCR 状态角标（语义色 + i18n），叠加在缩略图上 */
@@ -232,6 +193,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
   topicImages,
   onTopicFilesDropped,
   onRemoveTopicImage,
+  onCollapse,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -476,6 +438,24 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             </div>
           )}
 
+          {onCollapse && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DsButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCollapse}
+                  aria-label={t('essay_grading:input_summary.collapse')}
+                  className={cn(COARSE_HIT, "shrink-0 h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors duration-150")}
+                >
+                  <CaretUp size={14} />
+                  <span className="text-xs hidden lg:inline">{t('essay_grading:input_summary.collapse')}</span>
+                </DsButton>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('essay_grading:input_summary.collapse')}</TooltipContent>
+            </Tooltip>
+          )}
+
           {/* 移动端：清空 + 批改按钮（字数统计移到输入区右下角悬浮条，避免顶栏拥挤截断） */}
           <div className="md:hidden flex min-w-0 items-center gap-1">
             {hasClearableContent && !isGrading && (
@@ -681,8 +661,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   {t(`essay_grading:progress.phase_${gradingPhase}`)}
                 </span>
                 <span className="hidden sm:flex items-center gap-1" aria-hidden="true">
-                  {GRADING_PHASES.map((phase, idx) => {
-                    const currentIdx = GRADING_PHASES.indexOf(gradingPhase);
+                  {GRADING_PHASE_ORDER.map((phase, idx) => {
+                    const currentIdx = GRADING_PHASE_ORDER.indexOf(gradingPhase);
                     return (
                       <span
                         key={phase}
@@ -756,7 +736,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onPaste={handlePaste}
             placeholder={showEmptyState ? '' : t('essay_grading:input_section.placeholder')}
             className={cn(
-              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 pt-5 pb-2 text-[15px] [@media(pointer:coarse)]:text-base leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
+              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-[max(1.25rem,calc((100%-52rem)/2))] pt-5 pb-2 text-[15px] [@media(pointer:coarse)]:text-base leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
               isGrading && "opacity-80 cursor-default"
             )}
           />

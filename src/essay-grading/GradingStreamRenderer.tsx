@@ -48,6 +48,10 @@ interface GradingStreamRendererProps {
   onUndoSuggestion?: (change: SuggestionChange) => void;
   /** 已采纳建议的稳定 key 集合（详情卡据此渲染已采纳态） */
   appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 并入分段 Tab 行右侧的内容（父组件的标题行操作合进来，省出一行给正文） */
+  toolbarAccessory?: React.ReactNode;
+  /** 工具栏下方、正文上方的提示条（错误 / 部分结果） */
+  banner?: React.ReactNode;
 }
 
 /** 距底部阈值：小于该值视为"贴底"，恢复自动跟随 */
@@ -76,6 +80,8 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   onApplySuggestion,
   onUndoSuggestion,
   appliedSuggestionKeys,
+  toolbarAccessory,
+  banner,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   const displayPlaceholder = placeholder || t('essay_grading:result_section.placeholder');
@@ -241,9 +247,16 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
       )}
 
       {/* Section Tabs + Filter Bar */}
-      {content && !hideToolbar && tabs.length > 1 && (
+      {content && !hideToolbar && (tabs.length > 1 || toolbarAccessory) && (
+        <div
+          className={cn(
+            'flex shrink-0 items-center border-b',
+            toolbarAccessory ? 'min-h-[41px] border-border/30' : 'border-border/20',
+          )}
+        >
+        {tabs.length > 1 ? (
         <CustomScrollArea
-          className="shrink-0 border-b border-border/20"
+          className="min-w-0 flex-1"
           viewportClassName="flex items-center gap-1 px-4 py-1"
           orientation="horizontal"
           fullHeight={false}
@@ -267,6 +280,15 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
             </button>
           ))}
         </CustomScrollArea>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
+        {toolbarAccessory && (
+          <div className="flex min-w-0 shrink-0 items-center gap-2 pl-2 pr-3 sm:pr-4">
+            {toolbarAccessory}
+          </div>
+        )}
+        </div>
       )}
 
       {contentHasInlineMarkers && !hideToolbar && activeTab === 'overview' && (
@@ -334,11 +356,13 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         </div>
       )}
 
-      {/* 批改内容 - 简洁风格留白 */}
+      {banner}
+
+      {/* 批改内容 - 简洁风格留白；宽窗口限制行长（正文栏最宽 52rem） */}
       {content ? (
         <CustomScrollArea
           className="grading-content flex-1 min-h-0"
-          viewportClassName="px-5 pt-5 pb-20"
+          viewportClassName="px-[max(1.25rem,calc((100%-52rem)/2))] pt-5 pb-20"
           viewportRef={viewportRefCallback}
           hideTrackWhenIdle={true}
         >

@@ -9,6 +9,18 @@
     "placeholder": "请输入或粘贴需要批改的作文...",
     "drag_hint": "支持拖拽图片进行 OCR 识别"
   },
+  "input_summary": {
+    "word_count": "{{count}} 词",
+    "word_count_one": "{{count}} 词",
+    "word_count_other": "{{count}} 词",
+    "han_count": "{{count}} 字",
+    "han_count_one": "{{count}} 字",
+    "han_count_other": "{{count}} 字",
+    "edit": "编辑原文",
+    "view": "查看原文",
+    "collapse": "收起原文",
+    "regrade": "重新批改"
+  },
   "result_section": {
     "title": "批改结果",
     "placeholder": "批改结果将显示在这里",
