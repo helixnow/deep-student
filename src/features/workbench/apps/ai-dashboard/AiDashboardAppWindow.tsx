@@ -2,6 +2,7 @@
  * AI 学习仪表盘应用窗口（Generative UI Round 13）
  *
  * 桌面 `DesktopAiBriefingWidget` 的全屏版：同一数据源（闪卡到期 / 待办 / 制卡任务），
+ * 另加错题复习与笔记复习（todayLearningStore，与首页「今日学习」同口径），
  * 经 `buildAiDashboardIntent` 渲染结构化简报，ActionBar 走 workbenchLearningHandlers。
  */
 import React, { useEffect, useMemo, useSyncExternalStore } from 'react';
@@ -22,6 +23,10 @@ import {
   getActiveAnkiTaskCount,
   subscribeAnkiTaskCount,
 } from '../system/ankiTaskSource';
+import {
+  getTodayLearningSnapshot,
+  subscribeTodayLearning,
+} from '@/features/learning-today/todayLearningStore';
 import { formatLocalDateKey } from '../../components/DesktopAgendaWidget';
 import type { AppWindowProps } from '../../core/types';
 import { useWbSysSize } from '../system/useWbSysSize';
@@ -34,6 +39,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
   const dueCount = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
   const activeTasks = useSyncExternalStore(subscribeAnkiTaskCount, getActiveAnkiTaskCount, () => 0);
+  const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
 
   const { pendingTodos, overdueTodos } = useMemo(() => {
     const todayKey = formatLocalDateKey(new Date());
@@ -52,6 +58,8 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           pendingTodos,
           overdueTodos,
           activeAnkiTasks: activeTasks,
+          dueMistakes: today.mistakes,
+          dueNotes: today.notes,
           reviewDays:
             dueCount > 0
               ? [{ date: formatLocalDateKey(new Date()), dueCount: dueCount }]
@@ -79,9 +87,12 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           chartPending: t('generativeUi:workbench.dashboard.chart_pending'),
           chartOverdue: t('generativeUi:workbench.dashboard.chart_overdue'),
           workloadChartSeries: t('generativeUi:workbench.dashboard.workload_chart_series'),
+          dueMistakesTitle: t('generativeUi:workbench.dashboard.due_mistakes_title'),
+          dueNotesTitle: t('generativeUi:workbench.dashboard.due_notes_title'),
+          reviewNotes: t('generativeUi:workbench.dashboard.review_notes'),
         },
       ),
-    [activeTasks, dueCount, overdueTodos, pendingTodos, t],
+    [activeTasks, dueCount, overdueTodos, pendingTodos, today.mistakes, today.notes, t],
   );
 
   const actionHandlers = useMemo(
@@ -91,6 +102,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
         openQbank: t('generativeUi:workbench.briefing.open_qbank'),
         exportPlan: t('generativeUi:research.actions.export_plan'),
         openTaskDashboard: t('generativeUi:workbench.dashboard.open_task_dashboard'),
+        reviewNotes: t('generativeUi:workbench.dashboard.review_notes'),
       }),
     [t],
   );

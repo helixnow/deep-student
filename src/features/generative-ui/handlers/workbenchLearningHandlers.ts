@@ -22,6 +22,7 @@ export interface WorkbenchLearningHandlerLabels {
   openQbank?: string;
   exportPlan?: string;
   openTaskDashboard?: string;
+  reviewNotes?: string;
 }
 
 export function createWorkbenchLearningHandlers(
@@ -50,6 +51,15 @@ export function createWorkbenchLearningHandlers(
       riskLevel: 'medium',
       handler: async () => {
         workbenchBus.launch({ typeId: 'learning-hub', reason: 'api' });
+      },
+    },
+    'review-notes': {
+      id: 'review-notes',
+      label: labels.reviewNotes ?? '复习笔记',
+      riskLevel: 'low',
+      handler: async () => {
+        const { openDueNotesReview } = await import('@/features/learning-today/todayLearning');
+        openDueNotesReview(() => workbenchBus.launch({ typeId: 'learning-hub', reason: 'api' }));
       },
     },
     'open-task-dashboard': {

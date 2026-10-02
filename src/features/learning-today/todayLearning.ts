@@ -43,10 +43,14 @@ export async function loadTodayLearning(now = new Date()): Promise<TodayLearning
   return { cards, mistakes, notes: dueNotes.length, dueNotes };
 }
 
-/** 打开「待复习笔记」：学习中心 › 笔记 › 近期复习视图 */
-export function openDueNotesReview(): void {
+/**
+ * 打开「待复习笔记」：学习中心 › 笔记 › 近期复习视图。
+ * `openLearningHub` 供工作台传入自己的启动方式（默认走经典壳的视图导航）。
+ */
+export function openDueNotesReview(openLearningHub?: () => void): void {
   try { localStorage.setItem('learningHub.notesLearningView', 'review'); } catch { /* 偏好写入失败不影响跳转 */ }
-  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } }));
+  if (openLearningHub) openLearningHub();
+  else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } }));
   void import('@/features/learning-hub/stores/finderStore').then(({ useFinderStore }) => {
     window.setTimeout(() => {
       useFinderStore.getState().quickAccessNavigate('notes');

@@ -16,6 +16,10 @@ export interface AiDashboardReviewDay {
 
 export interface AiDashboardInput extends LearningBriefingInput {
   activeAnkiTasks?: number;
+  /** SM-2 错题复习到期（今日 + 逾期），与首页「今日学习」同口径 */
+  dueMistakes?: number;
+  /** 复习日期已到的笔记 */
+  dueNotes?: number;
   reviewDays?: AiDashboardReviewDay[];
 }
 
@@ -33,6 +37,10 @@ export interface AiDashboardLabels extends LearningBriefingLabels {
   chartPending?: string;
   chartOverdue?: string;
   workloadChartSeries?: string;
+  /** 提供后才显示对应卡片（旧调用方不受影响） */
+  dueMistakesTitle?: string;
+  dueNotesTitle?: string;
+  reviewNotes?: string;
 }
 
 /** Workbench AI 仪表盘：学习简报 + 制卡任务 stat-card + 复习日历/空态 */
@@ -40,16 +48,38 @@ export function buildAiDashboardIntent(
   input: AiDashboardInput,
   labels: AiDashboardLabels,
 ): GenerativeUIIntent {
-  const { activeAnkiTasks = 0, reviewDays, ...briefingInput } = input;
+  const { activeAnkiTasks = 0, dueMistakes = 0, dueNotes = 0, reviewDays, ...briefingInput } = input;
   const briefing = buildLearningBriefingIntent(briefingInput, labels);
   const blocks = [...briefing.blocks];
   const dueFlashcards = briefingInput.dueFlashcards ?? 0;
   const pendingTodos = briefingInput.pendingTodos ?? 0;
   const overdueTodos = briefingInput.overdueTodos ?? 0;
-  const isIdle = dueFlashcards === 0 && pendingTodos === 0 && overdueTodos === 0 && activeAnkiTasks === 0;
+  const reviewLines = [
+    { title: labels.dueFlashcardsTitle, count: dueFlashcards },
+    ...(labels.dueMistakesTitle ? [{ title: labels.dueMistakesTitle, count: dueMistakes }] : []),
+    ...(labels.dueNotesTitle ? [{ title: labels.dueNotesTitle, count: dueNotes }] : []),
+  ];
+  const totalReviewDue = reviewLines.reduce((sum, line) => sum + line.count, 0);
+  const isIdle = totalReviewDue === 0 && pendingTodos === 0 && overdueTodos === 0 && activeAnkiTasks === 0;
   const calendarDays = (reviewDays ?? [])
     .filter((day) => day.date.trim().length > 0 && day.dueCount >= 0)
     .slice(0, 14);
+
+  // 错题 / 笔记复习卡紧跟闪卡卡：三条复习线并排，与首页「今日学习」一致
+  const firstStatIdx = blocks.findIndex((block) => block.type === 'stat-card');
+  blocks.splice(
+    firstStatIdx >= 0 ? firstStatIdx + 1 : 0,
+    0,
+    ...reviewLines.slice(1).map((line) => ({
+      type: 'stat-card' as const,
+      props: {
+        title: line.title,
+        value: line.count,
+        trend: line.count > 0 ? ('up' as const) : ('neutral' as const),
+        trendLabel: line.count > 0 ? labels.dueTrendDue : labels.dueTrendNone,
+      },
+    })),
+  );
 
   const progressIdx = blocks.findIndex((block) => block.type === 'progress');
   const insertAt = progressIdx >= 0 ? progressIdx : blocks.length;
@@ -76,7 +106,7 @@ export function buildAiDashboardIntent(
       title: labels.workloadChartTitle ?? labels.progressTitle,
       kind: 'bar',
       categories: [
-        labels.dueFlashcardsTitle,
+        ...reviewLines.map((line) => line.title),
         labels.chartPending ?? categoryFromCountLabel(labels.pendingLabel, labels.progressTitle),
         labels.chartOverdue ?? categoryFromCountLabel(labels.overdueLabel, labels.progressTitle),
         labels.ankiTasksTitle,
@@ -84,7 +114,7 @@ export function buildAiDashboardIntent(
       series: [
         {
           name: (labels.workloadChartSeries ?? labels.ankiTasksTitle).slice(0, 40),
-          values: [dueFlashcards, pendingTodos, overdueTodos, activeAnkiTasks],
+          values: [...reviewLines.map((line) => line.count), pendingTodos, overdueTodos, activeAnkiTasks],
         },
       ],
       labels: {},
@@ -115,10 +145,9 @@ export function buildAiDashboardIntent(
       type: 'list',
       props: {
         title: labels.reviewEmptyTitle ?? labels.dueFlashcardsTitle,
-        items:
-          dueFlashcards > 0
-            ? [{ label: labels.dueFlashcardsTitle, badge: String(dueFlashcards) }]
-            : [],
+        items: reviewLines
+          .filter((line) => line.count > 0)
+          .map((line) => ({ label: line.title, badge: String(line.count) })),
         emptyLabel: labels.reviewEmpty ?? labels.dueTrendNone,
       },
     });
@@ -138,6 +167,14 @@ export function buildAiDashboardIntent(
       const actions: ActionBarProps['actions'] = Array.isArray(existingActions)
         ? [...existingActions]
         : [];
+      if (dueNotes > 0 && labels.dueNotesTitle && labels.reviewNotes) {
+        actions.push({
+          id: 'review-notes',
+          label: labels.reviewNotes,
+          variant: 'default',
+          riskLevel: 'low',
+        });
+      }
       if (activeAnkiTasks > 0) {
         actions.push({
           id: 'open-task-dashboard',

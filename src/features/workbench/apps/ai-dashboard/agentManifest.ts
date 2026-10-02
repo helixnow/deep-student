@@ -4,6 +4,7 @@
  * 观察闪卡到期 / 待办 / 制卡任务指标；execute 映射 workbenchBus 快捷动作。
  */
 import { workbenchBus } from '../../core/workbenchBus';
+import { getTodayLearningSnapshot, refreshTodayLearning } from '@/features/learning-today/todayLearningStore';
 import type { ActivationDispatchResult } from '../../core/workbenchBus';
 import type {
   AgentActionResult,
@@ -64,6 +65,8 @@ function observeMetrics() {
     pendingTodos,
     overdueTodos,
     activeAnkiTasks: getActiveAnkiTaskCount(),
+    dueMistakes: getTodayLearningSnapshot().mistakes,
+    dueNotes: getTodayLearningSnapshot().notes,
     agendaLoading: getTodoAgendaSnapshot().isLoading,
   };
 }
@@ -203,6 +206,7 @@ export const aiDashboardAgentManifest: AppAgentManifest = {
           refreshFlashcardsDueCount(),
           refreshTodoAgenda(),
           refreshAnkiTaskCount(),
+          refreshTodayLearning(),
         ]);
         return {
           handled: true,

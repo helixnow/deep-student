@@ -281,6 +281,9 @@
     },
     "dashboard": {
       "title": "AI 学习仪表盘",
+      "due_mistakes_title": "今日错题复习",
+      "due_notes_title": "待复习笔记",
+      "review_notes": "复习笔记",
       "anki_tasks_title": "进行中制卡",
       "anki_tasks_trend_active": "后台运行",
       "anki_tasks_trend_idle": "暂无任务",
