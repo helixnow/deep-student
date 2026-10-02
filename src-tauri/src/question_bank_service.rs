@@ -672,6 +672,25 @@ impl QuestionBankService {
             }
         }
 
+        // 答对且该题已有到期的复习计划：把这次练习当作一次「回忆正确」的复习推进计划
+        //（旧实现只在答错时进计划逻辑，学会了的题仍按旧计划到期）。仅在到期时推进，
+        // 避免同一天反复练习把间隔一路拉长。
+        if is_correct == Some(true) {
+            let review_service =
+                crate::review_plan_service::ReviewPlanService::new(Arc::clone(&self.vfs_db));
+            if let Ok(Some(plan)) = review_service.get_plan_by_question(question_id) {
+                let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+                if plan.next_review_date.as_str() <= today.as_str() {
+                    if let Err(e) = review_service.advance_from_practice(&plan.id) {
+                        warn!(
+                            "[QuestionBankService] Failed to advance review plan for question_id={}: {}",
+                            question_id, e
+                        );
+                    }
+                }
+            }
+        }
+
         // Profile storage is a separate note-level CAS. The authoritative event
         // is already committed; a later signal can safely retry this reflux.
         if let Some(state) = mastery_state.as_ref() {

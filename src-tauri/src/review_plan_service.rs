@@ -201,6 +201,23 @@ impl ReviewPlanService {
         time_spent_seconds: Option<u32>,
         expected_updated_at: Option<&str>,
     ) -> Result<ProcessReviewResult> {
+        self.process_review_impl(plan_id, quality, user_answer, time_spent_seconds, expected_updated_at, true)
+    }
+
+    /// 练习中答对一道到期题：推进复习计划，但不再记掌握度（答题本身已记过一次，避免双计）。
+    pub fn advance_from_practice(&self, plan_id: &str) -> Result<ProcessReviewResult> {
+        self.process_review_impl(plan_id, 4, None, None, None, false)
+    }
+
+    fn process_review_impl(
+        &self,
+        plan_id: &str,
+        quality: u8,
+        user_answer: Option<String>,
+        time_spent_seconds: Option<u32>,
+        expected_updated_at: Option<&str>,
+        record_mastery: bool,
+    ) -> Result<ProcessReviewResult> {
         // ★ 防御性夹取：Tauri 命令层已校验 quality<=5，但 agent 工具等其他调用方
         // 可能绕过命令层直接调服务；越界值会让 SM-2 的 EF 公式产出异常增量。
         let quality = quality.min(5);
@@ -222,6 +239,15 @@ impl ReviewPlanService {
                 .into());
             }
         }
+
+        // 题目标签（掌握度的知识点归属）：在写事务开始前读取，避免事务内再占一个连接
+        let question_tags: Option<Vec<String>> = crate::vfs::repos::question_repo::VfsQuestionRepo::get_question(
+            &self.vfs_db,
+            &plan.question_id,
+        )
+        .ok()
+        .flatten()
+        .map(|question| question.tags);
 
         // 2. 使用 SM-2 算法计算新参数
         let (new_interval, new_ease_factor, new_repetitions) = calculate_next_review(
@@ -291,8 +317,29 @@ impl ReviewPlanService {
         let history = VfsReviewPlanRepo::record_history_with_conn(&tx, &history_params)
             .with_context(|| format!("Failed to record review history for plan: {}", plan_id))?;
 
+        // 复习结果回写掌握度（与复习记录同一事务；事件 id = 复习历史 id，重放幂等）。
+        // 旧实现只更新复习计划：复习了，掌握度与学习者画像却纹丝不动。
+        // 无标签的题无法归入知识点（concept_key 不可得）时跳过，不阻塞复习。
+        let mastery_state = question_tags.as_ref().filter(|_| record_mastery).and_then(|tags| {
+            crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
+                .record_qbank_answer_with_conn(
+                    &tx,
+                    &format!("review:{}", history.id),
+                    &plan.question_id,
+                    tags,
+                    passed,
+                )
+                .ok()
+        });
+
         tx.commit()
             .with_context(|| "Failed to commit process_review transaction")?;
+
+        if let Some(state) = mastery_state.as_ref() {
+            if let Err(e) = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db)).sync_learner_profile(state) {
+                warn!("[ReviewPlanService] mastery profile reflux failed for plan {}: {}", plan_id, e);
+            }
+        }
 
         info!(
             "[ReviewPlanService] Processed review: plan_id={}, quality={}, passed={}, new_interval={}, next_date={}",
@@ -996,5 +1043,60 @@ mod tests {
             "unexpected error: {}",
             msg
         );
+    }
+
+    #[test]
+    fn review_writes_mastery_once_and_practice_advance_does_not_double_count() {
+        let (_temp_dir, vfs_db) = setup_test_db();
+        let service = ReviewPlanService::new(vfs_db.clone());
+        let exam = VfsExamRepo::create_exam_sheet(
+            &vfs_db,
+            VfsCreateExamSheetParams {
+                exam_name: Some("Exam".to_string()),
+                temp_id: "tmp_exam_mastery".to_string(),
+                metadata_json: json!({}),
+                preview_json: json!({ "pages": [] }),
+                status: "completed".to_string(),
+                folder_id: None,
+            },
+        )
+        .expect("create exam");
+        let question = VfsQuestionRepo::create_question(
+            &vfs_db,
+            &CreateQuestionParams {
+                exam_id: exam.id.clone(),
+                card_id: None,
+                question_label: Some("1".to_string()),
+                content: "导数定义".to_string(),
+                options: None,
+                answer: Some("极限".to_string()),
+                explanation: None,
+                question_type: None,
+                difficulty: None,
+                tags: Some(vec!["导数".to_string()]),
+                source_type: None,
+                source_ref: None,
+                images: None,
+                parent_id: None,
+                structured_data: None,
+            },
+        )
+        .expect("create question");
+        let plan = service.get_or_create_plan(&question.id, &exam.id).expect("plan");
+        let count_events = || -> i64 {
+            vfs_db
+                .get_conn_safe()
+                .unwrap()
+                .query_row("SELECT COUNT(*) FROM mastery_events WHERE deleted_at IS NULL", [], |r| r.get(0))
+                .unwrap()
+        };
+        assert_eq!(count_events(), 0);
+        service.process_review(&plan.id, 4, None, None).expect("review");
+        assert_eq!(count_events(), 1, "SM-2 review must feed mastery");
+        let before = service.get_plan_by_question(&question.id).unwrap().unwrap();
+        service.advance_from_practice(&plan.id).expect("advance");
+        let after = service.get_plan_by_question(&question.id).unwrap().unwrap();
+        assert_eq!(count_events(), 1, "practice advance must not double count mastery");
+        assert_eq!(after.total_reviews, before.total_reviews + 1);
     }
 }
