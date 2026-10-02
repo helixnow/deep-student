@@ -2,6 +2,9 @@
   "page_title": "Data Management",
   "page_subtitle": "Manage your mistake data, system settings, and backups",
   "today_center": {
+    "weak_title": "Weak spots",
+    "weak_hint": "Explain and practice in chat",
+    "weak_prompt": "Help me review my weak spot “{{concept}}”: explain the core idea in three sentences, give me 3 practice questions from easy to hard, then tell me where people most often go wrong.",
     "cards_due": "Cards due",
     "mistakes_due": "Mistakes to review",
     "notes_due": "Notes to review",

@@ -17,3 +17,15 @@ pub use types::{
     MasteryEvent, MasteryOutcome, MasteryOverviewSummary, MasteryPriorityReviewItem, MasterySource,
     MasteryState, MasteryWeakEvidence,
 };
+
+
+/// 学习者可见的掌握度概览（此前掌握度只供 AI 读取，学习者看不到自己的薄弱知识点）。
+#[tauri::command]
+pub async fn mastery_get_overview(
+    limit: Option<u32>,
+    vfs_db: tauri::State<'_, std::sync::Arc<crate::vfs::database::VfsDatabase>>,
+) -> Result<types::MasteryOverviewSummary, String> {
+    service::MasteryService::new(vfs_db.inner().clone())
+        .overview_summary(limit.unwrap_or(6).clamp(1, 30) as usize)
+        .map_err(|e| e.to_string())
+}

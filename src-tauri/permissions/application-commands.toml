@@ -165,6 +165,7 @@ commands.allow = [
   "clear_debug_logs",
   "clear_message_embeddings",
   "clear_test_slots",
+  "mastery_get_overview",
   "skill_market_download_and_scan",
   "skill_market_search",
   "skill_market_skill_detail",

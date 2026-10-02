@@ -2425,6 +2425,7 @@ pub fn run() {
             ,crate::vfs::handlers::vfs_get_indexing_config
             ,crate::vfs::handlers::vfs_get_all_index_status
             ,crate::vfs::handlers::vfs_get_embedding_readiness
+            ,crate::mastery::mastery_get_overview
             // VFS 统一索引 Unit 级命令（2026-06-12 补注册：前端 vfsUnifiedIndexApi/unifiedIndexStore 已在调用）
             ,crate::vfs::index_handlers::vfs_unified_index_status
             ,crate::vfs::index_handlers::vfs_get_resource_units

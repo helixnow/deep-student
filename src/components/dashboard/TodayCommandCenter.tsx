@@ -13,6 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Cards, CheckSquare, CircleNotch, ArrowRight, Notebook, WarningDiamond } from '@phosphor-icons/react';
 import { loadTodayLearning, openDueNotesReview } from '@/features/learning-today/todayLearning';
+import { WeakConceptsStrip } from './WeakConceptsStrip';
 
 type ActionView = 'learning-hub' | 'todo' | 'task-dashboard' | 'flashcards';
 
@@ -167,6 +168,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
           onClick={() => onNavigate?.('task-dashboard')}
         />
       </div>
+      <WeakConceptsStrip />
     </div>
   );
 };
