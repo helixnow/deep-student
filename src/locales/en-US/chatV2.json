@@ -1661,6 +1661,18 @@
     "saveAsNote": "Save as note",
     "saveAsNotePickFolder": "Choose a folder",
     "saveAsNoteDefaultTitle": "Untitled note",
+    "appendToNote": "Append to existing note",
+    "appendToNoteSearchPlaceholder": "Search note titles or content",
+    "appendToNoteRecent": "Recently edited",
+    "appendToNoteEmpty": "No notes found",
+    "appendToNoteConfirm": "Append",
+    "appendToNoteBackToCreate": "Create a new note instead",
+    "appendToNoteSuccess": "Appended to “{{title}}”",
+    "appendToNoteFailed": "Failed to append to note",
+    "appendToNoteDirty": "This note has unsaved changes. Save it before appending.",
+    "appendToNoteNotFound": "The note doesn't exist or has been deleted",
+    "appendToNoteSourceChat": "From chat “{{title}}”",
+    "appendToNoteSourceChatUntitled": "From a chat",
     "openNote": "Open note"
   },
   "explainPopover": {

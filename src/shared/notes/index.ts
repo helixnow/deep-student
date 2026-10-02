@@ -13,3 +13,14 @@ export type {
   SaveAsNoteFolderPickerProps,
   UseSaveAsNoteFlowOptions,
 } from './useSaveAsNoteFlow';
+export {
+  NOTE_APPEND_SEPARATOR,
+  joinAppendedNoteContent,
+  composeAppendSection,
+  appendTextToNote,
+  appendTextToNoteAndNotify,
+  notifyAppendTextToNoteResult,
+} from './appendTextToNote';
+export type { AppendTextToNoteInput, AppendTextToNoteResult } from './appendTextToNote';
+export { AppendToNotePicker } from './AppendToNotePicker';
+export type { AppendTargetNote, AppendToNotePickerProps } from './AppendToNotePicker';

@@ -1661,6 +1661,18 @@
     "saveAsNote": "保存为笔记",
     "saveAsNotePickFolder": "选择保存目录",
     "saveAsNoteDefaultTitle": "未命名笔记",
+    "appendToNote": "追加到已有笔记",
+    "appendToNoteSearchPlaceholder": "搜索笔记标题或内容",
+    "appendToNoteRecent": "最近编辑",
+    "appendToNoteEmpty": "没有找到笔记",
+    "appendToNoteConfirm": "追加",
+    "appendToNoteBackToCreate": "改为新建笔记",
+    "appendToNoteSuccess": "已追加到「{{title}}」",
+    "appendToNoteFailed": "追加到笔记失败",
+    "appendToNoteDirty": "这篇笔记有未保存的修改，请先保存后再追加",
+    "appendToNoteNotFound": "笔记不存在或已被删除",
+    "appendToNoteSourceChat": "来自对话「{{title}}」",
+    "appendToNoteSourceChatUntitled": "来自对话",
     "openNote": "打开笔记"
   },
   "explainPopover": {

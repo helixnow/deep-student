@@ -16,14 +16,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, act, cleanup } from '@testing-library/react';
 
 const saveTextAsNoteAndNotify = vi.fn();
+const appendTextToNoteAndNotify = vi.fn();
+const dstuList = vi.fn();
 let isSmallScreen = false;
 
 vi.mock('../saveTextAsNote', () => ({
   saveTextAsNoteAndNotify: (...args: unknown[]) => saveTextAsNoteAndNotify(...args),
 }));
 
+vi.mock('../appendTextToNote', () => ({
+  appendTextToNoteAndNotify: (...args: unknown[]) => appendTextToNoteAndNotify(...args),
+}));
+
+vi.mock('@/dstu', () => ({
+  dstu: { list: (...args: unknown[]) => dstuList(...args) },
+}));
+
 vi.mock('@/hooks/useBreakpoint', () => ({
   useBreakpoint: () => ({ isSmallScreen }),
+  // 追加步骤的桌面 DsDialog 读取（窄屏走 inline 子屏，不经 DsDialog）
+  useIsMobile: () => false,
 }));
 
 // mock 与真组件同构地消费统一顶栏通道（真实 useMobileSubviewChrome + screen:'center'），
@@ -36,7 +48,8 @@ vi.mock('@/features/learning-hub/components/finder/FolderPickerDialog', async ()
     onConfirm: (folderId: string | null) => void;
     title: string;
     inline?: boolean;
-  }> = ({ open, onOpenChange, onConfirm, title, inline }) => {
+    footerStart?: React.ReactNode;
+  }> = ({ open, onOpenChange, onConfirm, title, inline, footerStart }) => {
     const hosted = useMobileSubviewChrome(
       { title, onBack: () => onOpenChange(false), screen: 'center' },
       [title, onOpenChange],
@@ -52,6 +65,7 @@ vi.mock('@/features/learning-hub/components/finder/FolderPickerDialog', async ()
         <span>{title}</span>
         <button onClick={() => onConfirm('folder-7')}>confirm</button>
         <button onClick={() => onOpenChange(false)}>cancel</button>
+        {footerStart}
       </div>
     );
   };
@@ -79,6 +93,16 @@ beforeEach(() => {
   isSmallScreen = false;
   saveTextAsNoteAndNotify.mockReset();
   saveTextAsNoteAndNotify.mockResolvedValue({ ok: true, noteId: 'note-1', title: '标题' });
+  appendTextToNoteAndNotify.mockReset();
+  appendTextToNoteAndNotify.mockResolvedValue({ ok: true, noteId: 'note-5', title: '函数专题' });
+  dstuList.mockReset();
+  dstuList.mockResolvedValue({
+    ok: true,
+    value: [
+      { id: 'note-5', name: '函数专题', path: '/高考复习/note-5', type: 'note', createdAt: 1, updatedAt: 2000 },
+      { id: 'note-6', name: '导数', path: '/note-6', type: 'note', createdAt: 1, updatedAt: 1000 },
+    ],
+  });
 });
 
 describe('useSaveAsNoteFlow', () => {
@@ -165,5 +189,88 @@ describe('useSaveAsNoteFlow', () => {
     const picker = screen.getByTestId('folder-picker');
     expect(picker.getAttribute('data-inline')).toBe('false');
     expect(picker.getAttribute('data-hosted')).toBe('true');
+  });
+});
+
+describe('useSaveAsNoteFlow — append to an existing note', () => {
+  const openAppendStep = async () => {
+    await act(async () => {
+      screen.getByText('追加到已有笔记').click();
+    });
+  };
+
+  it('offers append as an explicit choice; create stays the default step', () => {
+    render(<Host />);
+    act(() => start({ content: '划选的正文' }));
+    expect(screen.getByTestId('folder-picker')).toBeTruthy();
+    expect(screen.queryByTestId('append-note-picker')).toBeNull();
+    expect(screen.getByText('追加到已有笔记')).toBeTruthy();
+  });
+
+  it('lists notes recent-first through dstu.list and appends to the chosen one', async () => {
+    render(<Host />);
+    const origin = { kind: 'resource' as const, resourceId: 'tb_1', page: 3 };
+    act(() => start({ content: '> 来源行\n\n摘录', title: '标题', origin }));
+    await openAppendStep();
+
+    expect(screen.queryByTestId('folder-picker')).toBeNull();
+    expect(dstuList).toHaveBeenCalledWith('/', expect.objectContaining({
+      typeFilter: 'note',
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    }));
+    const option = await screen.findByText('函数专题');
+    await act(async () => {
+      option.click();
+    });
+    await act(async () => {
+      screen.getByText('追加').click();
+    });
+
+    expect(appendTextToNoteAndNotify).toHaveBeenCalledWith(
+      { noteId: 'note-5', content: '> 来源行\n\n摘录', origin },
+      { openSource: 'pdf-selection' },
+    );
+    expect(saveTextAsNoteAndNotify).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('append-note-picker')).toBeNull();
+  });
+
+  it('can go back to the create step without writing', async () => {
+    render(<Host />);
+    act(() => start({ content: '划选的正文' }));
+    await openAppendStep();
+    await act(async () => {
+      screen.getByText('改为新建笔记').click();
+    });
+    expect(screen.getByTestId('folder-picker')).toBeTruthy();
+    expect(appendTextToNoteAndNotify).not.toHaveBeenCalled();
+  });
+
+  it('reopening starts from the create step again', async () => {
+    render(<Host />);
+    act(() => start({ content: '划选的正文' }));
+    await openAppendStep();
+    await act(async () => {
+      screen.getByText('取消').click();
+    });
+    expect(screen.queryByTestId('append-note-picker')).toBeNull();
+    act(() => start({ content: '另一段' }));
+    expect(screen.getByTestId('folder-picker')).toBeTruthy();
+  });
+
+  it('renders the append step as an isolated inline full screen on small screens', async () => {
+    isSmallScreen = true;
+    const setSubviewChrome = vi.fn();
+    render(
+      <MobileSubviewChromeProvider value={{ setSubviewChrome }}>
+        <Host />
+      </MobileSubviewChromeProvider>,
+    );
+    act(() => start({ content: '划选的正文' }));
+    await openAppendStep();
+    const picker = screen.getByTestId('append-note-picker');
+    expect(picker.getAttribute('data-inline')).toBe('true');
+    expect(picker.parentElement?.className).toContain('fixed inset-0');
+    expect(setSubviewChrome).not.toHaveBeenCalled();
   });
 });

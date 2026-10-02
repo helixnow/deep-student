@@ -27,6 +27,11 @@ interface FolderPickerDialogProps {
    * （absolute inset-0 + 顶栏返回 + 底部确认条），需挂在 relative 容器内。
    */
   inline?: boolean;
+  /**
+   * 底部操作条左侧的附加入口（可选）。例如「保存为笔记」流程在这里放
+   * 「追加到已有笔记」切换入口；缺省时底部条布局与改造前一致。
+   */
+  footerStart?: React.ReactNode;
 }
 
 interface FolderNodeProps {
@@ -173,6 +178,7 @@ export function FolderPickerDialog({
   onConfirm,
   title,
   inline = false,
+  footerStart,
 }: FolderPickerDialogProps) {
   const { t } = useTranslation('learningHub');
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
@@ -344,6 +350,7 @@ export function FolderPickerDialog({
 
         {/* 底部确认条 */}
         <div className="flex items-center justify-end gap-2 border-t border-border/50 px-3 py-2 shrink-0 bg-background pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]">
+          {footerStart ? <div className="mr-auto min-w-0">{footerStart}</div> : null}
           <DsButton
             variant="ghost"
             size="sm"
@@ -383,6 +390,7 @@ export function FolderPickerDialog({
         </div>
 
         <DsDialogFooter>
+          {footerStart ? <div className="mr-auto min-w-0">{footerStart}</div> : null}
           <DsButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
             {t('common:cancel')}
           </DsButton>

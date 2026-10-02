@@ -18,14 +18,24 @@
  *   也不能把顶栏推给它——fixed 层会盖住统一顶栏，且 screen:'center' 与
  *   PDF 划词所在的右屏不匹配。隔离后 FolderPickerDialog 视为无宿主，
  *   恢复自绘「返回 + 标题」行（Wave2-C R6 08-chrome §A）
+ *
+ * 两种落点（同一对话框内显式选择，默认仍是新建）：
+ * - 新建笔记（默认）：选目录 → saveTextAsNote
+ * - 追加到已有笔记：目录选择器底部条左侧的入口切到 AppendToNotePicker，
+ *   选笔记 → appendTextToNote（正文末尾 `---` 分隔追加，不改目标笔记 _origin）。
+ *   窄屏同样走 fixed 承载 + 统一顶栏隔离；返回键/返回箭头回到目录选择步骤
  */
 
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { NotePencil } from '@phosphor-icons/react';
 import { MobileSubviewChromeProvider } from '@/components/layout';
+import { DsButton } from '@/components/ui/DsButton';
 import { FolderPickerDialog } from '@/features/learning-hub/components/finder/FolderPickerDialog';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { saveTextAsNoteAndNotify, type SaveTextAsNoteResult } from './saveTextAsNote';
+import { appendTextToNoteAndNotify, type AppendTextToNoteResult } from './appendTextToNote';
+import { AppendToNotePicker, type AppendTargetNote } from './AppendToNotePicker';
 import type { NoteOrigin } from '@/features/notes/noteOrigin';
 
 export interface SaveAsNoteRequest {
@@ -46,6 +56,10 @@ export interface SaveAsNoteFolderPickerProps {
   title: string;
   /** 窄屏用全屏子屏而非桌面 Dialog */
   inline: boolean;
+  /** 「追加到已有笔记」确认；缺省时不提供追加入口 */
+  onConfirmAppend?: (note: AppendTargetNote) => void;
+  /** 追加步骤的标题 */
+  appendTitle?: string;
 }
 
 export interface SaveAsNoteFlow {
@@ -62,6 +76,8 @@ export interface UseSaveAsNoteFlowOptions {
   openSource?: string;
   /** 保存完成回调（成功或失败都会调用） */
   onSaved?: (result: SaveTextAsNoteResult) => void;
+  /** 追加完成回调（成功或失败都会调用） */
+  onAppended?: (result: AppendTextToNoteResult) => void;
 }
 
 export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNoteFlow {
@@ -72,6 +88,7 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
 
   const openSource = options?.openSource;
   const onSaved = options?.onSaved;
+  const onAppended = options?.onAppended;
 
   const start = useCallback((request: SaveAsNoteRequest) => {
     if (!request.content?.trim()) return;
@@ -96,13 +113,30 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
     });
   }, [pending, openSource, onSaved]);
 
+  // 追加：只写正文（来源行随正文），origin 仅用于补聊天来源行，不改目标笔记 _origin
+  const handleConfirmAppend = useCallback((note: AppendTargetNote) => {
+    const request = pending;
+    setPending(null);
+    if (!request) return;
+    setIsSaving(true);
+    void appendTextToNoteAndNotify(
+      { noteId: note.id, content: request.content, origin: request.origin },
+      { openSource },
+    ).then((result) => {
+      setIsSaving(false);
+      onAppended?.(result);
+    });
+  }, [pending, openSource, onAppended]);
+
   const pickerProps = useMemo<SaveAsNoteFolderPickerProps>(() => ({
     open: pending !== null,
     onOpenChange: handleOpenChange,
     onConfirm: handleConfirm,
+    onConfirmAppend: handleConfirmAppend,
     title: t('chatV2:selectionToolbar.saveAsNotePickFolder', '选择保存目录'),
+    appendTitle: t('chatV2:selectionToolbar.appendToNote', '追加到已有笔记'),
     inline: isSmallScreen,
-  }), [pending, handleOpenChange, handleConfirm, t, isSmallScreen]);
+  }), [pending, handleOpenChange, handleConfirm, handleConfirmAppend, t, isSmallScreen]);
 
   return { start, isSaving, pickerProps };
 }
@@ -123,31 +157,61 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
   onConfirm,
   title,
   inline,
+  onConfirmAppend,
+  appendTitle,
 }) => {
+  const { t } = useTranslation('chatV2');
+  // 每次打开都从「新建笔记」开始：默认行为不变，追加是显式选择
+  const [mode, setMode] = useState<'create' | 'append'>('create');
+  useEffect(() => {
+    if (!open) setMode('create');
+  }, [open]);
+  const backToCreate = useCallback(() => setMode('create'), []);
+  const cancelAll = useCallback(() => onOpenChange(false), [onOpenChange]);
+
   if (!open) return null;
 
-  if (inline) {
-    return (
-      <MobileSubviewChromeProvider value={null}>
-        <div className="fixed inset-0 z-[var(--z-modal,1200)]">
-          <FolderPickerDialog
-            open={open}
-            onOpenChange={onOpenChange}
-            onConfirm={onConfirm}
-            title={title}
-            inline
-          />
-        </div>
-      </MobileSubviewChromeProvider>
-    );
-  }
+  const appendEntry = onConfirmAppend ? (
+    <DsButton
+      variant="ghost"
+      size="sm"
+      onClick={() => setMode('append')}
+      className="gap-1.5 px-2 max-w-full"
+    >
+      <NotePencil size={14} className="shrink-0" aria-hidden="true" />
+      <span className="truncate">{t('selectionToolbar.appendToNote', '追加到已有笔记')}</span>
+    </DsButton>
+  ) : undefined;
 
-  return (
+  const body = mode === 'append' && onConfirmAppend ? (
+    <AppendToNotePicker
+      open={open}
+      inline={inline}
+      title={appendTitle || t('selectionToolbar.appendToNote', '追加到已有笔记')}
+      onBack={backToCreate}
+      onCancel={cancelAll}
+      onConfirm={onConfirmAppend}
+    />
+  ) : (
     <FolderPickerDialog
       open={open}
       onOpenChange={onOpenChange}
       onConfirm={onConfirm}
       title={title}
+      inline={inline || undefined}
+      footerStart={appendEntry}
     />
   );
+
+  if (inline) {
+    return (
+      <MobileSubviewChromeProvider value={null}>
+        <div className="fixed inset-0 z-[var(--z-modal,1200)]">
+          {body}
+        </div>
+      </MobileSubviewChromeProvider>
+    );
+  }
+
+  return body;
 };
