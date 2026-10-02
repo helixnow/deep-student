@@ -235,11 +235,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     const { id, type, title } = customEvent.detail;
     console.log('[ChatV2Page] CHAT_OPEN_ATTACHMENT_PREVIEW received:', customEvent.detail);
 
-    setOpenApp({
-      type: type as ResourceType,
-      id,
-      title,
-    });
+    // 同一份资料再次打开（如点正文里的「第4页」徽章）时调用方只给通用标题「PDF」，
+    // 面板不会重挂载、不再回报真实文件名——保留已知标题
+    setOpenApp((prev) =>
+      prev && prev.id === id && prev.title
+        ? { ...prev, type: type as ResourceType }
+        : { type: type as ResourceType, id, title },
+    );
 
     if (isSmallScreen) {
       // 📱 移动端：向右滑动打开附件预览（MobileSlidingLayout rightPanel）
