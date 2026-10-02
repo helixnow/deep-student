@@ -311,6 +311,9 @@ describe('ChatAnki agent acceptance loop', () => {
     expect(content).toContain('不能把前 20 个结果当作完整模板库');
     expect(content).toContain('主动询问是否加入复习计划');
     expect(content).toContain('未得到同意不得自动入队');
+    // 新生成 / 补充的卡由后端自动入队，技能不得再引导模型反问是否加入复习
+    expect(content).toContain('已自动加入内置复习计划');
+    expect(content).toContain('不要再询问是否入队');
     expect(content).toContain('`builtin-chatanki_review_stats`');
     expect(content).toContain('只有用户明确要求或确认后');
   });

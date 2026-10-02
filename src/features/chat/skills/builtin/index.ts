@@ -1305,7 +1305,7 @@ export const chatAnkiSkill: SkillDefinition = {
 - 新制卡：\`builtin-chatanki_run\`/\`builtin-chatanki_start\` -> \`builtin-chatanki_wait\` -> \`builtin-chatanki_get_cards\` 分页验收 -> 必要时修改并再次验收 -> 用户明确确认后才可调用 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
 - 已有 APKG：\`builtin-chatanki_import_apkg\` -> 用返回的 \`documentId\` 调用 \`builtin-chatanki_get_cards\` 分页读回全部卡片 -> 必要时加工并再次验收。
 
-两条流程验收后都要向用户汇报并主动询问是否加入复习计划。只有用户同意后才调用 \`builtin-chatanki_enqueue_review\`；只有用户明确要求或确认后，才继续 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
+新制卡（run/start 生成、\`builtin-chatanki_add_cards\` 补卡）完成后**已自动加入内置复习计划**（New 状态，受每日新卡额度约束）：汇报时直接告诉用户已进入今日复习，不要再询问是否加入。APKG 导入的卡不会自动入队：验收后要向用户汇报并主动询问是否加入复习计划，只有用户同意后才调用 \`builtin-chatanki_enqueue_review\`。只有用户明确要求或确认后，才继续 \`builtin-chatanki_export\`/\`builtin-chatanki_sync\`。
 
 ## 策展 → 生成 → 质检 决策树
 
@@ -1359,8 +1359,8 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
    - wait 完成后先读回并验收；导出/同步还需用户明确要求或确认。
 5. wait 完成后，必须用 \`builtin-chatanki_get_cards\` 分页读回全部卡片并逐张自查：事实性错误、正反面颠倒、Cloze 挖空是否合理、必需字段缺失、偏离用户目标、重复卡。
 6. 发现问题时用 \`builtin-chatanki_update_card\`、\`builtin-chatanki_delete_card\`、\`builtin-chatanki_add_cards\` 修正；需要一次修改/删除多张卡时改用批量工具 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\`（单次调用替代 N 次单卡调用，逐卡返回成功/冲突）。删除前先从最近一次 \`get_cards\` 的同一卡片快照读取真实 \`cardId/version/reviewState\`，同时传入 \`expectedVersion\` 与显式 nullable \`expectedReviewVersion\`，再次调用 \`builtin-chatanki_get_cards\` 复核，直到验收通过。
-7. 向用户汇报：生成 N 张、自查修改 X 张、删除 Y 张、补充 Z 张，以及仍需用户判断的事项；随后主动询问用户是否把验收通过的卡片加入内置复习计划。
-8. 用户明确同意后，调用 \`builtin-chatanki_enqueue_review\`：整批使用 \`documentId\`，只入队部分卡片时使用 \`get_cards\` 返回的真实 \`cardIds\`。未得到同意不得自动入队。
+7. 向用户汇报：生成 N 张、自查修改 X 张、删除 Y 张、补充 Z 张，以及仍需用户判断的事项；说明卡片已自动加入今日复习（受每日新卡额度约束），不要再询问是否入队。汇报用学习者能懂的话，不要提 \`_qa_flags\`、QA 留痕等内部字段。
+8. 新生成的卡无需再调用入队工具。用户要把库里未入队的卡（APKG 导入、之前移出复习的卡）加入复习时，在用户明确同意后调用 \`builtin-chatanki_enqueue_review\`：整批使用 \`documentId\`，只入队部分卡片时使用 \`get_cards\` 返回的真实 \`cardIds\`。这类卡未得到同意不得自动入队。
 9. 工具会生成一个 \`anki_cards\` 预览块：
    - 生成期间会展示 **进度/分段状态**；
    - 也会提示 **AnkiConnect 是否可用**；
@@ -1412,7 +1412,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
 - **破坏性操作确认**：一次要删除或更换模板超过 3 张卡、整批重做、整份 document 换模板，或覆盖用户已编辑内容时，先用 \`builtin-ask_user\` 明确确认。该纪律同样适用于批量工具：\`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` 单次操作超过 3 张卡前必须先 ask_user 确认。
 - **批量工具优先**：同一文档内需要修改/删除多张卡时，优先一次 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\`（每项带各自的 \`expectedVersion\`，删除项还要带显式 nullable \`expectedReviewVersion\`），逐卡结果在 \`results\` 中返回；出现 conflict 的卡必须重新 \`get_cards\` 后重试，不得复用旧版本。
 - **截断防御（禁止用截断输出整字段覆盖）**：\`get_cards\` 的单字段超过 2000 字符会被截断（\`truncated=true\` + \`truncatedFields\`）。若某字段被截断，禁止把截断文本（或基于它的小改动）作为 patch 整字段回写——后端会返回 \`status=blocked\` / \`error=truncated_source_overwrite\`。此时应放弃整字段替换、只改未截断字段，或在用户明确同意丢弃超限内容后显式传 \`allowTruncatedSource=true\`。
-- **复习入队需同意**：制卡验收后应主动询问，但只有用户明确同意才调用 \`builtin-chatanki_enqueue_review\`；不得使用临时或合成 cardId。
+- **复习入队**：新生成 / 补充的卡已自动入队，不要再问；APKG 导入的卡验收后应主动询问，但只有用户明确同意才调用 \`builtin-chatanki_enqueue_review\`；不得使用临时或合成 cardId。
 - **复习统计是库级只读**：用户问“最近记得怎么样”“今天还有多少”“复习进度”时，用 \`builtin-chatanki_review_stats\`，并根据 due/new/learning/review/relearning/suspended/reviews_today 给出简短建议。
 - **复习状态先读后写**：撤销评分或暂停/恢复前，重新调用 \`builtin-chatanki_get_cards\`，只使用同一条最新 \`reviewState\` 中的 \`reviewVersion\`、\`latestReview.logId\` 和 \`latestReview.undoable\`。\`reviewState=null\` 表示尚未入队，不能调用复习状态写工具。
 - **评分只属于用户**：Agent 严禁推断或代替用户选择 Again/Hard/Good/Easy，也不得把“撤销后重评”理解为自行评分；ChatAnki 工具清单不开放任何评分工具。只能在用户明确要求时撤销最后一次评分，或暂停/恢复一张卡。
@@ -1443,7 +1443,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
 - 当用户要暂停/恢复/取消：用 \`builtin-chatanki_control\`。
 - 当用户要导出：用 \`builtin-chatanki_export\`。当前会话文档用 \`documentId\`（APKG/JSON；来自 wait 返回或 \`anki_cards\` 块 toolOutput）。跨会话库卡用 \`libraryCardIds\`（仅 JSON；先 \`list_library_cards\` 取真实 cardId，1–100 个且不重复）；不要用其他会话的 documentId，也不要把完整卡片塞进工具结果正文。
 - 当用户要同步到 Anki：可先用 \`builtin-chatanki_check_anki_connect\` 检查 AnkiConnect 是否可用，再用 \`builtin-chatanki_sync\` 同步（\`documentId\` 来自 wait 返回或 \`anki_cards\` 块 toolOutput）。
-- 当用户同意把卡片加入内置复习计划：用 \`builtin-chatanki_enqueue_review\`。优先按已验收的 \`documentId\` 整批入队；只入队选中卡时传真实 \`cardIds\`。
+- 当用户同意把未入队的卡片（APKG 导入、之前移出的卡）加入内置复习计划：用 \`builtin-chatanki_enqueue_review\`。优先按已验收的 \`documentId\` 整批入队；只入队选中卡时传真实 \`cardIds\`。
 - 当用户询问内置复习进度、今日到期量或近期记忆情况：用库级只读的 \`builtin-chatanki_review_stats\`。
 - 当用户明确要求撤销某张卡的最后一次评分：先 \`builtin-chatanki_get_cards\` 读取该卡最新 \`reviewState\`；仅在 \`latestReview.undoable=true\` 时，把同一快照的 \`reviewVersion\` 与 \`latestReview.logId\` 传给 \`builtin-chatanki_undo_last_review\`。
 - 当用户明确要求暂停或恢复某张已入队卡：先 \`builtin-chatanki_get_cards\` 读取最新 \`reviewState.reviewVersion\`，再调用 \`builtin-chatanki_set_suspended\`；Agent 不得自行决定暂停，也不得替用户评分。
