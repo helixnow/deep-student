@@ -547,7 +547,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
         )}
 
         {/* ======== 概览面板 ======== */}
-        <div className="wb-at-panel grid grid-cols-1 gap-6 md:grid-cols-[1fr_1.6fr]">
+        <div className="wb-at-panel grid grid-cols-1 gap-6 md:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)]">
           {/* 左：属性区 */}
           <div className="space-y-0">
             <PropRow icon={<Hash size={14} />} label={t('taskDashboard.propTotalCards')}>
@@ -632,7 +632,7 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
 
           {/* 右：可视化 —— 环形图 & 柱状图 */}
           {sessions.length > 0 && (
-            <div className="flex flex-col md:flex-row gap-6">
+            <div className="flex min-w-0 flex-col md:flex-row gap-6">
               <div className="flex-shrink-0">
                 <div className="wb-at-panel-title">
                   {t('taskDashboard.chartStatusDistribution')}

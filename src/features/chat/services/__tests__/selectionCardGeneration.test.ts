@@ -37,6 +37,7 @@ import {
   buildSelectionCardContent,
   generateCardsFromSelection,
   validateSelectionForCards,
+  buildSelectionDeckName,
 } from '../selectionCardGeneration';
 
 describe('selectionCardGeneration', () => {
@@ -163,5 +164,18 @@ describe('selectionCardGeneration', () => {
       });
       expect(mockShowGlobalNotification).toHaveBeenCalledWith('error', expect.any(String));
     });
+  });
+});
+
+describe('buildSelectionDeckName', () => {
+  it('groups selection cards per source document', () => {
+    expect(
+      buildSelectionDeckName('划词制卡', { kind: 'resource', id: 'file_1', title: '外刊精读_Remote-Work.pdf' }),
+    ).toBe('划词制卡::外刊精读_Remote-Work');
+  });
+
+  it('falls back to the base deck without a titled source and never nests via ::', () => {
+    expect(buildSelectionDeckName('划词制卡')).toBe('划词制卡');
+    expect(buildSelectionDeckName('划词制卡', { kind: 'note', id: 'n', title: 'a::b' })).toBe('划词制卡::a b');
   });
 });

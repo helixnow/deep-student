@@ -73,6 +73,18 @@ export function buildSelectionCardContent(
   return parts.join('\n\n');
 }
 
+/**
+ * 划词卡牌组：有来源资料时按资料分子牌组（「划词制卡::外刊精读_Remote-Work…」），
+ * 不同资料的卡不再全堆进同一个「划词制卡」；任务台的任务名也随之可辨认。
+ */
+export function buildSelectionDeckName(base: string, sourceRef?: CardSourceRef): string {
+  const title = sourceRef?.title
+    ?.replace(/\.(pdf|docx?|pptx?|xlsx?|epub|md|txt)$/i, '')
+    .replace(/::/g, ' ')
+    .trim();
+  return title ? `${base}::${title}` : base;
+}
+
 function navigateToTaskDashboard(): void {
   dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view: 'task-dashboard' });
 }
@@ -126,7 +138,7 @@ export async function generateCardsFromSelection(
       maxCards,
       sourceRef: input.sourceRef,
       options: {
-        deckName: t('selectionToolbar.makeCardsDeckName'),
+        deckName: buildSelectionDeckName(t('selectionToolbar.makeCardsDeckName'), input.sourceRef),
         customRequirements: t(
           'selectionToolbar.makeCardsRequirements',
           '根据用户划选的片段生成高质量记忆卡片，优先覆盖选中内容中的关键概念与事实。'
