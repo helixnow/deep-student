@@ -32,6 +32,8 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { registerContentAgentSurface } from '@/features/workbench/apps/content/contentAgentSurfaces';
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
+import { dstu } from '@/dstu';
+import { buildTranslationAutoTitle, isDefaultResourceName } from '@/dstu/autoTitle';
 
 /** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
 function countParagraphs(text: string): number {
@@ -292,6 +294,10 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
 
   // 记录当前 node ID，用于丢弃切换节点后才完成的过期加载/保存
   const currentNodeIdRef = useRef<string>(node.id);
+  const nodeNameRef = useRef(node.name);
+  nodeNameRef.current = node.name;
+  // 已自动起过名的节点：重命名后节点列表刷新前再次保存不重复改名
+  const autoNamedIdsRef = useRef(new Set<string>());
   // 已完成首次加载的节点 ID：同一节点的后续刷新静默进行，
   // 避免整屏 loading/错误屏卸载工作台导致用户输入丢失
   // （同步初始化成功时挂载即视为已加载）
@@ -423,6 +429,19 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         pendingSaveRef.current = null;
         setSession(sessionToSave);
         setSaveState({ status: 'saved' });
+      }
+      // 有了译文、名字还是「新翻译」时按原文首行自动起名（用户改过的名字不动）
+      if (
+        isCurrent()
+        && sessionToSave.translatedText.trim()
+        && !autoNamedIdsRef.current.has(boundNodeId)
+        && isDefaultResourceName(nodeNameRef.current, 'translation')
+      ) {
+        const autoTitle = buildTranslationAutoTitle(sessionToSave.sourceText);
+        if (autoTitle) {
+          autoNamedIdsRef.current.add(boundNodeId);
+          void dstu.rename(`/${boundNodeId}`, autoTitle);
+        }
       }
     } catch (error: unknown) {
       console.error('[TranslationContentView] Failed to save translation:', error);

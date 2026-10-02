@@ -114,7 +114,8 @@ const EssayContentView: React.FC<ContentViewProps> = ({
           inputText: '',
           essayType: metaString(node.metadata?.essayType),
           gradeLevel: metaString(node.metadata?.gradeLevel),
-          modeId: metaString(node.metadata?.modeId) || 'practice',
+          // 留空：由工作台按上次使用的批阅模式恢复
+          modeId: metaString(node.metadata?.modeId),
           rounds: [],
           isFavorite: false,
           createdAt: safeTimestamp(node.createdAt),

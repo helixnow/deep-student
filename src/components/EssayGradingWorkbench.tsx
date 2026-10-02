@@ -40,6 +40,8 @@ import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { calculateEssayTextStats } from '@/essay-grading/textStats';
+import { buildEssayAutoTitle, isDefaultResourceName } from '@/dstu/autoTitle';
+import { dstu } from '@/dstu';
 
 // 子组件
 import { GradingMain } from './essay-grading/GradingMain';
@@ -274,6 +276,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
 
   // 批阅模式状态
   const [modes, setModes] = useState<GradingMode[]>([]);
+  const modesRef = useRef(modes);
+  modesRef.current = modes;
   const [modeId, setModeIdRaw] = useState(
     initialSession?.modeId ? canonicalizeEssayModeId(initialSession.modeId) : 'practice'
   ); // 默认使用日常练习模式
@@ -1116,9 +1120,24 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     if (dstuMode.onSessionSave) {
       const fullSessionResult = await essayDstuAdapter.getFullSession(sessionId);
       if (fullSessionResult.ok && fullSessionResult.value) {
+        // 名字还是「新作文」时按题目 / 正文首句自动起名，左栏一眼能认出是哪篇
+        let title = fullSessionResult.value.title;
+        if (isDefaultResourceName(title, 'essay', t('learningHub:exam.untitledEssay'))) {
+          const autoTitle = buildEssayAutoTitle({
+            topicText: gradedContext.topicText,
+            inputText: latestText ?? inputTextRef.current ?? '',
+            modeName: modesRef.current.find((mode) => mode.id === gradedContext.modeId)?.name,
+            join: (mode, subject) => t('essay_grading:session.auto_title', { mode, subject }),
+          });
+          if (autoTitle) {
+            const renamed = await dstu.rename(`/${sessionId}`, autoTitle);
+            if (renamed.ok) title = autoTitle;
+          }
+        }
         // ★ M-047 修复：使用当前本地 modeId，而非依赖 getFullSession 可能过期的值
         await dstuMode.onSessionSave({
           ...fullSessionResult.value,
+          title,
           modeId: gradingContextRef.current.modeId,
         });
       }

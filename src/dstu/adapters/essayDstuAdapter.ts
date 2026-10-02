@@ -379,8 +379,9 @@ export const essayDstuAdapter = {
 
       const latestRound = rounds[rounds.length - 1];
 
-      // 会话级批阅模式：存于设置 KV（见 essaySessionModeKey），缺省回落 practice
-      let modeId = 'practice';
+      // 会话级批阅模式：存于设置 KV（见 essaySessionModeKey）。缺省留空——新建作文还没有
+      // 会话级模式，交给工作台按上次使用的模式（essay_grading.mode_id）恢复
+      let modeId = '';
       try {
         const savedModeId = await getSetting(essaySessionModeKey(sessionId));
         if (typeof savedModeId === 'string' && savedModeId.trim()) {

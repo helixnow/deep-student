@@ -92,7 +92,8 @@
     "new": "New Session",
     "title": "Session Title",
     "title_placeholder": "Enter session title...",
-    "default_title": "Essay Grading {{date}}"
+    "default_title": "Essay Grading {{date}}",
+    "auto_title": "{{mode}}: {{subject}}"
   },
   "round": {
     "label": "Round {{number}}",

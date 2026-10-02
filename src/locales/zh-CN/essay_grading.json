@@ -92,7 +92,8 @@
     "new": "新建会话",
     "title": "会话标题",
     "title_placeholder": "输入会话标题...",
-    "default_title": "作文批改 {{date}}"
+    "default_title": "作文批改 {{date}}",
+    "auto_title": "{{mode}}：{{subject}}"
   },
   "round": {
     "label": "第 {{number}} 轮",

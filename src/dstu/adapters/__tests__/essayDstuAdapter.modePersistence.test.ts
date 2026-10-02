@@ -38,8 +38,8 @@ describe('作文会话批阅模式持久化', () => {
     expect(session.ok && session.value.modeId).toBe('ielts');
   });
 
-  it('未保存过模式时回落 practice', async () => {
+  it('未保存过模式时留空，交给工作台按上次使用的模式恢复', async () => {
     const session = await essayDstuAdapter.getFullSession('essay_session_1');
-    expect(session.ok && session.value.modeId).toBe('practice');
+    expect(session.ok && session.value?.modeId).toBe('');
   });
 });
