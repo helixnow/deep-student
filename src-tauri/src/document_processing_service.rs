@@ -311,16 +311,23 @@ fn segment_without_overlap(
 
         // 如果单个段落就超过限制，需要进一步分割
         if paragraph_tokens > max_tokens_per_segment {
-            // 先保存当前分段（如果有内容）
-            if !current_segment.trim().is_empty() {
-                segments.push(current_segment.trim().to_string());
+            let mut sub_segments =
+                split_long_paragraph(paragraph, max_tokens_per_segment, snap_boundaries)?;
+            // 很短的前导段（如「# 词表.xlsx」标题）并入下一段开头：单独成段时模型拿到的
+            // 只有一个标题，会凭空编卡（实测标题段产出 12 张与资料无关的卡）
+            let lead = current_segment.trim();
+            let lead_tokens = estimate_tokens(lead);
+            if !lead.is_empty() {
+                // 前导段不超过预算 10% 时直接并入（允许下一段略超预算，远好过一段只有标题）
+                match sub_segments.first_mut() {
+                    Some(first) if lead_tokens * 10 <= max_tokens_per_segment => {
+                        *first = format!("{lead}\n\n{first}");
+                    }
+                    _ => segments.push(lead.to_string()),
+                }
             }
             current_segment.clear();
             current_tokens = 0;
-
-            // 分割长段落
-            let sub_segments =
-                split_long_paragraph(paragraph, max_tokens_per_segment, snap_boundaries)?;
             segments.extend(sub_segments);
             continue;
         }
@@ -1066,6 +1073,20 @@ mod tests {
         }
         assert_eq!(seen.len(), 60);
         assert!(seen.values().all(|&count| count == 1));
+    }
+
+    /// 文件标题行紧跟超长表格：标题不再单独成段（单独成段时模型只拿到标题会凭空编卡）。
+    #[test]
+    fn short_lead_paragraph_is_merged_into_following_long_paragraph() {
+        let mut table = String::from("单词\t释义\n");
+        for i in 0..80 {
+            table.push_str(&format!("word{i}\t这是第{i}个词的释义，包含一些说明文字。\n"));
+        }
+        let content = format!("# 词表.xlsx\n\n{table}");
+        let segments = segment_without_overlap(&content, 300, false).unwrap();
+        assert!(segments.len() > 1);
+        assert!(segments[0].starts_with("# 词表.xlsx\n\n单词"), "{}", segments[0]);
+        assert!(segments.iter().all(|seg| seg.lines().any(|l| l.starts_with("word"))));
     }
 
     #[test]

@@ -599,11 +599,12 @@ fn json_fragment_balanced(fragment: &str) -> bool {
 
 /// 紧凑输出上限（词表模式 2400）不得低于本段实际需要：一段 14 行、每行 7 个字段的
 /// 词表要输出的卡远超 2400 token，触顶后整段 JSON 截断、只剩 0–1 张（60 词实测出 36 张）。
-/// 下限按段长估算（输出约为输入的 1.5 倍 + 结构开销），推理模型再留思考余量，
+/// 下限按段长估算（输出约为输入的 3 倍 + 结构开销），推理模型再留思考余量，
 /// 最终受模型输出上限约束。
 fn compact_output_budget(cap: u32, segment: &str, reasoning: bool, model_limit: u32) -> u32 {
     let chars = segment.chars().count() as u32;
-    let floor = chars.saturating_mul(3) / 2 + 600;
+    // 问答 + 挖空等多模板时一行词条常出 2 张卡，输出可达输入的 2~3 倍；上限只是封顶，宽一些无额外开销
+    let floor = chars.saturating_mul(3) + 1000;
     let mut budget = cap.max(floor);
     if reasoning {
         budget = budget.saturating_add(4096);
@@ -3563,9 +3564,9 @@ mod tests {
     fn compact_output_budget_grows_with_segment_and_reasoning() {
         let segment = "词".repeat(2200);
         // 2200 字的词表段：不能停在 2400
-        assert!(compact_output_budget(2400, &segment, false, 32_000) >= 3900);
+        assert!(compact_output_budget(2400, &segment, false, 32_000) >= 7000);
         // 推理模型额外留思考余量
-        assert!(compact_output_budget(2400, &segment, true, 32_000) >= 7900);
+        assert!(compact_output_budget(2400, &segment, true, 32_000) >= 11_000);
         // 短段保持原紧凑上限；始终受模型上限约束
         assert_eq!(compact_output_budget(2400, "short", false, 32_000), 2400);
         assert_eq!(compact_output_budget(2400, &segment, true, 4000), 4000);
