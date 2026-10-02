@@ -10,6 +10,7 @@ import {
   CaretLeft,
   CaretRight,
   DotsThree,
+  DownloadSimple,
   FloppyDisk,
   MagnifyingGlass,
   Pause,
@@ -50,6 +51,7 @@ import {
   sortLibraryCards,
 } from '../library/libraryView';
 import '../library/library.css';
+import { exportLibraryApkg } from '../library/exportLibrary';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -432,6 +434,38 @@ export const LibraryScreen: React.FC = () => {
     });
   }, [importing, importApkg, translate]);
 
+  // 导出：有选中导出选中，否则导出整个卡片库
+  const [exporting, setExporting] = useState(false);
+  const handleExportApkg = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const outcome = await exportLibraryApkg(selectedCards, translate('library.export.deckName', { defaultValue: 'DeepStudent' }));
+      if (outcome.status === 'exported') {
+        showGlobalNotification(
+          outcome.missingMedia > 0 ? 'warning' : 'success',
+          outcome.missingMedia > 0
+            ? translate('library.export.successMissingMedia', { count: outcome.count, missing: outcome.missingMedia, defaultValue: '已导出 {{count}} 张卡片，{{missing}} 个媒体文件缺失未打包' })
+            : translate('library.export.success', { count: outcome.count, defaultValue: '已导出 {{count}} 张卡片' }),
+        );
+      } else if (outcome.status === 'empty') {
+        showGlobalNotification('info', translate('library.export.empty', { defaultValue: '卡片库里还没有卡片' }));
+      } else if (outcome.status === 'failed') {
+        showGlobalNotification('error', translate('library.export.failed', { defaultValue: '导出失败' }));
+      }
+    } catch (error: unknown) {
+      console.error('[FlashcardsLibrary] export failed:', error);
+      showGlobalNotification('error', translate('library.export.failed', { defaultValue: '导出失败' }));
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, selectedCards, translate]);
+  const exportLabel = exporting
+    ? translate('library.export.running', { defaultValue: '正在导出…' })
+    : selectedCards.length > 0
+      ? translate('library.export.selected', { count: selectedCards.length, defaultValue: '导出选中（{{count}}）' })
+      : translate('library.export.apkg', { defaultValue: '导出 .apkg' });
+
   const closeComposer = useCallback(() => {
     if (!creating) setComposerOpen(false);
   }, [creating]);
@@ -453,11 +487,12 @@ export const LibraryScreen: React.FC = () => {
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
+          <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()}>{exportLabel}</AppMenuItem>
           <AppMenuItem icon={<ArrowClockwise size={18} />} disabled={loading} onClick={() => void refresh()}>{t('library.refresh')}</AppMenuItem>
         </AppMenuContent>
       </AppMenu>
     </>,
-  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, importing, handleImportApkg, refresh]);
+  }, [t, composerOpen, loading, total, closeComposer, draftValid, creating, handleSubmitDraft, importing, handleImportApkg, refresh, exporting, handleExportApkg, exportLabel]);
 
   // A phone composer is a subpage of the library: keep its draft/list state here,
   // while the host owns the title, back and save action.
@@ -535,6 +570,19 @@ export const LibraryScreen: React.FC = () => {
       >
         <UploadSimple size={18} />
         {!isSmallScreen && (importing ? translate('library.import.running') : translate('library.import.apkg'))}
+      </DsButton>
+      <DsButton
+        type="button"
+        variant="default"
+        iconOnly={isSmallScreen}
+        aria-label={exportLabel}
+        disabled={exporting}
+        onClick={() => void handleExportApkg()}
+        title={translate('library.export.hint', { defaultValue: '导出为 Anki 牌组（.apkg），保留每张卡的模板与样式；未选中卡片时导出整个卡片库' })}
+        className="fc-lib-create-cta text-sm"
+      >
+        <DownloadSimple size={18} />
+        {!isSmallScreen && exportLabel}
       </DsButton>
     </>
   );

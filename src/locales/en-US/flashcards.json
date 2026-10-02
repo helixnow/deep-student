@@ -164,6 +164,17 @@
       "success": "Card created and added to the review queue",
       "failed": "Failed to create the card"
     },
+    "export": {
+      "apkg": "Export .apkg",
+      "selected": "Export selected ({{count}})",
+      "running": "Exporting…",
+      "hint": "Export as an Anki deck (.apkg) keeping each card's template and styling; exports the whole library when nothing is selected",
+      "success": "Exported {{count}} cards",
+      "successMissingMedia": "Exported {{count}} cards; {{missing}} media files were missing",
+      "empty": "The library has no cards yet",
+      "failed": "Export failed",
+      "deckName": "DeepStudent"
+    },
     "import": {
       "apkg": "Import .apkg",
       "pickTitle": "Choose an Anki deck (.apkg)",

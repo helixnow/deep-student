@@ -164,6 +164,17 @@
       "success": "已新建卡片并加入复习队列",
       "failed": "新建卡片失败"
     },
+    "export": {
+      "apkg": "导出 .apkg",
+      "selected": "导出选中（{{count}}）",
+      "running": "正在导出…",
+      "hint": "导出为 Anki 牌组（.apkg），保留每张卡的模板与样式；未选中卡片时导出整个卡片库",
+      "success": "已导出 {{count}} 张卡片",
+      "successMissingMedia": "已导出 {{count}} 张卡片，{{missing}} 个媒体文件缺失未打包",
+      "empty": "卡片库里还没有卡片",
+      "failed": "导出失败",
+      "deckName": "DeepStudent"
+    },
     "import": {
       "apkg": "导入 .apkg",
       "pickTitle": "选择 Anki 牌组（.apkg）",
