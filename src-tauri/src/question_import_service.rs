@@ -23,6 +23,9 @@ use std::sync::{
 use tokio::sync::mpsc::UnboundedSender;
 use tokio_util::sync::CancellationToken;
 
+/// VLM 逐页分析的并发页数（视觉模型单页常需数十秒，串行导入多页试卷过慢）
+const VLM_PAGE_CONCURRENCY: usize = 3;
+
 /// 匹配 `<<IMG:N` 标记中的图片索引（每题调用，预编译）
 static IMG_INDEX_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<<IMG:(\d+)").unwrap());
 
@@ -901,11 +904,18 @@ impl QuestionImportService {
             })
             .collect();
 
-        // 从断点页开始继续
-        for idx in vlm_start_page..pages.len() {
-            let page = &pages[idx];
-
-            match vlm_service.analyze_page_by_blob(vfs_db, page).await {
+        // 从断点页开始继续。页面之间相互独立：有界并发请求 VLM（单页常需 30s~3min，
+        // 串行时 3 页试卷要等好几分钟）；`buffered` 按页序产出结果，checkpoint 仍是
+        // 连续前缀，断点续传语义不变（中断时未落盘的在途页会重做）。
+        use futures::StreamExt;
+        let vlm_service = &vlm_service;
+        let mut page_results = futures::stream::iter(vlm_start_page..pages.len())
+            .map(|idx| async move {
+                (idx, vlm_service.analyze_page_by_blob(vfs_db, &pages[idx]).await)
+            })
+            .buffered(VLM_PAGE_CONCURRENCY);
+        while let Some((idx, page_result)) = page_results.next().await {
+            match page_result {
                 Ok(analysis) => {
                     log::info!(
                         "[QuestionImport] VLM 页面 {}/{}: {} 道题目",

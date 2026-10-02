@@ -556,7 +556,7 @@
     "parsing_chunk": "Parsing chunk {{current}}/{{total}}...",
     "parsed_count": "Parsed {{count}} questions...",
     "chunk_completed": "Chunk {{current}}/{{total}} done, {{count}} questions parsed",
-    "ocr_image_progress": "Recognizing image {{current}}/{{total}}...",
+    "ocr_image_progress": "Recognized {{current}}/{{total}} pages…",
     "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Import complete! {{count}} questions total",
     "import_done_partial": "Import complete (VLM interrupted, some questions may be missing): {{count}} questions saved",

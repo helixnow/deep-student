@@ -47,6 +47,8 @@ import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
 import { getQuestionTypeMeta, QUESTION_TYPE_ORDER, type ExtendedQuestionType } from './questionTypeMeta';
+import katex from 'katex';
+import { ensureKatexStyles } from '@/utils/lazyStyles';
 
 export interface QuestionListFilters {
   search?: string;
@@ -127,9 +129,44 @@ const readStoredViewType = (): 'grid' | 'list' => {
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /** 搜索命中高亮：按 query 切分并用 <mark> 包裹命中片段 */
+/** 题干公式：$$…$$ 或 $…$（题干里货币写法罕见，按宽松规则匹配，`$A$` 也要渲染） */
+const QUESTION_MATH_RE = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+
+const escapePreviewHtml = (str: string) =>
+  str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/** 题干文本 → HTML（公式经 KaTeX，其余转义）；无公式返回 null */
+function renderQuestionPreviewHtml(text: string): string | null {
+  if (!text || !text.includes('$')) return null;
+  let html = '';
+  let last = 0;
+  let matched = false;
+  for (const match of text.matchAll(QUESTION_MATH_RE)) {
+    const latex = (match[1] ?? match[2] ?? '').trim();
+    if (!latex) continue;
+    matched = true;
+    html += escapePreviewHtml(text.slice(last, match.index));
+    // 预览是两行截断的卡片摘要：块公式一律按行内渲染，避免撑高卡片
+    html += katex.renderToString(latex, { throwOnError: false, strict: false, trust: false, displayMode: false });
+    last = match.index! + match[0].length;
+  }
+  if (!matched) return null;
+  return html + escapePreviewHtml(text.slice(last));
+}
+
+/** 题干预览：渲染公式（数学/物理题干几乎全是 LaTeX，显示源码不可读） */
+const MathPreviewText: React.FC<{ text: string }> = ({ text }) => {
+  const html = useMemo(() => renderQuestionPreviewHtml(text), [text]);
+  useEffect(() => {
+    if (html) ensureKatexStyles();
+  }, [html]);
+  if (!html) return <>{text}</>;
+  return <span dangerouslySetInnerHTML={{ __html: html }} />;
+};
+
 const HighlightText: React.FC<{ text: string; query?: string }> = ({ text, query }) => {
   const trimmed = query?.trim();
-  if (!trimmed) return <>{text}</>;
+  if (!trimmed) return <MathPreviewText text={text} />;
   const parts = text.split(new RegExp(`(${escapeRegExp(trimmed)})`, 'ig'));
   if (parts.length === 1) return <>{text}</>;
   return (

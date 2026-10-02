@@ -556,7 +556,7 @@
     "parsing_chunk": "正在解析分块 {{current}}/{{total}}...",
     "parsed_count": "已解析 {{count}} 道题目...",
     "chunk_completed": "分块 {{current}}/{{total}} 完成，已解析 {{count}} 道题目",
-    "ocr_image_progress": "正在识别图片 {{current}}/{{total}}...",
+    "ocr_image_progress": "已识别 {{current}}/{{total}} 页…",
     "ocr_phase_done": "{{total}} 张图片识别完成，开始解析题目...",
     "import_done": "导入完成！共 {{count}} 道题目",
     "import_done_partial": "导入完成（VLM 中途中断，可能缺题）：已保存 {{count}} 道题目",
