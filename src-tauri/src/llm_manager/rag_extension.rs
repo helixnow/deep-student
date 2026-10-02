@@ -315,17 +315,40 @@ impl LLMManager {
     /// 依赖该 Err 关闭多模态索引批处理（显式启用语义），不做自动探测。
     pub async fn get_vl_embedding_model_config(&self) -> Result<ApiConfig> {
         // 从 settings 读取默认多模态嵌入模型配置ID
-        let Some(setting_id) = self
+        let setting_id = self
             .db
             .get_setting("embedding.default_multimodal_model_config_id")
-            .map_err(|e| AppError::configuration(format!("读取多模态嵌入模型配置失败: {}", e)))?
-        else {
-            return Err(AppError::configuration(
-                "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
-            ));
-        };
+            .map_err(|e| AppError::configuration(format!("读取多模态嵌入模型配置失败: {}", e)))?;
 
         let configs = self.get_api_configs().await?;
+        // 与文本嵌入同一回退链：维度管理默认 → 模型分配的 VL 槽位 → 唯一可用的多模态嵌入配置。
+        // 此前没设维度默认就直接报错，在模型分配里选了多模态嵌入模型也不会生效，
+        // 资料页图永远不做多模态索引。
+        let Some(setting_id) = setting_id else {
+            return match self.fallback_vl_embedding_model_id(&configs).await {
+                Ok(id) => configs
+                    .into_iter()
+                    .find(|config| config.id == id)
+                    .ok_or_else(|| AppError::configuration("找不到多模态嵌入模型配置")),
+                Err(_) => {
+                    let mut usable = configs.into_iter().filter(|config| {
+                        config.enabled && config.is_embedding && config.is_multimodal && !config.is_reranker
+                    });
+                    match (usable.next(), usable.next()) {
+                        (Some(only), None) => {
+                            info!("[RAG] Auto-selected the only multimodal embedding config {}", only.id);
+                            let _ = self
+                                .db
+                                .save_setting("embedding.default_multimodal_model_config_id", &only.id);
+                            Ok(only)
+                        }
+                        _ => Err(AppError::configuration(
+                            "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
+                        )),
+                    }
+                }
+            };
+        };
         let vl_embedding_model_id = if configs.iter().any(|config| config.id == setting_id) {
             setting_id
         } else {
