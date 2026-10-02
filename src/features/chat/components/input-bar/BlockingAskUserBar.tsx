@@ -13,6 +13,7 @@
  * 设计决策：无超时。用户操作不应被自动替代。
  */
 
+import { stripRecommendedMarker } from '@/features/chat/utils/askUserLabel';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { DsButton } from '@/components/ui/DsButton';
 import { useTranslation } from 'react-i18next';
@@ -92,6 +93,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           }
           return { label: String(opt ?? '') };
         })
+        .map((option) => ({ ...option, label: stripRecommendedMarker(option.label) }))
         .filter((option) => option.label.length > 0);
     }, [rawOptions]);
 

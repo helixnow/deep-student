@@ -1427,6 +1427,10 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     }
     // 发送即收起长文本粘贴建议条
     setLongPasteCandidate(null);
+    // 附件随消息发出、待发送区清空：收起附件面板，否则空的「附件 (0)」浮层一直压在对话上
+    if (panelStatesRef.current.attachment) {
+      onSetPanelState('attachment', false);
+    }
     // 🔧 P3修复：正确处理异步 onSend 的返回值，避免未捕获的 Promise rejection
     // 错误已在 TauriAdapter 中通过 showGlobalNotification 显示，这里只需要静默处理
     const result = onSend();
@@ -1435,7 +1439,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, sendBlockedReason, onSend, t]);
+  }, [canSendWithAttachments, disabledSend, sendBlockedReason, onSend, onSetPanelState, t]);
 
   // 处理停止
   const handleStop = useCallback(() => {
