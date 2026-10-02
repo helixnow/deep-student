@@ -12,9 +12,9 @@ use futures::stream::{self, StreamExt};
 use serde::Serialize;
 use std::sync::Arc;
 use std::sync::LazyLock;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, Manager, Window};
 use tokio::task::JoinHandle;
-use tracing::warn;
+use tracing::{info, warn};
 
 // 全局运行时注册表：追踪正在运行的任务与文档状态（用于硬暂停/恢复）
 // 使用 DashMap 实现分片锁，按 document_id 分片，避免跨文档阻塞
@@ -252,10 +252,12 @@ impl EnhancedAnkiService {
         let window_clone = window.clone();
         let streaming_service = Arc::new(self.streaming_service.clone());
         let document_id_clone = document_id.clone();
+        let db_for_enqueue = self.db.clone();
 
         tokio::spawn(async move {
             Self::process_all_tasks_async(
                 streaming_service,
+                db_for_enqueue,
                 tasks,
                 window_clone,
                 document_id_clone,
@@ -275,6 +277,7 @@ impl EnhancedAnkiService {
     /// - 保持暂停检查和任务状态管理功能
     async fn process_all_tasks_async(
         streaming_service: Arc<StreamingAnkiService>,
+        db: Arc<Database>,
         tasks: Vec<DocumentTask>,
         window: Window,
         document_id: String,
@@ -466,6 +469,9 @@ impl EnhancedAnkiService {
             }
         }
         if should_emit_completed {
+            // 学习闭环：生成完的卡直接进入复习计划（New 状态，受每日新卡额度约束），
+            // 不再停在卡片库「待入队」——此前要手动「加入复习」，今日复习里看不到新卡。
+            Self::enqueue_generated_cards(&db, &window, &document_id_for_check);
             // 🔧 CardForge 2.0 修复：直接发射 StreamedCardPayload
             let complete_payload = StreamedCardPayload::DocumentProcessingCompleted {
                 document_id: document_id_for_check,
@@ -473,6 +479,46 @@ impl EnhancedAnkiService {
             if let Err(e) = window.emit("anki_generation_event", &complete_payload) {
                 warn!("发送文档处理完成事件失败: {}", e);
             }
+        }
+    }
+
+    /// 把文档生成的有效卡（排除错误卡）加入 FSRS 复习；已在复习中的卡由 enqueue 自行跳过。
+    pub(crate) fn enqueue_document_cards(
+        db: &Arc<Database>,
+        document_id: &str,
+    ) -> Result<Option<(crate::fsrs_review_service::FsrsReviewService, crate::fsrs_review_service::FsrsEnqueueResult)>, AppError> {
+        let card_ids: Vec<String> = db
+            .get_cards_for_document(document_id)
+            .map_err(|e| AppError::database(e.to_string()))?
+            .into_iter()
+            .filter(|card| !card.is_error_card)
+            .map(|card| card.id)
+            .collect();
+        if card_ids.is_empty() {
+            return Ok(None);
+        }
+        let service = crate::fsrs_review_service::FsrsReviewService::new(db.clone());
+        let result = service.enqueue_cards(&card_ids)?;
+        Ok(Some((service, result)))
+    }
+
+    fn enqueue_generated_cards(db: &Arc<Database>, window: &Window, document_id: &str) {
+        match Self::enqueue_document_cards(db, document_id) {
+            Ok(Some((service, result))) => {
+                info!(
+                    "[EnhancedAnki] 文档 {} 生成的卡已加入复习: enqueued={}, skipped={}",
+                    document_id, result.enqueued, result.skipped
+                );
+                if result.enqueued > 0 {
+                    crate::cmd::fsrs_review::emit_fsrs_enqueue_changed(
+                        &window.app_handle(),
+                        &service,
+                        &result,
+                    );
+                }
+            }
+            Ok(None) => {}
+            Err(error) => warn!("[EnhancedAnki] 生成卡自动加入复习失败: {}", error),
         }
     }
 
@@ -625,9 +671,11 @@ impl EnhancedAnkiService {
 
         let window_clone = window.clone();
         let streaming_service = Arc::new(self.streaming_service.clone());
+        let db_for_enqueue = self.db.clone();
         tokio::spawn(async move {
             Self::process_all_tasks_async(
                 streaming_service,
+                db_for_enqueue,
                 remaining,
                 window_clone,
                 document_id,
@@ -1392,4 +1440,66 @@ mod tests {
             .expect_err("parent tombstone must be reported");
         assert!(matches!(parent_error.error_type, AppErrorType::NotFound));
     }
+
+    #[test]
+    fn generated_cards_are_enqueued_once_and_error_cards_are_skipped() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            MigrationCoordinator::new(tmp.path().to_path_buf())
+                .with_audit_db(None)
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db = Arc::new(
+            crate::database::Database::new(&tmp.path().join("mistakes.db")).expect("database"),
+        );
+        let now = chrono::Utc::now().to_rfc3339();
+        let task = DocumentTask {
+            id: "task-auto-enqueue".to_string(),
+            document_id: "doc-auto-enqueue".to_string(),
+            original_document_name: "auto enqueue".to_string(),
+            segment_index: 0,
+            content_segment: "fixture".to_string(),
+            status: TaskStatus::Completed,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            error_message: None,
+            anki_generation_options_json: "{}".to_string(),
+        };
+        let make_card = |id: &str, is_error: bool| AnkiCard {
+            id: id.to_string(),
+            task_id: task.id.clone(),
+            front: format!("front {id}"),
+            back: "answer".to_string(),
+            text: None,
+            tags: Vec::new(),
+            images: Vec::new(),
+            is_error_card: is_error,
+            error_content: None,
+            created_at: now.clone(),
+            updated_at: now.clone(),
+            extra_fields: std::collections::HashMap::new(),
+            template_id: None,
+        };
+        db.save_document_task_with_cards_atomic(
+            &task,
+            &[make_card("card-a", false), make_card("card-b", false), make_card("card-err", true)],
+        )
+        .expect("save cards");
+
+        let (_, first) = EnhancedAnkiService::enqueue_document_cards(&db, "doc-auto-enqueue")
+            .expect("enqueue")
+            .expect("has cards");
+        assert_eq!(first.enqueued, 2, "error card must not enter review");
+
+        // 再次完成（如恢复/重试后）不重复入队
+        let (_, second) = EnhancedAnkiService::enqueue_document_cards(&db, "doc-auto-enqueue")
+            .expect("enqueue again")
+            .expect("has cards");
+        assert_eq!(second.enqueued, 0);
+        assert_eq!(second.skipped, 2);
+    }
+
 }

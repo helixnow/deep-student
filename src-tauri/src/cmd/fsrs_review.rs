@@ -136,7 +136,7 @@ fn build_fsrs_enqueue_changed_payload(
     }))
 }
 
-fn emit_fsrs_enqueue_changed(
+pub(crate) fn emit_fsrs_enqueue_changed(
     app: &AppHandle,
     service: &FsrsReviewService,
     result: &FsrsEnqueueResult,
