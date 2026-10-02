@@ -2190,7 +2190,19 @@ impl VfsFullIndexingService {
             .any(|u| u.text_required && u.text_state == index_unit_repo::IndexState::Pending);
         drop(conn); // 释放连接，避免长时间持有
 
-        if has_valid_units && !content_changed && !has_pending_text_unit {
+        // 旧版导入的多页 PDF（文字无页分隔符）：强制重建单元，触发按页重提文字
+        let legacy_unpaged_pdf: bool = {
+            let conn = self.db.get_conn_safe()?;
+            conn.query_row(
+                "SELECT COUNT(*) > 0 FROM files
+                 WHERE resource_id = ?1 AND COALESCE(page_count, 0) > 1
+                   AND extracted_text IS NOT NULL AND instr(extracted_text, char(12)) = 0",
+                rusqlite::params![resource_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+        };
+        if has_valid_units && !content_changed && !has_pending_text_unit && !legacy_unpaged_pdf {
             // Units 已存在且有效且内容未变，跳过重新同步
             debug!(
                 "[VfsFullIndexingService] Reusing {} existing units for resource {}",

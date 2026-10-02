@@ -507,7 +507,7 @@ impl VfsIndexStateRepo {
     /// 一次性迁移：把多页 PDF 资源重新排队建索引（逐页单元 / 第 0 页不再挂全文 / 旧数据按页重提文字）。
     /// 以 vfs_indexing_config 键去重，只执行一次；返回重新排队的资源数。
     pub fn requeue_paged_pdfs_once(db: &VfsDatabase) -> VfsResult<usize> {
-        const KEY: &str = "migration.pdf_paged_units_v1";
+        const KEY: &str = "migration.pdf_paged_units_v2";
         if VfsIndexingConfigRepo::get_config(db, KEY)?.is_some() {
             return Ok(0);
         }
