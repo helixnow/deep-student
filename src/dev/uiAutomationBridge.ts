@@ -497,8 +497,42 @@ function startBridge() {
   connect();
 }
 
+// ---------------------------------------------------------------------------
+// 后台 rAF 兜底：窗口在别的桌面空间（用户切到全屏应用）时页面 visibilityState=hidden，
+// WebKit 暂停 requestAnimationFrame（遮挡检测开关管不到 Space），依赖 rAF 的浮层
+// （划词工具条定位等）永远不出现。仅调试桥会话：隐藏期间退化为 16ms 定时器。
+// ---------------------------------------------------------------------------
+function installHiddenRafFallback() {
+  const nativeRaf = window.requestAnimationFrame.bind(window);
+  const nativeCancel = window.cancelAnimationFrame.bind(window);
+  const timers = new Map<number, ReturnType<typeof setTimeout>>();
+  let nextFallbackId = -1;
+  window.requestAnimationFrame = (cb: FrameRequestCallback) => {
+    if (document.visibilityState !== 'hidden') return nativeRaf(cb);
+    const id = nextFallbackId--;
+    timers.set(
+      id,
+      setTimeout(() => {
+        timers.delete(id);
+        cb(performance.now());
+      }, 16),
+    );
+    return id;
+  };
+  window.cancelAnimationFrame = (id: number) => {
+    const timer = timers.get(id);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      timers.delete(id);
+      return;
+    }
+    nativeCancel(id);
+  };
+}
+
 installConsoleCapture();
 installApi();
+installHiddenRafFallback();
 startBridge();
 
 export {};

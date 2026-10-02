@@ -41,12 +41,17 @@ export function findWindowId() {
   const swiftSrc = `
 import CoreGraphics
 import Foundation
-let opts: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else { print(""); exit(0) }
-for w in list {
-  let owner = (w[kCGWindowOwnerName as String] as? String) ?? ""
-  if owner == "deep-student" || owner == "Deep Student" {
-    print(w[kCGWindowNumber as String] ?? 0); exit(0)
+// 先找屏上窗口；窗口在别的桌面空间（用户切到全屏应用）时退到全部窗口里找主窗口
+for opts in [CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements]), CGWindowListOption([.optionAll, .excludeDesktopElements])] {
+  guard let list = CGWindowListCopyWindowInfo(opts, kCGNullWindowID) as? [[String: Any]] else { continue }
+  for w in list {
+    let owner = (w[kCGWindowOwnerName as String] as? String) ?? ""
+    let layer = (w[kCGWindowLayer as String] as? Int) ?? 0
+    let bounds = (w[kCGWindowBounds as String] as? [String: Any]) ?? [:]
+    let height = (bounds["Height"] as? Double) ?? 0
+    if (owner == "deep-student" || owner == "Deep Student") && layer == 0 && height > 200 {
+      print(w[kCGWindowNumber as String] ?? 0); exit(0)
+    }
   }
 }
 print("")
