@@ -383,7 +383,10 @@
     "dropHere": "放到这里"
   },
   "reviewLink": {
-    "title": "今日有 {{count}} 题待复习",
+    "cards": "卡片 {{count}}",
+    "mistakes": "错题 {{count}}",
+    "notes": "笔记 {{count}}",
+    "title": "今日有 {{count}} 项待复习",
     "subtitle": "间隔复习计划已就绪",
     "withOverdue": "其中 {{overdue}} 题已逾期",
     "action": "去复习"

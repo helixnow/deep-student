@@ -117,7 +117,7 @@ interface SOTADashboardProps {
   onBack?: () => void;
   embedded?: boolean;
   /** ★ 5.1 今日指挥中心导航回调 */
-  onNavigate?: (view: 'learning-hub' | 'todo' | 'task-dashboard') => void;
+  onNavigate?: (view: 'learning-hub' | 'todo' | 'task-dashboard' | 'flashcards') => void;
 }
 
 export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded = false, onNavigate }) => {

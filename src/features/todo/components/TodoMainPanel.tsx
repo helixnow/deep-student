@@ -12,6 +12,7 @@
  * 子组件拆分在 ./main/ 目录（行、详情、四象限、改期菜单等）。
  */
 
+import { loadTodayLearning, openDueNotesReview, type TodayLearning } from '@/features/learning-today/todayLearning';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -63,7 +64,6 @@ import {
   localToday,
   sortTodoItems,
 } from '../types';
-import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { useViewStore } from '@/stores/viewStore';
 import { useKeyboardInset } from '@/hooks/useKeyboardHeight';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -255,23 +255,32 @@ export const MobileDetailOverlay: React.FC<{
 
 const ReviewLinkCard: React.FC = () => {
   const { t } = useTranslation(['todo']);
-  const stats = useReviewPlanStore((s) => s.stats);
-  const loadStats = useReviewPlanStore((s) => s.loadStats);
+  // 与首页「今日学习」同一口径：卡片 + 错题 + 笔记（旧实现只算 SM-2 错题复习）
+  const [today, setToday] = useState<TodayLearning | null>(null);
 
   useEffect(() => {
-    void loadStats(undefined);
-  }, [loadStats]);
+    let cancelled = false;
+    void loadTodayLearning().then((value) => { if (!cancelled) setToday(value); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
-  const dueToday = stats?.due_today ?? 0;
-  const overdue = stats?.overdue_count ?? 0;
-  const total = dueToday + overdue;
-  if (total <= 0) return null;
+  const total = today ? today.cards + today.mistakes + today.notes : 0;
+  if (!today || total <= 0) return null;
+
+  const open = () => {
+    if (today.cards > 0) dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' });
+    else if (today.mistakes > 0) dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'learning-hub' });
+    else openDueNotesReview();
+  };
+  const parts = [
+    today.cards > 0 && t('todo:reviewLink.cards', { defaultValue: '卡片 {{count}}', count: today.cards }),
+    today.mistakes > 0 && t('todo:reviewLink.mistakes', { defaultValue: '错题 {{count}}', count: today.mistakes }),
+    today.notes > 0 && t('todo:reviewLink.notes', { defaultValue: '笔记 {{count}}', count: today.notes }),
+  ].filter(Boolean).join(' · ');
 
   return (
     <button
-      onClick={() => {
-        dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'learning-hub' });
-      }}
+      onClick={open}
       className={cn(
         'group mx-4 mt-3 flex items-center gap-3 rounded-[var(--radius-shell-control)] border border-border/40 px-3 py-2.5 text-left transition-colors duration-150 sm:mx-6',
         'hover:border-border hover:bg-[color:var(--interactive-hover)]',
@@ -284,11 +293,7 @@ const ReviewLinkCard: React.FC = () => {
         <span className="block text-ui font-medium text-foreground">
           {t('todo:reviewLink.title', { count: total })}
         </span>
-        <span className="block text-xs text-muted-foreground">
-          {overdue > 0
-            ? t('todo:reviewLink.withOverdue', { overdue })
-            : t('todo:reviewLink.subtitle')}
-        </span>
+        <span className="block text-xs text-muted-foreground">{parts}</span>
       </span>
       <span className="flex flex-shrink-0 items-center gap-0.5 text-xs text-muted-foreground transition-colors group-hover:text-foreground">
         {t('todo:reviewLink.action')}

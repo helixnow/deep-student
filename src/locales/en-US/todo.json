@@ -383,7 +383,10 @@
     "dropHere": "Drop here"
   },
   "reviewLink": {
-    "title": "{{count}} questions due for review today",
+    "cards": "Cards {{count}}",
+    "mistakes": "Mistakes {{count}}",
+    "notes": "Notes {{count}}",
+    "title": "{{count}} items due for review today",
     "subtitle": "Spaced repetition plan is ready",
     "withOverdue": "{{overdue}} of them are overdue",
     "action": "Review"

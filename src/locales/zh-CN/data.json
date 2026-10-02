@@ -2,6 +2,9 @@
   "page_title": "数据管理",
   "page_subtitle": "管理您的错题数据、系统设置和备份",
   "today_center": {
+    "cards_due": "到期卡片",
+    "mistakes_due": "错题复习",
+    "notes_due": "待复习笔记",
     "title": "今日",
     "all_clear": "暂无待处理事项",
     "review_due": "到期复习",

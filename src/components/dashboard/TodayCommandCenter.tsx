@@ -11,16 +11,19 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { BookOpen, CheckSquare, CircleNotch, ArrowRight } from '@phosphor-icons/react';
+import { Cards, CheckSquare, CircleNotch, ArrowRight, Notebook, WarningDiamond } from '@phosphor-icons/react';
+import { loadTodayLearning, openDueNotesReview } from '@/features/learning-today/todayLearning';
 
-type ActionView = 'learning-hub' | 'todo' | 'task-dashboard';
+type ActionView = 'learning-hub' | 'todo' | 'task-dashboard' | 'flashcards';
 
 interface TodayCommandCenterProps {
   onNavigate?: (view: ActionView) => void;
 }
 
 interface TodayCounts {
-  reviewDue: number;
+  cardsDue: number;
+  mistakesDue: number;
+  notesDue: number;
   todoDue: number;
   activeJobs: number;
 }
@@ -28,10 +31,9 @@ interface TodayCounts {
 const REFRESH_INTERVAL_MS = 60_000;
 
 async function loadCounts(): Promise<TodayCounts> {
-  const [reviewDue, todoDue, activeJobs] = await Promise.all([
-    invoke<{ due_today?: number; overdue_count?: number }>('review_plan_get_stats', { examId: null })
-      .then((s) => (s?.due_today ?? 0) + (s?.overdue_count ?? 0))
-      .catch(() => 0),
+  // 三条复习线统一口径（卡片 / 错题 / 笔记），见 learning-today/todayLearning
+  const [learning, todoDue, activeJobs] = await Promise.all([
+    loadTodayLearning().catch(() => ({ cards: 0, mistakes: 0, notes: 0, dueNotes: [] })),
     import('@/features/todo/api')
       .then((m) => m.listTodayItems(false))
       .then((items) => items.length)
@@ -40,7 +42,7 @@ async function loadCounts(): Promise<TodayCounts> {
       .then((sessions) => sessions.filter((s) => (s.activeTasks ?? 0) > 0).length)
       .catch(() => 0),
   ]);
-  return { reviewDue, todoDue, activeJobs };
+  return { cardsDue: learning.cards, mistakesDue: learning.mistakes, notesDue: learning.notes, todoDue, activeJobs };
 }
 
 interface ActionCardProps {
@@ -91,7 +93,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
   const [counts, setCounts] = useState<TodayCounts | null>(null);
 
   const refresh = useCallback(() => {
-    loadCounts().then(setCounts).catch(() => setCounts({ reviewDue: 0, todoDue: 0, activeJobs: 0 }));
+    loadCounts().then(setCounts).catch(() => setCounts({ cardsDue: 0, mistakesDue: 0, notesDue: 0, todoDue: 0, activeJobs: 0 }));
   }, []);
 
   useEffect(() => {
@@ -111,7 +113,8 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
 
   if (!counts) return null;
 
-  const nothingToDo = counts.reviewDue === 0 && counts.todoDue === 0 && counts.activeJobs === 0;
+  const nothingToDo = counts.cardsDue === 0 && counts.mistakesDue === 0 && counts.notesDue === 0
+    && counts.todoDue === 0 && counts.activeJobs === 0;
 
   return (
     <div className="mb-6">
@@ -123,12 +126,28 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
       </div>
       <div className="flex flex-wrap gap-3">
         <ActionCard
-          icon={<BookOpen size={18} />}
-          label={t('today_center.review_due')}
-          count={counts.reviewDue}
+          icon={<Cards size={18} />}
+          label={t('today_center.cards_due', { defaultValue: '到期卡片' })}
+          count={counts.cardsDue}
           hint={t('today_center.go')}
-          highlight={counts.reviewDue > 0}
+          highlight={counts.cardsDue > 0}
+          onClick={() => onNavigate?.('flashcards')}
+        />
+        <ActionCard
+          icon={<WarningDiamond size={18} />}
+          label={t('today_center.mistakes_due', { defaultValue: '错题复习' })}
+          count={counts.mistakesDue}
+          hint={t('today_center.go')}
+          highlight={counts.mistakesDue > 0}
           onClick={() => onNavigate?.('learning-hub')}
+        />
+        <ActionCard
+          icon={<Notebook size={18} />}
+          label={t('today_center.notes_due', { defaultValue: '待复习笔记' })}
+          count={counts.notesDue}
+          hint={t('today_center.go')}
+          highlight={counts.notesDue > 0}
+          onClick={openDueNotesReview}
         />
         <ActionCard
           icon={<CheckSquare size={18} />}
