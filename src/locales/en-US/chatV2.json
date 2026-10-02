@@ -1502,6 +1502,7 @@
     "thinking": {
       "inProgress": "Thinking for {{seconds}}s…",
       "completed": "Thought for {{seconds}}s",
+      "collapsed": "Used {{seconds}}s",
       "stopped": "Stopped thinking",
       "contentLabel": "Reasoning details",
       "detail": {

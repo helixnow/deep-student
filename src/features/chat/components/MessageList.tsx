@@ -55,11 +55,14 @@ const VIRTUALIZER_INIT_DELAY = 0;
 /** 默认估算消息高度（设置为合理值，测量会覆盖）*/
 const DEFAULT_ESTIMATED_ITEM_SIZE = 120;
 /**
- * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16）：
- * 配合已完成块 content-visibility 与块数/字节数准入，长会话不再依赖
- * 直渲染路径；直渲染只保留给真正的小会话。
+ * 超过该数量后启用虚拟滚动（🚀 2026-09-25 由 80 收紧到 16，2026-10-02 回退到 50）：
+ * 配合已完成块 content-visibility，长会话渲染开销已被 content-visibility 吃掉，
+ * 直渲染不再需要靠"更早切虚拟化"来兜底；16 这个值对含代码块的短会话反而有害——
+ * 估算高度 120px 与真实高度（代码块常差 3 倍）不符，进入虚拟化后要经历一轮
+ * 测量修正抖动。回退到 50 让真正需要虚拟化的大会话才付这笔成本。
+ * 块数/字节数准入不受影响：它们各自封住"消息少但块多/单条巨长"的形状。
  */
-const VIRTUALIZATION_THRESHOLD = 16;
+const VIRTUALIZATION_THRESHOLD = 50;
 /**
  * 直渲染准入同时受总块数约束（🚀 长会话性能）：agent 任务会话消息数不多
  * 但每条消息带大量工具块，仅按消息数阈值会整会话直渲染，每次流式冲刷的
@@ -884,12 +887,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => resizeObserver.disconnect();
   }, [logElement, followBottom]);
 
-  // 🖱️ 平滑滚轮惯性（纯手感层）：其写入不记账，自然被分类为用户滚动，
-  // 无需再向上滚回调与跟随判定耦合
-  useSmoothWheel(containerRef.current, {
-    // 直接提供已知 viewport，避免缓动循环每帧 querySelector
-    getScrollElement: () => viewportElement,
-  });
+  // 🖱️ 滚轮 delta 归一化。滚动完全走浏览器原生：监听器 passive、不 preventDefault、
+  // 无 JS 缓动循环。吸底解除不靠这里的意图上报——账本分类器在 scroll 事件里
+  // 判定读者滚动（见下方 onScroll），任何设备都覆盖，也无需与嵌套滚动容器抢事件。
+  useSmoothWheel(containerRef.current);
 
   // ==========================================================================
   // A45-5（docs/dev/acr/ACR-4.5.md）：agent 程序化滚动到指定消息

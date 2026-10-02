@@ -146,6 +146,12 @@
   --chat-activity-node-gap: 0.75rem;
   --chat-activity-content-gap: 0.75rem;
 
+  /* 思考中（中间态）思维链预览窗高度：固定窗口 + 上下渐隐，不把消息撑长 */
+  --chat-thinking-peek-height: 8.5rem;
+
+  /* 渐隐带宽度：两端各让出这么多，正文不会被硬切 */
+  --chat-thinking-peek-fade: 18px;
+
   /* 用户气泡正文与 caption 字号地板（12px，可读文本最小值） */
   --chat-caption-font-size: 0.75rem;
 

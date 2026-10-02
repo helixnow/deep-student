@@ -1501,7 +1501,8 @@
   "timeline": {
     "thinking": {
       "inProgress": "正在思考 {{seconds}} 秒…",
-      "completed": "已思考 {{seconds}} 秒",
+      "completed": "已思考用时 {{seconds}} 秒",
+      "collapsed": "已用时 {{seconds}} 秒",
       "stopped": "已停止思考",
       "contentLabel": "推理详情",
       "detail": {

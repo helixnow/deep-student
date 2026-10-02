@@ -19,7 +19,9 @@ import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
 import {
   Brain,
+  CaretDown,
   CaretRight,
+  CaretUpDown,
   CircleNotch,
   CheckCircle,
   WarningCircle,
@@ -466,6 +468,22 @@ function readAutoCollapseSetting(): boolean {
   return document.documentElement.getAttribute('data-auto-collapse-thinking') !== 'false';
 }
 
+/**
+ * 预览窗距底部小于该值即视为"贴底"，继续自动跟随。
+ * 留 48px 尾巴：用户手指/滚轮停在底部附近时不打断阅读。
+ */
+const PEEK_FOLLOW_THRESHOLD_PX = 48;
+
+/**
+ * 跟随时的「落位 / 滑动」分界：距底不超过这么多像素就直接瞬移落位。
+ *
+ * 为什么不全用平滑滚动：流式期间每个 token 都会追加内容，一次只长几像素。
+ * 每帧重启一次约 300ms 的平滑动画，动画永远走不完，结果是内容"卡着不跟"，
+ * 比瞬移更像卡顿。小步瞬移在视觉上本来就无感，只有跨段落这类大跳跃才值得
+ * 滑过去——让用户看清中间发生了什么。
+ */
+const PEEK_SNAP_THRESHOLD_PX = 96;
+
 const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
@@ -498,6 +516,11 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
     return !autoCollapseEnabled;
   });
   const isManuallyControlled = useRef(false);
+  /**
+   * 用户是否点过触发器。思考中的中间态只是"预览窗"，用户一旦表达意图
+   * （展开看全文 / 收起）就升级为显式意图，不再被自动逻辑接管。
+   */
+  const [isUserToggled, setIsUserToggled] = useState(false);
 
   useEffect(() => {
     if (isManuallyControlled.current) return;
@@ -510,10 +533,19 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
 
   const toggleExpanded = useCallback(() => {
     isManuallyControlled.current = true;
+    setIsUserToggled(true);
     setIsExpanded((prev) => !prev);
   }, []);
 
   const hasContent = !!(node.content || node.isThinking);
+  /** 中间态：仍在思考、且用户没有手动接管 → 固定预览窗 + 上下渐隐 */
+  const isPeeking = node.isThinking && !isUserToggled;
+  const disclosureIconKey = !hasContent ? null : node.isThinking ? 'thinking' : isExpanded ? 'expanded' : 'collapsed';
+  const disclosureIcon = disclosureIconKey === 'thinking'
+    ? <CaretUpDown size={12} weight="bold" />
+    : disclosureIconKey === 'expanded'
+      ? <CaretDown size={12} weight="bold" />
+      : <CaretRight size={12} weight="bold" />;
 
   const paragraphs = useMemo(
     () => (node.content ?? '')
@@ -522,6 +554,63 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
       .filter(Boolean),
     [node.content],
   );
+
+  /**
+   * 中间态的固定预览窗跟随最新推理：内容追加就把窗口滚到底。
+   *
+   * 四条约束：
+   * - 只有 isPeeking（思考中且用户没接管）才跟随；展开态是正常文档流，
+   *   用户接管后也不该被程序滚动拽走。
+   * - 用户自己往上翻看就停止跟随，回到底部才恢复（pinnedToBottom 账本）。
+   * - 用 rAF：等 markdown 渲染器把新段落写进 DOM 再滚，否则 scrollHeight 还是旧值。
+   * - 跟随时区分「瞬移落位」与「平滑滑动」，小步瞬移、大步滑动（见下方阈值注释）。
+   */
+  const peekViewportRef = useRef<HTMLDivElement>(null);
+  const isPeekPinnedRef = useRef(true);
+  /** 本次滚动是我们自己发起的：平滑动画期间的中间帧不算「用户上滚」 */
+  const isPeekFollowingRef = useRef(false);
+
+  /** 用户翻看时记账：距底太远就不再自动跟随 */
+  const handlePeekScroll = useCallback(() => {
+    const el = peekViewportRef.current;
+    if (!el) return;
+    const maxScrollTop = el.scrollHeight - el.clientHeight;
+    const isNearBottom = maxScrollTop - el.scrollTop < PEEK_FOLLOW_THRESHOLD_PX;
+    if (isPeekFollowingRef.current) {
+      // 平滑滚动自身的中间态不改判「用户上滚」；真的滑到底后才解除标记，
+      // 这样下一次用户翻看仍然能被正常记账。
+      if (isNearBottom) isPeekFollowingRef.current = false;
+      return;
+    }
+    isPeekPinnedRef.current = isNearBottom;
+  }, []);
+
+  useEffect(() => {
+    if (!isPeeking) {
+      isPeekPinnedRef.current = true;
+      isPeekFollowingRef.current = false;
+      return;
+    }
+    const el = peekViewportRef.current;
+    if (!el || !isPeekPinnedRef.current) return;
+    const frame = requestAnimationFrame(() => {
+      const maxScrollTop = el.scrollHeight - el.clientHeight;
+      const distance = maxScrollTop - el.scrollTop;
+      if (distance <= 1) return;
+
+      const reduceMotion =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (reduceMotion || distance <= PEEK_SNAP_THRESHOLD_PX || typeof el.scrollTo !== 'function') {
+        el.scrollTop = el.scrollHeight;
+        return;
+      }
+      // 大跳跃才滑过去；标记期间动画帧不参与「用户上滚」判定
+      isPeekFollowingRef.current = true;
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isPeeking, node.content, paragraphs.length]);
 
   return (
     <TimelineNode
@@ -540,7 +629,12 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
         />
       }
     >
-      <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5">
+      <div
+        className={cn(
+          'thinking-summary-row flex w-full max-w-full items-center pb-0.5',
+          isExpanded && 'thinking-summary-row--pinned'
+        )}
+      >
         <DsButton
           variant="ghost"
           size="sm"
@@ -568,20 +662,27 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             </span>
           ) : (
             <span className="activity-timeline-summary">
-              {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
+              {/* 展开态是"挂顶的锚"，说清楚是思考本身花了多久；收起态退成一行余量 */}
+              {isExpanded
+                ? t('timeline.thinking.completed', { seconds: displayDurationSeconds })
+                : t('timeline.thinking.collapsed', { seconds: displayDurationSeconds })}
             </span>
           )}
-          {hasContent && (
+          {hasContent && (disclosureIconKey ? (
+            /* 三态各有各的朝向：思考中=上下（中间态），展开=向下（点此收起），收起=向右（点此展开）。
+               key 变化触发重挂载 → initial 的 -90° 旋转重播，得到"翻面"手感；
+               不再用常驻 rotate:90，否则向下箭头会被转成向左。 */
             <motion.span
+              key={disclosureIconKey}
               aria-hidden="true"
-              className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground/50 group-hover:text-foreground/70 transition-colors duration-200"
-              initial={false}
-              animate={{ rotate: isExpanded ? 90 : 0 }}
+              className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground/50 group-hover:text-foreground/70"
+              initial={{ rotate: -90, opacity: 0 }}
+              animate={{ rotate: 0, opacity: 1 }}
               transition={{ duration: 0.2, ease: 'easeOut' }}
             >
-              <CaretRight size={12} weight="bold" />
+              {disclosureIcon}
             </motion.span>
-          )}
+          ) : null)}
         </DsButton>
       </div>
 
@@ -594,18 +695,26 @@ const ThinkingNodeContentInner: React.FC<ThinkingNodeContentProps> = ({ node, is
             aria-label={t('timeline.thinking.contentLabel')}
             className="activity-timeline-thinking-details overflow-hidden"
           >
+            {/* 中间态走固定预览窗（高度 + 上下渐隐）；用户接管后撤掉限制，全部展开 */}
             <div
-              className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400"
+              ref={peekViewportRef}
+              onScroll={handlePeekScroll}
+              className={cn(
+                'activity-timeline-thinking-peek',
+                !isPeeking && 'activity-timeline-thinking-peek--expanded'
+              )}
             >
-              <div className="space-y-2">
-                {paragraphs.map((paragraph, idx, arr) => (
-                  <div key={idx} className="thinking-chain-content text-gray-500 dark:text-gray-400">
-                    <StreamingMarkdownRenderer
-                      content={paragraph}
-                      isStreaming={!!node.isThinking && idx === arr.length - 1}
-                    />
-                  </div>
-                ))}
+              <div className="activity-timeline-thinking-content py-2 pl-2 pr-1 text-gray-500 dark:text-gray-400">
+                <div className="space-y-2">
+                  {paragraphs.map((paragraph, idx, arr) => (
+                    <div key={idx} className="thinking-chain-content text-gray-500 dark:text-gray-400">
+                      <StreamingMarkdownRenderer
+                        content={paragraph}
+                        isStreaming={!!node.isThinking && idx === arr.length - 1}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </motion.div>

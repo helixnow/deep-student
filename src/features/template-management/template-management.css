@@ -18,50 +18,8 @@
   background: var(--wb-window-bg, hsl(var(--card)));
 }
 
-/* 桌面壳侧栏：模板页复用主导航的行级节奏，避免 UnifiedSidebar 默认的卡片式留白。 */
-.wb-tm-sidebar .wb-tm-sidebar-group {
-  padding: 6px 8px 0;
-}
-
-.wb-tm-sidebar .wb-tm-sidebar-section-label {
-  min-width: 0;
-  padding: 2px 2px 4px;
-  overflow: hidden;
-  color: var(--shell-navigation-section-label);
-  font-size: var(--font-size-ui);
-  font-weight: 400;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-tm-sidebar .sidebar-shell-item.desktop-shell-nav-row {
-  min-height: 32px;
-  margin-inline: 0;
-  padding: 6px 10px;
-  gap: 10px;
-  border-radius: var(--shell-nav-row-radius);
-}
-
-.wb-tm-sidebar .sidebar-shell-item.desktop-shell-nav-row svg {
-  width: 16px;
-  height: 16px;
-  color: currentColor;
-}
-
-.wb-tm-sidebar .sidebar-shell-item.desktop-shell-nav-row span.line-clamp-2 {
-  display: block;
-  overflow: hidden;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.wb-tm-sidebar .sidebar-shell-item.desktop-shell-nav-row p {
-  margin-top: 2px;
-  font-size: var(--font-size-sm);
-  line-height: 16px;
-}
+/* 桌面壳侧栏已改用 WorkbenchSidebarSurface / WorkbenchSidebarRow 共享原语，
+   与主页侧栏同源，不再需要 wb-tm-sidebar 私有行级覆写。 */
 
 /* ==== 顶部导航（workbench 窗口模式，对齐 wb-fc-nav）==== */
 
