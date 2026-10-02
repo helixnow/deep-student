@@ -4846,7 +4846,7 @@ impl VfsFullSearchService {
     }
 
     /// 源对象的显示名（按 source_id 前缀查对应表的标题列）
-    fn source_display_title(db: &VfsDatabase, source_id: &str) -> Option<String> {
+    pub(crate) fn source_display_title(db: &VfsDatabase, source_id: &str) -> Option<String> {
         let sql = if source_id.starts_with("note_") {
             "SELECT title FROM notes WHERE id = ?1"
         } else if source_id.starts_with("tb_")

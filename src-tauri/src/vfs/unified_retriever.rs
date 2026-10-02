@@ -1047,7 +1047,13 @@ impl VfsUnifiedRetriever {
             });
             let title = resource_metadata
                 .as_ref()
-                .and_then(|metadata| metadata.title.clone().or_else(|| metadata.name.clone()));
+                .and_then(|metadata| metadata.title.clone().or_else(|| metadata.name.clone()))
+                .filter(|title| !title.trim().is_empty())
+                .or_else(|| {
+                    source_id.as_deref().and_then(|sid| {
+                        crate::vfs::indexing::VfsFullSearchService::source_display_title(db, sid)
+                    })
+                });
             let metadata_value = metadata
                 .as_deref()
                 .and_then(|value| serde_json::from_str(value).ok())
@@ -1144,11 +1150,26 @@ impl VfsUnifiedRetriever {
                     .flatten()
                     .map(|path| path.to_string_lossy().to_string())
             });
+            let source_id = row.source_id.or(resource.source_id);
+            // 资源元数据常不带标题（资源库导入的文件）：回退到源对象显示名，避免来源卡显示「Page N」
             let title = resource
                 .metadata
                 .as_ref()
-                .and_then(|metadata| metadata.title.clone().or_else(|| metadata.name.clone()));
-            let source_id = row.source_id.or(resource.source_id);
+                .and_then(|metadata| metadata.title.clone().or_else(|| metadata.name.clone()))
+                .filter(|title| !title.trim().is_empty())
+                .or_else(|| {
+                    source_id.as_deref().and_then(|sid| {
+                        crate::vfs::indexing::VfsFullSearchService::source_display_title(db, sid)
+                    })
+                });
+            // 页图命中没有文字：用该页文本单元补摘要（来源卡不再「暂无文本摘要」）
+            let text = if row.text.trim().is_empty() {
+                page_index
+                    .and_then(|page| page_text_for_unit(db, &row.resource_id, page))
+                    .unwrap_or(row.text)
+            } else {
+                row.text
+            };
             hits.push(RetrievalHit {
                 identity: RetrievalIdentity {
                     resource_id: row.resource_id.clone(),
@@ -1156,7 +1177,7 @@ impl VfsUnifiedRetriever {
                     page_index,
                 },
                 embedding_id: row.embedding_id,
-                text: row.text,
+                text,
                 title,
                 resource_type: Some(resource_type),
                 source_id,
@@ -1169,6 +1190,21 @@ impl VfsUnifiedRetriever {
         }
         Ok(hits)
     }
+}
+
+/// 某页文本单元的文字（截断到 600 字，用作页图命中的摘要）
+fn page_text_for_unit(db: &VfsDatabase, resource_id: &str, page_index: i32) -> Option<String> {
+    let conn = db.get_conn_safe().ok()?;
+    let text: Option<String> = conn
+        .query_row(
+            "SELECT text_content FROM vfs_index_units WHERE resource_id = ?1 AND unit_index = ?2",
+            rusqlite::params![resource_id, page_index],
+            |row| row.get(0),
+        )
+        .ok()
+        .flatten();
+    text.map(|t| t.trim().chars().take(600).collect::<String>())
+        .filter(|t| !t.is_empty())
 }
 
 fn extract_lexical_terms(query: &str) -> Vec<String> {

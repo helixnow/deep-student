@@ -392,6 +392,8 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
         || undefined
       : undefined;
     const sourceId = source.source_id
+      // VfsSearchResult / 多模态检索输出为 camelCase（此前漏读，点击来源打不开原文）
+      || (source as { sourceId?: string }).sourceId
       || (metadata.source_id as string)
       || (metadata.sourceId as string)
       || cardId

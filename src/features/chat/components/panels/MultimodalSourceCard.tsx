@@ -24,6 +24,7 @@ import {
   ImageBroken,
 } from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import type { UnifiedSourceItem, MultimodalSourceType } from './sourceTypes';
 
@@ -97,9 +98,45 @@ export function resolveMultimodalImageSrc(item: UnifiedSourceItem): string | nul
     return `data:image/jpeg;base64,${thumbnail}`;
   }
   if (item.imageUrl) {
+    // 后端给的是磁盘绝对路径，网页不能直接加载（此前一律「缩略图不可用」）：转成 asset 协议地址
+    if (/^(?:file:\/\/)?\//.test(item.imageUrl) && !item.imageUrl.startsWith('//')) {
+      try {
+        return convertFileSrc(item.imageUrl.replace(/^file:\/\//, ''));
+      } catch {
+        return null;
+      }
+    }
     return item.imageUrl;
   }
   return null;
+}
+
+/** 有资源 ID + 页码时按页取图（与回答正文的引用页图同一接口，带缓存）；否则回退 resolveMultimodalImageSrc */
+const pageImageCache = new Map<string, string>();
+function usePageImageSrc(item: UnifiedSourceItem): string | null {
+  const resourceId = item.resourceId;
+  const pageIndex = item.pageIndex ?? item.multimodal?.pageIndex;
+  const fallback = useMemo(() => resolveMultimodalImageSrc(item), [item]);
+  const key = resourceId && typeof pageIndex === 'number' ? `${resourceId}:${pageIndex}` : null;
+  const [src, setSrc] = useState<string | null>(() => (key && pageImageCache.get(key)) || null);
+  useEffect(() => {
+    if (!key || !resourceId || typeof pageIndex !== 'number') return;
+    const cached = pageImageCache.get(key);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+    let cancelled = false;
+    void import('@/api/vfsRagApi')
+      .then(({ getPdfPageImageDataUrl }) => getPdfPageImageDataUrl(resourceId, pageIndex))
+      .then((dataUrl) => {
+        pageImageCache.set(key, dataUrl);
+        if (!cancelled) setSrc(dataUrl);
+      })
+      .catch(() => { /* 取图失败回退 fallback */ });
+    return () => { cancelled = true; };
+  }, [key, resourceId, pageIndex]);
+  return src ?? fallback;
 }
 
 // ============================================================================
@@ -124,7 +161,7 @@ export const MultimodalSourceCard = React.forwardRef<HTMLDivElement, MultimodalS
   const [imageError, setImageError] = useState(false);
 
   const multimodal = item.multimodal;
-  const imageSrc = useMemo(() => resolveMultimodalImageSrc(item), [item]);
+  const imageSrc = usePageImageSrc(item);
   const score = item.score;
   const scorePercent = score != null ? Math.round(score * 100) : null;
 
