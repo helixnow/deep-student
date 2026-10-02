@@ -23,6 +23,20 @@
     "title": "等待批改",
     "description": "在输入区输入或粘贴作文，点击「开始批改」后，批注结果将实时显示在这里"
   },
+  "mistakes": {
+    "label": "错误点入错题本",
+    "running": "正在写入错题本…",
+    "set_name": "作文错题",
+    "tag": "作文",
+    "replace_tag": "改写",
+    "error_tag": "错误",
+    "replace_prompt": "改正下列句子中的问题：\n{{text}}",
+    "error_prompt": "指出并改正下列内容中的错误：\n{{text}}",
+    "saved": "已把 {{count}} 个错误点写入「作文错题」，可在题库里练习和复习",
+    "none": "这次批改没有可整理的错误或改写",
+    "failed": "写入错题本失败",
+    "open": "去练习"
+  },
   "make_cards": {
     "label": "生成卡片",
     "running": "正在提交制卡…",

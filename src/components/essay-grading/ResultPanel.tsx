@@ -43,6 +43,9 @@ interface ResultPanelProps {
   /** 把批改结果送进制卡链路（由 Workbench 提供） */
   onGenerateCards?: () => void;
   isGeneratingCards?: boolean;
+  /** 错误点入错题本 */
+  onSaveMistakes?: () => void;
+  isSavingMistakes?: boolean;
   roundNavigation?: {
     currentIndex: number;
     total: number;
@@ -120,6 +123,8 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   onSaveAsNote,
   onGenerateCards,
   isGeneratingCards,
+  onSaveMistakes,
+  isSavingMistakes,
   roundNavigation,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
@@ -314,21 +319,40 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
       </div>
 
       {/* 生成卡片：常显次级动作条（移动端整行，桌面右对齐），不藏进 hover 层 */}
-      {onGenerateCards && !showEmptyState && (
+      {(onGenerateCards || onSaveMistakes) && !showEmptyState && (
         <div className="shrink-0 border-t border-border/30 px-3 py-2 sm:px-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+          {onSaveMistakes && (
+            <DsButton
+              variant="secondary"
+              size="sm"
+              onClick={onSaveMistakes}
+              disabled={Boolean(generateCardsDisabledReason) || Boolean(isSavingMistakes)}
+              title={generateCardsDisabledReason ?? undefined}
+              className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+            >
+              <Notebook size={14} />
+              {isSavingMistakes
+                ? t('essay_grading:mistakes.running')
+                : t('essay_grading:mistakes.label')}
+            </DsButton>
+          )}
+          {onGenerateCards && (
           <DsButton
             variant="secondary"
             size="sm"
             onClick={onGenerateCards}
             disabled={Boolean(generateCardsDisabledReason) || Boolean(isGeneratingCards)}
             title={generateCardsDisabledReason ?? undefined}
-            className="w-full justify-center sm:ml-auto sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
+            className="w-full justify-center sm:w-auto [@media(pointer:coarse)]:!min-h-[44px]"
           >
             <Cards size={14} />
             {isGeneratingCards
               ? t('essay_grading:make_cards.running')
               : t('essay_grading:make_cards.label')}
           </DsButton>
+          )}
+          </div>
           {generateCardsDisabledReason && (
             <p className="mt-1.5 text-xs text-muted-foreground sm:text-right">
               {generateCardsDisabledReason}

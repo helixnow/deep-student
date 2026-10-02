@@ -81,6 +81,8 @@ interface GradingMainProps {
   /** 把批改结果送进制卡链路 */
   onGenerateCards?: () => void;
   isGeneratingCards?: boolean;
+  onSaveMistakes?: () => void;
+  isSavingMistakes?: boolean;
 
   // Round Props
   currentRound: number;
@@ -163,6 +165,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onSaveAsNote,
   onGenerateCards,
   isGeneratingCards,
+  onSaveMistakes,
+  isSavingMistakes,
   currentRound,
   onModesChange,
   settingsAsPage = false,
@@ -293,6 +297,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       onSaveAsNote={onSaveAsNote}
       onGenerateCards={onGenerateCards}
       isGeneratingCards={isGeneratingCards}
+      onSaveMistakes={onSaveMistakes}
+      isSavingMistakes={isSavingMistakes}
       currentRound={currentRound}
       roundNavigation={roundNavigation}
     />

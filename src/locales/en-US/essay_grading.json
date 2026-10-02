@@ -23,6 +23,20 @@
     "title": "Ready to grade",
     "description": "Enter or paste an essay in the input area, then click \"Start Grading\" to see annotated results here in real time"
   },
+  "mistakes": {
+    "label": "Add errors to mistake book",
+    "running": "Saving to mistake book…",
+    "set_name": "Essay mistakes",
+    "tag": "Essay",
+    "replace_tag": "Rewrite",
+    "error_tag": "Error",
+    "replace_prompt": "Fix the problem in this sentence:\n{{text}}",
+    "error_prompt": "Find and fix the error in:\n{{text}}",
+    "saved": "Saved {{count}} error(s) to \"Essay mistakes\" for practice and review",
+    "none": "No errors or rewrites to save from this grading",
+    "failed": "Failed to save to mistake book",
+    "open": "Practice"
+  },
   "make_cards": {
     "label": "Generate cards",
     "running": "Submitting…",

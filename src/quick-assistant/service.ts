@@ -4,7 +4,7 @@ import i18n from '@/i18n';
 import { dstu } from '@/dstu/api';
 import { ensureInbox, createTodoItem, getActiveTodoSummary } from '@/features/todo/api';
 import { ankiApiAdapter } from '@/services/ankiApiAdapter';
-import { createEmpty } from '@/dstu/factory';
+import { ensureNamedExam } from '@/utils/ensureNamedExam';
 import { mapFsrsRow } from '@/features/flashcards/store/fsrsReviewStore';
 import type { ReviewCard } from '@/features/flashcards/store/fsrsReviewStore';
 
@@ -248,29 +248,9 @@ export async function saveAsNote(source: string, answer: string): Promise<string
 
 const MISTAKE_SET_KEY = 'quickAssistant.mistakeExamId';
 
-/** 「速答错题」题目集：记住的 id → 按名字查找 → 新建。错题因此进入题库，可练习、可复习。 */
-async function ensureMistakeExam(): Promise<string> {
-  const name = tt('service.mistake_set_name');
-  let remembered: string | null = null;
-  try { remembered = localStorage.getItem(MISTAKE_SET_KEY); } catch { /* 无存储时按名字查找 */ }
-  if (remembered) {
-    const found = await dstu.get(`/${remembered}`);
-    if (found.ok && found.value?.type === 'exam') return remembered;
-  }
-  const listed = await dstu.list('/', { typeFilter: 'exam', search: name, limit: 20 });
-  const existing = listed.ok ? listed.value.find((node) => node.type === 'exam' && node.name === name) : undefined;
-  const examId = existing?.id ?? await (async () => {
-    const created = await createEmpty({ type: 'exam', name });
-    if (!created.ok) throw created.error;
-    return created.value.id;
-  })();
-  try { localStorage.setItem(MISTAKE_SET_KEY, examId); } catch { /* 下次按名字查找 */ }
-  return examId;
-}
-
 export async function saveAsMistake(source: string, answer: string): Promise<void> {
   // 旧实现调用已随图谱模块删除的 bulk_import_problem_cards，每次必然失败
-  const examId = await ensureMistakeExam();
+  const examId = await ensureNamedExam(tt('service.mistake_set_name'), MISTAKE_SET_KEY);
   await invoke('qbank_create_question', {
     params: {
       exam_id: examId,

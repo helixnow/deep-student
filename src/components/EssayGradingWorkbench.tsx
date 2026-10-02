@@ -1577,6 +1577,32 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     }
   }, [isGrading, gradingResult, isGeneratingCards, inputText, t]);
 
+  // ★ 错误点入错题本：改写 / 错误标记 → 「作文错题」题目集（可练习、进复习、计入掌握度）
+  const [isSavingMistakes, setIsSavingMistakes] = useState(false);
+  const handleSaveMistakes = useCallback(async () => {
+    if (isGrading || !gradingResult || isSavingMistakes) return;
+    setIsSavingMistakes(true);
+    try {
+      const { saveEssayMistakes } = await import('../essay-grading/essayMistakes');
+      const { count, examId } = await saveEssayMistakes(gradingResult);
+      if (count === 0 || !examId) {
+        showGlobalNotification('info', t('essay_grading:mistakes.none'));
+        return;
+      }
+      showGlobalNotification('success', t('essay_grading:mistakes.saved', { count }), undefined, {
+        action: {
+          label: t('essay_grading:mistakes.open'),
+          onClick: () => window.dispatchEvent(new CustomEvent('navigateToExamSheet', { detail: { sessionId: examId } })),
+        },
+      });
+    } catch (error: unknown) {
+      console.error('[EssayGrading] Save mistakes failed:', error);
+      showGlobalNotification('error', t('essay_grading:mistakes.failed'));
+    } finally {
+      setIsSavingMistakes(false);
+    }
+  }, [isGrading, gradingResult, isSavingMistakes, t]);
+
   // 字符统计（统一使用 Unicode 字符口径，避免 UTF-16 length 偏差）
   // ★ 性能：统计基于 deferred 值计算——超长文本快速键入时统计滞后渲染，不阻塞输入本身
   const deferredInputText = useDeferredValue(inputText);
@@ -1641,6 +1667,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onSaveAsNote={handleSaveAsNote}
           onGenerateCards={() => { void handleGenerateCards(); }}
           isGeneratingCards={isGeneratingCards}
+          onSaveMistakes={() => { void handleSaveMistakes(); }}
+          isSavingMistakes={isSavingMistakes}
           settingsAsPage={externalSettingsNavigation}
           isActive={isActive}
           roundNavigation={totalRounds > 0 ? {
