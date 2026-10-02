@@ -14,6 +14,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Cards, CheckSquare, CircleNotch, ArrowRight, Notebook, WarningDiamond } from '@phosphor-icons/react';
 import { loadTodayLearning, openDueNotesReview } from '@/features/learning-today/todayLearning';
 import { WeakConceptsStrip } from './WeakConceptsStrip';
+import { WeeklyReportActions } from './WeeklyReportActions';
 
 type ActionView = 'learning-hub' | 'todo' | 'task-dashboard' | 'flashcards';
 
@@ -124,6 +125,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
         {nothingToDo && (
           <span className="text-[12px] text-muted-foreground/60">{t('today_center.all_clear')}</span>
         )}
+        <WeeklyReportActions />
       </div>
       <div className="flex flex-wrap gap-3">
         <ActionCard
