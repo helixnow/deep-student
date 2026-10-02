@@ -53,6 +53,7 @@ vi.mock('@/components/UnifiedNotification', () => ({
 import { DSTU_FOLDER_CHANGE_EVENT } from '@/dstu/folderEvents';
 import {
   deriveNoteTitle,
+  truncateNoteTitle,
   saveTextAsNote,
   saveTextAsNoteAndNotify,
   notifySaveTextAsNoteResult,
@@ -85,6 +86,22 @@ beforeEach(() => {
   createNote.mockResolvedValue(ok({ id: 'note-1' }));
   // 缺省场景：回查确认笔记确实在目标目录里
   getFolderItems.mockResolvedValue(ok([{ itemId: 'note-1', itemType: 'note', folderId: 'folder-9' }]));
+});
+
+describe('truncateNoteTitle', () => {
+  it('keeps short titles and collapses whitespace', () => {
+    expect(truncateNoteTitle('  a\n b  ', 30)).toBe('a b');
+  });
+
+  it('never cuts an English word in half', () => {
+    expect(truncateNoteTitle('Instead, something more curious has happened', 30)).toBe(
+      'Instead, something more…',
+    );
+  });
+
+  it('cuts CJK text at the limit and drops a trailing comma', () => {
+    expect(truncateNoteTitle('通勤并没有消失，它只是换了一种形态而已', 8)).toBe('通勤并没有消失…');
+  });
 });
 
 describe('deriveNoteTitle', () => {

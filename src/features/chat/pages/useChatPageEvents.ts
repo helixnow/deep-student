@@ -16,6 +16,8 @@ import type { ResourceListItem, ResourceType } from '@/features/learning-hub/typ
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatSession } from '../types/session';
+import { useViewStore } from '@/stores/viewStore';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 import {
@@ -73,7 +75,14 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
       if (!shouldChatHandleOpenNote(event.detail)) return;
       const { noteId, source } = event.detail;
-      
+
+      // 用户正在学习资源页（如 PDF 划词「保存为笔记」后点「打开笔记」）：聊天页此时是
+      // 保活隐藏的，开进聊天画布等于没反应——就地在学习资源页以标签打开
+      if (useViewStore.getState().currentView === 'learning-hub') {
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, { noteId, source });
+        return;
+      }
+
       // 方案1: 使用 openCanvasWithNote 打开笔记并显示侧边栏
       if (notesContext?.openCanvasWithNote) {
         try {
@@ -461,6 +470,27 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       const { sourceId: rawSourceId, pageNumber, quote } = customEvent.detail || {};
       console.log('[ChatV2Page] pdf-ref:open received:', customEvent.detail);
       if (!Number.isFinite(pageNumber) || pageNumber <= 0) return;
+
+      // 用户在学习资源页（笔记来源行「摘自《…》第 N 页」等）：聊天页此时保活隐藏，
+      // 开进聊天右侧面板等于没反应——就地以标签打开资料并跳页（与工作台同一套重发节奏）
+      if (
+        rawSourceId &&
+        isKnownResourceId(rawSourceId) &&
+        useViewStore.getState().currentView === 'learning-hub'
+      ) {
+        const path = `/${rawSourceId}`;
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: path });
+        const focus = () =>
+          document.dispatchEvent(
+            new CustomEvent('pdf-ref:focus', {
+              detail: { sourceId: rawSourceId, pageNumber, quote, path },
+            }),
+          );
+        window.setTimeout(focus, 0);
+        window.setTimeout(focus, 250);
+        window.setTimeout(focus, 800);
+        return;
+      }
 
       const resolvePdfSourceId = async (requestedSourceId?: string): Promise<string | null> => {
         // 若已是可识别的资源 ID，直接使用（无需额外解析）

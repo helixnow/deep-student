@@ -21,6 +21,7 @@ import type { WikilinkPluginConfig } from './wikilink';
 import { mentionPlugin } from './mention';
 import type { MentionPluginConfig } from './mention';
 import { pdfRefPlugin } from './pdfRef';
+import { internalLinkSchema } from './internalLinkSchemes';
 import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
 import { blockIdentityPlugin } from './blockIdentity';
 import { blockSelectionPlugin } from './blockSelection';
@@ -166,6 +167,9 @@ export const applyCrepePlugins = (
   if (enableLinkKeymap) {
     crepe.editor.use(linkKeymapPlugin());
   }
+
+  // pdfref:// / note:// 内部链接保留 href（Milkdown 默认把非 http 协议清空，回链与提及点击失效）
+  crepe.editor.use(internalLinkSchema);
 
   // r5-S4：pdfref:// 来源行回链（点击回到 PDF 对应页，复用 pdf-ref:open 链路）
   if (enablePdfRefLink) {

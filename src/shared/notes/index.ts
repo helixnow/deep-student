@@ -1,5 +1,6 @@
 export {
   deriveNoteTitle,
+  truncateNoteTitle,
   openSavedNote,
   saveTextAsNote,
   saveTextAsNoteAndNotify,

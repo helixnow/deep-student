@@ -28,7 +28,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
-import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
+import { SaveAsNoteFolderPicker, truncateNoteTitle, useSaveAsNoteFlow } from '@/shared/notes';
 import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
 import { buildAnnotationSourceLine } from '../pdfAnnotationList';
 // 静态导入安全：selectionStudyActions 只依赖 @/events 与 UnifiedNotification
@@ -160,7 +160,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
     // 标题取摘录首 30 字。documentTitle 由挂载方保证是 fileName 而非资源 ID。
     const page = resolveSelectionPage();
     if (documentTitle && typeof page === 'number') {
-      const compactTitle = text.replace(/\s+/g, ' ').trim().slice(0, 30);
+      const compactTitle = truncateNoteTitle(text, 30);
       const label = t('pdf:selection.note_source', { name: documentTitle, page });
       startSaveAsNote({
         content: buildSelectionNoteContent({

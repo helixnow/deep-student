@@ -62,9 +62,22 @@ export function deriveNoteTitle(content: string, fallback?: string): string {
   if (!cleaned) {
     return fallback || i18n.t('chatV2:selectionToolbar.saveAsNoteDefaultTitle', '未命名笔记');
   }
-  return cleaned.length > MAX_NOTE_TITLE_LENGTH
-    ? `${cleaned.slice(0, MAX_NOTE_TITLE_LENGTH)}…`
-    : cleaned;
+  return truncateNoteTitle(cleaned);
+}
+
+/**
+ * 截断笔记标题：超长加省略号；西文不在单词中间截断（"something more curiou" →
+ * "something more…"），末尾的逗号 / 分号等标点一并去掉。
+ */
+export function truncateNoteTitle(text: string, max = MAX_NOTE_TITLE_LENGTH): string {
+  const cleaned = text.replace(/\s+/g, ' ').trim();
+  if (cleaned.length <= max) return cleaned;
+  let cut = cleaned.slice(0, max);
+  if (/[A-Za-z0-9]$/.test(cut) && /^[A-Za-z0-9]/.test(cleaned.slice(max))) {
+    const space = cut.lastIndexOf(' ');
+    if (space >= max / 2) cut = cut.slice(0, space);
+  }
+  return `${cut.trimEnd().replace(/[,，;；:：、]+$/, '')}…`;
 }
 
 /**

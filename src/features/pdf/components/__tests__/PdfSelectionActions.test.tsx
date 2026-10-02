@@ -46,7 +46,8 @@ vi.mock('@/shared/selection', async (importOriginal) => {
   return { ...actual, useTextSelection: () => selectionState };
 });
 
-vi.mock('@/shared/notes', () => ({
+vi.mock('@/shared/notes', async (importOriginal) => ({
+  truncateNoteTitle: (await importOriginal<typeof import('@/shared/notes')>()).truncateNoteTitle,
   useSaveAsNoteFlow: () => ({
     start: saveAsNoteStart,
     isSaving: false,
