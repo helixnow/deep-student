@@ -1707,7 +1707,13 @@
     "fallbackName": "选区引用",
     "noSession": "没有可用的会话",
     "added": "已引用到对话",
-    "failed": "引用失败"
+    "failed": "引用失败",
+    "locator": {
+      "page": "第 {{value}} 页",
+      "slide": "第 {{value}} 张幻灯片",
+      "chapter": "第 {{value}} 章",
+      "section": "第 {{value}} 节"
+    }
   },
   "selectionToolbar": {
     "ariaLabel": "选中文本操作",

@@ -26,7 +26,9 @@ vi.mock('@/components/UnifiedNotification', () => ({
 }));
 
 vi.mock('@/utils/i18n', () => ({
-  t: vi.fn((_key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? _key),
+  t: vi.fn((_key: string, opts?: { defaultValue?: string } & Record<string, unknown>) =>
+    (opts?.defaultValue ?? _key).replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(opts?.[name] ?? '')),
+  ),
 }));
 
 import {
@@ -50,7 +52,16 @@ describe('buildSelectionDisplayName', () => {
   it('拼接 title 与 locator', () => {
     expect(buildSelectionDisplayName({
       kind: 'pdf', sourceId: 'tb_1', locator: 'page:47', title: '机器学习系统',
-    })).toBe('机器学习系统 page:47');
+    })).toBe('机器学习系统 第 47 页');
+  });
+
+  it('未知定位符（导图节点 id 等）不进显示名', () => {
+    expect(buildSelectionDisplayName({
+      kind: 'pdf', sourceId: 'tb_1', locator: 'node_ab12', title: '导图',
+    })).toBe('导图');
+    expect(buildSelectionDisplayName({
+      kind: 'pdf', sourceId: 'f', locator: 'slide:3', title: '课件.pptx',
+    })).toBe('课件.pptx 第 3 张幻灯片');
   });
 
   it('无 title/locator 时回退默认名', () => {
@@ -145,7 +156,7 @@ describe('selectionToChat', () => {
       resourceId: 'res_1',
       hash: 'h1',
       typeId: SELECTION_TYPE_ID,
-      displayName: '教材 page:47',
+      displayName: '教材 第 47 页',
     }));
   });
 

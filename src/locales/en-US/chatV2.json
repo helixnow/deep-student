@@ -1707,7 +1707,13 @@
     "fallbackName": "Selection",
     "noSession": "No active session",
     "added": "Added to chat context",
-    "failed": "Failed to add reference"
+    "failed": "Failed to add reference",
+    "locator": {
+      "page": "p. {{value}}",
+      "slide": "slide {{value}}",
+      "chapter": "ch. {{value}}",
+      "section": "section {{value}}"
+    }
   },
   "selectionToolbar": {
     "ariaLabel": "Selected text actions",

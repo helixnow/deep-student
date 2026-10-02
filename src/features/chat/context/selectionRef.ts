@@ -78,8 +78,23 @@ export const MAX_SELECTION_TEXT_CHARS = 20_000;
 // ============================================================================
 
 /** 构建 chip / 通知用的来源显示名，如「《机器学习系统》第 47 页」 */
+/** 定位符转成给人看的位置（page:3 → 第 3 页）；未知格式（导图节点 id 等）不展示 */
+export function describeSelectionLocator(locator?: string): string | undefined {
+  const match = locator?.match(/^(page|slide|chapter|section):(\d+)(?:-(\d+))?$/);
+  if (!match) return undefined;
+  const [, kind, from, to] = match;
+  const value = to ? `${from}-${to}` : from;
+  const defaults: Record<string, string> = {
+    page: '第 {{value}} 页',
+    slide: '第 {{value}} 张幻灯片',
+    chapter: '第 {{value}} 章',
+    section: '第 {{value}} 节',
+  };
+  return t(`selectionRef.locator.${kind}`, { value, defaultValue: defaults[kind] }, 'chatV2');
+}
+
 export function buildSelectionDisplayName(source: SelectionRefData['source']): string {
-  const parts = [source.title, source.locator].filter(Boolean);
+  const parts = [source.title, describeSelectionLocator(source.locator)].filter(Boolean);
   if (parts.length > 0) return parts.join(' ');
   return t('selectionRef.fallbackName', { defaultValue: '选区引用' }, 'chatV2');
 }
