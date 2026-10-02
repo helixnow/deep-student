@@ -371,6 +371,7 @@
     "dev_open_devtools_hint": "Please press F12 to open DevTools in the browser",
     "dev_clear_cache_failed": "Failed to clear cache",
     "apkg_import_success": "Anki deck imported: {{cards}} cards",
+    "apkg_import_success_queued": "Anki deck imported: {{cards}} cards, {{queued}} added to review",
     "apkg_import_failed": "Failed to import Anki deck: {{error}}"
   },
 

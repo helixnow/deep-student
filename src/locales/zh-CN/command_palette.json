@@ -371,6 +371,7 @@
     "dev_open_devtools_hint": "请按F12在浏览器中打开开发者工具",
     "dev_clear_cache_failed": "清除缓存失败",
     "apkg_import_success": "Anki 牌组导入成功：共 {{cards}} 张卡片",
+    "apkg_import_success_queued": "Anki 牌组导入成功：共 {{cards}} 张卡片，{{queued}} 张已加入复习",
     "apkg_import_failed": "Anki 牌组导入失败：{{error}}"
   },
 

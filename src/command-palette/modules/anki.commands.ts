@@ -20,6 +20,8 @@ interface ApkgImportResult {
   mediaSkipped: number;
   mediaImported: number;
   warnings?: string[];
+  /** 导入即加入复习（FSRS）的统计；旧后端缺省 */
+  reviewEnqueue?: { enqueued: number; withHistory: number; suspended: number };
 }
 
 /** Helper: get localized keywords array for a given command key */
@@ -46,12 +48,19 @@ export const ankiCommands: Command[] = [
 
       try {
         const result = await invoke<ApkgImportResult>('import_apkg_to_library', { path: selected });
+        const queued = result.reviewEnqueue?.enqueued ?? 0;
         deps.showNotification(
           'success',
-          i18next.t('command_palette:notifications.apkg_import_success', {
-            cards: result.importedCards,
-            defaultValue: 'Anki deck imported: {{cards}} cards',
-          }),
+          queued > 0
+            ? i18next.t('command_palette:notifications.apkg_import_success_queued', {
+                cards: result.importedCards,
+                queued,
+                defaultValue: 'Anki deck imported: {{cards}} cards, {{queued}} added to review',
+              })
+            : i18next.t('command_palette:notifications.apkg_import_success', {
+                cards: result.importedCards,
+                defaultValue: 'Anki deck imported: {{cards}} cards',
+              }),
         );
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
