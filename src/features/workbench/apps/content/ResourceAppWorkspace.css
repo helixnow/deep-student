@@ -278,3 +278,31 @@
     animation: none;
   }
 }
+
+/* 资源列表开关：portal 进窗口标题栏的应用槽（紧跟红绿灯） */
+.wb-resource-workspace-titlebar-controls {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  pointer-events: none;
+}
+
+.wb-resource-workspace-titlebar-toggle {
+  width: 28px;
+  height: 28px;
+  pointer-events: auto;
+  color: var(--wb-titlebar-fg, hsl(var(--foreground)));
+}
+
+/* 触屏：标题栏 38px 放不下 44px 视觉，用 ::after 外扩命中区 */
+@media (pointer: coarse) {
+  .wb-resource-workspace-titlebar-toggle {
+    position: relative;
+  }
+
+  .wb-resource-workspace-titlebar-toggle::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+}

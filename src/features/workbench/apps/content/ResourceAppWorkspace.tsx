@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowClockwise,
   ClockCounterClockwise,
@@ -13,7 +14,9 @@ import {
   X,
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
+import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
 import { DsButton } from '@/components/ui/DsButton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
@@ -35,6 +38,30 @@ import { classifyWbSysWidth, type WbSysSizeClass } from '../system/useWbSysSize'
 
 type LibraryView = 'all' | 'recent';
 
+type SidebarPreference = 'open' | 'collapsed';
+
+/** 窗口窄于该宽度时，打开资源后默认收起资源列表（880 宽的默认窗口并排侧栏后主区只剩 606px） */
+const SIDEBAR_AUTO_COLLAPSE_WIDTH = 1100;
+
+const sidebarPreferenceKey = (type: ResourceWorkspaceType) => `wb.resourceWorkspace.${type}.sidebar`;
+
+function readSidebarPreference(type: ResourceWorkspaceType): SidebarPreference | null {
+  try {
+    const value = window.localStorage.getItem(sidebarPreferenceKey(type));
+    return value === 'open' || value === 'collapsed' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSidebarPreference(type: ResourceWorkspaceType, value: SidebarPreference): void {
+  try {
+    window.localStorage.setItem(sidebarPreferenceKey(type), value);
+  } catch {
+    // 存储不可用时偏好只在本窗口生命周期内生效
+  }
+}
+
 type PendingNavigation =
   | {
       kind: 'select';
@@ -47,6 +74,8 @@ type PendingNavigation =
 
 interface ResourceAppWorkspaceProps {
   type: ResourceWorkspaceType;
+  /** 宿主窗口 id：资源列表开关 portal 进该窗口标题栏 */
+  windowId?: string;
   initialResourceId?: string | null;
   isActive: boolean;
   onTitleChange: (title: string) => void;
@@ -54,6 +83,7 @@ interface ResourceAppWorkspaceProps {
 
 export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   type,
+  windowId,
   initialResourceId,
   isActive,
   onTitleChange,
@@ -68,6 +98,14 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sizeClass, setSizeClass] = useState<WbSysSizeClass>('wide');
+  // 用户显式选择过「展开 / 收起」才有值；未选择时按窗口宽度自动决定
+  const [sidebarPreference, setSidebarPreference] = useState<SidebarPreference | null>(
+    () => readSidebarPreference(type),
+  );
+  const [roomy, setRoomy] = useState(true);
+  // ⌘F 搜索时临时展开已收起的列表，不改写记住的偏好
+  const [sidebarPeek, setSidebarPeek] = useState(false);
+  const [titlebarTarget, setTitlebarTarget] = useState<HTMLElement | null>(null);
   const [pendingNavigation, setPendingNavigation] = useState<PendingNavigation | null>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -158,6 +196,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     selectedIdRef.current = resourceId;
     setSelectedId(resourceId);
     setSettingsOpen(false);
+    setSidebarPeek(false);
     if (resourceId && sizeClass === 'compact') setSidebarOpen(false);
   }, [sizeClass]);
 
@@ -288,6 +327,24 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
   }, [items, libraryView, query]);
 
   const selectedItem = items.find((item) => item.id === selectedId) ?? null;
+  const compact = sizeClass === 'compact';
+  // 未打开资源时主区空态提示「从左侧选择」，列表必须可见
+  const sidebarCollapsed = !compact
+    && selectedItem !== null
+    && !sidebarPeek
+    && (sidebarPreference ? sidebarPreference === 'collapsed' : !roomy);
+  const navigationVisible = compact ? sidebarOpen : !sidebarCollapsed;
+
+  const toggleNavigation = useCallback(() => {
+    if (compact) {
+      setSidebarOpen((open) => !open);
+      return;
+    }
+    const next: SidebarPreference = sidebarCollapsed ? 'open' : 'collapsed';
+    setSidebarPeek(false);
+    setSidebarPreference(next);
+    writeSidebarPreference(type, next);
+  }, [compact, sidebarCollapsed, type]);
 
   const handleResourceTitle = useCallback((resourceTitle: string) => {
     if (!selectedIdRef.current) return;
@@ -321,13 +378,41 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     // 首帧同步分级：ResizeObserver 首次回调是异步的，窄窗打开时会先按
     // wide 渲染并排侧栏再塌缩成抽屉（一帧闪变）。jsdom 下测量为 0，保持
     // wide 兜底不影响测试。
+    const applyWidth = (width: number) => {
+      setSizeClass(classifyWbSysWidth(width));
+      setRoomy(width >= SIDEBAR_AUTO_COLLAPSE_WIDTH);
+    };
     const initialWidth = host.getBoundingClientRect().width || host.clientWidth;
-    if (initialWidth > 0) setSizeClass(classifyWbSysWidth(initialWidth));
+    if (initialWidth > 0) applyWidth(initialWidth);
     if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(([entry]) => setSizeClass(classifyWbSysWidth(entry.contentRect.width)));
+    const observer = new ResizeObserver(([entry]) => applyWidth(entry.contentRect.width));
     observer.observe(host);
     return () => observer.disconnect();
   }, []);
+
+  useLayoutEffect(() => {
+    if (!windowId) return undefined;
+    const escapedWindowId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(windowId) : windowId;
+    const shell = document.querySelector<HTMLElement>(`[data-wb-window-id="${escapedWindowId}"]`);
+    const queryRoot: ParentNode = shell ?? document;
+    let observer: MutationObserver | null = null;
+    const findTarget = (): boolean => {
+      const target = Array.from(queryRoot.querySelectorAll<HTMLElement>('[data-wb-titlebar-slot]'))
+        .find((element) => element.dataset.windowId === windowId) ?? null;
+      if (!target) return false;
+      setTitlebarTarget((current) => (current === target ? current : target));
+      observer?.disconnect();
+      observer = null;
+      return true;
+    };
+    if (!findTarget()) {
+      observer = new MutationObserver(() => {
+        findTarget();
+      });
+      observer.observe(shell ?? document.body, { childList: true, subtree: true });
+    }
+    return () => observer?.disconnect();
+  }, [windowId]);
 
   const handleShortcut = useCallback((rawEvent: Event) => {
     const event = rawEvent as KeyboardEvent;
@@ -336,6 +421,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
     if (key === 'f') {
       event.preventDefault();
       setSidebarOpen(true);
+      setSidebarPeek(true);
       window.setTimeout(() => searchInputRef.current?.focus(), 0);
     } else if (key === 'n') {
       event.preventDefault();
@@ -353,14 +439,15 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
       ref={hostRef}
       className="wb-resource-workspace"
       data-testid={`wb-${type}-workspace`}
-      data-compact={sizeClass === 'compact' ? 'true' : 'false'}
-      data-sidebar-open={sizeClass === 'compact' ? (sidebarOpen ? 'true' : 'false') : 'true'}
+      data-compact={compact ? 'true' : 'false'}
+      data-sidebar-open={navigationVisible ? 'true' : 'false'}
     >
       <WorkbenchSidebarLayout
         sizeClass={sizeClass}
         navLabel={title}
         drawerOpen={sidebarOpen}
         onDrawerOpenChange={setSidebarOpen}
+        sidebarCollapsed={sidebarCollapsed}
         sidebar={<WorkbenchSidebarSurface ariaLabel={title} className="wb-resource-workspace-sidebar">
         <header className="wb-resource-workspace-sidebar-title">
           <span className="wb-resource-workspace-app-icon">
@@ -579,6 +666,29 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
         confirmVariant="danger"
         onConfirm={confirmPendingNavigation}
       />
+      {titlebarTarget && (compact || selectedItem) ? createPortal(
+        <div className="wb-resource-workspace-titlebar-controls">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                className="wb-resource-workspace-titlebar-toggle"
+                onPointerDown={(event) => event.stopPropagation()}
+                onDoubleClick={(event) => event.stopPropagation()}
+                onClick={toggleNavigation}
+                aria-label={t('common:navigation.toggle_sidebar', '切换边栏')}
+                aria-expanded={navigationVisible}
+                data-wb-resource-sidebar-toggle
+              >
+                {navigationVisible ? <SidebarFrameWithLeftRailIcon /> : <SidebarFrameIcon />}
+              </DsButton>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">{t('common:navigation.toggle_sidebar', '切换边栏')}</TooltipContent>
+          </Tooltip>
+        </div>,
+        titlebarTarget,
+      ) : null}
     </div>
   );
 };

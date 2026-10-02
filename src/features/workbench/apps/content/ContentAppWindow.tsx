@@ -111,6 +111,7 @@ export function createContentWindowComponent(type: ResourceType): React.FC<AppWi
       return (
         <ResourceAppWorkspace
           type={type}
+          windowId={windowId}
           initialResourceId={resourceId ?? payloadResourceId}
           isActive={isActive}
           onTitleChange={onTitleChange}

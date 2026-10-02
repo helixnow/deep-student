@@ -76,7 +76,35 @@ describe('ResourceAppWorkspace', () => {
     vi.unstubAllGlobals();
     __resetContentDirtyRegistry();
     useReviewPlanStore.getState().endSession();
+    window.localStorage.removeItem('wb.resourceWorkspace.essay.sidebar');
+    window.localStorage.removeItem('wb.resourceWorkspace.translation.sidebar');
+    document.querySelectorAll('[data-wb-titlebar-slot]').forEach((element) => element.remove());
   });
+
+  const stubWorkspaceWidth = () => {
+    let resizeCallback!: ResizeObserverCallback;
+    class ResizeObserverMock {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', ResizeObserverMock);
+    return (width: number) => act(() => resizeCallback(
+      [{ contentRect: { width } } as ResizeObserverEntry],
+      {} as ResizeObserver,
+    ));
+  };
+
+  const mountTitlebarSlot = (windowId: string) => {
+    const slot = document.createElement('div');
+    slot.setAttribute('data-wb-titlebar-slot', '');
+    slot.dataset.windowId = windowId;
+    document.body.appendChild(slot);
+  };
 
   it('uses the same workspace to select and render existing resources', async () => {
     render(
@@ -200,6 +228,98 @@ describe('ResourceAppWorkspace', () => {
     fireEvent.click(screen.getAllByText('Synthetic essay')[0]);
     expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
     expect(screen.getByRole('button', { name: '显示导航' })).toBeInTheDocument();
+  });
+
+  it('collapses the resource list once a resource opens in a narrow window', async () => {
+    const setWidth = stubWorkspaceWidth();
+    const { container } = render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+    await screen.findByText('Synthetic essay');
+    setWidth(880);
+
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
+
+    fireEvent.click(screen.getByText('Synthetic essay'));
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+    expect(container.querySelector('.wb-sys-split')).toHaveAttribute('data-wb-sys-sidebar-collapsed', 'true');
+  });
+
+  it('keeps the resource list beside an opened resource in a roomy window', async () => {
+    const setWidth = stubWorkspaceWidth();
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+    await screen.findByText('Synthetic essay');
+    setWidth(1200);
+
+    fireEvent.click(screen.getByText('Synthetic essay'));
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
+  });
+
+  it('remembers an explicit resource list choice per app from the titlebar toggle', async () => {
+    mountTitlebarSlot('win-essay');
+    const renderWorkspace = () => render(
+      <ResourceAppWorkspace
+        type="essay"
+        windowId="win-essay"
+        initialResourceId="essay-1"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+
+    const first = renderWorkspace();
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
+
+    const toggle = screen.getByRole('button', { name: '切换边栏' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(toggle);
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(window.localStorage.getItem('wb.resourceWorkspace.essay.sidebar')).toBe('collapsed');
+    expect(window.localStorage.getItem('wb.resourceWorkspace.translation.sidebar')).toBeNull();
+
+    first.unmount();
+    renderWorkspace();
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+  });
+
+  it('reveals a collapsed list for search without overwriting the saved choice', async () => {
+    window.localStorage.setItem('wb.resourceWorkspace.essay.sidebar', 'collapsed');
+    const second = { ...essay, id: 'essay-2', sourceId: 'essay-2', name: 'Second essay' };
+    mocks.list.mockResolvedValue({ ok: true, value: [essay, second] });
+    render(
+      <ResourceAppWorkspace
+        type="essay"
+        initialResourceId="essay-1"
+        isActive
+        onTitleChange={vi.fn()}
+      />,
+    );
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-1');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+
+    fireEvent.keyDown(window, { key: 'f', metaKey: true });
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'true');
+    await waitFor(() => expect(screen.getByRole('searchbox', { name: '搜索' })).toHaveFocus());
+
+    fireEvent.click(screen.getByText('Second essay'));
+    expect(await screen.findByTestId('resource-content')).toHaveTextContent('essay:essay-2');
+    expect(screen.getByTestId('wb-essay-workspace')).toHaveAttribute('data-sidebar-open', 'false');
+    expect(window.localStorage.getItem('wb.resourceWorkspace.essay.sidebar')).toBe('collapsed');
   });
 
   it('uses an in-app confirmation before leaving a dirty essay', async () => {

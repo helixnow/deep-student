@@ -244,6 +244,16 @@ describe('长标题溢出', () => {
     expect(container.querySelector('[data-wb-titlebar-slot]')).not.toBeNull();
     expect(container.querySelector('[data-wb-window-title]')?.textContent).toBe('新对话');
   });
+
+  it.each(['exam', 'translation', 'essay'])(
+    '%s exposes a titlebar slot for its resource list toggle and keeps the centered title',
+    (appTypeId) => {
+      const { container } = renderBar({ appTypeId, title: '作文批改' });
+
+      expect(container.querySelector('[data-wb-titlebar-slot]')).not.toBeNull();
+      expect(container.querySelector('[data-wb-window-title]')?.textContent).toBe('作文批改');
+    },
+  );
 });
 
 describe('双击标题栏（按设置分发）', () => {

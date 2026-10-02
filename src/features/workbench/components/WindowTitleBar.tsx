@@ -414,8 +414,15 @@ export const WindowTitleBar: React.FC<WindowTitleBarProps> = ({
       ? t('a11y.immersiveExit')
       : t('a11y.immersiveEnter');
   const hostsAppTabs = appTypeId === 'notes' || appTypeId === 'files';
-  // todo/skills 工具栏整体 portal 进窗口标题栏（应用名已由菜单栏承接，居中标题冗余）
-  const hostsAppTitlebarSlot = hostsAppTabs || appTypeId === 'chat' || appTypeId === 'todo' || appTypeId === 'skills';
+  // todo/skills 工具栏整体 portal 进窗口标题栏（应用名已由菜单栏承接，居中标题冗余）；
+  // 题目集/翻译/作文只放资源列表开关，保留居中标题
+  const hostsAppTitlebarSlot = hostsAppTabs
+    || appTypeId === 'chat'
+    || appTypeId === 'todo'
+    || appTypeId === 'skills'
+    || appTypeId === 'exam'
+    || appTypeId === 'translation'
+    || appTypeId === 'essay';
   const suppressCenteredTitle = hostsAppTabs || appTypeId === 'todo' || appTypeId === 'skills';
   /** 长标题被渐隐截断时，悬停标题栏空白区可见完整标题（三键自带 title 优先） */
   const barTooltip = titleOverflow ? title : undefined;
