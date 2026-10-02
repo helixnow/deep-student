@@ -1947,6 +1947,35 @@ impl FsrsReviewService {
     }
 
     /// 读取卡片 tags（供 A-P0 mastery emit；无 tags / 解析失败返回空 Vec）
+    /// 掌握度归属用的「知识点标签」：卡片自身 tags；无标签时退回所属文档名
+    /// （笔记 / 资料制卡时即笔记标题等），避免绝大多数自动生成的无标签卡完全不进掌握度。
+    /// 文档名为空或通用默认值时返回空（仍跳过）。
+    pub fn get_card_concept_tags(&self, anki_card_id: &str) -> Result<Vec<String>> {
+        let tags = self.get_card_tags(anki_card_id)?;
+        if tags.iter().any(|tag| !tag.trim().is_empty()) {
+            return Ok(tags);
+        }
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let name: Option<String> = conn
+            .query_row(
+                "SELECT dt.original_document_name FROM anki_cards c
+                   JOIN document_tasks dt ON dt.id = c.task_id
+                  WHERE c.id = ?1 AND c.deleted_at IS NULL",
+                params![anki_card_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询卡片所属文档失败: {}", e)))?;
+        Ok(name
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty() && !n.eq_ignore_ascii_case("default"))
+            .map(|n| vec![n])
+            .unwrap_or_default())
+    }
+
     pub fn get_card_tags(&self, anki_card_id: &str) -> Result<Vec<String>> {
         let conn = self
             .db
@@ -4569,6 +4598,28 @@ mod tests {
             ],
         )
         .expect("insert Anki card");
+    }
+
+    #[test]
+    fn untagged_cards_fall_back_to_document_name_for_mastery_concepts() {
+        let (_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc_concept", "task_concept", "card_untagged");
+        let service = FsrsReviewService::new(db.clone());
+        // 无标签 → 文档名（test.md）
+        assert_eq!(service.get_card_concept_tags("card_untagged").unwrap(), vec!["test.md".to_string()]);
+        // 有标签 → 标签优先
+        db.get_conn_safe().unwrap()
+            .execute("UPDATE anki_cards SET tags_json = '[\"导数\"]' WHERE id = 'card_untagged'", [])
+            .unwrap();
+        assert_eq!(service.get_card_concept_tags("card_untagged").unwrap(), vec!["导数".to_string()]);
+        // 通用默认牌组名 → 不臆造知识点
+        db.get_conn_safe().unwrap()
+            .execute("UPDATE anki_cards SET tags_json = '[]' WHERE id = 'card_untagged'", [])
+            .unwrap();
+        db.get_conn_safe().unwrap()
+            .execute("UPDATE document_tasks SET original_document_name = 'Default' WHERE id = 'task_concept'", [])
+            .unwrap();
+        assert!(service.get_card_concept_tags("card_untagged").unwrap().is_empty());
     }
 
     fn insert_card_for_task(db: &Database, document_id: &str, task_id: &str, card_id: &str) {

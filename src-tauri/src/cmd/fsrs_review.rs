@@ -200,7 +200,7 @@ pub async fn fsrs_get_due(
             } else {
                 // N05（2026-09-07 审阅）：标签读取失败 ≠ 无标签。Err 时保留
                 // pending 等待下次补偿，不得确认掉这条 outbox 事件。
-                match service.get_card_tags(&pending.anki_card_id) {
+                match service.get_card_concept_tags(&pending.anki_card_id) {
                     Ok(tags) => {
                         tags.is_empty()
                             || mastery
@@ -252,7 +252,7 @@ fn prefetch_mastery_for_card(
         .flatten()
         .map(|s| s.anki_card_id);
     match anki_card_id {
-        Some(anki_id) => match service.get_card_tags(&anki_id) {
+        Some(anki_id) => match service.get_card_concept_tags(&anki_id) {
             Ok(tags) if !tags.is_empty() => {
                 let concept = tags
                     .iter()
@@ -393,7 +393,7 @@ pub async fn fsrs_rate(
             } else {
                 // N05（2026-09-07 审阅）：标签读取失败 ≠ 无标签。Err 时保留
                 // pending 等待下次补偿，不得确认掉这条 outbox 事件。
-                match service.get_card_tags(&pending.anki_card_id) {
+                match service.get_card_concept_tags(&pending.anki_card_id) {
                     Ok(tags) => tags,
                     Err(error) => {
                         log::warn!(
