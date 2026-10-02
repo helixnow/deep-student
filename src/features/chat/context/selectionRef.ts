@@ -21,6 +21,8 @@ import { ensureActiveChatSession } from '@/features/chat/pages/ensureActiveChatS
 import { resourceStoreApi } from '@/features/chat/resources';
 import type { ContextRef } from '@/features/chat/resources/types';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { useViewStore } from '@/stores/viewStore';
+import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
 import { SELECTION_TYPE_ID } from './definitions/selection';
 
 // ============================================================================
@@ -107,6 +109,16 @@ export function serializeSelectionRefData(data: SelectionRefData): string {
   return JSON.stringify({ ...data, text });
 }
 
+/** 切到聊天页并打开指定会话（聊天页可能尚未挂载：延迟重发，setCurrentSessionId 幂等） */
+function openChatSession(sessionId: string): void {
+  dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
+  const fire = () =>
+    window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
+  fire();
+  window.setTimeout(fire, 400);
+  window.setTimeout(fire, 1200);
+}
+
 // ============================================================================
 // 主入口
 // ============================================================================
@@ -164,10 +176,21 @@ export async function selectionToChat(
 
     store.getState().addContextRef(contextRef);
 
+    // 从学习资源等页面引用时，引用进的是当前会话或隐藏草稿——提示里给「去对话」直达那一个会话；
+    // 否则用户从侧栏点进别的会话找不到这条引用，它过后又冒在不相干的新会话里
+    const notInChat = useViewStore.getState().currentView !== 'chat-v2';
     showGlobalNotification(
       'success',
       t('selectionRef.added', { defaultValue: '已引用到对话' }, 'chatV2'),
       buildSelectionDisplayName(source),
+      notInChat
+        ? {
+            action: {
+              label: t('selectionRef.goToChat', { defaultValue: '去对话' }, 'chatV2'),
+              onClick: () => openChatSession(activeSessionId),
+            },
+          }
+        : undefined,
     );
 
     console.log(LOG_PREFIX, 'selection added:', { kind: source.kind, locator: source.locator });

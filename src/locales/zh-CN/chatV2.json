@@ -1707,6 +1707,7 @@
     "fallbackName": "选区引用",
     "noSession": "没有可用的会话",
     "added": "已引用到对话",
+    "goToChat": "去对话",
     "failed": "引用失败",
     "locator": {
       "page": "第 {{value}} 页",

@@ -1707,6 +1707,7 @@
     "fallbackName": "Selection",
     "noSession": "No active session",
     "added": "Added to chat context",
+    "goToChat": "Go to chat",
     "failed": "Failed to add reference",
     "locator": {
       "page": "p. {{value}}",
