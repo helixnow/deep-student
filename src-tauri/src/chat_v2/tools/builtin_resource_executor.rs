@@ -2356,7 +2356,7 @@ impl BuiltinResourceExecutor {
             // 使用 mv_xxx 版本 ID 确保引用指向不可变快照
             result["citation"] = json!(format!("[思维导图:{}:{}]", vid, title));
             result["hint"] =
-                json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看导图。");
+                json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看导图。回答聚焦某个具体节点时，在 ID 后紧跟 #节点文字（如 [思维导图:mv_xxx#AllReduce 同步梯度:标题]），点击后会直接定位并高亮该节点；节点文字中不要出现半角冒号。");
         }
 
         Ok(result)
@@ -4168,7 +4168,7 @@ impl BuiltinResourceExecutor {
             result["versionId"] = json!(vid);
             result["citation"] = json!(format!("[思维导图:{}:{}]", vid, title));
             result["hint"] =
-                json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看导图。");
+                json!("请在回复中使用上方 citation 字段的引用文本，让用户可以点击查看导图。回答聚焦某个具体节点时，在 ID 后紧跟 #节点文字（如 [思维导图:mv_xxx#AllReduce 同步梯度:标题]），点击后会直接定位并高亮该节点；节点文字中不要出现半角冒号。");
         }
 
         Ok(result)
