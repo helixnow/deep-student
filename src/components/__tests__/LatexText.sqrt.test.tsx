@@ -10,4 +10,10 @@ describe('LatexText', () => {
     expect(path!.getAttribute('d')).not.toContain('<br');
     expect(container.querySelectorAll('br')).toHaveLength(1);
   });
+
+  it('renders formulas without LaTeX feature characters ($f\'(0)$, $A$)', () => {
+    const { container } = render(<LatexText content={"$f'(0)$ 不存在，矩阵 $A$"} />);
+    expect(container.querySelectorAll('.katex')).toHaveLength(2);
+    expect(container.textContent).not.toContain('$');
+  });
 });

@@ -21,13 +21,25 @@ const KATEX_OPTIONS: katex.KatexOptions = {
 const LATEX_REGEX = /(\$\$.+?\$\$)|(?:(?:^|(?<=(?:[^\\])))\$(?!\$)((?:[^$]*?[\\^_{])[^$]*?)(?<!\\)\$)/gs;
 
 /**
+ * 宽松匹配：$...$ 内容不要求 LaTeX 特征字符。题干/选项里 `$A$`、`$f'(0)$`、
+ * `$1, 2, -1$` 都是公式而非货币，严格规则会把它们原样漏成 `$…$` 源码。
+ */
+const LATEX_REGEX_PERMISSIVE = /(\$\$.+?\$\$)|(?:(?:^|(?<=(?:[^\\])))\$(?!\$)([^$\n]+?)(?<!\\)\$)/gs;
+
+export interface RenderLatexOptions {
+  /** 题目场景：任何 $...$ 都按公式渲染（默认严格模式，避免货币误判） */
+  permissive?: boolean;
+}
+
+/**
  * 检测文本是否包含 LaTeX 语法（$...$ 或 $$...$$）
  */
-export function containsLatex(text: string): boolean {
+export function containsLatex(text: string, options: RenderLatexOptions = {}): boolean {
   if (!text) return false;
+  const regex = options.permissive ? LATEX_REGEX_PERMISSIVE : LATEX_REGEX;
   // 重置 lastIndex（共用正则对象时需要）
-  LATEX_REGEX.lastIndex = 0;
-  return LATEX_REGEX.test(text);
+  regex.lastIndex = 0;
+  return regex.test(text);
 }
 
 /** 对 HTML 特殊字符进行转义 */
@@ -47,11 +59,12 @@ function escapeHtml(str: string): string {
  *
  * 如果文本不含 LaTeX，返回 null（调用方可直接用纯文本）。
  */
-export function renderLatexToHtml(text: string): string | null {
+export function renderLatexToHtml(text: string, options: RenderLatexOptions = {}): string | null {
   if (!text) return null;
 
   // 使用与 containsLatex 相同的正则
-  const regex = new RegExp(LATEX_REGEX.source, LATEX_REGEX.flags);
+  const base = options.permissive ? LATEX_REGEX_PERMISSIVE : LATEX_REGEX;
+  const regex = new RegExp(base.source, base.flags);
 
   let result = '';
   let lastIndex = 0;

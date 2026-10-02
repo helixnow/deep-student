@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
 import { containsLatex, renderLatexToHtml } from '@/features/mindmap/utils/renderLatex';
 
+/** 题目/OCR 文本：任何 $...$ 都是公式（`$A$`、`$f'(0)$` 不含 LaTeX 特征字符也要渲染） */
+const LATEX_OPTIONS = { permissive: true } as const;
+
 interface LatexTextProps {
   content: string;  // 使用 content 以兼容现有调用
   text?: string;    // 可选别名
@@ -19,13 +22,13 @@ export const LatexText: React.FC<LatexTextProps> = ({ content, text, className }
   const src = content || text || '';
 
   useEffect(() => {
-    if (containsLatex(src)) {
+    if (containsLatex(src, LATEX_OPTIONS)) {
       ensureKatexStyles();
     }
   }, [src]);
 
   const html = useMemo(() => {
-    const raw = renderLatexToHtml(src);
+    const raw = renderLatexToHtml(src, LATEX_OPTIONS);
     if (!raw) return null;
     // 2026-09-09：纯文本换行在 HTML 里会被折叠（调用方容器通常没有 white-space: pre-wrap），
     // 转成 <br/> 保证题干/选项/解析里的换行可见。只换标签之外的换行：KaTeX 的 \sqrt、
