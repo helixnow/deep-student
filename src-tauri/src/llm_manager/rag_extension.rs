@@ -229,7 +229,7 @@ impl LLMManager {
                 );
             }
         }
-        info!("[RAG] No default embedding dimension set, attempting auto-detect...");
+        debug!("[RAG] No default embedding dimension set, attempting auto-detect...");
         self.auto_detect_embedding_model_id().await.ok_or_else(|| {
             AppError::configuration(
                 "未配置默认嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认维度。",

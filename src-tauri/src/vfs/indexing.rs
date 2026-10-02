@@ -4088,6 +4088,62 @@ impl VfsFullIndexingService {
         Ok(())
     }
 
+    /// 嵌入模型未配置时，为待索引资源先建好 Units（只抽取文本，不调用嵌入接口）。
+    ///
+    /// 关键词检索路线直接匹配 `vfs_index_units.text_content`，但 Units 原本只在
+    /// `index_resource_with_options` 里创建——该路径要求嵌入可用，于是未配置嵌入时
+    /// 新资料连关键词都搜不到。这里不改 index_state、不消耗 retry_count，配置嵌入后
+    /// 照常走完整索引补向量。同一进程内对每个资源只尝试一次，避免无文本资源每轮重试。
+    pub fn prepare_units_without_embedding(&self, limit: u32) -> VfsResult<usize> {
+        use std::collections::HashSet;
+        use std::sync::{Mutex, OnceLock};
+        static ATTEMPTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+        let attempted = ATTEMPTED.get_or_init(|| Mutex::new(HashSet::new()));
+
+        let candidates: Vec<String> = {
+            let conn = self.db.get_conn_safe()?;
+            let mut stmt = conn.prepare(
+                "SELECT r.id FROM resources r
+                 WHERE r.deleted_at IS NULL
+                   AND COALESCE(r.index_state, 'pending') = 'pending'
+                   AND NOT EXISTS (SELECT 1 FROM vfs_index_units u WHERE u.resource_id = r.id)
+                 ORDER BY r.updated_at DESC
+                 LIMIT ?1",
+            )?;
+            let rows = stmt.query_map(rusqlite::params![(limit as i64).saturating_mul(4)], |row| {
+                row.get::<_, String>(0)
+            })?;
+            rows.filter_map(Result::ok).collect()
+        };
+
+        let mut prepared = 0usize;
+        for resource_id in candidates {
+            {
+                let mut seen = attempted.lock().unwrap_or_else(|e| e.into_inner());
+                if !seen.insert(resource_id.clone()) {
+                    continue;
+                }
+            }
+            match self.sync_resource_to_units(&resource_id) {
+                Ok(()) => prepared += 1,
+                Err(error) => debug!(
+                    "[VfsFullIndexingService] prepare units without embedding failed for {}: {}",
+                    resource_id, error
+                ),
+            }
+            if prepared >= limit as usize {
+                break;
+            }
+        }
+        if prepared > 0 {
+            info!(
+                "[VfsFullIndexingService] Prepared text units for {} resources without embedding (keyword search ready)",
+                prepared
+            );
+        }
+        Ok(prepared)
+    }
+
     /// 批量索引待处理的资源（并行处理）
     ///
     /// ## 参数

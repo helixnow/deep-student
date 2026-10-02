@@ -3109,6 +3109,10 @@ fn start_vfs_index_worker(
                     );
                     last_embedding_unconfigured_log = Some(std::time::Instant::now());
                 }
+                // 未配置嵌入也先建好文本 Units，让关键词检索立刻可用
+                if let Err(error) = full.prepare_units_without_embedding(config.batch_size) {
+                    tracing::warn!("[VfsIndexWorker] Preparing units without embedding failed: {}", error);
+                }
                 if let Err(error) = full.drain_lance_orphan_queue(200).await {
                     // Deletion compensation itself does not require an embedding provider.
                     tracing::warn!("[VfsIndexWorker] Orphan cleanup failed: {}", error);

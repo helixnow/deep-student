@@ -26,7 +26,7 @@ use crate::vfs::{VfsDatabase, VfsError, VfsLanceSearchResult, VfsLanceStore, Vfs
 
 const ROUTE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FTS_SCAN: usize = 1000;
-const MAX_FTS_TERMS: usize = 12;
+const MAX_FTS_TERMS: usize = 16;
 const MAX_FTS_TERM_CHARS: usize = 64;
 
 static PROFILE_CIRCUITS: OnceLock<Mutex<HashMap<String, ProfileCircuitBreaker>>> = OnceLock::new();
@@ -1194,15 +1194,74 @@ fn extract_lexical_terms(query: &str) -> Vec<String> {
         }
     }
 
-    for line in remaining_lines {
-        for candidate in line.split(|character: char| !character.is_alphanumeric()) {
-            push_lexical_term(candidate, &mut terms, &mut seen);
+    let candidates: Vec<&str> = remaining_lines
+        .iter()
+        .flat_map(|line| line.split(|character: char| !character.is_alphanumeric()))
+        .collect();
+    // 1) 原词（整段原样，精确短语排序最高）
+    for candidate in &candidates {
+        push_lexical_term(candidate, &mut terms, &mut seen);
+        if terms.len() == MAX_FTS_TERMS {
+            return terms;
+        }
+    }
+    // 中文没有空格分词：自然问句（「中值定理怎么证明不等式」）整段 LIKE 永远不命中。
+    // 2) 去掉疑问/虚词后的片段；3) 片段的二字词兜底。结果按命中词数排序，噪声词排在后面。
+    let segments: Vec<String> = candidates
+        .iter()
+        .filter(|candidate| candidate.chars().any(is_cjk))
+        .flat_map(|candidate| split_cjk_segments(candidate))
+        .collect();
+    for segment in &segments {
+        push_lexical_term(segment, &mut terms, &mut seen);
+        if terms.len() == MAX_FTS_TERMS {
+            return terms;
+        }
+    }
+    for segment in &segments {
+        let chars: Vec<char> = segment.chars().collect();
+        if chars.len() < 3 {
+            continue;
+        }
+        for pair in chars.windows(2) {
+            push_lexical_term(&pair.iter().collect::<String>(), &mut terms, &mut seen);
             if terms.len() == MAX_FTS_TERMS {
                 return terms;
             }
         }
     }
     terms
+}
+
+fn is_cjk(character: char) -> bool {
+    matches!(character as u32, 0x4E00..=0x9FFF | 0x3400..=0x4DBF | 0xF900..=0xFAFF)
+}
+
+/// 常见疑问/功能词：作为分隔符切开中文问句（多字词先于单字匹配）。
+const CJK_STOP_WORDS: &[&str] = &[
+    "为什么", "是不是", "能不能", "有没有", "什么样", "怎么样", "怎么", "怎样", "如何",
+    "什么", "多少", "哪些", "哪个", "哪里", "请问", "帮我", "告诉", "一下", "一次", "可以",
+    "能够", "需要", "应该", "关于", "以及", "或者", "还是", "的", "地", "得", "了", "吗",
+    "呢", "吧", "啊", "是", "和", "与", "及", "在", "把", "被", "对", "用", "我", "你",
+    "他", "她", "它", "这", "那", "个", "能", "会", "要", "有", "就", "都", "也", "还",
+];
+
+fn split_cjk_segments(candidate: &str) -> Vec<String> {
+    let mut parts = vec![candidate.to_string()];
+    for stop in CJK_STOP_WORDS {
+        parts = parts
+            .iter()
+            .flat_map(|part| part.split(stop).map(str::to_string).collect::<Vec<_>>())
+            .collect();
+    }
+    let mut segments: Vec<String> = parts
+        .into_iter()
+        .map(|part| part.trim().to_string())
+        .filter(|part| part.chars().count() >= 2)
+        .collect();
+    // 原词本身没被切开时由第 1 轮覆盖，这里不重复
+    segments.retain(|segment| segment != candidate);
+    segments
 }
 
 fn lexical_keyword_payload(line: &str) -> Option<&str> {
@@ -2620,6 +2679,21 @@ mod tests {
             assert_eq!(hits[0].identity.resource_id, resource);
             assert_eq!(hits[0].resource_type.as_deref(), Some(canonical));
         }
+    }
+
+    #[test]
+    fn lexical_terms_split_chinese_questions() {
+        let terms = extract_lexical_terms("中值定理怎么证明不等式");
+        assert_eq!(terms[0], "中值定理怎么证明不等式");
+        assert!(terms.contains(&"中值定理".to_string()));
+        assert!(terms.contains(&"证明不等式".to_string()));
+        assert!(terms.contains(&"不等".to_string()));
+        assert!(!terms.iter().any(|t| t == "怎么"));
+
+        let mixed = extract_lexical_terms("AllReduce 是怎么同步梯度的");
+        assert_eq!(mixed[0], "AllReduce");
+        assert!(mixed.contains(&"同步梯度".to_string()));
+        assert!(mixed.len() <= MAX_FTS_TERMS);
     }
 
     #[test]
