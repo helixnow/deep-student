@@ -2412,6 +2412,18 @@ const ANKI_DUE_TIMESTAMP_THRESHOLD: i64 = 1_000_000_000;
 const IMPORTED_NEUTRAL_DIFFICULTY: f64 = 5.0;
 const MS_PER_DAY: i64 = 86_400_000;
 
+/// Anki 难易度系数（factor，千分比，默认 2500 = 250%）→ FSRS 难度（1..=10）。
+///
+/// 系数越低说明这张卡在 Anki 里被反复按「困难/重来」，越难：1300（下限）≈ 8.5，
+/// 2500 ≈ 5.0，3500 及以上 ≈ 2.0。缺失/异常值（0、负数）取中性 5.0。
+fn anki_ease_to_fsrs_difficulty(factor: i64) -> f64 {
+    if factor <= 0 {
+        return IMPORTED_NEUTRAL_DIFFICULTY;
+    }
+    let ease = factor as f64 / 1000.0;
+    (IMPORTED_NEUTRAL_DIFFICULTY + (2.5 - ease) * 3.0).clamp(1.0, 10.0)
+}
+
 /// 把 Anki（SM-2）调度列换算为 FSRS 初始状态。
 ///
 /// Anki 语义：`type` 0=new 1=learning 2=review 3=relearning；`queue` -1=暂停、
@@ -2420,7 +2432,7 @@ const MS_PER_DAY: i64 = 86_400_000;
 ///
 /// 换算规则（刻意保持简单，首次在本应用评分后由 FSRS 自行校正）：
 /// - new → New、立即到期；
-/// - review → Review，稳定度 ≈ max(ivl, 1) 天，难度取中性 5.0，
+/// - review → Review，稳定度 ≈ max(ivl, 1) 天，难度由 Anki 难易度系数换算（缺省 5.0），
 ///   `scheduled_days = ivl`，due = crt + due 天，上次复习 ≈ due - ivl（不晚于现在）；
 /// - learning/relearning → Learning/Relearning，稳定度 max(ivl, 1) 天（短期稳定度
 ///   需要正数基准），due 按时间戳或天数换算；
@@ -2460,7 +2472,7 @@ fn anki_sched_to_fsrs(
     FsrsImportedSchedule {
         state,
         stability: Some(stability),
-        difficulty: Some(IMPORTED_NEUTRAL_DIFFICULTY),
+        difficulty: Some(anki_ease_to_fsrs_difficulty(sched.factor)),
         elapsed_days: 0.0,
         scheduled_days: ivl_days as f64,
         reps: sched.reps.clamp(0, i32::MAX as i64) as i32,
@@ -4896,6 +4908,14 @@ mod tests {
             .get("reviewEnqueue")
             .is_none());
         assert!(fsrs_rows_by_anki_id(&db, &result.document_id).is_empty());
+    }
+
+    #[test]
+    fn anki_ease_maps_to_fsrs_difficulty() {
+        assert!((anki_ease_to_fsrs_difficulty(2500) - 5.0).abs() < 1e-9);
+        assert!(anki_ease_to_fsrs_difficulty(1300) > 8.0);
+        assert!((anki_ease_to_fsrs_difficulty(4000) - 1.0).abs() < 1e-9);
+        assert!((anki_ease_to_fsrs_difficulty(0) - 5.0).abs() < 1e-9);
     }
 
     #[test]
