@@ -14,6 +14,7 @@
     "delta_same": "（与上周持平）",
     "delta_up": "（比上周 +{{pct}}%）",
     "delta_down": "（比上周 −{{pct}}%）",
+    "hint_title": "今日待复习",
     "weak_title": "薄弱知识点",
     "weak_none": "暂无足够的作答记录来判断薄弱点。",
     "mastery": "掌握度 {{score}}%",

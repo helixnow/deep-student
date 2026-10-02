@@ -14,6 +14,7 @@
     "delta_same": " (same as last week)",
     "delta_up": " (+{{pct}}% vs last week)",
     "delta_down": " (−{{pct}}% vs last week)",
+    "hint_title": "Due today",
     "weak_title": "Weak concepts",
     "weak_none": "Not enough answers yet to identify weak concepts.",
     "mastery": "{{score}}% mastery",

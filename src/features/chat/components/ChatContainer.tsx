@@ -11,6 +11,7 @@
 
 // 确保 Chat V2 初始化（样式 + 插件注册）
 import '../init';
+import { TodayReviewHint } from '@/features/learning-today/TodayReviewHint';
 
 import React, { useEffect, useMemo, useRef } from 'react';
 import type { StoreApi } from 'zustand';
@@ -374,6 +375,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             {renderFooter('chat-empty-composer-layout__footer')}
             <AgentTaskPanel store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
+            {/* 今日待复习（无到期内容时不渲染） */}
+            <TodayReviewHint />
           </ThreadContentShell>
         </div>
       ) : (
