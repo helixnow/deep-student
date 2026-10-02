@@ -24,6 +24,9 @@ export function normalizeRestoredComposerState(state: unknown): RestoredComposer
   const panelStates = createDefaultPanelStates();
 
   COMPOSER_PANEL_KEYS.forEach((panel) => {
+    // 附件面板是随「添加附件」临时弹出的浮层：附件随消息发出后待发送区为空，
+    // 恢复成打开只会得到一个压在对话上的空「附件 (0)」
+    if (panel === 'attachment') return;
     if (typeof persistedPanels[panel] === 'boolean') {
       panelStates[panel] = persistedPanels[panel];
     }

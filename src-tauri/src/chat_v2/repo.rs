@@ -205,6 +205,9 @@ impl BlockReplayData {
 /// Chat V2 数据存取层
 ///
 /// 所有方法均为静态方法，支持事务操作。
+/// 启动收尾时写入被打断块的错误说明（前端直接展示）
+pub const INTERRUPTED_BY_RESTART_ERROR: &str = "应用已重启，这一轮回答被中断，可以重新提问";
+
 pub struct ChatV2Repo;
 
 impl ChatV2Repo {
@@ -3380,6 +3383,51 @@ impl ChatV2Repo {
         Ok(count as u32)
     }
 
+    /// 启动时收尾上次进程遗留的 `running` / `pending` 块。
+    ///
+    /// 应用启动时不可能有正在进行的生成回合：这些块是上次退出/崩溃时被打断的。
+    /// 不收尾的话前端会把它们当作活跃块恢复——思考块永远显示「正在思考…」、
+    /// 等待回答的提问再也收不到回答，用户看不出这一轮已经中断。
+    /// - 已有内容的思考/正文块：保留内容，标记完成；
+    /// - 其余块（工具调用、空块）：标记为错误并写明中断原因。
+    pub fn reconcile_interrupted_blocks_on_startup_with_conn(conn: &Connection) -> ChatV2Result<u32> {
+        let now_ms = chrono::Utc::now().timestamp_millis();
+        let finished = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET status = 'success',
+                ended_at = COALESCE(ended_at, first_chunk_at, started_at, ?1)
+            WHERE status IN ('running', 'pending')
+              AND block_type IN ('thinking', 'content')
+              AND content IS NOT NULL AND length(trim(content)) > 0
+            "#,
+            rusqlite::params![now_ms],
+        )?;
+        let interrupted = conn.execute(
+            r#"
+            UPDATE chat_v2_blocks
+            SET status = 'error',
+                error = COALESCE(error, ?2),
+                ended_at = COALESCE(ended_at, ?1)
+            WHERE status IN ('running', 'pending')
+            "#,
+            rusqlite::params![now_ms, INTERRUPTED_BY_RESTART_ERROR],
+        )?;
+        let total = (finished + interrupted) as u32;
+        if total > 0 {
+            info!(
+                "[ChatV2::Repo] Reconciled {} interrupted blocks on startup ({} finished, {} marked interrupted)",
+                total, finished, interrupted
+            );
+        }
+        Ok(total)
+    }
+
+    pub fn reconcile_interrupted_blocks_on_startup(db: &ChatV2Database) -> ChatV2Result<u32> {
+        let conn = db.get_conn_safe()?;
+        Self::reconcile_interrupted_blocks_on_startup_with_conn(&conn)
+    }
+
     /// 清空所有已删除的会话（永久删除）
     ///
     /// 一次性删除所有 persist_status = 'deleted' 的会话。
@@ -4673,6 +4721,48 @@ mod tests {
         }
 
         conn
+    }
+
+    #[test]
+    fn startup_reconcile_finishes_streamed_text_and_interrupts_the_rest() {
+        let conn = setup_test_db();
+        let session = ChatSession::new("sess_reconcile".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+        let message = ChatMessage::new_assistant("sess_reconcile".into());
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+        let insert = |id: &str, block_type: &str, status: &str, content: Option<&str>| {
+            conn.execute(
+                "INSERT INTO chat_v2_blocks (id, message_id, block_type, status, block_index, content, started_at) VALUES (?1, ?2, ?3, ?4, 0, ?5, 1000)",
+                rusqlite::params![id, message.id, block_type, status, content],
+            )
+            .unwrap();
+        };
+        insert("blk_think", "thinking", "running", Some("推理到一半"));
+        insert("blk_text", "content", "running", Some("先说结论"));
+        insert("blk_empty", "content", "pending", None);
+        insert("blk_tool", "mcp_tool", "running", None);
+        insert("blk_done", "content", "success", Some("早已完成"));
+
+        assert_eq!(ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(), 4);
+
+        let status_of = |id: &str| -> (String, Option<String>, Option<i64>) {
+            conn.query_row(
+                "SELECT status, error, ended_at FROM chat_v2_blocks WHERE id = ?1",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap()
+        };
+        assert_eq!(status_of("blk_think").0, "success");
+        assert_eq!(status_of("blk_text").0, "success");
+        let (tool_status, tool_error, tool_ended) = status_of("blk_tool");
+        assert_eq!(tool_status, "error");
+        assert_eq!(tool_error.as_deref(), Some(INTERRUPTED_BY_RESTART_ERROR));
+        assert!(tool_ended.is_some());
+        assert_eq!(status_of("blk_empty").0, "error");
+        assert_eq!(status_of("blk_done"), ("success".to_string(), None, None));
+        // 幂等：第二次启动无事可做
+        assert_eq!(ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(), 0);
     }
 
     #[test]

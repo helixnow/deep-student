@@ -255,6 +255,11 @@ pub fn init_chat_v2(app_data_dir: &Path) -> ChatV2Result<ChatV2Database> {
         }
     }
 
+    // 上次进程被打断的生成回合：残留 running/pending 块会让前端永远显示「正在思考」
+    if let Err(e) = repo::ChatV2Repo::reconcile_interrupted_blocks_on_startup(&db) {
+        tracing::warn!("[ChatV2] Startup block reconcile failed (non-fatal): {}", e);
+    }
+
     tracing::info!("[ChatV2] 统一初始化完成: {}", db.db_path().display());
 
     Ok(db)

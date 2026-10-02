@@ -29,17 +29,24 @@ describe('normalizeRestoredComposerState', () => {
   it('fills fields missing from an old partial InputBar state', () => {
     expect(normalizeRestoredComposerState({
       inputValue: '',
-      panelStates: { attachment: true },
+      panelStates: { mcp: true },
     })).toEqual({
       inputValue: '',
       panelStates: {
-        mcp: false,
+        mcp: true,
         model: false,
         advanced: false,
-        attachment: true,
+        attachment: false,
         skill: false,
       },
     });
+  });
+
+  it('never restores the transient attachment overlay as open', () => {
+    expect(normalizeRestoredComposerState({
+      inputValue: '',
+      panelStates: { attachment: true },
+    }).panelStates.attachment).toBe(false);
   });
 
   it('rejects non-string drafts and non-boolean panel values', () => {
