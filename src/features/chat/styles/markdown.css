@@ -1276,3 +1276,16 @@
 .chat-v2 .markdown-content .geojson-svg path:not(.geojson-area) {
   fill: none;
 }
+
+/* 引用页面图可点击：回到原文并跳到该页 */
+.citation-image-open {
+  cursor: pointer;
+  border-radius: 8px;
+  outline: none;
+}
+.citation-image-open:hover {
+  opacity: 0.92;
+}
+.citation-image-open:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--ring));
+}

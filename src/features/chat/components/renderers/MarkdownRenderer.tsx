@@ -989,11 +989,25 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               citationIndex={citationIndex}
               onNavigate={handleBadgeNavigate}
             />
-            <AsyncCitationImage
-              imageInfo={imageInfo}
-              citationIndex={citationIndex}
-              resolveImageSrc={resolveImageSrc}
-            />
+            {/* 页面图本身也可点：与徽章同样回到原文（学习者更习惯点图） */}
+            <div
+              role="button"
+              tabIndex={0}
+              className="citation-image-open"
+              onClick={handleBadgeNavigate}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  handleBadgeNavigate();
+                }
+              }}
+            >
+              <AsyncCitationImage
+                imageInfo={imageInfo}
+                citationIndex={citationIndex}
+                resolveImageSrc={resolveImageSrc}
+              />
+            </div>
           </div>
         );
       }

@@ -184,6 +184,8 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
   const collapseWrapperRef = useRef<HTMLDivElement>(null);
   /** open 的最新值（citation 事件处理器中读取，不进入订阅 effect 依赖） */
   const openRef = useRef(open);
+  // 引用徽章点击时直接打开本地原文（handleLocateResource 声明在后，经 ref 转接）
+  const locateResourceRef = useRef<((item: UnifiedSourceItem) => void) | null>(null);
   useEffect(() => {
     openRef.current = open;
   }, [open]);
@@ -393,6 +395,14 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       const wasOpen = openRef.current;
       setOpen(true);
       setLocalHighlightId(target.id);
+
+      // 从回答回到原文一步到位：带页码的 PDF / 教材与导图来源直接在右侧打开并定位
+      //（此前只高亮下方来源卡，还要再点一次）。网页等外部来源不自动打开。
+      const sourceId = target.sourceId ?? target.raw?.source_id ?? '';
+      const isPagedDoc = /^(tb_|file_|att_)/.test(sourceId) && typeof target.pageIndex === 'number' && target.pageIndex >= 0;
+      if (isPagedDoc || sourceId.startsWith('mm_')) {
+        locateResourceRef.current?.(target);
+      }
 
       if (categories.some(c => c.group === target.origin)) {
         setActiveCategory(target.origin);
@@ -664,6 +674,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       console.error('[UnifiedSourcePanel] Failed to dispatch knowledge base locate event:', error);
     }
   }, [getItemResourceLocator]);
+  locateResourceRef.current = handleLocateResource;
 
   /**
    * 来源项操作按钮（卡片底部 / 移动端列表 / 内联详情共用）
