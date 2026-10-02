@@ -827,7 +827,8 @@
     border-color: hsl(var(--border) / 0.6);
   }
 
-  .wb-fc-card-content {
+  /* 模板模式下模板背景铺满舞台，不加内边距（否则又多出一圈「框」） */
+  .wb-fc-card-content:not([data-template-mode]) {
     padding: 16px;
   }
 
