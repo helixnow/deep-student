@@ -26,3 +26,10 @@ describe('library card title/summary', () => {
     expect(getCardBack(c)).toBe('背面');
   });
 });
+
+describe('cloze titles', () => {
+  it('hides cloze answers in list titles', () => {
+    const c = card({ front: '条件是 {{c1::连续}} 且 {{c2::可导::提示}}', back: '' });
+    expect(getCardFront(c)).toBe('条件是 […] 且 […]');
+  });
+});

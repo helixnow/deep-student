@@ -15,6 +15,7 @@ import {
   Play,
 } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { cardDisplayFront } from '../cardDisplay';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PullToRefresh } from '@/components/mobile';
 import type { FsrsStats } from '@/types';
@@ -401,7 +402,7 @@ export const TodayScreen: React.FC = () => {
                       data-agent-entity={`flashcards:${card.id}`}
                     >
                       <div className="wb-fc-row-front">
-                        {card.front || t('card.untitled')}
+                        {cardDisplayFront(card) || t('card.untitled')}
                       </div>
                       {card.tags && card.tags.length > 0 ? (
                         <div className="wb-fc-tags">
