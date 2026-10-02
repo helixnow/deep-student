@@ -21,7 +21,9 @@ import { PolishSectionView } from '../components/essay-grading/PolishSectionView
 import { ModelEssayView } from '../components/essay-grading/ModelEssayView';
 import { CircleNotch, CaretDown, CaretUp, FileText, ListChecks, Sparkle, BookOpen } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../components/custom-scroll-area';
+import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
+import { prefersReducedMotion } from '@/styles/motion-springs';
 
 export type SectionTab = 'overview' | 'details' | 'polish' | 'model_essay';
 
@@ -56,6 +58,18 @@ interface GradingStreamRendererProps {
 
 /** 距底部阈值：小于该值视为"贴底"，恢复自动跟随 */
 const STICK_TO_BOTTOM_THRESHOLD = 48;
+
+const formatScoreValue = (value: number): string => (
+  Number.isInteger(value) ? String(value) : value.toFixed(1)
+);
+
+function scrollViewportToTop(viewport: HTMLElement): void {
+  if (typeof viewport.scrollTo === 'function') {
+    viewport.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+  } else {
+    viewport.scrollTop = 0;
+  }
+}
 
 const SectionGeneratingPlaceholder: React.FC<{ label: string }> = ({ label }) => (
   <div className="flex items-center gap-2 px-4 py-3 rounded-md border border-border/30 bg-muted/10 text-sm text-muted-foreground">
@@ -234,6 +248,39 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
     viewportEl.scrollTop = 0;
   }, [activeTab, isStreaming, viewportEl]);
 
+  // 分数卡在 <score> 闭合（流结束）时才插到正文最上方，此时视口还贴着底部：
+  // 滚回顶部，让总分和圆环 / 雷达的入场动画在视口内出现
+  const completedScore = isStreaming ? null : parseResult.score;
+  const wasStreamingRef = useRef(isStreaming);
+  useEffect(() => {
+    const finished = wasStreamingRef.current && !isStreaming;
+    wasStreamingRef.current = isStreaming;
+    if (!finished || !completedScore || activeTab !== 'overview' || !viewportEl) return;
+    scrollViewportToTop(viewportEl);
+  }, [isStreaming, completedScore, activeTab, viewportEl]);
+
+  const showScoreCard = useCallback(() => {
+    if (activeTab !== 'overview') {
+      setActiveTab('overview');
+      return;
+    }
+    if (viewportEl) scrollViewportToTop(viewportEl);
+  }, [activeTab, viewportEl]);
+
+  const scoreBadge = completedScore ? (
+    <DsButton
+      variant="ghost"
+      size="sm"
+      onClick={showScoreCard}
+      aria-label={`${t('essay_grading:score.total')} ${formatScoreValue(completedScore.total)}/${formatScoreValue(completedScore.maxTotal)}`}
+      className="h-7 shrink-0 gap-0 px-2 text-xs font-medium tabular-nums text-foreground/80 hover:bg-[var(--interactive-hover)]"
+      data-essay-score-badge
+    >
+      {formatScoreValue(completedScore.total)}
+      <span className="text-muted-foreground/60">/{formatScoreValue(completedScore.maxTotal)}</span>
+    </DsButton>
+  ) : null;
+
   return (
     <div className={`grading-stream-renderer flex min-h-0 flex-col h-full ${className || ''}`}>
       {/* 顶部流式状态提示 - 简洁风格简洁 */}
@@ -285,6 +332,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
         )}
         {toolbarAccessory && (
           <div className="flex min-w-0 shrink-0 items-center gap-2 pl-2 pr-3 sm:pr-4">
+            {scoreBadge}
             {toolbarAccessory}
           </div>
         )}

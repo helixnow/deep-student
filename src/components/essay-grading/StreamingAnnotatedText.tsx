@@ -34,6 +34,7 @@ import {
   Trash,
   Warning,
   ArrowsLeftRight,
+  CircleNotch,
   X,
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
@@ -644,7 +645,7 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
     [text, isStreaming, preParsedResult]
   );
 
-  const { markers: rawMarkers, score } = preParsedResult ?? internalParseResult!;
+  const { markers: rawMarkers, score, scorePending } = preParsedResult ?? internalParseResult!;
   const markers = useStableMarkers(rawMarkers);
 
   // 未受控时退化为内部选中态（组件独立使用时交互仍可用）
@@ -768,7 +769,7 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
                     t={t}
                   />
                 ))}
-                {isStreaming && pi === paragraphs.length - 1 && streamingCursor}
+                {isStreaming && !scorePending && pi === paragraphs.length - 1 && streamingCursor}
               </div>
               {hasCard && (
                 <div
@@ -795,6 +796,17 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
         })}
         {isStreaming && paragraphs.length === 0 && <div>{streamingCursor}</div>}
       </div>
+
+      {/* 评分段流式中不进正文，完成后一次性出现在顶部分数卡 */}
+      {showScore && isStreaming && scorePending && (
+        <div
+          className="flex items-center gap-2 rounded-md border border-border/30 bg-muted/10 px-4 py-3 text-sm text-muted-foreground"
+          role="status"
+        >
+          <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" />
+          <span>{t('essay_grading:score_generating')}</span>
+        </div>
+      )}
     </div>
   );
 };

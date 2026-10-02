@@ -98,6 +98,8 @@ export interface StreamingParseResult {
   markers: StreamingMarker[];
   pendingText: string; // 未能确定的尾部文本
   score: ParsedScore | null;
+  /** 流式中 <score> 已开始但未闭合：评分段整体不进正文，由渲染层显示「评分中」占位 */
+  scorePending: boolean;
   /** 润色提升段落 */
   polishItems: PolishItem[];
   /** 参考范文段落（纯文本） */
@@ -664,13 +666,17 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
   const score = parseScoreFromText(cleanText);
   
   // 3. 移除评分标签和 section 标签后处理剩余内容。
-  //    孤儿 </score> 直接清除；流已结束时未闭合的 <score 块（流被截断）
-  //    也整体剥离，避免原始标签泄漏进正文
+  //    孤儿 </score> 直接清除；未闭合的 <score 块整体剥离：流式中评分段与
+  //    section 一样不进正文（否则各维度评语会以待定灰字接在正文后面），
+  //    流已结束时说明流被截断，同样不能让原始标签泄漏进正文
   let contentWithoutScore = removeSectionTags(removeScoreTag(cleanText))
     .replace(/<\/score>/gi, '');
-  if (isComplete) {
-    contentWithoutScore = contentWithoutScore.replace(/<score\b[\s\S]*$/i, '').trimEnd();
+  const unclosedScore = /<score\b[\s\S]*$/i;
+  const hasUnclosedScore = unclosedScore.test(contentWithoutScore);
+  if (hasUnclosedScore) {
+    contentWithoutScore = contentWithoutScore.replace(unclosedScore, '').trimEnd();
   }
+  const scorePending = hasUnclosedScore && !isComplete;
   
   // 4. 查找不完整标记的起始位置
   const incompleteStart = isComplete ? -1 : findIncompleteMarkerStart(contentWithoutScore);
@@ -708,7 +714,7 @@ function doParseStreamingContent(text: string, isComplete: boolean): StreamingPa
   const polishItems = extractPolishItems(cleanText);
   const modelEssay = extractModelEssay(cleanText);
 
-  return { markers: cleanedMarkers, pendingText, score, polishItems, modelEssay };
+  return { markers: cleanedMarkers, pendingText, score, scorePending, polishItems, modelEssay };
 }
 
 // ============================================================================

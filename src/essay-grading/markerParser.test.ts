@@ -110,15 +110,31 @@ describe('essay marker parser', () => {
     expect(joined).toContain('i<3');
   });
 
-  it('pends the whole score block while it is still streaming (no raw tag leak)', () => {
-    // <score> 未闭合，但内部已有完整的 </dim>；pending 应回溯到 <score 开头
+  it('withholds the whole score block while it is still streaming (no raw tag or comment leak)', () => {
+    // <score> 未闭合，但内部已有完整的 </dim>：评语不能以待定文本接在正文后面
     const parsed = parseStreamingContent(
-      '正文<score total="8" max="10"><dim name="内容" score="4" max="5">好</dim>',
+      '正文<score total="8" max="10"><dim name="内容" score="4" max="5">立场明确</dim><dim name="结构"',
       false
     );
-    expect(parsed.pendingText.startsWith('<score')).toBe(true);
-    const confirmedText = parsed.markers.filter((m) => m.type === 'text').map((m) => m.content).join('');
-    expect(confirmedText).toBe('正文');
+    expect(parsed.scorePending).toBe(true);
+    expect(parsed.pendingText).toBe('');
+    expect(parsed.markers.some((m) => m.type === 'pending')).toBe(false);
+    const joined = parsed.markers.map((m) => m.content).join('');
+    expect(joined).toBe('正文');
+    expect(joined).not.toContain('立场明确');
+  });
+
+  it('clears scorePending once the score closes or the stream ends', () => {
+    const closed = parseStreamingContent(
+      '正文<score total="8" max="10"><dim name="内容" score="4" max="5">好</dim></score>',
+      false
+    );
+    expect(closed.scorePending).toBe(false);
+    expect(closed.score?.total).toBe(8);
+
+    const truncated = parseStreamingContent('正文<score total="8" max="10"><dim name="内容"', true);
+    expect(truncated.scorePending).toBe(false);
+    expect(truncated.markers.map((m) => m.content).join('')).toBe('正文');
   });
 
   it('still pends unclosed known tags even with a later bare "<"', () => {
