@@ -2098,6 +2098,20 @@ impl VfsFullIndexingService {
                 );
                 Ok(())
             }
+            Err(VfsError::InvalidArgument { ref param, .. }) if param == "resource_type" => {
+                // 该类型没有单元构建器（如「检索结果」快照）：永远建不出单元。
+                // 若仍标为 indexed，领取条件「已索引但无单元」会让它每个 tick 被重新领取，
+                // 无限循环。标记为不可索引，彻底移出队列。
+                VfsIndexStateRepo::mark_disabled_with_reason(
+                    &self.db,
+                    resource_id,
+                    "该类型不建立检索索引",
+                )?;
+                Err(VfsError::InvalidArgument {
+                    param: "resource_type".to_string(),
+                    reason: "unsupported for indexing".to_string(),
+                })
+            }
             Err(e) => {
                 warn!(
                     "[VfsFullIndexingService] Failed to sync units for resource {}: {}",
@@ -2185,7 +2199,16 @@ impl VfsFullIndexingService {
             );
         } else {
             // 无有效 Units / 内容已变 / 存在待重建文本 Unit：执行同步
-            self.sync_resource_to_units(resource_id)?;
+            match self.sync_resource_to_units(resource_id) {
+                Err(VfsError::InvalidArgument { ref param, .. }) if param == "resource_type" => {
+                    debug!(
+                        "[VfsFullIndexingService] Resource {} type is not indexable; disabled",
+                        resource_id
+                    );
+                    return Ok((0, 0));
+                }
+                other => other?,
+            }
         }
 
         // 1. 获取资源
