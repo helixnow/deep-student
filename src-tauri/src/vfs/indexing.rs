@@ -4711,11 +4711,19 @@ impl VfsFullSearchService {
                         }
                     }
 
-                    // 从元数据获取标题，或使用 source_id
+                    // 标题：资源元数据 → 源对象（笔记/文件/导图…）的显示名 → source_id。
+                    // 笔记资源的元数据不带标题，此前检索结果直接显示成 note_xxx。
                     let title = resource
                         .metadata
                         .as_ref()
                         .and_then(|m| m.title.clone())
+                        .filter(|t| !t.trim().is_empty())
+                        .or_else(|| {
+                            resource
+                                .source_id
+                                .as_deref()
+                                .and_then(|source_id| Self::source_display_title(db, source_id))
+                        })
                         .or_else(|| resource.source_id.clone())
                         .unwrap_or_else(|| resource.id.clone());
                     result.resource_title = Some(title);
@@ -4732,6 +4740,35 @@ impl VfsFullSearchService {
             .collect();
 
         Ok(valid_results)
+    }
+
+    /// 源对象的显示名（按 source_id 前缀查对应表的标题列）
+    fn source_display_title(db: &VfsDatabase, source_id: &str) -> Option<String> {
+        let sql = if source_id.starts_with("note_") {
+            "SELECT title FROM notes WHERE id = ?1"
+        } else if source_id.starts_with("tb_")
+            || source_id.starts_with("file_")
+            || source_id.starts_with("att_")
+            || source_id.starts_with("img_")
+        {
+            "SELECT COALESCE(NULLIF(file_name, ''), name) FROM files WHERE id = ?1"
+        } else if source_id.starts_with("exam_") {
+            "SELECT exam_name FROM exam_sheets WHERE id = ?1"
+        } else if source_id.starts_with("tr_") {
+            "SELECT title FROM translations WHERE id = ?1"
+        } else if source_id.starts_with("mm_") {
+            "SELECT title FROM mindmaps WHERE id = ?1"
+        } else if source_id.starts_with("essay_") && !source_id.starts_with("essay_session_") {
+            "SELECT title FROM essays WHERE id = ?1"
+        } else {
+            return None;
+        };
+        let conn = db.get_conn_safe().ok()?;
+        conn.query_row(sql, rusqlite::params![source_id], |row| row.get::<_, Option<String>>(0))
+            .ok()
+            .flatten()
+            .map(|title| title.trim().to_string())
+            .filter(|title| !title.is_empty())
     }
 
     /// 检查源资源是否已被软删除
