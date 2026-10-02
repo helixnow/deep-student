@@ -79,16 +79,23 @@ const POPOVER_TOTAL_TIMEOUT: Duration = Duration::from_secs(120);
 const POPOVER_MAX_REQUEST_ATTEMPTS: u32 = 2;
 const POPOVER_TEMPERATURE: f32 = 0.2;
 const POPOVER_MIN_MAX_TOKENS: u32 = 512;
+const POPOVER_REASONING_HEADROOM: u32 = 4096;
 
 /// 按源文本长度估算输出 token 上限，避免用模型全局大上限拖慢首包/尾包。
 /// aligned 模式输出为 NDJSON（src+tgt+JSON 结构开销），预算放大更多。
-fn popover_max_tokens(source_chars: usize, mode: ChatTranslationMode) -> u32 {
+/// 推理模型（含无法关闭思考的）额外预留思考额度，避免思考耗尽上限后零输出。
+fn popover_max_tokens(source_chars: usize, mode: ChatTranslationMode, reasoning: bool) -> u32 {
     let multiplier: usize = match mode {
         ChatTranslationMode::Aligned => 6,
         ChatTranslationMode::Plain => 3,
     };
     let estimated = source_chars.saturating_mul(multiplier).saturating_add(256);
-    (estimated.min(u32::MAX as usize) as u32).max(POPOVER_MIN_MAX_TOKENS)
+    let base = (estimated.min(u32::MAX as usize) as u32).max(POPOVER_MIN_MAX_TOKENS);
+    if reasoning {
+        base.saturating_add(POPOVER_REASONING_HEADROOM)
+    } else {
+        base
+    }
 }
 
 fn truncate_context(s: Option<String>) -> String {
@@ -263,10 +270,15 @@ async fn run_chat_translation(
         crate::llm_manager::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
     let options = StreamOptions {
         temperature: POPOVER_TEMPERATURE,
-        max_tokens: Some(popover_max_tokens(request.source.chars().count(), mode).min(model_cap)),
+        max_tokens: Some(
+            popover_max_tokens(request.source.chars().count(), mode, config.supports_reasoning)
+                .min(model_cap),
+        ),
         idle_timeout: POPOVER_IDLE_TIMEOUT,
         total_timeout: POPOVER_TOTAL_TIMEOUT,
         max_request_attempts: POPOVER_MAX_REQUEST_ATTEMPTS,
+        // 划词翻译要的是快：关闭思考（默认开思考的 DeepSeek V4 等会把紧凑上限耗尽）
+        enable_thinking: Some(false),
     };
     let window_for_chunk = window.clone();
     let event_for_chunk = event_name.clone();

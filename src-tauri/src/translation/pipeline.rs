@@ -85,6 +85,9 @@ pub(crate) struct StreamOptions {
     pub idle_timeout: Duration,
     pub total_timeout: Duration,
     pub max_request_attempts: u32,
+    /// 思考开关：None 沿用模型默认；Some(false) 用于低延迟、紧凑输出上限的场景
+    /// （思考会吃掉紧凑上限，导致 max_output_tokens 触顶、一个字都译不出来）
+    pub enable_thinking: Option<bool>,
 }
 
 impl Default for StreamOptions {
@@ -95,6 +98,7 @@ impl Default for StreamOptions {
             idle_timeout: IDLE_TIMEOUT,
             total_timeout: TOTAL_TIMEOUT,
             max_request_attempts: MAX_REQUEST_ATTEMPTS,
+            enable_thinking: None,
         }
     }
 }
@@ -946,6 +950,18 @@ fn classify_provider_block(info: &serde_json::Value) -> StreamFailure {
             false,
         );
     }
+    let detail_reason = info
+        .get("details")
+        .and_then(|d| d.get("reason"))
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
+    if detail_reason == "max_output_tokens" || reason.contains("max_output_tokens") {
+        return StreamFailure::new(
+            "译文超出模型输出长度上限，请缩短选区或在设置中更换翻译模型",
+            "max_output_tokens",
+            false,
+        );
+    }
     let message = if detail_msg.is_empty() {
         "翻译服务返回错误，请稍后重试".to_string()
     } else {
@@ -1009,7 +1025,11 @@ where
             "stream": true, // 关键：启用流式
         });
 
-        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+        crate::llm_manager::LLMManager::apply_reasoning_config(
+            &mut request_body,
+            config,
+            options.enable_thinking,
+        );
 
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
@@ -1181,7 +1201,7 @@ where
                     // 因此仅发送 finish_reason、不发 [DONE] 的服务端也能正确判定完成
                     crate::providers::StreamEvent::Done => return true,
                     crate::providers::StreamEvent::SafetyBlocked(info) => {
-                        eprintln!("🚫 [Translation] 供应商流内错误/安全拦截: {}", info);
+                        log::warn!("[Translation] 供应商流内错误/安全拦截: {}", info);
                         if terminal_failure.is_none() {
                             terminal_failure = Some(classify_provider_block(&info));
                         }
