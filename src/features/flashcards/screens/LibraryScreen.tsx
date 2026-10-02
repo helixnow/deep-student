@@ -419,10 +419,14 @@ export const LibraryScreen: React.FC = () => {
     if (importing) return;
     void importApkg().then((outcome) => {
       if (outcome.status === 'imported') {
-        showGlobalNotification(
-          'success',
-          translate('library.import.success', { count: outcome.importedCards }),
-        );
+        const { importedCards: count, reviewEnqueued: queued, reviewWithHistory: history } = outcome;
+        const message =
+          queued <= 0
+            ? translate('library.import.success', { count })
+            : history > 0
+              ? translate('library.import.successQueuedWithHistory', { count, queued, history })
+              : translate('library.import.successQueued', { count, queued });
+        showGlobalNotification('success', message);
       }
       // canceled 静默；failed 已写入 actionError 由页内错误条呈现
     });

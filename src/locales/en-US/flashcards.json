@@ -170,6 +170,8 @@
       "running": "Importing…",
       "hint": "Pick a local .apkg file to import into the library",
       "success": "Import finished: {{count}} cards",
+      "successQueued": "Import finished: {{count}} cards, {{queued}} added to review",
+      "successQueuedWithHistory": "Import finished: {{count}} cards, {{queued}} added to review ({{history}} keep their Anki review progress)",
       "notApkg": "Please choose an Anki deck file in .apkg format",
       "failed": "Failed to import the Anki deck"
     },

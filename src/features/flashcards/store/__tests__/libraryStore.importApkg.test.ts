@@ -49,11 +49,11 @@ describe('libraryStore.importApkg virtual URI staging', () => {
     copyFileMock.mockResolvedValue(undefined);
     mkdirMock.mockResolvedValue(undefined);
     removeMock.mockResolvedValue(undefined);
-    invokeMock.mockResolvedValue({ importedCards: 12 });
+    invokeMock.mockResolvedValue({ importedCards: 12, reviewEnqueue: { enqueued: 12, withHistory: 5, suspended: 1 } });
 
     const outcome = await useFlashcardsLibraryStore.getState().importApkg();
 
-    expect(outcome).toEqual({ status: 'imported', importedCards: 12 });
+    expect(outcome).toEqual({ status: 'imported', importedCards: 12, reviewEnqueued: 12, reviewWithHistory: 5 });
     // 落盘目录与文件名（SAF document ID 中的 `:` 净化为 `_`，扩展名保留）
     expect(copyFileMock).toHaveBeenCalledWith(
       'content://com.android.providers.downloads/documents/abc%3Adeck.apkg',
@@ -74,7 +74,7 @@ describe('libraryStore.importApkg virtual URI staging', () => {
 
     const outcome = await useFlashcardsLibraryStore.getState().importApkg();
 
-    expect(outcome).toEqual({ status: 'imported', importedCards: 3 });
+    expect(outcome).toEqual({ status: 'imported', importedCards: 3, reviewEnqueued: 0, reviewWithHistory: 0 });
     expect(copyFileMock).not.toHaveBeenCalled();
     expect(invokeMock).toHaveBeenCalledWith('import_apkg_to_library', {
       path: 'C:\\Users\\me\\Downloads\\deck.apkg',
@@ -101,7 +101,7 @@ describe('libraryStore.importApkg virtual URI staging', () => {
 
     const outcome = await useFlashcardsLibraryStore.getState().importApkg();
 
-    expect(outcome).toEqual({ status: 'imported', importedCards: 1 });
+    expect(outcome).toEqual({ status: 'imported', importedCards: 1, reviewEnqueued: 0, reviewWithHistory: 0 });
     expect(removeMock).toHaveBeenCalled();
   });
 });

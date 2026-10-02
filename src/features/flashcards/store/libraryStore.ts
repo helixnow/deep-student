@@ -102,7 +102,14 @@ export interface NewLibraryCardInput {
 }
 
 export type ApkgImportOutcome =
-  | { status: 'imported'; importedCards: number }
+  | {
+      status: 'imported';
+      importedCards: number;
+      /** 导入时同步加入 FSRS 复习的卡数（后端 reviewEnqueue.enqueued） */
+      reviewEnqueued: number;
+      /** 其中沿用 Anki 复习进度（非新卡）建档的卡数 */
+      reviewWithHistory: number;
+    }
   | { status: 'canceled' }
   | { status: 'failed'; error: string };
 
@@ -404,10 +411,18 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
         }
 
         try {
-          const result = await invoke<{ importedCards?: number }>('import_apkg_to_library', { path: importPath });
+          const result = await invoke<{
+            importedCards?: number;
+            reviewEnqueue?: { enqueued?: number; withHistory?: number; suspended?: number };
+          }>('import_apkg_to_library', { path: importPath });
           requestFlashcardsDueRefresh();
           await get().refresh();
-          return { status: 'imported' as const, importedCards: result?.importedCards ?? 0 };
+          return {
+            status: 'imported' as const,
+            importedCards: result?.importedCards ?? 0,
+            reviewEnqueued: result?.reviewEnqueue?.enqueued ?? 0,
+            reviewWithHistory: result?.reviewEnqueue?.withHistory ?? 0,
+          };
         } finally {
           if (stagedPath && removeStaged) {
             // 临时落盘清理（best-effort；失败仅残留 tmp 文件，不影响导入结果）

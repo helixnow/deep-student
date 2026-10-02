@@ -170,6 +170,8 @@
       "running": "导入中…",
       "hint": "选择本地 .apkg 文件导入卡片库",
       "success": "导入完成：共 {{count}} 张卡片",
+      "successQueued": "导入完成：共 {{count}} 张卡片，{{queued}} 张已加入复习",
+      "successQueuedWithHistory": "导入完成：共 {{count}} 张卡片，{{queued}} 张已加入复习（其中 {{history}} 张沿用 Anki 复习进度）",
       "notApkg": "请选择 .apkg 格式的 Anki 牌组文件",
       "failed": "Anki 牌组导入失败"
     },
