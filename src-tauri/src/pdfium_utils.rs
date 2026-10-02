@@ -152,21 +152,27 @@ pub fn extract_text_from_pdf_bytes(pdfium: &Pdfium, pdf_bytes: &[u8]) -> Result<
     extract_text_from_document(&document)
 }
 
+/// PDF 页间分隔符（与 pdftotext 约定一致的换页符）：索引按页拆分单元时据此对齐页码
+pub const PDF_PAGE_SEPARATOR: char = '\u{000C}';
+
 /// 从已加载的 PdfDocument 中提取全部文本（内部共享逻辑）
+///
+/// 每页之间（含空页）插入 [`PDF_PAGE_SEPARATOR`]，第 i 段即第 i 页，
+/// 知识库据此按页建索引、引用精确到页。
 fn extract_text_from_document(document: &PdfDocument) -> Result<String, String> {
     let mut all_text = String::new();
     let total_pages = document.pages().len();
 
     for i in 0..total_pages {
+        if i > 0 {
+            all_text.push(PDF_PAGE_SEPARATOR);
+        }
         match document.pages().get(i) {
             Ok(page) => match page.text() {
                 Ok(text_page) => {
                     let page_text = text_page.all();
                     if !page_text.trim().is_empty() {
-                        if !all_text.is_empty() {
-                            all_text.push('\n');
-                        }
-                        all_text.push_str(&page_text);
+                        all_text.push_str(page_text.replace(PDF_PAGE_SEPARATOR, "\n").trim());
                     }
                 }
                 Err(e) => {

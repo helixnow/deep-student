@@ -44,6 +44,9 @@ impl UnitBuilder for TextbookBuilder {
     }
 
     fn build(&self, input: &UnitBuildInput) -> UnitBuildOutput {
+        if let Some(paged) = build_pdf_page_units(input) {
+            return paged;
+        }
         let page_count = input.page_count.unwrap_or(1) as usize;
 
         // 解析 OCR 页面 JSON
@@ -308,6 +311,9 @@ impl UnitBuilder for FileBuilder {
     }
 
     fn build(&self, input: &UnitBuildInput) -> UnitBuildOutput {
+        if let Some(paged) = build_pdf_page_units(input) {
+            return paged;
+        }
         let has_extracted = input
             .extracted_text
             .as_ref()
@@ -317,7 +323,8 @@ impl UnitBuilder for FileBuilder {
             .ocr_text
             .as_ref()
             .map(|t| !t.trim().is_empty())
-            .unwrap_or(false);
+            .unwrap_or(false)
+            && !ocr_duplicates_native(input);
 
         let mut units = Vec::new();
 
@@ -390,6 +397,9 @@ impl UnitBuilder for AttachmentBuilder {
     }
 
     fn build(&self, input: &UnitBuildInput) -> UnitBuildOutput {
+        if let Some(paged) = build_pdf_page_units(input) {
+            return paged;
+        }
         let page_count = input.page_count.unwrap_or(1) as usize;
 
         if page_count <= 1 {
@@ -403,7 +413,8 @@ impl UnitBuilder for AttachmentBuilder {
                 .ocr_text
                 .as_ref()
                 .map(|t| !t.trim().is_empty())
-                .unwrap_or(false);
+                .unwrap_or(false)
+                && !ocr_duplicates_native(input);
 
             let mut units = Vec::new();
 
@@ -507,6 +518,94 @@ impl UnitBuilder for AttachmentBuilder {
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+/// 原生文本按页切分（提取时页间插入换页符，见 `pdfium_utils::PDF_PAGE_SEPARATOR`）。
+/// 段数与页数不一致（旧数据无分隔符、首尾空页被裁掉）时返回 None，调用方回退整篇单元。
+fn native_pdf_pages(extracted_text: &Option<String>, page_count: usize) -> Option<Vec<String>> {
+    let text = extracted_text.as_deref()?;
+    let separator = crate::pdfium_utils::PDF_PAGE_SEPARATOR;
+    if page_count > 1 && !text.contains(separator) {
+        return None;
+    }
+    let parts: Vec<String> = text.split(separator).map(|p| p.trim().to_string()).collect();
+    (parts.len() == page_count).then_some(parts)
+}
+
+/// PDF 类资源每页一个 Unit：该页原生文字优先，缺失时用该页 OCR，并挂上该页预览图
+/// （多模态索引据此按页向量化）。unit_index 即页码，检索引用 / 跳页由此精确到页。
+///
+/// 此前整本书只有一个文本 Unit（所有引用都指向第 1 页），或另把同一份全文作为「OCR」
+/// 再存一遍；多页附件则完全忽略原生文字。无法按页对齐时返回 None，保留旧逻辑。
+fn build_pdf_page_units(input: &UnitBuildInput) -> Option<UnitBuildOutput> {
+    let page_count = input.page_count.filter(|n| *n > 0)? as usize;
+    let preview_pages = parse_preview_pages(&input.preview_json, page_count);
+    let has_preview = preview_pages.iter().any(Option::is_some);
+    let native = native_pdf_pages(&input.extracted_text, page_count);
+    let mut ocr_pages: Vec<Option<String>> = input
+        .ocr_pages_json
+        .as_deref()
+        .map(parse_ocr_pages_json)
+        .unwrap_or_default();
+    ocr_pages.resize(page_count, None);
+    let has_ocr_pages = ocr_pages.iter().any(Option::is_some);
+    let has_whole_text = input
+        .extracted_text
+        .as_deref()
+        .is_some_and(|t| !t.trim().is_empty());
+
+    // 有整篇原文但切不出页、也没有逐页 OCR：拆页会丢文字，交回旧逻辑
+    if native.is_none() && has_whole_text && !has_ocr_pages {
+        return None;
+    }
+    if native.is_none() && !has_ocr_pages && !has_preview {
+        return None;
+    }
+    // 单页且没有页图：沿用旧的单 Unit 逻辑
+    if page_count == 1 && !has_preview {
+        return None;
+    }
+
+    let units = (0..page_count)
+        .map(|i| {
+            let native_text = native
+                .as_ref()
+                .and_then(|pages| pages.get(i))
+                .filter(|t| !t.is_empty())
+                .cloned();
+            let (text_content, text_source) = match native_text {
+                Some(text) => (Some(text), Some("native".to_string())),
+                None => match ocr_pages.get(i).cloned().flatten() {
+                    Some(text) => (Some(text), Some("ocr".to_string())),
+                    None => (None, None),
+                },
+            };
+            let (image_blob_hash, image_mime_type) = preview_pages
+                .get(i)
+                .cloned()
+                .flatten()
+                .map(|(hash, mime)| (Some(hash), Some(mime)))
+                .unwrap_or((None, None));
+            CreateUnitInput {
+                resource_id: input.resource_id.clone(),
+                unit_index: i as i32,
+                image_blob_hash,
+                image_mime_type,
+                text_content,
+                text_source,
+            }
+        })
+        .collect();
+    Some(UnitBuildOutput { units })
+}
+
+/// OCR 文本只是原生文本的副本时（空白归一后相同）不再单独建 Unit，避免同文双份命中
+fn ocr_duplicates_native(input: &UnitBuildInput) -> bool {
+    let normalize = |t: &str| t.split_whitespace().collect::<String>();
+    match (input.extracted_text.as_deref(), input.ocr_text.as_deref()) {
+        (Some(native), Some(ocr)) => normalize(native) == normalize(ocr),
+        _ => false,
+    }
+}
 
 /// 从 preview_json 解析页面图片 hash
 ///
@@ -627,6 +726,58 @@ fn extract_texts_recursive(value: &serde_json::Value, depth: usize, texts: &mut 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn pdf_input(extracted: Option<&str>, ocr_text: Option<&str>, ocr_pages: Option<&str>, pages: i32) -> UnitBuildInput {
+        let preview = (0..pages)
+            .map(|i| format!(r#"{{"pageIndex":{i},"blobHash":"page{i}","mimeType":"image/jpeg"}}"#))
+            .collect::<Vec<_>>()
+            .join(",");
+        UnitBuildInput {
+            resource_id: "res_pdf".to_string(),
+            resource_type: "file".to_string(),
+            data: None,
+            ocr_text: ocr_text.map(str::to_string),
+            ocr_pages_json: ocr_pages.map(str::to_string),
+            blob_hash: Some("pdfbytes".to_string()),
+            page_count: Some(pages),
+            extracted_text: extracted.map(str::to_string),
+            preview_json: Some(format!(r#"{{"pages":[{preview}]}}"#)),
+        }
+    }
+
+    #[test]
+    fn pdf_file_is_indexed_one_unit_per_page_with_page_images() {
+        let whole = "第一章 柯西\u{000C}第二章 泰勒\u{000C}第三章 暗号";
+        // OCR 只是原文副本：不应再多出一个 Unit
+        let input = pdf_input(Some(whole), Some(whole), None, 3);
+        for builder in [&FileBuilder as &dyn UnitBuilder, &TextbookBuilder, &AttachmentBuilder] {
+            let units = builder.build(&input).units;
+            assert_eq!(units.len(), 3, "{}", builder.resource_type());
+            assert_eq!(units[2].unit_index, 2);
+            assert_eq!(units[2].text_content.as_deref(), Some("第三章 暗号"));
+            assert_eq!(units[1].image_blob_hash.as_deref(), Some("page1"));
+            assert_eq!(units[0].text_source.as_deref(), Some("native"));
+        }
+    }
+
+    #[test]
+    fn scanned_pages_fall_back_to_page_ocr() {
+        // 扫描件：原文为空页，逐页 OCR 补位
+        let input = pdf_input(Some("\u{000C}"), None, Some(r#"["OCR 第一页", "OCR 第二页"]"#), 2);
+        let units = FileBuilder.build(&input).units;
+        assert_eq!(units.len(), 2);
+        assert_eq!(units[1].text_content.as_deref(), Some("OCR 第二页"));
+        assert_eq!(units[1].text_source.as_deref(), Some("ocr"));
+    }
+
+    #[test]
+    fn unsplittable_legacy_text_keeps_whole_document_unit() {
+        // 旧数据无页分隔符：保持整篇一个 Unit，不丢文字；重复 OCR 不再单独建 Unit
+        let input = pdf_input(Some("整本书的文字"), Some("整本书的文字"), None, 3);
+        let units = FileBuilder.build(&input).units;
+        assert_eq!(units.len(), 1);
+        assert_eq!(units[0].text_content.as_deref(), Some("整本书的文字"));
+    }
 
     #[test]
     fn test_note_builder() {
