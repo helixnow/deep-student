@@ -2547,6 +2547,31 @@ impl StreamingAnkiService {
             }
         }
 
+        // 语义字段优先于字段顺序：模板首字段常是「科目」「编号」这类辅助字段
+        // （选择题 Subject、蓝图 ID），按顺序取会让正面变成「高等数学」「LMT-01」，
+        // 卡片库列表、搜索、掌握度兜底都会用到这个正面。
+        const SEMANTIC_FRONT_KEYS: &[&str] =
+            &["question", "term", "word", "name", "symbol", "title", "text"];
+        const SEMANTIC_BACK_KEYS: &[&str] = &[
+            "answer", "definition", "explanation", "expl", "detail", "backdetail", "meaning",
+        ];
+        if front.is_empty() {
+            if let Some(val) = SEMANTIC_FRONT_KEYS
+                .iter()
+                .find_map(|key| extra_fields.get(*key).filter(|v| !v.trim().is_empty()))
+            {
+                front = val.clone();
+            }
+        }
+        if back.is_empty() {
+            if let Some(val) = SEMANTIC_BACK_KEYS
+                .iter()
+                .find_map(|key| extra_fields.get(*key).filter(|v| !v.trim().is_empty() && **v != front))
+            {
+                back = val.clone();
+            }
+        }
+
         // 新增动态映射：使用模板定义字段顺序来设置 front/back
         if front.is_empty() {
             if let Some(fields) = template_fields {
@@ -3843,6 +3868,49 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("缺少必需字段"), "unexpected error: {msg}");
         assert!(msg.contains("back"), "should name the missing field: {msg}");
+    }
+
+    #[test]
+    fn extract_fields_prefers_semantic_fields_over_template_order() {
+        let (svc, _dir) = make_test_service();
+        // 蓝图模板：首字段是编号 ID，第二个才是题面
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        for field in ["ID", "Question", "Formula", "Expl"] {
+            rules.insert(field.to_string(), make_rule(false, FieldType::Text, field));
+        }
+        let fields = Some(vec!["ID".to_string(), "Question".to_string(), "Formula".to_string(), "Expl".to_string()]);
+        let json_value = json!({
+            "ID": "LMT-01",
+            "Question": "拉格朗日中值定理",
+            "Formula": "f(b)-f(a)=f'(ξ)(b-a)",
+            "Expl": "连续且可导",
+        });
+        let (front, back, _tags, extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &fields)
+            .expect("blueprint card parses");
+        assert_eq!(front, "拉格朗日中值定理");
+        assert_eq!(back, "连续且可导");
+        assert_eq!(extra.get("id").map(String::as_str), Some("LMT-01"));
+
+        // 选择题模板：首字段是科目 Subject
+        let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
+        for field in ["Subject", "Question", "optiona", "optionb", "correct", "explanation"] {
+            rules.insert(field.to_string(), make_rule(false, FieldType::Text, field));
+        }
+        let fields = Some(vec!["Subject".to_string(), "Question".to_string()]);
+        let json_value = json!({
+            "Subject": "高等数学",
+            "Question": "易错点是？",
+            "optiona": "忘记验证连续性",
+            "optionb": "以上都是",
+            "correct": "B",
+            "explanation": "两个条件缺一不可",
+        });
+        let (front, back, _tags, _extra) = svc
+            .extract_fields_with_rules(&json_value, &rules, &fields)
+            .expect("choice card parses");
+        assert_eq!(front, "易错点是？");
+        assert!(back.contains("正确答案：B"), "choice back keeps options: {back}");
     }
 
     #[test]
