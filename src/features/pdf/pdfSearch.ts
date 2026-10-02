@@ -13,6 +13,19 @@
  * 见其注释；viewer 侧接线为后续项。
  */
 
+/**
+ * 私有区连字还原：macOS 字体（Georgia / Helvetica Neue 等）生成的 PDF 里，fi / fl 连字
+ * 常被 pdf.js 映射到 Apple 旧版私有区码位 U+F001 / U+F002（poppler 能还原、pdf.js 不能），
+ * 文本层就会把 "flat" 读成 "\uF002at"——划词翻译 / 引用 / 搜索全跟着错。
+ * 一换二会改变长度：搜索与文本层渲染必须对同一份还原后的字符串计算偏移。
+ */
+const PUA_LIGATURES: Record<string, string> = { '\uF001': 'fi', '\uF002': 'fl' };
+const PUA_LIGATURE_RE = /[\uF001\uF002]/g;
+
+export function normalizePdfLigatures(text: string): string {
+  return text.replace(PUA_LIGATURE_RE, (ch) => PUA_LIGATURES[ch] ?? ch);
+}
+
 /** pdf.js getTextContent() 的最小 item 形状 */
 export interface PdfTextItemLike {
   str?: string;
@@ -50,7 +63,7 @@ export function collectPageSearchMatches(
   const itemOffsets: { itemIndex: number; start: number; length: number }[] = [];
   let pageText = '';
   items.forEach((item, itemIdx) => {
-    const str = typeof item.str === 'string' ? item.str : '';
+    const str = typeof item.str === 'string' ? normalizePdfLigatures(item.str) : '';
     itemOffsets.push({ itemIndex: itemIdx, start: pageText.length, length: str.length });
     pageText += str;
     if (item.hasEOL) pageText += '\n';

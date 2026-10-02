@@ -26,8 +26,6 @@
 
 import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from '@phosphor-icons/react';
-import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { SelectionToolbar, useTextSelection } from '@/shared/selection';
 import { SaveAsNoteFolderPicker, useSaveAsNoteFlow } from '@/shared/notes';
@@ -262,18 +260,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
           role="region"
           aria-label={t('chatV2:selectionToolbar.ariaLabel')}
         >
-          <div className="ds-pdf__selection-panel-close">
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              className="ds-btn ds-btn-sm"
-              onClick={closePanel}
-              aria-label={t('common:close')}
-            >
-              <X size={16} />
-            </DsButton>
-          </div>
+          {/* 解释 / 翻译弹层自带关闭钮，面板不再叠第二个 */}
           <CustomScrollArea className="ds-pdf__selection-panel-body" fullHeight>
             <React.Suspense fallback={null}>
               {explainText !== null && (

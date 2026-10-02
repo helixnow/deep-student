@@ -13,7 +13,7 @@ import {
   getPrevNavigationPage,
   resolvePageScrollKeyAction,
 } from '../pdfPageNavigation';
-import { collectPageSearchMatches, type SearchItemRange } from '../pdfSearch';
+import { collectPageSearchMatches, normalizePdfLigatures, type SearchItemRange } from '../pdfSearch';
 import { loadPdfViewState, savePdfViewState, type PdfViewState } from '../pdfViewState';
 import {
   resolveSelectionMenuFrame,
@@ -199,6 +199,10 @@ const escapeHtml = (text: string) =>
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+
+/** 默认文本层渲染：只做私有区连字还原（fi / fl），保证划词、复制、引用拿到正确文字 */
+const ligatureTextRenderer = (props: { str: string }) =>
+  escapeHtml(normalizePdfLigatures(props.str));
 
 /** 快捷键提示使用平台习惯的修饰键符号 */
 const MOD_KEY_LABEL =
@@ -1212,23 +1216,25 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   const currentSearchMatch = searchResults[currentSearchIndex];
   const searchTextRenderer = useCallback(
     (props: { pageNumber: number; itemIndex: number; str: string }) => {
+      // 与 collectPageSearchMatches 同一份还原后的字符串，命中偏移才对得上
+      const str = normalizePdfLigatures(props.str);
       const ranges = searchRangesByPage.get(props.pageNumber)?.get(props.itemIndex);
-      if (!ranges || ranges.length === 0) return escapeHtml(props.str);
+      if (!ranges || ranges.length === 0) return escapeHtml(str);
       let html = '';
       let cursor = 0;
       for (const range of ranges) {
         // 重叠命中（如 "aa" 在 "aaa" 中）只渲染未覆盖部分
         const start = Math.max(range.start, cursor);
         if (range.end <= cursor) continue;
-        if (start > cursor) html += escapeHtml(props.str.slice(cursor, start));
+        if (start > cursor) html += escapeHtml(str.slice(cursor, start));
         const isCurrent =
           currentSearchMatch !== undefined &&
           currentSearchMatch.pageIndex === props.pageNumber &&
           currentSearchMatch.matchIndex === range.matchOrdinal;
-        html += `<mark class="ds-search-mark${isCurrent ? ' ds-search-mark--current' : ''}">${escapeHtml(props.str.slice(start, range.end))}</mark>`;
+        html += `<mark class="ds-search-mark${isCurrent ? ' ds-search-mark--current' : ''}">${escapeHtml(str.slice(start, range.end))}</mark>`;
         cursor = range.end;
       }
-      html += escapeHtml(props.str.slice(cursor));
+      html += escapeHtml(str.slice(cursor));
       return html;
     },
     [searchRangesByPage, currentSearchMatch]
@@ -3009,7 +3015,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           rotate={rotation}
           devicePixelRatio={renderDpr}
           onLoadSuccess={handlePageLoadSuccess}
-          customTextRenderer={hasSearchMarks ? searchTextRenderer : undefined}
+          customTextRenderer={hasSearchMarks ? searchTextRenderer : ligatureTextRenderer}
           loading={getPageShimmer(pageNum)}
         />
 

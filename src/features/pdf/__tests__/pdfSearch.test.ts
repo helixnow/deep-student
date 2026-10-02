@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { collectPageSearchMatches, createSearchProgressThrottle } from '../pdfSearch';
+import {
+  collectPageSearchMatches,
+  createSearchProgressThrottle,
+  normalizePdfLigatures,
+} from '../pdfSearch';
 
 describe('collectPageSearchMatches', () => {
   it('returns no matches for empty query or empty items', () => {
@@ -90,5 +94,18 @@ describe('createSearchProgressThrottle', () => {
     throttle.report({ scanned: 2, total: 100 });
     throttle.report({ scanned: 4, total: 100 });
     expect(published).toEqual([2, 4]);
+  });
+});
+
+describe('normalizePdfLigatures', () => {
+  it('restores Apple private-use fi / fl ligatures that pdf.js leaves in the text layer', () => {
+    expect(normalizePdfLigatures('her \uF002at, twenty-\uF001ve')).toBe('her flat, twenty-five');
+    expect(normalizePdfLigatures('plain text')).toBe('plain text');
+  });
+
+  it('lets search hit words written with ligatures, with offsets in the restored string', () => {
+    const { matchCount, itemRanges } = collectPageSearchMatches([{ str: 'her \uF002at in' }], 'flat');
+    expect(matchCount).toBe(1);
+    expect(itemRanges.get(0)).toEqual([{ start: 4, end: 8, matchOrdinal: 0 }]);
   });
 });

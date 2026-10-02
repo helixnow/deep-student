@@ -56,8 +56,13 @@ vi.mock('@/shared/notes', () => ({
 }));
 
 vi.mock('@/features/chat/components/ExplainPopover', () => ({
-  ExplainPopover: ({ sourceText }: { sourceText: string }) => (
-    <div data-testid="explain-popover">{sourceText}</div>
+  ExplainPopover: ({ sourceText, onClose }: { sourceText: string; onClose: () => void }) => (
+    <div data-testid="explain-popover">
+      <span data-testid="explain-source">{sourceText}</span>
+      <button type="button" onClick={onClose}>
+        关闭
+      </button>
+    </div>
   ),
 }));
 
@@ -181,7 +186,7 @@ describe('explain / translate results', () => {
       fireEvent.click(button('解释'));
     });
 
-    expect((await screen.findByTestId('explain-popover')).textContent).toBe(SELECTED);
+    expect((await screen.findByTestId('explain-source')).textContent).toBe(SELECTED);
     expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
   });
 
@@ -196,12 +201,13 @@ describe('explain / translate results', () => {
     expect(popover.getAttribute('data-context-before')).toBe('前文');
   });
 
-  it('closes the panel from its close button', () => {
+  it('closes the panel from the popover close button (no second close on the panel)', () => {
     renderActions();
     act(() => {
       fireEvent.click(button('解释'));
     });
     act(() => {
+      expect(screen.getAllByRole('button', { name: '关闭', hidden: true })).toHaveLength(1);
       fireEvent.click(screen.getByRole('button', { name: '关闭', hidden: true }));
     });
 

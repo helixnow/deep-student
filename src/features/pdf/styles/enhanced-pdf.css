@@ -2086,7 +2086,7 @@
   flex-direction: column;
   max-height: 55%;
   min-height: 0;
-  padding: 8px 10px 10px;
+  padding: 0 8px 8px;
   border-radius: 12px;
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
@@ -2095,12 +2095,6 @@
 
 .ds-pdf-viewer.chrome-hidden .ds-pdf__selection-panel {
   bottom: calc(var(--ds-pdf-safe-bottom) + 10px);
-}
-
-.ds-pdf__selection-panel-close {
-  display: flex;
-  justify-content: flex-end;
-  flex-shrink: 0;
 }
 
 .ds-pdf__selection-panel-body {
@@ -2112,7 +2106,8 @@
 @media (min-width: 768px) {
   .ds-pdf__selection-panel {
     left: auto;
-    width: min(460px, 46%);
+    /* 至少 360px（语言选择行 + 模型名 + 折叠/关闭）放得下；窄预览栏里退为铺满 */
+    width: clamp(min(360px, calc(100% - 24px)), 46%, 460px);
   }
 }
 
