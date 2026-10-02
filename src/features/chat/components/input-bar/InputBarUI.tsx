@@ -2331,12 +2331,21 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         // 性能：勿用 transition-all——大容器上 transition-all 会让每次样式失效都
         // 检查全部属性（CDP trace 实锤拖窗期间每帧一次 Animation 失效），点名
         // 实际会变的 padding/background 即可。
-        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-[padding,background-color] duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        //
+        // ★ 2026-10：桌面端顶部不再留 pt-2.5 白带。docked 输入栏根容器只负责
+        // “排版 + 安全区”，不再自带白底/白带；可见边界只有 composer 卡片自己的描边。
+        // 移动端卡片是悬浮卡（自带阴影），仍保留 pt-2.5 与内容拉开距离。
+        // 横向 px-4 / md:px-8 保留——它是对齐契约（消息列同值），删了卡片会和正文错位。
+        'relative isolate z-[100] w-full flex-shrink-0 px-4 transition-[padding,background-color] duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        isMobile && 'pt-2.5',
         className
       )}
       style={{
-        // 🎨 和侧边栏 scroll-fade 共用 color-mix 三段式曲线（覆盖在消息列表上方生效，此处仅保留纯色）
-        background: `var(--shell-workspace-panel)`,
+        // 🎨 根容器不再刷不透明白底：docked 态回到 chat-beautify.css 里
+        // `.unified-input-docked { background: transparent }` 的契约，空态由
+        // `.chat-empty-composer-layout__input` 自己声明 surface-root。
+        // （此前这里写死 `background: var(--shell-workspace-panel)`，把契约废掉了，
+        //   输入区等于往消息列表上盖了一块白色板。）
         // 🎨 移动端底部安全区 + 导航栏间距（使用 bottomGapValue 同时包含安全区域和导航栏高度）
         paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
         // 横屏刘海/手势条：左右安全区（竖屏两值为 0，等价原 px-4）
@@ -2361,7 +2370,11 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             'relative z-[200] border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
             isMobile
               ? 'rounded-[22px] border-[color:var(--composer-panel-border)] bg-[color:var(--surface-root)] px-3 py-2.5 shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)] focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)]'
-              : 'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
+              // ★ 2026-10：桌面顶部两角改直角（rounded-b-*），底部两角保留圆角 = 沉底工具条。
+              // 原因：顶部与消息区零间距后，16px 圆角在 bbox 内留下一个方形「缺口」，
+              // 卡片白底与消息区白底同色，那块缺口读起来就是贴在圆角上的一坨白。
+              // 描边（1px border）完整保留 —— 它是这张卡唯一的轮廓。
+              : 'rounded-b-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
