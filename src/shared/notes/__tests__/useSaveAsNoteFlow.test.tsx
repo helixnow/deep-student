@@ -228,7 +228,7 @@ describe('useSaveAsNoteFlow — append to an existing note', () => {
     });
 
     expect(appendTextToNoteAndNotify).toHaveBeenCalledWith(
-      { noteId: 'note-5', content: '> 来源行\n\n摘录', origin },
+      { noteId: 'note-5', content: '> 来源行\n\n摘录', origin, title: '标题' },
       { openSource: 'pdf-selection' },
     );
     expect(saveTextAsNoteAndNotify).not.toHaveBeenCalled();

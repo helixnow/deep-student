@@ -262,3 +262,12 @@ describe('appendTextToNoteAndNotify', () => {
     expect(showGlobalNotification).toHaveBeenCalledWith('error', '磁盘已满', '追加到笔记失败');
   });
 });
+
+describe('composeAppendSection title heading', () => {
+  it('adds a heading from the request title unless the body already starts with one', async () => {
+    const { composeAppendSection } = await import('../appendTextToNote');
+    expect(composeAppendSection('## 概览\n内容', undefined, '学习周报')).toBe('## 概览\n内容');
+    expect(composeAppendSection('内容', undefined, '学习周报 09.25–10.01')).toBe('### 学习周报 09.25–10.01\n\n内容');
+    expect(composeAppendSection('内容')).toBe('内容');
+  });
+});

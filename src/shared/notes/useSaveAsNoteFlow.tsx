@@ -120,7 +120,7 @@ export function useSaveAsNoteFlow(options?: UseSaveAsNoteFlowOptions): SaveAsNot
     if (!request) return;
     setIsSaving(true);
     void appendTextToNoteAndNotify(
-      { noteId: note.id, content: request.content, origin: request.origin },
+      { noteId: note.id, content: request.content, origin: request.origin, title: request.title },
       { openSource },
     ).then((result) => {
       setIsSaving(false);

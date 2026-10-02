@@ -40,6 +40,8 @@ export interface AppendTextToNoteInput {
   content: string;
   /** 来源：只用于补正文来源行，不写入目标笔记 props */
   origin?: NoteOrigin;
+  /** 段标题（如「学习周报 09.25–10.01」）：正文不以标题开头时写成 `### 标题`，追加多次也分得清 */
+  title?: string;
 }
 
 export type AppendTextToNoteResult =
@@ -74,11 +76,17 @@ export function buildAppendSourceLine(origin?: NoteOrigin): string | null {
   return `> ${label}`;
 }
 
-/** 组装追加段：来源行（如有）+ 正文 */
-export function composeAppendSection(content: string, origin?: NoteOrigin): string {
+/** 组装追加段：段标题（如有且正文未自带标题）+ 来源行（如有）+ 正文 */
+export function composeAppendSection(content: string, origin?: NoteOrigin, title?: string): string {
   const body = content.replace(/^(?:[ \t]*\r?\n)+/u, '').replace(/\s+$/u, '');
   const sourceLine = buildAppendSourceLine(origin);
-  return sourceLine ? `${sourceLine}\n\n${body}` : body;
+  const heading = title?.replace(/\s+/gu, ' ').trim();
+  const parts = [
+    heading && !/^#{1,6}\s/u.test(body) ? `### ${heading}` : null,
+    sourceLine,
+    body,
+  ].filter((part): part is string => Boolean(part));
+  return parts.join('\n\n');
 }
 
 /**
@@ -106,7 +114,7 @@ export async function appendTextToNote(input: AppendTextToNoteInput): Promise<Ap
   }
 
   const path = `/${input.noteId}`;
-  const section = composeAppendSection(input.content, input.origin);
+  const section = composeAppendSection(input.content, input.origin, input.title);
 
   try {
     const flushed = await flushOpenNoteEditor(input.noteId);
