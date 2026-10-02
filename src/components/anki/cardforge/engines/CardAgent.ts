@@ -547,7 +547,8 @@ export class CardAgent {
     return {
       options: {
         deck_name: input.options?.deckName || 'Default',
-        note_type: 'Basic',
+        // 单模板时与模板一致（填空模板需 Cloze）；多模板由后端按每张卡的模板决定
+        note_type: !isMultiTemplate && templates[0]?.noteType ? templates[0].noteType : 'Basic',
         enable_images: true,
         max_cards_per_mistake: Math.min(maxCardsTotal, BACKEND_MAX_CARDS_PER_SEGMENT),
         max_cards_total: maxCardsTotal,
@@ -1237,6 +1238,13 @@ export class CardAgent {
 
     if (templateIds && templateIds.length > 0) {
       return templates.filter((t) => templateIds.includes(t.id));
+    }
+
+    // 学习者在模板管理里设了默认模板 → 只用它；未设置时把全部启用模板交给模型自由挑选
+    const defaultId = await invoke<string | null>('get_default_template_id').catch(() => null);
+    if (defaultId) {
+      const preferred = templates.find((t) => t.id === defaultId);
+      if (preferred) return [preferred];
     }
 
     return templates;
