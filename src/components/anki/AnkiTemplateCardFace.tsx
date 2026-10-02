@@ -32,7 +32,7 @@ export interface AnkiTemplateCardFaceProps {
 
 /** 舞台模式：body（即模板的 .card 背景）至少铺满 iframe 视口，内容纵向居中 */
 const STAGE_FILL_CSS = `
-html, body { min-height: 100vh; }
+html, body { min-height: 100vh; scrollbar-gutter: auto; }
 body { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; margin: 0; }
 `;
 
