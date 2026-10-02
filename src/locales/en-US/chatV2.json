@@ -1986,6 +1986,11 @@
     "noTags": "No tags"
   },
   "citation": {
+    "badgePrefix": {
+      "multimodal": "Img",
+      "web_search": "Web",
+      "memory": "Mem"
+    },
     "rag": "Knowledge Base",
     "memory": "User Memory",
     "web_search": "Web Search",

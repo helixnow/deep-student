@@ -280,6 +280,11 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
 export interface CitationBadgeProps {
   /** 引用序号 */
   index: number;
+  /**
+   * 来源类型短前缀（如「图」「网」）。各类型序号各自从 1 开始，[知识库-1] 与 [图片-1]
+   * 都显示成 [1] 时读者分不清是哪条来源；知识库保持纯数字。
+   */
+  prefix?: string;
   /** 点击回调 */
   onClick?: (e: React.MouseEvent) => void;
   /** 聚焦回调（键盘可达的 hover 预览） */
@@ -297,6 +302,7 @@ export interface CitationBadgeProps {
  */
 export const CitationBadge: React.FC<CitationBadgeProps> = ({
   index,
+  prefix,
   onClick,
   onFocus,
   onBlur,
@@ -318,7 +324,7 @@ export const CitationBadge: React.FC<CitationBadgeProps> = ({
         className
       )}
     >
-      [{index + 1}]
+      [{prefix}{index + 1}]
     </DsButton>
   );
 };
@@ -354,6 +360,10 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
   className,
 }) => {
   const resolveSource = useContext(CitationSourceContext);
+  const { t } = useTranslation('chatV2');
+  const prefix = citationType && citationType !== 'rag' && citationType !== 'insight'
+    ? t(`citation.badgePrefix.${citationType}`, { defaultValue: '' })
+    : '';
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const openTimerRef = useRef<number | undefined>(undefined);
   const closeTimerRef = useRef<number | undefined>(undefined);
@@ -428,6 +438,7 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
     >
       <CitationBadge
         index={Math.max(citationIndex - 1, 0)}
+        prefix={prefix}
         onClick={handleClick}
         onFocus={scheduleOpen}
         onBlur={scheduleClose}

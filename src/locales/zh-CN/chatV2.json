@@ -1986,6 +1986,11 @@
     "noTags": "暂无标签"
   },
   "citation": {
+    "badgePrefix": {
+      "multimodal": "图",
+      "web_search": "网",
+      "memory": "忆"
+    },
     "rag": "知识库",
     "memory": "用户记忆",
     "web_search": "网络搜索",
