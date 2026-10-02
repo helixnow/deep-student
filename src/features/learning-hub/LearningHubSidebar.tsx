@@ -1410,6 +1410,9 @@ export function LearningHubSidebar({
     let firstImportedNode: DstuNode | null = null;
     // ★ 2026-07-20：失败文件明细（文件名 + 具体原因），toast 不再只报笼统"导入失败"
     const failedDetails: { name: string; reason?: string }[] = [];
+    // 后端按内容哈希去重：拖入已有的同一份文件会返回旧条目，不能报「已导入」
+    const duplicateNames: string[] = [];
+    const importStartedAt = Date.now();
 
     try {
       const dropTargetFolderId = currentCreatableFolderId;
@@ -1459,7 +1462,9 @@ export function LearningHubSidebar({
         if (!isMountedRef.current) return;
 
         if (docResult.ok) {
-          totalSuccess += docResult.value.length;
+          const existing = docResult.value.filter((node) => node.createdAt < importStartedAt - 5_000);
+          duplicateNames.push(...existing.map((node) => node.name));
+          totalSuccess += docResult.value.length - existing.length;
           if (!firstImportedNode) {
             firstImportedNode = docResult.value[0] ?? null;
           }
@@ -1549,9 +1554,15 @@ export function LearningHubSidebar({
               .join('；'),
           })
         : undefined;
-      if (totalSuccess > 0 && totalFailed === 0) {
+      const duplicateSummary = duplicateNames.length > 0
+        ? t('finder.dragDrop.alreadyInLibrary', { names: duplicateNames.slice(0, 3).join('、') })
+        : undefined;
+      if (duplicateSummary && totalSuccess === 0 && totalFailed === 0) {
+        showGlobalNotification('info', duplicateSummary);
+      } else if (totalSuccess > 0 && totalFailed === 0) {
         showGlobalNotification('success',
-          t('finder.dragDrop.importSuccess', { count: totalSuccess })
+          t('finder.dragDrop.importSuccess', { count: totalSuccess }),
+          duplicateSummary,
         );
       } else if (totalSuccess > 0 && totalFailed > 0) {
         showGlobalNotification('warning',
@@ -1568,8 +1579,8 @@ export function LearningHubSidebar({
         );
       }
 
-      // 4. 刷新文件列表
-      if (totalSuccess > 0) {
+      // 4. 刷新文件列表（全是已有文件时也打开它，让用户看到在哪）
+      if (totalSuccess > 0 || duplicateNames.length > 0) {
         handleRefresh();
         if (firstImportedNode) {
           if (firstImportedNode.type === 'note') {

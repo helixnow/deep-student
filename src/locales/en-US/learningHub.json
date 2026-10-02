@@ -647,6 +647,7 @@
       "favoriteSuccess": "Favorited {{count}} item(s)",
       "favoriteFailed": "Failed to favorite",
       "favoriteSkipped": "Nothing to favorite (folders or already favorited)",
+      "alreadyInLibrary": "Already in your library: {{names}}",
       "importFailedFiles": "Failed files: {{names}}",
       "readFileFailed": "Failed to read file",
       "guidanceFlashcards": "{{names}}: import Anki deck packages in the Flashcards module",

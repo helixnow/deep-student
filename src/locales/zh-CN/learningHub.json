@@ -647,6 +647,7 @@
       "favoriteSuccess": "已收藏 {{count}} 项",
       "favoriteFailed": "收藏失败",
       "favoriteSkipped": "没有可收藏的项目（文件夹或已收藏）",
+      "alreadyInLibrary": "已在资源库中：{{names}}",
       "importFailedFiles": "失败文件：{{names}}",
       "readFileFailed": "读取文件失败",
       "guidanceFlashcards": "{{names}}：Anki 牌组包请在「闪卡」模块中导入",
