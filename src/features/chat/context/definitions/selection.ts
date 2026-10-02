@@ -51,7 +51,8 @@ export const selectionDefinition: ContextTypeDefinition = {
   systemPromptHint:
     '<selection source="..." source-id="..." locator="page:N">选中内容</selection> - ' +
     '用户在某资源中亲自划选的内容片段，是用户当前注意力的直接指向；' +
-    'source-id 可用于 resource_read 等工具回读该资源的更多上下文',
+    'source-id 可用于 resource_read 等工具回读该资源的更多上下文；' +
+    '带 cite 属性时，引用该资料请原样使用 cite 标记（如 [PDF@file_x:3]，用户可点击回到原页），不要写成 [知识库-N]',
 
   formatToBlocks(resource: Resource): ContentBlock[] {
     let parsed: SelectionRefData | null = null;
@@ -79,6 +80,13 @@ export const selectionDefinition: ContextTypeDefinition = {
     }
     if (locator) {
       attrs.locator = locator;
+    }
+    // PDF 选区：给出页码引用标记。没有它时模型只会套用 [知识库-N]，而这一轮并没有
+    // 知识库来源，渲染出来是点了没反应的死徽章
+    const pdfSourceId = source?.sourceId ?? resource.sourceId;
+    const page = locator?.match(/^page:(\d+)/)?.[1];
+    if (source?.kind === 'pdf' && pdfSourceId && page) {
+      attrs.cite = `[PDF@${pdfSourceId}:${page}]`;
     }
 
     const text = parsed?.text ?? resource.data;

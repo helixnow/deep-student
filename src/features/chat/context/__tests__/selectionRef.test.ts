@@ -101,6 +101,8 @@ describe('selectionDefinition.formatToBlocks', () => {
     expect(text).toContain('source="教材 page:47"');
     expect(text).toContain('source-id="tb_1"');
     expect(text).toContain('locator="page:47"');
+    // PDF 选区给出可点回原页的引用标记，模型不必套用 [知识库-N]
+    expect(text).toContain('cite="[PDF@tb_1:47]"');
     expect(text).toContain('选中文本');
     expect(text).toContain('</selection>');
   });

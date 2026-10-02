@@ -428,6 +428,12 @@ export const CitationBadgeWithPopover: React.FC<CitationBadgeWithPopoverProps> =
     onNavigate?.();
   }, [closeNow, onNavigate]);
 
+  // 孤儿 [知识库-N]：本条消息没有对应的知识库来源（模型凭空套用格式，常见于用工具读了
+  // 资料却按知识库格式标注），渲染出来是点了没反应的死徽章——不渲染
+  const isOrphanRag =
+    citationType === 'rag' && !!resolveSource && citationIndex > 0 && !resolveSource('rag', citationIndex);
+  if (isOrphanRag) return null;
+
   return (
     <span
       ref={anchorRef}

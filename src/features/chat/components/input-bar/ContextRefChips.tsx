@@ -187,10 +187,11 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
                 colorClass,
                 isSticky && 'shadow-sm ring-1 ring-background/50'
               )}
-              title={`${label} (${ref.resourceId.slice(0, 8)}...)`}
+              title={label}
             >
               <Icon size={12} weight="bold" className="shrink-0" />
-              <span className="truncate max-w-[80px]">{label}</span>
+              {/* 80px 只够「外刊精读_Re…」，看不出是哪份资料哪一页 */}
+              <span className="truncate max-w-[200px]">{label}</span>
               {!disabled && (
                 <DsButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className={cn('ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)] relative', coarseHitClassForBadge16)} aria-label={t('chatV2:common.removeNamed', { name: label })} title={t('common:actions.remove')}>
                   <X size={10} weight="bold" />
