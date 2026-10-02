@@ -26,7 +26,8 @@ describe('ShadowDomPreview (iframe) sanitization', () => {
     expect(srcdoc).toContain('color: red');
   });
 
-  it('strips user script tags from template preview markup but keeps internal resize helper', () => {
+  // 2026-10：模板脚本放开（交互式卡片），隔离靠无同源 iframe 沙箱 + CSP 禁网
+  it('keeps template scripts (sandboxed, network-blocked) alongside the internal resize helper', () => {
     const htmlContent = `
       <div id="target">before</div>
       <script>document.getElementById('target').textContent = 'after';</script>
@@ -41,7 +42,8 @@ describe('ShadowDomPreview (iframe) sanitization', () => {
     const srcdoc = iframe?.getAttribute('srcdoc') || '';
 
     expect(srcdoc).toContain('<div>before</div>');
-    expect(srcdoc).not.toContain("document.getElementById('target').textContent = 'after'");
+    expect(srcdoc).toContain("document.getElementById('target').textContent = 'after'");
+    expect(srcdoc).toContain("connect-src 'none'");
     expect(srcdoc).toContain('sdp-resize');
   });
 

@@ -24,7 +24,9 @@ async function labelFor(folderIds: string[]): Promise<string | null> {
 }
 
 export async function loadKbScope(sessionId: string): Promise<KbScope> {
-  const folderIds = await invoke<string[]>('chat_v2_get_rag_scope', { sessionId }).catch(() => []);
+  // 未设置范围时后端/mock 可能回 null：归一为空数组，避免 labelFor 读 .length 崩
+  const raw = await invoke<string[] | null>('chat_v2_get_rag_scope', { sessionId }).catch(() => null);
+  const folderIds = Array.isArray(raw) ? raw : [];
   const scope = { folderIds, label: await labelFor(folderIds) };
   cache.set(sessionId, scope);
   notify();

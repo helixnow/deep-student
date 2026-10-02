@@ -135,8 +135,7 @@ button.timeline-node-dot {
 }
 
 .activity-timeline-thinking-peek::-webkit-scrollbar {
-  width: 0;
-  height: 0;
+  display: none;
 }
 
 /* 贴底时底部渐隐要真的盖住字，就得让末段沉进渐隐带：

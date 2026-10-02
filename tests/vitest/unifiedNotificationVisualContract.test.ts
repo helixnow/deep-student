@@ -6,7 +6,7 @@ describe('UnifiedNotification visual contract', () => {
   const source = readFileSync(resolve(process.cwd(), 'src/components/UnifiedNotification.css'), 'utf-8');
   const componentSource = readFileSync(resolve(process.cwd(), 'src/components/UnifiedNotification.tsx'), 'utf-8');
 
-  it('uses a top-center single-line Codex-like notification with control radius', () => {
+  it('uses a top-center compact (≤2 lines collapsed) Codex-like notification with control radius', () => {
     expect(source).toContain('left: 50%');
     expect(source).toContain('transform: translateX(-50%)');
     expect(source).toContain('align-items: center');
@@ -15,8 +15,9 @@ describe('UnifiedNotification visual contract', () => {
     expect(source).toContain('min-height: 28px');
     expect(source).toContain('border-radius: var(--radius-shell-control);');
     expect(source).toContain('padding: 4px 12px');
-    expect(source).toContain('white-space: nowrap');
-    expect(source).toContain('text-overflow: ellipsis');
+    // 收起态最多两行：带操作按钮的提示在 320px 单行里会被省略到读不出关键信息
+    expect(source).toContain('-webkit-line-clamp: 2');
+    expect(source).toContain('-webkit-box-orient: vertical'); // line-clamp 自带省略号
     expect(source).toContain('.unified-notification-text');
     expect(source).not.toContain('min-width: min(280px, 100%)');
     expect(source).not.toContain('width: 100%');
