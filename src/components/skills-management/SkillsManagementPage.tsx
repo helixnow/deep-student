@@ -241,9 +241,10 @@ export const SkillsManagementPage: React.FC<SkillsManagementPageProps> = ({
   const titlebarSecondaryBtnCls = cn(TITLEBAR_CONTROL_CLASS, 'text-muted-foreground');
   const inlineSecondaryBtnCls = 'max-lg:!h-11 [@media(pointer:coarse)]:!min-h-11 h-7 text-xs px-2 text-muted-foreground';
   const secondaryBtnCls = inTitlebar ? titlebarSecondaryBtnCls : inlineSecondaryBtnCls;
-  // 工具栏折叠口径：移动端 viewport 或非 wide 档的 workbench 窗口
+  // 工具栏折叠口径：移动端 viewport、非 wide 档的 workbench 窗口，或上移到桌面顶栏槽位时
+  //（槽位约 420px，7 个带文字的动作要 645px，溢出后盖住标题、计数被挤没）
   const collapseToolbarActions =
-    isSmallScreen || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
+    isSmallScreen || inTitlebar || (windowSizeClass !== undefined && windowSizeClass !== 'wide');
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [rightPanelOpen, setRightPanelOpen] = useState(false);
 
@@ -1368,9 +1369,10 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     const toolbarPrimaryRow = (
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between", toolbarPortalTarget && 'pointer-events-auto min-w-0 flex-1')}>
           <div className={cn('flex min-w-0 items-center gap-2 text-muted-foreground', inTitlebar ? 'text-xs' : 'text-sm')}>
-            <span className={inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate'}>{t('skills:management.all_skills')}</span>
+            {/* 标题不收缩：右侧动作条占满时 truncate 会把标题压成 0 宽，只剩「/ 62 个」 */}
+            <span className={cn(inTitlebar ? TITLEBAR_TITLE_CLASS : 'font-medium text-foreground truncate', 'shrink-0')}>{t('skills:management.all_skills')}</span>
             <span className="text-muted-foreground/40">/</span>
-            <span className="flex-shrink-0">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
+            <span className="min-w-0 truncate">{t('skills:management.skills_count', { count: filteredSkills.length })}</span>
           </div>
 
           <div className="flex items-center gap-1 flex-shrink-0">
