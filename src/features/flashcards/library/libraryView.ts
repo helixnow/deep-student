@@ -73,12 +73,36 @@ export function matchesStatusFilter(
   return status === filter;
 }
 
+// 模板专属字段的语义优先级：生成时 front/back 列可能落在「科目」「编号」这类辅助字段上
+// （选择题模板正面成了「高等数学」、蓝图模板成了「LMT-01」），列表/搜索需要真正的题面与答案。
+const FRONT_FIELD_KEYS = ['question', 'term', 'word', 'name', 'symbol', 'title', 'text', 'front'];
+const BACK_FIELD_KEYS = ['answer', 'definition', 'explanation', 'expl', 'detail', 'backdetail', 'meaning', 'back'];
+
+function pickField(card: AnkiLibraryCard, keys: string[]): string {
+  const merged: Record<string, string> = { ...(card.fields ?? {}), ...(card.extra_fields ?? {}) };
+  const byLower = new Map<string, string>();
+  for (const [key, value] of Object.entries(merged)) {
+    if (key.startsWith('_') || typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed && !byLower.has(key.toLowerCase())) byLower.set(key.toLowerCase(), trimmed);
+  }
+  for (const key of keys) {
+    const value = byLower.get(key);
+    if (value) return value;
+  }
+  return '';
+}
+
 export function getCardFront(card: AnkiLibraryCard): string {
-  return card.front || card.fields?.Front || '';
+  return pickField(card, FRONT_FIELD_KEYS) || card.front || card.fields?.Front || '';
 }
 
 export function getCardBack(card: AnkiLibraryCard): string {
-  return card.back || card.fields?.Back || card.text || '';
+  const front = getCardFront(card);
+  const semantic = pickField(card, BACK_FIELD_KEYS);
+  if (semantic && semantic !== front) return semantic;
+  const fallback = card.back || card.fields?.Back || card.text || '';
+  return fallback !== front ? fallback : '';
 }
 
 function createdAtMs(card: AnkiLibraryCard): number {
