@@ -1388,6 +1388,7 @@
   },
   "contextUsagePopover": {
     "limit": "Context limit",
+    "viewDetails": "Details",
     "compactionStatus": "Compaction",
     "compactionActive": "Active",
     "compactionTokens": "Before → after",

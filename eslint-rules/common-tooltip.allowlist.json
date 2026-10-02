@@ -1,0 +1,181 @@
+{
+  "$comment": "Tooltip 统一（2026-10）迁移白名单。CommonTooltip 已退化为 shad Tooltip 的适配层，本表只登记尚未改写的存量调用点。改完一个文件就删掉对应条目；迁移完成后删除本文件与 eslint-rules/no-legacy-tooltip.js 中的加载逻辑。",
+  "files": [
+    {
+      "path": "src/App.tsx",
+      "note": "迁移欠账：5 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/ConflictResolutionDialog.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/ModernSidebar.tsx",
+      "note": "迁移欠账：4 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/dev/GlobalDebugPanel.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/essay-grading/InputPanel.tsx",
+      "note": "迁移欠账：3 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/essay-grading/ResultPanel.tsx",
+      "note": "迁移欠账：3 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/essay-grading/StreamingAnnotatedText.tsx",
+      "note": "迁移欠账：6 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/shared/AiContentLabel.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/shared/MultimodalIndexButton.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/shared/ModelCapabilityIcons.tsx",
+      "note": "迁移欠账：相对路径导入（'./CommonTooltip'），待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/translation/SourcePanel.tsx",
+      "note": "迁移欠账：相对路径导入，待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/translation/TargetPanel.tsx",
+      "note": "迁移欠账：相对路径导入，待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/translation/TranslationMain.tsx",
+      "note": "迁移欠账：相对路径导入，待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/sidebar/SessionRow.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/stats/LearningHeatmapChart.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/components/style-lab/ComponentCompareTab.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/anki-tasks/AnkiTasksApp.tsx",
+      "note": "迁移欠账：4 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/anki-tasks/components/SessionRow.tsx",
+      "note": "迁移欠账：7 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/components/TokenUsageDisplay.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/components/input-bar/BlockingAskUserBar.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/components/input-bar/ComposerPlusMenu.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/components/input-bar/ComposerToolbar.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/components/input-bar/ModelPicker.tsx",
+      "note": "迁移欠账：3 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/pages/ChatV2Page.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/pages/SessionGroupActions.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/plugins/blocks/askUserBlock.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/plugins/chat/ModelPanel.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/chat/plugins/chat/MultiSelectModelPanel.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/learning-hub/apps/views/NoteContentView.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/learning-hub/components/finder/FinderQuickAccess.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/learning-hub/components/finder/IndexStatusMiniBar.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/mindmap/MindMapContentView.tsx",
+      "note": "迁移欠账：8 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/mindmap/components/mindmap/CanvasZoomIndicator.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/mindmap/components/mindmap/MindMapEmbed.tsx",
+      "note": "迁移欠账：5 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/mindmap/views/outline/OutlineBreadcrumb.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/notes/NotesCrepeEditor.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/notes/components/NotesEditorToolbar.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/pomodoro/components/PomodoroPanel.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/pomodoro/components/PomodoroStatsPopover.tsx",
+      "note": "迁移欠账：2 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/settings/components/DimensionManagement.tsx",
+      "note": "迁移欠账：4 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/template-management/TemplateManagementApp.tsx",
+      "note": "迁移欠账：7 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/workbench/apps/chat/ChatAppWindow.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/features/workbench/apps/preview/FilePreviewAppWindow.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    },
+    {
+      "path": "src/promptkit/prompt-input.tsx",
+      "note": "迁移欠账：1 处调用待改写为 @/components/ui/shad/Tooltip 三段式 API。"
+    }
+  ]
+}

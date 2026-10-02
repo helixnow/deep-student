@@ -1,0 +1,150 @@
+/*
+ * 统一 Tooltip 结构层（唯一实现：@/components/ui/shad/Tooltip）
+ *
+ * 着色 / 圆角 / 字号 / 动效都走 Tailwind utility 与 ui-motion 的
+ * `.ui-tooltip-in|out`，这里只承载 utility 表达不了的部分：
+ *   1. 视口盒（内距 + 高度上限 + 换行 + 溢出滚动）
+ *   2. 箭头（跟随 data-side 切换朝向与描边）
+ *   3. 快捷键角标（文案 + kbd 徽标的一行布局）
+ *
+ * 迁移说明：原先的 .common-tooltip* 规则已并入此处，类名改为 ds-tooltip-*。
+ * CommonTooltip 作为过渡适配层复用同一套 DOM / class，不再自带样式。
+ *
+ * 类名遵循 kebab-case（.stylelintrc.json 的 selector-class-pattern）。
+ */
+
+.ds-tooltip {
+  /* 反色外壳：亮色主题≈近黑底，暗色主题随 --foreground/--background 自动翻转。
+     语义 token 定义见 src/styles/theme-colors.css 的 --tooltip-* 族。 */
+  background: var(--tooltip-surface);
+  color: var(--tooltip-foreground);
+  pointer-events: none;
+  user-select: none;
+  isolation: isolate;
+}
+
+/* 浅色气泡：迁移期保留的显式主题（CommonTooltip theme="light"）。
+   默认（dark / auto）不挂这个修饰类，走 --tooltip-surface。 */
+
+.ds-tooltip-light {
+  background: linear-gradient(135deg, hsl(var(--popover)) 0%, hsl(var(--card)) 100%);
+  color: hsl(var(--popover-foreground));
+  border-color: hsl(var(--border) / 40%);
+}
+
+.ds-tooltip-viewport {
+  padding: 6px 8px;
+
+  /* 长富文本（数据卡 / 键值行）封顶后仍可滚动，不把气泡撑出视口。 */
+  max-height: min(var(--tt-max-height, 400px), calc(100dvh - 16px));
+  overflow: auto;
+
+  /* 保留 CommonTooltip 的语义：提示文案内换行生效，不做 nowrap 截断。 */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  line-height: 1.35;
+}
+
+/* ============ 箭头 ============ */
+
+.ds-tooltip-arrow {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+
+  /* 显式取色而非 background: inherit —— 浅色主题外壳是渐变，
+     inherit 会把整条渐变裁进 8x8 的箭头里。 */
+  background: var(--tooltip-surface);
+  border: 1px solid transparent;
+  transform: rotate(45deg);
+}
+
+.ds-tooltip-light .ds-tooltip-arrow {
+  background: hsl(var(--popover));
+}
+
+.ds-tooltip[data-side="top"] .ds-tooltip-arrow {
+  bottom: -4px;
+  left: 50%;
+  translate: -50% 0;
+  border-right-color: hsl(var(--border) / 40%);
+  border-bottom-color: hsl(var(--border) / 40%);
+}
+
+.ds-tooltip[data-side="bottom"] .ds-tooltip-arrow {
+  top: -4px;
+  left: 50%;
+  translate: -50% 0;
+  border-left-color: hsl(var(--border) / 40%);
+  border-top-color: hsl(var(--border) / 40%);
+}
+
+.ds-tooltip[data-side="left"] .ds-tooltip-arrow {
+  right: -4px;
+  top: 50%;
+  translate: 0 -50%;
+  border-right-color: hsl(var(--border) / 40%);
+  border-top-color: hsl(var(--border) / 40%);
+}
+
+.ds-tooltip[data-side="right"] .ds-tooltip-arrow {
+  left: -4px;
+  top: 50%;
+  translate: 0 -50%;
+  border-left-color: hsl(var(--border) / 40%);
+  border-bottom-color: hsl(var(--border) / 40%);
+}
+
+/* ============ 快捷键角标 ============ */
+
+/* 文案与 kbd 徽标同行；文案过长时先压缩文案，徽标不参与收缩。 */
+.ds-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ds-tooltip-row > :first-child {
+  min-width: 0;
+}
+
+.ds-tooltip-shortcut {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+.ds-tooltip-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  border: 1px solid var(--tooltip-chip-border);
+  background: var(--tooltip-chip-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--tooltip-text-secondary);
+}
+
+@media (width <= 639.98px) {
+  .ds-tooltip {
+    max-width: calc(100vw - 32px);
+  }
+
+  .ds-tooltip-viewport {
+    padding: 5px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ds-tooltip {
+    animation: none;
+    transition: none;
+  }
+}

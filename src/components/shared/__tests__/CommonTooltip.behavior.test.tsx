@@ -91,9 +91,25 @@ describe('CommonTooltip', () => {
 
     await waitFor(() => {
       const tooltip = screen.getByRole('tooltip');
-      expect(tooltip).toHaveClass('common-tooltip--bottom');
+      expect(tooltip).toHaveAttribute('data-side', 'bottom');
       expect(tooltip).toHaveStyle({ top: '38px', left: '220px' });
     });
+  });
+
+  it('links the trigger to the visible bubble via aria-describedby', () => {
+    render(
+      <CommonTooltip content="键盘可达提示" delay={0}>
+        <button type="button">帮助</button>
+      </CommonTooltip>,
+    );
+
+    const trigger = screen.getByRole('button', { name: '帮助' });
+    expect(trigger).not.toHaveAttribute('aria-describedby');
+
+    fireEvent.mouseEnter(trigger);
+
+    const tooltip = screen.getByRole('tooltip');
+    expect(trigger).toHaveAttribute('aria-describedby', tooltip.id);
   });
 
   it('dismisses a visible tooltip when Escape is pressed', () => {
@@ -111,7 +127,7 @@ describe('CommonTooltip', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
-  it('keeps the tooltip mounted during its short exit transition, then unmounts it', () => {
+  it('keeps the tooltip mounted during its exit transition, then unmounts it', () => {
     vi.useFakeTimers();
 
     render(
@@ -126,11 +142,13 @@ describe('CommonTooltip', () => {
 
     fireEvent.mouseLeave(trigger);
 
+    // 退场中：视觉节点仍在 DOM，但已对 AT 隐藏。
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
 
+    // 退场时长与共享浮层动效 token 对齐（--dropdown-close-dur，缺省 150ms）。
     act(() => {
-      vi.advanceTimersByTime(49);
+      vi.advanceTimersByTime(149);
     });
     expect(document.querySelector('[role="tooltip"]')).toBeInTheDocument();
 

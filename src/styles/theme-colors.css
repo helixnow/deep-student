@@ -11,8 +11,8 @@
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 
   /* --surface-panel 是面板族的基准层（panel < panel-strong），语义与近邻一致：
-     elevated 与 root 的 mix。故障/恢复路径（StartupPreflight / RecoveryShell /
-     RecoveryCenter / ComponentRecoveryShell / FeatureUnavailablePanel）在
+     elevated 与 root 的 mix。故障/恢复路径（StartupPreflight / RecoveryShell / RecoveryCenter /
+     ComponentRecoveryShell / FeatureUnavailablePanel）在
      token 缺失时会因 background 计算失效而变透明——那正是最不能"没有底色"的
      场景，所以这里先给不依赖 color-mix 的兜底值，再在文件末尾的 @supports
      里升级为 mix 版本（Android WebView 等无 color-mix 环境仍有实色底）。 */
@@ -113,6 +113,27 @@
   /* Tooltip 反色表面（亮色=深灰底浅字，暗色随 --foreground/--background 翻转自动生效） */
   --tooltip-surface: hsl(var(--foreground));
   --tooltip-foreground: hsl(var(--background));
+
+  /* Tooltip 内容语义族。
+     tooltip 外壳是反色的（亮色主题下 ≈ 近黑底），而 --text-secondary /
+     --muted-foreground / --button-utility-hover / --input-shell-border 都是
+     按亮色底调的，落到反色气泡上会掉到 1.3~2.5:1（数据卡里的次级文字
+     看不见、进度条轨道变成一条白杠而近黑填充隐形）。凡是放进
+     CommonTooltip 的富内容（一行摘要、数据卡、键值行）都必须走这一族；
+     全部由 --tooltip-foreground 派生，暗色主题自动翻转。
+
+     文字档位的两档透明度是对比度实测选出来的（sRGB 合成后算 WCAG）：
+       foreground 100%  light 13.9 : dark 16.4
+       secondary   78%  light  9.1 : dark  8.4
+       muted       62%  light  6.3 : dark  4.9
+     muted 不能再浅——52% 在暗色主题只有 3.55:1，2xs 的辅助文字不达标。
+     下面三档是非文字表面（分隔线 / chip 底 / 进度条轨道），低对比是意图。 */
+  --tooltip-text-secondary: color-mix(in hsl, var(--tooltip-foreground) 78%, transparent);
+  --tooltip-text-muted: color-mix(in hsl, var(--tooltip-foreground) 62%, transparent);
+  --tooltip-divider: color-mix(in hsl, var(--tooltip-foreground) 16%, transparent);
+  --tooltip-chip-surface: color-mix(in hsl, var(--tooltip-foreground) 12%, transparent);
+  --tooltip-chip-border: color-mix(in hsl, var(--tooltip-foreground) 22%, transparent);
+  --tooltip-track: color-mix(in hsl, var(--tooltip-foreground) 20%, transparent);
 
   /* 阴影体系
      ------------------------------------------------------------

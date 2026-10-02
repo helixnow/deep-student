@@ -152,7 +152,6 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
-    expect(ringSource).toContain('data-testid="context-window-usage-tooltip-bar"');
     expect(ringSource).toContain('className="h-4 w-4 rounded-full');
     expect(ringSource).toContain('<svg');
     expect(ringSource).toContain('strokeLinecap="round"');
@@ -166,13 +165,51 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).not.toContain('inset-[3px]');
     expect(ringSource).not.toContain('inset-[6px]');
     expect(ringSource).not.toContain('transform: `rotate(${usedDegrees})`');
-    expect(ringSource).toContain('width: `${usage.usedPercent}%`');
+  });
+
+  it('keeps hover on the ring a one-line summary and leaves the detail meter to the popover', () => {
+    const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
+    const ringSource = toolbarSource.slice(ringStart, ringEnd);
+
+    expect(ringStart).toBeGreaterThan(-1);
+    expect(ringEnd).toBeGreaterThan(ringStart);
+    // 摘要给的是"已用 / 上限 + 百分比 + 去哪儿看明细"
+    expect(ringSource).toContain('data-testid="context-window-usage-hover-percent"');
+    expect(ringSource).toContain("{usage.usedLabel}");
+    expect(ringSource).toContain('formatContextTokenAmount(usage.limitTokens)');
+    expect(ringSource).toContain("t('chatV2:contextUsagePopover.viewDetails')");
+    // 明细（进度条 / 已用剩余两行 / 高水位提示 / 会话累计）只在弹层里，
+    // hover 侧不得再画一份同构卡片
+    expect(ringSource).not.toContain('context-window-usage-tooltip-bar');
+    expect(ringSource).not.toContain('width: `${usage.usedPercent}%`');
+    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextUsedPercent'");
+    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextRemainingPercent'");
+    expect(ringSource).not.toContain("t('chatV2:tokenUsage.contextHighWaterHint')");
+    expect(ringSource).not.toContain("t('chatV2:tokenUsage.sessionTotal')");
+    // tooltip 外壳是反色的，摘要内容层不得再用按亮色底调的页面语义 token
+    // （只查 tooltipContent 这一段：环内层 span 的 --text-secondary 落在页面
+    //  表面上，是对的）
+    const hoverStart = ringSource.indexOf('const tooltipContent = (');
+    const hoverEnd = ringSource.indexOf('</div>\n  );', hoverStart);
+    expect(hoverStart).toBeGreaterThan(-1);
+    expect(hoverEnd).toBeGreaterThan(hoverStart);
+    const hoverSource = ringSource.slice(hoverStart, hoverEnd);
+    expect(hoverSource).not.toContain('var(--text-secondary)');
+    expect(hoverSource).not.toContain('var(--text-primary)');
+    expect(hoverSource).not.toContain('var(--button-utility-hover)');
+    expect(hoverSource).not.toContain('var(--input-shell-border)');
+    expect(hoverSource).toContain('var(--tooltip-text-secondary)');
   });
 
   it('uses tiered context usage colors at high-water thresholds', () => {
     const ringStart = toolbarSource.indexOf('function ContextWindowUsageRing');
     const ringEnd = toolbarSource.indexOf('export interface ComposerToolbarProps', ringStart);
     const ringSource = toolbarSource.slice(ringStart, ringEnd);
+    const popoverSource = readFileSync(
+      resolve(process.cwd(), 'src/features/chat/components/input-bar/ContextUsagePopover.tsx'),
+      'utf-8'
+    );
 
     expect(ringStart).toBeGreaterThan(-1);
     expect(ringEnd).toBeGreaterThan(ringStart);
@@ -182,8 +219,11 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).toContain("'hsl(var(--danger))'");
     expect(ringSource).toContain("'hsl(var(--warning))'");
     expect(ringSource).toContain("'var(--text-primary)'");
-    expect(ringSource).toContain('background: contextUsageColor');
+    // 分级色现在只驱动环的描边；进度条填充由弹层那份同级判定负责
     expect(ringSource).toContain('stroke={contextUsageColor}');
+    expect(ringSource).not.toContain('background: contextUsageColor');
+    expect(popoverSource).toContain('const usageColor =');
+    expect(popoverSource).toContain('background: usageColor');
     expect(ringSource).not.toContain('getContextUsageTone');
   });
 

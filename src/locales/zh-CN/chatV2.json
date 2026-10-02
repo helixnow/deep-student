@@ -1388,6 +1388,7 @@
   },
   "contextUsagePopover": {
     "limit": "上下文上限",
+    "viewDetails": "查看明细",
     "compactionStatus": "压缩状态",
     "compactionActive": "已生效",
     "compactionTokens": "压缩前后",

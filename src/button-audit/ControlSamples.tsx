@@ -37,7 +37,7 @@ import ModernSelect from '@/components/ModernSelect';
 import { PALETTE_PREVIEW_COLORS, PRESET_PALETTES } from '@/hooks/useTheme';
 import { cn } from '@/lib/utils';
 import type { ControlWidget } from './controlCatalog';
-import '@/components/shared/CommonTooltip.css';
+import '@/components/ui/shad/Tooltip.css';
 import '@/components/UnifiedNotification.css';
 import '@/components/ui/app-menu/AppMenu.css';
 import '@/components/ModernSelect.css';
@@ -54,22 +54,25 @@ function TooltipBubble({
   return (
     <div
       className={cn(
-        'common-tooltip common-tooltip--visible common-tooltip--top common-tooltip--with-arrow',
-        theme === 'dark' ? 'common-tooltip--dark' : 'common-tooltip--light',
+        'ds-tooltip ui-tooltip-in rounded-md border border-border/40 font-medium leading-none text-ui',
+        theme === 'dark' ? '' : 'ds-tooltip-light',
       )}
-      style={{ position: 'relative', opacity: 1, transform: 'none', pointerEvents: 'none' }}
+      data-side="top"
+      style={{ position: 'relative', opacity: 1, pointerEvents: 'none' }}
     >
-      <div className="common-tooltip__content">
-        <div className="common-tooltip__viewport" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span>{children}</span>
-          {shortcut ? (
-            <span className="common-tooltip__shortcut">
-              <kbd className="common-tooltip__kbd">{shortcut}</kbd>
+      <div className="ds-tooltip-viewport">
+        {shortcut ? (
+          <span className="ds-tooltip-row">
+            <span>{children}</span>
+            <span className="ds-tooltip-shortcut">
+              <kbd className="ds-tooltip-kbd">{shortcut}</kbd>
             </span>
-          ) : null}
-        </div>
+          </span>
+        ) : (
+          children
+        )}
       </div>
-      <div className="common-tooltip__arrow" />
+      <div className="ds-tooltip-arrow" />
     </div>
   );
 }
@@ -548,7 +551,7 @@ export function ControlSample({ widget }: { widget: ControlWidget }) {
         </div>
       );
     case 'kbd-tooltip':
-      return <kbd className="common-tooltip__kbd">⌘</kbd>;
+      return <kbd className="ds-tooltip-kbd">⌘</kbd>;
     case 'kbd-inline':
       return <kbd className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px]">Esc</kbd>;
     default:

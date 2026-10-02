@@ -6,6 +6,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import noNativeButton from './eslint-rules/no-native-button.js';
 import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js';
 import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
+import noLegacyTooltip from './eslint-rules/no-legacy-tooltip.js';
 
 export default tseslint.config(
   // 基础 JS 推荐配置
@@ -26,7 +27,8 @@ export default tseslint.config(
         rules: {
           'no-native-button': noNativeButton,
           'no-arbitrary-font-size': noArbitraryFontSize,
-          'coarse-touch-target': coarseTouchTarget
+          'coarse-touch-target': coarseTouchTarget,
+          'no-legacy-tooltip': noLegacyTooltip
         }
       },
       'react-hooks': reactHooks
@@ -47,8 +49,8 @@ export default tseslint.config(
       // ============================================================
 
       // 1. 禁止使用 shadcn Button - 必须使用 DsButton
-      // 2. 禁止使用 shadcn Tooltip - 必须使用 CommonTooltip
-      // 3. 禁止使用 react-tooltip - 必须使用 CommonTooltip
+      // 2. Tooltip 的统一入口由 ds-components/no-legacy-tooltip 负责
+      //    （唯一实现 = @/components/ui/shad/Tooltip；CommonTooltip 仅对存量豁免）
       'no-restricted-imports': ['error', {
         paths: [
           // === Button 相关 ===
@@ -60,23 +62,6 @@ export default tseslint.config(
             name: '@/components/ui/button',
             importNames: ['Button'],
             message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
-          },
-          
-          // === Tooltip 相关 ===
-          {
-            name: '@/components/ui/shad/Tooltip',
-            message: '❌ 禁止使用 shadcn Tooltip。请使用 CommonTooltip (@/components/shared/CommonTooltip)。参见 AGENTS.md 规范。'
-          },
-          {
-            name: '@/components/ui/tooltip',
-            importNames: ['Tooltip', 'TooltipTrigger', 'TooltipContent', 'TooltipProvider'],
-            message: '❌ 禁止使用 shadcn Tooltip。请使用 CommonTooltip (@/components/shared/CommonTooltip)。参见 AGENTS.md 规范。'
-          },
-          
-          // === react-tooltip 第三方库 ===
-          {
-            name: 'react-tooltip',
-            message: '❌ 禁止使用 react-tooltip 第三方库。请使用 CommonTooltip (@/components/shared/CommonTooltip)。参见 AGENTS.md 规范。'
           }
         ],
         patterns: [
@@ -84,11 +69,6 @@ export default tseslint.config(
           {
             group: ['**/shad/Button', '**/shad/Button.tsx'],
             message: '❌ 禁止使用 shadcn Button。请使用 DsButton (@/components/ui/DsButton)。参见 AGENTS.md 规范。'
-          },
-          // Tooltip 模式匹配（相对路径导入）
-          {
-            group: ['**/shad/Tooltip', '**/shad/Tooltip.tsx'],
-            message: '❌ 禁止使用 shadcn Tooltip。请使用 CommonTooltip (@/components/shared/CommonTooltip)。参见 AGENTS.md 规范。'
           }
         ]
       }],
@@ -121,6 +101,12 @@ export default tseslint.config(
       // 登记 WRAP-UP/ROUND-81~90 的有意折衷）；按目录逐步放量升 error
       // （chat 输入条 input-bar 已在下方单独升为 error），清完存量后全局升 error。
       'ds-components/coarse-touch-target': 'warn',
+
+      // 6.3 Tooltip 只允许一个实现入口：@/components/ui/shad/Tooltip。
+      // CommonTooltip 已退化为该实现的迁移适配层，新代码一律不得新增引用；
+      // 存量调用点按文件豁免（eslint-rules/common-tooltip.allowlist.json），
+      // 改完一个文件就从白名单删一条，迁完即可删除该表与本规则。
+      'ds-components/no-legacy-tooltip': 'error',
 
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
       'no-undef': 'off',
@@ -224,7 +210,10 @@ export default tseslint.config(
       'ds-components/no-native-button': 'off',
       // 契约/源码测试会把 coarse 类字符串当断言样本引用（如
       // pdfMobilePanelTabs.source.test.ts），不是散点使用，关闭。
-      'ds-components/coarse-touch-target': 'off'
+      'ds-components/coarse-touch-target': 'off',
+      // 测试与示例文件会把 CommonTooltip 当被测对象/用法样本引用，
+      // 不是新增业务调用点，关闭（迁移欠账只登记在 allowlist 的业务文件上）。
+      'ds-components/no-legacy-tooltip': 'off'
     }
   },
 
@@ -248,7 +237,9 @@ export default tseslint.config(
       'src/components/shared/CommonTooltip.tsx'
     ],
     rules: {
-      'ds-components/no-native-button': 'off'
+      'ds-components/no-native-button': 'off',
+      // 适配层本体就是 CommonTooltip 的定义处，必须能引用自己。
+      'ds-components/no-legacy-tooltip': 'off'
     }
   },
 
