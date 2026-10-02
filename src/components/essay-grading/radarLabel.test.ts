@@ -20,8 +20,13 @@ describe('wrapRadarLabel（雷达维度标签换行）', () => {
     expect(lines).toEqual(['Lexical', 'Resource']);
   });
 
-  it('超长英文第二行才按预算截断加省略号', () => {
-    const lines = wrapRadarLabel('Grammatical Range and Accuracy');
+  it('IELTS 长维度名折成三行完整显示', () => {
+    expect(wrapRadarLabel('Grammatical Range and Accuracy')).toEqual(['Grammatical', 'Range and', 'Accuracy']);
+    expect(wrapRadarLabel('Grammatical Range & Accuracy')).toEqual(['Grammatical', 'Range &', 'Accuracy']);
+  });
+
+  it('超过行数上限时末行按预算截断加省略号', () => {
+    const lines = wrapRadarLabel('Grammatical Range and Accuracy', 12, 2);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toBe('Grammatical');
     expect(lines[1].endsWith('…')).toBe(true);

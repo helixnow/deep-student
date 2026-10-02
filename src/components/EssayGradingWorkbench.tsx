@@ -21,6 +21,7 @@ import {
   essayDirtySnapshot,
   essayGradedSnapshot,
   essaySessionContextKey,
+  essaySessionModeKey,
   evaluateRoundSwitch,
   fromPersistedImages,
   parseSessionContext,
@@ -277,12 +278,20 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     initialSession?.modeId ? canonicalizeEssayModeId(initialSession.modeId) : 'practice'
   ); // 默认使用日常练习模式
 
-  // 包装 setModeId：每次切换模式时持久化到全局设置
+  // 包装 setModeId：每次切换模式时持久化到全局设置（新作文默认值）与当前会话（重开恢复）
+  const modeSessionIdRef = useRef<string | undefined>(undefined);
+  modeSessionIdRef.current = currentSession?.id || initialSession?.id;
   const setModeId = useCallback((id: string) => {
     setModeIdRaw(id);
     TauriAPI.saveSetting('essay_grading.mode_id', id).catch(() => {
       console.warn('[EssayGrading] Failed to persist modeId');
     });
+    const sessionId = modeSessionIdRef.current;
+    if (sessionId) {
+      TauriAPI.saveSetting(essaySessionModeKey(sessionId), id).catch(() => {
+        console.warn('[EssayGrading] Failed to persist session modeId');
+      });
+    }
   }, []);
 
   // 模型选择状态

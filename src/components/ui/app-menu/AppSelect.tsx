@@ -183,10 +183,14 @@ export function AppSelect({
       checked={value === option.value}
       onClick={() => handleSelect(option.value)}
     >
-      <span className="flex-1">{option.label}</span>
-      {option.description && (
-        <span className="text-xs text-muted-foreground ml-2">{option.description}</span>
-      )}
+      {/* .app-menu-item-content 是行内容器：包一层 flex 才能让描述不参与截断 */}
+      <span className="flex min-w-0 items-center">
+        <span className="min-w-0 flex-1 truncate">{option.label}</span>
+        {option.description && (
+          // 描述是短补充（如「满分 15 分」）：宽度不足时先截主标签
+          <span className="ml-2 shrink-0 whitespace-nowrap text-xs text-muted-foreground">{option.description}</span>
+        )}
+      </span>
     </AppMenuItem>
   );
 

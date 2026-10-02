@@ -13,6 +13,8 @@ import type { DstuNode, DstuListOptions } from '../types';
 import type { GradingSessionListItem, GradingSession, GradingRound as ApiGradingRound } from '@/essay-grading/essayGradingApi';
 import { EssayGradingAPI, canonicalizeEssayModeId } from '@/essay-grading/essayGradingApi';
 import { Result, VfsError, ok, err, reportError, toVfsError } from '@/shared/result';
+import { getSetting, saveSetting } from '@/utils/settingsApi';
+import { essaySessionModeKey } from '@/essay-grading/essayContentState';
 
 // ============================================================================
 // 配置
@@ -377,17 +379,15 @@ export const essayDstuAdapter = {
 
       const latestRound = rounds[rounds.length - 1];
 
-      // ★ M-047 修复：从 DSTU metadata 中读取 modeId，避免硬编码
-      let modeId = 'practice'; // 默认值
+      // 会话级批阅模式：存于设置 KV（见 essaySessionModeKey），缺省回落 practice
+      let modeId = 'practice';
       try {
-        const nodeResult = await dstu.get(`/${sessionId}`);
-        const metaModeId = nodeResult.ok ? nodeResult.value?.metadata?.modeId : undefined;
-        if (typeof metaModeId === 'string' && metaModeId.trim()) {
-          modeId = canonicalizeEssayModeId(metaModeId);
+        const savedModeId = await getSetting(essaySessionModeKey(sessionId));
+        if (typeof savedModeId === 'string' && savedModeId.trim()) {
+          modeId = canonicalizeEssayModeId(savedModeId);
         }
       } catch {
-        // DSTU 节点获取失败时使用默认值，不阻塞主流程
-        console.warn(LOG_PREFIX, 'Failed to read modeId from DSTU metadata, using default');
+        console.warn(LOG_PREFIX, 'Failed to read session modeId, using default');
       }
 
       return ok({
@@ -436,16 +436,10 @@ export const essayDstuAdapter = {
 
       const modeId = data.modeId ? canonicalizeEssayModeId(data.modeId) : 'practice';
 
-      // ★ M-047 修复：将 modeId 持久化到 DSTU metadata
       try {
-        await dstu.setMetadata(`/${session.id}`, {
-          essayType: data.essayType,
-          gradeLevel: data.gradeLevel,
-          customPrompt: data.customPrompt,
-          modeId,
-        });
+        await saveSetting(essaySessionModeKey(session.id), modeId);
       } catch {
-        console.warn(LOG_PREFIX, 'Failed to save modeId to DSTU metadata during createSession');
+        console.warn(LOG_PREFIX, 'Failed to save session modeId during createSession');
       }
 
       return ok({
@@ -486,10 +480,20 @@ export const essayDstuAdapter = {
   ): Promise<Result<void, VfsError>> {
     const path = `/${sessionId}`;
     console.log(LOG_PREFIX, 'updateSessionMeta:', path, data);
+    if (data.modeId) {
+      try {
+        await saveSetting(essaySessionModeKey(sessionId), canonicalizeEssayModeId(data.modeId));
+      } catch {
+        console.warn(LOG_PREFIX, 'Failed to save session modeId');
+      }
+    }
+    const { modeId: _modeId, ...dstuFields } = data;
+    void _modeId;
+    // 后端要求至少一个元数据字段；仅改模式时无需再打 DSTU
+    if (Object.values(dstuFields).every((value) => value === undefined)) return ok(undefined);
     const result = await dstu.setMetadata(path, {
       essayType: data.essayType,
       gradeLevel: data.gradeLevel,
-      modeId: data.modeId,        // ★ M-047 修复：持久化 modeId
       customPrompt: data.customPrompt,
       isFavorite: data.isFavorite,
     });

@@ -194,7 +194,8 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
               <tspan
                 key={li}
                 x={x}
-                dy={li === 0 ? (lines.length > 1 ? '-0.35em' : 0) : '1.15em'}
+                // 多行整体以锚点垂直居中：首行上移 (行数-1)/2 个行高
+                dy={li === 0 ? `${-((lines.length - 1) * 1.15) / 2}em` : '1.15em'}
               >
                 {line}
               </tspan>

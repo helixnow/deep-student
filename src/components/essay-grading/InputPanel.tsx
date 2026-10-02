@@ -391,6 +391,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             <AppSelect
               value={modeId}
               onValueChange={setModeId}
+              width={248}
               variant="ghost"
               size="sm"
               disabled={isGrading}
@@ -755,14 +756,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             onPaste={handlePaste}
             placeholder={showEmptyState ? '' : t('essay_grading:input_section.placeholder')}
             className={cn(
-              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 py-5 text-[15px] [@media(pointer:coarse)]:text-base leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
+              "flex-1 !min-h-0 w-full resize-none overflow-y-auto px-5 pt-5 pb-2 text-[15px] [@media(pointer:coarse)]:text-base leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40 [scrollbar-color:var(--scrollbar-thumb)_var(--scrollbar-track)] transition-opacity duration-200 motion-reduce:transition-none",
               isGrading && "opacity-80 cursor-default"
             )}
           />
         </UnifiedDragDropZone>
 
-        {/* Floating Bottom Controls - 简洁风格悬浮工具（移动端显示缩略统计，桌面端显示完整统计 + 清空钮） */}
-        <div className="absolute bottom-3 left-4 right-4 flex items-center justify-end pointer-events-none">
+        {/* 底部统计行（移动端缩略统计，桌面端完整统计 + 清空钮）：走文档流，不再悬浮压住最后一行正文 */}
+        <div className="shrink-0 flex items-center justify-end px-4 pb-2 pointer-events-none">
           {/* ★ UX#7：字数统计不再依赖 hover（有内容即常显），渐进警示色 */}
           <div className={cn(
             "pointer-events-auto flex min-w-0 items-center gap-2 shrink-0 transition-opacity duration-200 motion-reduce:transition-none",

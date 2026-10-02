@@ -34,35 +34,42 @@ export function truncateByUnits(text: string, maxUnits: number): string {
 /** 每行的宽度预算（单位）：约 6 个 CJK 字符或 12 个拉丁字符 */
 export const RADAR_LABEL_UNITS_PER_LINE = 12;
 
+/** 标签最多行数：IELTS「Grammatical Range & Accuracy」等长维度名三行可完整显示 */
+export const RADAR_LABEL_MAX_LINES = 3;
+
 /**
- * 把维度名拆成至多两行：
+ * 把维度名按宽度预算贪心折行（至多 maxLines 行）：
  * - 整体不超预算 → 单行原样返回；
  * - 英文在预算内最后一个空格处断行；中文（无空格）按预算硬断；
- * - 第二行仍超预算时按预算截断加省略号（完整维度名在图表下方的速览列表中可见）。
+ * - 末行仍超预算时按预算截断加省略号（完整维度名在图表下方的速览列表中可见）。
  */
 export function wrapRadarLabel(
   name: string,
-  maxUnitsPerLine = RADAR_LABEL_UNITS_PER_LINE
+  maxUnitsPerLine = RADAR_LABEL_UNITS_PER_LINE,
+  maxLines = RADAR_LABEL_MAX_LINES,
 ): string[] {
   const trimmed = name.trim();
   if (!trimmed) return [''];
-  if (textUnits(trimmed) <= maxUnitsPerLine) return [trimmed];
 
-  const chars = Array.from(trimmed);
-  let units = 0;
-  let lastSpace = -1;
-  let hardBreak = chars.length;
-  for (let i = 0; i < chars.length; i += 1) {
-    units += charUnits(chars[i]);
-    if (units > maxUnitsPerLine) {
-      hardBreak = i;
-      break;
+  const lines: string[] = [];
+  let rest = trimmed;
+  while (rest && lines.length < maxLines - 1 && textUnits(rest) > maxUnitsPerLine) {
+    const chars = Array.from(rest);
+    let units = 0;
+    let lastSpace = -1;
+    let hardBreak = chars.length;
+    for (let i = 0; i < chars.length; i += 1) {
+      units += charUnits(chars[i]);
+      if (units > maxUnitsPerLine) {
+        hardBreak = i;
+        break;
+      }
+      if (chars[i] === ' ') lastSpace = i;
     }
-    if (chars[i] === ' ') lastSpace = i;
+    const splitAt = lastSpace > 0 ? lastSpace : hardBreak;
+    lines.push(chars.slice(0, splitAt).join('').trimEnd());
+    rest = chars.slice(splitAt).join('').trimStart();
   }
-  const splitAt = lastSpace > 0 ? lastSpace : hardBreak;
-  const line1 = chars.slice(0, splitAt).join('').trimEnd();
-  const line2 = chars.slice(splitAt).join('').trimStart();
-  if (!line2) return [line1];
-  return [line1, truncateByUnits(line2, maxUnitsPerLine)];
+  if (rest) lines.push(truncateByUnits(rest, maxUnitsPerLine));
+  return lines;
 }

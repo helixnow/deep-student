@@ -29,6 +29,11 @@ vi.mock('i18next', () => ({ default: { t: tSpy } }));
 
 vi.mock('../../api', () => ({ dstu: dstuMock }));
 
+vi.mock('@/utils/settingsApi', () => ({
+  getSetting: vi.fn(async () => null),
+  saveSetting: vi.fn(async () => undefined),
+}));
+
 vi.mock('@/shared/result', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/shared/result')>();
   return { ...actual, reportError: reportErrorSpy };

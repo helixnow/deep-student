@@ -105,6 +105,14 @@ export interface EssaySessionContext {
 export const essaySessionContextKey = (sessionId: string) =>
   `essay_grading.session_context.${sessionId}`;
 
+/**
+ * 会话级批阅模式的设置键。essay_sessions 表没有 mode_id 列、dstu_set_metadata
+ * 也不认 modeId，旧实现写进 DSTU metadata 的值被后端静默丢弃——重开作文总回落到
+ * 「日常练习」。改为按会话存进设置 KV（与 session_context 同一机制）。
+ */
+export const essaySessionModeKey = (sessionId: string) =>
+  `essay_grading.session_mode.${sessionId}`;
+
 /** 按文件扩展名猜测预览用 MIME（持久化只存 base64，dataUrl 恢复时重建） */
 export function guessImageMime(fileName: string): string {
   const ext = fileName.toLowerCase().split('.').pop();
