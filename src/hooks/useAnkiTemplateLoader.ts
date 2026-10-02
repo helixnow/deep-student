@@ -32,6 +32,9 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
     }
 
     let cancelled = false;
+    // 未命中缓存时先清掉上一个模板：否则加载期间会用「旧模板 + 新卡字段」渲染出错配卡面
+    // （复习切卡时尤其明显：选择题模板套到术语卡上，选项全空）
+    setTemplate(null);
     setLoading(true);
     setError(null);
     TemplateService.getInstance()
@@ -55,5 +58,7 @@ export function useAnkiTemplateLoader(templateId?: string | null) {
     };
   }, [templateId, refreshToken]);
 
-  return { template, loading, error };
+  // 只返回属于当前 templateId 的模板（id 切换后的首帧 effect 尚未运行，state 仍是旧模板）
+  const matched = template && templateId && template.id === templateId ? template : null;
+  return { template: matched, loading: loading || (Boolean(templateId) && !matched && !error), error };
 }

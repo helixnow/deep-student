@@ -20,6 +20,13 @@ export interface HtmlSandboxPreviewProps {
   style?: React.CSSProperties;
 }
 
+/** srcDoc 的轻量指纹（djb2），仅用作 React key */
+function srcDocKey(doc: string): string {
+  let hash = 5381;
+  for (let i = 0; i < doc.length; i += 1) hash = ((hash << 5) + hash + doc.charCodeAt(i)) | 0;
+  return `${doc.length}:${hash >>> 0}`;
+}
+
 export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   mode,
   htmlContent,
@@ -75,6 +82,9 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
 
   return (
     <iframe
+      // 内容变化即重建 iframe：WebKit 对快速连续的 srcdoc 更新会漏掉重载，
+      // 画面停在旧文档（复习切卡时出现过上一张卡的模板）
+      key={srcDocKey(srcDoc)}
       ref={iframeRef}
       className={className}
       sandbox={getHtmlSandboxPermissions(mode)}
