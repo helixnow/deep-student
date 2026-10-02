@@ -106,7 +106,7 @@ function renderActions(props: Partial<React.ComponentProps<typeof PdfSelectionAc
       </div>
     );
   };
-  return render(<Host />);
+  return { ...render(<Host />), Host };
 }
 
 /** 在页面包裹层内建立真实 DOM 选区，让 resolveSelectionPage 解析出页码 3 */
@@ -188,6 +188,21 @@ describe('explain / translate results', () => {
 
     expect((await screen.findByTestId('explain-source')).textContent).toBe(SELECTED);
     expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+  });
+
+  it('brings the toolbar back when the reader selects a different passage', async () => {
+    const view = renderActions();
+    act(() => {
+      fireEvent.click(button('翻译'));
+    });
+    await screen.findByTestId('translate-popover');
+    expect(screen.queryByRole('toolbar', { hidden: true })).toBeNull();
+
+    // 同一组件实例重渲染（面板状态保留），选区换成另一段
+    selectionState = { ...selectionState, selectedText: '另一段原文' };
+    view.rerender(<view.Host />);
+    expect(screen.getByTestId('translate-popover')).toBeTruthy();
+    expect(screen.getAllByRole('toolbar', { hidden: true })).toHaveLength(1);
   });
 
   it('passes the surrounding context to the translation popover', async () => {

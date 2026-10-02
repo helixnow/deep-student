@@ -100,6 +100,11 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   const startSaveAsNote = saveAsNoteFlow.start;
 
   const panelOpen = explainText !== null || translateState !== null;
+  // 面板打开后原选区仍在，工具条让位；但读者接着选了另一段时要能直接再解释 / 翻译，
+  // 不必先手动关面板（新动作会替换面板内容）
+  const panelSourceText = explainText ?? translateState?.text ?? null;
+  const toolbarVisible =
+    selection.isVisible && (!panelOpen || selection.selectedText !== panelSourceText);
   const closePanel = useCallback(() => {
     setExplainText(null);
     setTranslateState(null);
@@ -236,7 +241,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       <SelectionToolbar
         selectedText={selection.selectedText}
         selectionRect={selection.selectionRect}
-        isVisible={selection.isVisible && !panelOpen}
+        isVisible={toolbarVisible}
         containerRef={containerRef}
         onClear={selection.clear}
         onExplain={handleExplain}
