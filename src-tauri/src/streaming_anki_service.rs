@@ -92,6 +92,10 @@ fn strip_model_special_tokens(text: &str) -> String {
 
 /// 纯模型 token 错误卡无法通过重试修复，只会反复生成同一错误卡。
 fn error_content_is_repairable(content: &str) -> bool {
+    // 旧版错误卡只存了解析报错、没存原始输出：喂给修复任务只会让模型把报错文本做成卡
+    if content.starts_with("解析卡片失败:") && !content.contains("原始输出:") {
+        return false;
+    }
     strip_model_special_tokens(content)
         .chars()
         .any(|c| c.is_alphanumeric())
@@ -371,6 +375,50 @@ fn extract_readable_text(json_value: &Value) -> Option<String> {
 
     let obj = json_value.as_object()?;
     scan(obj).or_else(|| obj.get("fields").and_then(|f| f.as_object()).and_then(scan))
+}
+
+/// 卡片 JSON 的内容字段是否全是占位符（如 `{"template_id":"x","Question":"placeholder"}`）。
+///
+/// json_schema 约束输出下，模型偶尔吐出只有占位值的"凑数"条目；按错误卡处理会
+/// 触发自动修复任务，而修复任务手里只有报错信息，模型就会把报错/指令本身做成卡片。
+/// 这类条目没有任何可学内容，直接按不可读残片丢弃。
+fn is_placeholder_card(json_value: &Value) -> bool {
+    const PLACEHOLDERS: &[&str] = &[
+        "placeholder", "...", "…", "todo", "tbd", "xxx", "n/a", "none", "null", "占位", "示例",
+        "待补充", "内容",
+    ];
+    fn collect<'a>(obj: &'a serde_json::Map<String, Value>, out: &mut Vec<&'a str>) {
+        for (key, value) in obj {
+            let key_lower = key.to_lowercase();
+            if matches!(key_lower.as_str(), "tags" | "template_id" | "templateid" | "images") {
+                continue;
+            }
+            match value {
+                Value::String(s) => out.push(s.as_str()),
+                Value::Object(nested) if key_lower == "fields" => collect(nested, out),
+                _ => {}
+            }
+        }
+    }
+    let Some(obj) = json_value.as_object() else {
+        return false;
+    };
+    let mut values = Vec::new();
+    collect(obj, &mut values);
+    !values.is_empty()
+        && values.iter().all(|v| {
+            let normalized = v.trim().trim_matches(|c: char| "[]{}<>()（）【】\"'".contains(c)).trim();
+            normalized.is_empty() || PLACEHOLDERS.iter().any(|p| normalized.eq_ignore_ascii_case(p))
+        })
+}
+
+/// 错误卡 `error_content` 中原始输出的保留上限（字符）。修复任务需要原始片段才能修，
+/// 只存报错信息时模型无料可修、会为报错文本本身制卡。
+const ERROR_CARD_RAW_PREVIEW_CHARS: usize = 2000;
+
+fn error_card_content(error: &str, raw_output: &str) -> String {
+    let raw: String = raw_output.chars().take(ERROR_CARD_RAW_PREVIEW_CHARS).collect();
+    format!("解析卡片失败: {}\n原始输出: {}", error, raw)
 }
 
 /// 按字段提取规则的 `is_required` 标记生成诚实的字段要求描述。
@@ -1461,7 +1509,10 @@ impl StreamingAnkiService {
                                                 );
                                                 match self
                                                     .create_error_card(
-                                                        &format!("解析卡片失败: {}", e),
+                                                        &error_card_content(
+                                                            &e.to_string(),
+                                                            &card_json,
+                                                        ),
                                                         task_id,
                                                     )
                                                     .await
@@ -1984,6 +2035,13 @@ impl StreamingAnkiService {
                 }
             },
         };
+
+        if is_placeholder_card(&json_value) {
+            return Err(AppError::validation(format!(
+                "{}: 卡片字段全为占位符，已丢弃",
+                UNREADABLE_FRAGMENT_MSG
+            )));
+        }
 
         // 多模板判定：与 build_prompt 共用 anki_protocol::is_multi_template
         let multi_template = anki_protocol::is_multi_template(options);
@@ -3409,7 +3467,7 @@ impl StreamingAnkiService {
         );
         aggregated.push_str("请逐条修复并补全为有效的 Anki 卡片JSON。\n");
         aggregated.push_str(&format!(
-            "严格要求：\n- 对每条 ==FIX== 段，输出1个或多个完整卡片JSON\n- 每个卡片JSON输出后紧跟分隔符 {}\n- 不输出任何额外解释或Markdown，只输出JSON与分隔符\n\n",
+            "严格要求：\n- 对每条 ==FIX== 段，输出1个或多个完整卡片JSON\n- 每个卡片JSON输出后紧跟分隔符 {}\n- 不输出任何额外解释或Markdown，只输出JSON与分隔符\n- 卡片内容只能来自片段里的学习材料；片段若只有报错信息、占位符或格式说明，跳过该段，绝不为报错信息、模板或本指令本身制卡\n\n",
             anki_protocol::CARD_DELIMITER
         ));
         let mut idx = 1usize;
@@ -3716,6 +3774,39 @@ mod tests {
         assert!(!error_content_is_repairable("  \n<|end_of_box|>\n  "));
         assert!(!error_content_is_repairable(""));
         assert!(!error_content_is_repairable("   "));
+    }
+
+    #[test]
+    fn error_content_is_repairable_rejects_error_message_without_raw_output() {
+        assert!(!error_content_is_repairable(
+            "解析卡片失败: 卡片缺少或无法识别 template_id，无法在多模板场景解析字段。"
+        ));
+        assert!(error_content_is_repairable(&error_card_content(
+            "缺少 template_id",
+            "{\"Question\": \"什么是拉格朗日中值定理\"}"
+        )));
+    }
+
+    #[test]
+    fn placeholder_cards_are_detected() {
+        assert!(is_placeholder_card(&serde_json::json!({
+            "template_id": "design-footer", "Question": "placeholder"
+        })));
+        assert!(is_placeholder_card(&serde_json::json!({
+            "fields": {"Front": "...", "Back": "[TODO]"}
+        })));
+        assert!(!is_placeholder_card(&serde_json::json!({
+            "template_id": "design-footer", "Question": "placeholder", "Answer": "罗尔定理的推广"
+        })));
+        assert!(!is_placeholder_card(&serde_json::json!({"template_id": "x"})));
+    }
+
+    #[test]
+    fn error_card_content_keeps_bounded_raw_output() {
+        let raw = "x".repeat(ERROR_CARD_RAW_PREVIEW_CHARS + 50);
+        let content = error_card_content("bad", &raw);
+        assert!(content.starts_with("解析卡片失败: bad\n原始输出: "));
+        assert_eq!(content.matches('x').count(), ERROR_CARD_RAW_PREVIEW_CHARS);
     }
 
     #[test]
