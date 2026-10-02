@@ -2499,7 +2499,10 @@ impl DocumentParser {
             if idx > 0 {
                 Self::push_excel_text_bounded(&mut text_content, "\n\n")?;
             }
-            Self::push_excel_text_bounded(&mut text_content, &format!("=== {} ===\n", sheet_name))?;
+            // 工作表标题带上非空行数：大模型数表格行并不可靠（实测 60 词的词表被说成
+            // 54 / 55 词），制卡规模、漏卡核对都要靠这个数
+            let mut sheet_body = String::new();
+            let mut sheet_rows = 0usize;
 
             // 获取工作表范围
             if let Ok(range) = workbook.worksheet_range(sheet_name) {
@@ -2535,11 +2538,17 @@ impl DocumentParser {
 
                     // 只添加非空行
                     if !line.trim().is_empty() {
-                        Self::push_excel_text_bounded(&mut text_content, &line)?;
-                        Self::push_excel_text_bounded(&mut text_content, "\n")?;
+                        Self::push_excel_text_bounded(&mut sheet_body, &line)?;
+                        Self::push_excel_text_bounded(&mut sheet_body, "\n")?;
+                        sheet_rows += 1;
                     }
                 }
             }
+            Self::push_excel_text_bounded(
+                &mut text_content,
+                &format!("=== {} · {} 行 ===\n", sheet_name, sheet_rows),
+            )?;
+            Self::push_excel_text_bounded(&mut text_content, &sheet_body)?;
         }
 
         Ok(text_content.trim().to_string())
@@ -4389,6 +4398,24 @@ mod tests {
             parser.replace_text_in_xlsx(&cfb, &[]),
             Err(ParsingError::EncryptedDocument(_))
         ));
+    }
+
+    #[test]
+    fn test_xlsx_text_sheet_header_carries_row_count() {
+        let parser = DocumentParser::new();
+        let workbook = build_test_xlsx(&[
+            ("A1", "单词"),
+            ("B1", "释义"),
+            ("A2", "alleviate"),
+            ("B2", "减轻"),
+            ("A3", "ambiguous"),
+            ("B3", "模棱两可的"),
+        ]);
+        let text = parser
+            .extract_excel_from_bytes("词表.xlsx", workbook)
+            .expect("extract xlsx text");
+        assert!(text.starts_with("=== Sheet1 · 3 行 ===\n单词\t释义"), "{text}");
+        assert!(text.contains("ambiguous\t模棱两可的"));
     }
 
     #[test]
