@@ -80,7 +80,17 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
     // 只认最后一次请求，丢弃慢返回的旧关键词结果
     if (seq !== requestSeqRef.current) return;
     if (result.ok) {
-      setNotes(result.value.filter((node) => node.type === 'note'));
+      // 记忆笔记（AI 长期记忆）与内部目录不作为追加目标：学习内容追加进去会污染记忆
+      const memoryRoot = await import('@/api/memoryApi')
+        .then(({ getMemoryConfig }) => getMemoryConfig())
+        .then((config) => config.memoryRootFolderTitle?.trim() || null)
+        .catch(() => null);
+      if (seq !== requestSeqRef.current) return;
+      setNotes(result.value.filter((node) => {
+        if (node.type !== 'note') return false;
+        const top = (node.path ?? '').split('/')[0]?.trim();
+        return top !== '__system__' && !(memoryRoot && top === memoryRoot && node.path.includes('/'));
+      }));
     } else {
       setNotes([]);
       setError(result.error.toUserMessage());

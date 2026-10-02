@@ -200,6 +200,7 @@ export const SaveAsNoteFolderPicker: React.FC<SaveAsNoteFolderPickerProps> = ({
       title={title}
       inline={inline || undefined}
       footerStart={appendEntry}
+      confirmLabel={t('chatV2:selectionToolbar.saveAsNoteConfirm', '保存到此处')}
     />
   );
 

@@ -81,8 +81,12 @@ export function composeAppendSection(content: string, origin?: NoteOrigin, title
   const body = content.replace(/^(?:[ \t]*\r?\n)+/u, '').replace(/\s+$/u, '');
   const sourceLine = buildAppendSourceLine(origin);
   const heading = title?.replace(/\s+/gu, ' ').trim();
+  // 标题常由正文首句截取（聊天消息默认标题）：与正文开头重复时不加，避免同一句出现两次
+  const plain = (text: string) => text.replace(/[*_`#>\s]/gu, '');
+  const firstLine = body.split(/\r?\n/u, 1)[0] ?? '';
+  const headingRepeatsBody = Boolean(heading) && plain(firstLine).startsWith(plain(heading ?? '').slice(0, 24));
   const parts = [
-    heading && !/^#{1,6}\s/u.test(body) ? `### ${heading}` : null,
+    heading && !/^#{1,6}\s/u.test(body) && !headingRepeatsBody ? `### ${heading}` : null,
     sourceLine,
     body,
   ].filter((part): part is string => Boolean(part));

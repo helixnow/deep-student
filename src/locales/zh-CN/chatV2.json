@@ -1660,6 +1660,7 @@
     "openTaskDashboard": "打开任务台",
     "saveAsNote": "保存为笔记",
     "saveAsNotePickFolder": "选择保存目录",
+    "saveAsNoteConfirm": "保存到此处",
     "saveAsNoteDefaultTitle": "未命名笔记",
     "appendToNote": "追加到已有笔记",
     "appendToNoteSearchPlaceholder": "搜索笔记标题或内容",

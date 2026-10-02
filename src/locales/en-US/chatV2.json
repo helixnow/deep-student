@@ -1660,6 +1660,7 @@
     "openTaskDashboard": "Open task dashboard",
     "saveAsNote": "Save as note",
     "saveAsNotePickFolder": "Choose a folder",
+    "saveAsNoteConfirm": "Save here",
     "saveAsNoteDefaultTitle": "Untitled note",
     "appendToNote": "Append to existing note",
     "appendToNoteSearchPlaceholder": "Search note titles or content",

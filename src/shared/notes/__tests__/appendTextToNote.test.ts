@@ -271,3 +271,11 @@ describe('composeAppendSection title heading', () => {
     expect(composeAppendSection('内容')).toBe('内容');
   });
 });
+
+describe('composeAppendSection heading dedupe', () => {
+  it('skips the heading when the title is just the first sentence of the body', async () => {
+    const { composeAppendSection } = await import('../appendTextToNote');
+    const body = '两份文件我都查到了，先说结论——注意别混：你要问的是 **kb-test2.pdf**（3 页）。\n\n正文';
+    expect(composeAppendSection(body, undefined, '两份文件我都查到了，先说结论')).toBe(body);
+  });
+});

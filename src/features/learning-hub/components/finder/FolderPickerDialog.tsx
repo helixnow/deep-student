@@ -32,6 +32,15 @@ interface FolderPickerDialogProps {
    * 「追加到已有笔记」切换入口；缺省时底部条布局与改造前一致。
    */
   footerStart?: React.ReactNode;
+  /** 确认按钮文案（默认「移动到此处」；存为笔记等流程传「保存到此处」） */
+  confirmLabel?: string;
+}
+
+/** 递归去掉内部保留目录（__system__ 可能挂在任意层级，如记忆根目录下） */
+function withoutReservedFolders(nodes: FolderTreeNode[]): FolderTreeNode[] {
+  return nodes
+    .filter((node) => node.folder.title.trim().toLowerCase() !== '__system__')
+    .map((node) => ({ ...node, children: withoutReservedFolders(node.children ?? []) }));
 }
 
 interface FolderNodeProps {
@@ -179,6 +188,7 @@ export function FolderPickerDialog({
   title,
   inline = false,
   footerStart,
+  confirmLabel,
 }: FolderPickerDialogProps) {
   const { t } = useTranslation('learningHub');
   const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
@@ -198,7 +208,8 @@ export function FolderPickerDialog({
     setError(null);
     const treeResult = await folderApi.getFolderTree();
     if (!isErr(treeResult)) {
-      setFolderTree(treeResult.value);
+      // 内部保留目录（__system__）不给用户选
+      setFolderTree(withoutReservedFolders(treeResult.value));
       // 默认展开第一层
       const firstLevelIds = new Set(treeResult.value.map((n) => n.folder.id));
       setExpandedIds(firstLevelIds);
@@ -366,7 +377,7 @@ export function FolderPickerDialog({
             disabled={isLoading}
             className="px-4"
           >
-            {t('finder.folderPicker.confirm')}
+            {confirmLabel ?? t('finder.folderPicker.confirm')}
           </DsButton>
         </div>
       </div>
@@ -395,7 +406,7 @@ export function FolderPickerDialog({
             {t('common:cancel')}
           </DsButton>
           <DsButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
-            {t('finder.folderPicker.confirm')}
+            {confirmLabel ?? t('finder.folderPicker.confirm')}
           </DsButton>
         </DsDialogFooter>
     </DsDialog>
