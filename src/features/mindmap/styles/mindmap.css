@@ -2613,3 +2613,44 @@
     min-height: 44px;
   }
 }
+
+
+/* ===== 窄容器（聊天右侧面板 / 分栏）：按导图容器自身宽度收紧顶栏 =====
+   顶栏原只按视口断点（md:）响应，宽窗口里的窄面板会把「大纲」「导图」「学习」挤成竖排、
+   「隐藏已完成」被截断。 */
+.mindmap-container {
+  container-type: inline-size;
+  container-name: mm-root;
+}
+
+.mm-toolbar .ds-btn,
+.mm-learning-label,
+.mm-learning-text,
+.mm-view-switcher-label {
+  white-space: nowrap;
+}
+
+.mm-toolbar > * {
+  min-width: 0;
+}
+
+@container mm-root (max-width: 720px) {
+  .mm-learning-label,
+  .mm-learning-text {
+    display: none;
+  }
+
+  .mm-learning-button {
+    padding-inline: 6px;
+  }
+}
+
+@container mm-root (max-width: 520px) {
+  .mm-view-switcher-label {
+    display: none;
+  }
+
+  .mm-view-switcher-icon {
+    margin-right: 0;
+  }
+}

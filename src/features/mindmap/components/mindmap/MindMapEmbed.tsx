@@ -15,6 +15,7 @@ import {
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
+  useNodesInitialized,
   type Node,
   type Edge,
 } from '@xyflow/react';
@@ -272,15 +273,63 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document, targetN
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅首次/布局切换时 fit；nodes 引用变化不重跑
   }, [nodes.length, fitView, isBothLayout, targetNodeId, setCenter, getZoom]);
 
+  // 有定位目标：等 ReactFlow 完成节点测量后再居中到目标（固定延时定时器常早于测量，
+  // 居中被忽略，预览停在缩得很小的全图）
+  const nodesInitialized = useNodesInitialized();
+  const centeredTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!nodesInitialized || !targetNodeId || centeredTargetRef.current === targetNodeId) return;
+    centeredTargetRef.current = targetNodeId;
+    const frame = requestAnimationFrame(() => fitRef.current());
+    return () => cancelAnimationFrame(frame);
+  }, [nodesInitialized, targetNodeId]);
+
+  // 容器宽度明显变化（右侧面板打开、分栏拖动）时重新自适应：此前只在首次 fit，
+  // 回答区变窄后预览被裁掉一半
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const fitRef = useRef<() => void>(() => {});
+  fitRef.current = () => {
+    const target = targetNodeId ? nodes.find(n => n.id === targetNodeId) : undefined;
+    // 有定位目标：只居中到目标（不先缩回全图，否则窄宽度下节点小到看不出定位在哪）
+    if (!target) fitView({ padding: 0.15, duration: 150 });
+    if (target) {
+      const width = target.measured?.width || target.width || 100;
+      const height = target.measured?.height || target.height || 36;
+      setCenter(target.position.x + width / 2, target.position.y + height / 2, {
+        zoom: Math.max(getZoom(), EMBED_TARGET_MIN_ZOOM),
+        duration: 0,
+      });
+    }
+  };
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    let lastWidth = el.clientWidth;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const observer = new ResizeObserver(() => {
+      const width = el.clientWidth;
+      if (Math.abs(width - lastWidth) < 8) return;
+      lastWidth = width;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => fitRef.current(), 150);
+    });
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
   return (
-    <div className="w-full h-full relative">
+    <div ref={wrapperRef} className="w-full h-full relative">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: defaultEdgeType }}
-        fitView
+        // 有定位目标时不让 ReactFlow 在节点测量后再自动全图 fit（会覆盖居中到目标）
+        fitView={!targetNodeId}
         fitViewOptions={{ padding: REACTFLOW_CONFIG.fitViewPadding }}
         minZoom={0.1}
         maxZoom={1.5}

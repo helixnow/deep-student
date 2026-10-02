@@ -1298,19 +1298,21 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
               className={cn("mm-learning-button", reciteMode && "is-active")}
               onClick={() => setReciteMode(!reciteMode)}
               title={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.enter')}
+              aria-label={reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
               aria-pressed={reciteMode}
             >
               <BookOpen size={15} />
-              {reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}
+              <span className="mm-learning-text">{reciteMode ? t('mindmap:recite.exit') : t('mindmap:recite.title')}</span>
             </DsButton>
             <DsButton variant="ghost"
               className={cn("mm-learning-button", hideCompleted && "is-active")}
               onClick={() => setHideCompleted(!hideCompleted)}
               title={t('mindmap:toolbar.hideCompleted')}
+              aria-label={t('mindmap:toolbar.hideCompleted')}
               aria-pressed={hideCompleted}
             >
               <EyeSlash size={15} />
-              {t('mindmap:toolbar.hideCompleted')}
+              <span className="mm-learning-text">{t('mindmap:toolbar.hideCompleted')}</span>
             </DsButton>
           </div>
 
