@@ -2861,11 +2861,12 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         const items = pageVirtualizer.getVirtualItems();
         if (items.length === 0) return;
 
+        // 视口中线落在哪一页就是当前页。旧判定「页中线越过视口中线」在页高于视口时
+        // 会滞后一页：跳到第 4 页（页顶贴住视口顶）页码框仍显示 3
         const targetOffset = container.scrollTop + container.clientHeight / 2;
         let activeRow = items[0];
         for (const item of items) {
-          const itemMid = item.start + item.size / 2;
-          if (itemMid <= targetOffset) {
+          if (item.start <= targetOffset) {
             activeRow = item;
           } else {
             break;

@@ -7,6 +7,7 @@
  * 3. 多种功能（RAG/图谱/记忆/网络搜索）
  */
 
+import { CHAT_PANEL_PDF_FOCUS_SCOPE } from './chatPdfFocus';
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -1088,6 +1089,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
               type={panelOpenApp.type}
               resourceId={panelOpenApp.id}
               dstuPath={panelOpenApp.filePath || `/${panelOpenApp.id}`}
+              focusScopeId={CHAT_PANEL_PDF_FOCUS_SCOPE}
               onClose={handleClose}
               onTitleChange={handleTitleChange}
               isActive

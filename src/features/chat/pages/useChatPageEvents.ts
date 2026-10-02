@@ -18,6 +18,7 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatSession } from '../types/session';
 import { useViewStore } from '@/stores/viewStore';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { CHAT_PANEL_PDF_FOCUS_SCOPE, requestPdfFocusUntilHandled } from './chatPdfFocus';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 import {
@@ -312,13 +313,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       const isTextbook = sourceId.startsWith('tb_');
       // 回链高亮选区原文本身（不只是跳到那一页）
       const quote = typeof parsed?.text === 'string' && parsed.text.trim() ? parsed.text : undefined;
-      const dispatchFocus = (delayMs: number) => {
-        window.setTimeout(() => {
-          document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
-            detail: { sourceId, pageNumber, quote, path: dstuPath },
-          }));
-        }, delayMs);
-      };
+      const inChatPanel = isAttachmentLike || isTextbook;
       if (isAttachmentLike || isTextbook) {
         // 教材同样留在聊天右侧面板（旧实现跳去学习中心）
         window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
@@ -330,9 +325,12 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         }));
       }
       if (pageNumber) {
-        dispatchFocus(0);
-        dispatchFocus(250);
-        dispatchFocus(800);
+        requestPdfFocusUntilHandled({
+          sourceId,
+          pageNumber,
+          quote,
+          targetScopeId: inChatPanel ? CHAT_PANEL_PDF_FOCUS_SCOPE : undefined,
+        });
       }
       return;
     }
@@ -478,17 +476,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         isKnownResourceId(rawSourceId) &&
         useViewStore.getState().currentView === 'learning-hub'
       ) {
-        const path = `/${rawSourceId}`;
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: path });
-        const focus = () =>
-          document.dispatchEvent(
-            new CustomEvent('pdf-ref:focus', {
-              detail: { sourceId: rawSourceId, pageNumber, quote, path },
-            }),
-          );
-        window.setTimeout(focus, 0);
-        window.setTimeout(focus, 250);
-        window.setTimeout(focus, 800);
+        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${rawSourceId}` });
+        requestPdfFocusUntilHandled({ sourceId: rawSourceId, pageNumber, quote });
         return;
       }
 
@@ -612,19 +601,6 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         //（且 openResource 延迟 150ms 才打开，冷启动时跳页事件可能落空）
         const isTextbook = sourceId.startsWith('tb_');
 
-        // 多次派发 focus，兼容面板挂载较慢的情况
-        const dispatchFocus = (delayMs: number) => {
-          window.setTimeout(() => {
-            document.dispatchEvent(new CustomEvent('pdf-ref:focus', {
-              detail: {
-                sourceId,
-                pageNumber,
-                quote,
-                path: dstuPath,
-              },
-            }));
-          }, delayMs);
-        };
 
         if (isAttachmentLike || isTextbook) {
           // 走附件预览通道（与"点击附件"一致），留在聊天页
@@ -635,9 +611,12 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
               title: isTextbook ? t('pdfRef.textbookTitle', { defaultValue: '教材' }) : 'PDF',
             },
           }));
-          dispatchFocus(0);
-          dispatchFocus(250);
-          dispatchFocus(800);
+          requestPdfFocusUntilHandled({
+            sourceId,
+            pageNumber,
+            quote,
+            targetScopeId: CHAT_PANEL_PDF_FOCUS_SCOPE,
+          });
           return;
         }
 
@@ -646,9 +625,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         });
         window.dispatchEvent(navEvent);
         console.log('[ChatV2Page] Dispatched NAVIGATE_TO_VIEW to learning-hub (pdf-ref)');
-        dispatchFocus(0);
-        dispatchFocus(250);
-        dispatchFocus(800);
+        requestPdfFocusUntilHandled({ sourceId, pageNumber, quote });
       } catch (error) {
         console.error('[ChatV2Page] Failed to handle pdf-ref:open:', getErrorMessage(error));
         showGlobalNotification('error', getErrorMessage(error), t('pdfRef.openFailedTitle'));
