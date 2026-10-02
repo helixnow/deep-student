@@ -11,7 +11,7 @@
   --surface-divider: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
 
   /* --surface-panel 是面板族的基准层（panel < panel-strong），语义与近邻一致：
-     elevated 与 root 的 mix。故障/恢复路径（StartupPreflight / RecoveryShell / RecoveryCenter /
+     elevated 与 root 的 mix。故障/恢复路径（RecoveryShell / RecoveryCenter /
      ComponentRecoveryShell / FeatureUnavailablePanel）在
      token 缺失时会因 background 计算失效而变透明——那正是最不能"没有底色"的
      场景，所以这里先给不依赖 color-mix 的兜底值，再在文件末尾的 @supports

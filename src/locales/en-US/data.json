@@ -446,8 +446,6 @@
   "recovery": {
     "shell_title": "Deep Student Data Recovery",
     "eyebrow": "Data Governance",
-    "preflight_title": "Confirming data status",
-    "preflight_description": "Running the startup safety check…",
     "preflight_failed_title": "Safety check needs attention",
     "preflight_failed_description": "Recovery encountered a problem, but the app remains available and has not opened business databases. Retry the check; failure details are preserved for diagnosis.",
     "retry_preflight": "Retry safety check",

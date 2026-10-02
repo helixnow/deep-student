@@ -446,8 +446,6 @@
   "recovery": {
     "shell_title": "Deep Student 数据恢复",
     "eyebrow": "数据治理",
-    "preflight_title": "正在确认数据状态",
-    "preflight_description": "启动前安全检查…",
     "preflight_failed_title": "安全检查需要处理",
     "preflight_failed_description": "恢复流程遇到了问题，但应用仍保持可操作且未打开业务数据库。可重试检查；失败详情已保留用于诊断。",
     "retry_preflight": "重试安全检查",

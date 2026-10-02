@@ -16,7 +16,6 @@ describe('failure-path surface token contract', () => {
 
   /** 消费这些 token 的故障/恢复路径与输入栏菜单 */
   const CONSUMERS = [
-    'src/features/data-recovery/StartupPreflight.tsx',
     'src/features/data-recovery/ComponentRecoveryShell.tsx',
     'src/features/data-recovery/RecoveryCenter.tsx',
     'src/features/data-recovery/RecoveryShell.tsx',
