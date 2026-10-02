@@ -15,7 +15,7 @@ import { MemoryFolderBanner } from './components/MemoryFolderBanner';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
-import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { ATTACHMENT_CODE_TEXT_EXTENSIONS } from '@/features/chat/core/constants';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {
@@ -54,6 +54,8 @@ const DOCUMENT_EXTENSIONS = new Set([
   'xlsx', 'xls', 'xlsb', 'ods',
   'pptx', 'epub', 'rtf',
   'csv', 'json', 'xml',
+  // 源码 / 配置：后端按纯文本导入（计算机类课程资料常见 .py/.c/.sql 等）
+  ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
 ]);
 
 /** 图片类扩展名集合 */
@@ -1137,6 +1139,7 @@ export function LearningHubSidebar({
               'xlsx', 'xls', 'xlsb', 'ods',
               'pptx', 'epub', 'rtf',
               'csv', 'json', 'xml',
+              ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
             ],
           },
           {
@@ -2854,6 +2857,8 @@ export function LearningHubSidebar({
   // 资料 → 闪卡一步入口：新开一个对话（不混进正在进行的话题）→ 引用这份资料 →
   // 切到聊天并预填制卡指令（不自动发送，便于改数量/模板）。
   const handleMakeCards = useCallback(async (target: ContextMenuTarget) => {
+    // 动态导入：避免学习资源模块静态依赖整条聊天会话/适配器链
+    const { sessionManager } = await import('@/features/chat/core/session/sessionManager');
     const previousSessionId = sessionManager.getCurrentSessionId();
     const newSessionReady = new Promise<boolean>((resolve) => {
       const timer = window.setTimeout(() => { unsubscribe(); resolve(false); }, 4000);
@@ -3366,7 +3371,7 @@ export function LearningHubSidebar({
         onFilesDropped={handleFilesDrop}
         onPathsDropped={handlePathsDrop}
         enabled={isDragDropEnabled}
-        acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT]}
+        acceptedFileTypes={[FILE_TYPES.IMAGE, FILE_TYPES.DOCUMENT, FILE_TYPES.CODE]}
         maxFiles={20}
         maxFileSize={200 * 1024 * 1024}
         customOverlayText={t('finder.dragDrop.overlayText')}

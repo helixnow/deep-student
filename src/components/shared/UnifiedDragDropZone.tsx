@@ -6,7 +6,7 @@ import { guardedListen } from '../../utils/guardedListen';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { ensureGlobalDragHandlers, markNativeDrop, isNativeDropRecent } from '../../hooks/useTauriDragAndDrop';
-import { getAttachmentSizeLimitForFile } from '@/features/chat/core/constants';
+import { ATTACHMENT_CODE_TEXT_EXTENSIONS, getAttachmentSizeLimitForFile } from '@/features/chat/core/constants';
 
 /**
  * 扩展名到 MIME 类型的统一映射表
@@ -174,6 +174,12 @@ export const FILE_TYPES: Record<string, FileTypeDefinition> = {
     ],
     description: 'Document',
   },
+  /** 源码 / 配置 / 纯文本（与附件、后端解析同一份清单，按纯文本导入） */
+  CODE: {
+    extensions: [...ATTACHMENT_CODE_TEXT_EXTENSIONS],
+    mimeTypes: ['text/plain'],
+    description: 'Code',
+  },
   AUDIO: {
     extensions: ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus'],
     mimeTypes: ['audio/*'],
@@ -326,7 +332,12 @@ export const UnifiedDragDropZone: React.FC<UnifiedDragDropZoneProps> = ({
   const isPointInsideDropZone = useCallback((pos?: { x: number; y: number }): boolean => {
     if (!pos || !dropZoneRef.current) return false;
     const rect = dropZoneRef.current.getBoundingClientRect();
-    return pos.x >= rect.left && pos.x <= rect.right && pos.y >= rect.top && pos.y <= rect.bottom;
+    // Tauri 拖放事件给的是物理像素（PhysicalPosition），getBoundingClientRect 是 CSS 像素：
+    // Retina（devicePixelRatio=2）下不换算，落点只要不在左上角就被判为「区域外」、文件被静默丢弃。
+    const ratio = window.devicePixelRatio || 1;
+    const x = pos.x / ratio;
+    const y = pos.y / ratio;
+    return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
   }, []);
 
   const isFileTypeAccepted = useCallback(

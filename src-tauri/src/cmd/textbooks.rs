@@ -550,29 +550,47 @@ pub async fn textbooks_add(
         let conn = vfs_db
             .get_conn_safe()
             .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
-        let tb = crate::vfs::VfsTextbookRepo::create_textbook_with_preview(
-            &conn,
-            &sha256,
-            &file_name,
-            outcome.size as i64,
-            outcome.blob_hash.as_deref(),
-            Some(src), // original_path 保留为来源提示（打开所在目录等用途）
-            outcome.preview_json_str.as_deref(),
-            outcome.extracted_text.as_deref(),
-            outcome.page_count,
-        )
-        .map_err(|e| {
-            emit_progress(
-                &window,
+        // 批量导入时，前一个 PDF 的后台流水线可能正持有写锁：忙/锁错误短暂重试；
+        // 仍失败则跳过这一个文件、继续导入其余文件（此前一个失败就整批中止，
+        // 后面的文件连尝试都没有）。
+        let mut create_attempt = 0u32;
+        let tb = loop {
+            create_attempt += 1;
+            match crate::vfs::VfsTextbookRepo::create_textbook_with_preview(
+                &conn,
+                &sha256,
                 &file_name,
-                "error",
-                None,
-                None,
-                0,
-                Some(format!("入库失败: {}", e)),
-            );
-            AppError::database(format!("VFS 创建教材失败: {}", e))
-        })?;
+                outcome.size as i64,
+                outcome.blob_hash.as_deref(),
+                Some(src), // original_path 保留为来源提示（打开所在目录等用途）
+                outcome.preview_json_str.as_deref(),
+                outcome.extracted_text.as_deref(),
+                outcome.page_count,
+            ) {
+                Ok(tb) => break Some(tb),
+                Err(e) => {
+                    let message = e.to_string();
+                    let transient = message.contains("locked") || message.contains("busy");
+                    if transient && create_attempt < 4 {
+                        tokio::time::sleep(std::time::Duration::from_millis(250 * create_attempt as u64)).await;
+                        continue;
+                    }
+                    warn!("[Textbooks] 入库失败，跳过 {}: {}", file_name, message);
+                    emit_progress(
+                        &window,
+                        &file_name,
+                        "error",
+                        None,
+                        None,
+                        0,
+                        Some(format!("入库失败: {}", message)),
+                    );
+                    skipped_reasons.push(format!("{}: 入库失败: {}", file_name, message));
+                    break None;
+                }
+            }
+        };
+        let Some(tb) = tb else { continue };
 
         // ★ pptx/epub 页级文本：写入 ocr_pages_json，使检索命中可定位页/章节
         if let Some(ref pages_json) = outcome.pages_json {
