@@ -28,8 +28,9 @@ export const LatexText: React.FC<LatexTextProps> = ({ content, text, className }
     const raw = renderLatexToHtml(src);
     if (!raw) return null;
     // 2026-09-09：纯文本换行在 HTML 里会被折叠（调用方容器通常没有 white-space: pre-wrap），
-    // 统一转成 <br/> 保证题干/选项/解析里的换行可见。KaTeX 输出为单行 HTML，不会误伤公式。
-    const withBreaks = raw.replace(/\r\n|\r|\n/g, '<br/>');
+    // 转成 <br/> 保证题干/选项/解析里的换行可见。只换标签之外的换行：KaTeX 的 \sqrt、
+    // 长箭头等 SVG 的 path 数据里含换行，整体替换会把 <br/> 塞进 d 属性、根号直接消失。
+    const withBreaks = raw.replace(/\r\n?/g, '\n').replace(/\n(?![^<]*>)/g, '<br/>');
     return DOMPurify.sanitize(withBreaks, {
       ADD_TAGS: ['annotation', 'semantics', 'mrow', 'mi', 'mo', 'mn', 'msup', 'msub', 'mfrac', 'mover', 'munder', 'munderover', 'msqrt', 'mroot', 'mtable', 'mtr', 'mtd', 'mtext', 'mspace', 'math', 'mpadded', 'menclose', 'mglyph', 'mphantom', 'mstyle'],
       ADD_ATTR: ['xmlns', 'mathvariant', 'encoding', 'stretchy', 'fence', 'separator', 'accent', 'accentunder', 'columnalign', 'rowalign', 'columnspacing', 'rowspacing', 'columnlines', 'rowlines', 'frame', 'framespacing', 'equalrows', 'equalcolumns', 'displaystyle', 'side', 'minlabelspacing', 'scriptlevel', 'lspace', 'rspace', 'movablelimits', 'largeop', 'symmetric', 'maxsize', 'minsize', 'linethickness', 'depth', 'height', 'voffset', 'notation'],
