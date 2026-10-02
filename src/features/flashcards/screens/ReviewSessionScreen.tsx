@@ -164,7 +164,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   // 指针防误触：记录最近一次翻到背面的时间
   const flippedAtRef = React.useRef(0);
 
-  const progress = queue.length > 0 ? Math.min(queueIndex + 1, queue.length) : 0;
   const sessionDone = isReviewSessionDone({ queue, queueIndex, loading });
   const sessionEmpty = isReviewSessionEmpty({ queue, loading });
   const draftIsCloze = Boolean(current && isClozeReviewCard(current, template));
@@ -403,7 +402,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   }, [editing, ratingBusy, exitSession]);
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(editing ? 'session.edit' : 'session.title'),
-    subtitle: !editing && current && !sessionDone ? t('session.progress', { current: progress, total: queue.length }) : undefined,
+    subtitle: !editing && current && !sessionDone ? t('review.ratedRemaining', { rated: sessionRatedCount, left: remainingCount, defaultValue: '已评 {{rated}} · 剩 {{left}}' }) : undefined,
     onBack: handleMobileBack,
     rightActions: editing ? (
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('session.saveEdit')} disabled={ratingBusy || !draftIsValid} onClick={() => void saveEdit()}>
@@ -427,7 +426,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuContent>
       </AppMenu>}
     </>,
-  }, [t, editing, current, sessionDone, progress, queue.length, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended]);
+  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended]);
 
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
@@ -534,8 +533,11 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     );
   }
 
-  const progressPct = queue.length > 0
-    ? Math.round((Math.min(queueIndex, queue.length) / queue.length) * 100)
+  // 进度按「本轮已评 / (已评 + 剩余)」：学习步骤中的卡会回到队尾，queueIndex 常停在 0，
+  // 按下标算进度条永远不动、计数一直是「1 / N」
+  const sessionTotal = sessionRatedCount + remainingCount;
+  const progressPct = sessionTotal > 0
+    ? Math.round((sessionRatedCount / sessionTotal) * 100)
     : 0;
 
   // 底部留出移动端手势导航安全区（评分栏贴屏幕底部，避免与 Home indicator 冲突）
@@ -545,8 +547,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         className="wb-fc-session-progress"
         role="progressbar"
         aria-valuemin={0}
-        aria-valuemax={queue.length}
-        aria-valuenow={Math.min(queueIndex, queue.length)}
+        aria-valuemax={sessionTotal}
+        aria-valuenow={sessionRatedCount}
         aria-label={t('review.progressLabel')}
       >
         <div className="wb-fc-session-progress-fill" style={{ width: `${progressPct}%` }} />
@@ -636,7 +638,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <span className="wb-fc-chip wb-fc-chip--learn">{t('review.learnCount', { count: learnCount })}</span>
           ) : null}
           <span className="wb-fc-chip wb-fc-chip--due" title={t('review.remainingTitle', { count: remainingCount })}>
-            {t('session.progress', { current: progress, total: queue.length })}
+            {t('review.ratedCount', { count: sessionRatedCount, defaultValue: '已评 {{count}}' })}
           </span>
           <span
             className="wb-fc-chip wb-fc-chip--timer"
@@ -812,12 +814,15 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
 
       {!editing ? (
         <>
-          <UndoNudge
-            receiptId={lastReview?.logId ?? null}
-            rating={lastReview?.rating ?? null}
-            busy={ratingBusy}
-            onUndo={() => void undoLastReview()}
-          />
+          {/* 悬浮在评分栏上方：出现/消失不再推挤卡面 */}
+          <div className="wb-fc-undo-anchor">
+            <UndoNudge
+              receiptId={lastReview?.logId ?? null}
+              rating={lastReview?.rating ?? null}
+              busy={ratingBusy}
+              onUndo={() => void undoLastReview()}
+            />
+          </div>
           <RatingBar
             flipped={flipped}
             disabled={ratingBusy}
@@ -826,19 +831,6 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             onShowAnswer={handleFlip}
             onRate={handleRateClick}
           />
-          {flipped ? (
-            // F09：现场可见的评分判断标准，避免把「忘了但看答案后觉得懂」误记成 Hard
-            <p className="px-2 text-center text-[11px] leading-snug text-muted-foreground">
-              {t('review.ratingGuide')}
-            </p>
-          ) : null}
-          <div className="wb-fc-shortcut-hint justify-center" aria-hidden="true">
-            <span><kbd className="wb-fc-keycap">Space</kbd> {t('review.shortcutFlip')}</span>
-            <span className="wb-fc-shortcut-sep">·</span>
-            <span><kbd className="wb-fc-keycap">1–4</kbd> {t('review.shortcutRate')}</span>
-            <span className="wb-fc-shortcut-sep">·</span>
-            <span><kbd className="wb-fc-keycap">Z</kbd> {t('review.shortcutUndo')}</span>
-          </div>
         </>
       ) : null}
       {errorBanner}

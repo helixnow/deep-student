@@ -69,7 +69,7 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
   return (
     <div
       role="status"
-      className="flex flex-shrink-0 items-center justify-between gap-2 rounded-md border border-border/60 bg-muted/40 py-1 pl-3 pr-1 text-xs text-muted-foreground"
+      className="wb-fc-undo-nudge flex items-center gap-2 rounded-full py-0.5 pl-3 pr-0.5 text-xs"
     >
       <span className="min-w-0 truncate">{message}</span>
       <DsButton

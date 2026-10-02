@@ -165,6 +165,18 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
     };
   }, [swipe, cardKey, side, template, templateLoading, scrollElement]);
 
+  // 舞台高度：模板的 .card 背景铺满整个舞台（与 Anki 复习窗口一致，不再另套卡片框）
+  const [stageHeight, setStageHeight] = React.useState(0);
+  React.useEffect(() => {
+    if (!scrollElement) return;
+    const measure = () => setStageHeight(Math.floor(scrollElement.clientHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(scrollElement);
+    return () => observer.disconnect();
+  }, [scrollElement]);
+  const templateMode = Boolean(template);
+
   const swipeState = swipe?.state ?? null;
   const band = swipeState && swipeState.dragging && swipeState.direction
     ? SWIPE_BANDS[swipeState.direction]
@@ -209,8 +221,12 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             disabled && 'cursor-default opacity-70',
           )}
         >
-          <div className="wb-fc-card-content flex min-h-full flex-col px-5 py-6">
-            <span className="wb-fc-card-side-label">
+          <div
+            className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-5 py-6')}
+            data-template-mode={templateMode ? 'true' : undefined}
+          >
+            {/* 正/背面由内容本身表达；仅保留给读屏 */}
+            <span className="sr-only">
               {flipped ? backLabel : frontLabel}
             </span>
             <div
@@ -228,7 +244,8 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 compact={false}
                 fallbackText={fallbackText}
                 emptyText={flipped ? noBackText : noFrontText}
-                className="pointer-events-none flex min-h-0 flex-1 items-center justify-center"
+                stageHeight={templateMode ? stageHeight : undefined}
+                className={cn('pointer-events-none flex min-h-0 flex-1', templateMode ? 'flex-col' : 'items-center justify-center')}
               />
             </div>
             <span className="wb-fc-card-flip-hint" aria-hidden="true">

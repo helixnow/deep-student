@@ -254,6 +254,8 @@
     "streakTitle": "连续答对（非「重来」）次数",
     "newCount": "新 {{count}}",
     "learnCount": "复习 {{count}}",
+    "ratedCount": "已评 {{count}}",
+    "ratedRemaining": "已评 {{rated}} · 剩 {{left}}",
     "remainingTitle": "本轮剩余 {{count}} 张",
     "learningStep": "稍后重现",
     "learningStepHint": "该卡 {{time}} 后到期，已按学习步提前展示",

@@ -23,7 +23,18 @@ export interface AnkiTemplateCardFaceProps {
   emptyText?: string;
   /** 是否内联展示模板渲染问题（默认展示） */
   showRenderIssues?: boolean;
+  /**
+   * 舞台高度（px）：传入时模板的 .card 背景铺满该高度、内容垂直居中——
+   * 与 Anki 复习窗口一致，模板本身就是卡片，宿主不再另套卡片框。
+   */
+  stageHeight?: number;
 }
+
+/** 舞台模式：body（即模板的 .card 背景）至少铺满 iframe 视口，内容纵向居中 */
+const STAGE_FILL_CSS = `
+html, body { min-height: 100vh; }
+body { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; margin: 0; }
+`;
 
 function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
   if (side === 'back') {
@@ -88,6 +99,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   fallbackText,
   emptyText = '',
   showRenderIssues = true,
+  stageHeight,
 }) => {
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
@@ -126,9 +138,10 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     [card.images],
   );
 
+  const stageMode = stageHeight != null && stageHeight > 0;
   const cssContent = useMemo(
-    () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor }),
-    [template?.css_style, darkMode, surfaceColor],
+    () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor }) + (stageMode ? STAGE_FILL_CSS : ''),
+    [template?.css_style, darkMode, surfaceColor, stageMode],
   );
 
   return (
@@ -143,6 +156,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
           cssContent={cssContent}
           compact={compact}
           fidelity="anki"
+          minHeight={stageMode ? stageHeight : undefined}
         />
       ) : (
         <div className="flex min-w-0 flex-col items-center gap-2">

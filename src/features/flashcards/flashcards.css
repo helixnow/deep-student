@@ -240,9 +240,15 @@
 
 .wb-fc-session-toolbar {
   display: flex;
-  flex-direction: column;
   flex-shrink: 0;
-  gap: 12px;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 顶栏合为一行：退出 + 计数（左/中）· 卡片操作（右） */
+.wb-fc-session-toolbar > .wb-fc-session-overview {
+  flex: 1;
+  min-width: 0;
 }
 
 /* --- 计数徽标 / 连击 --- */
@@ -293,34 +299,20 @@
   min-width: 0;
 }
 
+/* 舞台本身不画卡片框：模板的 .card 背景铺满舞台、模板里的「纸」就是卡片。
+   此前「应用卡片框 → 模板背景色带 → 模板纸张」三层叠套，观感拥挤。 */
 .wb-fc-card {
-  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
-  border-radius: 12px;
-  background: var(--wb-window-bg, hsl(var(--card)));
-  box-shadow: var(
-    --wb-shadow-idle,
-    0 1px 2px hsl(var(--foreground) / 0.05),
-    0 4px 14px hsl(var(--foreground) / 0.06)
-  );
+  border-radius: 14px;
+  overflow: hidden;
+  /* 无模板（纯文本兜底）时的舞台底色；有模板时被模板背景完全覆盖 */
+  background: color-mix(in hsl, hsl(var(--muted)) 38%, transparent 62%);
   /* 滚动 viewport 会拍扁 preserve-3d，透视直接放在卡面父级 */
   perspective: 1200px;
-  transition:
-    box-shadow 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    border-color 180ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1)),
-    background-color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
-}
-
-.wb-fc-card:hover:not([aria-disabled='true']) {
-  border-color: color-mix(in hsl, hsl(var(--border)) 85%, hsl(var(--primary)) 15%);
-  box-shadow: var(
-    --wb-shadow-lifted,
-    0 2px 6px hsl(var(--foreground) / 0.07),
-    0 10px 28px hsl(var(--foreground) / 0.1)
-  );
+  transition: background-color 120ms var(--wb-ease, cubic-bezier(0.32, 0.72, 0.28, 1));
 }
 
 .wb-fc-card[data-side='back'] {
-  background: color-mix(in hsl, var(--wb-window-bg, hsl(var(--card))) 96%, hsl(var(--primary)) 4%);
+  background: color-mix(in hsl, hsl(var(--muted)) 38%, hsl(var(--primary)) 4%);
 }
 
 .wb-fc-card-side-label {
@@ -421,6 +413,27 @@
     opacity: 1;
     transform: none;
   }
+}
+
+/* --- 撤销提示：悬浮于评分栏上方，不占布局 --- */
+.wb-fc-undo-anchor {
+  position: relative;
+  height: 0;
+  z-index: 2;
+}
+
+.wb-fc-undo-anchor > .wb-fc-undo-nudge {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  color: hsl(var(--foreground) / 0.8);
+  background: hsl(var(--popover) / 0.92);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 6px 18px hsl(var(--foreground) / 0.1);
+  backdrop-filter: blur(8px);
+  animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
 }
 
 /* --- 评分栏 --- */
@@ -806,11 +819,9 @@
 
   .wb-fc-card {
     min-height: 0;
-    border-radius: 8px;
+    border-radius: 12px;
   }
 
-  .wb-fc-card,
-  .wb-fc-card:hover:not([aria-disabled='true']),
   .wb-fc-edit-panel {
     box-shadow: none;
     border-color: hsl(var(--border) / 0.6);

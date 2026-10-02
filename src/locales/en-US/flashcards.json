@@ -254,6 +254,8 @@
     "streakTitle": "Consecutive non-Again answers",
     "newCount": "New {{count}}",
     "learnCount": "Review {{count}}",
+    "ratedCount": "{{count}} rated",
+    "ratedRemaining": "{{rated}} rated · {{left}} left",
     "remainingTitle": "{{count}} left this round",
     "learningStep": "Repeats soon",
     "learningStepHint": "Due in {{time}} — shown early as a learning step",

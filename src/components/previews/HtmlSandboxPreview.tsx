@@ -16,6 +16,8 @@ export interface HtmlSandboxPreviewProps {
   height?: number | string;
   fidelity?: 'default' | 'anki';
   title?: string;
+  /** iframe 最小高度（px）：内容不足时也撑满宿主区域（复习舞台） */
+  minHeight?: number;
   className?: string;
   style?: React.CSSProperties;
 }
@@ -35,6 +37,7 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   height,
   fidelity = 'default',
   title = 'html-preview',
+  minHeight,
   className,
   style,
 }) => {
@@ -93,7 +96,7 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
         display: 'block',
         width: '100%',
         maxWidth: '100%',
-        height: height !== undefined ? height : iframeHeight,
+        height: height !== undefined ? height : Math.max(iframeHeight, minHeight ?? 0),
         border: 'none',
         overflow: 'auto',
         background: 'hsl(var(--background))',

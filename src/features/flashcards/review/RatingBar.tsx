@@ -88,7 +88,8 @@ export const RatingBar: React.FC<RatingBarProps> = ({
   }
 
   return (
-    <div className="wb-fc-ratebar" data-mode="rate">
+    // F09 评分标准不再常驻一行：挂在评分栏与各按钮的悬停提示上
+    <div className="wb-fc-ratebar" data-mode="rate" title={t('review.ratingGuide')}>
       {RATING_DESCRIPTORS.map((rating) => {
         const preview = previews?.[rating.value];
         const intervalLabel = preview ? formatInterval(preview.intervalMs) : null;
