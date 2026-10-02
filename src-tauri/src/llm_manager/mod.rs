@@ -2330,6 +2330,14 @@ mod tests {
     }
 
     #[test]
+    fn vl_embedding_names_are_treated_as_multimodal() {
+        assert!(LLMManager::looks_like_multimodal_embedding("Qwen/Qwen3-VL-Embedding-8B"));
+        assert!(LLMManager::looks_like_multimodal_embedding("jina-clip-v2"));
+        assert!(!LLMManager::looks_like_multimodal_embedding("BAAI/bge-m3"));
+        assert!(!LLMManager::looks_like_multimodal_embedding("text-embedding-3-large"));
+    }
+
+    #[test]
     fn registry_inference_matches_siliconflow_glm_46v() {
         let inferred = LLMManager::infer_capability_overrides_from_registry(
             "zai-org/GLM-4.6V",
@@ -3954,6 +3962,15 @@ impl LLMManager {
         }
 
         best_match
+    }
+
+    /// 视觉/多模态嵌入模型名（Qwen3-VL-Embedding、jina-clip、siglip…）：手动添加的配置常漏勾
+    /// 「多模态」，导致多模态索引永远判定为未配置。按名称 token 识别，只用于嵌入配置。
+    fn looks_like_multimodal_embedding(model: &str) -> bool {
+        let lower = model.to_lowercase();
+        lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|token| matches!(token, "vl" | "vision" | "multimodal" | "clip" | "siglip" | "omni"))
     }
 
     fn normalize_model_id(value: &str) -> String {
@@ -5954,7 +5971,11 @@ impl LLMManager {
             api_key,
             base_url: vendor.base_url.clone(),
             model: profile.model.clone(),
-            is_multimodal: profile.is_multimodal || capability_overrides.is_multimodal,
+            is_multimodal: profile.is_multimodal
+                || capability_overrides.is_multimodal
+                || (profile.is_embedding
+                    && !profile.is_reranker
+                    && Self::looks_like_multimodal_embedding(&profile.model)),
             is_reasoning: profile.is_reasoning,
             is_embedding: profile.is_embedding,
             is_reranker: profile.is_reranker,
