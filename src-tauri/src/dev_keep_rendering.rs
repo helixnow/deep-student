@@ -30,6 +30,25 @@ pub fn keep_rendering_when_occluded(window: &tauri::WebviewWindow) {
             } else {
                 log::warn!("[dev] WKWebView 不支持关闭遮挡检测，后台时可能停止渲染");
             }
+
+            // 窗口切到别的桌面空间时页面变 hidden：WebKit 逐步加码节流定时器并最终抑制
+            // WebContent 进程，调试桥连 WebSocket 消息都不再处理（eval 超时）。
+            let configuration: id = msg_send![wk, configuration];
+            let preferences: id = msg_send![configuration, preferences];
+            let mut disabled: Vec<&str> = Vec::new();
+            if msg_send![preferences, respondsToSelector: sel!(_setHiddenPageDOMTimerThrottlingEnabled:)] {
+                let _: () = msg_send![preferences, _setHiddenPageDOMTimerThrottlingEnabled: NO];
+                disabled.push("hiddenPageDOMTimerThrottling");
+            }
+            if msg_send![preferences, respondsToSelector: sel!(_setHiddenPageDOMTimerThrottlingAutoIncreases:)] {
+                let _: () = msg_send![preferences, _setHiddenPageDOMTimerThrottlingAutoIncreases: NO];
+                disabled.push("hiddenPageDOMTimerThrottlingAutoIncreases");
+            }
+            if msg_send![preferences, respondsToSelector: sel!(_setPageVisibilityBasedProcessSuppressionEnabled:)] {
+                let _: () = msg_send![preferences, _setPageVisibilityBasedProcessSuppressionEnabled: NO];
+                disabled.push("pageVisibilityBasedProcessSuppression");
+            }
+            log::info!("[dev] 隐藏页面节流已关闭: {:?}", disabled);
         }
     });
     if let Err(error) = scheduled {
