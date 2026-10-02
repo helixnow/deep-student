@@ -71,6 +71,27 @@ function assignRef<T>(ref: React.Ref<T> | undefined, value: T | null): void {
   else (ref as React.MutableRefObject<T | null>).current = value;
 }
 
+/** 任意变体前缀（md: / [&>*]: …）+ 可选 ! + p/px/py/pt/pr/pb/pl/ps/pe 内边距工具类 */
+const PADDING_UTILITY_RE = /^(?:[^\s:]+:)*!?p[xytrblse]?-\S+$/;
+
+/**
+ * OverlayScrollbars 的样式表以 `[data-overlayscrollbars-viewport]:not([data-overlayscrollbars])
+ * { padding: 0 }`（特异性高于单个类）清零视口内边距，再把**宿主**的 padding 以内联样式
+ * 搬到视口上。因此调用方写在 viewportClassName 里的 px-5 / pb-20 等会被吞掉、内容贴边。
+ * 这里把内边距工具类挪到宿主，交给 OverlayScrollbars 按其设计搬运（响应式变体随宿主
+ * 尺寸变化重新读取）；其余类名留在视口。
+ */
+function splitPaddingClasses(className: string | undefined): { padding: string; rest: string } {
+  if (!className) return { padding: "", rest: "" };
+  const padding: string[] = [];
+  const rest: string[] = [];
+  for (const token of className.split(/\s+/)) {
+    if (!token) continue;
+    (PADDING_UTILITY_RE.test(token) ? padding : rest).push(token);
+  }
+  return { padding: padding.join(" "), rest: rest.join(" ") };
+}
+
 const pendingScrollTimelineHandleRefreshes = new WeakSet<HTMLElement>();
 
 function refreshScrollTimelineHandleGeometry(handles: readonly HTMLElement[]): void {
@@ -291,6 +312,10 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
       );
     }
 
+    const overlayViewportClasses = splitPaddingClasses(
+      cn(viewportClassName, viewportPropsClassName),
+    );
+
     return (
       <div
         ref={setOverlayTargetRef}
@@ -303,17 +328,13 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         data-scroll-track-bottom={trackOffset?.bottom !== undefined ? "" : undefined}
         data-scroll-track-left={trackOffset?.left !== undefined ? "" : undefined}
         data-scroll-track-right={trackOffset?.right !== undefined ? "" : undefined}
-        className={cn("relative min-h-0 min-w-0", className)}
+        className={cn("relative min-h-0 min-w-0", className, overlayViewportClasses.padding)}
         style={offsetStyle}
         {...restProps}
       >
         <div
           ref={setOverlayViewportRef}
-          className={cn(
-            "h-full min-h-0 w-full min-w-0",
-            viewportClassName,
-            viewportPropsClassName,
-          )}
+          className={cn("h-full min-h-0 w-full min-w-0", overlayViewportClasses.rest)}
           {...resolvedViewportProps}
         >
           {children}
