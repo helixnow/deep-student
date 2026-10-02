@@ -3333,6 +3333,28 @@ impl ChatAnkiToolExecutor {
             emit_fsrs_cards_changed(ctx, "cards_added", &inserted_ids);
             receipt
         };
+        // 与文档生成完成时同一口径：补进来的卡直接进复习计划（New，受每日新卡额度约束）。
+        // 否则同一组卡一部分在今日复习、一部分停在「待入队」，模型还会反问要不要加入复习。
+        let enqueued = if inserted.is_empty() {
+            0
+        } else {
+            let ids: Vec<String> = inserted
+                .iter()
+                .filter(|card| !card.is_error_card)
+                .map(|card| card.id.clone())
+                .collect();
+            let service = FsrsReviewService::new(db.clone());
+            match service.enqueue_cards_for_session(&ids, &ctx.session_id, Some(document_id)) {
+                Ok(result) => {
+                    emit_enqueue_review_changed(ctx, &service, &result);
+                    result.enqueued
+                }
+                Err(error) => {
+                    log::warn!("[ChatAnkiToolExecutor] add_cards 自动加入复习失败: {}", error);
+                    0
+                }
+            }
+        };
         let output_cards: Vec<Value> = inserted
             .iter()
             .map(|card| convert_card_for_tool(card, None))
@@ -3349,6 +3371,7 @@ impl ChatAnkiToolExecutor {
                 "requested": requested_count,
                 "inserted": inserted_count,
                 "skipped": requested_count.saturating_sub(inserted_count),
+                "enqueuedForReview": enqueued,
                 "cards": output_cards,
                 "mutationApplied": inserted_count > 0,
                 "retryable": false,
@@ -16551,6 +16574,27 @@ mod tests {
             )
             .expect("count deleted FSRS rows");
         assert_eq!(remaining_fsrs, 0);
+    }
+
+    /// add_cards 补进来的卡与生成完成时同一口径进复习：按所属会话 + 文档入队。
+    #[test]
+    fn test_chatanki_added_cards_enqueue_for_owning_session_and_document() {
+        let (db, _tmp) = make_test_db();
+        let db = Arc::new(db);
+        seed_chatanki_document(&db, "doc-add-review", "session-add-review");
+        let inserted = db
+            .insert_anki_cards_for_document(
+                "doc-add-review",
+                "session-add-review",
+                vec![make_chatanki_card("card-add-review", "", "front", "back")],
+            )
+            .expect("append card");
+        let ids: Vec<String> = inserted.iter().map(|card| card.id.clone()).collect();
+        let service = FsrsReviewService::new(db.clone());
+        let result = service
+            .enqueue_cards_for_session(&ids, "session-add-review", Some("doc-add-review"))
+            .expect("enqueue added card");
+        assert_eq!(result.enqueued, 1);
     }
 
     #[test]
