@@ -10,9 +10,15 @@ describe("sidebar update badge source", () => {
   it("passes updater state to the sidebar instead of the desktop titlebar", () => {
     const source = readFileSync(appPath, "utf8");
 
+    // updater 必须经显式 memo 传给侧栏：每次渲染新建对象会让 ModernSidebar 的
+    // memo 比较恒为 false，退化成整棵侧栏重渲染。
     assert.match(
       source,
-      /<ModernSidebar[\s\S]*updater=\{updater\}/u,
+      /const sidebarUpdater = useMemo<SidebarUpdater>\(\(\) => \(\{/u,
+    );
+    assert.match(
+      source,
+      /<ModernSidebar[\s\S]*?updater=\{sidebarUpdater\}/u,
     );
     assert.doesNotMatch(source, /function SidebarUpdateBadge\(\{/u);
     assert.doesNotMatch(source, /updateVisible=\{updateBadgeVisible\}/u);

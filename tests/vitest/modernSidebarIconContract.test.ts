@@ -67,12 +67,7 @@ describe('modern sidebar icon contract', () => {
   });
 
   it('uses CommonTooltip and icon swap for recent-session archive quick actions', () => {
-    const recentSessionRowStart = sidebarSource.indexOf('const renderRecentSessionRow = useCallback');
-    const recentSessionRowEnd = sidebarSource.indexOf('const pinnedRecentSessions', recentSessionRowStart);
-    const recentSessionRow = sidebarSource.slice(recentSessionRowStart, recentSessionRowEnd);
-
-    expect(recentSessionRowStart).toBeGreaterThanOrEqual(0);
-    expect(recentSessionRowEnd).toBeGreaterThan(recentSessionRowStart);
+    const recentSessionRow = readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
     expect(recentSessionRow).toContain("content={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}");
     expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? t('sidebar:aria.confirm_archive_session') : t('sidebar:aria.archive_session')}");
     expect(recentSessionRow).toContain('className="w-3.5 h-3.5 t-icon-swap"');

@@ -63,7 +63,7 @@ export interface SidebarSessionData {
   /** 未分组会话是否还有更多分页 */
   hasMoreUngrouped: boolean;
   isLoadingMore: boolean;
-  /** 首次加载是否已完成（无论成败） */
+  /** 是否已取得会话列表响应；首次全部失败时保留重试能力 */
   isLoaded: boolean;
   loadMoreUngrouped: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -72,6 +72,11 @@ export interface SidebarSessionData {
   setGroups: React.Dispatch<React.SetStateAction<SessionGroup[]>>;
 }
 
+// Sidebar actions are fire-and-forget. The store logs failures and preserves
+// cached data; the page calls the raw actions so it can also show a toast.
+const loadMoreSidebarSessions = () => useSessionListStore.getState().loadMoreUngrouped().catch(() => {});
+const refreshSidebarSessions = () => useSessionListStore.getState().refresh().catch(() => {});
+
 export function useSidebarSessionData(): SidebarSessionData {
   const data = useSessionListStore(useShallow((state) => ({
     sessions: state.sessions,
@@ -79,8 +84,8 @@ export function useSidebarSessionData(): SidebarSessionData {
     hasMoreUngrouped: state.hasMoreUngrouped,
     isLoadingMore: state.isLoadingMore,
     isLoaded: state.isLoaded,
-    loadMoreUngrouped: state.loadMoreUngrouped,
-    refresh: state.refresh,
+    loadMoreUngrouped: loadMoreSidebarSessions,
+    refresh: refreshSidebarSessions,
     setSessions: state.setSessions,
     setGroups: state.setGroups,
   })));

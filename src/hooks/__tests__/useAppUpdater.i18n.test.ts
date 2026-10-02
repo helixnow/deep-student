@@ -47,6 +47,13 @@ describe('useAppUpdater error message i18n', () => {
     localStorage.setItem('ds-update-frequency', 'never');
   });
 
+  it('keeps the controller reference stable when its parent renders', () => {
+    const { result, rerender } = renderHook(() => useAppUpdater());
+    const controller = result.current;
+    rerender();
+    expect(result.current).toBe(controller);
+  });
+
   it('uses the i18n unavailable key when check() finds no update before install', async () => {
     checkMock.mockResolvedValue(null);
 

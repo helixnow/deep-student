@@ -63,6 +63,7 @@ const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedA
 // 🆕 对话控制面板（侧栏版）
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useSessionLifecycle } from './useSessionLifecycle';
+import { useSessionListStore } from '../stores/sessionListStore';
 import { useSessionEdit } from './useSessionEdit';
 import { useChatPageLayout, openAppInLearningHubRef } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
@@ -155,7 +156,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   }, [sandboxOwnerKey]);
 
   // 状态声明提前，供下方多个布局/事件 hook 使用
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const sessions = useSessionListStore((state) => state.sessions);
+  const setSessions = useSessionListStore((state) => state.setSessions);
   const [currentSessionId, setCurrentSessionIdState] = useState<string | null>(null);
 
   // 🔧 P1-26 + P1-28: 包装 setCurrentSessionId
@@ -445,9 +447,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   }, [groups, pruneDeletedGroups]);
 
   // P1-22: 分页状态
-  const PAGE_SIZE = 50;
-  const [hasMoreSessions, setHasMoreSessions] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const hasMoreSessions = useSessionListStore((state) => state.hasMoreUngrouped);
+  const isLoadingMore = useSessionListStore((state) => state.isLoadingMore);
   // 真实的会话总数（用于显示）
   const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
   const [ungroupedSessionCount, setUngroupedSessionCount] = useState<number | null>(null);
@@ -460,10 +461,8 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
   } = useSessionLifecycle({
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
-    setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore,
-    isLoadingMore, hasMoreSessions, sessionsRef,
-    t, PAGE_SIZE, LAST_SESSION_KEY,
+    setUngroupedSessionCount, setIsInitialLoading, sessionsRef,
+    t, LAST_SESSION_KEY,
   });
 
   const promotingDraftIdsRef = useRef<Set<string>>(new Set());
@@ -499,7 +498,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     } finally {
       promotingDraftIdsRef.current.delete(sessionId);
     }
-  }, [loadUngroupedCount]);
+  }, [loadUngroupedCount, setSessions]);
 
   // 加载会话列表（根据全局科目过滤）
   // 🔧 修复：不依赖 currentSessionId，避免与 useEffect 中的 setCurrentSessionId 形成循环
@@ -571,7 +570,7 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       }
     });
     return unsubscribe;
-  }, [currentSessionId]);
+  }, [currentSessionId, setSessions]);
 
   // ========== 移动端统一顶栏配置 ==========
   const currentSession = sessions.find(s => s.id === currentSessionId);

@@ -29,6 +29,7 @@ const AnkiTasksApp = React.lazy(() =>
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
 import { ModernSidebar, type SidebarUpdater } from './components/ModernSidebar';
+import { DesktopShellSidebarLayers } from './app/shell/DesktopShellSidebarLayers';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
@@ -1047,7 +1048,6 @@ function App() {
     '--shell-navigation-surface-width': `${desktopNavigationWidth}px`,
     '--shell-titlebar-content-height': `${workbenchActive ? 0 : DESKTOP_SHELL.titlebarBaseHeight}px`,
     '--topbar-safe-area': `${workbenchActive ? 0 : shellTitlebarTopInset}px`,
-    '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
   }) as React.CSSProperties, [
     desktopNavigationWidth,
     desktopSidebarPresentationWidth,
@@ -1162,8 +1162,9 @@ function App() {
     if (isDemoShell && targetView !== 'chat-v2') return;
 
     if (targetView !== prevView) {
-      const startTime = performance.now();
-      viewSwitchStartRef.current = { from: prevView, to: targetView, startTime };
+      if (pageLifecycleTracker.isEnabled()) {
+        viewSwitchStartRef.current = { from: prevView, to: targetView, startTime: performance.now() };
+      }
       
       pageLifecycleTracker.log(
         'app', 
@@ -1267,13 +1268,20 @@ function App() {
 
   useEffect(() => {
     currentViewRef.current = currentView;
-    // 同步当前视图到全局 store，供子组件通过 useViewVisibility 读取
+    // Publish committed navigation only; external-store writes cannot be deferred by startTransition.
     useViewStore.getState().setCurrentView(currentView);
 
     if (currentView === 'learning-hub') {
       setActiveOpenResourceHandler('learning-hub');
     } else if (currentView === 'chat-v2') {
       setActiveOpenResourceHandler('chat-v2');
+    }
+
+    // 调试追踪关闭时不安排双 RAF。生产环境每次导航都安排两帧回调，
+    // 即使 tracker 不消费事件，也会把测量工作叠加到用户的切换路径上。
+    if (!pageLifecycleTracker.isEnabled()) {
+      viewSwitchStartRef.current = null;
+      return;
     }
 
     // 记录视图切换完成和渲染耗时
@@ -2109,15 +2117,23 @@ function App() {
   const desktopPageShellSidebarElement = useMemo(() => (
     <div className="sidebar-shell-surface font-sidebar-study-ui flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {shouldShowDesktopPageBackButton ? (
-        <div className="flex shrink-0 items-center px-3 pb-2 pt-[var(--sidebar-header-height)]">
+        // 顶栏让位与内边距对齐主页侧栏（WorkbenchSidebarSurface 的 paddingTop
+        // + WorkbenchSidebarFixed 的 px-2/pb-2/pt-0.5），否则「返回主页」行
+        // 与主页首个导航行不在同一基线上（此前硬编码 65px，比主页低 11px）。
+        <div
+          className="flex shrink-0 items-center px-2 pb-2 pt-0.5"
+          style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
+        >
           <DsButton
-            variant="ghost"
-            size="sm"
+            variant="nav"
+            size="md"
             onClick={() => setCurrentView('chat-v2')}
-            className="desktop-shell-sidebar-row w-full justify-start"
+            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
           >
-            <CaretLeft size={14} aria-hidden="true" />
-            <span className="desktop-shell-sidebar-row-title truncate">
+            <span className="flex w-4 shrink-0 items-center justify-center">
+              <CaretLeft size={18} className="h-[18px] w-[18px]" />
+            </span>
+            <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
               {t('common:actions.backToHome')}
             </span>
           </DsButton>
@@ -2145,24 +2161,12 @@ function App() {
     : currentView === 'learning-hub' || currentView === 'template-management'
     ? 'desktop-page'
     : 'main';
-  type DesktopShellSidebarKind = typeof desktopShellSidebarKind;
-  const [mountedDesktopShellSidebarKinds, setMountedDesktopShellSidebarKinds] = useState<Set<DesktopShellSidebarKind>>(
-    () => new Set<DesktopShellSidebarKind>(['main']),
-  );
-  useEffect(() => {
-    setMountedDesktopShellSidebarKinds((mountedKinds) => {
-      if (mountedKinds.has(desktopShellSidebarKind)) return mountedKinds;
-      const next = new Set(mountedKinds);
-      next.add(desktopShellSidebarKind);
-      return next;
-    });
-  }, [desktopShellSidebarKind]);
-  const desktopShellSidebarLayers = [
+  const desktopShellSidebarLayers = useMemo(() => [
     ['main', sidebarElement],
     ['settings', settingsShellSidebarElement],
     ['todo', todoShellSidebarElement],
     ['desktop-page', desktopPageShellSidebarElement],
-  ] as const satisfies ReadonlyArray<readonly [DesktopShellSidebarKind, React.ReactNode]>;
+  ] as const, [sidebarElement, settingsShellSidebarElement, todoShellSidebarElement, desktopPageShellSidebarElement]);
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
@@ -2635,14 +2639,15 @@ function App() {
     )
   ), [isSmallScreen, setCurrentView]);
 
+  const isSettingsActive = currentView === 'settings';
   const settingsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <LazySettings
         onBack={() => setCurrentView('chat-v2')}
-        isActive={currentView === 'settings'}
+        isActive={isSettingsActive}
       />
     </Suspense>
-  ), [currentView, setCurrentView]);
+  ), [isSettingsActive, setCurrentView]);
 
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -2663,11 +2668,12 @@ function App() {
     <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
   ), []);
 
+  const isFlashcardsActive = currentView === 'flashcards';
   const flashcardsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
-      <LazyFlashcardsPage isActive={currentView === 'flashcards'} />
+      <LazyFlashcardsPage isActive={isFlashcardsActive} />
     </Suspense>
-  ), [currentView]);
+  ), [isFlashcardsActive]);
 
   const styleDebugContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -2978,22 +2984,10 @@ function App() {
             style={{ width: 'var(--shell-navigation-width)' }}
           >
             <div className="desktop-shell-sidebar-motion-surface">
-              {desktopShellSidebarLayers.map(([kind, element]) => {
-                const isActive = kind === desktopShellSidebarKind;
-                if (!isActive && !mountedDesktopShellSidebarKinds.has(kind)) return null;
-                return (
-                  <div
-                    key={kind}
-                    hidden={!isActive}
-                    aria-hidden={!isActive}
-                    data-sidebar-layer={kind}
-                    className={cn('h-full w-full', isActive && 'desktop-shell-content-enter')}
-                    style={!isActive ? { contentVisibility: 'hidden' } : undefined}
-                  >
-                    {element}
-                  </div>
-                );
-              })}
+              <DesktopShellSidebarLayers
+                activeKind={desktopShellSidebarKind}
+                layers={desktopShellSidebarLayers}
+              />
             </div>
           </div>
         ) : null}

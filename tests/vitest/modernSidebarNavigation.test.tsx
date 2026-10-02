@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar, reorderSidebarSessionGroups } from '@/components/ModernSidebar';
+import { __resetSessionListStoreForTests } from '@/features/chat/stores/sessionListStore';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 
 const { invokeMock } = vi.hoisted(() => ({
@@ -116,6 +117,9 @@ vi.mock('@/hooks/useEventRegistry', () => ({
 
 describe('ModernSidebar shell navigation', () => {
   beforeEach(() => {
+    // The sidebar reads the shared module-level session list, which survives unmount
+    // and throttles reloads for 30s. Each case needs a cold store to see its own IPC.
+    __resetSessionListStoreForTests();
     getCurrentSessionIdMock.mockReturnValue(null);
     getAllSessionIdsMock.mockReturnValue([]);
     getSessionStoreMock.mockReturnValue(undefined);
@@ -309,6 +313,44 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.queryByText('下载中')).not.toBeInTheDocument();
   });
 
+  it('appends the download percentage only when progress is a finite number', async () => {
+    const { rerender } = render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+        updater={{
+          checking: false,
+          available: true,
+          info: { version: '1.2.3' },
+          downloading: true,
+          progress: 42,
+          performUpdateAction: vi.fn(async () => {}),
+        }}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '下载中... 42%' })).toBeInTheDocument();
+
+    // progress 缺失时整体回退到纯文案，绝不把 NaN% 泄进 aria-label 或徽标。
+    rerender(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+        updater={{
+          checking: false,
+          available: true,
+          info: { version: '1.2.3' },
+          downloading: true,
+          progress: undefined as unknown as number,
+          performUpdateAction: vi.fn(async () => {}),
+        }}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '下载中...' })).toBeInTheDocument();
+    expect(screen.queryByText(/NaN/)).not.toBeInTheDocument();
+  });
+
   it('keeps the global chat entry label fixed even when the current session has a title', async () => {
     getCurrentSessionIdMock.mockReturnValue('session-2');
     getSessionStoreMock.mockReturnValue({
@@ -390,7 +432,8 @@ describe('ModernSidebar shell navigation', () => {
   });
 
   it('keeps the new-session shortcut hint scoped to macOS desktop hover', () => {
-    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+      + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
 
     expect(sidebarSource).toContain("import { formatShortcut } from '@/command-palette/registry/shortcutUtils';");
     expect(sidebarSource).toContain("import { isMacOS, isMobilePlatform } from '@/utils/platform';");
@@ -1038,7 +1081,8 @@ describe('ModernSidebar shell navigation', () => {
   });
 
   it('wires topic group drop handlers to persist reordered group ids through the sidebar source', () => {
-    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+      + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
 
     expect(sidebarSource).toContain("await invoke('chat_v2_reorder_groups', { groupIds: reorderedIds });");
     expect(sidebarSource).toContain("onDrop={(event) => void handleRecentGroupDrop(event, group.id)}");
@@ -1209,7 +1253,8 @@ describe('ModernSidebar shell navigation', () => {
   });
 
   it('uses context-mode app menus for recent session rows so left click does not open the menu', () => {
-    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+      + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
 
     expect(sidebarSource).toContain('<AppMenu');
     expect(sidebarSource).toContain('mode="context"');
@@ -1241,7 +1286,8 @@ describe('ModernSidebar shell navigation', () => {
   });
 
   it('keeps thread text padding unchanged without left or right quick action buttons', () => {
-    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+      + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
     const primitiveSource = readFileSync(resolve(process.cwd(), 'src/features/workbench/components/sidebar/WorkbenchSidebar.tsx'), 'utf-8');
 
     expect(primitiveSource).toContain('function WorkbenchSidebarRow(');
@@ -1261,7 +1307,8 @@ describe('ModernSidebar shell navigation', () => {
   });
 
   it('keeps grouped session titles aligned while allowing long titles to scroll on hover', () => {
-    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8')
+      + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
 
     expect(sidebarSource).toContain("'space-y-0.5 overflow-hidden'");
     expect(sidebarSource).toContain('<HoverScrollSidebarLabel text={sessionTitle} />');
