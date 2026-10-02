@@ -209,6 +209,7 @@ fn init_backend_sentry_client() -> Option<ClientInitGuard> {
     Some(guard)
 }
 
+mod dev_keep_rendering;
 mod backend_sentry_command {
     use super::{init_backend_sentry_client, BackendSentryState};
     use log::info;
@@ -1633,9 +1634,16 @@ pub fn run() {
                     if let Err(e) = window.show() {
                         warn!("[setup] 显示主窗口失败: {}", e);
                     }
-                    if let Err(e) = window.set_focus() {
-                        warn!("[setup] 聚焦主窗口失败: {}", e);
+                    // 开发版 UI 自动化（调试桥开启）时不抢焦点：每次改 Rust 代码都会重启应用，
+                    // 抢焦点会打断正在用电脑的人；脚本驱动不依赖窗口在前台。
+                    if !crate::dev_keep_rendering::ui_automation_enabled() {
+                        if let Err(e) = window.set_focus() {
+                            warn!("[setup] 聚焦主窗口失败: {}", e);
+                        }
                     }
+
+                    // 开发版 UI 自动化：窗口在后台也保持渲染（仅 debug + VITE_DS_UI_BRIDGE=1）
+                    crate::dev_keep_rendering::keep_rendering_when_occluded(&window);
 
                     let standard_window_for_e2e = std::env::var("DSTU_E2E_STANDARD_WINDOW")
                         .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
