@@ -2802,7 +2802,10 @@ export function LearningHubSidebar({
   }, [deleteTarget, executePermanentDelete, executeEmptyTrash, items, t, clearSelection, handleRefresh]);
 
   // ★ 右键「引用到对话」→ injectToChat（对齐批量注入契约）
-  const handleReferenceToChat = useCallback(async (target: ContextMenuTarget): Promise<boolean> => {
+  const handleReferenceToChat = useCallback(async (
+    target: ContextMenuTarget,
+    options?: { openAttachmentPanel?: boolean },
+  ): Promise<boolean> => {
     if (!canInject()) {
       showGlobalNotification('warning', t('finder.multiSelect.noChatSession'));
       return false;
@@ -2847,6 +2850,7 @@ export function LearningHubSidebar({
       sourceType,
       name,
       metadata: { title: name },
+      openAttachmentPanel: options?.openAttachmentPanel,
     });
     if (result.success && result.contextRef && onReferenceToChat) {
       onReferenceToChat(result.contextRef);
@@ -2874,7 +2878,8 @@ export function LearningHubSidebar({
     dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
     // 新会话没起来（极少见）就退回当前会话，不让入口失效
     await newSessionReady;
-    const ok = await handleReferenceToChat(target);
+    // 输入框里的引用条已经显示这份资料，不再弹附件面板（会盖住空态标题、与引用条重复）
+    const ok = await handleReferenceToChat(target, { openAttachmentPanel: false });
     if (!ok) return;
     const name = target.type === 'resource'
       ? target.resource.title
