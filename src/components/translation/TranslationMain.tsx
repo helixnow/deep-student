@@ -88,7 +88,11 @@ function loadLayoutMode(): LayoutMode {
 }
 
 /** 主区窄于该宽度时强制上下布局 */
-const NARROW_LAYOUT_THRESHOLD = 500;
+// 低于此宽度强制上下分栏：500 时约 515px 的预览栏仍左右分栏，每栏只剩 ~210px，
+// 译文栏标题被右侧图标挤成「翻译结」
+const NARROW_LAYOUT_THRESHOLD = 680;
+/** 工具条放不下「自动翻译 / 同步滚动」两个开关的容器宽度（开关仍在设置面板里） */
+const TOOLBAR_COMPACT_THRESHOLD = 860;
 
 /** 触屏命中区扩展：32px 图标钮扩到 ≥44px，视觉不变（与 InputBarUI.coarseHitAreaClass 同款范式） */
 const COARSE_HIT =
@@ -180,6 +184,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
   }, [isSmallScreen]);
 
   const isDesktopNarrow = !isSmallScreen && mainAreaWidth > 0 && mainAreaWidth < NARROW_LAYOUT_THRESHOLD;
+  const isToolbarCompact = !isSmallScreen && mainAreaWidth > 0 && mainAreaWidth < TOOLBAR_COMPACT_THRESHOLD;
   const effectiveStacked = isSmallScreen || isDesktopNarrow || layoutMode === 'stacked';
   const layoutControlValue: LayoutMode = isDesktopNarrow ? 'stacked' : layoutMode;
 
@@ -318,7 +323,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           includeAuto
           detectedLanguage={detectedLang}
           disabled={isTranslating}
-          className="min-w-0 max-w-[9rem] sm:max-w-none"
+          className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
         />
         <CommonTooltip
           content={`${t('translation:actions.swap_languages')} · ${t('translation:shortcuts.swap')}`}
@@ -344,7 +349,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           onChange={setTgtLang}
           languages={languageOptions}
           disabled={isTranslating}
-          className="min-w-0 max-w-[9rem] sm:max-w-none"
+          className={cn('min-w-0 max-w-[9rem]', !isToolbarCompact && 'sm:max-w-none')}
         />
       </div>
 
@@ -357,7 +362,9 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </span>
         )}
 
-        <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
+        {/* 窄容器（如学习资源页约 500px 的预览栏）里两个开关会挤进中间的语言组、文字叠在一起：
+            断点按窗口宽度判定管不到容器，按容器宽度收起（设置面板里仍可切换） */}
+        <div className={cn('hidden items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors', !isToolbarCompact && 'lg:flex')}>
           <Switch
             id="toolbar-auto-translate"
             checked={isAutoTranslate}
@@ -371,7 +378,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </Label>
         </div>
 
-        <div className="hidden lg:flex items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
+        <div className={cn('hidden items-center gap-2 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors', !isToolbarCompact && 'lg:flex')}>
           <Switch
             id="toolbar-sync-scroll"
             checked={isSyncScroll}
@@ -385,7 +392,7 @@ export const TranslationMain: React.FC<TranslationMainProps> = ({
           </Label>
         </div>
 
-        {!settingsAsPage && <div className="hidden lg:block w-px h-4 bg-border" />}
+        {!settingsAsPage && <div className={cn('hidden w-px h-4 bg-border', !isToolbarCompact && 'lg:block')} />}
 
         {/* 📱 小屏不渲染页内齿轮：设置入口统一收在宿主移动顶栏
             （learning-hub rightActions 更多菜单 → 设置，经 translation:openSettings

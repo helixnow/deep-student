@@ -1278,6 +1278,8 @@ export function LearningHubSidebar({
     if (result.ok) {
       showGlobalNotification('success', t('finder.create.translationSuccess'));
       handleRefresh();
+      // 列表选中跟到新建的条目（否则高亮还停在之前选中的文件上）
+      setSelectedIds(new Set([result.value.id]));
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'translation'));
       }
@@ -1300,6 +1302,8 @@ export function LearningHubSidebar({
     if (result.ok) {
       showGlobalNotification('success', t('finder.create.essaySuccess'));
       handleRefresh();
+      // 列表选中跟到新建的条目（否则高亮还停在之前选中的文件上）
+      setSelectedIds(new Set([result.value.id]));
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'essay'));
       }
@@ -1322,6 +1326,8 @@ export function LearningHubSidebar({
     if (result.ok) {
       showGlobalNotification('success', t('finder.create.mindmapSuccess'));
       handleRefresh();
+      // 列表选中跟到新建的条目（否则高亮还停在之前选中的文件上）
+      setSelectedIds(new Set([result.value.id]));
       if (onOpenApp) {
         onOpenApp(dstuNodeToResourceListItem(result.value, 'mindmap'));
       }
