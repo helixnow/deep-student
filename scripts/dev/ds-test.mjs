@@ -103,7 +103,8 @@ if (window.__DS_TEST_VERSION__ !== __HELPER_VERSION__) {
     }
     return text;
   };
-  const nameOf = (el) => norm(el.getAttribute('aria-label') || visibleText(el) || el.getAttribute('title') || el.value || '');
+  // 输入框：aria-label → placeholder（无障碍名兜底同样用它）→ 当前值
+  const nameOf = (el) => norm(el.getAttribute('aria-label') || visibleText(el) || el.getAttribute('title') || el.getAttribute('placeholder') || el.value || '');
   const SEL = 'button,a[href],input,textarea,select,[role=button],[role=menuitem],[role=option],[role=tab],[role=radio],[role=switch],[role=checkbox],[role=treeitem],[contenteditable=true]';
   const docs = () => {
     const out = [document];
