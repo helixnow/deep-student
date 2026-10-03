@@ -81,8 +81,13 @@ export function buildAiDashboardIntent(
     })),
   );
 
-  const progressIdx = blocks.findIndex((block) => block.type === 'progress');
-  const insertAt = progressIdx >= 0 ? progressIdx : blocks.length;
+  // 制卡任务卡放在待办卡之前（简报的待办已由进度条改为统计卡，按标题定位）
+  const todosTitle = labels.todosTitle ?? labels.progressTitle;
+  const todosIdx = blocks.findIndex(
+    (block) => block.type === 'progress'
+      || (block.type === 'stat-card' && (block.props as { title?: string }).title === todosTitle),
+  );
+  const insertAt = todosIdx >= 0 ? todosIdx : blocks.length;
   blocks.splice(insertAt, 0, {
     type: 'stat-card',
     props: {

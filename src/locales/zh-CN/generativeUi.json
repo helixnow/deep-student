@@ -274,6 +274,8 @@
       "due_trend_due": "待复习",
       "due_trend_none": "暂无到期",
       "progress_title": "待办进度",
+      "todos_title": "待办",
+      "no_overdue": "无逾期",
       "overdue_label": "{{count}} 项逾期",
       "pending_label": "{{count}} 项待办",
       "start_review": "开始复习",

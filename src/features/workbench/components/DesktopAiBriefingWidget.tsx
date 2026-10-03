@@ -52,6 +52,8 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
           dueTrendDue: t('generativeUi:workbench.briefing.due_trend_due'),
           dueTrendNone: t('generativeUi:workbench.briefing.due_trend_none'),
           progressTitle: t('generativeUi:workbench.briefing.progress_title'),
+          todosTitle: t('generativeUi:workbench.briefing.todos_title'),
+          noOverdueLabel: t('generativeUi:workbench.briefing.no_overdue'),
           overdueLabel: t('generativeUi:workbench.briefing.overdue_label'),
           pendingLabel: t('generativeUi:workbench.briefing.pending_label'),
           startReview: t('generativeUi:workbench.briefing.start_review'),

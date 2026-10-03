@@ -274,6 +274,8 @@
       "due_trend_due": "To review",
       "due_trend_none": "None due",
       "progress_title": "Todo progress",
+      "todos_title": "To-dos",
+      "no_overdue": "Nothing overdue",
       "overdue_label": "{{count}} overdue",
       "pending_label": "{{count}} pending",
       "start_review": "Start review",

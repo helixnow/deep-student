@@ -38,7 +38,8 @@ describe('buildAiDashboardIntent — unified today learning', () => {
   it('keeps the old layout when callers do not pass the new labels', () => {
     const { dueMistakesTitle: _m, dueNotesTitle: _n, ...legacy } = LABELS;
     const intent = buildAiDashboardIntent({ dueFlashcards: 0, dueMistakes: 5 }, legacy);
-    expect(statTitles(intent)).toEqual(['Cards due', 'Tasks']);
+    // 待办由满格进度条改为统计卡（标题回退 progressTitle），制卡任务卡排在它前面
+    expect(statTitles(intent)).toEqual(['Cards due', 'Tasks', 'Progress']);
     expect(intent.blocks.some((b) => b.type === 'alert')).toBe(true);
   });
 });
