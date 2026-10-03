@@ -306,7 +306,11 @@ async fn dstu_list_folder_first(
             Err(e) => return Err(e.to_string()),
         };
         for folder in root_folders {
-            results.push(DstuNode::folder(&folder.id, &folder.title, &folder.title));
+            // 带上文件夹真实时间（此前缺省为「现在」，资源库里文件夹恒显示「不到 1 分钟前」）
+            results.push(
+                DstuNode::folder(&folder.id, &folder.title, &folder.title)
+                    .with_timestamps(folder.created_at, folder.updated_at),
+            );
         }
 
         // 列出根级资源（folder_id IS NULL 的资源）
@@ -372,11 +376,10 @@ async fn dstu_list_folder_first(
                 continue;
             }
             let sub_path = format!("{}/{}", folder_path, sub_folder.title);
-            results.push(DstuNode::folder(
-                &sub_folder.id,
-                &sub_path,
-                &sub_folder.title,
-            ));
+            results.push(
+                DstuNode::folder(&sub_folder.id, &sub_path, &sub_folder.title)
+                    .with_timestamps(sub_folder.created_at, sub_folder.updated_at),
+            );
         }
 
         // 列出文件夹内的资源
@@ -558,7 +561,10 @@ pub async fn dstu_get(
             match crate::vfs::VfsFolderRepo::get_folder(&vfs_db, &id) {
                 Ok(Some(folder)) => {
                     let folder_path = build_simple_resource_path(&folder.id);
-                    Some(DstuNode::folder(&folder.id, &folder_path, &folder.title))
+                    Some(
+                        DstuNode::folder(&folder.id, &folder_path, &folder.title)
+                            .with_timestamps(folder.created_at, folder.updated_at),
+                    )
                 }
                 Ok(None) => {
                     // UUID 格式但不是文件夹时，尝试回退查找其他资源类型
