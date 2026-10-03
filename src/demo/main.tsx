@@ -57,6 +57,9 @@ import './demo.css';
 // ④ i18n
 import i18n from '../i18n';
 
+/** 剧本会话迟迟没上屏时，最多等这么久也照样通知父页撤占位 */
+const READY_FALLBACK_MS = 10000;
+
 async function main() {
   await i18n.changeLanguage('zh-CN');
   document.documentElement.lang = 'zh-CN';
@@ -69,7 +72,8 @@ async function main() {
     { OverlayCoordinatorProvider },
     { DialogControlProvider },
     { installDemoAutoPlay },
-    { dispatchAppEvent, APP_EVENTS },
+    { requestChatSessionNavigation },
+    { sessionManager },
     { DEMO_SESSIONS },
   ] = await Promise.all([
     import('../App'),
@@ -78,7 +82,8 @@ async function main() {
     import('../components/shared/OverlayCoordinator'),
     import('../contexts/DialogControlContext'),
     import('./autoPlay'),
-    import('../events/app'),
+    import('../features/chat/navigation/pendingChatNavigation'),
+    import('../features/chat/core/session/sessionManager'),
     import('./fixtures'),
   ]);
 
@@ -87,7 +92,6 @@ async function main() {
   const initialScene = requestedScene && validSceneIds.has(requestedScene)
     ? requestedScene
     : DEMO_SESSIONS[0]?.meta.id;
-  let selectedScene = initialScene;
 
   const { createRoot } = await import('react-dom/client');
   createRoot(document.getElementById('root')!).render(
@@ -105,14 +109,23 @@ async function main() {
     </ErrorBoundary>,
   );
 
-  // 通知 hero 落地页撤下"演示加载中"占位。用 setTimeout 而非 rAF：
-  // rAF 在离屏 iframe（演示窗被平移出视口/未滚到）会被浏览器节流甚至暂停，
-  // 回调可能永不执行——消息丢失会让占位层盖住已加载的演示。
-  // hero 侧另有 15s 超时兜底。
+  // 通知 hero 落地页撤下"演示加载中"占位：等剧本会话真正成为当前会话、
+  // 历史加载完毕再发，早发会让占位撤掉后露出启动画面和 draft 的空白聊天区。
+  // 轮询用 setTimeout 而非 rAF：rAF 在离屏 iframe（演示窗被平移出视口/未滚到）
+  // 会被浏览器节流甚至暂停，回调可能永不执行。hero 侧另有 15s 超时兜底。
   if (window.parent !== window) {
-    setTimeout(() => {
-      window.parent.postMessage({ type: 'demo-shell-ready' }, window.location.origin);
-    }, 0);
+    const readyDeadline = Date.now() + READY_FALLBACK_MS;
+    const notifyWhenSceneShown = () => {
+      const currentId = sessionManager.getCurrentSessionId();
+      const shown = !!currentId && validSceneIds.has(currentId) &&
+        !!sessionManager.peek(currentId)?.getState().isDataLoaded;
+      if (shown || Date.now() > readyDeadline) {
+        window.parent.postMessage({ type: 'demo-shell-ready' }, window.location.origin);
+        return;
+      }
+      setTimeout(notifyWhenSceneShown, 100);
+    };
+    notifyWhenSceneShown();
   }
 
   // ⑤.5 自动播放：直接打开 demo 时立即播放；被 hero iframe 嵌入时等待父页
@@ -139,28 +152,12 @@ async function main() {
     }
     if (data.type !== 'demo:set-scene' || typeof data.sessionId !== 'string') return;
     if (!validSceneIds.has(data.sessionId)) return;
-    selectedScene = data.sessionId;
-    dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: data.sessionId });
+    requestChatSessionNavigation(data.sessionId);
   });
 
-  // ⑥ ChatV2Page 完成首轮会话加载后，自动导航到第一个剧本会话。
-  // sessions-updated 发出时 draft 会话的 setCurrentSessionId 尚未执行，
-  // 因此再让出一拍，避免导航结果被 draft 选择覆盖。
-  let navigated = false;
-  const navigateToDemo = () => {
-    if (navigated) return;
-    navigated = true;
-    if (selectedScene) {
-      dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId: selectedScene });
-    }
-  };
-  window.addEventListener(
-    'chat-v2:sessions-updated',
-    () => setTimeout(navigateToDemo, 600),
-    { once: true },
-  );
-  // 兜底：事件链路异常时也保证落到演示会话
-  setTimeout(navigateToDemo, 4000);
+  // ⑥ 打开剧本会话走生产的导航握手：ChatV2Page 初始加载会把当前会话设成
+  // 启动 draft，并忽略加载期间到达的导航事件；握手把意图挂起，加载完成后重放。
+  if (initialScene) requestChatSessionNavigation(initialScene);
 }
 
 void main();
