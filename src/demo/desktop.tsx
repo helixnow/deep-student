@@ -16,6 +16,7 @@ import { appRegistry } from '@/features/workbench/core/appRegistry';
 import { FLOATING_DOCK_CLEARANCE } from '@/features/workbench/core/metrics';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { setDockPinned } from '@/features/workbench/components/DockPinnedStore';
+import { WB_SYS_WIDTH_MEDIUM, WB_SYS_WIDTH_WIDE } from '@/features/workbench/apps/system/useWbSysSize';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 
 /** 演示里数据齐全、能完整操作的应用 */
@@ -92,20 +93,19 @@ async function waitFor<T>(probe: () => T | null | undefined, timeoutMs: number):
 
 const clamp = (value: number, min: number, max: number) => Math.round(Math.min(Math.max(value, min), max));
 
+interface Frame { x: number; y: number; w: number; h: number }
+
 /**
- * 开场两扇窗：对话在左、闪卡紧挨着，都停在桌面小组件左边、Dock 上方。
- * 桌面多宽都按比例排，宽桌面上对话窗口最多 820、闪卡最多 600；
- * 窄桌面上先收对话、再收闪卡（低于应用的最小拖拽尺寸也能正常排版），还放不下才让闪卡往对话底下错开，
+ * 开场两扇窗：对话在左、闪卡紧挨着，一起摆在桌面小组件左边的空地里，有富余就居中；
+ * 底边永远停在 Dock 带上方——窗口伸进 Dock 带，Dock 会被强制收起。
+ * 对话窗口避开 640–880 这一档（应用窗口的 medium 尺寸）：这一档会展开会话侧栏，正文只剩 500 来宽。
+ * 地方够就给到 880 以上（侧栏和正文都宽），不够就收在 620 以内（侧栏收起）；
+ * 再窄先收对话、再收闪卡（低于应用的最小拖拽尺寸也能正常排版），还放不下才让闪卡往对话底下错开，
  * 不去压右边的日程和简报。
  */
-export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
-  const workArea = await waitFor(() => document.querySelector<HTMLElement>('[data-wb-workarea]'), 20000);
-  if (!workArea) return false;
-  await waitFor(() => appRegistry.get('chat') && appRegistry.get('flashcards'), 10000);
-  // 小组件列在快照恢复链路走完后才挂载；关掉了就没有
-  const widgets = await waitFor(() => document.querySelector<HTMLElement>('.wb-desktop-widget-column'), 3000);
-
+function layoutWindows(workArea: HTMLElement): { chat: Frame; cards: Frame } {
   const area = workArea.getBoundingClientRect();
+  const widgets = document.querySelector<HTMLElement>('.wb-desktop-widget-column');
   const margin = 24;
   const gap = 16;
   const top = 20;
@@ -113,8 +113,11 @@ export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
   const available = right - margin;
   const maxHeight = area.height - top - FLOATING_DOCK_CLEARANCE - 8;
 
-  let chatW = clamp(available * 0.55, 560, 820);
-  let cardsW = clamp(available - chatW - gap, 420, 600);
+  const roomy = available >= WB_SYS_WIDTH_WIDE + gap + 560;
+  let chatW = roomy
+    ? clamp(available - gap - 600, WB_SYS_WIDTH_WIDE, 960)
+    : clamp(available * 0.56, 560, WB_SYS_WIDTH_MEDIUM - 20);
+  let cardsW = clamp(available - chatW - gap, roomy ? 560 : 440, 640);
   let overflow = chatW + gap + cardsW - available;
   const chatShrink = clamp(overflow, 0, chatW - 480);
   chatW -= chatShrink;
@@ -122,21 +125,64 @@ export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
   const cardsShrink = clamp(overflow, 0, cardsW - 400);
   cardsW -= cardsShrink;
   overflow -= cardsShrink;
-  const chatH = clamp(maxHeight, 440, 760);
-  const cardsH = clamp(maxHeight - 140, 420, 600);
+  // 富余的地方两边分；左边那列桌面图标要么整列让出来，要么整列盖住，别盖一半
+  const free = Math.max(0, -overflow);
+  const iconsRight = Math.max(0, ...[...document.querySelectorAll('.wb-desk-icon')]
+    .map((icon) => icon.getBoundingClientRect().right - area.left));
+  let left = margin + Math.round(free / 2);
+  if (iconsRight && left < iconsRight + gap) left = margin + free >= iconsRight + gap ? Math.round(iconsRight + gap) : margin;
+  return {
+    chat: { x: left, y: top, w: chatW, h: Math.round(Math.min(maxHeight, 800)) },
+    cards: {
+      x: left + chatW + gap - Math.max(0, overflow),
+      y: top,
+      w: cardsW,
+      h: Math.round(Math.max(Math.min(maxHeight - 120, 640), Math.min(maxHeight, 400))),
+    },
+  };
+}
 
+/**
+ * 官网上的舞台跟着浏览器窗口变：两扇窗还没被访客碰过，就按新尺寸重排；
+ * 一旦在窗口上按下过指针（拖、缩放、点内容），就交给访客自己摆
+ */
+function rearrangeOnResize(workArea: HTMLElement, ids: { chat: string; cards: string }): void {
+  let touched = false;
+  let timer = 0;
+  const onPointerDown = (event: PointerEvent) => {
+    if ((event.target as Element | null)?.closest('.wb-window')) touched = true;
+  };
+  const onResize = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
+      const { windows, moveWindow } = useWindowStore.getState();
+      if (touched || !windows[ids.chat] || !windows[ids.cards]) {
+        window.removeEventListener('resize', onResize);
+        document.removeEventListener('pointerdown', onPointerDown, true);
+        return;
+      }
+      const next = layoutWindows(workArea);
+      moveWindow(ids.chat, next.chat);
+      moveWindow(ids.cards, next.cards);
+    }, 300);
+  };
+  window.addEventListener('resize', onResize);
+  document.addEventListener('pointerdown', onPointerDown, true);
+}
+
+export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
+  const workArea = await waitFor(() => document.querySelector<HTMLElement>('[data-wb-workarea]'), 20000);
+  if (!workArea) return false;
+  await waitFor(() => appRegistry.get('chat') && appRegistry.get('flashcards'), 10000);
+  // 小组件列在快照恢复链路走完后才挂载（关掉了就没有），排窗要量它的左边
+  await waitFor(() => document.querySelector('.wb-desktop-widget-column'), 3000);
+
+  const frames = layoutWindows(workArea);
   const store = useWindowStore.getState();
-  store.openWindow({
-    typeId: 'flashcards',
-    instanceKey: null,
-    initialFrame: { x: margin + chatW + gap - Math.max(0, overflow), y: top, w: cardsW, h: cardsH },
-  });
-  const chat = store.openWindow({
-    typeId: 'chat',
-    instanceKey: sceneId,
-    initialFrame: { x: margin, y: top, w: chatW, h: chatH },
-  });
+  const cards = store.openWindow({ typeId: 'flashcards', instanceKey: null, initialFrame: frames.cards });
+  const chat = store.openWindow({ typeId: 'chat', instanceKey: sceneId, initialFrame: frames.chat });
   useWindowStore.getState().focusWindow(chat);
+  rearrangeOnResize(workArea, { chat, cards });
 
   // 对话窗口挂载时，导航握手正好从启动草稿切到剧本会话，窗口没赶上这次切换，
   // 标题停在「新对话」：会话标题载入后补一次
