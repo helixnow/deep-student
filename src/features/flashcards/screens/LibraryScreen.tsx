@@ -503,7 +503,7 @@ export const LibraryScreen: React.FC = () => {
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           <AppMenuItem icon={<UploadSimple size={18} />} disabled={importing} onClick={handleImportApkg}>{t(importing ? 'library.import.running' : 'library.import.apkg')}</AppMenuItem>
-          <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()}>{exportLabel}</AppMenuItem>
+          <AppMenuItem icon={<DownloadSimple size={18} />} disabled={exporting} onClick={() => void handleExportApkg()} data-testid="fc-lib-export-apkg">{exportLabel}</AppMenuItem>
           <AppMenuItem icon={<ArrowClockwise size={18} />} disabled={loading} onClick={() => void refresh()}>{t('library.refresh')}</AppMenuItem>
         </AppMenuContent>
       </AppMenu>
@@ -596,6 +596,7 @@ export const LibraryScreen: React.FC = () => {
         onClick={() => void handleExportApkg()}
         title={translate('library.export.hint', { defaultValue: '导出为 Anki 牌组（.apkg），保留每张卡的模板与样式；未选中卡片时导出整个卡片库' })}
         className="fc-lib-create-cta text-sm"
+        data-testid="fc-lib-export-apkg"
       >
         <DownloadSimple size={18} />
         {!isSmallScreen && exportLabel}

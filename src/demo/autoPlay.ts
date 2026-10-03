@@ -12,6 +12,7 @@
  * 页面刷新（新一次访问）后首轮播放照旧。
  */
 
+import i18n from '@/i18n';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { SessionManagerEvent } from '@/features/chat/core/session/types';
 import { DEMO_SESSIONS } from './fixtures';
@@ -34,7 +35,7 @@ const isDemoSession = (sessionId: string) =>
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 const findComposer = (): HTMLTextAreaElement | null =>
-  document.querySelector<HTMLTextAreaElement>('textarea[placeholder^="请输入"]') ??
+  document.querySelector<HTMLTextAreaElement>('#input-bar-v2-textarea') ??
   document.querySelector<HTMLTextAreaElement>('textarea');
 
 /** 经原生 setter + input 事件写入，React 受控组件可正常感知 */
@@ -174,7 +175,7 @@ export function installDemoAutoPlay(
 
     const sendBtn = [...document.querySelectorAll('button')].find(
       (b) =>
-        b.getAttribute('aria-label') === '发送消息' &&
+        b.getAttribute('aria-label') === i18n.t('chatV2:inputBar.sendMessage') &&
         !(b as HTMLButtonElement).disabled,
     ) as HTMLButtonElement | undefined;
     if (sendBtn) {

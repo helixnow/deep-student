@@ -233,6 +233,7 @@ export default defineConfig((env) => {
 
   return {
     ...base,
+    define: { ...(base.define ?? {}), "import.meta.env.VITE_DS_DEMO": JSON.stringify("1") },
     plugins: [demoModuleStubPlugin(), demoPublicPathPlugin(), ...(base.plugins ?? []), demoWarmupPreloadPlugin()],
     build: {
       ...base.build,

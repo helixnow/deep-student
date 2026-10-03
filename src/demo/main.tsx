@@ -9,10 +9,11 @@
  *
  * 加载顺序至关重要：mock 必须先于任何 app 模块 import。
  *
- * 访问：http://127.0.0.1:1422/demo.html（?theme=dark 切暗色，?desktop=1 开学习桌面）
+ * 访问：http://127.0.0.1:1422/demo.html（?theme=dark 切暗色，?desktop=1 开学习桌面，?lang=en 英文界面）
  */
 
 import React from 'react';
+import { demoLang } from './lang';
 
 const params = new URLSearchParams(window.location.search);
 const dark = params.get('theme') === 'dark';
@@ -36,6 +37,14 @@ Object.defineProperty(window, 'Notification', {
     requestPermission: async (): Promise<NotificationPermission> => 'denied',
   }),
 });
+
+// 这两处功能还没进正式版，演示里不露出：对话首页的「今日待复习」、闪卡库的「导出 .apkg」
+const hideUnreleased = document.createElement('style');
+hideUnreleased.textContent = '[data-testid="today-review-hint"],[data-testid="fc-lib-export-apkg"]{display:none!important}';
+document.head.appendChild(hideUnreleased);
+
+// 界面文案整包：只取当前语言那一块，和后面的 App 代码并行下载
+const localeBundle = demoLang === 'en-US' ? import('./locales/en-US') : import('./locales/zh-CN');
 
 // ② localStorage 预置（早于 App 模块级读取）
 
@@ -88,8 +97,12 @@ async function main() {
     ]).catch(() => { /* 真用到时还会再拉一次 */ });
   }
 
-  await i18n.changeLanguage('zh-CN');
-  document.documentElement.lang = 'zh-CN';
+  const { default: bundles } = await localeBundle;
+  for (const [ns, resources] of Object.entries(bundles)) {
+    i18n.addResourceBundle(demoLang, ns, resources, true, true);
+  }
+  await i18n.changeLanguage(demoLang);
+  document.documentElement.lang = demoLang;
 
   // ⑤ mock 就绪后再加载 app 组件树（与 src/main.tsx 的 appTree 同构）
   const [

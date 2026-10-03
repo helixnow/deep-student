@@ -28,6 +28,7 @@ import {
 import { abortScript, playReplyScript } from './scriptPlayer';
 import { getPlayedHistory, seedPlayedHistory } from './playedHistory';
 import { DESKTOP_SCENE_HISTORY } from './desktopHistory';
+import { tr } from './lang';
 import { getDemoQuestions, handleDemoQuestionBank } from './questionBank';
 import { addDemoLibraryCards, handleDemoFlashcards } from './flashcards';
 import {
@@ -167,7 +168,7 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           // 学习桌面演示里切回经典布局就没有入口再切回来（品牌菜单里那一项已藏起来，这里拦其他入口）：
           // 保存失败时应用会弹提示并留在桌面上
           if (options.desktop && key === 'desktop.workbenchMode' && String(args.value) === 'false') {
-            throw new Error('网页演示只有学习桌面，经典布局见页面顶部的演示。');
+            throw new Error(tr('网页演示只有学习桌面，经典布局见页面顶部的演示。', 'This web demo only has the study desktop; the classic layout is in the demo at the top of the page.'));
           }
           settingsKV.set(key, args.value);
           return null;
@@ -227,9 +228,9 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           };
         }
         case 'export_multi_template_apkg':
-          throw new Error('请在桌面版中导出 APKG 文件。');
+          throw new Error(tr('请在桌面版中导出 APKG 文件。', 'Export APKG files in the desktop app.'));
         case 'add_cards_to_anki_connect': {
-          throw new Error('请在桌面版中连接 Anki，完成卡片同步。');
+          throw new Error(tr('请在桌面版中连接 Anki，完成卡片同步。', 'Connect Anki in the desktop app to sync cards.'));
         }
 
         case 'plugin:clipboard-manager|write_text':
@@ -257,7 +258,7 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           return mindmapId === DEMO_MINDMAP_ID ? demoMindmapContent : null;
         }
         case 'vfs_update_mindmap': {
-          if (args.mindmapId !== DEMO_MINDMAP_ID) throw new Error('请选择当前章节导图。');
+          if (args.mindmapId !== DEMO_MINDMAP_ID) throw new Error(tr('请选择当前章节导图。', 'Choose the mind map for this chapter.'));
           const { content, expectedUpdatedAt, ...metadata } = (args.params ?? {}) as Record<string, unknown>;
           if (expectedUpdatedAt && expectedUpdatedAt !== demoMindmap.updatedAt) throw new Error('MINDMAP_UPDATE_CONFLICT');
           if (typeof content === 'string') demoMindmapContent = content;
@@ -463,7 +464,7 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           return [
             {
               id: 'demo-config-deepseek',
-              name: '演示模型服务',
+              name: tr('演示模型服务', 'Demo model service'),
               vendorId: 'deepseek',
               vendorName: 'DeepSeek',
               providerType: 'openai',
@@ -666,7 +667,7 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
         case 'chat_v2_create_group':
           return {
             id: `demo-group-${Date.now().toString(36)}`,
-            name: String(args.name ?? '新建分组'),
+            name: String(args.name ?? tr('新建分组', 'New group')),
             icon: args.icon ?? null,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),

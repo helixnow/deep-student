@@ -18,6 +18,7 @@ import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { setDockPinned } from '@/features/workbench/components/DockPinnedStore';
 import { WB_SYS_WIDTH_MEDIUM, WB_SYS_WIDTH_WIDE } from '@/features/workbench/apps/system/useWbSysSize';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import { tr } from './lang';
 
 /** 演示里数据齐全、能完整操作的应用 */
 const DEMO_APPS = new Set(['chat', 'chat-session', 'flashcards', 'pomodoro']);
@@ -25,7 +26,7 @@ const DEMO_APPS = new Set(['chat', 'chat-session', 'flashcards', 'pomodoro']);
 /** Dock 固定区：对话、闪卡在前，其余沿用产品默认（资源库 / 待办 / 设置，打开是说明卡） */
 const DEMO_DOCK_PINNED = ['chat', 'flashcards', 'files', 'todo', 'settings'];
 
-const DOWNLOAD_URL = '/download';
+const DOWNLOAD_URL = tr('/download', 'https://github.com/helixnow/deep-student/releases/latest');
 
 const UnavailableApp: React.FC<{ typeId: string; onTitleChange: (title: string) => void }> = ({ typeId, onTitleChange }) => {
   const { t } = useTranslation('workbench');
@@ -36,9 +37,14 @@ const UnavailableApp: React.FC<{ typeId: string; onTitleChange: (title: string) 
     <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
       <div className="mb-2 scale-150">{def?.icon}</div>
       <div className="space-y-1.5">
-        <p className="text-base font-semibold text-foreground">演示版没有包含「{name}」</p>
+        <p className="text-base font-semibold text-foreground">
+          {tr(`演示版没有包含「${name}」`, `${name} isn't included in this demo`)}
+        </p>
         <p className="max-w-[22rem] text-sm leading-relaxed text-muted-foreground">
-          网页演示只带了对话和闪卡。下载桌面端，导入自己的教材和笔记，就能用上全部应用。
+          {tr(
+            '网页演示只带了对话和闪卡。下载桌面端，导入自己的教材和笔记，就能用上全部应用。',
+            'The web demo only includes Chat and Flashcards. Download the desktop app and import your own textbooks and notes to use every app.',
+          )}
         </p>
       </div>
       <a
@@ -46,7 +52,7 @@ const UnavailableApp: React.FC<{ typeId: string; onTitleChange: (title: string) 
         href={DOWNLOAD_URL}
         target="_top"
       >
-        下载桌面端
+        {tr('下载桌面端', 'Download the desktop app')}
       </a>
     </div>
   );

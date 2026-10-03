@@ -53,21 +53,29 @@ function getDeferredLocaleState(lang: SupportedLanguage): DeferredLocaleState {
 // 已同步加载的核心命名空间（延迟加载时跳过）
 const CORE_NS = new Set(['common', 'sidebar']);
 
+// 官网演示的构建（vite.demo.config.ts）由演示入口按语言把全部文案整包加进来（src/demo/locales），
+// 这里既不打包按命名空间拆开的语言包，也不在启动后补载另一种语言
+const IS_DEMO_BUILD = import.meta.env.VITE_DS_DEMO === '1';
+
 // Vite glob 延迟导入：匹配所有 locale JSON 文件
 // 每个条目是 () => Promise<module>，在调用时才加载对应 chunk
-const localeModules = import.meta.glob('./locales/**/*.json');
+const localeModules: Record<string, () => Promise<unknown>> = IS_DEMO_BUILD
+  ? {}
+  : import.meta.glob('./locales/**/*.json');
 
 // 初始资源：仅含核心命名空间
-const resources = {
-  'zh-CN': {
-    common: zhCNCommon,
-    sidebar: zhCNSidebar,
-  },
-  'en-US': {
-    common: enUSCommon,
-    sidebar: enUSSidebar,
-  },
-};
+const resources = IS_DEMO_BUILD
+  ? {}
+  : {
+      'zh-CN': {
+        common: zhCNCommon,
+        sidebar: zhCNSidebar,
+      },
+      'en-US': {
+        common: enUSCommon,
+        sidebar: enUSSidebar,
+      },
+    };
 
 if (!i18n.isInitialized) {
   i18n
@@ -158,7 +166,7 @@ function requestDeferredNamespaces(lang: string): void {
 // 必须在首个异步加载开始前监听，避免用户在启动加载期间切换语言时漏掉事件。
 i18n.on('languageChanged', (newLang) => {
   const normalized = normalizeSupportedLanguage(newLang);
-  requestDeferredNamespaces(normalized);
+  if (!IS_DEMO_BUILD) requestDeferredNamespaces(normalized);
 
   if (newLang !== normalized) {
     void i18n.changeLanguage(normalized).catch(() => {});
@@ -166,7 +174,7 @@ i18n.on('languageChanged', (newLang) => {
 });
 
 // 立即开始加载延迟命名空间（不阻塞 i18n 导出和首帧渲染）
-void (async () => {
+if (!IS_DEMO_BUILD) void (async () => {
   // 优先加载启动时的当前语言，让 UI 文案尽快就位。
   const initialLang = normalizeSupportedLanguage(i18n.language);
   await loadDeferredNamespaces(initialLang);
