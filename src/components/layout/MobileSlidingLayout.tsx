@@ -23,6 +23,7 @@ import { MobileInFlowHeader } from './UnifiedMobileHeader';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MobileUnifiedDrawerProvider } from './MobileDrawerContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
+import { isMacOS, isMobilePlatform } from '@/utils/platform';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { Z_INDEX } from '@/config/zIndex';
 import type { CurrentView } from '@/types/navigation';
@@ -893,6 +894,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
                     <div
                       data-mobile-drawer-chrome
                       className="shrink-0 border-b border-[color:var(--shell-navigation-border)] bg-[color:var(--shell-navigation-surface)] pt-[calc(0.5rem+var(--mobile-safe-area-top,0px))]"
+                      // macOS 桌面窗口拉窄时抽屉贴着窗口左上角：品牌行下移到红绿灯下方，避免叠字
+                      style={!isMobilePlatform() && isMacOS() ? { paddingTop: '1.75rem' } : undefined}
                     >
                       <header className="flex h-11 items-center justify-between gap-3 px-3 pl-[calc(1rem+var(--mobile-safe-area-left,0px))]">
                         <div className="min-w-0 flex-1">
