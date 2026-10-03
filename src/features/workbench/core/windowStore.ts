@@ -28,7 +28,7 @@ import type {
   WorkbenchWindow,
 } from './types';
 import { appRegistry } from './appRegistry';
-import { TITLEBAR_HEIGHT } from './metrics';
+import { FLOATING_DOCK_CLEARANCE, TITLEBAR_HEIGHT } from './metrics';
 
 const Z_BASE = 10;
 const CASCADE_STEP = 24;
@@ -113,14 +113,30 @@ function nextCascadeOrigin(
   return slotPos(k);
 }
 
+/**
+ * 默认尺寸收进「桌面 − Dock 预留」，但不小于应用 minSize（实在放不下时宁可被 Dock 盖住一点）。
+ * 应用默认尺寸（如对话 1080×720）在 13 寸屏（桌面区 ~1200×710）上会铺到底边，输入栏底部被 Dock 盖住。
+ */
+function fitDefaultSize(size: number, available: number, min: number | undefined): number {
+  return Math.max(Math.min(size, available), Math.min(min ?? 0, size));
+}
+
 function nextFrame(
   input: OpenWindowInput,
   desktopSize: Size,
   windows: Record<string, WorkbenchWindow>,
 ): Frame {
   const def = appRegistry.get(input.typeId);
-  const w = input.initialFrame?.w ?? def?.defaultFrame.w ?? 720;
-  const h = input.initialFrame?.h ?? def?.defaultFrame.h ?? 520;
+  const w = input.initialFrame?.w ?? fitDefaultSize(
+    def?.defaultFrame.w ?? 720,
+    desktopSize.w - CASCADE_ORIGIN * 2,
+    def?.minSize?.w,
+  );
+  const h = input.initialFrame?.h ?? fitDefaultSize(
+    def?.defaultFrame.h ?? 520,
+    desktopSize.h - CASCADE_ORIGIN - FLOATING_DOCK_CLEARANCE,
+    def?.minSize?.h,
+  );
   if (input.initialFrame?.x != null && input.initialFrame?.y != null) {
     return { x: input.initialFrame.x, y: input.initialFrame.y, w, h };
   }

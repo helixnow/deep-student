@@ -19,6 +19,7 @@ import type {
   TilingContext,
   WorkbenchWindow,
 } from './types';
+import { FLOATING_DOCK_CLEARANCE } from './metrics';
 
 /** 平铺间距默认值（px），对标 macOS Sequoia "Tiled windows have margins" 默认开 */
 export const DEFAULT_TILE_MARGIN = 8;
@@ -148,6 +149,31 @@ export function hasDockObstructedWindow(
     if (!win.minimized && BOTTOM_REACHING_MODES.includes(win.displayMode)) return true;
   }
   return false;
+}
+
+/** Dock 居中，半宽按此估计（图标少时更窄；只用于判断浮窗是否横向压在 Dock 下） */
+const DOCK_HALF_WIDTH_ESTIMATE = 200;
+
+/**
+ * 浮动窗底边伸进 Dock 带（桌面底部 FLOATING_DOCK_CLEARANCE）且横向覆盖 Dock 居中区域：
+ * 与最大化 / 平铺一样需要 Dock 让位。此前只看平铺 / 最大化，默认尺寸铺到底边的浮动对话窗
+ * 输入栏底部一排按钮被 Dock 盖住。
+ */
+export function hasDockObstructedFloatingWindow(
+  windows: Record<string, WorkbenchWindow> | readonly WorkbenchWindow[],
+  desktopSize: { w: number; h: number },
+): boolean {
+  if (desktopSize.w <= 0 || desktopSize.h <= 0) return false;
+  const dockTop = desktopSize.h - FLOATING_DOCK_CLEARANCE;
+  const center = desktopSize.w / 2;
+  const list = Array.isArray(windows) ? windows : Object.values(windows);
+  return list.some((win) => (
+    !win.minimized
+    && win.displayMode === 'floating'
+    && win.frame.y + win.frame.h > dockTop
+    && win.frame.x < center + DOCK_HALF_WIDTH_ESTIMATE
+    && win.frame.x + win.frame.w > center - DOCK_HALF_WIDTH_ESTIMATE
+  ));
 }
 
 /** 仅当前左右配对共享其 ratio；被遮在同侧后方的窗口使用默认 50/50。 */

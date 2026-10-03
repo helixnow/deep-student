@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import {
   getActiveTilingPair,
   getTilingRatioForWindow,
+  hasDockObstructedFloatingWindow,
   hasDockObstructedWindow,
   resetActiveTilingPairCacheForTests,
   tilingPairKey,
@@ -125,5 +126,22 @@ describe('tiling — hasDockObstructedWindow（Dock 强制自动隐藏判定）'
     expect(hasDockObstructedWindow({ [win.id]: win })).toBe(false);
     const visible = makeWin({ displayMode: 'maximized' });
     expect(hasDockObstructedWindow({ [visible.id]: visible })).toBe(true);
+  });
+});
+
+describe('tiling — hasDockObstructedFloatingWindow', () => {
+  const desktop = { w: 1200, h: 710 };
+
+  it('浮动窗底边伸进 Dock 带且横向覆盖居中 Dock → 需要 Dock 让位', () => {
+    const win = makeWin({ displayMode: 'floating', frame: { x: 48, y: 0, w: 1065, h: 710 } });
+    expect(hasDockObstructedFloatingWindow([win], desktop)).toBe(true);
+  });
+
+  it('底边在 Dock 带之上 / 横向避开 Dock / 最小化 / 非浮动 → 不收 Dock', () => {
+    const above = makeWin({ displayMode: 'floating', frame: { x: 48, y: 48, w: 1065, h: 580 } });
+    const leftCorner = makeWin({ displayMode: 'floating', frame: { x: 0, y: 400, w: 300, h: 310 } });
+    const minimized = makeWin({ displayMode: 'floating', minimized: true, frame: { x: 48, y: 0, w: 1065, h: 710 } });
+    const maximized = makeWin({ displayMode: 'maximized', frame: { x: 48, y: 0, w: 1065, h: 710 } });
+    expect(hasDockObstructedFloatingWindow([above, leftCorner, minimized, maximized], desktop)).toBe(false);
   });
 });

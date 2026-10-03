@@ -14,6 +14,12 @@
 /** 窗口标题栏高度（px）。与 CSS token `--wb-titlebar-height` 同源对齐。 */
 export const TITLEBAR_HEIGHT = 38;
 
+/**
+ * 浮动窗口底部为 Dock 预留的高度（px）：Dock 本体 ~53 + 距底 ~17 + 间隙。
+ * 新窗默认尺寸收进「桌面 − 该值」；浮动窗底边伸进这一带时 Dock 自动收起（同最大化 / 平铺）。
+ */
+export const FLOATING_DOCK_CLEARANCE = 80;
+
 /** 标题栏高度的 CSS 自定义属性名（子应用安全区引用） */
 export const TITLEBAR_HEIGHT_CSS_VAR = '--wb-titlebar-height';
 

@@ -40,6 +40,7 @@ import {
   computeTiledFrame,
   getActiveTilingPair,
   hasDockObstructedWindow,
+  hasDockObstructedFloatingWindow,
   MAX_TILING_RATIO,
   MIN_TILING_RATIO,
 } from '../core/tiling';
@@ -556,7 +557,12 @@ export const WorkbenchDesktop: React.FC = () => {
   // 任一子应用铺到底缘（最大化 / 左右平铺 / 下半四分屏）时 Dock 强制默认收起，
   // 否则悬浮 Dock 会遮住窗口底部内容却不让位；
   // 弹出/收起走 Dock 自身的 autohide 热区机制，与用户设置项取或
-  const dockForceAutohide = useMemo(() => hasDockObstructedWindow(orderedWindows), [orderedWindows]);
+  // 浮动窗压到 Dock 带：布尔选择器，只在跨越阈值时重渲染（拖拽不逐帧刷桌面）
+  const floatingDockObstructed = useWindowStore((s) => hasDockObstructedFloatingWindow(s.windows, s.desktopSize));
+  const dockForceAutohide = useMemo(
+    () => floatingDockObstructed || hasDockObstructedWindow(orderedWindows),
+    [floatingDockObstructed, orderedWindows],
+  );
 
   return (
     <div

@@ -16,6 +16,7 @@ import type { WorkbenchWindow } from '../types';
 
 registerTestApp('test-app');
 registerTestApp('test-single', { instanceMode: 'single' });
+registerTestApp('test-big', { defaultFrame: { w: 1080, h: 720 }, minSize: { w: 640, h: 460 } });
 
 function store() {
   return useWindowStore.getState();
@@ -562,3 +563,23 @@ describe('windowStore — hydrate 与 desktopSize', () => {
     expect(f.y + f.h).toBeLessThanOrEqual(600);
   });
 });
+
+describe('windowStore — 新窗默认尺寸避开 Dock', () => {
+  it('应用默认尺寸大于「桌面 − Dock 预留」时收进去，底边落在 Dock 之上', () => {
+    resetWindowStoreForTests({ w: 1400, h: 760 });
+    const id = store().openWindow({ typeId: 'test-big' });
+    const { frame } = store().windows[id];
+    expect(frame.w).toBe(1080);
+    expect(frame.h).toBe(760 - 48 - 80);
+    expect(frame.y + frame.h).toBeLessThanOrEqual(760 - 80);
+  });
+
+  it('不小于应用 minSize；调用方显式给的尺寸不动', () => {
+    resetWindowStoreForTests({ w: 1400, h: 520 });
+    const fitted = store().openWindow({ typeId: 'test-big' });
+    expect(store().windows[fitted].frame.h).toBe(460);
+    const explicit = store().openWindow({ typeId: 'test-big', initialFrame: { w: 900, h: 700 } });
+    expect(store().windows[explicit].frame.h).toBe(700);
+  });
+});
+
