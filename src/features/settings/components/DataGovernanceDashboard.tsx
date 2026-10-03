@@ -79,7 +79,7 @@ import { TauriAPI } from '@/utils/tauriApi';
 
 // 拆分后的子组件
 import { OverviewTab } from './data-governance/OverviewTab';
-import { BackupTab, type BackupJobOperation } from './data-governance/BackupTab';
+import { BackupTab, type BackupJobOperation, type BackupVerificationStatus } from './data-governance/BackupTab';
 import { SyncTab } from './data-governance/SyncTab';
 import { AuditTab } from './data-governance/AuditTab';
 import { ChatSessionArchiveTab } from './data-governance/ChatSessionArchiveTab';
@@ -624,6 +624,36 @@ interface DataGovernanceDashboardProps {
   tabTarget?: DataGovernanceTabTarget | null;
 }
 
+
+const BACKUP_VERIFICATION_STORAGE_KEY = 'dataGovernance.backupVerification.v1';
+
+/** 读取本机记录的备份验证结论；「验证中」不落盘（重开页面不会卡在验证中） */
+function readBackupVerificationStatuses(): Record<string, BackupVerificationStatus> {
+  try {
+    const raw = localStorage.getItem(BACKUP_VERIFICATION_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.fromEntries(
+      Object.entries(parsed as Record<string, unknown>).filter(
+        (entry): entry is [string, BackupVerificationStatus] => entry[1] === 'verified' || entry[1] === 'failed',
+      ),
+    );
+  } catch {
+    return {};
+  }
+}
+
+function writeBackupVerificationStatuses(map: Record<string, BackupVerificationStatus>): void {
+  try {
+    const persisted = Object.fromEntries(
+      Object.entries(map).filter(([, status]) => status === 'verified' || status === 'failed'),
+    );
+    localStorage.setItem(BACKUP_VERIFICATION_STORAGE_KEY, JSON.stringify(persisted));
+  } catch {
+    // 存储不可用（隐私模式等）：本次会话内仍显示
+  }
+}
+
 export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = ({
   embedded = false,
   tabTarget = null,
@@ -736,6 +766,18 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
   // 备份验证结果详细信息
   const [verifyResult, setVerifyResult] = useState<BackupVerifyResponse | null>(null);
+  // 备份列表「验证状态」列：此前 BackupTab 的 verificationStatusMap 无人传入，验证通过后仍显示「未验证」。
+  // 备份内容不可变，验证结论按备份 ID 记在本机（localStorage），重开页面仍可见。
+  const [verificationStatusMap, setVerificationStatusMap] = useState<Record<string, BackupVerificationStatus>>(
+    readBackupVerificationStatuses,
+  );
+  const setBackupVerification = useCallback((backupId: string, status: BackupVerificationStatus) => {
+    setVerificationStatusMap((prev) => {
+      const next = { ...prev, [backupId]: status };
+      writeBackupVerificationStatuses(next);
+      return next;
+    });
+  }, []);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
 
   // 最新备份自动验证（概览页「验证最新备份」按钮）
@@ -1309,17 +1351,20 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 验证备份（展示详细结果）
   const verifyBackup = useCallback(async (backupId: string) => {
     startTabLoading('backup');
+    setBackupVerification(backupId, 'verifying');
     try {
       const result = await DataGovernanceApi.verifyBackup(backupId);
+      setBackupVerification(backupId, result.is_valid ? 'verified' : 'failed');
       setVerifyResult(result);
       setShowVerifyDialog(true);
     } catch (error: unknown) {
       console.error('验证备份失败:', error);
+      setBackupVerification(backupId, 'failed');
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
       stopTabLoading('backup');
     }
-  }, [startTabLoading, stopTabLoading]);
+  }, [startTabLoading, stopTabLoading, setBackupVerification]);
 
   // 恢复备份（异步，含磁盘空间预检查）
   const restoreBackup = useCallback(async (backupId: string) => {
@@ -1893,6 +1938,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           onBackupAndExportZip={backupAndExportZip}
           onDeleteBackup={deleteBackup}
           onVerifyBackup={verifyBackup}
+          verificationStatusMap={verificationStatusMap}
           onRestoreBackup={restoreBackup}
           onExportZip={exportZip}
           onImportZip={importZip}
