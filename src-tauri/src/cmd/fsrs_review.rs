@@ -6,9 +6,9 @@
 
 use crate::commands::AppState;
 use crate::fsrs_review_service::{
-    FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsPreviewResult, FsrsRateResult,
-    FsrsResetResult, FsrsReviewService, FsrsReviewStatistics, FsrsSchedulerConfig,
-    FsrsSchedulerConfigUpdate, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
+    FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsMemoryOverview,
+    FsrsPreviewResult, FsrsRateResult, FsrsResetResult, FsrsReviewService, FsrsReviewStatistics,
+    FsrsSchedulerConfig, FsrsSchedulerConfigUpdate, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
@@ -544,6 +544,28 @@ pub async fn fsrs_get_review_statistics(
 ) -> Result<FsrsReviewStatistics> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     service.get_review_statistics(days)
+}
+
+/// 统计页「记忆曲线」：最近复习的卡 + 平均可提取率 + 近 30 天真实保留率（只读）
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_get_memory_overview(
+    recentLimit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<FsrsMemoryOverview> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    service.get_memory_overview(recentLimit)
+}
+
+/// 单卡记忆历史：当前调度状态 + 复习日志（只读）
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_get_card_memory_history(
+    cardStateId: String,
+    state: State<'_, AppState>,
+) -> Result<FsrsCardMemoryHistory> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    service.get_card_memory_history(&cardStateId)
 }
 
 /// 读取默认牌组的调度配置

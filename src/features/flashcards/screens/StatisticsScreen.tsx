@@ -1,6 +1,7 @@
 /**
  * FSRS 学习统计 — 
- * 关键数字（后端真实聚合）+ 热力图 / 每日柱状 / 评分分布 / 状态构成
+ * 关键数字（后端真实聚合）+ 记忆曲线（后端记忆状态 + 复习日志）+
+ * 热力图 / 每日柱状 / 评分分布 / 状态构成
  * （前端基于「每张卡最近一次复习」的诚实近似，均有标注）。
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +28,7 @@ import {
 } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
 import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
+import { MemoryCurvePanel } from '../components/MemoryCurvePanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
@@ -324,6 +326,8 @@ export const StatisticsScreen: React.FC = () => {
           className="min-h-0 flex-1"
         >
           <div className="wb-fcx-scroll">
+          <MemoryCurvePanel />
+
           <section className="wb-fcx-panel" data-testid="fsrs-statistics">
             <div className="wb-fcx-panel-head">
               <h3 className="wb-fcx-panel-title">

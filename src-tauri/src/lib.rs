@@ -2751,6 +2751,8 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_suspend_card
             ,crate::cmd::fsrs_review::fsrs_unsuspend_card
             ,crate::cmd::fsrs_review::fsrs_get_review_statistics
+            ,crate::cmd::fsrs_review::fsrs_get_memory_overview
+            ,crate::cmd::fsrs_review::fsrs_get_card_memory_history
             ,crate::cmd::fsrs_review::fsrs_get_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_reset_card_progress

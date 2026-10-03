@@ -620,6 +620,341 @@
 [data-flashcards-app] [data-tone='state-relearning'] { --wb-fcx-tone: var(--wb-fcx-purple); }
 [data-flashcards-app] [data-tone='state-suspended'] { --wb-fcx-tone: 215 12% 62%; }
 
+/* ==== 记忆曲线 ========================================================= */
+
+[data-flashcards-app] [data-series='0'] { --wb-fcx-tone: var(--wb-fcx-blue); }
+[data-flashcards-app] [data-series='1'] { --wb-fcx-tone: var(--wb-fcx-teal); }
+[data-flashcards-app] [data-series='2'] { --wb-fcx-tone: var(--wb-fcx-purple); }
+[data-flashcards-app] [data-series='3'] { --wb-fcx-tone: var(--wb-fcx-amber); }
+[data-flashcards-app] [data-series='4'] { --wb-fcx-tone: var(--wb-fcx-green); }
+
+.wb-fcx-memory-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: hsl(var(--wb-fcx-blue) / 0.1);
+  color: hsl(var(--wb-fcx-blue));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.wb-fcx-memory-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.wb-fcx-memory-figure {
+  min-width: 0;
+  padding: 2px 12px;
+}
+
+.wb-fcx-memory-figure + .wb-fcx-memory-figure {
+  border-left: 1px solid color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+}
+
+.wb-fcx-memory-figure dt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-memory-figure dd {
+  margin: 3px 0 0;
+  font-size: 19px;
+  font-weight: 650;
+  line-height: 1.1;
+  color: hsl(var(--foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-memory-figure p {
+  margin: 3px 0 0;
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-memory-view-title {
+  margin: 0 0 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-memory-chart {
+  width: 100%;
+  animation: wb-fcx-screen-in var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out) both;
+}
+
+.wb-fcx-memory-chart svg {
+  display: block;
+  overflow: visible;
+}
+
+.wb-fcx-memory-grid {
+  stroke: color-mix(in hsl, hsl(var(--border)) 65%, transparent 35%);
+  stroke-width: 1;
+}
+
+.wb-fcx-memory-axis-label {
+  fill: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-memory-target {
+  stroke: hsl(var(--foreground) / 0.5);
+  stroke-width: 1.25;
+  stroke-dasharray: 4 4;
+}
+
+.wb-fcx-memory-target-label {
+  fill: hsl(var(--foreground) / 0.72);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-memory-path {
+  fill: none;
+  stroke: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: opacity var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-fcx-memory-path[data-future='true'] {
+  stroke-width: 1.75;
+  stroke-dasharray: 3 4;
+}
+
+.wb-fcx-memory-mark {
+  fill: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  stroke: var(--wb-window-bg, hsl(var(--card)));
+  stroke-width: 2;
+  transition: opacity var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-fcx-memory-mark[data-kind='now'] {
+  fill: var(--wb-window-bg, hsl(var(--card)));
+  stroke: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  stroke-width: 1.75;
+}
+
+.wb-fcx-memory-path[data-dim='true'],
+.wb-fcx-memory-mark[data-dim='true'] {
+  opacity: 0.2;
+}
+
+.wb-fcx-memory-now-line {
+  stroke: hsl(var(--muted-foreground) / 0.55);
+  stroke-dasharray: 2 3;
+}
+
+.wb-fcx-memory-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 14px;
+  margin: 6px 0 0;
+  font-size: 10.5px;
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-memory-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.wb-fcx-memory-key svg {
+  overflow: visible;
+}
+
+.wb-fcx-memory-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wb-fcx-memory-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto auto minmax(112px, auto) 12px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-fcx-memory-row:hover,
+.wb-fcx-memory-row[data-active='true'] {
+  background: color-mix(in hsl, hsl(var(--muted)) 55%, transparent 45%);
+}
+
+.wb-fcx-memory-row:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+
+.wb-fcx-memory-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-fcx-memory-rating {
+  justify-self: start;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)) / 0.12);
+  color: hsl(var(--wb-fcx-tone, var(--wb-fcx-blue)));
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.wb-fcx-memory-row-meta {
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wb-fcx-memory-row-next {
+  font-size: 11.5px;
+  font-weight: 550;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.wb-fcx-memory-row > svg {
+  color: hsl(var(--muted-foreground));
+}
+
+.wb-fcx-memory-history-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin-bottom: 6px;
+}
+
+.wb-fcx-memory-back {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  padding: 3px 9px 3px 6px;
+  border: 1px solid var(--wb-glass-border, hsl(var(--border) / 0.5));
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: color var(--wb-hover-duration, 150ms) var(--wb-hover-ease, ease-out);
+}
+
+.wb-fcx-memory-back:hover {
+  color: hsl(var(--foreground));
+}
+
+.wb-fcx-memory-history-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.wb-fcx-memory-history-facts {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-memory-reviews {
+  max-height: 196px;
+  margin: 10px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.wb-fcx-memory-review {
+  display: grid;
+  grid-template-columns: 116px auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-memory-review + .wb-fcx-memory-review {
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+}
+
+.wb-fcx-memory-review time {
+  color: hsl(var(--foreground));
+}
+
+@media (max-width: 767.98px) {
+  .wb-fcx-memory-figure {
+    padding: 2px 8px;
+  }
+
+  .wb-fcx-memory-figure p {
+    display: none;
+  }
+
+  .wb-fcx-memory-row {
+    grid-template-columns: 8px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .wb-fcx-memory-row-meta,
+  .wb-fcx-memory-row > svg {
+    display: none;
+  }
+
+  .wb-fcx-memory-row-next {
+    grid-column: 2 / -1;
+    text-align: left;
+    font-weight: 500;
+    color: hsl(var(--muted-foreground));
+  }
+
+  .wb-fcx-memory-review {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .wb-fcx-memory-review > span:nth-of-type(n + 3) {
+    display: none;
+  }
+}
+
 /* ==== 移动端仪表盘 ====================================================== */
 @media (max-width: 767.98px) {
   .wb-fcx-scroll {
@@ -769,13 +1104,17 @@
 
 @media (prefers-reduced-motion: reduce) {
   .wb-fcx-screen-anim,
-  .wb-fcx-bar-fill {
+  .wb-fcx-bar-fill,
+  .wb-fcx-memory-chart {
     animation: none;
   }
 
   .wb-fcx-ring-value,
   .wb-fcx-donut-seg,
-  .wb-fcx-tab {
+  .wb-fcx-tab,
+  .wb-fcx-memory-path,
+  .wb-fcx-memory-mark,
+  .wb-fcx-memory-row {
     transition: none;
   }
 

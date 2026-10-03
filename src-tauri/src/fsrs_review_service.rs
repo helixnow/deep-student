@@ -535,6 +535,103 @@ pub struct FsrsReviewStatistics {
     pub due_forecast: Vec<FsrsDueForecastDay>,
 }
 
+/// 记忆曲线「近 N 天真实保留率」的统计窗口
+const MEMORY_TRUE_RETENTION_DAYS: u32 = 30;
+/// 单卡记忆历史最多返回的复习日志条数（按时间升序取最早的这些）
+const MEMORY_HISTORY_MAX_REVIEWS: i64 = 2000;
+
+/// 遗忘曲线常数，与调度器 `rs_fsrs::Parameters::forgetting_curve` 同源：
+/// R(t, S) = (1 + factor · t / S)^decay，t 以天计；t = S 时 R = 90%。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsForgettingCurve {
+    pub decay: f64,
+    pub factor: f64,
+}
+
+impl FsrsForgettingCurve {
+    fn scheduler() -> Self {
+        Self {
+            decay: rs_fsrs::Parameters::DECAY,
+            factor: rs_fsrs::Parameters::FACTOR,
+        }
+    }
+}
+
+/// 记忆曲线里的一张卡：调度状态 + 列表标题所需的内容字段
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsMemoryCard {
+    pub card_state_id: String,
+    pub anki_card_id: String,
+    pub deck_id: Option<String>,
+    pub front: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
+    #[serde(default)]
+    pub extra_fields: HashMap<String, String>,
+    pub state: i32,
+    pub stability: Option<f64>,
+    pub difficulty: Option<f64>,
+    pub last_review_ms: Option<i64>,
+    pub due_ms: i64,
+    pub reps: i32,
+    pub lapses: i32,
+    /// 当前调度状态下最近一次评分（1–4）；没有复习日志时为 None
+    pub last_rating: Option<u8>,
+}
+
+/// 真实保留率：口径同 `FsrsRetentionStats`（每张卡每天首次 Review 评分，非「重来」即通过）
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsTrueRetention {
+    pub window_days: u32,
+    pub reviews: i64,
+    pub passed: i64,
+}
+
+/// 统计页「记忆曲线」面板
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsMemoryOverview {
+    pub generated_at_ms: i64,
+    pub desired_retention: f64,
+    pub curve: FsrsForgettingCurve,
+    /// 最近复习过的卡，按上次复习时间倒序
+    pub recent: Vec<FsrsMemoryCard>,
+    /// 有记忆状态（复习过、未暂停）的卡数
+    pub memorized_count: i64,
+    /// 上述卡此刻的平均可提取率；没有这样的卡时为 None
+    pub average_retrievability: Option<f64>,
+    pub true_retention: FsrsTrueRetention,
+}
+
+/// 单卡复习日志里的一次评分（记忆曲线每段的起点）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsMemoryReview {
+    pub log_id: String,
+    pub review_ms: i64,
+    pub rating: u8,
+    pub state_before: i32,
+    pub state_after: i32,
+    pub stability_after: Option<f64>,
+    pub difficulty_after: Option<f64>,
+    pub due_after_ms: Option<i64>,
+}
+
+/// 单卡记忆历史
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsCardMemoryHistory {
+    pub generated_at_ms: i64,
+    pub desired_retention: f64,
+    pub curve: FsrsForgettingCurve,
+    pub card: FsrsMemoryCard,
+    /// 当前调度状态下的复习日志，按时间升序
+    pub reviews: Vec<FsrsMemoryReview>,
+}
+
 /// 今日额度（引入的新卡数 / 完成的 Review 复习数）
 #[derive(Debug, Clone, Copy)]
 struct FsrsDailyCounters {
@@ -3319,6 +3416,202 @@ impl FsrsReviewService {
         })
     }
 
+    /// 统计页「记忆曲线」：最近复习的卡、全部已学卡此刻的平均可提取率、近 30 天真实保留率。
+    ///
+    /// 曲线本身由前端按 `curve` 常数绘制，与调度器使用同一条遗忘曲线。
+    pub fn get_memory_overview(&self, recent_limit: Option<u32>) -> Result<FsrsMemoryOverview> {
+        let limit = i64::from(recent_limit.unwrap_or(5).clamp(1, 20));
+        let retention = self
+            .get_review_statistics(Some(MEMORY_TRUE_RETENTION_DAYS))?
+            .retention;
+        let now_ms = Utc::now().timestamp_millis();
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+
+        let recent = {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "{} AND {}
+                     ORDER BY s.last_review_ms DESC, s.id ASC
+                     LIMIT ?1",
+                    Self::MEMORY_CARD_SELECT,
+                    Self::MEMORIZED_CONDITION
+                ))
+                .map_err(|e| AppError::database(format!("准备记忆曲线查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![limit], Self::map_memory_card_row)
+                .map_err(|e| AppError::database(format!("查询记忆曲线失败: {}", e)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| AppError::database(format!("读取记忆曲线行失败: {}", e)))?
+        };
+
+        let (memorized_count, retrievability_sum) = {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT s.stability, s.last_review_ms
+                     FROM fsrs_card_states s
+                     INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                     INNER JOIN document_tasks dt ON dt.id = a.task_id
+                     WHERE s.deleted_at IS NULL
+                       AND a.deleted_at IS NULL
+                       AND dt.deleted_at IS NULL
+                       AND COALESCE(a.is_error_card, 0) = 0
+                       AND {}",
+                    Self::MEMORIZED_CONDITION
+                ))
+                .map_err(|e| AppError::database(format!("准备可提取率查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map([], |row| Ok((row.get::<_, f64>(0)?, row.get::<_, i64>(1)?)))
+                .map_err(|e| AppError::database(format!("查询可提取率失败: {}", e)))?;
+            let mut count = 0_i64;
+            let mut sum = 0.0_f64;
+            for row in rows {
+                let (stability, last_review_ms) =
+                    row.map_err(|e| AppError::database(format!("读取可提取率行失败: {}", e)))?;
+                let elapsed_days = (now_ms - last_review_ms).max(0) as f64 / MS_PER_DAY as f64;
+                let r = rs_fsrs::Parameters::forgetting_curve(elapsed_days, stability);
+                if r.is_finite() {
+                    count += 1;
+                    sum += r;
+                }
+            }
+            (count, sum)
+        };
+
+        Ok(FsrsMemoryOverview {
+            generated_at_ms: now_ms,
+            desired_retention: config.desired_retention,
+            curve: FsrsForgettingCurve::scheduler(),
+            recent,
+            memorized_count,
+            average_retrievability: if memorized_count > 0 {
+                Some(retrievability_sum / memorized_count as f64)
+            } else {
+                None
+            },
+            true_retention: FsrsTrueRetention {
+                window_days: MEMORY_TRUE_RETENTION_DAYS,
+                reviews: retention.young_reviews + retention.mature_reviews,
+                passed: retention.young_passed + retention.mature_passed,
+            },
+        })
+    }
+
+    /// 单卡记忆历史：当前调度状态 + 其复习日志（升序），供前端画每次复习回到 100% 的锯齿曲线。
+    pub fn get_card_memory_history(&self, card_state_id: &str) -> Result<FsrsCardMemoryHistory> {
+        if card_state_id.trim().is_empty() {
+            return Err(AppError::validation("cardStateId is required"));
+        }
+        let now_ms = Utc::now().timestamp_millis();
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let card = conn
+            .query_row(
+                &format!("{} AND s.id = ?1", Self::MEMORY_CARD_SELECT),
+                params![card_state_id],
+                Self::map_memory_card_row,
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("查询记忆曲线卡片失败: {}", e)))?
+            .ok_or_else(|| {
+                AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
+            })?;
+        let config =
+            Self::load_scheduler_config(&conn, card.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID))?;
+
+        let reviews = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, review_ms, rating, state_before, state_after,
+                            stability_after, difficulty_after, due_after_ms
+                     FROM fsrs_review_logs
+                     WHERE card_state_id = ?1
+                       AND deleted_at IS NULL
+                       AND rating BETWEEN 1 AND 4
+                     ORDER BY review_ms ASC, id ASC
+                     LIMIT ?2",
+                )
+                .map_err(|e| AppError::database(format!("准备复习历史查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![card_state_id, MEMORY_HISTORY_MAX_REVIEWS], |row| {
+                    Ok(FsrsMemoryReview {
+                        log_id: row.get(0)?,
+                        review_ms: row.get(1)?,
+                        rating: row.get::<_, i64>(2)? as u8,
+                        state_before: row.get(3)?,
+                        state_after: row.get(4)?,
+                        stability_after: row.get(5)?,
+                        difficulty_after: row.get(6)?,
+                        due_after_ms: row.get(7)?,
+                    })
+                })
+                .map_err(|e| AppError::database(format!("查询复习历史失败: {}", e)))?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()
+                .map_err(|e| AppError::database(format!("读取复习历史行失败: {}", e)))?
+        };
+
+        Ok(FsrsCardMemoryHistory {
+            generated_at_ms: now_ms,
+            desired_retention: config.desired_retention,
+            curve: FsrsForgettingCurve::scheduler(),
+            card,
+            reviews,
+        })
+    }
+
+    /// 「有记忆状态」：复习过（非新卡、有稳定性与上次复习时间）且未暂停
+    const MEMORIZED_CONDITION: &'static str = "s.suspended = 0
+                       AND s.state != 0
+                       AND s.stability > 0
+                       AND s.last_review_ms IS NOT NULL";
+
+    const MEMORY_CARD_SELECT: &'static str = "SELECT s.id, s.anki_card_id, s.deck_id,
+                COALESCE(a.front, ''), a.text, COALESCE(a.extra_fields_json, '{}'),
+                s.state, s.stability, s.difficulty, s.last_review_ms, s.due_ms, s.reps, s.lapses,
+                (SELECT l.rating FROM fsrs_review_logs l
+                  WHERE l.card_state_id = s.id AND l.deleted_at IS NULL
+                  ORDER BY l.review_ms DESC
+                  LIMIT 1)
+             FROM fsrs_card_states s
+             INNER JOIN anki_cards a ON a.id = s.anki_card_id
+             INNER JOIN document_tasks dt ON dt.id = a.task_id
+             WHERE s.deleted_at IS NULL
+               AND a.deleted_at IS NULL
+               AND dt.deleted_at IS NULL
+               AND COALESCE(a.is_error_card, 0) = 0";
+
+    fn map_memory_card_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FsrsMemoryCard> {
+        let extra_fields_json: Option<String> = row.get(5)?;
+        let extra_fields: HashMap<String, String> = extra_fields_json
+            .as_deref()
+            .and_then(|json| serde_json::from_str(json).ok())
+            .unwrap_or_default();
+        Ok(FsrsMemoryCard {
+            card_state_id: row.get(0)?,
+            anki_card_id: row.get(1)?,
+            deck_id: row.get(2)?,
+            front: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+            text: row.get(4)?,
+            extra_fields,
+            state: row.get(6)?,
+            stability: row.get(7)?,
+            difficulty: row.get(8)?,
+            last_review_ms: row.get(9)?,
+            due_ms: row.get(10)?,
+            reps: row.get(11)?,
+            lapses: row.get(12)?,
+            last_rating: row
+                .get::<_, Option<i64>>(13)?
+                .and_then(|rating| u8::try_from(rating).ok())
+                .filter(|rating| (1..=4).contains(rating)),
+        })
+    }
+
     /// 重置一张卡的调度进度：清除全部复习日志并以全新 New 状态重建。
     ///
     /// 复用 tombstone 重入队的原语（DELETE logs + DELETE state + INSERT 新行），
@@ -5068,6 +5361,139 @@ mod tests {
             stats.rating_distribution.total, 2,
             "rating distribution still counts every review"
         );
+    }
+
+    #[test]
+    fn memory_overview_lists_recent_cards_and_average_retrievability() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        for card in ["card-mem-a", "card-mem-b", "card-mem-new", "card-mem-paused"] {
+            insert_task_and_card(&db, &format!("doc-{card}"), &format!("task-{card}"), card);
+        }
+        let service = FsrsReviewService::new(db.clone());
+        let state_a = enqueue_and_rate(&db, "card-mem-a");
+        let state_b = service
+            .enqueue_cards(&["card-mem-b".to_string()])
+            .expect("enqueue b")
+            .states[0]
+            .id
+            .clone();
+        service.rate(&state_b, 4, Some(10), None).expect("rate b easy");
+        service
+            .enqueue_cards(&["card-mem-new".to_string()])
+            .expect("enqueue new card");
+        let state_paused = enqueue_and_rate(&db, "card-mem-paused");
+
+        let now = Utc::now().timestamp_millis();
+        {
+            let conn = db.get_conn_safe().expect("conn");
+            let seed = |id: &str, stability: f64, days_ago: i64| {
+                conn.execute(
+                    "UPDATE fsrs_card_states SET state = 2, stability = ?1, last_review_ms = ?2
+                     WHERE id = ?3",
+                    params![stability, now - days_ago * MS_PER_DAY, id],
+                )
+                .expect("seed memory state");
+            };
+            seed(&state_a, 10.0, 10);
+            seed(&state_b, 2.0, 1);
+            seed(&state_paused, 5.0, 0);
+            conn.execute(
+                "UPDATE fsrs_card_states SET suspended = 1 WHERE id = ?1",
+                params![state_paused],
+            )
+            .expect("suspend card");
+        }
+
+        let overview = service.get_memory_overview(None).expect("memory overview");
+        let ids: Vec<&str> = overview
+            .recent
+            .iter()
+            .map(|card| card.card_state_id.as_str())
+            .collect();
+        assert_eq!(
+            ids,
+            vec![state_b.as_str(), state_a.as_str()],
+            "latest review first; new and suspended cards are not memorized"
+        );
+        assert_eq!(overview.recent[0].last_rating, Some(4));
+        assert_eq!(overview.recent[1].last_rating, Some(3));
+        assert_eq!(overview.recent[0].front, "front-card-mem-b");
+        assert_eq!(overview.memorized_count, 2);
+        // t = S 时 R 恰为 90%
+        let expected = (0.9 + rs_fsrs::Parameters::forgetting_curve(1.0, 2.0)) / 2.0;
+        let average = overview
+            .average_retrievability
+            .expect("average retrievability");
+        assert!(
+            (average - expected).abs() < 1e-4,
+            "average retrievability {average} should be {expected}"
+        );
+        assert!((overview.desired_retention - DEFAULT_DESIRED_RETENTION).abs() < 1e-9);
+        assert_eq!(overview.curve, FsrsForgettingCurve::scheduler());
+        assert!((overview.curve.factor - 19.0 / 81.0).abs() < 1e-12);
+        assert_eq!(
+            overview.true_retention,
+            FsrsTrueRetention {
+                window_days: 30,
+                reviews: 0,
+                passed: 0,
+            },
+            "first ratings of new cards are not recall tests"
+        );
+
+        let limited = service.get_memory_overview(Some(1)).expect("limited overview");
+        assert_eq!(limited.recent.len(), 1);
+        assert_eq!(limited.memorized_count, 2, "the limit only trims the list");
+    }
+
+    #[test]
+    fn memory_overview_without_reviews_has_no_average() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-mem-empty", "task-mem-empty", "card-mem-empty");
+        let service = FsrsReviewService::new(db.clone());
+        service
+            .enqueue_cards(&["card-mem-empty".to_string()])
+            .expect("enqueue");
+
+        let overview = service.get_memory_overview(Some(5)).expect("memory overview");
+        assert!(overview.recent.is_empty());
+        assert_eq!(overview.memorized_count, 0);
+        assert_eq!(overview.average_retrievability, None);
+    }
+
+    #[test]
+    fn card_memory_history_returns_reviews_in_order() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-mem-history", "task-mem-history", "card-mem-history");
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = enqueue_and_rate(&db, "card-mem-history");
+        service
+            .rate(&state_id, 3, Some(10), None)
+            .expect("graduate from learning");
+
+        let history = service
+            .get_card_memory_history(&state_id)
+            .expect("memory history");
+        assert_eq!(history.card.card_state_id, state_id);
+        assert_eq!(history.card.state, FsrsState::Review.as_i32());
+        assert_eq!(history.card.last_rating, Some(3));
+        assert_eq!(history.curve, FsrsForgettingCurve::scheduler());
+        let ratings: Vec<u8> = history.reviews.iter().map(|review| review.rating).collect();
+        assert_eq!(ratings, vec![3, 3]);
+        assert!(history.reviews[0].review_ms <= history.reviews[1].review_ms);
+        assert_eq!(history.reviews[0].state_before, FsrsState::New.as_i32());
+        assert_eq!(history.reviews[1].state_after, FsrsState::Review.as_i32());
+        assert!(history
+            .reviews
+            .iter()
+            .all(|review| review.stability_after.unwrap_or_default() > 0.0));
+        assert_eq!(history.card.stability, history.reviews[1].stability_after);
+        assert_eq!(Some(history.card.due_ms), history.reviews[1].due_after_ms);
+
+        let missing = service
+            .get_card_memory_history("missing-state")
+            .expect_err("unknown card state");
+        assert!(matches!(missing.error_type, AppErrorType::NotFound));
     }
 
     #[test]
