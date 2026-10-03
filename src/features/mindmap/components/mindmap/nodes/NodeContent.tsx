@@ -273,10 +273,11 @@ export const NodeContent: React.FC<NodeContentProps> = ({
   const hasLatex = containsLatex(text);
   const hasBlanks = (blankedRanges?.length ?? 0) > 0;
   // LaTeX 与挖空共存降级策略：
-  // - 背诵模式：恒走 BlankedText（遮罩正确性优先）
-  // - 已有挖空区间：走 BlankedText（挖空可见/可管理），公式显示为原文（降级）
-  // - 仅 LaTeX 无挖空：走 InlineLatex 渲染公式（编辑态选区气泡仍可新增挖空）
-  const useBlankedDisplay = displayWithBlanks && (reciteMode || hasBlanks || !hasLatex);
+  // - 已有挖空区间（含背诵模式）：走 BlankedText（遮罩 / 挖空管理正确性优先），公式显示为原文（降级）
+  // - 仅 LaTeX 无挖空：走 InlineLatex 渲染公式——背诵模式下这类节点没有可遮的内容，
+  //   此前也走 BlankedText，一进背诵整张图的公式都变回 $…$ 源码
+  //   （编辑态选区气泡仍可新增挖空）
+  const useBlankedDisplay = displayWithBlanks && (hasBlanks || !hasLatex);
   const descriptionFirstLine = getMindMapPreferences().descriptionPreview === 'first-line';
 
   return (

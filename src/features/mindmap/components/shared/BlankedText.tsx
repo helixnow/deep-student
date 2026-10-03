@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { splitTextByRanges } from '../../utils/node/blankRanges';
 import type { BlankRange } from '../../types';
@@ -64,6 +65,7 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
   className,
   style,
 }) => {
+  const { t } = useTranslation('mindmap');
   const containerRef = useRef<HTMLSpanElement>(null);
   const selectionFrameRef = useRef<number | null>(null);
   const [popup, setPopup] = useState<{
@@ -281,11 +283,21 @@ export const BlankedText: React.FC<BlankedTextProps> = ({
           return (
             <span
               key={i}
-              className="bg-current rounded-sm px-0.5 cursor-pointer select-none"
+              // 遮罩可键盘揭示（Tab 到遮罩 → Enter / 空格），读屏读作「揭示挖空」按钮
+              role={onRevealBlank ? 'button' : undefined}
+              tabIndex={onRevealBlank ? 0 : undefined}
+              aria-label={onRevealBlank ? t('recite.revealBlank', { defaultValue: '揭示挖空' }) : undefined}
+              className="bg-current rounded-sm px-0.5 cursor-pointer select-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-[var(--mm-warning)]"
               style={{ color: 'var(--mm-text)', WebkitTextFillColor: 'transparent' }}
               onClick={(e) => {
                 e.stopPropagation();
                 onRevealBlank?.(seg.rangeIndex);
+              }}
+              onKeyDown={(e) => {
+                if (!onRevealBlank || (e.key !== 'Enter' && e.key !== ' ')) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onRevealBlank(seg.rangeIndex);
               }}
             >
               {seg.text}

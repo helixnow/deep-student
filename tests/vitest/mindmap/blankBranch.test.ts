@@ -134,3 +134,39 @@ describe('clearBranchBlanks', () => {
     expect(useMindMapStore.getState().clearBranchBlanks('branch')).toBe(1);
   });
 });
+
+describe('blankOutlineForRecite', () => {
+  it('保留中心主题与一级分支作提示，第 2 层起非空节点整行遮住', () => {
+    seedStore();
+    const affected = useMindMapStore.getState().blankOutlineForRecite();
+    // leaf_a + leaf_b + leaf_b1（leaf_empty 为空跳过）
+    expect(affected).toBe(3);
+    const root = useMindMapStore.getState().document.root;
+    expect(root.blankedRanges).toBeUndefined();
+    expect(findNodeById(root, 'branch')?.blankedRanges).toEqual([{ start: 0, end: 2 }]);
+    expect(findNodeById(root, 'outside')?.blankedRanges).toBeUndefined();
+    expect(findNodeById(root, 'leaf_b1')?.blankedRanges).toEqual([{ start: 0, end: 'Deep'.length }]);
+
+    useMindMapStore.getState().undo();
+    expect(findNodeById(useMindMapStore.getState().document.root, 'leaf_a')?.blankedRanges).toBeUndefined();
+  });
+
+  it('整图只有一层时遮一级分支；没有可遮内容返回 0', () => {
+    seedStore();
+    useMindMapStore.setState({
+      document: {
+        version: '1.0',
+        root: { id: 'r', text: 'R', children: [{ id: 'a', text: 'A', children: [] }, { id: 'e', text: '', children: [] }] },
+        meta: { createdAt: '2026-01-01T00:00:00.000Z' },
+      },
+    });
+    expect(useMindMapStore.getState().blankOutlineForRecite()).toBe(1);
+
+    useMindMapStore.setState({
+      document: { version: '1.0', root: { id: 'r', text: 'R', children: [] }, meta: { createdAt: '2026-01-01T00:00:00.000Z' } },
+      isDirty: false,
+    });
+    expect(useMindMapStore.getState().blankOutlineForRecite()).toBe(0);
+    expect(useMindMapStore.getState().isDirty).toBe(false);
+  });
+});

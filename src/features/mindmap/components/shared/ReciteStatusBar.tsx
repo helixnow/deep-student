@@ -37,6 +37,7 @@ export const ReciteStatusBar: React.FC = () => {
   const revealAllBlanks = useMindMapStore(s => s.revealAllBlanks);
   const resetAllBlanks = useMindMapStore(s => s.resetAllBlanks);
   const setReciteMode = useMindMapStore(s => s.setReciteMode);
+  const blankOutlineForRecite = useMindMapStore(s => s.blankOutlineForRecite);
   const reviewQueue = useMindMapStore(s => s.reciteReviewQueue);
   const reviewIndex = useMindMapStore(s => s.reciteReviewIndex);
   const startReciteReview = useMindMapStore(s => s.startReciteReview);
@@ -106,13 +107,27 @@ export const ReciteStatusBar: React.FC = () => {
           )}
         </div>
       ) : (
-        <DsButton
-          variant="ghost"
-          className="mm-recite-status-action h-7 px-2 text-xs"
-          onClick={() => setReciteMode(false)}
-        >
-          {t('recite.createBlankCta')}
-        </DsButton>
+        // 还没有挖空：一键遮住要点（刚由笔记 / 大纲生成的导图直接能背），或退出手动挖空
+        <>
+          <DsButton
+            variant="ghost"
+            className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+            onClick={blankOutlineForRecite}
+            title={t('recite.blankOutlineHint', {
+              defaultValue: '保留中心主题和一级分支作提示，下面各层整段遮住；点一下揭示，可撤销',
+            })}
+          >
+            <EyeSlash size={14} />
+            {t('recite.blankOutline', { defaultValue: '一键遮住要点' })}
+          </DsButton>
+          <DsButton
+            variant="ghost"
+            className="mm-recite-status-action h-7 px-2 text-xs"
+            onClick={() => setReciteMode(false)}
+          >
+            {t('recite.manualBlank', { defaultValue: '手动挖空' })}
+          </DsButton>
+        </>
       )}
 
       <div className="w-px h-4 bg-[var(--mm-border)]" />

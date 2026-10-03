@@ -418,6 +418,11 @@ export interface MindMapStoreState {
    * 已有挖空区间的节点合并为整行。返回受影响节点数（单次 undo 还原整批）。
    */
   blankBranchNodes: (nodeId: string) => number;
+  /**
+   * 背诵一键遮住要点：保留中心主题与一级分支作提示，第 2 层起非空节点整行挖空
+   * （整图只有一层时遮一级分支）。返回受影响节点数（单次 undo 还原整批）。
+   */
+  blankOutlineForRecite: () => number;
   /** 清除 nodeId 子树（含自身）的全部挖空与揭示状态。返回受影响节点数。 */
   clearBranchBlanks: (nodeId: string) => number;
 
@@ -3429,6 +3434,33 @@ export function createMindMapStore(): MindMapStoreApi {
             node.children.forEach(visit);
           };
           visit(branchRoot);
+        });
+        return affected;
+      },
+
+      blankOutlineForRecite: () => {
+        const depthOf = (node: MindMapNode): number =>
+          node.children.length === 0 ? 0 : 1 + Math.max(...node.children.map(depthOf));
+        const minDepth = depthOf(get().document.root) >= 2 ? 2 : 1;
+        const hasTarget = (node: MindMapNode, depth: number): boolean =>
+          (depth >= minDepth && node.text.length > 0) || node.children.some((c) => hasTarget(c, depth + 1));
+        if (!hasTarget(get().document.root, 0)) return 0;
+
+        let affected = 0;
+        applyMutation((state) => {
+          const visit = (node: MindMapNode, depth: number) => {
+            const textLength = node.text.length;
+            if (depth >= minDepth && textLength > 0) {
+              node.blankedRanges = mergeRanges(validateRanges(
+                [...(node.blankedRanges || []), { start: 0, end: textLength }],
+                textLength,
+              ));
+              delete state.revealedBlanks[node.id];
+              affected += 1;
+            }
+            node.children.forEach((child) => visit(child, depth + 1));
+          };
+          visit(state.document.root, 0);
         });
         return affected;
       },
