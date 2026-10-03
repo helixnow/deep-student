@@ -424,6 +424,19 @@ async fn compress_image_path(
 }
 
 // ============================================================================
+/// 临时 OCR 图片的扩展名（回退链路按扩展名推断 MIME，再以文件头校正）
+fn image_extension_for_mime(mime_type: &str) -> &'static str {
+    match mime_type.trim().to_ascii_lowercase().as_str() {
+        "image/jpeg" | "image/jpg" => ".jpg",
+        "image/webp" => ".webp",
+        "image/gif" => ".gif",
+        "image/bmp" => ".bmp",
+        "image/heic" => ".heic",
+        "image/heif" => ".heif",
+        _ => ".png",
+    }
+}
+
 // OCR 结果类型
 // ============================================================================
 
@@ -2228,32 +2241,37 @@ impl PdfProcessingService {
             return Ok(String::new());
         };
 
-        // 调用 OCR API
-        use crate::llm_manager::ImagePayload;
-        let adapter = self.llm_manager.get_ocr_adapter().await;
+        // ★ #64：走多引擎回退链路（按优先级 + 对冲 + 单引擎超时 + 熔断，与翻译 / 题目集同一实现）。
+        // 此前只调主引擎一次：用户配了 DeepSeek-OCR + PaddleOCR-VL 两个引擎，主引擎一失败
+        // 附件就停在「未就绪：OCR」，备用引擎从不被尝试。回退链路按引擎自身官方 prompt 构造请求。
+        let image_bytes = base64::engine::general_purpose::STANDARD
+            .decode(base64_data.as_bytes())
+            .map_err(|e| VfsError::Other(format!("Decode image for OCR failed: {}", e)))?;
+        drop(base64_data);
+        let temp_image = tempfile::Builder::new()
+            .prefix("ds-attachment-ocr-")
+            .suffix(image_extension_for_mime(mime_type))
+            .tempfile()
+            .map_err(|e| VfsError::Other(format!("Create OCR temp image failed: {}", e)))?;
+        std::fs::write(temp_image.path(), &image_bytes)
+            .map_err(|e| VfsError::Other(format!("Write OCR temp image failed: {}", e)))?;
+        drop(image_bytes);
         info!(
-            "[OCR_DIAG] OCR adapter obtained, calling OCR model for file_id={}",
+            "[OCR_DIAG] calling OCR engines with fallback for file_id={}",
             file_id
         );
-        // 使用适配器官方 prompt（DeepSeek-OCR → "Free OCR.", PaddleOCR-VL → "OCR:" 等）
-        // 注意：不要追加自定义中文指令，专用 OCR 模型只接受其官方 prompt 格式
-        let prompt = adapter.build_prompt(crate::ocr_adapters::OcrMode::FreeOcr);
-        let image_payload = ImagePayload {
-            mime: mime_type.to_string(),
-            base64: base64_data,
-        };
-
-        let result = self
+        let ocr_text = self
             .llm_manager
-            .call_ocr_model_raw_prompt(&prompt, Some(vec![image_payload]))
+            .call_ocr_free_text_with_fallback(&temp_image.path().to_string_lossy())
             .await
             .map_err(|e| {
                 warn!(
-                    "[OCR_DIAG] OCR API call FAILED for file_id={}: {}",
+                    "[OCR_DIAG] OCR (all engines) FAILED for file_id={}: {}",
                     file_id, e
                 );
                 VfsError::Other(format!("OCR API call failed: {}", e))
             })?;
+        drop(temp_image);
         drop(permit);
 
         if cancel_token.is_cancelled()
@@ -2266,7 +2284,6 @@ impl PdfProcessingService {
             return Ok(String::new());
         }
 
-        let ocr_text = result.assistant_message;
         info!(
             "[OCR_DIAG] OCR API returned for file_id={}: text_len={}, preview=\"{}\"",
             file_id,
@@ -3980,6 +3997,14 @@ impl Ord for ProcessingStage {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ocr_temp_image_extension_follows_mime() {
+        assert_eq!(super::image_extension_for_mime("image/jpeg"), ".jpg");
+        assert_eq!(super::image_extension_for_mime("IMAGE/WEBP"), ".webp");
+        assert_eq!(super::image_extension_for_mime("image/png"), ".png");
+        assert_eq!(super::image_extension_for_mime("application/octet-stream"), ".png");
+    }
     use super::*;
 
     #[tokio::test]
