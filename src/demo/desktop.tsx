@@ -74,11 +74,20 @@ function patchUnavailableApps(): void {
   }
 }
 
+/**
+ * 状态栏品牌菜单里的「退出学习桌面」会切进经典布局，演示里切过去就回不来了：菜单里不给这一项
+ * （mockIpc 的 save_setting 另外兜底拦着其他入口）
+ */
+const HIDE_EXIT_STYLE = '[data-testid="wb-menubar-brand-exit"], [data-testid="wb-menubar-brand-settings"] + .wb-desk-menu-sep { display: none !important; }';
+
 /** 在 App 挂载前调用：WorkbenchDesktop 只在固定区为空时才填默认值 */
 export function prepareDemoDesktop(): void {
   setDockPinned(DEMO_DOCK_PINNED);
   patchUnavailableApps();
   appRegistry.subscribe(patchUnavailableApps);
+  const style = document.createElement('style');
+  style.textContent = HIDE_EXIT_STYLE;
+  document.head.appendChild(style);
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

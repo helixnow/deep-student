@@ -162,9 +162,16 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           const key = String(args.key ?? '');
           return settingsKV.has(key) ? settingsKV.get(key) : null;
         }
-        case 'save_setting':
-          settingsKV.set(String(args.key ?? ''), args.value);
+        case 'save_setting': {
+          const key = String(args.key ?? '');
+          // 学习桌面演示里切回经典布局就没有入口再切回来（品牌菜单里那一项已藏起来，这里拦其他入口）：
+          // 保存失败时应用会弹提示并留在桌面上
+          if (options.desktop && key === 'desktop.workbenchMode' && String(args.value) === 'false') {
+            throw new Error('网页演示只有学习桌面，经典布局见页面顶部的演示。');
+          }
+          settingsKV.set(key, args.value);
           return null;
+        }
 
         // ---------- 模型 ----------
         case 'get_model_profiles':
@@ -398,6 +405,21 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           return [];
         // 学习桌面壁纸诊断日志，演示里不需要
         case 'log_debug_message':
+          return null;
+        // 学习桌面各处顺手查的状态（错题复习计划、自动化、技能快照、内置浏览器开关、全局搜索……），
+        // 演示里都没有数据，和缺省分支一样回 null，只是不再每条打一行 warn
+        case 'review_plan_get_stats':
+        case 'chat_v2_list_runtime_roots':
+        case 'list_document_sessions':
+        case 'chat_v2_automation_summary':
+        case 'chat_v2_kill_switch_status':
+        case 'chat_v2_freeze_available_skills_snapshot':
+        case 'chat_v2_update_block_tool_output':
+        case 'is_feature_enabled':
+        case 'plugin:notification|is_permission_granted':
+        case 'dstu_search':
+        case 'chat_v2_search_content':
+        case 'browser_close':
           return null;
         // 窗口外观同步（桌面原生效果，浏览器下静默成功）
         case 'set_window_appearance':
