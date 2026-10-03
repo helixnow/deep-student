@@ -141,6 +141,27 @@ impl S3Storage {
         }
     }
 
+    /// [#57] 确定签名用的 region：用户填写的非空值优先；未填（含空串）时从
+    /// endpoint 推断——腾讯云 COS `cos.<region>.myqcloud.com`、AWS
+    /// `s3.<region>.amazonaws.com` / `s3-<region>.amazonaws.com`；其余回落 us-east-1。
+    fn resolve_region(configured: Option<&str>, endpoint: &str) -> String {
+        if let Some(region) = configured.map(str::trim).filter(|r| !r.is_empty()) {
+            return region.to_string();
+        }
+        let inferred = url::Url::parse(endpoint).ok().and_then(|url| {
+            let host = url.host_str()?.to_ascii_lowercase();
+            let labels = host.split('.').collect::<Vec<_>>();
+            let region = match labels.as_slice() {
+                ["cos", region, "myqcloud", "com"] => Some(*region),
+                ["s3", region, "amazonaws", "com"] => Some(*region),
+                [service, "amazonaws", "com"] => service.strip_prefix("s3-"),
+                _ => None,
+            }?;
+            (!region.is_empty()).then(|| region.to_string())
+        });
+        inferred.unwrap_or_else(|| "us-east-1".to_string())
+    }
+
     /// 创建 S3 存储实例
     pub async fn new(config: S3Config, root: String) -> Result<Self> {
         if config.endpoint.trim().is_empty() {
@@ -186,15 +207,11 @@ impl S3Storage {
             )
             .behavior_version_latest();
 
-        // 设置区域（如果指定）
-        if let Some(region) = &config.region {
-            s3_config_builder =
-                s3_config_builder.region(aws_sdk_s3::config::Region::new(region.clone()));
-        } else {
-            // 默认使用 us-east-1（某些 S3 兼容服务需要）
-            s3_config_builder =
-                s3_config_builder.region(aws_sdk_s3::config::Region::new("us-east-1"));
-        }
+        // 设置区域：空串视同未填（[#57] 设置表单的 region 默认值是 ""，原样传来会以空 region
+        // 签名，SigV4 凭据范围变成 `date//s3/aws4_request`，兼容服务一律拒绝）；
+        // 未填时按 endpoint 推断，推断不出回落 us-east-1（某些 S3 兼容服务需要）。
+        let region = Self::resolve_region(config.region.as_deref(), &endpoint);
+        s3_config_builder = s3_config_builder.region(aws_sdk_s3::config::Region::new(region));
 
         if config.path_style {
             s3_config_builder = s3_config_builder.force_path_style(true);
@@ -1301,6 +1318,37 @@ mod tests {
         assert_eq!(planned_part_count(2 * CHUNK_SIZE as u64 + 1, CHUNK_SIZE), 3);
         assert_eq!(planned_part_count(1, CHUNK_SIZE), 1);
         assert_eq!(planned_part_count(0, CHUNK_SIZE), 1);
+    }
+
+    #[test]
+    fn resolve_region_treats_blank_as_unset_and_infers_from_endpoint() {
+        // 表单默认值 "" / 空白：不再以空 region 签名
+        assert_eq!(
+            S3Storage::resolve_region(Some(""), "https://cos.ap-beijing.myqcloud.com"),
+            "ap-beijing"
+        );
+        assert_eq!(
+            S3Storage::resolve_region(Some("  "), "https://s3.eu-west-1.amazonaws.com"),
+            "eu-west-1"
+        );
+        assert_eq!(
+            S3Storage::resolve_region(None, "https://s3-ap-southeast-1.amazonaws.com"),
+            "ap-southeast-1"
+        );
+        // 推断不出：回落 us-east-1（与旧行为一致）
+        assert_eq!(
+            S3Storage::resolve_region(None, "https://oss-cn-hangzhou.aliyuncs.com"),
+            "us-east-1"
+        );
+        assert_eq!(
+            S3Storage::resolve_region(Some(""), "http://localhost:9000"),
+            "us-east-1"
+        );
+        // 用户填写的值优先（去首尾空白）
+        assert_eq!(
+            S3Storage::resolve_region(Some(" cn-east-1 "), "https://s3.bitiful.net"),
+            "cn-east-1"
+        );
     }
 
     #[test]
