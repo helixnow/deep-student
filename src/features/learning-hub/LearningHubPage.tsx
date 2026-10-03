@@ -578,6 +578,17 @@ export const LearningHubPage: React.FC = () => {
 
   useEffect(() => {
     const unwatch = dstu.watch('*', (event) => {
+      // 改名（含翻译 / 作文完成后的自动起名）：同步打开中标签的标题，
+      // 否则列表已是「Transport planners were…」，标签还叫「新翻译 2」
+      if (event.type === 'updated' && event.node?.id && event.node.name) {
+        const { id, name } = event.node;
+        setTabs(prev =>
+          prev.some(tab => tab.resourceId === id && tab.title !== name)
+            ? prev.map(tab => (tab.resourceId === id ? { ...tab, title: name } : tab))
+            : prev,
+        );
+        return;
+      }
       if (event.type !== 'deleted' && event.type !== 'purged') {
         return;
       }
