@@ -35,6 +35,13 @@ const PACE = {
 
 const players = new Map<string, AbortController>();
 
+/** 下一次播放跳过节奏（停顿、逐段流式）：学习桌面开场要在海报撤下前就停在播完的样子 */
+const instantSessions = new Set<string>();
+
+export function playNextReplyInstantly(sessionId: string): void {
+  instantSessions.add(sessionId);
+}
+
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -87,6 +94,8 @@ export async function playReplyScript(opts: {
   const ctrl = new AbortController();
   players.set(sessionId, ctrl);
   const { signal } = ctrl;
+  const instant = instantSessions.delete(sessionId);
+  const pause = (ms: number) => sleep(instant ? 0 : ms, signal);
 
   const blockChannel = `chat_v2_event_${sessionId}`;
   const sessionChannel = `chat_v2_session_${sessionId}`;
@@ -104,7 +113,7 @@ export async function playReplyScript(opts: {
     for (let i = 0; i < blocks.length; i++) {
       const def = blocks[i];
       if (signal.aborted) return;
-      await sleep(def.delay ?? PACE.blockDelay, signal);
+      await pause(def.delay ?? PACE.blockDelay);
 
       const blockId = `${assistantMessageId}-sb${i}`;
       await emitBlock({
@@ -132,10 +141,10 @@ export async function playReplyScript(opts: {
             chunk,
             sequenceId: sequenceId++,
           });
-          await sleep(def.dwellMs ?? PACE.toolDwell, signal);
+          await pause(def.dwellMs ?? PACE.toolDwell);
         }
       } else if (def.streaming && def.content) {
-        for (const chunk of chunkText(def.content)) {
+        for (const chunk of instant ? [def.content] : chunkText(def.content)) {
           if (signal.aborted) return;
           await emitBlock({
             type: def.type,
@@ -144,11 +153,11 @@ export async function playReplyScript(opts: {
             chunk,
             sequenceId: sequenceId++,
           });
-          await sleep(PACE.chunkMin + Math.random() * PACE.chunkSpan, signal);
+          await pause(PACE.chunkMin + Math.random() * PACE.chunkSpan);
         }
       } else {
         // 检索/工具类：无 chunk，停留一段模拟执行耗时
-        await sleep(def.dwellMs ?? PACE.toolDwell, signal);
+        await pause(def.dwellMs ?? PACE.toolDwell);
       }
 
       if (signal.aborted) return;

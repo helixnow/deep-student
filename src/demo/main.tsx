@@ -9,31 +9,36 @@
  *
  * 加载顺序至关重要：mock 必须先于任何 app 模块 import。
  *
- * 访问：http://127.0.0.1:1422/demo.html（?theme=dark 切暗色）
+ * 访问：http://127.0.0.1:1422/demo.html（?theme=dark 切暗色，?desktop=1 开学习桌面）
  */
 
 import React from 'react';
 
+const params = new URLSearchParams(window.location.search);
+const dark = params.get('theme') === 'dark';
+/** 学习桌面（桌面端的默认界面）；缺省是经典布局，首屏 hero 演示用的就是它 */
+const desktop = params.get('desktop') === '1';
+
 // ① IPC/事件 mock（必须在任何 app 模块之前执行）
 import { installDemoIpcMocks } from './mockIpc';
-installDemoIpcMocks();
+installDemoIpcMocks({ desktop, dark });
 
 // 演示壳标记：App 据此隐藏开发版悬浮件（调试面板球 / 移动端恢复 FAB）
 (window as unknown as { __DS_DEMO_SHELL__: boolean }).__DS_DEMO_SHELL__ = true;
 
 // ② localStorage 预置（早于 App 模块级读取）
-const params = new URLSearchParams(window.location.search);
-const dark = params.get('theme') === 'dark';
 
 // 主题：demo 默认亮色系，?theme=dark 切暗
 localStorage.setItem('dstu-theme-mode', dark ? 'dark' : 'light');
 
-// workbench 模式：demo 固定经典壳（含真实顶栏/侧边栏的桌面布局）。
+// workbench 模式：经典壳（含真实顶栏/侧边栏的桌面布局）还是学习桌面，由入口参数定。
+// 这里只是 App 模块级预读的缓存，最终以 mock 设置表里的同名键为准——
+// 官网同一页里两个演示 iframe 共用 localStorage，互相覆盖也不会开错壳。
 // 该键与主 dev app 共享同源 localStorage，退出 demo 页时恢复原值，
 // 避免污染桌面开发环境。
 const WORKBENCH_KEY = 'desktop.workbenchMode';
 const prevWorkbenchMode = localStorage.getItem(WORKBENCH_KEY);
-localStorage.setItem(WORKBENCH_KEY, 'false');
+localStorage.setItem(WORKBENCH_KEY, desktop ? 'true' : 'false');
 window.addEventListener('beforeunload', () => {
   if (prevWorkbenchMode === null) {
     localStorage.removeItem(WORKBENCH_KEY);
@@ -57,8 +62,8 @@ import './demo.css';
 // ④ i18n
 import i18n from '../i18n';
 
-/** 剧本会话迟迟没上屏时，最多等这么久也照样通知父页撤占位 */
-const READY_FALLBACK_MS = 10000;
+/** 剧本会话迟迟没上屏时，最多等这么久也照样通知父页撤占位（学习桌面还要等开窗和首答落定） */
+const READY_FALLBACK_MS = desktop ? 15000 : 10000;
 
 async function main() {
   await i18n.changeLanguage('zh-CN');
@@ -93,6 +98,9 @@ async function main() {
     ? requestedScene
     : DEMO_SESSIONS[0]?.meta.id;
 
+  const desktopShell = desktop ? await import('./desktop') : null;
+  desktopShell?.prepareDemoDesktop();
+
   const { createRoot } = await import('react-dom/client');
   createRoot(document.getElementById('root')!).render(
     <ErrorBoundary
@@ -109,17 +117,34 @@ async function main() {
     </ErrorBoundary>,
   );
 
+  // 学习桌面：等桌面挂上再开窗，窗口位置按桌面实际尺寸算
+  let arranged = !desktopShell;
+  if (desktopShell && initialScene) {
+    void desktopShell.arrangeDemoDesktop(initialScene).finally(() => {
+      arranged = true;
+    });
+  }
+
   // 通知 hero 落地页撤下"演示加载中"占位：等剧本会话真正成为当前会话、
   // 历史加载完毕再发，早发会让占位撤掉后露出启动画面和 draft 的空白聊天区。
+  // 学习桌面的首答是瞬时播完的，再等它落定：海报拍的就是这个完成态。
   // 轮询用 setTimeout 而非 rAF：rAF 在离屏 iframe（演示窗被平移出视口/未滚到）
   // 会被浏览器节流甚至暂停，回调可能永不执行。hero 侧另有 15s 超时兜底。
+  const sceneShown = () => {
+    const currentId = sessionManager.getCurrentSessionId();
+    const state = currentId && validSceneIds.has(currentId)
+      ? sessionManager.peek(currentId)?.getState()
+      : undefined;
+    if (!state?.isDataLoaded) return false;
+    if (!desktopShell) return true;
+    return arranged && state.sessionStatus === 'idle' && [...state.messageMap.values()].some(
+      (m) => m.role === 'assistant' && m.blockIds.some((id) => state.blocks.get(id)?.status === 'success'),
+    );
+  };
   if (window.parent !== window) {
     const readyDeadline = Date.now() + READY_FALLBACK_MS;
     const notifyWhenSceneShown = () => {
-      const currentId = sessionManager.getCurrentSessionId();
-      const shown = !!currentId && validSceneIds.has(currentId) &&
-        !!sessionManager.peek(currentId)?.getState().isDataLoaded;
-      if (shown || Date.now() > readyDeadline) {
+      if (sceneShown() || Date.now() > readyDeadline) {
         window.parent.postMessage({ type: 'demo-shell-ready' }, window.location.origin);
         return;
       }
@@ -130,7 +155,12 @@ async function main() {
 
   // ⑤.5 自动播放：直接打开 demo 时立即播放；被 hero iframe 嵌入时等待父页
   // 进入视口后发 demo:activate，避免用户尚未看到体验区就开始消耗剧本。
-  const autoPlay = installDemoAutoPlay({ waitForActivation: window.parent !== window });
+  // 学习桌面不演打字：首答瞬时播完，海报撤下时对话窗口已经是完成态。
+  const autoPlay = installDemoAutoPlay(
+    desktopShell
+      ? { instantFirstPlay: true }
+      : { waitForActivation: window.parent !== window },
+  );
 
   // hero 与 demo 同源时才接受控制消息，避免任意嵌入页面驱动会话。
   window.addEventListener('message', (event) => {

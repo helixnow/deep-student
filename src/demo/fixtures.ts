@@ -248,7 +248,7 @@ export const DEFAULT_FOLLOW_UP: DemoBlocks = [
 
 // 注意：卡片正文走模板 ShadowDOM 渲染（anka 模板引擎不做 markdown/LaTeX
 // 后处理），所以卡片字段一律用纯文本 + Unicode 数学符号，不写 $...$ / ** 标记。
-const ANKI_CARDS: AnkiCard[] = [
+export const ANKI_CARDS: AnkiCard[] = [
   {
     id: 'chat-batch-demo-1',
     front: '求 lim(x→0) (sin x − x) / x³ 时，泰勒展开应保留到哪一阶？',

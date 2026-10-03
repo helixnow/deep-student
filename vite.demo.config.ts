@@ -71,14 +71,27 @@ function demoWarmupPreloadPlugin(): Plugin {
  * 背景：App.tsx 静态引入 workbench AgentBridge → bridge → drivers/index
  * → noteDriver(@milkdown)/mindmapDriver(@xyflow)，把笔记编辑器/导图画布
  * 拖进主 bundle；DialogControlContext 挂载时动态 import mcpService。
- * 演示壳用经典模式（workbenchMode=false），AgentBridge 必然空转，
- * MCP 会话工具在剧本会话中不使用，stub 掉功能等价。
+ * 演示里没有 Agent 操作桌面，MCP 会话工具在剧本会话中不使用，stub 掉功能等价。
+ * AgentBridge 只保留它开关窗口总线的那一半：学习桌面模式（demo.html?desktop=1）下
+ * 点 Dock、开窗都走总线，总线关着就会退回经典布局的视图导航（演示壳不放行）。
  */
 const DEMO_MODULE_STUBS: Array<{ test: RegExp; code: string; label: string }> = [
   {
     label: "AgentBridge",
     test: /features[\/]workbench[\/]agent[\/]AgentBridge(\.tsx?)?$/,
-    code: "export const AgentBridge = () => null;\nexport default AgentBridge;\n",
+    code: [
+      "import { useLayoutEffect } from 'react';",
+      "import { workbenchBus } from '@/features/workbench/core/workbenchBus';",
+      "export const AgentBridge = ({ workbenchActive }) => {",
+      "  useLayoutEffect(() => {",
+      "    workbenchBus.setEnabled(Boolean(workbenchActive));",
+      "    return () => workbenchBus.setEnabled(false);",
+      "  }, [workbenchActive]);",
+      "  return null;",
+      "};",
+      "export default AgentBridge;",
+      "",
+    ].join("\n"),
   },
   {
     label: "mcpService",
@@ -97,7 +110,7 @@ const DEMO_MODULE_STUBS: Array<{ test: RegExp; code: string; label: string }> = 
   },
   {
     // stageManager 静态拉起 bridge → drivers → noteDriver(@milkdown)/mindmapStore(@xyflow)。
-    // 演示壳（经典壳、剧本会话无 workbench-ops 块）永不执行这些路径；
+    // 演示壳（剧本会话无 workbench-ops 块、没有 Agent 操作桌面）永不执行这些路径；
     // chat 的 workbenchOpsBlock 仅在渲染工作台操作块时才调用这三个方法。
     label: "stageManager",
     test: /features[\/]workbench[\/]agent[\/]stageManager(\.ts)?$/,
@@ -177,6 +190,28 @@ function demoModuleStubPlugin(): Plugin {
 }
 
 
+/**
+ * 学习桌面的壁纸、应用图标写的是站点根路径（'/wallpapers/…'、'/app-icon.png'），
+ * 桌面端从 public/ 根目录供文件；演示镜像挂在官网的 /demo/ 下，根路径会落到官网根目录。
+ * 改写成 new URL('/…', import.meta.url)，交给 Vite 按 public 资源解析：base 是 './'，
+ * 产物里变成相对 chunk 自身的地址，镜像挂在哪一层都对。
+ */
+const DEMO_PUBLIC_PATH_MODULES = /features[\/]workbench[\/]components[\/](WallpaperLayer|AgentControlCenter)\.tsx$/;
+
+function demoPublicPathPlugin(): Plugin {
+  return {
+    name: "demo-public-path",
+    apply: "build",
+    enforce: "pre",
+    transform(code, id) {
+      if (!DEMO_PUBLIC_PATH_MODULES.test(id)) return null;
+      return code
+        .replace(/src="(\/app-icon\.png)"/g, "src={new URL('$1', import.meta.url).href}")
+        .replace(/'(\/wallpapers\/[^']+)'/g, "new URL('$1', import.meta.url).href");
+    },
+  };
+}
+
 /** 首屏不预载的 chunk 文件名特征（lazy 场景用到时仍会动态加载） */
 const DEMO_NO_PRELOAD = [
   "vendor-milkdown",
@@ -196,7 +231,7 @@ export default defineConfig((env) => {
 
   return {
     ...base,
-    plugins: [demoModuleStubPlugin(), ...(base.plugins ?? []), demoWarmupPreloadPlugin()],
+    plugins: [demoModuleStubPlugin(), demoPublicPathPlugin(), ...(base.plugins ?? []), demoWarmupPreloadPlugin()],
     build: {
       ...base.build,
       outDir: "dist-demo",

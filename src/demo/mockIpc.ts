@@ -28,6 +28,7 @@ import {
 import { abortScript, playReplyScript } from './scriptPlayer';
 import { getPlayedHistory } from './playedHistory';
 import { getDemoQuestions, handleDemoQuestionBank } from './questionBank';
+import { addDemoLibraryCards, handleDemoFlashcards } from './flashcards';
 import {
   getDemoAttachmentContent,
   getDemoAttachmentResource,
@@ -89,16 +90,29 @@ function touch(meta: SessionInfo & { groupId?: string | null }): void {
 // Settings KV
 // ============================================================================
 
-const SETTINGS_SEED: Record<string, unknown> = {
-  // 跳过首次启动引导
-  app_initialized: 'true',
-  // 已同意用户协议（UserAgreementDialog: 值须等于 USER_AGREEMENT_VERSION '1.0.0'）
-  user_agreement_accepted: '1.0.0',
-  // 固定经典桌面壳（学习桌面是另一套 UI，demo 演示经典布局）
-  'desktop.workbenchMode': 'false',
-};
+export interface DemoIpcOptions {
+  /** 学习桌面模式（?desktop=1）；缺省是经典布局 */
+  desktop?: boolean;
+  dark?: boolean;
+}
 
-const settingsKV = new Map<string, unknown>(Object.entries(SETTINGS_SEED));
+function seedSettings({ desktop = false, dark = false }: DemoIpcOptions): Record<string, unknown> {
+  return {
+    // 跳过首次启动引导
+    app_initialized: 'true',
+    // 已同意用户协议（UserAgreementDialog: 值须等于 USER_AGREEMENT_VERSION '1.0.0'）
+    user_agreement_accepted: '1.0.0',
+    // 经典布局与学习桌面是两套壳，由入口参数决定
+    'desktop.workbenchMode': desktop ? 'true' : 'false',
+    // 默认壁纸 mountain-mist 是浅色雾山，深色主题的玻璃小组件和菜单栏压在上面字几乎看不清：
+    // 深色换成预设里最暗的 alpine-lake
+    ...(desktop && dark
+      ? { 'desktop.workbenchWallpaper': JSON.stringify({ kind: 'theme', value: 'alpine-lake' }) }
+      : {}),
+  };
+}
+
+const settingsKV = new Map<string, unknown>();
 
 /** 模拟真实 IPC 往返延迟（过快会导致列表挂载前 restore 完成，跳过吸底滚动） */
 function withLatency<T>(value: T, ms = 120): Promise<T> {
@@ -109,7 +123,8 @@ function withLatency<T>(value: T, ms = 120): Promise<T> {
 // 安装
 // ============================================================================
 
-export function installDemoIpcMocks(): void {
+export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
+  for (const [key, value] of Object.entries(seedSettings(options))) settingsKV.set(key, value);
   mockWindows('main');
 
   mockIPC(
@@ -165,6 +180,7 @@ export function installDemoIpcMocks(): void {
             (_, i) => `demo-saved-${Date.now().toString(36)}-${i}`,
           );
           cards.forEach((card, index) => demoSavedCards.set(persistedIds[index], { ...card, id: persistedIds[index] }));
+          addDemoLibraryCards(cards.map((card, index) => ({ ...card, id: persistedIds[index] })));
           return {
             savedIds: persistedIds,
             taskId: `demo-task-${Date.now().toString(36)}`,
@@ -349,10 +365,15 @@ export function installDemoIpcMocks(): void {
         // 迁移状态（useMigrationStatusListener 读 has_pending_migrations）
         case 'data_governance_get_migration_status':
           return { has_pending_migrations: false, migrations: [] };
-        // 待办（reminderScheduler 对返回值做数组迭代）
+        // 待办（reminderScheduler 对返回值做数组迭代；学习桌面的日程小组件读清单和未完成项）
         case 'todo_list_today':
         case 'todo_list_reminders':
+        case 'todo_list_lists':
+        case 'todo_list_all_pending':
           return [];
+        // 学习桌面壁纸诊断日志，演示里不需要
+        case 'log_debug_message':
+          return null;
         // 窗口外观同步（桌面原生效果，浏览器下静默成功）
         case 'set_window_appearance':
         case 'sync_titlebar_sidebar_material':
@@ -604,10 +625,13 @@ export function installDemoIpcMocks(): void {
         case 'chat_v2_update_group':
           return null;
 
-        default:
+        default: {
           if (cmd.startsWith('qbank_')) return handleDemoQuestionBank(cmd, args);
+          const flashcards = handleDemoFlashcards(cmd, args);
+          if (flashcards !== undefined) return flashcards;
           console.warn(`${LOG} unmocked cmd:`, cmd, args);
           return null;
+        }
       }
     },
     { shouldMockEvents: true },

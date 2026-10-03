@@ -15,7 +15,7 @@
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { SessionManagerEvent } from '@/features/chat/core/session/types';
 import { DEMO_SESSIONS } from './fixtures';
-import { abortScript } from './scriptPlayer';
+import { abortScript, playNextReplyInstantly } from './scriptPlayer';
 import { capturePlayedSnapshot } from './playedHistory';
 
 const LOG = '[demo-autoplay]';
@@ -85,9 +85,14 @@ export interface DemoAutoPlayController {
 }
 
 export function installDemoAutoPlay(
-  options: { waitForActivation?: boolean } = {},
+  options: {
+    waitForActivation?: boolean;
+    /** 首轮不打字、剧本不走节奏，直接停在播完的样子（学习桌面开场：海报撤下时就是完成态） */
+    instantFirstPlay?: boolean;
+  } = {},
 ): DemoAutoPlayController {
   let activated = !options.waitForActivation;
+  let instantFirstPlay = Boolean(options.instantFirstPlay);
   /** 单调递增令牌：切换<|sep|>时使等待中/打字中的播放作废 */
   let ticket = 0;
   /** 上一个当前会话：离开时保存快照，保留缓存 store */
@@ -105,11 +110,15 @@ export function installDemoAutoPlay(
     }, window.location.origin);
   };
 
-  /** 逐字打字 → 点击真实发送按钮；任何时刻切走都会作废并清理残字 */
+  /**
+   * 逐字打字 → 点击真实发送按钮；任何时刻切走都会作废并清理残字。
+   * instant：一次填好整句、不抢焦点，回复剧本也不走节奏
+   */
   const typeAndSend = async (
     sessionId: string,
     prompt: string,
     isStale: () => boolean,
+    instant = false,
   ): Promise<void> => {
     const store = sessionManager.peek(sessionId);
     let typedValue = '';
@@ -121,6 +130,7 @@ export function installDemoAutoPlay(
     };
     const directSend = () => {
       clearComposer();
+      if (instant) playNextReplyInstantly(sessionId);
       store?.getState().sendMessage(prompt, []).catch((e) => {
         console.warn(LOG, 'auto-play send failed:', e);
       });
@@ -137,19 +147,24 @@ export function installDemoAutoPlay(
       return;
     }
 
-    // 触屏设备不聚焦：focus 会呼出输入法（Android WebView）并可能触发
-    // iOS 输入框自动缩放。打字走原生 setter+input 事件，无需焦点。
-    if (!window.matchMedia('(pointer: coarse)').matches) {
-      ta.focus({ preventScroll: true });
-    }
-    for (let i = 1; i <= prompt.length; i += 1) {
-      if (isStale()) {
-        clearTypedDraft();
-        return;
+    if (instant) {
+      typedValue = prompt;
+      setComposerValue(ta, prompt);
+    } else {
+      // 触屏设备不聚焦：focus 会呼出输入法（Android WebView）并可能触发
+      // iOS 输入框自动缩放。打字走原生 setter+input 事件，无需焦点。
+      if (!window.matchMedia('(pointer: coarse)').matches) {
+        ta.focus({ preventScroll: true });
       }
-      typedValue = prompt.slice(0, i);
-      setComposerValue(ta, typedValue);
-      await sleep(typeCharMs());
+      for (let i = 1; i <= prompt.length; i += 1) {
+        if (isStale()) {
+          clearTypedDraft();
+          return;
+        }
+        typedValue = prompt.slice(0, i);
+        setComposerValue(ta, typedValue);
+        await sleep(typeCharMs());
+      }
     }
     await sleep(POST_TYPE_PAUSE_MS);
     if (isStale()) {
@@ -163,6 +178,7 @@ export function installDemoAutoPlay(
         !(b as HTMLButtonElement).disabled,
     ) as HTMLButtonElement | undefined;
     if (sendBtn) {
+      if (instant) playNextReplyInstantly(sessionId);
       sendBtn.click();
       console.info(LOG, `auto-play ${sessionId}: ${prompt}`);
     } else {
@@ -179,11 +195,19 @@ export function installDemoAutoPlay(
     const isStale = () =>
       myTicket !== ticket ||
       sessionManager.getCurrentSessionId() !== sessionId;
+    const instant = instantFirstPlay;
+    instantFirstPlay = false;
 
     window.setTimeout(() => {
       if (isStale()) return;
       void (async () => {
-        const store = sessionManager.peek(sessionId);
+        // 切到会话后 store 要一拍才建好（不打字时没有开场停顿兜着）
+        let store = sessionManager.peek(sessionId);
+        for (let i = 0; i < 30 && !store; i += 1) {
+          await sleep(100);
+          if (isStale()) return;
+          store = sessionManager.peek(sessionId);
+        }
         if (!store) return;
         // 等历史加载落定：已播放过的会话会从快照恢复出消息，
         // 此时直接显示完成态，不再打字重播
@@ -211,9 +235,9 @@ export function installDemoAutoPlay(
           }
           console.info(LOG, `injected ${fixture.attachmentRefs.length} attachment ref(s)`);
         }
-        void typeAndSend(sessionId, fixture.autoPrompt!, isStale);
+        void typeAndSend(sessionId, fixture.autoPrompt!, isStale, instant);
       })();
-    }, PRE_TYPE_DELAY_MS);
+    }, instant ? 0 : PRE_TYPE_DELAY_MS);
   };
 
   sessionManager.subscribe((event: SessionManagerEvent) => {
