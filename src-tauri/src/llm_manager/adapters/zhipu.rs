@@ -103,6 +103,15 @@ impl ZhipuAdapter {
             None => false,
         }
     }
+
+    /// GLM-5.3 / 5.3-Flash / 5.3-FlashX：强制思考代际（不可 disabled，effort 仅 low/high/max）。
+    fn is_glm53(model: &str) -> bool {
+        let lower = model.trim().to_lowercase();
+        lower
+            .rsplit('/')
+            .next()
+            .is_some_and(|seg| seg.starts_with("glm-5.3") || seg.starts_with("glm5.3"))
+    }
 }
 
 impl RequestAdapter for ZhipuAdapter {
@@ -129,11 +138,15 @@ impl RequestAdapter for ZhipuAdapter {
         body.remove("presence_penalty");
 
         let can_think = Self::supports_thinking(&config.model);
+        // 2026-10 官方文档：GLM-5.3/5.3-Flash/FlashX 强制思考，
+        // thinking.type 传 disabled 会直接报错，必须保持 enabled。
+        let is_glm53 = Self::is_glm53(&config.model);
 
         let mut thinking_map = Map::new();
 
-        if can_think || config.supports_reasoning {
-            let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
+        if (can_think && !is_glm53) || config.supports_reasoning || is_glm53 {
+            let enable_thinking_value =
+                is_glm53 || resolve_enable_thinking(config, enable_thinking);
             let thinking_type = if enable_thinking_value {
                 "enabled"
             } else {
@@ -153,15 +166,44 @@ impl RequestAdapter for ZhipuAdapter {
         }
 
         // GLM-5.2+ 支持 reasoning_effort（07 报告 §3.4 全档位）：
-        // max（默认）/ xhigh / high / medium / low / minimal / none
+        // max（默认）/ xhigh / high / medium / low / minimal / none。
+        // 2026-10 官方文档：GLM-5.3 系仅接受 low / high / max（其余报错，
+        // low/medium→high、xhigh→max 的映射由服务端处理，5.2 侧保留）。
         if Self::supports_reasoning_effort(&config.model) {
             if let Some(effort) = get_trimmed_effort(config) {
                 let effort_lower = effort.to_lowercase();
-                if matches!(
+                if is_glm53 {
+                    // 文档默认 max；medium/high/xhigh 收敛为 high，minimal/low 为 low。
+                    //
+                    // 兜底规则（2026-10-03 修正）：关闭意图（none/unset）不能被
+                    // 抬到 max——GLM-5.3 强制思考不可关闭，应退**最低档 low**，
+                    // 否则"关闭思考"会被静默变成"最高强度思考"。
+                    let normalized = match effort_lower.as_str() {
+                        "minimal" | "low" => "low",
+                        "medium" | "high" | "xhigh" => "high",
+                        "none" | "unset" | "off" | "disabled" => "low",
+                        _ => "max",
+                    };
+                    if !effort_lower.eq_ignore_ascii_case(normalized) {
+                        log::debug!(
+                            "[ZhipuAdapter] GLM-5.3 档位归一: {} -> {}（官方仅接受 low/high/max）: model={}",
+                            effort_lower,
+                            normalized,
+                            config.model
+                        );
+                    }
+                    body.insert("reasoning_effort".to_string(), json!(normalized));
+                } else if matches!(
                     effort_lower.as_str(),
                     "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
                 ) {
                     body.insert("reasoning_effort".to_string(), json!(effort_lower));
+                } else {
+                    log::debug!(
+                        "[ZhipuAdapter] 未知 reasoning_effort 被忽略: {}: model={}",
+                        effort_lower,
+                        config.model
+                    );
                 }
             }
         }
@@ -444,5 +486,55 @@ mod tests {
 
         let thinking = body.get("thinking").unwrap();
         assert_eq!(thinking.get("type"), Some(&json!("enabled")));
+    }
+
+    #[test]
+    fn test_glm53_forced_thinking_and_effort_subset() {
+        // 2026-10 官方文档：GLM-5.3 强制思考（disabled 报错），effort 仅 low/high/max。
+        let adapter = ZhipuAdapter;
+        let config = ApiConfig {
+            model: "glm-5.3".to_string(),
+            provider_type: Some("zhipu".to_string()),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(false),
+            reasoning_effort: Some("medium".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, Some(false));
+        let thinking = body.get("thinking").and_then(|v| v.as_object()).unwrap();
+        // 即便请求关闭思考，5.3 也必须保持 enabled
+        assert_eq!(thinking.get("type"), Some(&json!("enabled")));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+    }
+
+    #[test]
+    fn test_glm53_xhigh_maps_to_high() {
+        let adapter = ZhipuAdapter;
+        let config = ApiConfig {
+            model: "glm-5.3-flash".to_string(),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+    }
+
+    #[test]
+    fn test_glm52_unaffected_by_53_rules() {
+        let adapter = ZhipuAdapter;
+        let config = ApiConfig {
+            model: "glm-5.2".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(false),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, Some(false));
+        let thinking = body.get("thinking").and_then(|v| v.as_object()).unwrap();
+        assert_eq!(thinking.get("type"), Some(&json!("disabled")));
     }
 }

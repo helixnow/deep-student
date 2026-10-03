@@ -37,7 +37,7 @@
 //! 参考文档：https://platform.kimi.ai/docs/api/chat 、
 //! https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart
 
-use super::{PassbackPolicy, RequestAdapter};
+use super::{get_trimmed_effort, PassbackPolicy, RequestAdapter};
 use crate::llm_manager::ApiConfig;
 use serde_json::{json, Map, Value};
 
@@ -404,6 +404,23 @@ impl MoonshotAdapter {
         matches!(Self::parse_k_version(model), Some((major, _)) if major >= 3)
     }
 
+    /// K3 effort 归一：官方仅接受 low/high/max（默认 max）。
+    ///
+    /// 兜底规则（2026-10-03 修正）：未知值与缺省取官方默认 max，但**关闭意图
+    /// 不能被抬到 max**——那会把"关闭思考"变成"最高强度思考"，与用户意图相反。
+    /// K3 强制思考不可关闭，故关闭意图退到最低档 low。
+    fn normalize_k3_effort(effort: Option<&str>) -> &'static str {
+        match effort.map(str::trim).map(str::to_lowercase).as_deref() {
+            Some("minimal") | Some("low") => "low",
+            Some("medium") | Some("high") => "high",
+            Some("xhigh") | Some("max") | Some("ultra") => "max",
+            // 关闭意图：K3 不支持关闭，退最低档而非最高档。
+            Some("none") | Some("unset") | Some("off") | Some("disabled") => "low",
+            // 未知值/未配置：走官方默认 max。
+            _ => "max",
+        }
+    }
+
     /// K2.6 及以上支持 `thinking.keep: "all"`（Preserved Thinking）
     fn supports_thinking_keep(model: &str) -> bool {
         match Self::parse_k_version(model) {
@@ -461,11 +478,26 @@ impl RequestAdapter for MoonshotAdapter {
     ) -> bool {
         if Self::is_k3_or_later(&config.model) {
             // K3 的推理不可关闭，且服务端拒绝 K2.x `thinking` 对象。
+            // 2026-10 官方文档：reasoning_effort 支持 low/high/max（默认 max）。
             body.remove("thinking");
             body.remove("enable_thinking");
             body.remove("thinking_budget");
             body.remove("include_thoughts");
-            body.insert("reasoning_effort".to_string(), json!("max"));
+            // 用 get_trimmed_effort 读取（而非直接读字段）：空白字符串会被视为
+            // "未配置"从而走官方默认 max，而不是被当作一个未知档位。
+            let requested = get_trimmed_effort(config);
+            let normalized = Self::normalize_k3_effort(requested);
+            if let Some(requested) = requested {
+                if !requested.eq_ignore_ascii_case(normalized) {
+                    log::debug!(
+                        "[MoonshotAdapter] K3 档位归一: {} -> {}（官方仅接受 low/high/max）: model={}",
+                        requested,
+                        normalized,
+                        config.model
+                    );
+                }
+            }
+            body.insert("reasoning_effort".to_string(), json!(normalized));
             return true;
         }
 
@@ -1399,5 +1431,32 @@ mod tests {
             base_url: "https://api.openai.com/v1".to_string(),
             ..Default::default()
         }));
+    }
+
+    #[test]
+    fn test_k3_uses_configured_effort_low() {
+        // 2026-10 官方文档：K3 effort 开放 low/high/max（默认 max），仍不可关闭。
+        let adapter = MoonshotAdapter;
+        let config = ApiConfig {
+            model: "kimi-k3".to_string(),
+            reasoning_effort: Some("low".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("low")));
+    }
+
+    #[test]
+    fn test_k3_xhigh_effort_normalized_to_max() {
+        let adapter = MoonshotAdapter;
+        let config = ApiConfig {
+            model: "kimi-k3".to_string(),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+        adapter.apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
     }
 }

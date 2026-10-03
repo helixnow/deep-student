@@ -1,6 +1,6 @@
-import { isDeepSeekV4ModelId, isOfficialDeepSeekEndpoint } from '@/utils/deepseekReasoningControls';
+import { isDeepSeekV4ModelId, isOfficialDeepSeekEndpoint } from '@/utils/reasoning';
 
-export { isOfficialDeepSeekEndpoint } from '@/utils/deepseekReasoningControls';
+export { isOfficialDeepSeekEndpoint } from '@/utils/reasoning';
 
 export interface DeepSeekSamplingControlInput {
   model?: unknown;

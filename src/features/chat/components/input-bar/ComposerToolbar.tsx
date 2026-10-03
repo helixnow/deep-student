@@ -42,7 +42,7 @@ import { formatContextTokenAmount } from './contextWindowUsage';
 import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import type { PermissionPreset } from '../../core/types/store';
-import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
+import type { ReasoningLevelOption, ReasoningLevel } from '@/utils/reasoning';
 import { ComposerPlusMenu } from './ComposerPlusMenu';
 import { ThinkingDepthSlider } from './ThinkingDepthSlider';
 import { ContextUsagePopover } from './ContextUsagePopover';
@@ -265,9 +265,9 @@ export interface ComposerToolbarProps {
   thinkingUnsupported?: boolean;
   thinkingCanDisable: boolean;
   thinkingStateLabel?: string;
-  thinkingDepthOptions?: DeepSeekReasoningOption[];
-  thinkingDepthValue?: DeepSeekReasoningOptionValue;
-  onSetThinkingDepth?: (value: DeepSeekReasoningOptionValue | 'off') => void;
+  thinkingDepthOptions?: ReasoningLevelOption[];
+  thinkingDepthValue?: ReasoningLevel;
+  onSetThinkingDepth?: (value: ReasoningLevel | 'off') => void;
   runtimeModelLabel?: string;
   runtimeModelProviderLabel?: string;
   runtimeModelIconId?: string;
@@ -370,7 +370,7 @@ export const ComposerToolbar: React.FC<ComposerToolbarProps> = ({
   // ── 推理/模型菜单派生值 ──
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
   const resolveThinkingDepthLabel = useCallback(
-    (option: DeepSeekReasoningOption) => t(option.labelKey, option.defaultLabel),
+    (option: ReasoningLevelOption) => t(option.labelKey, option.defaultLabel),
     [t]
   );
   const selectedThinkingDepthOption =

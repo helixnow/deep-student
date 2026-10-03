@@ -5,6 +5,7 @@ pub(crate) mod model2_pipeline;
 pub(crate) mod parser;
 pub(crate) mod provider_quirks;
 mod rag_extension;
+pub(crate) mod reasoning_level_map;
 pub mod routing;
 pub mod utf8_stream;
 
@@ -841,11 +842,14 @@ mod tests {
 
     #[test]
     fn proxied_provider_effort_aliases_normalize_to_openai_values() {
+        // 中转（custom）宿主：**五档原样透传**，不按模型家族裁剪——中转站
+        // 已完成上游映射，客户端再裁剪会丢失用户意图。厂商原生别名
+        // （auto/adaptive/disabled）仍归一为标准 effort 值。
         for (adapter, model, requested, expected) in [
             ("doubao", "doubao-seed-1-6-thinking", "auto", "medium"),
             ("minimax", "MiniMax-M3", "adaptive", "medium"),
-            ("ernie", "ernie-5.0-thinking", "max", "xhigh"),
-            ("deepseek", "deepseek-v4-pro", "max", "xhigh"),
+            ("ernie", "ernie-5.0-thinking", "max", "max"),
+            ("deepseek", "deepseek-v4-pro", "max", "max"),
             ("zhipu", "glm-5.2", "disabled", "none"),
         ] {
             let config = ApiConfig {
@@ -2082,6 +2086,477 @@ mod tests {
         assert!(!map.contains_key("reasoning_effort"));
     }
 
+    /// C1 黄金基线：除思考强度字段外，其余请求体参数必须逐字段不变。
+    ///
+    /// 本测试对「模型 × 档位 × 宿主」矩阵记录当前行为作为基线。后续任何
+    /// 档位映射改动都不得让非思考强度字段发生增删或改值——这是"只动思考
+    /// 强度"的硬约束（C1）的自动化闸门。
+    ///
+    /// 断言方式：把结果按「思考强度字段」与「其余字段」切成两组分别比较，
+    /// 避免用整体快照——整体快照会让合理的档位/关闭字段变化也报错。
+    mod reasoning_scope_baseline {
+        use super::*;
+
+        /// 思考强度相关字段的完整集合（含各家方言别名）。
+        const REASONING_KEYS: [&str; 12] = [
+            "reasoning_effort",
+            "reasoning",
+            "thinking",
+            "thinking_budget",
+            "enable_thinking",
+            "thinkingConfig",
+            "include_thoughts",
+            "effort",
+            "output_config",
+            "reasoning_mode",
+            "verbosity",
+            "gemini_api_version",
+        ];
+
+        fn is_reasoning_key(key: &str) -> bool {
+            REASONING_KEYS.contains(&key)
+        }
+
+        /// 非思考强度字段快照（用于 C1 断言）。
+        fn non_reasoning_fields(body: &Value) -> serde_json::Map<String, Value> {
+            body.as_object()
+                .expect("body should be an object")
+                .iter()
+                .filter(|(key, _)| !is_reasoning_key(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        }
+
+        /// 带全套可选参数的请求体：涵盖采样参数、penalty、自定义扩展。
+        fn matrix_body(model: &str) -> Value {
+            json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "presence_penalty": 0.3,
+                "frequency_penalty": 0.4,
+                "logprobs": true,
+                "top_k": 40,
+                "min_p": 0.05,
+                "repetition_penalty": 1.05,
+                "max_tokens": 4096,
+                "stream": true,
+            })
+        }
+
+        /// 一个矩阵样本：模型 + 宿主配置 + 生效档位。
+        struct Sample {
+            label: &'static str,
+            model: &'static str,
+            effort: Option<&'static str>,
+            budget: Option<i32>,
+            enable_thinking: Option<bool>,
+        }
+
+        fn base_config(model: &str) -> ApiConfig {
+            ApiConfig {
+                model: model.to_string(),
+                is_reasoning: true,
+                supports_reasoning: true,
+                thinking_enabled: true,
+                ..Default::default()
+            }
+        }
+
+        fn samples() -> Vec<Sample> {
+            vec![
+                // OpenAI 家族（含 gpt-6 与 gpt-5.6，协议差异在 Phase 2 接入）
+                Sample {
+                    label: "gpt-6-sol",
+                    model: "gpt-6-sol",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-6-sol/xhigh",
+                    model: "gpt-6-sol",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-5.6",
+                    model: "gpt-5.6",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-5.5",
+                    model: "gpt-5.5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "o3",
+                    model: "o3",
+                    effort: Some("high"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Gemini
+                Sample {
+                    label: "gemini-3.8-flash",
+                    model: "gemini-3.8-flash",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gemini-3.1-pro",
+                    model: "gemini-3.1-pro-preview",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Qwen
+                Sample {
+                    label: "qwen3.8-max",
+                    model: "qwen3.8-max",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "qwen3.8-max/low",
+                    model: "qwen3.8-max",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // GLM
+                Sample {
+                    label: "glm-5.3",
+                    model: "glm-5.3",
+                    effort: Some("none"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "glm-5.2",
+                    model: "glm-5.2",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Kimi
+                Sample {
+                    label: "kimi-k3",
+                    model: "kimi-k3",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "kimi-k3/blank",
+                    model: "kimi-k3",
+                    effort: Some(""),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Grok
+                Sample {
+                    label: "grok-4.7",
+                    model: "grok-4.7",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "grok-4.7/unknown",
+                    model: "grok-4.7",
+                    effort: Some("turbo"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // DeepSeek
+                Sample {
+                    label: "deepseek-v4-pro",
+                    model: "deepseek-v4-pro",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "deepseek-v4-pro/medium",
+                    model: "deepseek-v4-pro",
+                    effort: Some("medium"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // 其他
+                Sample {
+                    label: "ernie-5",
+                    model: "ernie-5",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "mistral-medium-3.5",
+                    model: "mistral-medium-3.5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "minimax-m3.1-flash-preview",
+                    model: "minimax-m3.1-flash-preview",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "claude-opus-5",
+                    model: "claude-opus-5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // 关闭思考 + 预算兜底形态
+                Sample {
+                    label: "thinking-off",
+                    model: "gpt-5.6",
+                    effort: None,
+                    budget: None,
+                    enable_thinking: Some(false),
+                },
+                Sample {
+                    label: "budget-only",
+                    model: "qwen3.7-max",
+                    effort: None,
+                    budget: Some(8192),
+                    enable_thinking: None,
+                },
+            ]
+        }
+
+        fn host_config(
+            model: &str,
+            provider_type: &str,
+            model_adapter: &str,
+            base_url: &str,
+        ) -> ApiConfig {
+            ApiConfig {
+                provider_type: Some(provider_type.to_string()),
+                provider_scope: Some(provider_type.to_string()),
+                model_adapter: model_adapter.to_string(),
+                base_url: base_url.to_string(),
+                ..base_config(model)
+            }
+        }
+
+        fn apply(sample: &Sample, config: &ApiConfig) -> Value {
+            let mut body = matrix_body(&config.model);
+            let mut config = config.clone();
+            config.reasoning_effort = sample.effort.map(str::to_string);
+            config.thinking_budget = sample.budget;
+            if let Some(enable) = sample.enable_thinking {
+                config.enable_thinking = Some(enable);
+            }
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+            body
+        }
+
+        /// 各宿主的配置构造器：(标签, 构造闭包)。
+        #[allow(clippy::type_complexity)]
+        fn hosts() -> Vec<(&'static str, Box<dyn Fn(&str) -> ApiConfig>)> {
+            vec![
+                (
+                    "official-openai",
+                    Box::new(|m: &str| {
+                        host_config(m, "openai", "openai", "https://api.openai.com/v1")
+                    }),
+                ),
+                (
+                    "official-openai/responses",
+                    Box::new(|m: &str| {
+                        let mut c = host_config(m, "openai", "openai", "https://api.openai.com/v1");
+                        c.api_protocol = Some("openai_responses".to_string());
+                        c
+                    }),
+                ),
+                (
+                    "official-deepseek",
+                    Box::new(|m: &str| {
+                        host_config(m, "deepseek", "deepseek", "https://api.deepseek.com/v1")
+                    }),
+                ),
+                (
+                    "official-anthropic",
+                    Box::new(|m: &str| {
+                        host_config(m, "anthropic", "anthropic", "https://api.anthropic.com")
+                    }),
+                ),
+                (
+                    "official-gemini",
+                    Box::new(|m: &str| {
+                        host_config(
+                            m,
+                            "google",
+                            "google",
+                            "https://generativelanguage.googleapis.com",
+                        )
+                    }),
+                ),
+                (
+                    "official-qwen",
+                    Box::new(|m: &str| {
+                        host_config(
+                            m,
+                            "qwen",
+                            "qwen",
+                            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                        )
+                    }),
+                ),
+                (
+                    "official-zhipu",
+                    Box::new(|m: &str| {
+                        host_config(m, "zhipu", "zhipu", "https://open.bigmodel.cn/api/paas/v4")
+                    }),
+                ),
+                (
+                    "official-moonshot",
+                    Box::new(|m: &str| {
+                        host_config(m, "moonshot", "moonshot", "https://api.moonshot.cn/v1")
+                    }),
+                ),
+                (
+                    "official-grok",
+                    Box::new(|m: &str| host_config(m, "grok", "grok", "https://api.x.ai/v1")),
+                ),
+                (
+                    "custom-relay",
+                    Box::new(|m: &str| {
+                        host_config(m, "custom", "general", "https://relay.example.com/v1")
+                    }),
+                ),
+                (
+                    "siliconflow",
+                    Box::new(|m: &str| {
+                        host_config(m, "siliconflow", "general", "https://api.siliconflow.cn/v1")
+                    }),
+                ),
+                (
+                    "openrouter",
+                    Box::new(|m: &str| {
+                        host_config(m, "openrouter", "general", "https://openrouter.ai/api/v1")
+                    }),
+                ),
+            ]
+        }
+
+        /// C1 核心断言：矩阵中每个样本的"非思考强度字段"必须与基线一致。
+        ///
+        /// 基线是仓库内 fixture（`tests/fixtures/reasoning/non_reasoning_fields_baseline.json`），
+        /// 随 PR 一起提交，因此 CI 上同样真正执行比对（而非只写不验）。
+        /// 断言失败会直接指出是哪个样本、期望与实际分别有哪些字段，便于定位
+        /// 是哪个模型的哪次改动把非思考强度参数也带偏了。
+        fn baseline_path() -> std::path::PathBuf {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests")
+                .join("fixtures")
+                .join("reasoning")
+                .join("non_reasoning_fields_baseline.json")
+        }
+
+        #[test]
+        fn non_reasoning_fields_stay_byte_identical_across_matrix() {
+            let mut current = serde_json::Map::new();
+
+            for (host_label, build) in hosts() {
+                for sample in samples() {
+                    let config = build(sample.model);
+                    let body = apply(&sample, &config);
+                    let fields = non_reasoning_fields(&body);
+                    let key = format!("{host_label}::{}", sample.label);
+                    current.insert(key, Value::Object(fields));
+                }
+            }
+
+            let path = baseline_path();
+            // 基线存在 → 严格比对（CI 与本地一致）。
+            // 缺失时退化为"写出引导"而非静默通过：只有在显式设置
+            // REASONING_SCOPE_BASELINE_WRITE=1 时才允许重建，避免误删基线后
+            // 测试变成永远绿的空闸门。
+            if !path.exists() {
+                assert!(
+                    std::env::var("REASONING_SCOPE_BASELINE_WRITE").as_deref() == Ok("1"),
+                    "C1 baseline missing at {} — refusing to pass silently. \
+                     Re-create it deliberately with REASONING_SCOPE_BASELINE_WRITE=1 \
+                     (and review the diff) if the non-reasoning field set is intentionally changing.",
+                    path.display()
+                );
+                let doc = Value::Object(current);
+                let pretty = serde_json::to_string_pretty(&doc).expect("serialize baseline");
+                std::fs::create_dir_all(path.parent().expect("baseline parent")).ok();
+                std::fs::write(&path, pretty).expect("write baseline");
+                eprintln!(
+                    "[reasoning-scope-baseline] wrote baseline to {}",
+                    path.display()
+                );
+                return;
+            }
+
+            let raw = std::fs::read_to_string(&path).expect("read baseline");
+            let baseline: serde_json::Map<String, Value> =
+                serde_json::from_str(&raw).expect("parse baseline");
+
+            let mut diffs: Vec<String> = Vec::new();
+            for (key, expected) in &baseline {
+                match current.get(key) {
+                    None => diffs.push(format!("{key}: sample missing in current run")),
+                    Some(actual) if actual != expected => {
+                        let expected_map = expected.as_object();
+                        let actual_map = actual.as_object();
+                        let mut field_diffs: Vec<String> = Vec::new();
+                        if let (Some(expected_map), Some(actual_map)) = (expected_map, actual_map) {
+                            for (field, expected_value) in expected_map {
+                                match actual_map.get(field) {
+                                    Some(actual_value) if actual_value == expected_value => {}
+                                    Some(actual_value) => field_diffs.push(format!(
+                                        "    {field}: {expected_value} -> {actual_value}"
+                                    )),
+                                    None => field_diffs.push(format!(
+                                        "    {field}: {expected_value} -> <removed>"
+                                    )),
+                                }
+                            }
+                            for (field, actual_value) in actual_map {
+                                if !expected_map.contains_key(field) {
+                                    field_diffs
+                                        .push(format!("    {field}: <absent> -> {actual_value}"));
+                                }
+                            }
+                        }
+                        diffs.push(format!("{key}:\n{}", field_diffs.join("\n")));
+                    }
+                    Some(_) => {}
+                }
+            }
+            for key in current.keys() {
+                if !baseline.contains_key(key) {
+                    diffs.push(format!("{key}: new sample not in baseline"));
+                }
+            }
+
+            assert!(
+                diffs.is_empty(),
+                "C1 violated — non-reasoning request fields changed:\n{}",
+                diffs.join("\n")
+            );
+        }
+    }
+
     #[test]
     fn apply_reasoning_config_keeps_siliconflow_v32_sampling_params() {
         let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
@@ -3061,6 +3536,12 @@ pub struct ApiConfig {
     /// 只有当 key 在 body 中尚不存在时才会插入。
     #[serde(default)]
     pub extra_body: Option<serde_json::Map<String, Value>>,
+    /// 渠道并行思考强度（方案 D）：`get_adapter` 解析出的适配器 id。
+    ///
+    /// 只随 `get_api_configurations` 下发给前端做渠道查找（前端不再靠模型名猜渠道），
+    /// 不参与反序列化与持久化——每次读取时由命令层重算，存量存储无需迁移。
+    #[serde(default, skip_deserializing)]
+    pub resolved_adapter_id: Option<String>,
 }
 
 impl Default for ApiConfig {
@@ -3112,6 +3593,7 @@ impl Default for ApiConfig {
             max_tokens_limit: None,
             context_window: None,
             extra_body: None,
+            resolved_adapter_id: None,
         }
     }
 }
@@ -3455,6 +3937,19 @@ fn uses_generic_openai_gateway(config: &ApiConfig) -> bool {
     get_provider_protocol_record(host_type)
         .map(|record| !record.official)
         .unwrap_or(true)
+}
+
+/// 该 provider_type 是否为厂商官方渠道（数据来自 provider-protocol-registry.json）。
+///
+/// 思考强度档位映射据此分流：官方渠道按模型能力表就近吸附，自定义/中转渠道
+/// 五档原样透传（中转站已完成上游映射）。
+///
+/// 未登记的 provider 视为非官方（保守：不做裁剪比误裁剪更安全——多发的档位
+/// 由上游网关自行处理，而错误裁剪会静默改变用户意图）。
+pub(crate) fn provider_is_official(provider_type: &str) -> bool {
+    get_provider_protocol_record(Some(provider_type))
+        .map(|record| record.official)
+        .unwrap_or(false)
 }
 
 fn should_honor_explicit_openai_responses_protocol(config: &ApiConfig) -> bool {
@@ -4456,6 +4951,11 @@ impl LLMManager {
         // protocol instead.
         let adapter = request_adapter_for_config(config);
         // 移除采样参数（如果适配器要求）
+        //
+        // C1 约束：这里的判定必须只看**用户原始档位**，绝不看档位映射结果。
+        // 映射（下方 map_reasoning_level_for_config）只负责改写 effort/budget
+        // 字段本身；若让它参与采样参数判定，改档位就会连带改动
+        // temperature/top_p 等无关参数。
         if adapter.should_remove_sampling_params(config) {
             map.remove("temperature");
             map.remove("top_p");
@@ -4464,9 +4964,34 @@ impl LLMManager {
             map.remove("logprobs");
         }
 
+        // 档位能力映射（统一五档 → 该模型实际协议可接受的档位）。
+        //
+        // 位置选择：必须在适配器执行**之前**，因为各适配器内的归一表（如
+        // generic 的 max→xhigh、gemini 的默认档回退）读的是 config.reasoning_effort。
+        // 在此统一映射后，适配器只需按"该档位已合法"的假设发送，家族差异
+        // 不再散落在 14 个适配器的 match 分支里。
+        //
+        // 作用域：只改 reasoning_effort / thinking_budget 两个字段，
+        // 不触碰 enable_thinking 与任何其他参数（C1）。
+        let mapped_config;
+        let config = {
+            let mapped =
+                crate::llm_manager::reasoning_level_map::map_reasoning_level_for_config(config);
+            match mapped {
+                Some(m) => {
+                    mapped_config = m;
+                    &mapped_config
+                }
+                None => config,
+            }
+        };
+
         // 应用推理配置
         let early_return = adapter.apply_reasoning_config(map, config, enable_thinking);
 
+        // C1 约束：档位映射不得改变早期返回语义。early_return 决定后续
+        // apply_common_params（min_p/top_k/repetition_penalty/verbosity/extra_body）
+        // 是否执行，属于"其他请求体参数"的范畴。
         if early_return {
             return;
         }
@@ -5986,6 +6511,7 @@ impl LLMManager {
         };
 
         let runtime = ApiConfig {
+            resolved_adapter_id: None,
             id: profile.id.clone(),
             name: profile.label.clone(),
             vendor_id: Some(vendor.id.clone()),
@@ -6210,6 +6736,7 @@ impl LLMManager {
             return Ok(old_configs
                 .into_iter()
                 .map(|old| ApiConfig {
+                    resolved_adapter_id: None,
                     id: old.id,
                     name: old.name,
                     vendor_id: None,
@@ -6275,6 +6802,7 @@ impl LLMManager {
         Ok(old_configs
             .into_iter()
             .map(|old| ApiConfig {
+                resolved_adapter_id: None,
                 id: old.id,
                 name: old.name,
                 vendor_id: None,

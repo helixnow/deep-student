@@ -218,7 +218,9 @@
         "include_thoughts": "返回思维总结",
         "include_thoughts_hint": "对应 include_thoughts，用于请求思维链摘要。",
         "unsupported_include_hint": "该模型不支持 include_thoughts 参数",
-        "note": "系统会自动将这些设置映射到对应平台（OpenAI reasoning.effort、Claude thinking、Gemini thinkingBudget/include_thoughts）。"
+        "note": "系统会自动将这些设置映射到对应平台（OpenAI reasoning.effort、Claude thinking、Gemini thinkingBudget/include_thoughts）。",
+        "generic_effort_toggle": "思考强度支持",
+        "generic_effort_toggle_hint": "开启后可为该模型选择思考强度档位（low / medium / high / xhigh，以 reasoning_effort 发送）；关闭时仅保留 thinking_budget 兜底。"
       },
       "fields": {
         "api_key": "API 密钥",
@@ -296,7 +298,13 @@
           "medium": "中 (4096)",
           "high": "高 (16384)",
           "xhigh": "超高 (65536)",
-          "max": "最高 (262144)"
+          "max": "最高 (262144)",
+          "xhigh_sf": "超高 (32768)"
+        },
+        "depth38": {
+          "low": "低",
+          "medium": "中",
+          "xhigh": "超高（默认）"
         }
       },
       "grok": {

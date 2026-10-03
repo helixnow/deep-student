@@ -409,7 +409,8 @@ describe('apiCapabilityEngine Xiaomi MiMo model inference', () => {
       expect(caps.supportsReasoningEffort, id).toBe(true);
       expect(caps.contextWindow, id).toBe(1_050_000);
     }
-    for (const id of ['gpt-60', 'not-gpt-6-preview']) {
+    // 中转别名（如 not-gpt-6-preview）按 #432 的包含匹配归入 gpt-6 家族；版本号续位（gpt-60）不算
+    for (const id of ['gpt-60']) {
       expect(inferApiCapabilities({ id }).supportsReasoningEffort, id).toBe(false);
     }
   });

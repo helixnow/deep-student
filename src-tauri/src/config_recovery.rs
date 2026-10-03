@@ -11,6 +11,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
     vec![
         // OpenAI GPT-5.4 Mini 配置（高吞吐低成本主力，2026-07 现役）
         ApiConfig {
+            resolved_adapter_id: None,
             id: "openai-gpt4".to_string(),
             name: "OpenAI GPT-5.4 Mini".to_string(),
             vendor_id: None,
@@ -72,6 +73,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
         },
         // Claude Sonnet 5 配置（2026-07 现役 ID；claude-3-5-sonnet 早已退役）
         ApiConfig {
+            resolved_adapter_id: None,
             id: "claude-sonnet".to_string(),
             name: "Claude Sonnet 5".to_string(),
             vendor_id: None,

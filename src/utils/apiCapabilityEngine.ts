@@ -45,6 +45,8 @@ export interface InferredApiCapabilities {
   contextWindow: number;
   /** contextWindow 的来源；'default' 表示未命中任何注册表记录或规则 */
   contextWindowSource: ContextWindowSource;
+  /** 注册表确认的模型最大输出 tokens；未命中为 null（方案 E：设置页据此直填） */
+  maxOutputTokens: number | null;
 }
 
 const toLower = (value: string | undefined | null): string => (value ?? '').toLowerCase();
@@ -726,6 +728,11 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     contextWindowSource = 'default';
   }
 
+  const registryMaxOutput =
+    modelCapabilities && typeof modelCapabilities.max_output_tokens === 'number' && modelCapabilities.max_output_tokens > 0
+      ? modelCapabilities.max_output_tokens
+      : null;
+
   return {
     reasoning,
     vision,
@@ -740,5 +747,6 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     supportsHybridReasoning,
     contextWindow,
     contextWindowSource,
+    maxOutputTokens: registryMaxOutput,
   };
 }

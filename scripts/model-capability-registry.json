@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-10",
+  "updated_at": "2026-10-03",
   "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-12 核验：DeepSeek V4.1 Flash（deepseek-flash）原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 路由到该模型。官方已撤回 V4 Pro 的 9 月 14 日下线计划，继续提供服务。Responses API 内置工具（含 web_search）被静默忽略。",
   "records": [
     {
@@ -24,8 +24,19 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "stream",
+              "tools",
+              "tool_choice",
+              "response_format"
+            ],
             "notes": "2026-07 主线旗舰；优先使用 Responses API，Chat Completions 使用 max_completion_tokens。"
           },
           "quirks": [
@@ -51,8 +62,22 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "reasoning.mode",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "GPT-5.6 旗舰型号；支持 Responses 与 Chat Completions，优先使用 Responses API。公开别名 gpt-5.6 当前路由到本型号。"
           },
           "quirks": [
@@ -80,8 +105,22 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "reasoning.mode",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "GPT-5.6 均衡型号；支持 Responses 与 Chat Completions，优先使用 Responses API。"
           },
           "quirks": [
@@ -108,8 +147,22 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "reasoning.mode", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "reasoning.mode",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "GPT-5.6 快速低成本型号；支持 Responses 与 Chat Completions，优先使用 Responses API。"
           },
           "quirks": [
@@ -134,8 +187,19 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "stream",
+              "tools",
+              "tool_choice",
+              "response_format"
+            ],
             "notes": "2026 主线旗舰；effort 全集 none/minimal/low/medium/high/xhigh（gpt-5.5-pro 仅 medium/high/xhigh，调研 01 要点 5）。"
           },
           "quirks": [
@@ -159,8 +223,19 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "高精度推理档，与内置配置的 high reasoning effort 默认值保持一致；正式能力边界待官方文档复核。"
           },
           "quirks": [
@@ -184,8 +259,19 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "tools", "tool_choice", "response_format"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "stream",
+              "tools",
+              "tool_choice",
+              "response_format"
+            ],
             "notes": "gpt-5.5 之前的主线版本，参数形态与 5.5 一致。"
           },
           "quirks": [
@@ -209,8 +295,21 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "成本优化变体，与当前内置参数保持一致。"
           },
           "quirks": []
@@ -232,8 +331,21 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "高吞吐变体，与当前内置 low reasoning effort/low verbosity 默认值保持一致。"
           },
           "quirks": []
@@ -255,8 +367,19 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "stream", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "stream",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "高计算变体，与内置配置的 high reasoning effort 默认值保持一致。"
           },
           "quirks": [
@@ -280,8 +403,23 @@
           },
           "param_format": {
             "family": "openai_responses_api_preferred",
-            "required_fields": ["model", "input", "tools?"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "response_format", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "input",
+              "tools?"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "stream_options",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "官方定位为更强的 agentic coding 模型。与 GPT-5.2-Codex/Responses API 差异建议以运行时 SDK 能力为准。"
           },
           "quirks": [
@@ -305,8 +443,18 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_completion_tokens", "temperature", "top_p", "reasoning_effort", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "reasoning_effort",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "主线通用能力；兼容当前 OpenAI Chat Completions 流程时保持默认参数回退策略。"
           },
           "quirks": [
@@ -330,8 +478,20 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_completion_tokens", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_completion_tokens",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "stream_options",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "作为 gpt-5.2 的轻量企业对话变体处理，默认按 chat 接口参数处理。"
           },
           "quirks": [
@@ -355,8 +515,20 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "stream", "stream_options", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "stream_options",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "统一能力推断入口基线，避免硬编码模型特征映射时误判。"
           },
           "quirks": [
@@ -380,8 +552,17 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "temperature", "stream", "stream_options"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "temperature",
+              "stream",
+              "stream_options"
+            ],
             "notes": "与 codex-mini 系列命名一致，但需跟后端模型列表最终确认是否在你的供应商清单可见。"
           },
           "quirks": [
@@ -405,188 +586,276 @@
           },
           "param_format": {
             "family": "open_model_openai_compat_if_available",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format"
+            ],
             "notes": "非纯官方 API，通常通过自建服务或开源平台对接；参数兼容度需以部署端为准。"
           },
           "quirks": [
             "当前不是主力 API 公开新发布源，适合作为离线或自建 OpenAI 兼容路径的回退模型。"
           ]
-      },
-      {
-        "model_id": "gpt-5.1",
-        "release_date": "2025-11",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": false,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": false,
-          "max_context_tokens": null,
-          "max_output_tokens": null
         },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-            "optional_fields": ["max_completion_tokens", "max_tokens", "top_p", "reasoning_effort", "verbosity", "tools", "tool_choice", "stream", "stream_options"],
-          "notes": "OpenAI 2025-11 的 GPT-5.1 主线模型，偏通用推理模型。部分渠道默认 `reasoning` 开关行为与 GPT-5.2 系列不完全一致。"
+        {
+          "model_id": "gpt-5.1",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_completion_tokens",
+              "max_tokens",
+              "top_p",
+              "reasoning_effort",
+              "verbosity",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options"
+            ],
+            "notes": "OpenAI 2025-11 的 GPT-5.1 主线模型，偏通用推理模型。部分渠道默认 `reasoning` 开关行为与 GPT-5.2 系列不完全一致。"
+          },
+          "quirks": [
+            "对比旧版模型，默认推理行为与 GPT-5.2 系列存在微调，建议以模型返回能力优先。"
+          ]
         },
-        "quirks": [
-          "对比旧版模型，默认推理行为与 GPT-5.2 系列存在微调，建议以模型返回能力优先。"
-        ]
-      },
-      {
-        "model_id": "gpt-5.1-codex",
-        "release_date": "2025-11",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": false,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": true,
-          "max_context_tokens": null,
-          "max_output_tokens": null
+        {
+          "model_id": "gpt-5.1-codex",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_responses_api_preferred",
+            "required_fields": [
+              "model",
+              "input",
+              "tools?"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "verbosity",
+              "max_output_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "stream_options",
+              "response_format",
+              "tools",
+              "tool_choice"
+            ],
+            "notes": "面向代码与 agentic coding 的 codex 变体，响应链路建议以 Responses API 为主。"
+          },
+          "quirks": [
+            "在部分企业侧控制面可能与官方 codex 命名映射存在 1-2 个版本窗口差异。"
+          ]
         },
-        "param_format": {
-          "family": "openai_responses_api_preferred",
-          "required_fields": ["model", "input", "tools?"],
-            "optional_fields": ["reasoning_effort", "verbosity", "max_output_tokens", "temperature", "top_p", "stream", "stream_options", "response_format", "tools", "tool_choice"],
-          "notes": "面向代码与 agentic coding 的 codex 变体，响应链路建议以 Responses API 为主。"
+        {
+          "model_id": "gpt-5.1-codex-mini",
+          "release_date": "2025-11",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "max_completion_tokens"
+            ],
+            "notes": "轻量 codex 分支，仍建议以 vendor 返回列表确认是否已下线或重命名。"
+          },
+          "quirks": [
+            "在无流式环境下可优先选择该系列以降低推理成本。"
+          ]
         },
-        "quirks": [
-          "在部分企业侧控制面可能与官方 codex 命名映射存在 1-2 个版本窗口差异。"
-        ]
-      },
-      {
-        "model_id": "gpt-5.1-codex-mini",
-        "release_date": "2025-11",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": false,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": true,
-          "max_context_tokens": null,
-          "max_output_tokens": null
+        {
+          "model_id": "gpt-5.2-chat-latest",
+          "release_date": "2026-01",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "tools",
+              "tool_choice"
+            ],
+            "notes": "基于 `-latest` 别名模型，适配时不应将其当作固定快照；建议优先匹配具体 snapshot。"
+          },
+          "quirks": [
+            "官方 changelog 在不同页面有更新时间差，`-latest` 别名可能会绕过严格能力快照。"
+          ]
         },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-          "optional_fields": ["tools", "tool_choice", "temperature", "top_p", "max_completion_tokens"],
-          "notes": "轻量 codex 分支，仍建议以 vendor 返回列表确认是否已下线或重命名。"
+        {
+          "model_id": "gpt-4.1",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "reasoning_effort"
+            ],
+            "notes": "与 GPT-5 之间常见行为差异较大，4.1 在部分客户端仍被认为是企业稳定主线。"
+          },
+          "quirks": [
+            "4.1 与 4.5 preview 系列可能共存，需注意 context 与工具字段透传版本。"
+          ]
         },
-        "quirks": [
-          "在无流式环境下可优先选择该系列以降低推理成本。"
-        ]
-      },
-      {
-        "model_id": "gpt-5.2-chat-latest",
-        "release_date": "2026-01",
-        "status": "inferred",
-        "capabilities": {
-          "text": true,
-          "vision": false,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": false,
-          "max_context_tokens": null,
-          "max_output_tokens": null
+        {
+          "model_id": "gpt-4.1-mini",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": true,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "reasoning_effort"
+            ],
+            "notes": "轻量版本，主打成本与速度，适合高并发工具编排链路。"
+          },
+          "quirks": [
+            "适配时可按 4.1 的上下文上限，但长链路建议与实际运行时返回值交叉校验。"
+          ]
         },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-          "optional_fields": ["max_tokens", "tools", "tool_choice"],
-          "notes": "基于 `-latest` 别名模型，适配时不应将其当作固定快照；建议优先匹配具体 snapshot。"
-        },
-        "quirks": [
-          "官方 changelog 在不同页面有更新时间差，`-latest` 别名可能会绕过严格能力快照。"
-        ]
-      },
-      {
-        "model_id": "gpt-4.1",
-        "release_date": "2025-03",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": true,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": true,
-          "max_context_tokens": 1000000,
-          "max_output_tokens": null
-        },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-          "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
-          "notes": "与 GPT-5 之间常见行为差异较大，4.1 在部分客户端仍被认为是企业稳定主线。"
-        },
-        "quirks": [
-          "4.1 与 4.5 preview 系列可能共存，需注意 context 与工具字段透传版本。"
-        ]
-      },
-      {
-        "model_id": "gpt-4.1-mini",
-        "release_date": "2025-03",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": true,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": true,
-          "max_context_tokens": 1000000,
-          "max_output_tokens": null
-        },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-          "optional_fields": ["max_tokens", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
-          "notes": "轻量版本，主打成本与速度，适合高并发工具编排链路。"
-        },
-        "quirks": [
-          "适配时可按 4.1 的上下文上限，但长链路建议与实际运行时返回值交叉校验。"
-        ]
-      },
-      {
-        "model_id": "gpt-4.1-nano",
-        "release_date": "2025-03",
-        "status": "confirmed",
-        "capabilities": {
-          "text": true,
-          "vision": true,
-          "audio": false,
-          "video": false,
-          "function_calling": true,
-          "reasoning": true,
-          "coding_agent": false,
-          "max_context_tokens": 1000000,
-          "max_output_tokens": null
-        },
-        "param_format": {
-          "family": "openai_chat_completions_compat",
-          "required_fields": ["model", "messages"],
-          "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "reasoning_effort"],
-          "notes": "偏低成本模型线，优先用于短回合高频交互，复杂任务可切到 mini/主线。"
-        },
-        "quirks": [
-          "部分渠道对 4.1-nano 的工具返回格式最严格，建议单独加 `tool_choice` 白名单策略。"
-        ]
+        {
+          "model_id": "gpt-4.1-nano",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions_compat",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "reasoning_effort"
+            ],
+            "notes": "偏低成本模型线，优先用于短回合高频交互，复杂任务可切到 mini/主线。"
+          },
+          "quirks": [
+            "部分渠道对 4.1-nano 的工具返回格式最严格，建议单独加 `tool_choice` 白名单策略。"
+          ]
         }
       ]
     },
@@ -611,8 +880,20 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "thinking",
+              "output_config",
+              "stream",
+              "stop_sequences"
+            ],
             "notes": "官方 2026.8 旗舰；思考仅支持 thinking:{type:\"adaptive\"} + output_config.effort（low/medium/high/xhigh/max），thinking:{type:\"enabled\", budget_tokens} 直接 400。"
           },
           "quirks": [
@@ -637,8 +918,20 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "thinking",
+              "output_config",
+              "stream",
+              "stop_sequences"
+            ],
             "notes": "2026 旗舰；思考仅支持 thinking:{type:\"adaptive\"} + output_config.effort（low/medium/high/xhigh/max），thinking:{type:\"enabled\", budget_tokens} 直接 400（调研 02 要点 2）。"
           },
           "quirks": [
@@ -663,8 +956,20 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "stream", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "thinking",
+              "output_config",
+              "stream",
+              "stop_sequences"
+            ],
             "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
           },
           "quirks": [
@@ -688,8 +993,21 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "betas/header", "stream", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "thinking",
+              "output_config",
+              "betas/header",
+              "stream",
+              "stop_sequences"
+            ],
             "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
           },
           "quirks": [
@@ -713,13 +1031,59 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "thinking", "output_config", "betas/header", "stream", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "thinking",
+              "output_config",
+              "betas/header",
+              "stream",
+              "stop_sequences"
+            ],
             "notes": "adaptive thinking + output_config.effort；enabled+budget_tokens 形状会 400（调研 02 要点 2）。"
           },
           "quirks": [
             "非默认采样参数会 400（调研 02 要点 4）。"
           ]
+        },
+        {
+          "model_id": "claude-opus-5-5",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "WebSearch (Opus 5.5, 1M context)",
+          "verified_at": "2026-10-03"
         }
       ]
     },
@@ -744,8 +1108,25 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "output_config", "betas/header", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "thinking",
+              "output_config",
+              "betas/header",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "支持 1M beta 上下文（通常需要额外 header 或 beta 参数），推断层不要直接写死 200K。"
           },
           "quirks": [
@@ -769,8 +1150,22 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "与 Opus 共享同一上下文扩展机制，仍建议按当前模型列表确认 exact context 切换。"
           },
           "quirks": [
@@ -800,8 +1195,24 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "output_config", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "thinking",
+              "output_config",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "4.5 系列在 1M 上下文体验层面与 4.6 渠道实现存在差别，建议按 live model id 判定。"
           },
           "quirks": [
@@ -825,8 +1236,22 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "4.5 Sonnet 兼顾质量和成本，仍保持较强多模态推理。"
           },
           "quirks": [
@@ -853,8 +1278,23 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "thinking", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "thinking",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "Haiku 产线现役型号；Claude API 别名 claude-haiku-4-5 指向日期版 claude-haiku-4-5-20251001（Bedrock：anthropic.claude-haiku-4-5-20251001-v1:0）。"
           },
           "quirks": [
@@ -880,8 +1320,22 @@
           },
           "param_format": {
             "family": "anthropic_messages_native",
-            "required_fields": ["model", "messages", "max_tokens"],
-            "optional_fields": ["system", "tools", "tool_choice", "temperature", "top_p", "top_k", "stream", "stream_options", "stop_sequences"],
+            "required_fields": [
+              "model",
+              "messages",
+              "max_tokens"
+            ],
+            "optional_fields": [
+              "system",
+              "tools",
+              "tool_choice",
+              "temperature",
+              "top_p",
+              "top_k",
+              "stream",
+              "stream_options",
+              "stop_sequences"
+            ],
             "notes": "作为 4.6 之前的生产可用模型线，保持 API 兼容。"
           },
           "quirks": [
@@ -911,8 +1365,25 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "Gemini 3.1 强化代码工程与代理工作流；如使用 Vertex/AI Studio/SDK，参数名为 `generationConfig`。"
           },
           "quirks": [
@@ -936,8 +1407,27 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents", "tools", "toolConfig"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents",
+              "tools",
+              "toolConfig"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "定制工具链路径变体，建议适配逻辑把它与 Gemini 3.1 的能力并集。"
           },
           "quirks": [
@@ -963,8 +1453,25 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "低延迟低成本多模态型号（Stable，GA 2026-05-07）；输入支持文本/图像/视频/音频/PDF，输出仅文本；Thinking Supported。"
           },
           "quirks": [
@@ -995,8 +1502,25 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "偏向高性价比代理/多模态主力。"
           },
           "quirks": [
@@ -1022,8 +1546,25 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "Gemini 3.x Flash-Lite 最新稳定版（Stable，GA 2026-07-21）；输入支持文本/图像/视频/音频/PDF，输出仅文本；Thinking Supported。"
           },
           "quirks": [
@@ -1053,8 +1594,27 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "safetySettings", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "generationConfig.seed",
+              "tools",
+              "toolConfig",
+              "safetySettings",
+              "thinkingConfig"
+            ],
             "notes": "Gemini 2.5 Pro 在 2025-12 正式可见路线，强调上下文质量与推理稳定性。"
           },
           "quirks": [
@@ -1078,8 +1638,27 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "safetySettings", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "generationConfig.seed",
+              "tools",
+              "toolConfig",
+              "safetySettings",
+              "thinkingConfig"
+            ],
             "notes": "高吞吐版本，偏快响应，适合大批量代理场景。"
           },
           "quirks": [
@@ -1103,8 +1682,26 @@
           },
           "param_format": {
             "family": "google_gemini_api_native",
-            "required_fields": ["contents"],
-            "optional_fields": ["generationConfig", "generationConfig.topK", "generationConfig.topP", "generationConfig.maxOutputTokens", "generationConfig.temperature", "generationConfig.stopSequences", "generationConfig.responseSchema", "generationConfig.responseMimeType", "generationConfig.presencePenalty", "generationConfig.frequencyPenalty", "generationConfig.candidateCount", "generationConfig.seed", "tools", "toolConfig", "thinkingConfig"],
+            "required_fields": [
+              "contents"
+            ],
+            "optional_fields": [
+              "generationConfig",
+              "generationConfig.topK",
+              "generationConfig.topP",
+              "generationConfig.maxOutputTokens",
+              "generationConfig.temperature",
+              "generationConfig.stopSequences",
+              "generationConfig.responseSchema",
+              "generationConfig.responseMimeType",
+              "generationConfig.presencePenalty",
+              "generationConfig.frequencyPenalty",
+              "generationConfig.candidateCount",
+              "generationConfig.seed",
+              "tools",
+              "toolConfig",
+              "thinkingConfig"
+            ],
             "notes": "偏低成本多模态版本。"
           },
           "quirks": [
@@ -1134,8 +1731,22 @@
           },
           "param_format": {
             "family": "aws_bedrock_openai_compat",
-            "required_fields": ["modelId", "inputTextOrMessages"],
-            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "required_fields": [
+              "modelId",
+              "inputTextOrMessages"
+            ],
+            "optional_fields": [
+              "inferenceConfig",
+              "maxTokens",
+              "temperature",
+              "topP",
+              "topK",
+              "stopSequences",
+              "reasoningConfig",
+              "toolConfig",
+              "toolChoice",
+              "additionalModelRequestFields"
+            ],
             "notes": "以 Bedrock 为主的托管能力，参数名与原始 openai chat 入口可有映射差异。"
           },
           "quirks": [
@@ -1159,8 +1770,22 @@
           },
           "param_format": {
             "family": "aws_bedrock_openai_compat",
-            "required_fields": ["modelId", "inputTextOrMessages"],
-            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "required_fields": [
+              "modelId",
+              "inputTextOrMessages"
+            ],
+            "optional_fields": [
+              "inferenceConfig",
+              "maxTokens",
+              "temperature",
+              "topP",
+              "topK",
+              "stopSequences",
+              "reasoningConfig",
+              "toolConfig",
+              "toolChoice",
+              "additionalModelRequestFields"
+            ],
             "notes": "支持分级思考，适配器应保留模型级别思考参数透传能力。"
           },
           "quirks": [
@@ -1184,8 +1809,22 @@
           },
           "param_format": {
             "family": "aws_bedrock_openai_compat",
-            "required_fields": ["modelId", "inputTextOrMessages"],
-            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields"],
+            "required_fields": [
+              "modelId",
+              "inputTextOrMessages"
+            ],
+            "optional_fields": [
+              "inferenceConfig",
+              "maxTokens",
+              "temperature",
+              "topP",
+              "topK",
+              "stopSequences",
+              "reasoningConfig",
+              "toolConfig",
+              "toolChoice",
+              "additionalModelRequestFields"
+            ],
             "notes": "复杂场景优先级更高，适配器可做更激进 token 预算策略。"
           },
           "quirks": [
@@ -1209,8 +1848,23 @@
           },
           "param_format": {
             "family": "aws_bedrock_openai_compat",
-            "required_fields": ["modelId", "inputMultimodalPayload"],
-            "optional_fields": ["inferenceConfig", "maxTokens", "temperature", "topP", "topK", "stopSequences", "reasoningConfig", "toolConfig", "toolChoice", "additionalModelRequestFields", "inputMultimodalPayload"],
+            "required_fields": [
+              "modelId",
+              "inputMultimodalPayload"
+            ],
+            "optional_fields": [
+              "inferenceConfig",
+              "maxTokens",
+              "temperature",
+              "topP",
+              "topK",
+              "stopSequences",
+              "reasoningConfig",
+              "toolConfig",
+              "toolChoice",
+              "additionalModelRequestFields",
+              "inputMultimodalPayload"
+            ],
             "notes": "多模态 Omni 通道更可能需要 provider-specific input 封装，不宜直接复用纯 text payload。"
           },
           "quirks": [
@@ -1240,8 +1894,18 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "stream",
+              "thinking",
+              "reasoning_effort"
+            ],
             "notes": "V4 旗舰；thinking 默认 enabled，reasoning_effort 支持 low/high/max（minimal→low、medium/xhigh→high、ultra→max）。"
           },
           "quirks": [
@@ -1269,8 +1933,18 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "stream",
+              "thinking",
+              "reasoning_effort"
+            ],
             "notes": "V4-Flash 旧名（0731 正式版）已于 2026-09-10 下线，为兼容暂时路由到 V4.1 Flash（deepseek-flash），能力按路由后的模型记录。legacy 别名 deepseek-chat/deepseek-reasoner 也已指向同一模型。"
           },
           "quirks": [
@@ -1302,8 +1976,18 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "reasoning_effort"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "stream",
+              "thinking",
+              "reasoning_effort"
+            ],
             "notes": "V4.1 Flash（552B MoE，Causal-Encoder-Decoder，原生多模态）；thinking 默认 enabled，reasoning_effort 支持 low/high/max（minimal→low、medium/xhigh→high）。Responses API 模型列名 deepseek-flash / deepseek-v4-pro，内置工具（含 web_search）被静默忽略，仅 function 与 apply_patch custom 受支持。"
           },
           "quirks": [
@@ -1339,11 +2023,21 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "stream",
+              "thinking",
+              "extra_body.thinking"
+            ],
             "notes": "legacy 别名：官方自 2026-07-24 停用该名称，实际请求被兼容路由到当时的 Flash（现为 V4.1 Flash / deepseek-flash），能力按路由后的模型记录，建议迁移到 deepseek-flash。"
           },
-            "quirks": [
+          "quirks": [
             "官方已宣布停用，仅保留临时兼容路由，未来可能直接失败，UI 应提示迁移。",
             "官方文档对 top_p/temperature/presence_penalty/frequency_penalty 标记为不生效或不支持，建议优先保留服务端默认行为。"
           ]
@@ -1366,8 +2060,20 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "temperature", "top_p", "stream", "presence_penalty", "frequency_penalty"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "stream",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
             "notes": "legacy 别名：官方自 2026-07-24 停用该名称，实际请求被兼容路由到当时的 Flash（现为 V4.1 Flash / deepseek-flash），能力按路由后的模型记录，建议迁移到 deepseek-flash。"
           },
           "quirks": [
@@ -1391,8 +2097,20 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "top_p", "temperature", "stream", "presence_penalty", "frequency_penalty"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "top_p",
+              "temperature",
+              "stream",
+              "presence_penalty",
+              "frequency_penalty"
+            ],
             "notes": "V3.2-Exp 标记的过渡更新期模型。"
           },
           "quirks": [
@@ -1416,8 +2134,19 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["tools", "tool_choice", "max_tokens", "stream", "thinking", "extra_body.thinking", "temperature"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "tools",
+              "tool_choice",
+              "max_tokens",
+              "stream",
+              "thinking",
+              "extra_body.thinking",
+              "temperature"
+            ],
             "notes": "最新稳态主线。"
           },
           "quirks": [
@@ -1441,8 +2170,17 @@
           },
           "param_format": {
             "family": "deepseek_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "stream", "thinking", "extra_body.thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "stream",
+              "thinking",
+              "extra_body.thinking"
+            ],
             "notes": "API-only 暂时性高思考模型，按官方公告可能有短时 endpoint。"
           },
           "quirks": [
@@ -1472,8 +2210,20 @@
           },
           "param_format": {
             "family": "qwen_dashscope_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["enable_thinking", "thinking_budget", "preserve_thinking", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "enable_thinking",
+              "thinking_budget",
+              "preserve_thinking",
+              "enable_search",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "2026 旗舰（纯文本）；混合思考默认开（调研 05 §1.1/§3），max_tokens 即将废弃改用 max_completion_tokens。"
           },
           "quirks": [
@@ -1498,8 +2248,20 @@
           },
           "param_format": {
             "family": "qwen_dashscope_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["enable_thinking", "thinking_budget", "preserve_thinking", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "enable_thinking",
+              "thinking_budget",
+              "preserve_thinking",
+              "enable_search",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "均衡多模态（文本+图像+视频输入）；混合思考默认开（调研 05 §1.1/§1.3）。"
           },
           "quirks": [
@@ -1523,8 +2285,19 @@
           },
           "param_format": {
             "family": "qwen_dashscope_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["enable_thinking", "thinking_budget", "enable_search", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "enable_thinking",
+              "thinking_budget",
+              "enable_search",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "轻量高并发多模态；混合思考默认开（调研 05 §1.1）。"
           },
           "quirks": [
@@ -1554,8 +2327,24 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format"
+            ],
             "notes": "部分供应商会在 API 网关中做 OpenAI 兼容封装，需以实际配置的转译规则为准。"
           },
           "quirks": [
@@ -1581,8 +2370,26 @@
           },
           "param_format": {
             "family": "qwen_openai_compat_family",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 家族级别 alias；具体 provider 仍需优先看 provider-scoped 记录。"
           },
           "quirks": [
@@ -1610,8 +2417,25 @@
           },
           "param_format": {
             "family": "aliyun_bailian_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking"
+            ],
             "notes": "百炼商业版 Qwen3.5 Plus，默认混合思考模式，可通过 enable_thinking 控制。"
           },
           "quirks": [
@@ -1640,8 +2464,25 @@
           },
           "param_format": {
             "family": "aliyun_bailian_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking"
+            ],
             "notes": "百炼商业快照版；调用语义与 qwen3.5-plus 保持一致。"
           },
           "quirks": [
@@ -1669,8 +2510,25 @@
           },
           "param_format": {
             "family": "aliyun_bailian_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking"
+            ],
             "notes": "百炼商业版 Qwen3.5 Flash，默认开启混合思考。"
           },
           "quirks": [
@@ -1699,8 +2557,25 @@
           },
           "param_format": {
             "family": "aliyun_bailian_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking"
+            ],
             "notes": "百炼商业快照版；调用语义与 qwen3.5-flash 保持一致。"
           },
           "quirks": [
@@ -1726,8 +2601,26 @@
           },
           "param_format": {
             "family": "qwen_open_source_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 开源权重；通用 OpenAI 兼容网关通常提供 enable_thinking/thinking_budget。"
           },
           "quirks": [
@@ -1755,8 +2648,27 @@
           },
           "param_format": {
             "family": "siliconflow_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "min_p",
+              "frequency_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
           },
           "quirks": [
@@ -1782,8 +2694,26 @@
           },
           "param_format": {
             "family": "qwen_open_source_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 开源主力 MoE 模型；百炼与兼容网关常见此基础 id。"
           },
           "quirks": [
@@ -1811,8 +2741,27 @@
           },
           "param_format": {
             "family": "siliconflow_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "min_p",
+              "frequency_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
           },
           "quirks": [
@@ -1838,8 +2787,26 @@
           },
           "param_format": {
             "family": "qwen_open_source_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 开源轻量 MoE 变体。"
           },
           "quirks": [
@@ -1865,8 +2832,26 @@
           },
           "param_format": {
             "family": "qwen_open_source_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 开源稠密文本模型。"
           },
           "quirks": [
@@ -1894,8 +2879,27 @@
           },
           "param_format": {
             "family": "siliconflow_openai_chat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "min_p", "frequency_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "min_p",
+              "frequency_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "SiliconFlow 官方模型页标注 Thought & Function Calling；请求侧走 OpenAI Chat Completions。"
           },
           "quirks": [
@@ -1921,8 +2925,26 @@
           },
           "param_format": {
             "family": "qwen_open_source_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format", "enable_thinking", "thinking_budget"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format",
+              "enable_thinking",
+              "thinking_budget"
+            ],
             "notes": "Qwen3.5 开源中等规模文本模型。"
           },
           "quirks": [
@@ -1946,8 +2968,24 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "repetition_penalty", "tools", "tool_choice", "stream", "stream_options", "seed", "stop", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "repetition_penalty",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "seed",
+              "stop",
+              "response_format"
+            ],
             "notes": "Qwen3-Next 里程碑条目，强调推理效率和结构改进。"
           },
           "quirks": [
@@ -1977,8 +3015,17 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages", "reasoning_effort"],
-            "optional_fields": ["max_completion_tokens", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages",
+              "reasoning_effort"
+            ],
+            "optional_fields": [
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "K3 推理不可关闭，固定 reasoning_effort=max；不得发送 K2.x thinking 对象。"
           },
           "quirks": [
@@ -2003,8 +3050,18 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_completion_tokens", "tools", "tool_choice", "stream", "prompt_cache_key"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream",
+              "prompt_cache_key"
+            ],
             "notes": "现役旗舰通用模型；原生多模态，思考/非思考双模式（默认思考，调研 07 §2.1）。max_tokens 已废弃改用 max_completion_tokens。"
           },
           "quirks": [
@@ -2030,8 +3087,17 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_completion_tokens", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "最强 coding 模型；强制思考（thinking.type 只接受 enabled）、强制 Preserved Thinking（keep 只接受 \"all\"，调研 07 §2.1）。"
           },
           "quirks": [
@@ -2061,8 +3127,17 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["temperature", "max_tokens", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "temperature",
+              "max_tokens",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "官方文档源与产品页索引对外发布时间粒度不稳定，建议以供应商模型清单为主。"
           },
           "quirks": [
@@ -2086,8 +3161,17 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["temperature", "top_p", "tools", "tool_choice", "max_tokens"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "max_tokens"
+            ],
             "notes": "偏重链式推理和工具调用。"
           },
           "quirks": [
@@ -2111,8 +3195,16 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["temperature", "max_tokens", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "temperature",
+              "max_tokens",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "官方站外信号显示是静默上线/视觉与 Agent Swarm 升级，参数待官方文档再次钉死确认。"
           },
           "quirks": [
@@ -2142,8 +3234,19 @@
           },
           "param_format": {
             "family": "xai_openai_responses_preferred",
-            "required_fields": ["model", "input"],
-            "optional_fields": ["reasoning_effort", "stream", "max_output_tokens", "tools", "tool_choice", "response_format", "search_parameters"],
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "stream",
+              "max_output_tokens",
+              "tools",
+              "tool_choice",
+              "response_format",
+              "search_parameters"
+            ],
             "notes": "当前旗舰；推理不可关闭，优先使用 Responses API。"
           },
           "quirks": [
@@ -2168,8 +3271,20 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_effort", "stream", "stream_options", "max_tokens", "tools", "tool_choice", "response_format", "search_parameters"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "stream",
+              "stream_options",
+              "max_tokens",
+              "tools",
+              "tool_choice",
+              "response_format",
+              "search_parameters"
+            ],
             "notes": "现役旗舰（别名 grok-4.3-latest/grok-latest）；reasoning_effort 取值 none/low(默认)/medium/high，仅本模型支持（调研 04 §1.3）。xAI 主推 Responses 协议，CC 已标 legacy。"
           },
           "quirks": [
@@ -2195,8 +3310,22 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["stream", "stream_options", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "tool_choice_name", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "stream",
+              "stream_options",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "tools",
+              "tool_choice",
+              "tool_choice_name",
+              "response_format"
+            ],
             "notes": "Grok 4 标准版上下文 256K（xAI 官方 2025-07）；2M 仅 4.1 Fast 系列支持。"
           },
           "quirks": [
@@ -2220,8 +3349,17 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["stream", "max_tokens", "temperature", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "stream",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "xAI 文档显示为快路径非推理模式变体。"
           },
           "quirks": [
@@ -2245,8 +3383,17 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["stream", "max_tokens", "temperature", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "stream",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "2026-01 的发布日志主要是能力更新，不一定是新主力代号。"
           },
           "quirks": [
@@ -2270,8 +3417,22 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["stream", "stream_options", "max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "tool_choice_name", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "stream",
+              "stream_options",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "tools",
+              "tool_choice",
+              "tool_choice_name",
+              "response_format"
+            ],
             "notes": "2M 上下文目标的首个公开版本，适配时可先按 legacy openai 流控参数处理。"
           },
           "quirks": [
@@ -2295,13 +3456,93 @@
           },
           "param_format": {
             "family": "xai_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["stream", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "stream",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "Grok-3-mini 以轻量版本面向高吞吐任务。"
           },
           "quirks": [
             "在部分平台，mini id 仅作为 SKU 名，不一定在模型列表中显式暴露。"
           ]
+        },
+        {
+          "model_id": "grok-4.7",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 500000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "reasoning_effort 支持 low/medium/high/xhigh；>200K 请求计费翻倍。"
+          ],
+          "source_url": "https://docs.x.ai/developers/models",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "grok-4.6",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 500000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "xhigh 仅 4.6+；>200K 请求计费翻倍。"
+          ],
+          "source_url": "https://docs.x.ai/developers/models (via OpenRouter)",
+          "verified_at": "2026-10-03"
         }
       ]
     },
@@ -2326,8 +3567,21 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format"
+            ],
             "notes": "旗舰模型；与 docs 有频繁增量更新，优先以 model id 及 vendor 返回能力表为准。"
           },
           "quirks": [
@@ -2351,8 +3605,20 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_effort", "max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "response_format"
+            ],
             "notes": "mistral-medium-latest 当前对应 Medium 3.5；reasoning_effort 支持 none/low/medium/high。"
           },
           "quirks": [
@@ -2376,8 +3642,20 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_effort", "max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "response_format"
+            ],
             "notes": "mistral-small-latest 当前对应 Small 4 hybrid reasoning。"
           },
           "quirks": [
@@ -2401,8 +3679,21 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "top_k", "tools", "tool_choice", "stream", "stream_options", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "top_k",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format"
+            ],
             "notes": "中档版本参数/输出行为与 Large 3 显著不同。"
           },
           "quirks": [
@@ -2432,8 +3723,17 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["prompt_mode", "max_tokens", "temperature", "top_p", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "prompt_mode",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "stream"
+            ],
             "notes": "Magistral 使用 prompt_mode: 'reasoning' 启用推理模式（默认行为）；设为 null 可禁用。"
           },
           "quirks": [
@@ -2458,8 +3758,17 @@
           },
           "param_format": {
             "family": "mistral_openai_compatible",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["prompt_mode", "max_tokens", "temperature", "top_p", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "prompt_mode",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "stream"
+            ],
             "notes": "开源轻量推理模型，prompt_mode: 'reasoning' 启用推理。"
           },
           "quirks": [
@@ -2489,8 +3798,21 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "reasoning_effort", "max_tokens", "max_completion_tokens", "web_search", "tools", "tool_choice", "stream", "response_format"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "reasoning_effort",
+              "max_tokens",
+              "max_completion_tokens",
+              "web_search",
+              "tools",
+              "tool_choice",
+              "stream",
+              "response_format"
+            ],
             "notes": "千帆 v2 现役旗舰（文本主打，调研 06 §2.1）；深度思考默认 disabled，ERNIE 系不支持 thinking_budget。"
           },
           "quirks": [
@@ -2515,8 +3837,18 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_tokens", "web_search", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_tokens",
+              "web_search",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "原生全模态（文本/图像/音频/视频统一建模，调研 06 §2.1）。"
           },
           "quirks": [
@@ -2540,8 +3872,19 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "thinking_strategy", "max_tokens", "web_search", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "thinking_strategy",
+              "max_tokens",
+              "web_search",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "深度推理模型（reasoning_content 输出，调研 06 §2.1/§2.3）；不支持 thinking_budget。"
           },
           "quirks": [
@@ -2571,8 +3914,16 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "存在多个 MoE/Ada variants（4B/300B/21B/21B 等），模型参数差异建议以实际 id 细分。"
           },
           "quirks": [
@@ -2602,8 +3953,18 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_output_tokens",
+              "reasoning_effort",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "ERNIE 使用 max_output_tokens 而非 max_tokens；reasoning_effort 支持 low/medium/high。"
           },
           "quirks": [
@@ -2629,8 +3990,18 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_output_tokens",
+              "reasoning_effort",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "Preview 版本，价格更低，适合实验场景。"
           },
           "quirks": [
@@ -2654,8 +4025,16 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_output_tokens",
+              "reasoning_effort",
+              "temperature",
+              "stream"
+            ],
             "notes": "ERNIE X1 系列为深度思考模型，使用 reasoning_content 回传思考内容。"
           },
           "quirks": [
@@ -2680,8 +4059,16 @@
           },
           "param_format": {
             "family": "baidu_openai_proxy_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_output_tokens", "reasoning_effort", "temperature", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_output_tokens",
+              "reasoning_effort",
+              "temperature",
+              "stream"
+            ],
             "notes": "X1 Turbo 为轻量推理版本，推理速度更快但深度略低。"
           },
           "quirks": [
@@ -2711,8 +4098,19 @@
           },
           "param_format": {
             "family": "minimax_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "reasoning_split", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "reasoning_split",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "现役旗舰（1M 上下文、多模态）；thinking:{type:\"adaptive\"|\"disabled\"}（M2.x 不可关思考，调研 08 §1.1/§1.3）。"
           },
           "quirks": [
@@ -2737,8 +4135,18 @@
           },
           "param_format": {
             "family": "minimax_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_split", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_split",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "M2.7 推理模型；继续兼容 reasoning_details/reasoning_content 响应。"
           },
           "quirks": [
@@ -2762,8 +4170,19 @@
           },
           "param_format": {
             "family": "openai_compat_gateway_preferred",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_split", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "service_tier"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_split",
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "service_tier"
+            ],
             "notes": "官方推荐 Anthropic 兼容端点 /anthropic。"
           },
           "quirks": [
@@ -2789,8 +4208,19 @@
           },
           "param_format": {
             "family": "minimax_openai_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_split", "max_completion_tokens", "temperature", "top_p", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_split",
+              "max_completion_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "面向 Agent 与代码的文本模型；OpenAI 兼容接口 max_completion_tokens 对非 M3 型号推荐 65536、上限 204800；另提供 Anthropic 兼容端点。"
           },
           "quirks": [
@@ -2822,8 +4252,18 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "thinking.type 支持 enabled/disabled/auto，思维链经 reasoning_content 返回。"
           },
           "quirks": []
@@ -2845,8 +4285,18 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "低成本低时延档。thinking.type 支持 enabled/disabled/auto，思维链经 reasoning_content 返回。"
           },
           "quirks": []
@@ -2868,8 +4318,16 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["reasoning_effort", "max_completion_tokens", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "max_completion_tokens",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "Seed 1.8 用 reasoning_effort（minimal/low/medium/high）与 max_completion_tokens。"
           },
           "quirks": [
@@ -2894,18 +4352,31 @@
             "function_calling": true,
             "reasoning": true,
             "coding_agent": true,
-            "max_context_tokens": 200000,
-            "max_output_tokens": null
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["enable_thinking", "reasoning_effort", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "enable_thinking",
+              "reasoning_effort",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "现役旗舰；reasoning_effort 支持 max(默认)/xhigh/high/medium/low/minimal/none 七档（调研 07 §3.4）。Anthropic 端点用 glm-5.2[1m] 表示 1M 上下文变体。"
           },
           "quirks": [
-            "多模态需用 glm-5v 系（GLM-5 系唯一多模态线）。"
-          ]
+            "1M 上下文需 opt-in（默认 202,752）；输出上限 131,072。"
+          ],
+          "source_url": "https://z.ai (GLM-5.2: Built for Long-Horizon Tasks)",
+          "verified_at": "2026-10-03"
         },
         {
           "model_id": "glm-5",
@@ -2924,8 +4395,19 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "tool_stream", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "tool_stream",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "744B MoE。thinking.type=enabled 表示模型自动判断。"
           },
           "quirks": [
@@ -2949,8 +4431,18 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["enable_thinking", "max_tokens", "temperature", "tools", "tool_choice", "stream"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "enable_thinking",
+              "max_tokens",
+              "temperature",
+              "tools",
+              "tool_choice",
+              "stream"
+            ],
             "notes": "上代旗舰，仍在服务（调研 07 §3.1）。"
           },
           "quirks": [
@@ -2980,8 +4472,17 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "文档主站更新较频繁，优先对齐供应商返回的实际 id 与参数。"
           },
           "quirks": [
@@ -3005,8 +4506,18 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages", "media"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages",
+              "media"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "4.6V 具备 Function Calling 原生能力（当前公开说明强调）。"
           },
           "quirks": [
@@ -3030,8 +4541,17 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "官方说明中的 GLM-4.5 以 MoE 架构主打编码和推理能力。"
           },
           "quirks": [
@@ -3055,8 +4575,17 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "4.5 Air 常见于轻量化展示页，部分平台未单独提供模型信息。"
           },
           "quirks": [
@@ -3080,8 +4609,18 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages", "media"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages",
+              "media"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "4.5V 增强视觉推理，支持视频、图片、文件输入。"
           },
           "quirks": [
@@ -3105,8 +4644,24 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "include_thoughts", "thinking_budget", "clear_thoughts", "thinking_mode"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format",
+              "include_thoughts",
+              "thinking_budget",
+              "clear_thoughts",
+              "thinking_mode"
+            ],
             "notes": "4.7 强化 agentic 与推理策略开关，含 Thinking Mode。"
           },
           "quirks": [
@@ -3130,8 +4685,22 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "thinking_mode", "clear_thoughts"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format",
+              "thinking_mode",
+              "clear_thoughts"
+            ],
             "notes": "4.7 Flash 偏轻量推理/成本优化路线。"
           },
           "quirks": [
@@ -3155,8 +4724,22 @@
           },
           "param_format": {
             "family": "zhipu_openai_compat_or_native",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools", "tool_choice", "stream", "stream_options", "response_format", "thinking_mode", "clear_thoughts"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice",
+              "stream",
+              "stream_options",
+              "response_format",
+              "thinking_mode",
+              "clear_thoughts"
+            ],
             "notes": "4.7 FlashX 更偏性能优化。"
           },
           "quirks": [
@@ -3186,8 +4769,16 @@
           },
           "param_format": {
             "family": "hf_compatible",
-            "required_fields": ["model", "messages_or_prompt"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "required_fields": [
+              "model",
+              "messages_or_prompt"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools"
+            ],
             "notes": "开源家族，不同部署栈实现差异极大。"
           },
           "quirks": [
@@ -3211,8 +4802,16 @@
           },
           "param_format": {
             "family": "hf_compatible",
-            "required_fields": ["model", "messages_or_prompt"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "required_fields": [
+              "model",
+              "messages_or_prompt"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools"
+            ],
             "notes": "Llama 4 Maverick 同系列高性能模型，兼顾 MoE 与多模态。"
           },
           "quirks": [
@@ -3242,8 +4841,16 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_tokens", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_tokens",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "文本推理旗舰档。"
           },
           "quirks": [
@@ -3268,8 +4875,16 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["thinking", "max_tokens", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "thinking",
+              "max_tokens",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "全模态版本。"
           },
           "quirks": [
@@ -3300,8 +4915,16 @@
           },
           "param_format": {
             "family": "nvidia_platform_specific",
-            "required_fields": ["model", "prompt_or_messages"],
-            "optional_fields": ["max_tokens", "temperature", "top_p", "tools"],
+            "required_fields": [
+              "model",
+              "prompt_or_messages"
+            ],
+            "optional_fields": [
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools"
+            ],
             "notes": "旗舰 Nano 已公开，Super/Ultra 多为 roadmap，按实际可用列表处理。"
           },
           "quirks": [
@@ -3325,8 +4948,19 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["chat_template_kwargs.enable_thinking", "reasoning_budget", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "chat_template_kwargs.enable_thinking",
+              "reasoning_budget",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "reasoning 经 chat_template_kwargs {\"enable_thinking\": true} 控制（extra_body）。"
           },
           "quirks": []
@@ -3348,11 +4982,567 @@
           },
           "param_format": {
             "family": "openai_chat_completions_compat",
-            "required_fields": ["model", "messages"],
-            "optional_fields": ["chat_template_kwargs.enable_thinking", "reasoning_budget", "max_tokens", "temperature", "top_p", "tools", "tool_choice"],
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "chat_template_kwargs.enable_thinking",
+              "reasoning_budget",
+              "max_tokens",
+              "temperature",
+              "top_p",
+              "tools",
+              "tool_choice"
+            ],
             "notes": "reasoning 经 chat_template_kwargs {\"enable_thinking\": true} 控制（extra_body）。"
           },
           "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Qwen",
+      "series": "Qwen3.8",
+      "models": [
+        {
+          "model_id": "qwen3.8-max",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "最大思维链 262,144；最大输入 991,808（思考模式 983,616）。"
+          ],
+          "source_url": "https://www.qianwenai.com/models/qwen3.8-max; https://platform.qianwenai.com/docs/developer-guides/getting-started/latest-model",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "qwen3.8-flash",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "最大思维链 262,144；Qwen4 架构预览 125B-A6B。"
+          ],
+          "source_url": "https://www.qianwenai.com/models/qwen3.8-max; https://platform.qianwenai.com/docs/developer-guides/getting-started/latest-model",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "qwen3.8-omni-flash",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "全模态；上下文/输出未单独公示，命中后走规则表兜底。"
+          ],
+          "source_url": "https://help.aliyun.com/zh/model-studio/qwen-omni",
+          "verified_at": "2026-10-03"
+        }
+      ]
+    },
+    {
+      "vendor": "智谱",
+      "series": "GLM-5.3",
+      "models": [
+        {
+          "model_id": "glm-5.3",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "强制思考（thinking.type 仅 enabled，disabled 报错）；effort 仅 low/high/max。"
+          ],
+          "source_url": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "glm-5.3-flash",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "原生多模态（视频/图像/文本/文件）；推荐 reasoning_effort: max。"
+          ],
+          "source_url": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "glm-5.3-flashx",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 131072
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "https://docs.bigmodel.cn/cn/guide/models/vlm/glm-5.3-flash",
+          "verified_at": "2026-10-03"
+        }
+      ]
+    },
+    {
+      "vendor": "Google",
+      "series": "Gemini 3.6-3.8",
+      "models": [
+        {
+          "model_id": "gemini-3.8-flash",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "thinking_level 默认 medium，档位 low/medium/high。"
+          ],
+          "source_url": "https://ai.google.dev/gemini-api/docs/models",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "gemini-3.7-flash",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "thinking_level 默认 medium。"
+          ],
+          "source_url": "https://ai.google.dev/gemini-api/docs/models",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "gemini-3.6-flash",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1048576,
+            "max_output_tokens": 65536
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "https://ai.google.dev/gemini-api/docs/models",
+          "verified_at": "2026-10-03"
+        }
+      ]
+    },
+    {
+      "vendor": "OpenAI",
+      "series": "GPT-6",
+      "models": [
+        {
+          "model_id": "gpt-6",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "https://www.requesty.ai (GPT-6 Sol/Luna specs)",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "gpt-6-sol",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "https://www.requesty.ai (GPT-6 Sol/Luna specs)",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "gpt-6-luna",
+          "release_date": "2026-09",
+          "status": "inferred",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1050000,
+            "max_output_tokens": 128000
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [],
+          "source_url": "https://www.requesty.ai (GPT-6 Sol/Luna specs)",
+          "verified_at": "2026-10-03"
+        }
+      ]
+    },
+    {
+      "vendor": "Kimi / Moonshot",
+      "series": "Moonshot legacy（已下线，中转仍在用）",
+      "models": [
+        {
+          "model_id": "moonshot-v1-8k",
+          "release_date": "2026-09",
+          "status": "deprecated",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": 16384
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "官方 2026-08-31 下线；中转站仍可能提供。"
+          ],
+          "source_url": "WebSearch (moonshot-v1 series)",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "moonshot-v1-32k",
+          "release_date": "2026-09",
+          "status": "deprecated",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": 16384
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "官方 2026-08-31 下线。"
+          ],
+          "source_url": "WebSearch (moonshot-v1 series)",
+          "verified_at": "2026-10-03"
+        },
+        {
+          "model_id": "moonshot-v1-128k",
+          "release_date": "2026-09",
+          "status": "deprecated",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 131072,
+            "max_output_tokens": 16384
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "enable_thinking",
+              "thinking_budget",
+              "stream",
+              "tools"
+            ]
+          },
+          "quirks": [
+            "官方 2026-08-31 下线；vision 为 -vision-preview 变体。"
+          ],
+          "source_url": "WebSearch (moonshot-v1 series)",
+          "verified_at": "2026-10-03"
         }
       ]
     }

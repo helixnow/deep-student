@@ -35,16 +35,10 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
 import { Z_INDEX } from '@/config/zIndex';
 import {
-  deepSeekV32BudgetToEffort,
-  deepSeekV32EffortToBudget,
-  normalizeDeepSeekV4Effort,
+  coerceReasoningLevel,
   isOfficialDeepSeekEndpoint,
-  qwenBudgetToEffort,
-  qwenEffortToBudget,
-  resolveDeepSeekReasoningControl,
-  resolveDeepSeekRuntimeReasoningControl,
-  resolveDeepSeekRuntimeReasoningSelection,
-} from './deepseekReasoningControls';
+  resolveReasoningControl,
+} from '@/utils/reasoning';
 import {
   defaultApiProtocolForModelAdapter,
   getAllowedApiProtocolsForModelAdapter,
@@ -241,42 +235,38 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const isDeepSeekAdapter = formData.modelAdapter === 'deepseek';
   const effectiveSupportsReasoning = !!formData.supportsReasoning || inferredSupportsReasoning;
   const supportsDeepSeekReasoningEffort = isDeepSeekAdapter && inferredCaps.supportsReasoningEffort;
-  const deepSeekReasoningControl = useMemo(
-    () => resolveDeepSeekReasoningControl(formData.model, supportsDeepSeekReasoningEffort),
-    [formData.model, supportsDeepSeekReasoningEffort]
-  );
-  const deepSeekReasoningSelectValue =
-    deepSeekReasoningControl.kind === 'v32-budget-effort'
-      ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
-      : deepSeekReasoningControl.kind === 'qwen-budget-effort'
-        ? formData.reasoningEffort ?? qwenBudgetToEffort(formData.thinkingBudget)
-        : normalizeDeepSeekV4Effort(formData.reasoningEffort, isOfficialDeepSeekEndpoint(formData));
   const profileReasoningControl = useMemo(
     () =>
-      resolveDeepSeekRuntimeReasoningControl({
+      resolveReasoningControl({
         model: formData.model,
+        modelId: formData.model,
+        // 设置页表单里用户显式选择的适配器即渠道身份（与后端 get_adapter 同源语义）
+        adapterId: formData.modelAdapter,
         providerType: formData.providerType,
         providerScope: formData.providerScope,
         baseUrl: formData.baseUrl,
+        supportsReasoning: formData.supportsReasoning,
       }),
-    [formData.baseUrl, formData.model, formData.providerScope, formData.providerType]
+    [formData.baseUrl, formData.model, formData.modelAdapter, formData.providerScope, formData.providerType, formData.supportsReasoning]
   );
-  const normalizedProfileReasoningSelection = useMemo(
-    () =>
-      resolveDeepSeekRuntimeReasoningSelection({
-        control: profileReasoningControl,
-        enableThinking: formData.enableThinking ?? formData.thinkingEnabled,
-        reasoningEffort: formData.reasoningEffort,
-        thinkingBudget: formData.thinkingBudget,
-      }),
-    [
-      formData.enableThinking,
-      formData.reasoningEffort,
-      formData.thinkingBudget,
-      formData.thinkingEnabled,
-      profileReasoningControl,
-    ]
-  );
+  // 统一五档：档位只做合法性归一，不做能力裁剪（能力映射由后端在请求前完成）。
+  const normalizedProfileReasoningSelection = useMemo(() => {
+    const enableThinkingValue = profileReasoningControl.canDisable
+      ? formData.enableThinking ?? formData.thinkingEnabled
+      : true;
+    const level = coerceReasoningLevel(formData.reasoningEffort);
+    return {
+      enableThinking: !!enableThinkingValue,
+      reasoningEffort: enableThinkingValue ? level : undefined,
+      thinkingBudget: formData.thinkingBudget,
+    };
+  }, [
+    formData.enableThinking,
+    formData.reasoningEffort,
+    formData.thinkingBudget,
+    formData.thinkingEnabled,
+    profileReasoningControl.canDisable,
+  ]);
   const profileReasoningSelectValue = profileReasoningControl.options.some(
     option => option.value === formData.reasoningEffort
   )
@@ -322,36 +312,20 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         thinkingEnabled: true,
         supportsReasoning: true,
         reasoningEffort: value,
-        thinkingBudget:
-          profileReasoningControl.kind === 'v32-budget-effort'
-            ? deepSeekV32EffortToBudget(value)
-            : profileReasoningControl.kind === 'qwen-budget-effort'
-              ? qwenEffortToBudget(value)
-              : undefined,
+        // 统一五档：budget 换算由后端在未开放 effort 的宿主上兜底完成。
+        thinkingBudget: undefined,
       };
     });
   };
   const setProfileThinkingEnabled = (enabled: boolean) => {
     if (!enabled && !profileReasoningControl.canDisable) return;
-    setFormData(prev => {
-      const normalized = resolveDeepSeekRuntimeReasoningSelection({
-        control: profileReasoningControl,
-        enableThinking: enabled,
-        reasoningEffort: prev.reasoningEffort,
-        thinkingBudget: prev.thinkingBudget,
-      });
-      return {
-        ...prev,
-        enableThinking: enabled,
-        thinkingEnabled: enabled,
-        reasoningEffort: enabled
-          ? prev.reasoningEffort ?? normalized.reasoningEffort
-          : undefined,
-        thinkingBudget: enabled
-          ? prev.thinkingBudget ?? normalized.thinkingBudget
-          : undefined,
-      };
-    });
+    setFormData(prev => ({
+      ...prev,
+      enableThinking: enabled,
+      thinkingEnabled: enabled,
+      reasoningEffort: enabled ? prev.reasoningEffort : undefined,
+      thinkingBudget: enabled ? prev.thinkingBudget : undefined,
+    }));
   };
 
   const protocolOptions = useMemo<Array<{ value: ApiProtocol; label: string; description?: string; disabled?: boolean }>>(() => {
@@ -466,6 +440,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           supportsReasoning: shouldReason,
           supportsTools: caps.functionCalling && !caps.embedding && !caps.rerank && !caps.imageModel,
           contextWindow: caps.contextWindow,
+          // 方案 E：注册表确认的模型最大输出直填最大输出上限（用户未手填时）
+          ...(caps.maxOutputTokens
+            ? { maxTokensLimit: caps.maxOutputTokens, maxOutputTokens: caps.maxOutputTokens }
+            : {}),
         };
         const lowerModel = currentModel.toLowerCase();
         const isGemini = next.modelAdapter === 'google' && lowerModel.includes('gemini');
@@ -488,25 +466,18 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           const modelDefaults = getModelDefaultParameters(currentModel, {
             providerScope: prev.providerScope ?? prev.providerType,
           });
-          const control = resolveDeepSeekReasoningControl(currentModel, caps.supportsReasoningEffort);
           const deepSeekEnableThinkingDefault = true;
+          // 统一五档：默认档直接采用模型默认值（合法性归一），
+          // 不在此处做家族特定换算——该模型实际支持的档由后端能力表映射。
           const defaultEffort =
-            control.kind === 'v32-budget-effort' || control.kind === 'qwen-budget-effort'
-              ? modelDefaults.reasoningEffort ?? 'medium'
-              : normalizeDeepSeekV4Effort(modelDefaults.reasoningEffort, isOfficialDeepSeekEndpoint(next));
-          const defaultBudget =
-            control.kind === 'v32-budget-effort'
-              ? deepSeekV32EffortToBudget(defaultEffort) ?? modelDefaults.thinkingBudget
-              : control.kind === 'qwen-budget-effort'
-                ? qwenEffortToBudget(defaultEffort)
-                : undefined;
+            coerceReasoningLevel(modelDefaults.reasoningEffort) ?? 'high';
           next = {
             ...next,
             enableThinking: deepSeekEnableThinkingDefault,
             thinkingEnabled: deepSeekEnableThinkingDefault,
             includeThoughts: modelDefaults.includeThoughts ?? deepSeekEnableThinkingDefault,
             reasoningEffort: defaultEffort,
-            thinkingBudget: defaultBudget,
+            thinkingBudget: modelDefaults.thinkingBudget,
           };
         }
         return next;
@@ -807,27 +778,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         sanitized.supportsReasoning = true;
         sanitized.isReasoning = true;
       }
-
-      const control = resolveDeepSeekReasoningControl(sanitized.model, inferredCaps.supportsReasoningEffort);
-      if (control.kind === 'v4-effort') {
-        sanitized.reasoningEffort = normalizeDeepSeekV4Effort(sanitized.reasoningEffort, isOfficialDeepSeekEndpoint(sanitized));
-        sanitized.thinkingBudget = undefined;
-      } else if (control.kind === 'v32-budget-effort') {
-        const effort = sanitized.reasoningEffort ?? deepSeekV32BudgetToEffort(sanitized.thinkingBudget);
-        const budget = deepSeekV32EffortToBudget(effort);
-        if (budget !== undefined) {
-          sanitized.reasoningEffort = effort;
-          sanitized.thinkingBudget = budget;
-        }
-      } else if (control.kind === 'qwen-budget-effort') {
-        // 2A：Qwen 混合思考模型 —— low/medium/high → thinkingBudget (1024/4096/16384)
-        const effort = sanitized.reasoningEffort ?? qwenBudgetToEffort(sanitized.thinkingBudget);
-        const budget = qwenEffortToBudget(effort);
-        sanitized.reasoningEffort = effort;
-        sanitized.thinkingBudget = budget;
-      } else if (!inferredCaps.supportsReasoningEffort) {
-        sanitized.reasoningEffort = undefined;
-      }
+      // 统一五档：只做合法性归一（未知档位丢弃），不做家族特定换算。
+      // DeepSeek 的档位差异（官方 none/low/high/max vs 托管 budget 方言）
+      // 由后端按端点与能力表在请求前映射。
+      const level = coerceReasoningLevel(sanitized.reasoningEffort);
+      sanitized.reasoningEffort = level;
+      sanitized.thinkingBudget = undefined;
     } else {
       if (hasThinkingDefaults) {
         // Non-DeepSeek adapters historically use this flag as the guard for provider thinking fields.
@@ -836,23 +792,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       if (profileUsesDiscreteEffort && (inferredSupportsReasoning || sanitized.supportsReasoning)) {
         sanitized.supportsReasoning = true;
         sanitized.isReasoning = sanitized.isReasoning || inferredSupportsReasoning;
-        const requestedEffort = sanitized.reasoningEffort?.toLowerCase();
-        if (requestedEffort === 'none' && profileReasoningControl.canDisable) {
-          sanitized.enableThinking = false;
-          sanitized.thinkingEnabled = false;
-          sanitized.reasoningEffort = sanitized.modelAdapter === 'general' ? 'none' : undefined;
-          sanitized.thinkingBudget = undefined;
+        // 统一五档只承载 low..max；关闭状态由 enableThinking 表达。
+        const level = coerceReasoningLevel(sanitized.reasoningEffort);
+        if (sanitized.enableThinking || !profileReasoningControl.canDisable) {
+          sanitized.reasoningEffort = level;
         } else {
-          const normalized = resolveDeepSeekRuntimeReasoningSelection({
-            control: profileReasoningControl,
-            enableThinking: sanitized.enableThinking,
-            reasoningEffort: requestedEffort,
-            thinkingBudget: sanitized.thinkingBudget,
-          });
-          sanitized.enableThinking = normalized.enableThinking;
-          sanitized.thinkingEnabled = normalized.enableThinking;
-          sanitized.reasoningEffort = requestedEffort ? normalized.reasoningEffort : undefined;
-          sanitized.thinkingBudget = normalized.thinkingBudget;
+          sanitized.reasoningEffort = undefined;
         }
       }
     }
@@ -1445,6 +1390,22 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 <TabsContent value="reasoning" className="mt-0 focus-visible:outline-none">
                   {formData.modelAdapter === 'general' && (
                     <div className="space-y-6">
+                      {/* 方案 D：generic 渠道思考强度开关 —— 打开后按档位（reasoning_effort）
+                          自定义思考强度；关闭时仅保留 thinking_budget 兜底输入。 */}
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.supportsReasoning ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                        <div className="space-y-1">
+                          <Label className="flex items-center text-sm font-medium cursor-pointer [@media(pointer:coarse)]:min-h-11" onClick={() => setFormData(prev => ({ ...prev, supportsReasoning: !prev.supportsReasoning }))}>{t('settings:api.modal.reasoning.generic_effort_toggle', '思考强度支持')}</Label>
+                          <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.generic_effort_toggle_hint', '开启后可为该模型选择思考强度档位（low/medium/high/xhigh，以 reasoning_effort 发送）；关闭时仅支持 thinking_budget 兜底。')}</p>
+                        </div>
+                        <Switch
+                          checked={!!formData.supportsReasoning}
+                          onCheckedChange={checked => setFormData(prev => ({
+                            ...prev,
+                            supportsReasoning: checked,
+                            reasoningEffort: checked ? prev.reasoningEffort : undefined,
+                          }))}
+                        />
+                      </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         {profileUsesDiscreteEffort && <div className="space-y-2">
                           <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
@@ -1791,50 +1752,31 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
-                          {formData.enableThinking && deepSeekReasoningControl.kind !== 'toggle-only' && (
+                          {profileThinkingEnabled && profileUsesDiscreteEffort && (
                             <div className="space-y-2">
                               <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                                 {t('settings:api.modal.reasoning.openai_label')}
                               </Label>
                               <AppSelect
-                                value={deepSeekReasoningSelectValue}
+                                value={profileReasoningSelectValue ?? undefined}
                                 onValueChange={v =>
-                                  setFormData(prev => {
-                                    if (deepSeekReasoningControl.kind === 'v32-budget-effort') {
-                                      return {
-                                        ...prev,
-                                        reasoningEffort: v,
-                                        thinkingBudget: deepSeekV32EffortToBudget(v) ?? prev.thinkingBudget,
-                                      };
-                                    }
-                                    if (deepSeekReasoningControl.kind === 'qwen-budget-effort') {
-                                      return {
-                                        ...prev,
-                                        reasoningEffort: v,
-                                        thinkingBudget: qwenEffortToBudget(v),
-                                      };
-                                    }
-                                    return {
-                                      ...prev,
-                                      reasoningEffort: normalizeDeepSeekV4Effort(v, isOfficialDeepSeekEndpoint(prev)),
-                                      thinkingBudget: undefined,
-                                    };
-                                  })
+                                  setFormData(prev => ({
+                                    ...prev,
+                                    // 统一五档：记录用户原始选择，映射交由后端能力表完成。
+                                    reasoningEffort: v,
+                                    thinkingBudget: undefined,
+                                  }))
                                 }
                                 placeholder={t('settings:api.modal.reasoning.default_option')}
-                                options={deepSeekReasoningControl.options.map(option => ({
-                                  value: option.value,
-                                  label: t(option.labelKey, option.defaultLabel),
-                                }))}
+                                options={profileReasoningOptions}
                                 variant="outline"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                               <p className="text-2xs text-muted-foreground/60 ml-1">
-                                {deepSeekReasoningControl.kind === 'v32-budget-effort'
-                                  ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
-                                  : deepSeekReasoningControl.kind === 'qwen-budget-effort'
-                                    ? t('settings:api.modal.qwen.depth_hint', 'Qwen 混合思考模型：低/中/高映射到 thinking_budget = 1024 / 4096 / 16384。')
-                                    : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports low, high, or max reasoning effort.')}
+                                {t(
+                                  'settings:api.modal.reasoning.unified_levels_hint',
+                                  '思考强度统一五档；该模型实际支持的档位由后端在请求前按模型能力就近映射。'
+                                )}
                               </p>
                             </div>
                           )}
@@ -1878,13 +1820,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setProfileThinkingEnabled(!!v)}
                             />
                           </div>
-                          {(profileReasoningControl.kind === 'v32-budget-effort' || profileReasoningControl.kind === 'qwen-budget-effort') && (
+                          {profileUsesDiscreteEffort && (
                             <div className="space-y-2">
                               <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                                 {t('settings:api.modal.reasoning.openai_label')}
                               </Label>
                               <AppSelect
-                                value={profileReasoningSelectValue}
+                                value={profileReasoningSelectValue ?? undefined}
                                 onValueChange={setProfileReasoningDepth}
                                 options={profileReasoningOptions}
                                 variant="outline"
@@ -1892,7 +1834,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               />
                             </div>
                           )}
-                          {profileReasoningControl.kind !== 'v32-budget-effort' && profileReasoningControl.kind !== 'qwen-budget-effort' && <div className="space-y-2">
+                          {!profileUsesDiscreteEffort && <div className="space-y-2">
                             <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                               {t('settings:api.modal.qwen.thinking_budget', 'Thinking Budget')}
                             </Label>

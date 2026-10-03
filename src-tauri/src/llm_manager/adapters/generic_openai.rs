@@ -58,12 +58,16 @@ impl GenericOpenAIAdapter {
             || config.base_url.to_lowercase().contains("siliconflow.com")
     }
 
-    fn siliconflow_budget_from_effort(effort: &str) -> Option<i32> {
+    /// SiliconFlow 宿主 effort 归一：官方接受 low/medium/high/xhigh/max
+    /// （low/medium→high、xhigh→max 的映射由服务端处理）。
+    /// none/unset/未配置 返回 None（关闭语义由 enable_thinking 承载）。
+    fn normalize_siliconflow_effort(effort: &str) -> Option<&'static str> {
         match effort.trim().to_lowercase().as_str() {
-            "minimal" | "low" => Some(2048),
-            "medium" => Some(8192),
-            "high" => Some(16384),
-            "xhigh" | "max" => Some(32768),
+            "minimal" | "low" => Some("low"),
+            "medium" => Some("medium"),
+            "high" => Some("high"),
+            "xhigh" => Some("xhigh"),
+            "max" | "ultra" => Some("max"),
             _ => None,
         }
     }
@@ -90,24 +94,63 @@ impl GenericOpenAIAdapter {
         }
     }
 
-    /// 原生支持高于 xhigh 的 max 档的 GPT 家族：gpt-5.6 与 gpt-6
-    /// （含 -sol / -terra / -luna 变体、gpt-6.x 与 `vendor/` 前缀形态）。
-    /// 尾部必须是版本边界，避免误伤 gpt-5.60 / gpt-60 之类 id；
-    /// `not-gpt-6-preview` 这类部署别名因前缀不符不会命中（#427）。
-    fn supports_native_max_effort(config: &ApiConfig) -> bool {
+    /// GPT-5.6 / GPT-6 家族：原生支持高于 xhigh 的 max 档。
+    /// 尾部必须是版本边界，避免误伤未来的 gpt-5.60 之类 id。
+    ///
+    /// 注意：是否需要把 max 降到 xhigh 由**协议**决定（max 仅 Responses 接受，
+    /// Chat Completions 会 400），该判断已由 `reasoning_level_map` 在适配器
+    /// 执行前统一完成——到达此处时档位已经过能力映射，因此这里直接保留。
+    fn is_max_capable_gpt_family(config: &ApiConfig) -> bool {
         let model = config.model.trim().to_lowercase();
-        let segment = model.rsplit('/').next().unwrap_or_default();
-        ["gpt-5.6", "gpt-6"].iter().any(|family| {
-            segment
-                .strip_prefix(family)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '-', '_']))
-        })
+        let Some(segment) = model.rsplit('/').next() else {
+            return false;
+        };
+        let rest = if let Some(rest) = segment.strip_prefix("gpt-5.6") {
+            rest
+        } else if let Some(rest) = segment.strip_prefix("gpt-6") {
+            rest
+        } else {
+            return false;
+        };
+        rest.is_empty() || rest.starts_with(['.', '-', '_'])
     }
 
-    /// gpt-5.6 / gpt-6 原生支持高于 xhigh 的 max 档，必须透传；
-    /// 其他模型仍将 max 归一为标准 xhigh。
+    /// 是否为自定义/中转宿主（不做档位裁剪，五档原样透传）。
+    ///
+    /// 产品裁定：中转站已完成上游映射，客户端再裁剪反而丢掉用户意图。
+    /// 官方渠道的裁剪由 `reasoning_level_map` 依能力表完成。
+    ///
+    /// 判定要求**显式**的中转宿主声明：host 信息缺失（存量配置、测试夹具）
+    /// 时保持既有的归一行为，不猜测用户是否在用中转。
+    fn is_relay_host(config: &ApiConfig) -> bool {
+        if Self::is_siliconflow(config) || Self::is_openrouter(config) {
+            return false;
+        }
+        let host = config
+            .provider_type
+            .as_deref()
+            .or(config.provider_scope.as_deref())
+            .unwrap_or_default();
+        matches!(
+            host.trim().to_ascii_lowercase().as_str(),
+            "custom"
+                | "general"
+                | "one-api"
+                | "one_api"
+                | "sub2api"
+                | "cpa"
+                | "together"
+                | "fireworks"
+                | "groq"
+        )
+    }
+
+    /// max 档归属：具备 max 能力的 GPT 家族或中转宿主保留 max；
+    /// 其余模型将 max 归一为标准 xhigh。
     fn normalize_effort_for_model(config: &ApiConfig, effort: &str) -> Option<&'static str> {
-        if effort.trim().eq_ignore_ascii_case("max") && Self::supports_native_max_effort(config) {
+        if effort.trim().eq_ignore_ascii_case("max")
+            && (Self::is_max_capable_gpt_family(config) || Self::is_relay_host(config))
+        {
             return Some("max");
         }
         Self::normalize_standard_effort(effort)
@@ -237,24 +280,33 @@ impl RequestAdapter for GenericOpenAIAdapter {
         if Self::is_siliconflow(config) && (config.supports_reasoning || config.is_reasoning) {
             let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
             body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
-            body.remove("reasoning_effort");
             body.remove("reasoning");
             body.remove("thinking");
 
+            // 2026-10：SiliconFlow 在 API 层文档化 reasoning_effort（适用 DeepSeek-V4
+            // 系、GLM-5.2 等）。按产品规则 effort 为主路径且与 thinking_budget 互斥；
+            // thinking_budget 仅在未配置 effort 时兜底（宿主范围 128–32768）。
             if enable_thinking_value {
-                let budget = config.thinking_budget.or_else(|| {
-                    get_trimmed_effort(config).and_then(Self::siliconflow_budget_from_effort)
-                });
-                if let Some(budget) = budget {
-                    body.insert(
-                        "thinking_budget".to_string(),
-                        json!(budget.clamp(128, 32768)),
-                    );
-                } else {
-                    body.remove("thinking_budget");
+                match get_trimmed_effort(config).and_then(Self::normalize_siliconflow_effort) {
+                    Some(effort) => {
+                        body.insert("reasoning_effort".to_string(), json!(effort));
+                        body.remove("thinking_budget");
+                    }
+                    None => {
+                        body.remove("reasoning_effort");
+                        if let Some(budget) = config.thinking_budget {
+                            body.insert(
+                                "thinking_budget".to_string(),
+                                json!(budget.clamp(128, 32768)),
+                            );
+                        } else {
+                            body.remove("thinking_budget");
+                        }
+                    }
                 }
             } else {
                 body.remove("thinking_budget");
+                body.remove("reasoning_effort");
             }
 
             return false;
@@ -899,8 +951,9 @@ mod tests {
     }
 
     #[test]
-    fn test_siliconflow_glm_depth_uses_budget_dialect() {
+    fn test_siliconflow_glm_effort_primary_budget_fallback() {
         let adapter = GenericOpenAIAdapter;
+        // effort 已配置：走 reasoning_effort 主路径，budget 被移除（互斥）。
         let config = ApiConfig {
             provider_type: Some("siliconflow".to_string()),
             provider_scope: Some("siliconflow".to_string()),
@@ -916,14 +969,37 @@ mod tests {
         };
         let mut body = Map::new();
         body.insert("temperature".to_string(), json!(0.7));
-        body.insert("reasoning_effort".to_string(), json!("high"));
+        body.insert("thinking_budget".to_string(), json!(16384));
 
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
-        assert_eq!(body.get("thinking_budget"), Some(&json!(16384)));
-        assert!(!body.contains_key("reasoning_effort"));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(!body.contains_key("thinking_budget"));
         assert!(body.contains_key("temperature"));
+    }
+
+    #[test]
+    fn test_siliconflow_budget_fallback_without_effort() {
+        let adapter = GenericOpenAIAdapter;
+        // 未配置 effort：thinking_budget 兜底（宿主范围 128–32768）。
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            model: "THUDM/GLM-5.2".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(true),
+            thinking_budget: Some(999_999),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(body.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!body.contains_key("reasoning_effort"));
     }
 
     #[test]

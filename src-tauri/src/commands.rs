@@ -1798,6 +1798,13 @@ pub async fn get_api_configurations(state: State<'_, AppState>) -> Result<Vec<Ap
         if cfg.is_builtin {
             cfg.api_key = "***".to_string();
         }
+        // 渠道并行思考强度（方案 D）：把 get_adapter 的解析结果下发给前端，
+        // 前端按渠道模块查找档位表，不再靠模型名猜渠道（与后端命中规则同源）。
+        cfg.resolved_adapter_id = Some(
+            crate::llm_manager::request_adapter_for_config(cfg)
+                .id()
+                .to_string(),
+        );
     }
 
     Ok(configs)

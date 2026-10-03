@@ -13,12 +13,12 @@
 import * as React from 'react';
 import { cn } from '@/lib/utils';
 import type {
-  DeepSeekReasoningOption,
-  DeepSeekReasoningOptionValue,
-} from '@/utils/deepseekReasoningControls';
+  ReasoningLevelOption,
+  ReasoningLevel,
+} from '@/utils/reasoning';
 import './ThinkingDepthSlider.css';
 
-const DEPTH_RANK: Record<DeepSeekReasoningOptionValue, number> = {
+const DEPTH_RANK: Record<ReasoningLevel, number> = {
   minimal: 0,
   low: 1,
   medium: 2,
@@ -34,13 +34,13 @@ const MAGNETIC_PULL_CURVE = 2.2;
 
 export interface ThinkingDepthSliderProps {
   /** 当前模型支持的深度选项（不含"关闭"，由组件补在最左档） */
-  options: DeepSeekReasoningOption[];
+  options: ReasoningLevelOption[];
   /** 当前归一化后的深度值 */
-  value?: DeepSeekReasoningOptionValue;
+  value?: ReasoningLevel;
   /** 推理是否开启；false 时滑块停在"关闭"档 */
   enabled: boolean;
   /** 档位变化回调；最左档回调 'off' */
-  onChange: (value: DeepSeekReasoningOptionValue | 'off') => void;
+  onChange: (value: ReasoningLevel | 'off') => void;
   /** "关闭"档文案 */
   offLabel: string;
   /** 左端方向提示 */
@@ -48,15 +48,15 @@ export interface ThinkingDepthSliderProps {
   /** 右端方向提示 */
   smartLabel: string;
   /** 选项文案解析；默认使用 defaultLabel */
-  resolveOptionLabel?: (option: DeepSeekReasoningOption) => string;
+  resolveOptionLabel?: (option: ReasoningLevelOption) => string;
   ariaLabel?: string;
   className?: string;
 }
 
 /** 当前值不在选项集合内时，按 rank 就近吸附（平局取更高档） */
 function nearestOptionIndex(
-  options: DeepSeekReasoningOption[],
-  value: DeepSeekReasoningOptionValue
+  options: ReasoningLevelOption[],
+  value: ReasoningLevel
 ): number {
   const direct = options.findIndex((option) => option.value === value);
   if (direct >= 0) return direct;

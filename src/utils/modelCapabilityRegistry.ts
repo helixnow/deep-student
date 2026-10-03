@@ -80,6 +80,14 @@ function matchesFullModelId(input: string, candidate?: string): boolean {
   return input === normalized || input.endsWith(`/${normalized}`) || input.endsWith(`:${normalized}`);
 }
 
+/** 包含命中只认版本边界：命中段后紧跟数字是另一个版本（gpt-60 ≠ gpt-6、gpt-5.60 ≠ gpt-5.6） */
+function includesAtVersionBoundary(input: string, base: string): boolean {
+  for (let i = input.indexOf(base); i >= 0; i = input.indexOf(base, i + 1)) {
+    if (!/\d/.test(input.charAt(i + base.length))) return true;
+  }
+  return false;
+}
+
 function scoreRegistryRecord(
   modelId: string,
   record: RegistryModelRecord,
@@ -105,6 +113,16 @@ function scoreRegistryRecord(
     score = 300;
   } else if (record.alias_of && toBaseModelId(record.alias_of) === baseModelId) {
     score = 280;
+  } else {
+    // 方案 E 包含匹配兜底：输入 ID 包含注册表 model_id（中转站任意前缀/后缀）。
+    // 以命中长度计分——最长包含命中优先（如 "gemini-3.5-flash-lite" 胜过
+    // "gemini-3.5-flash"）；过短的 model_id（<5 字符）不参与，避免误命中。
+    const recordBase = toBaseModelId(record.model_id);
+    // chat 变体（如 gpt-5.1-chat-latest）不是所属系列的推理档位形态，不参与包含命中
+    const isChatVariant = normalizedInput.includes('chat');
+    if (!isChatVariant && recordBase.length >= 5 && includesAtVersionBoundary(normalizedInput, recordBase)) {
+      score = 100 + recordBase.length;
+    }
   }
 
   if (score < 0) return score;

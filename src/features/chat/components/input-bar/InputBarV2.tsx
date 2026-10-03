@@ -50,14 +50,12 @@ import {
 } from '../../utils/compactionFeedback';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
-  deepSeekV32EffortToBudget,
-  normalizeDeepSeekV4Effort,
-  qwenEffortToBudget,
-  resolveDeepSeekRuntimeReasoningControl,
-  resolveDeepSeekRuntimeReasoningSelection,
-  type DeepSeekReasoningControlKind,
-  type DeepSeekReasoningOptionValue,
-} from '@/utils/deepseekReasoningControls';
+  coerceReasoningLevel,
+  type ReasoningControlKind,
+  type ReasoningLevel,
+} from '@/utils/reasoning';
+import { resolveReasoningControl } from '@/utils/reasoning';
+import { MAX_TOKENS_DEFAULT, MAX_TOKENS_LIMIT } from '@/features/chat/core/constants';
 
 /**
  * InputBarV2 - V2 输入栏入口组件
@@ -99,36 +97,16 @@ interface ModelProfileDisplayRecord {
   model?: string;
 }
 
-// 值 → i18n 键后缀（chatV2:inputBar.thinkingDepth.*）；kind 仅约束该模型允许的档位
-const THINKING_DEPTH_LABEL_KEYS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
-  'openai-effort': {
-    minimal: 'minimal',
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    xhigh: 'xhigh',
-  },
-  'v4-effort': {
-    high: 'high',
-    max: 'max',
-  },
-  'v32-budget-effort': {
-    low: 'low',
-    medium: 'medium',
-    high: 'high',
-    xhigh: 'xhigh',
-    max: 'max',
-  },
-  'gemini-pro-effort': { low: 'low', high: 'high' },
-  'gemini-flash-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high' },
-  'anthropic-adaptive-effort': { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
-  'glm-effort': { minimal: 'minimal', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
-  'grok-effort': { low: 'low', medium: 'medium', high: 'high' },
-  'mistral-effort': { low: 'low', medium: 'medium', high: 'high' },
-  'ernie-effort': { high: 'high', max: 'max' },
-  'qwen-budget-effort': { low: 'low', medium: 'medium', high: 'high' },
-  'qwen-effort': { low: 'low', medium: 'medium', high: 'high' },
-  'toggle-only': {},
+// 值 → i18n 键后缀（chatV2:inputBar.thinkingDepth.*）。
+// 统一五档后所有渠道共用同一张表：档位可用性由后端能力表映射，
+// 前端不再按 kind 裁剪标签集合。
+const THINKING_DEPTH_LABEL_KEYS: Record<ReasoningLevel, string> = {
+  minimal: 'minimal',
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
 };
 
 const THINKING_DEPTH_LABEL_FALLBACKS: Record<string, string> = {
@@ -140,15 +118,14 @@ const THINKING_DEPTH_LABEL_FALLBACKS: Record<string, string> = {
   max: '超高',
 };
 
-function getThinkingDepthLabel(
-  kind: DeepSeekReasoningControlKind,
-  value: DeepSeekReasoningOptionValue | undefined,
-  t: TFunction
-): string {
+function getThinkingDepthLabel(value: ReasoningLevel | undefined, t: TFunction): string {
   if (!value) return t('chatV2:inputBar.thinkingOn');
-  const keySuffix = THINKING_DEPTH_LABEL_KEYS[kind][value];
+  const keySuffix = THINKING_DEPTH_LABEL_KEYS[value];
   if (!keySuffix) return value;
-  return t(`chatV2:inputBar.thinkingDepth.${keySuffix}`, THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value);
+  return t(
+    `chatV2:inputBar.thinkingDepth.${keySuffix}`,
+    THINKING_DEPTH_LABEL_FALLBACKS[keySuffix] ?? value
+  );
 }
 
 function normalizeModelIdentity(value: unknown): string {
@@ -575,44 +552,67 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
     const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
 
+    const runtimeModelSupportsReasoning = useMemo(
+      () => resolveModelReasoningSupport(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo]
+    );
+
     const thinkingControl = useMemo(
       () =>
-        resolveDeepSeekRuntimeReasoningControl({
+        resolveReasoningControl({
           model: activeRuntimeModelInfo?.model ?? model2OverrideId ?? modelDisplayName ?? effectiveUnpinnedModelId,
           modelId: activeRuntimeModelInfo?.id ?? model2OverrideId ?? effectiveUnpinnedModelId,
+          adapterId: activeRuntimeModelInfo?.resolvedAdapterId as string | undefined,
           providerType: activeRuntimeModelInfo?.providerType,
           providerScope: activeRuntimeModelInfo?.providerScope,
           baseUrl: activeRuntimeModelInfo?.baseUrl,
+          supportsReasoning: runtimeModelSupportsReasoning,
         }),
       [
         activeRuntimeModelInfo?.model,
         activeRuntimeModelInfo?.id,
+        activeRuntimeModelInfo?.resolvedAdapterId,
         activeRuntimeModelInfo?.providerType,
         activeRuntimeModelInfo?.providerScope,
         activeRuntimeModelInfo?.baseUrl,
+        runtimeModelSupportsReasoning,
         model2OverrideId,
         modelDisplayName,
         effectiveUnpinnedModelId,
       ]
     );
 
-    const runtimeModelSupportsReasoning = useMemo(
-      () => resolveModelReasoningSupport(activeRuntimeModelInfo),
-      [activeRuntimeModelInfo]
-    );
     const effectiveEnableThinking = runtimeModelSupportsReasoning && enableThinking;
     const effectiveReasoningEffort = reasoningEffort ?? (activeRuntimeModelInfo?.reasoningEffort as string | undefined);
     const effectiveThinkingBudget = thinkingBudget ?? (activeRuntimeModelInfo?.thinkingBudget as number | undefined);
-    const normalizedThinkingSelection = useMemo(
-      () =>
-        resolveDeepSeekRuntimeReasoningSelection({
-          control: thinkingControl,
-          enableThinking: effectiveEnableThinking,
-          reasoningEffort: effectiveReasoningEffort,
+    const normalizedThinkingSelection = useMemo(() => {
+      // 统一五档：档位只做「合法性归一」（未知值丢弃），不做能力裁剪——
+      // 该模型是否支持该档由后端能力表映射。强制思考模型（canDisable=false）
+      // 永远按开启状态展示。
+      const enableThinkingValue = thinkingControl.canDisable ? effectiveEnableThinking : true;
+      if (!enableThinkingValue) {
+        return {
+          enableThinking: false,
+          reasoningEffort: undefined,
           thinkingBudget: effectiveThinkingBudget,
-        }),
-      [thinkingControl, effectiveEnableThinking, effectiveReasoningEffort, effectiveThinkingBudget]
-    );
+        };
+      }
+      // 用户未显式选档时回落到渠道默认档（用于状态标签展示）。
+      // 实际发送值仍由后端按模型能力就近映射，此处不影响请求正确性。
+      const level =
+        coerceReasoningLevel(effectiveReasoningEffort) ?? thinkingControl.defaultValue;
+      return {
+        enableThinking: true,
+        reasoningEffort: level,
+        thinkingBudget: effectiveThinkingBudget,
+      };
+    }, [
+      thinkingControl.canDisable,
+      thinkingControl.defaultValue,
+      effectiveEnableThinking,
+      effectiveReasoningEffort,
+      effectiveThinkingBudget,
+    ]);
     const runtimeDepthIsSet = reasoningEffort !== undefined || thinkingBudget !== undefined;
 
     useEffect(() => {
@@ -661,6 +661,42 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       thinkingControl.kind,
     ]);
 
+    // 方案 E：会话最大输出跟随模型 —— 模型切换且用户未手动调整 maxTokens 时，
+    // 取注册表推断的模型最大输出（受 maxTokensLimit 夹紧）。用户一旦手调
+    //（当前值 != 上一次自动应用值且 != 全局默认 32768），不再自动改写。
+    const lastAutoMaxTokensRef = useRef<{ modelKey: string; value: number } | null>(null);
+    useEffect(() => {
+      const modelKey =
+        activeRuntimeModelInfo?.id ?? model2OverrideId ?? effectiveUnpinnedModelId ?? '';
+      if (!modelKey) return;
+      const modelMax =
+        typeof activeRuntimeModelInfo?.maxOutputTokens === 'number' && activeRuntimeModelInfo.maxOutputTokens > 0
+          ? activeRuntimeModelInfo.maxOutputTokens
+          : undefined;
+      if (!modelMax) return;
+      const current = store.getState().chatParams.maxTokens;
+      const prevApplied = lastAutoMaxTokensRef.current;
+      const untouched =
+        prevApplied === null
+          ? current === MAX_TOKENS_DEFAULT
+          : prevApplied.modelKey === modelKey || current === prevApplied.value || current === MAX_TOKENS_DEFAULT;
+      if (!untouched) return;
+      const clamped = Math.min(modelMax, MAX_TOKENS_LIMIT);
+      if (clamped > 0 && current !== clamped) {
+        lastAutoMaxTokensRef.current = { modelKey, value: clamped };
+        setChatParams({ maxTokens: clamped });
+      } else if (prevApplied?.modelKey !== modelKey) {
+        lastAutoMaxTokensRef.current = { modelKey, value: current };
+      }
+    }, [
+      activeRuntimeModelInfo?.id,
+      activeRuntimeModelInfo?.maxOutputTokens,
+      model2OverrideId,
+      effectiveUnpinnedModelId,
+      setChatParams,
+      store,
+    ]);
+
     // 切换推理模式回调（使用 store.getState 避免闭包陈旧）
     const handleToggleThinking = useCallback(() => {
       const state = store.getState();
@@ -677,7 +713,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [store, thinkingControl.canDisable]);
 
     const handleSetThinkingDepth = useCallback(
-      (value: DeepSeekReasoningOptionValue | 'off') => {
+      (value: ReasoningLevel | 'off') => {
         if (!runtimeModelSupportsReasoning) {
           store.getState().setChatParams({
             enableThinking: false,
@@ -697,68 +733,30 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return;
         }
 
-        if (thinkingControl.kind === 'openai-effort') {
-          store.getState().setChatParams({
-            enableThinking: true,
-            reasoningEffort: value === 'max' ? 'xhigh' : value,
-            thinkingBudget: undefined,
-          });
-          return;
-        }
-
-        if (thinkingControl.kind === 'v4-effort') {
-          store.getState().setChatParams({
-            enableThinking: true,
-            reasoningEffort: normalizeDeepSeekV4Effort(value),
-            thinkingBudget: undefined,
-          });
-          return;
-        }
-
-        if (thinkingControl.kind === 'v32-budget-effort') {
-          const effort = value === 'max' ? 'xhigh' : value;
-          store.getState().setChatParams({
-            enableThinking: true,
-            reasoningEffort: effort,
-            thinkingBudget: deepSeekV32EffortToBudget(effort),
-          });
-          return;
-        }
-
-        // 2A Qwen 思考强度：low/medium/high → thinkingBudget (1024/4096/16384)
-        if (thinkingControl.kind === 'qwen-budget-effort') {
-          store.getState().setChatParams({
-            enableThinking: true,
-            reasoningEffort: value,
-            thinkingBudget: qwenEffortToBudget(value),
-          });
-          return;
-        }
-
-        if (thinkingControl.kind !== 'toggle-only') {
-          store.getState().setChatParams({
-            enableThinking: true,
-            reasoningEffort: value,
-            thinkingBudget: undefined,
-          });
-          return;
-        }
-
-        store.getState().setChatParams({ enableThinking: true });
+        // 统一五档：前端只记录用户选择的档位原值，不做任何映射。
+        // 该档位对该模型是否可用、需要吸附到哪一档，全部由后端的档位能力表
+        // （scripts/reasoning-level-registry.json）在请求前完成。历史上前端
+        // 在此处做过 max→xhigh 等改写，与后端归一表构成双份映射并相互漂移。
+        store.getState().setChatParams({
+          enableThinking: true,
+          reasoningEffort: value,
+          // budget 仅作为未开放 reasoning_effort 的宿主/代际的兜底：
+          // 由后端在未配置 effort 时决定是否发送，前端不再预先换算。
+          thinkingBudget: undefined,
+        });
       },
-      [store, thinkingControl.canDisable, thinkingControl.kind, runtimeModelSupportsReasoning]
+      [store, thinkingControl.canDisable, runtimeModelSupportsReasoning]
     );
 
     const thinkingStateLabel = useMemo(() => {
       if (!runtimeModelSupportsReasoning) return t('chatV2:inputBar.thinkingState.unsupported');
       if (!effectiveEnableThinking) return t('chatV2:inputBar.thinkingState.off');
       const depthLabel = getThinkingDepthLabel(
-        thinkingControl.kind,
-        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined,
+        normalizedThinkingSelection.reasoningEffort as ReasoningLevel | undefined,
         t
       );
       return t('chatV2:inputBar.thinkingState.on', { depth: depthLabel });
-    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind, t]);
+    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, t]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
     // Anki 工具现在始终可用，无需单独开关
@@ -1388,7 +1386,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         thinkingUnsupported={!runtimeModelSupportsReasoning}
         thinkingCanDisable={thinkingControl.canDisable}
         thinkingDepthOptions={runtimeModelSupportsReasoning ? thinkingControl.options : []}
-        thinkingDepthValue={runtimeModelSupportsReasoning ? normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined : undefined}
+        thinkingDepthValue={runtimeModelSupportsReasoning ? normalizedThinkingSelection.reasoningEffort as ReasoningLevel | undefined : undefined}
         onToggleThinking={handleToggleThinking}
         onSetThinkingDepth={handleSetThinkingDepth}
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关

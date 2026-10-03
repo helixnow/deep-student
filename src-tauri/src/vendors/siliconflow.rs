@@ -90,6 +90,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
         if let Some(api_key) = get_builtin_key(entry.env_var_name) {
             if !api_key.is_empty() {
                 configs.push(ApiConfig {
+                    resolved_adapter_id: None,
                     id: entry.id.to_string(),
                     name: entry.name.to_string(),
                     vendor_id: Some(format!("builtin-{}", entry.id)),

@@ -61,6 +61,15 @@ impl ErnieAdapter {
     fn supports_thinking_budget(model: &str) -> bool {
         model.to_lowercase().contains("deepseek")
     }
+
+    /// 千帆托管的 DeepSeek 系（唯一开放 reasoning_effort 的托管家族）。
+    ///
+    /// 2026-10 官方修正：百度 reasoning_effort 支持清单仅含
+    /// deepseek-v4-pro / deepseek-v4-flash；ERNIE 本体（ernie-5 / ernie-x1）
+    /// 不支持该字段（发送会被拒或被忽略）。
+    fn is_hosted_deepseek(model: &str) -> bool {
+        model.to_lowercase().contains("deepseek")
+    }
 }
 
 impl RequestAdapter for ErnieAdapter {
@@ -86,12 +95,31 @@ impl RequestAdapter for ErnieAdapter {
         // （旧实现改名为 v1 的 max_output_tokens，v2 网关不认识该字段，输出上限会静默失效。）
 
         // 处理 reasoning_effort 参数
-        // 千帆实际取值 high（默认）/ max；low/medium 由服务端映射为 high
-        if let Some(effort) = get_trimmed_effort(config) {
-            let effort_lower = effort.to_lowercase();
-            if matches!(effort_lower.as_str(), "low" | "medium" | "high" | "max") {
-                body.insert("reasoning_effort".to_string(), json!(effort_lower));
+        // 千帆实际取值 high（默认）/ max；low/medium 由服务端映射为 high。
+        //
+        // 2026-10 官方文档修正：reasoning_effort 仅对千帆托管的 DeepSeek 系
+        // （deepseek-v4-pro / deepseek-v4-flash）开放；ERNIE 本体不支持该字段，
+        // 发送会被网关拒绝或忽略——因此对 ERNIE 系显式剥离并记录日志。
+        if Self::is_hosted_deepseek(&config.model) {
+            if let Some(effort) = get_trimmed_effort(config) {
+                let effort_lower = effort.to_lowercase();
+                if matches!(effort_lower.as_str(), "low" | "medium" | "high" | "max") {
+                    body.insert("reasoning_effort".to_string(), json!(effort_lower));
+                } else if effort_lower == "xhigh" {
+                    // 千帆无 xhigh 档，就近吸附到官方最高的 max。
+                    log::debug!(
+                        "[ErnieAdapter] reasoning_effort=xhigh 在千帆无对应档，按 max 发送: model={}",
+                        config.model
+                    );
+                    body.insert("reasoning_effort".to_string(), json!("max"));
+                }
             }
+        } else if get_trimmed_effort(config).is_some() {
+            log::debug!(
+                "[ErnieAdapter] 模型不支持 reasoning_effort，已剥离: model={}",
+                config.model
+            );
+            body.remove("reasoning_effort");
         }
 
         // 思考开关：千帆 v2 顶层 thinking:{"type":"enabled"/"disabled"}（默认 disabled）。
@@ -191,7 +219,9 @@ mod tests {
     #[test]
     fn test_reasoning_effort() {
         let adapter = ErnieAdapter;
+        // reasoning_effort 仅对千帆托管的 DeepSeek 系开放（2026-10 官方支持清单）
         let config = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
             reasoning_effort: Some("high".to_string()),
             ..Default::default()
         };
@@ -206,6 +236,7 @@ mod tests {
     fn test_reasoning_effort_max_accepted() {
         let adapter = ErnieAdapter;
         let config = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
             reasoning_effort: Some("max".to_string()),
             ..Default::default()
         };
@@ -218,9 +249,48 @@ mod tests {
     }
 
     #[test]
+    fn test_ernie_family_strips_reasoning_effort() {
+        // 2026-10 官方修正：ERNIE 本体不支持 reasoning_effort，
+        // 必须剥离而不是发出去被网关拒绝。
+        let adapter = ErnieAdapter;
+        for model in ["ernie-5.0", "ernie-5.0-thinking-preview", "ernie-x1.1"] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                reasoning_effort: Some("max".to_string()),
+                ..Default::default()
+            };
+            let mut body = Map::new();
+
+            adapter.apply_reasoning_config(&mut body, &config, None);
+
+            assert!(
+                !body.contains_key("reasoning_effort"),
+                "ERNIE 本体不得发送 reasoning_effort: model={model}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_hosted_deepseek_xhigh_snaps_to_max() {
+        // 千帆无 xhigh 档，应就近吸附到官方最高的 max。
+        let adapter = ErnieAdapter;
+        let config = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+    }
+
+    #[test]
     fn test_reasoning_effort_case_insensitive() {
         let adapter = ErnieAdapter;
         let config = ApiConfig {
+            model: "deepseek-v4-pro".to_string(),
             reasoning_effort: Some("HIGH".to_string()),
             ..Default::default()
         };

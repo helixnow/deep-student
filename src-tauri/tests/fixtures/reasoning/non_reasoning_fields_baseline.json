@@ -1,0 +1,4666 @@
+{
+  "official-openai::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai/responses::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai/responses::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-openai/responses::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-openai/responses::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-deepseek::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "top_p": 0.95,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-deepseek::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "top_p": 0.95,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-deepseek::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-deepseek::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-anthropic::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-anthropic::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05
+  },
+  "official-anthropic::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-anthropic::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "repetition_penalty": 1.05,
+    "top_p": 0.95,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "min_p": 0.05
+  },
+  "official-gemini::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-gemini::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-qwen::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-qwen::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "preserve_thinking": false
+  },
+  "official-zhipu::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-zhipu::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "max_tokens": 4096,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05
+  },
+  "official-moonshot::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-moonshot::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "official-moonshot::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-moonshot::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-grok::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "stream": true,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096
+  },
+  "official-grok::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "official-grok::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "custom-relay::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "custom-relay::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "custom-relay::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "custom-relay::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "custom-relay::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "siliconflow::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "siliconflow::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "openrouter::gpt-6-sol": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::gpt-6-sol/xhigh": {
+    "model": "gpt-6-sol",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::gpt-5.6": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::gpt-5.5": {
+    "model": "gpt-5.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::o3": {
+    "model": "o3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::gemini-3.8-flash": {
+    "model": "gemini-3.8-flash",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::gemini-3.1-pro": {
+    "model": "gemini-3.1-pro-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::qwen3.8-max": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::qwen3.8-max/low": {
+    "model": "qwen3.8-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::glm-5.3": {
+    "model": "glm-5.3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "openrouter::glm-5.2": {
+    "model": "glm-5.2",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::kimi-k3": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::kimi-k3/blank": {
+    "model": "kimi-k3",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::grok-4.7": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::grok-4.7/unknown": {
+    "model": "grok-4.7",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "openrouter::deepseek-v4-pro": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::deepseek-v4-pro/medium": {
+    "model": "deepseek-v4-pro",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::ernie-5": {
+    "model": "ernie-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::mistral-medium-3.5": {
+    "model": "mistral-medium-3.5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::minimax-m3.1-flash-preview": {
+    "model": "minimax-m3.1-flash-preview",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::claude-opus-5": {
+    "model": "claude-opus-5",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  },
+  "openrouter::thinking-off": {
+    "model": "gpt-5.6",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "presence_penalty": 0.3,
+    "frequency_penalty": 0.4,
+    "logprobs": true,
+    "top_k": 40,
+    "min_p": 0.05,
+    "repetition_penalty": 1.05,
+    "max_tokens": 4096,
+    "stream": true
+  },
+  "openrouter::budget-only": {
+    "model": "qwen3.7-max",
+    "messages": [
+      {
+        "role": "user",
+        "content": "hi"
+      }
+    ],
+    "stream": true,
+    "max_tokens": 4096,
+    "repetition_penalty": 1.05,
+    "min_p": 0.05,
+    "top_k": 40
+  }
+}

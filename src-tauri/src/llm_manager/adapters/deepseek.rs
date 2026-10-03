@@ -168,6 +168,15 @@ impl DeepSeekAdapter {
         config: &ApiConfig,
         version: DeepSeekModelVersion,
     ) -> Option<i32> {
+        // V3.1/V3.2 未在官方文档开放 reasoning_effort，thinking_budget 是主路径；
+        // effort→budget 换算仅作为未存 budget 时的兜底（档位 UI 的历史形态）。
+        if matches!(
+            version,
+            DeepSeekModelVersion::V31 | DeepSeekModelVersion::V32
+        ) && config.thinking_budget.is_some()
+        {
+            return config.thinking_budget;
+        }
         if matches!(
             version,
             DeepSeekModelVersion::V31 | DeepSeekModelVersion::V32

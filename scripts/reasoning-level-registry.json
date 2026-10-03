@@ -1,0 +1,417 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-10-03",
+  "purpose": "思考强度档位能力表：官方渠道按此表就近吸附映射（含协议上限），自定义/中转渠道五档直通不做裁剪（中转站自行完成上游映射）。",
+  "usage": "后端在 LLMManager::apply_reasoning_config 中于适配器执行前统一映射；前端统一展示五档 + 关闭开关，不再按模型裁剪档位。",
+  "notes": [
+    "levels 为该模型官方文档列明的可选档位全集；default 为官方默认档（用户未显式选择时使用）。",
+    "protocol_caps 描述协议维度的档位上限：max_level 为该协议下可用的最高档，超出则就近吸附。",
+    "can_disable=false 表示该代际强制思考（不接受关闭语义），映射层会退到最低档而非发送关闭值。",
+    "每条目附 source_url 与 verified_at；未能取得官方原文的条目在 verification 字段标注。"
+  ],
+  "universal_levels": ["low", "medium", "high", "xhigh", "max"],
+  "profiles": [
+    {
+      "id": "openai-gpt6",
+      "family": "openai",
+      "model_contains": ["gpt-6"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium",
+      "can_disable": true,
+      "protocol_caps": {
+        "openai_chat_completions": {
+          "max_level": "xhigh",
+          "reason": "官方 Chat Completions 拒绝 max（400 Unsupported value）；仅 Responses API 接受。"
+        }
+      },
+      "source_url": "https://developers.openai.com/api/docs/guides/reasoning",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt6-astra",
+      "family": "openai",
+      "model_contains": ["gpt-6-astra"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium",
+      "can_disable": false,
+      "protocol_caps": {
+        "openai_chat_completions": {
+          "max_level": "xhigh",
+          "reason": "同 gpt-6 家族的 Chat Completions max 限制。"
+        }
+      },
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-6-astra",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "Astra 不接受 none/minimal：官方后端错误文本列出 low,medium,high,xhigh,max。"
+    },
+    {
+      "id": "openai-gpt56",
+      "family": "openai",
+      "model_contains": ["gpt-5.6"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium",
+      "can_disable": true,
+      "protocol_caps": {
+        "openai_chat_completions": {
+          "max_level": "xhigh",
+          "reason": "官方 Chat Completions 拒绝 max；仅 Responses API 接受。"
+        }
+      },
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.6",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt55",
+      "family": "openai",
+      "model_contains": ["gpt-5.5"],
+      "levels": ["low", "medium", "high", "xhigh"],
+      "default": "medium",
+      "can_disable": true,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.5",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt55-pro",
+      "family": "openai",
+      "model_contains": ["gpt-5.5", "-pro"],
+      "levels": ["medium", "high", "xhigh"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.5-pro",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt54",
+      "family": "openai",
+      "model_contains": ["gpt-5.4"],
+      "levels": ["low", "medium", "high", "xhigh"],
+      "default": "none",
+      "can_disable": true,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.4",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt52",
+      "family": "openai",
+      "model_contains": ["gpt-5.2"],
+      "levels": ["low", "medium", "high", "xhigh"],
+      "default": "none",
+      "can_disable": true,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.2",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "openai-gpt51",
+      "family": "openai",
+      "model_contains": ["gpt-5.1"],
+      "levels": ["low", "medium", "high"],
+      "default": "none",
+      "can_disable": true,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-5.1",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "gpt-5.1 无 xhigh 档。"
+    },
+    {
+      "id": "openai-o-series",
+      "family": "openai",
+      "model_contains": ["-o3"],
+      "levels": ["low", "medium", "high"],
+      "default": "medium",
+      "can_disable": false,
+      "source_url": "https://developers.openai.com/api/docs/models/o3",
+      "verified_at": "2026-10-03",
+      "verification": "third-party",
+      "notes": "o 系列官方页已标 Deprecated 且不再列档位；low/medium/high 来自 OpenRouter/models.dev 交叉验证。"
+    },
+    {
+      "id": "openai-gpt-oss",
+      "family": "openai",
+      "model_contains": ["gpt-oss"],
+      "levels": ["low", "medium", "high"],
+      "default": "medium",
+      "can_disable": false,
+      "source_url": "https://developers.openai.com/api/docs/models/gpt-oss-120b",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "anthropic-adaptive",
+      "family": "claude",
+      "model_contains": ["claude"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high",
+      "can_disable": true,
+      "source_url": "https://platform.claude.com/docs/en/docs/build-with-claude/effort",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "adaptive thinking 全档 low..max；Opus 5 / Sonnet 5.5 在 xhigh/max 下不可关闭。"
+    },
+    {
+      "id": "anthropic-always-on",
+      "family": "claude",
+      "model_contains": ["opus-5.5"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "medium",
+      "can_disable": false,
+      "source_url": "https://platform.claude.com/docs/en/docs/build-with-claude/effort",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "anthropic-always-on-fable-mythos",
+      "family": "claude",
+      "model_contains": ["fable"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://platform.claude.com/docs/en/docs/build-with-claude/thinking-troubleshooting",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "gemini-3-pro",
+      "family": "gemini",
+      "model_contains": ["gemini-3", "pro"],
+      "levels": ["low", "medium", "high"],
+      "level_aliases": {
+        "minimal": "low",
+        "xhigh": "high",
+        "max": "high"
+      },
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://ai.google.dev/gemini-api/docs/gemini-3",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "3.x Pro 不支持 minimal；Gemini 3 全系不能关闭思考（minimal ≠ off）。"
+    },
+    {
+      "id": "gemini-3-flash-lite",
+      "family": "gemini",
+      "model_contains": ["gemini-3", "flash-lite"],
+      "levels": ["minimal", "low", "medium", "high"],
+      "default": "minimal",
+      "can_disable": false,
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "family": "gemini",
+      "model_contains": ["gemini-3.8-flash"],
+      "levels": ["low", "medium", "high"],
+      "default": "medium",
+      "can_disable": false,
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "3.8/3.7-flash 档位为 low/medium/high（无 minimal）。"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "family": "gemini",
+      "model_contains": ["gemini-3.7-flash"],
+      "levels": ["low", "medium", "high"],
+      "default": "medium",
+      "can_disable": false,
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "gemini-3-flash",
+      "family": "gemini",
+      "model_contains": ["gemini-3", "flash"],
+      "levels": ["minimal", "low", "medium", "high"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://ai.google.dev/gemini-api/docs/thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "qwen-3.8",
+      "family": "qwen",
+      "model_contains": ["qwen3.8"],
+      "levels": ["low", "medium", "xhigh", "max"],
+      "default": "xhigh",
+      "can_disable": true,
+      "source_url": "https://platform.qianwenai.com/docs/developer-guides/text-generation/thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official-partial",
+      "notes": "官方文档为 qwen3.8-max 列出 low/medium/xhigh（默认 xhigh）；max 档按用户裁定纳入（系列支持，待官方逐模型复核）。effort 与 thinking_budget 互斥。"
+    },
+    {
+      "id": "glm-5.3",
+      "family": "zhipu",
+      "model_contains": ["glm-5.3"],
+      "levels": ["low", "high", "max"],
+      "level_aliases": {
+        "minimal": "low",
+        "medium": "high",
+        "xhigh": "high"
+      },
+      "default": "max",
+      "can_disable": false,
+      "source_url": "https://docs.bigmodel.cn/cn/guide/capabilities/thinking.md",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "GLM-5.3 系强制思考（传 disabled 报错），effort 仅 low/high/max，其余取值报错。"
+    },
+    {
+      "id": "glm-5.2",
+      "family": "zhipu",
+      "model_contains": ["glm-5.2"],
+      "levels": ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
+      "default": "max",
+      "can_disable": true,
+      "source_url": "https://docs.bigmodel.cn/cn/guide/capabilities/thinking.md",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "GLM-5.2 接受全 7 档；none/minimal 表示放弃思考。"
+    },
+    {
+      "id": "kimi-k3",
+      "family": "moonshot",
+      "model_contains": ["kimi-k3"],
+      "levels": ["low", "high", "max"],
+      "level_aliases": {
+        "minimal": "low",
+        "medium": "high",
+        "xhigh": "max"
+      },
+      "default": "max",
+      "can_disable": false,
+      "source_url": "https://platform.kimi.com/docs/guide/use-reasoning-effort.md",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "K3 always-on 强制推理（无 thinking 参数），effort 仅 low/high/max，默认 max。"
+    },
+    {
+      "id": "grok-4.7",
+      "family": "grok",
+      "model_contains": ["grok-4.7"],
+      "levels": ["low", "medium", "high", "xhigh"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://docs.x.ai/developers/model-capabilities/text/reasoning",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "grok-4.6",
+      "family": "grok",
+      "model_contains": ["grok-4.6"],
+      "levels": ["low", "medium", "high", "xhigh"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://docs.x.ai/developers/model-capabilities/text/reasoning",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "grok-4.5",
+      "family": "grok",
+      "model_contains": ["grok-4.5"],
+      "levels": ["low", "medium", "high"],
+      "default": "high",
+      "can_disable": false,
+      "source_url": "https://docs.x.ai/developers/model-capabilities/text/reasoning",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "grok-4.5 收到 xhigh 会静默按 high 处理，故不列入档位表。"
+    },
+    {
+      "id": "grok-4.3",
+      "family": "grok",
+      "model_contains": ["grok-4.3"],
+      "levels": ["none", "low", "medium", "high", "xhigh"],
+      "default": "low",
+      "can_disable": true,
+      "source_url": "https://docs.x.ai/developers/models/grok-4.3",
+      "verified_at": "2026-10-03",
+      "verification": "official"
+    },
+    {
+      "id": "deepseek-v4",
+      "family": "deepseek",
+      "model_contains": ["deepseek-v4"],
+      "levels": ["low", "high", "max"],
+      "level_aliases": {
+        "minimal": "low",
+        "medium": "high",
+        "xhigh": "high",
+        "ultra": "max"
+      },
+      "default": "high",
+      "can_disable": true,
+      "source_url": "https://api-docs.deepseek.com/api/create-chat-completion",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "官方 API 精确取值 none/low/high/max（默认 high）；minimal→low、medium/xhigh→high 由服务端接受后折叠。"
+    },
+    {
+      "id": "deepseek-flash",
+      "family": "deepseek",
+      "model_contains": ["deepseek-flash"],
+      "levels": ["low", "high", "max"],
+      "level_aliases": {
+        "minimal": "low",
+        "medium": "high",
+        "xhigh": "high",
+        "ultra": "max"
+      },
+      "default": "high",
+      "can_disable": true,
+      "source_url": "https://api-docs.deepseek.com/api/create-chat-completion",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "V4.1 Flash 沿用 V4 方言（low/high/max）。"
+    },
+    {
+      "id": "mistral-effort",
+      "family": "mistral",
+      "model_contains": ["mistral-medium"],
+      "levels": ["none", "high"],
+      "default": "high",
+      "can_disable": true,
+      "source_url": "https://docs.mistral.ai/studio/conversations/reasoning",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "官方 reasoning 指南仅给 high/none 两档（OpenAPI enum 更宽但模型级未确认）。"
+    },
+    {
+      "id": "minimax-m3.1",
+      "family": "minimax",
+      "model_contains": ["m3.1"],
+      "levels": ["low", "medium", "high", "xhigh", "max"],
+      "default": "max",
+      "can_disable": false,
+      "source_url": "https://platform.minimax.io/docs/api-reference/text-chat-openai.md",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "M3.1-Flash-Preview 为 always-think；none 与 thinking.type=disabled 均报 400。"
+    },
+    {
+      "id": "doubao-seed",
+      "family": "doubao",
+      "model_contains": ["doubao-seed"],
+      "levels": ["minimal", "low", "medium", "high", "xhigh", "max"],
+      "default": "high",
+      "can_disable": true,
+      "source_url": "https://docs.volcengine.com/docs/ark/responses-api-deep-thinking",
+      "verified_at": "2026-10-03",
+      "verification": "official",
+      "notes": "Seed 系按官方文档接受 7 档并按模型代次映射；2-1 系列默认 high、2-0 系列默认 medium。"
+    }
+  ]
+}

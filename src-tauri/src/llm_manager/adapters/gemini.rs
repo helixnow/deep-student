@@ -83,6 +83,10 @@ impl GeminiAdapter {
     fn map_effort_to_level(effort: Option<&str>, model: &str, is_flash: bool) -> &'static str {
         match effort {
             Some(e) if e.eq_ignore_ascii_case("high") || e.eq_ignore_ascii_case("xhigh") => "high",
+            // low 是 Gemini 3 全系（Pro 与 Flash）都支持的档位，必须显式处理：
+            // 此前缺失该分支，用户选 low 会落到模型默认档——Pro 被静默升到 high
+            //（多消耗算力），3.5-flash-lite 被降到 minimal。
+            Some(e) if e.eq_ignore_ascii_case("low") => "low",
             Some(e) if e.eq_ignore_ascii_case("medium") => {
                 if is_flash {
                     "medium"
@@ -136,6 +140,16 @@ impl RequestAdapter for GeminiAdapter {
             // 注意：Gemini 3 Pro 不能完全禁用 thinking，最低是 "low"
             if enable_thinking_value {
                 let level = Self::map_effort_to_level(effort, &config.model, is_gemini3_flash);
+                if let Some(requested) = effort {
+                    if !requested.eq_ignore_ascii_case(level) {
+                        log::debug!(
+                            "[GeminiAdapter] thinkingLevel 档位归一: {} -> {}（模型实际档位表）: model={}",
+                            requested,
+                            level,
+                            config.model
+                        );
+                    }
+                }
                 thinking_map.insert("thinkingLevel".to_string(), json!(level));
             } else {
                 // 即使用户想禁用，Gemini 3 也要设置最低级别

@@ -56,6 +56,8 @@ export interface ModelInfo {
   vendorId?: string;
   /** 供应商显示名称（可选，用于 UI 显示） */
   vendorName?: string;
+  /** 后端 get_adapter 解析出的渠道 id（方案 D：渠道并行思考强度的查找键） */
+  resolvedAdapterId?: string;
   /** 允许其他字段以兼容 ModelConfig */
   [key: string]: unknown;
 }

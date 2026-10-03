@@ -218,7 +218,9 @@
         "include_thoughts": "Return thought summary",
         "include_thoughts_hint": "Maps to include_thoughts to request a reasoning summary.",
         "unsupported_include_hint": "This model does not support the include_thoughts parameter",
-        "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts)."
+        "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts).",
+        "generic_effort_toggle": "Reasoning intensity",
+        "generic_effort_toggle_hint": "When enabled, choose a reasoning intensity level (low / medium / high / xhigh, sent as reasoning_effort). When disabled, only the thinking_budget fallback is available."
       },
       "fields": {
         "api_key": "API Key",
@@ -296,7 +298,13 @@
           "medium": "Medium (4096)",
           "high": "High (16384)",
           "xhigh": "XHigh (65536)",
-          "max": "Max (262144)"
+          "max": "Max (262144)",
+          "xhigh_sf": "Extra High (32768)"
+        },
+        "depth38": {
+          "low": "Low",
+          "medium": "Medium",
+          "xhigh": "Extra High (default)"
         }
       },
       "grok": {

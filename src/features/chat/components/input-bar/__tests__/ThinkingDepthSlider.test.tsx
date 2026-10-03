@@ -2,7 +2,7 @@ import React from 'react';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { act, render, screen, fireEvent } from '@testing-library/react';
 import { ThinkingDepthSlider } from '../ThinkingDepthSlider';
-import type { DeepSeekReasoningOption } from '@/utils/deepseekReasoningControls';
+import type { ReasoningLevelOption } from '@/utils/reasoning';
 
 beforeAll(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
@@ -29,14 +29,14 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-const OPENAI_OPTIONS: DeepSeekReasoningOption[] = [
+const OPENAI_OPTIONS: ReasoningLevelOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'XHigh' },
 ];
 
-const V4_OPTIONS: DeepSeekReasoningOption[] = [
+const V4_OPTIONS: ReasoningLevelOption[] = [
   { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
