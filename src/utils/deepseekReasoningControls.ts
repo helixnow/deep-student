@@ -76,7 +76,7 @@ const OPENAI_CODEX_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'XHigh' },
 ];
 
-/** GPT-5.6 在 xhigh 之上原生支持 max 档，不能复用 codex 档位表。 */
+/** GPT-5.6 / GPT-6 在 xhigh 之上原生支持 max 档，不能复用 codex 档位表。 */
 const GPT56_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   ...OPENAI_CODEX_EFFORT_OPTIONS,
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
@@ -191,12 +191,17 @@ export function isDeepSeekV32ModelId(modelId: string | undefined | null): boolea
   return normalize(modelId).includes('deepseek-v3.2');
 }
 
+/** GPT-6 家族（gpt-6 / gpt-6.x / gpt-6-sol|luna，含 `vendor/` 前缀）；段首匹配 */
+export const GPT6_MODEL_RE = /(?:^|\/)gpt-6(?:[.\-_/]|$)/;
+
 export function isOpenAiReasoningModelId(modelId: string | undefined | null): boolean {
   const lower = normalize(modelId);
   if (!lower) return false;
   const isGpt5Chat = /(?:^|[/_-])gpt-5(?:\.\d+)?-chat(?:[.\-_/]|$)/.test(lower);
   return (
     (!isGpt5Chat && /(?:^|[/_-])gpt-5(?:[.\-_/]|$)/.test(lower)) ||
+    // GPT-6（#427）：段首匹配，不误判 gpt-60 / not-gpt-6-preview 这类部署别名
+    GPT6_MODEL_RE.test(lower) ||
     /(?:^|[/_-])o[134](?:[.\-_/]|$)/.test(lower) ||
     /(?:^|[/_-])gpt-oss(?:[.\-_/]|$)/.test(lower) ||
     /(?:^|[/_-])codex-mini(?:[.\-_/]|$)/.test(lower)
@@ -423,7 +428,8 @@ function resolveOpenAiEffortControl(
       canDisable: false,
     });
   }
-  if (/gpt-5\.6(?:[.\-_/]|$)/.test(modelId)) {
+  // gpt-5.6 与 gpt-6 在 xhigh 之上原生支持 max 档（#427）
+  if (/gpt-5\.6(?:[.\-_/]|$)/.test(modelId) || GPT6_MODEL_RE.test(modelId)) {
     return finalize({
       kind: 'openai-effort',
       options: GPT56_EFFORT_OPTIONS,

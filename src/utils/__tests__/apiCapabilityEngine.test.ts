@@ -401,4 +401,17 @@ describe('apiCapabilityEngine Xiaomi MiMo model inference', () => {
     expect(caps.functionCalling).toBe(true);
     expect(caps.contextWindow).toBe(1_000_000);
   });
+
+  it('GPT-6 家族：推理 + reasoning_effort + 1.05M 上下文；gpt-60 / not-gpt-6-preview 不误判（#427）', () => {
+    for (const id of ['gpt-6', 'gpt-6.1', 'openai/gpt-6-luna']) {
+      const caps = inferApiCapabilities({ id });
+      expect(caps.reasoning, id).toBe(true);
+      expect(caps.supportsReasoningEffort, id).toBe(true);
+      expect(caps.contextWindow, id).toBe(1_050_000);
+    }
+    for (const id of ['gpt-60', 'not-gpt-6-preview']) {
+      expect(inferApiCapabilities({ id }).supportsReasoningEffort, id).toBe(false);
+    }
+  });
 });
+

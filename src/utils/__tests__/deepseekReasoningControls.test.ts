@@ -45,6 +45,10 @@ describe('DeepSeek runtime reasoning controls', () => {
     ['gpt-5.6', 'openai', ['low', 'medium', 'high', 'xhigh', 'max'], true],
     ['gpt-5.6-sol', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
     ['gpt-5.6-terra', 'openai_codex', ['low', 'medium', 'high', 'xhigh', 'max'], false],
+    // #427：GPT-6 家族同样原生支持 max 档
+    ['gpt-6', 'openai', ['low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['gpt-6.1', 'openai', ['low', 'medium', 'high', 'xhigh', 'max'], true],
+    ['openai/gpt-6-luna', 'openrouter', ['low', 'medium', 'high', 'xhigh', 'max'], true],
     ['codex-mini-latest', 'openai_codex', ['low', 'medium', 'high'], false],
     ['gpt-5', 'openai_codex', ['minimal', 'low', 'medium', 'high'], false],
   ] as const)('crops OpenAI/Codex effort levels for %s', (model, providerType, values, canDisable) => {
@@ -547,5 +551,17 @@ describe('Qwen budget-effort reasoning controls (2A)', () => {
       providerType: 'qwen',
     });
     expect(control.kind).not.toBe('qwen-budget-effort');
+  });
+});
+
+describe('GPT-6 识别（#427）', () => {
+  it('gpt-6 家族是 OpenAI 推理模型；gpt-60 / not-gpt-6-preview 不误判', async () => {
+    const { isOpenAiReasoningModelId } = await import('../deepseekReasoningControls');
+    for (const id of ['gpt-6', 'gpt-6.1', 'gpt-6-sol', 'openai/gpt-6-luna']) {
+      expect(isOpenAiReasoningModelId(id), id).toBe(true);
+    }
+    for (const id of ['gpt-60', 'not-gpt-6-preview']) {
+      expect(isOpenAiReasoningModelId(id), id).toBe(false);
+    }
   });
 });

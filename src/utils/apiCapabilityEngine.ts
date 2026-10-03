@@ -87,7 +87,7 @@ const IMAGE_MODEL_ID_SET = new Set(
 // 推理模型正则：o系列、gpt-5系列（除gpt-5-chat）、gpt-oss、codex-mini、各厂商推理模型
 // Grok 系列：3-mini, 4, 4-fast, 4.1, 4-1-fast, code-fast 都是推理模型（排除 -non-reasoning 变体）
 // Mistral Magistral 系列：magistral-small/medium 是推理模型
-const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]\d+)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bernie-x1[\w.-]*\b.*|.*\bmagistral(?:-[\w-]+)?\b.*|.*\bmistral-(?:medium-(?:latest|3[.-]?5)|small-(?:latest|4))\b[\w.-]*.*|.*\bkimi-k3[\w.-]*\b.*|.*\bnemotron-3-(?:nano|super|ultra)\b.*)$/i;
+const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|(?:[\w.-]+\/)?gpt-6(?:[.\-_][\w.-]*)?|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]\d+)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bernie-x1[\w.-]*\b.*|.*\bmagistral(?:-[\w-]+)?\b.*|.*\bmistral-(?:medium-(?:latest|3[.-]?5)|small-(?:latest|4))\b[\w.-]*.*|.*\bkimi-k3[\w.-]*\b.*|.*\bnemotron-3-(?:nano|super|ultra)\b.*)$/i;
 
 const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // OCR 专用模型（DeepSeek-OCR、PaddleOCR-VL 等）
@@ -347,6 +347,8 @@ const DEFAULT_CONTEXT_WINDOW = 100_000;
 const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   // GPT-5.6：1.05M tokens
   { pattern: /gpt-5\.6/i, window: 1_050_000 },
+  // GPT-6（#427）：与 gpt-5.6 同档 1.05M（规格表 status=inferred，待官方确认）
+  { pattern: /(?:^|[\s/])gpt-6(?:[.\-_\s]|$)/i, window: 1_050_000 },
   // Claude 2026 主线与 Kimi K3：1M tokens
   { pattern: /claude-(?:fable-5|sonnet-5|opus-5|opus-4[-.](?:7|8))/i, window: 1_000_000 },
   { pattern: /kimi-k3/i, window: 1_000_000 },
@@ -564,7 +566,9 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     isOpenAiOReasoningBudget ||
     /(?:^|[/_-])gpt-oss(?:[.\-_/]|$)/.test(id) ||
     /(?:^|[/_-])codex-mini(?:[.\-_/]|$)/.test(id) ||
-    (!isGpt5Chat && /(?:^|[/_-])gpt-5(?:[.\-_/]|$)/.test(id));
+    (!isGpt5Chat && /(?:^|[/_-])gpt-5(?:[.\-_/]|$)/.test(id)) ||
+    // GPT-6（#427）：段首匹配，不误判 gpt-60 / not-gpt-6-preview
+    /(?:^|\/)gpt-6(?:[.\-_/]|$)/.test(id);
 
   // Grok reasoning_effort：4.3 可关闭，4.5+ 不可关闭；4.20 multi-agent 的
   // effort 语义为协作 agent 数量。
