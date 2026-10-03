@@ -402,6 +402,7 @@
     "favorite": "收藏",
     "unfavorite": "取消收藏",
     "startFocusSession": "开始专注",
+    "focusing": "专注中",
     "markCompleted": "标记为完成",
     "markPending": "标记为未完成",
     "deleteItem": "删除待办",

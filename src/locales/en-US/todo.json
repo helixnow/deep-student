@@ -402,6 +402,7 @@
     "favorite": "Favorite",
     "unfavorite": "Unfavorite",
     "startFocusSession": "Start Focus Session",
+    "focusing": "Focusing",
     "markCompleted": "Mark as completed",
     "markPending": "Mark as pending",
     "deleteItem": "Delete todo",

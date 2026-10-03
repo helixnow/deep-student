@@ -370,6 +370,8 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   const isCompleted = item.status === 'completed';
   const repeatRule = parseRepeatRule(item.repeatJson);
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
+  // 番茄钟正在专注这一项：行尾按钮常显并换成强调色，否则看不出哪条待办在计时
+  const isFocusing = usePomodoroStore((s) => s.mode === 'work' && s.currentTaskId === item.id);
 
   const [isEditing, setIsEditing] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -970,12 +972,18 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
             e.stopPropagation();
             usePomodoroStore.getState().start(item.id, item.title);
           }}
-          title={t('todo:actions.startFocusSession')}
-          aria-label={t('todo:actions.startFocusSession')}
+          title={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
+          aria-label={isFocusing ? t('todo:actions.focusing') : t('todo:actions.startFocusSession')}
+          aria-pressed={isFocusing}
           // 触屏：min-h/min-w 压过 lg: 档的固定尺寸，保住 44px 命中区
-        className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        className={cn(
+          'flex-shrink-0 transition-opacity duration-100 !p-1.5 [@media(pointer:coarse)]:!p-3.5 [@media(pointer:coarse)]:!-m-2 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11',
+          isFocusing
+            ? 'text-primary opacity-100'
+            : 'opacity-40 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60',
+        )}
         >
-          <Play size={16} />
+          {isFocusing ? <Brain size={16} weight="duotone" /> : <Play size={16} />}
         </DsButton>
       )}
 
