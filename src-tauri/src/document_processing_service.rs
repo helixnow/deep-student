@@ -89,7 +89,9 @@ impl DocumentProcessingService {
             .filter(|total| *total > 0)
             .map(|total| {
                 let weights: Vec<usize> = segments.iter().map(|seg| estimate_tokens(seg)).collect();
-                distribute_global_max_cards_weighted(total, &weights)
+                let limits = distribute_global_max_cards_weighted(total, &weights);
+                let rows: Vec<usize> = segments.iter().map(|seg| count_table_data_rows(seg)).collect();
+                ensure_row_coverage(limits, &rows)
             });
 
         let now = Utc::now().to_rfc3339();
@@ -1040,6 +1042,44 @@ fn distribute_global_max_cards_weighted(total: i32, weights: &[usize]) -> Vec<i3
     limits
 }
 
+/// 段内表格数据行数：≥2 个制表符的行，排除像表头的行。
+fn count_table_data_rows(segment: &str) -> usize {
+    let lines: Vec<&str> = segment.lines().filter(|l| l.matches('\t').count() >= 2).collect();
+    let header = detect_table_header(&lines);
+    lines.iter().filter(|line| Some(**line) != header).count()
+}
+
+/// 总配额足以「每个表格数据行至少一张」时，保证每段配额不低于其数据行数，
+/// 多出的从富余最多的段扣回，总量不变。词表要求每词一张、总数恰等于词数时，
+/// 加权取整误差会让某段少一张而漏词（60 词漏 precede）。
+fn ensure_row_coverage(mut limits: Vec<i32>, rows: &[usize]) -> Vec<i32> {
+    let total: i64 = limits.iter().map(|&v| v as i64).sum();
+    let row_sum: i64 = rows.iter().map(|&r| r as i64).sum();
+    if row_sum == 0 || total < row_sum || rows.len() != limits.len() {
+        return limits;
+    }
+    let mut deficit: i64 = 0;
+    for (limit, &row) in limits.iter_mut().zip(rows) {
+        if (*limit as i64) < row as i64 {
+            deficit += row as i64 - *limit as i64;
+            *limit = row as i32;
+        }
+    }
+    while deficit > 0 {
+        let donor = limits
+            .iter()
+            .zip(rows)
+            .enumerate()
+            .filter(|(_, (&limit, &row))| limit as i64 > row as i64)
+            .max_by_key(|(_, (&limit, &row))| limit as i64 - row as i64)
+            .map(|(idx, _)| idx);
+        let Some(idx) = donor else { break };
+        limits[idx] -= 1;
+        deficit -= 1;
+    }
+    limits
+}
+
 fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
     if segments == 0 {
         return Vec::new();
@@ -1655,6 +1695,20 @@ mod tests {
         // 总量不超过段数时沿用等距抽样
         assert_eq!(distribute_global_max_cards_weighted(2, &[9, 1, 1, 9]), vec![1, 0, 0, 1]);
         assert_eq!(distribute_global_max_cards_weighted(4, &[0, 0]), vec![2, 2]);
+    }
+
+    #[test]
+    fn row_coverage_keeps_one_card_per_table_row_when_budget_allows() {
+        // 6 段共 60 行、总配额 60：加权取整给第 5 段 13 张而它有 14 行
+        let limits = ensure_row_coverage(vec![14, 3, 10, 15, 7, 13], &[13, 2, 9, 14, 6, 14]);
+        assert_eq!(limits.iter().sum::<i32>(), 62);
+        assert!(limits.iter().zip([13, 2, 9, 14, 6, 14]).all(|(&l, r)| l >= r), "{limits:?}");
+        // 配额不足以每行一张时不干预
+        assert_eq!(ensure_row_coverage(vec![5, 5], &[10, 10]), vec![5, 5]);
+        // 非表格段（行数 0）不受影响
+        assert_eq!(ensure_row_coverage(vec![4, 3], &[0, 0]), vec![4, 3]);
+        let segment = "单词\t音标\t词性\nalpha\t/a/\tn.\nbeta\t/b/\tn.";
+        assert_eq!(count_table_data_rows(segment), 2);
     }
 
     #[test]
