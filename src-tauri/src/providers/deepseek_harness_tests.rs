@@ -316,3 +316,178 @@ fn deepseek_harness_hosted_xhigh_keeps_legacy_max_mapping() {
         );
     }
 }
+
+// ============================================================================
+// 统一五档映射的端到端验证（2026-10-03，方案 F）
+//
+// 单元测试验证映射函数本身；这里验证**真实请求路径**：
+//   config → LLMManager::apply_reasoning_config → ProviderAdapter::build_request
+// 即断言最终发到线上的 body，确保映射没有被后续环节覆盖或绕过。
+// ============================================================================
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_official_openai() {
+    // 官方 OpenAI + Chat Completions：gpt-6 的 max 必须被吸附为 xhigh，
+    // 因为 Chat Completions 路径发 max 会返回 400。
+    let config = ApiConfig {
+        model: "gpt-6-sol".into(),
+        model_adapter: "openai".into(),
+        provider_type: Some("openai".into()),
+        base_url: "https://api.openai.com/v1".into(),
+        api_protocol: Some("openai_chat_completions".into()),
+        supports_reasoning: true,
+        is_reasoning: true,
+        enable_thinking: Some(true),
+        reasoning_effort: Some("max".into()),
+        ..Default::default()
+    };
+    let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+    LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+    let wire = OpenAIAdapter::new()
+        .build_request(&config.base_url, "", &config.model, &body)
+        .unwrap()
+        .body;
+
+    assert_eq!(
+        wire["reasoning_effort"], "xhigh",
+        "Chat Completions 路径的 max 必须吸附为 xhigh；实际 body={wire}"
+    );
+}
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_official_gpt6_responses() {
+    // 官方 OpenAI + Responses：max 是合法档，必须原样透传（不吸附）。
+    let config = ApiConfig {
+        model: "gpt-6-sol".into(),
+        model_adapter: "openai".into(),
+        provider_type: Some("openai".into()),
+        base_url: "https://api.openai.com/v1".into(),
+        api_protocol: Some("openai_responses".into()),
+        supports_openai_responses: Some(true),
+        supports_reasoning: true,
+        is_reasoning: true,
+        enable_thinking: Some(true),
+        reasoning_effort: Some("max".into()),
+        ..Default::default()
+    };
+    let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+    LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+    let wire = OpenAIResponsesAdapter::new()
+        .build_request(&config.base_url, "", &config.model, &body)
+        .unwrap()
+        .body;
+
+    assert_eq!(
+        wire["reasoning"]["effort"], "max",
+        "Responses 路径必须保留 max；实际 body={wire}"
+    );
+}
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_relay_passthrough() {
+    // 中转渠道：五档原样透传，不做任何裁剪（中转站自行完成上游映射）。
+    for level in ["low", "medium", "high", "xhigh", "max"] {
+        let config = ApiConfig {
+            model: format!("some-relay-gpt-6-sol-{level}"),
+            model_adapter: "general".into(),
+            provider_type: Some("custom".into()),
+            provider_scope: Some("custom".into()),
+            base_url: "https://relay.example.com/v1".into(),
+            api_protocol: Some("openai_chat_completions".into()),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some(level.into()),
+            ..Default::default()
+        };
+        let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+        LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+        let wire = OpenAIAdapter::new()
+            .build_request(&config.base_url, "", &config.model, &body)
+            .unwrap()
+            .body;
+
+        assert_eq!(
+            wire["reasoning_effort"], level,
+            "中转渠道必须原样透传 {level}；实际 body={wire}"
+        );
+    }
+}
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_official_deepseek() {
+    // 官方 DeepSeek：xhigh 按官方映射表落到 high（而非就近吸附到 max）。
+    let config = ApiConfig {
+        model: "deepseek-v4-pro".into(),
+        model_adapter: "deepseek".into(),
+        provider_type: Some("deepseek".into()),
+        base_url: ENDPOINT.into(),
+        supports_reasoning: true,
+        is_reasoning: true,
+        enable_thinking: Some(true),
+        reasoning_effort: Some("xhigh".into()),
+        ..Default::default()
+    };
+    let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+    LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+    assert_eq!(
+        body["reasoning_effort"], "high",
+        "官方 DeepSeek 的 xhigh 必须按官方表落到 high；实际 body={body}"
+    );
+}
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_glm53_and_kimi_k3() {
+    // GLM-5.3 与 Kimi K3：官方仅 low/high/max。
+    // medium → high（就近吸附），且不可关闭。
+    for (adapter, model, endpoint) in [
+        ("zhipu", "glm-5.3", "https://open.bigmodel.cn/api/paas/v4"),
+        ("moonshot", "kimi-k3", "https://api.moonshot.cn/v1"),
+    ] {
+        let config = ApiConfig {
+            model: model.into(),
+            model_adapter: adapter.into(),
+            provider_type: Some(adapter.into()),
+            base_url: endpoint.into(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("medium".into()),
+            ..Default::default()
+        };
+        let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+        LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+        assert_eq!(
+            body["reasoning_effort"], "high",
+            "{model} 的 medium 必须映射为 high；实际 body={body}"
+        );
+    }
+}
+
+#[test]
+fn unified_five_levels_reach_the_wire_for_gemini_low() {
+    // Gemini 3 Pro：low 是合法档，不得被静默升到 high（本次修复的 bug）。
+    let config = ApiConfig {
+        model: "gemini-3.1-pro-preview".into(),
+        model_adapter: "google".into(),
+        provider_type: Some("google".into()),
+        base_url: "https://generativelanguage.googleapis.com".into(),
+        supports_reasoning: true,
+        is_reasoning: true,
+        enable_thinking: Some(true),
+        reasoning_effort: Some("low".into()),
+        ..Default::default()
+    };
+    let mut body = json!({"messages": [{"role": "user", "content": "hi"}], "stream": true});
+    LLMManager::apply_reasoning_config(&mut body, &config, Some(true));
+
+    assert_eq!(
+        body["thinkingConfig"]["thinkingLevel"], "low",
+        "Gemini 3 Pro 的 low 必须保留为 low；实际 body={body}"
+    );
+}
