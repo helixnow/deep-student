@@ -302,6 +302,8 @@ export class ChatV2TauriAdapter {
   private static sessionRuntimeOwners = new Map<string, ChatV2TauriAdapter>();
 
   private sessionId: string;
+  /** 已提示过「固定模型失效、已改用其它模型」的 session::modelId，避免每次发送都弹 */
+  private notifiedUnavailablePinnedModels = new Set<string>();
   private storeApi: StoreApi<ChatStore> | null = null;
   private store: ChatStore;
   private unlisteners: UnlistenFn[] = [];
@@ -5018,12 +5020,18 @@ export class ChatV2TauriAdapter {
     const effectiveModelId = normalizedOverrideId || normalizedModelId;
     const modelInfo = getModelInfoByConfigId(effectiveModelId);
     const modelDisplayName = modelInfo?.model || modelInfo?.name || effectiveModelId;
+    // 用户固定的模型已被删除 / 停用（不在当前可用列表）而被回退替换
+    const trimmedPinned = candidateModelId?.trim();
+    const pinnedModelUnavailable = Boolean(
+      trimmedPinned && validIds.size > 0 && !validIds.has(trimmedPinned) && effectiveModelId !== trimmedPinned,
+    );
 
     return {
       modelId: normalizedModelId,
       model2OverrideId: normalizedOverrideId,
       effectiveModelId,
       modelDisplayName,
+      pinnedModelUnavailable,
     };
   }
 
@@ -5034,6 +5042,24 @@ export class ChatV2TauriAdapter {
       options.model2OverrideId,
       pinnedByUser
     );
+
+    // issue #44：会话固定的模型被删除 / 停用后，此前悄悄换成默认或第一个可用模型继续对话，
+    // 用户以为还在用原模型。改为每个会话 + 模型提示一次实际改用的模型。
+    if (normalizedSelection.pinnedModelUnavailable) {
+      const missingId = options.modelId?.trim() ?? '';
+      const noticeKey = `${this.sessionId}::${missingId}`;
+      if (!this.notifiedUnavailablePinnedModels.has(noticeKey)) {
+        this.notifiedUnavailablePinnedModels.add(noticeKey);
+        const previousName = this.store.chatParams?.modelDisplayName?.trim() || missingId;
+        showGlobalNotification(
+          'warning',
+          i18n.t('chatV2:modelPicker.pinnedUnavailable', {
+            from: previousName,
+            to: normalizedSelection.modelDisplayName || normalizedSelection.effectiveModelId,
+          }),
+        );
+      }
+    }
 
     options.modelId = normalizedSelection.effectiveModelId;
     options.model2OverrideId = normalizedSelection.model2OverrideId;

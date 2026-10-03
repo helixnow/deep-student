@@ -2101,7 +2101,8 @@
     "searchPlaceholder": "Search by name or model ID...",
     "noMatches": "No matching models",
     "empty": "No models available",
-    "goToSettings": "Add models in Settings"
+    "goToSettings": "Add models in Settings",
+    "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed."
   },
   "workspace": {
     "title": "Workspace",

@@ -11,12 +11,18 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: vi.fn(),
 }));
 
+vi.mock('@/components/UnifiedNotification', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/UnifiedNotification')>()),
+  showGlobalNotification: vi.fn(),
+}));
+
 vi.mock('@tauri-apps/api/event', () => ({
   listen: vi.fn(),
 }));
 
 // Import after mocking
 import { invoke } from '@tauri-apps/api/core';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { listen } from '@tauri-apps/api/event';
 import { ChatV2TauriAdapter } from '@/features/chat/adapters/TauriAdapter';
 import { clearModelsCache, ensureModelsCacheLoaded } from '@/features/chat/hooks/useAvailableModels';
@@ -426,6 +432,45 @@ describe('ChatV2TauriAdapter', () => {
       const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
       const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
       expect(request.options.modelId).toBe('pinned-model');
+    });
+
+    it('falls back to the default model and warns once when the pinned model was deleted (#44)', async () => {
+      vi.mocked(showGlobalNotification).mockClear();
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_api_configurations') {
+          return [
+            { id: 'global-default', name: 'Global Default', model: 'provider/global-default', enabled: true },
+          ];
+        }
+        if (command === 'get_model_assignments') {
+          return { model2_config_id: 'global-default' };
+        }
+        if (command === 'chat_v2_send_message') {
+          return 'assistant-msg-id';
+        }
+        return undefined;
+      });
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'deleted-model',
+        modelDisplayName: 'qwen-plus',
+        model2OverrideId: null,
+        modelIdPinnedByUser: true,
+      };
+
+      await adapter.sendMessage('Hello after deleting the pinned model');
+
+      const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
+      const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
+      expect(request.options.modelId).toBe('global-default');
+      const warnings = vi.mocked(showGlobalNotification).mock.calls.filter(([type]) => type === 'warning');
+      expect(warnings).toHaveLength(1);
+      expect(String(warnings[0][1])).toBeTruthy();
+
+      (mockStore as any).chatParams = { ...(mockStore as any).chatParams, modelId: 'deleted-model' };
+      await adapter.sendMessage('Second message');
+      expect(vi.mocked(showGlobalNotification).mock.calls.filter(([type]) => type === 'warning')).toHaveLength(1);
     });
 
     it('should disable thinking parameters when the effective model does not support reasoning', async () => {

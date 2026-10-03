@@ -2101,7 +2101,8 @@
     "searchPlaceholder": "搜索名称或模型 ID...",
     "noMatches": "未找到匹配的模型",
     "empty": "暂无可用模型",
-    "goToSettings": "去设置添加模型"
+    "goToSettings": "去设置添加模型",
+    "pinnedUnavailable": "所选模型「{{from}}」已删除或停用，本次改用「{{to}}」。可在输入框重新选择模型。"
   },
   "workspace": {
     "title": "工作区",

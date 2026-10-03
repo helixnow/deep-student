@@ -101,20 +101,39 @@ impl ChatV2Pipeline {
         let initially_selected = if let Some(config) = strict_requested.clone() {
             Some(config)
         } else {
-            self.llm_manager
-                .select_model_for(
+            let select = |override_id: Option<String>| {
+                self.llm_manager.select_model_for(
                     "default",
-                    requested_model_id.clone(),
+                    override_id,
                     ctx.options.temperature,
                     ctx.options.top_p,
                     ctx.options.frequency_penalty,
                     ctx.options.presence_penalty,
                     ctx.options.max_tokens,
                 )
+            };
+            let requested = select(requested_model_id.clone())
                 .await
                 .ok()
                 .map(|(config, _)| config)
-                .filter(|config| generation_model_kind(config, &dedicated_ocr_ids).is_some())
+                .filter(|config| generation_model_kind(config, &dedicated_ocr_ids).is_some());
+            // issue #44：请求的模型已被删除 / 停用时先回退到「模型分配」里的默认对话模型，
+            // 而不是直接落到能力兜底里任意排第一的模型（收藏 / 内置优先，与用户的分配无关）
+            if requested.is_none() && requested_model_id.is_some() {
+                let fallback = select(None)
+                    .await
+                    .ok()
+                    .map(|(config, _)| config)
+                    .filter(|config| generation_model_kind(config, &dedicated_ocr_ids).is_some());
+                log::warn!(
+                    "[ChatV2::pipeline] requested model {:?} is unavailable (deleted or disabled); falling back to {:?}",
+                    requested_model_id,
+                    fallback.as_ref().map(|config| config.id.as_str())
+                );
+                fallback
+            } else {
+                requested
+            }
         };
 
         let canonical_content = canonical_content_for_freeze(&ctx.canonical_content, || {

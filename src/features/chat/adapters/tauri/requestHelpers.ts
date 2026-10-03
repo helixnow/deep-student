@@ -28,6 +28,8 @@ export interface NormalizedChatModelSelection {
   /** The model that should be used for this backend request. */
   effectiveModelId: string;
   modelDisplayName?: string;
+  /** 用户固定的模型已被删除 / 停用，本次回退到了别的模型（issue #44） */
+  pinnedModelUnavailable?: boolean;
 }
 
 export function isRetryableTerminalAnkiBlock(
