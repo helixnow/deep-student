@@ -26,6 +26,17 @@ installDemoIpcMocks({ desktop, dark });
 // 演示壳标记：App 据此隐藏开发版悬浮件（调试面板球 / 移动端恢复 FAB）
 (window as unknown as { __DS_DEMO_SHELL__: boolean }).__DS_DEMO_SHELL__ = true;
 
+// 系统通知在浏览器里落到 Web Notification：到点提醒、早间汇总、制卡完成都会向访客要「显示通知」权限，
+// 同意了还会弹出演示数据的系统通知。官网里的演示一律当作访客已拒绝，权限框不出现
+Object.defineProperty(window, 'Notification', {
+  configurable: true,
+  writable: true,
+  value: Object.assign(function DemoNotification() {}, {
+    permission: 'denied' as NotificationPermission,
+    requestPermission: async (): Promise<NotificationPermission> => 'denied',
+  }),
+});
+
 // ② localStorage 预置（早于 App 模块级读取）
 
 // 主题：demo 默认亮色系，?theme=dark 切暗
