@@ -347,12 +347,19 @@ const commands = {
   async fill() {
     const [target, text] = pos;
     if (!target || text === undefined) fail('用法: fill <目标> <文本>');
-    const r = await rpc(`
-      const f = window.__DS_TEST__.find(${js(target)}, { partial: ${!!flags.partial} });
-      if (f.error) return f;
-      const v = window.__DS_TEST__.setValue(f.el, ${js(text)});
-      return { ok: v === ${js(text)}, value: v, target: window.__DS_TEST__.describe(f.el) };
-    `);
+    // 自动等待：输入框常随视图异步挂载
+    let r;
+    while (true) {
+      r = await rpc(`
+        const f = window.__DS_TEST__.find(${js(target)}, { partial: ${!!flags.partial} });
+        if (f.error) return f;
+        const v = window.__DS_TEST__.setValue(f.el, ${js(text)});
+        return { ok: v === ${js(text)}, value: v, target: window.__DS_TEST__.describe(f.el) };
+      `);
+      if (r?.ok || Date.now() >= deadline) break;
+      progress(`等输入框「${target}」（${r?.error ?? '回读不一致'}）`);
+      await sleep(300);
+    }
     if (!r?.ok) fail(r?.error || '写入后回读不一致', r);
     done(r);
   },
