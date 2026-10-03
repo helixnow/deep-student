@@ -546,6 +546,16 @@ export function FinderFileList({
     estimateSize: () => listItemHeight,
     overscan: 5,
   });
+  // 列表变短 / 切换目录时滚动位置被浏览器夹回（如 360 → 0），WebKit 不派发 scroll 事件，
+  // 虚拟列表仍按旧偏移只渲染后半截：顶部一大片空白。内容变化后核对一次，不一致就补派 scroll 让其重读
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const virtualizer = viewMode === 'list' ? listVirtualizer : gridVirtualizer;
+    if (Math.abs((virtualizer.scrollOffset ?? 0) - viewport.scrollTop) > 1) {
+      viewport.dispatchEvent(new Event('scroll'));
+    }
+  });
   // 指针类型变化（如外接鼠标插拔）时使缓存的行高测量失效
   useEffect(() => {
     listVirtualizer.measure();
