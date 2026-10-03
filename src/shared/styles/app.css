@@ -289,7 +289,7 @@ body {
 /* ─── Scroll-fade: generic edge-fade utility ─── */
 .scroll-fade-shell {
   --scroll-fade-size: 28px;
-  --scroll-fade-surface: var(--background);
+  --scroll-fade-surface: hsl(var(--background));
   position: relative;
   isolation: isolate;
 }

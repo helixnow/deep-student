@@ -439,7 +439,7 @@ export async function renderEpubChapter(
     }
     html { background: ${palette.background}; color: ${palette.foreground}; font-size: ${Math.round(fontScale * 100)}%; }
     html { scrollbar-width: thin; scrollbar-color: var(--reader-scrollbar-thumb) transparent; }
-    body { max-width: 48rem; margin: 0 auto; padding: 2.75rem ${paddingInline}rem 5.5rem; overflow-wrap: anywhere; text-rendering: optimizeLegibility; }
+    body { max-width: 48rem; margin: 0 auto; padding: 2.75rem ${paddingInline}rem 5.5rem; overflow-wrap: anywhere; text-rendering: optimizeLegibility; -webkit-hyphens: auto; hyphens: auto; }
     body, body :where(p, li, blockquote, dd) { line-height: ${lineHeight} !important; }${fontFamilyCss}
     img, svg, video { max-width: 100%; height: auto; }
     /* 宽表格/代码块在窄 iframe 内自身横向滚动，避免撑破正文横向溢出 */
@@ -450,6 +450,8 @@ export async function renderEpubChapter(
     mark[data-epub-search] { padding: 0 1px; border-radius: 2px; color: inherit; background: ${palette.highlight}; }
     mark[data-epub-search][data-current] { background: ${palette.activeHighlight}; }
     @media (max-width: 640px) { body { padding: 1.5rem 1.25rem 4rem; } }
+    /* 书本常自带 text-align:justify；窄栏里一行只放几个词，两端对齐会把词间距拉成大空洞 */
+    @media (max-width: 480px) { body :where(p, li, blockquote, dd, div) { text-align: start !important; } }
   `;
   document.head.append(readerStyle);
   const csp = document.createElement('meta');

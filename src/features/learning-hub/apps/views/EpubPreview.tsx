@@ -82,6 +82,9 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** 阅读器容器窄于此宽度时目录默认收起（正文至少留出舒适的阅读宽度） */
+const EPUB_COMPACT_WIDTH_PX = 720;
+
 const EpubPreview: React.FC<EpubPreviewProps> = ({
   base64Content,
   fileName,
@@ -144,6 +147,23 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   useEffect(() => {
     if (isNarrow) setSidebarOpen(false);
   }, [isNarrow, resourceId]);
+
+  const bookLoaded = Boolean(book);
+  // 窗口不窄、但阅读器所在的预览栏 / 分栏很窄时（如学习资源页右侧约 500px），
+  // 默认展开的目录会吃掉一半宽度、正文只剩 300 多像素。按容器实际宽度在变窄时收起。
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    let wasCompact = false;
+    const observer = new ResizeObserver(([entry]) => {
+      const compact = entry.contentRect.width > 0 && entry.contentRect.width < EPUB_COMPACT_WIDTH_PX;
+      if (compact && !wasCompact) setSidebarOpen(false);
+      wasCompact = compact;
+    });
+    observer.observe(root);
+    return () => observer.disconnect();
+    // bookLoaded：加载中 / 出错时组件提前返回占位，rootRef 尚未挂载，需在书加载后再挂观察
+  }, [resourceId, bookLoaded]);
 
   // isActive 守卫：保活隐藏的 tab 不注册，避免消费当前活跃视图的返回键；
   // 失活仅注销 handler，不动 sidebarOpen（隐藏 tab 不关侧栏）

@@ -948,12 +948,12 @@ body .settings-mobile-sheet-scroll-viewport {
  */
 @keyframes settings-search-hit-pulse {
   0% {
-    outline-color: color-mix(in srgb, var(--primary) 70%, transparent);
-    background-color: color-mix(in srgb, var(--primary) 14%, transparent);
+    outline-color: color-mix(in srgb, hsl(var(--primary)) 70%, transparent);
+    background-color: color-mix(in srgb, hsl(var(--primary)) 14%, transparent);
   }
   60% {
-    outline-color: color-mix(in srgb, var(--primary) 45%, transparent);
-    background-color: color-mix(in srgb, var(--primary) 8%, transparent);
+    outline-color: color-mix(in srgb, hsl(var(--primary)) 45%, transparent);
+    background-color: color-mix(in srgb, hsl(var(--primary)) 8%, transparent);
   }
   100% {
     outline-color: transparent;
@@ -971,7 +971,7 @@ body .settings-mobile-sheet-scroll-viewport {
 @media (prefers-reduced-motion: reduce) {
   .settings-search-hit {
     animation: none;
-    outline-color: color-mix(in srgb, var(--primary) 55%, transparent);
-    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+    outline-color: color-mix(in srgb, hsl(var(--primary)) 55%, transparent);
+    background-color: color-mix(in srgb, hsl(var(--primary)) 10%, transparent);
   }
 }
