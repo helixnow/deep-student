@@ -11,7 +11,7 @@
  * 用法：node scripts/dev/ds-test.mjs <命令> [参数] [--timeout 秒]
  *   status                              桥 / 窗口 / 页面状态
  *   snap [正则]                          可交互元素快照（可按名称过滤）
- *   click <名称|css=选择器|eN> [--partial] [--within css=…]
+ *   click <名称|css=选择器> [--partial] [--within css=…]   （目标未出现 / 禁用时自动等待到超时）
  *   dblclick <名称|css=…>                双击（列表项打开）
  *   menu <行文本> <菜单项>                右键行 → 点菜单项
  *   open <资料名>                         学习资源里双击打开，确认标签激活
@@ -81,7 +81,7 @@ function progress(msg) {
 // 浏览器侧助手：注入一次 window.__DS_TEST__，页面重载后自动重注入
 // ---------------------------------------------------------------------------
 const HELPER = String.raw`
-if (!window.__DS_TEST__) {
+if (window.__DS_TEST_VERSION__ !== __HELPER_VERSION__) {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const visible = (el) => {
     const r = el.getBoundingClientRect();
@@ -89,7 +89,8 @@ if (!window.__DS_TEST__) {
     const cs = getComputedStyle(el);
     return cs.visibility !== 'hidden' && cs.display !== 'none' && !el.closest('[aria-hidden="true"],[inert]');
   };
-  const nameOf = (el) => norm(el.getAttribute('aria-label') || el.getAttribute('title') || el.innerText || el.value || '');
+  // 可访问名称：aria-label → 可见文字 → title（title 是悬停说明，不能盖过按钮文字）
+  const nameOf = (el) => norm(el.getAttribute('aria-label') || el.innerText || el.getAttribute('title') || el.value || '');
   const SEL = 'button,a[href],input,textarea,select,[role=button],[role=menuitem],[role=option],[role=tab],[role=radio],[role=switch],[role=checkbox],[role=treeitem],[contenteditable=true]';
   const docs = () => {
     const out = [document];
@@ -162,8 +163,12 @@ if (!window.__DS_TEST__) {
     return { ok: false, error: '页面里没有可见文本「' + text + '」' };
   };
   window.__DS_TEST__ = { find, describe, setValue, allText, selectText, nameOf, visible };
+  window.__DS_TEST_VERSION__ = __HELPER_VERSION__;
 }
 `;
+
+// 助手代码变了就重新注入（页面里可能还留着旧版本）
+const HELPER_SRC = HELPER.replaceAll('__HELPER_VERSION__', JSON.stringify(String(HELPER.length) + ':' + [...HELPER].reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)));
 
 async function rpc(code, ms = 15000) {
   const ctrl = new AbortController();
@@ -172,7 +177,7 @@ async function rpc(code, ms = 15000) {
     const res = await fetch(`${BRIDGE}/eval`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code: `${HELPER}\n${code}` }),
+      body: JSON.stringify({ code: `${HELPER_SRC}\n${code}` }),
       signal: ctrl.signal,
     });
     const json = await res.json();
@@ -232,7 +237,20 @@ function logSince(offset) {
 // ---------------------------------------------------------------------------
 async function clickTarget(target, { dbl = false } = {}) {
   const opts = { partial: !!flags.partial, within: flags.within?.replace(/^css=/, '') };
-  const r = await rpc(`
+  // 自动等待：目标未出现 / 仍禁用时在超时内重试（内容常在异步加载）
+  let r;
+  while (true) {
+    r = await tryClick(target, opts, dbl);
+    if (r?.ok || Date.now() >= deadline) break;
+    progress(`等可点击的「${target}」（${r?.error}）`);
+    await sleep(300);
+  }
+  if (!r?.ok) fail(r?.error || 'click failed', r);
+  return r;
+}
+
+async function tryClick(target, opts, dbl) {
+  return rpc(`
     const f = window.__DS_TEST__.find(${js(target)}, ${js(opts)});
     if (f.error) return f;
     const el = f.el;
@@ -249,8 +267,6 @@ async function clickTarget(target, { dbl = false } = {}) {
     }
     return { ok: true, clicked: info, note: f.note };
   `);
-  if (!r?.ok) fail(r?.error || 'click failed', r);
-  return r;
 }
 
 const commands = {
