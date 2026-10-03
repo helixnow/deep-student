@@ -16,7 +16,7 @@ import { useMobileResourceMenu } from '@/components/layout/MobileResourceMenuCon
 import { useNotesChromeSlot } from './notesChromeSlot';
 import { NotePageLayoutOptions } from './components/NotePageLayoutOptions';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, DownloadSimple, ClockCounterClockwise, DotsThree } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, GitDiff, ImageSquare, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X, CircleNotch, WarningCircle, CornersIn, CornersOut, NoteBlank, CaretDown, Cards, TreeStructure, DownloadSimple, ClockCounterClockwise, DotsThree } from '@phosphor-icons/react';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import type { CrepeSelectionAction } from '@/components/crepe/types';
@@ -33,7 +33,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NoteHistoryPanel } from './NoteHistoryPanel';
 import { NotesSaveIndicator } from './components/NotesSaveIndicator';
-import { generateCardsFromNote } from './generateCardsFromNote';
+import { generateCardsFromNote, readNoteMarkdown } from './generateCardsFromNote';
 import {
   MobileEditorToolbar,
 } from './components/MobileEditorToolbar';
@@ -607,6 +607,24 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     });
   }, [editorApi, generatingCards, isDstuMode, initialTitle, contextActive?.title, t, dstuNoteId, active?.id]);
 
+  // 笔记 → 思维导图：大纲本地解析成导图（不调模型），建在同一文件夹并打开
+  const [generatingMindmap, setGeneratingMindmap] = useState(false);
+  const handleGenerateMindmap = useCallback(() => {
+    if (!editorApi || generatingMindmap) return;
+    setGeneratingMindmap(true);
+    void import('./noteToMindmap').then(({ generateMindmapFromNote }) => generateMindmapFromNote({
+      markdown: readNoteMarkdown(editorApi),
+      noteTitle: (isDstuMode ? initialTitle : contextActive?.title) ?? '',
+      noteId: isDstuMode ? dstuNoteId : active?.id,
+      translate: (key, defaultValue, options) => {
+        const result = t(key, { defaultValue, ...options });
+        return typeof result === 'string' ? result : defaultValue;
+      },
+    })).finally(() => {
+      setGeneratingMindmap(false);
+    });
+  }, [editorApi, generatingMindmap, isDstuMode, initialTitle, contextActive?.title, t, dstuNoteId, active?.id]);
+
   // ========== 根据模式选择 noteId 和初始值 ==========
   const noteId = isDstuMode ? dstuNoteId : active?.id;
   const initialValue = isDstuMode ? initialContent : (active?.content_md || '');
@@ -1132,9 +1150,12 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     // editorApi 保持为 null，工具栏永久禁用
   }, [initialValue, noteId, active?.updated_at, isDstuMode]);
 
-  // 🔧 新增：只在 noteId 变化时重置 editorApi（这会触发 CrepeEditor 重新挂载）
+  // 🔧 新增：只在 noteId 变化时重置 editorApi（这会触发 CrepeEditor 重新挂载）。
+  // 子组件 effect 先于父组件执行：编辑器同步就绪时（如切回已打开过的笔记标签）onReady 已经
+  // setEditorApi 过，挂载时无条件清空会把它冲掉——「生成卡片 / 生成思维导图」等工具永久禁用。
+  // 因此只在现有 api 属于别的笔记时才清。
   useLayoutEffect(() => {
-    setEditorApi(null);
+    if (editorNoteIdRef.current !== (noteId ?? null)) setEditorApi(null);
   }, [noteId]);
 
   const handleManualSave = useCallback(async () => {
@@ -2358,6 +2379,11 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       onClick={handleGenerateCards} disabled={!editorApi || generatingCards} aria-busy={generatingCards || undefined}>
       <Cards size={16} /><span>{t('notes:toolbar.generateCards', '生成卡片')}</span>
     </DsButton>}
+    <DsButton variant="ghost" size="sm"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined}
+      onClick={handleGenerateMindmap} disabled={!editorApi || generatingMindmap} aria-busy={generatingMindmap || undefined}>
+      <TreeStructure size={16} /><span>{t('notes:toolbar.generateMindmap', '生成思维导图')}</span>
+    </DsButton>
     {/* 快捷助手窗口仅桌面端可用（移动端后端为空实现）：移动端不展示，桌面失败要告知 */}
     {!isMobilePlatform() && <DsButton variant="ghost" size="sm" role={hasMobileResourceMenu ? 'menuitem' : undefined}
       onClick={() => { void openQuickAssistantWindow().catch((error) => showGlobalNotification('error', t('notes:toolbar.ask_agent_failed', { defaultValue: '无法打开助手窗口：{{error}}', error: String(error) }))); }}>

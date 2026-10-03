@@ -761,6 +761,7 @@
     "horizontalRule": "分隔线",
     "codeBlock": "代码块",
     "generateCards": "生成卡片",
+    "generateMindmap": "生成思维导图",
     "link": "链接",
     "image": "图片",
     "table": "表格",
@@ -1866,6 +1867,12 @@
     "started": "已开始根据笔记生成卡片",
     "failed": "生成卡片失败",
     "openTaskDashboard": "查看任务"
+  },
+  "generateMindmap": {
+    "untitled": "笔记导图",
+    "noOutline": "这篇笔记里没有标题或列表，先用标题 / 列表整理出层级再生成导图",
+    "created": "已生成思维导图「{{title}}」（{{count}} 个节点）",
+    "failed": "生成思维导图失败"
   },
   "versions": {
     "title": "版本历史",

@@ -788,6 +788,7 @@
     "horizontalRule": "Horizontal Rule",
     "codeBlock": "Code Block",
     "generateCards": "Generate cards",
+    "generateMindmap": "Generate mind map",
     "link": "Link",
     "image": "Image",
     "table": "Table",
@@ -1877,6 +1878,12 @@
     "started": "Started generating cards from this note",
     "failed": "Failed to generate cards",
     "openTaskDashboard": "View tasks"
+  },
+  "generateMindmap": {
+    "untitled": "Note mind map",
+    "noOutline": "This note has no headings or lists. Organize it with headings or lists first, then generate a mind map.",
+    "created": "Created mind map “{{title}}” ({{count}} nodes)",
+    "failed": "Failed to generate mind map"
   },
   "menu": {
     "page_actions": "Page Actions",
