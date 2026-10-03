@@ -87,9 +87,11 @@ describe('notesDstuAdapter markdown import', async () => {
   it('creates note from markdown content with normalized title and BOM-free content', async () => {
     createMock.mockResolvedValue({
       ok: true,
-      value: { id: 'note_2', name: 'physics', type: 'note' },
+      value: { id: 'note_2', name: 'Motion', type: 'note' },
     });
 
+    // 2026-10-02 (946e43abb)：开头 H1 作笔记标题、正文去掉这一行及其后空行，
+    // 与路径导入 notes_import_markdown 同口径；BOM 在正文里被剔除。
     const result = await notesDstuAdapter.importMarkdownContent(
       'physics.markdown',
       '\uFEFF# Motion\n\ncontent',
@@ -99,8 +101,28 @@ describe('notesDstuAdapter markdown import', async () => {
     expect(result.ok).toBe(true);
     expect(createMock).toHaveBeenCalledWith('/', {
       type: 'note',
+      name: 'Motion',
+      content: 'content',
+      metadata: { folderId: 'folder_abc' },
+    });
+  });
+
+  it('uses the filename as title and strips BOM when markdown has no leading H1', async () => {
+    createMock.mockResolvedValue({
+      ok: true,
+      value: { id: 'note_2b', name: 'physics', type: 'note' },
+    });
+
+    await notesDstuAdapter.importMarkdownContent(
+      'physics.markdown',
+      '\uFEFFcontent',
+      'folder_abc',
+    );
+
+    expect(createMock).toHaveBeenCalledWith('/', {
+      type: 'note',
       name: 'physics',
-      content: '# Motion\n\ncontent',
+      content: 'content',
       metadata: { folderId: 'folder_abc' },
     });
   });
