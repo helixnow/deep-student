@@ -126,6 +126,21 @@ describe('GradingMain results-first layout', () => {
     expect(screen.getByText('essay_grading:result_empty.title')).toBeInTheDocument();
   });
 
+  it('keeps the essay open for a brand-new session whose upcoming round is already numbered 1', () => {
+    const { container } = render(<GradingMain {...baseProps({ currentRound: 1, inputText: '' })} />);
+
+    expect(container.querySelector('[data-essay-input-summary]')).toBeNull();
+    expect(screen.getByTestId('input-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('result-panel')).not.toBeInTheDocument();
+  });
+
+  it('collapses the essay for a session showing a completed round', () => {
+    const { container } = render(<GradingMain {...baseProps({ currentRound: 1, hasGradedRound: true })} />);
+
+    expect(container.querySelector('[data-essay-input-summary]')).not.toBeNull();
+    expect(screen.queryByTestId('input-panel')).not.toBeInTheDocument();
+  });
+
   it('collapses the essay into a summary line once grading starts and lets the user reopen it', () => {
     const { container, rerender } = render(<GradingMain {...baseProps({ isGrading: true })} />);
 

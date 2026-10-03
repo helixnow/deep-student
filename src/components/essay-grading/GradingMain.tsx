@@ -87,7 +87,10 @@ interface GradingMainProps {
   isSavingMistakes?: boolean;
 
   // Round Props
+  /** 显示用的轮次号：新会话没有轮次时是「即将开始的第 1 轮」，不能拿来判断是否已有结果 */
   currentRound: number;
+  /** 当前显示的是已完成的一轮（有历史结果可看） */
+  hasGradedRound?: boolean;
 
   // 模式管理
   onModesChange?: () => void;
@@ -159,6 +162,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   onSaveMistakes,
   isSavingMistakes,
   currentRound,
+  hasGradedRound = false,
   onModesChange,
   settingsAsPage = false,
   isActive,
@@ -199,7 +203,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const isSplit = !isSmallScreen
     && (mainAreaWidth > 0 ? mainAreaWidth >= NARROW_LAYOUT_THRESHOLD : true);
   // 批改结果区是否"有内容可看"：无内容时折叠为占位条，把高度让给输入区
-  const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || currentRound > 0;
+  const resultActive = isGrading || Boolean(gradingResult) || Boolean(error) || hasGradedRound;
   // 结果优先：有结果后原文收成摘要条，点「编辑原文」才展开；每次开始批改重新收起
   const [inputExpanded, setInputExpanded] = React.useState(false);
   useEffect(() => {

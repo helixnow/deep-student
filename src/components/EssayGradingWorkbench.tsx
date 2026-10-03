@@ -1680,6 +1680,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           onRetry={handleRetry}
           isPartialResult={isPartialResult}
           currentRound={currentRoundNumber}
+          hasGradedRound={Boolean(currentRound)}
           uploadedImages={uploadedImages}
           onRemoveImage={handleRemoveImage}
           onRetryImageOcr={handleRetryImageOcr}
