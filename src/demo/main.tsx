@@ -38,9 +38,10 @@ Object.defineProperty(window, 'Notification', {
   }),
 });
 
-// 这两处功能还没进正式版，演示里不露出：对话首页的「今日待复习」、闪卡库的「导出 .apkg」
+// 这几处功能还没进正式版，演示里不露出：对话首页的「今日待复习」、闪卡库的「导出 .apkg」、输入框「＋」→ 知识库里的「检索范围」
 const hideUnreleased = document.createElement('style');
-hideUnreleased.textContent = '[data-testid="today-review-hint"],[data-testid="fc-lib-export-apkg"]{display:none!important}';
+hideUnreleased.textContent =
+  '[data-testid="today-review-hint"],[data-testid="fc-lib-export-apkg"],[data-testid="plus-menu-kb-scope"]{display:none!important}';
 document.head.appendChild(hideUnreleased);
 
 // 界面文案整包：只取当前语言那一块，和后面的 App 代码并行下载
