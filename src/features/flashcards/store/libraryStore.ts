@@ -4,6 +4,7 @@ import type {
   AnkiLibraryCard,
   AnkiLibraryCardPatch,
   AnkiLibraryListResponse,
+  AnkiLibraryStatusCounts,
 } from '@/types';
 import {
   deleteAnkiCard,
@@ -21,7 +22,7 @@ import type { ReviewEditTemplate } from '../reviewCardEditFields';
 
 export const FLASHCARDS_LIBRARY_PAGE_SIZE = 20;
 
-/** 客户端状态筛选（后端 list 命令暂不支持按调度状态过滤，作用于当前页）。 */
+/** 状态筛选（服务端执行，跨页生效；计数见 statusCounts）。 */
 export type LibraryStatusFilter =
   | 'all'
   | 'due'
@@ -31,7 +32,7 @@ export type LibraryStatusFilter =
   | 'suspended'
   | 'notEnqueued';
 
-/** 客户端排序（'default' 保持服务端返回顺序）。 */
+/** 排序（服务端执行，跨页生效；'default' = 创建时间倒序）。 */
 export type LibrarySortKey = 'default' | 'due' | 'created' | 'front';
 export type LibrarySortDir = 'asc' | 'desc';
 
@@ -61,6 +62,8 @@ interface FlashcardsLibraryState {
   statusFilter: LibraryStatusFilter;
   sortKey: LibrarySortKey;
   sortDir: LibrarySortDir;
+  /** 各状态全集计数（旧后端无此字段时为 null，界面退回本页计数） */
+  statusCounts: AnkiLibraryStatusCounts | null;
 
   setSearchInput: (value: string) => void;
   setStatusFilter: (filter: LibraryStatusFilter) => void;
@@ -131,6 +134,7 @@ const initialState = {
   statusFilter: 'all' as LibraryStatusFilter,
   sortKey: 'default' as LibrarySortKey,
   sortDir: 'asc' as LibrarySortDir,
+  statusCounts: null as AnkiLibraryStatusCounts | null,
 };
 
 export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, get) => {
@@ -213,16 +217,25 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     ...initialState,
 
     setSearchInput: (value) => set({ searchInput: value }),
-    setStatusFilter: (filter) => set({ statusFilter: filter }),
+    // 筛选 / 排序在服务端执行：变化后回到第 1 页重新拉取
+    setStatusFilter: (filter) => {
+      if (get().statusFilter === filter) return;
+      set({ statusFilter: filter, page: 1 });
+      if (get().loaded) void get().load(get().query, 1);
+    },
     toggleSort: (key) => {
       const { sortKey, sortDir } = get();
       if (sortKey === key) {
-        set({ sortDir: sortDir === 'asc' ? 'desc' : 'asc' });
-        return;
+        set({ sortDir: sortDir === 'asc' ? 'desc' : 'asc', page: 1 });
+      } else {
+        set({ sortKey: key, sortDir: DEFAULT_SORT_DIR[key], page: 1 });
       }
-      set({ sortKey: key, sortDir: DEFAULT_SORT_DIR[key] });
+      if (get().loaded) void get().load(get().query, 1);
     },
-    clearSort: () => set({ sortKey: 'default', sortDir: 'asc' }),
+    clearSort: () => {
+      set({ sortKey: 'default', sortDir: 'asc', page: 1 });
+      if (get().loaded) void get().load(get().query, 1);
+    },
     clearActionError: () => set({ actionError: null }),
 
     load: async (query = get().query, page = get().page) => {
@@ -231,10 +244,14 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       const currentRequest = ++requestId;
       set({ loading: true, loadError: null });
       try {
+        const { statusFilter, sortKey, sortDir } = get();
         const response: AnkiLibraryListResponse = await listAnkiLibraryCards({
           search: normalizedQuery || undefined,
           page: requestedPage,
           page_size: FLASHCARDS_LIBRARY_PAGE_SIZE,
+          status: statusFilter === 'all' ? undefined : statusFilter,
+          sort: sortKey === 'default' ? undefined : sortKey,
+          sort_desc: sortKey === 'default' ? undefined : sortDir === 'desc',
         });
         if (currentRequest !== requestId) return false;
 
@@ -252,6 +269,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           query: normalizedQuery,
           loading: false,
           loaded: true,
+          statusCounts: response.statusCounts ?? null,
         });
         return true;
       } catch (error) {

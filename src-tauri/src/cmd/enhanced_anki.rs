@@ -481,12 +481,17 @@ pub async fn list_anki_library_cards(
 ) -> Result<serde_json::Value> {
     let page = request.page.unwrap_or(1).max(1);
     let page_size = request.page_size.unwrap_or(12).clamp(1, 200);
-    let (items, total) = state
+    let filter = crate::database::AnkiLibraryListFilter {
+        status: request.status.clone(),
+        sort: request.sort.clone(),
+        sort_desc: request.sort_desc,
+    };
+    let (items, total, status_counts) = state
         .anki_database
-        .list_anki_library_cards(
-            None,
+        .list_anki_library_cards_filtered(
             request.template_id.as_deref(),
             request.search.as_deref(),
+            &filter,
             page,
             page_size,
         )
@@ -506,7 +511,17 @@ pub async fn list_anki_library_cards(
         );
     }
 
-    build_anki_library_list_response(items, page, page_size, total, review_states)
+    let mut response =
+        build_anki_library_list_response(items, page, page_size, total, review_states)?;
+    if let Some(object) = response.as_object_mut() {
+        object.insert(
+            "statusCounts".to_string(),
+            serde_json::to_value(&status_counts).map_err(|error| {
+                AppError::internal(format!("序列化卡片库状态计数失败: {error}"))
+            })?,
+        );
+    }
+    Ok(response)
 }
 
 /// 🔧 Phase 1: 恢复卡住的制卡任务（崩溃恢复）

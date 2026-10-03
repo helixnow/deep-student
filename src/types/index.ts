@@ -813,11 +813,25 @@ export interface AnkiLibraryCardPatch {
   tags?: string[];
 }
 
+/** 卡片库各状态计数（模板 / 搜索条件下的全集，不受状态筛选影响） */
+export interface AnkiLibraryStatusCounts {
+  all: number;
+  due: number;
+  new: number;
+  learning: number;
+  review: number;
+  suspended: number;
+  notEnqueued: number;
+}
+
 export interface AnkiLibraryListResponse {
   items: AnkiLibraryCard[];
   page: number;
   pageSize: number;
+  /** 状态筛选后的总数（分页依据） */
   total: number;
+  /** 旧后端没有该字段 */
+  statusCounts?: AnkiLibraryStatusCounts;
 }
 
 export interface ListAnkiCardsParams {
@@ -825,6 +839,11 @@ export interface ListAnkiCardsParams {
   search?: string;
   page?: number;
   page_size?: number;
+  /** 服务端状态筛选：all | due | new | learning | review | suspended | notEnqueued */
+  status?: string;
+  /** 服务端排序：default | due | created | front */
+  sort?: string;
+  sort_desc?: boolean;
 }
 
 export interface FsrsStats {

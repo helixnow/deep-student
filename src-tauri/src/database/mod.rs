@@ -7733,7 +7733,32 @@ impl Database {
         page: u32,
         page_size: u32,
     ) -> Result<(Vec<AnkiLibraryCard>, u64)> {
+        self.list_anki_library_cards_filtered(
+            template_id,
+            search,
+            &AnkiLibraryListFilter::default(),
+            page,
+            page_size,
+        )
+        .map(|(items, total, _)| (items, total))
+    }
+
+    /// 卡片库分页查询（带调度状态筛选 / 排序 / 各状态计数）。
+    ///
+    /// 筛选与排序在 SQL 里做——此前前端只对当前 20 张一页做筛选排序，471 张卡里点
+    /// 「已暂停」只能看到恰好落在这一页上的，筛选 chip 计数也只是本页计数。
+    /// 计数口径 = 模板 / 搜索条件下、忽略状态筛选的全集，与前端 matchesStatusFilter 一致：
+    /// 未入队 → notEnqueued；已暂停优先于调度状态；learning 含 relearning。
+    pub fn list_anki_library_cards_filtered(
+        &self,
+        template_id: Option<&str>,
+        search: Option<&str>,
+        filter: &AnkiLibraryListFilter,
+        page: u32,
+        page_size: u32,
+    ) -> Result<(Vec<AnkiLibraryCard>, u64, AnkiLibraryStatusCounts)> {
         let conn = self.get_conn_safe()?;
+        let now_ms = Utc::now().timestamp_millis();
         let mut clauses: Vec<String> = vec![
             "ac.deleted_at IS NULL".to_string(),
             "dt.deleted_at IS NULL".to_string(),
@@ -7762,16 +7787,66 @@ impl Database {
             params.push(Value::from(pattern));
         }
 
-        let where_clause = if clauses.is_empty() {
-            String::new()
-        } else {
-            format!("WHERE {}", clauses.join(" AND "))
-        };
+        // 各状态计数：模板 / 搜索条件下的全集（不受状态筛选影响），SELECT 里的 now 占位先绑定
+        let base_where = format!("WHERE {}", clauses.join(" AND "));
+        let counts_sql = format!(
+            "SELECT
+                COUNT(*),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.due_ms <= ? THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state IN (1, 3) THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 2 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NULL THEN 1 ELSE 0 END), 0)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
+             {}",
+            base_where
+        );
+        let mut counts_params = vec![Value::from(now_ms)];
+        counts_params.extend(params.iter().cloned());
+        let counts = conn.query_row(
+            &counts_sql,
+            rusqlite::params_from_iter(counts_params.iter()),
+            |row| {
+                Ok(AnkiLibraryStatusCounts {
+                    all: row.get::<_, i64>(0)?.max(0) as u64,
+                    due: row.get::<_, i64>(1)?.max(0) as u64,
+                    new: row.get::<_, i64>(2)?.max(0) as u64,
+                    learning: row.get::<_, i64>(3)?.max(0) as u64,
+                    review: row.get::<_, i64>(4)?.max(0) as u64,
+                    suspended: row.get::<_, i64>(5)?.max(0) as u64,
+                    not_enqueued: row.get::<_, i64>(6)?.max(0) as u64,
+                })
+            },
+        )?;
+
+        let active = "fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0";
+        match filter.status.as_deref().map(str::trim) {
+            Some("due") => {
+                clauses.push(format!("{active} AND fs.due_ms <= ?"));
+                params.push(Value::from(now_ms));
+            }
+            Some("new") => clauses.push(format!("{active} AND fs.state = 0")),
+            Some("learning") => clauses.push(format!("{active} AND fs.state IN (1, 3)")),
+            Some("review") => clauses.push(format!("{active} AND fs.state = 2")),
+            Some("suspended") => {
+                clauses.push("fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 1".to_string())
+            }
+            Some("notEnqueued") => clauses.push("fs.id IS NULL".to_string()),
+            _ => {}
+        }
+
+        let where_clause = format!("WHERE {}", clauses.join(" AND "));
 
         let count_sql = format!(
             "SELECT COUNT(*)
              FROM anki_cards ac
              INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
              {}",
             where_clause
         );
@@ -7782,13 +7857,25 @@ impl Database {
         )?;
         let total = if total < 0 { 0 } else { total as u64 };
 
+        let descending = filter.sort_desc.unwrap_or(false);
+        let dir = if descending { "DESC" } else { "ASC" };
+        let order_by = match filter.sort.as_deref().map(str::trim) {
+            // 未入队 / 无到期时间的卡固定排最后，不参与方向翻转
+            Some("due") => format!(
+                "(fs.due_ms IS NULL) ASC, fs.due_ms {dir}, ac.created_at DESC, ac.id DESC"
+            ),
+            Some("created") => format!("ac.created_at {dir}, ac.id {dir}"),
+            Some("front") => format!("ac.front COLLATE NOCASE {dir}, ac.id {dir}"),
+            _ => "ac.created_at DESC, ac.id DESC".to_string(),
+        };
+
         let safe_page = if page == 0 { 1 } else { page };
         let safe_page_size = page_size.clamp(1, 200);
         let offset = (safe_page.saturating_sub(1) as i64) * (safe_page_size as i64);
 
         // The due-time placeholder appears in the SELECT list before dynamic WHERE
         // placeholders, so its value must be bound first.
-        let mut data_params = vec![Value::from(Utc::now().timestamp_millis())];
+        let mut data_params = vec![Value::from(now_ms)];
         data_params.extend(params.iter().cloned());
         data_params.push(Value::from(safe_page_size as i64));
         data_params.push(Value::from(offset));
@@ -7815,9 +7902,9 @@ impl Database {
              LEFT JOIN fsrs_card_states fs
                ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
              {}
-             ORDER BY ac.created_at DESC, ac.id DESC
+             ORDER BY {}
              LIMIT ? OFFSET ?",
-            where_clause
+            where_clause, order_by
         );
 
         let mut stmt = conn.prepare(&data_sql)?;
@@ -7882,8 +7969,32 @@ impl Database {
             items.push(row?);
         }
 
-        Ok((items, total))
+        Ok((items, total, counts))
     }
+}
+
+/// 卡片库列表的调度状态筛选与排序（取值与前端 LibraryStatusFilter / LibrarySortKey 一致；
+/// 未知值按「全部 / 默认顺序」处理）。
+#[derive(Debug, Clone, Default)]
+pub struct AnkiLibraryListFilter {
+    /// all | due | new | learning | review | suspended | notEnqueued
+    pub status: Option<String>,
+    /// default | due | created | front
+    pub sort: Option<String>,
+    pub sort_desc: Option<bool>,
+}
+
+/// 卡片库各状态计数（模板 / 搜索条件下的全集，不受状态筛选影响）
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiLibraryStatusCounts {
+    pub all: u64,
+    pub due: u64,
+    pub new: u64,
+    pub learning: u64,
+    pub review: u64,
+    pub suspended: u64,
+    pub not_enqueued: u64,
 }
 
 #[cfg(test)]
@@ -8838,6 +8949,78 @@ mod tests {
         assert!(second_page[0].enqueued);
         assert!(second_page[0].suspended);
         assert!(!second_page[0].is_due);
+
+        // 状态筛选 / 计数作用于全集而非当前页
+        let filtered = |status: &str| -> anyhow::Result<(Vec<String>, u64)> {
+            let (items, total, _) = db.list_anki_library_cards_filtered(
+                None,
+                None,
+                &AnkiLibraryListFilter {
+                    status: Some(status.to_string()),
+                    ..Default::default()
+                },
+                1,
+                1,
+            )?;
+            Ok((items.into_iter().map(|item| item.card.id).collect(), total))
+        };
+        assert_eq!(filtered("suspended")?, (vec!["card-suspended".to_string()], 1));
+        assert_eq!(filtered("notEnqueued")?, (vec!["card-unqueued".to_string()], 1));
+        assert_eq!(filtered("due")?, (vec!["card-due".to_string()], 1));
+        assert_eq!(filtered("review")?, (vec!["card-due".to_string()], 1));
+        // 暂停卡（state 3 = relearning）不算学习中
+        assert_eq!(filtered("learning")?.1, 0);
+        assert_eq!(filtered("all")?.1, 3);
+
+        let (_, _, counts) = db.list_anki_library_cards_filtered(
+            None,
+            None,
+            &AnkiLibraryListFilter {
+                status: Some("suspended".to_string()),
+                ..Default::default()
+            },
+            1,
+            1,
+        )?;
+        assert_eq!(
+            counts,
+            AnkiLibraryStatusCounts {
+                all: 3,
+                due: 1,
+                new: 0,
+                learning: 0,
+                review: 1,
+                suspended: 1,
+                not_enqueued: 1,
+            }
+        );
+
+        // 服务端排序跨页生效：按创建时间升序第一张是最早的 card-suspended
+        let (oldest_first, _, _) = db.list_anki_library_cards_filtered(
+            None,
+            None,
+            &AnkiLibraryListFilter {
+                sort: Some("created".to_string()),
+                sort_desc: Some(false),
+                ..Default::default()
+            },
+            1,
+            1,
+        )?;
+        assert_eq!(oldest_first[0].card.id, "card-suspended");
+        // 按到期排序：无到期时间（未入队）的固定排最后
+        let (by_due, _, _) = db.list_anki_library_cards_filtered(
+            None,
+            None,
+            &AnkiLibraryListFilter {
+                sort: Some("due".to_string()),
+                sort_desc: Some(true),
+                ..Default::default()
+            },
+            1,
+            3,
+        )?;
+        assert_eq!(by_due.last().map(|item| item.card.id.as_str()), Some("card-unqueued"));
 
         let serialized = serde_json::to_value(&first_page[0])?;
         assert_eq!(serialized["stateId"], json!("state-due"));

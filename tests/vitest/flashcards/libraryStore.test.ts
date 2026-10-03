@@ -100,4 +100,34 @@ describe('flashcards library store', () => {
     expect(mocks.deleteCard).not.toHaveBeenCalled();
     expect(useFlashcardsLibraryStore.getState().actionError).toBeTruthy();
   });
+
+  it('状态筛选 / 排序交给服务端：切换后回到第 1 页带参数重拉，计数取服务端全集', async () => {
+    const statusCounts = { all: 471, due: 29, new: 436, learning: 6, review: 3, suspended: 2, notEnqueued: 0 };
+    mocks.listCards.mockResolvedValue({ items: [card()], total: 2, page: 1, pageSize: 20, statusCounts });
+    await useFlashcardsLibraryStore.getState().load('', 3);
+    mocks.listCards.mockClear();
+
+    useFlashcardsLibraryStore.getState().setStatusFilter('suspended');
+    await vi.waitFor(() => expect(mocks.listCards).toHaveBeenCalledTimes(1));
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({
+      page: 1,
+      status: 'suspended',
+      sort: undefined,
+    }));
+
+    useFlashcardsLibraryStore.getState().toggleSort('due');
+    await vi.waitFor(() => expect(mocks.listCards).toHaveBeenCalledTimes(2));
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({
+      page: 1,
+      status: 'suspended',
+      sort: 'due',
+      sort_desc: false,
+    }));
+    await vi.waitFor(() => expect(useFlashcardsLibraryStore.getState().loading).toBe(false));
+    expect(useFlashcardsLibraryStore.getState().statusCounts).toEqual(statusCounts);
+
+    // 同一筛选重复点击不重拉
+    useFlashcardsLibraryStore.getState().setStatusFilter('suspended');
+    expect(mocks.listCards).toHaveBeenCalledTimes(2);
+  });
 });

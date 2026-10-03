@@ -88,6 +88,7 @@ export const LibraryScreen: React.FC = () => {
 
   const items = useFlashcardsLibraryStore((state) => state.items);
   const total = useFlashcardsLibraryStore((state) => state.total);
+  const statusCounts = useFlashcardsLibraryStore((state) => state.statusCounts);
   const page = useFlashcardsLibraryStore((state) => state.page);
   const search = useFlashcardsLibraryStore((state) => state.searchInput);
   const query = useFlashcardsLibraryStore((state) => state.query);
@@ -189,18 +190,21 @@ export const LibraryScreen: React.FC = () => {
   );
   const scheduledDueCount = useMemo(() => countDueCards(scheduledItems), [scheduledItems]);
 
+  // 计数取服务端全集（statusCounts）；旧后端没有时退回本页计数
   const filterCounts = useMemo(() => {
     const counts = new Map<LibraryStatusFilter, number>();
     for (const option of FILTER_OPTIONS) {
       counts.set(
         option,
-        option === 'all'
-          ? items.length
-          : items.filter((card) => matchesStatusFilter(card, option)).length,
+        statusCounts
+          ? statusCounts[option]
+          : option === 'all'
+            ? items.length
+            : items.filter((card) => matchesStatusFilter(card, option)).length,
       );
     }
     return counts;
-  }, [items]);
+  }, [items, statusCounts]);
 
   const selectedCards = useMemo(
     () => visibleItems.filter((card) => selectedIds.has(card.id)),

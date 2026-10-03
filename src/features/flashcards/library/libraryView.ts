@@ -1,6 +1,7 @@
 /**
- * 卡片库视图层纯函数：状态推导、客户端筛选/排序、到期时间人性化。
- * 后端 list_anki_library_cards 只支持 search/page，筛选排序均作用于当前页。
+ * 卡片库视图层纯函数：状态推导、页内筛选/排序、到期时间人性化。
+ * 状态筛选与排序已由后端 list_anki_library_cards 跨页执行；这里的同口径页内处理
+ * 用于本页即时一致（如刚暂停的卡在「复习中」筛选下立即移出）与旧后端兜底。
  */
 import type { AnkiLibraryCard } from '@/types';
 import { cardDisplayBack, cardDisplayFront } from '../cardDisplay';

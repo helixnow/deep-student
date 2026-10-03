@@ -1435,6 +1435,14 @@ pub struct ListAnkiCardsRequest {
     pub search: Option<String>,
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+    /// 调度状态筛选：all | due | new | learning | review | suspended | notEnqueued
+    #[serde(default)]
+    pub status: Option<String>,
+    /// 排序：default | due | created | front
+    #[serde(default)]
+    pub sort: Option<String>,
+    #[serde(default)]
+    pub sort_desc: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

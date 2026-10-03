@@ -147,6 +147,9 @@ export async function listAnkiLibraryCards(
     search: params?.search,
     page: params?.page,
     pageSize: params?.page_size,
+    status: params?.status,
+    sort: params?.sort,
+    sortDesc: params?.sort_desc,
   };
   return invoke<AnkiLibraryListResponse>('list_anki_library_cards', { request });
 }
