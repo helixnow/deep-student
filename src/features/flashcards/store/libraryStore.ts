@@ -70,6 +70,8 @@ interface FlashcardsLibraryState {
   /** 再次点击当前排序键时翻转方向。 */
   toggleSort: (key: Exclude<LibrarySortKey, 'default'>) => void;
   clearSort: () => void;
+  /** 清空搜索 / 状态筛选 / 排序，只重拉一次 */
+  clearFilters: () => Promise<boolean>;
   clearActionError: () => void;
   load: (query?: string, page?: number) => Promise<boolean>;
   refresh: () => Promise<boolean>;
@@ -235,6 +237,18 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     clearSort: () => {
       set({ sortKey: 'default', sortDir: 'asc', page: 1 });
       if (get().loaded) void get().load(get().query, 1);
+    },
+    clearFilters: () => {
+      set({
+        statusFilter: 'all',
+        sortKey: 'default',
+        sortDir: 'asc',
+        searchInput: '',
+        query: '',
+        page: 1,
+        actionError: null,
+      });
+      return get().load('', 1);
     },
     clearActionError: () => set({ actionError: null }),
 

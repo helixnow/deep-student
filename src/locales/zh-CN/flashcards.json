@@ -54,6 +54,7 @@
     "title": "卡片库",
     "loading": "加载中…",
     "total": "共 {{count}} 张",
+    "totalFiltered": "筛选出 {{count}} 张 · 共 {{all}} 张",
     "reviewPage": "复习本页",
     "searchPlaceholder": "搜索正面 / 背面 / 标签…",
     "searchLabel": "搜索卡片",

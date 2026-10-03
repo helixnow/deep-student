@@ -7792,7 +7792,7 @@ impl Database {
         let counts_sql = format!(
             "SELECT
                 COUNT(*),
-                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.due_ms <= ? THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state != 0 AND fs.due_ms <= ? THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 0 THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state IN (1, 3) THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 2 THEN 1 ELSE 0 END), 0),
@@ -7825,8 +7825,9 @@ impl Database {
 
         let active = "fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0";
         match filter.status.as_deref().map(str::trim) {
+            // 已到期 = 到期的学习 / 复习卡，不含新卡（Anki is:due 口径）
             Some("due") => {
-                clauses.push(format!("{active} AND fs.due_ms <= ?"));
+                clauses.push(format!("{active} AND fs.state != 0 AND fs.due_ms <= ?"));
                 params.push(Value::from(now_ms));
             }
             Some("new") => clauses.push(format!("{active} AND fs.state = 0")),

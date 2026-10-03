@@ -402,10 +402,13 @@ export const LibraryScreen: React.FC = () => {
   };
 
   const handleClearFilters = () => {
-    setStatusFilter('all');
-    clearSort();
-    if (query) void submitSearch('');
+    void useFlashcardsLibraryStore.getState().clearFilters();
   };
+  // 搜索或状态筛选生效时，空列表表示「没有命中」而不是「库是空的」
+  const isFiltered = query.length > 0 || statusFilter !== 'all';
+  const totalLabel = statusFilter !== 'all' && statusCounts
+    ? translate('library.totalFiltered', { count: total, all: statusCounts.all })
+    : translate('library.total', { count: statusCounts?.all ?? total });
 
   // ---------- 新建 / 导入 ----------
   const draftValid = draftFront.trim().length > 0 && draftBack.trim().length > 0;
@@ -475,7 +478,7 @@ export const LibraryScreen: React.FC = () => {
   }, [creating]);
   const mobileChrome = useFlashcardsMobileChrome({
     title: t(composerOpen ? 'library.create.new' : 'library.title'),
-    subtitle: composerOpen ? undefined : loading ? t('library.loading') : t('library.total', { count: total }),
+    subtitle: composerOpen ? undefined : loading ? t('library.loading') : totalLabel,
     onBack: composerOpen ? closeComposer : undefined,
     rightActions: composerOpen ? (
       <DsButton variant="ghost" size="icon" className="!min-h-11 !min-w-11" aria-label={t('library.create.save')} disabled={!draftValid || creating} onClick={handleSubmitDraft}>
@@ -600,7 +603,7 @@ export const LibraryScreen: React.FC = () => {
           <p className="wb-fc-subtitle">
             {loading
               ? t('library.loading')
-              : translate('library.total', { count: total })}
+              : totalLabel}
           </p>
         </div>
         <div className="fc-lib-header-actions">
@@ -898,8 +901,8 @@ export const LibraryScreen: React.FC = () => {
         ) : items.length === 0 ? (
           <div className="wb-fc-empty">
             <Stack size={28} className="text-muted-foreground/50" weight="duotone" />
-            <p>{query ? translate('library.noMatches') : t('library.empty')}</p>
-            {query ? (
+            <p>{isFiltered ? translate('library.noMatches') : t('library.empty')}</p>
+            {isFiltered ? (
               <DsButton
                 type="button"
                 variant="ghost"

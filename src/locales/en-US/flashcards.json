@@ -54,6 +54,7 @@
     "title": "Card library",
     "loading": "Loading…",
     "total": "{{count}} cards",
+    "totalFiltered": "{{count}} of {{all}} cards match",
     "reviewPage": "Review this page",
     "searchPlaceholder": "Search front / back / tags…",
     "searchLabel": "Search cards",

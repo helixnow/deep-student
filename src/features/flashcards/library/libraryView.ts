@@ -57,11 +57,16 @@ export function partitionLibraryQueues(items: AnkiLibraryCard[]): LibraryQueueSe
   return { inbox, scheduled };
 }
 
+/**
+ * 「已到期」= 到期的学习 / 复习卡，不含新卡（与 Anki 的 is:due、今日页口径一致）。
+ * 新卡入队即 due_ms ≤ now，若算作到期，词表制卡后几百张没学过的卡全标「已到期」。
+ */
+export function isReviewDue(card: AnkiLibraryCard): boolean {
+  return card.isDue && !card.suspended && card.state !== 0;
+}
+
 export function countDueCards(items: AnkiLibraryCard[]): number {
-  return items.reduce(
-    (count, card) => (card.isDue && !card.suspended ? count + 1 : count),
-    0,
-  );
+  return items.reduce((count, card) => (isReviewDue(card) ? count + 1 : count), 0);
 }
 
 export function matchesStatusFilter(
@@ -69,7 +74,7 @@ export function matchesStatusFilter(
   filter: LibraryStatusFilter,
 ): boolean {
   if (filter === 'all') return true;
-  if (filter === 'due') return card.isDue && !card.suspended;
+  if (filter === 'due') return isReviewDue(card);
   const status = getCardStatus(card);
   if (filter === 'learning') return status === 'learning' || status === 'relearning';
   return status === filter;

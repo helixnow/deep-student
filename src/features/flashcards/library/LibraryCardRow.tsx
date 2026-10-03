@@ -36,6 +36,7 @@ import {
   getCardBack,
   getCardFront,
   getCardStatus,
+  isReviewDue,
   parseTagsInput,
   tagsEqual,
 } from './libraryView';
@@ -334,12 +335,13 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
             >
               {translate(STATUS_LABEL_KEY[status])}
             </span>
-            {card.isDue && !card.suspended ? (
+            {isReviewDue(card) ? (
               <span className="fc-lib-badge" data-status="due">
                 {t('library.state.due')}
               </span>
             ) : null}
-            {card.enqueued && !card.suspended ? (
+            {/* 新卡没有「到期时间」可言（入队即可学），不显示「2 小时前」 */}
+            {card.enqueued && !card.suspended && status !== 'new' ? (
               relativeDue ? (
                 <span title={absoluteDue ?? t('library.dueTime')}>{relativeDue}</span>
               ) : absoluteDue ? (
