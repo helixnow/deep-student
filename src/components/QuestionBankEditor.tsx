@@ -2829,7 +2829,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 />
       </div>
 
-      <CustomScrollArea className="flex-1" viewportClassName="max-w-3xl mx-auto px-3 py-3 sm:p-4 space-y-3 sm:space-y-4">
+      {/* 居中栏放在视口内层：视口的 margin / padding 由 OverlayScrollbars 接管，写在 viewportClassName 上的 mx-auto 不生效 */}
+      <CustomScrollArea className="flex-1">
+        <div className="max-w-3xl mx-auto px-3 py-3 sm:p-4 space-y-3 sm:space-y-4">
           {/* 完成庆祝（内联） */}
           {renderCompletionCelebration()}
           {/* 统计卡片 - 专注模式下隐藏 */}
@@ -3201,6 +3203,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             </CardContent>
           </Card>
           </div>
+        </div>
       </CustomScrollArea>
 
       <div className="flex-shrink-0 border-t border-border/40 bg-background safe-area-bottom">
