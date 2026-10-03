@@ -261,6 +261,8 @@
     "progress": "播放进度"
   },
   "filePreview": {
+    "convertToNote": "转为笔记",
+    "convertToNoteHint": "用笔记应用编辑：新建同名笔记，原文件移到回收站（可撤销）",
     "textTruncated": "文件过大，仅显示开头部分内容，可下载文件查看完整内容",
     "textTruncatedDetail": "文件过大，已显示 {{shown}} / 共 {{total}} 字符，可将文件另存到本地查看完整内容",
     "emptyFile": "文件内容为空",
@@ -502,6 +504,7 @@
     "hiddenFolders": "{{count}} 个隐藏文件夹"
   },
   "finder": {
+    "convertToNote": { "success": "已转为笔记「{{name}}」" },
     "childCount": "{{count}} 项",
     "matchFromIndex": "[索引]",
     "memoryMeta": {

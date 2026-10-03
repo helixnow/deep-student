@@ -46,6 +46,7 @@ import { resolveFilePreviewMode } from './filePreviewResolver';
 import { formatFileSize } from './previewUtils';
 import { RichDocumentPreview } from './RichDocumentPreview';
 import { TextFilePreview } from './TextFilePreview';
+import { CONVERT_MARKDOWN_TO_NOTE_EVENT } from '../../dragDropRouting';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import {
@@ -832,7 +833,20 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     if (textContent !== null) {
       return (
         <CustomScrollArea className="h-full min-h-0" orientation="both">
-          <TextFilePreview content={textContent} fileName={node.name} />
+          <TextFilePreview
+            content={textContent}
+            fileName={node.name}
+            onConvertToNote={
+              /\.(md|markdown)$/i.test(node.name)
+                ? () =>
+                    window.dispatchEvent(
+                      new CustomEvent(CONVERT_MARKDOWN_TO_NOTE_EVENT, {
+                        detail: { resourceId: node.id, name: node.name, content: textContent },
+                      }),
+                    )
+                : undefined
+            }
+          />
         </CustomScrollArea>
       );
     }

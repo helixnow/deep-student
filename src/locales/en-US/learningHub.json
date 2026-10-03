@@ -261,6 +261,8 @@
     "progress": "Seek"
   },
   "filePreview": {
+    "convertToNote": "Convert to note",
+    "convertToNoteHint": "Edit in Notes: creates a note with the same name and moves the file to Trash (undoable)",
     "textTruncated": "File is too large; only the beginning is shown. Download the file to view the full content.",
     "textTruncatedDetail": "File is too large; showing {{shown}} of {{total}} characters. Save the file locally to view the full content.",
     "emptyFile": "This file is empty",
@@ -502,6 +504,7 @@
     "hiddenFolders": "{{count}} hidden folder(s)"
   },
   "finder": {
+    "convertToNote": { "success": "Converted to note \"{{name}}\"" },
     "childCount": "{{count}} items",
     "matchFromIndex": "[Index]",
     "memoryMeta": {

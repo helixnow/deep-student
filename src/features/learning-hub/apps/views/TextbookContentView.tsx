@@ -34,6 +34,7 @@ import type { ToolbarPreviewType } from './UnifiedPreviewToolbar';
 import { resolveTextbookPreviewType } from './textbookPreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
 import { TextFilePreview } from './TextFilePreview';
+import { CONVERT_MARKDOWN_TO_NOTE_EVENT } from '../../dragDropRouting';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
@@ -777,7 +778,20 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             仅纵向滚动时溢出内容不可达（窄屏尤甚）；真实 overflow-x:auto 同时让
             三屏手势豁免逻辑正确识别横向可滚动容器 */}
         <CustomScrollArea className="min-h-0 flex-1" orientation="both">
-          <TextFilePreview content={fileContent} fileName={node.name} />
+          <TextFilePreview
+            content={fileContent}
+            fileName={node.name}
+            onConvertToNote={
+              /\.(md|markdown)$/i.test(node.name)
+                ? () =>
+                    window.dispatchEvent(
+                      new CustomEvent(CONVERT_MARKDOWN_TO_NOTE_EVENT, {
+                        detail: { resourceId: node.id, name: node.name, content: fileContent },
+                      }),
+                    )
+                : undefined
+            }
+          />
         </CustomScrollArea>
       </div>
     );

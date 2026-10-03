@@ -28,7 +28,7 @@ import remarkMath from 'remark-math';
 import katex from 'katex';
 // 对齐聊天 MarkdownRenderer：注册 mhchem 扩展，使 \ce{}/\pu{} 化学式可渲染
 import 'katex/contrib/mhchem';
-import { ArrowsDownUp, CaretDown, CaretUp, Check, Copy, FileText } from '@phosphor-icons/react';
+import { ArrowsDownUp, CaretDown, CaretUp, Check, Copy, FileText, NotePencil } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { openUrl } from '@/utils/urlOpener';
@@ -511,6 +511,8 @@ export interface TextFilePreviewProps {
   /** 文件名（用于判断渲染模式） */
   fileName: string;
   className?: string;
+  /** Markdown 资料：提供时在信息栏显示「转为笔记」（用笔记应用编辑） */
+  onConvertToNote?: () => void;
 }
 
 interface ParsedCsv {
@@ -831,7 +833,7 @@ function useProgressiveReveal(contentKey: string, isLarge: boolean): boolean {
 // 主组件
 // ============================================================================
 
-const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fileName, className }) => {
+const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fileName, className, onConvertToNote }) => {
   const { t } = useTranslation(['learningHub']);
   const ext = getExtension(fileName);
   const isTabular = ext === 'csv' || ext === 'tsv';
@@ -956,7 +958,19 @@ const TextFilePreviewComponent: React.FC<TextFilePreviewProps> = ({ content, fil
   if (isMarkdown) {
     return (
       <div className={cn('min-h-full', className)}>
-        <FileMetaBar ext={ext} items={textMetaItems} copyText={content} />
+        <FileMetaBar ext={ext} items={textMetaItems} copyText={content}>
+          {onConvertToNote && (
+            <button
+              type="button"
+              onClick={onConvertToNote}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground"
+              title={t('learningHub:filePreview.convertToNoteHint')}
+            >
+              <NotePencil size={12} aria-hidden="true" />
+              <span>{t('learningHub:filePreview.convertToNote')}</span>
+            </button>
+          )}
+        </FileMetaBar>
         <div className="px-4 pb-4" onClick={handleMarkdownClick}>
           {truncationNotice}
           {/* break-words：长 URL / 无空格长词在 375px 视口下不得撑出横向溢出 */}

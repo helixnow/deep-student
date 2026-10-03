@@ -37,6 +37,7 @@
  * ContentCloseConfirmationHost（本页自行挂载一份，portal 渲染）。
  */
 
+import { consumeIntentionalRemoval } from './dragDropRouting';
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { MobileResourceMenuContext } from '@/components/layout/MobileResourceMenuContext';
 import { useTranslation } from 'react-i18next';
@@ -614,7 +615,8 @@ export const LearningHubPage: React.FC = () => {
         return next;
       });
 
-      if (wasActiveTabAffected) {
+      const intentional = consumeIntentionalRemoval(affectedResourceId);
+      if (wasActiveTabAffected && !intentional) {
         showGlobalNotification(
           'warning',
           t('learningHub:errors.resourceDeletedOrMoved')

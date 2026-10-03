@@ -139,6 +139,10 @@ import { ImportProgressModal, type ImportProgressState, type ImportStage } from 
 import { useVfsContextInject } from './hooks';
 import type { VfsResourceType } from '@/features/chat/context/types';
 import {
+  CONVERT_MARKDOWN_TO_NOTE_EVENT,
+  type ConvertMarkdownToNoteDetail,
+  splitLeadingMarkdownHeading,
+  markIntentionalRemoval,
   consumePathsDropHandledFlag,
   isDragDropBlockedView,
   partitionMarkdownNoteImports,
@@ -1174,7 +1178,27 @@ export function LearningHubSidebar({
         return; // 用户取消选择
       }
 
-      const filePaths = Array.isArray(selected) ? selected : [selected];
+      const selectedPaths = Array.isArray(selected) ? selected : [selected];
+      // Markdown 导入为笔记（用笔记应用打开、可编辑），其余走资料导入
+      const { markdownItems: markdownPaths, otherItems: filePaths } = partitionMarkdownNoteImports(
+        selectedPaths,
+        (filePath) => extractDisplayFileName(filePath),
+        true,
+      );
+      if (markdownPaths.length > 0) {
+        const markdownResult = await importMarkdownPathNotes(markdownPaths, currentCreatableFolderId);
+        if (!isMountedRef.current) return;
+        const imported = markdownResult.importedNodes.length;
+        if (imported > 0) {
+          showGlobalNotification('success', t('finder.markdownImport.success', { count: imported }));
+          handleRefresh();
+          if (filePaths.length === 0) openImportedMarkdownNote(markdownResult.importedNodes[0]);
+        }
+        if (markdownResult.failedCount > 0) {
+          showGlobalNotification('error', markdownResult.firstError ?? t('finder.dragDrop.importFailed'));
+        }
+        if (filePaths.length === 0) return;
+      }
       const firstFileName = filePaths[0] ? extractDisplayFileName(filePaths[0]) : 'textbook.pdf';
       
       // 显示导入进度模态框
@@ -1353,7 +1377,9 @@ export function LearningHubSidebar({
 
     debugLog.log('[LearningHub] 拖拽导入文件:', paths.length, '个文件');
 
-    const shouldImportMarkdownAsNotes = currentQuickAccessType === 'notes';
+    // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
+    // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
+    const shouldImportMarkdownAsNotes = true;
 
     // 按类型分组
     const docPaths: string[] = [];
@@ -1646,7 +1672,9 @@ export function LearningHubSidebar({
     }
     if (importableFiles.length === 0) return;
 
-    const shouldImportMarkdownAsNotes = currentQuickAccessType === 'notes';
+    // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
+    // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
+    const shouldImportMarkdownAsNotes = true;
     const { markdownItems: markdownFiles, otherItems: attachmentFiles } = partitionMarkdownNoteImports(
       importableFiles,
       (file) => file.name,
@@ -2874,6 +2902,39 @@ export function LearningHubSidebar({
     }
     return result.success;
   }, [canInject, injectToChat, onReferenceToChat, t]);
+
+  // 已作为资料导入的 Markdown → 笔记：新建同名笔记（当前文件夹）并打开，原文件移到回收站（可撤销）
+  useEffect(() => {
+    const handleConvert = async (event: Event) => {
+      const detail = (event as CustomEvent<ConvertMarkdownToNoteDetail>).detail;
+      if (!detail?.resourceId || typeof detail.content !== 'string') return;
+      // 正文以一级标题开头时用它作笔记标题并从正文去掉，避免「标题 + 同名 H1」重复
+      const { title, body } = splitLeadingMarkdownHeading(detail.content);
+      const created = await notesDstuAdapter.importMarkdownContent(
+        title ? `${title}.md` : detail.name,
+        title ? body : detail.content,
+        currentCreatableFolderId,
+      );
+      if (!isMountedRef.current) return;
+      if (!created.ok) {
+        showGlobalNotification('error', created.error.toUserMessage());
+        return;
+      }
+      // 先打开新笔记，再把原文件移到回收站（标记为主动移除：标签照常关闭、不弹「已删除或已移动」警告）
+      setSelectedIds(new Set([created.value.id]));
+      openImportedMarkdownNote(created.value);
+      markIntentionalRemoval(detail.resourceId);
+      const removed = await dstu.deleteMany([`/${detail.resourceId}`]);
+      if (!isMountedRef.current) return;
+      handleRefresh();
+      showGlobalNotification('success', t('finder.convertToNote.success', { name: created.value.name }));
+      if (removed.ok && removed.value > 0) {
+        showSoftDeleteUndoToast([{ id: detail.resourceId, type: 'textbook', name: detail.name }]);
+      }
+    };
+    window.addEventListener(CONVERT_MARKDOWN_TO_NOTE_EVENT, handleConvert);
+    return () => window.removeEventListener(CONVERT_MARKDOWN_TO_NOTE_EVENT, handleConvert);
+  }, [currentCreatableFolderId, handleRefresh, openImportedMarkdownNote, setSelectedIds, showSoftDeleteUndoToast, t]);
 
   // 资料 → 闪卡一步入口：新开一个对话（不混进正在进行的话题）→ 引用这份资料 →
   // 切到聊天并预填制卡指令（不自动发送，便于改数量/模板）。
