@@ -10769,6 +10769,9 @@ struct TemplateSelection {
     template_ids: Option<Vec<String>>,
 }
 
+/// 未指定模板且无可用默认模板时的内置回退（按顺序取第一个存在的基础问答模板）。
+const BUILTIN_FALLBACK_TEMPLATE_IDS: &[&str] = &["design-footnote", "design-monograph"];
+
 fn resolve_template_selection(
     ctx: &ExecutionContext,
     goal: &str,
@@ -10797,13 +10800,36 @@ fn resolve_template_selection(
                         .map_err(|e| format!("读取默认模板设置失败: {}", e))?
                         .map(|v| v.trim().to_string())
                         .filter(|v| !v.is_empty());
+                    let template_exists = |id: &str| -> Result<bool, String> {
+                        Ok(db
+                            .get_custom_template_by_id(id)
+                            .map_err(|e| format!("加载模板失败: {}", e))?
+                            .is_some())
+                    };
                     match default_tid {
-                        Some(tid) => (tid, true),
-                        None => {
-                            return Err(
-                                "templateMode=single 时必须提供 templateId（指定单个模板），或先在设置中配置默认模板"
-                                    .to_string(),
-                            );
+                        Some(tid) if template_exists(&tid)? => (tid, true),
+                        stale_default => {
+                            // 没配默认模板（或默认模板已删除）时回退内置基础问答模板，
+                            // 不再报错让模型反问「用哪个模板」（实测制卡前连问三轮）
+                            let fallback = BUILTIN_FALLBACK_TEMPLATE_IDS
+                                .iter()
+                                .find(|id| template_exists(id).unwrap_or(false))
+                                .map(|id| id.to_string());
+                            match fallback {
+                                Some(tid) => {
+                                    log::info!(
+                                        "[ChatAnkiToolExecutor] no usable default template ({:?}); falling back to built-in {}",
+                                        stale_default, tid
+                                    );
+                                    (tid, true)
+                                }
+                                None => {
+                                    return Err(
+                                        "templateMode=single 时必须提供 templateId（指定单个模板），或先在设置中配置默认模板"
+                                            .to_string(),
+                                    );
+                                }
+                            }
                         }
                     }
                 }
@@ -10813,12 +10839,6 @@ fn resolve_template_selection(
                 .map_err(|e| format!("加载模板失败: {}", e))?
                 .is_some();
             if !exists {
-                if from_default {
-                    return Err(format!(
-                        "用户默认模板不存在或已删除: {}（请显式传 templateId 或更新默认模板设置）",
-                        tid
-                    ));
-                }
                 return Err(format!("指定模板不存在: {}", tid));
             }
             if from_default {
