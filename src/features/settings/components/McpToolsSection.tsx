@@ -1642,7 +1642,8 @@ export function ActionMenu({
       <PopoverContent
         align="end"
         sideOffset={4}
-        className="max-w-[calc(100vw-1rem)]"
+        // 显式宽度：fixed 定位 + w-full 菜单项会把菜单撑到可用宽度（~385px），盖住半个设置侧栏
+        className="w-56 max-w-[calc(100vw-1rem)]"
         data-testid="mcp-quick-actions-menu"
       >
         {menuItems}
@@ -1962,7 +1963,7 @@ export function PresetServerSelector({
         >
           <CustomScrollArea
             ref={selectorPanelRef}
-            className="h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover mcp-preset-selector"
+            className="!h-[min(60dvh,30rem)] w-full rounded-lg border border-border bg-popover mcp-preset-selector"
             viewportClassName="p-2"
             trackOffsetTop={4}
             trackOffsetBottom={4}
@@ -2042,7 +2043,7 @@ export function PresetServerSelector({
         >
           <CustomScrollArea
             ref={selectorPanelRef}
-            className="h-[min(60dvh,30rem)] w-full mcp-preset-selector"
+            className="!h-[min(60dvh,30rem)] w-full mcp-preset-selector"
             viewportClassName="p-2"
             trackOffsetTop={4}
             trackOffsetBottom={4}
