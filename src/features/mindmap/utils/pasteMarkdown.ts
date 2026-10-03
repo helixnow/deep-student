@@ -5,7 +5,10 @@
  * - 无序（- * + • ‣ ◦）/ 有序（1. 1)）列表与 # 标题层级；
  * - 任务列表 `- [ ]` / `- [x]`（解析为节点 completed 状态）；
  * - tab 缩进与 2/3/4 空格等任意缩进步长（按整篇文本的缩进公约数自适应）；
- * - 无标记的缩进续行并入上一节点（`> ` 前缀会被剥离，成为备注）。
+ * - 无标记的缩进续行并入上一节点（`> ` 前缀会被剥离，成为备注）；
+ * - 代码围栏（``` / ~~~）整体并入上一节点备注——围栏里的 `# 注释`、`- x` 不成节点；
+ * - 节点标题去掉行内标记（**粗体** / __粗体__ / `代码` / [链接](url)），整行粗体转为粗体样式；
+ *   `$…$` 公式原样保留（节点支持 LaTeX 渲染）。
  */
 
 import { nanoid } from 'nanoid';
@@ -119,6 +122,8 @@ export function htmlOutlineToMarkdown(html: string): string | null {
 interface ParsedLine {
   level: number;
   text: string;
+  /** 整行是 **粗体** / __粗体__ */
+  bold?: boolean;
   /** 任务列表项：`- [ ]` → false，`- [x]` → true；非任务项为 undefined */
   completed?: boolean;
 }
@@ -152,8 +157,50 @@ function extractTaskMarker(text: string): { text: string; completed?: boolean } 
   return { text: taskMatch[2], completed: taskMatch[1] !== ' ' };
 }
 
+const FENCE_RE = /^\s*(`{3,}|~{3,})/;
+
+/** 标出代码围栏内（含围栏行本身）的行：这些行只能作为备注续行 */
+function markFencedLines(lines: string[]): boolean[] {
+  const fenced: boolean[] = [];
+  let open: string | null = null;
+  for (const line of lines) {
+    const fence = line.match(FENCE_RE)?.[1];
+    if (open) {
+      fenced.push(true);
+      if (fence && fence[0] === open[0] && fence.length >= open.length && line.trim() === fence) open = null;
+    } else if (fence) {
+      fenced.push(true);
+      open = fence;
+    } else {
+      fenced.push(false);
+    }
+  }
+  return fenced;
+}
+
+/** 节点标题去行内 Markdown 标记；`$…$` 公式段原样保留 */
+export function stripInlineMarkdown(text: string): { text: string; bold: boolean } {
+  const wholeBold = text.match(/^(\*\*|__)(?=\S)(.+?)(?<=\S)\1$/);
+  const source = wholeBold && !/(\*\*|__)/.test(wholeBold[2]) ? wholeBold[2] : text;
+  // 粗体可能包住公式（**$k|A|$**），对整串处理；LaTeX 里不会出现 ** / __
+  const stripped = source
+    .replace(/(\*\*|__)(?=\S)(.+?)(?<=\S)\1/g, '$2')
+    .split(/(\$\$[^$]+\$\$|\$[^$\n]+\$)/)
+    .map((part, index) => (index % 2 === 1
+      ? part
+      : part
+          .replace(/`([^`]+)`/g, '$1')
+          .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')))
+    .join('')
+    .trim();
+  return { text: stripped || text, bold: Boolean(wholeBold) && source !== text };
+}
+
 function parseMarkdownLines(markdown: string): ParsedLine[] {
-  const lines = markdown.split('\n').map((line) => line.replace(/\t/g, '    ').trimEnd());
+  const rawLines = markdown.split('\n').map((line) => line.replace(/\t/g, '    ').trimEnd());
+  const fenced = markFencedLines(rawLines);
+  // 结构判断（标记探测、缩进推断）只看围栏外的行
+  const lines = rawLines.filter((_, index) => !fenced[index]);
   const parsed: ParsedLine[] = [];
   let lastHeadingLevel = 0;
   const hasExplicitMarkers = lines.some((line) =>
@@ -176,8 +223,15 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
   const indentToLevel = (indent: number): number =>
     indent <= 0 ? 0 : Math.round(indent / indentUnit);
 
-  for (const trimmed of lines) {
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const trimmed = rawLines[index];
     if (!trimmed) continue;
+
+    if (fenced[index]) {
+      // 代码围栏：原样（保留缩进）并入上一节点备注；文首围栏没有可挂的节点，丢弃
+      if (parsed.length > 0) parsed[parsed.length - 1].text += '\n' + trimmed;
+      continue;
+    }
 
     const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
     if (headingMatch) {
@@ -231,11 +285,13 @@ function parseMarkdownLines(markdown: string): ParsedLine[] {
 
 function createNodeFromLine(line: ParsedLine): MindMapNode {
   const parts = line.text.split('\n');
+  const title = stripInlineMarkdown(parts[0] ?? '');
   return {
     id: `node_${nanoid(10)}`,
-    text: parts[0] ?? '',
+    text: title.text,
     note: parts.length > 1 ? parts.slice(1).join('\n') : undefined,
     children: [],
+    ...(title.bold ? { style: { fontWeight: 'bold' as const } } : {}),
     ...(line.completed !== undefined ? { completed: line.completed } : {}),
   };
 }

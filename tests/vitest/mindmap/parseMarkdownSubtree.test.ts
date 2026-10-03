@@ -294,3 +294,37 @@ describe('hideCompleted filter', () => {
     expect(resolveVisibleFocusId(tree, 'done-under-open', true)).toBe('open');
   });
 });
+
+describe('markdownListToNodes · 笔记大纲（代码围栏 / 行内标记）', () => {
+  it('代码围栏里的 # 注释和列表不成节点，整体并入上一节点备注', () => {
+    const md = [
+      '## 4. 命令',
+      '```bash',
+      '# 查看调度策略',
+      'chrt -p 1234',
+      '- 不是列表',
+      '```',
+      '## 5. 思考',
+      '- 为什么？',
+    ].join('\n');
+    const forest = markdownListToNodes(md);
+    expect(forest.map((n) => n.text)).toEqual(['4. 命令', '5. 思考']);
+    expect(forest[0].children).toEqual([]);
+    expect(forest[0].note).toBe('```bash\n# 查看调度策略\nchrt -p 1234\n- 不是列表\n```');
+    expect(forest[1].children.map((n) => n.text)).toEqual(['为什么？']);
+  });
+
+  it('节点标题去掉粗体 / 代码 / 链接标记，整行粗体转为粗体样式，公式原样保留', () => {
+    const forest = markdownListToNodes([
+      '- **调度的层次**',
+      '- **调度时机**：进程终止、`I/O` 阻塞，见 [OSTEP](https://ostep.org)',
+      '- $|kA| = k^n|A|$（易错：不是 **$k|A|$**）',
+      '- a__b__c_d',
+    ].join('\n'));
+    expect(forest[0]).toMatchObject({ text: '调度的层次', style: { fontWeight: 'bold' } });
+    expect(forest[1].text).toBe('调度时机：进程终止、I/O 阻塞，见 OSTEP');
+    expect(forest[1].style).toBeUndefined();
+    expect(forest[2].text).toBe('$|kA| = k^n|A|$（易错：不是 $k|A|$）');
+    expect(forest[3].text).toBe('abc_d');
+  });
+});
