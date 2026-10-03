@@ -94,8 +94,9 @@ const clamp = (value: number, min: number, max: number) => Math.round(Math.min(M
 
 /**
  * 开场两扇窗：对话在左、闪卡紧挨着，都停在桌面小组件左边、Dock 上方。
- * 桌面多宽都按比例排：窄桌面上两扇窗收到各自的紧凑宽度（低于应用的最小拖拽尺寸也能正常排版），
- * 宽桌面上对话窗口最多 820、闪卡最多 600。
+ * 桌面多宽都按比例排，宽桌面上对话窗口最多 820、闪卡最多 600；
+ * 窄桌面上先收对话、再收闪卡（低于应用的最小拖拽尺寸也能正常排版），还放不下才让闪卡往对话底下错开，
+ * 不去压右边的日程和简报。
  */
 export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
   const workArea = await waitFor(() => document.querySelector<HTMLElement>('[data-wb-workarea]'), 20000);
@@ -112,8 +113,15 @@ export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
   const available = right - margin;
   const maxHeight = area.height - top - FLOATING_DOCK_CLEARANCE - 8;
 
-  const chatW = clamp(available * 0.55, 560, 820);
-  const cardsW = clamp(available - chatW - gap, 420, 600);
+  let chatW = clamp(available * 0.55, 560, 820);
+  let cardsW = clamp(available - chatW - gap, 420, 600);
+  let overflow = chatW + gap + cardsW - available;
+  const chatShrink = clamp(overflow, 0, chatW - 480);
+  chatW -= chatShrink;
+  overflow -= chatShrink;
+  const cardsShrink = clamp(overflow, 0, cardsW - 400);
+  cardsW -= cardsShrink;
+  overflow -= cardsShrink;
   const chatH = clamp(maxHeight, 440, 760);
   const cardsH = clamp(maxHeight - 140, 420, 600);
 
@@ -121,7 +129,7 @@ export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
   store.openWindow({
     typeId: 'flashcards',
     instanceKey: null,
-    initialFrame: { x: margin + chatW + gap, y: top, w: cardsW, h: cardsH },
+    initialFrame: { x: margin + chatW + gap - Math.max(0, overflow), y: top, w: cardsW, h: cardsH },
   });
   const chat = store.openWindow({
     typeId: 'chat',
