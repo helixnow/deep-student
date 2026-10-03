@@ -350,7 +350,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
       detail: {
         id: source.sourceId,
-        type: source.kind,
+        // EPUB 是文件资源（file_），面板按文件类型打开
+        type: source.kind === 'epub' ? 'file' : source.kind,
         title: source.title || source.sourceId,
       },
     }));

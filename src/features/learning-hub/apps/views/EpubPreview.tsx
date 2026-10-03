@@ -1,4 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useIframeTextSelection } from '@/shared/selection';
+import { PdfSelectionActions } from '@/features/pdf/components/PdfSelectionActions';
 import { useTranslation } from 'react-i18next';
 import {
   ArrowCounterClockwise,
@@ -151,6 +153,17 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   const bookLoaded = Boolean(book);
   // 容器是否窄（目录跳章 / 搜索跳转后自动收起侧栏，与手机端一致）
   const compactRef = useRef(false);
+  // 划词：正文在 iframe 里，选区由 useIframeTextSelection 换算到宿主坐标，复用 PDF 的划词工具条
+  //（解释 / 翻译 / 存为笔记 / 制卡 / 添加到聊天）
+  const [frameElement, setFrameElement] = useState<HTMLIFrameElement | null>(null);
+  const setIframeElement = useCallback((element: HTMLIFrameElement | null) => {
+    (iframeRef as React.MutableRefObject<HTMLIFrameElement | null>).current = element;
+    setFrameElement(element);
+  }, []);
+  const iframeSelection = useIframeTextSelection(frameElement);
+  const chapterIndexRef = useRef(chapterIndex);
+  chapterIndexRef.current = chapterIndex;
+  const resolveChapterLocator = useCallback(() => `chapter:${chapterIndexRef.current + 1}`, []);
   // 窗口不窄、但阅读器所在的预览栏 / 分栏很窄时（如学习资源页右侧约 500px），
   // 默认展开的目录会吃掉一半宽度、正文只剩 300 多像素。按容器实际宽度在变窄时收起。
   useEffect(() => {
@@ -990,10 +1003,14 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
           {loading && <div className="epub-preview-loading"><CircleNotch className="animate-spin" size={28} /></div>}
           <iframe
             key={frameGeneration}
-            ref={iframeRef}
+            ref={setIframeElement}
             className="epub-preview-frame ui-fade-in"
             title={`${fileName}: ${book.chapters[chapterIndex]?.title ?? ''}`}
-            sandbox="allow-same-origin"
+            // allow-scripts：WebKit 在不含 allow-scripts 的沙箱 iframe 里不调用任何事件监听器——
+            // 宿主挂的划词 / 阅读进度 / 书内链接 / 键盘翻页 / 滑动翻章全部失效。书本身的脚本
+            // 仍无法执行：构建 srcdoc 时已移除 script / iframe / object 与所有 on* 属性，
+            // 且 srcdoc 自带 CSP script-src 'none'（同时拦截 javascript: 链接）
+            sandbox="allow-same-origin allow-scripts"
             srcDoc={srcDoc}
             onLoad={handleFrameLoad}
           />
@@ -1011,6 +1028,16 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
           </footer>
         </main>
       </div>
+      <PdfSelectionActions
+        containerRef={rootRef}
+        enabled
+        isMobileLike={isNarrow}
+        documentTitle={fileName}
+        selectionSourceId={resourceId}
+        selectionOverride={iframeSelection}
+        selectionKind="epub"
+        resolveFallbackLocator={resolveChapterLocator}
+      />
     </div>
   );
 };

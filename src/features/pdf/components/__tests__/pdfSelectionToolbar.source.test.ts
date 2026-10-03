@@ -124,10 +124,11 @@ describe('mobile behaviour', () => {
   it('shows results in an inline panel, not a modal dialog', () => {
     expect(actionsSource).toContain('ds-pdf__selection-panel');
     expect(actionsSource).not.toContain('DsDialog');
-    expect(pdfCss).toContain('.ds-pdf__selection-panel');
-    // 面板底部避让底栏 + 进度细线 + safe-area（与高亮条同一套派生变量）
-    const panelBlock = pdfCss.slice(pdfCss.indexOf('.ds-pdf__selection-panel {'));
-    expect(panelBlock).toContain('var(--ds-pdf-safe-bottom)');
+    // 面板样式随 PdfSelectionActions 加载（PDF 与 EPUB 共用），底部避让底栏 + 进度细线 + safe-area
+    const panelCss = readFileSync(resolve(__dirname, '../../styles/selection-panel.css'), 'utf-8');
+    expect(actionsSource).toContain("import '../styles/selection-panel.css'");
+    const panelBlock = panelCss.slice(panelCss.indexOf('.ds-pdf__selection-panel {'));
+    expect(panelBlock).toContain('var(--ds-pdf-safe-bottom');
   });
 
   it('lets the Android back button close the result panel first, with a visibility guard', () => {

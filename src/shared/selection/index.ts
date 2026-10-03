@@ -6,6 +6,7 @@
  * 并只传自己真的具备的能力回调。
  */
 export { useTextSelection } from './useTextSelection';
+export { useIframeTextSelection } from './useIframeTextSelection';
 export type { SelectionRect, TextSelectionState } from './useTextSelection';
 export { SelectionToolbar } from './SelectionToolbar';
 export type { SelectionToolbarProps } from './SelectionToolbar';

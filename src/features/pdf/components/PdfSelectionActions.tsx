@@ -27,7 +27,9 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { SelectionToolbar, useTextSelection } from '@/shared/selection';
+import { SelectionToolbar, useTextSelection, type TextSelectionState } from '@/shared/selection';
+import type { SelectionSourceKind } from '@/features/chat/context/selectionRef';
+import '../styles/selection-panel.css';
 import { SaveAsNoteFolderPicker, truncateNoteTitle, useSaveAsNoteFlow } from '@/shared/notes';
 import { buildSelectionNoteContent, type PdfSelectionPayload } from '../pdfSelectionActions';
 import { buildAnnotationSourceLine } from '../pdfAnnotationList';
@@ -75,6 +77,15 @@ export interface PdfSelectionActionsProps {
    * 注入（与 onQuoteToChat 的整资源引用语义不同，精准且省 token）。
    */
   selectionSourceId?: string;
+  /**
+   * 外部提供的选区（如 EPUB 正文在 iframe 里，用 useIframeTextSelection）。
+   * 不传时检测 containerRef 内的页面选区（PDF 文本层）。
+   */
+  selectionOverride?: TextSelectionState;
+  /** 选区来源类型（引用到聊天的 source.kind），默认 pdf */
+  selectionKind?: SelectionSourceKind;
+  /** 无 PDF 页码时的定位（如 EPUB 的 `chapter:N`），用于引用到聊天 */
+  resolveFallbackLocator?: () => string | undefined;
 }
 
 export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
@@ -84,9 +95,13 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
   documentTitle,
   onQuoteToChat,
   selectionSourceId,
+  selectionOverride,
+  selectionKind = 'pdf',
+  resolveFallbackLocator,
 }) => {
   const { t } = useTranslation(['pdf', 'chatV2', 'common']);
-  const selection = useTextSelection(containerRef);
+  const pageSelection = useTextSelection(containerRef);
+  const selection = selectionOverride ?? pageSelection;
   const panelRef = useRef<HTMLDivElement>(null);
 
   const [explainText, setExplainText] = useState<string | null>(null);
@@ -207,14 +222,14 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
       selectionToChat({
         text,
         source: {
-          kind: 'pdf',
+          kind: selectionKind,
           sourceId: selectionSourceId,
-          locator: typeof page === 'number' ? `page:${page}` : undefined,
+          locator: typeof page === 'number' ? `page:${page}` : resolveFallbackLocator?.(),
           title: documentTitle,
         },
       })
     );
-  }, [selectionSourceId, documentTitle, resolveSelectionPage]);
+  }, [selectionSourceId, documentTitle, resolveSelectionPage, selectionKind, resolveFallbackLocator]);
 
   // 工具条「添加到聊天」（唯一入口）：有资源 id 时走选区即上下文（选区快照 + page locator，
   // 可点回原页）——旧实现走宿主 onQuoteToChat 的整文档引用，selectedText 只塞进 metadata
@@ -284,6 +299,7 @@ export const PdfSelectionActions: React.FC<PdfSelectionActionsProps> = ({
                   contextAfter={translateState.contextAfter}
                   onClose={closePanel}
                   onAddToInput={handleAddDerivedTextToChat}
+                  showModelName={false}
                 />
               )}
             </React.Suspense>

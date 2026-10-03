@@ -5,6 +5,9 @@
  */
 .epub-preview {
   --epub-paper: #ffffff;
+  /* 划词结果面板（共用 PDF 的 .ds-pdf__selection-panel）避让底部章节栏 */
+  --ds-pdf-toolbar-h: 44px;
+  position: relative;
 
   display: flex;
   flex-direction: column;

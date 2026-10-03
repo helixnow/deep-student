@@ -78,6 +78,8 @@ export interface TranslationPopoverProps {
   onClose: () => void;
   /** 添加到聊天输入框回调（不发送） */
   onAddToInput?: (text: string) => void;
+  /** 头部是否显示模型名（阅读器内 360px 面板放不下，会与目标语言叠在一起） */
+  showModelName?: boolean;
 }
 
 // ============================================================================
@@ -224,6 +226,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
   contextAfter = '',
   onClose,
   onAddToInput,
+  showModelName = true,
 }) => {
   const { t } = useTranslation(['translation', 'chatV2']);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -790,7 +793,7 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
           />
         </div>
         <div className="flex items-center gap-1.5 min-w-0">
-          {settings.modelDisplayName && (
+          {showModelName && settings.modelDisplayName && (
             <span
               className="text-xs text-muted-foreground/70 truncate max-w-[140px]"
               title={t('translation:popover.model_hint', { name: settings.modelDisplayName })}
