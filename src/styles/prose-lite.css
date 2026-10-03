@@ -63,3 +63,18 @@
 .prose :where(:first-child):not(:where(.not-prose, .not-prose *)) {
   margin-top: 0;
 }
+
+/*
+ * GFM 任务清单（- [ ] / - [x]）：remark-gfm 给 li 加 .task-list-item、里面是复选框。
+ * 只有笔记编辑器有专门样式，预览与聊天 Markdown 里每项同时显示圆点和复选框。
+ * 去掉圆点，把复选框挪进原圆点的位置（不改列表缩进，与普通列表对齐）。
+ */
+li.task-list-item {
+  list-style: none;
+}
+
+li.task-list-item > input[type='checkbox'] {
+  margin: 0 0.45em 0 -1.25em;
+  vertical-align: -0.12em;
+  accent-color: hsl(var(--primary));
+}
