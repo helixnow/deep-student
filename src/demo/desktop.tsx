@@ -199,7 +199,7 @@ export async function arrangeDemoDesktop(sceneId: string): Promise<boolean> {
     return found.length > 0 ? found : null;
   }, 15000);
   if (slides) {
-    await sleep(400);
+    await sleep(120);
     const z = (el: HTMLElement) => Number(getComputedStyle(el).zIndex) || 0;
     const front = slides.reduce((top, slide) => (z(slide) > z(top) ? slide : top), slides[0]);
     for (let el = front.parentElement; el; el = el.parentElement) {

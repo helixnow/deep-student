@@ -165,8 +165,8 @@ export function installDemoAutoPlay(
         setComposerValue(ta, typedValue);
         await sleep(typeCharMs());
       }
+      await sleep(POST_TYPE_PAUSE_MS);
     }
-    await sleep(POST_TYPE_PAUSE_MS);
     if (isStale()) {
       clearTypedDraft();
       return;

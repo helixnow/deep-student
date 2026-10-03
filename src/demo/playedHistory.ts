@@ -89,3 +89,8 @@ export async function capturePlayedSnapshot(sessionId: string): Promise<void> {
 export function getPlayedHistory(sessionId: string): PlayedHistory | null {
   return playedHistory.get(sessionId) ?? null;
 }
+
+/** 预置一份完成态（学习桌面开场不演首答） */
+export function seedPlayedHistory(sessionId: string, history: PlayedHistory): void {
+  playedHistory.set(sessionId, history);
+}

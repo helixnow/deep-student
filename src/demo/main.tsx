@@ -66,6 +66,17 @@ import i18n from '../i18n';
 const READY_FALLBACK_MS = desktop ? 15000 : 10000;
 
 async function main() {
+  // 学习桌面开场要的窗口代码都是懒加载的：桌面挂上才拉对话窗口、对话窗口挂上才拉会话页，一层等一层。
+  // 演示构建不给动态导入加预载，这里和 App 并行先拉（只取模块，不渲染）
+  if (desktop) {
+    void Promise.all([
+      import('../features/workbench/components/WorkbenchDesktop'),
+      import('../features/workbench/apps/chat/ChatAppWindow'),
+      import('../features/chat/pages'),
+      import('../features/workbench/apps/system/FlashcardsAppWindow'),
+    ]).catch(() => { /* 真用到时还会再拉一次 */ });
+  }
+
   await i18n.changeLanguage('zh-CN');
   document.documentElement.lang = 'zh-CN';
 
@@ -148,7 +159,7 @@ async function main() {
         window.parent.postMessage({ type: 'demo-shell-ready' }, window.location.origin);
         return;
       }
-      setTimeout(notifyWhenSceneShown, 100);
+      setTimeout(notifyWhenSceneShown, 50);
     };
     notifyWhenSceneShown();
   }

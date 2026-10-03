@@ -26,7 +26,8 @@ import {
   DEMO_QBANK_ID,
 } from './fixtures';
 import { abortScript, playReplyScript } from './scriptPlayer';
-import { getPlayedHistory } from './playedHistory';
+import { getPlayedHistory, seedPlayedHistory } from './playedHistory';
+import { DESKTOP_SCENE_HISTORY } from './desktopHistory';
 import { getDemoQuestions, handleDemoQuestionBank } from './questionBank';
 import { addDemoLibraryCards, handleDemoFlashcards } from './flashcards';
 import {
@@ -114,6 +115,29 @@ function seedSettings({ desktop = false, dark = false }: DemoIpcOptions): Record
 
 const settingsKV = new Map<string, unknown>();
 
+/** 学习桌面开场的剧本会话 */
+const DESKTOP_SCENE_ID = 'demo-anki-cards';
+
+/**
+ * 学习桌面开场直接是完成态：预置播完的快照，首答已播过，之后的提问走续问 / 兜底回复。
+ * 快照里的时间戳是导出那一刻的，整体挪到会话列表写的「3 分钟前」
+ */
+function seedDesktopScene(): void {
+  const answer = DESKTOP_SCENE_HISTORY.messages[DESKTOP_SCENE_HISTORY.messages.length - 1];
+  const shift = Date.now() - 3 * 60_000 - answer.timestamp;
+  const moved = <T extends number | undefined>(value: T): T => (typeof value === 'number' ? value + shift : value) as T;
+  seedPlayedHistory(DESKTOP_SCENE_ID, {
+    messages: DESKTOP_SCENE_HISTORY.messages.map((m) => ({ ...m, timestamp: m.timestamp + shift })),
+    blocks: DESKTOP_SCENE_HISTORY.blocks.map((b) => ({
+      ...b,
+      startedAt: moved(b.startedAt),
+      endedAt: moved(b.endedAt),
+      firstChunkAt: moved(b.firstChunkAt),
+    })),
+  });
+  playedOnce.add(DESKTOP_SCENE_ID);
+}
+
 /** 模拟真实 IPC 往返延迟（过快会导致列表挂载前 restore 完成，跳过吸底滚动） */
 function withLatency<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
@@ -125,6 +149,7 @@ function withLatency<T>(value: T, ms = 120): Promise<T> {
 
 export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
   for (const [key, value] of Object.entries(seedSettings(options))) settingsKV.set(key, value);
+  if (options.desktop) seedDesktopScene();
   mockWindows('main');
 
   mockIPC(
@@ -514,11 +539,13 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
             LOG,
             `load_session ${rec.meta.id}: ${messages.length} messages, ${blocks.length} blocks${played ? ' (played snapshot)' : ''}`,
           );
+          // 学习桌面开场那条会话不用等：窗口里的卡片位置是开场脚本自己滚好的，不靠列表挂载后的吸底
+          const latency = options.desktop && sessionId === DESKTOP_SCENE_ID ? 0 : undefined;
           return withLatency({
             session: rec.meta,
             messages,
             blocks,
-          });
+          }, latency);
         }
         case 'chat_v2_load_messages_page':
           // 尾部分块之外没有更多历史
