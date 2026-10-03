@@ -44,6 +44,8 @@ function parseFsrsStats(raw: unknown): FsrsStats | null {
   const suspended = readCount(row, 'suspended', 'suspended');
   const reviewsToday = readCount(row, 'reviewsToday', 'reviews_today');
   const backlog = readCount(row, 'backlog', 'backlog');
+  const backlogReview = readCount(row, 'backlogReview', 'backlog_review');
+  const backlogNew = readCount(row, 'backlogNew', 'backlog_new');
   const learningWaiting = readCount(row, 'learningWaiting', 'learning_waiting');
   if (
     total == null || due == null || newCount == null || learning == null
@@ -61,6 +63,8 @@ function parseFsrsStats(raw: unknown): FsrsStats | null {
     suspended,
     reviewsToday,
     ...(backlog != null ? { backlog } : {}),
+    ...(backlogReview != null ? { backlogReview } : {}),
+    ...(backlogNew != null ? { backlogNew } : {}),
     ...(learningWaiting != null ? { learningWaiting } : {}),
   };
 }
@@ -89,6 +93,11 @@ export const TodayScreen: React.FC = () => {
   const batchCapped = dueTotal > dueCards.length && dueCards.length > 0;
   // F08：due 可能已扣额度；backlog 是额度外的已到期积压，learningWaiting 是等待学习步
   const backlog = stats?.backlog ?? 0;
+  // 拆分口径：到期复习超额是真积压（顺延）；新卡超额只是还没学，按每日上限逐日引入。
+  // 旧后端没有拆分字段时整体按积压显示（与此前一致）
+  const hasBacklogSplit = stats?.backlogReview != null && stats?.backlogNew != null;
+  const backlogReview = hasBacklogSplit ? stats!.backlogReview! : backlog;
+  const backlogNew = hasBacklogSplit ? stats!.backlogNew! : 0;
   const learningWaiting = stats?.learningWaiting ?? 0;
 
   const loadStats = useCallback(async () => {
@@ -316,13 +325,13 @@ export const TodayScreen: React.FC = () => {
                   {t('today.batchCapHint', { n: dueCards.length })}
                 </p>
               ) : null}
-              {!loading && (backlog > 0 || learningWaiting > 0) ? (
+              {!loading && (backlogReview > 0 || backlogNew > 0 || learningWaiting > 0) ? (
                 <p className="wb-fcx-panel-sub">
-                  {backlog > 0 ? t('today.backlogHint', { count: backlog }) : null}
-                  {backlog > 0 && learningWaiting > 0 ? ' · ' : null}
-                  {learningWaiting > 0
-                    ? t('today.learningWaitingHint', { count: learningWaiting })
-                    : null}
+                  {[
+                    backlogReview > 0 ? t('today.backlogHint', { count: backlogReview }) : null,
+                    backlogNew > 0 ? t('today.newBacklogHint', { count: backlogNew }) : null,
+                    learningWaiting > 0 ? t('today.learningWaitingHint', { count: learningWaiting }) : null,
+                  ].filter(Boolean).join(' · ')}
                 </p>
               ) : null}
             </div>

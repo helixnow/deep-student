@@ -369,6 +369,12 @@ pub struct FsrsStats {
     /// 让「计划已完成」与「仍有积压」可以同时表达（F08）。
     #[serde(default)]
     pub backlog: i64,
+    /// 其中到期 Review 卡被每日复习上限截断的部分（真正的复习积压，会顺延）
+    #[serde(default)]
+    pub backlog_review: i64,
+    /// 其中 New 卡被每日新卡上限截断的部分（未学过的新卡，按上限逐日引入，不是「欠债」）
+    #[serde(default)]
+    pub backlog_new: i64,
     /// 尚未到期的学习 / 重学卡（等待学习步），用于解释「稍后会再出现」
     #[serde(default)]
     pub learning_waiting: i64,
@@ -2898,7 +2904,9 @@ impl FsrsReviewService {
         let new_capped = new_due.min(new_remaining);
         let due = learning_due + review_capped + new_capped;
         // F08：额度之外的已到期积压（Review + New），让「计划完成」不等于「没有积压」
-        let backlog = (review_due - review_capped) + (new_due - new_capped);
+        let backlog_review = review_due - review_capped;
+        let backlog_new = new_due - new_capped;
+        let backlog = backlog_review + backlog_new;
         let learning_waiting = (learning + relearning - learning_due).max(0);
         let reviews_today: i64 = conn
             .query_row(
@@ -2933,6 +2941,8 @@ impl FsrsReviewService {
             new_remaining_today: new_remaining,
             reviews_remaining_today: review_remaining,
             backlog,
+            backlog_review,
+            backlog_new,
             learning_waiting,
         })
     }
@@ -4969,6 +4979,9 @@ mod tests {
             stats.backlog, 1,
             "the due-but-hidden card must be reported as backlog"
         );
+        // 被截断的是一张新卡：归入 backlog_new，不算复习积压
+        assert_eq!(stats.backlog_new, 1);
+        assert_eq!(stats.backlog_review, 0);
         assert_eq!(stats.new_count, 1);
     }
 

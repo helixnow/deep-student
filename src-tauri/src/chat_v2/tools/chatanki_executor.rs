@@ -15890,6 +15890,8 @@ mod tests {
             new_remaining_today: 0,
             reviews_remaining_today: 0,
             backlog: 0,
+            backlog_review: 0,
+            backlog_new: 0,
             learning_waiting: 0,
         };
         assert_eq!(

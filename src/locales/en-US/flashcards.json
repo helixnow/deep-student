@@ -23,7 +23,8 @@
     "startReview": "Start review",
     "empty": "Nothing due today",
     "batchCapHint": "This round covers the first {{n}} cards",
-    "backlogHint": "{{count}} more are due but hidden by today's daily limit",
+    "backlogHint": "{{count}} more due reviews exceed today's limit and roll over to the next days",
+    "newBacklogHint": "{{count}} new cards waiting, introduced daily up to your new-card limit",
     "learningWaitingHint": "{{count}} learning card(s) waiting for the next step",
     "goLibrary": "Open library",
     "errors": {
