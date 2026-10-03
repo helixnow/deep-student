@@ -630,6 +630,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       kind={kind}
       base64Content={content}
       fileName={node.name}
+      resourceId={node.id}
       showToolbar={showToolbar}
       previewType={toToolbarPreviewType(previewType)}
       zoomScale={zoomScale}

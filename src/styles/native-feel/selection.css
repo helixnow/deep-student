@@ -99,6 +99,21 @@ code *,
 }
 
 /* ---------------------------------------------------------------- */
+/* 6b. Office 文档预览（DOCX / PPTX 正文、XLSX 单元格）                  */
+/* 此前不在白名单里：Word 文档 / 课件预览里一个字都选不了，划词翻译 /   */
+/* 解释 / 引用到聊天全部无从触发。缩略图栏、工作表标签等 chrome 不放开。 */
+/* ---------------------------------------------------------------- */
+.docx-preview-wrapper,
+.docx-preview-wrapper *,
+.pptx-content-wrapper,
+.pptx-content-wrapper *,
+.xlsx-container,
+.xlsx-container * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
 /* 7. Generic escape hatch                                           */
 /* ---------------------------------------------------------------- */
 [data-selectable="true"],

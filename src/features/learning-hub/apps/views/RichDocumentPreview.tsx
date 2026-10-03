@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 
 import { UnifiedPreviewToolbar, type ToolbarPreviewType, type SlideNavInfo } from './UnifiedPreviewToolbar';
 import { ZOOM_MIN, ZOOM_MAX, stepZoom, clampNumber } from './previewUtils';
@@ -8,6 +9,9 @@ import { ZOOM_MIN, ZOOM_MAX, stepZoom, clampNumber } from './previewUtils';
 const DocxPreview = lazy(() => import('./DocxPreview'));
 const XlsxPreview = lazy(() => import('./XlsxPreview'));
 const PptxPreview = lazy(() => import('./PptxPreview'));
+const PdfSelectionActions = lazy(() =>
+  import('@/features/pdf/components/PdfSelectionActions').then((m) => ({ default: m.PdfSelectionActions })),
+);
 
 type RichDocumentKind = 'docx' | 'xlsx' | 'pptx';
 
@@ -26,6 +30,27 @@ interface RichDocumentPreviewProps {
   fallback?: React.ReactNode;
   rootClassName?: string;
   bodyClassName?: string;
+  /** 资源 id：DOCX / PPTX 提供时启用划词（解释 / 翻译 / 存为笔记 / 制卡 / 添加到聊天） */
+  resourceId?: string;
+}
+
+/** 选区所在的幻灯片 / 节（与工作台 FilePreviewAppWindow 同一口径） */
+function resolveRichDocumentLocator(): string | undefined {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return undefined;
+  const node = selection.getRangeAt(0).startContainer;
+  const element = node instanceof Element ? node : node.parentElement;
+  const slide = element?.closest('.pptx-preview-slide-wrapper');
+  if (slide?.parentElement) {
+    const slides = Array.from(slide.parentElement.querySelectorAll(':scope > .pptx-preview-slide-wrapper'));
+    return `slide:${Math.max(1, slides.indexOf(slide) + 1)}`;
+  }
+  const section = element?.closest('section.docx-preview, section.docx');
+  if (section?.parentElement) {
+    const sections = Array.from(section.parentElement.querySelectorAll(':scope > section'));
+    return `section:${Math.max(1, sections.indexOf(section) + 1)}`;
+  }
+  return undefined;
 }
 
 type SlideNavState = SlideNavInfo | null;
@@ -48,8 +73,11 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   fallback = null,
   rootClassName,
   bodyClassName,
+  resourceId,
 }) => {
   const [slideNav, setSlideNav] = useState<SlideNavState>(null);
+  const isNarrow = useIsMobile();
+  const selectionEnabled = Boolean(resourceId) && (kind === 'docx' || kind === 'pptx');
   const handleSlideInfoChange = useCallback((info: SlideNavState) => {
     setSlideNav(info);
   }, []);
@@ -198,7 +226,7 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
   }, []);
 
   return (
-    <div ref={rootRef} className={cn('flex h-full min-h-0 flex-col overflow-hidden', rootClassName)}>
+    <div ref={rootRef} className={cn('relative flex h-full min-h-0 flex-col overflow-hidden', rootClassName)}>
       <div className={cn('min-h-0 flex-1 overflow-hidden', bodyClassName)}>
         <Suspense fallback={fallback}>
           {kind === 'docx' && (
@@ -241,6 +269,19 @@ export const RichDocumentPreview: React.FC<RichDocumentPreviewProps> = ({
           onFontReset={onFontReset}
           slideNav={slideNav}
         />
+      )}
+      {selectionEnabled && (
+        <Suspense fallback={null}>
+          <PdfSelectionActions
+            containerRef={rootRef}
+            enabled
+            isMobileLike={isNarrow}
+            documentTitle={fileName}
+            selectionSourceId={resourceId}
+            selectionKind="document"
+            resolveFallbackLocator={resolveRichDocumentLocator}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -710,6 +710,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
       kind={kind}
       base64Content={content}
       fileName={node.name}
+      resourceId={node.id}
       showToolbar={showRichToolbar}
       previewType={toToolbarPreviewType(previewType)}
       zoomScale={zoomScale}

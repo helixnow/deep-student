@@ -351,7 +351,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       detail: {
         id: source.sourceId,
         // EPUB 是文件资源（file_），面板按文件类型打开
-        type: source.kind === 'epub' ? 'file' : source.kind,
+        type: source.kind === 'epub' || source.kind === 'document' ? 'file' : source.kind,
         title: source.title || source.sourceId,
       },
     }));

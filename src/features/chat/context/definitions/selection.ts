@@ -26,6 +26,8 @@ function getKindLabel(kind?: SelectionRefData['source']['kind']): string {
       return 'PDF';
     case 'epub':
       return 'EPUB';
+    case 'document':
+      return 'Document';
     case 'mindmap':
       return 'Mindmap';
     case 'note':
