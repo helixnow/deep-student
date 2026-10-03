@@ -24,6 +24,7 @@
     "tip_accuracy": "Accuracy is low. Review the explanations of your mistakes before doing similar questions.",
     "tip_forgetting": "You are forgetting many cards. Consider fewer new cards per day and clear due reviews first.",
     "save_note": "Weekly report",
+    "save_as_note": "Save as note…",
     "chat": "Review with AI",
     "tag": "Weekly report",
     "failed": "Could not build the weekly report",
