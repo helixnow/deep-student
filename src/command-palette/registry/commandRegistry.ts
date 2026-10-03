@@ -158,6 +158,9 @@ function getCommandMatchScore(command: Command, query: string): number {
 
   // 取最高分并加上优先级和分类加成
   const maxScore = Math.max(...scores);
+  // 完全不匹配必须是 0：此前优先级加成照加，有优先级的命令全部 >0 通过过滤，
+  // 搜「总览」这类无匹配词时列出全部命令，回车执行第一条无关命令
+  if (maxScore <= 0 && categoryBonus === 0) return 0;
   const priorityBonus = (command.priority ?? 0) * 0.1;
 
   return maxScore + priorityBonus + categoryBonus;

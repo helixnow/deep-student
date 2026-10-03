@@ -446,7 +446,7 @@
     "nav.goto.template-management": ["模板", "提示词"],
     "nav.goto.pdf-reader": ["阅读", "文档", "标注", "pdf"],
     "nav.goto.sandbox-workbench": ["沙箱", "工作台", "预览", "html", "sandbox"],
-    "nav.goto.dashboard": ["仪表盘", "统计", "概览", "数据"],
+    "nav.goto.dashboard": ["仪表盘", "统计", "概览", "数据", "总览", "今日", "周报", "学习报告"],
     "nav.goto.data-management": ["数据", "管理", "备份", "导入", "导出"],
     "nav.goto.settings": ["设置", "系统", "偏好"],
     "nav.back": ["返回", "后退"],

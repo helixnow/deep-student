@@ -446,7 +446,7 @@
     "nav.goto.template-management": ["template", "prompt"],
     "nav.goto.pdf-reader": ["pdf", "reader", "document", "annotate"],
     "nav.goto.sandbox-workbench": ["sandbox", "workbench", "preview", "html"],
-    "nav.goto.dashboard": ["dashboard", "statistics", "overview", "data"],
+    "nav.goto.dashboard": ["dashboard", "statistics", "overview", "data", "today", "weekly report", "summary"],
     "nav.goto.data-management": ["data", "management", "backup", "import", "export"],
     "nav.goto.settings": ["settings", "system", "preferences"],
     "nav.back": ["back", "previous"],
