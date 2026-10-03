@@ -12,7 +12,7 @@ import type { ContextRef } from '../../resources/types';
 import type { ApprovalRequestData } from '../ToolApprovalCard';
 import type { BlockingInteraction } from '../../core/types/store';
 import type { PdfPageRefsState } from './usePdfPageRefs';
-import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
+import type { ReasoningLevelOption, ReasoningLevel } from '@/utils/reasoning';
 import type { ContextWindowUsage } from './contextWindowUsage';
 import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
@@ -301,13 +301,13 @@ export interface InputBarUIProps {
   /** 当前模型是否允许完全关闭推理；false 时仅允许切换强度 */
   thinkingCanDisable?: boolean;
   /** 当前模型支持的运行时推理深度选项；为空且没有 runtime 模型菜单时按钮保持 toggle-only */
-  thinkingDepthOptions?: DeepSeekReasoningOption[];
+  thinkingDepthOptions?: ReasoningLevelOption[];
   /** 当前归一化后的运行时推理深度 */
-  thinkingDepthValue?: DeepSeekReasoningOptionValue;
+  thinkingDepthValue?: ReasoningLevel;
   /** 切换推理模式 */
   onToggleThinking?: () => void;
   /** 设置 Chat 运行时推理深度；只改 ChatParams，不改设置页模型默认值 */
-  onSetThinkingDepth?: (value: DeepSeekReasoningOptionValue | 'off') => void;
+  onSetThinkingDepth?: (value: ReasoningLevel | 'off') => void;
 
   // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器
   // enableAnkiTools 和 onToggleAnkiTools 已移除

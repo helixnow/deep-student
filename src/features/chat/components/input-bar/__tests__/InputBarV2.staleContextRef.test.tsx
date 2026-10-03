@@ -247,12 +247,21 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
+    // 统一五档（方案 F）：档位集合不再按模型裁剪；标签键来自统一档位表。
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
-      'settings:api.modal.deepseek.depth.low',
-      'settings:api.modal.deepseek.depth.high',
+      'settings:api.modal.reasoning.effort.low',
+      'settings:api.modal.reasoning.effort.medium',
+      'settings:api.modal.reasoning.effort.high',
+      'settings:api.modal.reasoning.effort.xhigh',
       'settings:api.modal.deepseek.depth.max',
     ]);
   });
@@ -322,10 +331,13 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.thinkingUnsupported).toBe(false);
+    // 统一五档：档位集合不再按模型裁剪。
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
       'low',
       'medium',
       'high',
+      'xhigh',
+      'max',
     ]);
   });
 
@@ -697,15 +709,17 @@ describe('InputBarV2 stale context ref guard', () => {
   });
 
   it.each([
-    ['gemini-3.5-flash', 'google', ['minimal', 'low', 'medium', 'high'], 'minimal', false],
-    ['claude-opus-4-8', 'anthropic', ['low', 'medium', 'high', 'xhigh', 'max'], 'max', true],
-    ['glm-5.2', 'zhipu', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'], 'xhigh', true],
-    ['grok-latest', 'grok', ['low', 'medium', 'high'], 'medium', true],
-    ['mistral-medium-latest', 'mistral', ['low', 'medium', 'high'], 'high', true],
-    ['ernie-5.0-thinking', 'ernie', ['high', 'max'], 'max', true],
+    ['gemini-3.5-flash', 'google', 'low', false],
+    ['claude-opus-4-8', 'anthropic', 'max', true],
+    ['glm-5.2', 'zhipu', 'xhigh', true],
+    // grok-latest：后端 grok.rs 的 requires_reasoning 对其返回 true（不可关闭），
+    // 前端新实现与后端对齐；旧的 generic 兜底曾错误地给出可关闭。
+    ['grok-latest', 'grok', 'medium', false],
+    ['mistral-medium-latest', 'mistral', 'high', true],
+    ['ernie-5.0-thinking', 'ernie', 'max', true],
   ] as const)(
     'exposes and applies the runtime effort contract for %s',
-    (model, providerType, options, selected, canDisable) => {
+    (model, providerType, selected, canDisable) => {
       const { store, setChatParams } = createMockStore();
 
       act(() => {
@@ -734,9 +748,17 @@ describe('InputBarV2 stale context ref guard', () => {
         />
       );
 
-      expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(options);
+      // 统一五档（方案 F）：所有渠道返回同一套档位；canDisable 仍按模型区分。
+      expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+        'low',
+        'medium',
+        'high',
+        'xhigh',
+        'max',
+      ]);
       expect(capturedInputBarUIProps?.thinkingCanDisable).toBe(canDisable);
 
+      // 选中档位原样落库（不再有前端 max→xhigh 之类的改写）。
       capturedInputBarUIProps?.onSetThinkingDepth?.(selected);
       expect(setChatParams).toHaveBeenLastCalledWith({
         enableThinking: true,
@@ -778,7 +800,14 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
+    // 统一五档：DeepSeek V4 不再裁剪档位集合。
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
   });
 
   it('repairs opaque stored model display names from profile metadata when runtime models are unavailable', async () => {
@@ -860,7 +889,14 @@ describe('InputBarV2 stale context ref guard', () => {
 
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'high', 'max']);
+    // 统一五档：DeepSeek V4 不再裁剪档位集合。
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ]);
   });
 
   it('normalizes runtime thinking depth when switching to SiliconFlow V3.2', () => {
@@ -894,18 +930,27 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 超高');
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
-    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
-      'settings:api.modal.deepseek.depth.low',
-      'settings:api.modal.deepseek.depth.medium',
-      'settings:api.modal.deepseek.depth.high',
-      'settings:api.modal.deepseek.depth.xhigh',
+    // 统一五档：SiliconFlow 宿主同样展示完整五档
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
     ]);
-    expect(setChatParams).toHaveBeenCalledWith({
-      enableThinking: true,
-      reasoningEffort: 'xhigh',
-      thinkingBudget: 32768,
-    });
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
+      'settings:api.modal.reasoning.effort.low',
+      'settings:api.modal.reasoning.effort.medium',
+      'settings:api.modal.reasoning.effort.high',
+      'settings:api.modal.reasoning.effort.xhigh',
+      'settings:api.modal.deepseek.depth.max',
+    ]);
+    // 统一五档（方案 F）：用户选中的档位原样保留，前端**不再**在切换模型时
+    // 做家族特定的降档改写（旧实现把 V3.2 的 max 改写成 xhigh + budget 32768）。
+    // 该档位在硅基流动 V3.2 上是否可用，由后端能力表在请求前就近映射。
+    expect(setChatParams).not.toHaveBeenCalledWith(
+      expect.objectContaining({ reasoningEffort: 'xhigh' })
+    );
   });
 
   it('resolves current model by config ID, not by display name, for same-name models across vendors', async () => {

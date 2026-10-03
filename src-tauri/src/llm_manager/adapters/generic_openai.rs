@@ -94,21 +94,63 @@ impl GenericOpenAIAdapter {
         }
     }
 
-    /// GPT-5.6 家族（gpt-5.6 / gpt-5.6-sol|terra|luna，含 `vendor/` 前缀形态）。
+    /// GPT-5.6 / GPT-6 家族：原生支持高于 xhigh 的 max 档。
     /// 尾部必须是版本边界，避免误伤未来的 gpt-5.60 之类 id。
-    fn is_gpt56_model(config: &ApiConfig) -> bool {
+    ///
+    /// 注意：是否需要把 max 降到 xhigh 由**协议**决定（max 仅 Responses 接受，
+    /// Chat Completions 会 400），该判断已由 `reasoning_level_map` 在适配器
+    /// 执行前统一完成——到达此处时档位已经过能力映射，因此这里直接保留。
+    fn is_max_capable_gpt_family(config: &ApiConfig) -> bool {
         let model = config.model.trim().to_lowercase();
-        model
-            .rsplit('/')
-            .next()
-            .and_then(|segment| segment.strip_prefix("gpt-5.6"))
-            .is_some_and(|rest| rest.is_empty() || rest.starts_with(['.', '-', '_']))
+        let Some(segment) = model.rsplit('/').next() else {
+            return false;
+        };
+        let rest = if let Some(rest) = segment.strip_prefix("gpt-5.6") {
+            rest
+        } else if let Some(rest) = segment.strip_prefix("gpt-6") {
+            rest
+        } else {
+            return false;
+        };
+        rest.is_empty() || rest.starts_with(['.', '-', '_'])
     }
 
-    /// GPT-5.6 原生支持高于 xhigh 的 max 档，必须透传；
-    /// 其他模型仍将 max 归一为标准 xhigh。
+    /// 是否为自定义/中转宿主（不做档位裁剪，五档原样透传）。
+    ///
+    /// 产品裁定：中转站已完成上游映射，客户端再裁剪反而丢掉用户意图。
+    /// 官方渠道的裁剪由 `reasoning_level_map` 依能力表完成。
+    ///
+    /// 判定要求**显式**的中转宿主声明：host 信息缺失（存量配置、测试夹具）
+    /// 时保持既有的归一行为，不猜测用户是否在用中转。
+    fn is_relay_host(config: &ApiConfig) -> bool {
+        if Self::is_siliconflow(config) || Self::is_openrouter(config) {
+            return false;
+        }
+        let host = config
+            .provider_type
+            .as_deref()
+            .or(config.provider_scope.as_deref())
+            .unwrap_or_default();
+        matches!(
+            host.trim().to_ascii_lowercase().as_str(),
+            "custom"
+                | "general"
+                | "one-api"
+                | "one_api"
+                | "sub2api"
+                | "cpa"
+                | "together"
+                | "fireworks"
+                | "groq"
+        )
+    }
+
+    /// max 档归属：具备 max 能力的 GPT 家族或中转宿主保留 max；
+    /// 其余模型将 max 归一为标准 xhigh。
     fn normalize_effort_for_model(config: &ApiConfig, effort: &str) -> Option<&'static str> {
-        if effort.trim().eq_ignore_ascii_case("max") && Self::is_gpt56_model(config) {
+        if effort.trim().eq_ignore_ascii_case("max")
+            && (Self::is_max_capable_gpt_family(config) || Self::is_relay_host(config))
+        {
             return Some("max");
         }
         Self::normalize_standard_effort(effort)

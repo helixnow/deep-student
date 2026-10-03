@@ -37,7 +37,7 @@
 //! 参考文档：https://platform.kimi.ai/docs/api/chat 、
 //! https://platform.kimi.ai/docs/guide/kimi-k2-6-quickstart
 
-use super::{PassbackPolicy, RequestAdapter};
+use super::{get_trimmed_effort, PassbackPolicy, RequestAdapter};
 use crate::llm_manager::ApiConfig;
 use serde_json::{json, Map, Value};
 
@@ -405,11 +405,18 @@ impl MoonshotAdapter {
     }
 
     /// K3 effort 归一：官方仅接受 low/high/max（默认 max）。
-    /// 其他取值（含 none/xhigh/ultra/缺省）收敛到最近档，避免 400。
+    ///
+    /// 兜底规则（2026-10-03 修正）：未知值与缺省取官方默认 max，但**关闭意图
+    /// 不能被抬到 max**——那会把"关闭思考"变成"最高强度思考"，与用户意图相反。
+    /// K3 强制思考不可关闭，故关闭意图退到最低档 low。
     fn normalize_k3_effort(effort: Option<&str>) -> &'static str {
         match effort.map(str::trim).map(str::to_lowercase).as_deref() {
             Some("minimal") | Some("low") => "low",
             Some("medium") | Some("high") => "high",
+            Some("xhigh") | Some("max") | Some("ultra") => "max",
+            // 关闭意图：K3 不支持关闭，退最低档而非最高档。
+            Some("none") | Some("unset") | Some("off") | Some("disabled") => "low",
+            // 未知值/未配置：走官方默认 max。
             _ => "max",
         }
     }
@@ -476,12 +483,21 @@ impl RequestAdapter for MoonshotAdapter {
             body.remove("enable_thinking");
             body.remove("thinking_budget");
             body.remove("include_thoughts");
-            body.insert(
-                "reasoning_effort".to_string(),
-                json!(Self::normalize_k3_effort(
-                    config.reasoning_effort.as_deref()
-                )),
-            );
+            // 用 get_trimmed_effort 读取（而非直接读字段）：空白字符串会被视为
+            // "未配置"从而走官方默认 max，而不是被当作一个未知档位。
+            let requested = get_trimmed_effort(config);
+            let normalized = Self::normalize_k3_effort(requested);
+            if let Some(requested) = requested {
+                if !requested.eq_ignore_ascii_case(normalized) {
+                    log::debug!(
+                        "[MoonshotAdapter] K3 档位归一: {} -> {}（官方仅接受 low/high/max）: model={}",
+                        requested,
+                        normalized,
+                        config.model
+                    );
+                }
+            }
+            body.insert("reasoning_effort".to_string(), json!(normalized));
             return true;
         }
 

@@ -1,54 +1,49 @@
 import { describe, expect, it } from 'vitest';
 import {
   deepSeekV32EffortToBudget,
-  normalizeDeepSeekV4Effort,
-  resolveDeepSeekReasoningControl,
-} from '../deepseekReasoningControls';
+  resolveReasoningControl,
+} from '@/utils/reasoning';
 
-describe('DeepSeek reasoning control mapping', () => {
-  it('maps SiliconFlow V3.2 depth presets to thinking budgets', () => {
+// 2026-10-03 方案 F：设置页原先通过 resolveDeepSeekReasoningControl 拿到
+// 按家族裁剪的档位集合（v4-effort / v32-budget-effort / openai-effort…）。
+// 现统一为五档，档位可用性交由后端能力表映射，本文件断言设置页依赖的新契约。
+
+const UNIFIED = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+describe('设置页思考强度控制（统一五档契约）', () => {
+  it('SiliconFlow 托管的 V3.2 仍使用 budget 换算（托管方言未变）', () => {
     expect(deepSeekV32EffortToBudget('low')).toBe(2048);
     expect(deepSeekV32EffortToBudget('medium')).toBe(8192);
     expect(deepSeekV32EffortToBudget('high')).toBe(16384);
     expect(deepSeekV32EffortToBudget('xhigh')).toBe(32768);
   });
 
-  it('uses high/max effort for V4 models including SiliconFlow-hosted V4 ids', () => {
-    expect(resolveDeepSeekReasoningControl('deepseek-v4-pro', true).kind).toBe('v4-effort');
-    expect(resolveDeepSeekReasoningControl('deepseek-ai/DeepSeek-V4-Pro', true).kind).toBe('v4-effort');
+  it('V4 模型（含托管形态）给统一五档且可关闭', () => {
+    for (const model of ['deepseek-v4-pro', 'deepseek-ai/DeepSeek-V4-Pro', 'deepseek-flash']) {
+      const control = resolveReasoningControl({ model, adapterId: 'deepseek' });
+      expect(control.options.map(option => option.value), model).toEqual(UNIFIED);
+      expect(control.canDisable, model).toBe(true);
+    }
   });
 
-  it('uses low/high/max effort for DeepSeek V4.1 Flash (deepseek-flash)', () => {
-    const control = resolveDeepSeekReasoningControl('deepseek-flash', true);
-    expect(control.kind).toBe('v4-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['low', 'high', 'max']);
+  it('V3.2 模型同样给统一五档（档位差异不再由设置页裁剪）', () => {
+    const control = resolveReasoningControl({
+      model: 'deepseek-ai/DeepSeek-V3.2',
+      adapterId: 'deepseek',
+    });
+    expect(control.options.map(option => option.value)).toEqual(UNIFIED);
   });
 
-  it('normalizes V4 effort per official mapping (low stays low, ultra to max)', () => {
-    expect(normalizeDeepSeekV4Effort('minimal')).toBe('low');
-    expect(normalizeDeepSeekV4Effort('low')).toBe('low');
-    expect(normalizeDeepSeekV4Effort('medium')).toBe('high');
-    expect(normalizeDeepSeekV4Effort('high')).toBe('high');
-    expect(normalizeDeepSeekV4Effort('xhigh', true)).toBe('high');
-    expect(normalizeDeepSeekV4Effort('xhigh', false)).toBe('max');
-    expect(normalizeDeepSeekV4Effort('xhigh')).toBe('max');
-    expect(normalizeDeepSeekV4Effort('max')).toBe('max');
-    expect(normalizeDeepSeekV4Effort('ultra')).toBe('max');
-    expect(normalizeDeepSeekV4Effort(undefined)).toBe('high');
-  });
-
-  it('uses low/medium/high/xhigh budget presets for V3.2 models', () => {
-    const control = resolveDeepSeekReasoningControl('deepseek-ai/DeepSeek-V3.2', false);
-
-    expect(control.kind).toBe('v32-budget-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
-  });
-
-  it('exposes the native max depth for GPT-5.6 settings controls', () => {
-    const control = resolveDeepSeekReasoningControl('gpt-5.6', false);
-
-    expect(control.kind).toBe('openai-effort');
-    expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
+  it('GPT-5.6 给统一五档且可关闭（含原生的 max 档）', () => {
+    const control = resolveReasoningControl({ model: 'gpt-5.6', adapterId: 'openai' });
+    expect(control.kind).not.toBe('toggle-only');
+    expect(control.options.map(option => option.value)).toEqual(UNIFIED);
     expect(control.canDisable).toBe(true);
+  });
+
+  it('设置页渠道身份走 modelAdapter：zhipu 上的 glm-5.3 强制思考', () => {
+    const control = resolveReasoningControl({ model: 'glm-5.3', adapterId: 'zhipu' });
+    expect(control.canDisable).toBe(false);
+    expect(control.options.map(option => option.value)).toEqual(UNIFIED);
   });
 });

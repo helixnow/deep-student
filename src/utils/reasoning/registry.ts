@@ -1,126 +1,98 @@
-// 渠道注册表：把 resolvedAdapterId 映射到渠道 resolve 函数。
+// 渠道注册表（2026-10-03，方案 F）。
 //
-// 两条路径：
-// 1. 身份路径（主路径）：adapterId 命中渠道 → 渠道内自行解析。渠道对陌生模型
-//    返回 null 时回退"仅开关"（家族渠道）或 generic（宿主渠道），不再被其他
-//    家族的判定分支"截胡"。
-// 2. 兜底路径：adapterId 缺失（旧存量数据、字段未下发）→ 走
-//    deepseekReasoningControls 的原判定链，行为与重构前一致。
+// ## 解析路径（单一、无跨渠道兜底）
+// 1. adapterId 命中已注册渠道 → 该渠道自决。
+// 2. 渠道返回 null（该渠道对该模型无思考语义）→ 中性兜底
+//    （支持思考的模型给统一五档，否则仅开关）。
+// 3. adapterId 缺失（存量数据）→ 按模型名做家族识别，命中家族渠道则用之，
+//    否则中性兜底。
 //
-// 方案 E：匹配后的默认档统一取**渠道最高档**（options 末位）——用户未显式
-// 选择时按最高档发送；canDisable=false 的强制渠道同样适用。
+// ## 与旧实现的区别（交叉判定链已删除）
+// 旧版有两条跨渠道链：
+//   - 宿主渠道 `hostResolve ?? sweepFamilies ?? resolveGenericChannel`
+//   - 家族清扫 `FAMILY_SWEEP_ORDER` 按 10 个家族依次尝试
+// 二者会让"OpenAI 宿主上的 Gemini 模型"由 Gemini 渠道映射、而"Gemini 宿主上的
+// OpenAI 模型"由 OpenAI 渠道映射，档位语义随编排顺序漂移——历史上
+// gpt-6 被折叠、Gemini low 被改写均与此有关。
 //
-// 宿主渠道（general/openai/siliconflow/nvidia）：适配器只认"宿主"，模型家族
-// 可能是外部家族（如在 generic 上托管 gemini-3）。这类渠道按
-// 宿主方言 → 家族清扫 → generic 的顺序解析；家族清扫按固定文档化顺序调用
-// 各家族渠道模块（每个家族的判定逻辑仍归各自渠道所有，此处只是编排）。
+// 现规则：**渠道只按自身身份判定**。adapterId 缺失时用模型名确定唯一家族，
+// 不再"依次尝试直到某个命中"。因为所有渠道返回的档位集合已统一，
+// 编排层的存在意义也随之消失。
 
-import {
-  resolveDeepSeekRuntimeReasoningControl as legacyResolveControl,
-  isForcedThinkingModelId,
-  type DeepSeekReasoningControl,
-  type DeepSeekReasoningOptionValue,
-} from '../deepseekReasoningControls';
 import {
   REASONING_CHANNELS,
+  channelModelId,
   normalizeAdapterId,
   resolveGenericChannel,
+  toggleOnlyControl,
+  unifiedControl,
   type ReasoningChannelInput,
+  type ReasoningControl,
+  type ReasoningLevel,
 } from './channels';
-import { matchModelFamily } from './modelFamily';
+import { matchModelFamily, type ModelFamily } from './modelFamily';
 
-const FAMILY_CHANNEL_IDS = new Set([
-  'qwen',
-  'deepseek',
-  'google',
-  'gemini',
-  'anthropic',
-  'claude',
-  'zhipu',
-  'grok',
-  'xai',
-  'moonshot',
-  'kimi',
-  'mistral',
-  'ernie',
-  'baidu',
-]);
+/** 家族 → 渠道 id（用于 adapterId 缺失时按模型名定位唯一渠道）。 */
+const FAMILY_CHANNEL_ID: Record<ModelFamily, string | undefined> = {
+  qwen: 'qwen',
+  deepseek: 'deepseek',
+  zhipu: 'zhipu',
+  moonshot: 'moonshot',
+  grok: 'grok',
+  gemini: 'gemini',
+  claude: 'claude',
+  openai: 'openai',
+  doubao: 'doubao',
+  minimax: 'minimax',
+  ernie: 'ernie',
+  mimo: undefined,
+  mistral: 'mistral',
+};
 
-const HOST_CHANNEL_IDS = new Set(['general', 'openai', 'siliconflow', 'nvidia']);
-
-// 家族清扫顺序：与旧判定链的家族分支顺序一致（openai 优先于 qwen，
-// qwen 优先于 deepseek 的既有次序在此保持，仅作存量行为兼容）。
-const FAMILY_SWEEP_ORDER = [
-  'openai',
-  'qwen',
-  'deepseek',
-  'gemini',
-  'claude',
-  'zhipu',
-  'grok',
-  'moonshot',
-  'mistral',
-  'ernie',
-] as const;
-
-function sweepFamilies(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  for (const family of FAMILY_SWEEP_ORDER) {
-    const resolve = REASONING_CHANNELS[family];
-    const control = resolve?.(input);
-    if (control) return control;
-  }
-  return null;
-}
-
-/** 家族渠道对陌生模型的兜底：仅思考开关（不给 effort 档位——该家族未声明支持）。 */
-function fallbackToggleOnly(input: ReasoningChannelInput): DeepSeekReasoningControl {
-  const model =
-    typeof input.model === 'string'
-      ? input.model
-      : typeof input.modelId === 'string'
-        ? input.modelId
-        : '';
-  return {
-    kind: 'toggle-only',
-    options: [],
-    canDisable: !isForcedThinkingModelId(model.trim().toLowerCase()),
-  };
-}
-
-/** 方案 E：默认档统一取渠道最高档（options 末位）。 */
-function withHighestDefault(control: DeepSeekReasoningControl): DeepSeekReasoningControl {
+/** 默认档为渠道最高档（options 末位）。 */
+function withHighestDefault(control: ReasoningControl): ReasoningControl {
   if (control.options.length === 0) return control;
-  const highest = control.options[control.options.length - 1].value as DeepSeekReasoningOptionValue;
+  const highest = control.options[control.options.length - 1].value as ReasoningLevel;
   if (control.defaultValue === highest) return control;
   return { ...control, defaultValue: highest };
 }
 
 /**
- * 解析思考强度控制对象（渠道并行主入口）。
+ * 解析思考强度控制对象（唯一公共入口）。
  *
- * @param input 模型身份与渠道信息；adapterId 推荐传后端下发的 resolvedAdapterId
- *              （或设置页表单里用户显式选择的 modelAdapter）。
+ * 所有渠道返回的 options 都是统一五档；差异只体现在 `canDisable`
+ * 与 `kind`。哪一档对该模型真正可用由后端能力表在请求前映射。
  */
-export function resolveReasoningControl(input: ReasoningChannelInput): DeepSeekReasoningControl {
+export function resolveReasoningControl(input: ReasoningChannelInput): ReasoningControl {
   const channelId = normalizeAdapterId(
     typeof input.adapterId === 'string' ? input.adapterId : undefined
   );
 
-  if (channelId && HOST_CHANNEL_IDS.has(channelId)) {
-    const hostResolve = REASONING_CHANNELS[channelId];
-    const control = hostResolve?.(input) ?? sweepFamilies(input) ?? resolveGenericChannel(input);
-    return withHighestDefault(control);
+  // 1. 渠道身份已知：该渠道自决（渠道间零引用）。
+  if (channelId) {
+    const channel = REASONING_CHANNELS[channelId];
+    if (channel) {
+      const control = channel(input);
+      if (control) return control;
+      // 渠道明确表示"对该模型无思考语义"→ 中性兜底，不转交其他家族。
+      return withHighestDefault(resolveGenericChannel(input));
+    }
+    // 未注册的 adapterId：同样走中性兜底。
+    return withHighestDefault(resolveGenericChannel(input));
   }
 
-  if (channelId && FAMILY_CHANNEL_IDS.has(channelId)) {
-    const control = REASONING_CHANNELS[channelId]?.(input) ?? fallbackToggleOnly(input);
-    return withHighestDefault(control);
+  // 2. adapterId 缺失：按模型名定位唯一家族渠道（不再依次清扫）。
+  const family = matchModelFamily(channelModelId(input));
+  const familyChannelId = family ? FAMILY_CHANNEL_ID[family] : undefined;
+  if (familyChannelId) {
+    const control = REASONING_CHANNELS[familyChannelId]?.(input);
+    if (control) return control;
   }
 
-  // resolvedAdapterId 缺失：退回原判定链（行为与重构前完全一致）。
-  // 命中的控制对象同样应用最高档默认（方案 E）。
-  return withHighestDefault(legacyResolveControl(input));
+  // 3. 家族未识别 → 中性兜底。
+  return withHighestDefault(resolveGenericChannel(input));
 }
 
-/** 便捷判定：模型 ID 属于哪个家族（包含匹配）。 */
 export { matchModelFamily };
+export { toggleOnlyControl, unifiedControl };
+export type { ReasoningControl, ReasoningChannelInput, ReasoningLevel };

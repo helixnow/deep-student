@@ -173,18 +173,37 @@ impl RequestAdapter for ZhipuAdapter {
             if let Some(effort) = get_trimmed_effort(config) {
                 let effort_lower = effort.to_lowercase();
                 if is_glm53 {
-                    // 文档默认 max；medium/high 收敛为 high，minimal/low 为 low。
+                    // 文档默认 max；medium/high/xhigh 收敛为 high，minimal/low 为 low。
+                    //
+                    // 兜底规则（2026-10-03 修正）：关闭意图（none/unset）不能被
+                    // 抬到 max——GLM-5.3 强制思考不可关闭，应退**最低档 low**，
+                    // 否则"关闭思考"会被静默变成"最高强度思考"。
                     let normalized = match effort_lower.as_str() {
                         "minimal" | "low" => "low",
                         "medium" | "high" | "xhigh" => "high",
+                        "none" | "unset" | "off" | "disabled" => "low",
                         _ => "max",
                     };
+                    if !effort_lower.eq_ignore_ascii_case(normalized) {
+                        log::debug!(
+                            "[ZhipuAdapter] GLM-5.3 档位归一: {} -> {}（官方仅接受 low/high/max）: model={}",
+                            effort_lower,
+                            normalized,
+                            config.model
+                        );
+                    }
                     body.insert("reasoning_effort".to_string(), json!(normalized));
                 } else if matches!(
                     effort_lower.as_str(),
                     "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max"
                 ) {
                     body.insert("reasoning_effort".to_string(), json!(effort_lower));
+                } else {
+                    log::debug!(
+                        "[ZhipuAdapter] 未知 reasoning_effort 被忽略: {}: model={}",
+                        effort_lower,
+                        config.model
+                    );
                 }
             }
         }

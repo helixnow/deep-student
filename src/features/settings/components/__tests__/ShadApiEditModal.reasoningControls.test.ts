@@ -56,13 +56,15 @@ describe('ShadApiEditModal reasoning controls', () => {
     expect(source).toContain('disabled={!profileReasoningControl.canDisable}');
   });
 
-  it('materializes a provider default effort when a discrete thinking switch is enabled', () => {
+  it('keeps user-selected effort and budget untouched when toggling thinking on', () => {
     const source = readFileSync(
       resolve(process.cwd(), 'src/features/settings/components/ShadApiEditModal.tsx'),
       'utf8'
     );
 
-    expect(source).toContain('prev.reasoningEffort ?? normalized.reasoningEffort');
-    expect(source).toContain('prev.thinkingBudget ?? normalized.thinkingBudget');
+    // 统一五档（方案 F）：开启思考时保留用户已选的档位与预算原值，
+    // 不再经家族特定 resolver 重算（映射只在后端进行）。
+    expect(source).toContain('reasoningEffort: enabled ? prev.reasoningEffort : undefined');
+    expect(source).toContain('thinkingBudget: enabled ? prev.thinkingBudget : undefined');
   });
 });
