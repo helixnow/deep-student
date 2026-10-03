@@ -562,5 +562,4 @@ mod tests {
         assert!(!body2.contains_key("reasoning_effort"));
         assert_eq!(body2.get("thinking_budget"), Some(&json!(4096)));
     }
-
 }

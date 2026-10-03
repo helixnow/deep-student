@@ -447,5 +447,4 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
         assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
     }
-
 }

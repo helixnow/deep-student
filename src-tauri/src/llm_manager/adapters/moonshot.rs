@@ -478,7 +478,9 @@ impl RequestAdapter for MoonshotAdapter {
             body.remove("include_thoughts");
             body.insert(
                 "reasoning_effort".to_string(),
-                json!(Self::normalize_k3_effort(config.reasoning_effort.as_deref())),
+                json!(Self::normalize_k3_effort(
+                    config.reasoning_effort.as_deref()
+                )),
             );
             return true;
         }
@@ -1441,5 +1443,4 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
         assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
     }
-
 }

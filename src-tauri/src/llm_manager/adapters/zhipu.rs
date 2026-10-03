@@ -107,7 +107,10 @@ impl ZhipuAdapter {
     /// GLM-5.3 / 5.3-Flash / 5.3-FlashX：强制思考代际（不可 disabled，effort 仅 low/high/max）。
     fn is_glm53(model: &str) -> bool {
         let lower = model.trim().to_lowercase();
-        lower.rsplit('/').next().is_some_and(|seg| seg.starts_with("glm-5.3") || seg.starts_with("glm5.3"))
+        lower
+            .rsplit('/')
+            .next()
+            .is_some_and(|seg| seg.starts_with("glm-5.3") || seg.starts_with("glm5.3"))
     }
 }
 
@@ -142,7 +145,8 @@ impl RequestAdapter for ZhipuAdapter {
         let mut thinking_map = Map::new();
 
         if (can_think && !is_glm53) || config.supports_reasoning || is_glm53 {
-            let enable_thinking_value = is_glm53 || resolve_enable_thinking(config, enable_thinking);
+            let enable_thinking_value =
+                is_glm53 || resolve_enable_thinking(config, enable_thinking);
             let thinking_type = if enable_thinking_value {
                 "enabled"
             } else {
@@ -514,5 +518,4 @@ mod tests {
         let thinking = body.get("thinking").and_then(|v| v.as_object()).unwrap();
         assert_eq!(thinking.get("type"), Some(&json!("disabled")));
     }
-
 }
