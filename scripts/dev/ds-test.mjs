@@ -18,7 +18,7 @@
  *   fill <名称|css=…> <文本>              受控输入 + 回读校验
  *   send <文本>                           聊天输入框填入并发送，确认用户气泡出现
  *   answer <选项文本>                     回答提问卡片，确认后端收到
- *   select <文本> [--chars N]             在页面 / 同源 iframe 中选中含该文本的一段并触发划词
+ *   select <文本> [--chars N] [--within css=…]  在页面 / 同源 iframe 中选中可选中的一段文本并触发划词
  *   wait-text <文本> [--gone]             等页面（含 iframe）出现 / 消失某文本
  *   wait <css=…> [--enabled]              等元素出现（且可用）
  *   mark                                  记下后端日志当前位置（字节偏移）
@@ -140,14 +140,21 @@ if (window.__DS_TEST_VERSION__ !== __HELPER_VERSION__) {
     return el.value;
   };
   const allText = () => docs().map((d) => d.body ? d.body.innerText : '').join('\n');
-  const selectText = (text, chars) => {
+  const selectable = (el) => {
+    const cs = el.ownerDocument.defaultView.getComputedStyle(el);
+    return (cs.webkitUserSelect || cs.userSelect) !== 'none';
+  };
+  const selectText = (text, chars, within) => {
     for (const d of docs()) {
       const w = d.defaultView;
-      const walker = d.createTreeWalker(d.body, NodeFilter.SHOW_TEXT);
+      const root = within ? d.querySelector(within) : d.body;
+      if (!root) continue;
+      const walker = d.createTreeWalker(root, NodeFilter.SHOW_TEXT);
       let node;
       while ((node = walker.nextNode())) {
         const i = node.data.indexOf(text);
-        if (i < 0 || !visible(node.parentElement)) continue;
+        // 跳过不可见 / 不可选中的文本（列表、标签等 chrome 禁选，选了也是空选区）
+        if (i < 0 || !visible(node.parentElement) || !selectable(node.parentElement)) continue;
         const r = d.createRange();
         r.setStart(node, i);
         r.setEnd(node, Math.min(node.data.length, i + (chars || text.length)));
@@ -160,7 +167,7 @@ if (window.__DS_TEST_VERSION__ !== __HELPER_VERSION__) {
         return { ok: true, selected: s.toString(), inIframe: d !== document };
       }
     }
-    return { ok: false, error: '页面里没有可见文本「' + text + '」' };
+    return { ok: false, error: '页面里没有可见且可选中的文本「' + text + '」' };
   };
   window.__DS_TEST__ = { find, describe, setValue, allText, selectText, nameOf, visible };
   window.__DS_TEST_VERSION__ = __HELPER_VERSION__;
@@ -412,7 +419,7 @@ const commands = {
   async select() {
     const text = pos[0];
     if (!text) fail('缺少文本');
-    const r = await rpc(`return window.__DS_TEST__.selectText(${js(text)}, ${Number(flags.chars) || 0});`);
+    const r = await rpc(`return window.__DS_TEST__.selectText(${js(text)}, ${Number(flags.chars) || 0}, ${js(flags.within ? String(flags.within).replace(/^css=/, '') : null)});`);
     if (!r?.ok) fail(r?.error);
     done(r);
   },
