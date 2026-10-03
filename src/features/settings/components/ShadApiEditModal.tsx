@@ -470,6 +470,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           supportsReasoning: shouldReason,
           supportsTools: caps.functionCalling && !caps.embedding && !caps.rerank && !caps.imageModel,
           contextWindow: caps.contextWindow,
+          // 方案 E：注册表确认的模型最大输出直填最大输出上限（用户未手填时）
+          ...(caps.maxOutputTokens
+            ? { maxTokensLimit: caps.maxOutputTokens, maxOutputTokens: caps.maxOutputTokens }
+            : {}),
         };
         const lowerModel = currentModel.toLowerCase();
         const isGemini = next.modelAdapter === 'google' && lowerModel.includes('gemini');

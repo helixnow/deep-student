@@ -57,6 +57,7 @@ import {
   type DeepSeekReasoningOptionValue,
 } from '@/utils/deepseekReasoningControls';
 import { resolveReasoningControl } from '@/utils/reasoning';
+import { MAX_TOKENS_DEFAULT, MAX_TOKENS_LIMIT } from '@/features/chat/core/constants';
 
 /**
  * InputBarV2 - V2 输入栏入口组件
@@ -663,6 +664,42 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       thinkingBudget,
       thinkingControl.canDisable,
       thinkingControl.kind,
+    ]);
+
+    // 方案 E：会话最大输出跟随模型 —— 模型切换且用户未手动调整 maxTokens 时，
+    // 取注册表推断的模型最大输出（受 maxTokensLimit 夹紧）。用户一旦手调
+    //（当前值 != 上一次自动应用值且 != 全局默认 32768），不再自动改写。
+    const lastAutoMaxTokensRef = useRef<{ modelKey: string; value: number } | null>(null);
+    useEffect(() => {
+      const modelKey =
+        activeRuntimeModelInfo?.id ?? model2OverrideId ?? effectiveUnpinnedModelId ?? '';
+      if (!modelKey) return;
+      const modelMax =
+        typeof activeRuntimeModelInfo?.maxOutputTokens === 'number' && activeRuntimeModelInfo.maxOutputTokens > 0
+          ? activeRuntimeModelInfo.maxOutputTokens
+          : undefined;
+      if (!modelMax) return;
+      const current = store.getState().chatParams.maxTokens;
+      const prevApplied = lastAutoMaxTokensRef.current;
+      const untouched =
+        prevApplied === null
+          ? current === MAX_TOKENS_DEFAULT
+          : prevApplied.modelKey === modelKey || current === prevApplied.value || current === MAX_TOKENS_DEFAULT;
+      if (!untouched) return;
+      const clamped = Math.min(modelMax, MAX_TOKENS_LIMIT);
+      if (clamped > 0 && current !== clamped) {
+        lastAutoMaxTokensRef.current = { modelKey, value: clamped };
+        setChatParams({ maxTokens: clamped });
+      } else if (prevApplied?.modelKey !== modelKey) {
+        lastAutoMaxTokensRef.current = { modelKey, value: current };
+      }
+    }, [
+      activeRuntimeModelInfo?.id,
+      activeRuntimeModelInfo?.maxOutputTokens,
+      model2OverrideId,
+      effectiveUnpinnedModelId,
+      setChatParams,
+      store,
     ]);
 
     // 切换推理模式回调（使用 store.getState 避免闭包陈旧）

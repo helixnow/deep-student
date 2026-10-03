@@ -1,17 +1,17 @@
-// 渠道并行思考强度（方案 D，2026-10-03）。
+// 渠道并行思考强度（方案 D + 方案 E，2026-10-03）。
 //
 // 设计：每个渠道（= get_adapter 命中的适配器）一个独立的 resolve 函数，各自
 // 拥有档位表、默认档、canDisable 与强制思考名单；渠道之间零引用、互不覆盖。
-// 注册表（registry.ts）按 resolvedAdapterId 做 O(1) 字典查找，不再走
-// deepseekReasoningControls 里的顺序 if-else 判定链（那条链降级为
-// resolvedAdapterId 缺失时的兜底路径）。
+// 注册表（registry.ts）按 resolvedAdapterId 做 O(1) 字典查找。
 //
-// 渠道内允许存在"宿主/家族子变体"（如 Qwen 的 DashScope vs SiliconFlow 上限、
-// GLM-5.2 vs 5.3 强制思考），但分支只存在于本文件对应渠道内部。
+// 方案 E：家族识别与子型号识别全部改为**包含匹配**——
+// `codex666-glm-5.3-flash` 包含 "glm" → 智谱家族，包含 "5.3" → (5,3) 版本；
+// 中转站给模型 ID 加的任意前缀不再影响匹配。每个渠道先做家族门控
+//（matchModelFamily），再做渠道内子型号判定。
 //
-// 2026-10-03 官方文档调研结论（docs/dev/reasoning-intensity-refactor-plan §8）：
-// - Qwen3.8-Omni 系改用顶层 reasoning_effort（默认 xhigh，high/max→xhigh），
-//   与 thinking_budget 互斥（同发报错）；
+// 2026-10-03 官方文档调研结论（docs/dev/reasoning-intensity-refactor-plan §8/§10）：
+// - Qwen3.8 系（max/flash/27b/omni）顶层 reasoning_effort（low/medium/xhigh，
+//   默认 xhigh），与 thinking_budget 互斥；
 // - GLM-5.3/5.3-Flash/FlashX 强制思考不可关闭，effort 仅 low/high/max；
 // - Kimi K3 effort 开放 low/high/max（默认 max），始终思考；
 // - Grok 4.5+ 不可关闭，xhigh 仅 4.6+（4.5 静默按 high）；
@@ -23,41 +23,34 @@ import {
   ERNIE_EFFORT_OPTIONS,
   GPT56_EFFORT_OPTIONS,
   GLM_EFFORT_OPTIONS,
-  HIGH_ONLY_EFFORT_OPTIONS,
   LOW_HIGH_EFFORT_OPTIONS,
   LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
-  MEDIUM_HIGH_XHIGH_EFFORT_OPTIONS,
   MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
   OPENAI_CODEX_EFFORT_OPTIONS,
   QWEN_BUDGET_EFFORT_OPTIONS,
   V32_EFFORT_OPTIONS,
   V4_EFFORT_OPTIONS,
-  deepSeekV32EffortToBudget,
-  deepSeekV32BudgetToEffort,
   isClaudeAdaptiveModelId,
   isClaudeXHighEffortModelId,
   isClaudeAlwaysOnModelId,
-  isDeepSeekV32ModelId,
   isDeepSeekV4ModelId,
-  isErnieEffortModelId,
   isForcedThinkingModelId,
-  isGemini3FlashModelId,
-  isGlm52OrLaterModelId,
-  isGrok43OrLaterModelId,
-  isGrokMultiAgentModelId,
   isKimiK3OrLaterModelId,
   isLegacyKimiForcedThinkingModelId,
   isMistralEffortModelId,
   isOfficialDeepSeekEndpoint,
   isQwenForcedThinkingModelId,
-  isQwenHybridThinkingModelId,
-  normalizeDeepSeekV4Effort,
-  qwenEffortToBudget,
   resolveOpenAiEffortControl,
   type DeepSeekReasoningControl,
   type DeepSeekReasoningOption,
-  type DeepSeekReasoningOptionValue,
 } from '../deepseekReasoningControls';
+import {
+  extractModelVersion,
+  isGpt6ModelId,
+  matchModelFamily,
+  matchesOpenAiOSeries,
+  type ModelFamily,
+} from './modelFamily';
 
 /** 渠道解析入参；adapterId 为 get_adapter 解析结果（后端下发 / 设置页显式选择）。
  *  字段按 unknown 接收（与旧 DeepSeekRuntimeReasoningControlInput 一致，store 透传值
@@ -75,11 +68,18 @@ export interface ReasoningChannelInput {
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');
 
-const isSiliconFlowHost = (input: ReasoningChannelInput): boolean =>  // normalize 兼容 unknown
+const isSiliconFlowHost = (input: ReasoningChannelInput): boolean =>
   normalize(input.providerType) === 'siliconflow' ||
   normalize(input.providerScope) === 'siliconflow' ||
   normalize(input.baseUrl).includes('siliconflow.cn') ||
   normalize(input.baseUrl).includes('siliconflow.com');
+
+/** 渠道入口统一做的家族门控：模型 ID 必须包含本家族关键词（包含匹配）。 */
+function gate(input: ReasoningChannelInput, family: ModelFamily): string | null {
+  const model = normalize(input.model) || normalize(input.modelId);
+  if (!model) return null;
+  return matchModelFamily(model) === family ? model : null;
+}
 
 // ── Qwen 渠道 ────────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ const QWEN_SILICONFLOW_BUDGET_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
 ];
 
 // Qwen3.8 系（max/flash/27b/omni，2026-10 千问AI平台官方文档）：顶层
-// reasoning_effort 档位控制，可选 low/medium/xhigh（默认 xhigh）；
+// reasoning_effort 档位，可选 low/medium/xhigh（默认 xhigh）；
 // high/max 由服务端映射为 xhigh，none 表示关闭思考（canDisable）。
 // thinking_budget 虽仍文档化，但按产品规则降为兜底（未配置 effort 时由
 // 后端 qwen 适配器兜底发送），渠道档位只表达 effort。
@@ -103,19 +103,41 @@ const QWEN38_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'xhigh', labelKey: 'settings:api.modal.qwen.depth38.xhigh', defaultLabel: '超高 (默认)' },
 ];
 
-function isQwen38EffortModelId(modelId: string): boolean {
-  const id = normalize(modelId);
-  return /^qwen3[.-]8([.-]|$)/.test(id) || /^qwen\/qwen3[.-]8([.-]|$)/.test(id);
+/** qwen3.8 系（含 vendor 前缀/中转前缀，包含匹配）。 */
+function isQwen38ModelId(model: string): boolean {
+  return model.includes('qwen3.8');
 }
 
 /** qwen3.8-2.4t-a95b 等纯推理型号：始终思考不可关闭。 */
-function isQwen38PureThinkingModelId(modelId: string): boolean {
-  const id = normalize(modelId);
-  return /^qwen3[.-]8[.-]2[.-]4t/.test(id);
+function isQwen38PureThinkingModelId(model: string): boolean {
+  return model.includes('qwen3.8') && model.includes('2.4t');
+}
+
+/**
+ * Qwen 混合思考模型（3.7 及更早）：包含式版本 (3,5)~(3,7) 的非 thinking/instruct
+ * 变体、qwen-plus/turbo/flash 商业系、qwen3-max 非 preview。
+ * （3.8 系已先行分流到 qwen-effort，不进入本判定。）
+ */
+function isQwenHybridModelId(model: string): boolean {
+  if (model.includes('coder')) return false;
+  if (model.includes('qwen-plus') || model.includes('qwen-turbo') || model.includes('qwen-flash')) {
+    return true;
+  }
+  const version = extractModelVersion(model);
+  if (version && version[0] === 3) {
+    const [, minor] = version;
+    if (model.includes('thinking') || model.includes('instruct')) return false;
+    // 3.5/3.6/3.7 混合思考；3.8 系已在上游分流到 effort 档位
+    if (minor >= 5 && minor <= 7) return true;
+    return false;
+  }
+  // qwen3-max 非 preview（无 x.y 版本号的 3 代 max）
+  if (model.includes('qwen3-max') && !model.includes('preview')) return true;
+  return false;
 }
 
 export function resolveQwenChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'qwen');
   if (!model) return null;
 
   // 强制思考：QwQ / qwen3.7-max-preview（含日期变体）/ qwen3 *-thinking /
@@ -125,7 +147,7 @@ export function resolveQwenChannel(input: ReasoningChannelInput): DeepSeekReason
   }
 
   // Qwen3.8 系（max/flash/27b/omni）：reasoning_effort 档位，不发 thinking_budget。
-  if (isQwen38EffortModelId(model)) {
+  if (isQwen38ModelId(model)) {
     return {
       kind: 'qwen-effort',
       options: QWEN38_EFFORT_OPTIONS,
@@ -134,10 +156,9 @@ export function resolveQwenChannel(input: ReasoningChannelInput): DeepSeekReason
     };
   }
 
-  // 混合思考（3.7 及更早）：qwen3.5/3.6/3.7 非 thinking 变体、
-  // qwen-plus/turbo/flash、qwen3-max 非 preview。SiliconFlow 宿主用宿主档位表
-  // （上限 32768）；这些型号官方文档未开放 reasoning_effort，仍走 thinking_budget。
-  if (isQwenHybridThinkingModelId(model)) {
+  // 混合思考（3.7 及更早）。SiliconFlow 宿主用宿主档位表（上限 32768）；
+  // 这些型号官方文档未开放 reasoning_effort，仍走 thinking_budget。
+  if (isQwenHybridModelId(model)) {
     const siliconflow = isSiliconFlowHost(input);
     return {
       kind: 'qwen-budget-effort',
@@ -150,28 +171,19 @@ export function resolveQwenChannel(input: ReasoningChannelInput): DeepSeekReason
   return null;
 }
 
-// ── OpenAI 渠道（gpt-5.x / o 系列 / codex / gpt-oss / gpt-6 系）───────────
-
-function isOpenAiGpt6ModelId(modelId: string): boolean {
-  const id = normalize(modelId);
-  return /(?:^|[/_-])gpt-?6(?:[.\-_/]|$)/.test(id);
-}
+// ── OpenAI 渠道（gpt-5.x / gpt-6 系 / o 系列 / codex / gpt-oss）───────────
 
 export function resolveOpenAiChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'openai');
   if (!model) return null;
   // gpt-6 系（sol/luna/astra）：reasoning_effort 仍是控制参数（2026-10 调研），
-  // 档位按 gpt-5.6 同构处理（low..max）；Astra 工具调用需 Responses 协议，
-  // 与思考强度无关，不在本渠道处理。
-  if (isOpenAiGpt6ModelId(model)) {
+  // 档位按 gpt-5.6 同构处理（low..max）。
+  if (isGpt6ModelId(model)) {
     return { kind: 'openai-effort', options: GPT56_EFFORT_OPTIONS, canDisable: true };
   }
-  if (
-    /(?:^|[/_-])gpt-5(?:[.\-_/]|$)/.test(model) ||
-    /(?:^|[/_-])o[134](?:[.\-_/]|$)/.test(model) ||
-    /(?:^|[/_-])gpt-oss(?:[.\-_/]|$)/.test(model) ||
-    /(?:^|[/_-])codex-mini(?:[.\-_/]|$)/.test(model)
-  ) {
+  // o 系列保持词边界特例（裸包含误报率过高）；gpt-5.x/codex/gpt-oss 的
+  // 边界正则在中转前缀 ID 上同样命中（包含语义）。
+  if (matchesOpenAiOSeries(model) || model.includes('gpt-5') || model.includes('gpt-oss') || model.includes('codex')) {
     return resolveOpenAiEffortControl(model);
   }
   return null;
@@ -180,7 +192,7 @@ export function resolveOpenAiChannel(input: ReasoningChannelInput): DeepSeekReas
 // ── DeepSeek 渠道 ────────────────────────────────────────────────────────
 
 export function resolveDeepSeekChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'deepseek');
   if (!model) return null;
   if (isDeepSeekV4ModelId(model)) {
     return {
@@ -190,7 +202,7 @@ export function resolveDeepSeekChannel(input: ReasoningChannelInput): DeepSeekRe
       isOfficialDeepSeek: isOfficialDeepSeekEndpoint(input),
     };
   }
-  if (isDeepSeekV32ModelId(model)) {
+  if (model.includes('deepseek-v3.2')) {
     return { kind: 'v32-budget-effort', options: V32_EFFORT_OPTIONS, canDisable: true };
   }
   if (isForcedThinkingModelId(model)) {
@@ -202,7 +214,7 @@ export function resolveDeepSeekChannel(input: ReasoningChannelInput): DeepSeekRe
 
 // ── Gemini 渠道 ──────────────────────────────────────────────────────────
 
-function getGemini3DefaultEffort(modelId: string): DeepSeekReasoningOptionValue {
+function getGemini3DefaultEffort(modelId: string): DeepSeekReasoningOption['value'] {
   // flash-lite 必须先于 flash 匹配（子串包含关系，与后端 gemini.rs 对齐）。
   if (modelId.includes('flash-lite')) return 'minimal';
   // 2026-10 官方默认表：3.8-flash/3.7-flash/3.5-flash 默认 medium（动态）。
@@ -212,10 +224,10 @@ function getGemini3DefaultEffort(modelId: string): DeepSeekReasoningOptionValue 
 }
 
 export function resolveGeminiChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'gemini');
   if (!model) return null;
-  if (/gemini-?3/.test(model)) {
-    const isFlash = isGemini3FlashModelId(model);
+  if (model.includes('gemini-3') || model.includes('gemini3')) {
+    const isFlash = model.includes('flash');
     return {
       kind: isFlash ? 'gemini-flash-effort' : 'gemini-pro-effort',
       options: isFlash ? MINIMAL_LOW_MEDIUM_HIGH_EFFORT_OPTIONS : LOW_HIGH_EFFORT_OPTIONS,
@@ -232,7 +244,7 @@ export function resolveGeminiChannel(input: ReasoningChannelInput): DeepSeekReas
 // ── Claude 渠道 ──────────────────────────────────────────────────────────
 
 export function resolveClaudeChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'claude');
   if (!model || !isClaudeAdaptiveModelId(model)) return null;
   return {
     kind: 'anthropic-adaptive-effort',
@@ -245,16 +257,12 @@ export function resolveClaudeChannel(input: ReasoningChannelInput): DeepSeekReas
 
 // ── 智谱 GLM 渠道 ────────────────────────────────────────────────────────
 
-function isGlm53ModelId(modelId: string): boolean {
-  return /glm-?5[.-]3/.test(normalize(modelId));
-}
-
-export function resolveZhipuChannel(input: ReasoningInputForZhipu): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+export function resolveZhipuChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
+  const model = gate(input, 'zhipu');
   if (!model) return null;
   // GLM-5.3/5.3-Flash/FlashX：强制思考不可关闭，effort 仅 low/high/max
   //（2026-10 官方文档；其余取值直接报错）。
-  if (isGlm53ModelId(model)) {
+  if (model.includes('5.3')) {
     return {
       kind: 'glm-effort',
       options: [
@@ -266,51 +274,40 @@ export function resolveZhipuChannel(input: ReasoningInputForZhipu): DeepSeekReas
       defaultValue: 'max',
     };
   }
-  if (isGlm52OrLaterModelId(model)) {
+  // GLM-5.2 及以上（包含式版本提取，不锚定前缀）。
+  const version = extractModelVersion(model);
+  if (version && (version[0] > 5 || (version[0] === 5 && version[1] >= 2))) {
     return { kind: 'glm-effort', options: GLM_EFFORT_OPTIONS, canDisable: true };
   }
   return null;
 }
 
-type ReasoningInputForZhipu = ReasoningChannelInput;
-
 // ── Grok 渠道 ────────────────────────────────────────────────────────────
 
-function isGrok46OrLaterModelId(modelId: string): boolean {
-  const version = normalize(modelId).match(/grok-?[.-]?(\d+)(?:[.-](\d+))?/);
-  if (!version) return false;
-  const major = Number(version[1]);
-  const minor = Number(version[2] ?? 0);
-  return major > 4 || (major === 4 && minor >= 6);
-}
-
-function isGrok45OrLaterModelId(modelId: string): boolean {
-  const version = normalize(modelId).match(/grok-?[.-]?(\d+)(?:[.-](\d+))?/);
-  if (!version) return false;
-  const major = Number(version[1]);
-  const minor = Number(version[2] ?? 0);
-  return major > 4 || (major === 4 && minor >= 5);
-}
-
 export function resolveGrokChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'grok');
   if (!model) return null;
-  if (isGrokMultiAgentModelId(model)) {
+  if (model.includes('grok-4.20') && model.includes('multi-agent')) {
     return { kind: 'grok-effort', options: OPENAI_CODEX_EFFORT_OPTIONS, canDisable: false };
   }
-  if (isGrok45OrLaterModelId(model)) {
-    // 2026-10 官方文档：4.5/4.6/4.7 思考不可关闭；xhigh 仅 4.6+（4.5 静默按 high）。
-    return {
-      kind: 'grok-effort',
-      options: isGrok46OrLaterModelId(model)
-        ? [...LOW_MEDIUM_HIGH_EFFORT_OPTIONS, { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' }]
-        : LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
-      canDisable: false,
-      defaultValue: 'high',
-    };
-  }
-  if (isGrok43OrLaterModelId(model)) {
-    return { kind: 'grok-effort', options: LOW_MEDIUM_HIGH_EFFORT_OPTIONS, canDisable: true };
+  const version = extractModelVersion(model);
+  if (version) {
+    const [major, minor] = version;
+    if (major > 4 || (major === 4 && minor >= 5)) {
+      // 2026-10 官方文档：4.5/4.6/4.7 思考不可关闭；xhigh 仅 4.6+（4.5 静默按 high）。
+      return {
+        kind: 'grok-effort',
+        options:
+          major > 4 || minor >= 6
+            ? [...LOW_MEDIUM_HIGH_EFFORT_OPTIONS, { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' }]
+            : LOW_MEDIUM_HIGH_EFFORT_OPTIONS,
+        canDisable: false,
+        defaultValue: 'high',
+      };
+    }
+    if (major === 4 && minor >= 3) {
+      return { kind: 'grok-effort', options: LOW_MEDIUM_HIGH_EFFORT_OPTIONS, canDisable: true };
+    }
   }
   return null;
 }
@@ -318,9 +315,8 @@ export function resolveGrokChannel(input: ReasoningChannelInput): DeepSeekReason
 // ── Moonshot Kimi 渠道 ───────────────────────────────────────────────────
 
 export function resolveMoonshotChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'moonshot');
   if (!model) return null;
-  if (!model.includes('kimi') && !model.includes('moonshot')) return null;
   if (isKimiK3OrLaterModelId(model)) {
     // 2026-10 官方文档：K3 始终思考，effort 可选 low/high/max（默认 max）。
     return {
@@ -343,22 +339,22 @@ export function resolveMoonshotChannel(input: ReasoningChannelInput): DeepSeekRe
 // ── Mistral / ERNIE 渠道 ─────────────────────────────────────────────────
 
 export function resolveMistralChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
+  const model = gate(input, 'mistral');
   if (!model || !isMistralEffortModelId(model)) return null;
   return { kind: 'mistral-effort', options: LOW_MEDIUM_HIGH_EFFORT_OPTIONS, canDisable: true };
 }
 
 export function resolveErnieChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
-  if (!model || !isErnieEffortModelId(model)) return null;
+  const model = gate(input, 'ernie');
+  if (!model || !(model.includes('ernie-5') || model.includes('ernie-x1'))) return null;
   return { kind: 'ernie-effort', options: ERNIE_EFFORT_OPTIONS, canDisable: true };
 }
 
 // ── SiliconFlow 宿主渠道（generic 适配器 + SiliconFlow 宿主的非 DeepSeek/Qwen 家族）──
 
 export function resolveSiliconFlowChannel(input: ReasoningChannelInput): DeepSeekReasoningControl | null {
-  const model = normalize(input.model) || normalize(input.modelId);
   if (!isSiliconFlowHost(input)) return null;
+  const model = normalize(input.model) || normalize(input.modelId);
   // SiliconFlow 宿主方言：enable_thinking + thinking_budget（官方范围 128–32768），
   // 档位尺度为本宿主自有（2048/8192/16384/32768），不借用 DeepSeek V3.2 语义。
   if (isForcedThinkingModelId(model)) {
@@ -393,7 +389,7 @@ export function resolveGenericChannel(input: ReasoningChannelInput): DeepSeekRea
 /**
  * 渠道注册表：键为 get_adapter 命中的适配器 id（含注册表别名，统一在
  * normalizeAdapterId 收敛到主 id）。渠道解析返回 null 表示该渠道对当前
- * 模型没有思考强度语义，由调用方回退到 legacy 链或 generic。
+ * 模型没有思考强度语义，由调用方回退（家族渠道→仅开关，宿主渠道→generic）。
  */
 export type ReasoningChannel = (input: ReasoningChannelInput) => DeepSeekReasoningControl | null;
 
