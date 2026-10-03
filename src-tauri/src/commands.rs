@@ -2454,6 +2454,8 @@ fn vendor_models_endpoint(
     provider_type: &str,
     api_protocol: Option<&str>,
 ) -> Result<(url::Url, &'static str)> {
+    // Ollama 根地址（:11434）补成 /v1，模型列表走 /v1/models（#384）
+    let base_url = crate::providers::normalize_ollama_root_base_url(base_url);
     let mut url = url::Url::parse(base_url.trim())
         .map_err(|_| AppError::validation("供应商 Base URL 无效"))?;
     if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
@@ -4869,12 +4871,28 @@ mod tests {
         build_chat_probe_body, build_provider_adapter, classify_probe_http_failure,
         compare_template_version, decide_builtin_import_action, extract_template_field_refs,
         inspect_probe_buffer, is_openai_codex_oauth_test, probe_u32_field, resolve_test_model_kind,
-        should_update_builtin_template, validate_template_request, BuiltinImportAction,
-        ProbeVerdict, TestModelKind, PROBE_CONTEXT_WINDOW_KEYS, PROBE_MAX_OUTPUT_KEYS,
+        should_update_builtin_template, validate_template_request, vendor_models_endpoint,
+        BuiltinImportAction, ProbeVerdict, TestModelKind, PROBE_CONTEXT_WINDOW_KEYS,
+        PROBE_MAX_OUTPUT_KEYS,
     };
     use crate::llm_manager::{ApiConfig, VendorConfig, AUTH_MODE_OPENAI_CODEX_OAUTH};
     use serde_json::json;
     use std::cmp::Ordering;
+
+    #[test]
+    fn ollama_root_base_url_lists_models_under_v1() {
+        // #384：Ollama 根地址（:11434，无路径）补成 /v1，不再请求 404 的 /models
+        for base in ["http://localhost:11434", "http://127.0.0.1:11434/"] {
+            let (url, kind) = vendor_models_endpoint(base, "openai", None).unwrap();
+            assert_eq!(url.path(), "/v1/models", "base={base}");
+            assert_eq!(kind, "openai");
+        }
+        // 已带 /v1 或非 Ollama 端口：原样
+        let (url, _) = vendor_models_endpoint("http://localhost:11434/v1", "openai", None).unwrap();
+        assert_eq!(url.path(), "/v1/models");
+        let (url, _) = vendor_models_endpoint("http://localhost:8080", "openai", None).unwrap();
+        assert_eq!(url.path(), "/models");
+    }
 
     #[test]
     fn compare_template_version_handles_semver_like_versions() {

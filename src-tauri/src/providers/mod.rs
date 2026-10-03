@@ -104,7 +104,26 @@ impl OpenAIAdapter {
     }
 }
 
+/// Ollama 默认端口（11434）的根地址补成 `/v1`（#384）：用户常把 Base URL 填成
+/// `http://localhost:11434`，而 Ollama 的 OpenAI 兼容端点在 `/v1` 下——对话请求
+/// `/chat/completions` 与模型列表 `/models` 都会 404。只处理「端口 11434 且路径为空」，
+/// 其它地址原样返回。
+pub(crate) fn normalize_ollama_root_base_url(base_url: &str) -> std::borrow::Cow<'_, str> {
+    let trimmed = base_url.trim();
+    let Ok(mut url) = url::Url::parse(trimmed) else {
+        return std::borrow::Cow::Borrowed(base_url);
+    };
+    let is_root_path = matches!(url.path(), "" | "/");
+    if url.port() == Some(11434) && is_root_path && url.query().is_none() {
+        url.set_path("/v1");
+        return std::borrow::Cow::Owned(url.as_str().trim_end_matches('/').to_string());
+    }
+    std::borrow::Cow::Borrowed(base_url)
+}
+
 fn openai_endpoint_url(base_url: &str, endpoint: &str) -> String {
+    let base_url = normalize_ollama_root_base_url(base_url);
+    let base_url = base_url.as_ref();
     let tail_start = base_url.find(['?', '#']).unwrap_or(base_url.len());
     let (base_path, tail) = base_url.split_at(tail_start);
     let base_path = base_path.trim_end_matches('/');
@@ -3898,10 +3917,37 @@ mod wave2_a_prefix_snapshot_tests;
 #[cfg(test)]
 mod tests {
     use super::{
+        normalize_ollama_root_base_url, openai_endpoint_url,
         build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,
         sanitize_openai_request_body, AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter,
         ProviderAdapter, StreamEvent,
     };
+
+    #[test]
+    fn ollama_root_base_url_routes_chat_under_v1() {
+        // #384：Ollama 根地址补成 /v1
+        assert_eq!(
+            openai_endpoint_url("http://localhost:11434", "chat/completions"),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            openai_endpoint_url("http://127.0.0.1:11434/", "chat/completions"),
+            "http://127.0.0.1:11434/v1/chat/completions"
+        );
+        // 已带路径 / 非 11434 端口：原样
+        assert_eq!(
+            openai_endpoint_url("http://localhost:11434/v1", "chat/completions"),
+            "http://localhost:11434/v1/chat/completions"
+        );
+        assert_eq!(
+            normalize_ollama_root_base_url("https://proxy.example.com"),
+            "https://proxy.example.com"
+        );
+        assert_eq!(
+            normalize_ollama_root_base_url("http://localhost:11434/api"),
+            "http://localhost:11434/api"
+        );
+    }
     use serde_json::{json, Value};
 
     #[test]
