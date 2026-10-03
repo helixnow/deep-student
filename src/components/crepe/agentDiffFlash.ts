@@ -57,6 +57,8 @@ export function extractFlashSnippet(lineText: string, maxLength = 48): string {
   // 行内标记
   text = text.replace(/(\*\*|__|~~|`)/g, '');
   text = text.replace(/(^|\s)\*([^*]+)\*(?=\s|$)/g, '$1$2');
+  // 序列化时转义的 ASCII 标点（\[ \] \* \_ …）在文档 textContent 里是原字符
+  text = text.replace(/\\([!-/:-@[-`{-~])/g, '$1');
   text = text.trim();
   if (text.length > maxLength) text = text.slice(0, maxLength).trim();
   return text.length >= 3 ? text : '';

@@ -46,6 +46,13 @@ describe('extractFlashSnippet', () => {
     );
   });
 
+  it('还原 Markdown 转义的标点，片段与文档 textContent 一致', () => {
+    expect(extractFlashSnippet('1. 形式化证明：结论可机器检查 \\[搜索-1\\]\\[搜索-2\\]')).toBe(
+      '形式化证明：结论可机器检查 [搜索-1][搜索-2]',
+    );
+    expect(extractFlashSnippet('- 用 \\*号 标注的 a\\_b 写法')).toBe('用 *号 标注的 a_b 写法');
+  });
+
   it('过短片段视为不可靠 → 空串', () => {
     expect(extractFlashSnippet('- a')).toBe('');
     expect(extractFlashSnippet('')).toBe('');
