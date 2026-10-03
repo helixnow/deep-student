@@ -116,8 +116,10 @@ function dispatchPdfFocus(sourceId: string, pageNumber: number, quote?: string):
 export const WorkbenchEventBridge: React.FC = () => {
   useEffect(() => {
     const onNavigateToSession = (e: Event) => {
-      const sessionId = (e as CustomEvent<{ sessionId?: string }>).detail?.sessionId;
-      if (!sessionId) return;
+      const detail = (e as CustomEvent<{ sessionId?: string; syncOnly?: boolean }>).detail;
+      const sessionId = detail?.sessionId;
+      // 仅同步当前会话（如外部引用前确保有活动会话）：不打开 / 聚焦对话窗口
+      if (!sessionId || detail?.syncOnly) return;
       workbenchBus.launch({ typeId: CHAT_APP_TYPE_ID, instanceKey: sessionId, reason: 'api' });
     };
 

@@ -111,8 +111,10 @@ export async function ensureActiveChatSession(): Promise<string | null> {
       sessionManager.setCurrentSessionId(session.id);
 
       // 聊天页已挂载时同步其 React 状态（会话列表 + 当前会话）；未挂载时无监听者
+      // syncOnly：只同步状态、不是「去对话」——学习桌面的事件桥据此不拉起对话窗口
+      //（否则在 PDF 里第一次划词「添加到聊天」，对话窗口直接盖住正在读的文档，之后再加又不会）
       window.dispatchEvent(new CustomEvent('navigate-to-session', {
-        detail: { sessionId: session.id },
+        detail: { sessionId: session.id, syncOnly: true },
       }));
 
       console.log(LOG_PREFIX, 'Activated session for external reference:', session.id);

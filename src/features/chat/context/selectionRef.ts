@@ -23,6 +23,8 @@ import type { ContextRef } from '@/features/chat/resources/types';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useViewStore } from '@/stores/viewStore';
 import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { useWindowStore } from '@/features/workbench/core/windowStore';
 import { SELECTION_TYPE_ID } from './definitions/selection';
 
 // ============================================================================
@@ -109,6 +111,14 @@ export function serializeSelectionRefData(data: SelectionRefData): string {
   return JSON.stringify({ ...data, text });
 }
 
+/** 学习桌面里最前面的窗口是不是对话窗口 */
+function isChatWindowFocused(): boolean {
+  const { windows, focusStack } = useWindowStore.getState();
+  const topId = focusStack[focusStack.length - 1];
+  const typeId = topId ? windows[topId]?.typeId : undefined;
+  return typeId === 'chat' || typeId === 'chat-session';
+}
+
 /** 切到聊天页并打开指定会话（聊天页可能尚未挂载：延迟重发，setCurrentSessionId 幂等） */
 function openChatSession(sessionId: string): void {
   dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'chat-v2' });
@@ -178,7 +188,10 @@ export async function selectionToChat(
 
     // 从学习资源等页面引用时，引用进的是当前会话或隐藏草稿——提示里给「去对话」直达那一个会话；
     // 否则用户从侧栏点进别的会话找不到这条引用，它过后又冒在不相干的新会话里
-    const notInChat = useViewStore.getState().currentView !== 'chat-v2';
+    // 学习桌面：视图恒为 chat-v2，按「对话窗口是否在最前」判断（PDF 等窗口里引用时要给「去对话」）
+    const notInChat = workbenchBus.isEnabled()
+      ? !isChatWindowFocused()
+      : useViewStore.getState().currentView !== 'chat-v2';
     showGlobalNotification(
       'success',
       t('selectionRef.added', { defaultValue: '已引用到对话' }, 'chatV2'),
