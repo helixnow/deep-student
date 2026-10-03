@@ -136,7 +136,9 @@ pub(crate) fn is_usable_text_embedding(config: &ApiConfig) -> bool {
 
 fn warn_once_for_unusable_default(id: &str) -> bool {
     static LAST_WARNED: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-    let mut last = LAST_WARNED.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let mut last = LAST_WARNED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if last.as_deref() == Some(id) {
         return false;
     }

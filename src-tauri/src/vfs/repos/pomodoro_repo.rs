@@ -476,7 +476,9 @@ impl VfsPomodoroRepo {
             "#,
         )?;
         let rows: Vec<(String, i64)> = stmt
-            .query_map(params![start_utc, end_utc], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .query_map(params![start_utc, end_utc], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })?
             .filter_map(log_and_skip_err)
             .collect();
         let mut by_date = std::collections::BTreeMap::new();
@@ -488,7 +490,9 @@ impl VfsPomodoroRepo {
             if date < start || date >= end_exclusive {
                 continue;
             }
-            *by_date.entry(date.format("%Y-%m-%d").to_string()).or_insert(0) += actual_duration.max(0);
+            *by_date
+                .entry(date.format("%Y-%m-%d").to_string())
+                .or_insert(0) += actual_duration.max(0);
         }
         Ok(by_date)
     }
@@ -1120,7 +1124,8 @@ mod tests {
         let mut interrupted = record_params(None, "work", "interrupted");
         interrupted.actual_duration = 600;
         VfsPomodoroRepo::create_record(&db, interrupted).unwrap();
-        VfsPomodoroRepo::create_record(&db, record_params(None, "short_break", "completed")).unwrap();
+        VfsPomodoroRepo::create_record(&db, record_params(None, "short_break", "completed"))
+            .unwrap();
 
         let today = chrono::Local::now().date_naive();
         let conn = db.get_conn_safe().unwrap();
@@ -1130,7 +1135,10 @@ mod tests {
             today + chrono::Duration::days(1),
         )
         .unwrap();
-        assert_eq!(by_date.get(&today.format("%Y-%m-%d").to_string()), Some(&2100));
+        assert_eq!(
+            by_date.get(&today.format("%Y-%m-%d").to_string()),
+            Some(&2100)
+        );
 
         let yesterday_only = VfsPomodoroRepo::focus_seconds_by_local_date(
             &conn,

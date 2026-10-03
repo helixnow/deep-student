@@ -3030,10 +3030,17 @@ fn start_vfs_index_worker(
         let mut last_embedding_unconfigured_log: Option<std::time::Instant> = None;
         // 嵌入可用性的上一次观测：None=尚未观测；变为可用（含启动后首次可用）时复活配置类失败项
         let mut embedding_was_configured: Option<bool> = None;
-        match crate::vfs::repos::embedding_repo::VfsIndexStateRepo::requeue_paged_pdfs_once(&vfs_db) {
+        match crate::vfs::repos::embedding_repo::VfsIndexStateRepo::requeue_paged_pdfs_once(&vfs_db)
+        {
             Ok(0) => {}
-            Ok(n) => tracing::info!("[VfsIndexWorker] Requeued {} multi-page PDFs for per-page indexing", n),
-            Err(error) => tracing::warn!("[VfsIndexWorker] Paged PDF requeue migration failed: {}", error),
+            Ok(n) => tracing::info!(
+                "[VfsIndexWorker] Requeued {} multi-page PDFs for per-page indexing",
+                n
+            ),
+            Err(error) => tracing::warn!(
+                "[VfsIndexWorker] Paged PDF requeue migration failed: {}",
+                error
+            ),
         }
         loop {
             if crate::background_tasks::BACKGROUND_TASKS.is_closed() {
@@ -3124,7 +3131,10 @@ fn start_vfs_index_worker(
                 }
                 // 未配置嵌入也先建好文本 Units，让关键词检索立刻可用
                 if let Err(error) = full.prepare_units_without_embedding(config.batch_size) {
-                    tracing::warn!("[VfsIndexWorker] Preparing units without embedding failed: {}", error);
+                    tracing::warn!(
+                        "[VfsIndexWorker] Preparing units without embedding failed: {}",
+                        error
+                    );
                 }
                 if let Err(error) = full.drain_lance_orphan_queue(200).await {
                     // Deletion compensation itself does not require an embedding provider.

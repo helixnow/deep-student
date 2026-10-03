@@ -572,7 +572,10 @@ pub async fn textbooks_add(
                     let message = e.to_string();
                     let transient = message.contains("locked") || message.contains("busy");
                     if transient && create_attempt < 4 {
-                        tokio::time::sleep(std::time::Duration::from_millis(250 * create_attempt as u64)).await;
+                        tokio::time::sleep(std::time::Duration::from_millis(
+                            250 * create_attempt as u64,
+                        ))
+                        .await;
                         continue;
                     }
                     warn!("[Textbooks] 入库失败，跳过 {}: {}", file_name, message);

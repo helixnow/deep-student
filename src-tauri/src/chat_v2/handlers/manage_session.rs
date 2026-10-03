@@ -2252,7 +2252,6 @@ mod tests {
     }
 }
 
-
 /// 讨论过某份资料的会话（资料侧反查「相关对话」）。
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2265,7 +2264,10 @@ pub struct SessionReferencingResource {
 }
 
 fn like_contains(needle: &str) -> String {
-    let escaped = needle.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+    let escaped = needle
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_");
     format!("%{escaped}%")
 }
 
@@ -2308,7 +2310,9 @@ pub(crate) fn list_sessions_referencing(
             let hit = row?;
             match by_session.get(&hit.session_id) {
                 Some(existing) if existing.last_referenced_at >= hit.last_referenced_at => {}
-                _ => { by_session.insert(hit.session_id.clone(), hit); }
+                _ => {
+                    by_session.insert(hit.session_id.clone(), hit);
+                }
             }
         }
     }
@@ -2325,8 +2329,12 @@ pub async fn chat_v2_list_sessions_referencing(
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<Vec<SessionReferencingResource>, String> {
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
-    list_sessions_referencing(&conn, &source_ids, limit.unwrap_or(20).clamp(1, 100) as usize)
-        .map_err(|e| e.to_string())
+    list_sessions_referencing(
+        &conn,
+        &source_ids,
+        limit.unwrap_or(20).clamp(1, 100) as usize,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -2355,15 +2363,16 @@ mod referencing_tests {
     }
 }
 
-
 /// 会话检索范围（学习者选定的课程/文件夹）：知识库检索的硬过滤，见 builtin_retrieval_executor。
 #[tauri::command]
 pub async fn chat_v2_get_rag_scope(
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<Vec<String>, String> {
-    Ok(crate::chat_v2::tools::builtin_retrieval_executor::load_session_rag_scope(&db, &session_id)
-        .unwrap_or_default())
+    Ok(
+        crate::chat_v2::tools::builtin_retrieval_executor::load_session_rag_scope(&db, &session_id)
+            .unwrap_or_default(),
+    )
 }
 
 #[tauri::command]
@@ -2372,8 +2381,16 @@ pub async fn chat_v2_set_rag_scope(
     folder_ids: Vec<String>,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<(), String> {
-    let ids: Vec<String> = folder_ids.into_iter().map(|id| id.trim().to_string()).filter(|id| !id.is_empty()).collect();
-    let value = if ids.is_empty() { None } else { Some(serde_json::to_string(&ids).map_err(|e| e.to_string())?) };
+    let ids: Vec<String> = folder_ids
+        .into_iter()
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+        .collect();
+    let value = if ids.is_empty() {
+        None
+    } else {
+        Some(serde_json::to_string(&ids).map_err(|e| e.to_string())?)
+    };
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO chat_v2_session_state (session_id, rag_library_ids_json, updated_at)

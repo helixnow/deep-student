@@ -3350,7 +3350,10 @@ impl ChatAnkiToolExecutor {
                     result.enqueued
                 }
                 Err(error) => {
-                    log::warn!("[ChatAnkiToolExecutor] add_cards 自动加入复习失败: {}", error);
+                    log::warn!(
+                        "[ChatAnkiToolExecutor] add_cards 自动加入复习失败: {}",
+                        error
+                    );
                     0
                 }
             }
@@ -9250,7 +9253,11 @@ impl RoutePlan {
 /// 规模指标用的全文：内联文本 + 引用文件的提取文本（各自封顶，防超大资料拖慢分析）。
 const ANALYZE_METRICS_MAX_CHARS: usize = 200_000;
 
-fn collect_ref_text_for_metrics(conn: &Connection, ref_data: &VfsContextRefData, content: &str) -> String {
+fn collect_ref_text_for_metrics(
+    conn: &Connection,
+    ref_data: &VfsContextRefData,
+    content: &str,
+) -> String {
     let mut out = content.trim().to_string();
     for r in ref_data.refs.iter() {
         let remaining = ANALYZE_METRICS_MAX_CHARS.saturating_sub(out.chars().count());

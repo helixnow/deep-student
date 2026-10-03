@@ -201,7 +201,14 @@ impl ReviewPlanService {
         time_spent_seconds: Option<u32>,
         expected_updated_at: Option<&str>,
     ) -> Result<ProcessReviewResult> {
-        self.process_review_impl(plan_id, quality, user_answer, time_spent_seconds, expected_updated_at, true)
+        self.process_review_impl(
+            plan_id,
+            quality,
+            user_answer,
+            time_spent_seconds,
+            expected_updated_at,
+            true,
+        )
     }
 
     /// 练习中答对一道到期题：推进复习计划，但不再记掌握度（答题本身已记过一次，避免双计）。
@@ -241,13 +248,14 @@ impl ReviewPlanService {
         }
 
         // 题目标签（掌握度的知识点归属）：在写事务开始前读取，避免事务内再占一个连接
-        let question_tags: Option<Vec<String>> = crate::vfs::repos::question_repo::VfsQuestionRepo::get_question(
-            &self.vfs_db,
-            &plan.question_id,
-        )
-        .ok()
-        .flatten()
-        .map(|question| question.tags);
+        let question_tags: Option<Vec<String>> =
+            crate::vfs::repos::question_repo::VfsQuestionRepo::get_question(
+                &self.vfs_db,
+                &plan.question_id,
+            )
+            .ok()
+            .flatten()
+            .map(|question| question.tags);
 
         // 2. 使用 SM-2 算法计算新参数
         let (new_interval, new_ease_factor, new_repetitions) = calculate_next_review(
@@ -320,24 +328,32 @@ impl ReviewPlanService {
         // 复习结果回写掌握度（与复习记录同一事务；事件 id = 复习历史 id，重放幂等）。
         // 旧实现只更新复习计划：复习了，掌握度与学习者画像却纹丝不动。
         // 无标签的题无法归入知识点（concept_key 不可得）时跳过，不阻塞复习。
-        let mastery_state = question_tags.as_ref().filter(|_| record_mastery).and_then(|tags| {
-            crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
-                .record_qbank_answer_with_conn(
-                    &tx,
-                    &format!("review:{}", history.id),
-                    &plan.question_id,
-                    tags,
-                    passed,
-                )
-                .ok()
-        });
+        let mastery_state = question_tags
+            .as_ref()
+            .filter(|_| record_mastery)
+            .and_then(|tags| {
+                crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
+                    .record_qbank_answer_with_conn(
+                        &tx,
+                        &format!("review:{}", history.id),
+                        &plan.question_id,
+                        tags,
+                        passed,
+                    )
+                    .ok()
+            });
 
         tx.commit()
             .with_context(|| "Failed to commit process_review transaction")?;
 
         if let Some(state) = mastery_state.as_ref() {
-            if let Err(e) = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db)).sync_learner_profile(state) {
-                warn!("[ReviewPlanService] mastery profile reflux failed for plan {}: {}", plan_id, e);
+            if let Err(e) = crate::mastery::MasteryService::new(Arc::clone(&self.vfs_db))
+                .sync_learner_profile(state)
+            {
+                warn!(
+                    "[ReviewPlanService] mastery profile reflux failed for plan {}: {}",
+                    plan_id, e
+                );
             }
         }
 
@@ -1082,21 +1098,33 @@ mod tests {
             },
         )
         .expect("create question");
-        let plan = service.get_or_create_plan(&question.id, &exam.id).expect("plan");
+        let plan = service
+            .get_or_create_plan(&question.id, &exam.id)
+            .expect("plan");
         let count_events = || -> i64 {
             vfs_db
                 .get_conn_safe()
                 .unwrap()
-                .query_row("SELECT COUNT(*) FROM mastery_events WHERE deleted_at IS NULL", [], |r| r.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM mastery_events WHERE deleted_at IS NULL",
+                    [],
+                    |r| r.get(0),
+                )
                 .unwrap()
         };
         assert_eq!(count_events(), 0);
-        service.process_review(&plan.id, 4, None, None).expect("review");
+        service
+            .process_review(&plan.id, 4, None, None)
+            .expect("review");
         assert_eq!(count_events(), 1, "SM-2 review must feed mastery");
         let before = service.get_plan_by_question(&question.id).unwrap().unwrap();
         service.advance_from_practice(&plan.id).expect("advance");
         let after = service.get_plan_by_question(&question.id).unwrap().unwrap();
-        assert_eq!(count_events(), 1, "practice advance must not double count mastery");
+        assert_eq!(
+            count_events(),
+            1,
+            "practice advance must not double count mastery"
+        );
         assert_eq!(after.total_reviews, before.total_reviews + 1);
     }
 }

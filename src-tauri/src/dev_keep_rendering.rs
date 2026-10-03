@@ -64,7 +64,8 @@ pub fn keep_rendering_when_occluded(window: &tauri::WebviewWindow) {
         const OPTIONS: u64 = 0x00EF_FFFF | 0xFF_0000_0000;
         let process_info: id = msg_send![class!(NSProcessInfo), processInfo];
         let reason = NSString::alloc(nil).init_str("Deep Student dev UI automation");
-        let activity: id = msg_send![process_info, beginActivityWithOptions: OPTIONS reason: reason];
+        let activity: id =
+            msg_send![process_info, beginActivityWithOptions: OPTIONS reason: reason];
         // 活动对象需在进程生命周期内保持：retain 一次且永不 release
         let _: id = msg_send![activity, retain];
         log::info!("[dev] 已禁用 App Nap（开发版 UI 自动化）");

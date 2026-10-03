@@ -486,7 +486,13 @@ impl EnhancedAnkiService {
     pub(crate) fn enqueue_document_cards(
         db: &Arc<Database>,
         document_id: &str,
-    ) -> Result<Option<(crate::fsrs_review_service::FsrsReviewService, crate::fsrs_review_service::FsrsEnqueueResult)>, AppError> {
+    ) -> Result<
+        Option<(
+            crate::fsrs_review_service::FsrsReviewService,
+            crate::fsrs_review_service::FsrsEnqueueResult,
+        )>,
+        AppError,
+    > {
         let card_ids: Vec<String> = db
             .get_cards_for_document(document_id)
             .map_err(|e| AppError::database(e.to_string()))?
@@ -1485,7 +1491,11 @@ mod tests {
         };
         db.save_document_task_with_cards_atomic(
             &task,
-            &[make_card("card-a", false), make_card("card-b", false), make_card("card-err", true)],
+            &[
+                make_card("card-a", false),
+                make_card("card-b", false),
+                make_card("card-err", true),
+            ],
         )
         .expect("save cards");
 
@@ -1501,5 +1511,4 @@ mod tests {
         assert_eq!(second.enqueued, 0);
         assert_eq!(second.skipped, 2);
     }
-
 }

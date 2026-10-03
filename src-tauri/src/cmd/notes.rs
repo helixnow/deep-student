@@ -783,15 +783,47 @@ pub(crate) fn list_notes_referencing(
           WHERE n.deleted_at IS NULL AND r.resource_id = ?1",
     )?;
     for id in ids.iter().map(|id| id.trim()).filter(|id| !id.is_empty()) {
-        let escaped = id.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_");
+        let escaped = id
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
         let pattern = format!("%\"resourceId\":\"{escaped}\"%");
         for (via, rows) in [
-            ("origin", origin_stmt.query_map([&pattern], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Vec<_>>()),
-            ("relation", relation_stmt.query_map([id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)))?.collect::<Vec<_>>()),
+            (
+                "origin",
+                origin_stmt
+                    .query_map([&pattern], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    })?
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "relation",
+                relation_stmt
+                    .query_map([id], |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, String>(2)?,
+                        ))
+                    })?
+                    .collect::<Vec<_>>(),
+            ),
         ] {
             for row in rows {
                 let (note_id, title, updated_at) = row?;
-                found.entry(note_id.clone()).or_insert(NoteReferencingResource { note_id, title, updated_at, via: via.to_string() });
+                found
+                    .entry(note_id.clone())
+                    .or_insert(NoteReferencingResource {
+                        note_id,
+                        title,
+                        updated_at,
+                        via: via.to_string(),
+                    });
             }
         }
     }
@@ -829,8 +861,12 @@ mod referencing_resource_tests {
                  ('n4','别的','2026-10-04',NULL,'{"_origin":"{\"kind\":\"resource\",\"resourceId\":\"file_ab\"}"}');
                INSERT INTO note_learning_relations VALUES ('r1','n2','res_a');"#,
         ).unwrap();
-        let notes = list_notes_referencing(&conn, &["file_a".to_string(), "res_a".to_string()]).unwrap();
-        let ids: Vec<_> = notes.iter().map(|n| (n.note_id.as_str(), n.via.as_str())).collect();
+        let notes =
+            list_notes_referencing(&conn, &["file_a".to_string(), "res_a".to_string()]).unwrap();
+        let ids: Vec<_> = notes
+            .iter()
+            .map(|n| (n.note_id.as_str(), n.via.as_str()))
+            .collect();
         assert_eq!(ids, vec![("n1", "origin"), ("n2", "relation")]);
     }
 }
@@ -2827,7 +2863,10 @@ mod tests {
     fn split_leading_heading_moves_h1_into_title() {
         assert_eq!(
             split_leading_heading("\u{feff}\n# 线性代数 知识框架 #\n\n> 复习用\n\n- 行列式\n"),
-            Some(("线性代数 知识框架".to_string(), "> 复习用\n\n- 行列式\n".to_string()))
+            Some((
+                "线性代数 知识框架".to_string(),
+                "> 复习用\n\n- 行列式\n".to_string()
+            ))
         );
         assert_eq!(
             split_leading_heading("# 只有标题"),

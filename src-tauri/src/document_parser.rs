@@ -290,7 +290,11 @@ pub struct DocumentParser;
 
 /// 表头行判定：至少两列、每格都是短文本且不是数字。
 fn looks_like_header_row(line: &str) -> bool {
-    let cells: Vec<&str> = line.split('\t').map(str::trim).filter(|c| !c.is_empty()).collect();
+    let cells: Vec<&str> = line
+        .split('\t')
+        .map(str::trim)
+        .filter(|c| !c.is_empty())
+        .collect();
     cells.len() >= 2
         && cells
             .iter()
@@ -2559,7 +2563,11 @@ impl DocumentParser {
             }
             // 首行像表头时分开写，避免把表头也数成一条（实测「61 词」）
             let heading = if first_row_is_header && sheet_rows >= 2 {
-                format!("=== {} · 表头 1 行 + 数据 {} 行 ===\n", sheet_name, sheet_rows - 1)
+                format!(
+                    "=== {} · 表头 1 行 + 数据 {} 行 ===\n",
+                    sheet_name,
+                    sheet_rows - 1
+                )
             } else {
                 format!("=== {} · {} 行 ===\n", sheet_name, sheet_rows)
             };
@@ -4430,7 +4438,10 @@ mod tests {
         let text = parser
             .extract_excel_from_bytes("词表.xlsx", workbook)
             .expect("extract xlsx text");
-        assert!(text.starts_with("=== Sheet1 · 表头 1 行 + 数据 2 行 ===\n单词\t释义"), "{text}");
+        assert!(
+            text.starts_with("=== Sheet1 · 表头 1 行 + 数据 2 行 ===\n单词\t释义"),
+            "{text}"
+        );
         assert!(text.contains("ambiguous\t模棱两可的"));
     }
 

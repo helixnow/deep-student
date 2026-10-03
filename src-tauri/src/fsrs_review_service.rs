@@ -4754,20 +4754,37 @@ mod tests {
         insert_task_and_card(&db, "doc_concept", "task_concept", "card_untagged");
         let service = FsrsReviewService::new(db.clone());
         // 无标签 → 文档名（test.md）
-        assert_eq!(service.get_card_concept_tags("card_untagged").unwrap(), vec!["test.md".to_string()]);
+        assert_eq!(
+            service.get_card_concept_tags("card_untagged").unwrap(),
+            vec!["test.md".to_string()]
+        );
         // 有标签 → 标签优先
-        db.get_conn_safe().unwrap()
-            .execute("UPDATE anki_cards SET tags_json = '[\"导数\"]' WHERE id = 'card_untagged'", [])
+        db.get_conn_safe()
+            .unwrap()
+            .execute(
+                "UPDATE anki_cards SET tags_json = '[\"导数\"]' WHERE id = 'card_untagged'",
+                [],
+            )
             .unwrap();
-        assert_eq!(service.get_card_concept_tags("card_untagged").unwrap(), vec!["导数".to_string()]);
+        assert_eq!(
+            service.get_card_concept_tags("card_untagged").unwrap(),
+            vec!["导数".to_string()]
+        );
         // 通用默认牌组名 → 不臆造知识点
-        db.get_conn_safe().unwrap()
-            .execute("UPDATE anki_cards SET tags_json = '[]' WHERE id = 'card_untagged'", [])
+        db.get_conn_safe()
+            .unwrap()
+            .execute(
+                "UPDATE anki_cards SET tags_json = '[]' WHERE id = 'card_untagged'",
+                [],
+            )
             .unwrap();
         db.get_conn_safe().unwrap()
             .execute("UPDATE document_tasks SET original_document_name = 'Default' WHERE id = 'task_concept'", [])
             .unwrap();
-        assert!(service.get_card_concept_tags("card_untagged").unwrap().is_empty());
+        assert!(service
+            .get_card_concept_tags("card_untagged")
+            .unwrap()
+            .is_empty());
     }
 
     fn insert_card_for_task(db: &Database, document_id: &str, task_id: &str, card_id: &str) {

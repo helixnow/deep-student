@@ -499,7 +499,10 @@ impl VfsIndexStateRepo {
              SET index_state = ?1, index_error = NULL, index_retry_count = 0, index_next_retry_at = 0
              WHERE index_state = ?2 AND ({matcher})"
         );
-        let revived = tx.execute(&resource_sql, params![INDEX_STATE_PENDING, INDEX_STATE_FAILED])?;
+        let revived = tx.execute(
+            &resource_sql,
+            params![INDEX_STATE_PENDING, INDEX_STATE_FAILED],
+        )?;
         tx.commit()?;
         Ok(revived)
     }
@@ -1118,8 +1121,15 @@ mod tests {
             }
         }
         assert_eq!(VfsIndexStateRepo::requeue_paged_pdfs_once(&db).unwrap(), 1);
-        let state: String = db.get_conn_safe().unwrap()
-            .query_row("SELECT index_state FROM resources WHERE id = 'res_pdf'", [], |r| r.get(0)).unwrap();
+        let state: String = db
+            .get_conn_safe()
+            .unwrap()
+            .query_row(
+                "SELECT index_state FROM resources WHERE id = 'res_pdf'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(state, INDEX_STATE_PENDING);
         // 第二次不再执行
         assert_eq!(VfsIndexStateRepo::requeue_paged_pdfs_once(&db).unwrap(), 0);
@@ -1140,24 +1150,42 @@ mod tests {
             [],
         ).unwrap();
         drop(conn);
-        VfsIndexStateRepo::mark_failed(&db, "res_a", "获取嵌入模型配置失败: 默认文本嵌入配置已禁用或能力协议不匹配").unwrap();
-        VfsIndexStateRepo::mark_failed(&db, "res_b", "找不到嵌入模型配置，请检查维度绑定的模型是否存在").unwrap();
+        VfsIndexStateRepo::mark_failed(
+            &db,
+            "res_a",
+            "获取嵌入模型配置失败: 默认文本嵌入配置已禁用或能力协议不匹配",
+        )
+        .unwrap();
+        VfsIndexStateRepo::mark_failed(
+            &db,
+            "res_b",
+            "找不到嵌入模型配置，请检查维度绑定的模型是否存在",
+        )
+        .unwrap();
         VfsIndexStateRepo::mark_failed(&db, "res_c", "PDF 解析失败").unwrap();
 
         assert_eq!(VfsIndexStateRepo::revive_config_blocked(&db).unwrap(), 2);
 
         let conn = db.get_conn_safe().unwrap();
-        let row = |id: &str| conn.query_row(
+        let row = |id: &str| {
+            conn.query_row(
             "SELECT index_state, COALESCE(index_retry_count, 0), index_error FROM resources WHERE id = ?1",
             params![id],
             |r| Ok((r.get::<_, String>(0)?, r.get::<_, i32>(1)?, r.get::<_, Option<String>>(2)?)),
-        ).unwrap();
+        ).unwrap()
+        };
         assert_eq!(row("res_a"), (INDEX_STATE_PENDING.to_string(), 0, None));
         assert_eq!(row("res_b"), (INDEX_STATE_PENDING.to_string(), 0, None));
         // 资源自身的失败（非配置问题）保持原样，仍按重试退避处理
         assert_eq!(row("res_c").0, INDEX_STATE_FAILED);
         assert_eq!(row("res_c").1, 1);
-        let unit_state: String = conn.query_row("SELECT text_state FROM vfs_index_units WHERE id = 'u_a'", [], |r| r.get(0)).unwrap();
+        let unit_state: String = conn
+            .query_row(
+                "SELECT text_state FROM vfs_index_units WHERE id = 'u_a'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
         assert_eq!(unit_state, "pending");
         drop(conn);
         // 幂等：再次执行不再命中

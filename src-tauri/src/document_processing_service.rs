@@ -90,7 +90,10 @@ impl DocumentProcessingService {
             .map(|total| {
                 let weights: Vec<usize> = segments.iter().map(|seg| estimate_tokens(seg)).collect();
                 let limits = distribute_global_max_cards_weighted(total, &weights);
-                let rows: Vec<usize> = segments.iter().map(|seg| count_table_data_rows(seg)).collect();
+                let rows: Vec<usize> = segments
+                    .iter()
+                    .map(|seg| count_table_data_rows(seg))
+                    .collect();
                 ensure_row_coverage(limits, &rows)
             });
 
@@ -1044,7 +1047,10 @@ fn distribute_global_max_cards_weighted(total: i32, weights: &[usize]) -> Vec<i3
 
 /// 段内表格数据行数：≥2 个制表符的行，排除像表头的行。
 fn count_table_data_rows(segment: &str) -> usize {
-    let lines: Vec<&str> = segment.lines().filter(|l| l.matches('\t').count() >= 2).collect();
+    let lines: Vec<&str> = segment
+        .lines()
+        .filter(|l| l.matches('\t').count() >= 2)
+        .collect();
     let header = detect_table_header(&lines);
     lines.iter().filter(|line| Some(**line) != header).count()
 }
@@ -1143,7 +1149,9 @@ mod tests {
             for line in segment.lines() {
                 if line.starts_with("word") {
                     assert_eq!(line.matches('\t').count(), 5, "行被切断: {line}");
-                    *seen.entry(line.split('\t').next().unwrap().to_string()).or_insert(0) += 1;
+                    *seen
+                        .entry(line.split('\t').next().unwrap().to_string())
+                        .or_insert(0) += 1;
                 }
             }
             if idx > 0 {
@@ -1159,13 +1167,21 @@ mod tests {
     fn short_lead_paragraph_is_merged_into_following_long_paragraph() {
         let mut table = String::from("单词\t释义\n");
         for i in 0..80 {
-            table.push_str(&format!("word{i}\t这是第{i}个词的释义，包含一些说明文字。\n"));
+            table.push_str(&format!(
+                "word{i}\t这是第{i}个词的释义，包含一些说明文字。\n"
+            ));
         }
         let content = format!("# 词表.xlsx\n\n{table}");
         let segments = segment_without_overlap(&content, 300, false).unwrap();
         assert!(segments.len() > 1);
-        assert!(segments[0].starts_with("# 词表.xlsx\n\n单词"), "{}", segments[0]);
-        assert!(segments.iter().all(|seg| seg.lines().any(|l| l.starts_with("word"))));
+        assert!(
+            segments[0].starts_with("# 词表.xlsx\n\n单词"),
+            "{}",
+            segments[0]
+        );
+        assert!(segments
+            .iter()
+            .all(|seg| seg.lines().any(|l| l.starts_with("word"))));
     }
 
     /// 段落首行是数据行（无表头）时不得当成表头在后续段重复。
@@ -1691,9 +1707,15 @@ mod tests {
         assert!(limits[0] >= 15 && limits[3] >= 15, "{limits:?}");
         assert!(limits[1] <= 3, "{limits:?}");
         // 等权重时与等分一致
-        assert_eq!(distribute_global_max_cards_weighted(10, &[5, 5, 5]), vec![4, 3, 3]);
+        assert_eq!(
+            distribute_global_max_cards_weighted(10, &[5, 5, 5]),
+            vec![4, 3, 3]
+        );
         // 总量不超过段数时沿用等距抽样
-        assert_eq!(distribute_global_max_cards_weighted(2, &[9, 1, 1, 9]), vec![1, 0, 0, 1]);
+        assert_eq!(
+            distribute_global_max_cards_weighted(2, &[9, 1, 1, 9]),
+            vec![1, 0, 0, 1]
+        );
         assert_eq!(distribute_global_max_cards_weighted(4, &[0, 0]), vec![2, 2]);
     }
 
@@ -1702,7 +1724,13 @@ mod tests {
         // 6 段共 60 行、总配额 60：加权取整给第 5 段 13 张而它有 14 行
         let limits = ensure_row_coverage(vec![14, 3, 10, 15, 7, 13], &[13, 2, 9, 14, 6, 14]);
         assert_eq!(limits.iter().sum::<i32>(), 62);
-        assert!(limits.iter().zip([13, 2, 9, 14, 6, 14]).all(|(&l, r)| l >= r), "{limits:?}");
+        assert!(
+            limits
+                .iter()
+                .zip([13, 2, 9, 14, 6, 14])
+                .all(|(&l, r)| l >= r),
+            "{limits:?}"
+        );
         // 配额不足以每行一张时不干预
         assert_eq!(ensure_row_coverage(vec![5, 5], &[10, 10]), vec![5, 5]);
         // 非表格段（行数 0）不受影响

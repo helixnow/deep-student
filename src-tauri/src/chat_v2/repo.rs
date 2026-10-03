@@ -3390,7 +3390,9 @@ impl ChatV2Repo {
     /// 等待回答的提问再也收不到回答，用户看不出这一轮已经中断。
     /// - 已有内容的思考/正文块：保留内容，标记完成；
     /// - 其余块（工具调用、空块）：标记为错误并写明中断原因。
-    pub fn reconcile_interrupted_blocks_on_startup_with_conn(conn: &Connection) -> ChatV2Result<u32> {
+    pub fn reconcile_interrupted_blocks_on_startup_with_conn(
+        conn: &Connection,
+    ) -> ChatV2Result<u32> {
         let now_ms = chrono::Utc::now().timestamp_millis();
         let finished = conn.execute(
             r#"
@@ -4743,7 +4745,10 @@ mod tests {
         insert("blk_tool", "mcp_tool", "running", None);
         insert("blk_done", "content", "success", Some("早已完成"));
 
-        assert_eq!(ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(), 4);
+        assert_eq!(
+            ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(),
+            4
+        );
 
         let status_of = |id: &str| -> (String, Option<String>, Option<i64>) {
             conn.query_row(
@@ -4762,7 +4767,10 @@ mod tests {
         assert_eq!(status_of("blk_empty").0, "error");
         assert_eq!(status_of("blk_done"), ("success".to_string(), None, None));
         // 幂等：第二次启动无事可做
-        assert_eq!(ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(), 0);
+        assert_eq!(
+            ChatV2Repo::reconcile_interrupted_blocks_on_startup_with_conn(&conn).unwrap(),
+            0
+        );
     }
 
     #[test]

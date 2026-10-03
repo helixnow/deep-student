@@ -527,7 +527,10 @@ fn native_pdf_pages(extracted_text: &Option<String>, page_count: usize) -> Optio
     if page_count > 1 && !text.contains(separator) {
         return None;
     }
-    let parts: Vec<String> = text.split(separator).map(|p| p.trim().to_string()).collect();
+    let parts: Vec<String> = text
+        .split(separator)
+        .map(|p| p.trim().to_string())
+        .collect();
     (parts.len() == page_count).then_some(parts)
 }
 
@@ -727,7 +730,12 @@ fn extract_texts_recursive(value: &serde_json::Value, depth: usize, texts: &mut 
 mod tests {
     use super::*;
 
-    fn pdf_input(extracted: Option<&str>, ocr_text: Option<&str>, ocr_pages: Option<&str>, pages: i32) -> UnitBuildInput {
+    fn pdf_input(
+        extracted: Option<&str>,
+        ocr_text: Option<&str>,
+        ocr_pages: Option<&str>,
+        pages: i32,
+    ) -> UnitBuildInput {
         let preview = (0..pages)
             .map(|i| format!(r#"{{"pageIndex":{i},"blobHash":"page{i}","mimeType":"image/jpeg"}}"#))
             .collect::<Vec<_>>()
@@ -750,7 +758,11 @@ mod tests {
         let whole = "第一章 柯西\u{000C}第二章 泰勒\u{000C}第三章 暗号";
         // OCR 只是原文副本：不应再多出一个 Unit
         let input = pdf_input(Some(whole), Some(whole), None, 3);
-        for builder in [&FileBuilder as &dyn UnitBuilder, &TextbookBuilder, &AttachmentBuilder] {
+        for builder in [
+            &FileBuilder as &dyn UnitBuilder,
+            &TextbookBuilder,
+            &AttachmentBuilder,
+        ] {
             let units = builder.build(&input).units;
             assert_eq!(units.len(), 3, "{}", builder.resource_type());
             assert_eq!(units[2].unit_index, 2);
@@ -763,7 +775,12 @@ mod tests {
     #[test]
     fn scanned_pages_fall_back_to_page_ocr() {
         // 扫描件：原文为空页，逐页 OCR 补位
-        let input = pdf_input(Some("\u{000C}"), None, Some(r#"["OCR 第一页", "OCR 第二页"]"#), 2);
+        let input = pdf_input(
+            Some("\u{000C}"),
+            None,
+            Some(r#"["OCR 第一页", "OCR 第二页"]"#),
+            2,
+        );
         let units = FileBuilder.build(&input).units;
         assert_eq!(units.len(), 2);
         assert_eq!(units[1].text_content.as_deref(), Some("OCR 第二页"));

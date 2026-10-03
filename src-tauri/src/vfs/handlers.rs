@@ -4484,7 +4484,11 @@ pub async fn vfs_get_embedding_readiness(
         Ok(config) => EmbeddingReadiness {
             ready: true,
             model_config_id: Some(config.id),
-            model_name: Some(if config.name.trim().is_empty() { config.model } else { config.name }),
+            model_name: Some(if config.name.trim().is_empty() {
+                config.model
+            } else {
+                config.name
+            }),
             reason: None,
         },
         Err(error) => EmbeddingReadiness {

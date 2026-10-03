@@ -18,7 +18,6 @@ pub use types::{
     MasteryState, MasteryWeakEvidence,
 };
 
-
 /// 学习者可见的掌握度概览（此前掌握度只供 AI 读取，学习者看不到自己的薄弱知识点）。
 #[tauri::command]
 pub async fn mastery_get_overview(

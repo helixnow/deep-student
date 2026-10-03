@@ -271,8 +271,12 @@ async fn run_chat_translation(
     let options = StreamOptions {
         temperature: POPOVER_TEMPERATURE,
         max_tokens: Some(
-            popover_max_tokens(request.source.chars().count(), mode, config.supports_reasoning)
-                .min(model_cap),
+            popover_max_tokens(
+                request.source.chars().count(),
+                mode,
+                config.supports_reasoning,
+            )
+            .min(model_cap),
         ),
         idle_timeout: POPOVER_IDLE_TIMEOUT,
         total_timeout: POPOVER_TOTAL_TIMEOUT,

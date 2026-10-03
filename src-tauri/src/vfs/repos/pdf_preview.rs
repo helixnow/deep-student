@@ -153,7 +153,9 @@ fn extract_pdf_text(pdf_bytes: &[u8]) -> Option<String> {
         Ok(text) => {
             // 保留页间换页符（首尾空页也要占位），只去掉普通空白
             let trimmed = text
-                .trim_matches(|c: char| c != crate::pdfium_utils::PDF_PAGE_SEPARATOR && c.is_whitespace())
+                .trim_matches(|c: char| {
+                    c != crate::pdfium_utils::PDF_PAGE_SEPARATOR && c.is_whitespace()
+                })
                 .to_string();
             if trimmed.is_empty() {
                 debug!("[PDF-Preview] Extracted empty text from PDF");

@@ -1658,7 +1658,10 @@ mod tests {
             .await
             .expect("an explicit model assignment enables multimodal indexing");
         assert_eq!(config.id, "vl-emb-test");
-        assert_eq!(saved_vl_embedding_default(&manager).as_deref(), Some("vl-emb-test"));
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-emb-test")
+        );
     }
 
     #[tokio::test]
@@ -2356,10 +2359,14 @@ mod tests {
 
     #[test]
     fn vl_embedding_names_are_treated_as_multimodal() {
-        assert!(LLMManager::looks_like_multimodal_embedding("Qwen/Qwen3-VL-Embedding-8B"));
+        assert!(LLMManager::looks_like_multimodal_embedding(
+            "Qwen/Qwen3-VL-Embedding-8B"
+        ));
         assert!(LLMManager::looks_like_multimodal_embedding("jina-clip-v2"));
         assert!(!LLMManager::looks_like_multimodal_embedding("BAAI/bge-m3"));
-        assert!(!LLMManager::looks_like_multimodal_embedding("text-embedding-3-large"));
+        assert!(!LLMManager::looks_like_multimodal_embedding(
+            "text-embedding-3-large"
+        ));
     }
 
     #[test]
@@ -3995,7 +4002,12 @@ impl LLMManager {
         let lower = model.to_lowercase();
         lower
             .split(|c: char| !c.is_ascii_alphanumeric())
-            .any(|token| matches!(token, "vl" | "vision" | "multimodal" | "clip" | "siglip" | "omni"))
+            .any(|token| {
+                matches!(
+                    token,
+                    "vl" | "vision" | "multimodal" | "clip" | "siglip" | "omni"
+                )
+            })
     }
 
     fn normalize_model_id(value: &str) -> String {

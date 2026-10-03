@@ -7862,9 +7862,9 @@ impl Database {
         let dir = if descending { "DESC" } else { "ASC" };
         let order_by = match filter.sort.as_deref().map(str::trim) {
             // 未入队 / 无到期时间的卡固定排最后，不参与方向翻转
-            Some("due") => format!(
-                "(fs.due_ms IS NULL) ASC, fs.due_ms {dir}, ac.created_at DESC, ac.id DESC"
-            ),
+            Some("due") => {
+                format!("(fs.due_ms IS NULL) ASC, fs.due_ms {dir}, ac.created_at DESC, ac.id DESC")
+            }
             Some("created") => format!("ac.created_at {dir}, ac.id {dir}"),
             Some("front") => format!("ac.front COLLATE NOCASE {dir}, ac.id {dir}"),
             _ => "ac.created_at DESC, ac.id DESC".to_string(),
@@ -8965,8 +8965,14 @@ mod tests {
             )?;
             Ok((items.into_iter().map(|item| item.card.id).collect(), total))
         };
-        assert_eq!(filtered("suspended")?, (vec!["card-suspended".to_string()], 1));
-        assert_eq!(filtered("notEnqueued")?, (vec!["card-unqueued".to_string()], 1));
+        assert_eq!(
+            filtered("suspended")?,
+            (vec!["card-suspended".to_string()], 1)
+        );
+        assert_eq!(
+            filtered("notEnqueued")?,
+            (vec!["card-unqueued".to_string()], 1)
+        );
         assert_eq!(filtered("due")?, (vec!["card-due".to_string()], 1));
         assert_eq!(filtered("review")?, (vec!["card-due".to_string()], 1));
         // 暂停卡（state 3 = relearning）不算学习中
@@ -9021,7 +9027,10 @@ mod tests {
             1,
             3,
         )?;
-        assert_eq!(by_due.last().map(|item| item.card.id.as_str()), Some("card-unqueued"));
+        assert_eq!(
+            by_due.last().map(|item| item.card.id.as_str()),
+            Some("card-unqueued")
+        );
 
         let serialized = serde_json::to_value(&first_page[0])?;
         assert_eq!(serialized["stateId"], json!("state-due"));

@@ -384,13 +384,27 @@ fn extract_readable_text(json_value: &Value) -> Option<String> {
 /// 这类条目没有任何可学内容，直接按不可读残片丢弃。
 fn is_placeholder_card(json_value: &Value) -> bool {
     const PLACEHOLDERS: &[&str] = &[
-        "placeholder", "...", "…", "todo", "tbd", "xxx", "n/a", "none", "null", "占位", "示例",
-        "待补充", "内容",
+        "placeholder",
+        "...",
+        "…",
+        "todo",
+        "tbd",
+        "xxx",
+        "n/a",
+        "none",
+        "null",
+        "占位",
+        "示例",
+        "待补充",
+        "内容",
     ];
     fn collect<'a>(obj: &'a serde_json::Map<String, Value>, out: &mut Vec<&'a str>) {
         for (key, value) in obj {
             let key_lower = key.to_lowercase();
-            if matches!(key_lower.as_str(), "tags" | "template_id" | "templateid" | "images") {
+            if matches!(
+                key_lower.as_str(),
+                "tags" | "template_id" | "templateid" | "images"
+            ) {
                 continue;
             }
             match value {
@@ -407,8 +421,14 @@ fn is_placeholder_card(json_value: &Value) -> bool {
     collect(obj, &mut values);
     !values.is_empty()
         && values.iter().all(|v| {
-            let normalized = v.trim().trim_matches(|c: char| "[]{}<>()（）【】\"'".contains(c)).trim();
-            normalized.is_empty() || PLACEHOLDERS.iter().any(|p| normalized.eq_ignore_ascii_case(p))
+            let normalized = v
+                .trim()
+                .trim_matches(|c: char| "[]{}<>()（）【】\"'".contains(c))
+                .trim();
+            normalized.is_empty()
+                || PLACEHOLDERS
+                    .iter()
+                    .any(|p| normalized.eq_ignore_ascii_case(p))
         })
 }
 
@@ -427,7 +447,10 @@ fn deck_tag(deck_name: &str) -> Option<String> {
 const ERROR_CARD_RAW_PREVIEW_CHARS: usize = 2000;
 
 fn error_card_content(error: &str, raw_output: &str) -> String {
-    let raw: String = raw_output.chars().take(ERROR_CARD_RAW_PREVIEW_CHARS).collect();
+    let raw: String = raw_output
+        .chars()
+        .take(ERROR_CARD_RAW_PREVIEW_CHARS)
+        .collect();
     format!("解析卡片失败: {}\n原始输出: {}", error, raw)
 }
 
@@ -2651,10 +2674,17 @@ impl StreamingAnkiService {
         // 语义字段优先于字段顺序：模板首字段常是「科目」「编号」这类辅助字段
         // （选择题 Subject、蓝图 ID），按顺序取会让正面变成「高等数学」「LMT-01」，
         // 卡片库列表、搜索、掌握度兜底都会用到这个正面。
-        const SEMANTIC_FRONT_KEYS: &[&str] =
-            &["question", "term", "word", "name", "symbol", "title", "text"];
+        const SEMANTIC_FRONT_KEYS: &[&str] = &[
+            "question", "term", "word", "name", "symbol", "title", "text",
+        ];
         const SEMANTIC_BACK_KEYS: &[&str] = &[
-            "answer", "definition", "explanation", "expl", "detail", "backdetail", "meaning",
+            "answer",
+            "definition",
+            "explanation",
+            "expl",
+            "detail",
+            "backdetail",
+            "meaning",
         ];
         if front.is_empty() {
             if let Some(val) = SEMANTIC_FRONT_KEYS
@@ -2665,10 +2695,11 @@ impl StreamingAnkiService {
             }
         }
         if back.is_empty() {
-            if let Some(val) = SEMANTIC_BACK_KEYS
-                .iter()
-                .find_map(|key| extra_fields.get(*key).filter(|v| !v.trim().is_empty() && **v != front))
-            {
+            if let Some(val) = SEMANTIC_BACK_KEYS.iter().find_map(|key| {
+                extra_fields
+                    .get(*key)
+                    .filter(|v| !v.trim().is_empty() && **v != front)
+            }) {
                 back = val.clone();
             }
         }
@@ -3848,8 +3879,14 @@ mod tests {
     fn deck_tag_skips_default_and_normalizes_whitespace() {
         assert_eq!(deck_tag("Default"), None);
         assert_eq!(deck_tag("  "), None);
-        assert_eq!(deck_tag("有机化学::烯烃加成"), Some("有机化学::烯烃加成".to_string()));
-        assert_eq!(deck_tag("Organic Chem::Alkenes"), Some("Organic_Chem::Alkenes".to_string()));
+        assert_eq!(
+            deck_tag("有机化学::烯烃加成"),
+            Some("有机化学::烯烃加成".to_string())
+        );
+        assert_eq!(
+            deck_tag("Organic Chem::Alkenes"),
+            Some("Organic_Chem::Alkenes".to_string())
+        );
     }
 
     #[test]
@@ -3863,7 +3900,9 @@ mod tests {
         assert!(!is_placeholder_card(&serde_json::json!({
             "template_id": "design-footer", "Question": "placeholder", "Answer": "罗尔定理的推广"
         })));
-        assert!(!is_placeholder_card(&serde_json::json!({"template_id": "x"})));
+        assert!(!is_placeholder_card(
+            &serde_json::json!({"template_id": "x"})
+        ));
     }
 
     #[test]
@@ -4034,7 +4073,12 @@ mod tests {
         for field in ["ID", "Question", "Formula", "Expl"] {
             rules.insert(field.to_string(), make_rule(false, FieldType::Text, field));
         }
-        let fields = Some(vec!["ID".to_string(), "Question".to_string(), "Formula".to_string(), "Expl".to_string()]);
+        let fields = Some(vec![
+            "ID".to_string(),
+            "Question".to_string(),
+            "Formula".to_string(),
+            "Expl".to_string(),
+        ]);
         let json_value = json!({
             "ID": "LMT-01",
             "Question": "拉格朗日中值定理",
@@ -4050,7 +4094,14 @@ mod tests {
 
         // 选择题模板：首字段是科目 Subject
         let mut rules: HashMap<String, FieldExtractionRule> = HashMap::new();
-        for field in ["Subject", "Question", "optiona", "optionb", "correct", "explanation"] {
+        for field in [
+            "Subject",
+            "Question",
+            "optiona",
+            "optionb",
+            "correct",
+            "explanation",
+        ] {
             rules.insert(field.to_string(), make_rule(false, FieldType::Text, field));
         }
         let fields = Some(vec!["Subject".to_string(), "Question".to_string()]);
@@ -4066,7 +4117,10 @@ mod tests {
             .extract_fields_with_rules(&json_value, &rules, &fields)
             .expect("choice card parses");
         assert_eq!(front, "易错点是？");
-        assert!(back.contains("正确答案：B"), "choice back keeps options: {back}");
+        assert!(
+            back.contains("正确答案：B"),
+            "choice back keeps options: {back}"
+        );
     }
 
     #[test]

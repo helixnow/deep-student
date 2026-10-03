@@ -302,7 +302,9 @@ fn humanize_citation_markers(text: &str) -> String {
     });
     let out = CITATION_PDF_BARE_RE.replace_all(&out, "");
     let out = CITATION_TITLED_RE.replace_all(&out, |caps: &regex::Captures| {
-        caps.get(1).map(|m| m.as_str().trim().to_string()).unwrap_or_default()
+        caps.get(1)
+            .map(|m| m.as_str().trim().to_string())
+            .unwrap_or_default()
     });
     let out = CITATION_RETRIEVAL_RE.replace_all(&out, "");
     let out = CITATION_GAP_RE.replace_all(&out, " ");

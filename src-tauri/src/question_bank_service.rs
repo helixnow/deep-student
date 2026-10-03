@@ -3024,15 +3024,20 @@ impl QuestionBankService {
             chrono::NaiveDate::parse_from_str(&end_date, "%Y-%m-%d"),
         ) {
             (Ok(start), Ok(end)) => {
-                crate::vfs::repos::pomodoro_repo::VfsPomodoroRepo::focus_seconds_by_local_date(&conn, start, end)
-                    .unwrap_or_else(|e| {
-                        warn!("[QuestionBankService] pomodoro focus lookup failed: {}", e);
-                        Default::default()
-                    })
+                crate::vfs::repos::pomodoro_repo::VfsPomodoroRepo::focus_seconds_by_local_date(
+                    &conn, start, end,
+                )
+                .unwrap_or_else(|e| {
+                    warn!("[QuestionBankService] pomodoro focus lookup failed: {}", e);
+                    Default::default()
+                })
             }
             _ => Default::default(),
         };
-        let month_focus_seconds: u32 = focus_by_date.values().sum::<i64>().clamp(0, u32::MAX as i64) as u32;
+        let month_focus_seconds: u32 = focus_by_date
+            .values()
+            .sum::<i64>()
+            .clamp(0, u32::MAX as i64) as u32;
 
         let mut days: Vec<DailyCheckIn> = Vec::new();
         let mut month_total_questions = 0u32;

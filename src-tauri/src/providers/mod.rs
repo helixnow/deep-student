@@ -3917,10 +3917,9 @@ mod wave2_a_prefix_snapshot_tests;
 #[cfg(test)]
 mod tests {
     use super::{
-        normalize_ollama_root_base_url, openai_endpoint_url,
         build_usage_event, convert_anthropic_response_to_openai, is_meaningful_openai_tool_delta,
-        sanitize_openai_request_body, AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter,
-        ProviderAdapter, StreamEvent,
+        normalize_ollama_root_base_url, openai_endpoint_url, sanitize_openai_request_body,
+        AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
     };
 
     #[test]

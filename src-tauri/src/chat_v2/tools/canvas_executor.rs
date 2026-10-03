@@ -487,7 +487,11 @@ fn create_note_in_vfs(
                 expected_updated_at: None,
             },
         ) {
-            log::warn!("[CanvasToolExecutor] Failed to record note origin for {}: {}", note_id, error);
+            log::warn!(
+                "[CanvasToolExecutor] Failed to record note origin for {}: {}",
+                note_id,
+                error
+            );
         }
     }
     Ok((
@@ -2037,10 +2041,14 @@ mod tests {
             "Completed chapter 1".to_string(),
             vec!["weekly".to_string()],
             Some(folder.id.clone()),
-            Some(serde_json::json!({ "kind": "chat", "sessionId": "sess_1", "messageId": "msg_1" })),
+            Some(
+                serde_json::json!({ "kind": "chat", "sessionId": "sess_1", "messageId": "msg_1" }),
+            ),
         )
         .expect("create note in requested folder");
-        let note = VfsNoteRepo::get_note(&db, &note_id).expect("read note").expect("note exists");
+        let note = VfsNoteRepo::get_note(&db, &note_id)
+            .expect("read note")
+            .expect("note exists");
         let origin = note
             .props
             .as_ref()

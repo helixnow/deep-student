@@ -1813,9 +1813,15 @@ fn reextract_pdf_page_text(
         "UPDATE files SET extracted_text = ?1 WHERE resource_id = ?2",
         rusqlite::params![text, resource_id],
     ) {
-        warn!("[VfsIndexing] 回写逐页文字失败 resource={}: {}", resource_id, error);
+        warn!(
+            "[VfsIndexing] 回写逐页文字失败 resource={}: {}",
+            resource_id, error
+        );
     } else {
-        info!("[VfsIndexing] 已为旧 PDF 重提逐页文字 resource={}", resource_id);
+        info!(
+            "[VfsIndexing] 已为旧 PDF 重提逐页文字 resource={}",
+            resource_id
+        );
     }
     Some(text)
 }
@@ -2406,7 +2412,11 @@ impl VfsFullIndexingService {
             let units = index_unit_repo::get_by_resource(&conn, resource_id)?;
             let text_units = units
                 .iter()
-                .filter(|u| u.text_content.as_deref().is_some_and(|t| !t.trim().is_empty()))
+                .filter(|u| {
+                    u.text_content
+                        .as_deref()
+                        .is_some_and(|t| !t.trim().is_empty())
+                })
                 .count();
             if units.len() > 1 && text_units > 0 {
                 Some(
@@ -4213,9 +4223,10 @@ impl VfsFullIndexingService {
                  ORDER BY r.updated_at DESC
                  LIMIT ?1",
             )?;
-            let rows = stmt.query_map(rusqlite::params![(limit as i64).saturating_mul(4)], |row| {
-                row.get::<_, String>(0)
-            })?;
+            let rows = stmt
+                .query_map(rusqlite::params![(limit as i64).saturating_mul(4)], |row| {
+                    row.get::<_, String>(0)
+                })?;
             rows.filter_map(Result::ok).collect()
         };
 
@@ -4867,11 +4878,13 @@ impl VfsFullSearchService {
             return None;
         };
         let conn = db.get_conn_safe().ok()?;
-        conn.query_row(sql, rusqlite::params![source_id], |row| row.get::<_, Option<String>>(0))
-            .ok()
-            .flatten()
-            .map(|title| title.trim().to_string())
-            .filter(|title| !title.is_empty())
+        conn.query_row(sql, rusqlite::params![source_id], |row| {
+            row.get::<_, Option<String>>(0)
+        })
+        .ok()
+        .flatten()
+        .map(|title| title.trim().to_string())
+        .filter(|title| !title.is_empty())
     }
 
     /// 检查源资源是否已被软删除

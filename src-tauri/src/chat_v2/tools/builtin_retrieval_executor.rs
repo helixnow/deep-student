@@ -1987,7 +1987,6 @@ mod tests {
     }
 }
 
-
 /// 读取会话检索范围（chat_v2_session_state.rag_library_ids_json，文件夹 id 列表）。
 pub(crate) fn load_session_rag_scope(
     chat_db: &crate::chat_v2::database::ChatV2Database,
@@ -2017,8 +2016,12 @@ pub(crate) fn scope_folder_ids(
         return model_folder_ids;
     }
     if let Some(model) = model_folder_ids.filter(|ids| !ids.is_empty()) {
-        let allowed: std::collections::HashSet<&str> = scope_expanded.iter().map(String::as_str).collect();
-        let narrowed: Vec<String> = model.into_iter().filter(|id| allowed.contains(id.as_str())).collect();
+        let allowed: std::collections::HashSet<&str> =
+            scope_expanded.iter().map(String::as_str).collect();
+        let narrowed: Vec<String> = model
+            .into_iter()
+            .filter(|id| allowed.contains(id.as_str()))
+            .collect();
         if !narrowed.is_empty() {
             return Some(narrowed);
         }
@@ -2041,7 +2044,9 @@ fn apply_session_rag_scope(
     let mut expanded: Vec<String> = Vec::new();
     for folder_id in &scope {
         expanded.push(folder_id.clone());
-        if let Ok(ids) = crate::vfs::repos::folder_repo::VfsFolderRepo::get_folder_ids_recursive(vfs_db, folder_id) {
+        if let Ok(ids) = crate::vfs::repos::folder_repo::VfsFolderRepo::get_folder_ids_recursive(
+            vfs_db, folder_id,
+        ) {
             expanded.extend(ids);
         }
     }
@@ -2057,11 +2062,20 @@ mod session_scope_tests {
     #[test]
     fn scope_is_a_hard_filter_that_model_args_can_only_narrow() {
         let scope = vec!["fld_course".to_string(), "fld_ch1".to_string()];
-        assert_eq!(scope_folder_ids(&[], Some(vec!["x".into()])), Some(vec!["x".to_string()]));
+        assert_eq!(
+            scope_folder_ids(&[], Some(vec!["x".into()])),
+            Some(vec!["x".to_string()])
+        );
         assert_eq!(scope_folder_ids(&[], None), None);
         assert_eq!(scope_folder_ids(&scope, None), Some(scope.clone()));
-        assert_eq!(scope_folder_ids(&scope, Some(vec!["fld_ch1".into()])), Some(vec!["fld_ch1".to_string()]));
+        assert_eq!(
+            scope_folder_ids(&scope, Some(vec!["fld_ch1".into()])),
+            Some(vec!["fld_ch1".to_string()])
+        );
         // 模型试图越出范围 → 回落到整个范围，而不是放开全库
-        assert_eq!(scope_folder_ids(&scope, Some(vec!["fld_other".into()])), Some(scope.clone()));
+        assert_eq!(
+            scope_folder_ids(&scope, Some(vec!["fld_other".into()])),
+            Some(scope.clone())
+        );
     }
 }

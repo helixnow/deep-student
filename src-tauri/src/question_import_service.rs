@@ -911,7 +911,10 @@ impl QuestionImportService {
         let vlm_service = &vlm_service;
         let mut page_results = futures::stream::iter(vlm_start_page..pages.len())
             .map(|idx| async move {
-                (idx, vlm_service.analyze_page_by_blob(vfs_db, &pages[idx]).await)
+                (
+                    idx,
+                    vlm_service.analyze_page_by_blob(vfs_db, &pages[idx]).await,
+                )
             })
             .buffered(VLM_PAGE_CONCURRENCY);
         while let Some((idx, page_result)) = page_results.next().await {
