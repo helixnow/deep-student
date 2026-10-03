@@ -82,10 +82,15 @@ impl DocumentProcessingService {
         let segments = segment_document(&document_content, &options)?;
 
         let mut tasks = Vec::new();
+        // 按各段文本量加权分配总卡数：平均分时 15 词的段和 2 词的段同拿 11 张，
+        // 词多的段被截掉尾部（60 词漏 9 个，全在词最多的两段末尾）
         let segment_limits = options
             .max_cards_total
             .filter(|total| *total > 0)
-            .map(|total| distribute_global_max_cards(total, segments.len()));
+            .map(|total| {
+                let weights: Vec<usize> = segments.iter().map(|seg| estimate_tokens(seg)).collect();
+                distribute_global_max_cards_weighted(total, &weights)
+            });
 
         let now = Utc::now().to_rfc3339();
 
@@ -392,9 +397,17 @@ fn detect_table_header<'a>(lines: &[&'a str]) -> Option<&'a str> {
             0
         }
     };
+    // 表头特征：每格都是短文本且不是数字。否则段落首个数据行（如「explicit\t/ɪk…/\t…例句…」）
+    // 会被当成表头，在后续每段开头重复
+    let header_like = |line: &str| -> bool {
+        line.split(['\t', '|'])
+            .map(str::trim)
+            .filter(|cell| !cell.is_empty())
+            .all(|cell| cell.chars().count() <= 24 && cell.parse::<f64>().is_err())
+    };
     lines.windows(2).take(3).find_map(|pair| {
         let n = columns(pair[0]);
-        (n >= 2 && n == columns(pair[1])).then_some(pair[0])
+        (n >= 2 && n == columns(pair[1]) && header_like(pair[0])).then_some(pair[0])
     })
 }
 
@@ -1001,6 +1014,32 @@ fn get_overlap_suffix(text: &str, max_chars: usize) -> Option<String> {
 /// - `total < segments`：按等距位置选出 `total` 个分段各 1 张（首段与末段均
 ///   可能入选），其余为 0；
 /// - 总额度恒守恒（求和 == total）。
+/// 按权重（各段文本量）分配总卡数：最大余数法，总量守恒；总量不超过段数时退回
+/// [`distribute_global_max_cards`] 的等距抽样。权重全为 0 时按等分处理。
+fn distribute_global_max_cards_weighted(total: i32, weights: &[usize]) -> Vec<i32> {
+    let segments = weights.len();
+    let weight_sum: usize = weights.iter().sum();
+    if total <= 0 || segments == 0 || (total as usize) <= segments || weight_sum == 0 {
+        return distribute_global_max_cards(total, segments);
+    }
+    let total = total as usize;
+    let mut limits = vec![0_i32; segments];
+    let mut remainders: Vec<(usize, usize)> = Vec::with_capacity(segments);
+    let mut assigned = 0usize;
+    for (idx, &weight) in weights.iter().enumerate() {
+        let exact = total * weight;
+        limits[idx] = (exact / weight_sum) as i32;
+        assigned += exact / weight_sum;
+        remainders.push((exact % weight_sum, idx));
+    }
+    // 余数大的先补；同余数按段序（稳定）
+    remainders.sort_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)));
+    for (_, idx) in remainders.into_iter().take(total - assigned) {
+        limits[idx] += 1;
+    }
+    limits
+}
+
 fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
     if segments == 0 {
         return Vec::new();
@@ -1087,6 +1126,23 @@ mod tests {
         assert!(segments.len() > 1);
         assert!(segments[0].starts_with("# 词表.xlsx\n\n单词"), "{}", segments[0]);
         assert!(segments.iter().all(|seg| seg.lines().any(|l| l.starts_with("word"))));
+    }
+
+    /// 段落首行是数据行（无表头）时不得当成表头在后续段重复。
+    #[test]
+    fn data_row_is_not_mistaken_for_header() {
+        let mut table = String::new();
+        for i in 0..60 {
+            table.push_str(&format!(
+                "word{i}\t/wɜːd{i}/\tv.\t释义{i}\tThis is a fairly long example sentence number {i}.\n"
+            ));
+        }
+        let segments = segment_without_overlap(&table, 300, false).unwrap();
+        let first_lines: Vec<&str> = segments.iter().filter_map(|s| s.lines().next()).collect();
+        let mut seen = std::collections::BTreeSet::new();
+        for line in first_lines {
+            assert!(seen.insert(line), "数据行被当作表头重复: {line}");
+        }
     }
 
     #[test]
@@ -1586,6 +1642,20 @@ mod tests {
     }
 
     // ---------------- 卡片总额度分配 ----------------
+
+    #[test]
+    fn distribute_global_max_cards_weighted_follows_segment_size() {
+        // 词表分段：15 / 2 / 10 / 15 / 8 / 14 词，总 65 张——词多的段多分
+        let limits = distribute_global_max_cards_weighted(65, &[15, 2, 10, 15, 8, 14]);
+        assert_eq!(limits.iter().sum::<i32>(), 65);
+        assert!(limits[0] >= 15 && limits[3] >= 15, "{limits:?}");
+        assert!(limits[1] <= 3, "{limits:?}");
+        // 等权重时与等分一致
+        assert_eq!(distribute_global_max_cards_weighted(10, &[5, 5, 5]), vec![4, 3, 3]);
+        // 总量不超过段数时沿用等距抽样
+        assert_eq!(distribute_global_max_cards_weighted(2, &[9, 1, 1, 9]), vec![1, 0, 0, 1]);
+        assert_eq!(distribute_global_max_cards_weighted(4, &[0, 0]), vec![2, 2]);
+    }
 
     #[test]
     fn distribute_global_max_cards_cases() {
