@@ -43,6 +43,11 @@ use serde::Deserialize;
 /// 默认系统提示
 const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业的AI学习助手，帮助学生理解知识、解答问题、分析错题。请用清晰、准确的语言回答问题，必要时提供示例和解释。";
 
+/// 回复语言规则（稳定前缀，字节恒定）。
+/// 系统提示里的工具 / 技能说明大量是英文，模型在工具调用前后的过程说明常切成英文
+///（用户用中文提问，却看到 "I'll load the memory capability first."）。
+const RESPONSE_LANGUAGE_RULE: &str = "<response_language>\n回复语言跟随用户：用户用中文提问就全程用中文，包括调用工具前后的过程说明、计划与总结；只有用户明确要求或引用原文时才用其他语言。\n</response_language>";
+
 /// 引用指引（详细版）
 /// ★ 2026-01 修复：添加 [图片-N] 引用类型，与前端 citationParser 保持一致
 /// ★ P1-10（2026-08）：固定注入 system 稳定前缀，不再按 has_sources 开关——
@@ -721,6 +726,9 @@ impl PromptBuilder {
             instructions
         ));
 
+        // 1.01 回复语言规则（固定字节，任何 base_prompt 覆盖下都生效）
+        parts.push(RESPONSE_LANGUAGE_RULE.to_string());
+
         // 1.05 项目/全局 AGENTS.md 常驻指令（紧随 system_instructions）
         // 内容已在 agents_md 侧做纯文本消毒与预算截断；此处再 XML 转义防标签伪造
         if let Some(agents) = self.project_agents_instructions {
@@ -1298,10 +1306,10 @@ mod tests {
             .build();
 
         let expected = format!(
-            "{}\n\n{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n\
+            "{}\n\n{}\n\n<system_instructions>\nBASE-SYS\n</system_instructions>\n\n{}\n\n\
              <project_agents_instructions>\nAGENTS 常驻指令\n</project_agents_instructions>\n\n\
              <user_preferences>\n请用中文回答\n</user_preferences>\n\n{}",
-            LATEX_RULES, CHEMISTRY_RENDERING_RULES, CITATION_GUIDE
+            LATEX_RULES, CHEMISTRY_RENDERING_RULES, RESPONSE_LANGUAGE_RULE, CITATION_GUIDE
         );
         assert_eq!(prompt, expected);
     }
