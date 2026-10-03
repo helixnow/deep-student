@@ -127,6 +127,32 @@ fn extract_first_heading(content: &str) -> Option<String> {
     None
 }
 
+/// 拆出 Markdown 开头的一级标题（前面只允许空行）：返回 (标题, 去掉该标题后的正文)。
+/// 与前端 `splitLeadingMarkdownHeading` 同口径——导入为笔记时 H1 作笔记标题，正文不再重复一遍。
+fn split_leading_heading(content: &str) -> Option<(String, String)> {
+    let start = content.trim_start_matches('\u{feff}').trim_start();
+    let line_end = start.find('\n').unwrap_or(start.len());
+    let line = start[..line_end].trim_end_matches('\r');
+    let rest = line.strip_prefix('#')?;
+    if !rest.starts_with([' ', '\t']) {
+        return None;
+    }
+    let title = rest.trim().trim_end_matches('#').trim();
+    if title.is_empty() {
+        return None;
+    }
+    let mut body = start[line_end..].strip_prefix('\n').unwrap_or("");
+    // 标题下紧跟的一个空行一并去掉
+    if let Some(next_end) = body.find('\n') {
+        if body[..next_end].trim().is_empty() {
+            body = &body[next_end + 1..];
+        }
+    } else if body.trim().is_empty() {
+        body = "";
+    }
+    Some((title.to_string(), body.to_string()))
+}
+
 /// 判断标题是否为通用占位符（无法从 URI 解析出真实文件名时的回退值）。
 /// ★ 移动端修复：同时检测 Android 不透明 document ID（纯数字、xxx:digits 模式）
 fn is_generic_note_title(title: &str) -> bool {
@@ -156,8 +182,16 @@ fn import_markdown_note_from_local_path(
 ) -> Result<crate::dstu::types::DstuNode> {
     let (content, encoding) = read_markdown_file_with_encoding(import_path)?;
 
+    // 开头就是一级标题：它作笔记标题、正文去掉这一行（否则笔记里文件名标题 + H1 重复两遍）
+    let (content, leading_title) = match split_leading_heading(&content) {
+        Some((title, body)) => (body, Some(title)),
+        None => (content, None),
+    };
+
     // ★ 移动端修复：当标题为通用占位符时，从 Markdown 内容提取第一个 H1 标题
-    let effective_title = if is_generic_note_title(note_title) {
+    let effective_title = if let Some(title) = leading_title {
+        title
+    } else if is_generic_note_title(note_title) {
         extract_first_heading(&content)
             .unwrap_or_else(|| format!("导入笔记_{}", Utc::now().format("%Y%m%d_%H%M%S")))
     } else {
@@ -2752,7 +2786,7 @@ pub async fn notes_import_markdown_batch(
 mod tests {
     use super::{
         cleanup_materialized_import_files, decode_markdown_bytes, derive_markdown_note_title,
-        extract_first_heading, is_generic_note_title,
+        extract_first_heading, is_generic_note_title, split_leading_heading,
     };
     use std::fs;
 
@@ -2787,6 +2821,26 @@ mod tests {
             extract_first_heading("# 线性代数笔记\n\n内容..."),
             Some("线性代数笔记".to_string())
         );
+    }
+
+    #[test]
+    fn split_leading_heading_moves_h1_into_title() {
+        assert_eq!(
+            split_leading_heading("\u{feff}\n# 线性代数 知识框架 #\n\n> 复习用\n\n- 行列式\n"),
+            Some(("线性代数 知识框架".to_string(), "> 复习用\n\n- 行列式\n".to_string()))
+        );
+        assert_eq!(
+            split_leading_heading("# 只有标题"),
+            Some(("只有标题".to_string(), String::new()))
+        );
+    }
+
+    #[test]
+    fn split_leading_heading_requires_leading_h1() {
+        assert_eq!(split_leading_heading("前言\n# 标题\n"), None);
+        assert_eq!(split_leading_heading("## 二级\n正文"), None);
+        assert_eq!(split_leading_heading("#标签 不是标题"), None);
+        assert_eq!(split_leading_heading("#   \n正文"), None);
     }
 
     #[test]

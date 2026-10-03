@@ -274,7 +274,13 @@ export const notesDstuAdapter = {
     folderId?: string | null,
   ): Promise<Result<DstuNode, VfsError>> {
     const path = '/';
-    let title = deriveImportedMarkdownTitle(fileName);
+    // 开头就是一级标题：它作笔记标题、正文去掉这一行（与路径导入 notes_import_markdown 同口径）
+    const leading = content.replace(/^\uFEFF/, '').match(/^\s*#[ \t]+([^\n]+?)[ \t#]*(?:\r?\n|$)/);
+    const leadingTitle = leading?.[1].trim() || null;
+    if (leading && leadingTitle) {
+      content = content.replace(/^\uFEFF/, '').slice(leading[0].length).replace(/^[ \t]*\r?\n/, '');
+    }
+    let title = leadingTitle || deriveImportedMarkdownTitle(fileName);
 
     // ★ 移动端修复：当文件名无法提取有效标题时，从 Markdown 内容提取 H1
     if (!title) {
