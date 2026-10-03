@@ -87,10 +87,23 @@ if (window.__DS_TEST_VERSION__ !== __HELPER_VERSION__) {
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) return false;
     const cs = getComputedStyle(el);
-    return cs.visibility !== 'hidden' && cs.display !== 'none' && !el.closest('[aria-hidden="true"],[inert]');
+    if (cs.visibility === 'hidden' || cs.display === 'none' || el.closest('[aria-hidden="true"],[inert]')) return false;
+    // 保活的隐藏页面：祖先 opacity:0 / visibility:hidden，子元素可能被样式设回 visible
+    if (typeof el.checkVisibility === 'function'
+      && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+    return true;
   };
   // 可访问名称：aria-label → 可见文字 → title（title 是悬停说明，不能盖过按钮文字）
-  const nameOf = (el) => norm(el.getAttribute('aria-label') || el.innerText || el.getAttribute('title') || el.value || '');
+  // 可见文字去掉 aria-hidden 后代（如快捷键 <kbd aria-hidden>），与真实无障碍名一致
+  const visibleText = (el) => {
+    let text = el.innerText || '';
+    for (const hidden of el.querySelectorAll('[aria-hidden="true"]')) {
+      const part = hidden.innerText;
+      if (part) text = text.replace(part, '');
+    }
+    return text;
+  };
+  const nameOf = (el) => norm(el.getAttribute('aria-label') || visibleText(el) || el.getAttribute('title') || el.value || '');
   const SEL = 'button,a[href],input,textarea,select,[role=button],[role=menuitem],[role=option],[role=tab],[role=radio],[role=switch],[role=checkbox],[role=treeitem],[contenteditable=true]';
   const docs = () => {
     const out = [document];
