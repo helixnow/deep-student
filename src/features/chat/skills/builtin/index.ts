@@ -1320,7 +1320,7 @@ export const chatAnkiSkill: SkillDefinition = {
    - 清楚 → 直接进入第 2 步。
 2. **策展**：goal 写成「学习目标 + 卡型偏好 + 粒度要求」；风格/语言/格式约束放 \`extraRequirements\`。材料多、知识点密集时先列制卡大纲（知识点清单/卡型/去重/优先级）再启动；环境安装了 \`content-curator\` 子代理档案且你有子代理委派工具时，可委派它产出大纲并把「建议 goal 文本」拼进 run。
 3. **生成**：\`builtin-chatanki_run\`（文件/引用）或 \`builtin-chatanki_start\`（已清洗文本）→ 下一轮 \`builtin-chatanki_wait\`。
-4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
+4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；卡片字段里不得出现 \`[PDF@…]\`、\`[知识库-N]\`、\`[思维导图:…]\` 等对话引用标记（离开对话就无法解析，复习和导出到 Anki 时只剩一串 ID），需要出处时写资料名与页码文字（如「《考研英语核心词汇》第 3 页」），发现即用 \`builtin-chatanki_batch_update_cards\` 改掉；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
 5. **交付**：向用户汇报生成/修改/删除统计 → 征求同意后再 enqueue_review / export / sync。
 
 ## 生成调优参数（run/start 可选旋钮，何时用哪个）

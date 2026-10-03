@@ -244,13 +244,71 @@ fn clean_template_placeholders(content: &str) -> String {
     content.trim().to_string()
 }
 
-/// 导出写入 notes.flds 前清洗字段值中的 U+001F（Anki 字段分隔符），防止字段错位。
+/// 导出写入 notes.flds 前清洗字段值：
+/// - U+001F（Anki 字段分隔符）替换为空格，防止字段错位；
+/// - 聊天引用标记转成可读文字（[PDF@id:1] → 第 1 页、[知识库-1] 去掉…），
+///   否则 Anki 里显示「出处：[PDF@file_ghtouXXDFW:1]」这类内部 ID。
 fn sanitize_apkg_field_value(value: String) -> String {
+    let value = humanize_citation_markers(&value);
     if value.contains('\u{1f}') {
         value.replace('\u{1f}', " ")
     } else {
         value
     }
+}
+
+static CITATION_ANY_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)\[(?:PDF@|思维导图:|导图:|脑图:|mindmap:|题目集:|题库:|练习册:|questionbank:|question[_ ]?bank:|qbank:|知识库-|knowledge|记忆-|memory-|搜索-|search-|web-|图片-|image-|灵感-|insight-)",
+    )
+    .expect("valid citation regex")
+});
+static CITATION_PDF_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)\[PDF@[A-Za-z0-9_-]+:\s*(\d+(?:[-,]\d+)*)\]").expect("valid pdf regex")
+});
+static CITATION_PDF_BARE_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)\[PDF@[A-Za-z0-9_-]+\]").expect("valid pdf bare regex")
+});
+static CITATION_TITLED_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)\[(?:(?:思维导图|导图|脑图|mindmap):(?:mm_|mv_)[A-Za-z0-9_-]+(?:#[^:\]\n]+)?|(?:题目集|题库|练习册|questionbank|question[_ ]?bank|qbank):[\w-]+)(?::([^\]]+))?\]",
+    )
+    .expect("valid titled citation regex")
+});
+static CITATION_RETRIEVAL_RE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(
+        r"(?i)\[(?:知识库|knowledge base|knowledge|记忆|memory|搜索|search|web|图片|image|灵感|insight)-\d+\]",
+    )
+    .expect("valid retrieval citation regex")
+});
+static CITATION_GAP_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| regex::Regex::new(r"[ \t]{2,}").expect("valid gap regex"));
+static CITATION_SPACE_BEFORE_PUNCT_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"\s+([，。；、,.;)）])").expect("valid punct regex")
+    });
+static CITATION_TRAILING_SEP_RE: std::sync::LazyLock<regex::Regex> =
+    std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?m)[ \t]*[；;，,、][ \t]*$").expect("valid trailing sep regex")
+    });
+
+/// 聊天引用标记 → 可读文字（与前端 components/anki/utils/cardCitations.ts 同口径）。
+fn humanize_citation_markers(text: &str) -> String {
+    if !CITATION_ANY_RE.is_match(text) {
+        return text.to_string();
+    }
+    let out = CITATION_PDF_RE.replace_all(text, |caps: &regex::Captures| {
+        format!("第 {} 页", caps[1].replace(',', "、"))
+    });
+    let out = CITATION_PDF_BARE_RE.replace_all(&out, "");
+    let out = CITATION_TITLED_RE.replace_all(&out, |caps: &regex::Captures| {
+        caps.get(1).map(|m| m.as_str().trim().to_string()).unwrap_or_default()
+    });
+    let out = CITATION_RETRIEVAL_RE.replace_all(&out, "");
+    let out = CITATION_GAP_RE.replace_all(&out, " ");
+    let out = CITATION_SPACE_BEFORE_PUNCT_RE.replace_all(&out, "$1");
+    let out = CITATION_TRAILING_SEP_RE.replace_all(&out, "");
+    out.trim_end().to_string()
 }
 
 /// 判断文本是否含有效的 `{{cN::...}}` Cloze 标记（与 cloze_card_ords 的识别口径一致）。
@@ -2072,6 +2130,37 @@ pub async fn export_multi_template_apkg_report(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn export_fields_humanize_chat_citation_markers() {
+        assert_eq!(
+            humanize_citation_markers("词根：contro-(相反)；出处：[PDF@file_ghtouXXDFW:1]"),
+            "词根：contro-(相反)；出处：第 1 页"
+        );
+        assert_eq!(
+            humanize_citation_markers("见 [PDF@tb_1:2-3] 与 [PDF@tb_1:1,5]"),
+            "见 第 2-3 页 与 第 1、5 页"
+        );
+        assert_eq!(
+            humanize_citation_markers("马氏规则：H 加到含 H 多的碳上 [知识库-1]。"),
+            "马氏规则：H 加到含 H 多的碳上。"
+        );
+        assert_eq!(
+            humanize_citation_markers("词根：vulner(伤)；[PDF@file_x]"),
+            "词根：vulner(伤)"
+        );
+        assert_eq!(
+            humanize_citation_markers("参见 [思维导图:mm_abc:线性代数框架]"),
+            "参见 线性代数框架"
+        );
+        let plain = "Few economists {{c1::anticipated}} it. [注] [1]";
+        assert_eq!(humanize_citation_markers(plain), plain);
+        // 字段分隔符清洗仍然生效
+        assert_eq!(
+            sanitize_apkg_field_value("a\u{1f}b [搜索-2]".to_string()),
+            "a b"
+        );
+    }
     use super::*;
     use rusqlite::Connection;
     use std::collections::HashMap;

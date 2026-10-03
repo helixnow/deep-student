@@ -1071,7 +1071,8 @@ impl StreamingAnkiService {
                     - 字段名称必须与模板定义完全一致（区分大小写）\n\
                     - 每个卡片JSON中必须包含 \"template_id\" 字段标识使用的模板\n\
                     - template_id 只能填写模板ID，绝不能填写模板名称\n\
-                    - 不要使用 front/back 等通用字段，除非模板明确要求\n\n",
+                    - 不要使用 front/back 等通用字段，除非模板明确要求\n\
+                    - 字段内容不要包含 [PDF@…]、[知识库-N] 等对话引用标记；需要出处时写资料名与页码文字\n\n",
                 );
                 let mut whitelist = Vec::new();
                 let mut id_name_pairs = Vec::new();

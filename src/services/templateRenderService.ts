@@ -5,6 +5,7 @@ import {
   type AnkiSpecialFields,
   type TemplateRenderResult,
 } from './ankiTemplateEngine';
+import { humanizeCitationMarkers } from '@/components/anki/utils/cardCitations';
 
 /** renderCard 可接受的宽松卡片形态（历史上大量调用方传入非标准卡片对象） */
 export type RenderableCard = (AnkiCard | Record<string, unknown>) & {
@@ -74,7 +75,7 @@ export class TemplateRenderService {
   ): DetailedCardRenderResult {
     // 构建渲染数据
     const renderData = this.prepareRenderData(card);
-    const normalizedData = this.applyTemplateFieldAliases(renderData, template);
+    const normalizedData = this.humanizeCitations(this.applyTemplateFieldAliases(renderData, template));
     this.emitTemplateMismatchDebug(card, template, normalizedData);
 
     const special: AnkiSpecialFields = {
@@ -119,6 +120,15 @@ export class TemplateRenderService {
         extra_fields: card.extra_fields
       };
     });
+  }
+
+  /** 字段里的聊天引用标记（[PDF@id:1]、[知识库-1]…）转成可读文字，避免复习时露出内部 ID */
+  private static humanizeCitations<T extends Record<string, unknown>>(data: T): T {
+    const next: Record<string, unknown> = { ...data };
+    for (const [key, value] of Object.entries(next)) {
+      if (typeof value === 'string') next[key] = humanizeCitationMarkers(value);
+    }
+    return next as T;
   }
 
   private static resolveTags(renderData: Record<string, unknown>): string[] | string | undefined {
