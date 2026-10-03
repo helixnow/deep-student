@@ -5366,7 +5366,12 @@ mod tests {
     #[test]
     fn memory_overview_lists_recent_cards_and_average_retrievability() {
         let (_temp_dir, db) = setup_migrated_fsrs_db();
-        for card in ["card-mem-a", "card-mem-b", "card-mem-new", "card-mem-paused"] {
+        for card in [
+            "card-mem-a",
+            "card-mem-b",
+            "card-mem-new",
+            "card-mem-paused",
+        ] {
             insert_task_and_card(&db, &format!("doc-{card}"), &format!("task-{card}"), card);
         }
         let service = FsrsReviewService::new(db.clone());
@@ -5377,7 +5382,9 @@ mod tests {
             .states[0]
             .id
             .clone();
-        service.rate(&state_b, 4, Some(10), None).expect("rate b easy");
+        service
+            .rate(&state_b, 4, Some(10), None)
+            .expect("rate b easy");
         service
             .enqueue_cards(&["card-mem-new".to_string()])
             .expect("enqueue new card");
@@ -5441,7 +5448,9 @@ mod tests {
             "first ratings of new cards are not recall tests"
         );
 
-        let limited = service.get_memory_overview(Some(1)).expect("limited overview");
+        let limited = service
+            .get_memory_overview(Some(1))
+            .expect("limited overview");
         assert_eq!(limited.recent.len(), 1);
         assert_eq!(limited.memorized_count, 2, "the limit only trims the list");
     }
@@ -5455,7 +5464,9 @@ mod tests {
             .enqueue_cards(&["card-mem-empty".to_string()])
             .expect("enqueue");
 
-        let overview = service.get_memory_overview(Some(5)).expect("memory overview");
+        let overview = service
+            .get_memory_overview(Some(5))
+            .expect("memory overview");
         assert!(overview.recent.is_empty());
         assert_eq!(overview.memorized_count, 0);
         assert_eq!(overview.average_retrievability, None);
@@ -5464,7 +5475,12 @@ mod tests {
     #[test]
     fn card_memory_history_returns_reviews_in_order() {
         let (_temp_dir, db) = setup_migrated_fsrs_db();
-        insert_task_and_card(&db, "doc-mem-history", "task-mem-history", "card-mem-history");
+        insert_task_and_card(
+            &db,
+            "doc-mem-history",
+            "task-mem-history",
+            "card-mem-history",
+        );
         let service = FsrsReviewService::new(db.clone());
         let state_id = enqueue_and_rate(&db, "card-mem-history");
         service

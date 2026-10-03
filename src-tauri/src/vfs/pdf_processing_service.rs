@@ -4003,7 +4003,10 @@ mod tests {
         assert_eq!(super::image_extension_for_mime("image/jpeg"), ".jpg");
         assert_eq!(super::image_extension_for_mime("IMAGE/WEBP"), ".webp");
         assert_eq!(super::image_extension_for_mime("image/png"), ".png");
-        assert_eq!(super::image_extension_for_mime("application/octet-stream"), ".png");
+        assert_eq!(
+            super::image_extension_for_mime("application/octet-stream"),
+            ".png"
+        );
     }
     use super::*;
 
