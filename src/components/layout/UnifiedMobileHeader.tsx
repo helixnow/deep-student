@@ -12,7 +12,8 @@ import { DsButton } from '@/components/ui/DsButton';
 import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe, useMobileHeaderNav } from './MobileHeaderContext';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
-import { isMobilePlatform } from '@/utils/platform';
+import { isMacOS, isMobilePlatform } from '@/utils/platform';
+import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 
 export interface UnifiedMobileHeaderProps {
@@ -83,6 +84,12 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
     return null;
   }
 
+  // macOS 桌面窗口拉窄（< 768）也走这套移动端顶栏：红绿灯叠在左上角，会压住菜单 / 返回按钮。
+  // 桌面 mac 上左侧让出红绿灯宽度；真移动平台不受影响（仍按安全区）。
+  const paddingLeft = !isMobilePlatform() && isMacOS()
+    ? `${DESKTOP_SHELL.macTrafficLightsSpacer}px`
+    : 'calc(0.75rem + var(--mobile-safe-area-left, 0px))';
+
   if (config.floatingMenuButton && showMenuButton) {
     return (
       <div
@@ -94,7 +101,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         )}
         style={{
           paddingTop: 'calc(var(--mobile-safe-area-top, 0px) + 0.375rem)',
-          paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+          paddingLeft,
           paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
           ...style,
         }}
@@ -137,7 +144,7 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
       style={{
         paddingTop: 'var(--mobile-safe-area-top, 0px)',
         // 横屏刘海/挖孔机型：左右叠加安全区（px-3 = 12px 基础内边距）
-        paddingLeft: 'calc(0.75rem + var(--mobile-safe-area-left, 0px))',
+        paddingLeft,
         paddingRight: 'calc(0.75rem + var(--mobile-safe-area-right, 0px))',
         height: 'var(--mobile-header-total-height, 56px)',
         minHeight: 'var(--mobile-header-total-height, 56px)',
