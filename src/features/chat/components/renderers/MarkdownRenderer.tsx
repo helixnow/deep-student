@@ -332,6 +332,28 @@ const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
     .join('\n');
 };
 
+/**
+ * 表格行里公式内的竖线：GFM 先按 `|` 切单元格、后解析行内公式，`$|E+A^n|$` 会把单元格从中间切断
+ * （「Q13 … 的特征值与 $」后半截丢失）。公式内改写为 `\vert` / `\Vert`，渲染结果不变。
+ * 不能用 `\|` 转义：那在公式里是范数符号 ‖。
+ */
+export const escapePipesInTableMath = (content: string): string => {
+  if (!content.includes('|') || !content.includes('$')) return content;
+  return content
+    .split('\n')
+    .map((line) => (
+      isLikelyMarkdownTableLine(line) && line.includes('$')
+        // 行内公式按 Pandoc 规则（定界符内侧不能是空白），避免 `$5 | $10` 这类货币跨单元格配对
+        ? line.replace(/\$\$[^$]+?\$\$|\$(?!\s)[^$\n]+?(?<!\s)\$/g, (math) => (
+          math.includes('|')
+            ? math.replace(/\\\|/g, '\\Vert ').replace(/(?<!\\)\|/g, '\\vert ')
+            : math
+        ))
+        : line
+    ))
+    .join('\n');
+};
+
 // 预处理函数：处理LaTeX和空行
 //
 // ★ 性能：本函数在流式期间对活跃块每次 flush（32ms）重跑一次。
@@ -362,6 +384,8 @@ const preprocessContent = (content: string, isStreaming = false): string => {
       return `\x00CB${codeBlockPlaceholders.length - 1}\x00`;
     });
   }
+  // 表格单元格里公式内的 |（代码已占位保护）
+  processedContent = escapePipesInTableMath(processedContent);
   // CJK 紧邻加粗修复：仅在存在加粗语法时逐行处理
   if (processedContent.includes('**') || processedContent.includes('__')) {
     processedContent = fixCjkAdjacentBoldSyntaxSafely(processedContent);
