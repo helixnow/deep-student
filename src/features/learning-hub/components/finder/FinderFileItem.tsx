@@ -273,7 +273,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               <>
                 {/* 子项数量（文件夹）或文件大小（文件类） */}
                 {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-                  <span className={cn('text-[11px] tabular-nums w-12 text-right max-md:text-caption [@media(pointer:coarse)]:text-caption', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
+                  <span className={cn('text-[11px] tabular-nums min-w-12 whitespace-nowrap text-right max-md:text-caption [@media(pointer:coarse)]:text-caption', isSelected ? 'text-primary-foreground/75' : 'text-muted-foreground/50')}>
                     {childCountLabel ?? formatSize(item.size)}
                   </span>
                 )}
