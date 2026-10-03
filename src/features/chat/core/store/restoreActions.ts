@@ -946,6 +946,18 @@ export function createRestoreActions(
             ? liveState.inputValue
             : inputValue;
 
+          // 加载完成前已加进内存、还没保存的引用（工作台里对话窗口未打开时从 PDF 划词「添加到聊天」：
+          // 引用先进草稿 store，窗口随后打开才真正从后端恢复）——整体替换会把它们丢掉，
+          // 提示「已引用到对话」却在输入框里找不到。与快照按 resourceId 合并，保持 dirty 让其落盘。
+          const unsavedLiveRefs = liveState.sessionId === session.id && liveState.pendingContextRefsDirty
+            ? liveState.pendingContextRefs.filter(
+              (ref) => !pendingContextRefs.some((restored) => restored.resourceId === ref.resourceId),
+            )
+            : [];
+          const resolvedPendingContextRefs = unsavedLiveRefs.length > 0
+            ? [...pendingContextRefs, ...unsavedLiveRefs]
+            : pendingContextRefs;
+
           set({
             sessionId: session.id,
             mode: session.mode,
@@ -987,8 +999,8 @@ export function createRestoreActions(
             inputValue: resolvedInputValue,
             attachments: [],
             panelStates,
-            pendingContextRefs,
-            pendingContextRefsDirty: false,
+            pendingContextRefs: resolvedPendingContextRefs,
+            pendingContextRefsDirty: unsavedLiveRefs.length > 0,
             // 从安全解析的结果恢复（支持多选）
             activeSkillIds: restoredActiveSkillIds,
             skillStateJson: state?.skillStateJson ?? null,
