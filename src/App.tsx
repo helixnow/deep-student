@@ -351,10 +351,14 @@ function CommandPaletteButton({
   
   return (
     <CommonTooltip content={`${t('common:command_palette_label')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
+      {/* 外层标题热区本身就是可聚焦的「命令面板」按钮：内层图标按钮不再占一个 Tab 位，
+          但保留无障碍名（此前为空，读屏读作无名按钮） */}
       <DsButton
         variant="ghost"
         size="icon"
         onClick={open}
+        tabIndex={-1}
+        aria-label={t('common:command_palette_label')}
         className={cn('desktop-shell-toolbar-button', className)}
       >
         <Terminal size={16} />
