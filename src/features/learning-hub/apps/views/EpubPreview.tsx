@@ -149,6 +149,8 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
   }, [isNarrow, resourceId]);
 
   const bookLoaded = Boolean(book);
+  // 容器是否窄（目录跳章 / 搜索跳转后自动收起侧栏，与手机端一致）
+  const compactRef = useRef(false);
   // 窗口不窄、但阅读器所在的预览栏 / 分栏很窄时（如学习资源页右侧约 500px），
   // 默认展开的目录会吃掉一半宽度、正文只剩 300 多像素。按容器实际宽度在变窄时收起。
   useEffect(() => {
@@ -159,6 +161,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
       const compact = entry.contentRect.width > 0 && entry.contentRect.width < EPUB_COMPACT_WIDTH_PX;
       if (compact && !wasCompact) setSidebarOpen(false);
       wasCompact = compact;
+      compactRef.current = compact;
     });
     observer.observe(root);
     return () => observer.disconnect();
@@ -918,7 +921,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
                       style={{ paddingInlineStart: `${12 + Math.min(entry.depth, 4) * 14}px` }}
                       onClick={() => {
                         navigateToChapter(entry.chapterIndex, entry.fragment);
-                        if (isNarrow) setSidebarOpen(false);
+                        if (isNarrow || compactRef.current) setSidebarOpen(false);
                       }}
                     >
                       {entry.title}
@@ -970,7 +973,7 @@ const EpubPreview: React.FC<EpubPreviewProps> = ({
                       className={index === activeResultIndex ? 'is-active' : ''}
                       onClick={() => {
                         navigateToSearchResult(result, index);
-                        if (isNarrow) setSidebarOpen(false);
+                        if (isNarrow || compactRef.current) setSidebarOpen(false);
                       }}
                     >
                       <strong>{result.title}</strong>
