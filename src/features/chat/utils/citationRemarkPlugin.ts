@@ -10,6 +10,10 @@ import {
   createCitationPattern,
   resolveCitationTypeAlias,
 } from './citationParser';
+import {
+  formatMediaRefTimestamp,
+  parseMediaRefTimestamp,
+} from '@/features/learning-hub/apps/views/media/mediaRefTime';
 
 // ============================================================================
 // 引用正则表达式
@@ -27,6 +31,12 @@ import {
  * LLM 可能自行合并为范围格式，前端必须兼容渲染。
  */
 const PDF_REF_PATTERN = /\[PDF@([a-zA-Z0-9_-]+):\s*(\d+(?:[-,]\d+)*)\]/gi;
+
+/**
+ * 媒体时间戳引用（docs/dev/media-learning §2）：`[媒体@{resource_id}:{mm:ss|h:mm:ss}]`
+ * 也接受英文别名 `[Media@…]`（模型在英文回答中偶发改写）。
+ */
+const MEDIA_REF_PATTERN = /\[(?:媒体|media)@([a-zA-Z0-9_-]+):\s*(\d{1,3}(?::\d{1,3}){1,2})\]/gi;
 
 /**
  * PDF 页面引用简写正则表达式（全局匹配）
@@ -108,10 +118,11 @@ export function makeCitationRemarkPlugin() {
           QBANK_CITATION_PATTERN.lastIndex = 0;
           PDF_REF_PATTERN.lastIndex = 0;
           PDF_SHORT_REF_PATTERN.lastIndex = 0;
+          MEDIA_REF_PATTERN.lastIndex = 0;
 
           // 收集所有引用匹配
           interface CitationMatch {
-            type: 'citation' | 'mindmap' | 'qbank' | 'pdf_ref';
+            type: 'citation' | 'mindmap' | 'qbank' | 'pdf_ref' | 'media_ref';
             index: number;
             length: number;
             data: any;
@@ -193,6 +204,21 @@ export function makeCitationRemarkPlugin() {
             }
           }
 
+          // 收集媒体时间戳引用（秒位非法的标记保持原文）
+          MEDIA_REF_PATTERN.lastIndex = 0;
+          while ((match = MEDIA_REF_PATTERN.exec(value)) !== null) {
+            const resourceId = match[1];
+            const seconds = parseMediaRefTimestamp(match[2]);
+            if (resourceId && seconds !== null) {
+              matches.push({
+                type: 'media_ref',
+                index: match.index,
+                length: match[0].length,
+                data: { resourceId, seconds },
+              });
+            }
+          }
+
           if (matches.length === 0) {
             return;
           }
@@ -258,6 +284,15 @@ export function makeCitationRemarkPlugin() {
               parts.push({
                 type: 'html',
                 value: `<span data-pdf-ref="true"${sourceId ? ` data-pdf-source="${sourceId}"` : ''} data-pdf-page="${pageNumber}" class="pdf-ref-badge-placeholder"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;vertical-align:-1px"><path d="M4 1h5.5L13 4.5V13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2Z" stroke="currentColor" stroke-width="1.3" fill="currentColor" fill-opacity="0.1"/><path d="M9.5 1v3.5H13" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 9h4M6 11.5h2.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>${displayLabel}</span>`,
+              });
+            } else if (m.type === 'media_ref') {
+              // 媒体时间戳引用：React 侧（MarkdownRenderer span）替换为 MediaCitationBadge，
+              // 解析文件名并渲染「▶ mm:ss · 文件名」
+              const { resourceId, seconds } = m.data;
+              const label = formatMediaRefTimestamp(seconds);
+              parts.push({
+                type: 'html',
+                value: `<span data-media-ref="true" data-media-source="${resourceId}" data-media-seconds="${seconds}" class="media-ref-badge-placeholder">▶ ${label}</span>`,
               });
             }
 
@@ -446,6 +481,25 @@ export const CITATION_PLACEHOLDER_STYLES = `
 .pdf-ref-badge-placeholder svg {
   opacity: 0.85;
 }
+
+/* 媒体时间戳引用占位符（React 挂载前 / 无 React 替换的渲染面） */
+.media-ref-badge-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.45rem;
+  margin: 0 0.15rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  border-radius: 0.375rem;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
+  border: 1px solid hsl(var(--primary) / 0.2);
+  vertical-align: middle;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 `;
 
 const CITATION_STYLE_ELEMENT_ID = 'citation-badge-styles';
@@ -486,6 +540,8 @@ const DANGLING_CITATION_RULES: ReadonlyArray<{ kw: string; rest: RegExp }> = [
     rest: /^(?:-\d{0,6}(?::[^\]\n]{0,12})?)?$/,
   })),
   { kw: 'pdf@', rest: /^[^\]\n]{0,64}$/ },
+  { kw: '媒体@', rest: /^[^\]\n]{0,64}$/ },
+  { kw: 'media@', rest: /^[^\]\n]{0,64}$/ },
   { kw: 'pdf', rest: /^(?:\s*第\d{0,6}页?)?$/ },
   ...['思维导图', '导图', '脑图', 'mindmap'].map((kw) => ({
     kw,

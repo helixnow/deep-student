@@ -20,6 +20,7 @@ import { makeCitationRemarkPlugin, ensureCitationPlaceholderStyles } from '../..
 import { CitationBadgeWithPopover } from '../../plugins/blocks/components/CitationPopover';
 import { MindmapCitationCard } from '../MindmapCitationCard';
 import { QbankCitationBadge } from '../QbankCitationBadge';
+import { MediaCitationBadge } from '../MediaCitationBadge';
 
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { convertFileSrc } from '@tauri-apps/api/core';
@@ -89,6 +90,9 @@ const markdownSanitizeSchema = {
       'dataPdfRef',
       'dataPdfSource',
       'dataPdfPage',
+      'dataMediaRef',
+      'dataMediaSource',
+      'dataMediaSeconds',
       // Per-word fade-in animation
       'dataSdAnimate',
       'dataSmiles',
@@ -967,6 +971,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             title={displayTitle}
           />
         );
+      }
+
+      // 媒体时间戳引用 [媒体@id:mm:ss] → 「▶ mm:ss · 文件名」徽章
+      if (props['data-media-ref'] === 'true') {
+        const mediaId = props['data-media-source'] as string | undefined;
+        const mediaSeconds = Number(props['data-media-seconds']);
+        if (mediaId && Number.isFinite(mediaSeconds) && mediaSeconds >= 0) {
+          return <MediaCitationBadge resourceId={mediaId} seconds={mediaSeconds} />;
+        }
+        return <span {...props}>{children}</span>;
       }
 
       // 处理普通引用
