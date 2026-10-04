@@ -2679,6 +2679,7 @@ function App() {
           setCurrentView('chat-v2');
           dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_SESSION, { sessionId });
         }}
+        onOpenChat={() => setCurrentView('chat-v2')}
         onOpenTemplateManagement={() => {
           setIsSelectingTemplate(false);
           setCurrentView('template-management');

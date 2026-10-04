@@ -2,7 +2,8 @@
  * 制卡任务面板应用窗口（P9 薄包装 → O18 窗口化打磨）
  *
  * 复用 `features/anki-tasks` 的 `AnkiTasksApp`；页面内两个导航回调改走 workbenchBus：
- * - 「去聊天」→ launch chat 窗口（instanceKey = sessionId，与 P7 约定一致）；
+ * - 会话行跳转 → launch chat 窗口（instanceKey = sessionId，与 P7 约定一致）；
+ * - 空态「去聊天」→ 聚焦 chat 单例（不指定会话）；
  * - 「模板管理」→ launch templates 窗口。
  *
  * O18 打磨（任务进行中的窗口呈现，设计文档 §4.4 投射）：
@@ -18,6 +19,7 @@ import React, { Suspense, useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { workbenchBus } from '../../core/workbenchBus';
 import { openChatSession } from '../chat/newSession';
+import { CHAT_APP_TYPE_ID } from '../chat/register';
 import type { AppWindowProps } from '../../core/types';
 import {
   formatAnkiTaskWindowTitle,
@@ -65,6 +67,7 @@ const TaskDashboardAppWindow: React.FC<AppWindowProps> = ({ windowId, onTitleCha
             workbenchWindowId={windowId}
             isVisible={isVisible}
             onNavigateToChat={(sessionId) => openChatSession(sessionId, 'api')}
+            onOpenChat={() => workbenchBus.launch({ typeId: CHAT_APP_TYPE_ID, reason: 'api' })}
             onOpenTemplateManagement={() =>
               workbenchBus.launch({ typeId: 'templates', reason: 'api' })
             }

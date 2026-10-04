@@ -96,12 +96,14 @@ describe('AnkiTasksApp 空态引导与重试入口', () => {
   it('无任务空态给出双引导：去聊天（主）+ 打开模板库（次）', async () => {
     setupInvoke([]);
     const onNavigateToChat = vi.fn();
+    const onOpenChat = vi.fn();
     const onOpenTemplateManagement = vi.fn();
 
     const { container } = render(
       <AnkiTasksApp
         isVisible
         onNavigateToChat={onNavigateToChat}
+        onOpenChat={onOpenChat}
         onOpenTemplateManagement={onOpenTemplateManagement}
       />,
     );
@@ -110,7 +112,9 @@ describe('AnkiTasksApp 空态引导与重试入口', () => {
     expect(within(empty).getByText('taskDashboard.emptyHint')).toBeInTheDocument();
 
     fireEvent.click(within(empty).getByRole('button', { name: 'taskDashboard.goToChat' }));
-    expect(onNavigateToChat).toHaveBeenCalledWith('__new__');
+    expect(onOpenChat).toHaveBeenCalledTimes(1);
+    // 空态入口不得把占位串当会话 ID 派发（曾传 '__new__' 致发送报 Invalid session ID format）
+    expect(onNavigateToChat).not.toHaveBeenCalled();
 
     fireEvent.click(within(empty).getByRole('button', { name: 'taskDashboard.openTemplateLib' }));
     expect(onOpenTemplateManagement).toHaveBeenCalledTimes(1);
@@ -118,7 +122,7 @@ describe('AnkiTasksApp 空态引导与重试入口', () => {
 
   it('未接入模板库回调时空态只保留去聊天引导', async () => {
     setupInvoke([]);
-    const { container } = render(<AnkiTasksApp isVisible onNavigateToChat={vi.fn()} />);
+    const { container } = render(<AnkiTasksApp isVisible onOpenChat={vi.fn()} />);
 
     const empty = await findEmptyState(container);
     expect(within(empty).getByRole('button', { name: 'taskDashboard.goToChat' })).toBeInTheDocument();

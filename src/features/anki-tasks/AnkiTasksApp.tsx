@@ -50,6 +50,8 @@ import './anki-tasks.css';
 
 export interface AnkiTasksAppProps {
   onNavigateToChat?: (sessionId: string) => void;
+  /** 空态「去聊天」：只打开聊天，不指定会话（宿主决定落到哪个会话）。 */
+  onOpenChat?: () => void;
   onOpenTemplateManagement?: () => void;
   /** Workbench visibility overrides the legacy route visibility when provided. */
   isVisible?: boolean;
@@ -58,6 +60,7 @@ export interface AnkiTasksAppProps {
 
 export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
   onNavigateToChat,
+  onOpenChat,
   onOpenTemplateManagement,
   isVisible,
   workbenchWindowId,
@@ -830,12 +833,10 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
                   size="sm"
                   variant="primary"
                  
-                  onClick={() => {
-                    // onNavigateToChat 在 legacy 壳中会 setCurrentView('chat-v2')
-                    // 并 dispatch navigate-to-session。传特殊标记表示仅切换视图
-                    onNavigateToChat?.('__new__');
-                  }}
-                  disabled={!onNavigateToChat}
+                  // 不能借 onNavigateToChat 传占位 ID：它会被当成真实会话切过去，
+                  // 发送时后端以 "Invalid session ID format" 拒绝。
+                  onClick={() => onOpenChat?.()}
+                  disabled={!onOpenChat}
                 >
                   <ChatCircleDots size={14} />
                   {t('taskDashboard.goToChat')}
