@@ -90,7 +90,9 @@ export function resolveQwenChannel(input: ReasoningChannelInput): ReasoningContr
   if (isQwenForcedThinkingModelId(model) || isQwenPureThinkingModelId(model)) {
     return unified(false, 'xhigh');
   }
-  // 其余 Qwen 思考型号（3.5~3.8 混合、商业系 plus/turbo/flash）：可关闭。
+  // qwen3.8 系：默认档对齐后端 reasoning-level-registry（qwen-3.8 default=xhigh）。
+  if (model.includes('qwen3.8')) return unified(true, 'xhigh');
+  // 其余 Qwen 思考型号（3.5~3.7 混合、商业系 plus/turbo/flash）：可关闭。
   return unified(true, 'medium');
 }
 

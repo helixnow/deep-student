@@ -5545,6 +5545,1730 @@
           "verified_at": "2026-10-03"
         }
       ]
+    },
+    {
+      "vendor": "OpenAI",
+      "series": "Embeddings（text-embedding-3 / ada-002）",
+      "models": [
+        {
+          "model_id": "text-embedding-3-small",
+          "release_date": "2024-01",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://platform.openai.com/docs/guides/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8191,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "text-embedding-3-large",
+          "release_date": "2024-01",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://platform.openai.com/docs/guides/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8191,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "text-embedding-ada-002",
+          "release_date": "2022-12",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://platform.openai.com/docs/guides/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8191,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "旧代模型，新接入建议 text-embedding-3-*。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Google",
+      "series": "Embeddings（Gemini embedding / text-embedding）",
+      "models": [
+        {
+          "model_id": "gemini-embedding-001",
+          "release_date": "2025-07",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://ai.google.dev/gemini-api/docs/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 2048,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "text-embedding-004",
+          "release_date": "2024-05",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://ai.google.dev/gemini-api/docs/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 2048,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Cohere",
+      "series": "Embed v3/v4",
+      "models": [
+        {
+          "model_id": "embed-english-v3.0",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.cohere.com/docs/cohere-embed",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "embed-multilingual-v3.0",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.cohere.com/docs/cohere-embed",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "embed-v4.0",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.cohere.com/docs/cohere-embed",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 128000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态：文本+图片混合输入共用同一向量空间；256-1536 Matryoshka 维度。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Cohere",
+      "series": "Rerank",
+      "models": [
+        {
+          "model_id": "rerank-v3.5",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://docs.cohere.com/docs/rerank-guide",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 4096,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Voyage AI",
+      "series": "Embeddings",
+      "models": [
+        {
+          "model_id": "voyage-3-large",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.voyageai.com/docs/introduction",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "voyage-3.5",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.voyageai.com/docs/introduction",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "voyage-code-3",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.voyageai.com/docs/introduction",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "voyage-multimodal-3",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.voyageai.com/docs/multimodal-embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态：文本+图片（截图/文档版式）检索。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Voyage AI",
+      "series": "Rerank",
+      "models": [
+        {
+          "model_id": "rerank-2",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://docs.voyageai.com/docs/reranker",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 16000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "rerank-2.5",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://docs.voyageai.com/docs/reranker",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Jina AI",
+      "series": "Embeddings",
+      "models": [
+        {
+          "model_id": "jina-embeddings-v3",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://jina.ai/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "jina-embeddings-v4",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://jina.ai/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态（3.8B）：文本+图片统一表征，支持单向量与 late-interaction。"
+          ]
+        },
+        {
+          "model_id": "jina-clip-v2",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://jina.ai/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态图文（CLIP 系）。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Jina AI",
+      "series": "Rerank",
+      "models": [
+        {
+          "model_id": "jina-reranker-v2-base-multilingual",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://jina.ai/reranker",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "BAAI",
+      "series": "BGE 开源（SiliconFlow 等托管）",
+      "models": [
+        {
+          "model_id": "bge-m3",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/BAAI/bge-m3",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "bge-large-zh-v1.5",
+          "release_date": "2023",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/BAAI/bge-large-zh-v1.5",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "bge-large-en-v1.5",
+          "release_date": "2023",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/BAAI/bge-large-en-v1.5",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "BAAI",
+      "series": "BGE Reranker 开源",
+      "models": [
+        {
+          "model_id": "bge-reranker-v2-m3",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/BAAI/bge-reranker-v2-m3",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "网易有道",
+      "series": "BCE 开源（SiliconFlow 托管）",
+      "models": [
+        {
+          "model_id": "bce-embedding-base_v1",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/netease-youdao/bce-embedding-base_v1",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "bce-reranker-base_v1",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/netease-youdao/bce-reranker-base_v1",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Qwen",
+      "series": "Qwen3 Embedding / Reranker（开源）",
+      "models": [
+        {
+          "model_id": "qwen3-embedding-0.6b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Embedding-0.6B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "qwen3-embedding-4b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Embedding-4B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "qwen3-embedding-8b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Embedding-8B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "qwen3-reranker-0.6b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Reranker-0.6B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "qwen3-reranker-4b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Reranker-4B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "qwen3-reranker-8b",
+          "release_date": "2025-06",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-Reranker-8B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "阿里云百炼",
+      "series": "向量与排序（DashScope）",
+      "models": [
+        {
+          "model_id": "text-embedding-v3",
+          "release_date": "2024-11",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "text-embedding-v4",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "tongyi-embedding-vision",
+          "release_date": "2025",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://help.aliyun.com/zh/model-studio/multimodal-embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态向量：图文统一向量空间（ctx 为推断值）。"
+          ]
+        },
+        {
+          "model_id": "tongyi-embedding-vision-plus",
+          "release_date": "2026-03",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://help.aliyun.com/zh/model-studio/multimodal-embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "百炼多模态向量主力（多模态向量文档列名）；带日期后缀的快照版（如 -2026-03-06）同能力；ctx 为推断值。"
+          ]
+        },
+        {
+          "model_id": "gte-rerank",
+          "release_date": "2024",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-rerank",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "通义排序模型；ctx 为推断值。",
+            "端点注意：qwen3/text-rerank 等新排序模型在 compatible-mode /reranks 返回 404，须走 DashScope 原生排序端点。"
+          ]
+        },
+        {
+          "model_id": "gte-rerank-v2",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "model_kind": "rerank",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-rerank",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多语言文本统一排序；ctx 为推断值。",
+            "端点注意：qwen3/text-rerank 等新排序模型在 compatible-mode /reranks 返回 404，须走 DashScope 原生排序端点。"
+          ]
+        },
+        {
+          "model_id": "qwen3-rerank",
+          "release_date": "2025",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-rerank",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "ctx 为推断值。",
+            "端点注意：qwen3/text-rerank 等新排序模型在 compatible-mode /reranks 返回 404，须走 DashScope 原生排序端点。"
+          ]
+        },
+        {
+          "model_id": "text-rerank",
+          "release_date": "2025",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "https://help.aliyun.com/zh/model-studio/text-rerank",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "百炼排序别名；ctx 为推断值。",
+            "端点注意：qwen3/text-rerank 等新排序模型在 compatible-mode /reranks 返回 404，须走 DashScope 原生排序端点。"
+          ]
+        },
+        {
+          "model_id": "qwen3.7-text-rerank",
+          "release_date": "2026",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "用户网关实测模型名（百炼 text-rerank 系）",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8000,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "纯文本重排；网关前缀形态 embed-gateway_qwen3.7-text-rerank 常见。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "阿里云百炼",
+      "series": "多模态检索（Qwen3-VL 系）",
+      "models": [
+        {
+          "model_id": "qwen3-vl-embedding",
+          "release_date": "2026-04",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "Qwen3-VL-Embedding 系列（2B/8B）：文本+图片+视频+任意组合输入；API 模型名与 ctx 为推断值。"
+          ]
+        },
+        {
+          "model_id": "qwen3-vl-rerank",
+          "release_date": "2026-04",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-VL-Embedding-2B",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": true,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "Qwen3-VL-Reranker 系列：多模态重排；API 模型名与 ctx 为推断值。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "智谱",
+      "series": "Embeddings",
+      "models": [
+        {
+          "model_id": "embedding-2",
+          "release_date": "2023",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://open.bigmodel.cn/dev/api#embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 512,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "embedding-3",
+          "release_date": "2024",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://open.bigmodel.cn/dev/api#embedding",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "支持自定义维度（256/512/1024/2048）；ctx 为推断值。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "字节豆包",
+      "series": "向量化与排序（火山方舟）",
+      "models": [
+        {
+          "model_id": "doubao-embedding",
+          "release_date": "2024",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://www.volcengine.com/docs/82379",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 4096,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "doubao-embedding-vision",
+          "release_date": "2025",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://www.volcengine.com/docs/82379",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 4096,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "多模态向量（图文）；规格为推断值。"
+          ]
+        },
+        {
+          "model_id": "doubao-rerank",
+          "release_date": "2025",
+          "status": "inferred",
+          "model_kind": "rerank",
+          "source_url": "https://www.volcengine.com/docs/82379",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 4096,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "rerank_api",
+            "required_fields": [
+              "model",
+              "query",
+              "documents"
+            ],
+            "optional_fields": [
+              "top_n",
+              "return_documents"
+            ],
+            "notes": "重排模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        }
+      ]
+    },
+    {
+      "vendor": "Mistral",
+      "series": "Embeddings",
+      "models": [
+        {
+          "model_id": "mistral-embed",
+          "release_date": "2024",
+          "status": "confirmed",
+          "model_kind": "embedding",
+          "source_url": "https://docs.mistral.ai/capabilities/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 8192,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "codestral-embed",
+          "release_date": "2025",
+          "status": "inferred",
+          "model_kind": "embedding",
+          "source_url": "https://docs.mistral.ai/capabilities/embeddings",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": false,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": 32768,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_embeddings_api",
+            "required_fields": [
+              "model",
+              "input"
+            ],
+            "optional_fields": [
+              "dimensions",
+              "encoding_format"
+            ],
+            "notes": "向量模型：不适用对话/工具/思考参数。"
+          },
+          "quirks": [
+            "代码检索专用向量。"
+          ]
+        }
+      ]
     }
   ]
 }

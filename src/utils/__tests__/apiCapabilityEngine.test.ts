@@ -416,3 +416,78 @@ describe('apiCapabilityEngine Xiaomi MiMo model inference', () => {
   });
 });
 
+describe('gateway-prefixed model IDs (embed-gateway_ slug)', () => {
+  it('treats a chat model behind an embed-gateway prefix as chat, not embedding', () => {
+    const caps = inferApiCapabilities({ id: 'embed-gateway_qwen3.8-max', providerScope: 'custom' });
+    expect(caps.embedding).toBe(false);
+    expect(caps.rerank).toBe(false);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.maxOutputTokens).toBe(131072);
+    expect(caps.contextWindow).toBe(1_000_000);
+    expect(caps.contextWindowSource).toBe('registry');
+  });
+
+  it('classifies a prefixed text rerank as rerank without chat-record inheritance', () => {
+    const caps = inferApiCapabilities({ id: 'embed-gateway_qwen3.7-text-rerank', providerScope: 'custom' });
+    expect(caps.rerank).toBe(true);
+    expect(caps.embedding).toBe(false);
+    expect(caps.functionCalling).toBe(false);
+    expect(caps.reasoning).toBe(false);
+    expect(caps.vision).toBe(false);
+  });
+
+  it('classifies a prefixed VL embedding as multimodal embedding', () => {
+    const caps = inferApiCapabilities({ id: 'embed-gateway_qwen3-vl-embedding', providerScope: 'custom' });
+    expect(caps.embedding).toBe(true);
+    expect(caps.rerank).toBe(false);
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(false);
+    expect(caps.reasoning).toBe(false);
+  });
+
+  it('classifies a prefixed VL rerank as multimodal rerank', () => {
+    const caps = inferApiCapabilities({ id: 'embed-gateway_qwen3-vl-rerank', providerScope: 'custom' });
+    expect(caps.rerank).toBe(true);
+    expect(caps.embedding).toBe(false);
+    expect(caps.vision).toBe(true);
+  });
+
+  it('classifies tongyi-embedding-vision-plus (dated snapshot) as multimodal embedding', () => {
+    const caps = inferApiCapabilities({ id: 'embed-gateway_tongyi-embedding-vision-plus-2026-03-06', providerScope: 'custom' });
+    expect(caps.embedding).toBe(true);
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(false);
+  });
+
+  it('keeps plain text embeddings as non-multimodal', () => {
+    const caps = inferApiCapabilities({ id: 'text-embedding-3-large' });
+    expect(caps.embedding).toBe(true);
+    expect(caps.vision).toBe(false);
+    expect(caps.functionCalling).toBe(false);
+  });
+
+  it('keeps version-suffixed BCE embedding intact (no gateway strip)', () => {
+    const caps = inferApiCapabilities({ id: 'netease-youdao/bce-embedding-base_v1' });
+    expect(caps.embedding).toBe(true);
+    expect(caps.vision).toBe(false);
+  });
+
+  it('ignores gateway-prefix signals coming from the display name (label = raw id)', () => {
+    // 导入路径把 label（原始带前缀 ID）作为 name 传入——name 兜底同样要剥前缀
+    const caps = inferApiCapabilities({ id: 'embed-gateway_qwen3.8-max', name: 'embed-gateway_qwen3.8-max', providerScope: 'custom' });
+    expect(caps.embedding).toBe(false);
+    expect(caps.rerank).toBe(false);
+    const labeled = inferApiCapabilities({ id: 'embed-gateway_qwen3.7-text-rerank', name: 'embed-gateway_qwen3.7-text-rerank', providerScope: 'custom' });
+    expect(labeled.rerank).toBe(true);
+    expect(labeled.embedding).toBe(false);
+  });
+
+  it('resolves embedding records only for embedding-kind inputs', () => {
+    const record = findModelRecordById('embed-gateway_qwen3-vl-embedding');
+    expect(record?.model_id).toBe('qwen3-vl-embedding');
+    expect(record?.model_kind).toBe('embedding');
+    const chatRecord = findModelRecordById('embed-gateway_qwen3.8-max');
+    expect(chatRecord?.model_id).toBe('qwen3.8-max');
+    expect(chatRecord?.model_kind ?? 'chat').toBe('chat');
+  });
+});

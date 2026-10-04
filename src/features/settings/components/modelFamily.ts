@@ -6,9 +6,12 @@
  *
  * 设计原则：
  * - 规则有序匹配，靠前的优先
+ * - 能力分类（嵌入/重排/语音/图像）先于厂商规则：先定类型，再归厂商
  * - 不识别的模型归入 OTHER_FAMILY（order 极大，排在最后）
- * - 处理形如 "openai/gpt-4o" 的带前缀 ID（取最后一段）
+ * - 处理形如 "openai/gpt-4o" 的带前缀 ID（取最后一段）与
+ *   "embed-gateway_qwen3.8-max" 的网关 slug 前缀
  */
+import { stripGatewayPrefix } from '@/utils/modelIdPrefix';
 
 export interface ModelFamily {
   id: string;
@@ -22,6 +25,16 @@ interface FamilyRule {
 }
 
 const FAMILY_RULES: FamilyRule[] = [
+  // === 能力分类（先于厂商：先定类型，再归厂商） ===
+  // 嵌入/重排/语音/图像是独立产品线，厂商规则（如 /qwen[-_]?3/）不应把
+  // qwen3-vl-embedding 这类模型吸进聊天家族；网关前缀由 stripGatewayPrefix 剥离。
+  // 注意：reranker 必须先于 embedding 检查（匹配顺序），但显示顺序让 embedding 在前（order 小）
+  { pattern: /(?:^|[-_/])rerank(?:er)?(?:[-_]|$)/i, family: { id: 'reranker', label: 'Reranker', order: 901 } },
+  { pattern: /(?:^|[-_/])(?:text-embedding|embedding|embed|bge|m3e|gte|e5)(?:[-_]|$)/i, family: { id: 'embedding', label: 'Embeddings', order: 900 } },
+  { pattern: /whisper/i, family: { id: 'whisper', label: 'Whisper', order: 902 } },
+  { pattern: /(?:^|-)tts(?:[-_]|$)/i, family: { id: 'tts', label: 'TTS', order: 903 } },
+  { pattern: /dall-?e/i, family: { id: 'dalle', label: 'DALL·E', order: 904 } },
+
   // === OpenAI ===
   { pattern: /^o[1-9](?:[-_]|$)/i, family: { id: 'openai-o', label: 'o-series', order: 1 } },
   { pattern: /^gpt-5/i, family: { id: 'gpt-5', label: 'GPT-5', order: 2 } },
@@ -87,14 +100,6 @@ const FAMILY_RULES: FamilyRule[] = [
   { pattern: /(?:^abab|minimax)/i, family: { id: 'minimax', label: 'MiniMax', order: 75 } },
   { pattern: /^yi[-_]/i, family: { id: 'yi', label: 'Yi', order: 76 } },
   { pattern: /^ernie/i, family: { id: 'ernie', label: 'ERNIE', order: 77 } },
-
-  // === 能力分类（fallback） ===
-  // 注意：reranker 必须先于 embedding 检查（匹配顺序），但显示顺序让 embedding 在前（order 小）
-  { pattern: /(?:^|[-_/])rerank(?:er)?(?:[-_]|$)/i, family: { id: 'reranker', label: 'Reranker', order: 901 } },
-  { pattern: /(?:^|[-_/])(?:text-embedding|embedding|embed|bge|m3e|gte|e5)(?:[-_]|$)/i, family: { id: 'embedding', label: 'Embeddings', order: 900 } },
-  { pattern: /whisper/i, family: { id: 'whisper', label: 'Whisper', order: 902 } },
-  { pattern: /(?:^|-)tts(?:[-_]|$)/i, family: { id: 'tts', label: 'TTS', order: 903 } },
-  { pattern: /dall-?e/i, family: { id: 'dalle', label: 'DALL·E', order: 904 } },
 ];
 
 const OTHER_FAMILY: ModelFamily = { id: 'other', label: 'Other', order: 9999 };
@@ -106,7 +111,8 @@ const stripProviderPrefix = (modelId: string): string => {
 };
 
 export function classifyModelFamily(modelId: string): ModelFamily {
-  const normalized = stripProviderPrefix(modelId).trim();
+  // 先剥 `/` 路径段，再剥网关 slug 前缀（embed-gateway_qwen3.8-max → qwen3.8-max）
+  const normalized = stripGatewayPrefix(stripProviderPrefix(modelId)).trim();
   if (!normalized) return OTHER_FAMILY;
 
   for (const rule of FAMILY_RULES) {

@@ -6,6 +6,7 @@
 // 本模块作为兼容层，调用 apiCapabilityEngine 并补充 supported_features 推断
 
 import { inferApiCapabilities, type InferredApiCapabilities } from './apiCapabilityEngine';
+import { stripGatewayPrefix } from './modelIdPrefix';
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）
 export type ModelAdapterType = 
@@ -250,6 +251,11 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     'qwq-plus': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen3.5-397b-a17b': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen3.5-122b-a10b': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
+    // qwen3.8 系列：对齐后端 reasoning-level-registry qwen-3.8（default xhigh；
+    // 官方 effort 与 thinking_budget 互斥，故不带 budget）。max 仍可由用户手选。
+    'qwen3.8-max': { enableThinking: true, reasoningEffort: 'xhigh', includeThoughts: true, temperature: 0.7 },
+    'qwen3.8-plus': { enableThinking: true, reasoningEffort: 'xhigh', includeThoughts: true, temperature: 0.7 },
+    'qwen3.8-flash': { enableThinking: true, reasoningEffort: 'xhigh', includeThoughts: true, temperature: 0.7 },
     'deepseek-ai/deepseek-v3.1': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
@@ -263,31 +269,38 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     'glm-5': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
     'glm-4.7': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
   };
+  // 网关前缀 ID（如 embed-gateway_qwen3.8-max）的 map/startsWith 全部锚定在
+  // 型号名上；对「完整 ID + 剥离前缀 ID」两个候选各试一遍。
   const lower = toLower(modelId);
+  const strippedLower = toLower(stripGatewayPrefix(modelId));
+  const candidates = strippedLower && strippedLower !== lower ? [lower, strippedLower] : [lower];
+  const anyCandidate = (predicate: (candidate: string) => boolean): boolean => candidates.some(predicate);
   if (isNvidiaProvider(options)) {
-    if (lower.includes('nemotron')) {
+    if (anyCandidate(c => c.includes('nemotron'))) {
       return { maxOutputTokens: 8192, temperature: 0.7 };
     }
     return {};
   }
-  if (isMimoProvider(options) || lower.includes('mimo-v')) {
-    if (lower.includes('tts')) {
+  if (isMimoProvider(options) || anyCandidate(c => c.includes('mimo-v'))) {
+    if (anyCandidate(c => c.includes('tts'))) {
       return { maxOutputTokens: 8192, temperature: 0.6 };
     }
-    if (lower === 'mimo-v2.5-pro' || lower === 'mimo-v2-pro') {
+    if (candidates.some(c => c === 'mimo-v2.5-pro' || c === 'mimo-v2-pro')) {
       return { enableThinking: true, includeThoughts: true, maxOutputTokens: 131_072, temperature: 1.0 };
     }
-    if (lower === 'mimo-v2.5' || lower === 'mimo-v2-omni') {
+    if (candidates.some(c => c === 'mimo-v2.5' || c === 'mimo-v2-omni')) {
       return { enableThinking: true, includeThoughts: true, maxOutputTokens: 32_768, temperature: 1.0 };
     }
-    if (lower === 'mimo-v2-flash' || lower === 'mimo-v2.5-flash') {
+    if (candidates.some(c => c === 'mimo-v2-flash' || c === 'mimo-v2.5-flash')) {
       return { enableThinking: false, includeThoughts: false, maxOutputTokens: 65_536, temperature: 0.3 };
     }
     return { enableThinking: true, includeThoughts: true, temperature: 1.0 };
   }
-  if (map[lower]) return map[lower];
+  for (const candidate of candidates) {
+    if (map[candidate]) return map[candidate];
+  }
 
-  if (isDeepSeekV4Id(lower)) {
+  if (anyCandidate(isDeepSeekV4Id)) {
     // 官方 DeepSeek V4：新模型配置默认 64K；会话显式输出预算优先，max 档不强行抬高；
     // SiliconFlow 等第三方托管维持 32K 保守值，避免超出托管上限。
     const providerScope = options?.providerScope?.toLowerCase();
@@ -302,36 +315,39 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     };
   }
 
-  if (isDeepSeekLegacyAlias(lower)) {
-    if (lower === 'deepseek-chat') {
+  if (anyCandidate(isDeepSeekLegacyAlias)) {
+    if (candidates.some(c => c === 'deepseek-chat')) {
       return { enableThinking: false, includeThoughts: false, maxOutputTokens: 32_768, temperature: 0.6 };
     }
     return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 32_768, temperature: 0.6 };
   }
 
-  if (lower.includes('deepseek-v3.2') || lower.includes('deepseek-v3.1')) {
+  if (anyCandidate(c => c.includes('deepseek-v3.2') || c.includes('deepseek-v3.1'))) {
     return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   }
-  if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
+  if (anyCandidate(c => c.includes('qwq'))) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
   // 2B Qwen 混合思考模型 fallback（不在显式表里的 qwen3.x 商业家族成员）
   // 与 2A 的 isQwenHybridThinkingModelId 保持一致：排除 coder / thinking / instruct / preview
   if (
-    (lower.startsWith('qwen3') ||
-      lower.startsWith('qwen-plus') ||
-      lower.startsWith('qwen-turbo') ||
-      lower.startsWith('qwen-flash')) &&
-    !lower.includes('coder') &&
-    !lower.includes('thinking') &&
-    !lower.includes('instruct') &&
-    !lower.includes('preview')
+    anyCandidate(
+      c =>
+        (c.startsWith('qwen3') ||
+          c.startsWith('qwen-plus') ||
+          c.startsWith('qwen-turbo') ||
+          c.startsWith('qwen-flash')) &&
+        !c.includes('coder') &&
+        !c.includes('thinking') &&
+        !c.includes('instruct') &&
+        !c.includes('preview'),
+    )
   ) {
     return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
   }
-  if (lower.includes('deepseek')) return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
-  if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
-  if (lower.includes('doubao-seed-1')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
-  if ((lower.includes('glm-5') || lower.includes('glm-4.7')) && !lower.includes('-flash')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
-  if (lower.includes('minimax-m2')) return { temperature: 1.0 };
+  if (anyCandidate(c => c.includes('deepseek'))) return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  if (anyCandidate(c => c.includes('doubao-seed-2'))) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
+  if (anyCandidate(c => c.includes('doubao-seed-1'))) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
+  if (anyCandidate(c => (c.includes('glm-5') || c.includes('glm-4.7')) && !c.includes('-flash'))) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
+  if (anyCandidate(c => c.includes('minimax-m2'))) return { temperature: 1.0 };
   return {};
 }
 

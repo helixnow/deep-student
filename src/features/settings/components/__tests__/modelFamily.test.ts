@@ -210,3 +210,16 @@ describe('groupByModelFamily', () => {
     expect(groups.map((g) => g.family.id)).toEqual(['gpt-4', 'other']);
   });
 });
+
+describe('gateway-prefixed IDs and type-first grouping', () => {
+  it('groups gateway-prefixed embedding/rerank models by type, not vendor', () => {
+    expect(classifyModelFamily('embed-gateway_qwen3-vl-embedding').id).toBe('embedding');
+    expect(classifyModelFamily('embed-gateway_qwen3.7-text-rerank').id).toBe('reranker');
+    expect(classifyModelFamily('embed-gateway_qwen3.8-max').id).toBe('qwen-3');
+  });
+
+  it('still groups version-suffixed BCE models by type', () => {
+    expect(classifyModelFamily('netease-youdao/bce-embedding-base_v1').id).toBe('embedding');
+    expect(classifyModelFamily('netease-youdao/bce-reranker-base_v1').id).toBe('reranker');
+  });
+});
