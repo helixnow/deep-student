@@ -6,6 +6,7 @@
  */
 import { invoke } from '@tauri-apps/api/core';
 
+import { browserMessages } from './browserMessages';
 import { assertBrowserLaunchable, BrowserGateClosedError } from './gates';
 import type {
   BrowserCommandName,
@@ -69,22 +70,22 @@ export function isCommandMissingError(err: unknown): boolean {
   );
 }
 
-/** Map Rust/English gate internals to user-facing zh-CN copy. */
+/** Map Rust/English gate internals to user-facing copy in the current UI language. */
 export function localizeBrowserGateMessage(message: string): string {
   const raw = message.trim();
   const stripped = raw.replace(/^GATES_CLOSED:\s*/i, '').trim();
   const lower = stripped.toLowerCase();
   if (lower.includes('workbenchmode') || lower.includes('workbench mode')) {
-    return '内置浏览器不可用：请先启用学习桌面';
+    return browserMessages.needWorkbench();
   }
   if (lower.includes('workbenchbrowserenabled') || lower.includes('browserenabled')) {
-    return '内置浏览器不可用：请在设置中启用内置浏览器';
+    return browserMessages.needBrowserEnabled();
   }
   if (lower.includes('ui.workbench_browser') || lower.includes('feature flag')) {
-    return '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
+    return browserMessages.flagDisabled();
   }
   if (/^GATES_CLOSED:/i.test(raw) || lower.startsWith('browser disabled')) {
-    return '内置浏览器不可用：功能未启用';
+    return browserMessages.disabled();
   }
   return raw;
 }
@@ -98,7 +99,7 @@ export function toBrowserApiError(
   if (isCommandMissingError(err)) {
     return new BrowserApiError(
       command,
-      `浏览器后端命令尚未就绪（${command}）。请确认 workbench 浏览器功能已启用并完成接线。`,
+      browserMessages.commandMissing(command),
       'BROWSER_COMMAND_MISSING',
     );
   }
@@ -106,7 +107,7 @@ export function toBrowserApiError(
   const localized = localizeBrowserGateMessage(msg);
   return new BrowserApiError(
     command,
-    localized || `浏览器命令失败：${command}`,
+    localized || browserMessages.commandFailed(command),
     structuredCode ?? 'BROWSER_API_ERROR',
   );
 }

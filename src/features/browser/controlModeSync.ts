@@ -7,6 +7,7 @@
  */
 import { hubListen } from '@/features/workbench/core/eventHub';
 import { getState as getBrowserState, parseControlMode } from './browserApi';
+import { browserMessages } from './browserMessages';
 import {
   __resetClosedBrowserSessionsForTest,
   hasPendingBrowserNavigation,
@@ -145,8 +146,8 @@ function applyNavigationBlockedPayload(payload: unknown): void {
   const reason = typeof p.reason === 'string' ? p.reason.trim() : '';
   const url = typeof p.url === 'string' ? p.url.trim() : '';
   const currentUrl = p.currentUrl ?? p.current_url;
-  const detail = reason || url || '目标不符合浏览器安全策略';
-  const message = `导航被阻止：${detail}`;
+  const detail = reason || url || browserMessages.securityPolicy();
+  const message = browserMessages.navigationBlocked(detail);
   invalidateBrowserNavigationSnapshot();
   refreshGeneration += 1;
   const state = useBrowserSessionStore.getState();

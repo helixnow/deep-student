@@ -3108,5 +3108,18 @@
       "error": "Error"
     },
     "mobile_hidden": "Plugins are desktop-only"
+  },
+  "browserRuntime": {
+    "needWorkbench": "Built-in browser unavailable: turn on Study Desktop first",
+    "needBrowserEnabled": "Built-in browser unavailable: enable the built-in browser in Settings",
+    "flagUnreadable": "Built-in browser unavailable: couldn't read the feature flag. Please try again.",
+    "flagDisabled": "Built-in browser unavailable: this feature isn't available in this version (feature flag is off)",
+    "disabled": "Built-in browser unavailable: feature not enabled",
+    "commandMissing": "Browser backend command isn't ready ({{command}}). Make sure the Study Desktop browser is enabled and wired up.",
+    "commandFailed": "Browser command failed: {{command}}",
+    "operationFailed": "Browser action failed",
+    "busy": "The browser is still handling the previous action",
+    "navigationBlocked": "Navigation blocked: {{detail}}",
+    "securityPolicy": "The target doesn't meet the browser security policy"
   }
 }

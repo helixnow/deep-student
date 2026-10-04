@@ -3108,5 +3108,18 @@
       "error": "错误"
     },
     "mobile_hidden": "插件功能仅在桌面端可用"
+  },
+  "browserRuntime": {
+    "needWorkbench": "内置浏览器不可用：请先启用学习桌面",
+    "needBrowserEnabled": "内置浏览器不可用：请在设置中启用内置浏览器",
+    "flagUnreadable": "内置浏览器不可用：无法读取功能开关，请重试",
+    "flagDisabled": "内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）",
+    "disabled": "内置浏览器不可用：功能未启用",
+    "commandMissing": "浏览器后端命令尚未就绪（{{command}}）。请确认 workbench 浏览器功能已启用并完成接线。",
+    "commandFailed": "浏览器命令失败：{{command}}",
+    "operationFailed": "浏览器操作失败",
+    "busy": "浏览器正在处理上一项操作",
+    "navigationBlocked": "导航被阻止：{{detail}}",
+    "securityPolicy": "目标不符合浏览器安全策略"
   }
 }

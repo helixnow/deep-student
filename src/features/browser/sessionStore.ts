@@ -10,6 +10,7 @@ import { create } from 'zustand';
 
 import * as browserApi from './browserApi';
 import { BrowserApiError } from './browserApi';
+import { browserMessages } from './browserMessages';
 import {
   closeBrowserContentWindow,
   ensureBrowserContentWindow,
@@ -148,7 +149,7 @@ function errorMessage(err: unknown): string {
   if (err instanceof BrowserApiError) return err.message;
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
-  return '浏览器操作失败';
+  return browserMessages.operationFailed();
 }
 
 async function runNav(
@@ -158,7 +159,7 @@ async function runNav(
   opts?: { forceUserControl?: boolean },
 ): Promise<boolean> {
   if (get().loading) {
-    throw new BrowserApiError('browser_navigate', '浏览器正在处理上一项操作', 'BROWSER_BUSY');
+    throw new BrowserApiError('browser_navigate', browserMessages.busy(), 'BROWSER_BUSY');
   }
   const generation = ++snapshotGeneration;
   // 导航期间用户可能继续编辑地址：记录起飞时草稿，回执时若草稿已变则保留输入
@@ -328,7 +329,7 @@ export const useBrowserSessionStore = create<BrowserSessionStore>((set, get) => 
     const key = `${forceUserControl ? 'user' : 'agent'}:${fromAgent}:${browserApi.normalizeNavigationInput(trimmed)}`;
     if (pendingNavigation) {
       if (pendingNavigation.key === key) return pendingNavigation.promise;
-      throw new BrowserApiError('browser_navigate', '浏览器正在处理上一项操作', 'BROWSER_BUSY');
+      throw new BrowserApiError('browser_navigate', browserMessages.busy(), 'BROWSER_BUSY');
     }
 
     const promise = (async () => {

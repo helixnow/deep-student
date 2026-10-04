@@ -17,6 +17,7 @@ import {
   WORKBENCH_MODE_SETTING_KEY,
 } from '@/features/settings/components/workbenchMode';
 
+import { browserMessages } from './browserMessages';
 import { BROWSER_SETTING_KEYS } from './navigationPolicy';
 
 export { WORKBENCH_MODE_SETTING_KEY };
@@ -63,9 +64,9 @@ export function evaluateBrowserSettingsGates(
   const open = workbenchModeEnabled && browserEnabled;
   let closeMessage: string | null = null;
   if (!workbenchModeEnabled) {
-    closeMessage = '内置浏览器不可用：请先启用学习桌面';
+    closeMessage = browserMessages.needWorkbench();
   } else if (!browserEnabled) {
-    closeMessage = '内置浏览器不可用：请在设置中启用内置浏览器';
+    closeMessage = browserMessages.needBrowserEnabled();
   }
   return { workbenchModeEnabled, browserEnabled, open, closeMessage };
 }
@@ -104,10 +105,10 @@ export function peekBrowserParentGateFromCache(): boolean | null {
 export async function assertBrowserGatesOpen(): Promise<BrowserGatesSnapshot> {
   const gates = await resolveBrowserGates();
   if (!gates.workbenchModeEnabled) {
-    throw new BrowserGateClosedError('内置浏览器不可用：请先启用学习桌面');
+    throw new BrowserGateClosedError(browserMessages.needWorkbench());
   }
   if (!gates.browserEnabled) {
-    throw new BrowserGateClosedError('内置浏览器不可用：请在设置中启用内置浏览器');
+    throw new BrowserGateClosedError(browserMessages.needBrowserEnabled());
   }
   return gates;
 }
@@ -138,13 +139,13 @@ export async function resolveBrowserLaunchability(): Promise<
 
   let closeMessage: string | null = null;
   if (!gates.workbenchModeEnabled) {
-    closeMessage = '内置浏览器不可用：请先启用学习桌面';
+    closeMessage = browserMessages.needWorkbench();
   } else if (!gates.browserEnabled) {
-    closeMessage = '内置浏览器不可用：请在设置中启用内置浏览器';
+    closeMessage = browserMessages.needBrowserEnabled();
   } else if (!featureFlagEnabled) {
     closeMessage = featureFlagUnavailable
-      ? '内置浏览器不可用：无法读取功能开关，请重试'
-      : '内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）';
+      ? browserMessages.flagUnreadable()
+      : browserMessages.flagDisabled();
   }
 
   return {
@@ -158,7 +159,7 @@ export async function resolveBrowserLaunchability(): Promise<
 export async function assertBrowserLaunchable(): Promise<BrowserGatesSnapshot> {
   const snap = await resolveBrowserLaunchability();
   if (!snap.open) {
-    throw new BrowserGateClosedError(snap.closeMessage ?? '内置浏览器不可用：功能未启用');
+    throw new BrowserGateClosedError(snap.closeMessage ?? browserMessages.disabled());
   }
   return snap;
 }
