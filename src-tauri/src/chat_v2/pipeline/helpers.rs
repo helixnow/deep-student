@@ -438,6 +438,47 @@ pub(crate) fn load_stream_idle_config(main_db: Option<&Arc<MainDatabase>>) -> St
     }
 }
 
+/// Watchdog tick interval for [`wait_llm_stream_with_idle_timeout`].
+const STREAM_WATCHDOG_TICK: Duration = Duration::from_secs(10);
+
+/// A gap between watchdog ticks at least this long means the process was not
+/// scheduled at all (Android freezes backgrounded apps; Windows sleep), not
+/// that the stream was slow: a running tokio runtime fires a 10s timer on time.
+const STREAM_WATCHDOG_STALL_GAP: Duration = Duration::from_secs(30);
+
+/// Idle bookkeeping that ignores time the process spent frozen.
+///
+/// The adapter's `idle_elapsed()` is measured with `Instant`, i.e.
+/// CLOCK_MONOTONIC on Linux/Android. That clock stops during device suspend
+/// but keeps running while Android's cached-app freezer has merely frozen our
+/// process (user switched to another app, screen on). After >idle_limit in the
+/// background, the first tick on resume would see a huge idle value — usually
+/// before hyper's connection task has even delivered the bytes the provider
+/// streamed into the socket buffer meanwhile — and abort a healthy stream.
+///
+/// On a stalled tick we take the idle accrued so far as a baseline, so the
+/// stream gets a fresh `idle_limit` window measured from resume. Real activity
+/// (raw idle dropping below the baseline) clears the baseline.
+#[derive(Debug, Default)]
+struct StreamIdleTracker {
+    frozen_baseline: Duration,
+}
+
+impl StreamIdleTracker {
+    /// Returns the effective idle time, or `None` for a stalled tick whose idle
+    /// value must not be judged (the process just resumed).
+    fn observe(&mut self, raw_idle: Duration, tick_gap: Duration) -> Option<Duration> {
+        if raw_idle < self.frozen_baseline {
+            self.frozen_baseline = Duration::ZERO;
+        }
+        if tick_gap >= STREAM_WATCHDOG_STALL_GAP {
+            self.frozen_baseline = raw_idle;
+            return None;
+        }
+        Some(raw_idle.saturating_sub(self.frozen_baseline))
+    }
+}
+
 /// 以「空闲超时 + 绝对上限」语义等待 LLM 流式调用完成（🔧 F2 修复）
 ///
 /// 旧实现 `timeout(LLM_STREAM_TIMEOUT_SECS, llm_future)` 把 600s 当作整个流的
@@ -446,6 +487,8 @@ pub(crate) fn load_stream_idle_config(main_db: Option<&Arc<MainDatabase>>) -> St
 /// - 每 10s 醒来检查一次 `idle_elapsed()`（由 adapter 在每次收到 chunk 时刷新）；
 /// - 连续 `idle_limit` 无任何数据 → `IdleTimeout`（真正的挂起）；
 /// - 总时长达到 `total_limit` → `TotalTimeout`（防御性绝对上限）。
+/// - 两次检查间隔异常拉长（进程被系统冻结，如 Android 切后台）时，冻结期间
+///   累积的空闲不计入，恢复后重新给满 `idle_limit`（见 [`StreamIdleTracker`]）。
 ///
 /// `cancel_on_idle`（对应设置 `chat.stream.auto_cancel_on_timeout`）为 false 时，
 /// 空闲超时不再返回 `IdleTimeout` 断流，仅在首次越限时打一条 warn 日志继续等待；
@@ -460,33 +503,44 @@ pub(crate) async fn wait_llm_stream_with_idle_timeout<F>(
 where
     F: std::future::Future,
 {
-    const CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(10);
-    let started = std::time::Instant::now();
+    // tokio's Instant equals std's in production and follows the paused clock in tests.
+    let started = tokio::time::Instant::now();
+    let mut last_tick = started;
+    let mut idle_tracker = StreamIdleTracker::default();
     let mut idle_warned = false;
     tokio::pin!(fut);
     loop {
-        match tokio::time::timeout(CHECK_INTERVAL, &mut fut).await {
+        match tokio::time::timeout(STREAM_WATCHDOG_TICK, &mut fut).await {
             Ok(output) => return LlmStreamWaitOutcome::Completed(output),
             Err(_) => {
-                let idle = idle_elapsed();
-                if idle >= idle_limit {
-                    if cancel_on_idle {
-                        return LlmStreamWaitOutcome::IdleTimeout {
-                            idle_secs: idle.as_secs(),
-                        };
+                let now = tokio::time::Instant::now();
+                let tick_gap = now.saturating_duration_since(last_tick);
+                last_tick = now;
+                match idle_tracker.observe(idle_elapsed(), tick_gap) {
+                    None => log::info!(
+                        "[ChatV2::pipeline] LLM stream watchdog resumed after a {}s scheduling gap (process frozen/suspended); idle window restarted",
+                        tick_gap.as_secs()
+                    ),
+                    Some(idle) if idle >= idle_limit => {
+                        if cancel_on_idle {
+                            return LlmStreamWaitOutcome::IdleTimeout {
+                                idle_secs: idle.as_secs(),
+                            };
+                        }
+                        if !idle_warned {
+                            idle_warned = true;
+                            log::warn!(
+                                "[ChatV2::pipeline] LLM stream idle for {}s (limit {}s); auto_cancel_on_timeout=false, keep waiting until absolute limit {}s",
+                                idle.as_secs(),
+                                idle_limit.as_secs(),
+                                total_limit.as_secs()
+                            );
+                        }
                     }
-                    if !idle_warned {
-                        idle_warned = true;
-                        log::warn!(
-                            "[ChatV2::pipeline] LLM stream idle for {}s (limit {}s); auto_cancel_on_timeout=false, keep waiting until absolute limit {}s",
-                            idle.as_secs(),
-                            idle_limit.as_secs(),
-                            total_limit.as_secs()
-                        );
+                    Some(_) => {
+                        // 恢复收到数据后重置告警，允许下次再次越限时提示
+                        idle_warned = false;
                     }
-                } else if idle_warned {
-                    // 恢复收到数据后重置告警，允许下次再次越限时提示
-                    idle_warned = false;
                 }
                 let total = started.elapsed();
                 if total >= total_limit {
@@ -1640,6 +1694,94 @@ pub(crate) fn microcompact_old_tool_outputs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stream_idle_tracker_restarts_idle_window_after_stall() {
+        let tick = STREAM_WATCHDOG_TICK;
+        let mut tracker = StreamIdleTracker::default();
+        assert_eq!(
+            tracker.observe(Duration::from_secs(20), tick),
+            Some(Duration::from_secs(20))
+        );
+        // Process frozen for ~15 min: the resume tick is not judged.
+        assert_eq!(
+            tracker.observe(Duration::from_secs(920), Duration::from_secs(900)),
+            None
+        );
+        // Still silent afterwards: idle counts from resume only.
+        assert_eq!(
+            tracker.observe(Duration::from_secs(930), tick),
+            Some(Duration::from_secs(10))
+        );
+        // Data arrived: raw idle restarts and the baseline is dropped.
+        assert_eq!(
+            tracker.observe(Duration::from_secs(3), tick),
+            Some(Duration::from_secs(3))
+        );
+        assert_eq!(
+            tracker.observe(Duration::from_secs(13), tick),
+            Some(Duration::from_secs(13))
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_watchdog_does_not_fire_on_resume_after_process_freeze() {
+        let started = tokio::time::Instant::now();
+        // Provider finishes at t=1000s; no chunk is observed before that.
+        let fut = tokio::time::sleep(Duration::from_secs(1_000));
+        let task = tokio::spawn(wait_llm_stream_with_idle_timeout(
+            fut,
+            Duration::from_secs(600),
+            Duration::from_secs(7_200),
+            true,
+            move || started.elapsed(),
+        ));
+        tokio::task::yield_now().await;
+        // Simulate a 700s freeze: no tick runs until the clock has jumped.
+        tokio::time::advance(Duration::from_secs(700)).await;
+        match task.await.unwrap() {
+            LlmStreamWaitOutcome::Completed(()) => {}
+            LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                panic!("spurious idle timeout after resume ({idle_secs}s)")
+            }
+            LlmStreamWaitOutcome::TotalTimeout { .. } => panic!("unexpected total timeout"),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_watchdog_still_fires_for_genuine_idle_after_resume() {
+        let started = tokio::time::Instant::now();
+        let task = tokio::spawn(wait_llm_stream_with_idle_timeout(
+            std::future::pending::<()>(),
+            Duration::from_secs(600),
+            Duration::from_secs(7_200),
+            true,
+            move || started.elapsed(),
+        ));
+        tokio::task::yield_now().await;
+        tokio::time::advance(Duration::from_secs(700)).await;
+        match task.await.unwrap() {
+            LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                assert!((600..=620).contains(&idle_secs), "idle_secs={idle_secs}");
+                assert!(started.elapsed() >= Duration::from_secs(1_300));
+            }
+            _ => panic!("expected idle timeout"),
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn idle_watchdog_fires_without_freeze() {
+        let started = tokio::time::Instant::now();
+        let outcome = wait_llm_stream_with_idle_timeout(
+            std::future::pending::<()>(),
+            Duration::from_secs(600),
+            Duration::from_secs(7_200),
+            true,
+            move || started.elapsed(),
+        )
+        .await;
+        assert!(matches!(outcome, LlmStreamWaitOutcome::IdleTimeout { idle_secs: 600 }));
+    }
 
     #[test]
     fn test_build_transient_skill_messages_orders_dependencies_before_parents() {
