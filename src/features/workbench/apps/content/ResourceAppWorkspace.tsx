@@ -20,6 +20,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/To
 import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { createEmpty, dstu, type DstuNode } from '@/dstu';
+import { localizeEssayTitle } from '@/essay-grading/modeI18n';
 import UnifiedAppPanel from '@/features/learning-hub/apps/UnifiedAppPanel';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
@@ -569,7 +570,7 @@ export const ResourceAppWorkspace: React.FC<ResourceAppWorkspaceProps> = ({
               onClick={() => selectResource(item.id)}
               leftSlot={<ResourceIcon size={15} weight="duotone" />}
             >
-              <WorkbenchSidebarRowLabel>{item.name || t('resourceHome.untitled')}</WorkbenchSidebarRowLabel>
+              <WorkbenchSidebarRowLabel>{(type === 'essay' && item.name ? localizeEssayTitle(item.name, t) : item.name) || t('resourceHome.untitled')}</WorkbenchSidebarRowLabel>
             </WorkbenchSidebarRow>
           ))}
         </CustomScrollArea>
