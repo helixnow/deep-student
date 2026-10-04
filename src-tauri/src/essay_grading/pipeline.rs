@@ -994,6 +994,26 @@ fn truncate_keep_head_tail(input: &str, max_chars: usize) -> String {
     format!("{}\n……（中间内容过长，已省略）……\n{}", head, tail)
 }
 
+/// 英文界面：评语一律英文，但作文原文、润色句、范文与维度名保持原样
+const RESPONSE_LANGUAGE_RULE_EN: &str = "\n【Feedback language】\nWrite ALL feedback in English: every reason / explanation / text attribute of the markers, the <dim> comments, answers to the student's questions, and any other commentary. Keep the student's original text exactly as written, keep <polished> sentences and the model essay in the essay's own language, keep marker tag and attribute names unchanged, and keep each <dim name=\"...\"> value exactly as configured above (do not translate dimension names).\n";
+
+/// 中文界面（显式传入）：评语用中文——英文作文同样用中文讲解
+const RESPONSE_LANGUAGE_RULE_ZH: &str = "\n【反馈语言】\n所有评语、标记的 reason/explanation/text 属性、<dim> 评语与提问解答一律用中文撰写（英文作文也用中文讲解）；学生原文、<polished> 润色句与参考范文保持作文本身的语言，<dim> 的 name 与上方配置逐字一致。\n";
+
+/// 根据请求的反馈语言返回需追加的语言规则。
+///
+/// 缺省（None/空/未知值）返回 None，保持历史提示词不变；`en*` → 英文；`zh*` → 中文。
+fn response_language_rule(response_language: Option<&str>) -> Option<&'static str> {
+    let lang = response_language?.trim().to_ascii_lowercase();
+    if lang.starts_with("en") {
+        Some(RESPONSE_LANGUAGE_RULE_EN)
+    } else if lang.starts_with("zh") {
+        Some(RESPONSE_LANGUAGE_RULE_ZH)
+    } else {
+        None
+    }
+}
+
 /// 构造批改 Prompt
 ///
 /// ★ PP-1 修复（2026-02-02）：添加输入净化，防止注入攻击
@@ -1050,6 +1070,11 @@ fn build_grading_prompts(
     // 4. 添加学生提问解答指令
     system_prompt.push_str("\n学生提问解答：\n");
     system_prompt.push_str("如果学生在作文尾部附加了提问、疑惑或请求（例如\"老师，这里我不太确定该怎么写\"、\"请问这个词用得对吗\"等），你需要在批改解析中对这些问题逐一进行解答，帮助学生理解和改进。注意区分正文内容与尾部提问，提问部分不纳入评分。\n");
+
+    // 4.5 反馈语言规则（放在用户额外要求之前，用户可在额外要求中另行指定）
+    if let Some(rule) = response_language_rule(request.response_language.as_deref()) {
+        system_prompt.push_str(rule);
+    }
 
     // 5. 如果有用户自定义 prompt，追加（限制长度并净化）
     if let Some(custom) = &request.custom_prompt {
@@ -1548,7 +1573,92 @@ mod tests {
             previous_input: None,
             image_base64_list: None,
             topic_image_base64_list: None,
+            response_language: None,
         }
+    }
+
+    #[test]
+    fn prompt_without_response_language_keeps_legacy_prompt() {
+        let mode = get_default_grading_mode();
+        let request = sample_request("My hometown is a small town.");
+        let (system_prompt, _) =
+            build_grading_prompts(&request, &mode, false).expect("prompt should build");
+        assert!(!system_prompt.contains("【Feedback language】"));
+        assert!(!system_prompt.contains("【反馈语言】"));
+
+        // 未知语言值视同缺省
+        let mut unknown = sample_request("My hometown is a small town.");
+        unknown.response_language = Some("fr-FR".to_string());
+        let (unknown_prompt, _) =
+            build_grading_prompts(&unknown, &mode, false).expect("prompt should build");
+        assert_eq!(unknown_prompt, system_prompt);
+    }
+
+    #[test]
+    fn prompt_with_english_response_language_requests_english_feedback() {
+        let mode = get_builtin_grading_modes()
+            .into_iter()
+            .find(|m| m.id == "ielts")
+            .expect("ielts mode");
+        let mut request =
+            sample_request("Some people think that university education should be free.");
+        request.response_language = Some("en-US".to_string());
+        request.custom_prompt = Some("Focus on grammar".to_string());
+        let (system_prompt, user_prompt) =
+            build_grading_prompts(&request, &mode, false).expect("prompt should build");
+
+        assert!(system_prompt.contains("【Feedback language】"));
+        assert!(system_prompt.contains("Write ALL feedback in English"));
+        assert!(!system_prompt.contains("【反馈语言】"));
+        // 语言规则位于用户额外要求之前
+        let rule_pos = system_prompt.find("【Feedback language】").unwrap();
+        let custom_pos = system_prompt.find("用户额外要求").unwrap();
+        assert!(rule_pos < custom_pos);
+        // 维度名保持配置原文，保证 <dim name> 解析
+        for dim in &mode.score_dimensions {
+            assert!(system_prompt.contains(&format!("- {}（", dim.name)));
+        }
+        // 作文原文不受影响
+        assert!(user_prompt.contains("university education should be free."));
+    }
+
+    #[test]
+    fn prompt_with_chinese_response_language_requests_chinese_feedback() {
+        let mode = get_default_grading_mode();
+        for lang in ["zh-CN", "zh"] {
+            let mut request = sample_request("My hometown is a small town.");
+            request.response_language = Some(lang.to_string());
+            let (system_prompt, _) =
+                build_grading_prompts(&request, &mode, false).expect("prompt should build");
+            assert!(system_prompt.contains("【反馈语言】"));
+            assert!(!system_prompt.contains("【Feedback language】"));
+        }
+    }
+
+    #[test]
+    fn grading_request_deserializes_with_and_without_response_language() {
+        let legacy: GradingRequest = serde_json::from_value(serde_json::json!({
+            "session_id": "s",
+            "stream_session_id": "st",
+            "round_number": 1,
+            "input_text": "text",
+            "essay_type": "other",
+            "grade_level": "",
+        }))
+        .expect("legacy payload should deserialize");
+        assert!(legacy.response_language.is_none());
+
+        let with_lang: GradingRequest = serde_json::from_value(serde_json::json!({
+            "session_id": "s",
+            "stream_session_id": "st",
+            "round_number": 1,
+            "input_text": "text",
+            "essay_type": "other",
+            "grade_level": "",
+            "response_language": "en-US",
+        }))
+        .expect("payload with response_language should deserialize");
+        assert_eq!(with_lang.response_language.as_deref(), Some("en-US"));
     }
 
     #[test]

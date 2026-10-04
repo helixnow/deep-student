@@ -105,6 +105,18 @@ impl EssayGradingExecutor {
         Self
     }
 
+    /// 把工具参数中的反馈语言归一化为 "zh-CN" / "en-US"；无法识别时返回 None
+    fn normalize_response_language(raw: Option<&str>) -> Option<String> {
+        let lang = raw?.trim().to_ascii_lowercase();
+        if lang.starts_with("zh") || lang == "chinese" {
+            Some("zh-CN".to_string())
+        } else if lang.starts_with("en") {
+            Some("en-US".to_string())
+        } else {
+            None
+        }
+    }
+
     fn read_bounded_u32(args: &Value, key: &str, default: u32, min: u32, max: u32) -> u32 {
         let raw = args
             .get(key)
@@ -274,6 +286,12 @@ impl EssayGradingExecutor {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(String::from);
+        // 反馈语言：由模型按用户提问语言填写；缺省/无法识别时不设置（流水线保持历史中文行为）
+        let response_language = Self::normalize_response_language(
+            call.arguments
+                .get("response_language")
+                .and_then(|v| v.as_str()),
+        );
         let session_id_arg = call
             .arguments
             .get("session_id")
@@ -377,6 +395,7 @@ impl EssayGradingExecutor {
             previous_input,
             image_base64_list: None,
             topic_image_base64_list: None,
+            response_language,
         };
 
         // 后台执行批改流水线
@@ -896,6 +915,19 @@ impl ToolExecutor for EssayGradingExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_response_language_maps_to_supported_locales() {
+        let norm = EssayGradingExecutor::normalize_response_language;
+        assert_eq!(norm(Some("en-US")).as_deref(), Some("en-US"));
+        assert_eq!(norm(Some(" en ")).as_deref(), Some("en-US"));
+        assert_eq!(norm(Some("English")).as_deref(), Some("en-US"));
+        assert_eq!(norm(Some("zh-CN")).as_deref(), Some("zh-CN"));
+        assert_eq!(norm(Some("zh-Hans")).as_deref(), Some("zh-CN"));
+        assert_eq!(norm(Some("fr-FR")), None);
+        assert_eq!(norm(Some("")), None);
+        assert_eq!(norm(None), None);
+    }
 
     #[test]
     fn test_can_handle() {

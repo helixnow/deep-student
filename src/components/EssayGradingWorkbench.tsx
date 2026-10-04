@@ -13,6 +13,7 @@ import {
   type EssayDstuModeConfig,
 } from '@/dstu/adapters/essayDstuAdapter';
 import { useEssayGradingStream } from '../essay-grading/useEssayGradingStream';
+import { toGradingResponseLanguage } from '../essay-grading/responseLanguage';
 import {
   applyAnchoredReplacement,
   type SuggestionChange,
@@ -119,7 +120,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   externalSettingsNavigation = false,
   externalSettingsOpen,
 }) => {
-  const { t } = useTranslation(['essay_grading', 'common']);
+  const { t, i18n } = useTranslation(['essay_grading', 'common']);
 
   // 流式批改管线
   const gradingStream = useEssayGradingStream();
@@ -1293,6 +1294,8 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         previous_input: previousInput,
         image_base64_list: imageBase64List,
         topic_image_base64_list: topicImageBase64List,
+        // 评语语言跟随界面语言（中文界面批英文作文仍用中文讲解）
+        response_language: toGradingResponseLanguage(i18n?.resolvedLanguage || i18n?.language),
       });
 
       if (outcome === 'completed') {
@@ -1312,7 +1315,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
         showGlobalNotification('error', t('essay_grading:toast.grading_failed', { error: errorMsg }));
       }
     }
-  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, startGrading, finalizeCompletedGrading, uploadedImages, topicImages, topicText]);
+  }, [inputText, modeId, modelId, essayType, gradeLevel, customPrompt, currentSession, initialSession?.id, rounds, isGrading, t, i18n, startGrading, finalizeCompletedGrading, uploadedImages, topicImages, topicText]);
 
   // 重试批改（错误后由 ResultPanel 触发）
   // ★ 修复：此前重试成功后不会执行任何收尾（无成功反馈、轮次不刷新、DSTU 不回写），现与正常批改共用收尾逻辑

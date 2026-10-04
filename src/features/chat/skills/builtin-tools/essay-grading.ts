@@ -128,6 +128,7 @@ export const essayGradingSkill: SkillDefinition = {
           essay_type: { type: 'string', description: '文体，如 议论文/记叙文/说明文' },
           grade_level: { type: 'string', description: '学段，如 middle_school/high_school/college' },
           custom_prompt: { type: 'string', description: '自定义批改要求，追加到批阅模式提示词后' },
+          response_language: { type: 'string', enum: ['zh-CN', 'en-US'], description: '评语语言，按用户提问语言填' },
           session_id: {
             type: 'string',
             description: '批改会话 ID；传入则作为该会话新一轮并自动与上一轮对比，不传新建会话',

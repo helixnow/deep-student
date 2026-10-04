@@ -115,6 +115,12 @@ pub struct GradingRequest {
     /// 题目/参考材料图片 base64 列表（作文要求、原题目、参考范文等）
     #[serde(default)]
     pub topic_image_base64_list: Option<Vec<String>>,
+
+    /// 批改反馈语言（"zh-CN" | "en-US"；前端传当前界面语言，agent 传用户提问语言）。
+    /// 缺省时保持历史行为（中文评语）。只影响评语/解释的语言，不影响作文原文、
+    /// 标记语义与 <score>/<dim> 维度名。
+    #[serde(default)]
+    pub response_language: Option<String>,
 }
 
 /// 批改响应

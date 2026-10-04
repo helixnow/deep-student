@@ -34,6 +34,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { getErrorMessage } from '../utils/errorUtils';
 import { classifyGradingError, type GradingErrorKind } from './essayGradingApi';
+import type { GradingResponseLanguage } from './responseLanguage';
 
 /** 批改滑动超时（毫秒）——距上一次收到流事件超过该时长判定为超时 */
 const GRADING_TIMEOUT_MS = 120000;
@@ -61,6 +62,8 @@ export interface GradingRequest {
   image_base64_list?: string[];
   /** 题目/参考材料图片 base64 列表（作文要求、原题目、参考范文等） */
   topic_image_base64_list?: string[];
+  /** 批改反馈语言（跟随界面语言）；缺省时后端沿用中文评语 */
+  response_language?: GradingResponseLanguage;
 }
 
 /**
