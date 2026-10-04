@@ -650,7 +650,11 @@ fn decode_xml_entities(value: &str) -> String {
                     .strip_prefix("#x")
                     .or_else(|| entity.strip_prefix("#X"))
                     .and_then(|hex| u32::from_str_radix(hex, 16).ok())
-                    .or_else(|| entity.strip_prefix('#').and_then(|dec| dec.parse::<u32>().ok()))
+                    .or_else(|| {
+                        entity
+                            .strip_prefix('#')
+                            .and_then(|dec| dec.parse::<u32>().ok())
+                    })
                     .and_then(char::from_u32),
             };
             ch.map(|c| (c, end))
