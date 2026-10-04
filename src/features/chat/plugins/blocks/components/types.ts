@@ -18,6 +18,16 @@ export interface BackendSourceInfo {
   snippet?: string;
   score?: number;
   metadata?: Record<string, unknown>;
+  /** 音视频转写命中的时间窗（毫秒，媒体学习 §1.4） */
+  timeRange?: MediaTimeRange;
+  /** 可直接引用的时间点标记，如 `[媒体@file_x:01:30]` */
+  mediaCitation?: string;
+}
+
+/** 媒体时间窗（毫秒，endMs 不含） */
+export interface MediaTimeRange {
+  startMs: number;
+  endMs: number;
 }
 
 // ============================================================================
@@ -81,6 +91,8 @@ export function convertBackendSource(
     score: source.score,
     metadata: {
       ...source.metadata,
+      ...(source.timeRange ? { timeRange: source.timeRange } : {}),
+      ...(source.mediaCitation ? { mediaCitation: source.mediaCitation } : {}),
       _fallbackIndex: index + 1, // 用于在 UI 层显示默认标题
     },
   };

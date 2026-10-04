@@ -125,29 +125,31 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
     {
       name: 'builtin-resource_read',
       description:
-        '读取资源内容（笔记/教材/整卷/作文/翻译/导图）。多页文档可用 page_start/page_end 按页读取；首次不指定页码返回全文与 totalPages，之后按需读页节省 token。大文本用 offset（UTF-8 字节偏移）与 max_bytes 续读，返回 sha256（页范围后完整逻辑内容）、returned_bytes、next_offset、eof。offset 落在字符中间或超出 EOF 会拒绝；offset=EOF 返回空块。',
+        '读取资源内容（笔记/教材/整卷/作文/翻译/导图/音视频转写）。多页文档用 page_start/page_end 按页读（首次不指定返回全文与 totalPages）；音视频用 time_start/time_end 读 [mm:ss] 转写。大文本用 offset/max_bytes 续读，返回 sha256、returned_bytes、next_offset、eof。offset 非字符边界或超出 EOF 会拒绝；offset=EOF 返回空块。',
       inputSchema: {
         type: 'object',
         properties: {
           resource_id: {
             type: 'string',
             description:
-              '资源 ID（DSTU 格式，如 note_xxx/tb_xxx/exam_xxx）；来自 resource_list/resource_search 的 id 或 unified_search 的 readResourceId（优先）/sourceId。不要传 VFS UUID（res_xxx）。',
+              '资源 ID（如 note_xxx/tb_xxx/file_xxx）；来自 resource_list/resource_search 的 id 或 unified_search 的 readResourceId（优先）/sourceId。不要传 VFS UUID（res_xxx）。',
           },
           include_metadata: {
             type: 'boolean',
-            description: '包含元数据（标题、创建时间等），默认 true',
+            description: '包含元数据，默认 true',
           },
           page_start: {
             type: 'integer',
-            description: '起始页码（1-based），仅 PDF/教材/文件类型有效',
+            description: '起始页码（1-based）',
             minimum: 1,
           },
           page_end: {
             type: 'integer',
-            description: '结束页码（1-based，含），未指定时等于 page_start',
+            description: '结束页码（含），缺省=page_start',
             minimum: 1,
           },
+          time_start: { type: 'number', description: '音视频起始秒' },
+          time_end: { type: 'number', description: '结束秒，单次≤10分钟' },
           offset: {
             type: 'integer',
             description: 'UTF-8 字节偏移，须落在字符边界；续读时传上次 next_offset',
@@ -156,14 +158,14 @@ parent_id 为空或 "root" 时列出根目录下的文件夹
           },
           max_bytes: {
             type: 'integer',
-            description: '本次最多返回的正文字节数；结果还会按 30k JSON 预算再缩块，next_offset 按最终正文计算',
+            description: '本次最多返回字节数（另受 30k 结果预算约束）',
             minimum: 1,
             maximum: 1048576,
             default: 65536,
           },
           expected_hash: {
             type: 'string',
-            description: '可选：上次读取返回的逻辑内容 sha256；不匹配则拒绝，需从 offset=0 重读',
+            description: '上次返回的 sha256；不匹配则拒绝，需从 offset=0 重读',
           },
         },
         required: ['resource_id'],

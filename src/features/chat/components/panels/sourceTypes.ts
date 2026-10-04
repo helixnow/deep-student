@@ -109,6 +109,10 @@ export interface UnifiedSourceItem {
   pageIndex?: number;
   /** 资源类型（textbook/attachment/exam 等） */
   resourceType?: string;
+  /** 音视频转写命中的时间窗（毫秒） */
+  timeRange?: { startMs: number; endMs: number };
+  /** 可直接引用的时间点标记（如 `[媒体@file_x:01:30]`） */
+  mediaCitation?: string;
   /**
    * 引用契约类型（与 citation `[类型-N]` 契约一致）
    * tool/graph 等无引用契约的来源为 undefined

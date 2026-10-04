@@ -339,6 +339,9 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     // 后端 Citation Ledger 字段（numbered sources 契约）
     citationTag?: string;
     typeIndex?: number;
+    // 音视频转写命中（媒体学习 §1.4）
+    timeRange?: { startMs: number; endMs: number };
+    mediaCitation?: string;
   }> = [];
 
   if (Array.isArray(output)) {
@@ -414,6 +417,9 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
     // 后端 Citation Ledger：citationTag/typeIndex 存在时直接信任（finalize 阶段消费）
     const citationTag = source.citationTag || (metadata.citationTag as string | undefined);
     const backendTypeIndex = normalizeBackendTypeIndex(source.typeIndex ?? metadata.typeIndex);
+    const timeRange = source.timeRange
+      || (metadata.timeRange as { startMs: number; endMs: number } | undefined);
+    const mediaCitation = source.mediaCitation || (metadata.mediaCitation as string | undefined);
     
     const resolvedTitle = source.title || source.note_title || '';
     const resolvedSnippet = source.snippet || source.chunk_text || source.text_content || '';
@@ -464,6 +470,8 @@ function retrievalOutputToSourceItems(block: Block): UnifiedSourceItem[] {
       resourceType,
       citationTag,
       typeIndex: backendTypeIndex,
+      ...(timeRange ? { timeRange } : {}),
+      ...(mediaCitation ? { mediaCitation } : {}),
     };
 
     // 多模态结果：填充 multimodal 扩展字段
