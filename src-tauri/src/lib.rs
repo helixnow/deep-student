@@ -1922,13 +1922,13 @@ pub fn run() {
             // 移动端支撑：图片压缩（上传前减载）+ 网络质量探测（弱网降级）
             crate::cmd::media::compress_image,
             crate::cmd::network::network_probe,
-            // 状态恢复相关命令
             // 媒体讲义（docs/dev/media-learning §3）与笔记 → Word 导出
             crate::cmd::handout::handout_llm_complete,
             crate::cmd::handout::handout_vlm_caption,
             crate::cmd::handout::handout_cancel,
             crate::cmd::handout::handout_release,
             crate::cmd::handout::notes_export_docx,
+            // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
             crate::commands::get_pending_memory_candidates,
