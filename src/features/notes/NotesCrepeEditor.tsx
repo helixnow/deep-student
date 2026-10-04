@@ -2420,6 +2420,13 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
       }}>
       <DownloadSimple size={16} /><span>{t(`notes:chrome.export_${layout}`)}</span>
     </DsButton>)}
+    {(['default', 'handout'] as const).map(template => <DsButton key={`docx-${template}`} variant="ghost" size="sm"
+      role={hasMobileResourceMenu ? 'menuitem' : undefined} disabled={!editorApi || !noteId}
+      onClick={() => {
+        if (noteId) void import('./noteDocxExport').then(({ exportNoteAsDocx }) => exportNoteAsDocx(noteId, template, acrWindowId));
+      }}>
+      <DownloadSimple size={16} /><span>{t(template === 'handout' ? 'notes:chrome.export_docx_handout' : 'notes:chrome.export_docx')}</span>
+    </DsButton>)}
   </div>);
 
   // 宿主提供标签栏操作位、本实例可见、非移动菜单宿主、非专注模式时，页面级操作并入宿主标签栏
