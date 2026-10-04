@@ -144,5 +144,59 @@ describe('builtin templates integrity', () => {
         expect(sanitizedBack).toContain(longestValue);
       }
     });
+
+    // 卡面内容自适应（复习舞台按内容撑高 iframe，渲染期 overflow:hidden→auto）：
+    // 答案层若是绝对定位的浮层，卡片高度不会随内容增长——长答案溢出、顶部被裁、
+    // 出现纵横滚动条（The Architect / The Botanical 曾如此）。
+    it('keeps revealed content in normal flow (no absolute opacity:0 overlays)', () => {
+      for (const { selector, body } of cssRules(template.css_style)) {
+        const absolute = /position\s*:\s*absolute/.test(body);
+        const hidden = /(^|;)\s*opacity\s*:\s*0\s*(;|$)/.test(body);
+        expect(absolute && hidden, `${selector} 是绝对定位的隐藏浮层`).toBe(false);
+      }
+    });
+
+    it('clips out-of-box decorations with overflow:clip (survives the hidden→auto normalization)', () => {
+      const rules = cssRules(template.css_style);
+      const bleeding = rules.filter(({ body }) =>
+        /position\s*:\s*absolute/.test(body) && /(^|;)\s*(top|left|right|bottom)\s*:\s*-/.test(body));
+      if (bleeding.length > 0) {
+        expect(rules.some(({ body }) => /overflow\s*:\s*clip/.test(body))).toBe(true);
+      }
+    });
+
+    // flex 容器会把每段直接文本与行内元素（KaTeX 输出的 <math>）拆成独立 flex 项，
+    // 字段文字与公式被排成并列的窄列。字段值必须包在 span/块元素里再放进 flex 容器。
+    it('does not place field text directly inside flex containers', () => {
+      const flexClasses = new Set<string>();
+      for (const { selector, body } of cssRules(template.css_style)) {
+        if (!/display\s*:\s*(inline-)?flex/.test(body)) continue;
+        for (const part of selector.split(',')) {
+          const last = part.trim().split(/[\s>+~]+/).pop() ?? '';
+          for (const m of last.matchAll(/\.([\w-]+)/g)) flexClasses.add(m[1]);
+        }
+      }
+      const data = previewData(template);
+      const front = renderAnkiTemplate(template.front_template, data, { side: 'front' });
+      const back = renderAnkiTemplate(template.back_template, data, { side: 'back', frontSide: front.html });
+      for (const html of [front.html, back.html]) {
+        const doc = new DOMParser().parseFromString(html, 'text/html');
+        for (const cls of flexClasses) {
+          for (const el of doc.querySelectorAll(`.${cls}`)) {
+            const bareText = [...el.childNodes]
+              .filter((n) => n.nodeType === Node.TEXT_NODE)
+              .map((n) => n.textContent?.trim() ?? '')
+              .filter(Boolean);
+            expect(bareText, `.${cls} 直接包含文本`).toEqual([]);
+          }
+        }
+      }
+    });
   });
 });
+
+/** 极简 CSS 规则拆分（内置模板 CSS 无嵌套；@keyframes 内的 from/to 不含类名，无碍） */
+function cssRules(css: string): Array<{ selector: string; body: string }> {
+  const flat = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+  return [...flat.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ selector: m[1].trim(), body: m[2] }));
+}
