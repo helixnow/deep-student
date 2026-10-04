@@ -17,9 +17,8 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
-use crate::llm_manager::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, LLMManager,
-};
+use crate::llm_manager::single_shot_stream::{is_retryable_http_status, SingleShotOptions};
+use crate::llm_manager::{build_provider_adapter, LLMManager};
 use crate::models::AppError;
 use crate::page_rasterizer::PageSlice;
 
@@ -423,7 +422,6 @@ impl VlmGroundingService {
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": max_tokens,
-            "stream": false,
         });
 
         // GLM-4.5+ 支持 thinking 参数；OCR/题目集默认关闭以降低延迟
@@ -439,122 +437,42 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(config);
-
-        let mut preq = self
+        // 流式传输 + 空闲超时：稠密试卷页输出数千 token（或推理模型先思考）时，
+        // 非流式请求会被网关（Cloudflare ~100s → 524 / nginx 60s → 504）或固定
+        // 总超时掐断后整页重来；流式只要还在出字节就不会被判超时。
+        let opts = SingleShotOptions::new(format!("VLM-Grounding({})", config.model));
+        info!(
+            "[VLM-Grounding] 发送分析请求 (streaming): model={}, base_url={}",
+            config.model,
+            crate::llm_manager::sanitize_url_for_log(&config.base_url)
+        );
+        let completion = self
             .llm_manager
-            .prepare_provider_request(
-                provider.as_ref(),
+            .single_shot_completion(
                 config,
                 &request_body,
                 Some(&api_key),
                 None,
                 "VLM 请求构建失败",
+                &opts,
+                None,
             )
             .await?;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(180))
-            .build()
-            .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
-
-        const MAX_RETRIES: u32 = 3;
-        let mut last_error = String::new();
-
-        for attempt in 0..=MAX_RETRIES {
-            if attempt > 0 {
-                let delay = std::time::Duration::from_secs(2u64.pow(attempt));
-                warn!(
-                    "[VLM-Grounding] 第 {} 次重试，等待 {}s",
-                    attempt,
-                    delay.as_secs()
-                );
-                tokio::time::sleep(delay).await;
-            }
-
-            if attempt == 0 {
-                // 🔒 URL query 可能含 API key（Gemini ?key=...），日志脱敏
-                info!(
-                    "[VLM-Grounding] 发送分析请求: model={}, url={}",
-                    config.model,
-                    crate::llm_manager::sanitize_url_for_log(&preq.url)
-                );
-            }
-
-            let response_result = if preq.is_codex() {
-                self.llm_manager
-                    .send_codex_request_with_single_refresh(
-                        &mut preq,
-                        Some(std::time::Duration::from_secs(180)),
-                    )
-                    .await
-            } else {
-                let mut rb = client.post(&preq.url);
-                for (k, v) in &preq.headers {
-                    rb = rb.header(k, v);
-                }
-                rb.json(&preq.body)
-                    .send()
-                    .await
-                    .map_err(|e| AppError::network(format!("VLM 请求失败: {}", e)))
-            };
-
-            let response = match response_result {
-                Ok(r) => r,
-                Err(e) => {
-                    last_error = e.to_string();
-                    if attempt < MAX_RETRIES {
-                        continue;
-                    }
-                    return Err(e);
-                }
-            };
-
-            let status = response.status();
-            let body = response
-                .text()
-                .await
-                .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
-
-            if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
-                last_error = format!("VLM API 返回 {}: {}", status, truncate_utf8(&body, 200));
-                if attempt < MAX_RETRIES {
-                    warn!("[VLM-Grounding] {}", last_error);
-                    continue;
-                }
-                return Err(AppError::llm(last_error));
-            }
-
-            if !status.is_success() {
-                return Err(AppError::llm(format!(
-                    "VLM API 返回错误 {}: {}",
-                    status,
-                    truncate_utf8(&body, 500)
-                )));
-            }
-
-            let resp_json: Value = serde_json::from_str(&body)
-                .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
-
-            let openai_like = normalize_nonstream_response_to_openai(config, &resp_json)?;
-            let content = openai_like["choices"][0]["message"]["content"]
-                .as_str()
-                .ok_or_else(|| AppError::llm("VLM 响应格式错误：无法提取 content"))?;
-
-            info!(
-                "[VLM-Grounding] 收到响应: {} 字符{}",
-                content.len(),
-                if attempt > 0 {
-                    format!(" (第 {} 次重试成功)", attempt)
-                } else {
-                    String::new()
-                }
+        if completion.finish_reason.as_deref() == Some("length") {
+            warn!(
+                "[VLM-Grounding] 输出达到 max_tokens 上限 ({})，结果可能被截断",
+                max_tokens
             );
-
-            return Self::parse_vlm_response(content);
         }
+        info!(
+            "[VLM-Grounding] 收到响应: {} 字符 (attempts={}, stream={})",
+            completion.content.len(),
+            completion.attempts,
+            completion.mode.is_stream()
+        );
 
-        Err(AppError::llm(last_error))
+        Self::parse_vlm_response(&completion.content)
     }
 
     /// 描述单张图片内容（轻量 VLM 调用）
@@ -638,7 +556,6 @@ impl VlmGroundingService {
             "messages": messages,
             "temperature": 0.1,
             "max_tokens": max_tokens,
-            "stream": false,
         });
 
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
@@ -653,66 +570,22 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(config);
-
-        let mut preq = self
+        let opts =
+            SingleShotOptions::new(format!("VLM-Describe({})", config.model)).with_max_retries(1);
+        let completion = self
             .llm_manager
-            .prepare_provider_request(
-                provider.as_ref(),
+            .single_shot_completion(
                 config,
                 &request_body,
                 Some(&api_key),
                 None,
                 "VLM 图片描述请求构建失败",
+                &opts,
+                None,
             )
             .await?;
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(120))
-            .build()
-            .map_err(|e| AppError::internal(format!("创建 HTTP 客户端失败: {}", e)))?;
-
-        let response = if preq.is_codex() {
-            self.llm_manager
-                .send_codex_request_with_single_refresh(
-                    &mut preq,
-                    Some(std::time::Duration::from_secs(120)),
-                )
-                .await?
-        } else {
-            let mut rb = client.post(&preq.url);
-            for (k, v) in &preq.headers {
-                rb = rb.header(k, v);
-            }
-            rb.json(&preq.body)
-                .send()
-                .await
-                .map_err(|e| AppError::network(format!("VLM 图片描述请求失败: {}", e)))?
-        };
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("读取 VLM 响应失败: {}", e)))?;
-
-        if !status.is_success() {
-            return Err(AppError::llm(format!(
-                "VLM 图片描述 API 返回 {}: {}",
-                status,
-                truncate_utf8(&body, 300)
-            )));
-        }
-
-        let resp_json: Value = serde_json::from_str(&body)
-            .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
-
-        let openai_like = normalize_nonstream_response_to_openai(config, &resp_json)?;
-        let content = openai_like["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("");
-
-        Ok(content.trim().to_string())
+        Ok(completion.content.trim().to_string())
     }
 
     /// 从 DOCX 图文混合文档中直接提取题目（流式回调）
@@ -969,7 +842,7 @@ impl VlmGroundingService {
             let status = response.status();
 
             // 非流式错误响应（4xx/5xx 可重试）
-            if matches!(status.as_u16(), 429 | 502 | 503 | 504) {
+            if is_retryable_http_status(status.as_u16()) {
                 let body = response.text().await.unwrap_or_default();
                 last_error = format!("VLM API 返回 {}: {}", status, truncate_utf8(&body, 200));
                 if attempt < MAX_RETRIES {

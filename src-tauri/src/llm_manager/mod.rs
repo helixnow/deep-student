@@ -29,7 +29,6 @@ use crate::openai_codex::CodexAuthManager;
 use crate::providers::{ProviderAdapter, ProviderError};
 use crate::vendors::load_builtin_api_configs;
 use base64::{engine::general_purpose, Engine as _};
-use futures_util::StreamExt;
 use log::{debug, error, info, warn};
 use reqwest::{header::HeaderMap, Client, ClientBuilder};
 use serde::{Deserialize, Serialize};
@@ -8740,15 +8739,32 @@ impl LLMManager {
     /// P2-3: 调用 LLM 解析文档内容为题目
     pub async fn call_llm_for_question_parsing(&self, prompt: &str) -> Result<String> {
         // 默认使用模型二配置（第一模型已废弃）
-        let api_config = self.get_model2_config().await?;
+        self.call_llm_for_question_parsing_with_model(prompt, None)
+            .await
+    }
 
-        // 解密 API Key
-        let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
+    async fn resolve_question_parsing_config(
+        &self,
+        model_config_id: Option<&str>,
+    ) -> Result<ApiConfig> {
+        if let Some(config_id) = model_config_id {
+            let configs = self.get_api_configs().await?;
+            configs
+                .into_iter()
+                .find(|c| c.id == config_id)
+                .ok_or_else(|| {
+                    AppError::configuration(format!("找不到指定的模型配置: {}", config_id))
+                })
+        } else {
+            self.get_model2_config().await
+        }
+    }
 
-        // 获取模型 ID
-        let model_id = api_config.model.clone();
-
-        // 构建请求
+    fn question_parsing_request_body(
+        api_config: &ApiConfig,
+        prompt: &str,
+        max_tokens: u32,
+    ) -> Value {
         let messages = vec![
             json!({
                 "role": "system",
@@ -8761,70 +8777,21 @@ impl LLMManager {
         ];
 
         let mut request_body = json!({
-            "model": model_id,
+            "model": api_config.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": 4096
+            "max_tokens": max_tokens
         });
 
-        Self::apply_reasoning_config(&mut request_body, &api_config, None);
-
-        let adapter = build_provider_adapter(&api_config);
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
-                &api_config,
-                &request_body,
-                Some(&api_key),
-                None,
-                "题目解析请求构建失败",
-            )
-            .await?;
-        let response = if preq.is_codex() {
-            self.send_codex_request_with_single_refresh(&mut preq, None)
-                .await?
-        } else {
-            let mut request_builder = self.client.post(&preq.url);
-            for (name, value) in &preq.headers {
-                request_builder = request_builder.header(name, value);
-            }
-            request_builder
-                .json(&preq.body)
-                .send()
-                .await
-                .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e.without_url())))?
-        };
-
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::network(format!(
-                "LLM 响应错误 {}: {}",
-                status, error_text
-            )));
-        }
-
-        let response_json: Value = response
-            .json()
-            .await
-            .map_err(|e| AppError::validation(format!("解析 LLM 响应失败: {}", e)))?;
-
-        let openai_like = normalize_nonstream_response_to_openai(&api_config, &response_json)?;
-
-        // 提取响应内容
-        let content = openai_like
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .ok_or_else(|| AppError::validation("LLM 响应格式错误"))?;
-
-        Ok(content.to_string())
+        Self::apply_reasoning_config(&mut request_body, api_config, None);
+        request_body
     }
 
     /// 流式调用 LLM 解析题目，每解析出一道题目立即通过回调返回
     /// callback 返回 false 则中止流
+    ///
+    /// 传输由 `single_shot_stream` 承担：空闲超时 + 总时长硬上限（不再受共享
+    /// 客户端 300s 总超时限制），供应商拒绝流式时自动回退非流式。
     pub async fn call_llm_for_question_parsing_streaming<F>(
         &self,
         prompt: &str,
@@ -8834,176 +8801,55 @@ impl LLMManager {
     where
         F: FnMut(Value) -> bool + Send,
     {
-        let api_config = if let Some(config_id) = model_config_id {
-            let configs = self.get_api_configs().await?;
-            configs
-                .into_iter()
-                .find(|c| c.id == config_id)
-                .ok_or_else(|| {
-                    AppError::configuration(format!("找不到指定的模型配置: {}", config_id))
-                })?
-        } else {
-            self.get_model2_config().await?
-        };
-
+        let api_config = self
+            .resolve_question_parsing_config(model_config_id)
+            .await?;
         let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
-        let model_id = api_config.model.clone();
+        let request_body = Self::question_parsing_request_body(&api_config, prompt, 8192);
 
-        let messages = vec![
-            json!({
-                "role": "system",
-                "content": "你是一个专业的题目解析助手。请准确识别文档中的题目，并按指定格式输出。"
-            }),
-            json!({
-                "role": "user",
-                "content": prompt
-            }),
-        ];
-
-        let mut request_body = json!({
-            "model": model_id,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 8192,
-            "stream": true
-        });
-
-        Self::apply_reasoning_config(&mut request_body, &api_config, None);
-
-        let adapter = build_provider_adapter(&api_config);
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
+        let mut all_questions: Vec<Value> = Vec::new();
+        let mut json_parser = IncrementalJsonArrayParser::new();
+        let opts = single_shot_stream::SingleShotOptions::new(format!(
+            "题目解析流式({})",
+            api_config.model
+        ));
+        let completion = {
+            // 增量解析 JSON 数组：每个内容增量喂给解析器，解析出完整题目即回调
+            let mut on_delta = |delta: &str| -> bool {
+                if let Some(questions) = json_parser.feed(delta) {
+                    for q in questions {
+                        if !on_question(q.clone()) {
+                            return false;
+                        }
+                        all_questions.push(q);
+                    }
+                }
+                true
+            };
+            self.single_shot_completion(
                 &api_config,
                 &request_body,
                 Some(&api_key),
                 None,
                 "题目解析流式请求构建失败",
+                &opts,
+                Some(&mut on_delta),
             )
-            .await?;
-        let response =
-            if preq.is_codex() {
-                self.send_codex_stream_request_with_single_refresh(&mut preq, None)
-                    .await?
-            } else {
-                let mut request_builder = self.client.post(&preq.url);
-                for (name, value) in &preq.headers {
-                    request_builder = request_builder.header(name, value);
-                }
-                request_builder.json(&preq.body).send().await.map_err(|e| {
-                    AppError::network(format!("LLM 流式请求失败: {}", e.without_url()))
-                })?
-            };
+            .await?
+        };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::network(format!(
-                "LLM 响应错误 {}: {}",
-                status, error_text
-            )));
-        }
-
-        // 流式解析
-        let mut stream = response.bytes_stream();
-        let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
-
-        let mut full_content = String::new();
-        let mut all_questions: Vec<Value> = Vec::new();
-        let mut json_parser = IncrementalJsonArrayParser::new();
-        let mut stream_ended = false;
-        let mut aborted = false;
-
-        while !stream_ended && !aborted {
-            let next_item = stream.next().await;
-            let Some(next) = next_item else { break };
-
-            let chunk = match next {
-                Ok(b) => b,
-                Err(e) => {
-                    // 已有部分内容时 break 到下方 utf8/sse flush，避免错误提前返回丢尾字节
-                    if !full_content.is_empty() {
-                        log::warn!(
-                            "[LLM] 流式读取错误但已有 {} 字符/{} 题，继续 flush: {}",
-                            full_content.len(),
-                            all_questions.len(),
-                            e
-                        );
-                        break;
-                    }
-                    return Err(AppError::llm(format!("读取流式响应失败: {}", e)));
-                }
-            };
-
-            for line in sse_buffer.process_bytes(&chunk) {
-                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&line) {
-                    stream_ended = true;
-                    break;
-                }
-                let events = adapter.parse_stream(&line);
-                for ev in events {
-                    match ev {
-                        crate::providers::StreamEvent::ContentChunk(s) => {
-                            full_content.push_str(&s);
-                            // 增量解析 JSON 数组
-                            if let Some(questions) = json_parser.feed(&s) {
-                                for q in questions {
-                                    if !on_question(q.clone()) {
-                                        aborted = true;
-                                        break;
-                                    }
-                                    all_questions.push(q);
-                                }
-                            }
-                        }
-                        crate::providers::StreamEvent::Done => {
-                            stream_ended = true;
-                            break;
-                        }
-                        _ => {}
-                    }
-                    if aborted {
-                        break;
-                    }
-                }
-                if stream_ended || aborted {
-                    break;
-                }
-            }
-        }
-
-        // 处理自然关闭且没有空行分隔符的最后一个 SSE 事件。
-        if !aborted {
-            for remaining_line in sse_buffer.flush() {
-                if !remaining_line.trim().is_empty() {
-                    if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(&remaining_line)
-                    {
-                        break;
-                    }
-                    let events = adapter.parse_stream(&remaining_line);
-                    for ev in events {
-                        if let crate::providers::StreamEvent::ContentChunk(s) = ev {
-                            full_content.push_str(&s);
-                            if let Some(questions) = json_parser.feed(&s) {
-                                for q in questions {
-                                    if !on_question(q.clone()) {
-                                        aborted = true;
-                                        break;
-                                    }
-                                    all_questions.push(q);
-                                }
-                            }
-                        }
-                        if aborted {
-                            break;
-                        }
-                    }
-                }
-            }
+        if let Some(reason) = completion.interrupted.as_deref() {
+            // 已有部分内容时保留已解析题目（与旧实现一致），由上层决定是否补跑
+            log::warn!(
+                "[LLM] 题目解析流中断，保留已解析的 {} 题（{} 字符）: {}",
+                all_questions.len(),
+                completion.content.len(),
+                reason
+            );
         }
 
         // 处理剩余未解析的内容
-        if !aborted {
+        if !completion.aborted {
             if let Some(questions) = json_parser.finalize() {
                 for q in questions {
                     if on_question(q.clone()) {
@@ -9021,91 +8867,28 @@ impl LLMManager {
         prompt: &str,
         model_config_id: Option<&str>,
     ) -> Result<String> {
-        let api_config = if let Some(config_id) = model_config_id {
-            let configs = self.get_api_configs().await?;
-            configs
-                .into_iter()
-                .find(|c| c.id == config_id)
-                .ok_or_else(|| {
-                    AppError::configuration(format!("找不到指定的模型配置: {}", config_id))
-                })?
-        } else {
-            self.get_model2_config().await?
-        };
-
+        let api_config = self
+            .resolve_question_parsing_config(model_config_id)
+            .await?;
         let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
-        let model_id = api_config.model.clone();
+        let request_body = Self::question_parsing_request_body(&api_config, prompt, 4096);
 
-        let messages = vec![
-            json!({
-                "role": "system",
-                "content": "你是一个专业的题目解析助手。请准确识别文档中的题目，并按指定格式输出。"
-            }),
-            json!({
-                "role": "user",
-                "content": prompt
-            }),
-        ];
-
-        let mut request_body = json!({
-            "model": model_id,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": 4096
-        });
-
-        Self::apply_reasoning_config(&mut request_body, &api_config, None);
-
-        let adapter = build_provider_adapter(&api_config);
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
+        // 流式传输：长输出/推理模型不再被网关或固定总超时掐断
+        let opts =
+            single_shot_stream::SingleShotOptions::new(format!("题目解析({})", api_config.model));
+        let completion = self
+            .single_shot_completion(
                 &api_config,
                 &request_body,
                 Some(&api_key),
                 None,
                 "题目解析请求构建失败",
+                &opts,
+                None,
             )
             .await?;
-        let response = if preq.is_codex() {
-            self.send_codex_request_with_single_refresh(&mut preq, None)
-                .await?
-        } else {
-            let mut request_builder = self.client.post(&preq.url);
-            for (name, value) in &preq.headers {
-                request_builder = request_builder.header(name, value);
-            }
-            request_builder
-                .json(&preq.body)
-                .send()
-                .await
-                .map_err(|e| AppError::network(format!("LLM 请求失败: {}", e.without_url())))?
-        };
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::network(format!(
-                "LLM 响应错误 {}: {}",
-                status, error_text
-            )));
-        }
-
-        let response_json: Value = response
-            .json()
-            .await
-            .map_err(|e| AppError::validation(format!("解析 LLM 响应失败: {}", e)))?;
-
-        let openai_like = normalize_nonstream_response_to_openai(&api_config, &response_json)?;
-        let content = openai_like
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
-            .ok_or_else(|| AppError::validation("LLM 响应格式错误"))?;
-
-        Ok(content.to_string())
+        Ok(completion.content)
     }
 }
 
