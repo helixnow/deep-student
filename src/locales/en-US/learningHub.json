@@ -203,9 +203,13 @@
   "time": {
     "justNow": "Just now",
     "minutesAgo": "{{count}} minutes ago",
+    "minutesAgo_one": "{{count}} minute ago",
     "hoursAgo": "{{count}} hours ago",
+    "hoursAgo_one": "{{count}} hour ago",
     "daysAgo": "{{count}} days ago",
-    "weeksAgo": "{{count}} weeks ago"
+    "daysAgo_one": "{{count}} day ago",
+    "weeksAgo": "{{count}} weeks ago",
+    "weeksAgo_one": "{{count}} week ago"
   },
   "grid": {
     "empty": "No content",
@@ -507,7 +511,9 @@
     "hiddenFolders": "{{count}} hidden folder(s)"
   },
   "finder": {
-    "convertToNote": { "success": "Converted to note \"{{name}}\"" },
+    "convertToNote": {
+      "success": "Converted to note \"{{name}}\""
+    },
     "childCount": "{{count}} items",
     "matchFromIndex": "[Index]",
     "memoryMeta": {

@@ -1952,7 +1952,8 @@
       "just_now": "Just now",
       "minutes_ago": "{{count}} min ago",
       "hours_ago": "{{count}} hr ago",
-      "days_ago": "{{count}} days ago"
+      "days_ago": "{{count}} days ago",
+      "days_ago_one": "{{count}} day ago"
     },
     "invalid": "Original resource has been deleted",
     "validating": "Validating...",

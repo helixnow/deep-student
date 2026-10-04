@@ -529,7 +529,8 @@
     "balance_just_now": "Just now",
     "balance_minutes_ago": "{{count}} min ago",
     "balance_hours_ago": "{{count}} hr ago",
-    "balance_days_ago": "{{count}} day(s) ago"
+    "balance_days_ago": "{{count}} days ago",
+    "balance_days_ago_one": "{{count}} day ago"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",

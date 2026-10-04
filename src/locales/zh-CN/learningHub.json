@@ -203,9 +203,13 @@
   "time": {
     "justNow": "刚刚",
     "minutesAgo": "{{count}} 分钟前",
+    "minutesAgo_one": "{{count}} 分钟前",
     "hoursAgo": "{{count}} 小时前",
+    "hoursAgo_one": "{{count}} 小时前",
     "daysAgo": "{{count}} 天前",
-    "weeksAgo": "{{count}} 周前"
+    "daysAgo_one": "{{count}} 天前",
+    "weeksAgo": "{{count}} 周前",
+    "weeksAgo_one": "{{count}} 周前"
   },
   "grid": {
     "empty": "暂无内容",
@@ -507,7 +511,9 @@
     "hiddenFolders": "{{count}} 个隐藏文件夹"
   },
   "finder": {
-    "convertToNote": { "success": "已转为笔记「{{name}}」" },
+    "convertToNote": {
+      "success": "已转为笔记「{{name}}」"
+    },
     "childCount": "{{count}} 项",
     "matchFromIndex": "[索引]",
     "memoryMeta": {

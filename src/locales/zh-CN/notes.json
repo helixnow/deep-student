@@ -1951,7 +1951,8 @@
       "just_now": "刚刚",
       "minutes_ago": "{{count}} 分钟前",
       "hours_ago": "{{count}} 小时前",
-      "days_ago": "{{count}} 天前"
+      "days_ago": "{{count}} 天前",
+      "days_ago_one": "{{count}} 天前"
     },
     "invalid": "原始资源已被删除",
     "validating": "校验中...",
