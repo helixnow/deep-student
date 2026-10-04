@@ -287,8 +287,8 @@
     "views": {
       "tree": "File tree",
       "list": "Note list",
-      "status": "Mastery status",
-      "review": "Upcoming reviews",
+      "status": "Mastery",
+      "review": "Reviews",
       "all": "All"
     },
     "unset_group": "Not set / previous value retained",

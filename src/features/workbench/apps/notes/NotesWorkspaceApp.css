@@ -1379,7 +1379,11 @@
   background: transparent;
   color: hsl(var(--muted-foreground));
   font-size: 12px;
+  padding: 0 4px;
   white-space: nowrap;
+  /* 英文等较长文案：裁切加省略号，不压到相邻选项上（完整文字见 title） */
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   transition: background-color 120ms ease, color 120ms ease;
 }

@@ -2716,6 +2716,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         <div className="notes-view-switch" role="radiogroup" aria-label={t('notes:learning.view_selector')}>
           {(['tree', 'list', 'status', 'review'] as const).map((view) => (
             <button key={view} type="button" role="radio" aria-checked={learningView === view}
+              title={t(`notes:learning.views.${view}`)}
               className="notes-view-switch-option" onClick={() => setLearningView(view)}>
               {t(`notes:learning.views.${view}`)}
             </button>
