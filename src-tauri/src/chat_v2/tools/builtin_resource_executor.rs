@@ -1156,8 +1156,38 @@ impl BuiltinResourceExecutor {
         let max_bytes = parse_max_bytes(&call.arguments)?;
         let expected_hash = optional_expected_hash(&call.arguments);
 
+        // 音视频（媒体学习 §1.4）：有已完成转写时按时间窗读 `[mm:ss] 文本`，单次 ≤ 10 分钟。
+        let time_start = call.arguments.get("time_start").and_then(Value::as_f64);
+        let time_end = call.arguments.get("time_end").and_then(Value::as_f64);
+        let media_read = if resolved.resource_type == "files" && page_start.is_none() {
+            vfs_db
+                .get_conn_safe()
+                .map_err(|error| error.to_string())
+                .and_then(|conn| {
+                    crate::vfs::media_index::read_transcript_range(
+                        &conn,
+                        &resolved.read_id,
+                        time_start,
+                        time_end,
+                    )
+                    .map_err(|error| error.to_string())
+                })
+                .unwrap_or_else(|error| {
+                    log::warn!(
+                        "[BuiltinResourceExecutor] transcript read failed for {}: {}",
+                        resolved.read_id,
+                        error
+                    );
+                    None
+                })
+        } else {
+            None
+        };
+
         // 获取资源内容（按页或全量）
-        let (content, paged_total_pages) = if let Some(ps) = page_start {
+        let (content, paged_total_pages) = if let Some(read) = media_read.as_ref() {
+            (read.content.clone(), 0)
+        } else if let Some(ps) = page_start {
             let pe = page_end.unwrap_or(ps); // 未指定 page_end 则只读单页
             let pe = pe.max(ps); // 确保 page_end >= page_start
             log::debug!(
@@ -1262,6 +1292,35 @@ impl BuiltinResourceExecutor {
                     paged_total_pages
                 ));
             }
+        }
+
+        if let Some(read) = media_read.as_ref() {
+            use crate::vfs::media_index::{format_timestamp, media_citation};
+            result["timeRange"] = json!({
+                "startMs": read.range.start_ms,
+                "endMs": read.range.end_ms,
+            });
+            result["mediaDurationMs"] = json!(read.total_ms);
+            result["mediaCitation"] = json!(media_citation(&resolved.read_id, read.range.start_ms));
+            let mut hint = format!(
+                "转写 {}–{}（全长 {}，单次≤10分钟）。引用格式 [媒体@{}:mm:ss]。",
+                format_timestamp(read.range.start_ms),
+                format_timestamp(read.range.end_ms.min(read.total_ms)),
+                format_timestamp(read.total_ms),
+                resolved.read_id
+            );
+            if read.truncated {
+                hint.push_str("请求超过 10 分钟，已截断。");
+            }
+            if read.range.end_ms < read.total_ms {
+                hint.push_str(&format!(
+                    "继续读传 time_start={}。",
+                    read.range.end_ms / 1000
+                ));
+            }
+            result["hint"] = json!(hint);
+        } else if time_start.is_some() || time_end.is_some() {
+            result["hint"] = json!("该资源没有已完成的音视频转写，已忽略 time_start/time_end。");
         }
 
         if let Some(ref meta) = metadata {

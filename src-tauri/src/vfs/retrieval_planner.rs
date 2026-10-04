@@ -674,12 +674,35 @@ pub fn plan_derived_text_routes(
 }
 
 /// A semantic unit identity. Different chunks or pages of one resource must not collapse.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RetrievalIdentity {
     pub resource_id: String,
     pub chunk_index: i32,
     pub page_index: Option<i32>,
+    /// Media hits (audio/video transcript windows): where in the recording the unit lies.
+    /// Location metadata only — deliberately excluded from equality/hashing so that routes
+    /// which do or do not know the range still fuse into one hit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_range: Option<crate::vfs::media_index::MediaTimeRange>,
+}
+
+impl PartialEq for RetrievalIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.resource_id == other.resource_id
+            && self.chunk_index == other.chunk_index
+            && self.page_index == other.page_index
+    }
+}
+
+impl Eq for RetrievalIdentity {}
+
+impl std::hash::Hash for RetrievalIdentity {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.resource_id.hash(state);
+        self.chunk_index.hash(state);
+        self.page_index.hash(state);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1226,6 +1249,7 @@ mod tests {
                 resource_id: resource.to_string(),
                 chunk_index: chunk,
                 page_index: page,
+                time_range: None,
             },
             embedding_id: format!("{resource}-{chunk}-{:?}", page),
             // text 带 resource 前缀：MMR 的跨资源冗余判定走文本 bigram，
@@ -1272,6 +1296,25 @@ mod tests {
             10,
         );
         assert_eq!(result.hits.len(), 3);
+    }
+
+    #[test]
+    fn time_range_does_not_split_fused_identity() {
+        let mut ranged = hit("res-media", 0, Some(2), 0.0).identity;
+        ranged.time_range = Some(crate::vfs::media_index::MediaTimeRange {
+            start_ms: 180_000,
+            end_ms: 270_000,
+        });
+        assert_eq!(ranged, hit("res-media", 0, Some(2), 0.0).identity);
+        let mut set = std::collections::HashSet::new();
+        set.insert(ranged.clone());
+        assert!(!set.insert(hit("res-media", 0, Some(2), 0.0).identity));
+        let json = serde_json::to_value(&ranged).unwrap();
+        assert_eq!(json["timeRange"]["startMs"], 180_000);
+        assert!(serde_json::to_value(hit("res", 0, None, 0.0).identity)
+            .unwrap()
+            .get("timeRange")
+            .is_none());
     }
 
     #[test]

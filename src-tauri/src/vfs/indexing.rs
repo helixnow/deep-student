@@ -2208,7 +2208,29 @@ impl VfsFullIndexingService {
             )
             .unwrap_or(false)
         };
-        if has_valid_units && !content_changed && !has_pending_text_unit && !legacy_unpaged_pdf {
+        // Media files with a finished transcript always re-sync: the file bytes (and so
+        // resources.hash) never change when it is (re-)transcribed, and sync_units is a
+        // content-hash no-op for unchanged windows.
+        let has_transcript_units = existing_units.iter().any(|unit| {
+            unit.text_source.as_deref() == Some(crate::vfs::media_index::TRANSCRIPT_TEXT_SOURCE)
+        });
+        let has_media_transcript: bool = has_transcript_units || {
+            let conn = self.db.get_conn_safe()?;
+            conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM files f JOIN media_transcript_segments m
+                   ON m.resource_id = f.id
+                 WHERE f.resource_id = ?1 AND m.status = 1)",
+                rusqlite::params![resource_id],
+                |row| row.get(0),
+            )
+            .unwrap_or(false)
+        };
+        if has_valid_units
+            && !content_changed
+            && !has_pending_text_unit
+            && !legacy_unpaged_pdf
+            && !has_media_transcript
+        {
             // Units 已存在且有效且内容未变，跳过重新同步
             debug!(
                 "[VfsFullIndexingService] Reusing {} existing units for resource {}",
@@ -2309,8 +2331,21 @@ impl VfsFullIndexingService {
         // external 资源的 data 字段为空是正常的，内容存储在关联表中
         // 由 resolve_indexable_content 统一处理所有资源类型的内容获取
         let mut content = resolve_indexable_content(&conn, &resource);
+        // Transcript windows (media_index) are the media file's content: never OCR it.
+        let transcript_first_unit = index_unit_repo::get_by_resource(&conn, resource_id)?
+            .into_iter()
+            .find(|unit| {
+                unit.unit_index == 0
+                    && unit.text_source.as_deref()
+                        == Some(crate::vfs::media_index::TRANSCRIPT_TEXT_SOURCE)
+            })
+            .and_then(|unit| unit.text_content);
+        if transcript_first_unit.is_some() {
+            content = transcript_first_unit.clone();
+        }
         const PDF_TEXT_THRESHOLD: usize = 100;
         let needs_content_recovery = match resource.resource_type {
+            _ if transcript_first_unit.is_some() => false,
             VfsResourceType::Textbook | VfsResourceType::File => {
                 let file_text = conn
                     .query_row(
@@ -2451,7 +2486,7 @@ impl VfsFullIndexingService {
                         .is_some_and(|t| !t.trim().is_empty())
                 })
                 .count();
-            if units.len() > 1 && text_units > 0 {
+            if (units.len() > 1 || transcript_first_unit.is_some()) && text_units > 0 {
                 Some(
                     units
                         .iter()
@@ -2495,6 +2530,26 @@ impl VfsFullIndexingService {
                 resource_id
             );
             VfsChunker::chunk_text(&content, &self.chunking_config)
+        };
+        // Transcript window 0: tag chunks with the unit index (fuses with lexical hits) and
+        // remember the window range for segment metadata.
+        let transcript_range = if transcript_first_unit.is_some() {
+            let conn = self.db.get_conn_safe()?;
+            let ranges = crate::vfs::media_index::unit_time_ranges(&conn, resource_id)?;
+            crate::vfs::media_index::range_for_unit(&ranges, 0)
+        } else {
+            None
+        };
+        let chunks = if transcript_first_unit.is_some() {
+            chunks
+                .into_iter()
+                .map(|mut chunk| {
+                    chunk.page_index = Some(0);
+                    chunk
+                })
+                .collect()
+        } else {
+            chunks
         };
         let chunks_for_db = chunks.clone();
         if chunks.is_empty() {
@@ -2658,7 +2713,8 @@ impl VfsFullIndexingService {
                                         content_hash: None,
                                         start_pos: Some(chunk.start_pos),
                                         end_pos: Some(chunk.end_pos),
-                                        metadata_json: None,
+                                        metadata_json: transcript_range
+                                            .map(crate::vfs::media_index::segment_metadata_json),
                                     })
                                 })
                                 .collect::<VfsResult<Vec<_>>>()?;
@@ -2884,6 +2940,7 @@ impl VfsFullIndexingService {
     ) -> VfsResult<()> {
         let conn = self.db.get_conn()?;
         let all_units = index_unit_repo::get_by_resource(&conn, resource_id)?;
+        let mut transcript_ranges: Option<Vec<crate::vfs::media_index::MediaTimeRange>> = None;
 
         for unit in &all_units {
             if !unit.text_required || unit.text_state != index_unit_repo::IndexState::Pending {
@@ -2896,10 +2953,28 @@ impl VfsFullIndexingService {
                 continue;
             }
 
-            let extra_chunks = VfsChunker::chunk_text(text, &self.chunking_config);
+            let mut extra_chunks = VfsChunker::chunk_text(text, &self.chunking_config);
             if extra_chunks.is_empty() {
                 continue;
             }
+            let is_transcript = unit.text_source.as_deref()
+                == Some(crate::vfs::media_index::TRANSCRIPT_TEXT_SOURCE);
+            let transcript_range = if is_transcript {
+                for chunk in &mut extra_chunks {
+                    chunk.page_index = Some(unit.unit_index);
+                }
+                if transcript_ranges.is_none() {
+                    transcript_ranges = Some(crate::vfs::media_index::unit_time_ranges(
+                        &conn,
+                        resource_id,
+                    )?);
+                }
+                transcript_ranges.as_deref().and_then(|ranges| {
+                    crate::vfs::media_index::range_for_unit(ranges, unit.unit_index)
+                })
+            } else {
+                None
+            };
 
             info!(
                 "[VfsFullIndexingService] Indexing additional text unit {} (source={:?}) for resource {}",
@@ -3014,7 +3089,8 @@ impl VfsFullIndexingService {
                             content_hash: None,
                             start_pos: Some(chunk.start_pos),
                             end_pos: Some(chunk.end_pos),
-                            metadata_json: None,
+                            metadata_json: transcript_range
+                                .map(crate::vfs::media_index::segment_metadata_json),
                         })
                     })
                     .collect::<VfsResult<Vec<_>>>()?;

@@ -362,14 +362,16 @@ impl BuiltinRetrievalExecutor {
                         url
                     )
                 });
-                SourceInfo {
-                    title: hit.title,
-                    url: hit.image_url.clone(),
-                    snippet: Some(hit.text),
-                    score: Some(normalized_score.unwrap_or(fused.rrf_score) as f32),
-                    // 视觉上下文接口约定：多模态命中必须保证 blobHash/pageIndex 完整，
-                    // 下游 context_compiler 依赖这两个字段决定是否把页图注入 LLM。
-                    metadata: Some(json!({
+                // 音视频转写命中：时间窗 + 可直接引用的 `[媒体@file_x:mm:ss]`
+                let media_citation = hit.identity.time_range.map(|range| {
+                    crate::vfs::media_index::media_citation(
+                        hit.source_id
+                            .as_deref()
+                            .unwrap_or(hit.identity.resource_id.as_str()),
+                        range.start_ms,
+                    )
+                });
+                let mut metadata = json!({
                         "resourceType": hit.resource_type,
                         "resourceId": hit.identity.resource_id,
                         "sourceId": hit.source_id,
@@ -383,7 +385,19 @@ impl BuiltinRetrievalExecutor {
                         "rrfScore": fused.rrf_score,
                         "normalizedScore": normalized_score,
                         "retrievalProvenance": fused.provenance,
-                    })),
+                });
+                if let (Some(range), Some(citation)) = (hit.identity.time_range, media_citation) {
+                    metadata["timeRange"] = json!(range);
+                    metadata["mediaCitation"] = json!(citation);
+                }
+                SourceInfo {
+                    title: hit.title,
+                    url: hit.image_url.clone(),
+                    snippet: Some(hit.text),
+                    score: Some(normalized_score.unwrap_or(fused.rrf_score) as f32),
+                    // 视觉上下文接口约定：多模态命中必须保证 blobHash/pageIndex 完整，
+                    // 下游 context_compiler 依赖这两个字段决定是否把页图注入 LLM。
+                    metadata: Some(metadata),
                 }
             })
             .collect();
@@ -595,6 +609,17 @@ impl BuiltinRetrievalExecutor {
                 json!(["knowledge", "image"]),
             )
         };
+        let has_media_sources = sources.iter().any(|source| {
+            source
+                .metadata
+                .as_ref()
+                .is_some_and(|metadata| metadata.get("mediaCitation").is_some())
+        });
+        let media_guide = if has_media_sources {
+            " 音视频命中用其 mediaCitation（[媒体@id:mm:ss]）标注时间点 / Cite media hits with their mediaCitation."
+        } else {
+            ""
+        };
         Ok(with_localized_message(
             json!({
                 "success": true,
@@ -606,7 +631,7 @@ impl BuiltinRetrievalExecutor {
                 "rerank": rerank_value,
                 "retrievalPlan": plan_value,
                 "capabilitySnapshot": capability_value,
-                "citationGuide": format!("{guide_zh} / {guide_en}"),
+                "citationGuide": format!("{guide_zh} / {guide_en}{media_guide}"),
             }),
             "chat.tools.retrieval.unified_citation_guide",
             json!({ "sourceTypes": source_types }),
@@ -1082,6 +1107,17 @@ pub(crate) fn build_numbered_sources(
             "sourceNoteIds": metadata.and_then(|value| value.get("sourceNoteIds")),
             "folder_path": metadata.and_then(|value| value.get("folderPath")),
         }));
+        // 媒体命中才带时间字段（不给其余来源增加 null 键的 token 开销）
+        if let (Some(time_range), Some(entry)) = (
+            metadata.and_then(|value| value.get("timeRange")),
+            numbered.last_mut(),
+        ) {
+            entry["timeRange"] = time_range.clone();
+            entry["mediaCitation"] = metadata
+                .and_then(|value| value.get("mediaCitation"))
+                .cloned()
+                .unwrap_or(Value::Null);
+        }
     }
     numbered
 }
@@ -1844,6 +1880,21 @@ mod tests {
         assert_eq!(numbered[0]["source_type"], "multimodal_search");
         assert_eq!(numbered[0]["blob_hash"], "hash123");
         assert_eq!(numbered[0]["pageIndex"], 0);
+    }
+
+    #[test]
+    fn numbered_sources_carry_media_time_fields_only_for_media_hits() {
+        let mut ledger = crate::chat_v2::context::CitationLedger::new();
+        let mut media = kb_source("lecture");
+        if let Some(metadata) = media.metadata.as_mut() {
+            metadata["timeRange"] = json!({"startMs": 90_000, "endMs": 180_000});
+            metadata["mediaCitation"] = json!("[媒体@file_lecture:01:30]");
+        }
+        let numbered = build_numbered_sources(&[media, kb_source("plain")], &mut ledger);
+        assert_eq!(numbered[0]["timeRange"]["startMs"], 90_000);
+        assert_eq!(numbered[0]["mediaCitation"], "[媒体@file_lecture:01:30]");
+        assert!(numbered[1].get("timeRange").is_none());
+        assert!(numbered[1].get("mediaCitation").is_none());
     }
 
     #[test]

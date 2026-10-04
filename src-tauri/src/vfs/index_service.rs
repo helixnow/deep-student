@@ -145,15 +145,27 @@ impl VfsIndexService {
         conn: &Connection,
         input: UnitBuildInput,
     ) -> Result<Vec<VfsIndexUnit>, VfsError> {
-        let output =
-            self.builder_registry
-                .build(&input)
-                .ok_or_else(|| VfsError::InvalidArgument {
-                    param: "resource_type".to_string(),
-                    reason: format!("Unsupported resource type: {}", input.resource_type),
-                })?;
+        // Audio/video files with a finished transcript are indexed as ~90 s time windows
+        // (media learning §1.4) instead of the generic file builder's text units.
+        let transcript_units = if input.resource_type == "file" {
+            crate::vfs::media_index::transcript_units_for_resource(conn, &input.resource_id)?
+        } else {
+            None
+        };
+        let units = match transcript_units {
+            Some(units) => units,
+            None => {
+                self.builder_registry
+                    .build(&input)
+                    .ok_or_else(|| VfsError::InvalidArgument {
+                        param: "resource_type".to_string(),
+                        reason: format!("Unsupported resource type: {}", input.resource_type),
+                    })?
+                    .units
+            }
+        };
 
-        let sync_result = index_unit_repo::sync_units(conn, &input.resource_id, output.units)?;
+        let sync_result = index_unit_repo::sync_units(conn, &input.resource_id, units)?;
 
         // ★ F5/P1-5：孤立向量已由 sync_units 在同一连接/事务内写入
         // __lance_orphan_queue（repo 内入队，调用方无法遗漏），

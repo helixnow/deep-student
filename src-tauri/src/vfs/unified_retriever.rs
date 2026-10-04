@@ -351,6 +351,7 @@ impl VfsUnifiedRetriever {
         if multimodal_only {
             result.hits.retain(is_multimodal_scope_hit);
         }
+        crate::vfs::media_index::attach_media_time_ranges(&self.db, &mut result.hits);
         result.failures.splice(0..0, skipped_circuit_failures);
         Ok(UnifiedRetrievalResponse {
             capability_snapshot: snapshot,
@@ -1094,6 +1095,7 @@ impl VfsUnifiedRetriever {
                 resource_id: resource_id.clone(),
                 chunk_index,
                 page_index: Some(unit_index),
+                time_range: None,
             };
             if !seen.insert(identity.clone()) {
                 continue;
@@ -1208,6 +1210,7 @@ impl VfsUnifiedRetriever {
                     resource_id: row.resource_id.clone(),
                     chunk_index: row.chunk_index,
                     page_index,
+                    time_range: None,
                 },
                 embedding_id: row.embedding_id,
                 text,
@@ -2977,6 +2980,7 @@ mod tests {
                 resource_id: "text-only".to_string(),
                 chunk_index: 0,
                 page_index: None,
+                time_range: None,
             },
             embedding_id: "text-only-row".to_string(),
             text: "plain text result".to_string(),

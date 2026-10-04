@@ -764,6 +764,8 @@ pub fn headless_tool_schemas() -> Vec<McpToolSchema> {
                     "include_metadata": { "type": "boolean", "description": "是否包含元数据，默认 true" },
                     "page_start": { "type": "integer", "minimum": 1, "description": "可选：起始页码（1-based）" },
                     "page_end": { "type": "integer", "minimum": 1, "description": "可选：结束页码（含）" },
+                    "time_start": { "type": "number", "description": "可选：音视频转写起始秒" },
+                    "time_end": { "type": "number", "description": "可选：结束秒，单次≤10分钟" },
                     "offset": { "type": "integer", "minimum": 0, "default": 0, "description": "UTF-8 字节偏移，须落在字符边界；续读时传上次 next_offset" },
                     "max_bytes": { "type": "integer", "minimum": 1, "maximum": 1048576, "default": 65536, "description": "本次最多返回的正文字节数" },
                     "expected_hash": { "type": "string", "description": "可选：上次读取返回的逻辑内容 sha256" }

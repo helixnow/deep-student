@@ -116,6 +116,7 @@ mod tests {
                     resource_id: "res-1".to_string(),
                     chunk_index: 0,
                     page_index: None,
+                    time_range: None,
                 },
                 embedding_id: "emb-1".to_string(),
                 text: text.to_string(),
