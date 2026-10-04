@@ -1832,7 +1832,8 @@
     "previewLoading": "加载中…",
     "previewEmpty": "（空笔记）",
     "ambiguousTitle_one": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
-    "ambiguousTitle_other": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择"
+    "ambiguousTitle_other": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
+    "cacheTruncated": "笔记数量超过 {{max}} 条上限，超出部分的双链可能显示为未解析"
   },
   "wikilinkV2": {
     "createConfirm": "创建新笔记「{{title}}」？",
@@ -1901,7 +1902,8 @@
     "untitled": "笔记导图",
     "noOutline": "这篇笔记里没有标题或列表，先用标题 / 列表整理出层级再生成导图",
     "created": "已生成思维导图「{{title}}」（{{count}} 个节点）",
-    "failed": "生成思维导图失败"
+    "failed": "生成思维导图失败",
+    "failedWithError": "生成思维导图失败：{{error}}"
   },
   "versions": {
     "title": "版本历史",

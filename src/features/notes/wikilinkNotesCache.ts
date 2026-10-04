@@ -167,9 +167,13 @@ function notifyTruncationOnce(): void {
   void (async () => {
     try {
       const { showGlobalNotification } = await import('@/components/UnifiedNotification');
+      const { default: i18next } = await import('i18next');
       showGlobalNotification(
         'warning',
-        `笔记数量超过 ${MAX_CACHED_NOTES} 条上限，超出部分的双链可能显示为未解析`,
+        i18next.t('notes:wikilink.cacheTruncated', {
+          max: MAX_CACHED_NOTES,
+          defaultValue: `笔记数量超过 ${MAX_CACHED_NOTES} 条上限，超出部分的双链可能显示为未解析`,
+        }),
       );
     } catch {
       // 通知不可用时保留 console.warn 兜底

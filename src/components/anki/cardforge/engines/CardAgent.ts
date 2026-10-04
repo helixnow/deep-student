@@ -347,7 +347,7 @@ export class CardAgent {
         console.error('[CardAgent] 初始化失败，无法执行生成任务:', this._initError?.message);
         return {
           ok: false,
-          error: `CardAgent 初始化失败: ${this._initError?.message || '事件监听器未就绪'}`,
+          error: tEngine('init_failed', { error: this._initError?.message || tEngine('listener_not_ready') }),
         };
       }
 
@@ -355,7 +355,7 @@ export class CardAgent {
       if (!input.content || input.content.trim().length === 0) {
         return {
           ok: false,
-          error: '内容不能为空',
+          error: tEngine('content_empty'),
         };
       }
 
@@ -406,7 +406,7 @@ export class CardAgent {
             stats,
             paused: false,
             timedOut: true,
-            error: `生成空闲超时，已收集 ${cards.length} 张卡片`,
+            error: tEngine('idle_timeout', { count: cards.length }),
           };
         }
 
@@ -450,7 +450,7 @@ export class CardAgent {
   }> {
     try {
       if (!input.content || input.content.trim().length === 0) {
-        return { ok: false, error: '内容不能为空' };
+        return { ok: false, error: tEngine('content_empty') };
       }
 
       const prepared = await this.buildBackendGenerationOptions(input);
@@ -498,7 +498,7 @@ export class CardAgent {
       };
     });
     if (templates.length === 0) {
-      return { error: '没有可用的模板' };
+      return { error: tEngine('no_templates') };
     }
 
     // LLM-First: 准备模板详情，供后端 LLM 智能选择
@@ -949,7 +949,7 @@ export class CardAgent {
       // 返回所有模板作为建议，不做预判（交给用户或后端 LLM 决定）
       const defaultSuggestions = templates.slice(0, 5).map((t) => ({
         templateId: t.id,
-        reason: 'LLM 分析不可用，建议根据内容手动选择',
+        reason: tEngine('llm_suggestion_unavailable'),
         estimatedUsage: 20, // 均匀分布
       }));
 
@@ -1405,7 +1405,7 @@ export class CardAgent {
         `[CardAgent] 文档生成空闲超时（${IDLE_TIMEOUT_MS / 1000}s 无新事件），已收集 ${finalCards.length} 张卡片`
       );
       this.emit('task:error', {
-        error: `生成空闲超时，已收集 ${finalCards.length} 张卡片`,
+        error: tEngine('idle_timeout', { count: finalCards.length }),
         isTimeout: true,
         partialCards: finalCards.length,
       }, expectedDocumentId ?? undefined);

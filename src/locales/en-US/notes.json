@@ -1843,7 +1843,8 @@
     "previewLoading": "Loading…",
     "previewEmpty": "(Empty note)",
     "ambiguousTitle_one": "“{{target}}” matches {{count}} note with this title. Click to choose",
-    "ambiguousTitle_other": "“{{target}}” matches {{count}} notes with this title. Click to choose"
+    "ambiguousTitle_other": "“{{target}}” matches {{count}} notes with this title. Click to choose",
+    "cacheTruncated": "You have more than {{max}} notes; wiki links beyond that may show as unresolved"
   },
   "wikilinkV2": {
     "createConfirm": "Create new note \"{{title}}\"?",
@@ -1912,7 +1913,8 @@
     "untitled": "Note mind map",
     "noOutline": "This note has no headings or lists. Organize it with headings or lists first, then generate a mind map.",
     "created": "Created mind map “{{title}}” ({{count}} nodes)",
-    "failed": "Failed to generate mind map"
+    "failed": "Failed to generate mind map",
+    "failedWithError": "Couldn't generate the mind map: {{error}}"
   },
   "menu": {
     "page_actions": "Page Actions",

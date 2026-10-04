@@ -72,7 +72,7 @@ export async function generateMindmapFromNote(input: {
     doc = buildMindmapFromNoteMarkdown(input.markdown, title);
   } catch (error) {
     // 超深 / 超大大纲（解析器守卫抛错）
-    showGlobalNotification('error', `${tr('notes:generateMindmap.failed', '生成思维导图失败')}：${String(error)}`);
+    showGlobalNotification('error', tr('notes:generateMindmap.failedWithError', '生成思维导图失败：{{error}}', { error: String(error) }));
     return;
   }
   if (!doc) {
@@ -101,6 +101,8 @@ export async function generateMindmapFromNote(input: {
     }));
     dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'learning-hub', openResource: `/${mindmap.id}` });
   } catch (error) {
-    showGlobalNotification('error', `${tr('notes:generateMindmap.failed', '生成思维导图失败')}：${error instanceof Error ? error.message : String(error)}`);
+    showGlobalNotification('error', tr('notes:generateMindmap.failedWithError', '生成思维导图失败：{{error}}', {
+      error: error instanceof Error ? error.message : String(error),
+    }));
   }
 }
