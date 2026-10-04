@@ -2,9 +2,9 @@
  * 模板管理应用（wb-tm-*）— Workbench 原生范式重构
  *
  * 自 `components/TemplateManagementPage`（legacy 大页面）迁移而来：
- * - Workbench 窗口 / 无壳侧栏时：顶部标签导航（对齐闪卡 wb-fc-nav），
- *   不再回退渲染内部 UnifiedSidebar；
- * - legacy 桌面壳：继续通过 useDesktopShellSidebarPortal 投送壳侧栏；
+ * - 桌面（Workbench 窗口与经典壳一致）：顶部标签导航（对齐闪卡 wb-fc-nav）。
+ *   2026-10 起经典壳把模板并入「闪卡中心」的「模板」分区，沿用主侧栏，
+ *   不再向壳侧栏 portal 投送模板专属侧栏；
  * - 移动端：MobileSlidingLayout 统一抽屉（与 Chat / 学习资源同构）；
  * - 保留：选择模式、模板 CRUD、AI 编辑器集成、Agent Surface、refreshToken 强制刷新。
  *
@@ -15,20 +15,12 @@
  * - 浏览态 ⇄ 编辑态页内平滑切换（尊重 prefers-reduced-motion）。
  */
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   MagnifyingGlass, FileText, Plus, Warning, X,
   Gear, Upload, Download,
-  ArrowClockwise, ArrowLeft, BookOpen, Code, Database, CaretRight,
+  ArrowClockwise, ArrowLeft, BookOpen, Code, Database,
 } from '@phosphor-icons/react';
-import {
-  WorkbenchSidebarSurface,
-  WorkbenchSidebarFixed,
-  WorkbenchSidebarScroll,
-  WorkbenchSidebarRow,
-  WorkbenchSidebarRowLabel,
-} from '@/features/workbench/components/sidebar';
 import type { CustomAnkiTemplate, TemplateExportResponse } from '@/types';
 import { invoke } from '@tauri-apps/api/core';
 import { templateManager } from '@/data/ankiTemplates';
@@ -50,7 +42,6 @@ import {
   mobileDrawerRowTitleClassName,
   mobileDrawerSectionLabelClassName,
 } from '@/components/layout/mobileDrawerStyles';
-import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -104,9 +95,6 @@ export interface TemplateManagementAppProps {
   isSelectingMode?: boolean;
   onTemplateSelected?: (template: CustomAnkiTemplate) => void;
   onCancel?: () => void;
-  // 从模板管理返回到 Anki 制卡
-  onBackToAnki?: () => void;
-  onDesktopShellBackVisibilityChange?: (visible: boolean) => void;
   refreshToken?: number;
   workbenchWindowId?: string;
 }
@@ -115,16 +103,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   isSelectingMode = false,
   onTemplateSelected,
   onCancel,
-  onBackToAnki,
-  onDesktopShellBackVisibilityChange,
   refreshToken = 0,
   workbenchWindowId,
 }) => {
   const { t } = useTranslation(['template', 'common']);
-  const { t: tAnki } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
-  const desktopShellSidebarTarget = useDesktopShellSidebarPortal('template-management');
-  const usesDesktopShellSidebar = !isSmallScreen && Boolean(desktopShellSidebarTarget);
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const sidebarOpen = screenPosition === 'left';
   const setSidebarOpen = useCallback((open: boolean) => setScreenPosition(open ? 'left' : 'center'), []);
@@ -134,42 +117,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   // （visibility:hidden），返回键 handler 须先确认根节点可见才消费事件
   // （对照 EnhancedPdfViewer / TodoMainPanel 的同款守卫）
   const rootRef = useRef<HTMLDivElement>(null);
-
-  // 离开编辑器的脏检查守卫（在下方编辑器状态就绪后赋值；面包屑点击时经 ref 调用，
-  // 避免 useMemo 工厂在渲染期引用尚未声明的回调触发 TDZ）
-  const leaveEditorGuardRef = useRef<() => boolean>(() => true);
-
-  // 面包屑导航组件（移动端显示 "Anki 制卡 > 卡片模板管理"）
-  const BreadcrumbNav = useMemo(() => {
-    if (isSelectingMode) {
-      return (
-        <h1 className="text-base font-semibold truncate">
-          {t('page_title_select')}
-        </h1>
-      );
-    }
-    return (
-      <div className="flex items-center justify-center gap-1 text-base font-semibold whitespace-nowrap min-w-0">
-        {/* 触屏无 hover，用颜色差标记面包屑父级可点击（当前页保持前景色形成对比） */}
-        <DsButton
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            // 编辑中带未保存更改时先二次确认，防止面包屑误触静默丢稿
-            if (!leaveEditorGuardRef.current()) return;
-            onBackToAnki?.();
-          }}
-          className="hover:text-primary !p-0 !h-auto truncate max-w-[100px] text-muted-foreground [@media(pointer:coarse)]:text-primary max-lg:min-h-11 max-lg:min-w-11 max-lg:-my-2.5 max-lg:justify-center"
-        >
-          {tAnki('page_title')}
-        </DsButton>
-        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
-        <h1 className="truncate max-w-[120px] text-base font-semibold">
-          {t('manager_title')}
-        </h1>
-      </div>
-    );
-  }, [isSelectingMode, t, tAnki, onBackToAnki]);
 
   usePageMount('template-management', 'TemplateManagementApp');
 
@@ -181,13 +128,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   const [editorTab, setEditorTab] = useState<EditorTabType>('basic');
   const isCodeEditorTab = editorTab === 'templates' || editorTab === 'styles';
   const isCodeMode = !isSelectingMode && isCodeEditorTab && (activeTab === 'create' || activeTab === 'edit');
-
-  useEffect(() => {
-    onDesktopShellBackVisibilityChange?.(!isSelectingMode && activeTab === 'browse');
-    return () => {
-      onDesktopShellBackVisibilityChange?.(true);
-    };
-  }, [activeTab, isSelectingMode, onDesktopShellBackVisibilityChange]);
 
   // 离开代码编辑模式时，若停留在右屏则回到中屏
   useEffect(() => {
@@ -743,12 +683,12 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   // 选择模式小屏顶栏直接作为「返回制卡」出口（有 onCancel 才启用）
   const selectingHeaderBack = isSelectingMode && Boolean(onCancel);
 
-  // 浏览态保留面包屑 + 菜单；编辑态切换为明确返回，并在右侧保留编辑器导航入口。
+  // 浏览态显示页面标题 + 菜单（闪卡中心分区条由壳层注入在顶栏下方）；
+  // 编辑态切换为明确返回，并在右侧保留编辑器导航入口。
   useMobileHeader('template-management', {
     title: isEditingMode
       ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
-      : undefined,
-    titleNode: isEditingMode ? undefined : BreadcrumbNav,
+      : isSelectingMode ? t('page_title_select') : t('manager_title'),
     showMenu: !isEditingMode && !selectingHeaderBack,
     showBackArrow: isEditingMode || selectingHeaderBack,
     onMenuClick: isEditingMode
@@ -785,7 +725,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         </DsButton>
       </>
     ) : undefined,
-  }, [isEditingMode, activeTab, editingTemplate?.name, BreadcrumbNav, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t]);
+  }, [isEditingMode, isSelectingMode, activeTab, editingTemplate?.name, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t]);
 
   // Android 返回优先收起编辑器左右屏，其次走与顶栏相同的脏检查返回路径。
   useEffect(() => {
@@ -813,9 +753,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     }, BACK_PRIORITY.view);
   }, [isSmallScreen, isSelectingMode, onCancel]);
 
-  // 面包屑「Anki 制卡」离开守卫与取消编辑共用同一脏检查
-  leaveEditorGuardRef.current = confirmDiscardEditorChanges;
-
   const startCreateTemplate = useCallback(() => {
     setEditingTemplate(null);
     setActivePanel(null);
@@ -829,203 +766,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     { id: 'rules', icon: Gear, label: t('extraction_rules'), selected: editorTab === 'rules' },
     { id: 'advanced', icon: Gear, label: t('advanced_settings'), selected: editorTab === 'advanced' },
   ];
-  // 桌面壳侧栏行配方与主页 ModernSidebar 完全同源（WorkbenchSidebarRow）：
-  // 32px 最小高度、14px 圆角、18px 图标槽、14px 文字，全部由 shell token 决定。
-  // 此前这里走 UnifiedSidebar + wb-tm-sidebar 私有 CSS 覆写（rounded-2xl、
-  // 16px 图标、12px 区块标签、13px 文字），与主页侧栏并排时肉眼可见不一致。
-  const renderShellSidebarRow = (
-    key: string,
-    Icon: React.ElementType,
-    label: string,
-    onClick: () => void,
-    active = false,
-    trailing?: React.ReactNode,
-  ) => (
-    <WorkbenchSidebarRow
-      key={key}
-      isActive={active}
-      aria-current={active ? 'page' : undefined}
-      onClick={onClick}
-      leftSlot={<Icon size={18} className="h-[18px] w-[18px]" />}
-      rightSlot={trailing}
-    >
-      <WorkbenchSidebarRowLabel>{label}</WorkbenchSidebarRowLabel>
-    </WorkbenchSidebarRow>
-  );
-
-  // 分区标题：模板管理的分区不可折叠，故用静态标签（沿用主页
-  // desktop-shell-nav-section-label 的 12/13px 层级与 muted 色），
-  // 而不是 WorkbenchSidebarSectionHeader 的 aria-expanded 折叠按钮。
-  const renderShellSidebarSectionLabel = (label: string) => (
-    <div className="px-2 py-1">
-      <span className="desktop-shell-nav-section-label desktop-shell-sidebar-section-label min-w-0 truncate">
-        {label}
-      </span>
-    </div>
-  );
-
-  // ===== 桌面壳侧栏（legacy shell portal 专用） =====
-  // 与主页侧栏同构：SearchToolbar（固定区） + Scroll（滚动区）。
-  // 壳位容器（App.tsx desktopPageShellSidebarElement）已绘制导航表面，
-  // 这里用 transparent 覆盖，避免嵌套出第二层 sidebar-shell-surface
-  // （重复右边框 + 重复投影 + 背景 token 从 --shell-navigation-surface
-  // 漂移到 --sidebar-study-surface）。
-  const shellSidebarContent = (
-    <WorkbenchSidebarSurface
-      ariaLabel={isSelectingMode ? t('page_title_select') : t('manager_title')}
-      className="bg-transparent"
-    >
-      <WorkbenchSidebarFixed>
-        <div className="flex items-center gap-1.5">
-          <div className="group relative min-w-0 flex-1">
-            <MagnifyingGlass
-              size={14}
-              className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--sidebar-muted)] opacity-60"
-              aria-hidden="true"
-            />
-            <input
-              type="search"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Escape' && searchTerm) {
-                  e.stopPropagation();
-                  setSearchTerm('');
-                }
-              }}
-              placeholder={t('search_placeholder')}
-              aria-label={t('search_placeholder')}
-              // 搜索框配方对齐 FinderQuickAccess 的 fillContainer 档（壳内搜索）。
-              // coarse 的 !text-[16px] 是 iOS 聚焦防缩放地板：.text-ui（13px）在
-              // typography.css 里晚于 Tailwind 加载，非 important 会被压回 13px。
-              className="h-8 w-full appearance-none rounded-lg border border-transparent bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-ui text-[color:var(--sidebar-foreground)] placeholder:text-[color:var(--sidebar-muted)] placeholder:opacity-70 outline-none transition-colors focus:border-[color:var(--border)] focus:bg-background [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:!text-[16px] [&::-webkit-search-cancel-button]:hidden"
-            />
-            {searchTerm && (
-              <DsButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2 top-1/2 !h-5 !w-5 !p-0.5 -translate-y-1/2 hover:bg-[var(--interactive-hover)]"
-                aria-label={t('common:clear')}
-              >
-                <X size={14} className="text-muted-foreground/60" />
-              </DsButton>
-            )}
-          </div>
-
-          {!isSelectingMode && (
-            <>
-              <CommonTooltip content={t('refresh')}>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={loadTemplates}
-                  disabled={isLoading}
-                  className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]"
-                  aria-label={t('refresh')}
-                >
-                  <ArrowClockwise size={16} className={cn(isLoading && 'animate-spin')} />
-                </DsButton>
-              </CommonTooltip>
-              <CommonTooltip content={t('tab_create')}>
-                <DsButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={startCreateTemplate}
-                  className="!h-8 !w-8 shrink-0 text-[color:var(--shell-navigation-muted)] hover:text-[color:var(--shell-navigation-foreground)]"
-                  aria-label={t('tab_create')}
-                >
-                  <Plus size={16} />
-                </DsButton>
-              </CommonTooltip>
-            </>
-          )}
-        </div>
-      </WorkbenchSidebarFixed>
-
-      <WorkbenchSidebarScroll scrollRegion="templates">
-        <div className="flex flex-col gap-3 px-2 pb-6 pt-2">
-          {/* 浏览态：模板库入口 + 导入导出操作 */}
-          {!isEditingMode && activeTab === 'browse' && (
-            <section className="space-y-0.5">
-              {renderShellSidebarRow(
-                'browse',
-                BookOpen,
-                t('tab_browse'),
-                () => setActiveTab('browse'),
-                activeTab === 'browse',
-                <span className="text-xs tabular-nums text-[color:var(--shell-navigation-muted)]">
-                  {filteredTemplates.length}
-                </span>,
-              )}
-            </section>
-          )}
-
-          {/* 编辑态：返回浏览 + 编辑器分区导航 */}
-          {isEditingMode && (
-            <section className="space-y-0.5">
-              {renderShellSidebarRow('back-to-browse', ArrowLeft, t('back_to_browse'), handleCancelEdit)}
-            </section>
-          )}
-
-          {isEditingMode && (
-            <section className="space-y-0.5">
-              {renderShellSidebarSectionLabel(
-                `${activeTab === 'create' ? t('tab_create') : t('tab_edit')}${editingTemplate?.name ? `: ${editingTemplate.name}` : ''}`,
-              )}
-              {editorNavItems.map(({ id, icon, label, selected }) =>
-                renderShellSidebarRow(`editor-${id}`, icon, label, () => setEditorTab(id), selected),
-              )}
-            </section>
-          )}
-
-          {/* 导入导出操作 - 仅浏览模式显示 */}
-          {!isSelectingMode && activeTab === 'browse' && (
-            <section className="space-y-0.5">
-              {renderShellSidebarSectionLabel(t('import_section'))}
-              {renderShellSidebarRow(
-                'import-builtin',
-                Download,
-                isImporting ? t('importing') : t('import_builtin_templates'),
-                handleImportBuiltinTemplates,
-              )}
-              {renderShellSidebarRow(
-                'import-external',
-                Upload,
-                t('import_external_templates'),
-                handleImportExternalClick,
-                activePanel === 'import',
-              )}
-              {renderShellSidebarRow(
-                'export',
-                Download,
-                t('export_templates_sidebar'),
-                handleOpenBatchExportPanel,
-                activePanel === 'export',
-              )}
-            </section>
-          )}
-        </div>
-      </WorkbenchSidebarScroll>
-
-      {/* 选择模板模式保留取消入口 */}
-      {isSelectingMode && onCancel && (
-        <div className="mt-auto shrink-0 px-2 pb-3 pt-1">
-          <WorkbenchSidebarRow
-            onClick={() => onCancel()}
-            leftSlot={<ArrowLeft size={18} className="h-[18px] w-[18px]" />}
-          >
-            <WorkbenchSidebarRowLabel>{t('back_button')}</WorkbenchSidebarRowLabel>
-          </WorkbenchSidebarRow>
-        </div>
-      )}
-    </WorkbenchSidebarSurface>
-  );
-
-  // ===== 顶部导航（workbench 窗口 / 无壳侧栏的桌面布局） =====
+  // ===== 顶部导航（桌面：workbench 窗口与经典壳闪卡中心「模板」分区共用） =====
   const workbenchNav = (
     <nav className="wb-tm-nav" aria-label={t('manager_title')}>
       {isEditingMode && !isSelectingMode ? (
@@ -1412,10 +1153,6 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
     </div>
   );
 
-  const sidebarPortal = usesDesktopShellSidebar && desktopShellSidebarTarget
-    ? createPortal(shellSidebarContent, desktopShellSidebarTarget)
-    : null;
-
   let layout: React.ReactNode;
   if (isSmallScreen) {
     // ===== 移动端布局：MobileSlidingLayout =====
@@ -1443,20 +1180,8 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         </MobileSlidingLayout>
       </div>
     );
-  } else if (usesDesktopShellSidebar) {
-    // ===== legacy 桌面壳：侧栏投送到壳 portal =====
-    layout = (
-      <>
-        {sidebarPortal}
-        <div ref={rootRef} className="wb-tm-root overflow-hidden">
-          <div className="wb-tm-body flex-row">
-            {mainContent}
-          </div>
-        </div>
-      </>
-    );
   } else {
-    // ===== workbench 窗口 / 无壳侧栏：顶部标签导航 =====
+    // ===== 桌面：顶部标签导航 =====
     layout = (
       <div ref={rootRef} className="wb-tm-root overflow-hidden">
         {workbenchNav}

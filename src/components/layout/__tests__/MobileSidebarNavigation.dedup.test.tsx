@@ -1,8 +1,9 @@
 /**
  * 移动抽屉全局应用入口契约：
- * 1. head 之下固定启动器网格（3 列，7 个入口含闪卡后为三行），不随页内列表滚动。
- * 2. 不含搜索与命令、总览、模板管理；格子文案两字：会话 / 资源 / 待办 / 技能 / 制卡 / 闪卡 / 数据。
- * 3. 当前视图高亮，不从网格里拿掉。
+ * 1. head 之下固定启动器网格（3 列 × 2 行，6 个入口），不随页内列表滚动。
+ * 2. 不含搜索与命令、总览；制卡任务与模板并入「闪卡」（闪卡中心页内分区切换）。
+ *    格子文案两字：会话 / 资源 / 待办 / 技能 / 闪卡 / 数据。
+ * 3. 当前视图高亮，不从网格里拿掉；闪卡中心任一分区活跃时「闪卡」高亮。
  */
 import React from 'react';
 import { describe, expect, it, beforeEach, vi } from 'vitest';
@@ -10,6 +11,7 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { useViewStore } from '@/stores/viewStore';
 import type { CurrentView } from '@/types/navigation';
 import { MOBILE_APP_LAUNCHER_VIEWS } from '@/config/navigation';
+import { rememberCardsHubView, resetCardsHubMemoryForTests } from '@/app/navigation/cardsHub';
 
 import { MobileSidebarNavigation } from '../MobileSidebarNavigation';
 
@@ -23,10 +25,11 @@ const getButtonLabels = () =>
 describe('MobileSidebarNavigation app launcher', () => {
   beforeEach(() => {
     cleanup();
+    resetCardsHubMemoryForTests();
     setCurrentView('chat-v2');
   });
 
-  it('renders the seven launcher destinations as a 3-column grid', () => {
+  it('renders the six launcher destinations as a 3-column grid', () => {
     render(<MobileSidebarNavigation />);
 
     expect(MOBILE_APP_LAUNCHER_VIEWS).toEqual([
@@ -34,7 +37,6 @@ describe('MobileSidebarNavigation app launcher', () => {
       'learning-hub',
       'todo',
       'skills-management',
-      'task-dashboard',
       'flashcards',
       'data-management',
     ]);
@@ -44,7 +46,6 @@ describe('MobileSidebarNavigation app launcher', () => {
       '资源',
       '待办',
       '技能',
-      '制卡',
       '闪卡',
       '数据',
     ]);
@@ -100,12 +101,37 @@ describe('MobileSidebarNavigation app launcher', () => {
     expect(onNavigate).toHaveBeenCalledWith('settings');
   });
 
-  it('navigates to Anki card making from the launcher', () => {
+  it('opens the flashcards hub on the review tab by default', () => {
     const onNavigate = vi.fn();
     render(<MobileSidebarNavigation onNavigate={onNavigate} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Anki制卡' }));
+    expect(screen.queryByRole('button', { name: 'Anki制卡' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '闪卡' }));
 
-    expect(onNavigate).toHaveBeenCalledWith('task-dashboard');
+    expect(onNavigate).toHaveBeenCalledWith('flashcards');
   });
+
+  it('reopens the last visited flashcards hub tab from outside the hub', () => {
+    rememberCardsHubView('template-management');
+    const onNavigate = vi.fn();
+    render(<MobileSidebarNavigation onNavigate={onNavigate} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '闪卡' }));
+
+    expect(onNavigate).toHaveBeenCalledWith('template-management');
+  });
+
+  it.each(['flashcards', 'task-dashboard', 'template-management'] as const)(
+    'highlights the flashcards tile and keeps the current tab when %s is active',
+    (view) => {
+      setCurrentView(view);
+      const onNavigate = vi.fn();
+      render(<MobileSidebarNavigation onNavigate={onNavigate} />);
+
+      const tile = screen.getByRole('button', { name: '闪卡' });
+      expect(tile).toHaveAttribute('aria-current', 'page');
+      fireEvent.click(tile);
+      expect(onNavigate).toHaveBeenCalledWith(view);
+    },
+  );
 });

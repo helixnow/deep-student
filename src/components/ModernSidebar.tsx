@@ -38,6 +38,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
+import { isNavEntryActive, resolveNavEntryClick } from '@/app/navigation/cardsHub';
 import { useIsUILabEnabled } from '../utils/uiLabToggle';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -328,7 +329,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       if (navigationScope === 'chat') {
         return item.view === 'chat-v2';
       }
-      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'flashcards', 'template-management', 'ui-lab'].includes(item.view);
+      // 闪卡中心（复习 / 制卡 / 模板）只占一个入口：flashcards 代表整个分区组
+      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'flashcards', 'ui-lab'].includes(item.view);
     }),
     [navItems, navigationScope]
   );
@@ -826,7 +828,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
   const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>) => {
     const isNewSessionAction = view === 'chat-v2';
-    const isActive = !isNewSessionAction && currentView === view;
+    const isActive = !isNewSessionAction && isNavEntryActive(view, currentView);
     const handleClick = () => {
       if (view === 'chat-v2') {
         if (currentView !== 'chat-v2') {
@@ -841,7 +843,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
         return;
       }
 
-      handleViewChange(view);
+      // 闪卡中心入口：已在组内时保持当前分区，否则回到最近访问的分区
+      handleViewChange(resolveNavEntryClick(view, currentView));
     };
 
     return (

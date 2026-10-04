@@ -2,7 +2,7 @@
  * MobileSidebarNavigation - 移动统一抽屉的全局应用入口
  *
  * - settingsOnly：抽屉 head 右侧设置齿轮
- * - 默认：head 之下的二行三列入口（会话 / 资源 / 待办 / 技能 / 制卡 / 数据）
+ * - 默认：head 之下的二行三列入口（会话 / 资源 / 待办 / 技能 / 闪卡 / 数据）
  */
 
 import React, { createContext, useContext, useMemo, useCallback, type ReactNode } from 'react';
@@ -18,13 +18,13 @@ import {
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
 import { canonicalizeView } from '@/app/navigation/canonicalView';
+import { isNavEntryActive, resolveNavEntryClick } from '@/app/navigation/cardsHub';
 import { useIsUILabEnabled } from '@/utils/uiLabToggle';
 import {
   StudyBooksIcon,
   StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
-  StudyStackIcon,
   StudyTodoIcon,
 } from '@/components/icons/StudySidebarIcons';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -54,7 +54,6 @@ const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
   'learning-hub': StudyBooksIcon,
   todo: StudyTodoIcon,
   'skills-management': StudyMagicWandIcon,
-  'task-dashboard': StudyStackIcon,
   flashcards: StudyCardsIcon,
   'data-management': Database,
 };
@@ -64,7 +63,6 @@ const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallbac
   'learning-hub': { key: 'sidebar:navigation.launcher.learning_hub', fallback: '资源' },
   todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
-  'task-dashboard': { key: 'sidebar:navigation.launcher.task_dashboard', fallback: '制卡' },
   flashcards: { key: 'sidebar:navigation.launcher.flashcards', fallback: '闪卡' },
   'data-management': { key: 'sidebar:navigation.launcher.data_management', fallback: '数据' },
 };
@@ -74,7 +72,6 @@ const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback
   'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '资源库' },
   todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
-  'task-dashboard': { key: 'sidebar:navigation.anki_generation', fallback: 'Anki制卡' },
   flashcards: { key: 'sidebar:navigation.flashcards', fallback: '闪卡' },
   'data-management': { key: 'common:navigation.data_management', fallback: '数据管理' },
 };
@@ -119,7 +116,9 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
     }))
   ), [t]);
 
-  const handleNavigate = useCallback((view: CurrentView) => {
+  const handleNavigate = useCallback((entryView: CurrentView) => {
+    // 闪卡中心入口：已在组内保持当前分区，否则回到最近访问的分区
+    const view = resolveNavEntryClick(entryView, currentView);
     if (navigateDirect) {
       const accepted = navigateDirect(view);
       if (accepted === false) return;
@@ -127,7 +126,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       dispatchAppEvent(APP_EVENTS.MOBILE_APP_NAVIGATE, { view });
     }
     onNavigate?.(view);
-  }, [navigateDirect, onNavigate]);
+  }, [currentView, navigateDirect, onNavigate]);
 
   if (settingsOnly) {
     if (!settingsItem) return null;
@@ -159,7 +158,7 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
       className={cn('grid grid-cols-3 gap-x-0.5 gap-y-0', className)}
     >
       {launcherItems.map(({ view, icon: Icon, name, ariaLabel }) => {
-        const isActive = currentCanonicalView === canonicalizeView(view);
+        const isActive = isNavEntryActive(canonicalizeView(view), currentCanonicalView);
         return (
           <button
             key={view}

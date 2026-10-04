@@ -7,7 +7,6 @@ import {
   StudyChatIcon,
   StudyMagicWandIcon,
   StudySettingsIcon,
-  StudyStackIcon,
   StudyTodoIcon,
 } from '../components/icons/StudySidebarIcons';
 
@@ -73,21 +72,13 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
       view: 'skills-management',
       icon: StudyMagicWandIcon,
     },
-    {
-      name: t('sidebar:navigation.anki_generation', 'Anki制卡'),
-      view: 'task-dashboard',
-      icon: StudyStackIcon,
-    },
-    // ★ 闪卡复习：紧随制卡（制卡产出 → 闪卡消化）
+    // ★ 闪卡中心（2026-10）：复习 / 制卡任务 / 模板 三合一，只占一个入口。
+    // 分区仍是独立视图（flashcards / task-dashboard / template-management），
+    // 由 app/navigation/cardsHub.ts 统一高亮与落点，页内分区切换见 CardsHubTabs。
     {
       name: t('sidebar:navigation.flashcards', '闪卡'),
       view: 'flashcards',
       icon: StudyCardsIcon,
-    },
-    {
-      name: t('sidebar:navigation.template_management', '模板管理'),
-      view: 'template-management',
-      icon: StudyBlocksIcon,
     },
     ...(includeUILab
       ? [
@@ -110,14 +101,14 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
 
 /**
  * 移动端所有侧栏在 head 之下的二行三列应用入口。
- * 不含设置（抽屉顶栏齿轮）、模板管理（从 Anki制卡进入）、命令面板。
+ * 不含设置（抽屉顶栏齿轮）、命令面板；制卡任务与模板并入「闪卡」入口
+ * （闪卡中心页内分区切换，见 app/navigation/cardsHub.ts）。
  */
 export const MOBILE_APP_LAUNCHER_VIEWS = [
   'chat-v2',
   'learning-hub',
   'todo',
   'skills-management',
-  'task-dashboard',
   'flashcards',
   'data-management',
 ] as const satisfies readonly CurrentView[];

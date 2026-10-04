@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar, reorderSidebarSessionGroups } from '@/components/ModernSidebar';
 import { __resetSessionListStoreForTests } from '@/features/chat/stores/sessionListStore';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
+import { rememberCardsHubView, resetCardsHubMemoryForTests } from '@/app/navigation/cardsHub';
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -149,6 +150,40 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByRole('button', { name: /待办|sidebar:navigation\.todo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '技能管理' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
+  });
+
+  it('collapses flashcards, card tasks and templates into one flashcards hub entry', async () => {
+    resetCardsHubMemoryForTests();
+    const onViewChange = vi.fn();
+    const { rerender } = render(
+      <ModernSidebar
+        currentView="template-management"
+        onViewChange={onViewChange}
+      />
+    );
+
+    const hubEntry = await screen.findByRole('button', { name: '闪卡' });
+    expect(hubEntry).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByRole('button', { name: 'Anki制卡' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '模板管理' })).not.toBeInTheDocument();
+
+    // 组内点击入口：停留在当前分区，不跳回「复习」
+    fireEvent.click(hubEntry);
+    expect(onViewChange).toHaveBeenLastCalledWith('template-management');
+
+    // 组外点击入口：回到最近访问的分区
+    rememberCardsHubView('task-dashboard');
+    rerender(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={onViewChange}
+      />
+    );
+    const idleEntry = screen.getByRole('button', { name: '闪卡' });
+    expect(idleEntry).not.toHaveAttribute('aria-current');
+    fireEvent.click(idleEntry);
+    expect(onViewChange).toHaveBeenLastCalledWith('task-dashboard');
+    resetCardsHubMemoryForTests();
   });
 
   it('renders the new-conversation icon to the right of the conversation section title', async () => {

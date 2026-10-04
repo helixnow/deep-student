@@ -128,6 +128,8 @@ import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
 import { canonicalizeView } from './app/navigation/canonicalView';
+import { getCardsHubSwitchDirection, isCardsHubView, rememberCardsHubView } from './app/navigation/cardsHub';
+import { CardsHubTabs } from './app/shell/CardsHubTabs';
 import {
   DESKTOP_SHELL,
   getShellSidebarDragLayout,
@@ -1150,7 +1152,6 @@ function App() {
   const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
   const [desktopPageHeaderTarget, setDesktopPageHeaderTarget] = useState<HTMLDivElement | null>(null);
   const [desktopChatHeaderTarget, setDesktopChatHeaderTarget] = useState<HTMLDivElement | null>(null);
-  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const isSmallScreenRef = useRef(isSmallScreen);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
@@ -1197,7 +1198,16 @@ function App() {
     startTransition(() => {
       // 切换方向：与视图切换同批提交，层动画首帧即拿到正确方向（前进右入/后退左入镜像）
       const navStack = viewNavStackRef.current;
-      if (targetView !== prevView && navStack[navStack.length - 1] !== targetView) {
+      const cardsHubDirection = getCardsHubSwitchDirection(prevView, targetView);
+      if (cardsHubDirection !== null) {
+        // 闪卡中心分区互切：兄弟分区横向翻页（方向按分区顺序），栈顶替换而非压栈
+        if (navStack[navStack.length - 1] === prevView) {
+          navStack[navStack.length - 1] = targetView;
+        } else {
+          navStack.push(targetView);
+        }
+        setViewNavDirection(cardsHubDirection);
+      } else if (targetView !== prevView && navStack[navStack.length - 1] !== targetView) {
         const existingIdx = navStack.lastIndexOf(targetView);
         if (existingIdx >= 0) {
           navStack.length = existingIdx + 1;
@@ -1282,6 +1292,8 @@ function App() {
 
   useEffect(() => {
     currentViewRef.current = currentView;
+    // 闪卡中心：记住最近访问的分区，侧栏「闪卡」入口点击时回到这里
+    rememberCardsHubView(currentView);
     // Publish committed navigation only; external-store writes cannot be deferred by startTransition.
     useViewStore.getState().setCurrentView(currentView);
 
@@ -2146,9 +2158,8 @@ function App() {
   const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
     setDesktopPageSidebarTarget(node);
   }, []);
-  const shouldShowDesktopPageBackButton =
-    currentView === 'learning-hub'
-    || (currentView === 'template-management' && templateManagementShellBackVisible);
+  // 模板管理并入闪卡中心后沿用主侧栏（页内顶部导航），桌面页壳侧栏仅资源库使用
+  const shouldShowDesktopPageBackButton = currentView === 'learning-hub';
   const desktopPageShellSidebarElement = useMemo(() => (
     <div className="sidebar-shell-surface font-sidebar-study-ui flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
       {shouldShowDesktopPageBackButton ? (
@@ -2193,7 +2204,7 @@ function App() {
     ? 'settings'
     : currentView === 'todo'
     ? 'todo'
-    : currentView === 'learning-hub' || currentView === 'template-management'
+    : currentView === 'learning-hub'
     ? 'desktop-page'
     : 'main';
   const desktopShellSidebarLayers = useMemo(() => [
@@ -2631,11 +2642,12 @@ function App() {
       'learning-hub': t('sidebar:navigation.learning_hub'),
       'settings': t('sidebar:navigation.settings'),
       'dashboard': t('common:navigation.dashboard'),
-      'task-dashboard': t('sidebar:navigation.anki_generation'),
+      // 闪卡中心三个分区共用页面标题，分区由标题旁的 CardsHubTabs 指示
+      'task-dashboard': t('sidebar:navigation.flashcards'),
       'flashcards': t('sidebar:navigation.flashcards'),
       'skills-management': t('sidebar:navigation.skills_management'),
       'data-management': t('common:navigation.data_management'),
-      'template-management': t('sidebar:navigation.template_management'),
+      'template-management': t('sidebar:navigation.flashcards'),
       'ui-lab': t('sidebar:navigation.ui_lab'),
       'pdf-reader': t('common:navigation.pdf_reader'),
       'sandbox-workbench': t('common:navigation.sandbox_workbench'),
@@ -2647,6 +2659,17 @@ function App() {
 
     return labels[currentView] ?? t('common:app.default_header');
   }, [currentChatHeaderTitle, currentView, t]);
+
+  // 闪卡中心移动端分区条：经 MobileHeaderNav.accessory 注入各分区页的页内顶栏下方
+  const cardsHubMobileTabs = useMemo(() => (
+    isSmallScreen && isCardsHubView(currentView) ? (
+      <CardsHubTabs
+        variant="mobile"
+        currentView={currentView}
+        onNavigate={handleMobileAppNavigate}
+      />
+    ) : undefined
+  ), [currentView, handleMobileAppNavigate, isSmallScreen]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
@@ -2744,12 +2767,10 @@ function App() {
         isSelectingMode={isSelectingTemplate}
         onTemplateSelected={handleTemplateSelected}
         onCancel={handleTemplateSelectionCancel}
-        onBackToAnki={() => setCurrentView('task-dashboard')}
         refreshToken={templateManagementRefreshTick}
-        onDesktopShellBackVisibilityChange={setTemplateManagementShellBackVisible}
       />
     </Suspense>
-  ), [isSelectingTemplate, handleTemplateSelected, handleTemplateSelectionCancel, templateManagementRefreshTick, setCurrentView]);
+  ), [isSelectingTemplate, handleTemplateSelected, handleTemplateSelectionCancel, templateManagementRefreshTick]);
 
   // data-management: 依赖仅在导入对话框打开/语言切换时变化
   const dataManagementContent = useMemo(() => (
@@ -2852,6 +2873,7 @@ function App() {
           canGoForward: unifiedCanGoForward,
           onForward: unifiedGoForward,
           fallbackTitle: desktopShellViewLabel,
+          accessory: cardsHubMobileTabs,
         }}
       >
       <LearningHubNavigationProvider>
@@ -2997,6 +3019,16 @@ function App() {
                     </div>
                   </div>
                 )}
+
+                {/* 闪卡中心分区切换：放在标题热区之外（热区点击会打开命令面板） */}
+                {isCardsHubView(currentView) ? (
+                  <CardsHubTabs
+                    variant="titlebar"
+                    currentView={currentView}
+                    onNavigate={handleViewChange}
+                    className="ml-3"
+                  />
+                ) : null}
 
                 <div
                   ref={setDesktopChatHeaderTarget}
