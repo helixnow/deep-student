@@ -320,7 +320,7 @@
     "estimateSegments": "Estimated segments",
     "estimateSegmentsValue": "About {{count}}",
     "estimateModel": "Recognition model",
-    "estimateNoModel": "Speech recognition isn't set up. Add the API key in Settings › Voice input first (shared with voice input).",
+    "estimateNoModel": "Speech recognition isn't set up. Choose a Speech Recognition (ASR) model in Settings › Model Assignment first (shared with Voice Input).",
     "estimateFailed": "Couldn't estimate the transcription",
     "startConfirm": "Start transcription",
     "startFailed": "Couldn't start transcription",

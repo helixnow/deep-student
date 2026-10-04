@@ -390,7 +390,7 @@
       "settingsRequiredTitle": "Set up SiliconFlow first",
       "settingsRequiredMessage": "Add a SiliconFlow API key in Settings before using voice input.",
       "modelAssignmentRequiredTitle": "Assign a voice input model",
-      "modelAssignmentRequiredMessage": "Choose a Voice Input ASR model in Settings before recording.",
+      "modelAssignmentRequiredMessage": "Choose a Speech Recognition (ASR) model in Settings › Model Assignment before recording.",
       "modelConfigMissingTitle": "Voice input model needs attention",
       "modelConfigMissingMessage": "The assigned ASR model is missing or no longer supports voice input. Pick another one in Settings > Models.",
       "modelDisabledTitle": "Voice input model is disabled",
