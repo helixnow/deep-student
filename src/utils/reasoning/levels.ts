@@ -25,11 +25,13 @@ export interface ReasoningLevelOption {
 }
 
 /** 统一五档（前端展示用；不含 minimal——该档官方已基本名存实亡）。 */
+// 文案用短标签（低/中/高/极高/最高）：`reasoning.effort.*` 是设置页里「API 参数值（中文）」
+// 的写法，直接用在输入框档位芯片上会显示成「high（高）」。
 export const UNIFIED_REASONING_LEVELS: ReasoningLevelOption[] = [
-  { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
-  { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
-  { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
-  { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
+  { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
+  { value: 'medium', labelKey: 'settings:api.modal.deepseek.depth.medium', defaultLabel: 'Medium' },
+  { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.deepseek.depth.xhigh', defaultLabel: 'Extra High' },
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 

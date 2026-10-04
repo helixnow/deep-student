@@ -258,10 +258,10 @@ describe('InputBarV2 stale context ref guard', () => {
       'max',
     ]);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
-      'settings:api.modal.reasoning.effort.low',
-      'settings:api.modal.reasoning.effort.medium',
-      'settings:api.modal.reasoning.effort.high',
-      'settings:api.modal.reasoning.effort.xhigh',
+      'settings:api.modal.deepseek.depth.low',
+      'settings:api.modal.deepseek.depth.medium',
+      'settings:api.modal.deepseek.depth.high',
+      'settings:api.modal.deepseek.depth.xhigh',
       'settings:api.modal.deepseek.depth.max',
     ]);
   });
@@ -939,10 +939,10 @@ describe('InputBarV2 stale context ref guard', () => {
       'max',
     ]);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
-      'settings:api.modal.reasoning.effort.low',
-      'settings:api.modal.reasoning.effort.medium',
-      'settings:api.modal.reasoning.effort.high',
-      'settings:api.modal.reasoning.effort.xhigh',
+      'settings:api.modal.deepseek.depth.low',
+      'settings:api.modal.deepseek.depth.medium',
+      'settings:api.modal.deepseek.depth.high',
+      'settings:api.modal.deepseek.depth.xhigh',
       'settings:api.modal.deepseek.depth.max',
     ]);
     // 统一五档（方案 F）：用户选中的档位原样保留，前端**不再**在切换模型时
