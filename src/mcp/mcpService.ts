@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { createCspSafeJsonSchemaValidator } from './cspSafeJsonSchemaValidator';
 import type { ServerCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { EmptyResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
@@ -417,7 +418,10 @@ class McpServiceImpl {
     this.resourceCacheByServer.clear();
     this.rateLimitTimestamps = [];
     for (const s of cfg.servers) {
-      const client = new Client({ name: 'dstu-frontend-mcp', version: '1.0.0' });
+      const client = new Client(
+        { name: 'dstu-frontend-mcp', version: '1.0.0' },
+        { jsonSchemaValidator: createCspSafeJsonSchemaValidator() },
+      );
       this.servers.set(s.id, { cfg: s, client, connected: false });
     }
     // 初始化时加载持久化缓存
@@ -483,6 +487,7 @@ class McpServiceImpl {
             roots: { listChanged: true },
             sampling: {},
           },
+          jsonSchemaValidator: createCspSafeJsonSchemaValidator(),
           listChanged: {
             tools: {
               autoRefresh: true,

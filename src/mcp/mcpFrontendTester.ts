@@ -1,4 +1,5 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { createCspSafeJsonSchemaValidator } from './cspSafeJsonSchemaValidator';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { WebSocketClientTransport } from '@modelcontextprotocol/sdk/client/websocket.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -104,7 +105,10 @@ function mapUrlForTransport(raw: string, transport: 'sse' | 'streamable_http' | 
 }
 
 async function runClient(transport: any): Promise<FrontendTestResult> {
-  const client = new Client({ name: 'dstu-frontend-mcp-test', version: '1.0.0' });
+  const client = new Client(
+    { name: 'dstu-frontend-mcp-test', version: '1.0.0' },
+    { jsonSchemaValidator: createCspSafeJsonSchemaValidator() },
+  );
   const trace_id = uuidv4();
   try {
     await client.connect(transport);
