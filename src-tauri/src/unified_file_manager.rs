@@ -176,6 +176,16 @@ fn open_writer(
     }
 }
 
+/// 打开一个流式读取器（本地路径或 content:// 等虚拟 URI），调用方自行限流/限长。
+/// 用于大文件分块暂存（`staged_upload`），避免整文件读入内存。
+pub fn open_read_stream(
+    window: &Window,
+    raw_path: &str,
+) -> Result<BufReader<Box<dyn Read + Send>>, AppError> {
+    let path = classify_path(raw_path)?;
+    open_reader(window, &path)
+}
+
 pub fn read_all_bytes(window: &Window, raw_path: &str) -> Result<Vec<u8>, AppError> {
     let path = classify_path(raw_path)?;
     let mut reader = open_reader(window, &path)?;

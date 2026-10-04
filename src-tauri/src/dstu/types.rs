@@ -506,6 +506,10 @@ pub struct DstuCreateOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub file_base64: Option<String>,
 
+    /// 分块暂存上传 ID（大文件路径，见 `staged_upload`）；优先于 `file_base64`
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub staged_upload_id: Option<String>,
+
     /// 扩展元数据
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<Value>,
@@ -519,6 +523,7 @@ impl DstuCreateOptions {
             name: name.into(),
             content: Some(content.into()),
             file_base64: None,
+            staged_upload_id: None,
             metadata: None,
         }
     }
@@ -530,6 +535,7 @@ impl DstuCreateOptions {
             name: name.into(),
             content: None,
             file_base64: None,
+            staged_upload_id: None,
             metadata: None,
         }
     }
@@ -545,6 +551,7 @@ impl DstuCreateOptions {
             name: name.into(),
             content: None,
             file_base64: Some(file_base64.into()),
+            staged_upload_id: None,
             metadata: None,
         }
     }

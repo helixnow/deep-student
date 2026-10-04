@@ -16,6 +16,11 @@ use std::sync::Arc;
 use tauri::{Emitter, State, Window};
 use tracing::{info, warn};
 
+/// 教材/文档导入单文件读取上限（与附件 `MAX_FILE_BYTES`、`read_file_bytes`、
+/// `page_rasterizer::MAX_DOCUMENT_SIZE` 对齐）。整份读入内存后还要渲染/解析，
+/// 不设上限时一个超大文件即可在手机上把进程拖到 OOM。
+const MAX_TEXTBOOK_IMPORT_BYTES: u64 = 200 * 1024 * 1024;
+
 /// PDF 导入进度事件
 #[derive(Debug, Clone, Serialize)]
 pub struct TextbookImportProgress {
@@ -237,6 +242,31 @@ pub async fn textbooks_add(
             }
         };
 
+        // 超限文件尽早拒绝（无法获取大小的虚拟 URI 由后续有界读取兜底）
+        if let Ok(size) = unified_file_manager::get_file_size(&window, src) {
+            if size > MAX_TEXTBOOK_IMPORT_BYTES {
+                let limit_mb = MAX_TEXTBOOK_IMPORT_BYTES / (1024 * 1024);
+                let reason = format!(
+                    "{}: 文件过大 ({:.1}MB，上限 {}MB)",
+                    display_name,
+                    size as f64 / (1024.0 * 1024.0),
+                    limit_mb
+                );
+                warn!("[Textbooks] {}", reason);
+                emit_progress(
+                    &window,
+                    display_name,
+                    "error",
+                    None,
+                    None,
+                    0,
+                    Some(format!("文件过大，上限 {}MB", limit_mb)),
+                );
+                skipped_reasons.push(reason);
+                continue;
+            }
+        }
+
         // 阶段1：计算哈希
         emit_progress(&window, display_name, "hashing", None, None, 5, None);
         let sha256 = match unified_file_manager::hash_file_sha256(&window, src) {
@@ -291,7 +321,11 @@ pub async fn textbooks_add(
                 let ext_heal = extension.clone();
                 let tb_id_heal = tb.id.clone();
                 let heal_result = tauri::async_runtime::spawn_blocking(move || {
-                    let bytes = unified_file_manager::read_all_bytes(&window_heal, &src_heal)?;
+                    let bytes = unified_file_manager::read_all_bytes_bounded(
+                        &window_heal,
+                        &src_heal,
+                        MAX_TEXTBOOK_IMPORT_BYTES,
+                    )?;
                     let conn = vfs_db_heal
                         .get_conn_safe()
                         .map_err(|e| AppError::database(format!("获取 VFS 连接失败: {}", e)))?;
@@ -361,9 +395,12 @@ pub async fn textbooks_add(
 
         let heavy = tauri::async_runtime::spawn_blocking(
             move || -> std::result::Result<HeavyOutcome, AppError> {
-                let file_bytes =
-                    unified_file_manager::read_all_bytes(&window_task, &src_task)
-                        .map_err(|e| AppError::file_system(format!("读取文件失败: {}", e)))?;
+                let file_bytes = unified_file_manager::read_all_bytes_bounded(
+                    &window_task,
+                    &src_task,
+                    MAX_TEXTBOOK_IMPORT_BYTES,
+                )
+                .map_err(|e| AppError::file_system(format!("读取文件失败: {}", e)))?;
                 let size = file_bytes.len() as u64;
 
                 // ★ PDF 导入前校验：文件头 + 加密检测（避免无效/加密 PDF 进入 VFS 后预览必然失败）
@@ -715,7 +752,11 @@ pub async fn textbooks_relink(
         )
         .map_err(|e| AppError::database(format!("更新 original_path 失败: {}", e)))?;
 
-        let bytes = unified_file_manager::read_all_bytes(&window_task, &new_path_task)?;
+        let bytes = unified_file_manager::read_all_bytes_bounded(
+            &window_task,
+            &new_path_task,
+            MAX_TEXTBOOK_IMPORT_BYTES,
+        )?;
         crate::vfs::VfsTextbookRepo::attach_blob_if_missing_with_conn(
             &conn,
             vfs_db_task.blobs_dir(),

@@ -693,11 +693,30 @@ impl VfsAttachmentRepo {
         blobs_dir: &Path,
         params: VfsUploadAttachmentParams,
     ) -> VfsResult<VfsUploadAttachmentResult> {
-        // 1. 基础类型校验与解码前大小预算
+        let data = Self::decode_params_content(&params)?;
+        Self::upload_bytes_with_conn(conn, blobs_dir, &params, &data)
+    }
+
+    /// 校验类型后按 MIME 上限解码 `params.base64_content`（解码前先做大小预算）。
+    fn decode_params_content(params: &VfsUploadAttachmentParams) -> VfsResult<Vec<u8>> {
         Self::validate_upload_type(&params.name, &params.mime_type)?;
         Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
         let max_upload_bytes = Self::max_upload_size_bytes(&params.mime_type);
-        let data = Self::decode_base64_bounded(&params.base64_content, max_upload_bytes)?;
+        Self::decode_base64_bounded(&params.base64_content, max_upload_bytes)
+    }
+
+    /// 以原始字节上传（`params.base64_content` 被忽略）。
+    ///
+    /// 大文件经 `staged_upload` 分块暂存后走这里，避免 base64 往返与多份拷贝。
+    pub fn upload_bytes_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        params: &VfsUploadAttachmentParams,
+        data: &[u8],
+    ) -> VfsResult<VfsUploadAttachmentResult> {
+        // 1. 基础类型校验与大小校验
+        Self::validate_upload_type(&params.name, &params.mime_type)?;
+        Self::validate_attachment_type(params.attachment_type.as_deref(), &params.mime_type)?;
         let size = data.len() as i64;
         Self::validate_upload_size(&params.mime_type, data.len())?;
         validate_archive_content(&params.name, &params.mime_type, &data)?;
@@ -993,7 +1012,7 @@ impl VfsAttachmentRepo {
                         }
                         Ok(_) | Err(_) => {
                             // 不支持页级拆分或拆分失败 → 整篇提取
-                            match parser.extract_text_from_bytes(&params.name, data.clone()) {
+                            match parser.extract_text_from_bytes(&params.name, data.to_vec()) {
                                 Ok(text) => {
                                     if !text.trim().is_empty() {
                                         info!(
@@ -1350,12 +1369,30 @@ impl VfsAttachmentRepo {
         params: VfsUploadAttachmentParams,
         folder_id: Option<&str>,
     ) -> VfsResult<VfsUploadAttachmentResult> {
+        // 只解码一次（旧实现每次重试 clone 整份 base64 字符串）
+        let data = Self::decode_params_content(&params)?;
+        Self::upload_bytes_with_folder(db, &params, &data, folder_id)
+    }
+
+    /// 以原始字节上传并挂到文件夹（`params.base64_content` 被忽略）。
+    pub fn upload_bytes_with_folder(
+        db: &VfsDatabase,
+        params: &VfsUploadAttachmentParams,
+        data: &[u8],
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsUploadAttachmentResult> {
         // ★ Windows 写锁修复：SQLite 在高并发上传时可能短暂返回 SQLITE_BUSY
         // 这里做短重试，避免直接向前端暴露 "database is locked"
         const BUSY_RETRIES: usize = 4;
         for attempt in 0..BUSY_RETRIES {
             let conn = db.get_conn_safe()?;
-            match Self::upload_with_folder_conn(&conn, db.blobs_dir(), params.clone(), folder_id) {
+            match Self::upload_bytes_with_folder_conn(
+                &conn,
+                db.blobs_dir(),
+                params,
+                data,
+                folder_id,
+            ) {
                 Ok(res) => return Ok(res),
                 Err(err) if Self::is_sqlite_busy_error(&err) && attempt < BUSY_RETRIES - 1 => {
                     let backoff_ms = (80u64.saturating_mul(1u64 << attempt.min(6))).min(1000);
@@ -1386,6 +1423,17 @@ impl VfsAttachmentRepo {
         params: VfsUploadAttachmentParams,
         folder_id: Option<&str>,
     ) -> VfsResult<VfsUploadAttachmentResult> {
+        let data = Self::decode_params_content(&params)?;
+        Self::upload_bytes_with_folder_conn(conn, blobs_dir, &params, &data, folder_id)
+    }
+
+    fn upload_bytes_with_folder_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        params: &VfsUploadAttachmentParams,
+        data: &[u8],
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsUploadAttachmentResult> {
         // ★ SAVEPOINT 事务保护：包裹 upload + folder_item 两步操作
         conn.execute("SAVEPOINT upload_with_folder", [])
             .map_err(|e| {
@@ -1397,7 +1445,7 @@ impl VfsAttachmentRepo {
             })?;
 
         let result = (|| -> VfsResult<VfsUploadAttachmentResult> {
-            let result = Self::upload_with_conn(conn, blobs_dir, params)?;
+            let result = Self::upload_bytes_with_conn(conn, blobs_dir, params, data)?;
 
             let item_type = if result.attachment.attachment_type == "image" {
                 "image"

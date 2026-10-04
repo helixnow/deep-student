@@ -1391,7 +1391,12 @@ fn get_resource_title_with_conn(
 pub struct VfsUploadAttachmentParamsExt {
     pub name: String,
     pub mime_type: String,
+    /// Base64 内容（小文件快速路径）；提供 `staged_upload_id` 时可为空
+    #[serde(default)]
     pub base64_content: String,
+    /// 分块暂存上传 ID（大文件路径，见 `staged_upload`）；优先于 base64_content
+    #[serde(default)]
+    pub staged_upload_id: Option<String>,
     #[serde(default)]
     pub attachment_type: Option<String>,
     #[serde(default)]
@@ -1716,13 +1721,30 @@ fn upload_attachment_blocking(
         }
     };
 
+    // ★ 大文件分块暂存路径：从暂存区取走完整文件（StagedFile drop 即删除临时文件）
+    let staged_bytes = match params.staged_upload_id.as_deref() {
+        Some(upload_id) if !upload_id.is_empty() => {
+            let staged = crate::staged_upload::take_staged_upload(upload_id)?;
+            let max_bytes = VfsAttachmentRepo::max_upload_size_bytes(&params.mime_type) as u64;
+            Some(staged.read_bounded(max_bytes)?)
+        }
+        _ => None,
+    };
+
     // ★ 音频附件：留存 base64 供导入后的可选转写流水线使用（其余类型不复制；
     // 超过受管 ASR 25MB 限额的大音频不复制，避免峰值内存翻倍）
     let is_audio = is_audio_upload(&params.name, &params.mime_type);
-    let audio_within_asr_limit =
-        params.base64_content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES / 3 * 4 + 4;
+    let audio_within_asr_limit = match staged_bytes.as_ref() {
+        Some(bytes) => bytes.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES,
+        None => params.base64_content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES / 3 * 4 + 4,
+    };
     let audio_base64_for_transcription = if is_audio && audio_within_asr_limit {
-        Some(params.base64_content.clone())
+        Some(match staged_bytes.as_ref() {
+            Some(bytes) => {
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
+            }
+            None => params.base64_content.clone(),
+        })
     } else {
         None
     };
@@ -1734,9 +1756,21 @@ fn upload_attachment_blocking(
         attachment_type: params.attachment_type,
     };
 
-    let result =
-        VfsAttachmentRepo::upload_with_folder(&vfs_db, upload_params, target_folder_id.as_deref())
-            .map_err(|e| e.to_string())?;
+    let result = match staged_bytes.as_deref() {
+        Some(bytes) => VfsAttachmentRepo::upload_bytes_with_folder(
+            &vfs_db,
+            &upload_params,
+            bytes,
+            target_folder_id.as_deref(),
+        ),
+        None => VfsAttachmentRepo::upload_with_folder(
+            &vfs_db,
+            upload_params,
+            target_folder_id.as_deref(),
+        ),
+    }
+    .map_err(|e| e.to_string())?;
+    drop(staged_bytes);
 
     // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
     if let Some(audio_base64) = audio_base64_for_transcription {

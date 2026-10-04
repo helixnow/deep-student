@@ -117,6 +117,7 @@ pub mod secret_prompt;
 pub mod secure_store;
 pub mod services;
 pub mod spaced_repetition;
+pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub mod startup_cleanup;
 pub mod startup_gate;
 #[allow(dead_code)]
@@ -1964,6 +1965,10 @@ pub fn run() {
             crate::file_stream_protocol::filestream_check_access,
             crate::commands::hash_file,
             crate::commands::read_file_bytes,
+            crate::staged_upload::staged_upload_begin,
+            crate::staged_upload::staged_upload_append,
+            crate::staged_upload::staged_upload_from_path,
+            crate::staged_upload::staged_upload_abort,
             crate::commands::copy_file,
             crate::commands::save_text_to_file,
             crate::commands::get_all_custom_templates,

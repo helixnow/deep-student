@@ -1130,15 +1130,6 @@ pub async fn dstu_create(
             mindmap_to_dstu_node(&mindmap)
         }
         "images" | "files" => {
-            // 验证 file_base64 参数
-            let file_base64 = match &options.file_base64 {
-                Some(b64) if !b64.is_empty() => b64,
-                _ => {
-                    log::error!("[DSTU::handlers] dstu_create: FAILED - file_base64 is required for images/files");
-                    return Err("file_base64 is required for images/files creation".to_string());
-                }
-            };
-
             // 验证 Base64 数据大小（避免超大字符串导致内存压力）
             // #62: 文件上限 50MB→200MB，与附件上传（attachment_repo）及学习资源导入对齐
             // ★ 2026-06-12（审阅问题 M8）：图片 10MB→50MB，与 attachment_repo::MAX_IMAGE_BYTES 对齐
@@ -1149,28 +1140,52 @@ pub async fn dstu_create(
             } else {
                 MAX_FILE_SIZE
             };
-            let max_base64_len = max_file_size.div_ceil(3) * 4 + 16; // 4/3 编码开销 + 少量余量
-            if file_base64.len() > max_base64_len {
-                log::error!(
-                    "[DSTU::handlers] dstu_create: FAILED - base64 payload too large: {} bytes",
-                    file_base64.len()
-                );
-                return Err(format!(
-                    "Base64 payload exceeds limit: {} bytes (max: {} bytes)",
-                    file_base64.len(),
-                    max_base64_len
-                ));
-            }
 
-            // 解码 Base64 数据
-            let file_data = match BASE64.decode(file_base64) {
-                Ok(data) => data,
-                Err(e) => {
+            // ★ 大文件分块暂存路径：从暂存区取走完整文件，不经 base64
+            let staged_file = match options.staged_upload_id.as_deref() {
+                Some(upload_id) if !upload_id.is_empty() => {
+                    Some(crate::staged_upload::take_staged_upload(upload_id)?)
+                }
+                _ => None,
+            };
+            let file_data = if let Some(staged) = staged_file {
+                let max_bytes = max_file_size as u64;
+                tauri::async_runtime::spawn_blocking(move || staged.read_bounded(max_bytes))
+                    .await
+                    .map_err(|e| format!("Staged upload read task failed: {}", e))??
+            } else {
+                // 验证 file_base64 参数
+                let file_base64 = match &options.file_base64 {
+                    Some(b64) if !b64.is_empty() => b64,
+                    _ => {
+                        log::error!("[DSTU::handlers] dstu_create: FAILED - file_base64 is required for images/files");
+                        return Err("file_base64 is required for images/files creation".to_string());
+                    }
+                };
+
+                let max_base64_len = max_file_size.div_ceil(3) * 4 + 16; // 4/3 编码开销 + 少量余量
+                if file_base64.len() > max_base64_len {
                     log::error!(
-                        "[DSTU::handlers] dstu_create: FAILED - base64 decode error: {}",
-                        e
+                        "[DSTU::handlers] dstu_create: FAILED - base64 payload too large: {} bytes",
+                        file_base64.len()
                     );
-                    return Err(format!("Invalid base64 data: {}", e));
+                    return Err(format!(
+                        "Base64 payload exceeds limit: {} bytes (max: {} bytes)",
+                        file_base64.len(),
+                        max_base64_len
+                    ));
+                }
+
+                // 解码 Base64 数据
+                match BASE64.decode(file_base64) {
+                    Ok(data) => data,
+                    Err(e) => {
+                        log::error!(
+                            "[DSTU::handlers] dstu_create: FAILED - base64 decode error: {}",
+                            e
+                        );
+                        return Err(format!("Invalid base64 data: {}", e));
+                    }
                 }
             };
 

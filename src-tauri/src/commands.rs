@@ -3611,7 +3611,7 @@ pub async fn read_file_text(window: Window, path: String) -> Result<String> {
 /// 没有任何路径白名单，前端任意 JS 都能读取 ~/.ssh、~/.aws 等敏感目录。
 /// 正常导入/预览流程只会访问用户可见文件，封掉隐藏路径段不影响功能。
 /// 应用自身数据目录（Linux 下位于 ~/.local/share）始终放行。
-fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
+pub(crate) fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
     use tauri::Manager;
 
     if unified_file_manager::is_virtual_uri(raw_path) {
