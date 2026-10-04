@@ -38,6 +38,12 @@ import { CONVERT_MARKDOWN_TO_NOTE_EVENT } from '../../dragDropRouting';
 import EpubPreview from './EpubPreview';
 import { loadTextPreviewContent } from './textPreviewLoader';
 import { usePdfFocusListener } from './usePdfFocusListener';
+import { isMobilePlatform } from '@/utils/platform';
+
+/** 预览在 WebView 内整份 base64 + 解析；手机收紧到 30MB 防渲染进程 OOM（桌面 100MB） */
+const MOBILE_PREVIEW_MAX_BYTES = 30 * 1024 * 1024;
+const getPreviewMaxBytes = (): number =>
+  (isMobilePlatform() ? MOBILE_PREVIEW_MAX_BYTES : LARGE_FILE_THRESHOLD);
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
@@ -353,7 +359,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
             try {
               const fileSize = effectiveFileSize ?? await invoke<number>('get_file_size', { path: effectiveFilePath });
               if (!isMounted) return;
-              if (fileSize > LARGE_FILE_THRESHOLD) {
+              if (fileSize > getPreviewMaxBytes()) {
                 setContentError(t('learningHub:file.previewTooLarge'));
                 setContentLoading(false);
                 return;
@@ -369,12 +375,12 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           if (!rawBase64) {
             const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
               attachmentId: node.id,
-              maxBytes: LARGE_FILE_THRESHOLD,
+              maxBytes: getPreviewMaxBytes(),
             });
             if (!isMounted) return;
             if (result?.found && result?.content) {
               const estimatedSize = estimateBase64Size(result.content);
-              if (estimatedSize > LARGE_FILE_THRESHOLD) {
+              if (estimatedSize > getPreviewMaxBytes()) {
                 setContentError(t('learningHub:file.previewTooLarge'));
                 setContentLoading(false);
                 return;
@@ -403,7 +409,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
         let base64Content: string | null = null;
         const knownSize = typeof node.size === 'number' ? node.size : null;
-        if (knownSize && knownSize > LARGE_FILE_THRESHOLD) {
+        if (knownSize && knownSize > getPreviewMaxBytes()) {
           setContentError(t('learningHub:file.previewTooLarge'));
           setContentLoading(false);
           return;
@@ -414,13 +420,13 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         const loadFromVfs = async () => {
           const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
             attachmentId: node.id,
-            maxBytes: LARGE_FILE_THRESHOLD,
+            maxBytes: getPreviewMaxBytes(),
           });
           if (!isMounted) return null;
 
           if (result?.found && result?.content) {
             const estimatedSize = estimateBase64Size(result.content);
-            if (estimatedSize > LARGE_FILE_THRESHOLD) {
+            if (estimatedSize > getPreviewMaxBytes()) {
               vfsContentTooLarge = true;
               return null;
             }
@@ -434,7 +440,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
           try {
             const fileSize = effectiveFileSize ?? await invoke<number>('get_file_size', { path: effectiveFilePath });
             if (!isMounted) return;
-            if (fileSize > LARGE_FILE_THRESHOLD) {
+            if (fileSize > getPreviewMaxBytes()) {
               setContentError(t('learningHub:file.previewTooLarge'));
               setContentLoading(false);
               return;
