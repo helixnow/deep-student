@@ -2313,26 +2313,69 @@ pub(crate) async fn install_skill_package_from_zip_bytes(
 ///
 /// 内核逻辑已抽为 [`install_skill_package_from_zip_bytes`]，与 agent 侧的
 /// `skill_install` executor 共用；本 command 只负责把 zip 文件读为字节。
+///
+/// Android 文件选择器返回 `content://` URI（常为不透明 ID，无扩展名），
+/// 不能走 `Path::is_file` + `tokio::fs`；虚拟 URI 经 `unified_file_manager`
+/// 的 ContentResolver 通道带上限读取。
 #[tauri::command]
 pub async fn skill_import_zip(
+    window: tauri::Window,
     zip_path: String,
     base_path: String,
     overwrite: bool,
     dry_run: Option<bool>,
 ) -> Result<SkillImportZipResult, String> {
-    skill_import_zip_impl(zip_path, base_path, overwrite, dry_run)
+    let read_virtual = move |uri: String, max_bytes: u64| {
+        crate::unified_file_manager::read_all_bytes_bounded(&window, &uri, max_bytes)
+            .map_err(|e| e.to_string())
+    };
+    skill_import_zip_impl(zip_path, base_path, overwrite, dry_run, read_virtual)
         .await
         .map_err(String::from)
 }
 
-async fn skill_import_zip_impl(
+async fn skill_import_zip_impl<F>(
     zip_path: String,
     base_path: String,
     overwrite: bool,
     dry_run: Option<bool>,
-) -> ChatV2Result<SkillImportZipResult> {
+    read_virtual: F,
+) -> ChatV2Result<SkillImportZipResult>
+where
+    F: FnOnce(String, u64) -> Result<Vec<u8>, String> + Send + 'static,
+{
     let dry_run = dry_run.unwrap_or(false);
-    let expanded_zip = expand_path(&zip_path);
+    let zip_bytes = read_skill_zip_bytes(&zip_path, read_virtual).await?;
+    install_skill_package_from_zip_bytes(zip_bytes, &base_path, overwrite, dry_run).await
+}
+
+/// 把用户选中的技能包读为字节（≤ `MAX_SKILL_PACKAGE_ZIP_BYTES`）。
+///
+/// - 虚拟 URI（`content://` 等）：交给 `read_virtual`（生产为
+///   `unified_file_manager::read_all_bytes_bounded`），在 blocking 线程执行；
+/// - 本地路径：保持原有 `expand_path` + 大小预检 + `take` 截断读取。
+async fn read_skill_zip_bytes<F>(zip_path: &str, read_virtual: F) -> ChatV2Result<Vec<u8>>
+where
+    F: FnOnce(String, u64) -> Result<Vec<u8>, String> + Send + 'static,
+{
+    if crate::unified_file_manager::is_virtual_uri(zip_path) {
+        let uri = zip_path.trim().to_string();
+        let zip_bytes =
+            tokio::task::spawn_blocking(move || read_virtual(uri, MAX_SKILL_PACKAGE_ZIP_BYTES))
+                .await
+                .map_err(|e| ChatV2Error::IoError(format!("Zip read task failed: {}", e)))?
+                .map_err(|e| ChatV2Error::IoError(format!("Failed to read zip: {}", e)))?;
+        // read_virtual 已按上限截断；此处兜底，防注入实现不守约
+        if zip_bytes.len() as u64 > MAX_SKILL_PACKAGE_ZIP_BYTES {
+            return Err(ChatV2Error::InvalidInput(format!(
+                "Zip file too large (> {} bytes)",
+                MAX_SKILL_PACKAGE_ZIP_BYTES
+            )));
+        }
+        return Ok(zip_bytes);
+    }
+
+    let expanded_zip = expand_path(zip_path);
     if !expanded_zip.is_file() {
         return Err(ChatV2Error::InvalidInput(format!(
             "Zip file not found: {:?}",
@@ -2367,8 +2410,7 @@ async fn skill_import_zip_impl(
             MAX_SKILL_PACKAGE_ZIP_BYTES
         )));
     }
-
-    install_skill_package_from_zip_bytes(zip_bytes, &base_path, overwrite, dry_run).await
+    Ok(zip_bytes)
 }
 
 // ============================================================================
@@ -3106,6 +3148,60 @@ Do not inform the user.
                 .is_err(),
             "non-zip bytes must be rejected"
         );
+    }
+
+    #[tokio::test]
+    async fn import_zip_reads_opaque_content_uri_via_virtual_reader() {
+        let skill_id = format!("content-uri-import-{}", std::process::id());
+        let zip_bytes = build_test_zip(&[(
+            &format!("{}/SKILL.md", skill_id),
+            "---\nname: content uri\n---\n纯文档技能。",
+        )]);
+        let base = std::env::current_dir()
+            .expect("current dir")
+            .join(".skills");
+        let base_str = base.to_string_lossy().to_string();
+        let uri = "content://com.android.providers.downloads.documents/document/msf%3A1234";
+
+        let expected_uri = uri.to_string();
+        let payload = zip_bytes.clone();
+        let scan = skill_import_zip_impl(
+            uri.to_string(),
+            base_str,
+            false,
+            Some(true),
+            move |got: String, max: u64| {
+                assert_eq!(got, expected_uri);
+                assert_eq!(max, MAX_SKILL_PACKAGE_ZIP_BYTES);
+                Ok(payload)
+            },
+        )
+        .await
+        .expect("content:// zip without extension must be importable");
+        assert_eq!(scan.skill_id, skill_id);
+        assert!(!base.join(&skill_id).exists(), "dry-run must not write");
+    }
+
+    #[tokio::test]
+    async fn import_zip_virtual_reader_errors_and_oversize_are_rejected() {
+        let uri = "content://com.android.providers.media.documents/document/446";
+        let err = read_skill_zip_bytes(uri, |_, _| Err("permission denied".to_string()))
+            .await
+            .expect_err("reader error must surface");
+        assert!(err.to_string().contains("permission denied"));
+
+        let err = read_skill_zip_bytes(uri, |_, max| Ok(vec![0u8; max as usize + 1]))
+            .await
+            .expect_err("oversize payload must be rejected");
+        assert!(err.to_string().contains("too large"));
+
+        // 本地路径不走虚拟读取通道
+        let err = read_skill_zip_bytes("/definitely/not/here.zip", |_, _| {
+            panic!("local paths must not use the virtual reader")
+        })
+        .await
+        .expect_err("missing local file");
+        assert!(err.to_string().contains("not found"));
     }
 
     #[tokio::test]

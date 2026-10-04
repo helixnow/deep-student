@@ -644,20 +644,102 @@ pub struct TapExportResult {
 ///
 /// 解压推到 GitHub 仓库后即可作为技能源被「技能源」浏览器或
 /// `skill_tap_catalog` 消费——发布/分享闭环。
+///
+/// Android 的保存对话框返回 `content://` URI（不透明 ID，常无 `.zip` 扩展名）：
+/// 先把 zip 写到应用私有暂存文件，再经 `unified_file_manager::copy_file`
+/// （ContentResolver 写入 + 回读校验）落到目标 URI。
 #[tauri::command]
 pub async fn skill_export_tap(
+    window: tauri::Window,
+    state: State<'_, AppState>,
     skill_ids: Vec<String>,
     dest_path: String,
 ) -> Result<TapExportResult, String> {
-    skill_export_tap_impl(skill_ids, dest_path)
+    let staging_dir = state
+        .file_manager
+        .get_writable_app_data_dir()
+        .join("temp_skill_tap_export");
+    let write_virtual = move |staged: String, target: String| {
+        crate::unified_file_manager::copy_file(&window, &staged, &target)
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    };
+    skill_export_tap_impl(skill_ids, dest_path, staging_dir, write_virtual)
         .await
         .map_err(String::from)
 }
 
-async fn skill_export_tap_impl(
+/// 校验导出目标；返回是否为虚拟 URI（content:// 等）。
+///
+/// 虚拟 URI 由系统保存对话框生成，名称不可控（`/document/446`），
+/// 只对本地路径要求 `.zip` 扩展名。
+fn validate_tap_export_destination(dest_path: &str) -> ChatV2Result<bool> {
+    if crate::unified_file_manager::is_virtual_uri(dest_path) {
+        return Ok(true);
+    }
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(dest_path)
+        .map_err(|e| ChatV2Error::InvalidInput(e.to_string()))?;
+    let dest = std::path::Path::new(dest_path);
+    if dest.extension().and_then(|e| e.to_str()) != Some("zip") {
+        return Err(ChatV2Error::InvalidInput(
+            "Destination must be a .zip file".to_string(),
+        ));
+    }
+    Ok(false)
+}
+
+/// 把打好的 zip 字节写到目标；虚拟 URI 走「暂存文件 → write_virtual」，
+/// 无论成败都清理暂存文件。返回写入的目标（本地路径或原始 URI）。
+fn write_tap_export_zip<F>(
+    bytes: Vec<u8>,
+    dest_path: &str,
+    dest_is_virtual: bool,
+    staging_dir: &std::path::Path,
+    write_virtual: F,
+) -> Result<String, String>
+where
+    F: FnOnce(String, String) -> Result<(), String>,
+{
+    if !dest_is_virtual {
+        let dest = std::path::Path::new(dest_path);
+        std::fs::write(dest, bytes)
+            .map_err(|e| format!("Failed to write {}: {}", dest.display(), e))?;
+        return Ok(dest.display().to_string());
+    }
+
+    std::fs::create_dir_all(staging_dir)
+        .map_err(|e| format!("Failed to create staging dir: {}", e))?;
+    let staged = staging_dir.join(format!("skills_tap_{}.zip", uuid::Uuid::new_v4()));
+    let result = std::fs::write(&staged, bytes)
+        .map_err(|e| format!("Failed to stage export {}: {}", staged.display(), e))
+        .and_then(|()| {
+            write_virtual(
+                staged.to_string_lossy().to_string(),
+                dest_path.trim().to_string(),
+            )
+            .map_err(|e| format!("Failed to write {}: {}", dest_path, e))
+        });
+    if let Err(e) = std::fs::remove_file(&staged) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            log::warn!(
+                "[SkillTaps] Failed to remove staged export {}: {}",
+                staged.display(),
+                e
+            );
+        }
+    }
+    result.map(|()| dest_path.trim().to_string())
+}
+
+async fn skill_export_tap_impl<F>(
     skill_ids: Vec<String>,
     dest_path: String,
-) -> ChatV2Result<TapExportResult> {
+    staging_dir: std::path::PathBuf,
+    write_virtual: F,
+) -> ChatV2Result<TapExportResult>
+where
+    F: FnOnce(String, String) -> Result<(), String> + Send + 'static,
+{
     if skill_ids.is_empty() {
         return Err(ChatV2Error::InvalidInput("No skills selected".to_string()));
     }
@@ -674,12 +756,7 @@ async fn skill_export_tap_impl(
             )));
         }
     }
-    let dest = std::path::PathBuf::from(&dest_path);
-    if dest.extension().and_then(|e| e.to_str()) != Some("zip") {
-        return Err(ChatV2Error::InvalidInput(
-            "Destination must be a .zip file".to_string(),
-        ));
-    }
+    let dest_is_virtual = validate_tap_export_destination(&dest_path)?;
 
     let base = super::skills::expand_path(DEFAULT_AGENT_SKILLS_BASE);
     let result = tokio::task::spawn_blocking(move || -> Result<TapExportResult, String> {
@@ -789,10 +866,15 @@ async fn skill_export_tap_impl(
                 .map_err(|e| format!("Zip write error: {}", e))?;
         }
 
-        std::fs::write(&dest, out.into_inner())
-            .map_err(|e| format!("Failed to write {}: {}", dest.display(), e))?;
+        let path = write_tap_export_zip(
+            out.into_inner(),
+            &dest_path,
+            dest_is_virtual,
+            &staging_dir,
+            write_virtual,
+        )?;
         Ok(TapExportResult {
-            path: dest.display().to_string(),
+            path,
             skill_count,
             file_count,
         })
@@ -909,6 +991,82 @@ mod tests {
     #[test]
     fn repack_rejects_missing_subdir() {
         assert!(repack_skill_subdir(&sample_repo(), "skills/nope", "fb").is_err());
+    }
+
+    #[test]
+    fn tap_export_destination_accepts_opaque_content_uri_only_for_virtual() {
+        assert_eq!(
+            validate_tap_export_destination(
+                "content://com.android.providers.downloads.documents/document/446"
+            )
+            .unwrap(),
+            true
+        );
+        assert_eq!(
+            validate_tap_export_destination("/tmp/my-skills-tap.zip").unwrap(),
+            false
+        );
+        assert!(validate_tap_export_destination("/tmp/my-skills-tap").is_err());
+        assert!(validate_tap_export_destination("/tmp/my-skills-tap.txt").is_err());
+        // 双重编码的 content URI 不得被当作本地路径放行
+        assert!(validate_tap_export_destination(
+            "content%3A%2F%2Fcom.android.providers.downloads.documents%2Fdocument%2F446.zip"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn tap_export_virtual_destination_goes_through_staging_and_cleans_up() {
+        let staging = tempfile::tempdir().expect("tempdir");
+        let target = "content://com.android.externalstorage.documents/document/primary%3Atap";
+        let mut seen: Option<(String, Vec<u8>)> = None;
+        let path = write_tap_export_zip(
+            b"PK\x03\x04zip".to_vec(),
+            target,
+            true,
+            staging.path(),
+            |staged, dest| {
+                let bytes = std::fs::read(&staged).map_err(|e| e.to_string())?;
+                seen = Some((dest, bytes));
+                Ok(())
+            },
+        )
+        .expect("virtual export");
+        assert_eq!(path, target);
+        let (dest, bytes) = seen.expect("write_virtual called");
+        assert_eq!(dest, target);
+        assert_eq!(bytes, b"PK\x03\x04zip");
+        assert_eq!(
+            std::fs::read_dir(staging.path()).unwrap().count(),
+            0,
+            "staged file must be removed"
+        );
+
+        // 写入失败也要清理暂存文件并上抛错误
+        let err = write_tap_export_zip(b"PK".to_vec(), target, true, staging.path(), |_, _| {
+            Err("provider refused".to_string())
+        })
+        .expect_err("failure must surface");
+        assert!(err.contains("provider refused"));
+        assert_eq!(std::fs::read_dir(staging.path()).unwrap().count(), 0);
+    }
+
+    #[test]
+    fn tap_export_local_destination_writes_directly() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let dest = dir.path().join("tap.zip");
+        let dest_str = dest.to_string_lossy().to_string();
+        let path = write_tap_export_zip(
+            b"PK".to_vec(),
+            &dest_str,
+            false,
+            &dir.path().join("staging"),
+            |_, _| panic!("local destinations must not use write_virtual"),
+        )
+        .expect("local export");
+        assert_eq!(path, dest.display().to_string());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"PK");
+        assert!(!dir.path().join("staging").exists());
     }
 
     #[test]
