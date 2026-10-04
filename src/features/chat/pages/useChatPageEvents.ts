@@ -686,12 +686,9 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
         return;
       }
-      // 用户在学习资源页（讲义笔记里的媒体锚点等）：就地以标签打开并跳转
-      if (useViewStore.getState().currentView === 'learning-hub') {
-        requestLearningHubIntent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${resourceId}` });
-        requestMediaFocusUntilHandled({ resourceId, seconds });
-        return;
-      }
+      // 仅在聊天页时由这里处理；其它视图（学习资源页、闪卡、笔记等）由 App 统一在
+      // 学习资源页以标签打开（不依赖聊天页是否仍挂载）
+      if (useViewStore.getState().currentView !== 'chat-v2') return;
       // 聊天页：右侧附件面板打开（与 PDF 引用同一通道），面板实例带专属 focusScopeId。
       // 文件名通常已被徽章解析并缓存，这里取到即用于面板标题。
       const title = (await resolveMediaResourceName(resourceId)) || t('learningHub:mediaRef.unknownMedia');
