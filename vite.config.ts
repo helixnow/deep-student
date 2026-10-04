@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { defineConfig, normalizePath, type Plugin } from "vite";
+import { defineConfig, normalizePath, searchForWorkspaceRoot, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
@@ -157,6 +157,23 @@ const cMapsDir = normalizePath(path.join(pdfjsDistPath, 'cmaps'));
 const standardFontsDir = normalizePath(path.join(pdfjsDistPath, 'standard_fonts'));
 const wasmDir = normalizePath(path.join(pdfjsDistPath, 'wasm'));
 
+// dev server 文件服务白名单（server.fs.allow）。
+// Vite 默认只放行工作区根目录；CSS url() 引用的资源（KaTeX 字体等）不在模块图的
+// "安全路径"里，必须落在白名单内才会被 serve。git worktree / 临时检出常把
+// node_modules 软链到主仓库：Vite 解析软链后字体 URL 变成 /@fs/<主仓库>/node_modules/…，
+// 落在白名单外 → 403 → KaTeX_Main/Math/AMS 全部加载失败，公式退回 Times New Roman，
+// \neq / \not 叠加用的私有区字形 U+E020 变成方框（"F′(x) ⊟0"）。
+// 把 node_modules 的真实路径加进白名单；显式设置 allow 会替换默认值，故保留工作区根。
+export function resolveDevServerFsAllow(cwd: string): string[] {
+  const roots = [searchForWorkspaceRoot(cwd)];
+  try {
+    roots.push(fs.realpathSync(path.join(cwd, 'node_modules')));
+  } catch {
+    // node_modules 不存在：保持默认白名单
+  }
+  return roots;
+}
+
 // cmaps 保守子集（R2 裁剪，详见 docs/dev/optimization0824/progress/R2-pdfjs-subset.md）：
 // 全量 169 个文件 1.11 MB → 68 个 0.59 MB。保留简中 GB 全系（核心场景）、
 // 繁中/日/韩的现代 Unicode 编码（UCS2/UTF16）、Adobe registry 系列
@@ -272,6 +289,9 @@ export default defineConfig(({ command, mode }) => ({
     // Tauri's macOS WebView resolves the dev URL through IPv4 on this host.
     // Bind the fallback explicitly so it can reach http://localhost:1422.
     host: host || '127.0.0.1',
+    fs: {
+      allow: resolveDevServerFsAllow(process.cwd()),
+    },
     hmr: host
       ? {
           protocol: "ws",
