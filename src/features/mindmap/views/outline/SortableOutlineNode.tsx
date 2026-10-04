@@ -57,6 +57,7 @@ import {
   type FlatNode,
 } from './outlineShared';
 import { OutlineNodeMenu } from './OutlineNodeMenu';
+import { runOutlineStructureAction } from './outlineStructureActions';
 import {
   animateOutlineCollapse,
   animateOutlineRowsExit,
@@ -79,7 +80,10 @@ export interface SortableOutlineNodeProps {
   /** ACR 4.0 A4：Agent update 内容更新高亮（背景一次渐隐 flash） */
   isUpdated?: boolean;
   isSelected: boolean;
+  /** 批量态（多选 ≥2 或触屏多选模式）：阻止行内编辑，键盘走批量 handler */
   isMultiSelectActive: boolean;
+  /** 触屏多选模式：单击切换选中，不进入编辑、不显示行操作栏 */
+  isSelectMode?: boolean;
   isSearchMatch: boolean;
   isCurrentSearchMatch: boolean;
   searchQuery: string;
@@ -98,6 +102,8 @@ export interface SortableOutlineNodeProps {
   onBatchIndent: () => void;
   onBatchOutdent: () => void;
   onBatchDelete: () => void;
+  /** 从「⋯」菜单进入触屏多选模式（以本行为首个选中项） */
+  onEnterSelectMode?: (nodeId: string) => void;
 }
 
 const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
@@ -112,6 +118,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   isUpdated = false,
   isSelected,
   isMultiSelectActive,
+  isSelectMode = false,
   isSearchMatch,
   isCurrentSearchMatch,
   searchQuery,
@@ -128,6 +135,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
   onBatchIndent,
   onBatchOutdent,
   onBatchDelete,
+  onEnterSelectMode,
 }) => {
   const { t } = useTranslation('mindmap');
   const { node, level, parentId, indexInParent } = flatNode;
@@ -669,9 +677,11 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowUp') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      if (parentId) {
-        storeApi.getState().moveNode(node.id, parentId, Math.max(0, indexInParent - 1));
-      }
+      runOutlineStructureAction(storeApi.getState(), 'moveUp', {
+        nodeId: node.id,
+        parentId,
+        indexInParent,
+      });
       return;
     }
 
@@ -681,9 +691,11 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
     if ((e.metaKey || e.ctrlKey) && e.key === 'ArrowDown') {
       e.preventDefault();
       clearOutlineGoalColumn();
-      if (parentId) {
-        storeApi.getState().moveNode(node.id, parentId, indexInParent + 2);
-      }
+      runOutlineStructureAction(storeApi.getState(), 'moveDown', {
+        nodeId: node.id,
+        parentId,
+        indexInParent,
+      });
       return;
     }
 
@@ -1212,6 +1224,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         className="flex-1 flex flex-col min-w-0 pr-2 pl-1.5 justify-center"
         onClick={(e) => {
           if (e.shiftKey || e.metaKey || e.ctrlKey) return;
+          // 触屏多选模式：冒泡到行容器切换选中，不进入编辑
+          if (isSelectMode) return;
           setIsEscaped(false);
           setIsEditing(true);
           setFocusedNodeId(node.id);
@@ -1354,7 +1368,7 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               "node-note px-[6px] pb-1 text-[13px] text-[var(--mm-text-secondary)] whitespace-pre-wrap cursor-text",
               descriptionPreview === 'first-line' && 'node-note-first-line',
             )}
-            onClick={() => !reciteMode && setIsEditingNote(true)}
+            onClick={() => !reciteMode && !isSelectMode && setIsEditingNote(true)}
             title={descriptionPreview === 'first-line' ? node.note : undefined}
           >
             {containsLatex(node.note) || !showTextHighlight ? (
@@ -1409,8 +1423,8 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
         )}
       </div>
 
-      {/* 悬停操作栏 - hidden in recite mode */}
-      {!reciteMode && (
+      {/* 悬停操作栏 - hidden in recite mode / touch select mode */}
+      {!reciteMode && !isSelectMode && (
       <div className="node-actions">
         {!isRoot && (
           <>
@@ -1443,6 +1457,9 @@ const SortableOutlineNodeImpl: React.FC<SortableOutlineNodeProps> = ({
               keymap={keymap}
               onEditNote={() => setIsEditingNote(true)}
               onOpenResourcePicker={onOpenResourcePicker}
+              onEnterSelectMode={
+                onEnterSelectMode ? () => onEnterSelectMode(node.id) : undefined
+              }
             />
           </>
         )}

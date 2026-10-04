@@ -50,6 +50,10 @@ export interface OutlineShortcutLabels {
   copy: string;
   cut: string;
   paste: string;
+  indent: string;
+  outdent: string;
+  moveUp: string;
+  moveDown: string;
 }
 
 /** 「⋯」菜单快捷键文案：随 keymap（deep-student / classic）与平台变化 */
@@ -69,6 +73,10 @@ export function getOutlineShortcutLabels(keymap: MindMapKeymap): OutlineShortcut
     copy: `${mod}C`,
     cut: `${mod}X`,
     paste: `${mod}V`,
+    indent: 'Tab',
+    outdent: `${shift}Tab`,
+    moveUp: `${mod}↑`,
+    moveDown: `${mod}↓`,
   };
 }
 

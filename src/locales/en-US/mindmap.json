@@ -348,7 +348,12 @@
     "bulletHint": "Click to select · Double-click to zoom in · ⌘-click to zoom in",
     "batchCollapse": "Collapse",
     "ghostNewLine": "Add a new line",
-    "dropLevelBadge": "L{{level}}"
+    "dropLevelBadge": "L{{level}}",
+    "indent": "Indent",
+    "outdent": "Outdent",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "selectMultiple": "Select multiple"
   },
   "outlineV2": {
     "deleteConfirm": "Delete this item?",

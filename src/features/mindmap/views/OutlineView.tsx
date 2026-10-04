@@ -62,6 +62,7 @@ import {
 import { OutlineBreadcrumb } from './outline/OutlineBreadcrumb';
 import { OutlineMultiselectBar } from './outline/OutlineMultiselectBar';
 import { OutlineDragOverlayContent } from './outline/OutlineDragOverlay';
+import { toggleOutlineSelection } from './outline/outlineStructureActions';
 
 const dropAnimationConfig: DropAnimation = {
   sideEffects: defaultDropAnimationSideEffects({
@@ -142,6 +143,14 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const [overId, setOverId] = useState<UniqueIdentifier | null>(null);
   const [dropPosition, setDropPosition] = useState<DropPosition>('inside');
   const [resourcePickerNodeId, setResourcePickerNodeId] = useState<string | null>(null);
+  /**
+   * 触屏多选模式：触屏没有 Shift/⌘ 修饰键，由行「⋯」菜单「多选」进入；
+   * 模式内单击切换选中（不进入编辑），即便只选 1 项也显示批量操作条。
+   * 经操作条清除、系统返回或选中清空退出。桌面不进入此模式。
+   */
+  const [touchSelectMode, setTouchSelectMode] = useState(false);
+  const touchSelectModeRef = useRef(touchSelectMode);
+  touchSelectModeRef.current = touchSelectMode;
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   /** 窗口化滚动状态（仅大列表时订阅 scroll/resize 更新） */
@@ -492,18 +501,32 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   const currentSearchResultId =
     currentSearchIndex >= 0 ? (searchResults[currentSearchIndex] ?? null) : null;
   const isMultiSelectActive = selection.length > 1;
+  /** 显示批量操作条 / 走批量快捷键：多选 ≥2，或触屏多选模式下至少 1 项 */
+  const isBatchSelectActive =
+    isMultiSelectActive || (touchSelectMode && selection.length > 0);
+  /** 行级批量态：阻止行内编辑（多选模式内即使 0 项也不应误入编辑） */
+  const rowsBlockEdit = isMultiSelectActive || touchSelectMode;
+
+  // 多选模式随选中清空 / 进入背诵模式自动退出
+  useEffect(() => {
+    if (touchSelectMode && (selection.length === 0 || reciteMode)) {
+      setTouchSelectMode(false);
+    }
+  }, [touchSelectMode, selection.length, reciteMode]);
 
   // 触屏大纲没有画布式底部节点工具条；系统返回先清除行焦点/多选，
   // 再由父级处理分支专注或离开导图，避免一次返回直接丢失当前上下文。
+  // 触屏多选模式同样在此注册：返回键一次退出模式并清空选中。
   useEffect(() => {
     if (
       !outlineKeyboardActive ||
       reciteMode ||
-      (!focusedNodeId && selection.length === 0)
+      (!focusedNodeId && selection.length === 0 && !touchSelectMode)
     ) {
       return;
     }
     return registerBackHandler(() => {
+      setTouchSelectMode(false);
       setFocusedNodeId(null);
       setSelection([]);
       return true;
@@ -513,6 +536,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
     outlineKeyboardActive,
     reciteMode,
     selection.length,
+    touchSelectMode,
     setFocusedNodeId,
     setSelection,
   ]);
@@ -617,13 +641,17 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
         state.setFocusedNodeId(nodeId);
         return;
       }
-      const rootId = state.document.root.id;
-      const next = state.selection.includes(nodeId)
-        ? state.selection.filter((id) => id !== nodeId)
-        : [...state.selection.filter((id) => id !== rootId), nodeId];
-      state.setSelection(next);
+      state.setSelection(toggleOutlineSelection(state.selection, nodeId, state.document.root.id));
       state.setSelectionAnchorId(nodeId);
       state.setFocusedNodeId(nodeId);
+      return;
+    }
+
+    // 触屏多选模式：单击切换选中；不设焦点，避免退出模式时焦点行自动进入编辑弹出键盘
+    if (touchSelectModeRef.current) {
+      if (isRootRow) return;
+      state.setSelection(toggleOutlineSelection(state.selection, nodeId, state.document.root.id));
+      state.setSelectionAnchorId(nodeId);
       return;
     }
 
@@ -692,12 +720,23 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
   }, [storeApi]);
 
   const handleClearSelection = useCallback(() => {
+    setTouchSelectMode(false);
     setSelection([]);
   }, [setSelection]);
 
+  /** 行「⋯」菜单「多选」：以该行为首个选中项进入触屏多选模式 */
+  const handleEnterSelectMode = useCallback((nodeId: string) => {
+    const state = storeApi.getState();
+    if (nodeId === state.document.root.id) return;
+    setTouchSelectMode(true);
+    state.setFocusedNodeId(null);
+    state.setSelection([nodeId]);
+    state.setSelectionAnchorId(nodeId);
+  }, [storeApi]);
+
   // 多选时 document 级快捷键（退出编辑后焦点可能不在行内）
   useEffect(() => {
-    if (!isMultiSelectActive) return;
+    if (!isBatchSelectActive) return;
 
     const onKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -715,6 +754,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
+        setTouchSelectMode(false);
         setSelection([]);
         return;
       }
@@ -739,7 +779,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
 
     globalThis.document.addEventListener('keydown', onKeyDown, true);
     return () => globalThis.document.removeEventListener('keydown', onKeyDown, true);
-  }, [isMultiSelectActive, handleBatchIndent, handleBatchOutdent, handleBatchDelete, setSelection]);
+  }, [isBatchSelectActive, handleBatchIndent, handleBatchOutdent, handleBatchDelete, setSelection]);
 
   /** 行间垂直/水平导航（稳定引用；视觉列优先，CJK 混排不漂移） */
   const handleNavigate = useCallback((
@@ -1124,7 +1164,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
         className="flex-1"
         viewportClassName={cn(
           'p-4 md:px-12 md:py-8',
-          isMultiSelectActive && 'outline-has-multiselect',
+          isBatchSelectActive && 'outline-has-multiselect',
         )}
         viewportRef={setScrollViewport}
       >
@@ -1175,7 +1215,8 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                           isExiting={agentExitingIds.has(flatNode.id)}
                           isUpdated={agentUpdatedIds.has(flatNode.id)}
                           isSelected={selectionSet.has(flatNode.id)}
-                          isMultiSelectActive={isMultiSelectActive}
+                          isMultiSelectActive={rowsBlockEdit}
+                          isSelectMode={touchSelectMode}
                           isSearchMatch={searchResultSet.has(flatNode.id)}
                           isCurrentSearchMatch={currentSearchResultId === flatNode.id}
                           searchQuery={searchQuery}
@@ -1196,6 +1237,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
                           onBatchIndent={handleBatchIndent}
                           onBatchOutdent={handleBatchOutdent}
                           onBatchDelete={handleBatchDelete}
+                          onEnterSelectMode={handleEnterSelectMode}
                         />
                       );
                     })}
@@ -1266,7 +1308,7 @@ export const OutlineView = React.forwardRef<OutlineViewHandle, OutlineViewProps>
         </DndContext>
       </CustomScrollArea>
 
-      {isMultiSelectActive && (
+      {isBatchSelectActive && (
         <OutlineMultiselectBar
           count={selection.length}
           onComplete={handleBatchComplete}

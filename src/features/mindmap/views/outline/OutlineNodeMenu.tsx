@@ -1,6 +1,10 @@
 /**
  * 大纲行「⋯」菜单：结构操作 / 文本格式 / 颜色 / 剪贴板 / 折叠 / 删除。
  * 快捷键文案随当前 keymap 与平台变化；删除为菜单内两段式内联确认（无弹窗）。
+ *
+ * 缩进 / 反缩进 / 上移 / 下移与键盘快捷键共用 runOutlineStructureAction，
+ * 是触屏（无 Tab / Mod+方向键）唯一的精确结构编辑入口；触屏另提供「多选」
+ * 进入多选模式（桌面用 Shift/⌘ 单击，入口不显示）。
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -29,6 +33,11 @@ import {
   Scissors,
   ClipboardText,
   X,
+  TextIndent,
+  TextOutdent,
+  ArrowUp,
+  ArrowDown,
+  ListChecks,
 } from '@phosphor-icons/react';
 import {
   AppMenu,
@@ -39,11 +48,18 @@ import {
 } from '@/components/ui/app-menu';
 import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/lib/utils';
-import { useMindMapStore } from '../../store';
+import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import type { MindMapNode } from '../../types';
 import type { MindMapKeymap } from '../../utils/mindmapPreferences';
 import { QUICK_TEXT_COLORS, QUICK_BG_COLORS } from '../../constants';
+import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { getOutlineShortcutLabels, useOutlineStoreActions } from './outlineShared';
+import {
+  OUTLINE_STRUCTURE_FLAG,
+  getOutlineStructureFlags,
+  runOutlineStructureAction,
+  type OutlineStructureAction,
+} from './outlineStructureActions';
 
 export interface OutlineNodeMenuProps {
   node: MindMapNode;
@@ -53,6 +69,8 @@ export interface OutlineNodeMenuProps {
   keymap: MindMapKeymap;
   onEditNote: () => void;
   onOpenResourcePicker: (nodeId: string) => void;
+  /** 进入触屏多选模式；仅粗指针设备显示入口 */
+  onEnterSelectMode?: () => void;
 }
 
 export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
@@ -63,6 +81,7 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
   keymap,
   onEditNote,
   onOpenResourcePicker,
+  onEnterSelectMode,
 }) => {
   const { t } = useTranslation('mindmap');
   const {
@@ -82,8 +101,21 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
   const isCollapsed = !!node.collapsed;
   const shortcuts = getOutlineShortcutLabels(keymap);
 
+  const isCoarsePointer = useCoarsePointer();
+  const storeApi = useMindMapStoreApi();
+
   // 受控开合：进入删除确认态时拦截 AppMenuItem 的自动关闭，菜单保持打开
   const [open, setOpen] = useState(false);
+  // 结构操作可用性：仅菜单打开时按实时树计算（关闭时恒 0，不给每行增加遍历开销）
+  const structureFlags = useMindMapStore(state =>
+    open ? getOutlineStructureFlags(state.document.root, node.id) : 0,
+  );
+  const runStructure = (action: OutlineStructureAction) =>
+    runOutlineStructureAction(storeApi.getState(), action, {
+      nodeId: node.id,
+      parentId,
+      indexInParent,
+    });
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const suppressNextCloseRef = useRef(false);
   const cancelDeleteRef = useRef<HTMLButtonElement>(null);
@@ -152,6 +184,51 @@ export const OutlineNodeMenu: React.FC<OutlineNodeMenuProps> = ({
         >
           {t('contextMenu.linkResource')}
         </AppMenuItem>
+        {!isRoot && (
+          <>
+            <AppMenuSeparator />
+            <AppMenuItem
+              icon={<TextIndent size={16} />}
+              shortcut={shortcuts.indent}
+              disabled={!(structureFlags & OUTLINE_STRUCTURE_FLAG.indent)}
+              onClick={() => runStructure('indent')}
+            >
+              {t('outline.indent')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<TextOutdent size={16} />}
+              shortcut={shortcuts.outdent}
+              disabled={!(structureFlags & OUTLINE_STRUCTURE_FLAG.outdent)}
+              onClick={() => runStructure('outdent')}
+            >
+              {t('outline.outdent')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<ArrowUp size={16} />}
+              shortcut={shortcuts.moveUp}
+              disabled={!(structureFlags & OUTLINE_STRUCTURE_FLAG.moveUp)}
+              onClick={() => runStructure('moveUp')}
+            >
+              {t('outline.moveUp')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<ArrowDown size={16} />}
+              shortcut={shortcuts.moveDown}
+              disabled={!(structureFlags & OUTLINE_STRUCTURE_FLAG.moveDown)}
+              onClick={() => runStructure('moveDown')}
+            >
+              {t('outline.moveDown')}
+            </AppMenuItem>
+            {isCoarsePointer && onEnterSelectMode && (
+              <AppMenuItem
+                icon={<ListChecks size={16} />}
+                onClick={onEnterSelectMode}
+              >
+                {t('outline.selectMultiple')}
+              </AppMenuItem>
+            )}
+          </>
+        )}
         <AppMenuSeparator />
         {isTaskNode ? (
           <>

@@ -344,7 +344,12 @@
     "bulletHint": "单击选中 · 双击聚焦 · ⌘单击聚焦",
     "batchCollapse": "折叠",
     "ghostNewLine": "新增一行",
-    "dropLevelBadge": "L{{level}}"
+    "dropLevelBadge": "L{{level}}",
+    "indent": "缩进",
+    "outdent": "反缩进",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "selectMultiple": "多选"
   },
   "outlineV2": {
     "deleteConfirm": "确认删除？",
