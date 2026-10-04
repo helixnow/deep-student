@@ -7,6 +7,8 @@
  * 而不是API平台提供商（如SiliconFlow、Together等）
  */
 
+import { stripGatewayPrefix } from './modelIdPrefix';
+
 export type ProviderBrand =
   // 国际供应商
   | 'openai'
@@ -515,7 +517,8 @@ export function getProviderInfo(
   // 如果没有提供category，尝试自动推断
   let inferredCategory: ProviderInfo['category'] = category || 'other';
   if (!category) {
-    const lower = toLower(modelIdOrName);
+    // 对剥离网关前缀后的型号名推断（embed-gateway_ 下的聊天模型不该判成 embedding）
+    const lower = toLower(stripGatewayPrefix(modelIdOrName));
     if (lower.includes('embedding') || lower.includes('embed') || lower.includes('bge')) {
       inferredCategory = 'embedding';
     } else if (lower.includes('rerank')) {

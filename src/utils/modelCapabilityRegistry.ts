@@ -1,6 +1,15 @@
 import registryData from '../../scripts/model-capability-registry.json';
+import { detectModelKindSignal } from './modelIdPrefix';
 
 export type RegistryModelStatus = 'confirmed' | 'inferred' | 'deprecated' | 'unknown';
+
+/**
+ * 记录的模型种类。缺省视为 'chat'（历史记录未标注）。
+ * 匹配时先判定输入的类型信号，再只对同 kind 记录计分——
+ * 嵌入/重排模型不允许命中聊天记录（反之亦然），
+ * 否则包含兜底会把 embed-gateway_qwen3* 之类误配到 qwen3 聊天记录上。
+ */
+export type RegistryModelKind = 'chat' | 'embedding' | 'rerank';
 
 export interface RegistryCapabilityFlags {
   text: boolean;
@@ -25,6 +34,7 @@ export interface RegistryModelRecord {
   model_id: string;
   release_date: string;
   status: RegistryModelStatus;
+  model_kind?: RegistryModelKind;
   capabilities: RegistryCapabilityFlags;
   param_format: RegistryParamFieldMap;
   quirks: string[];
@@ -98,6 +108,12 @@ function scoreRegistryRecord(
   const requestedScope = normalizeProviderScope(options.providerScope);
   const recordScope = normalizeProviderScope(record.provider_scope);
   const providerModelId = record.provider_model_id;
+
+  // 类型优先（先判嵌入/重排，再匹配厂商）：跨 kind 的记录一律不参与计分。
+  // 输入无类型信号时只匹配 chat 记录，避免聊天模型误吃嵌入/重排记录的能力。
+  const inputKind = detectModelKindSignal(modelId);
+  const recordKind: RegistryModelKind = record.model_kind ?? 'chat';
+  if ((inputKind ?? 'chat') !== recordKind) return -1;
 
   let score = -1;
 

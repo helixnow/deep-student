@@ -864,7 +864,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         supportsReasoning: effectiveSupportsReasoning,
         status: 'enabled',
         enabled: true,
-        maxOutputTokens: maxOutputTokens ?? defaults.maxOutputTokens ?? 8192,
+        // 供应商回填 > 显式默认表 > 注册表确认值（方案 E）> 8192 兜底
+        maxOutputTokens: maxOutputTokens ?? defaults.maxOutputTokens ?? extCaps.maxOutputTokens ?? 8192,
         temperature: defaults.temperature ?? 0.7,
         thinkingEnabled: enableThinkingDefault,
         includeThoughts: effectiveSupportsReasoning && !isNvidiaProvider ? (defaults.includeThoughts ?? extCaps.supportsThinkingTokens) : false,

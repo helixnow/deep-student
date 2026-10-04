@@ -249,8 +249,30 @@ describe('modelCapabilities Qwen builtin defaults (2B)', () => {
     expect(defaults.reasoningEffort).not.toBe('medium');
   });
 
-  it('unknown qwen3 variant falls through to heuristic default', () => {
+  it('qwen3.8 series uses registry-aligned defaults (xhigh effort, no budget)', () => {
     const defaults = getModelDefaultParameters('qwen3.8-plus', { providerScope: 'qwen' });
+    expect(defaults).toMatchObject({
+      enableThinking: true,
+      reasoningEffort: 'xhigh',
+      includeThoughts: true,
+      temperature: 0.7,
+    });
+    expect(defaults.thinkingBudget).toBeUndefined();
+  });
+
+  it('qwen3.8 defaults apply behind a gateway prefix too (dual-candidate lookup)', () => {
+    const defaults = getModelDefaultParameters('embed-gateway_qwen3.8-max', { providerScope: 'custom' });
+    expect(defaults).toMatchObject({
+      enableThinking: true,
+      reasoningEffort: 'xhigh',
+      includeThoughts: true,
+      temperature: 0.7,
+    });
+    expect(defaults.thinkingBudget).toBeUndefined();
+  });
+
+  it('unknown qwen3 variant still falls through to heuristic default', () => {
+    const defaults = getModelDefaultParameters('qwen3.9-plus', { providerScope: 'qwen' });
     expect(defaults).toMatchObject({
       enableThinking: true,
       reasoningEffort: 'medium',
