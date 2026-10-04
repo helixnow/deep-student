@@ -42,9 +42,41 @@ function isValidTarget(resourceId: unknown, seconds: unknown): boolean {
   );
 }
 
+/**
+ * 待兑现的跳转意图（握手兜底，同 pendingChatNavigation 思路）：冷启动打开媒体要先
+ * 拉起窗口 / 加载 chunk / 读元数据，可能晚于重发窗口（~10s）或工作台单发回执（1.5s）。
+ * 意图在点击时记下，媒体视图就绪后按资源匹配领取；任一路径兑现后清除，避免重复 seek。
+ */
+export const PENDING_MEDIA_FOCUS_TTL_MS = 30_000;
+let pendingMediaFocus: { resourceId: string; seconds: number; at: number } | null = null;
+
+export function rememberPendingMediaFocus(resourceId: string, seconds: number): void {
+  if (!isValidTarget(resourceId, seconds)) return;
+  pendingMediaFocus = { resourceId, seconds, at: Date.now() };
+}
+
+/** 领取匹配本视图资源且未过期的意图（领取即清除）；无则 null */
+export function takePendingMediaFocus(matches: (resourceId: string) => boolean): number | null {
+  const pending = pendingMediaFocus;
+  if (!pending) return null;
+  if (Date.now() - pending.at > PENDING_MEDIA_FOCUS_TTL_MS) {
+    pendingMediaFocus = null;
+    return null;
+  }
+  if (!matches(pending.resourceId)) return null;
+  pendingMediaFocus = null;
+  return pending.seconds;
+}
+
+/** 已由回执路径兑现：清掉同一资源的待兑现意图 */
+export function clearPendingMediaFocus(resourceId: string): void {
+  if (pendingMediaFocus?.resourceId === resourceId) pendingMediaFocus = null;
+}
+
 /** 点击引用徽章 / 笔记锚点 → 打开资源并跳转 */
 export function dispatchOpenMediaRef(resourceId: string, seconds: number): void {
   if (!isValidTarget(resourceId, seconds)) return;
+  rememberPendingMediaFocus(resourceId, seconds);
   document.dispatchEvent(
     new CustomEvent<MediaRefOpenDetail>(MEDIA_REF_OPEN_EVENT, {
       detail: { resourceId, seconds },

@@ -45,7 +45,8 @@ import type { TranscriptExportFormat, TranscriptSegment } from './mediaTranscrip
 import { useMediaTranscript } from './useMediaTranscript';
 import { useTranscriptTrack } from './useTranscriptTrack';
 import { useMediaProgressSync } from './useMediaProgressSync';
-import { useMediaFocusListener } from './useMediaFocusListener';
+import { matchesMediaFocusTarget, useMediaFocusListener } from './useMediaFocusListener';
+import { takePendingMediaFocus } from './mediaRefEvents';
 import { TranscriptPanel, selectDisplaySegments } from './TranscriptPanel';
 import { findActiveSegmentIndex } from './transcriptVtt';
 import { HandoutGenerateButton } from '@/features/media-handout';
@@ -196,8 +197,26 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     externalSeekRef.current = true;
     handle.seekTo(focusRequest.seconds);
     if (focusRequest.play) handle.play();
+    // 回执路径已兑现：丢弃本资源的待兑现意图，避免就绪兜底再 seek 一次
+    takePendingMediaFocus((id) =>
+      matchesMediaFocusTarget(id, { nodeId: resourceId, nodeSourceId: sourceId, nodePath }),
+    );
     handleFocusHandled(focusRequest.requestId, true);
-  }, [focusRequest, isReady, handleFocusHandled]);
+  }, [focusRequest, isReady, handleFocusHandled, resourceId, sourceId, nodePath]);
+
+  // 冷启动兜底：引用点击后视图晚于重发 / 回执窗口才就绪时，领取待兑现的跳转意图
+  useEffect(() => {
+    if (!isActive || !isReady) return;
+    const handle = handleRef.current;
+    if (!handle) return;
+    const seconds = takePendingMediaFocus((id) =>
+      matchesMediaFocusTarget(id, { nodeId: resourceId, nodeSourceId: sourceId, nodePath }),
+    );
+    if (seconds === null) return;
+    externalSeekRef.current = true;
+    handle.seekTo(seconds);
+    handle.play();
+  }, [isActive, isReady, resourceId, sourceId, nodePath]);
 
   // 断点续播提示（一次性）
   const resumeToastShownRef = useRef(false);

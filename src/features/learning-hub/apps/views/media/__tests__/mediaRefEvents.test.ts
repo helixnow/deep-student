@@ -135,3 +135,33 @@ describe('useMediaFocusListener', () => {
     expect(result.current[0]).toBeNull();
   });
 });
+
+describe('pending media focus handshake', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('remembers the click intent and hands it to the matching view once', async () => {
+    const { dispatchOpenMediaRef, takePendingMediaFocus } = await import('../mediaRefEvents');
+    dispatchOpenMediaRef('file_a', 42);
+    expect(takePendingMediaFocus((id) => id === 'file_b')).toBeNull();
+    expect(takePendingMediaFocus((id) => id === 'file_a')).toBe(42);
+    expect(takePendingMediaFocus((id) => id === 'file_a')).toBeNull();
+  });
+
+  it('drops intents older than the TTL', async () => {
+    vi.useFakeTimers();
+    const { rememberPendingMediaFocus, takePendingMediaFocus, PENDING_MEDIA_FOCUS_TTL_MS } =
+      await import('../mediaRefEvents');
+    rememberPendingMediaFocus('file_a', 5);
+    vi.advanceTimersByTime(PENDING_MEDIA_FOCUS_TTL_MS + 1);
+    expect(takePendingMediaFocus(() => true)).toBeNull();
+  });
+
+  it('ignores invalid targets', async () => {
+    const { rememberPendingMediaFocus, takePendingMediaFocus } = await import('../mediaRefEvents');
+    rememberPendingMediaFocus('', 5);
+    rememberPendingMediaFocus('file_a', Number.NaN);
+    expect(takePendingMediaFocus(() => true)).toBeNull();
+  });
+});
