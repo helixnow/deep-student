@@ -1,3 +1,4 @@
+import i18next from 'i18next'
 import { Fragment, type Node, type Schema } from '@milkdown/prose/model'
 import { closeHistory } from '@milkdown/prose/history'
 import { NodeSelection, TextSelection, type Command, type EditorState } from '@milkdown/prose/state'
@@ -6,7 +7,21 @@ import { COLUMNS_TYPE, COLUMN_TYPE, type ColumnsLayout } from './format'
 import { flattenColumns } from './export'
 
 export interface CornellLabels { cues: string; notes: string; summary: string }
+/** Headings of the shipped zh-CN Cornell template (also the zh-CN locale values). */
 export const DEFAULT_CORNELL_LABELS: CornellLabels = { cues: '线索（Cues）', notes: '笔记（Notes）', summary: '总结（Summary）' }
+/** Headings of the shipped en-US Cornell template (see noteTemplates.ts). */
+export const EN_CORNELL_LABELS: CornellLabels = { cues: 'Cues', notes: 'Notes', summary: 'Summary' }
+
+/** Inserted headings follow the UI language at call time. */
+export function localizedCornellLabels(): CornellLabels {
+  // Heading text must be non-empty (ProseMirror rejects empty text nodes); fall back
+  // to the zh-CN template labels when i18next is not initialized yet.
+  const label = (key: keyof CornellLabels) => {
+    const text = i18next.t(`notes:layout.cornell_heading_${key}`, { defaultValue: DEFAULT_CORNELL_LABELS[key] })
+    return typeof text === 'string' && text.trim() ? text : DEFAULT_CORNELL_LABELS[key]
+  }
+  return { cues: label('cues'), notes: label('notes'), summary: label('summary') }
+}
 
 function heading(schema: Schema, text: string): Node {
   return schema.nodes.heading.create({ level: 2 }, schema.text(text))
@@ -40,7 +55,7 @@ function topLevelRange(state: EditorState): { from: number; to: number; content:
 }
 
 /** Collapsed root paragraph only. Nonempty blocks are preserved before the insert. */
-export function insertColumns(layout: ColumnsLayout = 'equal', labels = DEFAULT_CORNELL_LABELS): Command {
+export function insertColumns(layout: ColumnsLayout = 'equal', labels: CornellLabels = localizedCornellLabels()): Command {
   return (state, dispatch) => {
     if (!enabled(state) || !state.selection.empty || state.selection.$from.depth !== 1) return false
     const { $from } = state.selection
@@ -61,7 +76,7 @@ export function insertColumns(layout: ColumnsLayout = 'equal', labels = DEFAULT_
 }
 
 /** Explicitly operates on whole selected top-level blocks (cursor = current block). */
-export function convertSelectionToColumns(layout: ColumnsLayout = 'equal', labels = DEFAULT_CORNELL_LABELS): Command {
+export function convertSelectionToColumns(layout: ColumnsLayout = 'equal', labels: CornellLabels = localizedCornellLabels()): Command {
   return (state, dispatch) => {
     if (!enabled(state)) return false
     const range = topLevelRange(state)
@@ -80,18 +95,26 @@ export function convertSelectionToColumns(layout: ColumnsLayout = 'equal', label
 }
 
 /** Converts the shipped linear Cornell template without moving its preface or summary.
- * Exactly one ordered set of the supplied h2 labels is required; ambiguity is a no-op. */
-export function convertCornellTemplate(labels = DEFAULT_CORNELL_LABELS): Command {
+ * Exactly one ordered set of the supplied h2 labels is required; ambiguity is a no-op.
+ * Without explicit labels, the template of either language (and the current UI
+ * language's labels) is recognized, so a note keeps converting after a language switch. */
+export function convertCornellTemplate(labels?: CornellLabels): Command {
   return (state, dispatch) => {
     if (!enabled(state)) return false
-    const sections: { node: Node; pos: number; index: number }[] = []
-    const names = [labels.cues, labels.notes, labels.summary]
     let hasColumns = false
-    state.doc.forEach((node, pos, index) => {
-      if (node.type.name === COLUMNS_TYPE) hasColumns = true
-      if (node.type.name === 'heading' && node.attrs.level === 2 && names.includes(node.textContent)) sections.push({ node, pos, index })
-    })
-    if (hasColumns || sections.length !== 3 || sections.some((section, i) => section.node.textContent !== names[i])) return false
+    state.doc.forEach((node) => { if (node.type.name === COLUMNS_TYPE) hasColumns = true })
+    if (hasColumns) return false
+    const candidates = labels ? [labels] : [localizedCornellLabels(), DEFAULT_CORNELL_LABELS, EN_CORNELL_LABELS]
+    let sections: { node: Node; pos: number; index: number }[] | null = null
+    for (const candidate of candidates) {
+      const names = [candidate.cues, candidate.notes, candidate.summary]
+      const found: { node: Node; pos: number; index: number }[] = []
+      state.doc.forEach((node, pos, index) => {
+        if (node.type.name === 'heading' && node.attrs.level === 2 && names.includes(node.textContent)) found.push({ node, pos, index })
+      })
+      if (found.length === 3 && found.every((section, i) => section.node.textContent === names[i])) { sections = found; break }
+    }
+    if (!sections) return false
     const [cues, notes, summary] = sections
     const node = createColumnsNode(state.schema, 'cornell',
       state.doc.slice(cues.pos, notes.pos).content, state.doc.slice(notes.pos, summary.pos).content)
@@ -138,5 +161,5 @@ export const exitColumns: Command = (state, dispatch) => {
   return true
 }
 
-export const insertCornell = (labels = DEFAULT_CORNELL_LABELS) => insertColumns('cornell', labels)
-export const convertSelectionToCornell = (labels = DEFAULT_CORNELL_LABELS) => convertSelectionToColumns('cornell', labels)
+export const insertCornell = (labels: CornellLabels = localizedCornellLabels()) => insertColumns('cornell', labels)
+export const convertSelectionToCornell = (labels: CornellLabels = localizedCornellLabels()) => convertSelectionToColumns('cornell', labels)

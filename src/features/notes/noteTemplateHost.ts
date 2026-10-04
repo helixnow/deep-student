@@ -3,6 +3,7 @@ import type { SelectionBookmark } from '@milkdown/prose/state';
 import { assertFullDocumentBaseline, type FullDocumentSearchApi, type FullDocumentSnapshot } from './fullDocument';
 import { resolveNoteMarkdownRange } from './noteReviewHost';
 import type { NoteTemplateDocumentHost } from './noteTemplates';
+import { noteHostError } from './noteHostErrors';
 
 export interface TemplateInsertionBookmark {
   bookmark: SelectionBookmark;
@@ -11,7 +12,7 @@ export interface TemplateInsertionBookmark {
 }
 export function captureTemplateInsertion(api: FullDocumentSearchApi): TemplateInsertionBookmark {
   const crepe = api.getCrepe();
-  if (!crepe) throw new Error('请先在编辑器中选择插入位置。');
+  if (!crepe) throw new Error(noteHostError('select_insert_position', '请先在编辑器中选择插入位置。'));
   const bookmark = crepe.editor.action(ctx => ctx.get(editorViewCtx).state.selection.getBookmark());
   const selection = crepe.editor.action(ctx => bookmark.resolve(ctx.get(editorViewCtx).state.doc));
   const { baseline, from, to } = resolveNoteMarkdownRange(api, { from: selection.from, to: selection.to });
@@ -24,16 +25,16 @@ export function templateDocumentHost(api: FullDocumentSearchApi, insertion: () =
     replaceDocument: (markdown, baseline) => api.replaceFullDocument(markdown, baseline),
     getInsertionPoint: () => {
       const captured = insertion();
-      if (!captured) throw new Error('请在编辑器中选择位置，再重新打开模板面板。');
+      if (!captured) throw new Error(noteHostError('select_position_reopen', '请在编辑器中选择位置，再重新打开模板面板。'));
       assertFullDocumentBaseline(api.getFullDocument(), captured.baseline);
       return { ...captured.range };
     },
     insertDocument: async (markdown, baseline, position) => {
       const captured = insertion();
-      if (!captured) throw new Error('插入位置已失效，请重新打开模板面板。');
+      if (!captured) throw new Error(noteHostError('insert_position_stale', '插入位置已失效，请重新打开模板面板。'));
       assertFullDocumentBaseline(baseline, captured.baseline);
       assertFullDocumentBaseline(api.getFullDocument(), baseline);
-      if (position.from !== captured.range.from || position.to !== captured.range.to) throw new Error('插入位置已改变。');
+      if (position.from !== captured.range.from || position.to !== captured.range.to) throw new Error(noteHostError('insert_position_changed', '插入位置已改变。'));
       return api.replaceFullDocument(baseline.markdown.slice(0, position.from) + markdown + baseline.markdown.slice(position.to), baseline);
     },
     variables,

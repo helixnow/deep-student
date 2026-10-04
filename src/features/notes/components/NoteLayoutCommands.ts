@@ -2,13 +2,15 @@ import type { EditorView } from '@milkdown/prose/view'
 import type { Command } from '@milkdown/prose/state'
 import {
   insertColumns, insertCornell, convertSelectionToColumns, convertSelectionToCornell,
-  convertCornellTemplate, unwrapColumns, type CornellLabels, DEFAULT_CORNELL_LABELS,
+  convertCornellTemplate, unwrapColumns, type CornellLabels,
 } from '@/components/crepe/plugins/columns'
 
 export type NoteLayoutAction = 'insert-columns' | 'insert-cornell' | 'convert-columns'
   | 'convert-cornell' | 'convert-cornell-template' | 'unwrap-columns'
 
-export function noteLayoutCommand(action: NoteLayoutAction, labels: CornellLabels = DEFAULT_CORNELL_LABELS): Command {
+/** Omitted labels resolve at call time: inserts follow the UI language and the
+ * template conversion recognizes the shipped template of either language. */
+export function noteLayoutCommand(action: NoteLayoutAction, labels?: CornellLabels): Command {
   switch (action) {
     case 'insert-columns': return insertColumns()
     case 'insert-cornell': return insertCornell(labels)

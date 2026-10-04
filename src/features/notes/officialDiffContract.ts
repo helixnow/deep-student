@@ -1,5 +1,6 @@
 import type { FullDocumentSnapshot } from './fullDocument';
 import type { CanvasAIEditRequest } from './hooks/useAIEditState';
+import { noteHostError } from './noteHostErrors';
 
 /** Offsets are UTF-16 offsets in the FULL markdown, never viewport/PM positions. */
 export interface AIReviewScope {
@@ -44,7 +45,7 @@ export function scopeAIReviewCandidate(request: AIReviewRequest, baseline: FullD
   if (scope.baseline.noteId !== baseline.noteId || scope.baseline.revision !== baseline.revision
     || scope.baseline.markdown !== baseline.markdown || scope.from < 0 || scope.to < scope.from
     || scope.to > baseline.markdown.length || !Number.isInteger(scope.from) || !Number.isInteger(scope.to)) {
-    throw new Error('审阅范围已过期，请重新选择范围。');
+    throw new Error(noteHostError('review_scope_stale', '审阅范围已过期，请重新选择范围。'));
   }
   const projected = project(request, baseline.markdown.slice(scope.from, scope.to));
   const landing = request.landing ?? 'replace';

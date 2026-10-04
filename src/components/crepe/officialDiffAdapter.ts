@@ -1,3 +1,4 @@
+import i18next from 'i18next';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { commandsCtx, editorViewCtx, parserCtx, serializerCtx } from '@milkdown/kit/core';
 import { diffComponent, diffComponentConfig } from '@milkdown/kit/component/diff';
@@ -15,6 +16,12 @@ import { remarkColumnsPlugin } from './plugins/columns/remark';
 import { COLUMNS_TYPE } from './plugins/columns/format';
 import type { OfficialReviewControls, OfficialReviewDecision } from '@/features/notes/officialDiffContract';
 import { assertNoteContentSize } from '@/features/notes/fullDocument';
+
+const localized = (key: string, fallback: string): string => {
+  const text = i18next.t(key, { defaultValue: fallback });
+  return typeof text === 'string' && text ? text : fallback;
+};
+const reviewError = (key: string, fallback: string) => localized(`notes:aiReview.errors.${key}`, fallback);
 
 /** Repair the upstream 7.22.1 image parser's null title, recursively, before doc.check. */
 export function normalizeOfficialDiffDoc(node: ProseNode): ProseNode {
@@ -70,7 +77,8 @@ export async function createOfficialDiffAdapter(options: {
   crepe.editor.use([remarkWikilinkPlugin, wikilinkSchema, remarkColumnsPlugin, columnsSchema, columnSchema].flat())
     .use(blockIdentityPlugin());
   crepe.editor.config(ctx => ctx.update(diffComponentConfig.key, value => ({ ...value,
-    customBlockTypes: ['table', 'image-block', 'code_block', 'toggle', 'callout', COLUMNS_TYPE], acceptLabel: '接受此组', rejectLabel: '拒绝此组',
+    customBlockTypes: ['table', 'image-block', 'code_block', 'toggle', 'callout', COLUMNS_TYPE], acceptLabel: localized('notes:aiDiff.accept_group', '接受此组'),
+    rejectLabel: localized('notes:aiDiff.reject_group', '拒绝此组'),
   })));
   await crepe.create();
   const view = crepe.editor.ctx.get(editorViewCtx);
@@ -78,7 +86,7 @@ export async function createOfficialDiffAdapter(options: {
   const serialize = crepe.editor.ctx.get(serializerCtx);
   const parse = (markdown: string) => {
     const parsed = crepe.editor.ctx.get(parserCtx)(markdown);
-    if (!parsed) throw new Error('候选 Markdown 无法解析。');
+    if (!parsed) throw new Error(reviewError('candidate_unparseable', '候选 Markdown 无法解析。'));
     const doc = normalizeOfficialDiffDoc(parsed); doc.check(); return doc;
   };
   let target: ProseNode;
@@ -116,7 +124,7 @@ export async function createOfficialDiffAdapter(options: {
         ? new Transform(target).replace(range.fromB, range.toB, view.state.doc.slice(range.fromA, range.toA)).doc : target;
       // A pure deletion has an empty B interval. Withdrawing it from the target
       // avoids upstream isChangeRejected's strict non-empty intersection bug.
-      if (rejection && !range) throw new Error('审阅分组已变化，请重新打开审阅。');
+      if (rejection && !range) throw new Error(reviewError('groups_changed', '审阅分组已变化，请重新打开审阅。'));
       const nextDoc = rejection ? view.state.doc : view.state.applyTransaction(tr).state.doc;
       nextDoc.check(); nextTarget.check();
       const { computeDocDiff } = await import('@milkdown/kit/plugin/diff');
@@ -151,7 +159,7 @@ export async function createOfficialDiffAdapter(options: {
   const controls: OfficialReviewControls = {
     async acceptAll() {
       if (busy) return operation;
-      if (disposed || suspended) throw new Error('审阅已挂起。');
+      if (disposed || suspended) throw new Error(reviewError('review_suspended', '审阅已挂起。'));
       if (!pending().length) {
         busy = true;
         try { await options.onDecision({ action: 'accept', before: serialize(view.state.doc), after: serialize(view.state.doc),
@@ -164,7 +172,7 @@ export async function createOfficialDiffAdapter(options: {
     async decideGroup(index, action) {
       if (busy) return operation;
       const button = options.root.querySelectorAll<HTMLButtonElement>(`.milkdown-diff-${action}`)[index];
-      if (!button) throw new Error('审阅分组已变化，请重新打开审阅。');
+      if (!button) throw new Error(reviewError('groups_changed', '审阅分组已变化，请重新打开审阅。'));
       button.click(); await operation;
     },
     suspend() { suspended = true; commands.call(clearDiffReviewCmd.key); },

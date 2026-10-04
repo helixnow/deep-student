@@ -1,6 +1,7 @@
 import type { FullDocumentSearchApi } from './fullDocument';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { noteHostError } from './noteHostErrors';
 
 export interface NoteLeaseAuth { participant_id: string; token: string }
 export interface NoteLeaseStatus { token: string; operation_id: string; owner_id: string; phase: string; expires_at: number; notes: Array<{ note_id: string; updated_at: string }>; waiting_for: string[] }
@@ -110,7 +111,7 @@ export class NoteHostCoordinator {
     if (existing) return existing;
     return new Promise((resolve, reject) => {
       const notify = () => { const entry = this.get(noteId, windowId); if (entry) { clearTimeout(timer); this.waiters.delete(notify); resolve(entry); } };
-      const timer = setTimeout(() => { this.waiters.delete(notify); reject(new Error('笔记编辑器打开超时，请重试。')); }, 15000);
+      const timer = setTimeout(() => { this.waiters.delete(notify); reject(new Error(noteHostError('editor_open_timeout', '笔记编辑器打开超时，请重试。'))); }, 15000);
       this.waiters.add(notify);
       notify();
     });
@@ -118,7 +119,7 @@ export class NoteHostCoordinator {
   async withLockedNotes<T>(ids: readonly string[], task: () => Promise<T>): Promise<T> {
     await this.assertWindowScope();
     const noteIds = [...new Set(ids)].sort();
-    if (this.activeLease || this.startingOperationId || noteIds.some(id => this.locked.has(id))) throw new Error('笔记正在执行另一项操作，请稍后重试。');
+    if (this.activeLease || this.startingOperationId || noteIds.some(id => this.locked.has(id))) throw new Error(noteHostError('operation_busy', '笔记正在执行另一项操作，请稍后重试。'));
     noteIds.forEach(id => this.locked.add(id));
     noteIds.forEach(id => this.lockReleases.set(id, []));
     let lease: { auth: NoteLeaseAuth; noteIds: string[]; status: NoteLeaseStatus } | null = null;
@@ -167,7 +168,7 @@ export class NoteHostCoordinator {
       const dirty = entries.filter(entry => entry.dirty());
       const drafts = dirty.map(entry => entry.api.getFullDocument().markdown);
       if (drafts.some(draft => draft !== drafts[0])) {
-        throw new Error('同一笔记存在不同的未保存草稿。请先处理各窗口的草稿冲突。');
+        throw new Error(noteHostError('conflicting_drafts', '同一笔记存在不同的未保存草稿。请先处理各窗口的草稿冲突。'));
       }
       // One draft owns the write. Clean/identical siblings must not save an older
       // token after it, and must receive the confirmed storage head before use.
@@ -206,7 +207,7 @@ export class NoteHostCoordinator {
     await Promise.all(entries.map(entry => entry.settle()));
     const owner = entries.find(entry => noteIds.includes(entry.noteId));
     const ownerRemote = owner && this.remote.get(owner.id);
-    if (!ownerRemote) throw new Error('笔记编辑器尚未完成跨窗口注册，请重试。');
+    if (!ownerRemote) throw new Error(noteHostError('remote_not_registered', '笔记编辑器尚未完成跨窗口注册，请重试。'));
     const operationId = `note-op-${crypto.randomUUID()}`;
     this.startingOperationId = operationId;
     let auth: NoteLeaseAuth | null = null;
@@ -217,10 +218,10 @@ export class NoteHostCoordinator {
       auth = { participant_id: ownerRemote.participantId, token: status.token };
       await Promise.all(entries.map(entry => this.freezeAck(entry, auth!)));
       while (status.phase !== 'ready') {
-        if (Date.now() >= status.expires_at * 1000) throw new Error('等待其他笔记窗口冻结超时，请重试。');
+        if (Date.now() >= status.expires_at * 1000) throw new Error(noteHostError('freeze_timeout', '等待其他笔记窗口冻结超时，请重试。'));
         await new Promise(resolve => setTimeout(resolve, 50));
         const next = await invoke<NoteLeaseStatus | null>('notes_editor_lease_status', { token: status.token });
-        if (!next) throw new Error('笔记操作租约已取消，请重试。');
+        if (!next) throw new Error(noteHostError('lease_cancelled', '笔记操作租约已取消，请重试。'));
         status = next;
       }
       return { auth, noteIds, status };
@@ -233,10 +234,10 @@ export class NoteHostCoordinator {
   }
   private async freezeAck(entry: NoteHostParticipant, auth: NoteLeaseAuth) {
     const remote = this.remote.get(entry.id);
-    if (!remote) throw new Error('笔记编辑器尚未完成跨窗口注册，请重试。');
+    if (!remote) throw new Error(noteHostError('remote_not_registered', '笔记编辑器尚未完成跨窗口注册，请重试。'));
     await entry.settle();
     const expected = entry.api.getStorageUpdatedAt?.();
-    if (!expected) throw new Error('笔记编辑器缺少保存版本，请重新打开笔记。');
+    if (!expected) throw new Error(noteHostError('missing_save_version', '笔记编辑器缺少保存版本，请重新打开笔记。'));
     const draft: FrozenDraft = { markdown: entry.api.getFullDocument().markdown, expected_updated_at: expected };
     await invoke('notes_editor_freeze_ack', { lease: { participant_id: remote.participantId, token: auth.token }, draft });
   }
@@ -248,11 +249,11 @@ export class NoteHostCoordinator {
       const deadline = Date.now() + 30000;
       let finalStatus = await invoke<NoteLeaseStatus | null>('notes_editor_lease_status', { token: lease.auth.token });
       while (finalStatus?.waiting_for.length) {
-        if (Date.now() >= Math.min(deadline, finalStatus.expires_at * 1000)) throw new Error('等待其他笔记窗口刷新超时，请重试。');
+        if (Date.now() >= Math.min(deadline, finalStatus.expires_at * 1000)) throw new Error(noteHostError('refresh_timeout', '等待其他笔记窗口刷新超时，请重试。'));
         await new Promise(resolve => setTimeout(resolve, 50));
         finalStatus = await invoke<NoteLeaseStatus | null>('notes_editor_lease_status', { token: lease.auth.token });
       }
-      if (!finalStatus) throw new Error('笔记操作租约已取消，请重试。');
+      if (!finalStatus) throw new Error(noteHostError('lease_cancelled', '笔记操作租约已取消，请重试。'));
       await invoke('notes_editor_release', { lease: lease.auth, cancel: false });
     } finally {
       this.activeLease = null;
@@ -291,7 +292,7 @@ export class NoteHostCoordinator {
     if (status.phase === 'refreshing') {
       entry.invalidate();
       await entry.refresh();
-      if (entry.api.getStorageUpdatedAt?.() !== updatedAt) throw new Error('笔记刷新版本不匹配，请重试。');
+      if (entry.api.getStorageUpdatedAt?.() !== updatedAt) throw new Error(noteHostError('refresh_version_mismatch', '笔记刷新版本不匹配，请重试。'));
       await invoke('notes_editor_refresh_ack', { lease: { participant_id: participantId, token: status.token }, updatedAt });
       return;
     }

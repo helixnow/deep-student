@@ -332,7 +332,8 @@
     "emptyImportDesc": "Photos, screenshots or documents, recognized by AI",
     "emptyCsvDesc": "Batch import questions from a CSV sheet",
     "emptyDropHint": "You can also drag images or documents here",
-    "emptyReadOnlyDesc": "This question set has no questions yet"
+    "emptyReadOnlyDesc": "This question set has no questions yet",
+    "settings": "Settings"
   },
   "editor": {
     "loading": "Loading questions...",

@@ -251,8 +251,8 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
     const owner = current.current;
     const session = readAIReviewSession(owner.key);
     const api = owner.editorApi as FullDocumentApi | null;
-    if (!owner.enabled || !session || !api || applying.current.has(owner.key)) throw new Error('审阅尚未就绪。');
-    if (session.resolution) throw new Error('审阅已结束。');
+    if (!owner.enabled || !session || !api || applying.current.has(owner.key)) throw new Error(aiReviewError('review_not_ready', '审阅尚未就绪。'));
+    if (session.resolution) throw new Error(aiReviewError('review_finished', '审阅已结束。'));
     applying.current.add(owner.key);
     setIsApplying(true);
     let appliedDocument = session.baseline;
@@ -260,10 +260,10 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
     try {
       if (session.conflict) throw new Error(aiReviewError('version_changed', '笔记版本已变化，候选及分组决定已保留。请复制候选内容后重新生成建议。'));
       if (session.retryDecision && (session.retryDecision.after !== decision.after || session.retryDecision.target !== decision.target
-        || session.retryDecision.action !== decision.action)) throw new Error('请先重试上一组的保存，再处理其他建议。');
+        || session.retryDecision.action !== decision.action)) throw new Error(aiReviewError('retry_previous_first', '请先重试上一组的保存，再处理其他建议。'));
       if (!session.retryBaseline && session.request.landing !== 'save-as' && api.normalizeMarkdown
         && api.normalizeMarkdown(decision.before) !== api.normalizeMarkdown(session.baseline.markdown)) {
-        throw new Error('候选审阅结构与正文不一致，请重新打开审阅。');
+        throw new Error(aiReviewError('structure_mismatch', '候选审阅结构与正文不一致，请重新打开审阅。'));
       }
       const projected = scopeAIReviewCandidate(session.request, session.origin, projectAIReviewCandidate);
       if (projected.error) throw new Error(projected.error);
@@ -272,20 +272,20 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       // Persist intent before the body write. A crash between the two stores is
       // recoverable by comparing the exact proposed full document on reopen.
       const intent = { ...session, retryDecision: decision };
-      if (!await persist(owner.key, intent)) throw new Error('审阅状态尚未保存，请重试。');
+      if (!await persist(owner.key, intent)) throw new Error(aiReviewError('state_not_saved', '审阅状态尚未保存，请重试。'));
       if (decision.action === 'accept') {
         assertNoteContentSize(decision.after);
         if (session.request.landing === 'save-as') {
-          if (!owner.host?.saveAs) throw new Error('另存结果接口尚未就绪。');
+          if (!owner.host?.saveAs) throw new Error(aiReviewError('save_as_unavailable', '另存结果接口尚未就绪。'));
           savedAs = await owner.host.saveAs(decision.after, session.persistenceId!, session.savedAs);
           // Coordinated save-as may refresh the unchanged source and advance its
           // editor revision. Accept that revision only if its full body is intact.
           const refreshed = api.getFullDocument();
-          if (refreshed.noteId !== baseline.noteId || refreshed.markdown !== baseline.markdown) throw new Error('另存期间原笔记已变化。');
+          if (refreshed.noteId !== baseline.noteId || refreshed.markdown !== baseline.markdown) throw new Error(aiReviewError('source_changed_during_save_as', '另存期间原笔记已变化。'));
           appliedDocument = refreshed;
         } else if (session.retryBaseline) {
-          if ((api.normalizeMarkdown?.(decision.after) ?? decision.after) !== baseline.markdown) throw new Error('保存失败后候选已变化，请重新审阅。');
-          if (!api.flushPendingSave) throw new Error('笔记保存接口尚未就绪。');
+          if ((api.normalizeMarkdown?.(decision.after) ?? decision.after) !== baseline.markdown) throw new Error(aiReviewError('candidate_changed_after_failure', '保存失败后候选已变化，请重新审阅。'));
+          if (!api.flushPendingSave) throw new Error(aiReviewError('flush_unavailable', '笔记保存接口尚未就绪。'));
           await api.flushPendingSave();
           appliedDocument = baseline;
         } else if ((api.normalizeMarkdown?.(decision.after) ?? decision.after) !== baseline.markdown) {
@@ -294,7 +294,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
             : await api.replaceFullDocument(decision.after, baseline);
         }
       }
-      if (current.current.key !== owner.key || current.current.editorApi !== api || !mounted.current) throw new Error('笔记窗口已变化，审阅结果已保留供恢复。');
+      if (current.current.key !== owner.key || current.current.editorApi !== api || !mounted.current) throw new Error(aiReviewError('window_changed', '笔记窗口已变化，审阅结果已保留供恢复。'));
       assertFullDocumentBaseline(api.getFullDocument(), appliedDocument);
       const appliedMarkdown = appliedDocument.markdown;
       const checkpointBefore = session.request.landing === 'save-as' ? session.savedAs?.markdown ?? '' : session.baseline.markdown;
@@ -348,7 +348,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
     try {
       if (session.resolution) { await persist(owner.key, session); return; }
       if (session.retryDecision) { await handleOfficialDecision(session.retryDecision); return; }
-      if (official.current?.key !== owner.key) throw new Error('审阅编辑器尚未就绪，请展开候选后重试。');
+      if (official.current?.key !== owner.key) throw new Error(aiReviewError('review_editor_expand', '审阅编辑器尚未就绪，请展开候选后重试。'));
       await official.current.controls.acceptAll();
     } catch (error) {
       const latest = readAIReviewSession(owner.key);
@@ -380,13 +380,13 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       if (snapshot.markdown === (session.retryBaseline ?? session.baseline).markdown) {
         next = { ...next, baseline: session.retryBaseline ? session.baseline : snapshot,
           retryBaseline: session.retryBaseline ? snapshot : undefined, conflict: false, error: undefined };
-      } else next = { ...next, conflict: true, error: '笔记版本已变化，候选和已接受组已保留。请重新生成建议。' };
+      } else next = { ...next, conflict: true, error: aiReviewError('version_changed_accepted', '笔记版本已变化，候选和已接受组已保留。请重新生成建议。') };
     }
     if (session.collapsed !== collapsed || next.conflict !== session.conflict) update(target, next);
   }, [update, releaseLease]);
   const decideGroup = useCallback(async (index: number, decision: AIReviewDecision) => {
-    if (decision === 'pending') throw new Error('已接受组请通过检查点撤销。');
-    if (official.current?.key !== current.current.key) throw new Error('审阅编辑器尚未就绪。');
+    if (decision === 'pending') throw new Error(aiReviewError('undo_via_checkpoint', '已接受组请通过检查点撤销。'));
+    if (official.current?.key !== current.current.key) throw new Error(aiReviewError('review_editor_not_ready', '审阅编辑器尚未就绪。'));
     await official.current.controls.decideGroup(index, decision);
   }, []);
   const onReviewReady = useCallback((controls: OfficialReviewControls | null) => {
@@ -408,7 +408,7 @@ export function useAIReview({ noteId, editorApi, enabled = true, windowId, host 
       assertFullDocumentBaseline(baseline, session.baseline);
       const scope = kind === 'page' ? { kind, from: 0, to: baseline.markdown.length, baseline } as AIReviewScope
         : kind ? owner.host?.resolveScope?.(kind) : session.request.scope;
-      if (kind && !scope) throw new Error('范围选择接口尚未就绪。');
+      if (kind && !scope) throw new Error(aiReviewError('scope_unavailable', '范围选择接口尚未就绪。'));
       const request = { ...session.request, scope, landing: landing ?? session.request.landing };
       const candidate = scopeAIReviewCandidate(request, baseline, projectAIReviewCandidate);
       assertNoteContentSize(candidate.content);

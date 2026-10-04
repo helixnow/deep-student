@@ -229,6 +229,14 @@ describe('explicit commands, selection and history', () => {
     expect(view.state.doc.eq(before)).toBe(true)
   })
 
+  it('also recognizes the English Cornell template headings', async () => {
+    const { view } = await setup('> Date\n\n## Cues\n\nQuestion\n\n## Notes\n\nAnswer\n\n## Summary\n\nConclusion\n')
+    expect(convertCornellTemplate()(view.state, view.dispatch)).toBe(true)
+    expect(view.state.doc.child(1).type.name).toBe(COLUMNS_TYPE)
+    expect(view.state.doc.child(1).child(0).textContent).toContain('Question')
+    expect(view.state.doc.child(1).child(1).textContent).toContain('Answer')
+  })
+
   it('converts arbitrary notes to Cornell without discarding selected marks', async () => {
     const { view } = await setup('**Original**')
     expect(convertSelectionToCornell()(view.state, view.dispatch)).toBe(true)

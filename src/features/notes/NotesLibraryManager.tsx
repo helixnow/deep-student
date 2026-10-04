@@ -222,9 +222,7 @@ export function NotesLibraryPanel({
               </p>
               {lastExportLabel && (
                 <p className="text-xs text-muted-foreground/80">
-                  {(i18n.language || 'zh-CN').startsWith('zh')
-                    ? `上次导出：${lastExportLabel}`
-                    : `Last exported: ${lastExportLabel}`}
+                  {t('notes:export.destination.lastExported', { time: lastExportLabel })}
                 </p>
               )}
             </div>

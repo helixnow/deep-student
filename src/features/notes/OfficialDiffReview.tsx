@@ -4,6 +4,7 @@ import { createOfficialDiffAdapter } from '@/components/crepe/officialDiffAdapte
 import type { AIReviewSession } from './aiReviewModel';
 import type { OfficialReviewControls, OfficialReviewDecision } from './officialDiffContract';
 import '@milkdown/crepe/theme/common/diff.css';
+import { noteHostError } from './noteHostErrors';
 
 export interface OfficialDiffReviewProps {
   review: AIReviewSession;
@@ -26,7 +27,7 @@ export function OfficialDiffReview({ review, ...callbacks }: OfficialDiffReviewP
       target: review.target,
       onDecision: decision => {
         if (cancelled || latestReview.current.persistenceId !== review.persistenceId
-          || latestReview.current.generation !== review.generation) return Promise.reject(new Error('审阅实例已关闭。'));
+          || latestReview.current.generation !== review.generation) return Promise.reject(new Error(noteHostError('review_closed', '审阅实例已关闭。')));
         return latest.current.onReviewDecision(decision);
       },
       onError: error => { if (!cancelled) latest.current.onReviewError(error); },

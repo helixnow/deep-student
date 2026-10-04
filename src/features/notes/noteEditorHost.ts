@@ -12,6 +12,7 @@ import { registerNoteEditor, unregisterNoteEditor } from '@/features/workbench/a
 import { getWikilinkNotesCache, refreshWikilinkNotesCache } from './wikilinkNotesCache';
 import { noteHostCoordinator, type NoteHostParticipant } from './noteHostCoordinator';
 import { assertFullDocumentBaseline, assertNoteContentSize, type FullDocumentSearchApi, type FullDocumentSnapshot } from './fullDocument';
+import { noteHostError } from './noteHostErrors';
 
 /** Review candidates stay outside the live view until storage confirms the CAS. */
 export async function applyReviewedNote(api: FullDocumentSearchApi, markdown: string, baseline: FullDocumentSnapshot) {
@@ -23,9 +24,9 @@ export async function applyReviewedNote(api: FullDocumentSearchApi, markdown: st
     await noteHostCoordinator.flushPendingSaves([baseline.noteId]);
     const current = api.getFullDocument();
     const normalize = (value: string) => api.normalizeMarkdown?.(value) ?? value;
-    if (normalize(current.markdown) !== normalize(baseline.markdown)) throw new Error('审阅正文已变化，请重新生成建议。');
+    if (normalize(current.markdown) !== normalize(baseline.markdown)) throw new Error(noteHostError('review_body_changed', '审阅正文已变化，请重新生成建议。'));
     const expected = api.getStorageUpdatedAt?.();
-    if (!expected) throw new Error('审阅缺少保存版本，请重新打开笔记。');
+    if (!expected) throw new Error(noteHostError('review_missing_version', '审阅缺少保存版本，请重新打开笔记。'));
     await noteHostCoordinator.invoke('notes_update', { note: {
       id: baseline.noteId, content_md: canonical, expected_updated_at: expected, capabilities: ['ds-columns-v1'],
     } });
@@ -43,7 +44,7 @@ export function noteNeedsColumnsWriter(noteId: string) {
 }
 export async function readNoteFormat(noteId: string): Promise<NoteFormatStatus> {
   const format = await invoke<NoteFormatStatus>('notes_get_format', { noteId });
-  if (!format || format.note_id !== noteId) throw new Error('无法确认笔记格式。');
+  if (!format || format.note_id !== noteId) throw new Error(noteHostError('format_unconfirmed', '无法确认笔记格式。'));
   formats.set(noteId, format);
   return format;
 }
@@ -58,7 +59,7 @@ export function applyNoteFormat(api: CrepeEditorApi, format: NoteFormatStatus): 
   const grant = { noteId: format.note_id, writable: supported, capabilities: format.required_capabilities ?? [] };
   api.setDocumentCapabilities?.(grant);
   api.setBlockIdentityMode?.(supported && format.content_format === 'markdown-blocks');
-  if (!supported) throw new Error('此笔记格式需要更新版本的编辑器；已暂停编辑。');
+  if (!supported) throw new Error(noteHostError('format_requires_newer', '此笔记格式需要更新版本的编辑器；已暂停编辑。'));
   return grant;
 }
 
@@ -86,7 +87,7 @@ function retainBlockBridge() {
     resolveTarget: async target => {
       const parser = noteHostCoordinator.get(target.noteId) ?? noteHostCoordinator.all((await listNotes()).map(note => note.id))[0];
       const crepe = parser?.api.getCrepe();
-      if (!crepe) throw new Error('笔记编辑器尚未就绪。');
+      if (!crepe) throw new Error(noteHostError('editor_not_ready', '笔记编辑器尚未就绪。'));
       const codec = crepe.editor.action(createBlockTransferCodec);
       return resolveBlockLinkOwner(target, {
         readMarkdown: async noteId => {
