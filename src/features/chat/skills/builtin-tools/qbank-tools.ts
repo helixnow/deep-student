@@ -26,8 +26,8 @@ export const qbankToolsSkill: SkillDefinition = {
 
 1. **建题**：单题使用 \`builtin-qbank_create_question\`；批量或文档使用
    \`builtin-qbank_batch_import\` / \`builtin-qbank_import_document\`。选择题的选项必须放在
-   \`options\`，不得混入题干。资源库里的试卷文件直接把 \`resource_id\` 传给
-   \`qbank_import_document\`（无需先 resource_read、OCR 或 base64 编码）。
+   \`options\`，不得混入题干。资源库试卷直接把 \`resource_id\` 传给
+   \`qbank_import_document\`（无需先读取或 OCR）。
    AI 出题用 \`builtin-qbank_generate_questions\`（按知识点/参考资料生成，默认同步返回草稿，
    再用 \`qbank_batch_import\` 入库；大批量用 \`background=true\` 提交，\`qbank_get_generation_task\` 取结果）。
 2. **练习**：普通练习先用 \`builtin-qbank_get_next_question\` 取题；错题复习传
@@ -476,18 +476,18 @@ export const qbankToolsSkill: SkillDefinition = {
     {
       name: 'builtin-qbank_import_document',
       description:
-        '把试卷/习题导入题目集（PDF/DOCX/XLSX/TXT/MD/CSV/图片/笔记），超长文档自动分块 AI 解析后合并。资源库（Files）里已有的文件优先传 resource_id：后端直接读取原文件（无需 OCR 结果，绝不要自行 base64 编码或调用 shell）；返回 status=processing 时按 hint 稍后重试。导入成功后在回复中用 [题目集:返回的session_id:名称] 引用。',
+        '把试卷/习题导入题目集（PDF/DOCX/XLSX/TXT/MD/CSV/图片/笔记），长文档自动分块解析。资源库已有文件优先传 resource_id（后端直接读原文件，勿自行 base64 或调用 shell）；status=processing 时按 hint 稍后重试。成功后在回复中用 [题目集:返回的session_id:名称] 引用。',
       inputSchema: {
         type: 'object',
         anyOf: [{ required: ['resource_id'] }, { required: ['content'] }],
         properties: {
           resource_id: {
             type: 'string',
-            description: '资源库文件/笔记 ID（resource_list/resource_read 返回的 file_*/res_*/note_*）；格式自动推断。与 content 互斥',
+            description: '资源库文件/笔记 ID（file_*/res_*/note_*），格式自动推断；与 content 二选一',
           },
           content: {
             type: 'string',
-            description: '无资源时直接传文档内容：txt/md/csv/json 传纯文本即可，docx 传 base64。与 resource_id 互斥',
+            description: '无资源时传文档内容：txt/md/csv/json 传纯文本，docx 传 base64',
           },
           format: { type: 'string', enum: ['txt', 'md', 'docx', 'json', 'csv'], default: 'txt', description: 'content 的格式（传 resource_id 时忽略）' },
           name: { type: 'string', description: '题目集名称（可选，默认用资源名或自动生成）' },

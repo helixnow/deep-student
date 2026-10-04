@@ -143,7 +143,9 @@ const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
 // 2026-09-09 合并 #391（qbank AI 出题）后实测 total = 75900：main 新增工具
 // 与 qbank-tools 叠加，属合理功能增长，有意识上调至 76500；记录见
 // docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
-const MAX_TOTAL_TOKENS = 76_500;
+// 2026-10-04：qbank_import_document 支持 resource_id 后实测 76554，先精简一轮至 76520，
+// 剩余属合理功能增长，有意识上调至 76600；记录同上。
+const MAX_TOTAL_TOKENS = 76_600;
 
 // ============================================================================
 // 测试

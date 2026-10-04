@@ -55,8 +55,7 @@ OCR 是后台管线（可能耗时数分钟），调用顺序：
 
 - **读取全文**：\`builtin-resource_read\`（learning-resource 技能组）
 - **导入题库**：若文档是试卷/习题集，\`load_skills(["qbank-tools"])\` 后用
-  \`builtin-qbank_import_document\` 传同一 \`resource_id\` 导入（后端直接读原文件，
-  不必先 OCR，也不要自行 base64 编码）；入库后可再
+  \`builtin-qbank_import_document\` 传同一 \`resource_id\` 导入（无需先 OCR 或 base64）；入库后可再
   \`load_skills(["review-planning"])\` 用 \`builtin-review_plan_generate\` 为整套题安排间隔复习
 - **制作卡片**：若文档是学习资料，可用 chatanki 技能制作 Anki 卡片
 - **检索问答**：OCR 后文档自动进入向量索引，\`builtin-rag_search\` 可检索
