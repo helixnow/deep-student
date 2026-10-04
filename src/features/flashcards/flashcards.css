@@ -152,6 +152,12 @@
   color: hsl(var(--muted-foreground));
 }
 
+/* 单行摘要里的 KaTeX：默认 1.21em 会把行撑高，压回接近正文字号 */
+.wb-fc-row-front .katex,
+.wb-fc-row-back .katex {
+  font-size: 1.05em;
+}
+
 .wb-fc-tags {
   display: flex;
   flex-wrap: wrap;

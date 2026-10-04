@@ -23,6 +23,7 @@ import { AnkiCardPreviewPanel } from '@/components/anki/AnkiCardPreviewPanel';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { hasValidCloze } from '../cloze';
+import { CardMathText } from '../cardMathPreview';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
@@ -326,10 +327,10 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
 
         <div className="min-w-0 flex-1">
           <div className="wb-fc-row-front">
-            {front || t('card.untitled')}
+            {front ? <CardMathText text={front} inline /> : t('card.untitled')}
           </div>
           <div className="wb-fc-row-back">
-            {back || t('card.noBack')}
+            {back ? <CardMathText text={back} inline /> : t('card.noBack')}
           </div>
           <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
             <span
@@ -557,11 +558,11 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                   <>
                     <div className="fc-lib-face">
                       <span className="fc-lib-face-label">{t('session.front')}</span>
-                      {front || t('card.untitled')}
+                      {front ? <CardMathText text={front} /> : t('card.untitled')}
                     </div>
                     <div className="fc-lib-face">
                       <span className="fc-lib-face-label">{t('session.back')}</span>
-                      {back || t('card.noBack')}
+                      {back ? <CardMathText text={back} /> : t('card.noBack')}
                     </div>
                   </>
                 )}
