@@ -2372,7 +2372,10 @@ fn remove_staged_recovery_export(staged: &Path) {
         staged.to_path_buf(),
         staged.with_extension(format!(
             "{}.partial",
-            staged.extension().and_then(|ext| ext.to_str()).unwrap_or("")
+            staged
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .unwrap_or("")
         )),
     ] {
         if path.exists() {

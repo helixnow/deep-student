@@ -1780,7 +1780,10 @@ mod tests {
             move || started.elapsed(),
         )
         .await;
-        assert!(matches!(outcome, LlmStreamWaitOutcome::IdleTimeout { idle_secs: 600 }));
+        assert!(matches!(
+            outcome,
+            LlmStreamWaitOutcome::IdleTimeout { idle_secs: 600 }
+        ));
     }
 
     #[test]

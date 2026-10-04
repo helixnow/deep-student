@@ -86,9 +86,9 @@ pub async fn convert_heic_to_jpeg(
     {
         use tauri::Manager;
 
-        let state = app
-            .try_state::<HeicDecoderHandle>()
-            .ok_or_else(|| AppError::unknown("HEIC_DECODE_FAILED: heic-decoder plugin not initialized"))?;
+        let state = app.try_state::<HeicDecoderHandle>().ok_or_else(|| {
+            AppError::unknown("HEIC_DECODE_FAILED: heic-decoder plugin not initialized")
+        })?;
         let plugin = state.0.clone();
 
         let cache_dir = app
@@ -140,4 +140,3 @@ pub async fn convert_heic_to_jpeg(
         ))
     }
 }
-

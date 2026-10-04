@@ -63,9 +63,9 @@ pub mod error_recovery;
 pub mod essay_grading;
 #[allow(dead_code)]
 pub mod exam_sheet_service;
+pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub mod feature_flags;
 pub mod figure_extractor;
-pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub mod file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）

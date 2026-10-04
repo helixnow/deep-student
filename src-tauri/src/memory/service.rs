@@ -903,10 +903,8 @@ impl MemoryService {
                     continue;
                 }
 
-                let folder_path = Self::relativize_folder_path(
-                    &self.get_note_folder_path(&note.id)?,
-                    &root_path,
-                );
+                let folder_path =
+                    Self::relativize_folder_path(&self.get_note_folder_path(&note.id)?, &root_path);
                 let tag_weight = Self::compute_tag_weight(&note.tags);
                 let retrieval_score = if fused.rrf_score.is_finite()
                     && best_rrf_score.is_finite()
@@ -2735,10 +2733,8 @@ impl MemoryService {
         let mut items = Vec::new();
         for note_id in note_ids {
             if let Some(note) = VfsNoteRepo::get_note(&self.vfs_db, &note_id)? {
-                let folder_path = Self::relativize_folder_path(
-                    &self.get_note_folder_path(&note.id)?,
-                    &root_path,
-                );
+                let folder_path =
+                    Self::relativize_folder_path(&self.get_note_folder_path(&note.id)?, &root_path);
                 let hits = Self::extract_hits_from_tags(&note.tags);
                 let is_important = note.tags.iter().any(|t| t == "_important");
                 let is_stale = note.tags.iter().any(|t| t == "_stale");
@@ -2825,12 +2821,8 @@ impl MemoryService {
             if let Some(folder) = existing {
                 current_parent_id = folder.id.clone();
             } else {
-                let new_folder = VfsFolder::new(
-                    part.clone(),
-                    Some(current_parent_id.clone()),
-                    None,
-                    None,
-                );
+                let new_folder =
+                    VfsFolder::new(part.clone(), Some(current_parent_id.clone()), None, None);
                 VfsFolderRepo::create_folder(&self.vfs_db, &new_folder)?;
                 self.invalidate_folder_cache();
                 debug!(
@@ -4681,8 +4673,12 @@ mod tests {
 
     #[test]
     fn reserved_folder_check_uses_normalized_separators() {
-        assert!(MemoryService::validate_user_writable_folder_path(Some("经历／__system__")).is_err());
-        assert!(MemoryService::validate_user_writable_folder_path(Some("记忆/__system__")).is_err());
+        assert!(
+            MemoryService::validate_user_writable_folder_path(Some("经历／__system__")).is_err()
+        );
+        assert!(
+            MemoryService::validate_user_writable_folder_path(Some("记忆/__system__")).is_err()
+        );
         assert!(MemoryService::validate_user_writable_folder_path(Some("记忆/经历")).is_ok());
     }
 
@@ -4696,7 +4692,12 @@ mod tests {
             .title;
 
         let canonical = service
-            .write(Some("经历/学科状态"), "数学弱项", "数学是弱项", WriteMode::Create)
+            .write(
+                Some("经历/学科状态"),
+                "数学弱项",
+                "数学是弱项",
+                WriteMode::Create,
+            )
             .expect("canonical write");
         let variants = [
             format!("{root_title}/经历/学科状态"),
@@ -4713,7 +4714,9 @@ mod tests {
                 )
                 .expect("variant write");
             assert_eq!(
-                service.get_note_relative_folder_path(&output.note_id).unwrap(),
+                service
+                    .get_note_relative_folder_path(&output.note_id)
+                    .unwrap(),
                 "经历/学科状态",
                 "path {path:?} must reuse the canonical folder"
             );
@@ -4731,7 +4734,9 @@ mod tests {
             .list(Some(&format!("{root_title}/经历")), 20, 0)
             .expect("list with root-prefixed filter");
         assert_eq!(listed.len(), 4);
-        assert!(listed.iter().all(|item| item.folder_path == "经历/学科状态"));
+        assert!(listed
+            .iter()
+            .all(|item| item.folder_path == "经历/学科状态"));
         assert!(listed.iter().any(|item| item.id == canonical.note_id));
 
         // 移动同样规整：带根前缀的目标路径落到相对文件夹
@@ -4746,7 +4751,9 @@ mod tests {
             )
             .expect("move with root-prefixed target");
         assert_eq!(
-            service.get_note_relative_folder_path(&canonical.note_id).unwrap(),
+            service
+                .get_note_relative_folder_path(&canonical.note_id)
+                .unwrap(),
             "偏好"
         );
     }
@@ -4809,12 +4816,20 @@ mod tests {
             1
         );
         assert_eq!(
-            service.resolve_path_to_folder_id(&root_id, "经历/学科状态").unwrap(),
+            service
+                .resolve_path_to_folder_id(&root_id, "经历/学科状态")
+                .unwrap(),
             Some(subject_state)
         );
 
         // 再次执行幂等
-        assert_eq!(service.config.repair_nested_root_duplicates(&root_id).unwrap(), 0);
+        assert_eq!(
+            service
+                .config
+                .repair_nested_root_duplicates(&root_id)
+                .unwrap(),
+            0
+        );
     }
 
     #[test]

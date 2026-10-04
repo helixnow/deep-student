@@ -69,9 +69,7 @@ impl ExternalOpenMode {
         match raw.map(str::trim).unwrap_or("view") {
             "" | "view" => Ok(Self::View),
             "share" => Ok(Self::Share),
-            other => Err(AppError::validation(format!(
-                "不支持的打开方式: {other}"
-            ))),
+            other => Err(AppError::validation(format!("不支持的打开方式: {other}"))),
         }
     }
 
@@ -129,8 +127,8 @@ pub fn stage_for_sharing(cache_dir: &Path, source: &Path) -> Result<PathBuf> {
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_default();
-    let mut file_name = crate::unified_file_manager::sanitize_file_name_for_fs(&raw_name)
-        .replace(['/', '\\'], "_");
+    let mut file_name =
+        crate::unified_file_manager::sanitize_file_name_for_fs(&raw_name).replace(['/', '\\'], "_");
     if file_name.trim().is_empty() || file_name == "." || file_name == ".." {
         file_name = "file".to_string();
     }
@@ -262,8 +260,14 @@ mod tests {
 
     #[test]
     fn mode_parse_defaults_to_view_and_rejects_unknown() {
-        assert_eq!(ExternalOpenMode::parse(None).unwrap(), ExternalOpenMode::View);
-        assert_eq!(ExternalOpenMode::parse(Some("")).unwrap(), ExternalOpenMode::View);
+        assert_eq!(
+            ExternalOpenMode::parse(None).unwrap(),
+            ExternalOpenMode::View
+        );
+        assert_eq!(
+            ExternalOpenMode::parse(Some("")).unwrap(),
+            ExternalOpenMode::View
+        );
         assert_eq!(
             ExternalOpenMode::parse(Some("share")).unwrap(),
             ExternalOpenMode::Share
@@ -296,9 +300,9 @@ mod tests {
         assert!(resolve_shareable_source(&app_root.join("workspace"), &roots).is_err());
         assert!(resolve_shareable_source(&app_root.join("missing.pdf"), &roots).is_err());
         // `..` 逃逸经 canonicalize 后落在根外，必须拒绝
-        let escape = app_root.join("workspace/../../").join(
-            outside.file_name().unwrap(),
-        );
+        let escape = app_root
+            .join("workspace/../../")
+            .join(outside.file_name().unwrap());
         assert!(resolve_shareable_source(&escape.join("secret.txt"), &roots).is_err());
 
         let _ = std::fs::remove_dir_all(app_root);
