@@ -43,10 +43,19 @@ type Ns = keyof typeof NS;
  * 界面文案一律从主应用 zh-CN locale 读取；key 失效时直接抛错，
  * 让文案漂移在渲染阶段暴露，而不是静默出现过时字符串。
  */
-export const tr = (ns: Ns, key: string, vars: Record<string, string | number> = {}): string => {
+const lookup = (ns: Ns, key: string): unknown => {
   let node: unknown = NS[ns];
   for (const part of key.split('.')) {
     node = node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined;
+  }
+  return node;
+};
+
+export const tr = (ns: Ns, key: string, vars: Record<string, string | number> = {}): string => {
+  let node = lookup(ns, key);
+  // 与 i18next 一致：带 count 时找复数后缀键（zh-CN 只有 _other，与 en-US 的 _one/_other 对齐）
+  if (typeof node !== 'string' && typeof vars.count === 'number') {
+    node = lookup(ns, `${key}_${vars.count === 1 ? 'one' : 'other'}`) ?? lookup(ns, `${key}_other`);
   }
   if (typeof node !== 'string') throw new Error(`[strings] missing zh-CN key ${ns}:${key}`);
   return node.replace(/\{\{(\w+)\}\}/g, (_, v: string) => String(vars[v] ?? `{{${v}}}`));
