@@ -88,6 +88,16 @@ import {
   shouldDismissCrepeBlockMenuForKey,
 } from './blockMenuState';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isAndroid } from '@/utils/platform';
+
+/**
+ * IME 空段落占位（见 handleCompositionStart）：桌面 WebView 下空 textblock + IME 合成会走慢路径，
+ * 合成开始时插入零宽空格占位、合成结束再清理。
+ * Android 不启用：软键盘几乎每个词都会开合成，compositionstart 时改文档会与 ProseMirror 的
+ * DOM 观察/输入法合成区打架（重复字、丢字、光标跳），且占位清理在选区移走时会漏删。
+ */
+const IME_PLACEHOLDER_ZWS = '\u200b';
+const stripImePlaceholder = (markdown: string) => markdown.split(IME_PLACEHOLDER_ZWS).join('');
 
 type BlockMenuState = { target: BlockTarget; noteId: string | undefined; x: number; y: number } | null;
 type BlockMenuHighlight = { pos: number; left: number; top: number; width: number; height: number };
@@ -252,6 +262,9 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
   const readonlyRef = useRef(readonly);
   readonlyRef.current = readonly;
   const viewRef = useRef<any>(null); // 存储 ProseMirror view 引用
+  // IME 零宽占位可能仍留在文档里（合成未结束 / 合成结束时选区已离开该段落而漏清理）：
+  // 此时 getMarkdown 与 scheduleEmitChange 一样剔除零宽空格，避免隐藏时保存把它写进笔记
+  const imePlaceholderLiveRef = useRef(false);
   const dropIndicatorRef = useRef<HTMLDivElement>(null); // 拖拽插入条
   const blockMenuElRef = useRef<HTMLDivElement>(null);
   const [isReady, setIsReady] = useState(false);
@@ -674,7 +687,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         const crepe = crepeRef.current;
         if (!crepe) return '';
         try {
-          return crepe.getMarkdown();
+          const markdown = crepe.getMarkdown() || '';
+          return imePlaceholderLiveRef.current ? stripImePlaceholder(markdown) : markdown;
         } catch (e) {
           debugLog.error('[CrepeEditor] getMarkdown failed:', e);
           return '';
@@ -711,6 +725,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           // Milkdown 版本类型差异，运行时兼容
           if (!applied) (crepe.editor as any).action(replaceAll(markdown));
           identityOriginalRef.current = markdown;
+          // 文档已整体对齐到传入内容，残留的 IME 占位随之消失
+          imePlaceholderLiveRef.current = false;
           return true;
         } catch (e) {
           debugLog.error('[CrepeEditor] setMarkdown failed:', e);
@@ -2014,7 +2030,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
         let changeTimer: number | null = null;
         let isComposing = false;
         let zwsInsertedInComposition = false;
-        const ZWS = '\u200b';
+        const ZWS = IME_PLACEHOLDER_ZWS;
         const scheduleEmitChange = () => {
           if (destroyed || isComposing) return;
           if (changeTimer != null) window.clearTimeout(changeTimer);
@@ -2129,6 +2145,8 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                       // 🔧 IME 性能修复：空段落 + IME 合成在部分 WebView/浏览器下会进入慢路径导致“每个字都卡”
                       // 处理：合成开始时若当前 textblock 为空，则插入零宽字符占位（不写入历史）以避免慢路径；
                       // 合成结束时再清理占位字符，避免污染最终 markdown。
+                      // Android 不启用（见 IME_PLACEHOLDER_ZWS 注释）。
+                      if (isAndroid()) return;
                       try {
                         const sel = view.state.selection;
                         const $from = sel.$from;
@@ -2139,6 +2157,7 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                           tr.setMeta('addToHistory', false);
                           view.dispatch(tr);
                           zwsInsertedInComposition = true;
+                          imePlaceholderLiveRef.current = true;
                         }
                       } catch { /* 非关键：IME 零宽占位插入失败不影响正常输入，仅可能触发慢路径 */ }
                     };
@@ -2177,7 +2196,10 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                             });
                             tr.setMeta('addToHistory', false);
                             view.dispatch(tr);
+                            imePlaceholderLiveRef.current = false;
                           }
+                          // 没找到：选区已离开占位所在段落，占位可能残留——保留标记，
+                          // 让 getMarkdown 继续剔除，直到下次 setMarkdown 对齐文档
                         }
                       } catch { /* 非关键：IME 零宽字符清理失败不影响内容，可能残留不可见字符 */ }
                       zwsInsertedInComposition = false;
