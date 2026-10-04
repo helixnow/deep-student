@@ -64,7 +64,7 @@ describe('MobileSidebarNavigation app launcher', () => {
     render(<MobileSidebarNavigation />);
 
     expect(screen.getByRole('button', { name: '会话' })).toHaveAttribute('aria-current', 'page');
-    expect(screen.getByRole('button', { name: '学习资源' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: '资源库' })).toBeTruthy();
   });
 
   it('highlights data management when the deprecated dashboard view is current', () => {

@@ -57,7 +57,7 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
     },
     // 🔧 学习资源放第二位
     {
-      name: t('sidebar:navigation.learning_hub', '学习资源'),
+      name: t('sidebar:navigation.learning_hub', '资源库'),
       view: 'learning-hub',
       icon: StudyBooksIcon,
     },

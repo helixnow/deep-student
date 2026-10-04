@@ -71,7 +71,7 @@ const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallbac
 
 const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
   'chat-v2': { key: 'sidebar:navigation.sessions', fallback: '会话' },
-  'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '学习资源' },
+  'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '资源库' },
   todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
   'task-dashboard': { key: 'sidebar:navigation.anki_generation', fallback: 'Anki制卡' },

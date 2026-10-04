@@ -347,7 +347,7 @@ const commands = {
     if (!name) fail('缺少资料名');
     const onHub = await rpc(`return !!document.querySelector('[role=option]') && [...document.querySelectorAll('[role=option]')].some(o => o.textContent.includes(${js(name)}));`);
     if (!onHub) {
-      await rpc(`const b = [...document.querySelectorAll('button')].find(b => /^(学习资源|Learning resources|Files)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)); b && b.click(); return !!b;`);
+      await rpc(`const b = [...document.querySelectorAll('button')].find(b => /^(学习资源|资源库|Learning resources|Files)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)); b && b.click(); return !!b;`);
       const listed = await until(`return [...document.querySelectorAll('[role=option]')].some(o => o.textContent.includes(${js(name)}));`, `等列表出现「${name}」`, 300);
       if (!listed) fail(`学习资源列表里没有「${name}」`);
     }
