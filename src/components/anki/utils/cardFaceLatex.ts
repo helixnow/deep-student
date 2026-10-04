@@ -3,7 +3,7 @@
  *
  * 支持 Anki/MathJax 常用定界符：
  * - \( ... \)（inline）与 \[ ... \]（display）
- * - $$...$$（display）与 $...$（inline；内容须含 LaTeX 特征字符，避免货币误匹配）
+ * - $$...$$（display）与 $...$（inline，命中规则见 LATEX_SEGMENT_REGEX 注释）
  *
  * 模板卡面输出原生 MathML，无需在隔离 iframe 中加载外部字体或脚本。
  */
@@ -22,10 +22,16 @@ const KATEX_OPTIONS: katex.KatexOptions = {
  * 1. \[ ... \] display
  * 2. \( ... \) inline
  * 3. $$...$$ display
- * 4. $...$ inline（前面非 \ 转义，内容至少含一个 \、^、_、{ 特征字符）
+ * 4. $...$ inline：开 $ 前非 \ 转义，且满足其一——
+ *    a. 内容含 \、^、_、{ 等 LaTeX 特征字符（允许首尾空格，如 `$ \alpha $`）；
+ *    b. pandoc / remark-math 规则：开 $ 后紧跟非空白，闭 $ 前为非空白且非 \，
+ *       闭 $ 后不紧跟数字。`$AB$`、`$x$`、`$f(a)=f(b)$` 这类不含特征字符的
+ *       常见行内公式靠它命中——曾只有 a 分支，AI 生成卡片里的「弧 $AB$」
+ *       「$x$ 轴」原样露出 $，同卡含 \frac 的公式却正常渲染。
+ *       货币写法不会误中：`$5 和 $10` 闭 $ 前是空白，`$5-$10` 闭 $ 后紧跟数字。
  */
 const LATEX_SEGMENT_REGEX =
-  /(\\\[[\s\S]+?\\\])|(\\\([\s\S]+?\\\))|(\$\$[\s\S]+?\$\$)|(?:(?:^|(?<=[^\\]))\$(?!\$)((?:[^$\n]*?[\\^_{])[^$\n]*?)(?<!\\)\$)/g;
+  /(\\\[[\s\S]+?\\\])|(\\\([\s\S]+?\\\))|(\$\$[\s\S]+?\$\$)|(?<!\\)\$(?!\$)(?:([^$\n]*?[\\^_{][^$\n]*?)(?<!\\)\$|(?=[^\s$])([^$\n]*?[^\s$\\])\$(?!\d))/g;
 
 function escapeHtml(str: string): string {
   return str
@@ -70,7 +76,7 @@ export function renderCardFaceLatexHtml(text: string, output: 'htmlAndMathml' | 
     } else if (match[3]) {
       result += renderSegment(match[3].slice(2, -2).trim(), true, output);
     } else {
-      const inline = (match[4] ?? full.replace(/^\$|\$$/g, '')).trim();
+      const inline = (match[4] ?? match[5] ?? full.replace(/^\$|\$$/g, '')).trim();
       result += renderSegment(inline, false, output);
     }
     lastIndex = start + full.length;
