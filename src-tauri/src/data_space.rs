@@ -291,6 +291,10 @@ impl StartupRecoveryState {
         }
     }
 
+    fn export_staging_path(&self, extension: &str) -> std::io::Result<PathBuf> {
+        startup_recovery_export_staging_path(&self.base_dir, extension)
+    }
+
     fn incident_directory(&self, incident_id: &str) -> std::io::Result<PathBuf> {
         if incident_id.is_empty()
             || incident_id.contains('/')
@@ -2198,21 +2202,27 @@ pub fn open_startup_recovery_incident_folder(
     #[cfg(target_os = "linux")]
     let mut command = std::process::Command::new("xdg-open");
     #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-    command
-        .arg(&directory)
-        .spawn()
-        .map_err(|error| AppError::file_system(format!("打开恢复事件目录失败: {error}")))?;
+    {
+        command
+            .arg(&directory)
+            .spawn()
+            .map_err(|error| AppError::file_system(format!("打开恢复事件目录失败: {error}")))?;
+        Ok(())
+    }
 
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    return Err(AppError::validation(
-        "移动端不支持直接打开恢复事件目录".to_string(),
-    ));
-
-    Ok(())
+    // 移动端没有可用的文件管理器入口；前端已隐藏该按钮，改由导出 ZIP 取出数据。
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = directory;
+        Err(AppError::validation(
+            "移动端无法直接打开恢复事件目录，请使用「导出恢复事件」保存为 ZIP".to_string(),
+        ))
+    }
 }
 
 #[tauri::command]
 pub async fn export_startup_recovery_incident(
+    window: tauri::Window,
     state: tauri::State<'_, StartupRecoveryState>,
     incident_id: String,
     destination: String,
@@ -2220,6 +2230,25 @@ pub async fn export_startup_recovery_incident(
     let source = state
         .incident_directory(&incident_id)
         .map_err(|error| AppError::file_system(format!("定位恢复事件目录失败: {error}")))?;
+    // Android/iOS 保存对话框返回 content:// 等虚拟 URI，PathBuf + std::fs 无法写入。
+    // 先在恢复目录内的私有 staging 打包，再经 unified_file_manager 复制（含回读校验）。
+    if crate::unified_file_manager::is_virtual_uri(&destination) {
+        let staged = state
+            .export_staging_path("zip")
+            .map_err(|error| AppError::file_system(format!("创建恢复导出临时文件失败: {error}")))?;
+        let target = destination.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let result = export_incident_zip(&source, &staged)
+                .map_err(|error| AppError::file_system(format!("导出恢复事件失败: {error}")))
+                .and_then(|()| copy_staged_recovery_export(&window, &staged, &target));
+            remove_staged_recovery_export(&staged);
+            result
+        })
+        .await
+        .map_err(|error| AppError::internal(format!("恢复事件导出任务异常: {error}")))??;
+        return Ok(destination);
+    }
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&destination)?;
     let destination = PathBuf::from(destination);
     let export_destination = destination.clone();
     tauri::async_runtime::spawn_blocking(move || export_incident_zip(&source, &export_destination))
@@ -2232,6 +2261,7 @@ pub async fn export_startup_recovery_incident(
 #[tauri::command]
 pub fn export_startup_recovery_report(
     app: tauri::AppHandle,
+    window: tauri::Window,
     state: tauri::State<'_, StartupRecoveryState>,
     destination: String,
 ) -> Result<String, AppError> {
@@ -2254,16 +2284,107 @@ pub fn export_startup_recovery_report(
         "incidents": state.incidents().unwrap_or_default(),
         "component_health": component_health,
     });
+    let bytes = serde_json::to_vec_pretty(&payload)
+        .map_err(|error| AppError::internal(format!("生成诊断报告失败: {error}")))?;
+    if crate::unified_file_manager::is_virtual_uri(&destination) {
+        let staged = state
+            .export_staging_path("json")
+            .map_err(|error| AppError::file_system(format!("创建诊断报告临时文件失败: {error}")))?;
+        let result = fs::write(&staged, bytes)
+            .map_err(|error| AppError::file_system(format!("写入诊断报告失败: {error}")))
+            .and_then(|()| copy_staged_recovery_export(&window, &staged, &destination));
+        remove_staged_recovery_export(&staged);
+        result?;
+        return Ok(destination);
+    }
+    crate::unified_file_manager::reject_double_encoded_virtual_uri(&destination)?;
     let destination = PathBuf::from(destination);
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)
             .map_err(|error| AppError::file_system(format!("创建诊断报告目录失败: {error}")))?;
     }
-    let bytes = serde_json::to_vec_pretty(&payload)
-        .map_err(|error| AppError::internal(format!("生成诊断报告失败: {error}")))?;
     fs::write(&destination, bytes)
         .map_err(|error| AppError::file_system(format!("写入诊断报告失败: {error}")))?;
     Ok(destination.to_string_lossy().to_string())
+}
+
+/// 恢复模式下业务 AppState 未初始化，staging 不能依赖 file_manager 的可写目录；
+/// 放在恢复根目录（`recovery/export-staging`，与 incidents 同级，不会被打进 ZIP）。
+const STARTUP_RECOVERY_EXPORT_STAGING_DIR: &str = "export-staging";
+/// 崩溃遗留的 staging（可能含隔离的用户数据库）超过该时长即视为无主，下次导出时清理。
+const STARTUP_RECOVERY_EXPORT_STAGING_MAX_AGE: std::time::Duration =
+    std::time::Duration::from_secs(6 * 60 * 60);
+
+fn startup_recovery_export_staging_path(
+    base_dir: &Path,
+    extension: &str,
+) -> std::io::Result<PathBuf> {
+    let directory = base_dir
+        .join(RECOVERY_DIR)
+        .join(STARTUP_RECOVERY_EXPORT_STAGING_DIR);
+    fs::create_dir_all(&directory)?;
+    purge_stale_recovery_export_staging(&directory, STARTUP_RECOVERY_EXPORT_STAGING_MAX_AGE);
+    Ok(directory.join(format!("{}.{}", uuid::Uuid::new_v4(), extension)))
+}
+
+fn purge_stale_recovery_export_staging(directory: &Path, max_age: std::time::Duration) {
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    let now = std::time::SystemTime::now();
+    for entry in entries.flatten() {
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
+        if !metadata.is_file() {
+            continue;
+        }
+        let stale = metadata
+            .modified()
+            .ok()
+            .and_then(|modified| now.duration_since(modified).ok())
+            .is_some_and(|age| age >= max_age);
+        if stale {
+            if let Err(error) = fs::remove_file(entry.path()) {
+                warn!(
+                    "[DataSpace] 清理遗留恢复导出临时文件失败 {}: {}",
+                    entry.path().display(),
+                    error
+                );
+            }
+        }
+    }
+}
+
+fn copy_staged_recovery_export(
+    window: &tauri::Window,
+    staged: &Path,
+    target: &str,
+) -> Result<(), AppError> {
+    let staged = staged.to_string_lossy();
+    crate::unified_file_manager::copy_file(window, &staged, target)
+        .map(|_| ())
+        .map_err(|error| AppError::file_system(format!("写入目标位置失败: {error}")))
+}
+
+fn remove_staged_recovery_export(staged: &Path) {
+    for path in [
+        staged.to_path_buf(),
+        staged.with_extension(format!(
+            "{}.partial",
+            staged.extension().and_then(|ext| ext.to_str()).unwrap_or("")
+        )),
+    ] {
+        if path.exists() {
+            if let Err(error) = fs::remove_file(&path) {
+                warn!(
+                    "[DataSpace] 清理恢复导出临时文件失败 {}: {}",
+                    path.display(),
+                    error
+                );
+            }
+        }
+    }
 }
 
 fn export_incident_zip(source: &Path, destination: &Path) -> std::io::Result<()> {
@@ -3430,5 +3551,47 @@ mod tests {
             incident.recovery_error.as_deref(),
             Some("synthetic failure")
         );
+    }
+
+    #[test]
+    fn recovery_export_staging_stays_outside_incidents_and_purges_stale_files() {
+        let tmp = TempDir::new().unwrap();
+        let base = tmp.path();
+        let incident_dir = base
+            .join(RECOVERY_DIR)
+            .join(STARTUP_RECOVERY_INCIDENTS_DIR)
+            .join("incident-1");
+        fs::create_dir_all(&incident_dir).unwrap();
+        fs::write(incident_dir.join(STARTUP_RECOVERY_MANIFEST_FILE), b"{}").unwrap();
+
+        let staged = startup_recovery_export_staging_path(base, "zip").unwrap();
+        assert!(staged.starts_with(
+            base.join(RECOVERY_DIR)
+                .join(STARTUP_RECOVERY_EXPORT_STAGING_DIR)
+        ));
+        assert!(!staged.starts_with(base.join(RECOVERY_DIR).join(STARTUP_RECOVERY_INCIDENTS_DIR)));
+        assert_eq!(staged.extension().and_then(|ext| ext.to_str()), Some("zip"));
+
+        export_incident_zip(&incident_dir, &staged).unwrap();
+        assert!(staged.is_file());
+        remove_staged_recovery_export(&staged);
+        assert!(!staged.exists());
+        assert!(!staged.with_extension("zip.partial").exists());
+
+        let staging_dir = staged.parent().unwrap();
+        let leftover = staging_dir.join("leftover.zip");
+        fs::write(&leftover, b"stale").unwrap();
+        purge_stale_recovery_export_staging(staging_dir, std::time::Duration::from_secs(3600));
+        assert!(leftover.exists(), "fresh staging must survive purge");
+
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(7200);
+        fs::File::options()
+            .write(true)
+            .open(&leftover)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
+        purge_stale_recovery_export_staging(staging_dir, std::time::Duration::from_secs(3600));
+        assert!(!leftover.exists(), "stale staging must be purged");
     }
 }
