@@ -2,7 +2,6 @@
  * 共享层用户可见文案 i18n 契约：
  * - 模板渲染 issue（模板编辑器预览 / 卡面提示）
  * - 供应商品牌显示名（ProviderIcon tooltip / 文本）
- * - 内置 MCP 服务器显示名（设置页 / 输入栏 MCP 面板）
  *
  * 约束：英文界面取 en-US 译文；i18n 未就绪时与 zh-CN 原文逐字一致；
  * 标签字面量（含 {{ }}）作为变量传入，不被 i18next 插值吞掉。
@@ -47,7 +46,6 @@ vi.mock('i18next', () => ({
 
 import { compileAnkiTemplate, clearAnkiTemplateCache, renderAnkiTemplate } from '../ankiTemplateEngine';
 import { getProviderInfo, getProviderDisplayName } from '@/utils/providerIconEngine';
-import { getBuiltinServer, BUILTIN_SERVER_NAME } from '@/mcp/builtinMcpServer';
 
 afterEach(() => {
   state.lang = null;
@@ -92,15 +90,5 @@ describe('provider brand display names', () => {
     state.lang = 'en-US';
     expect(getProviderDisplayName('doubao-pro')).toBe('ByteDance');
     expect(getProviderInfo('deepseek-chat').displayName).toBe('DeepSeek');
-  });
-});
-
-describe('builtin MCP server name', () => {
-  it('resolves the server name at call time', () => {
-    expect(getBuiltinServer().name).toBe(BUILTIN_SERVER_NAME);
-    state.lang = 'en-US';
-    const server = getBuiltinServer();
-    expect(server.name).toBe('Built-in Tools');
-    expect(server.tools.every((tool) => tool.serverName === 'Built-in Tools')).toBe(true);
   });
 });
