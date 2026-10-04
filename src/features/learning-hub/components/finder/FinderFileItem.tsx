@@ -21,6 +21,7 @@ import { useDraggable, useDroppable } from '@dnd-kit/core';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
+import { localizeEssayTitle } from '@/essay-grading/modeI18n';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
@@ -189,9 +190,11 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   const childCountLabel = item.type === 'folder' && item.childCount !== undefined
     ? t('learningHub:finder.childCount', { count: item.childCount })
     : undefined;
+  // 仅展示：旧作文标题里落库的中文预置模式名按界面语言显示；重命名编辑框仍用库内原名
+  const displayName = item.type === 'essay' ? localizeEssayTitle(item.name, t) : item.name;
   const rowTitle = snippet
-    ? `${item.name}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
-    : item.name;
+    ? `${displayName}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
+    : displayName;
 
   if (viewMode === 'list') {
     return (
@@ -232,7 +235,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         {/* 名称 + 收藏 */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
           <InlineEditText
-            value={item.name}
+            value={isEditing ? item.name : displayName}
             isEditing={isEditing}
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
@@ -381,7 +384,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-xs leading-tight font-normal line-clamp-2 break-words',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
-            {item.name}
+            {displayName}
           </span>
         )}
       </div>

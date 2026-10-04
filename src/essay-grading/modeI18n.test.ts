@@ -5,12 +5,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import zhEssay from '@/locales/zh-CN/essay_grading.json';
 import enEssay from '@/locales/en-US/essay_grading.json';
 import type { GradingMode } from './essayGradingApi';
+import { buildEssayAutoTitle } from '@/dstu/autoTitle';
 import {
   BUILTIN_MODE_SOURCE,
   createDimensionLabeler,
   getDimensionDisplayName,
   getModeDisplayDescription,
   getModeDisplayName,
+  localizeEssayTitle,
+  type EssayTitleI18nT,
   type ModeI18nT,
 } from './modeI18n';
 
@@ -133,5 +136,46 @@ describe('modeI18n', () => {
       expect(parsed[id].description).toBe(source.description);
       expect(parsed[id].dims).toEqual(Object.values(source.dimensions));
     }
+  });
+});
+
+describe('essay session titles', () => {
+  const titleT = (lng: string): EssayTitleI18nT => instance.getFixedT(lng) as unknown as EssayTitleI18nT;
+  // 与 EssayGradingWorkbench 自动起名同一组合方式
+  const autoTitle = (lng: string, gradedMode: GradingMode) =>
+    buildEssayAutoTitle({
+      inputText: 'Some people think that remote work is better. Others disagree.',
+      modeName: getModeDisplayName(gradedMode, tFor(lng)) || undefined,
+      join: (m, subject) => titleT(lng)('essay_grading:session.auto_title', { mode: m, subject }),
+    });
+  const ielts = mode({ id: 'ielts', name: '雅思大作文', description: BUILTIN_MODE_SOURCE.ielts.description });
+
+  it('new auto titles use the localized built-in mode name', () => {
+    expect(autoTitle('en-US', ielts)).toBe('IELTS Writing Task 2: Some people think that…');
+    expect(autoTitle('zh-CN', ielts)).toBe('雅思大作文：Some people think that…');
+  });
+
+  it('new auto titles keep custom and user-renamed mode names', () => {
+    expect(autoTitle('en-US', mode({ id: 'ielts', name: '我的雅思' }))).toBe('我的雅思: Some people think that…');
+    expect(autoTitle('en-US', mode({ id: 'custom_1', name: '雅思大作文', is_builtin: false })))
+      .toBe('雅思大作文: Some people think that…');
+  });
+
+  it('displays legacy titles with a stored Chinese built-in prefix in the UI language', () => {
+    const en = titleT('en-US');
+    expect(localizeEssayTitle('雅思大作文: Some people think that…', en)).toBe('IELTS Writing Task 2: Some people think that…');
+    expect(localizeEssayTitle('雅思大作文：远程办公的利弊', en)).toBe('IELTS Writing Task 2: 远程办公的利弊');
+    const short = localizeEssayTitle('高考英语小作文：给外教的一封信', en);
+    expect(short).toMatch(/^.+: 给外教的一封信$/);
+    expect(short).not.toContain('高考');
+  });
+
+  it('leaves other titles and the Chinese UI untouched', () => {
+    const en = titleT('en-US');
+    expect(localizeEssayTitle('雅思大作文练习', en)).toBe('雅思大作文练习');
+    expect(localizeEssayTitle('我的雅思：远程办公', en)).toBe('我的雅思：远程办公');
+    expect(localizeEssayTitle('雅思大作文：', en)).toBe('雅思大作文：');
+    expect(localizeEssayTitle('', en)).toBe('');
+    expect(localizeEssayTitle('雅思大作文：远程办公的利弊', titleT('zh-CN'))).toBe('雅思大作文：远程办公的利弊');
   });
 });

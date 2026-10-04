@@ -41,6 +41,7 @@ import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 import { calculateEssayTextStats } from '@/essay-grading/textStats';
+import { getModeDisplayName } from '@/essay-grading/modeI18n';
 import { buildEssayAutoTitle, isDefaultResourceName } from '@/dstu/autoTitle';
 import { dstu } from '@/dstu';
 
@@ -1145,7 +1146,11 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
           const autoTitle = buildEssayAutoTitle({
             topicText: gradedContext.topicText,
             inputText: latestText ?? inputTextRef.current ?? '',
-            modeName: modesRef.current.find((mode) => mode.id === gradedContext.modeId)?.name,
+            // 预置模式用当前界面语言名称（后端返回中文原名），自定义 / 改名模式保持原名
+            modeName: (() => {
+              const gradedMode = modesRef.current.find((mode) => mode.id === gradedContext.modeId);
+              return gradedMode ? getModeDisplayName(gradedMode, t) || undefined : undefined;
+            })(),
             join: (mode, subject) => t('essay_grading:session.auto_title', { mode, subject }),
           });
           if (autoTitle) {

@@ -31,6 +31,7 @@ import type { OpenTab, SplitViewState } from '../types/tabs';
 import type { ResourceType } from '../types';
 import { useTranslation } from 'react-i18next';
 import { NoteGlyph } from '@/features/notes/components/NoteGlyph';
+import { localizeEssayTitle } from '@/essay-grading/modeI18n';
 import {
   NoteIcon,
   TextbookIcon,
@@ -257,7 +258,9 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           : <Icon size={14} className={cn("shrink-0", isSplitRight && !isActive ? "opacity-100" : "opacity-80")} />}
         
         {/* 标题 */}
-        <span className="min-w-0 truncate">{tab.title || t('common:untitled')}</span>
+        <span className="min-w-0 truncate">
+          {(tab.type === 'essay' && tab.title ? localizeEssayTitle(tab.title, t) : tab.title) || t('common:untitled')}
+        </span>
         
         {/* ★ 固定指示图标 */}
         {tab.isPinned && (

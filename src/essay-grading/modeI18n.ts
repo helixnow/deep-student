@@ -170,3 +170,40 @@ export function createDimensionLabeler(
   if (!getBuiltinSource(modeId)) return undefined;
   return (dimensionName: string) => getDimensionDisplayName(modeId, dimensionName, t);
 }
+
+/** 标题本地化需要插值（session.auto_title 的 {{mode}} / {{subject}}） */
+export type EssayTitleI18nT = (
+  key: string,
+  options?: { defaultValue?: string; mode?: string; subject?: string },
+) => string;
+
+/** 识别「预置模式中文原名 + ：/: + 主题」形式的标题前缀 */
+function findBuiltinTitlePrefix(title: string): { id: string; subject: string } | null {
+  for (const [id, source] of Object.entries(BUILTIN_MODE_SOURCE)) {
+    if (!title.startsWith(source.name)) continue;
+    const sep = title.charAt(source.name.length);
+    if (sep !== ':' && sep !== '：') continue;
+    const subject = title.slice(source.name.length + 1).trimStart();
+    if (subject) return { id, subject };
+  }
+  return null;
+}
+
+/**
+ * 仅展示：自动起名曾把预置模式的中文原名落库（「雅思大作文：…」「雅思大作文: …」），
+ * 这里按当前界面语言换成本地化模式名重新拼接；其余标题（含自定义模式前缀）原样返回。
+ * 不改存储——重命名编辑框仍以库内原文为准。
+ */
+export function localizeEssayTitle(title: string, t: EssayTitleI18nT): string {
+  if (!title) return title;
+  const hit = findBuiltinTitlePrefix(title);
+  if (!hit) return title;
+  const sourceName = BUILTIN_MODE_SOURCE[hit.id].name;
+  const localizedName = translateOr(t as ModeI18nT, `essay_grading:builtinModes.${hit.id}.name`, sourceName);
+  if (localizedName === sourceName) return title;
+  const joinKey = 'essay_grading:session.auto_title';
+  const joined = t(joinKey, { mode: localizedName, subject: hit.subject });
+  return typeof joined === 'string' && joined && joined !== joinKey
+    ? joined
+    : `${localizedName}: ${hit.subject}`;
+}
