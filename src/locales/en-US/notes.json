@@ -1480,7 +1480,8 @@
       "export": "Export",
       "exporting": "Exporting…"
     },
-    "all_notes_hint": "All notes and their attachments will be exported"
+    "all_notes_hint": "All notes and their attachments will be exported",
+    "unsaved_blocked": "Some notes couldn't be saved, so the export was paused to avoid missing the latest changes. Please try again."
   },
   "dialogs": {
     "close": "Close",

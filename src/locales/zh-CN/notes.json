@@ -1409,7 +1409,8 @@
       "export": "导出",
       "exporting": "正在导出…"
     },
-    "all_notes_hint": "将导出所有笔记及其附件"
+    "all_notes_hint": "将导出所有笔记及其附件",
+    "unsaved_blocked": "仍有笔记未能保存，为避免导出遗漏最新内容已暂停导出。请重试。"
   },
   "dialogs": {
     "close": "关闭",
