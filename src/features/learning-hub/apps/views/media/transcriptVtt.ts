@@ -45,7 +45,7 @@ export function buildWebVtt(segments: readonly TranscriptSegment[]): string {
   for (const seg of segments) {
     if (!isRenderableSegment(seg)) continue;
     lines.push(cueIdForSegment(seg.idx));
-    lines.push(`${formatVttTimestamp(seg.startMs)} --> ${formatVttTimestamp(seg.endMs)}`);
+    lines.push(`${formatVttTimestamp(seg.startMs)} --> ${formatVttTimestamp(seg.endMs)} ${CUE_POSITION_SETTINGS}`);
     lines.push(sanitizeCueText(seg.text));
     lines.push('');
   }
@@ -92,13 +92,25 @@ export interface CueTrackLike {
   removeCue(cue: never): void;
 }
 
+/**
+ * 画面字幕位置：底边固定在画面 80% 高处，避开叠在画面底部的自定义控制栏（约占底部 18%）。
+ * WebVTT 默认贴底，会与进度条 / 时间重叠。
+ */
+export const CUE_LINE_PERCENT = 80;
+const CUE_POSITION_SETTINGS = `line:${CUE_LINE_PERCENT}%,end`;
+
 export type CueFactory = (startSec: number, endSec: number, text: string) => { id: string };
 
 const defaultCueFactory: CueFactory = (start, end, text) => {
   const Ctor = (globalThis as { VTTCue?: new (s: number, e: number, t: string) => { id: string } })
     .VTTCue;
   if (!Ctor) throw new Error('VTTCue unavailable');
-  return new Ctor(start, end, text);
+  const cue = new Ctor(start, end, text) as { id: string; snapToLines?: boolean; line?: number | 'auto'; lineAlign?: string };
+  // 与 blob VTT 的 cue 设置一致（增量加入的 cue 不经 VTT 解析）
+  cue.snapToLines = false;
+  cue.line = CUE_LINE_PERCENT;
+  cue.lineAlign = 'end';
+  return cue;
 };
 
 /**

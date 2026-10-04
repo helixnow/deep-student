@@ -47,11 +47,11 @@ describe('WebVTT generation', () => {
       seg(3, 4000, 5000, 'line one\n\nline --> two'),
     ]);
     expect(vtt.startsWith('WEBVTT\n')).toBe(true);
-    expect(vtt).toContain('seg-0\n00:00:00.000 --> 00:00:01.500\nhello');
+    expect(vtt).toContain('seg-0\n00:00:00.000 --> 00:00:01.500 line:80%,end\nhello');
     expect(vtt).not.toContain('seg-1');
     expect(vtt).not.toContain('seg-2');
     // blank lines collapse and "-->" inside text is neutralised
-    expect(vtt).toContain('seg-3\n00:00:04.000 --> 00:00:05.000\nline one\nline → two');
+    expect(vtt).toContain('seg-3\n00:00:04.000 --> 00:00:05.000 line:80%,end\nline one\nline → two');
   });
 });
 
