@@ -343,6 +343,8 @@
       "savedTo": "已保存到",
       "openFolder": "打开所在文件夹",
       "openFolderFailed": "打开所在文件夹失败",
+      "openFile": "用其他应用打开",
+      "openFileFailed": "无法打开导出的文件",
       "done": "完成",
       "exportedCount": "已导出 {{count}} 道题目",
       "fieldsHint": "点击切换要导出的字段，题干内容为必选"

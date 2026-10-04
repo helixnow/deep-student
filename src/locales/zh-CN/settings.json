@@ -1293,6 +1293,7 @@
       "description": "将当前日志和旧版本遗留日志脱敏后汇总为 ZIP，不会包含数据库和用户文档。",
       "mobile_unsupported": "当前版本暂不支持移动端分享；启用错误报告后仍会自动记录故障。",
       "action": "导出 ZIP",
+      "share_action": "分享 ZIP",
       "success": "诊断包已导出（{{count}} 个文件）",
       "partial": "已导出 {{count}} 个文件，另有 {{skipped}} 个文件未能包含"
     },

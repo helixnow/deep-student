@@ -41,6 +41,7 @@ import { usePdfFocusListener } from './usePdfFocusListener';
 import { PreviewStatus } from './PreviewStatus';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
+import { canOpenFilesExternally, openFileExternally } from '@/utils/systemFileOpener';
 import {
   buildSelectionLocator,
   type PdfSelectionPayload,
@@ -584,8 +585,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   const handleOpenExternal = useCallback(async (path: string) => {
     setIsOpeningExternal(true);
     try {
-      const { openPath } = await import('@tauri-apps/plugin-opener');
-      await openPath(path);
+      await openFileExternally(path);
     } catch (err: unknown) {
       showGlobalNotification('error', getErrorMessage(err));
     } finally {
@@ -809,7 +809,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
         title={node.name}
         description={t('learningHub:textbook.unsupportedPreview', { ext })}
         actions={
-          effectiveFilePath
+          effectiveFilePath && canOpenFilesExternally()
             ? [{
                 id: 'openExternal',
                 label: t('common:openExternal'),

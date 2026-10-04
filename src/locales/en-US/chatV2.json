@@ -1465,6 +1465,8 @@
     "authorizationTitle": "{{label}} — {{action}}",
     "revealInFolder": "Reveal in file manager: {{path}}",
     "revealFailed": "Could not locate file",
+    "openWithOtherApp": "Open with another app: {{path}}",
+    "openExternallyFailed": "Could not open file",
     "reverted": "Reverted",
     "revertWrite": "Revert write (delete this artifact file)",
     "revertDone": "Artifact write reverted",

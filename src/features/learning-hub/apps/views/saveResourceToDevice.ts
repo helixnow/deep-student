@@ -13,6 +13,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { base64ToUint8Array } from '@/utils/base64FileUtils';
 import { fileManager } from '@/utils/fileManager';
+import { canOpenFilesExternally, openFileExternally } from '@/utils/systemFileOpener';
 
 export interface SaveResourceOptions {
   nodeId: string;
@@ -24,7 +25,7 @@ export interface SaveResourceOptions {
   title?: string;
   /** blob 与附件内容都不可得（或 base64 解码失败）时抛出的错误文案 */
   notFoundMessage: string;
-  /** 保存成功后尝试用系统默认应用打开（失败不阻塞，文件已保存） */
+  /** 保存成功后尝试用系统默认应用打开（Android 为选择其他应用；失败不阻塞，文件已保存） */
   openAfterSave?: boolean;
 }
 
@@ -85,10 +86,10 @@ export async function saveResourceToDevice(
     });
   }
 
-  if (openAfterSave && !result.canceled && result.path) {
+  if (openAfterSave && !result.canceled && result.path && canOpenFilesExternally()) {
     try {
-      const { openPath } = await import('@tauri-apps/plugin-opener');
-      await openPath(result.path);
+      // 桌面 opener / Android 原生 Intent（SAF 保存得到的 content:// 由原生侧转授读取权限）
+      await openFileExternally(result.path);
     } catch {
       // 打开失败不阻塞，文件已保存
     }

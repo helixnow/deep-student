@@ -25,11 +25,13 @@ import {
   CheckCircle,
   ArrowLeft,
   FolderOpen,
+  ArrowSquareOut,
   Check,
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
+import { canOpenFilesExternally, canRevealInFolder, revealFileOrOpen } from '@/utils/systemFileOpener';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { useMobileSubviewChrome } from '@/components/layout';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -581,17 +583,23 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     }
   }, [isExporting, format, examName, examId, questions.length, generateJsonExport, generateTxtExport, generateCsvExport, handleCsvBackendExport, t]);
 
-  // 打开导出文件所在文件夹（桌面端 plugin-opener）
+  // 桌面：打开导出文件所在文件夹；Android：用其他应用打开导出的文件
+  // （移动端没有文件管理器定位，SAF 保存得到的 content:// 由原生侧转授读取权限）
+  const revealSupported = canRevealInFolder();
   const handleRevealInFolder = useCallback(async () => {
     if (!exportOutcome) return;
     try {
-      const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
-      await revealItemInDir(exportOutcome.path);
+      await revealFileOrOpen(exportOutcome.path);
     } catch (error: unknown) {
-      console.error('[QuestionBankExportDialog] reveal in folder failed:', error);
-      showGlobalNotification('error', t('exam_sheet:questionBank.export.openFolderFailed'));
+      console.error('[QuestionBankExportDialog] reveal/open exported file failed:', error);
+      showGlobalNotification(
+        'error',
+        t(revealSupported
+          ? 'exam_sheet:questionBank.export.openFolderFailed'
+          : 'exam_sheet:questionBank.export.openFileFailed'),
+      );
     }
-  }, [exportOutcome, t]);
+  }, [exportOutcome, revealSupported, t]);
 
   // ==================== 共享内容分区（桌面单页 / 移动向导共用） ====================
 
@@ -744,17 +752,21 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         <div className="text-xs text-muted-foreground">{t('exam_sheet:questionBank.export.savedTo')}</div>
         <div className="break-all font-mono text-xs text-foreground">{exportOutcome.path}</div>
       </div>
-      <div className="flex justify-center">
-        <DsButton
-          variant="outline"
-          size="sm"
-          onClick={() => void handleRevealInFolder()}
-          className="[@media(pointer:coarse)]:!min-h-11"
-        >
-          <FolderOpen size={16} className="mr-1.5" />
-          {t('exam_sheet:questionBank.export.openFolder')}
-        </DsButton>
-      </div>
+      {canOpenFilesExternally() && (
+        <div className="flex justify-center">
+          <DsButton
+            variant="outline"
+            size="sm"
+            onClick={() => void handleRevealInFolder()}
+            className="[@media(pointer:coarse)]:!min-h-11"
+          >
+            {revealSupported ? <FolderOpen size={16} className="mr-1.5" /> : <ArrowSquareOut size={16} className="mr-1.5" />}
+            {t(revealSupported
+              ? 'exam_sheet:questionBank.export.openFolder'
+              : 'exam_sheet:questionBank.export.openFile')}
+          </DsButton>
+        </div>
+      )}
     </div>
   );
 

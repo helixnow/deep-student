@@ -45,7 +45,7 @@ import {
   Stack,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import { isAndroid } from '@/utils/platform';
+import { isAndroid, isMobilePlatform } from '@/utils/platform';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
@@ -3030,8 +3030,13 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
   const handleReselectRuntimeRoot = useCallback(() => {
     setPendingRootRisk(null);
     setNewRuntimeRootPath('');
+    // 移动端没有目录选择器：清空后把焦点交回路径输入框
+    if (isMobilePlatform()) {
+      handleFocusRuntimeRootInput();
+      return;
+    }
     void handleBrowseRuntimeRoot();
-  }, [handleBrowseRuntimeRoot]);
+  }, [handleBrowseRuntimeRoot, handleFocusRuntimeRootInput]);
 
   /** 按钮组：等级选择器 */
   const LevelSelector = useCallback(({ toolName, currentLevel, resetOverrideId }: {
@@ -3273,16 +3278,20 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
                     <SelectItem value="read_write">{t('settings:tool_permissions.runtime_root_read_write')}</SelectItem>
                   </SelectContent>
                 </Select>
-                <DsButton
-                  variant="outline"
-                  size="sm"
-                  onClick={handleBrowseRuntimeRoot}
-                  disabled={isSavingRuntimeRoot}
-                  className="flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
-                >
-                  <FolderOpen className="h-3 w-3 mr-1" />
-                  {t('settings:tool_permissions.runtime_root_browse')}
-                </DsButton>
+                {/* 系统目录选择器在移动端未实现（FolderPickerNotImplemented），
+                    移动端只能手动输入路径。 */}
+                {!isMobilePlatform() && (
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    onClick={handleBrowseRuntimeRoot}
+                    disabled={isSavingRuntimeRoot}
+                    className="flex-shrink-0 [@media(pointer:coarse)]:!min-h-11"
+                  >
+                    <FolderOpen className="h-3 w-3 mr-1" />
+                    {t('settings:tool_permissions.runtime_root_browse')}
+                  </DsButton>
+                )}
                 <DsButton
                   variant="ghost"
                   size="sm"

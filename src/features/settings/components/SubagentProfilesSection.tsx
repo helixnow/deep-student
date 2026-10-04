@@ -18,6 +18,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
 import { inputShellClass } from '@/components/ui/shad/inputShell';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { canRevealInFolder } from '@/utils/systemFileOpener';
 import { SettingsGroup } from './settingsTabPrimitives';
 
 /** 内建档案摘要（workspace_list_agent_profiles.builtin）。 */
@@ -449,6 +450,7 @@ export const SubagentProfilesSection: React.FC = () => {
   const handleOpenDir = useCallback(async () => {
     if (!agentsDir) return;
     try {
+      // 仅桌面：移动端不渲染该按钮（目录无法定位，也无法交给其他应用）
       const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
       await revealItemInDir(agentsDir);
     } catch (e) {
@@ -763,18 +765,20 @@ export const SubagentProfilesSection: React.FC = () => {
       >
         <ArrowsClockwise className={cn('h-4 w-4', loading && 'animate-spin')} />
       </DsButton>
-      <DsButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        aria-label={t('settings:subagentProfiles.actions.open_dir')}
-        title={t('settings:subagentProfiles.actions.open_dir')}
-        disabled={!agentsDir}
-        onClick={() => void handleOpenDir()}
-        className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
-      >
-        <FolderOpen className="h-4 w-4" aria-hidden="true" />
-      </DsButton>
+      {canRevealInFolder() && (
+        <DsButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          aria-label={t('settings:subagentProfiles.actions.open_dir')}
+          title={t('settings:subagentProfiles.actions.open_dir')}
+          disabled={!agentsDir}
+          onClick={() => void handleOpenDir()}
+          className="max-lg:!h-11 max-lg:!w-11 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <FolderOpen className="h-4 w-4" aria-hidden="true" />
+        </DsButton>
+      )}
       {/* 移动端去纯色按钮：描边+主色文字，与供应商/模型页语言一致；桌面保持实心 primary */}
       <DsButton
         variant={isSmallScreen ? 'outline' : 'primary'}

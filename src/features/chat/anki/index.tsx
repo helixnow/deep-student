@@ -269,8 +269,8 @@ async function autoImportApkgIfEnabled(filePath: string): Promise<void> {
     console.error('[anki] autoImportApkg error:', error);
     if (settings.anki_connect_open_folder_on_failure) {
       try {
-        const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
-        await revealItemInDir(filePath);
+        const { revealFileOrOpen } = await import('@/utils/systemFileOpener');
+        await revealFileOrOpen(filePath);
       } catch (revealError) {
         console.warn('[anki] autoImportApkg: reveal folder failed', revealError);
       }

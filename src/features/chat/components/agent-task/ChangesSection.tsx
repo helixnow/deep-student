@@ -27,6 +27,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { dstu } from '@/dstu/api';
 import { openResource } from '@/dstu/openResource';
+import { canRevealInFolder } from '@/utils/systemFileOpener';
 import { computeLineDiff } from '../../utils/lineDiff';
 import type {
   ChangeAction,
@@ -234,7 +235,7 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
       }
       return;
     }
-    // runtime 文件变更没有内部资源 id，直接在文件管理器中定位
+    // runtime 文件变更没有内部资源 id：桌面在文件管理器中定位，移动端用其他应用打开
     if (item.rootId && item.relativePath) {
       onRevealRuntimeFile(item);
     }
@@ -362,7 +363,10 @@ export const ChangesSection: React.FC<ChangesSectionProps> = ({
                 title={
                   item.openId
                     ? (item.target || item.label)
-                    : t('agentPanel.revealInFolder', { path: item.target || item.label })
+                    : t(
+                      canRevealInFolder() ? 'agentPanel.revealInFolder' : 'agentPanel.openWithOtherApp',
+                      { path: item.target || item.label },
+                    )
                 }
               >
                 {chip}

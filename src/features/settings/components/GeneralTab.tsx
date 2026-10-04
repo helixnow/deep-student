@@ -40,9 +40,11 @@ import {
 } from '@/quick-assistant/config';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
 import {
+  canExportDiagnostics,
   chooseAndExportDiagnostics,
   revealDiagnostics,
 } from '@/logging/exportDiagnostics';
+import { canRevealInFolder } from '@/utils/systemFileOpener';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
@@ -337,7 +339,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           <SettingRow
             title={t('settings:diagnostics.export.title', 'Export diagnostic bundle')}
             description={
-              isMobilePlatform()
+              !canExportDiagnostics()
                 ? t(
                     'settings:diagnostics.export.mobile_unsupported',
                     'Mobile sharing is not available in this version. Error reporting still works automatically when enabled.',
@@ -348,7 +350,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   )
             }
           >
-            {!isMobilePlatform() && (
+            {canExportDiagnostics() && (
               <DsButton
                 variant="outline"
                 size="sm"
@@ -372,7 +374,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                             defaultValue: `Diagnostic bundle exported (${result.fileCount} files)`,
                           }),
                     );
-                    void revealDiagnostics(result).catch(() => undefined);
+                    // Android 上这一步是唯一出口（系统分享面板），失败必须告知
+                    void revealDiagnostics(result).catch((error: unknown) => {
+                      if (isAndroid()) showGlobalNotification('error', getErrorMessage(error));
+                    });
                   } catch (error: unknown) {
                     showGlobalNotification('error', getErrorMessage(error));
                   } finally {
@@ -382,11 +387,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               >
                 {diagnosticsExporting
                   ? <CircleNotch size={12} className="animate-spin" />
-                  : t('settings:diagnostics.export.action', 'Export ZIP')}
+                  : isAndroid()
+                    ? t('settings:diagnostics.export.share_action', 'Share ZIP')
+                    : t('settings:diagnostics.export.action', 'Export ZIP')}
               </DsButton>
             )}
           </SettingRow>
-          {!isMobilePlatform() && (
+          {canExportDiagnostics() && (
             <SwitchRow
               title={t(
                 'settings:diagnostics.include_debug.title',
@@ -484,6 +491,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             </DsButton>
           </SettingRow>
 
+          {/* 打开日志目录仅桌面可用；移动端没有文件管理器定位，
+              Android 改走上方「诊断与反馈」的分享 ZIP（含脱敏日志）。 */}
+          {canRevealInFolder() && (
           <SettingRow
             title={t('settings:developer.log_type')}
             description={t('settings:developer.log_type_hint')}
@@ -519,6 +529,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               </DsButton>
             </div>
           </SettingRow>
+          )}
 
           <SwitchRow
             title={t('settings:developer.show_raw_request.title')}
@@ -672,6 +683,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 : t('settings:developer.debug_logs.loading')}
             >
               <div className="flex items-center gap-2">
+                {canRevealInFolder() && (
                 <DsButton
                   variant="outline"
                   size="sm"
@@ -688,6 +700,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 >
                   {t('settings:developer.debug_logs.open')}
                 </DsButton>
+                )}
                 <DsButton
                   variant="ghost"
                   size="sm"

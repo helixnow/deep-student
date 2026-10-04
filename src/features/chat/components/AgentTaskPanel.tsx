@@ -76,6 +76,7 @@ import { getBlocksDigest } from './agent-task/blocksDigest';
 import { PlanSteps } from './agent-task/PlanSteps';
 import { RuntimeSection } from './agent-task/RuntimeSection';
 import { ChangesSection } from './agent-task/ChangesSection';
+import { canRevealInFolder, revealFileOrOpen } from '@/utils/systemFileOpener';
 import {
   getSessionArtifacts,
   type ArtifactEntry,
@@ -319,7 +320,8 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
     return <AnkiCardsBlock block={block} store={chatStore} />;
   }, [openArtifactId, openArtifactBlock, chatStore, t]);
 
-  /** 在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）。 */
+  /** 桌面：在系统文件管理器中定位 runtime root 内的文件（artifacts/workspace 等）；
+   *  移动端没有文件管理器定位，改为用其他应用打开该文件（systemFileOpener）。 */
   const revealRuntimeFile = useCallback(async (item: ChangeItem) => {
     if (!sessionId || !item.rootId || !item.relativePath) return;
     try {
@@ -328,12 +330,11 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
         rootId: item.rootId,
         relativePath: item.relativePath,
       });
-      const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
-      await revealItemInDir(absolutePath);
+      await revealFileOrOpen(absolutePath);
     } catch (error: unknown) {
       showGlobalNotification(
         'warning',
-        t('agentPanel.revealFailed'),
+        t(canRevealInFolder() ? 'agentPanel.revealFailed' : 'agentPanel.openExternallyFailed'),
         getErrorMessage(error),
       );
     }
@@ -347,10 +348,13 @@ export const AgentTaskPanel: React.FC<Props> = ({ store, chatStore = null, class
         rootId,
         relativePath,
       });
-      const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
-      await revealItemInDir(absolutePath);
+      await revealFileOrOpen(absolutePath);
     } catch (error: unknown) {
-      showGlobalNotification('warning', t('agentPanel.revealFailed'), getErrorMessage(error));
+      showGlobalNotification(
+        'warning',
+        t(canRevealInFolder() ? 'agentPanel.revealFailed' : 'agentPanel.openExternallyFailed'),
+        getErrorMessage(error),
+      );
     }
   }, [sessionId, t]);
 

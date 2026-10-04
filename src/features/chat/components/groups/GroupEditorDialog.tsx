@@ -98,6 +98,7 @@ import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
 import { configureTaskWorkspace } from '../../api/taskWorkspaceApi';
+import { isMobilePlatform } from '@/utils/platform';
 
 /**
  * 移动端全局顶栏「保存」桥接：GroupEditorPanel 挂载期间写入受控提交句柄
@@ -679,19 +680,24 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       </option>
                     ))}
                   </select>
-                  <DsButton
-                    variant="ghost"
-                    onClick={() => void handleBrowseAndAuthorizeRoot()}
-                    disabled={isAuthorizingRoot}
-                    className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0"
-                  >
-                    {isAuthorizingRoot ? (
-                      <CircleNotch size={14} className="mr-1.5 animate-spin" />
-                    ) : (
-                      <Folder size={14} className="mr-1.5" />
-                    )}
-                    {t('page.groupDefaultRuntimeRootBrowse')}
-                  </DsButton>
+                  {/* 系统目录选择器在 Android/iOS 未实现（dialog 插件返回
+                      FolderPickerNotImplemented），且运行目录需要 std::fs 可访问的
+                      真实路径，SAF 树 URI 不可用——移动端只保留已授权目录的选择。 */}
+                  {!isMobilePlatform() && (
+                    <DsButton
+                      variant="ghost"
+                      onClick={() => void handleBrowseAndAuthorizeRoot()}
+                      disabled={isAuthorizingRoot}
+                      className="h-8 [@media(pointer:coarse)]:!h-11 px-3 shrink-0"
+                    >
+                      {isAuthorizingRoot ? (
+                        <CircleNotch size={14} className="mr-1.5 animate-spin" />
+                      ) : (
+                        <Folder size={14} className="mr-1.5" />
+                      )}
+                      {t('page.groupDefaultRuntimeRootBrowse')}
+                    </DsButton>
+                  )}
                   {defaultRuntimeRootId && (
                     <DsButton
                       variant="ghost"

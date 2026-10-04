@@ -343,6 +343,8 @@
       "savedTo": "Saved to",
       "openFolder": "Reveal in folder",
       "openFolderFailed": "Failed to reveal in folder",
+      "openFile": "Open with another app",
+      "openFileFailed": "Could not open the exported file",
       "done": "Done",
       "exportedCount": "Exported {{count}} questions",
       "fieldsHint": "Click to toggle exported fields; content is required"

@@ -33,6 +33,7 @@ import type { AppWindowProps } from '../../core/types';
 import { useDragRenderPause } from '../../hooks/useDragRenderPause';
 import { ContentEmptyState } from '../content/ContentEmptyState';
 import { normalizeResourceInstanceKey } from '../content/resourceIdentity';
+import { openFileExternally, revealFileOrOpen } from '@/utils/systemFileOpener';
 import {
   isPrintablePreview,
   isTextSearchablePreview,
@@ -525,14 +526,12 @@ const FilePreviewAppWindow: React.FC<AppWindowProps> = ({
 
   const handleOpen = useCallback(() => runAction('open', async () => {
     if (!sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
-    const { openPath } = await import('@tauri-apps/plugin-opener');
-    await openPath(sourcePath);
+    await openFileExternally(sourcePath);
   }), [runAction, sourcePath, t]);
 
   const handleReveal = useCallback(() => runAction('reveal', async () => {
     if (!sourcePath) throw new Error(t('filePreview.downloadUnavailable'));
-    const { revealItemInDir } = await import('@tauri-apps/plugin-opener');
-    await revealItemInDir(sourcePath);
+    await revealFileOrOpen(sourcePath);
   }), [runAction, sourcePath, t]);
 
   const handlePrint = useCallback(() => {

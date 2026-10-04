@@ -1,10 +1,11 @@
 import React from 'react';
 import i18n from '../i18n';
 import {
+  canExportDiagnostics,
   chooseAndExportDiagnostics,
   revealDiagnostics,
 } from '../logging/exportDiagnostics';
-import { isMobilePlatform } from '../utils/platform';
+import { isAndroid } from '../utils/platform';
 
 const safeT = (key: string, fallback: string, options?: Record<string, unknown>): string => {
   try {
@@ -173,7 +174,12 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
             )
           : safeT('common:error_boundary.diagnostics_exported', '诊断包已导出'),
       );
-      void revealDiagnostics(result).catch(() => undefined);
+      // Android 上分享面板是唯一出口，失败要如实反馈；桌面定位失败无伤大雅
+      void revealDiagnostics(result).catch(() => {
+        if (isAndroid()) {
+          setExportStatus(safeT('common:error_boundary.diagnostics_failed', '诊断包导出失败'));
+        }
+      });
     } catch {
       setExportStatus(safeT('common:error_boundary.diagnostics_failed', '诊断包导出失败'));
     } finally {
@@ -280,7 +286,7 @@ export const TopLevelFallback: React.FC<TopLevelFallbackProps> = ({
             ? safeT('common:error_boundary.hide_details', '隐藏详情')
             : safeT('common:error_boundary.show_details', '查看错误详情')}
         </button>
-        {!isMobilePlatform() && (
+        {canExportDiagnostics() && (
           <button
             onClick={() => void handleExport()}
             disabled={exporting}

@@ -1465,6 +1465,8 @@
     "authorizationTitle": "{{label}} — {{action}}",
     "revealInFolder": "在文件管理器中显示：{{path}}",
     "revealFailed": "无法定位文件",
+    "openWithOtherApp": "用其他应用打开：{{path}}",
+    "openExternallyFailed": "无法打开文件",
     "reverted": "已撤销",
     "revertWrite": "撤销写入（删除该产物文件）",
     "revertDone": "已撤销该产物写入",

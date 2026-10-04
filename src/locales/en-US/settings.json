@@ -1293,6 +1293,7 @@
       "description": "Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.",
       "mobile_unsupported": "Mobile sharing is not available in this version. Error reporting still works automatically when enabled.",
       "action": "Export ZIP",
+      "share_action": "Share ZIP",
       "success": "Diagnostic bundle exported ({{count}} files)",
       "partial": "Exported {{count}} files; {{skipped}} could not be included"
     },
