@@ -1,4 +1,5 @@
 import { findModelRecordById } from './modelCapabilityRegistry';
+import { detectModelKindSignal } from './modelIdPrefix';
 
 export type ApiCapabilityType =
   | 'reasoning'
@@ -58,8 +59,8 @@ const getOverride = (descriptor: ApiModelDescriptor, type: ApiCapabilityType): b
   return !!hit.isUserSelected;
 };
 
-const EMBEDDING_REGEX = /(?:^text-|embed|bge-|e5-|llm2vec|retrieval|uae-|gte-|jina-clip|jina-embeddings|voyage-)/i;
-const RERANK_REGEX = /(?:rerank|re-rank|re-ranker|re-ranking|retrieval|retriever)/i;
+// 嵌入/重排信号正则统一收口到 modelIdPrefix.ts（与注册表 kind 匹配共用同一份，
+// 对剥离网关前缀后的型号名判定；本引擎经 detectModelKindSignal 使用）。
 const AUDIO_TRANSCRIPTION_REGEX =
   /(?:^|[/_-])(?:asr|stt)(?:$|[/_-])|transcrib(?:e|er|ing|ption)|whisper|sensevoice|telespeechasr|speech(?:[-_/]to[-_/]text|[-_/]?asr)|gpt-4o(?:-mini)?-transcribe|qwen3-asr|scribe(?:[-_/]v?\d+)?/i;
 const AUDIO_TRANSCRIPTION_EXCLUDED_REGEX = /tts|text-to-speech|speech(?:[-_/]synthesis|[-_/]generation)/i;
@@ -499,10 +500,20 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const modelOptionalParams = modelRecord?.param_format?.optional_fields;
 
   const embeddingOverride = getOverride(descriptor, 'embedding');
-  const embedding = embeddingOverride !== undefined ? embeddingOverride : EMBEDDING_REGEX.test(id) || (name ? EMBEDDING_REGEX.test(name) : false);
-
   const rerankOverride = getOverride(descriptor, 'rerank');
-  const rerank = rerankOverride !== undefined ? rerankOverride : RERANK_REGEX.test(id) || (name ? RERANK_REGEX.test(name) : false);
+  // 类型信号只看剥离网关前缀后的型号名（前缀描述网关而非模型，
+  // embed-gateway_ 会让裸 `embed` 子串把整网关模型误判成嵌入），且 rerank 优先：
+  // 一个模型不会同时是嵌入与重排（/embeddings 与 /rerank 接口互斥）。
+  // 显示名兜底走同一信号函数：label 常等于原始带前缀 ID（导入路径），同样要剥。
+  const idSignal = detectModelKindSignal(descriptor.id);
+  const nameSignal = name ? detectModelKindSignal(name) : null;
+  const embedding =
+    embeddingOverride !== undefined
+      ? embeddingOverride
+      : idSignal === 'embedding' || (idSignal === null && nameSignal === 'embedding');
+
+  const rerank =
+    rerankOverride !== undefined ? rerankOverride : idSignal === 'rerank' || (idSignal === null && nameSignal === 'rerank');
 
   const audioTranscriptionOverride = getOverride(descriptor, 'audio_transcription');
   const audioTranscription =
@@ -533,7 +544,10 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     vision = visionOverride;
   } else if (modelCapabilities) {
     vision = modelCapabilities.vision;
-  } else if (!embedding && !rerank) {
+  } else {
+    // 不因嵌入/重排而跳过视觉判定：多模态嵌入/重排（qwen3-vl-*、*vision* 等）
+    // 需要标 vision 才能绑定多模态知识库维度；VISION 模式为窄子串，
+    // 纯文本嵌入（text-embedding-3-large、bge-m3 等）不含这些模式，不受影响。
     const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(id) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(name) : false);
     const excluded = matchesRegexList(id, VISION_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, VISION_EXCLUDED_REGEXES) : false);
     vision = allowed && !excluded;

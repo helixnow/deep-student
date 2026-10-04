@@ -114,6 +114,12 @@ describe('统一五档（方案 F）', () => {
         expect(control?.options.map(o => o.value), model).toEqual(UNIFIED_LEVEL_VALUES);
       }
     });
+
+    it('qwen3.8 默认档对齐后端注册表 default=xhigh；其余 qwen3 系保持 medium', () => {
+      expect(resolveQwenChannel({ model: 'qwen3.8-max' })?.defaultValue).toBe('xhigh');
+      expect(resolveQwenChannel({ model: 'embed-gateway_qwen3.8-max' })?.defaultValue).toBe('xhigh');
+      expect(resolveQwenChannel({ model: 'qwen3.7-max' })?.defaultValue).toBe('medium');
+    });
   });
 
   describe('generic 渠道思考强度开关', () => {
