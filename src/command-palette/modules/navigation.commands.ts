@@ -23,6 +23,7 @@ import {
   Database,
   House,
   Lightning,
+  Cards,
 } from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 
@@ -63,10 +64,23 @@ export function getNavigationCommands(): Command[] {
         deps.navigate('skills-management');
       },
     },
+    // 闪卡中心（复习 / 制卡 / 模板 三个分区，对应三个视图 id）
+    {
+      id: 'nav.goto.flashcards',
+      name: i18next.t('command_palette:commands.nav.goto.flashcards', 'Go to Flashcards Review'),
+      description: i18next.t('command_palette:descriptions.nav.goto.flashcards', 'Flashcards › Review: today\'s queue, card library and statistics'),
+      category: 'navigation',
+      icon: Cards,
+      keywords: kw('nav.goto.flashcards'),
+      priority: 94,
+      execute: (deps) => {
+        deps.navigate('flashcards');
+      },
+    },
     {
       id: 'nav.goto.task-dashboard',
       name: i18next.t('command_palette:commands.nav.goto.task-dashboard', 'Go to Card Tasks'),
-      description: i18next.t('command_palette:descriptions.nav.goto.task-dashboard', 'Manage card generation tasks'),
+      description: i18next.t('command_palette:descriptions.nav.goto.task-dashboard', 'Flashcards › Generate: manage card generation tasks'),
       category: 'navigation',
       shortcut: 'mod+shift+6',
       icon: Stack,
@@ -108,7 +122,7 @@ export function getNavigationCommands(): Command[] {
     {
       id: 'nav.goto.template-management',
       name: i18next.t('command_palette:commands.nav.goto.template-management', 'Go to Template Library'),
-      description: i18next.t('command_palette:descriptions.nav.goto.template-management', 'Manage AI prompt templates'),
+      description: i18next.t('command_palette:descriptions.nav.goto.template-management', 'Flashcards › Templates: manage card templates'),
       category: 'navigation',
       icon: Palette,
       keywords: kw('nav.goto.template-management'),
