@@ -22,6 +22,21 @@ describe('qbank ACR 3.0 write contract', () => {
     });
   });
 
+  it('lets import_document take a library resource_id instead of base64 content', () => {
+    const tool = qbankToolsSkill.embeddedTools?.find(
+      (candidate) => candidate.name === 'builtin-qbank_import_document',
+    );
+    expect(tool).toBeDefined();
+    expect(tool!.inputSchema.properties.resource_id).toMatchObject({ type: 'string' });
+    expect(tool!.inputSchema.required ?? []).not.toContain('content');
+    expect(tool!.inputSchema.anyOf).toEqual([
+      { required: ['resource_id'] },
+      { required: ['content'] },
+    ]);
+    expect(tool!.description).toContain('resource_id');
+    expect(qbankToolsSkill.content).toContain('resource_id');
+  });
+
   it('defines get_question.updated_at as the update baseline', () => {
     const get = qbankToolsSkill.embeddedTools?.find(
       (candidate) => candidate.name === 'builtin-qbank_get_question',

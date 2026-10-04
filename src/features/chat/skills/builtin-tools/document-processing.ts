@@ -13,7 +13,7 @@ export const documentProcessingSkill: SkillDefinition = {
   id: 'document-processing',
   name: 'document-processing',
   description:
-    '文档解析/OCR 能力组：对资源库中的 PDF、扫描件、图片主动发起解析与 OCR 管线并查询进度。当用户说"识别这个 PDF/这份扫描件读不出来/把图片里的文字提取出来"，或 resource_read 返回内容为空/提示 OCR 未完成时使用。OCR 完成后可用 resource_read 读全文、qbank_import_document 导入题库（再用 review-planning 安排复习），或用 chatanki 制卡。',
+    '文档解析/OCR 能力组：对资源库中的 PDF、扫描件、图片主动发起解析与 OCR 管线并查询进度。当用户说"识别这个 PDF/这份扫描件读不出来/把图片里的文字提取出来"，或 resource_read 返回内容为空/提示 OCR 未完成时使用。OCR 完成后可用 resource_read 读全文，或用 chatanki 制卡。导入题库无需等 OCR：qbank_import_document 直接传 resource_id（再用 review-planning 安排复习）。',
   version: '1.0.0',
   author: 'Deep Student',
   priority: 7,
@@ -55,7 +55,8 @@ OCR 是后台管线（可能耗时数分钟），调用顺序：
 
 - **读取全文**：\`builtin-resource_read\`（learning-resource 技能组）
 - **导入题库**：若文档是试卷/习题集，\`load_skills(["qbank-tools"])\` 后用
-  \`builtin-qbank_import_document\` 把 OCR 文本导入题库；入库后可再
+  \`builtin-qbank_import_document\` 传同一 \`resource_id\` 导入（后端直接读原文件，
+  不必先 OCR，也不要自行 base64 编码）；入库后可再
   \`load_skills(["review-planning"])\` 用 \`builtin-review_plan_generate\` 为整套题安排间隔复习
 - **制作卡片**：若文档是学习资料，可用 chatanki 技能制作 Anki 卡片
 - **检索问答**：OCR 后文档自动进入向量索引，\`builtin-rag_search\` 可检索
