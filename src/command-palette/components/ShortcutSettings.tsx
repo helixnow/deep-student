@@ -165,7 +165,8 @@ export function ShortcutSettings({ className, scrollElement = null }: ShortcutSe
   const importConfig = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    // MIME 在前：wry Android 对纯扩展名 accept 可能得到空类型列表而崩溃
+    input.accept = 'application/json,.json';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;

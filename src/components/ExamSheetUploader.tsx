@@ -1328,7 +1328,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     ref={fileInputRef}
                     type="file"
                     multiple={currentCategory !== 'document'}
-                    accept="image/*,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
+                    // MIME 在前 + 显式 text/markdown：wry Android 会丢弃 MimeTypeMap 不认识的扩展名（如旧系统的 .md）
+                    accept="image/*,application/pdf,text/plain,text/markdown,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
                     onChange={handleInputChange}
                     className="hidden"
                     disabled={isProcessing}

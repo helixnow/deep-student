@@ -48,6 +48,7 @@ import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/componen
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
+import { buildFileAccept, MARKDOWN_FILE_ACCEPT_MIME } from '@/utils/fileAccept';
 
 // Skills 模块
 import {
@@ -114,6 +115,12 @@ interface SkillsManagementPageProps {
 
 /** 全局技能目录路径 */
 const GLOBAL_SKILLS_PATH = '~/.deep-student/skills';
+
+// 纯 ".md" 会让 wry Android 选择器在不认识 md 的系统上崩溃（validTypes 为空）；
+// MIME 在前，Android 再放宽到 octet-stream，导入时按扩展名把关
+const SKILL_FILE_ACCEPT = buildFileAccept(MARKDOWN_FILE_ACCEPT_MIME, ['.md'], {
+  androidExtraMimeTypes: ['application/octet-stream'],
+});
 
 interface SkillImportZipResult {
   skill_id: string;
@@ -964,6 +971,11 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
     const MAX_SKILL_FILE_SIZE = 512 * 1024; // 512KB
 
     for (const file of Array.from(files)) {
+      // Android 选择器放宽到 octet-stream（md 未被识别时），选完按扩展名把关
+      if (!/\.md$/i.test(file.name)) {
+        errors.push(`${file.name}: not a .md file`);
+        continue;
+      }
       if (file.size > MAX_SKILL_FILE_SIZE) {
         errors.push(`${file.name}: exceeds 512KB limit`);
         continue;
@@ -1379,7 +1391,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             <input
               ref={fileInputRef}
               type="file"
-              accept=".md"
+              accept={SKILL_FILE_ACCEPT}
               multiple
               onChange={handleImportFile}
               className="hidden"

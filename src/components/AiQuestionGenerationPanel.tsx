@@ -39,6 +39,7 @@ import type { QuestionType, Difficulty, Question } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { buildCreateParams } from '@/utils/qbankDraftToParams';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { buildFileAccept } from '@/utils/fileAccept';
 
 // ============================================================================
 // 题型选项
@@ -62,6 +63,20 @@ const MAX_REFERENCE_FILES = 3;
 const MAX_UPLOAD_FILE_BYTES = 20 * 1024 * 1024;
 /** 本地上传接受的扩展名（文本类，DocumentParser 可解析） */
 const UPLOAD_ACCEPT_EXTENSIONS = ['pdf', 'docx', 'doc', 'txt', 'md', 'csv'];
+// MIME 在前：wry Android 会把首个扩展名替换成已识别 MIME、丢弃不认识的扩展名（旧系统的 .md）；
+// Android 放宽到 octet-stream，选完按 UPLOAD_ACCEPT_EXTENSIONS 校验
+const REFERENCE_FILE_ACCEPT = buildFileAccept(
+  [
+    'application/pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/msword',
+    'text/plain',
+    'text/markdown',
+    'text/csv',
+  ],
+  UPLOAD_ACCEPT_EXTENSIONS,
+  { androidExtraMimeTypes: ['application/octet-stream'] },
+);
 
 /** 已选参考文件（来源：资源库 file_id 或本地上传 base64） */
 interface SelectedReference {
@@ -613,7 +628,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
                   ref={uploadInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.docx,.doc,.txt,.md,.csv"
+                  accept={REFERENCE_FILE_ACCEPT}
                   className="hidden"
                   onChange={(e) => void handleUploadChange(e)}
                 />
