@@ -100,10 +100,21 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
         if (kind === 'vega-lite') {
           const spec = JSON.parse(source);
           rejectRemoteValue(spec);
-          const embedModule = await import('vega-embed');
+          const [embedModule, { expressionInterpreter }] = await Promise.all([
+            import('vega-embed'),
+            import('vega-interpreter'),
+          ]);
           if (disposed) return;
           const embed: any = (embedModule as any).default ?? embedModule;
-          const result = await embed(host, spec, { actions: false, renderer: 'svg', defaultStyle: false });
+          // Release builds enforce CSP `script-src 'self'` (no 'unsafe-eval'). Vega's default
+          // expression codegen uses `new Function`, so use the CSP-safe AST interpreter instead.
+          const result = await embed(host, spec, {
+            actions: false,
+            renderer: 'svg',
+            defaultStyle: false,
+            ast: true,
+            expr: expressionInterpreter,
+          });
           cleanup = () => result.finalize?.();
         } else if (kind === 'dot') {
           if (/\b(?:image|href|URL)\s*=/i.test(source)) throw new Error('DOT 图不允许引用外部资源。');
