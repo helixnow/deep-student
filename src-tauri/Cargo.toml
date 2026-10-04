@@ -67,6 +67,10 @@ zip = { version = "0.6", default-features = false, features = ["deflate"] }
 url = "2.4"
 dirs = "4.0"
 image = "0.24"
+# 音视频转写解码（纯 Rust，可交叉编译到 Android；只开必要的容器与编码，无 ffmpeg/onnx）
+# 容器：MP4/M4A、MKV/WebM、OGG、WAV；编码：AAC、ALAC、MP3、FLAC、Vorbis、PCM、ADPCM。
+# Opus/AC-3/WMA 无纯 Rust 解码器，由 media::decoder 给出“请转为 MP4/M4A”的明确提示。
+symphonia = { version = "0.5.5", default-features = false, features = ["aac", "adpcm", "alac", "flac", "mp3", "pcm", "vorbis", "isomp4", "mkv", "ogg", "wav"] }
 qrcode = { version = "0.13", default-features = false, features = ["image"] }
 zerocopy = "0.7"
 backon = "0.4"
