@@ -24,7 +24,7 @@ Its study agent works directly in every app on your Study Desktop.
 </div>
 
 <p align="center">
-  <img src="./docs/assets/readme/en/hero.webp" width="92%" alt="The DeepStudent Study Desktop: the study agent has opened a mind map and a flashcard deck next to the chat window" />
+  <img src="./docs/assets/readme/en/hero.webp" width="92%" alt="The DeepStudent Study Desktop: a mind map the agent generated in chat, next to the exam set it imported and the flashcards due today" />
 </p>
 
 ---
@@ -46,7 +46,7 @@ Actions are approved by risk level, with Ask / Plan / Craft permission modes. Ed
 It remembers your weak spots and study habits. 55 built-in skills load on demand, MCP connects external tools, and 13 model providers are preset — with a different model per feature if you like.
 
 <p align="center">
-  <img src="./docs/assets/readme/en/agent.webp" width="92%" alt="A research task in progress: the agent's task panel checks off each step and writes the result into a note" />
+  <img src="./docs/assets/readme/en/agent.webp" width="92%" alt="The agent opens a note on the Study Desktop and asks for approval before a high-risk edit" />
 </p>
 
 ---

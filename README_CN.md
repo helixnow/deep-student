@@ -25,7 +25,7 @@
 </div>
 
 <p align="center">
-  <img src="./docs/assets/readme/zh/hero.webp" width="92%" alt="DeepStudent 学习桌面：学习 Agent 在对话窗口旁打开了思维导图和闪卡" />
+  <img src="./docs/assets/readme/zh/hero.webp" width="92%" alt="DeepStudent 学习桌面：左侧对话里是 Agent 生成的思维导图，右侧是它导入的题目集和待复习的闪卡" />
 </p>
 
 ---
@@ -47,7 +47,7 @@
 记住你的薄弱点与学习习惯。内置 55 个技能按需加载，支持 MCP 接入外部工具，预置 13 家模型服务商，可按功能分别指定模型。
 
 <p align="center">
-  <img src="./docs/assets/readme/zh/agent.webp" width="92%" alt="调研任务进行中：Agent 的任务面板逐步打勾，并把结果写入笔记" />
+  <img src="./docs/assets/readme/zh/agent.webp" width="92%" alt="Agent 在学习桌面上打开笔记并读取内容，修改前弹出「替换笔记 · 高风险」审批" />
 </p>
 
 ---
