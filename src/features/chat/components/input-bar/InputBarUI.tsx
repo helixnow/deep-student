@@ -2448,7 +2448,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
               // 原因：顶部与消息区零间距后，16px 圆角在 bbox 内留下一个方形「缺口」，
               // 卡片白底与消息区白底同色，那块缺口读起来就是贴在圆角上的一坨白。
               // 描边（1px border）完整保留 —— 它是这张卡唯一的轮廓。
-              : 'rounded-b-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
+              : cn(
+                  // 提问 / 审批卡占据壳体时是一张独立卡片，四角都要圆角（顶部直角只适用于贴底的输入工具条）
+                  pendingApprovalRequest
+                    ? 'rounded-[var(--radius-shell-toolbar)]'
+                    : 'rounded-b-[var(--radius-shell-toolbar)]',
+                  'border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]',
+                )
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
