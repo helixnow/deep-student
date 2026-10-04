@@ -618,19 +618,22 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
         }
 
         // 幂等：Responses 流式路径会对同一 tool_call_id 触发两次 start
-        // （output_item.added 分块 + arguments.done 终态），复用已有 preparing 块
-        {
-            let guard = self
+        // （output_item.added 分块 + arguments.done 终态），复用已有 preparing 块。
+        // 检查与登记在同一把锁内完成（发射一次语义），避免并发 start 双发。
+        let block_id = {
+            let mut guard = self
                 .preparing_block_ids
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
             if guard.contains_key(tool_call_id) {
                 return;
             }
-        }
+            let block_id = ChatV2LLMAdapter::generate_block_id();
+            guard.insert(tool_call_id.to_string(), block_id.clone());
+            block_id
+        };
 
-        // 生成 block_id 并存储映射，供后续 args delta chunk 使用
-        let block_id = ChatV2LLMAdapter::generate_block_id();
+        // block_id 已登记映射，供后续 args delta chunk 使用
         self.ctx.emitter().register_block_event_meta(
             &block_id,
             Some(self.ctx.variant_id()),
@@ -646,13 +649,6 @@ impl crate::llm_manager::LLMStreamHooks for VariantLLMAdapter {
             self.skill_state_version,
             self.round_id.as_deref(),
         );
-        {
-            let mut guard = self
-                .preparing_block_ids
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            guard.insert(tool_call_id.to_string(), block_id);
-        }
     }
 
     fn on_tool_call_args_delta(&self, tool_call_id: &str, delta: &str) {

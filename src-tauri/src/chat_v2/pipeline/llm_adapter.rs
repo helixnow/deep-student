@@ -215,6 +215,12 @@ pub struct ChatV2LLMAdapter {
     response_reasoning_items: std::sync::Mutex<Vec<(Option<String>, Value)>>,
     /// tool_call_id → preparing block_id 映射（用于 args delta chunk 寻址）
     preparing_block_ids: std::sync::Mutex<HashMap<String, String>>,
+    /// 本次流已宣告过 `tool_call_preparing` 的 tool_call_id（发射一次语义）。
+    ///
+    /// 独立于 `preparing_block_ids`：后者在 `on_tool_call` 冲刷参数缓冲时会
+    /// 移除条目，若同一 id 的 start 在此之后再次到达（Responses 终态分块等），
+    /// 仅靠映射去重会再发一次 preparing → 前端出现第二个占位块（孤儿行）。
+    announced_tool_call_ids: std::sync::Mutex<std::collections::HashSet<String>>,
     /// tool_call_id → 累积的 args delta（节流缓冲，减少事件频率）
     args_delta_buffer: std::sync::Mutex<HashMap<String, String>>,
     /// 🔧 F2 修复：最近一次收到流式数据的时刻（用于空闲超时判定）
@@ -269,6 +275,7 @@ impl ChatV2LLMAdapter {
             cached_thought_signature: std::sync::Mutex::new(None),
             response_reasoning_items: std::sync::Mutex::new(Vec::new()),
             preparing_block_ids: std::sync::Mutex::new(HashMap::new()),
+            announced_tool_call_ids: std::sync::Mutex::new(std::collections::HashSet::new()),
             args_delta_buffer: std::sync::Mutex::new(HashMap::new()),
             last_activity_at: std::sync::Mutex::new(std::time::Instant::now()),
             web_search_block_id: std::sync::Mutex::new(None),
@@ -676,6 +683,10 @@ impl ChatV2LLMAdapter {
             .unwrap_or_else(|e| e.into_inner())
             .clear();
         self.preparing_block_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+        self.announced_tool_call_ids
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clear();
@@ -1310,11 +1321,28 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     /// 在 LLM 开始生成工具调用参数时立即调用，让前端显示"正在准备工具调用"
     fn on_tool_call_start(&self, tool_call_id: &str, tool_name: &str) {
         self.touch_activity();
-        log::info!(
-            "[ChatV2::pipeline] Tool call start: id={}, name={} (参数累积中...)",
-            tool_call_id,
-            tool_name
-        );
+        // 同一 tool_call_id 的 start 可能被上游触发多次（Responses 路径：
+        // output_item.added 开始分块 + arguments.done/output_item.done 携带完整
+        // 参数的终态分块；model2 管线对每个带 id 的分块都回调一次）。
+        // 只有首次 start 宣告 preparing，重复 start 静默忽略。
+        let first_start = self
+            .announced_tool_call_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(tool_call_id.to_string());
+        if first_start {
+            log::info!(
+                "[ChatV2::pipeline] Tool call start: id={}, name={} (参数累积中...)",
+                tool_call_id,
+                tool_name
+            );
+        } else {
+            log::debug!(
+                "[ChatV2::pipeline] Duplicate tool call start ignored: id={}, name={}",
+                tool_call_id,
+                tool_name
+            );
+        }
 
         // Responses reasoning item 相邻配对：reasoning item 在流中先于其
         // function_call 到达，把最近一个未配对条目配到本 tool_call_id。
@@ -1340,6 +1368,10 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         // 但检索工具的 execute_* 方法会创建另一个检索类型块（如 web_search）
         // 由于检索工具不发射 tool_call_start，preparing 块不会被复用，导致两个块
         // 解决方案：检索工具跳过 tool_call_preparing 事件
+        if !first_start {
+            return;
+        }
+
         if Self::is_builtin_retrieval_tool(tool_name) {
             log::debug!(
                 "[ChatV2::pipeline] Skipping tool_call_preparing for builtin retrieval tool: {}",
@@ -1349,19 +1381,11 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
         }
 
         // 生成 block_id 并存储映射，供后续 args delta chunk 使用。
-        // 幂等：Responses 流式路径（output_item.added 分块 + arguments.done 终态）
-        // 会对同一 tool_call_id 触发两次 start，复用已有 preparing 块避免 UI 重复
         let block_id = Self::generate_block_id();
-        {
-            let mut guard = self
-                .preparing_block_ids
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            if guard.contains_key(tool_call_id) {
-                return;
-            }
-            guard.insert(tool_call_id.to_string(), block_id.clone());
-        }
+        self.preparing_block_ids
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(tool_call_id.to_string(), block_id.clone());
 
         self.emitter.register_block_event_meta(
             &block_id,
@@ -1746,5 +1770,130 @@ mod response_reasoning_pairing_tests {
         adapter.on_response_reasoning_item(&reasoning_item("rs_1"));
         adapter.reset_stream_state();
         assert!(adapter.get_response_reasoning_items().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod tool_call_preparing_emit_once_tests {
+    use super::*;
+    use crate::chat_v2::events::{BackendEvent, ExecutionEventSink, SessionEvent};
+
+    #[derive(Default)]
+    struct RecordingSink {
+        block_events: std::sync::Mutex<Vec<BackendEvent>>,
+    }
+
+    impl ExecutionEventSink for RecordingSink {
+        fn emit_block_event(&self, _channel: &str, event: &BackendEvent) {
+            self.block_events.lock().unwrap().push(event.clone());
+        }
+        fn emit_session_event(&self, _channel: &str, _event: &SessionEvent) {}
+        fn window(&self) -> Option<tauri::Window> {
+            None
+        }
+    }
+
+    fn recording_adapter() -> (ChatV2LLMAdapter, Arc<RecordingSink>) {
+        let sink = Arc::new(RecordingSink::default());
+        let emitter = Arc::new(ChatV2EventEmitter::with_sink_and_batching(
+            sink.clone(),
+            "sess_prep_once".to_string(),
+            false,
+        ));
+        let adapter = ChatV2LLMAdapter::new(
+            emitter,
+            "msg_prep_once".to_string(),
+            false,
+            None,
+            Some("tool-round-0".to_string()),
+            crate::utils::model_special_tokens::ModelWrapTokenPolicy::Disabled,
+        );
+        (adapter, sink)
+    }
+
+    fn preparing_starts_for(sink: &RecordingSink, tool_call_id: &str) -> Vec<BackendEvent> {
+        sink.block_events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| {
+                e.r#type == event_types::TOOL_CALL_PREPARING
+                    && e.phase == "start"
+                    && e.payload
+                        .as_ref()
+                        .and_then(|p| p.get("toolCallId"))
+                        .and_then(Value::as_str)
+                        == Some(tool_call_id)
+            })
+            .cloned()
+            .collect()
+    }
+
+    fn collected_tool_call_message(id: &str, name: &str) -> LegacyChatMessage {
+        serde_json::from_value(json!({
+            "role": "assistant",
+            "content": "",
+            "timestamp": "2026-10-01T00:00:00Z",
+            "tool_call": { "id": id, "tool_name": name, "args_json": { "note_id": "n1" } }
+        }))
+        .expect("legacy chat message")
+    }
+
+    /// 回归：日志里同一 id 出现两次 "Tool call start"（Responses added + done
+    /// 终态分块）。preparing 必须只发一次——否则前端建两个占位块，只有一个
+    /// 被 tool_call start 提升，另一个以「准备中/执行中」孤儿行留到流结束。
+    #[test]
+    fn repeated_tool_call_start_emits_preparing_once() {
+        let (adapter, sink) = recording_adapter();
+        adapter.on_tool_call_start("call_00_dup", "builtin-note_read");
+        adapter.on_tool_call_start("call_00_dup", "builtin-note_read");
+
+        let starts = preparing_starts_for(&sink, "call_00_dup");
+        assert_eq!(starts.len(), 1, "preparing must be announced exactly once");
+    }
+
+    /// on_tool_call 冲刷参数缓冲会移除 preparing 映射；之后到达的同 id start
+    /// 也不得再次宣告 preparing。
+    #[test]
+    fn tool_call_start_after_collection_does_not_reannounce_preparing() {
+        let (adapter, sink) = recording_adapter();
+        adapter.on_tool_call_start("call_00_late", "builtin-note_read");
+        adapter.on_tool_call_args_delta("call_00_late", "{\"note_id\":\"n1\"}");
+        adapter.on_tool_call(&collected_tool_call_message(
+            "call_00_late",
+            "builtin-note_read",
+        ));
+        adapter.on_tool_call_start("call_00_late", "builtin-note_read");
+
+        let starts = preparing_starts_for(&sink, "call_00_late");
+        assert_eq!(starts.len(), 1);
+        // 参数预览尾巴仍按首个 preparing 块寻址
+        let block_id = starts[0].block_id.clone().expect("preparing block id");
+        let chunks: Vec<_> = sink
+            .block_events
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.r#type == event_types::TOOL_CALL_PREPARING && e.phase == "chunk")
+            .map(|e| e.block_id.clone())
+            .collect();
+        assert_eq!(chunks, vec![Some(block_id)]);
+        assert_eq!(adapter.take_tool_calls().len(), 1);
+    }
+
+    /// 不同 tool_call_id 各自宣告一次；流重试（reset_stream_state）后视为新流。
+    #[test]
+    fn distinct_ids_and_retry_reset_each_announce_once() {
+        let (adapter, sink) = recording_adapter();
+        adapter.on_tool_call_start("call_a", "builtin-note_read");
+        adapter.on_tool_call_start("call_b", "builtin-resource_list");
+        adapter.on_tool_call_start("call_a", "builtin-note_read");
+        assert_eq!(preparing_starts_for(&sink, "call_a").len(), 1);
+        assert_eq!(preparing_starts_for(&sink, "call_b").len(), 1);
+
+        adapter.reset_stream_state();
+        adapter.on_tool_call_start("call_c", "builtin-note_read");
+        adapter.on_tool_call_start("call_c", "builtin-note_read");
+        assert_eq!(preparing_starts_for(&sink, "call_c").len(), 1);
     }
 }
