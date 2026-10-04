@@ -46,7 +46,9 @@ const DEFAULT_SYSTEM_PROMPT: &str = "你是一个专业的AI学习助手，帮�
 /// 回复语言规则（稳定前缀，字节恒定）。
 /// 系统提示里的工具 / 技能说明大量是英文，模型在工具调用前后的过程说明常切成英文
 ///（用户用中文提问，却看到 "I'll load the memory capability first."）。
-const RESPONSE_LANGUAGE_RULE: &str = "<response_language>\n回复语言跟随用户：用户用中文提问就全程用中文，包括调用工具前后的过程说明、计划与总结；只有用户明确要求或引用原文时才用其他语言。\n</response_language>";
+/// 规则必须对语言中立：只写「中文进中文出」时，英文用户也会收到中文的过程说明和
+/// 提问卡（实测英文界面 + 英文提问，ask_user 的问题与选项全是中文）。
+const RESPONSE_LANGUAGE_RULE: &str = "<response_language>\nReply in the language of the user's latest message: Chinese in, Chinese out; English in, English out. This covers everything the user reads — narration before and after tool calls, plans, ask_user questions and options, summaries, and content you write into apps (notes, mind maps, flashcards, explanations) — unless the user asks for another language or you are quoting source text.\n回复语言跟随用户最新一条消息：中文提问用中文，英文提问用英文。\n</response_language>";
 
 /// 引用指引（详细版）
 /// ★ 2026-01 修复：添加 [图片-N] 引用类型，与前端 citationParser 保持一致
