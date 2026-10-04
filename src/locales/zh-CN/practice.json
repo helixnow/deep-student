@@ -332,7 +332,8 @@
     "emptyImportDesc": "拍照、截图或文档，AI 自动识别题目",
     "emptyCsvDesc": "从 CSV 表格批量导入题目",
     "emptyDropHint": "也可以把图片或文档直接拖到这里",
-    "emptyReadOnlyDesc": "该题目集还没有题目"
+    "emptyReadOnlyDesc": "该题目集还没有题目",
+    "settings": "设置"
   },
   "editor": {
     "loading": "加载题目中...",

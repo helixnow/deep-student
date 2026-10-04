@@ -188,7 +188,14 @@
       "notApkg": "Please choose an Anki deck file in .apkg format",
       "failed": "Failed to import the Anki deck"
     },
-    "emptyHint": "Create a card by hand, or import a local Anki deck (.apkg)."
+    "emptyHint": "Create a card by hand, or import a local Anki deck (.apkg).",
+    "queue": {
+      "inboxTitle": "Generated · Not in queue",
+      "inboxHint": "Not scheduled yet, so these won't appear in the due queue",
+      "enqueueAll": "Add to review ({{count}})",
+      "scheduledTitle": "Review queue",
+      "dueCount": "{{count}} due"
+    }
   },
   "session": {
     "title": "Review",
@@ -435,6 +442,29 @@
         "days": "{{value}} d",
         "years": "{{value}} yr"
       }
+    },
+    "fsrsParams": {
+      "difficultyLow": "Low (<4)",
+      "difficultyMid": "Medium (4–7)",
+      "difficultyHigh": "High (≥7)",
+      "localNote": "Aggregated locally from the due queue; nothing is uploaded",
+      "loading": "Reading the due queue…",
+      "unavailable": "Memory parameters unavailable (requires a backend with FSRS scheduling)",
+      "emptyQueue": "No cards are due, so there are no memory parameters to aggregate",
+      "allNew_one": "The due queue has {{count}} card, and it's new and never reviewed, so there's no Stability / Difficulty yet",
+      "allNew_other": "The due queue has {{count}} cards, all new and never reviewed, so there's no Stability / Difficulty yet",
+      "stabilityMedian": "Stability median",
+      "stabilityMean": "Stability mean",
+      "stabilityRange": "Stability range",
+      "difficultyMedian": "Difficulty median",
+      "difficultyMean": "Difficulty mean",
+      "withParams": "Cards with parameters",
+      "stabilityHistogram": "Stability distribution",
+      "newExcluded_one": "{{count}} more new card hasn't been reviewed and has no parameters, so it's excluded",
+      "newExcluded_other": "{{count}} more new cards haven't been reviewed and have no parameters, so they're excluded",
+      "sampleCapped": "The due queue has more than {{limit}} cards; only the first {{limit}} are counted",
+      "title": "Memory state distribution (due sample)",
+      "subtitle": "S / D distribution of due cards, not model weights; the sample depends on limits and queue policy"
     }
   }
 }

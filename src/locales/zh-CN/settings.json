@@ -220,7 +220,8 @@
         "unsupported_include_hint": "该模型不支持 include_thoughts 参数",
         "note": "系统会自动将这些设置映射到对应平台（OpenAI reasoning.effort、Claude thinking、Gemini thinkingBudget/include_thoughts）。",
         "generic_effort_toggle": "思考强度支持",
-        "generic_effort_toggle_hint": "开启后可为该模型选择思考强度档位（low / medium / high / xhigh，以 reasoning_effort 发送）；关闭时仅保留 thinking_budget 兜底。"
+        "generic_effort_toggle_hint": "开启后可为该模型选择思考强度档位（low / medium / high / xhigh，以 reasoning_effort 发送）；关闭时仅保留 thinking_budget 兜底。",
+        "unified_levels_hint": "思考强度统一五档；该模型实际支持的档位由后端在请求前按模型能力就近映射。"
       },
       "fields": {
         "api_key": "API 密钥",
@@ -849,7 +850,8 @@
       "active_hint_idle": "后台调度运行中，暂无待触发的任务",
       "paused_hint": "后台运行已关闭，窗口关闭后定时任务不会触发",
       "confirm_hint": "关闭后台运行？窗口关闭后所有定时任务（含心跳）将不再触发，直到重新开启。",
-      "confirm": "关闭后台运行"
+      "confirm": "关闭后台运行",
+      "mobile_note": "定时任务仅在应用打开时运行；应用切到后台或被关闭后不会触发。"
     },
     "action_type": {
       "notify": "通知 + 待办",
@@ -1293,6 +1295,7 @@
       "description": "将当前日志和旧版本遗留日志脱敏后汇总为 ZIP，不会包含数据库和用户文档。",
       "mobile_unsupported": "当前版本暂不支持移动端分享；启用错误报告后仍会自动记录故障。",
       "action": "导出 ZIP",
+      "share_action": "分享 ZIP",
       "success": "诊断包已导出（{{count}} 个文件）",
       "partial": "已导出 {{count}} 个文件，另有 {{skipped}} 个文件未能包含"
     },
@@ -2474,7 +2477,8 @@
     "none": "暂无",
     "prompts_resources_section": "Prompts & Resources",
     "toggle_enabled": "启用或停用服务器 {{name}}",
-    "disabled_badge": "已停用"
+    "disabled_badge": "已停用",
+    "builtinServerName": "内置工具"
   },
   "tool_permissions": {
     "title": "工具权限管理",
@@ -3106,5 +3110,18 @@
       "error": "错误"
     },
     "mobile_hidden": "插件功能仅在桌面端可用"
+  },
+  "browserRuntime": {
+    "needWorkbench": "内置浏览器不可用：请先启用学习桌面",
+    "needBrowserEnabled": "内置浏览器不可用：请在设置中启用内置浏览器",
+    "flagUnreadable": "内置浏览器不可用：无法读取功能开关，请重试",
+    "flagDisabled": "内置浏览器不可用：当前版本未开放此功能（功能开关已关闭）",
+    "disabled": "内置浏览器不可用：功能未启用",
+    "commandMissing": "浏览器后端命令尚未就绪（{{command}}）。请确认 workbench 浏览器功能已启用并完成接线。",
+    "commandFailed": "浏览器命令失败：{{command}}",
+    "operationFailed": "浏览器操作失败",
+    "busy": "浏览器正在处理上一项操作",
+    "navigationBlocked": "导航被阻止：{{detail}}",
+    "securityPolicy": "目标不符合浏览器安全策略"
   }
 }

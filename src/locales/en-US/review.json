@@ -261,5 +261,35 @@
     "sm2Desc": "Spaced repetition is a scientifically proven learning technique that reinforces long-term memory by reviewing at optimal intervals. The system automatically adjusts your next review time based on your performance.",
     "ratingTitle": "How to Rate?",
     "ratingDesc": "Rate based on how easily you recalled the answer: Again (completely forgot), Hard (barely recalled), Good (recalled with some effort), Easy (instantly recalled)."
+  },
+  "insightConfirm": {
+    "title": "Save this insight?",
+    "source": "Source: {{source}} (you can edit or delete it anytime after saving)",
+    "ownership": {
+      "self_reported": "your own summary",
+      "guided": "your words, guided by AI",
+      "ai_draft": "an AI draft based on your solution"
+    },
+    "fields": {
+      "title": "Method in one line",
+      "situation": "Situation (what problem / context)",
+      "stuckPoint": "Sticking point (where you got stuck)",
+      "turningPoint": "Breakthrough (how it clicked)",
+      "rule": "Transferable rule (when to use it again)",
+      "conditions": "When does this rule hold?"
+    },
+    "hints": {
+      "turningPoint": "Use your own words — this is the most valuable part",
+      "conditions": "Leave blank if unsure; you can add it later"
+    },
+    "placeholders": {
+      "title": "e.g. Spot the derivative structure → substitute",
+      "situation": "Find ∫ x(x²+1)³ dx",
+      "stuckPoint": "The integrand's degree is too high to expand",
+      "turningPoint": "Noticed x is exactly half the derivative of (x²+1)",
+      "rule": "Spot \"one part is the derivative of another\" → let that part be u",
+      "conditions": "The outer factor is proportional to the inner derivative"
+    },
+    "submit": "Save insight"
   }
 }

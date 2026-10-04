@@ -3444,7 +3444,9 @@
       "last_accessed": "最近访问"
     },
     "notifications": {
-      "heic_fallback": "HEIC转换失败，已使用原图：{{fileName}}\n提示：建议使用JPG或PNG格式以获得更好兼容性",
+      "heic_unsupported": "{{fileName}} 是 HEIC/HEIF 照片，当前设备无法转换。请先导出为 JPG 或 PNG 后再试。",
+      "heic_android_too_old": "{{fileName}} 是 HEIC/HEIF 照片，转换需要 Android 9 及以上系统。请先导出为 JPG 或 PNG 后再试。",
+      "heic_decode_failed": "HEIC/HEIF 照片 {{fileName}} 转换失败（文件可能已损坏，或设备缺少 HEVC 解码器）。请先导出为 JPG 或 PNG 后再试。",
       "heic_compat_title": "HEIC格式兼容性提示"
     },
     "progress": {
@@ -3993,6 +3995,55 @@
     "notifyAction": "立即更新",
     "readyMessage": "更新已下载完成，重启应用后生效",
     "restartNow": "立即重启",
-    "installerLaunched": "已调起系统安装器，请在安装器中完成安装"
+    "installerLaunched": "已调起系统安装器，请在安装器中完成安装",
+    "channelUnknown": "无法确认更新渠道，请稍后重试",
+    "serverUnreachable": "无法连接更新服务器，请稍后重试"
+  },
+  "provider_brands": {
+    "qwen": "阿里云百炼",
+    "alibaba": "阿里云",
+    "bytedance": "字节跳动",
+    "zhipu": "智谱AI",
+    "tencent": "腾讯",
+    "moonshot": "月之暗面",
+    "kuaishou": "快手",
+    "baidu": "百度",
+    "xfyun": "讯飞",
+    "senseTime": "商汤",
+    "01ai": "零一万物",
+    "baichuan": "百川智能",
+    "stepfun": "阶跃星辰",
+    "baai": "智源研究院",
+    "internlm": "书生·浦语",
+    "youdao": "网易有道",
+    "antling": "蚂蚁百灵",
+    "teleai": "电信TeleAI"
+  },
+  "qbank_grading": {
+    "timeout": "AI 评判超时，请重试",
+    "in_progress": "评判正在进行中",
+    "failed": "评判失败"
+  },
+  "image_answer": {
+    "unsupported_format": "不支持此图片格式，请选择 PNG、JPEG、WebP 或 GIF 图片",
+    "too_large": "图片过大（{{size}}MB），请选择小于 8MB 的图片或稍后重试",
+    "read_failed": "读取图片失败"
+  },
+  "file_errors": {
+    "base64_empty": "Base64 内容为空或无效",
+    "conversion_failed": "文件转换失败"
+  },
+  "template_render": {
+    "empty_tag": "空的模板标签",
+    "unsupported_tag": "不支持的模板标签 {{tag}}",
+    "section_missing_name": "缺少名称的条件段",
+    "extra_close": "多余的结束标签 {{tag}}",
+    "close_mismatch": "结束标签 {{close}} 与开始标签 {{open}} 不匹配",
+    "filter_missing_field": "过滤器缺少字段名 {{tag}}",
+    "unknown_filter": "未知的模板过滤器「{{filter}}」，已按普通字段渲染",
+    "unclosed_section": "条件段 {{open}} 缺少结束标签 {{close}}",
+    "frontside_on_front": "{{tag}} 只能用于背面模板",
+    "render_exception": "模板渲染异常：{{message}}",
+    "card_render_failed": "卡片渲染失败：{{message}}"
   }
 }

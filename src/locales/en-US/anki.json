@@ -774,7 +774,9 @@
     "quickExport": "Export",
     "noExportableCards": "No exportable cards",
     "retryStarted": "Retried {{count}} failed tasks",
-    "retryPartial": "{{succeeded}} retried, {{failed}} failed"
+    "retryPartial": "{{succeeded}} retried, {{failed}} failed",
+    "statsLoadFailed": "Couldn't load stats. The task list is unaffected.",
+    "sessionWarningsHint": "Some segments failed or have warnings (doesn't block running or completion)"
   },
   "chatV2": {
     "generating": "Generating cards...",
@@ -985,7 +987,14 @@
       "missing_front": "Missing front content",
       "missing_back": "Missing back content",
       "missing_field": "Template field {{field}} is empty"
-    }
+    },
+    "init_failed": "Card generator failed to initialize: {{error}}",
+    "listener_not_ready": "event listeners are not ready",
+    "content_empty": "Content can't be empty",
+    "idle_timeout_one": "Generation went idle and timed out; collected {{count}} card",
+    "idle_timeout_other": "Generation went idle and timed out; collected {{count}} cards",
+    "no_templates": "No templates available",
+    "llm_suggestion_unavailable": "AI analysis is unavailable; choose a template based on the content"
   },
   "agent": {
     "transform": {

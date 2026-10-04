@@ -26,7 +26,8 @@
       "placementBackground": "（后台直落）",
       "placementStageFull": "（演出槽满，直落）",
       "placementFrozen": "（窗口冻结，直落）",
-      "dockDoneBadge": "AI 已在后台完成操作"
+      "dockDoneBadge": "AI 已在后台完成操作",
+      "operatingFallback": "AI 正在操作"
     },
     "errors": {
       "controlOff": "Agent 桌面操控已关闭（desktop.workbenchAgentControl=off）",
@@ -36,7 +37,14 @@
       "launchFailed": "无法打开应用窗口",
       "launchFailedHint": "桌面模式未就绪或应用未注册",
       "abortedByControlOff": "操控已关闭，操作已中止",
-      "abortedByOsOff": "桌面模式已关闭，操作已中止"
+      "abortedByOsOff": "桌面模式已关闭，操作已中止",
+      "cancelledBeforeApply": "操作在准备阶段已取消，未开始执行",
+      "heartbeatTimeout": "操作心跳超时，已中止",
+      "windowClosed": "窗口已关闭，操作中断",
+      "windowClosedOrRemoved": "窗口已关闭（资源删除或用户关窗），操作中断",
+      "stageStopped": "StageManager 已停止，操作中断",
+      "applyFailed": "apply 异常: {{error}}",
+      "abortFailed": "abort 异常: {{error}}"
     },
     "apps": {
       "reserved": "-",
@@ -47,6 +55,56 @@
         "undoCreate": "删除刚创建的模板",
         "undoRename": "恢复模板名称",
         "undoUpdateContent": "恢复模板内容"
+      }
+    },
+    "drivers": {
+      "todo": {
+        "switchList": "切换清单 {{listId}}"
+      },
+      "note": {
+        "listSeparator": "；",
+        "noSuggestionPanel": "当前环境没有可用的建议面板",
+        "noSuggestionClaimer": "没有匹配的笔记编辑器认领建议",
+        "fullReadUnsupported": "长笔记编辑器未提供安全的全文读取 API",
+        "saveConfirmUnsupported": "编辑器未提供持久化确认能力",
+        "contentChanged": "笔记正文已变化，OCC 校验失败",
+        "replaceVerifyFailed": "全文替换后的内容验证失败",
+        "replaceRejected": "全文替换被编辑器拒绝",
+        "fullWriteUnsupported": "长笔记编辑器未提供安全的全文写入 API",
+        "setMarkdownRejected": "编辑器拒绝 setMarkdown",
+        "setMarkdownVerifyFailed": "setMarkdown 后正文验证失败",
+        "setMarkdownFailed": "setMarkdown 失败",
+        "emptyInsert": "插入内容为空",
+        "anchorUnresolved": "无法解析锚点",
+        "anchorUnresolvedNamed": "无法解析锚点「{{anchor}}」",
+        "structuredSegmentUnconfirmed": "编辑器未确认第 {{index}}/{{total}} 段结构化插入",
+        "structuredInsertFailed": "结构化插入失败",
+        "textInsertUnconfirmed": "编辑器未确认文本插入",
+        "progressChars": "{{label}}（{{done}}/{{total}}）",
+        "reviewingLabel": "等待确认：{{label}}",
+        "suggestionNotCreated": "编辑建议未建立",
+        "suggestionNotCreatedReason": "编辑建议未建立：{{reason}}",
+        "unknownReason": "未知原因",
+        "suggestionSubmittedItem": "已提交建议：{{label}}",
+        "suggestionSubmitted": "已提交编辑建议，等待用户在 diff 面板确认（accept/reject）",
+        "readFailed": "无法读取当前笔记正文",
+        "missingResourceId": "缺少 resourceId，无法定位笔记编辑器",
+        "editorNotMounted": "笔记编辑器未挂载（窗口未打开或未就绪），请改走后端数据面或先 open_app note",
+        "destructiveWriteFailed": "破坏类写入失败",
+        "unsupportedOp": "不支持的 op：{{kind}}",
+        "windowedWriteFailed": "长笔记全文写入失败",
+        "contentUnchanged": "编辑器未确认正文发生变化",
+        "partialItem": "{{label}}（部分）",
+        "insertFailed": "插入失败",
+        "appliedSaveFailed": "内容已应用，但自动保存失败：{{error}}",
+        "abortedPartial": "操作已中断，已返回部分结果",
+        "appliedInWindowSaveFailed": "内容已在窗口中应用，但自动保存失败：{{error}}",
+        "suggestionStepsPending": "已提交编辑建议；建议后的步骤尚未执行：{{steps}}",
+        "savedSuggestionPending": "前序内容已保存，编辑建议等待用户在 diff 面板确认（accept/reject）",
+        "appliedAndSaved": "已在前端实时应用并保存",
+        "stepsIncomplete": "部分步骤未完成：{{steps}}",
+        "remainingAborted": "已中止剩余步骤",
+        "aborted": "noteDriver 已中止"
       }
     }
   },
@@ -104,7 +162,7 @@
         "actions": "打开目录、揭示或选择资源、导航、搜索、切换视图与排序"
       },
       "exam": {
-        "name": "题库",
+        "name": "题目集",
         "actions": "定位或切换题目、筛选题目、切换练习/专注模式和设置面板"
       },
       "flashcards": {
@@ -811,7 +869,12 @@
     "clearTrace": "清空",
     "distribution": "生命周期分布",
     "minimizedTag": "最小化",
-    "close": "关闭面板"
+    "close": "关闭面板",
+    "firstFrame": "{{value}}→首帧",
+    "acrNoTransactions": "（无活跃 transaction）",
+    "acrNoPresence": "（无活跃 presence）",
+    "acrNoReceipts": "（尚无回执 · StageManager 接线后可见）",
+    "acrNoDomainEvents": "（尚无域事件）"
   },
   "notesWorkspace": {
     "title": "笔记",
@@ -953,7 +1016,9 @@
     },
     "renameSync": {
       "updated": "已同步更新 {{count}} 篇笔记中的双链",
-      "incomplete": "{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查"
+      "incomplete": "{{count}} 篇笔记中的双链未同步（有未保存修改或写回失败），请手动检查",
+      "scanFailed": "标题已更新，但未能扫描引用来源，双链可能未同步，请手动检查。",
+      "truncated": "引用来源超出单批上限，本批仅同步了前 {{count}} 篇，其余请稍后重新处理。"
     },
     "tree": {
       "aria": "文件树",

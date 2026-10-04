@@ -121,6 +121,7 @@
     "startingSoon": "即将开始",
     "background": "关闭窗口后继续运行",
     "backgroundHint": "显式退出应用或关机会停止任务，重新打开后按补偿策略恢复",
+    "backgroundMobileNote": "定时任务仅在应用打开时运行；应用切到后台或被关闭后不会触发。",
     "agentTurnHint": "Agent 任务会在后台无人值守调用 AI 模型（消耗 token），执行结果可在运行历史中查看",
     "sessionModeHint": "连续会话会保留此前运行的上下文，适合需要记忆的任务；每次独立更省 token",
     "modelHint": "留空使用默认对话模型；可在 设置 → 模型 查看可用模型 ID",
@@ -792,6 +793,9 @@
     "presets": {
       "label": "时长快捷预设",
       "setTitle": "将专注时长设为 {{count}} 分钟"
+    },
+    "errors": {
+      "moreFailures": "（另有 {{count}} 条失败）"
     }
   },
   "sidebar": {

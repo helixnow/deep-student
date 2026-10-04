@@ -416,7 +416,25 @@
       "delete_failed": "审阅结束状态未能保存，重启后候选可能再次出现。请重试清理。",
       "hydrate_failed": "无法读取已保存的审阅候选，原数据未改动。请重试恢复。",
       "recovery_ambiguous": "找到多个旧窗口的审阅候选，请选择要恢复的候选。",
-      "recovery_claimed": "候选已由其他笔记窗口恢复，请刷新后重试。"
+      "recovery_claimed": "候选已由其他笔记窗口恢复，请刷新后重试。",
+      "review_not_ready": "审阅尚未就绪。",
+      "review_finished": "审阅已结束。",
+      "retry_previous_first": "请先重试上一组的保存，再处理其他建议。",
+      "structure_mismatch": "候选审阅结构与正文不一致，请重新打开审阅。",
+      "state_not_saved": "审阅状态尚未保存，请重试。",
+      "save_as_unavailable": "另存结果接口尚未就绪。",
+      "source_changed_during_save_as": "另存期间原笔记已变化。",
+      "candidate_changed_after_failure": "保存失败后候选已变化，请重新审阅。",
+      "flush_unavailable": "笔记保存接口尚未就绪。",
+      "window_changed": "笔记窗口已变化，审阅结果已保留供恢复。",
+      "review_editor_expand": "审阅编辑器尚未就绪，请展开候选后重试。",
+      "version_changed_accepted": "笔记版本已变化，候选和已接受组已保留。请重新生成建议。",
+      "undo_via_checkpoint": "已接受组请通过检查点撤销。",
+      "review_editor_not_ready": "审阅编辑器尚未就绪。",
+      "scope_unavailable": "范围选择接口尚未就绪。",
+      "candidate_unparseable": "候选 Markdown 无法解析。",
+      "groups_changed": "审阅分组已变化，请重新打开审阅。",
+      "review_suspended": "审阅已挂起。"
     }
   },
   "fullDocument": {
@@ -858,7 +876,10 @@
     "unwrap-columns": "展开为普通块",
     "unavailable_here": "当前位置不可用：{{label}}",
     "enable_confirm": "启用分栏后，此笔记需要支持分栏格式的版本才能编辑。是否启用？",
-    "enable_title": "启用分栏"
+    "enable_title": "启用分栏",
+    "cornell_heading_cues": "线索（Cues）",
+    "cornell_heading_notes": "笔记（Notes）",
+    "cornell_heading_summary": "总结（Summary）"
   },
   "draftPersistence": {
     "save_unconfirmed": "草稿持久化未确认。",
@@ -1380,14 +1401,16 @@
       "placeholder": "使用默认导出目录",
       "choose": "选择…",
       "clear": "清除",
-      "help": "若未指定路径，文件将保存到应用数据目录的 exports 文件夹。"
+      "help": "若未指定路径，文件将保存到应用数据目录的 exports 文件夹。",
+      "lastExported": "上次导出：{{time}}"
     },
     "filter_name": "笔记备份",
     "actions": {
       "export": "导出",
       "exporting": "正在导出…"
     },
-    "all_notes_hint": "将导出所有笔记及其附件"
+    "all_notes_hint": "将导出所有笔记及其附件",
+    "unsaved_blocked": "仍有笔记未能保存，为避免导出遗漏最新内容已暂停导出。请重试。"
   },
   "dialogs": {
     "close": "关闭",
@@ -1798,12 +1821,20 @@
       "danger": "危险",
       "info": "信息"
     },
-    "cycleType": "切换 Callout 类型"
+    "cycleType": "切换 Callout 类型",
+    "toggleFold": "折叠或展开"
   },
   "wikilink": {
     "noCandidates": "无候选笔记",
     "create": "创建 \"{{title}}\"",
-    "empty": "无匹配笔记"
+    "empty": "无匹配笔记",
+    "aliasHint": "别名模式：插入后显示「{{label}}」",
+    "headingHint": "标题模式：链接到「{{target}}」中的标题",
+    "previewLoading": "加载中…",
+    "previewEmpty": "（空笔记）",
+    "ambiguousTitle_one": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
+    "ambiguousTitle_other": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
+    "cacheTruncated": "笔记数量超过 {{max}} 条上限，超出部分的双链可能显示为未解析"
   },
   "wikilinkV2": {
     "createConfirm": "创建新笔记「{{title}}」？",
@@ -1872,7 +1903,8 @@
     "untitled": "笔记导图",
     "noOutline": "这篇笔记里没有标题或列表，先用标题 / 列表整理出层级再生成导图",
     "created": "已生成思维导图「{{title}}」（{{count}} 个节点）",
-    "failed": "生成思维导图失败"
+    "failed": "生成思维导图失败",
+    "failedWithError": "生成思维导图失败：{{error}}"
   },
   "versions": {
     "title": "版本历史",
@@ -2104,7 +2136,41 @@
     "drafts_found": "已找到未保存草稿",
     "view_draft": "查看草稿 {{index}}",
     "save_draft_as_note": "草稿另存为笔记",
-    "ai_update_deferred": "AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。"
+    "ai_update_deferred": "AI 的更新未应用：这篇笔记有尚未保存的修改。保存后若出现冲突提示，可在其中对比并选择版本。",
+    "errors": {
+      "editor_open_timeout": "笔记编辑器打开超时，请重试。",
+      "operation_busy": "笔记正在执行另一项操作，请稍后重试。",
+      "conflicting_drafts": "同一笔记存在不同的未保存草稿。请先处理各窗口的草稿冲突。",
+      "remote_not_registered": "笔记编辑器尚未完成跨窗口注册，请重试。",
+      "freeze_timeout": "等待其他笔记窗口冻结超时，请重试。",
+      "lease_cancelled": "笔记操作租约已取消，请重试。",
+      "missing_save_version": "笔记编辑器缺少保存版本，请重新打开笔记。",
+      "refresh_timeout": "等待其他笔记窗口刷新超时，请重试。",
+      "refresh_version_mismatch": "笔记刷新版本不匹配，请重试。",
+      "range_unresolved": "无法精确定位所选范围。",
+      "editor_not_ready": "笔记编辑器尚未就绪。",
+      "full_read_failed": "无法读取完整笔记。",
+      "select_text_first": "请先在笔记中选择文本。",
+      "review_copy_missing_version": "审阅副本缺少原保存版本，请重新审阅后另存。",
+      "save_as_unconfirmed": "另存笔记未得到持久化确认。",
+      "review_body_changed": "审阅正文已变化，请重新生成建议。",
+      "review_missing_version": "审阅缺少保存版本，请重新打开笔记。",
+      "format_unconfirmed": "无法确认笔记格式。",
+      "format_requires_newer": "此笔记格式需要更新版本的编辑器；已暂停编辑。",
+      "select_insert_position": "请先在编辑器中选择插入位置。",
+      "select_position_reopen": "请在编辑器中选择位置，再重新打开模板面板。",
+      "insert_position_stale": "插入位置已失效，请重新打开模板面板。",
+      "insert_position_changed": "插入位置已改变。",
+      "props_unavailable": "笔记属性不可用。",
+      "note_switched": "笔记已切换。",
+      "props_loading": "笔记属性仍在加载，请稍后重试预览。",
+      "note_switched_or_readonly": "笔记已切换或不可编辑。",
+      "maintenance_mode": "维护期间无法保存属性。",
+      "props_owner_changed": "笔记属性归属已变化。",
+      "props_version_unavailable": "属性保存版本不可用。",
+      "review_scope_stale": "审阅范围已过期，请重新选择范围。",
+      "review_closed": "审阅实例已关闭。"
+    }
   },
   "agent": {
     "caret_label": "AI"
@@ -2151,5 +2217,8 @@
     "resource": "来自资料",
     "resource_page": "来自资料 · 第 {{page}} 页",
     "open": "回到来源"
+  },
+  "selection": {
+    "group": "更多"
   }
 }

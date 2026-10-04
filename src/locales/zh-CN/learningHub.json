@@ -56,7 +56,7 @@
     "permanentDelete": "永久删除",
     "addToDesktop": "添加到桌面",
     "addedToDesktop": "已添加到桌面",
-    "newMindMap": "新建知识导图",
+    "newMindMap": "新建思维导图",
     "newTodo": "新建待办列表",
     "deleteTitle": "确认删除",
     "export": "导出",
@@ -76,7 +76,10 @@
     "unfavoriteSuccess": "已取消收藏",
     "duplicate": "制造副本",
     "paste": "粘贴",
-    "pasteCount": "粘贴 {{count}} 项"
+    "pasteCount": "粘贴 {{count}} 项",
+    "exportNoteReaderNotReady": "笔记全文读取能力尚未就绪，请稍后重试导出。",
+    "exportNoteSwitched": "笔记已切换，请重新导出。",
+    "exportFullTextNotLoaded": "全文尚未加载，无法导出普通 Markdown。"
   },
   "toolbar": {
     "search": "搜索资源...",
@@ -108,7 +111,7 @@
     "essay": "作文批改",
     "image": "图片",
     "file": "文档",
-    "mindmap": "知识导图",
+    "mindmap": "思维导图",
     "todo": "待办列表"
   },
   "actionBar": {
@@ -531,7 +534,7 @@
       "newTextbook": "导入资料…",
       "newTranslation": "新建翻译",
       "newEssay": "新建作文",
-      "newMindMap": "新建知识导图",
+      "newMindMap": "新建思维导图",
       "newTodo": "新建待办列表",
       "viewGrid": "网格视图",
       "viewList": "列表视图",
@@ -549,7 +552,7 @@
       "examSuccess": "题目集已创建",
       "translationSuccess": "翻译已创建",
       "essaySuccess": "作文已创建",
-      "mindmapSuccess": "知识导图已创建",
+      "mindmapSuccess": "思维导图已创建",
       "todoSuccess": "待办列表已创建",
       "defaultFolderName": "新建文件夹",
       "notAllowedHere": "当前视图不支持新建资源"
@@ -576,7 +579,7 @@
       "media": "媒体",
       "system": "系统",
       "aiKnowledge": "AI 知识",
-      "mindmaps": "知识导图",
+      "mindmaps": "思维导图",
       "todos": "待办列表"
     },
     "search": {
@@ -1007,7 +1010,7 @@
       "allExams": "全部题目集",
       "allEssays": "全部作文",
       "allTranslations": "全部翻译",
-      "mindmaps": "知识导图",
+      "mindmaps": "思维导图",
       "todos": "待办列表",
       "favorites": "收藏",
       "recentAccess": "最近访问"
@@ -1050,7 +1053,8 @@
       "items": "项",
       "staleHint": "{{count}} 个资源内容已更新，索引需要刷新",
       "recordCount": "{{count}} 条记录",
-      "indexingCount": "正在索引 {{current}}/{{total}}"
+      "indexingCount": "正在索引 {{current}}/{{total}}",
+      "mmResourceProgress": "资源 {{finished}}/{{total}}"
     },
     "stats": {
       "totalVectors": "总向量数",
@@ -1135,7 +1139,8 @@
       "clearOcrFailed": "清除 OCR 失败",
       "autoOcrCompleted": "OCR 已完成",
       "autoOcrPage": "正在 OCR 第 {{current}}/{{total}} 页...",
-      "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页..."
+      "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页...",
+      "mmRetrySuccess": "多模态索引完成，已索引 {{pages}} 页"
     },
     "mmProgress": {
       "preparing": "{{prefix}}准备中... ({{pages}} 页)",
@@ -1227,7 +1232,12 @@
       "resultCount": "找到 {{count}} 条结果，耗时 {{elapsed}}ms",
       "score": "得分:",
       "type": "类型:",
-      "chunkIndex": "块索引:"
+      "chunkIndex": "块索引:",
+      "mmDescription": "（使用统一检索器，包含多模态路由）",
+      "modeGroupLabel": "检索模式",
+      "modeText": "文本",
+      "modeMultimodal": "多模态",
+      "routeFailures": "{{count}} 条检索路由失败，结果可能不完整"
     }
   },
   "exam": {
@@ -1458,5 +1468,22 @@
     "title": "知识库尚未启用：没有可用的嵌入模型",
     "body": "资料可以上传和阅读，但无法被向量化，对话时检索不到。配置嵌入模型后，失败和待处理的资料会自动重新索引。",
     "action": "配置嵌入模型"
+  },
+  "vectorIndexUnavailable": {
+    "title": "此版本使用关键词检索",
+    "body": "此版本不包含向量索引，资料无需建立索引：上传后即可在对话和搜索中按关键词检索到。"
+  },
+  "errorContext": {
+    "loadBreadcrumbs": "获取面包屑",
+    "searchResources": "搜索资源",
+    "loadList": "加载列表"
+  },
+  "defaultNames": {
+    "textbook": "新教材",
+    "exam": "新题目集",
+    "translation": "新翻译",
+    "essay": "新作文",
+    "importedDocument": "导入文档",
+    "importedNote": "导入笔记"
   }
 }

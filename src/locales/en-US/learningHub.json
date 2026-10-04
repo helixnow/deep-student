@@ -76,7 +76,10 @@
     "unfavoriteSuccess": "Removed from favorites",
     "duplicate": "Duplicate",
     "paste": "Paste",
-    "pasteCount": "Paste {{count}} Items"
+    "pasteCount": "Paste {{count}} Items",
+    "exportNoteReaderNotReady": "The note's full text isn't readable yet. Try exporting again in a moment.",
+    "exportNoteSwitched": "The note has changed. Please export again.",
+    "exportFullTextNotLoaded": "The full text hasn't loaded yet, so plain Markdown can't be exported."
   },
   "toolbar": {
     "search": "Search resources...",
@@ -103,9 +106,9 @@
     "note": "Notes",
     "textbook": "Textbooks",
     "mistake": "Mistakes",
-    "exam": "Question Sets",
+    "exam": "Exam Sets",
     "translation": "Translations",
-    "essay": "Essay Grading",
+    "essay": "Essay Reviews",
     "image": "Images",
     "file": "Documents",
     "mindmap": "Mind Maps",
@@ -1050,7 +1053,8 @@
       "items": "items",
       "staleHint": "{{count}} resource(s) have updated content, index needs refresh",
       "recordCount": "{{count}} records",
-      "indexingCount": "Indexing {{current}}/{{total}}"
+      "indexingCount": "Indexing {{current}}/{{total}}",
+      "mmResourceProgress": "Resources {{finished}}/{{total}}"
     },
     "stats": {
       "totalVectors": "Total Vectors",
@@ -1135,7 +1139,8 @@
       "clearOcrFailed": "Failed to clear OCR",
       "autoOcrCompleted": "Auto Ocr Completed",
       "autoOcrPage": "Auto Ocr Page {{current}} {{total}}",
-      "autoOcrStarting": "Auto Ocr Starting {{pages}}"
+      "autoOcrStarting": "Auto Ocr Starting {{pages}}",
+      "mmRetrySuccess": "Multimodal indexing finished: {{pages}} page(s) indexed"
     },
     "mmProgress": {
       "preparing": "{{prefix}}Preparing... ({{pages}} pages)",
@@ -1227,7 +1232,12 @@
       "resultCount": "Found {{count}} result(s) in {{elapsed}}ms",
       "score": "Score:",
       "type": "Type:",
-      "chunkIndex": "Chunk Index:"
+      "chunkIndex": "Chunk Index:",
+      "mmDescription": "(Uses the unified retriever, including the multimodal route)",
+      "modeGroupLabel": "Retrieval mode",
+      "modeText": "Text",
+      "modeMultimodal": "Multimodal",
+      "routeFailures": "{{count}} retrieval route(s) failed; results may be incomplete"
     }
   },
   "exam": {
@@ -1458,5 +1468,22 @@
     "title": "Knowledge base is off: no usable embedding model",
     "body": "You can upload and read materials, but they can’t be vectorized or retrieved in chat. Once an embedding model is configured, failed and pending items are re-indexed automatically.",
     "action": "Configure embeddings"
+  },
+  "vectorIndexUnavailable": {
+    "title": "This version searches by keyword",
+    "body": "This version doesn't include vector indexing, so your resources don't need to be indexed: once uploaded, they can be found by keyword in chat and search."
+  },
+  "errorContext": {
+    "loadBreadcrumbs": "Load breadcrumbs",
+    "searchResources": "Search files",
+    "loadList": "Load list"
+  },
+  "defaultNames": {
+    "textbook": "New Textbook",
+    "exam": "New Exam Set",
+    "translation": "New Translation",
+    "essay": "New Essay",
+    "importedDocument": "Imported document",
+    "importedNote": "Imported note"
   }
 }

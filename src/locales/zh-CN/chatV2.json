@@ -990,8 +990,16 @@
       "noResults": "没有找到相关的灵感卡",
       "statsSimple": "{{count}} 条灵感",
       "existenceHint": "以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。",
-      "saveCorrection": "保存纠正"
-    }
+      "saveCorrection": "保存纠正",
+      "level": {
+        "existence": "存在",
+        "recallPrompt": "回忆提示",
+        "hint": "提示",
+        "full": "全文",
+        "directAnswer": "直接答案"
+      }
+    },
+    "skippedIncompatible": "已跳过 {{count}} 个不兼容的历史块"
   },
   "analysis": {
     "ocrInProgress": "OCR 正在进行中，请等待识别完成",
@@ -1061,7 +1069,9 @@
     "analysis": {
       "ocrInProgress": "OCR 正在进行中，请等待识别完成",
       "retryOnlyInAnalysis": "retryOcr 只能在 analysis 模式下调用",
-      "noImagesToOcr": "没有图片可供 OCR"
+      "noImagesToOcr": "没有图片可供 OCR",
+      "ocrImageName": "OCR 图片 {{index}}",
+      "autoPrompt": "请分析这道题目"
     },
     "textbook": {
       "reloadOnlyInTextbook": "reloadTextbook 只能在 textbook 模式下调用",
@@ -1346,7 +1356,9 @@
       "selection": "选区"
     },
     "sticky": "持久引用",
-    "clearAll": "清空所有引用"
+    "clearAll": "清空所有引用",
+    "previewFailedTitle": "无法打开引用预览",
+    "previewFailedDesc": "引用的资源不存在或已被移除"
   },
   "modelMention": {
     "suggestions": "模型建议",
@@ -1465,6 +1477,8 @@
     "authorizationTitle": "{{label}} — {{action}}",
     "revealInFolder": "在文件管理器中显示：{{path}}",
     "revealFailed": "无法定位文件",
+    "openWithOtherApp": "用其他应用打开：{{path}}",
+    "openExternallyFailed": "无法打开文件",
     "reverted": "已撤销",
     "revertWrite": "撤销写入（删除该产物文件）",
     "revertDone": "已撤销该产物写入",
@@ -1483,7 +1497,11 @@
     "openSavedNote": "打开笔记",
     "saveAsNoteFailed": "存为笔记失败",
     "saveAsNoteTruncated": "产物内容过长，已截断保存",
-    "collapsePanel": "折叠面板"
+    "collapsePanel": "折叠面板",
+    "showFullCommand": "展开完整命令",
+    "hideFullCommand": "收起完整命令",
+    "stepDetailExpand": "展开步骤详情",
+    "stepDetailCollapse": "收起步骤详情"
   },
   "shellOutput": {
     "title": "本地命令",
@@ -1782,7 +1800,8 @@
     "taskChanges": "{{count}} 项变更",
     "staleTopic": "待修复分组",
     "staleTopicDescription": "原分组已不可用的会话。",
-    "ungrouped": "未分组"
+    "ungrouped": "未分组",
+    "importSession": "导入会话快照"
   },
   "search": {
     "titleMode": "标题",
@@ -1790,7 +1809,8 @@
     "contentPlaceholder": "搜索对话内容...",
     "searching": "正在搜索...",
     "noContentResults": "未找到匹配的内容",
-    "contentResultCount": "找到 {{count}} 条匹配内容"
+    "contentResultCount": "找到 {{count}} 条匹配内容",
+    "contentSearchFailed": "内容搜索失败"
   },
   "tags": {
     "filterTitle": "按标签筛选",
@@ -1976,13 +1996,40 @@
     "suggestedCommand": "建议执行命令",
     "copy": "复制",
     "commandCopied": "命令已复制",
-    "copyFailed": "复制失败"
+    "copyFailed": "复制失败",
+    "finalization": {
+      "verifiedComplete": "已验收",
+      "completeWithExceptions": "完成（有例外）",
+      "partial": "部分完成",
+      "blocked": "受阻",
+      "outcomeUnknown": "结果未知",
+      "exceptionsToggle": "例外项（{{count}}）",
+      "kind": {
+        "artifactMissing": "产物缺失",
+        "hashMismatch": "哈希不符",
+        "invalidDeclaration": "申报非法",
+        "checkUnavailable": "检查不可用"
+      }
+    }
   },
   "renderer": {
     "aiThinkingProcess": "AI 思考过程",
     "imageLoadFailed": "图片加载失败",
     "incompleteMathFormula": "检测到未完成的数学公式，已暂时关闭公式渲染",
-    "uncertain": "不确定"
+    "uncertain": "不确定",
+    "smiles": {
+      "drawFailed": "结构式绘制失败",
+      "invalid": "无效的 SMILES",
+      "loadFailed": "结构式渲染器加载失败",
+      "structureLabel": "分子结构：{{smiles}}"
+    },
+    "rich": {
+      "remoteUrlNotAllowed": "该渲染器只接受内嵌数据，不允许远程 URL。",
+      "geoJsonEmpty": "GeoJSON 中没有可显示的几何对象。",
+      "geoJsonInvalidCoordinates": "GeoJSON 坐标无效。",
+      "dotExternalResource": "DOT 图不允许引用外部资源。",
+      "renderFailed": "渲染失败。"
+    }
   },
   "ocr": {
     "noQuestionContent": "暂无题目内容",
@@ -2308,7 +2355,8 @@
     "not_ready": "当前会话尚未就绪",
     "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
     "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
-    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
+    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。",
+    "noModelAssigned": "(无)"
   },
   "imagePreview": {
     "partialNotFound": "部分图片资源未找到",
@@ -2335,7 +2383,8 @@
     "sourceIdAndHashRequired": "sourceId 和 newHash 不能为空",
     "sourceIdRequired": "sourceId 不能为空",
     "errorCode": "错误码: {{code}}",
-    "resourceNotFound": "资源未找到: {{sourceId}}"
+    "resourceNotFound": "资源未找到: {{sourceId}}",
+    "blobFetchFailed": "获取图片失败: {{message}}"
   },
   "errorBoundary": {
     "chatComponentError": "聊天组件出现错误",
@@ -2454,7 +2503,8 @@
         "delete": "删除",
         "append": "追加",
         "write": "写入"
-      }
+      },
+      "ankiCardLabel": "卡片 {{id}}（{{fields}}）"
     },
     "kind": {
       "generativeUi": "生成式 UI",
@@ -2467,6 +2517,39 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "daysAgo": "{{count}} 天前"
+    },
+    "fallbackTitle": {
+      "generativeUi": "生成式 UI",
+      "ankiCards": "Anki 卡片（{{count}}）"
+    }
+  },
+  "goal": {
+    "status": {
+      "active": "目标进行中",
+      "waitingUser": "等待你的回答",
+      "paused": "目标已暂停",
+      "blocked": "目标受阻",
+      "budgetLimited": "已达预算上限",
+      "usageLimited": "已达用量上限",
+      "complete": "目标已完成"
+    },
+    "triggerLabel": "会话目标：{{status}}",
+    "pause": "暂停",
+    "resume": "继续",
+    "edit": "编辑目标",
+    "clear": "清除目标",
+    "objectivePlaceholder": "目标描述",
+    "budgetPlaceholder": "token 预算（可选，留空不限）",
+    "budgetAriaLabel": "token 预算",
+    "cancel": "取消",
+    "save": "保存",
+    "clearConfirm": "清除",
+    "clearConfirmDescription": "清除后系统将停止该目标的自动续跑，此操作不可撤销。",
+    "errors": {
+      "edit": "编辑目标失败",
+      "pause": "暂停目标失败",
+      "resume": "继续目标失败",
+      "clear": "清除目标失败"
     }
   }
 }

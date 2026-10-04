@@ -3501,7 +3501,9 @@
       "last_accessed": "Last Accessed"
     },
     "notifications": {
-      "heic_fallback": "HEIC conversion failed, using original image: {{fileName}}\nTip: Use JPG or PNG format for better compatibility",
+      "heic_unsupported": "{{fileName}} is a HEIC/HEIF photo, which can't be converted on this device. Export it as JPG or PNG and try again.",
+      "heic_android_too_old": "{{fileName}} is a HEIC/HEIF photo. Converting HEIC requires Android 9 or later; export it as JPG or PNG and try again.",
+      "heic_decode_failed": "Couldn't convert the HEIC/HEIF photo {{fileName}} (the file may be damaged or this device lacks a HEVC decoder). Export it as JPG or PNG and try again.",
       "heic_compat_title": "HEIC Format Compatibility"
     },
     "progress": {
@@ -4000,6 +4002,55 @@
     "notifyAction": "Update now",
     "readyMessage": "Update downloaded. Restart the app to apply.",
     "restartNow": "Restart now",
-    "installerLaunched": "System installer launched. Finish the installation there."
+    "installerLaunched": "System installer launched. Finish the installation there.",
+    "channelUnknown": "Couldn't confirm the update channel. Please try again later.",
+    "serverUnreachable": "Couldn't reach the update server. Please try again later."
+  },
+  "provider_brands": {
+    "qwen": "Alibaba Cloud Model Studio",
+    "alibaba": "Alibaba Cloud",
+    "bytedance": "ByteDance",
+    "zhipu": "Zhipu AI",
+    "tencent": "Tencent",
+    "moonshot": "Moonshot AI",
+    "kuaishou": "Kuaishou",
+    "baidu": "Baidu",
+    "xfyun": "iFlytek",
+    "senseTime": "SenseTime",
+    "01ai": "01.AI",
+    "baichuan": "Baichuan AI",
+    "stepfun": "StepFun",
+    "baai": "BAAI",
+    "internlm": "InternLM",
+    "youdao": "NetEase Youdao",
+    "antling": "Ant Ling",
+    "teleai": "China Telecom TeleAI"
+  },
+  "qbank_grading": {
+    "timeout": "AI grading timed out. Please try again.",
+    "in_progress": "Grading is already in progress",
+    "failed": "Grading failed"
+  },
+  "image_answer": {
+    "unsupported_format": "Unsupported image format. Choose a PNG, JPEG, WebP, or GIF image.",
+    "too_large": "Image is too large ({{size}} MB). Choose an image under 8 MB or try again later.",
+    "read_failed": "Couldn't read the image"
+  },
+  "file_errors": {
+    "base64_empty": "Base64 content is empty or invalid",
+    "conversion_failed": "File conversion failed"
+  },
+  "template_render": {
+    "empty_tag": "Empty template tag",
+    "unsupported_tag": "Unsupported template tag {{tag}}",
+    "section_missing_name": "Conditional section is missing a field name",
+    "extra_close": "Unexpected closing tag {{tag}}",
+    "close_mismatch": "Closing tag {{close}} doesn't match opening tag {{open}}",
+    "filter_missing_field": "Filter is missing a field name: {{tag}}",
+    "unknown_filter": "Unknown template filter \"{{filter}}\"; rendered as a plain field",
+    "unclosed_section": "Conditional section {{open}} is missing its closing tag {{close}}",
+    "frontside_on_front": "{{tag}} can only be used in the back template",
+    "render_exception": "Template rendering error: {{message}}",
+    "card_render_failed": "Card rendering failed: {{message}}"
   }
 }

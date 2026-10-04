@@ -37,10 +37,7 @@
     "refresh": "Refresh",
     "search": "Search",
     "filter": "Filter",
-    "sort": "Sort"
-  ,
-    "creatingResource": "Creating resource..."
-  ,
+    "sort": "Sort",
     "creatingResource": "Creating resource..."
   },
   "sort": {

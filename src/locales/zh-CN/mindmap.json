@@ -119,7 +119,8 @@
     "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
     "markersNote": ".xmind 标记：{{markers}}",
-    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
+    "imagePlaceholderNote_one": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
+    "imagePlaceholderNote_other": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "importing": "正在导入导图，请稍候…",
     "saveAndImport": "保存并导入"
   },
@@ -344,7 +345,12 @@
     "bulletHint": "单击选中 · 双击聚焦 · ⌘单击聚焦",
     "batchCollapse": "折叠",
     "ghostNewLine": "新增一行",
-    "dropLevelBadge": "L{{level}}"
+    "dropLevelBadge": "L{{level}}",
+    "indent": "缩进",
+    "outdent": "反缩进",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "selectMultiple": "多选"
   },
   "outlineV2": {
     "deleteConfirm": "确认删除？",
@@ -385,7 +391,10 @@
     "addTopic": "新建主题",
     "paste": "粘贴",
     "fitView": "适应视图",
-    "exitFocusMode": "退出专注模式"
+    "exitFocusMode": "退出专注模式",
+    "paneMenuLabel": "画布菜单",
+    "nodeMenuLabel": "节点菜单",
+    "textStyleGroup": "文本样式"
   },
   "association": {
     "add": "添加关联线",
@@ -396,7 +405,8 @@
     "delete": "删除关联线",
     "closeActions": "关闭",
     "labelPlaceholder": "标签",
-    "doubleClickHint": "双击编辑"
+    "doubleClickHint": "双击编辑",
+    "cancel": "取消"
   },
   "refs": {
     "pickerTitle": "关联资源",
@@ -435,7 +445,11 @@
     "selectMode": "框选",
     "panMode": "拖动画布",
     "dragModeSelect": "框选模式：拖拽空白框选（Space/中键/右键拖拽平移）",
-    "dragModePan": "拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）"
+    "dragModePan": "拖动画布模式：拖拽空白移动画布（Shift+拖拽框选）",
+    "touchActions": "画布快捷操作",
+    "wheelModeZoom": "滚轮缩放（已开启）：滚轮/双指滑动直接缩放；点击切换为双指平移",
+    "wheelModePan": "双指平移（默认）：滚轮/双指滑动平移，捏合或 Cmd/Ctrl+滚轮缩放；点击切换为滚轮缩放",
+    "wheelZoom": "滚轮缩放"
   },
   "canvasV2": {
     "zoomResetTooltip": "当前缩放；点击恢复 100%",
@@ -463,11 +477,14 @@
     "blankOutlineHint": "保留中心主题和一级分支作提示，下面各层整段遮住；点一下揭示，可撤销",
     "manualBlank": "手动挖空",
     "progress": "{{revealed}}/{{total}} 已揭示",
-    "remaining": "剩余 {{count}}",
+    "remaining_one": "剩余 {{count}}",
+    "remaining_other": "剩余 {{count}}",
     "blankBranch": "挖空整个分支",
-    "blankBranchDone": "已挖空 {{count}} 个节点",
+    "blankBranchDone_one": "已挖空 {{count}} 个节点",
+    "blankBranchDone_other": "已挖空 {{count}} 个节点",
     "clearBranchBlanks": "清除分支挖空",
-    "clearBranchBlanksDone": "已清除 {{count}} 个节点的挖空",
+    "clearBranchBlanksDone_one": "已清除 {{count}} 个节点的挖空",
+    "clearBranchBlanksDone_other": "已清除 {{count}} 个节点的挖空",
     "reviewStart": "难点优先",
     "reviewStartHint": "按历史错误率从难到易逐节点复习（翻开=没背出来）",
     "reviewNavLabel": "难点优先复习导航",
@@ -491,7 +508,8 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "daysAgo": "{{count}} 天前",
-      "nodeCount": "{{count}} 个节点",
+      "nodeCount_one": "{{count}} 个节点",
+      "nodeCount_other": "{{count}} 个节点",
       "diffSummary": "较当前 +{{added}} / −{{removed}}",
       "diffSame": "节点与当前一致",
       "latestBadge": "最新"
@@ -509,8 +527,10 @@
       "xmindDone": "已导出 .xmind 文件"
     },
     "clipboard": {
-      "copiedNodes": "已复制 {{count}} 个节点",
-      "cutNodes": "已剪切 {{count}} 个节点"
+      "copiedNodes_one": "已复制 {{count}} 个节点",
+      "copiedNodes_other": "已复制 {{count}} 个节点",
+      "cutNodes_one": "已剪切 {{count}} 个节点",
+      "cutNodes_other": "已剪切 {{count}} 个节点"
     },
     "embed": {
       "retry": "重试"
@@ -586,5 +606,8 @@
       "accept_partial": "已应用 {{applied}} 项，{{failed}} 项失败",
       "save_failed": "内容已应用但保存失败，请手动保存"
     }
+  },
+  "latex": {
+    "renderError": "公式语法错误，已按原文显示"
   }
 }

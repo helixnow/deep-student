@@ -261,5 +261,35 @@
     "sm2Desc": "间隔重复是一种科学的记忆方法，通过在最佳时间点复习来加强长期记忆。系统会根据你的表现自动调整下次复习时间。",
     "ratingTitle": "如何评分？",
     "ratingDesc": "根据你回忆答案的难易程度选择：重来（完全忘记）、困难（勉强想起）、良好（稍加思考想起）、简单（立刻想起）。"
+  },
+  "insightConfirm": {
+    "title": "沉淀这条灵感？",
+    "source": "来源：{{source}}（确认后仍可随时修改或删除）",
+    "ownership": {
+      "self_reported": "你自己总结的",
+      "guided": "AI 引导后你说出的",
+      "ai_draft": "AI 从你的解题过程整理的草稿"
+    },
+    "fields": {
+      "title": "一句话方法名",
+      "situation": "情境（什么题/什么背景）",
+      "stuckPoint": "卡点（当时在哪卡住）",
+      "turningPoint": "转折（怎么通的）",
+      "rule": "可迁移规则（什么时候可以再用）",
+      "conditions": "这条规则在哪些条件下成立？"
+    },
+    "hints": {
+      "turningPoint": "用你自己的话写——这是这条灵感最值钱的部分",
+      "conditions": "想不清楚可以留空，以后补上"
+    },
+    "placeholders": {
+      "title": "如：导数结构识别 → 换元",
+      "situation": "求 ∫ x(x²+1)³ dx",
+      "stuckPoint": "被积函数次数太高，展开不现实",
+      "turningPoint": "观察到 x 恰好是 (x²+1) 导数的一半",
+      "rule": "识别'一部分是另一部分导数'的结构 → 令其为 u",
+      "conditions": "内层导数与外因子成比例"
+    },
+    "submit": "确认入库"
   }
 }

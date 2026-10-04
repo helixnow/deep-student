@@ -206,5 +206,12 @@
     "conflictResolveFailed": "Failed to resolve conflict: {{error}}",
     "conflictBatchResolvePartial": "Some conflicts could not be resolved: {{resolved}} succeeded, {{failed}} failed",
     "conflictBatchResolveFailed": "Batch conflict resolution failed: {{error}}"
+  },
+  "indicator": {
+    "noConflicts": "No conflicts",
+    "perDatabase": "{{db}}: {{groups}} group(s) ({{rows}} row(s))",
+    "separator": ", ",
+    "unresolvedTitle": "Unresolved conflicts: {{detail}}",
+    "conflictGroups": "{{count}} conflict group(s)"
   }
 }

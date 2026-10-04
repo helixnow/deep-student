@@ -26,7 +26,8 @@
       "placementBackground": "(running in background)",
       "placementStageFull": "(stage full, applied directly)",
       "placementFrozen": "(window frozen, applied directly)",
-      "dockDoneBadge": "AI finished in the background"
+      "dockDoneBadge": "AI finished in the background",
+      "operatingFallback": "Working"
     },
     "errors": {
       "controlOff": "Agent desktop control is off (desktop.workbenchAgentControl=off)",
@@ -36,7 +37,14 @@
       "launchFailed": "Could not open the app window",
       "launchFailedHint": "Desktop mode is not ready or the app is not registered",
       "abortedByControlOff": "Control turned off; operation aborted",
-      "abortedByOsOff": "Desktop mode turned off; operation aborted"
+      "abortedByOsOff": "Desktop mode turned off; operation aborted",
+      "cancelledBeforeApply": "Cancelled while preparing; nothing was run",
+      "heartbeatTimeout": "Operation stopped responding and was aborted",
+      "windowClosed": "Window closed; operation interrupted",
+      "windowClosedOrRemoved": "Window closed (resource deleted or window closed); operation interrupted",
+      "stageStopped": "Desktop control stopped; operation interrupted",
+      "applyFailed": "Apply error: {{error}}",
+      "abortFailed": "Abort error: {{error}}"
     },
     "apps": {
       "reserved": "-",
@@ -47,6 +55,56 @@
         "undoCreate": "Delete the just-created template",
         "undoRename": "Restore template name",
         "undoUpdateContent": "Restore template content"
+      }
+    },
+    "drivers": {
+      "todo": {
+        "switchList": "Switch to list {{listId}}"
+      },
+      "note": {
+        "listSeparator": "; ",
+        "noSuggestionPanel": "No suggestion panel is available here",
+        "noSuggestionClaimer": "No open note editor picked up the suggestion",
+        "fullReadUnsupported": "The long-note editor cannot safely read the full text",
+        "saveConfirmUnsupported": "The editor cannot confirm saves",
+        "contentChanged": "The note changed in the meantime; concurrency check failed",
+        "replaceVerifyFailed": "Content check failed after replacing the full text",
+        "replaceRejected": "The editor rejected the full-text replacement",
+        "fullWriteUnsupported": "The long-note editor cannot safely write the full text",
+        "setMarkdownRejected": "The editor rejected setMarkdown",
+        "setMarkdownVerifyFailed": "Content check failed after setMarkdown",
+        "setMarkdownFailed": "setMarkdown failed",
+        "emptyInsert": "Nothing to insert",
+        "anchorUnresolved": "Could not resolve the anchor",
+        "anchorUnresolvedNamed": "Could not resolve the anchor \"{{anchor}}\"",
+        "structuredSegmentUnconfirmed": "The editor did not confirm structured insert {{index}}/{{total}}",
+        "structuredInsertFailed": "Structured insert failed",
+        "textInsertUnconfirmed": "The editor did not confirm the text insert",
+        "progressChars": "{{label}} ({{done}}/{{total}})",
+        "reviewingLabel": "Awaiting confirmation: {{label}}",
+        "suggestionNotCreated": "Edit suggestion was not created",
+        "suggestionNotCreatedReason": "Edit suggestion was not created: {{reason}}",
+        "unknownReason": "unknown reason",
+        "suggestionSubmittedItem": "Suggestion submitted: {{label}}",
+        "suggestionSubmitted": "Edit suggestion submitted; waiting for the user to accept or reject it in the diff panel",
+        "readFailed": "Could not read the current note content",
+        "missingResourceId": "Missing resourceId; cannot locate the note editor",
+        "editorNotMounted": "The note editor is not mounted (window not open or not ready); use the backend data path or open_app note first",
+        "destructiveWriteFailed": "Rewrite failed",
+        "unsupportedOp": "Unsupported op: {{kind}}",
+        "windowedWriteFailed": "Writing the long note failed",
+        "contentUnchanged": "The editor did not confirm any content change",
+        "partialItem": "{{label}} (partial)",
+        "insertFailed": "Insert failed",
+        "appliedSaveFailed": "Content applied, but autosave failed: {{error}}",
+        "abortedPartial": "Operation interrupted; partial results returned",
+        "appliedInWindowSaveFailed": "Content applied in the window, but autosave failed: {{error}}",
+        "suggestionStepsPending": "Edit suggestion submitted; later steps have not run yet: {{steps}}",
+        "savedSuggestionPending": "Earlier content was saved; the edit suggestion is waiting for the user to accept or reject it in the diff panel",
+        "appliedAndSaved": "Applied live and saved",
+        "stepsIncomplete": "Some steps did not complete: {{steps}}",
+        "remainingAborted": "Remaining steps were aborted",
+        "aborted": "Note editing aborted"
       }
     }
   },
@@ -104,7 +162,7 @@
         "actions": "Open folders, reveal or select resources, navigate, search, change view, and sort"
       },
       "exam": {
-        "name": "Question bank",
+        "name": "Exam Set",
         "actions": "Focus or move between questions, filter, switch practice/focus modes, and open settings"
       },
       "flashcards": {
@@ -811,7 +869,12 @@
     "clearTrace": "Clear",
     "distribution": "Lifecycle distribution",
     "minimizedTag": "Minimized",
-    "close": "Close panel"
+    "close": "Close panel",
+    "firstFrame": "{{value}}→first frame",
+    "acrNoTransactions": "(no active transactions)",
+    "acrNoPresence": "(no active presence)",
+    "acrNoReceipts": "(no receipts yet · shown once StageManager is connected)",
+    "acrNoDomainEvents": "(no domain events yet)"
   },
   "notesWorkspace": {
     "title": "Notes",
@@ -953,7 +1016,9 @@
     },
     "renameSync": {
       "updated": "Updated wiki links in {{count}} notes",
-      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually."
+      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually.",
+      "scanFailed": "Title updated, but linked sources could not be scanned. Wiki links may be out of sync; please check them manually.",
+      "truncated": "Too many linking notes for one batch. Only the first {{count}} were updated; process the rest later."
     },
     "tree": {
       "aria": "File tree",

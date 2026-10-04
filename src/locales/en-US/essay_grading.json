@@ -470,5 +470,99 @@
       "corrections_title": "### Corrections",
       "empty_result": "(No grading content yet)"
     }
+  },
+  "builtinModes": {
+    "gaokao": {
+      "name": "Gaokao Chinese Essay",
+      "description": "Grades against the Gaokao Chinese essay rubric, 60 points total",
+      "dimensions": {
+        "content": "Content",
+        "expression": "Expression",
+        "development": "Development Level"
+      }
+    },
+    "gaokao_en_short": {
+      "name": "Gaokao English Short Essay",
+      "description": "Gaokao English practical writing rubric, 15 points total",
+      "dimensions": {
+        "content_key_points": "Content & Key Points",
+        "language_quality": "Language Quality",
+        "format_register": "Format & Register"
+      }
+    },
+    "gaokao_en_long": {
+      "name": "Gaokao English Long Essay",
+      "description": "Gaokao English continuation writing rubric, 25 points total",
+      "dimensions": {
+        "content_context_coherence": "Content & Context Coherence",
+        "language_use": "Language Use",
+        "cohesion_structure": "Cohesion & Structure"
+      }
+    },
+    "ielts": {
+      "name": "IELTS Writing Task 2",
+      "description": "IELTS Writing Task 2 (argumentative essay) rubric, band score out of 9",
+      "dimensions": {
+        "task_response": "Task Response",
+        "coherence_cohesion": "Coherence & Cohesion",
+        "lexical_resource": "Lexical Resource",
+        "grammatical_range_accuracy": "Grammatical Range & Accuracy"
+      }
+    },
+    "ielts_task1": {
+      "name": "IELTS Writing Task 1",
+      "description": "IELTS Writing Task 1 (Academic/General) rubric, band score out of 9",
+      "dimensions": {
+        "task_achievement": "Task Achievement",
+        "coherence_cohesion": "Coherence & Cohesion",
+        "lexical_resource": "Lexical Resource",
+        "grammatical_range_accuracy": "Grammatical Range & Accuracy"
+      }
+    },
+    "kaoyan": {
+      "name": "Postgraduate English Essay",
+      "description": "Postgraduate entrance exam English Part B rubric (English I picture / English II chart), 20 points total",
+      "dimensions": {
+        "content_task_fulfillment": "Content & Task Fulfillment",
+        "organization_coherence": "Organization & Coherence",
+        "language_accuracy": "Language & Accuracy"
+      }
+    },
+    "toefl": {
+      "name": "TOEFL Writing",
+      "description": "TOEFL iBT Writing rubric (2026 format, incl. Academic Discussion), 5 points total",
+      "dimensions": {
+        "content_relevance": "Content & Relevance",
+        "organization_coherence": "Organization & Coherence",
+        "language_use": "Language Use"
+      }
+    },
+    "zhongkao": {
+      "name": "Zhongkao Chinese Essay",
+      "description": "Grades against the Zhongkao (high school entrance exam) essay rubric, 50 points total",
+      "dimensions": {
+        "content": "Content",
+        "expression": "Expression",
+        "creativity": "Creativity"
+      }
+    },
+    "cet": {
+      "name": "CET-4/6 Essay",
+      "description": "Grades against the College English Test (CET-4/6) writing rubric, 15 points total",
+      "dimensions": {
+        "content_relevance": "Content & Relevance",
+        "organization": "Organization",
+        "language": "Language"
+      }
+    },
+    "practice": {
+      "name": "Daily Practice",
+      "description": "Relaxed, friendly grading for everyday writing practice",
+      "dimensions": {
+        "creativity_expression": "Creativity & Expression",
+        "content_completeness": "Content Completeness",
+        "language_conventions": "Language Conventions"
+      }
+    }
   }
 }

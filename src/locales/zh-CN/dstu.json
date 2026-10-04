@@ -29,18 +29,15 @@
   "actions": {
     "create": "新建",
     "createNote": "新建笔记",
-    "createMindMap": "创建知识导图",
-    "mindMapCreated": "知识导图已创建",
+    "createMindMap": "创建思维导图",
+    "mindMapCreated": "思维导图已创建",
     "createFolder": "新建文件夹",
     "import": "导入",
     "export": "导出",
     "refresh": "刷新",
     "search": "搜索",
     "filter": "筛选",
-    "sort": "排序"
-  ,
-    "creatingResource": "正在创建资源..."
-  ,
+    "sort": "排序",
     "creatingResource": "正在创建资源..."
   },
   "sort": {

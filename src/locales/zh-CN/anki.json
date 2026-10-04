@@ -786,7 +786,9 @@
     "quickExport": "导出",
     "noExportableCards": "暂无可导出的卡片",
     "retryStarted": "已重新触发 {{count}} 个失败任务",
-    "retryPartial": "{{succeeded}} 个任务已重试，{{failed}} 个失败"
+    "retryPartial": "{{succeeded}} 个任务已重试，{{failed}} 个失败",
+    "statsLoadFailed": "统计数据加载失败，任务列表不受影响",
+    "sessionWarningsHint": "存在失败或警告分段（不阻断运行与完成）"
   },
   "chatV2": {
     "generating": "正在生成卡片...",
@@ -985,7 +987,14 @@
       "missing_front": "缺少正面内容",
       "missing_back": "缺少背面内容",
       "missing_field": "模板字段 {{field}} 为空"
-    }
+    },
+    "init_failed": "CardAgent 初始化失败: {{error}}",
+    "listener_not_ready": "事件监听器未就绪",
+    "content_empty": "内容不能为空",
+    "idle_timeout_one": "生成空闲超时，已收集 {{count}} 张卡片",
+    "idle_timeout_other": "生成空闲超时，已收集 {{count}} 张卡片",
+    "no_templates": "没有可用的模板",
+    "llm_suggestion_unavailable": "LLM 分析不可用，建议根据内容手动选择"
   },
   "agent": {
     "transform": {

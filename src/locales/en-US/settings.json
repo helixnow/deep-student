@@ -220,7 +220,8 @@
         "unsupported_include_hint": "This model does not support the include_thoughts parameter",
         "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts).",
         "generic_effort_toggle": "Reasoning intensity",
-        "generic_effort_toggle_hint": "When enabled, choose a reasoning intensity level (low / medium / high / xhigh, sent as reasoning_effort). When disabled, only the thinking_budget fallback is available."
+        "generic_effort_toggle_hint": "When enabled, choose a reasoning intensity level (low / medium / high / xhigh, sent as reasoning_effort). When disabled, only the thinking_budget fallback is available.",
+        "unified_levels_hint": "Reasoning effort uses five unified levels; before each request the backend maps them to the closest level this model supports."
       },
       "fields": {
         "api_key": "API Key",
@@ -849,7 +850,8 @@
       "active_hint_idle": "Background scheduling active; no upcoming triggers",
       "paused_hint": "Background running is off; automations will not fire after the window closes",
       "confirm_hint": "Turn off background running? Once the window closes, no automations (including the heartbeat) will fire until it is re-enabled.",
-      "confirm": "Turn off background running"
+      "confirm": "Turn off background running",
+      "mobile_note": "Scheduled tasks run only while the app is open; they won't fire while it's in the background or closed."
     },
     "action_type": {
       "notify": "Notification + todo",
@@ -1293,6 +1295,7 @@
       "description": "Collects current and legacy logs into a redacted ZIP. Databases and documents are never included.",
       "mobile_unsupported": "Mobile sharing is not available in this version. Error reporting still works automatically when enabled.",
       "action": "Export ZIP",
+      "share_action": "Share ZIP",
       "success": "Diagnostic bundle exported ({{count}} files)",
       "partial": "Exported {{count}} files; {{skipped}} could not be included"
     },
@@ -2474,7 +2477,8 @@
     "none": "None",
     "prompts_resources_section": "Prompts & Resources",
     "toggle_enabled": "Enable or disable server {{name}}",
-    "disabled_badge": "Disabled"
+    "disabled_badge": "Disabled",
+    "builtinServerName": "Built-in Tools"
   },
   "tool_permissions": {
     "title": "Tool Permissions",
@@ -3106,5 +3110,18 @@
       "error": "Error"
     },
     "mobile_hidden": "Plugins are desktop-only"
+  },
+  "browserRuntime": {
+    "needWorkbench": "Built-in browser unavailable: turn on Study Desktop first",
+    "needBrowserEnabled": "Built-in browser unavailable: enable the built-in browser in Settings",
+    "flagUnreadable": "Built-in browser unavailable: couldn't read the feature flag. Please try again.",
+    "flagDisabled": "Built-in browser unavailable: this feature isn't available in this version (feature flag is off)",
+    "disabled": "Built-in browser unavailable: feature not enabled",
+    "commandMissing": "Browser backend command isn't ready ({{command}}). Make sure the Study Desktop browser is enabled and wired up.",
+    "commandFailed": "Browser command failed: {{command}}",
+    "operationFailed": "Browser action failed",
+    "busy": "The browser is still handling the previous action",
+    "navigationBlocked": "Navigation blocked: {{detail}}",
+    "securityPolicy": "The target doesn't meet the browser security policy"
   }
 }

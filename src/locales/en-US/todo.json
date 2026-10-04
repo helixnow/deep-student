@@ -121,6 +121,7 @@
     "startingSoon": "Starting soon",
     "background": "Keep running after closing the window",
     "backgroundHint": "Quitting the app or shutting down stops tasks; missed runs recover according to their policy",
+    "backgroundMobileNote": "Scheduled tasks run only while the app is open; they won't fire while it's in the background or closed.",
     "agentTurnHint": "Agent tasks call the AI model unattended in the background (consuming tokens); results are available in the run history",
     "sessionModeHint": "A continuous session keeps context from previous runs, useful for tasks that need memory; a new session each run uses fewer tokens",
     "modelHint": "Leave empty to use the default chat model; see Settings → Models for available model IDs",
@@ -792,6 +793,9 @@
     "presets": {
       "label": "Duration presets",
       "setTitle": "Set focus duration to {{count}} min"
+    },
+    "errors": {
+      "moreFailures": " ({{count}} more failed)"
     }
   },
   "sidebar": {

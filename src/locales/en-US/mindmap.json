@@ -348,7 +348,12 @@
     "bulletHint": "Click to select · Double-click to zoom in · ⌘-click to zoom in",
     "batchCollapse": "Collapse",
     "ghostNewLine": "Add a new line",
-    "dropLevelBadge": "L{{level}}"
+    "dropLevelBadge": "L{{level}}",
+    "indent": "Indent",
+    "outdent": "Outdent",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "selectMultiple": "Select multiple"
   },
   "outlineV2": {
     "deleteConfirm": "Delete this item?",
@@ -389,7 +394,10 @@
     "addTopic": "New Topic",
     "paste": "Paste",
     "fitView": "Fit View",
-    "exitFocusMode": "Exit Focus Mode"
+    "exitFocusMode": "Exit Focus Mode",
+    "paneMenuLabel": "Canvas menu",
+    "nodeMenuLabel": "Node menu",
+    "textStyleGroup": "Text style"
   },
   "association": {
     "add": "Add association",
@@ -400,7 +408,8 @@
     "delete": "Delete association",
     "closeActions": "Close",
     "labelPlaceholder": "Label",
-    "doubleClickHint": "Double-click to edit"
+    "doubleClickHint": "Double-click to edit",
+    "cancel": "Cancel"
   },
   "refs": {
     "pickerTitle": "Link Resource",
@@ -439,7 +448,11 @@
     "selectMode": "Select",
     "panMode": "Pan canvas",
     "dragModeSelect": "Select mode: drag blank area to marquee-select (pan with Space / middle / right button drag)",
-    "dragModePan": "Pan canvas mode: drag blank area to move the canvas (marquee-select with Shift + drag)"
+    "dragModePan": "Pan canvas mode: drag blank area to move the canvas (marquee-select with Shift + drag)",
+    "touchActions": "Canvas quick actions",
+    "wheelModeZoom": "Scroll to zoom (on): the wheel or two-finger swipe zooms. Click to switch to two-finger pan",
+    "wheelModePan": "Two-finger pan (default): the wheel or two-finger swipe pans; pinch or Cmd/Ctrl+scroll zooms. Click to switch to scroll-to-zoom",
+    "wheelZoom": "Scroll to zoom"
   },
   "canvasV2": {
     "zoomResetTooltip": "Current zoom; click to reset to 100%",
@@ -593,5 +606,8 @@
       "accept_partial": "Applied {{applied}}, {{failed}} failed",
       "save_failed": "Changes applied but save failed; please save manually"
     }
+  },
+  "latex": {
+    "renderError": "Formula syntax error; showing the source text"
   }
 }

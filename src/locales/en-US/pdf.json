@@ -101,7 +101,9 @@
     "zoom_level": "Zoom level",
     "rotate_ccw": "Rotate 90° counterclockwise",
     "outline_nav_failed": "Couldn't jump to this section",
-    "highlight_rotation_disabled": "Text highlighting is unavailable while the view is rotated. Restore the original orientation and try again"
+    "highlight_rotation_disabled": "Text highlighting is unavailable while the view is rotated. Restore the original orientation and try again",
+    "pageJumpInvalid": "Enter a valid page number",
+    "pageJumpOutOfRange": "Page out of range (1–{{max}})"
   },
   "bookmark": {
     "addBookmark": "Add Bookmark",

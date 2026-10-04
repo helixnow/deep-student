@@ -287,8 +287,8 @@
     "views": {
       "tree": "File tree",
       "list": "Note list",
-      "status": "Mastery status",
-      "review": "Upcoming reviews",
+      "status": "Mastery",
+      "review": "Reviews",
       "all": "All"
     },
     "unset_group": "Not set / previous value retained",
@@ -416,7 +416,25 @@
       "delete_failed": "The completed review status could not be saved. The candidate may reappear after a restart. Retry cleanup.",
       "hydrate_failed": "Saved review candidates could not be loaded. The stored data was left unchanged. Retry recovery.",
       "recovery_ambiguous": "Several review candidates from previous windows were found. Choose which candidate to recover.",
-      "recovery_claimed": "Another note window has already recovered this candidate. Refresh and try again."
+      "recovery_claimed": "Another note window has already recovered this candidate. Refresh and try again.",
+      "review_not_ready": "The review isn't ready yet.",
+      "review_finished": "The review has ended.",
+      "retry_previous_first": "Retry saving the previous group before handling other suggestions.",
+      "structure_mismatch": "The review no longer matches the note. Reopen the review.",
+      "state_not_saved": "The review state wasn't saved. Please try again.",
+      "save_as_unavailable": "Save as new isn't available yet.",
+      "source_changed_during_save_as": "The original note changed while saving as new.",
+      "candidate_changed_after_failure": "The proposed content changed after the save failed. Review it again.",
+      "flush_unavailable": "Note saving isn't available yet.",
+      "window_changed": "The note window changed. The review was kept so you can restore it.",
+      "review_editor_expand": "The review editor isn't ready. Expand the proposed content and try again.",
+      "version_changed_accepted": "The note version changed. The proposed content and accepted groups were kept. Generate the suggestions again.",
+      "undo_via_checkpoint": "Undo accepted groups from the checkpoint.",
+      "review_editor_not_ready": "The review editor isn't ready yet.",
+      "scope_unavailable": "Scope selection isn't available yet.",
+      "candidate_unparseable": "The proposed Markdown couldn't be parsed.",
+      "groups_changed": "The review groups changed. Reopen the review.",
+      "review_suspended": "The review is paused."
     }
   },
   "fullDocument": {
@@ -885,7 +903,10 @@
     "unwrap-columns": "Unwrap into regular blocks",
     "unavailable_here": "Not available here: {{label}}",
     "enable_confirm": "After enabling columns, this note can only be edited by app versions that support the columns format. Enable it?",
-    "enable_title": "Enable columns"
+    "enable_title": "Enable columns",
+    "cornell_heading_cues": "Cues",
+    "cornell_heading_notes": "Notes",
+    "cornell_heading_summary": "Summary"
   },
   "draftPersistence": {
     "save_unconfirmed": "Draft storage was not confirmed.",
@@ -1451,14 +1472,16 @@
       "placeholder": "Use default exports folder",
       "choose": "Choose…",
       "clear": "Clear",
-      "help": "If no location is selected the archive is stored in the app exports directory."
+      "help": "If no location is selected the archive is stored in the app exports directory.",
+      "lastExported": "Last exported: {{time}}"
     },
     "filter_name": "Notes Backup",
     "actions": {
       "export": "Export",
       "exporting": "Exporting…"
     },
-    "all_notes_hint": "All notes and their attachments will be exported"
+    "all_notes_hint": "All notes and their attachments will be exported",
+    "unsaved_blocked": "Some notes couldn't be saved, so the export was paused to avoid missing the latest changes. Please try again."
   },
   "dialogs": {
     "close": "Close",
@@ -1809,12 +1832,20 @@
       "danger": "Danger",
       "info": "Info"
     },
-    "cycleType": "Change callout type"
+    "cycleType": "Change callout type",
+    "toggleFold": "Collapse or expand"
   },
   "wikilink": {
     "noCandidates": "No candidate notes",
     "create": "Create \"{{title}}\"",
-    "empty": "No matching notes"
+    "empty": "No matching notes",
+    "aliasHint": "Alias mode: displays as “{{label}}” after inserting",
+    "headingHint": "Heading mode: link to a heading in “{{target}}”",
+    "previewLoading": "Loading…",
+    "previewEmpty": "(Empty note)",
+    "ambiguousTitle_one": "“{{target}}” matches {{count}} note with this title. Click to choose",
+    "ambiguousTitle_other": "“{{target}}” matches {{count}} notes with this title. Click to choose",
+    "cacheTruncated": "You have more than {{max}} notes; wiki links beyond that may show as unresolved"
   },
   "wikilinkV2": {
     "createConfirm": "Create new note \"{{title}}\"?",
@@ -1883,7 +1914,8 @@
     "untitled": "Note mind map",
     "noOutline": "This note has no headings or lists. Organize it with headings or lists first, then generate a mind map.",
     "created": "Created mind map “{{title}}” ({{count}} nodes)",
-    "failed": "Failed to generate mind map"
+    "failed": "Failed to generate mind map",
+    "failedWithError": "Couldn't generate the mind map: {{error}}"
   },
   "menu": {
     "page_actions": "Page Actions",
@@ -2105,7 +2137,41 @@
     "drafts_found": "Unsaved drafts found",
     "view_draft": "View draft {{index}}",
     "save_draft_as_note": "Save draft as note",
-    "ai_update_deferred": "The AI update was not applied because this note has unsaved changes. If a conflict appears after saving, compare and pick a version there."
+    "ai_update_deferred": "The AI update was not applied because this note has unsaved changes. If a conflict appears after saving, compare and pick a version there.",
+    "errors": {
+      "editor_open_timeout": "Opening the note editor timed out. Please try again.",
+      "operation_busy": "This note is busy with another operation. Please try again shortly.",
+      "conflicting_drafts": "This note has different unsaved drafts. Resolve the draft conflict in each window first.",
+      "remote_not_registered": "The note editor hasn't finished registering across windows. Please try again.",
+      "freeze_timeout": "Timed out waiting for other note windows to pause. Please try again.",
+      "lease_cancelled": "The note operation lock was cancelled. Please try again.",
+      "missing_save_version": "The note editor has no saved version. Reopen the note.",
+      "refresh_timeout": "Timed out waiting for other note windows to refresh. Please try again.",
+      "refresh_version_mismatch": "The refreshed note version doesn't match. Please try again.",
+      "range_unresolved": "Couldn't pinpoint the selected range.",
+      "editor_not_ready": "The note editor isn't ready yet.",
+      "full_read_failed": "Couldn't read the full note.",
+      "select_text_first": "Select some text in the note first.",
+      "review_copy_missing_version": "The review copy has no original saved version. Review again, then save as new.",
+      "save_as_unconfirmed": "Saving as a new note wasn't confirmed.",
+      "review_body_changed": "The note changed during review. Generate the suggestions again.",
+      "review_missing_version": "The review has no saved version. Reopen the note.",
+      "format_unconfirmed": "Couldn't confirm the note format.",
+      "format_requires_newer": "This note format needs a newer editor; editing is paused.",
+      "select_insert_position": "Choose an insert position in the editor first.",
+      "select_position_reopen": "Choose a position in the editor, then reopen the template panel.",
+      "insert_position_stale": "The insert position is no longer valid. Reopen the template panel.",
+      "insert_position_changed": "The insert position has changed.",
+      "props_unavailable": "Note properties are unavailable.",
+      "note_switched": "The note was switched.",
+      "props_loading": "Note properties are still loading. Try the preview again shortly.",
+      "note_switched_or_readonly": "The note was switched or can't be edited.",
+      "maintenance_mode": "Properties can't be saved during maintenance.",
+      "props_owner_changed": "The note these properties belong to has changed.",
+      "props_version_unavailable": "The saved version of the properties is unavailable.",
+      "review_scope_stale": "The review scope is out of date. Choose the scope again.",
+      "review_closed": "The review was closed."
+    }
   },
   "agent": {
     "caret_label": "AI"
@@ -2152,5 +2218,8 @@
     "resource": "From material",
     "resource_page": "From material · p. {{page}}",
     "open": "Go to source"
+  },
+  "selection": {
+    "group": "More"
   }
 }
