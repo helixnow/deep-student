@@ -931,6 +931,7 @@ mod tests {
                 "note_state",
                 "note_review_save_receipts",
                 "note_editor_lease_acks",
+                "media_transcript_segments",
             ];
             for name in &expected {
                 let found = tables_with_composite_pk

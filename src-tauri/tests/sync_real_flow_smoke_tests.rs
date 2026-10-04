@@ -1332,6 +1332,15 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     ))
     .expect("insert notes local state and editor coordination rows");
 
+    conn.execute_batch(&format!(
+        "INSERT INTO media_transcript_segments (resource_id, idx, start_ms, end_ms, text, status, source, plan_version, updated_at)
+             VALUES ('file_all_media', 0, 0, 4000, 'non-row transcript', 1, 'asr', 1, {ms});
+         INSERT INTO media_progress (resource_id, last_position_ms, duration_ms, watched_ms, finished, updated_at)
+             VALUES ('file_all_media', 1000, 4000, 1000, 0, {ms});
+         INSERT INTO study_time_daily (date, seconds, updated_at) VALUES ('2024-04-24', 60, {ms});"
+    ))
+    .expect("insert media transcript, playback progress and study time rows");
+
     BTreeSet::from([
         "note_tags",
         "note_links",
@@ -1364,6 +1373,9 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
         "mindmap_versions",
         "memory_config",
         "vfs_indexing_config",
+        "media_transcript_segments",
+        "media_progress",
+        "study_time_daily",
     ])
 }
 
