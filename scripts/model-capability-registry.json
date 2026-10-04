@@ -1998,6 +1998,42 @@
           ],
           "source_url": "https://api-docs.deepseek.com/updates",
           "verified_at": "2026-09-12"
+        },
+        {
+          "model_id": "deepseek-v4.1-flash",
+          "release_date": "2026-09",
+          "status": "confirmed",
+          "alias_of": "deepseek-flash",
+          "source_url": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing",
+          "verified_at": "2026-10-04",
+          "capabilities": {
+            "text": true,
+            "vision": true,
+            "audio": false,
+            "video": false,
+            "function_calling": true,
+            "reasoning": true,
+            "coding_agent": false,
+            "max_context_tokens": 1000000,
+            "max_output_tokens": 393216
+          },
+          "param_format": {
+            "family": "openai_chat_completions",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "reasoning_effort",
+              "stream",
+              "tools"
+            ],
+            "notes": "V4.1 Flash 的版本号命名形态（中转网关常见，如 xxx_deepseek-v4.1-flash）；与官方别名 deepseek-flash 同一模型。"
+          },
+          "quirks": [
+            "官方 V4.1 Flash 的版本号形态别名；中转站常用 xxx_deepseek-v4.1-flash 命名。",
+            "V4.1 Flash 原生多模态（图文）；Responses 思考开关映射 reasoning.effort=none/low/high/max。"
+          ]
         }
       ]
     },

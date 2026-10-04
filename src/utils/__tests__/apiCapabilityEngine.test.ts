@@ -482,6 +482,19 @@ describe('gateway-prefixed model IDs (embed-gateway_ slug)', () => {
     expect(labeled.embedding).toBe(false);
   });
 
+  it('resolves version-named DeepSeek V4.1 Flash gateway ids as multimodal (registry record)', () => {
+    // 中转网关常用 xxx_deepseek-v4.1-flash 命名——注册表无此记录时会落空，
+    // 既不命中 deepseek-flash 也命中不了任何包含兜底，vision 丢失。
+    for (const id of ['dijia_deepseek-v4.1-flash', 'nexoraflash_deepseek-v4.1-flash', 'deepseek-v4.1-flash']) {
+      const caps = inferApiCapabilities({ id, name: id, providerScope: 'custom' });
+      expect(caps.vision, id).toBe(true);
+      expect(caps.reasoning, id).toBe(true);
+      expect(caps.functionCalling, id).toBe(true);
+      expect(caps.embedding, id).toBe(false);
+      expect(caps.maxOutputTokens, id).toBe(393216);
+    }
+  });
+
   it('resolves embedding records only for embedding-kind inputs', () => {
     const record = findModelRecordById('embed-gateway_qwen3-vl-embedding');
     expect(record?.model_id).toBe('qwen3-vl-embedding');
