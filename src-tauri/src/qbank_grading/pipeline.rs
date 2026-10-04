@@ -568,6 +568,10 @@ async fn resolve_grading_config(
 /// 有图时"学生答案"段只放占位文本（图片经 stream_grade 的多模态 parts 附带），
 /// 历次作答记录里的信封同样显示为"[图片作答 N 张]"而非回放原始 JSON
 /// （历史图片不重发，控制 token）。
+/// 讲解语言跟随题目：系统提示是中文，英文题目也会被讲成中文（实测英文界面 + 英文试卷，
+/// AI 解析全是中文）。标题、结构标记等格式要求保持不变，只约束正文语言。
+const QBANK_RESPONSE_LANGUAGE_RULE: &str = "Language: write your feedback in the same language as the question text (an English question gets an English explanation, including section headings; a Chinese question gets Chinese). 讲解语言与题目语言一致。";
+
 fn build_prompts(
     question: &Question,
     current_submission: &AnswerSubmission,
@@ -575,10 +579,14 @@ fn build_prompts(
     mode: &QbankGradingMode,
     image_answer: Option<&ImageAnswerPayload>,
 ) -> Result<(String, String), AppError> {
-    let system_prompt = match mode {
-        QbankGradingMode::Grade => GRADE_SYSTEM_PROMPT.to_string(),
-        QbankGradingMode::Analyze => ANALYZE_SYSTEM_PROMPT.to_string(),
-    };
+    let system_prompt = format!(
+        "{}\n\n{}",
+        match mode {
+            QbankGradingMode::Grade => GRADE_SYSTEM_PROMPT,
+            QbankGradingMode::Analyze => ANALYZE_SYSTEM_PROMPT,
+        },
+        QBANK_RESPONSE_LANGUAGE_RULE
+    );
 
     let mut user_prompt = String::new();
 
