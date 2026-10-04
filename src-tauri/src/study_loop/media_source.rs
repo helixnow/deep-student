@@ -76,9 +76,7 @@ pub fn parse_timestamped_line(line: &str) -> Option<(u32, &str)> {
     let rest = trimmed.strip_prefix('[')?;
     let close = rest.find(']')?;
     let inside = &rest[..close];
-    let start = inside
-        .split(|c: char| c == '-' || c == '–' || c == '~' || c == '→')
-        .next()?;
+    let start = inside.split(['-', '–', '~', '→']).next()?;
     let seconds = parse_clock(start)?;
     Some((seconds, rest[close + 1..].trim_start()))
 }
