@@ -73,7 +73,7 @@ export const EndCard = ({ t }: { t: number }) => {
         <span style={{ fontFamily: font.display, fontSize: 66, fontWeight: 600, letterSpacing: '-0.015em', color: brand.ink }}>DeepStudent</span>
       </Rise>
       <Rise t={t} at={FN.tag0} style={{ top: LOGO.cy + LOGO.size / 2 + 128 }}>
-        <span style={{ fontFamily: font.serif, fontSize: 44, fontWeight: 500, letterSpacing: '0.06em', color: brand.ink }}>把学习，做深。</span>
+        <span style={{ fontFamily: font.serif, fontSize: 44, fontWeight: 500, letterSpacing: '0.06em', color: brand.ink }}>只专注学习本身就够了，剩下的都交给我。</span>
       </Rise>
       <Rise t={t} at={FN.url0} style={{ top: LOGO.cy + LOGO.size / 2 + 214 }}>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: 20, color: brand.ink3 }}>

@@ -5,14 +5,19 @@ import { clamp, ease, prog } from '../lib/time';
 /**
  * 字幕层。排版直接落在画面上：不用毛玻璃胶囊、不用模糊渐显；
  * 可读性靠一片与底色同色、边缘完全化开的柔光底（scrim），而不是一个框。
+ *
+ * 文案口径见主仓库 docs/brand/messaging.md：主标题 + 副文案两层、书面语，
+ * 主语写「它」（动作是学习 Agent 做的）；不显示章节编号，主句读速 ≤ 4.5 字/秒。
  */
-type Kind = 'title' | 'chapter' | 'feature' | 'subtitle';
+type Kind = 'title' | 'feature';
 type Tone = 'light' | 'dark';
 
 export type Super = {
   s: number;
   e: number;
   text: string;
+  /** 副文案：主句之下一行小字，交代具体事实；晚主句约 0.3 秒（成片）出现，同时退出 */
+  sub?: string;
   kind: Kind;
   tone?: Tone;
   pos?: CSSProperties;
@@ -21,52 +26,43 @@ export type Super = {
   scrim?: boolean;
 };
 
+const CENTER = { left: 0, right: 0, top: 380 } as const;
+
 export const SUPERS: Super[] = [
-  { s: 0.45, e: 2.15, text: '一份资料，\n能走多深？', kind: 'title', pos: { left: 150, top: 380 } },
-  { s: 2.5, e: 3.4, text: '01 读懂', kind: 'chapter' },
-  { s: 3.55, e: 5.4, text: '划一下，就是上下文', kind: 'feature' },
-  { s: 5.5, e: 6.4, text: '02 看清', kind: 'chapter' },
-  { s: 7.18, e: 7.98, text: '提问即向量，从全部资料里找出处', kind: 'feature' },
-  { s: 9.1, e: 10.9, text: '每条引用，都回得到原文', kind: 'feature' },
-  { s: 11.0, e: 11.9, text: '03 整理', kind: 'chapter' },
-  { s: 12.3, e: 13.95, text: '一句话长出导图，结构随手切', kind: 'feature' },
-  { s: 14.08, e: 14.95, text: '一键挖空，导图就是背诵卡', kind: 'feature' },
-  { s: 15.0, e: 15.9, text: '04 练习', kind: 'chapter' },
-  { s: 15.56, e: 16.34, text: '卡片自动生成', kind: 'feature' },
-  { s: 17.02, e: 18.32, text: 'FSRS 帮你排好每一次复习', kind: 'feature', tone: 'dark' },
-  { s: 19.0, e: 19.9, text: '05 记住', kind: 'chapter', tone: 'dark', scrim: false },
-  { s: 20.0, e: 22.3, text: '越薄弱的，越早再见', kind: 'feature', tone: 'dark' },
+  // 开场立题，片尾口号「只专注学习本身就够了」回收
+  { s: 0.45, e: 2.15, text: '学习本身，\n已经够难了。', kind: 'title', pos: { left: 150, top: 380 } },
+  { s: 3.3, e: 5.6, text: '选中原文，即可提问。', sub: '选中的段落自动作为上下文。', kind: 'feature' },
+  // 命中纸片含学习记忆（retrieval/beats.ts 的 HITS）
+  { s: 6.0, e: 8.7, text: '它先翻遍你的资料，再作答。', sub: '检索范围覆盖教材、笔记、错题与学习记忆。', kind: 'feature' },
+  { s: 8.9, e: 10.9, text: '每一处引用，都可回溯原文。', kind: 'feature' },
+  { s: 11.4, e: 13.95, text: '思维导图，由它直接画好。', sub: '生成后可随时切换导图结构。', kind: 'feature' },
+  { s: 14.0, e: 15.35, text: '导图一键挖空，转为背诵材料。', kind: 'feature' },
+  // 与 practice/beats.ts 的 ANKI_CARDS 张数一致
+  { s: 15.5, e: 16.9, text: '讲解之余，它已做好 12 张卡片。', kind: 'feature' },
+  { s: 17.0, e: 19.2, text: '卡片自动入队，FSRS 安排每一次复习。', kind: 'feature', tone: 'dark' },
+  { s: 19.6, e: 22.3, text: '薄弱之处，优先复习。', sub: '掌握越不牢固的内容，再次出现得越早。', kind: 'feature', tone: 'dark' },
   // 第二幕：第二天，白天的学习桌面
-  { s: 24.05, e: 25.75, text: '不止一份资料。', kind: 'title', pos: { left: 0, right: 0, top: 380 }, align: 'center', scrim: false },
-  { s: 25.6, e: 27.3, text: '今天要复习的、要做的，一屏看清', kind: 'feature' },
-  { s: 27.5, e: 28.9, text: '开一个番茄钟，进入专注', kind: 'feature' },
-  // 章节标签压在题目集 / 作文窗口左上角：不铺柔光底，免得把窗口角和红绿灯洗白
-  { s: 30.0, e: 30.9, text: '06 检验', kind: 'chapter', scrim: false },
-  { s: 30.95, e: 33.05, text: '试卷拖进来，题目集就有了', kind: 'feature' },
+  { s: 24.0, e: 25.9, text: '今天的安排，它已经列好。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
+  { s: 26.0, e: 28.9, text: '复习与待办，汇总在同一张清单。', sub: '可从清单直接开启番茄钟。', kind: 'feature' },
+  { s: 30.4, e: 33.1, text: '整份试卷，自动拆分为题目。', sub: '拖入 PDF，自动识别题干与选项。', kind: 'feature' },
   // 答错时后端自动建复习计划、下次复习日 = 今天（题目进复习，不是「知识点」）
-  { s: 34.5, e: 35.95, text: '答错的题，自动排进今日复习', kind: 'feature' },
-  { s: 36.05, e: 37.85, text: 'AI 讲清楚错在哪', kind: 'feature' },
-  { s: 38.0, e: 38.9, text: '07 写作与精读', kind: 'chapter', scrim: false },
-  { s: 39.15, e: 41.1, text: '作文按考试标准逐项打分', kind: 'feature' },
-  { s: 41.3, e: 42.65, text: '逐句润色，改在哪一看就懂', kind: 'feature' },
-  { s: 43.75, e: 45.4, text: '整篇翻译，逐段对照精读', kind: 'feature' },
-  { s: 46.0, e: 46.9, text: '08 调研', kind: 'chapter' },
-  { s: 47.0, e: 49.5, text: '一句话，交给它去查、去读、去写', kind: 'feature' },
+  { s: 34.35, e: 36.0, text: '错题自动加入今日复习。', kind: 'feature' },
+  { s: 36.05, e: 37.85, text: '它逐步讲清错因。', kind: 'feature' },
+  { s: 38.4, e: 41.1, text: '作文按考试标准逐项评分。', sub: '分项成绩、雷达图与逐条评语一并给出。', kind: 'feature' },
+  { s: 41.25, e: 42.95, text: '逐句润色，改动之处清晰标注。', kind: 'feature' },
+  { s: 43.1, e: 45.5, text: '整篇翻译，原文译文逐段对照。', kind: 'feature' },
+  { s: 46.3, e: 49.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
   // 笔记窗 clean 时 AI 直接改、改动处渐隐高亮，顶部留「撤销本次修改」
-  { s: 49.95, e: 51.15, text: 'AI 当面改笔记，不满意一键撤销', kind: 'feature' },
-  { s: 51.4, e: 52.75, text: '论文搜到、下好、读进资料库', kind: 'feature' },
-  { s: 52.95, e: 53.85, text: '导入即索引，下次提问就能引用', kind: 'feature' },
+  { s: 49.5, e: 51.25, text: '它直接修改笔记，每处改动均可撤销。', kind: 'feature' },
+  { s: 51.4, e: 53.85, text: '论文由它下载入库。', sub: '导入即建立索引，可在后续提问中引用。', kind: 'feature' },
   // 第三幕：越用越懂你
-  { s: 54.15, e: 55.55, text: '越用，越懂你。', kind: 'title', pos: { left: 0, right: 0, top: 380 }, align: 'center', scrim: false },
-  { s: 55.6, e: 56.45, text: '09 懂你', kind: 'chapter' },
-  { s: 56.5, e: 57.9, text: '记住你的薄弱点和习惯', kind: 'feature' },
+  { s: 54.1, e: 55.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
+  { s: 56.1, e: 57.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
   // 与同一时刻画面里技能窗的「全部 55 · 内置 55」对得上
-  { s: 58.0, e: 59.2, text: '50+ 技能，按需加载', kind: 'feature' },
-  { s: 59.3, e: 60.3, text: '接入 MCP，连上外部工具', kind: 'feature' },
-  { s: 60.4, e: 61.5, text: '同一个问题，几个模型一起答', kind: 'feature' },
+  { s: 58.0, e: 60.3, text: '55 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
+  { s: 60.4, e: 62.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
   // 收尾
   { s: 62.3, e: 69.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },
-  { s: 65.6, e: 69.55, text: '内置 50+ 技能，支持 MCP，预置 12 家模型供应商；本地优先，开源。', kind: 'subtitle' },
 ];
 
 /** 逐字从一道看不见的基线下升起（遮罩揭示），收尾时整行轻轻下沉淡出。 */
@@ -161,80 +157,33 @@ const SuperView = ({ sp, t }: { sp: Super; t: number }) => {
       </>
     );
   }
-  if (sp.kind === 'subtitle') {
-    const k = prog(t, sp.s, sp.s + 0.5, ease.brand);
-    const out = prog(t, sp.e - 0.26, sp.e, ease.inCubic);
-    return (
-      <div
-        style={{
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: 224,
-          textAlign: 'center',
-          fontFamily: font.ui,
-          fontSize: 27,
-          fontWeight: 400,
-          letterSpacing: '0.06em',
-          color: brand.ink2,
-          opacity: k * (1 - out),
-          transform: `translateY(${(1 - k) * 10}px)`,
-        }}
-      >
-        {sp.text}
-      </div>
-    );
-  }
-  if (sp.kind === 'chapter') {
-    const k = prog(t, sp.s, sp.s + 0.36, ease.outExpo);
-    const out = prog(t, sp.e - 0.25, sp.e, ease.inCubic);
-    const [num, ...rest] = sp.text.split(' ');
-    const rule = prog(t, sp.s + 0.04, sp.s + 0.4, ease.outExpo);
-    return (
-      <>
-        {sp.scrim === false ? null : <Scrim at="tl" w={760} h={260} color={dark ? ground : 'hsl(0 0% 97% / 0.98)'} edge={groundEdge} solid={0.52} opacity={prog(t, sp.s - 0.05, sp.s + 0.25) * (1 - out)} />}
-        <div
-          style={{
-            position: 'absolute',
-            left: 96,
-            top: 70,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 16,
-            fontFamily: font.ui,
-            color: ink,
-            opacity: 1 - out,
-          }}
-        >
-          <span style={{ fontFamily: font.mono, fontSize: 19, fontWeight: 500, letterSpacing: '0.04em', color: dark ? 'hsl(0 0% 70%)' : brand.ink3, opacity: k, fontVariantNumeric: 'tabular-nums' }}>
-            {num}
-          </span>
-          <span style={{ width: 36 * rule, height: 1.5, background: dark ? 'hsl(0 0% 100% / 0.5)' : 'hsl(220 12% 16% / 0.4)' }} />
-          <span style={{ display: 'block', overflow: 'hidden', fontSize: 30, fontWeight: 600, letterSpacing: '0.14em', paddingBottom: '0.1em', marginBottom: '-0.1em' }}>
-            <span style={{ display: 'inline-block', transform: `translateY(${(1 - k) * 112}%)` }}>{rest.join(' ')}</span>
-          </span>
-        </div>
-      </>
-    );
-  }
+  // 主句 40/600 + 副文案 24/400：两层层级，而不是一块 PPT 式的大标题板
   const k = prog(t, sp.s - 0.05, sp.s + 0.3, ease.brand);
   const out = prog(t, sp.e - 0.3, sp.e, ease.inCubic);
+  const subK = prog(t, sp.s + 0.15, sp.s + 0.45, ease.brand);
+  const w = Math.max(1000, sp.text.length * 44 + 560, (sp.sub?.length ?? 0) * 26 + 560);
   return (
     <>
-      <Scrim at="bl" w={Math.max(1000, sp.text.length * 50 + 560)} h={330} color={ground} edge={groundEdge} opacity={k * (1 - out)} />
-      <div
-        style={{
-          position: 'absolute',
-          left: 96,
-          bottom: 92,
-          fontFamily: font.ui,
-          fontSize: 44,
-          fontWeight: 600,
-          letterSpacing: '0.04em',
-          color: ink,
-        }}
-      >
-        <MaskIn text={sp.text} t={t} s={sp.s + 0.03} e={sp.e} stagger={0.022} />
+      <Scrim at="bl" w={w} h={sp.sub ? 370 : 310} color={ground} edge={groundEdge} solid={sp.sub ? 0.42 : 0.3} opacity={k * (1 - out)} />
+      <div style={{ position: 'absolute', left: 96, bottom: 92, fontFamily: font.ui, color: ink }}>
+        <div style={{ fontSize: 40, fontWeight: 600, letterSpacing: '0.03em' }}>
+          <MaskIn text={sp.text} t={t} s={sp.s + 0.03} e={sp.e} stagger={0.022} />
+        </div>
+        {sp.sub ? (
+          <div
+            style={{
+              marginTop: 14,
+              fontSize: 24,
+              fontWeight: 400,
+              letterSpacing: '0.04em',
+              color: dark ? 'hsl(0 0% 76%)' : brand.ink2,
+              opacity: subK * (1 - out),
+              transform: `translateY(${(1 - subK) * 8}px)`,
+            }}
+          >
+            {sp.sub}
+          </div>
+        ) : null}
       </div>
     </>
   );
