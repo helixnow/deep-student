@@ -98,7 +98,7 @@
     "expandPreview": "展开预览",
     "collapsePreview": "收起预览",
     "scriptsDisabled": "脚本未运行",
-    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网、链接不可跳转。需要交互效果请下载 HTML 后用浏览器打开。"
+    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网，外部链接会在系统浏览器中打开。需要交互效果请下载 HTML 后用浏览器打开。"
   },
   "common": {
     "close": "关闭",

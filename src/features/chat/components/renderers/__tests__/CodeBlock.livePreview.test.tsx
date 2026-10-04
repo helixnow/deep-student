@@ -2,7 +2,8 @@ import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { saveTextFile, saveBinaryFile, copyText, saveSvgAsPngMock } = vi.hoisted(() => ({
+const { saveTextFile, saveBinaryFile, copyText, saveSvgAsPngMock, openUrlMock } = vi.hoisted(() => ({
+  openUrlMock: vi.fn(),
   saveTextFile: vi.fn(),
   saveBinaryFile: vi.fn(),
   copyText: vi.fn(),
@@ -15,6 +16,10 @@ vi.mock('@/utils/fileManager', () => ({
 
 vi.mock('@/utils/clipboardUtils', () => ({
   copyTextToClipboard: copyText,
+}));
+
+vi.mock('@/utils/urlOpener', () => ({
+  openUrl: openUrlMock,
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -141,7 +146,9 @@ describe('CodeBlock HTML live preview', () => {
     );
     const frame = container.querySelector('iframe.chat-html-preview-frame');
     expect(frame).not.toBeNull();
-    expect(frame?.getAttribute('sandbox')).toBe('');
+    // 同源（父页面测量/拦截链接）但绝不允许脚本
+    expect(frame?.getAttribute('sandbox')).toBe('allow-same-origin');
+    expect(frame?.getAttribute('sandbox')).not.toMatch(/allow-scripts/);
     expect(frame?.getAttribute('srcdoc')).toContain('<p class="a">hi</p>');
     expect(frame?.getAttribute('srcdoc')).not.toContain('x()');
     expect(screen.getByText(/脚本未运行|Scripts not run/)).toBeInTheDocument();
@@ -185,5 +192,45 @@ describe('CodeBlock HTML live preview', () => {
       content: '<ul><li>item</li></ul>',
       defaultFileName: 'page.html',
     });
+  });
+
+  it('routes link clicks inside the preview to openUrl and sizes the stage to the content', () => {
+    openUrlMock.mockReset();
+    const { container } = render(
+      <CodeBlock className="language-html">{`${PAGE_HEAD}<a id="go" href="https://example.com/doc">doc</a></body></html>`}</CodeBlock>,
+    );
+    const frame = container.querySelector('iframe.chat-html-preview-frame') as HTMLIFrameElement;
+    const doc = frame.contentDocument!;
+    // jsdom 不加载 srcdoc：手动写入帧文档，模拟加载完成
+    doc.body.innerHTML = '<a id="go" href="https://example.com/doc">doc</a>';
+    Object.defineProperty(doc.body, 'scrollHeight', { configurable: true, value: 2000 });
+    act(() => { fireEvent.load(frame); });
+
+    const stage = container.querySelector('.chat-html-preview-stage') as HTMLElement;
+    expect(parseInt(stage.style.height, 10)).toBeLessThan(2000);
+    const expand = screen.getByRole('button', { name: /展开预览|Expand preview/ });
+    fireEvent.click(expand);
+    expect(stage.style.height).toBe('2000px');
+
+    const ev = new MouseEvent('click', { bubbles: true, cancelable: true });
+    doc.getElementById('go')!.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(openUrlMock).toHaveBeenCalledWith('https://example.com/doc');
+  });
+
+  it('keeps the background buffer frame out of focus and the accessibility tree', () => {
+    vi.useFakeTimers();
+    const { container, rerender } = render(
+      <CodeBlock className="language-html" isStreaming>{`${PAGE_HEAD}<p>one</p>`}</CodeBlock>,
+    );
+    rerender(<CodeBlock className="language-html" isStreaming>{`${PAGE_HEAD}<p>one</p><p>two</p>`}</CodeBlock>);
+    act(() => { vi.advanceTimersByTime(HTML_PREVIEW_STREAM_INTERVAL_MS + 5); });
+    const loading = container.querySelector('iframe[data-state="loading"]')!;
+    expect(loading.getAttribute('tabindex')).toBe('-1');
+    expect(loading.getAttribute('aria-hidden')).toBe('true');
+    expect(loading.hasAttribute('inert')).toBe(true);
+    const front = container.querySelector('iframe[data-state="front"]')!;
+    expect(front.hasAttribute('inert')).toBe(false);
+    expect(front.getAttribute('tabindex')).toBeNull();
   });
 });

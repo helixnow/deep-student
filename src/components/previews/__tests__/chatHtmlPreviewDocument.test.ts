@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  CHAT_HTML_PREVIEW_SANDBOX,
   INITIAL_HTML_PREVIEW_BUFFER,
   buildChatHtmlPreviewDocument,
   htmlPreviewBufferReducer,
@@ -98,11 +99,16 @@ describe('buildChatHtmlPreviewDocument', () => {
     expect(doc).not.toContain('<body class="ds-fragment"');
   });
 
-  it('neutralizes navigating links but keeps in-page anchors', () => {
-    expect(doc).not.toContain('href="https://example.com"');
+  it('keeps link targets for parent-side interception, with the URL as tooltip', () => {
+    expect(doc).toContain('href="https://example.com"');
     expect(doc).toContain('title="https://example.com"');
     expect(doc).not.toContain('target=');
     expect(doc).toContain('href="#sec"');
+  });
+
+  it('uses a same-origin sandbox that never allows scripts', () => {
+    expect(CHAT_HTML_PREVIEW_SANDBOX.split(/\s+/)).toContain('allow-same-origin');
+    expect(CHAT_HTML_PREVIEW_SANDBOX).not.toMatch(/allow-scripts|allow-popups|allow-forms|allow-top-navigation/);
   });
 
   it('gives fragments a typographic body', () => {

@@ -98,7 +98,7 @@
     "expandPreview": "Expand preview",
     "collapsePreview": "Collapse preview",
     "scriptsDisabled": "Scripts not run",
-    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts, no network, links are inert. Download the HTML and open it in a browser for interactive behavior."
+    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts and no network; external links open in your system browser. Download the HTML and open it in a browser for interactive behavior."
   },
   "common": {
     "close": "Close",

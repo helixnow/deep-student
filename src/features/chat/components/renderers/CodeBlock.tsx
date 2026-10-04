@@ -344,6 +344,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   /** HTML 代码块：null = 按内容自动决定（完整文档/带样式默认预览） */
   const [htmlViewOverride, setHtmlViewOverride] = useState<'preview' | 'source' | null>(null);
   const [htmlExpanded, setHtmlExpanded] = useState(false);
+  /** HTML 内容高度超出收起态上限（才需要"展开"按钮） */
+  const [htmlOverflowing, setHtmlOverflowing] = useState(false);
   /** 图形预览视窗高度（按宽高比计算）；null 时用 CSS 默认 */
   const [previewHeight, setPreviewHeight] = useState<number | null>(null);
   /** 用户手动缩放/平移过：之后的新帧与容器尺寸变化不再自动适配，尊重用户视角 */
@@ -951,7 +953,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       )}
       <div className="code-block-actions">
         {svgPreviewActive && progressiveSvg !== null && zoomControls}
-        {htmlPreviewActive && (
+        {htmlPreviewActive && (htmlOverflowing || htmlExpanded) && (
           <DsButton
             variant="ghost"
             size="icon"
@@ -1043,9 +1045,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         onReset={handleErrorBoundaryReset}
       >
         <ChatHtmlPreview
-          className={`chat-html-preview-stage${htmlExpanded ? ' is-expanded' : ''}`}
+          className="chat-html-preview-stage"
           html={codeContent}
           streaming={!!isStreaming}
+          expanded={htmlExpanded}
+          onOverflowChange={setHtmlOverflowing}
           title={t('codeBlock.htmlPreviewTitle')}
         />
       </MermaidErrorBoundary>

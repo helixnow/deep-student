@@ -6,13 +6,16 @@ import { getHtmlSandboxCsp } from './htmlSandboxPolicy';
  * 聊天代码块 HTML 预览（chat-safe）的纯函数部分。
  *
  * 安全模型（与 release CSP 对齐，dev/release 行为一致）：
- * - iframe `sandbox=""`：无脚本、无同源、无表单、无弹窗、无顶层导航；
+ * - iframe `sandbox="allow-same-origin"`，**不含 allow-scripts**：帧内任何脚本
+ *   （含 on* 内联处理器）都不执行；无表单、无弹窗、无顶层导航。同源仅供父页面
+ *   读取帧 DOM——测量自动高度、拦截链接（见 chatHtmlPreviewFrame.ts）。
+ *   绝不能与 allow-scripts 同时出现（二者叠加等于没有沙箱）。
  * - 文档内 CSP meta：default-src 'none'、script-src 'none'、connect-src 'none'；
- * - DOMPurify 剥离 script / on* / iframe / form / link / base；
- * - 链接全部去掉 href（页内 #锚点 保留）：沙箱帧里点击外链只会把预览帧
- *   自身导航走（dev）或撞上 release 的 frame-src 变成错误页，二者都不可用。
- *   帧内不能跑脚本、父页面也读不到跨源帧的 DOM，无法把点击转交给 openUrl。
+ * - DOMPurify 剥离 script / on* / iframe / form / link / base / meta / target。
  */
+
+/** 聊天 HTML 预览帧的 sandbox 值：同源（父页面可测量/拦截链接），但禁止脚本 */
+export const CHAT_HTML_PREVIEW_SANDBOX = 'allow-same-origin';
 
 const RAW_TEXT_ELEMENTS = ['style', 'script', 'textarea', 'title'];
 const TRAILING_PARTIAL_ENTITY_RE = /&[#a-zA-Z0-9]*$/;
@@ -122,7 +125,6 @@ const CHAT_PREVIEW_BASE_CSS = `
     font: 14px/1.6 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
   body.ds-fragment img, body.ds-fragment video, body.ds-fragment canvas { max-width: 100%; height: auto; }
-  a:not([href]) { cursor: default; }
 `;
 
 function sanitizeChatHtml(html: string, isFullDoc: boolean): Document {
@@ -138,11 +140,11 @@ function sanitizeChatHtml(html: string, isFullDoc: boolean): Document {
     isFullDoc ? sanitized : `<!DOCTYPE html><html><head></head><body>${sanitized}</body></html>`,
     'text/html',
   );
+  // 链接保留 href（点击由父页面拦截：外链走系统浏览器，#锚点 帧内滚动），
+  // 外链把目标 URL 作为悬停提示
   doc.querySelectorAll('a[href], area[href]').forEach((el) => {
-    const href = el.getAttribute('href') ?? '';
-    if (href.trim().startsWith('#')) return;
-    el.removeAttribute('href');
-    if (href && !el.getAttribute('title')) el.setAttribute('title', href);
+    const href = (el.getAttribute('href') ?? '').trim();
+    if (href && !href.startsWith('#') && !el.getAttribute('title')) el.setAttribute('title', href);
   });
   return doc;
 }

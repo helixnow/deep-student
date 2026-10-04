@@ -377,35 +377,14 @@
   pointer-events: none;
 }
 
-/* HTML 预览舞台：固定高度、帧内滚动（无脚本沙箱帧无法向父页面汇报内容高度）。
-   双缓冲：新文档在下层透明帧加载完成后才换到前台，前台帧从不重建。 */
+/* HTML 预览舞台：高度由 ChatHtmlPreview 按帧内容实测写入（内联 style，
+   收起态有上限、超出时帧内滚动，可展开）。
+   双缓冲：新文档在下层透明帧加载并测量完成后才换到前台，前台帧从不重建。 */
 .chat-v2 .markdown-content .chat-html-preview-stage {
   position: relative;
   width: 100%;
-  height: 420px;
   overflow: hidden;
   background: var(--chat-block-surface);
-  transition: height 0.2s ease;
-}
-
-.chat-v2 .markdown-content .chat-html-preview-stage.is-expanded {
-  height: min(85vh, 960px);
-}
-
-@media (pointer: coarse) {
-  .chat-v2 .markdown-content .chat-html-preview-stage {
-    height: min(420px, 55svh);
-  }
-
-  .chat-v2 .markdown-content .chat-html-preview-stage.is-expanded {
-    height: 80svh;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .chat-v2 .markdown-content .chat-html-preview-stage {
-    transition: none;
-  }
 }
 
 .chat-v2 .markdown-content .chat-html-preview-frame {
