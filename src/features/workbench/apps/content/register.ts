@@ -13,6 +13,7 @@
  * ACR R2-10：统一 onActivation
  * - exam：focusQuestion → qbank:focus-question；scrollToHeading 回执 handled:false
  * - textbook/file：scrollToHeading 若 payload 含 page → pdf-ref:focus；否则可行动回执
+ * - file（音视频）：seekMedia {seconds | time:'mm:ss'} → media-ref:focus + 播放器回执
  * - 其余：scrollToHeading 返回 handled:false + hint（禁止假成功）
  * （note 的 scrollToHeading 活化路径在 notes 工作区：apps/notes/workspaceRegistry）
  */
@@ -53,6 +54,8 @@ import {
   createResourceContentManifest,
 } from './agentManifests';
 import { requestPdfPageFocus } from './pdfFocusAck';
+import { requestMediaSeekWithAck } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+import { parseMediaRefTimestamp } from '@/features/learning-hub/apps/views/media/mediaRefTime';
 
 function parseHeadingPayload(payload: unknown): { heading: string; level: number; page?: number } {
   let heading = '';
@@ -535,6 +538,37 @@ async function handlePdfLikeScroll(typeId: string, ctx: ActivationContext): Prom
 }
 
 /**
+ * file（音视频）：seekMedia → media-ref:focus，媒体视图 seek + 播放后回执。
+ * payload：{ seconds: number } 或 { time: 'mm:ss' | 'h:mm:ss' }，可选 play:false。
+ */
+async function handleMediaSeek(ctx: ActivationContext): Promise<ActivationResult> {
+  const resourceId = ctx.instanceKey;
+  if (!resourceId) {
+    return { handled: false, code: 'WINDOW_NOT_FOUND', hint: '缺少 file resourceId' };
+  }
+  const p = (ctx.payload && typeof ctx.payload === 'object' ? ctx.payload : {}) as {
+    seconds?: unknown;
+    time?: unknown;
+    play?: unknown;
+  };
+  const seconds =
+    typeof p.seconds === 'number' && Number.isFinite(p.seconds) && p.seconds >= 0
+      ? p.seconds
+      : parseMediaRefTimestamp(p.time);
+  if (seconds === null) {
+    return {
+      handled: false,
+      code: 'INVALID_PAYLOAD',
+      hint: "seekMedia 需要 payload.seconds（秒）或 payload.time（'mm:ss' / 'h:mm:ss'）",
+    };
+  }
+  const ok = await requestMediaSeekWithAck({ resourceId, seconds, play: p.play !== false });
+  return ok
+    ? { handled: true, acknowledged: true }
+    : { handled: false, code: 'ACTION_UNAVAILABLE', hint: '媒体播放器未确认跳转（非音视频文件或尚未加载）' };
+}
+
+/**
  * 内容类统一 onActivation — R1-16 / R2-10
  */
 function createContentActivationHandler(typeId: string) {
@@ -544,6 +578,9 @@ function createContentActivationHandler(typeId: string) {
     }
     if (typeId === 'exam') {
       return handleExamActivation(ctx);
+    }
+    if (ctx.action === 'seekMedia' && typeId === 'file') {
+      return handleMediaSeek(ctx);
     }
     if (ctx.action === 'scrollToHeading' || ctx.action === 'gotoPage') {
       if (typeId === 'textbook' || typeId === 'file') {

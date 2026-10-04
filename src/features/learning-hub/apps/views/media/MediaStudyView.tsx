@@ -174,8 +174,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   }, []);
 
   // ---------------------------------------------------------------- 引用跳转（media-ref:focus）
+  // 只有可见（活跃）实例响应：学习资源页保活的隐藏标签不能抢走跳转并在后台出声；
+  // 派发方带回执重发，目标标签激活后自然命中
   const [focusRequest, handleFocusHandled] = useMediaFocusListener({
-    enabled: true,
+    enabled: isActive,
     focusScopeId,
     nodeId: resourceId,
     nodeSourceId: sourceId,

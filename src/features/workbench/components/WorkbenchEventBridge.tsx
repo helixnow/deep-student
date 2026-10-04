@@ -12,6 +12,7 @@
  * - CHAT_OPEN_ATTACHMENT_PREVIEW → launch 对应资源窗
  * - context-ref:preview      → vfs 解析 sourceId 后走 CHAT_OPEN_ATTACHMENT_PREVIEW
  * - pdf-ref:open             → launch textbook/file 窗 + 延迟派发 pdf-ref:focus
+ * - media-ref:open           → launch file 窗 + media-ref:focus 带回执重发（seek + 播放）
  * - navigateToNote / navigateToTranslation / navigateToEssay → launch 内容窗
  * - navigateToExamSheet      → launch 题目集窗
  * - NAVIGATE_TO_VIEW{openResource} → launch 对应资源窗（聊天「在学习中心打开」、导图嵌入、快捷助手资源）
@@ -41,6 +42,11 @@ import {
   shouldWorkbenchHandleOpenNote,
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
+import {
+  MEDIA_REF_OPEN_EVENT,
+  requestMediaFocusUntilHandled,
+  type MediaRefOpenDetail,
+} from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 
 /** 失败路径：可见 toast + assertive 公告（勿仅 console.warn） */
 function announceBridgeFailure(message: string): void {
@@ -244,6 +250,15 @@ export const WorkbenchEventBridge: React.FC = () => {
       dispatchPdfFocus(sourceId, pageNumber as number, quote);
     };
 
+    const onMediaRefOpen = (e: Event) => {
+      const { resourceId, seconds } = (e as CustomEvent<MediaRefOpenDetail>).detail ?? {};
+      if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+        return;
+      }
+      launchResourceWindow(resourceId, 'file');
+      requestMediaFocusUntilHandled({ resourceId, seconds });
+    };
+
     const onNavigateToNote = (e: Event) => {
       const noteId = (e as CustomEvent<{ noteId?: string }>).detail?.noteId;
       if (noteId) launchResourceWindow(noteId, 'note');
@@ -308,6 +323,7 @@ export const WorkbenchEventBridge: React.FC = () => {
     window.addEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onAttachmentPreview);
     document.addEventListener('context-ref:preview', onContextRefPreview);
     document.addEventListener('pdf-ref:open', onPdfRefOpen);
+    document.addEventListener(MEDIA_REF_OPEN_EVENT, onMediaRefOpen);
     window.addEventListener('navigateToNote', onNavigateToNote);
     window.addEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
     window.addEventListener('navigateToTranslation', onNavigateToTranslation);
@@ -322,6 +338,7 @@ export const WorkbenchEventBridge: React.FC = () => {
       window.removeEventListener('CHAT_OPEN_ATTACHMENT_PREVIEW', onAttachmentPreview);
       document.removeEventListener('context-ref:preview', onContextRefPreview);
       document.removeEventListener('pdf-ref:open', onPdfRefOpen);
+      document.removeEventListener(MEDIA_REF_OPEN_EVENT, onMediaRefOpen);
       window.removeEventListener('navigateToNote', onNavigateToNote);
       window.removeEventListener('DSTU_OPEN_NOTE', onDstuOpenNote);
       window.removeEventListener('navigateToTranslation', onNavigateToTranslation);

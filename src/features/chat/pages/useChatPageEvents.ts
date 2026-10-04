@@ -33,6 +33,12 @@ import {
   markChatPageReady,
 } from '../navigation/pendingChatNavigation';
 import { isHiddenDraftSession } from './draftSession';
+import {
+  MEDIA_REF_OPEN_EVENT,
+  requestMediaFocusUntilHandled,
+  type MediaRefOpenDetail,
+} from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+import { resolveMediaResourceName } from '../components/MediaCitationBadge';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -668,6 +674,41 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       }
       document.removeEventListener('pdf-ref:open', handlePdfRefOpen);
     };
+  }, [t]);
+
+  // 🆕 媒体时间戳引用 [媒体@id:mm:ss]（聊天徽章 / 笔记锚点）→ 打开音视频并跳到该时间
+  // 工作台壳由 WorkbenchEventBridge 独占处理（开 file 资源窗）：两边都处理会让
+  // 聊天面板与资源窗两个播放器同时 seek + 出声。
+  useEffect(() => {
+    const handleMediaRefOpen = async (event: Event) => {
+      if (workbenchBus.isEnabled()) return;
+      const { resourceId, seconds } = (event as CustomEvent<MediaRefOpenDetail>).detail ?? {};
+      if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) {
+        return;
+      }
+      // 用户在学习资源页（讲义笔记里的媒体锚点等）：就地以标签打开并跳转
+      if (useViewStore.getState().currentView === 'learning-hub') {
+        requestLearningHubIntent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${resourceId}` });
+        requestMediaFocusUntilHandled({ resourceId, seconds });
+        return;
+      }
+      // 聊天页：右侧附件面板打开（与 PDF 引用同一通道），面板实例带专属 focusScopeId。
+      // 文件名通常已被徽章解析并缓存，这里取到即用于面板标题。
+      const title = (await resolveMediaResourceName(resourceId)) || t('learningHub:mediaRef.unknownMedia');
+      window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+        detail: { id: resourceId, type: 'file', title },
+      }));
+      requestMediaFocusUntilHandled({
+        resourceId,
+        seconds,
+        targetScopeId: CHAT_PANEL_PDF_FOCUS_SCOPE,
+      });
+    };
+    const listener = (event: Event) => {
+      void handleMediaRefOpen(event);
+    };
+    document.addEventListener(MEDIA_REF_OPEN_EVENT, listener);
+    return () => document.removeEventListener(MEDIA_REF_OPEN_EVENT, listener);
   }, [t]);
 
   // ========== P1-07: 命令面板 CHAT_* 事件监听 ==========
