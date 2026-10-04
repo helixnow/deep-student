@@ -74,6 +74,8 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
   // ready effect 派发，导致重放落在无监听器的间隙。
   const isInitialLoadingRef = useRef(isInitialLoading);
   isInitialLoadingRef.current = isInitialLoading;
+  // navigate-to-session 存在性校验是异步的：只让最新一次请求生效
+  const navigateRequestSeqRef = useRef(0);
 
   useEffect(() => {
     const handleOpenNote = (event: CustomEvent<DstuOpenNoteDetail>) => {
@@ -165,24 +167,41 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
 
     // 本次事件已被直接消费：作废更早挂起的导航意图（最新意图生效）
     invalidatePendingChatNavigation();
-    setCurrentSessionId(sid);
+    const requestSeq = ++navigateRequestSeqRef.current;
+    const isLatest = () => requestSeq === navigateRequestSeqRef.current;
 
+    // 内存里已有 store 的会话（已打开过 / 刚建的 draft）必然存在：立即切换，保持同步语义
+    const knownInMemory = sessionManager.has(sid);
+    if (knownInMemory) setCurrentSessionId(sid);
+
+    let session: ChatSession | null;
     try {
-      const session = await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: sid });
-      if (!session) return;
-      // 隐藏 draft 会话不进入左侧列表（外部 ensureActiveChatSession 激活 draft 时也会派发本事件）
-      if (isHiddenDraftSession(session)) return;
-
-      setSessions((prev) => {
-        if (prev.some((item) => item.id === session.id)) {
-          return prev;
-        }
-        return [session, ...prev];
-      });
+      session = await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: sid });
     } catch (error) {
-      console.warn('[ChatV2Page] Failed to navigate to session:', getErrorMessage(error));
+      // 查询失败（IPC 异常 / 非标准 id）不代表会话不存在：保持旧行为照常切换
+      console.warn('[ChatV2Page] Failed to verify navigation target session:', getErrorMessage(error));
+      if (!knownInMemory && isLatest()) setCurrentSessionId(sid);
+      return;
     }
-  }, [setCurrentSessionId, setSessions]);
+
+    if (!knownInMemory) {
+      // 等待期间又来了更新的导航请求：本次作废，最新意图生效
+      if (!isLatest()) return;
+      // 先确认会话存在再切换：此前先切换再查库，目标会话已被删除/不存在时不回退——
+      // 停在空会话上，且 ChatV2Page 会把失效的 sess_* 写进 LAST_SESSION_KEY，下次启动继续落空
+      if (!session) {
+        console.warn('[ChatV2Page] navigate-to-session target does not exist:', sid);
+        showGlobalNotification('warning', t('notes:reference.session_not_found', { defaultValue: 'Session not found' }));
+        return;
+      }
+      setCurrentSessionId(sid);
+    }
+
+    // 隐藏 draft 会话不进入左侧列表（外部 ensureActiveChatSession 激活 draft 时也会派发本事件）
+    if (!session || isHiddenDraftSession(session)) return;
+    const found = session;
+    setSessions((prev) => (prev.some((item) => item.id === found.id) ? prev : [found, ...prev]));
+  }, [setCurrentSessionId, setSessions, t]);
 
   useEventRegistry([
     {

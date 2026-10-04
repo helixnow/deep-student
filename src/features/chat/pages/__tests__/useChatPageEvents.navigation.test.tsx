@@ -12,6 +12,14 @@ import {
   type UseChatPageEventsDeps,
 } from '../useChatPageEvents';
 
+const { invokeMock, notifyMock } = vi.hoisted(() => ({
+  invokeMock: vi.fn(),
+  notifyMock: vi.fn(),
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: notifyMock }));
+
 function Harness({ deps }: { deps: UseChatPageEventsDeps }) {
   useChatPageEvents(deps);
   return null;
@@ -48,9 +56,12 @@ function makeDeps(
 describe('useChatPageEvents navigation handshake', () => {
   afterEach(() => {
     resetChatNavigationHandshakeForTest();
+    invokeMock.mockReset();
+    notifyMock.mockReset();
   });
 
   it('ignores the shell-opening event during load and consumes its replay after ready', async () => {
+    invokeMock.mockResolvedValue({ id: 'sess_target', title: 'T' });
     const setCurrentSessionId = vi.fn();
     const base = makeDeps({ setCurrentSessionId });
     const { rerender } = render(<Harness deps={base} />);
@@ -81,5 +92,44 @@ describe('useChatPageEvents navigation handshake', () => {
     await waitFor(() => {
       expect(createSession).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('does not switch to a session that no longer exists and tells the user', async () => {
+    invokeMock.mockResolvedValue(null);
+    const setCurrentSessionId = vi.fn();
+    const setSessions = vi.fn();
+    render(<Harness deps={makeDeps({ isInitialLoading: false, setCurrentSessionId, setSessions })} />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId: 'sess_deleted' } }));
+    });
+
+    await waitFor(() => {
+      expect(notifyMock).toHaveBeenCalledWith('warning', expect.any(String));
+    });
+    expect(invokeMock).toHaveBeenCalledWith('chat_v2_get_session', { sessionId: 'sess_deleted' });
+    expect(setCurrentSessionId).not.toHaveBeenCalled();
+    expect(setSessions).not.toHaveBeenCalled();
+  });
+
+  it('lets only the latest of overlapping navigations win', async () => {
+    let resolveFirst: (value: unknown) => void = () => {};
+    invokeMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockResolvedValueOnce({ id: 'sess_second', title: 'B' });
+    const setCurrentSessionId = vi.fn();
+    render(<Harness deps={makeDeps({ isInitialLoading: false, setCurrentSessionId })} />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId: 'sess_first' } }));
+      window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId: 'sess_second' } }));
+    });
+    await waitFor(() => {
+      expect(setCurrentSessionId).toHaveBeenCalledWith('sess_second');
+    });
+    await act(async () => {
+      resolveFirst({ id: 'sess_first', title: 'A' });
+    });
+    expect(setCurrentSessionId).toHaveBeenCalledTimes(1);
   });
 });
