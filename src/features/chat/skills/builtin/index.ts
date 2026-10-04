@@ -239,7 +239,7 @@ export const chatAnkiSkill: SkillDefinition = {
           templateId: {
             type: 'string',
             description:
-              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。single 模式下未传时，后端会自动使用用户设置的默认模板（default_template_id）；用户未设置默认模板或默认模板已删除则直接报错。',
+              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。按内容选：多句答案/证明/推导/解释用 design-footnote（或 design-monograph），定义/关键词填空用 design-glass（或 design-exam）；其他 design-* 只在内容完全符合其字段语义或用户点名风格时用。未传时后端使用用户默认模板（default_template_id），无默认模板则回退 design-footnote。',
           },
           templateIds: {
             type: 'array',
@@ -335,7 +335,7 @@ export const chatAnkiSkill: SkillDefinition = {
           templateId: {
             type: 'string',
             description:
-              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。single 模式下未传时，后端会自动使用用户设置的默认模板（default_template_id）；用户未设置默认模板或默认模板已删除则直接报错。',
+              '当 templateMode=single 时优先传：单个模板 ID（来自 chatanki_list_templates）。按内容选：多句答案/证明/推导/解释用 design-footnote（或 design-monograph），定义/关键词填空用 design-glass（或 design-exam）；其他 design-* 只在内容完全符合其字段语义或用户点名风格时用。未传时后端使用用户默认模板（default_template_id），无默认模板则回退 design-footnote。',
           },
           templateIds: {
             type: 'array',
@@ -1231,7 +1231,8 @@ export const chatAnkiSkill: SkillDefinition = {
     },
     {
       name: 'builtin-chatanki_list_templates',
-      description: '列出可用的制卡模板（来自本地模板库）。可按关键词筛选。',
+      description:
+        '列出可用的制卡模板（来自本地模板库）。可按关键词筛选。返回顶层 selectionRule（按内容选模板的默认规则）；每个模板带 generation_prompt（适用/不适用/逐字段要求）与 fieldGuide（字段用途、必填、maxChars 上限）。选模板前先对照内容形态读这两项。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -1320,8 +1321,20 @@ export const chatAnkiSkill: SkillDefinition = {
    - 清楚 → 直接进入第 2 步。
 2. **策展**：goal 写成「学习目标 + 卡型偏好 + 粒度要求」；风格/语言/格式约束放 \`extraRequirements\`。材料多、知识点密集时先列制卡大纲（知识点清单/卡型/去重/优先级）再启动；环境安装了 \`content-curator\` 子代理档案且你有子代理委派工具时，可委派它产出大纲并把「建议 goal 文本」拼进 run。
 3. **生成**：\`builtin-chatanki_run\`（文件/引用）或 \`builtin-chatanki_start\`（已清洗文本）→ 下一轮 \`builtin-chatanki_wait\`。
-4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性」四类自查；卡片字段里不得出现 \`[PDF@…]\`、\`[知识库-N]\`、\`[思维导图:…]\` 等对话引用标记（离开对话就无法解析，复习和导出到 Anki 时只剩一串 ID），需要出处时写资料名与页码文字（如「《考研英语核心词汇》第 3 页」），发现即用 \`builtin-chatanki_batch_update_cards\` 改掉；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
+4. **质检**：\`builtin-chatanki_get_cards\` 分页读回全部卡片，按「重复 / 粒度 / Cloze 规范 / 事实性 / 模板匹配（\`fieldLimitWarnings\`）」五类自查；卡片字段里不得出现 \`[PDF@…]\`、\`[知识库-N]\`、\`[思维导图:…]\` 等对话引用标记（离开对话就无法解析，复习和导出到 Anki 时只剩一串 ID），需要出处时写资料名与页码文字（如「《考研英语核心词汇》第 3 页」），发现即用 \`builtin-chatanki_batch_update_cards\` 改掉；环境安装了 \`card-qa\` 子代理档案且你有子代理委派工具时，可把卡片 JSON 委派给它产出裁决报告与补丁。用 \`builtin-chatanki_batch_update_cards\` / \`builtin-chatanki_delete_cards\` / \`builtin-chatanki_add_cards\` 套用修正（超过 3 张先 ask_user），再次 get_cards 复核直到通过。
 5. **交付**：向用户汇报生成/修改/删除统计 → 征求同意后再 enqueue_review / export / sync。
+
+## 选模板：内容决定模板（必须遵守）
+
+模板决定字段语义与排版，选错会让卡片不可读（实测：把中值定理的整句证明塞进 design-architect 的 Formula——那是 1.5rem 等宽大字、只容一条公式的字段）。先看内容形态，再选模板：
+
+- **默认问答**：多句答案、定理陈述 + 证明要点、推导、原理解释、计算思路 → \`design-footnote\`（或 \`design-monograph\`）。拿不准时就用它。
+- **填空**：定义、术语、关键数据/结论 → \`design-glass\`（或 \`design-exam\`），Text 里用 \`{{c1::...}}\` 只挖关键词。
+- **展示型 design-***（architect 公式、lexicon 单词、nomenclature 符号、polaroid 引文、seminar 步骤、lab/manuscript 选择题等）：**只在内容完全符合其字段语义时**使用（例如「定律名 ↔ 一条公式」才用 architect），或用户明确点名该风格。
+- 用户只说「出 N 张闪卡」而没指定风格时，不要为了好看挑展示型模板；一批内容混合时可用 \`templateMode=multiple\` 传「问答 + 填空（+ 确实匹配的展示型）」组合，让管线逐卡选。
+- 依据：\`builtin-chatanki_list_templates\` 的顶层 \`selectionRule\`、每个模板 \`generation_prompt\` 的「适用/不适用」，以及 \`fieldGuide\` 的逐字段用途与 \`maxChars\`。
+- **字段按语义填、守上限**：自己写字段（\`add_cards\` / \`update_card\` / \`batch_update_cards\`）时每个字段只放该字段要求的内容，不超过 \`maxChars\`；不要把证明、长解释塞进公式/标题/符号类短字段。
+- **看到 \`fieldLimitWarnings\` 必须处理**：get_cards 与写卡工具在字段超出模板上限时返回 \`fieldLimitWarnings\` / \`fieldLimitHint\`。能精简就精简该字段；内容本身就是多句解释/证明时说明模板选错了，走版本化换模板流程改用问答/填空模板，而不是继续硬塞。
 
 ## 生成调优参数（run/start 可选旋钮，何时用哪个）
 
@@ -1455,7 +1468,7 @@ run/start 除必需参数外还有一组可选调优旋钮；除 \`enableCriticP
 - 用户目标超过 100 张时，必须执行**超大批量分批流程**：按资料的 \`resourceId\` / \`resourceIds\` 子集分成多次 \`chatanki_run\`（每批 \`maxCards <= 100\`） -> 每批分别 \`builtin-chatanki_wait\` -> 每批用 \`builtin-chatanki_get_cards\` 分页读回全部卡片并完成修正 -> 全部批次验收后汇总各批 documentId、生成数与修订数。
 - 超大批量时禁止一次塞入几十个 \`resourceIds\` 后不管，也禁止未经逐批 wait + 全量分页验收就直接汇报、导出或入队。
 - \`templateMode\` 是**必传参数**：
-  - \`single\`：优先传 \`templateId\`；未传时后端自动使用用户设置的默认模板（default_template_id），用户没有默认模板或默认模板已删除则报错——此时用 \`builtin-chatanki_list_templates\` 让用户选择；
+  - \`single\`：优先传 \`templateId\`（按下方「选模板」规则挑选）；未传时后端自动使用用户设置的默认模板（default_template_id），用户没有默认模板或默认模板已删除则回退内置问答模板 design-footnote；
   - \`multiple\`：必须传 \`templateIds\`（非空数组）；
   - \`all\`：使用全部已启用模板（无需 templateId/templateIds）。
 - 如果用户明确说了不超过 100 的数量（如"帮我做 5 张"）：本批直接用用户的数字；明确目标超过 100 时不得原样传入，必须按上述流程分批。
