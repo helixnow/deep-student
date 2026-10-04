@@ -509,8 +509,8 @@ impl MemoryService {
         let Some(path) = path else {
             return Ok(());
         };
-        for segment in path.split('/').filter(|s| !s.trim().is_empty()) {
-            if Self::is_reserved_system_name(segment) {
+        for segment in Self::normalize_folder_segments(path, None) {
+            if Self::is_reserved_system_name(&segment) {
                 return Err(VfsError::InvalidArgument {
                     param: "folder_path".to_string(),
                     reason: "路径包含系统保留目录（'__*'）".to_string(),
@@ -518,6 +518,58 @@ impl MemoryService {
             }
         }
         Ok(())
+    }
+
+    /// 把调用方传入的记忆文件夹路径规整为"相对记忆根"的路径段。
+    ///
+    /// - 反斜杠、全角 `／`/`＼` 统一视作分隔符；
+    /// - 每段去首尾空白（含全角空格），丢弃空段与 `.`；
+    /// - 去掉开头与记忆根标题相同的段（可重复）：`记忆/经历`、`/记忆/经历/`
+    ///   与 `经历` 指向同一文件夹，避免把根标题再建成嵌套的"记忆/记忆"。
+    pub(crate) fn normalize_folder_segments(path: &str, root_title: Option<&str>) -> Vec<String> {
+        let unified: String = path
+            .chars()
+            .map(|c| match c {
+                '\\' | '\u{FF0F}' | '\u{FF3C}' => '/',
+                other => other,
+            })
+            .collect();
+        let mut segments: Vec<String> = unified
+            .split('/')
+            .map(str::trim)
+            .filter(|segment| !segment.is_empty() && *segment != ".")
+            .map(str::to_string)
+            .collect();
+        if let Some(root_title) = root_title.map(str::trim).filter(|t| !t.is_empty()) {
+            let leading = segments
+                .iter()
+                .take_while(|segment| segment.as_str() == root_title)
+                .count();
+            segments.drain(..leading);
+        }
+        segments
+    }
+
+    /// 记忆根文件夹标题（用于剥离调用方路径里多带的根前缀）。
+    fn root_folder_title(&self, root_id: &str) -> VfsResult<Option<String>> {
+        Ok(VfsFolderRepo::get_folder(&self.vfs_db, root_id)?.map(|folder| folder.title))
+    }
+
+    fn normalized_segments_under_root(&self, root_id: &str, path: &str) -> VfsResult<Vec<String>> {
+        let root_title = self.root_folder_title(root_id)?;
+        Ok(Self::normalize_folder_segments(path, root_title.as_deref()))
+    }
+
+    /// 绝对路径（含根标题）→ 相对记忆根的路径；根目录本身为 ""。
+    fn relativize_folder_path(absolute_path: &str, root_path: &str) -> String {
+        if absolute_path == root_path {
+            return String::new();
+        }
+        absolute_path
+            .strip_prefix(root_path)
+            .and_then(|rest| rest.strip_prefix('/'))
+            .unwrap_or(absolute_path)
+            .to_string()
     }
 
     /// 获取记忆文件夹 ID 列表（带缓存）
@@ -801,6 +853,9 @@ impl MemoryService {
         if folder_ids.is_empty() {
             return Ok(vec![]);
         }
+        // 结果里的 folder_path 是相对记忆根的路径（与 memory_write/move 入参同口径），
+        // 不能带根标题，否则模型原样回传会生成嵌套的"记忆/记忆"。
+        let root_path = VfsFolderRepo::build_folder_path(&self.vfs_db, &root_id)?;
 
         let retrieval_k = top_k.saturating_mul(3);
         let retriever = crate::vfs::VfsUnifiedRetriever::new(
@@ -848,7 +903,10 @@ impl MemoryService {
                     continue;
                 }
 
-                let folder_path = self.get_note_folder_path(&note.id)?;
+                let folder_path = Self::relativize_folder_path(
+                    &self.get_note_folder_path(&note.id)?,
+                    &root_path,
+                );
                 let tag_weight = Self::compute_tag_weight(&note.tags);
                 let retrieval_score = if fused.rrf_score.is_finite()
                     && best_rrf_score.is_finite()
@@ -2621,6 +2679,7 @@ impl MemoryService {
         recursive: bool,
     ) -> VfsResult<Vec<MemoryListItem>> {
         let root_id = self.ensure_root_folder_id()?;
+        let root_path = VfsFolderRepo::build_folder_path(&self.vfs_db, &root_id)?;
 
         let target_root_id = if let Some(path) = folder_path {
             if path.is_empty() {
@@ -2676,7 +2735,10 @@ impl MemoryService {
         let mut items = Vec::new();
         for note_id in note_ids {
             if let Some(note) = VfsNoteRepo::get_note(&self.vfs_db, &note_id)? {
-                let folder_path = self.get_note_folder_path(&note.id)?;
+                let folder_path = Self::relativize_folder_path(
+                    &self.get_note_folder_path(&note.id)?,
+                    &root_path,
+                );
                 let hits = Self::extract_hits_from_tags(&note.tags);
                 let is_important = note.tags.iter().any(|t| t == "_important");
                 let is_stale = note.tags.iter().any(|t| t == "_stale");
@@ -2752,19 +2814,19 @@ impl MemoryService {
     }
 
     fn ensure_folder(&self, root_id: &str, path: &str) -> VfsResult<String> {
-        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let parts = self.normalized_segments_under_root(root_id, path)?;
         let mut current_parent_id = root_id.to_string();
 
         for part in parts {
             let children =
                 VfsFolderRepo::list_folders_by_parent(&self.vfs_db, Some(&current_parent_id))?;
 
-            let existing = children.iter().find(|f| f.title == part);
+            let existing = children.iter().find(|f| f.title.trim() == part);
             if let Some(folder) = existing {
                 current_parent_id = folder.id.clone();
             } else {
                 let new_folder = VfsFolder::new(
-                    part.to_string(),
+                    part.clone(),
                     Some(current_parent_id.clone()),
                     None,
                     None,
@@ -2783,14 +2845,14 @@ impl MemoryService {
     }
 
     fn resolve_path_to_folder_id(&self, root_id: &str, path: &str) -> VfsResult<Option<String>> {
-        let parts: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
+        let parts = self.normalized_segments_under_root(root_id, path)?;
         let mut current_parent_id = root_id.to_string();
 
         for part in parts {
             let children =
                 VfsFolderRepo::list_folders_by_parent(&self.vfs_db, Some(&current_parent_id))?;
 
-            let existing = children.iter().find(|f| f.title == part);
+            let existing = children.iter().find(|f| f.title.trim() == part);
             if let Some(folder) = existing {
                 current_parent_id = folder.id.clone();
             } else {
@@ -3233,14 +3295,7 @@ impl MemoryService {
         let root_id = self.ensure_root_folder_id()?;
         let root_path = VfsFolderRepo::build_folder_path(&self.vfs_db, &root_id)?;
         let absolute_path = self.get_note_folder_path(note_id)?;
-        if absolute_path == root_path {
-            return Ok(String::new());
-        }
-        let relative_prefix = format!("{root_path}/");
-        Ok(absolute_path
-            .strip_prefix(&relative_prefix)
-            .unwrap_or(&absolute_path)
-            .to_string())
+        Ok(Self::relativize_folder_path(&absolute_path, &root_path))
     }
 
     // ========================================================================
@@ -4597,6 +4652,169 @@ mod tests {
             .expect("bare vector must not select a VFS profile");
         assert_eq!(compatibility.len(), 1);
         assert_eq!(compatibility[0].note_id, written.note_id);
+    }
+
+    #[test]
+    fn normalize_folder_segments_strips_root_prefix_and_noise() {
+        let norm = |path: &str| MemoryService::normalize_folder_segments(path, Some("记忆"));
+        let expected = vec!["经历".to_string(), "学科状态".to_string()];
+        assert_eq!(norm("经历/学科状态"), expected);
+        assert_eq!(norm("记忆/经历/学科状态"), expected);
+        assert_eq!(norm("/记忆/经历/学科状态/"), expected);
+        assert_eq!(norm(" 记忆 / 经历 /学科状态 "), expected);
+        assert_eq!(norm("记忆／经历＼学科状态"), expected);
+        assert_eq!(norm("记忆\\经历\\学科状态"), expected);
+        assert_eq!(norm("记忆/记忆/./经历//学科状态"), expected);
+        assert!(norm("记忆").is_empty());
+        assert!(norm(" / ").is_empty());
+        // 根标题只在开头剥离，中间段同名保持原样
+        assert_eq!(
+            norm("经历/记忆"),
+            vec!["经历".to_string(), "记忆".to_string()]
+        );
+        // 无根标题时不剥离
+        assert_eq!(
+            MemoryService::normalize_folder_segments("记忆/经历", None),
+            vec!["记忆".to_string(), "经历".to_string()]
+        );
+    }
+
+    #[test]
+    fn reserved_folder_check_uses_normalized_separators() {
+        assert!(MemoryService::validate_user_writable_folder_path(Some("经历／__system__")).is_err());
+        assert!(MemoryService::validate_user_writable_folder_path(Some("记忆/__system__")).is_err());
+        assert!(MemoryService::validate_user_writable_folder_path(Some("记忆/经历")).is_ok());
+    }
+
+    #[test]
+    fn root_prefixed_folder_paths_reuse_existing_memory_folder() {
+        let (_temp_dir, vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        let root_id = service.get_or_create_root_folder().expect("root");
+        let root_title = VfsFolderRepo::get_folder(&vfs_db, &root_id)
+            .expect("read root")
+            .expect("root exists")
+            .title;
+
+        let canonical = service
+            .write(Some("经历/学科状态"), "数学弱项", "数学是弱项", WriteMode::Create)
+            .expect("canonical write");
+        let variants = [
+            format!("{root_title}/经历/学科状态"),
+            format!("/{root_title}/经历/学科状态/"),
+            "经历／学科状态".to_string(),
+        ];
+        for (index, path) in variants.iter().enumerate() {
+            let output = service
+                .write(
+                    Some(path),
+                    &format!("雅思备考{index}"),
+                    "雅思目标 7 分",
+                    WriteMode::Create,
+                )
+                .expect("variant write");
+            assert_eq!(
+                service.get_note_relative_folder_path(&output.note_id).unwrap(),
+                "经历/学科状态",
+                "path {path:?} must reuse the canonical folder"
+            );
+        }
+
+        let root_children = VfsFolderRepo::list_folders_by_parent(&vfs_db, Some(&root_id)).unwrap();
+        assert!(
+            root_children.iter().all(|f| f.title != root_title),
+            "no nested duplicate root may be created: {:?}",
+            root_children.iter().map(|f| &f.title).collect::<Vec<_>>()
+        );
+
+        // list/search 回传相对路径，且接受带根前缀的过滤路径
+        let listed = service
+            .list(Some(&format!("{root_title}/经历")), 20, 0)
+            .expect("list with root-prefixed filter");
+        assert_eq!(listed.len(), 4);
+        assert!(listed.iter().all(|item| item.folder_path == "经历/学科状态"));
+        assert!(listed.iter().any(|item| item.id == canonical.note_id));
+
+        // 移动同样规整：带根前缀的目标路径落到相对文件夹
+        let note = service.read(&canonical.note_id).unwrap().unwrap().0;
+        service
+            .move_to_folder_with_occ(
+                &canonical.note_id,
+                &note.updated_at,
+                &format!("{root_title}/偏好"),
+                MemoryOpSource::ToolCall,
+                None,
+            )
+            .expect("move with root-prefixed target");
+        assert_eq!(
+            service.get_note_relative_folder_path(&canonical.note_id).unwrap(),
+            "偏好"
+        );
+    }
+
+    #[test]
+    fn nested_duplicate_root_is_merged_back_on_first_root_lookup() {
+        let (_temp_dir, vfs_db, service) = crate::memory::test_support::setup_memory_service();
+        // 手工构造历史脏数据（不经过 service，避免提前触发一次性修复）：
+        // 记忆/经历/学科状态/(数学弱项)
+        // 记忆/记忆/经历/学科状态/(雅思备考)
+        // 记忆/记忆/经历/项目/(发布记录)
+        // 记忆/记忆/(根级笔记)
+        let new_folder = |title: &str, parent: Option<&str>| {
+            let folder = VfsFolder::new(title.to_string(), parent.map(str::to_string), None, None);
+            VfsFolderRepo::create_folder(&vfs_db, &folder).expect("create folder");
+            folder.id
+        };
+        let new_note = |title: &str, folder_id: &str| {
+            VfsNoteRepo::create_note_in_folder(
+                &vfs_db,
+                VfsCreateNoteParams {
+                    title: title.to_string(),
+                    content: format!("{title} 内容"),
+                    tags: vec![],
+                },
+                Some(folder_id),
+            )
+            .expect("create note")
+            .id
+        };
+        let root_id = new_folder("记忆", None);
+        service.config.set_root_folder_id(&root_id).unwrap();
+        let experience = new_folder("经历", Some(&root_id));
+        let subject_state = new_folder("学科状态", Some(&experience));
+        let math = new_note("数学弱项", &subject_state);
+
+        let dup_root = new_folder("记忆", Some(&root_id));
+        let dup_experience = new_folder("经历", Some(&dup_root));
+        let dup_subject_state = new_folder("学科状态", Some(&dup_experience));
+        let ielts = new_note("雅思备考", &dup_subject_state);
+        let dup_project = new_folder("项目", Some(&dup_experience));
+        let release = new_note("发布记录", &dup_project);
+        let loose = new_note("根级笔记", &dup_root);
+
+        // 首次取根即触发修复
+        let items = service.list(None, 50, 0).expect("list after repair");
+        assert_eq!(items.len(), 4);
+
+        let root_children = VfsFolderRepo::list_folders_by_parent(&vfs_db, Some(&root_id)).unwrap();
+        assert!(root_children.iter().all(|f| f.title != "记忆"));
+        assert!(!VfsFolderRepo::folder_exists(&vfs_db, &dup_root).unwrap());
+        let path = |id: &str| service.get_note_relative_folder_path(id).unwrap();
+        assert_eq!(path(&math), "经历/学科状态");
+        assert_eq!(path(&ielts), "经历/学科状态");
+        assert_eq!(path(&release), "经历/项目");
+        assert_eq!(path(&loose), "");
+        // 已存在的同名子目录被复用（合并），不新增重复的"经历"
+        assert_eq!(
+            root_children.iter().filter(|f| f.title == "经历").count(),
+            1
+        );
+        assert_eq!(
+            service.resolve_path_to_folder_id(&root_id, "经历/学科状态").unwrap(),
+            Some(subject_state)
+        );
+
+        // 再次执行幂等
+        assert_eq!(service.config.repair_nested_root_duplicates(&root_id).unwrap(), 0);
     }
 
     #[test]

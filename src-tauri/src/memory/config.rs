@@ -1,5 +1,6 @@
-use rusqlite::params;
-use std::sync::Arc;
+use rusqlite::{params, Connection};
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, info, warn};
 
 use crate::vfs::database::VfsDatabase;
@@ -193,6 +194,7 @@ impl MemoryConfig {
         if let Some(folder_id) = self.get_root_folder_id()? {
             if VfsFolderRepo::folder_exists(&self.db, &folder_id)? {
                 debug!("[Memory::Config] Using existing root folder: {}", folder_id);
+                self.repair_nested_root_duplicates_once(&folder_id);
                 return Ok(folder_id);
             }
             warn!(
@@ -211,6 +213,7 @@ impl MemoryConfig {
                 "[Memory::Config] Claimed synced memory root folder: {}",
                 synced_root_id
             );
+            self.repair_nested_root_duplicates_once(&synced_root_id);
             return Ok(synced_root_id);
         }
 
@@ -297,6 +300,104 @@ impl MemoryConfig {
                 Ok(Some(multiple[0].0.clone()))
             }
         }
+    }
+
+    /// 每个记忆根在进程内只修复一次"根目录下嵌套同名根"的历史脏数据。
+    ///
+    /// 修复失败只记 warn，不阻断正常读写（下次进程启动会重试）。
+    fn repair_nested_root_duplicates_once(&self, root_id: &str) {
+        static REPAIRED_ROOTS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+        let mut repaired = REPAIRED_ROOTS
+            .get_or_init(|| Mutex::new(HashSet::new()))
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if !repaired.insert(root_id.to_string()) {
+            return;
+        }
+        match self.repair_nested_root_duplicates(root_id) {
+            Ok(0) => {}
+            Ok(merged) => info!(
+                "[Memory::Config] Merged {} nested duplicate memory root folder(s) into {}",
+                merged, root_id
+            ),
+            Err(error) => warn!(
+                "[Memory::Config] Failed to repair nested duplicate memory root under {}: {}",
+                root_id, error
+            ),
+        }
+    }
+
+    /// 修复"记忆/记忆/..."：把根目录下标题与根同名的直接子文件夹并回根目录。
+    ///
+    /// 历史 bug：memory_search/memory_list 曾回传含根标题的绝对路径（如
+    /// "记忆/经历/学科状态"），模型原样传回 memory_write 后被再次拼到根下，
+    /// 生成了第二个"记忆"文件夹。合并规则：
+    /// - 重复根下的子文件夹若在目标处已有同名文件夹则递归合并，否则整体移入；
+    /// - 文件夹内容项（笔记等）移入目标文件夹；
+    /// - 清空后的重复文件夹软删除。
+    ///
+    /// 每个重复文件夹的合并在一个 SAVEPOINT 内完成，失败整体回滚。
+    /// 返回合并掉的重复文件夹个数。
+    pub(crate) fn repair_nested_root_duplicates(&self, root_id: &str) -> VfsResult<usize> {
+        const MAX_PASSES: usize = 16;
+        let conn = self.db.get_conn_safe()?;
+        let Some(root) = VfsFolderRepo::get_folder_with_conn(&conn, root_id)? else {
+            return Ok(0);
+        };
+        let root_title = root.title.trim().to_string();
+        if root_title.is_empty() {
+            return Ok(0);
+        }
+
+        let mut merged = 0;
+        for _ in 0..MAX_PASSES {
+            let duplicate = VfsFolderRepo::list_folders_by_parent_with_conn(&conn, Some(root_id))?
+                .into_iter()
+                .find(|folder| folder.title.trim() == root_title);
+            let Some(duplicate) = duplicate else {
+                break;
+            };
+
+            conn.execute_batch("SAVEPOINT memory_root_dup_repair")?;
+            match Self::merge_folder_into_with_conn(&conn, &duplicate.id, root_id) {
+                Ok(()) => {
+                    conn.execute_batch("RELEASE memory_root_dup_repair")?;
+                    merged += 1;
+                    info!(
+                        "[Memory::Config] Merged nested duplicate memory root {} into {}",
+                        duplicate.id, root_id
+                    );
+                }
+                Err(error) => {
+                    let _ = conn.execute_batch("ROLLBACK TO memory_root_dup_repair");
+                    let _ = conn.execute_batch("RELEASE memory_root_dup_repair");
+                    return Err(error);
+                }
+            }
+        }
+        Ok(merged)
+    }
+
+    /// 把 `src_id` 的子文件夹与内容项并入 `dst_id`，然后软删除已清空的 `src_id`。
+    fn merge_folder_into_with_conn(conn: &Connection, src_id: &str, dst_id: &str) -> VfsResult<()> {
+        for child in VfsFolderRepo::list_folders_by_parent_with_conn(conn, Some(src_id))? {
+            let existing = VfsFolderRepo::list_folders_by_parent_with_conn(conn, Some(dst_id))?
+                .into_iter()
+                .find(|folder| folder.id != src_id && folder.title == child.title);
+            match existing {
+                Some(target) => Self::merge_folder_into_with_conn(conn, &child.id, &target.id)?,
+                None => VfsFolderRepo::move_folder_with_conn(conn, &child.id, Some(dst_id))?,
+            }
+        }
+        for item in VfsFolderRepo::list_items_by_folder_with_conn(conn, Some(src_id))? {
+            VfsFolderRepo::move_item_by_item_id_with_conn(
+                conn,
+                &item.item_type,
+                &item.item_id,
+                Some(dst_id),
+            )?;
+        }
+        VfsFolderRepo::delete_folder_with_conn(conn, src_id)
     }
 
     pub fn create_root_folder(&self, title: &str) -> VfsResult<String> {
