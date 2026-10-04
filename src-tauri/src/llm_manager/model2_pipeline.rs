@@ -67,7 +67,10 @@ fn effective_request_input_limit(
     config: &ApiConfig,
     override_limit: Option<usize>,
 ) -> Option<usize> {
-    let window = config.context_window.unwrap_or(32_768);
+    let window = config
+        .context_window
+        .filter(|window| *window > 0)
+        .unwrap_or(32_768);
     let requested = if config.max_output_tokens > 0 {
         config.max_output_tokens
     } else {
@@ -78,7 +81,11 @@ fn effective_request_input_limit(
         .filter(|limit| *limit > 0)
         .map(|limit| requested.min(limit))
         .unwrap_or(requested);
-    let provider_limit = Some(window.saturating_sub(max_output) as usize);
+    // 输出预留最多占窗口一半：聊天默认 maxTokens=32768，模型未配置上下文
+    // 窗口时恰好等于上面的 32768 回退值，相减为 0 会让每次发送都以
+    // "no usable input budget" 失败。输出上限本身照常下发，由供应商裁决。
+    let output_reserve = max_output.min(window / 2);
+    let provider_limit = Some(window.saturating_sub(output_reserve) as usize);
     match (override_limit, provider_limit) {
         (Some(override_limit), Some(provider_limit)) => Some(override_limit.min(provider_limit)),
         (Some(limit), None) | (None, Some(limit)) => Some(limit),
@@ -1124,6 +1131,46 @@ mod tests {
     use std::convert::Infallible;
     use std::sync::Arc;
     use tempfile::TempDir;
+
+    #[test]
+    fn input_limit_never_zero_when_output_reserve_fills_window() {
+        // 聊天默认 maxTokens=32768 + 模型未配置上下文窗口（回退 32768）：
+        // 旧逻辑预算为 0，新对话首条消息即报 "no usable input budget"。
+        let unknown_window = ApiConfig {
+            max_output_tokens: 32_768,
+            ..Default::default()
+        };
+        assert_eq!(
+            effective_request_input_limit(&unknown_window, None),
+            Some(16_384)
+        );
+        assert_eq!(
+            effective_request_input_limit(&unknown_window, Some(90_000)),
+            Some(16_384)
+        );
+
+        let output_exceeds_window = ApiConfig {
+            context_window: Some(32_000),
+            max_output_tokens: 65_536,
+            ..Default::default()
+        };
+        assert_eq!(
+            effective_request_input_limit(&output_exceeds_window, None),
+            Some(16_000)
+        );
+
+        // 常规配置不受影响：窗口 128K、输出 8K → 输入 120K，且仍取覆盖值与之较小者。
+        let normal = ApiConfig {
+            context_window: Some(128_000),
+            max_output_tokens: 8_192,
+            ..Default::default()
+        };
+        assert_eq!(effective_request_input_limit(&normal, None), Some(119_808));
+        assert_eq!(
+            effective_request_input_limit(&normal, Some(50_000)),
+            Some(50_000)
+        );
+    }
 
     struct DropNotice(Option<tokio::sync::oneshot::Sender<()>>);
 
