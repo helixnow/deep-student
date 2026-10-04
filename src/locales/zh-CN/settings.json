@@ -2615,6 +2615,7 @@
     "advanced_title": "高级单工具管理",
     "filters_title": "筛选工具",
     "filtered_count": "{{count}} 个结果",
+    "filtered_count_one": "{{count}} 个结果",
     "search_placeholder": "搜索工具名称、说明或来源...",
     "source_filter": "按来源筛选",
     "source_all": "全部来源",

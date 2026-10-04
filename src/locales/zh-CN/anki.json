@@ -809,6 +809,7 @@
     "syncToAnki": "同步到 Anki",
     "cardEdit": "Anki 卡片编辑",
     "totalCards": "共 {{count}} 张卡片",
+    "totalCards_one": "共 {{count}} 张卡片",
     "removeCard": "移除卡片",
     "removeCardConfirm": "移除这张卡片？",
     "cardRemoved": "卡片已移除。",

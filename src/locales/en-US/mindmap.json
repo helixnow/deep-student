@@ -239,7 +239,8 @@
     "versionSource": "Version source: {{source}}",
     "layoutSingle": "Switch to single-side layout",
     "layoutBoth": "Switch to two-sided layout",
-    "nodeCount": "{{count}} nodes"
+    "nodeCount": "{{count}} nodes",
+    "nodeCount_one": "{{count}} node"
   },
   "structure": {
     "mindmap": "Mind Map",
@@ -346,6 +347,7 @@
     "batchOutdent": "Outdent",
     "bulletClickHint": "Click to select · ⌘-click to zoom in",
     "subtreeItemCount": "{{count}} items",
+    "subtreeItemCount_one": "{{count}} item",
     "bulletHint": "Click to select · Double-click to zoom in · ⌘-click to zoom in",
     "batchCollapse": "Collapse",
     "ghostNewLine": "Add a new line",

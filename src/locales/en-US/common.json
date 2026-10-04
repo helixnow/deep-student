@@ -969,6 +969,7 @@
       "template_4": "Create study plan targeting these mistakes",
       "selected_mistakes": "Selected Mistakes",
       "count_label": "{{count}} items",
+      "count_label_one": "{{count}} item",
       "no_mistakes_selected_yet": "No mistakes selected yet",
       "creating_analysis": "Creating review analysis...",
       "create_success_message": "Created successfully!",
@@ -2165,6 +2166,7 @@
   "chat": {
     "sources": {
       "total": "{{count}} results",
+      "total_one": "{{count}} result",
       "empty": "No citations",
       "locate": "Locate",
       "locateInGraph": "Locate in graph",

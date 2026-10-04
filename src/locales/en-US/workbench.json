@@ -342,10 +342,12 @@
     "details": "Status",
     "updated": "Date Modified",
     "questionCount": "{{count}} questions",
+    "questionCount_one": "{{count}} question",
     "emptyQuestionSet": "No questions imported",
     "roundCount": "{{count}} reviews",
     "notGraded": "Not reviewed yet",
     "itemCount": "{{count}} items",
+    "itemCount_one": "{{count}} item",
     "openHint": "Double-click or press Enter to open",
     "retry": "Retry",
     "untitled": "Untitled"
@@ -381,7 +383,8 @@
     "sectionResources": "Resources",
     "sectionChat": "Chats",
     "searching": "Searching…",
-    "resultCount": "{{count}} results"
+    "resultCount": "{{count}} results",
+    "resultCount_one": "{{count}} result"
   },
   "window": {
     "close": "Close",
@@ -971,6 +974,7 @@
       "emptyQuickOpenHint": "Try \"Search content\" for full-text matches.",
       "tagHint": "Filter with tag: path: or key:value",
       "resultCount": "{{count}} results",
+      "resultCount_one": "{{count}} result",
       "recentGroup": "Recently opened",
       "allGroup": "All files",
       "loadMore": "Load more results",
@@ -1064,6 +1068,7 @@
     "status": {
       "ready": "Ready",
       "fileCount": "{{count}} files",
+      "fileCount_one": "{{count}} file",
       "creatingNote": "Creating note...",
       "creatingMindmap": "Creating mind map...",
       "splitNeedsAnotherTab": "Open another tab to split the workspace.",

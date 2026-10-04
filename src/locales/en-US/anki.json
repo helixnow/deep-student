@@ -797,6 +797,7 @@
     "syncToAnki": "Sync to Anki",
     "cardEdit": "Anki Card Edit",
     "totalCards": "{{count}} cards",
+    "totalCards_one": "{{count}} card",
     "removeCard": "Remove card",
     "removeCardConfirm": "Remove this card?",
     "cardRemoved": "Card removed.",

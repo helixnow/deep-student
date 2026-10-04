@@ -236,7 +236,8 @@
     "versionSource": "版本来源：{{source}}",
     "layoutSingle": "切换为单侧布局",
     "layoutBoth": "切换为两翼布局",
-    "nodeCount": "{{count}} 节点"
+    "nodeCount": "{{count}} 节点",
+    "nodeCount_one": "{{count}} 节点"
   },
   "structure": {
     "mindmap": "思维导图",
@@ -343,6 +344,7 @@
     "batchOutdent": "反缩进",
     "bulletClickHint": "单击选中 · ⌘单击聚焦此节点",
     "subtreeItemCount": "{{count}} 项",
+    "subtreeItemCount_one": "{{count}} 项",
     "bulletHint": "单击选中 · 双击聚焦 · ⌘单击聚焦",
     "batchCollapse": "折叠",
     "ghostNewLine": "新增一行",

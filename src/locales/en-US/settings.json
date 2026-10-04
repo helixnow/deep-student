@@ -2615,6 +2615,7 @@
     "advanced_title": "Advanced Per-Tool Management",
     "filters_title": "Filter tools",
     "filtered_count": "{{count}} results",
+    "filtered_count_one": "{{count}} result",
     "search_placeholder": "Search name, description, or source...",
     "source_filter": "Filter by source",
     "source_all": "All sources",

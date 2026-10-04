@@ -119,7 +119,8 @@
     "preview": "预览",
     "noSelection": "未选中任何资源",
     "selectHint": "选择资源后可进行操作",
-    "itemCount": "{{count}} 个项目"
+    "itemCount": "{{count}} 个项目",
+    "itemCount_one": "{{count}} 个项目"
   },
   "sort": {
     "title": "排序",
@@ -403,6 +404,7 @@
     "contents": "目录",
     "searchPlaceholder": "搜索书中内容",
     "searchCount": "{{count}} 个结果",
+    "searchCount_one": "{{count}} 个结果",
     "searching": "搜索中...",
     "previousChapter": "上一章",
     "nextChapter": "下一章",
@@ -616,6 +618,7 @@
       "success": "已转为笔记「{{name}}」"
     },
     "childCount": "{{count}} 项",
+    "childCount_one": "{{count}} 项",
     "matchFromIndex": "[索引]",
     "memoryMeta": {
       "type": {
@@ -830,6 +833,7 @@
     },
     "statusBar": {
       "itemCount": "{{count}} 个项目",
+      "itemCount_one": "{{count}} 个项目",
       "selectedCount": "已选择 {{count}} 项",
       "selectedOfTotal": "{{total}} 项 / 选中 {{selected}} 项"
     },

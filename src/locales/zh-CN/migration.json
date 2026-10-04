@@ -77,7 +77,8 @@
       "source_files": "源码文件",
       "important": "!important",
       "hardcoded_colors": "硬编码颜色",
-      "files_count": "{{count}} 文件"
+      "files_count": "{{count}} 文件",
+      "files_count_one": "{{count}} 文件"
     },
     "sections": {
       "component_progress": "组件族迁移进度",

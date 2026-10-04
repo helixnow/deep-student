@@ -119,7 +119,8 @@
     "preview": "Preview",
     "noSelection": "No resource selected",
     "selectHint": "Select a resource to perform actions",
-    "itemCount": "{{count}} items"
+    "itemCount": "{{count}} items",
+    "itemCount_one": "{{count}} item"
   },
   "sort": {
     "title": "Sort",
@@ -403,6 +404,7 @@
     "contents": "Contents",
     "searchPlaceholder": "Search this book",
     "searchCount": "{{count}} results",
+    "searchCount_one": "{{count}} result",
     "searching": "Searching...",
     "previousChapter": "Previous chapter",
     "nextChapter": "Next chapter",
@@ -616,6 +618,7 @@
       "success": "Converted to note \"{{name}}\""
     },
     "childCount": "{{count}} items",
+    "childCount_one": "{{count}} item",
     "matchFromIndex": "[Index]",
     "memoryMeta": {
       "type": {
@@ -830,6 +833,7 @@
     },
     "statusBar": {
       "itemCount": "{{count}} items",
+      "itemCount_one": "{{count}} item",
       "selectedCount": "{{count}} selected",
       "selectedOfTotal": "{{total}} items / {{selected}} selected"
     },

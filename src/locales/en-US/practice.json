@@ -41,7 +41,8 @@
     "title": "Choose a knowledge point",
     "description": "Choose a tag to start practicing",
     "untagged": "Untagged",
-    "questionCount": "{{count}} questions"
+    "questionCount": "{{count}} questions",
+    "questionCount_one": "{{count}} question"
   },
   "timed": {
     "title": "Timed Practice",
