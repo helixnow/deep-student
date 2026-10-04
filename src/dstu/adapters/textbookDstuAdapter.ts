@@ -187,7 +187,7 @@ export const textbookDstuAdapter = {
         const nameWithoutExt = fileName.replace(/\.[^.]+$/, '');
         if (isOpaqueDocumentId(nameWithoutExt) || isGenericPlaceholderFileName(nameWithoutExt)) {
           const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
-          fileName = `导入文档_${new Date(r.created_at || Date.now()).toISOString().replace(/-|:|T/g, '').slice(0, 15)}${ext}`;
+          fileName = `${i18next.t('learningHub:defaultNames.importedDocument', { defaultValue: '导入文档' })}_${new Date(r.created_at || Date.now()).toISOString().replace(/-|:|T/g, '').slice(0, 15)}${ext}`;
         }
         const ext = fileName.split('.').pop()?.toLowerCase() || 'pdf';
         

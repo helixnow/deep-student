@@ -469,8 +469,8 @@ export interface DstuEmptyResourceTemplate {
  *
  * 注意：defaultName / content 中可本地化的字段实现为 getter，
  * 读取时按当前语言经 i18n 求值（模块加载时机早于 locale 就绪，
- * 普通属性会把中文字面量冻死）。仅复用取值与原文完全相等的已有 key；
- * 无对应 key 的名称保持字面量，避免改动产品文案。
+ * 普通属性会把中文字面量冻死）。defaultValue 与 zh-CN 原文完全一致，
+ * 中文界面产品文案不变。
  */
 export const EMPTY_RESOURCE_TEMPLATES: Record<
   Exclude<DstuNodeType, 'folder' | 'file' | 'image'>,
@@ -485,17 +485,23 @@ export const EMPTY_RESOURCE_TEMPLATES: Record<
     previewType: 'markdown',
   },
   textbook: {
-    defaultName: '新教材',
+    get defaultName() {
+      return i18n.t('learningHub:defaultNames.textbook', { defaultValue: '新教材' });
+    },
     metadata: {},
     previewType: 'pdf',
   },
   exam: {
-    defaultName: '新题目集',
+    get defaultName() {
+      return i18n.t('learningHub:defaultNames.exam', { defaultValue: '新题目集' });
+    },
     metadata: { status: 'empty', pageCount: 0, questionCount: 0 },
     previewType: 'exam',
   },
   translation: {
-    defaultName: '新翻译',
+    get defaultName() {
+      return i18n.t('learningHub:defaultNames.translation', { defaultValue: '新翻译' });
+    },
     metadata: {
       sourceText: '',
       translatedText: '',
@@ -506,7 +512,9 @@ export const EMPTY_RESOURCE_TEMPLATES: Record<
     previewType: 'markdown',
   },
   essay: {
-    defaultName: '新作文',
+    get defaultName() {
+      return i18n.t('learningHub:defaultNames.essay', { defaultValue: '新作文' });
+    },
     metadata: {
       essayType: '',
       gradeLevel: '',

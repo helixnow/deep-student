@@ -50,14 +50,14 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
       const { getNoteEditor } = await import('@/features/workbench/agent/drivers/noteDriver');
       const editor = getNoteEditor(resourceId, windowId);
       if (!editor) return diskExport;
-      if (!editor.getFullDocument) throw new Error('笔记全文读取能力尚未就绪，请稍后重试导出。');
+      if (!editor.getFullDocument) throw new Error(t('contextMenu.exportNoteReaderNotReady', { defaultValue: '笔记全文读取能力尚未就绪，请稍后重试导出。' }));
       const draft = editor.getFullDocument();
-      if (draft.noteId !== resourceId) throw new Error('笔记已切换，请重新导出。');
+      if (draft.noteId !== resourceId) throw new Error(t('contextMenu.exportNoteSwitched', { defaultValue: '笔记已切换，请重新导出。' }));
       const header = diskExport.match(/^---\n[\s\S]*?\n---\n\n/)?.[0] ?? '';
       if (noteLayout === 'layout') return header + draft.markdown;
       const fullApi = editor as import('@/features/notes/fullDocument').FullDocumentSearchApi;
       if (fullApi.materializeFullDocument) await fullApi.materializeFullDocument();
-      if (editor.isDocumentWindowed?.()) throw new Error('全文尚未加载，无法导出普通 Markdown。');
+      if (editor.isDocumentWindowed?.()) throw new Error(t('contextMenu.exportFullTextNotLoaded', { defaultValue: '全文尚未加载，无法导出普通 Markdown。' }));
       return header + (editor.getPlainMarkdown?.() ?? draft.markdown);
     };
     if (isExportUnsupportedPlatform()) {

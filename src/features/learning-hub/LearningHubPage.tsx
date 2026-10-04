@@ -699,14 +699,14 @@ export const LearningHubPage: React.FC = () => {
     try {
       const config = await getMemoryConfig();
       if (config.memoryRootFolderId) {
-        finderEnterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || '记忆');
+        finderEnterFolder(config.memoryRootFolderId, config.memoryRootFolderTitle || t('learningHub:memory.defaultRootTitle', { defaultValue: '记忆' }));
         return;
       }
     } catch (e) {
       console.warn('[LearningHubPage] Failed to get memory config:', e);
     }
     finderQuickAccessNavigate('memory');
-  }, [finderEnterFolder, finderQuickAccessNavigate]);
+  }, [finderEnterFolder, finderQuickAccessNavigate, t]);
 
   // ========== VFS 引用模式注入 ==========
   const { injectToChat, canInject, isInjecting } = useVfsContextInject();

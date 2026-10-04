@@ -4,7 +4,7 @@
  * 约束：
  * 1. defaultName / mindmap content 的可本地化字段是 getter，按当前语言经 i18n 求值；
  *    无译文（仅 defaultValue 兜底）时必须与主干原文完全一致，不改产品文案。
- * 2. 无完全相等已有 key 的名称（新教材/新题目集/新翻译/新作文）保持字面量。
+ * 2. 新教材/新题目集/新翻译/新作文 走 learningHub:defaultNames.*，defaultValue 为 zh-CN 原文。
  * 3. factory.ts 不做任何改动：本地化通过 types.ts 的 getter 对 factory 透明生效。
  */
 import { readFileSync } from 'node:fs';
@@ -35,11 +35,20 @@ describe('EMPTY_RESOURCE_TEMPLATES defaultName i18n', () => {
     expect(EMPTY_RESOURCE_TEMPLATES.retrieval.defaultName).toBe('检索结果');
   });
 
-  it('无完全相等已有 key 的名称保持字面量', () => {
+  it('教材/题目集/翻译/作文默认名：无译文时与 zh-CN 原文一致，有译文时按当前语言', () => {
     expect(EMPTY_RESOURCE_TEMPLATES.textbook.defaultName).toBe('新教材');
     expect(EMPTY_RESOURCE_TEMPLATES.exam.defaultName).toBe('新题目集');
     expect(EMPTY_RESOURCE_TEMPLATES.translation.defaultName).toBe('新翻译');
     expect(EMPTY_RESOURCE_TEMPLATES.essay.defaultName).toBe('新作文');
+
+    translations.set('learningHub:defaultNames.textbook', 'New Textbook');
+    translations.set('learningHub:defaultNames.exam', 'New Exam Set');
+    translations.set('learningHub:defaultNames.translation', 'New Translation');
+    translations.set('learningHub:defaultNames.essay', 'New Essay');
+    expect(EMPTY_RESOURCE_TEMPLATES.textbook.defaultName).toBe('New Textbook');
+    expect(EMPTY_RESOURCE_TEMPLATES.exam.defaultName).toBe('New Exam Set');
+    expect(EMPTY_RESOURCE_TEMPLATES.translation.defaultName).toBe('New Translation');
+    expect(EMPTY_RESOURCE_TEMPLATES.essay.defaultName).toBe('New Essay');
   });
 
   it('defaultName 是 getter：每次读取按当前语言重新求值', () => {

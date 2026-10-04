@@ -42,7 +42,8 @@
     "review_due": "到期复习",
     "todo_due": "今日待办",
     "active_jobs": "运行中任务",
-    "go": "前往"
+    "go": "前往",
+    "hint_title": "今日待复习"
   },
   "export_title": "数据导出",
   "export_description": "导出您的所有错题数据，包括图片和聊天记录，以及系统设置。",

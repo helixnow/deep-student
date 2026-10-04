@@ -136,7 +136,7 @@ async function fetchBreadcrumbs(folderId: string): Promise<BreadcrumbItem[]> {
   const result = await folderApi.getBreadcrumbs(folderId);
 
   if (!result.ok) {
-    reportError(result.error, '获取面包屑');
+    reportError(result.error, i18n.t('learningHub:errorContext.loadBreadcrumbs', { defaultValue: '获取面包屑' }));
     return [];
   }
 
@@ -972,7 +972,7 @@ export function createFinderStore(bucketId: string) {
             searchMeta,
           });
         } else {
-          reportError(result.error, '搜索资源');
+          reportError(result.error, i18n.t('learningHub:errorContext.searchResources', { defaultValue: '搜索资源' }));
           if (silent) {
             set({
               error: result.error.message,
@@ -1101,7 +1101,7 @@ export function createFinderStore(bucketId: string) {
         }
 
         if (!result.ok && 'error' in result) {
-          reportError(result.error, '加载列表');
+          reportError(result.error, i18n.t('learningHub:errorContext.loadList', { defaultValue: '加载列表' }));
           failLoad(result.error.message);
           return;
         }

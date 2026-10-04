@@ -42,7 +42,8 @@
     "review_due": "Reviews due",
     "todo_due": "Todos today",
     "active_jobs": "Active jobs",
-    "go": "Open"
+    "go": "Open",
+    "hint_title": "Due today"
   },
   "export_title": "Data Export",
   "export_description": "Export all your mistake data, including images and chat history, as well as system settings.",

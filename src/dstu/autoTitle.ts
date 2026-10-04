@@ -5,6 +5,15 @@
 import { parseNameWithNumber } from './naming';
 import { EMPTY_RESOURCE_TEMPLATES } from './types';
 
+/**
+ * 历史默认名：切换界面语言后，旧语言下新建的「新作文」/「New Essay」仍应视为默认名，
+ * 否则自动起名会把它们当成用户手动改过的名字而跳过。
+ */
+const LEGACY_DEFAULT_NAMES: Record<'essay' | 'translation', readonly string[]> = {
+  essay: ['新作文', 'New Essay'],
+  translation: ['新翻译', 'New Translation'],
+};
+
 /** 自动标题中「主题」部分的上限（按 Unicode 字符计） */
 const SUBJECT_MAX_CHARS = 24;
 
@@ -17,7 +26,8 @@ export function isDefaultResourceName(
   const trimmed = (name ?? '').trim();
   if (!trimmed) return true;
   if (untitledLabel && trimmed === untitledLabel) return true;
-  return parseNameWithNumber(trimmed).baseName === EMPTY_RESOURCE_TEMPLATES[type].defaultName;
+  const baseName = parseNameWithNumber(trimmed).baseName;
+  return baseName === EMPTY_RESOURCE_TEMPLATES[type].defaultName || LEGACY_DEFAULT_NAMES[type].includes(baseName);
 }
 
 function firstLine(text: string): string {

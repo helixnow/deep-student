@@ -12,6 +12,12 @@ describe('isDefaultResourceName', () => {
     expect(isDefaultResourceName('未命名作文', 'essay', '未命名作文')).toBe(true);
   });
 
+  it('accepts default names created under the other UI language', () => {
+    expect(isDefaultResourceName('New Essay', 'essay')).toBe(true);
+    expect(isDefaultResourceName('New Translation 2', 'translation')).toBe(true);
+    expect(isDefaultResourceName('New Essay', 'translation')).toBe(false);
+  });
+
   it('keeps names the user chose', () => {
     expect(isDefaultResourceName('雅思大作文：远程办公的利弊', 'essay')).toBe(false);
     expect(isDefaultResourceName('新作文练习', 'essay')).toBe(false);

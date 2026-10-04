@@ -15,7 +15,7 @@ vi.mock('../../api', () => ({
 
 vi.mock('i18next', () => ({
   default: {
-    t: (key: string) => key,
+    t: (key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? key,
   },
 }));
 

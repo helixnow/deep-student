@@ -76,7 +76,10 @@
     "unfavoriteSuccess": "已取消收藏",
     "duplicate": "制造副本",
     "paste": "粘贴",
-    "pasteCount": "粘贴 {{count}} 项"
+    "pasteCount": "粘贴 {{count}} 项",
+    "exportNoteReaderNotReady": "笔记全文读取能力尚未就绪，请稍后重试导出。",
+    "exportNoteSwitched": "笔记已切换，请重新导出。",
+    "exportFullTextNotLoaded": "全文尚未加载，无法导出普通 Markdown。"
   },
   "toolbar": {
     "search": "搜索资源...",
@@ -1050,7 +1053,8 @@
       "items": "项",
       "staleHint": "{{count}} 个资源内容已更新，索引需要刷新",
       "recordCount": "{{count}} 条记录",
-      "indexingCount": "正在索引 {{current}}/{{total}}"
+      "indexingCount": "正在索引 {{current}}/{{total}}",
+      "mmResourceProgress": "资源 {{finished}}/{{total}}"
     },
     "stats": {
       "totalVectors": "总向量数",
@@ -1135,7 +1139,8 @@
       "clearOcrFailed": "清除 OCR 失败",
       "autoOcrCompleted": "OCR 已完成",
       "autoOcrPage": "正在 OCR 第 {{current}}/{{total}} 页...",
-      "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页..."
+      "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页...",
+      "mmRetrySuccess": "多模态索引完成，已索引 {{pages}} 页"
     },
     "mmProgress": {
       "preparing": "{{prefix}}准备中... ({{pages}} 页)",
@@ -1227,7 +1232,12 @@
       "resultCount": "找到 {{count}} 条结果，耗时 {{elapsed}}ms",
       "score": "得分:",
       "type": "类型:",
-      "chunkIndex": "块索引:"
+      "chunkIndex": "块索引:",
+      "mmDescription": "（使用统一检索器，包含多模态路由）",
+      "modeGroupLabel": "检索模式",
+      "modeText": "文本",
+      "modeMultimodal": "多模态",
+      "routeFailures": "{{count}} 条检索路由失败，结果可能不完整"
     }
   },
   "exam": {
@@ -1462,5 +1472,18 @@
   "vectorIndexUnavailable": {
     "title": "此版本使用关键词检索",
     "body": "此版本不包含向量索引，资料无需建立索引：上传后即可在对话和搜索中按关键词检索到。"
+  },
+  "errorContext": {
+    "loadBreadcrumbs": "获取面包屑",
+    "searchResources": "搜索资源",
+    "loadList": "加载列表"
+  },
+  "defaultNames": {
+    "textbook": "新教材",
+    "exam": "新题目集",
+    "translation": "新翻译",
+    "essay": "新作文",
+    "importedDocument": "导入文档",
+    "importedNote": "导入笔记"
   }
 }
