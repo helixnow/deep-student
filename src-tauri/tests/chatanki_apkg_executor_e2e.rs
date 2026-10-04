@@ -362,9 +362,11 @@ async fn executor_imports_vfs_apkg_reads_cards_and_enforces_document_ownership(a
         .await
         .expect("executor cross-session result");
     assert!(!rejected.success);
-    assert_eq!(
-        rejected.error.as_deref(),
-        Some("blocks.ankiCards.errors.statusNotFound")
+    // 错误串约定为「错误码: 给模型的引导说明」（5eefeba42 起追加跨会话改用库级工具的引导）
+    let error = rejected.error.as_deref().unwrap_or_default();
+    assert!(
+        error.starts_with("blocks.ankiCards.errors.statusNotFound"),
+        "unexpected error: {error}"
     );
 }
 
