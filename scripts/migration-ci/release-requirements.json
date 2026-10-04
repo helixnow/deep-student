@@ -13,8 +13,8 @@
         "notes": "No macOS WKWebView WebDriver support upstream; driver must orchestrate app launch + data-dir assertions directly (tauri-driver does not support macOS)."
       },
       "waiver": {
-        "until": "2026-10-02",
-        "reason": "Explicitly renewed by helix on 2026-10-01 for the v0.9.73 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
+        "until": "2026-10-18",
+        "reason": "Explicitly renewed by helix on 2026-10-04 for the v0.10.0 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
         "approved_by": "helix"
       }
     },
@@ -29,8 +29,8 @@
         "notes": "Reuse the tauri-driver + msedgedriver path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-10-02",
-        "reason": "Explicitly renewed by helix on 2026-10-01 for the v0.9.73 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
+        "until": "2026-10-18",
+        "reason": "Explicitly renewed by helix on 2026-10-04 for the v0.10.0 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
         "approved_by": "helix"
       }
     },
@@ -45,8 +45,8 @@
         "notes": "Reuse the tauri-driver + webkit2gtk-driver + xvfb path from .github/workflows/webdriver.yml once e2e-tests/ exists."
       },
       "waiver": {
-        "until": "2026-10-02",
-        "reason": "Explicitly renewed by helix on 2026-10-01 for the v0.9.73 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
+        "until": "2026-10-18",
+        "reason": "Explicitly renewed by helix on 2026-10-04 for the v0.10.0 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
         "approved_by": "helix"
       }
     },
@@ -61,8 +61,8 @@
         "notes": "Requires reactivecircus/android-emulator-runner (or equivalent) plus adb-driven data seeding/assertions."
       },
       "waiver": {
-        "until": "2026-10-02",
-        "reason": "Explicitly renewed by helix on 2026-10-01 for the v0.9.73 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
+        "until": "2026-10-18",
+        "reason": "Explicitly renewed by helix on 2026-10-04 for the v0.10.0 release. Real-artifact upgrade E2E remains unverified on this platform because its driver is not implemented; existing CI, database migration, and fixture gates remain required.",
         "approved_by": "helix"
       }
     }
