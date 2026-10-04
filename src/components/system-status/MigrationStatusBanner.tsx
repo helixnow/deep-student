@@ -110,12 +110,15 @@ export const MigrationStatusBanner: React.FC = () => {
 
   const openDataGovernance = () => {
     // 错误直接进入恢复页；普通警告仍回到概览。
-    setPendingSettingsRoute({
-      tab: 'data-governance',
+    const route = {
+      tab: 'data-governance' as const,
       dataGovernanceTab: migrationLevel === 'error' ? 'recovery' : 'overview',
-    });
+    };
+    // pending route 供设置页冷挂载消费；SETTINGS_NAVIGATE_TAB 供已挂载的设置页直达
+    setPendingSettingsRoute(route);
     // 切换 App 视图到 Settings
     dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+    dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, route);
   };
 
   return (

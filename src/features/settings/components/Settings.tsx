@@ -33,6 +33,7 @@ import { ShellViewSwitch } from '@/components/ui/ShellViewSwitch';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from '@/components/ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '@/hooks/useTheme';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { useViewVisibility } from '@/hooks/useViewVisibility';
 import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { openUrl } from '@/utils/urlOpener';
@@ -925,7 +926,11 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
 
   // （handleBack 已上移至 handleMobileHeaderBack 之前，供顶栏返回链复用）
 
-  // 启动时消费 pending settings tab（防止导航事件竞态丢失）
+  // 挂载时、以及（经典壳保活）设置视图重新成为当前视图时消费 pending settings route。
+  // 很多入口只写 pending route 再切视图、不派发 SETTINGS_NAVIGATE_TAB（迁移横幅、
+  // 初始化失败通知、欢迎引导、恢复回执……）；设置页已保活挂载时只在挂载时读取会
+  // 落在上次停留的分区。视图切回时补消费一次，所有这类入口一并修正。
+  const { isActive: isSettingsViewActive } = useViewVisibility('settings');
   useEffect(() => {
     const pending = consumePendingSettingsRoute();
     if (pending) {
@@ -933,7 +938,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
       // 程序化直达某分区：移动端跳过分区列表，直接进入内容态
       setMobileNavView('content');
     }
-  }, [applySettingsRoute]);
+  }, [applySettingsRoute, isSettingsViewActive]);
 
   // P1-09: 监听命令面板的 tab 跳转事件
   useAppEvent(
@@ -941,6 +946,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     (detail) => {
       const tab = detail.tab;
       if (tab) {
+        // 事件已直达：同时清掉配套写入的 pending route，免得下次挂载/切回时重复跳转
+        consumePendingSettingsRoute();
         applySettingsRoute({
           tab,
           dataGovernanceTab: detail.dataGovernanceTab,

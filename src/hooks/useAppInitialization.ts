@@ -194,6 +194,8 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
                     onClick: () => {
                       setPendingSettingsTab('data-governance');
                       dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'settings' });
+                      // 设置页已保活挂载时 pending tab 不会被重新读取：同时直达
+                      dispatchAppEvent(APP_EVENTS.SETTINGS_NAVIGATE_TAB, { tab: 'data-governance' });
                     },
                   },
                 },
