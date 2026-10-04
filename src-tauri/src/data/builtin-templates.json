@@ -4,7 +4,7 @@
     "name": "The Lab (学术选择题)",
     "description": "简洁风格学术选择题，简洁专注，可交互",
     "author": "Anki Design",
-    "version": "3.0.3",
+    "version": "3.0.4",
     "note_type": "Basic",
     "fields_json": "[\"Subject\",\"Question\",\"optiona\",\"optionb\",\"optionc\",\"optiond\",\"optione\",\"correct\",\"explanation\"]",
     "css_style": ".card, .card1 { background: #ffffff; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #37352f; }\n.lab-card { max-width: 400px; margin: 0 auto; padding: 24px 20px; box-sizing: border-box; background: #ffffff !important; background-image: none !important; border: 1px solid #ecebe8; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); }\n.nightMode .lab-card, .night_mode .lab-card, .card.nightMode .lab-card, .card.night_mode .lab-card, .card1.nightMode .lab-card, .card1.night_mode .lab-card { background: #ffffff !important; color: #37352f !important; }\n.lab-tag { font-size: 0.8125rem; color: #9b9a97; margin-bottom: 6px; }\n.lab-q { font-size: 1.125rem; font-weight: 600; color: #37352f; line-height: 1.6; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid #e9e9e7; }\n.lab-opt { display: flex; align-items: center; justify-content: space-between; text-align: left; padding: 10px 14px; font-size: 0.9375rem; box-sizing: border-box; color: #37352f; background: #ffffff; border: 1px solid #e9e9e7; border-radius: 4px; margin-bottom: 8px; cursor: pointer; transition: background 0.15s; }\n.lab-opt:hover:not(.answered) { background: #f7f6f3; }\n.lab-opt.correct { background: #dbeddb !important; border-color: #6bc16f !important; color: #1e5631 !important; }\n.lab-opt.wrong { background: #ffe2dd !important; border-color: #e16259 !important; color: #93261c !important; text-decoration: line-through; }\n.lab-opt.answered { cursor: default; pointer-events: none; }\n.explanation-box { margin-top: 16px; padding: 14px 16px; background: #f1f1ef; border-radius: 4px; font-size: 0.875rem; color: #55534e; line-height: 1.6; display: none; }\n.check-icon { width: 1em; height: 1em; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; fill: none; margin-left: auto; flex-shrink: 0; display: none; }\n.correct .check-icon { display: block; }",
@@ -13,8 +13,8 @@
     "preview_front": "哪个细胞器通常被称为细胞的能量工厂？",
     "preview_back": "A. 线粒体 (正确)",
     "preview_data_json": "{\"Subject\":\"细胞生物学\",\"Question\":\"哪个细胞器通常被称为细胞的能量工厂？\",\"optiona\":\"线粒体\",\"optionb\":\"核糖体\",\"optionc\":\"细胞核\",\"optiond\":\"高尔基体\",\"correct\":\"A\",\"explanation\":\"线粒体是细胞进行有氧呼吸的主要场所。\"}",
-    "field_extraction_rules_json": "{\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学科/科目\"},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"题干\"},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项A\"},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项B\"},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项C\"},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项D\"},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"选项E（可选）\"},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正确答案（字母，可多选）\"},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"解析\"}}",
-    "generation_prompt": "请生成一道选择题，包含：1. Subject（学科分类）；2. Question（题干）；3. 四至五个选项（optiona-d必填，optione可选）；4. correct（可为单个字母或多个字母，多个用逗号/空格分隔表示多选）；5. explanation（解析）。"
+    "field_extraction_rules_json": "{\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学科/科目（≤12字）\",\"max_length\":12},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"题干，一个明确问题（≤150字）\",\"max_length\":150},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正确答案：仅字母，可多选，如 A 或 A,C\",\"max_length\":9},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150}}",
+    "generation_prompt": "适用：有确定答案的单选/多选题（4–5 个简短选项）。不适用：开放问答、证明、推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Subject 学科（≤12字）；Question 题干（≤150字）；optiona~optiond 必填、optione 可选，每个选项一句短语（≤60字，不写解释）；correct 仅字母（如 A 或 A,C）；explanation 1–2 句解析（≤150字）。"
   },
   {
     "id": "design-manuscript",
@@ -30,8 +30,8 @@
     "preview_front": "第一次世界大战正式结束于哪一年？",
     "preview_back": "1918",
     "preview_data_json": "{\"Figure\":\"图 2.1 — 历史\",\"Question\":\"第一次世界大战正式结束于哪一年？\",\"optiona\":\"1914\",\"optionb\":\"1918\",\"optionc\":\"1939\",\"optiond\":\"1945\",\"correct\":\"B\",\"explanation\":\"一战于1918年11月11日停战。\"}",
-    "field_extraction_rules_json": "{\"Figure\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"图注/分类\"},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"题干\"},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项A\"},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项B\"},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项C\"},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项D\"},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"选项E（可选）\"},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正确答案（字母，可多选）\"},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"解析\"}}",
-    "generation_prompt": "请生成一道历史或人文类选择题，字段：Figure(图注/分类), Question, optiona-d必填, optione可选, correct(可为单个或多个字母，多个用逗号/空格分隔表示多选), explanation。"
+    "field_extraction_rules_json": "{\"Figure\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"图注/分类（≤20字）\",\"max_length\":20},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"题干，一个明确问题（≤120字）\",\"max_length\":120},\"optiona\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项A：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionb\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项B：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optionc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项C：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optiond\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"选项D：简短短语，不写解释（≤60字）\",\"max_length\":60},\"optione\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"选项E（可选）：简短短语（≤60字）\",\"max_length\":60},\"correct\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正确答案：仅字母，可多选，如 B 或 A,C\",\"max_length\":9},\"explanation\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"解析：1–2 句（≤150字）\",\"max_length\":150}}",
+    "generation_prompt": "适用：历史/人文类有确定答案的单选/多选题。不适用：开放问答、证明、推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Figure 图注/分类（≤20字）；Question 题干（≤120字）；optiona~optiond 必填、optione 可选，每个选项一句短语（≤60字）；correct 仅字母（如 B 或 A,C）；explanation 1–2 句解析（≤150字）。"
   },
   {
     "id": "design-redaction",
@@ -47,15 +47,15 @@
     "preview_front": "[...] 的概念通常被描述为...",
     "preview_back": "熵 (Entropy)",
     "preview_data_json": "{\"Header\":\"机密文档\",\"Text\":\"{{c1::熵 (Entropy)}} 的概念通常被描述为封闭热力学系统内{{c2::无序程度}}的度量。\",\"Extra\":\"热力学第二定律相关\"}",
-    "field_extraction_rules_json": "{\"Header\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"标题/小节\"},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正文内容\"},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"补充说明\"}}",
-    "generation_prompt": "请生成一个填空题，适合机密文件风格，字段：Header(文件分类), Text(包含{{c1::...}}), Extra(解释)。"
+    "field_extraction_rules_json": "{\"Header\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"标题/小节（≤16字）\",\"max_length\":16},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"1–2 句完整陈述，含 {{c1::...}} 挖空（≤200字）\",\"max_length\":200},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"补充说明：一句（≤80字）\",\"max_length\":80}}",
+    "generation_prompt": "适用：1–2 句短陈述中挖关键词（机密档案涂黑风格）。不适用：长段落、证明、多步推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Header 文件分类（≤16字）；Text 1–2 句完整陈述，含 {{c1::...}} 挖空（≤200字）；Extra 一句补充（≤80字）。"
   },
   {
     "id": "design-glass",
     "name": "The Glass (学术填空题)",
     "description": "简洁风格学术填空题，简洁专注",
     "author": "Anki Design",
-    "version": "3.0.6",
+    "version": "3.0.7",
     "note_type": "Cloze",
     "fields_json": "[\"Subject\",\"Text\",\"Extra\"]",
     "css_style": ".card, .card1 { background: #ffffff; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #37352f; }\n.glass-wrapper { max-width: 480px; margin: 0 auto; padding: 4px 0; }\n.glass-panel { padding: 28px 24px; background: #ffffff !important; background-image: none !important; border: 1px solid #ecebe8; border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; }\n.glass-panel.revealed { box-shadow: 0 10px 24px rgba(46,125,50,0.16); transform: translateY(-1px); }\n.nightMode .glass-panel, .night_mode .glass-panel, .card.nightMode .glass-panel, .card.night_mode .glass-panel, .card1.nightMode .glass-panel, .card1.night_mode .glass-panel { background: #ffffff !important; color: #37352f !important; }\n.glass-sub { font-size: 0.8125rem; color: #9b9a97; margin-bottom: 16px; }\n.glass-text { font-size: 1.0625rem; color: #37352f; line-height: 1.8; transition: color 0.2s ease; }\n.cloze, .cloze b { padding: 2px 8px; border-radius: 3px; background: #e9e9e7 !important; color: transparent !important; font-weight: normal; }\n.revealed .cloze, .revealed .cloze b { background: #dbeddb !important; color: #2e7d32 !important; font-weight: 600; }\n.glass-extra { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e9e9e7; font-size: 0.875rem; color: #9b9a97; line-height: 1.6; }",
@@ -64,15 +64,15 @@
     "preview_front": "操作性条件反射理论主要由 [...] 提出。",
     "preview_back": "B.F. 斯金纳",
     "preview_data_json": "{\"Subject\":\"心理学导论\",\"Text\":\"操作性条件反射理论主要由 {{c1::B.F. 斯金纳}} 于 1938 年提出。\",\"Extra\":\"行为主义心理学代表人物\"}",
-    "field_extraction_rules_json": "{\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学科/主题\"},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正文内容\"},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"补充说明\"}}",
-    "generation_prompt": "请生成一个填空题，字段：Subject(学科), Text(包含{{c1::...}}), Extra(补充说明)。"
+    "field_extraction_rules_json": "{\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学科/主题（≤16字）\",\"max_length\":16},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）\",\"max_length\":250},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"补充说明：1–2 句（≤120字）\",\"max_length\":120}}",
+    "generation_prompt": "适用：定义、术语、关键数据/结论的填空（通用填空首选）。不适用：证明、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Subject 学科（≤16字）；Text 1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）；Extra 简短补充（≤120字）。"
   },
   {
     "id": "design-swiss",
     "name": "The Swiss (瑞士设计风格)",
     "description": "正面可交互：点击卡片淡入切换定义，经典瑞士排版",
     "author": "Anki Design",
-    "version": "2.1.6",
+    "version": "2.1.7",
     "note_type": "Basic",
     "fields_json": "[\"Front\",\"Author\",\"BackTitle\",\"BackDetail\"]",
     "css_style": ".card, .card1 { background-color: #F5F5F5; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; color: #1D1D1F; }\n.swiss-wrapper { width: 100%; max-width: 420px; margin: 0 auto; cursor: pointer; }\n.swiss-shell { background: #F5F5F5; border: none !important; box-shadow: inset 0 0 0 1px #E6E6E6; min-height: 320px; padding: 2rem; box-sizing: border-box; display: flex; flex-direction: column; justify-content: space-between; transition: transform 220ms ease, box-shadow 220ms ease, filter 220ms ease; }\n.swiss-shell.revealed { background: #1D1D1F !important; color: #F3F4F6 !important; box-shadow: inset 0 0 0 1px #1D1D1F, 0 10px 22px rgba(0,0,0,0.12); transform: translateY(-1px); }\n.swiss-front-face, .swiss-back-face { animation: swissFade .28s ease; }\n.swiss-back-face { display: none; }\n.swiss-shell.revealed .swiss-front-face { display: none; }\n.swiss-shell.revealed .swiss-back-face { display: block; }\n.swiss-bar { width: 3rem; height: 0.25rem; background: #FF3B30; margin-bottom: 1rem; }\n.swiss-h1 { font-size: clamp(1.5rem, 8vw, 3rem); font-weight: 900; letter-spacing: -0.05em; line-height: 1.08; margin: 0; word-break: break-word; overflow-wrap: break-word; color: #1D1D1F !important; }\n.swiss-front-face .swiss-h1 { color: #1D1D1F !important; }\n.swiss-auth { margin-top: auto; font-size: 0.95rem; font-weight: 500; color: #6b7280; }\n.swiss-front-face .swiss-auth { color: #6b7280 !important; }\n.swiss-shell.revealed .swiss-auth { color: #ECEEF3 !important; }\n.swiss-def-t { color: #FF3B30; font-weight: 700; font-size: 1.25rem; margin: 0 0 1rem 0; }\n.swiss-def-p { font-size: 1.05rem; font-weight: 400; line-height: 1.65; margin: 0; color: #ECEEF3; word-break: break-word; overflow-wrap: break-word; }\n.swiss-back-face .swiss-def-t { color: #FF3B30 !important; }\n.swiss-back-face .swiss-def-p, .swiss-back-face .swiss-auth { color: #ECEEF3 !important; }\n.nightMode .swiss-front-face .swiss-h1, .night_mode .swiss-front-face .swiss-h1, .card.nightMode .swiss-front-face .swiss-h1, .card.night_mode .swiss-front-face .swiss-h1, .card1.nightMode .swiss-front-face .swiss-h1, .card1.night_mode .swiss-front-face .swiss-h1 { color: #1D1D1F !important; }\n@keyframes swissFade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }",
@@ -81,8 +81,8 @@
     "preview_front": "超人",
     "preview_back": "尼采哲学概念",
     "preview_data_json": "{\"Front\":\"超人\",\"Author\":\"弗里德里希·尼采\",\"BackTitle\":\"定义\",\"BackDetail\":\"一种超越现有社会价值观并确立自身目标的“超人”概念。尼采认为这是人类进化的下一个阶段。\"}",
-    "field_extraction_rules_json": "{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正面标题/主句\"},\"Author\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"作者/出处\"},\"BackTitle\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"背面标题\"},\"BackDetail\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"背面详情\"}}",
-    "generation_prompt": "请生成一个概念解释卡片，字段：Front(核心概念), Author(提出者/相关人物), BackTitle(标题), BackDetail(详细解释)。"
+    "field_extraction_rules_json": "{\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正面大字：仅一个概念词，不写问句（≤12字）\",\"max_length\":12},\"Author\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"作者/出处（≤24字）\",\"max_length\":24},\"BackTitle\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"背面标题（≤12字）\",\"max_length\":12},\"BackDetail\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"背面详情：2–3 句定义（≤120字）\",\"max_length\":120}}",
+    "generation_prompt": "适用：一个核心概念/人名 ↔ 简短定义（大字海报式）。不适用：问句、证明、推导、长解释（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Front 仅一个概念词，大字显示（≤12字，不写问句）；Author 提出者（≤24字）；BackTitle 背面小标题（≤12字）；BackDetail 2–3 句定义（≤120字）。"
   },
   {
     "id": "design-polaroid",
@@ -98,8 +98,8 @@
     "preview_front": "\"我思故我在。\"",
     "preview_back": "勒内·笛卡尔",
     "preview_data_json": "{\"Quote\":\"我思故我在。\",\"Prompt\":\"识别哲学家\",\"Author\":\"勒内·笛卡尔\",\"Source\":\"《谈谈方法》，1637\"}",
-    "field_extraction_rules_json": "{\"Quote\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"引用/名言\"},\"Prompt\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"提示语\"},\"Author\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"作者\"},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"出处/来源\"}}",
-    "generation_prompt": "请生成一个名言或引言卡片，字段：Quote(内容), Prompt(提示), Author(作者), Source(出处)。"
+    "field_extraction_rules_json": "{\"Quote\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"引用/名言原句（≤80字）\",\"max_length\":80},\"Prompt\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"提示语（≤20字）\",\"max_length\":20},\"Author\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"作者名（≤20字）\",\"max_length\":20},\"Source\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"出处/来源（≤30字）\",\"max_length\":30}}",
+    "generation_prompt": "适用：名言/引文 ↔ 作者与出处的记忆。不适用：非引文的知识点、问答、证明（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Quote 原句引文（≤80字）；Prompt 提示语（≤20字）；Author 作者名（≤20字）；Source 出处（≤30字）。"
   },
   {
     "id": "design-architect",
@@ -115,15 +115,15 @@
     "preview_front": "牛顿第二定律",
     "preview_back": "F = ma",
     "preview_data_json": "{\"ID\":\"问题索引_01\",\"Question\":\"牛顿第二定律\",\"Formula\":\"F = ma\",\"Expl\":\"物体所受的合外力等于其质量与加速度的乘积。\"}",
-    "field_extraction_rules_json": "{\"ID\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"索引/编号\"},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"问题/定理名\"},\"Formula\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"公式\"},\"Expl\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"解释说明\"}}",
-    "generation_prompt": "请生成一个公式或定理卡片，字段：ID(索引号), Question(定理名), Formula(公式), Expl(解释)。"
+    "field_extraction_rules_json": "{\"ID\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"索引/编号（≤12字符）\",\"max_length\":12},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"定理/公式名或一句短问（≤30字）\",\"max_length\":30},\"Formula\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"仅一条公式或短表达式，不写文字/证明/多条公式（≤60字符）\",\"max_length\":60},\"Expl\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"一句话说明含义或符号（≤60字）\",\"max_length\":60}}",
+    "generation_prompt": "适用：一条公式/定律的「名称 ↔ 公式」对应（如 牛顿第二定律 ↔ F = ma）。不适用：证明、推导过程、定理条件与结论的长陈述、多句解释（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph；推导步骤改用 design-seminar）。字段：ID 可选编号（≤12字符）；Question 定理/公式名或一句短问（≤30字）；Formula 仅一条公式或短表达式，等宽大字显示，不写文字说明/证明/多条公式（≤60字符）；Expl 一句话说明含义或符号（≤60字）。"
   },
   {
     "id": "design-lexicon",
     "name": "The Lexicon (词典风格)",
     "description": "正面可交互：点击切换单词与释义，优雅词典排版",
     "author": "Anki Design",
-    "version": "2.1.2",
+    "version": "2.1.3",
     "note_type": "Basic",
     "fields_json": "[\"Word\",\"Phonetic\",\"Pos\",\"Definition\",\"Etym\"]",
     "css_style": ".card, .card1 { background-color: #fffbf2; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; }\n.lex-card { border: 1px solid #e5e0d5; padding: 2rem; max-width: 400px; margin: 0 auto; text-align: center; background: #fffbf2; position: relative; cursor: pointer; min-height: 200px; display: flex; flex-direction: column; justify-content: center; }\n.lex-src { position: absolute; top: 0.5rem; right: 1rem; font-size: 0.75rem; font-style: italic; color: #9ca3af; font-family: serif; }\n.lex-word { font-size: 2.25rem; font-weight: 700; color: #111827; margin: 0; letter-spacing: -0.025em; }\n.lex-pho { font-family: sans-serif; color: #6b7280; margin-top: 0.5rem; display: block; font-size: 0.875rem; }\n.lex-face { width: 100%; animation: fadeIn 0.3s; }\n.lex-back-content { text-align: left; margin-top: 1rem; border-top: 1px solid #e5e0d5; padding-top: 1rem; }\n.lex-pos { font-size: 0.75rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.25rem; }\n.lex-def { font-size: 1.125rem; color: #111; line-height: 1.6; }\n.lex-etym { font-size: 0.875rem; color: #6b7280; font-style: italic; margin-top: 1rem; padding-left: 0.75rem; border-left: 2px solid #d1d5db; }\n@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }",
@@ -132,8 +132,8 @@
     "preview_front": "Serendipity",
     "preview_back": "意外发现珍奇事物的本领",
     "preview_data_json": "{\"Word\":\"Serendipity\",\"Phonetic\":\"/ˌserənˈdɪpədē/\",\"Pos\":\"Noun.\",\"Definition\":\"意外发现珍奇事物的本领。\",\"Etym\":\"源自波斯童话《锡兰三王子》。\"}",
-    "field_extraction_rules_json": "{\"Word\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"单词/词条\"},\"Phonetic\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"音标\"},\"Pos\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"词性\"},\"Definition\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"释义\"},\"Etym\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"词源/出处\"}}",
-    "generation_prompt": "请生成一个单词学习卡片，字段：Word, Phonetic, Pos(词性), Definition, Etym(词源)。"
+    "field_extraction_rules_json": "{\"Word\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"单词/词条：单个词或短语（≤24字符）\",\"max_length\":24},\"Phonetic\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"音标（≤30字符）\",\"max_length\":30},\"Pos\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"词性缩写（≤10字符）\",\"max_length\":10},\"Definition\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"简明释义（≤80字）\",\"max_length\":80},\"Etym\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"词源/出处（≤80字）\",\"max_length\":80}}",
+    "generation_prompt": "适用：外语单词/短语词汇卡。不适用：概念问答、证明、句子级知识点（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Word 单个词或短语（≤24字符）；Phonetic 音标（≤30字符）；Pos 词性缩写（≤10字符）；Definition 简明释义（≤80字）；Etym 词源/例句（≤80字）。"
   },
   {
     "id": "design-botanical",
@@ -149,15 +149,15 @@
     "preview_front": "Photosynthesis",
     "preview_back": "光合作用",
     "preview_data_json": "{\"Specimen\":\"Specimen No. 82\",\"Name\":\"Photosynthesis\",\"CommonName\":\"光合作用\",\"Desc\":\"植物、藻类利用叶绿素，在可见光的照射下，将二氧化碳和水转化为有机物，并释放出氧气的生化过程。\"}",
-    "field_extraction_rules_json": "{\"Specimen\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"标本编号/分类\"},\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学名/英文名\"},\"CommonName\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"中文名/通用名\"},\"Desc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"描述说明\"}}",
-    "generation_prompt": "请生成一个生物或自然类百科卡片，字段：Specimen(编号), Name(英文/学名), CommonName(中文名), Desc(描述)。"
+    "field_extraction_rules_json": "{\"Specimen\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"标本编号/分类（≤20字）\",\"max_length\":20},\"Name\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学名/英文名，大字显示（≤30字符）\",\"max_length\":30},\"CommonName\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"中文名/通用名（≤16字）\",\"max_length\":16},\"Desc\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"描述说明：2–3 句（≤150字）\",\"max_length\":150}}",
+    "generation_prompt": "适用：生物/自然物种或现象的「名称 ↔ 描述」百科卡。不适用：问答、证明、推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Specimen 编号/分类（≤20字）；Name 学名/英文名，大字显示（≤30字符）；CommonName 中文名（≤16字）；Desc 2–3 句描述（≤150字）。"
   },
   {
     "id": "design-eink",
     "name": "The E-Ink (电子墨水屏风格)",
     "description": "正面可交互：点击屏幕触发全屏墨水刷新闪烁特效，恢复经典阅读体验",
     "author": "Anki Design",
-    "version": "2.1.2",
+    "version": "2.1.3",
     "note_type": "Basic",
     "fields_json": "[\"Collection\",\"Front\",\"Back\",\"Sub\"]",
     "css_style": ".card, .card1 { background-color: #EBEBEB; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; }\n.eink-card { background: #EBEBEB; border: 6px solid #333; border-radius: 8px; position: relative; overflow: hidden; max-width: 400px; margin: 0 auto; min-height: 400px; display: flex; flex-direction: column; cursor: pointer; }\n.eink-noise { position: absolute; inset: 0; pointer-events: none; opacity: 0.05; mix-blend-mode: multiply; background-image: url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\"); z-index: 0; }\n.eink-status { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 10px; font-family: sans-serif; color: #6b7280; border-bottom: 1px solid rgba(209,213,219,0.5); position: relative; z-index: 1; }\n.eink-inner { padding: 2rem; flex: 1; display: flex; flex-direction: column; position: relative; z-index: 1; }\n.eink-tag { font-size: 0.75rem; color: #6b7280; font-family: sans-serif; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }\n.eink-h1 { font-size: 2.25rem; font-weight: 700; color: #111; letter-spacing: -0.025em; margin: 0 0 1rem 0; text-shadow: 0 0 1px rgba(0,0,0,0.1); }\n.eink-sub { font-size: 0.875rem; color: #4b5563; font-family: sans-serif; font-style: italic; }\n.eink-p { font-size: 1rem; color: #222; line-height: 1.6; text-align: justify; margin-top: 1rem; text-shadow: 0 0 1px rgba(0,0,0,0.1); display: none; }\n.eink-footer { margin-top: auto; font-size: 9px; color: #6b7280; font-family: sans-serif; display: flex; justify-content: space-between; padding-top: 1rem; }\n.icon-wifi { width: 12px; height: 12px; margin-right: 4px; }\n.icon-battery { width: 16px; height: 10px; margin-left: 4px; }\n/* E-Ink Flash Animation */\n@keyframes eink-flash {\n  0% { filter: invert(0); }\n  50% { filter: invert(1); }\n  100% { filter: invert(0); }\n}\n.flashing { animation: eink-flash 0.6s cubic-bezier(0.4, 0, 0.2, 1); }",
@@ -166,15 +166,15 @@
     "preview_front": "多巴胺",
     "preview_back": "主要负责大脑的情欲、感觉...",
     "preview_data_json": "{\"Collection\":\"Word of the Day\",\"Front\":\"多巴胺\",\"Sub\":\"[Dopamine]\",\"Back\":\"主要负责大脑的情欲、感觉，将兴奋及开心的信息传递。关联：奖赏机制、成瘾行为以及运动控制调节。\"}",
-    "field_extraction_rules_json": "{\"Collection\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"集合/栏目\"},\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"标题\"},\"Sub\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"副标题/次级信息\"},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正文内容\"}}",
-    "generation_prompt": "请生成一个阅读卡片，字段：Collection(集合名), Front(标题), Sub(副标题), Back(正文内容)。"
+    "field_extraction_rules_json": "{\"Collection\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"集合/栏目（≤16字）\",\"max_length\":16},\"Front\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"标题词，大字显示，不写问句（≤16字）\",\"max_length\":16},\"Sub\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"副标题/次级信息（≤30字）\",\"max_length\":30},\"Back\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"正文内容（≤200字）\",\"max_length\":200}}",
+    "generation_prompt": "适用：标题词 + 一段短正文的概念速览卡。不适用：问句式问答、证明、长推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Collection 栏目（≤16字）；Front 标题词，大字显示，不写问句（≤16字）；Sub 副标题（≤30字）；Back 正文（≤200字）。"
   },
   {
     "id": "design-monograph",
     "name": "The Monograph (专著扉页风格)",
     "description": "正面可交互：点击揭示答案；书籍扉页式居中排版，双细线与菱形分隔",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Basic",
     "fields_json": "[\"Question\", \"Answer\", \"Series\", \"Source\"]",
     "css_style": ".card, .card1 { background-color: #EFEAE1; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #211D16; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #29251E; }\n.mono-page { max-width: 460px; margin: 0 auto; background: #FBF8F2; padding: 36px 38px 30px; box-shadow: 0 1px 2px rgba(33,29,22,0.08), 0 12px 28px rgba(33,29,22,0.10); text-align: center; cursor: pointer; box-sizing: border-box; }\n.nightMode .mono-page, .night_mode .mono-page, .card.nightMode .mono-page, .card.night_mode .mono-page, .card1.nightMode .mono-page, .card1.night_mode .mono-page { background: #FBF8F2 !important; color: #211D16 !important; }\n.mono-series { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.66rem; letter-spacing: 0.3em; text-transform: uppercase; color: #8A7F6C; margin-bottom: 14px; }\n.mono-rule { width: 64px; height: 5px; margin: 0 auto 28px; border-top: 2px solid #211D16; border-bottom: 1px solid #211D16; }\n.mono-q { font-size: 1.38rem; font-weight: 600; line-height: 1.65; margin: 0; word-break: break-word; }\n.mono-sep { margin: 26px 0 20px; font-size: 0.7rem; color: #7A2E2B; letter-spacing: 0.9em; text-indent: 0.9em; }\n.mono-a { display: none; text-align: left; font-size: 0.97rem; line-height: 1.95; color: #37312A; word-break: break-word; }\n.mono-page.open .mono-a { display: block; }\n.mono-src { margin-top: 26px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.68rem; letter-spacing: 0.18em; color: #8A7F6C; }\n.mono-hint { margin-top: 30px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.62rem; letter-spacing: 0.28em; color: #B7AD9A; text-transform: uppercase; }\n.mono-page.open .mono-hint { display: none; }",
@@ -183,15 +183,15 @@
     "preview_front": "何谓「范式转移」？",
     "preview_back": "库恩：常规科学与科学革命交替，旧范式被整体取代",
     "preview_data_json": "{\"Series\": \"科学哲学 · 经典概念\", \"Question\": \"何谓「范式转移」（Paradigm Shift）？\", \"Answer\": \"库恩在《科学革命的结构》中提出：科学发展并非线性积累，而是常规科学与科学革命的交替。当反常现象积累至危机，旧范式被新范式整体取代，观察语言与问题标准也随之改变。\", \"Source\": \"Thomas S. Kuhn, 1962\"}",
-    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"核心问题\"}, \"Answer\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"答案/详细阐述\"}, \"Series\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"系列/学科标签\"}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"出处/作者/年份\"}}",
-    "generation_prompt": "请生成一个问答卡片，字段：Question(核心问题), Answer(答案与阐述), Series(学科或系列标签，可选), Source(出处/作者/年份，可选)。"
+    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"核心问题（≤120字）\", \"max_length\": 120}, \"Answer\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"答案与阐述，可多句；证明写关键步骤（≤600字）\", \"max_length\": 600}, \"Series\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"系列/学科标签（≤20字）\", \"max_length\": 20}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"出处/作者/年份（≤40字）\", \"max_length\": 40}}",
+    "generation_prompt": "适用：通用问答（与 design-footnote 同为默认问答模板），答案可多句：原理解释、证明思路、比较论述。不适用：选择题、单纯挖空（定义/关键词填空改用 design-glass 或 design-exam）。字段：Question 核心问题（≤120字）；Answer 答案与阐述，可多句，证明写关键步骤（≤600字）；Series 学科/系列标签（≤20字）；Source 出处（≤40字）。"
   },
   {
     "id": "design-footnote",
     "name": "The Footnote (脚注风格)",
     "description": "正面可交互：点击展开页脚脚注；正文上标编号，学术脚注排版",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Basic",
     "fields_json": "[\"Question\", \"Answer\", \"Source\"]",
     "css_style": ".card, .card1 { background-color: #F2EFE9; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #232019; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #28241D; }\n.fn-page { max-width: 470px; margin: 0 auto; background: #FFFFFF; padding: 26px 32px 26px; box-shadow: 0 1px 2px rgba(35,32,25,0.07), 0 10px 26px rgba(35,32,25,0.09); text-align: left; cursor: pointer; box-sizing: border-box; }\n.nightMode .fn-page, .night_mode .fn-page, .card.nightMode .fn-page, .card.night_mode .fn-page, .card1.nightMode .fn-page, .card1.night_mode .fn-page { background: #FFFFFF !important; color: #232019 !important; }\n.fn-head { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.64rem; letter-spacing: 0.26em; text-transform: uppercase; color: #9A907D; border-bottom: 1px solid #E7E1D4; padding-bottom: 10px; margin-bottom: 22px; }\n.fn-body { font-size: 1.04rem; line-height: 1.95; word-break: break-word; }\n.fn-mark { color: #3D5A45; font-weight: 700; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; }\n.fn-body sup.fn-mark { font-size: 0.72em; margin-left: 2px; }\n.fn-area { margin-top: 34px; }\n.fn-sep { width: 88px; border-top: 1px solid #232019; margin-bottom: 12px; }\n.fn-note { display: none; font-size: 0.88rem; line-height: 1.85; color: #454035; word-break: break-word; }\n.fn-page.open .fn-note { display: block; }\n.fn-note .fn-mark { margin-right: 6px; }\n.fn-hint { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.72rem; color: #B3A992; letter-spacing: 0.06em; }\n.fn-page.open .fn-hint { display: none; }",
@@ -200,15 +200,15 @@
     "preview_front": "边际效用递减律为什么成立？",
     "preview_back": "欲望强度有限且需求可饱和，新增满足感逐次减弱",
     "preview_data_json": "{\"Source\": \"微观经济学 · 消费者行为\", \"Question\": \"边际效用递减律指出：其他条件不变时，连续消费同一商品，每增加一单位所带来的效用增量趋于下降。该规律为什么成立？\", \"Answer\": \"源于欲望强度的有限性与需求的可饱和性：最迫切的需要优先被满足，后续单位只能满足次要需要，故新增满足感逐次减弱。这也是需求曲线向右下方倾斜的微观基础。\"}",
-    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"正文陈述与问题\"}, \"Answer\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"脚注中的答案/解释\"}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"页眉出处/章节\"}}",
-    "generation_prompt": "请生成一个问答卡片，字段：Question(以正文形式陈述的问题), Answer(作为脚注的答案与解释), Source(页眉出处或章节，可选)。"
+    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"正文陈述与问题（≤200字）\", \"max_length\": 200}, \"Answer\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"脚注中的答案/解释，可多句（≤600字）\", \"max_length\": 600}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"页眉出处/章节（≤30字）\", \"max_length\": 30}}",
+    "generation_prompt": "适用：通用问答（默认首选），答案可多句：定理陈述与证明要点、原理解释、计算思路。不适用：选择题、单纯挖空（定义/关键词填空改用 design-glass 或 design-exam）。字段：Question 以正文陈述的问题（≤200字）；Answer 脚注中的答案与解释，可多句（≤600字）；Source 页眉出处/章节（≤30字）。"
   },
   {
     "id": "design-marginalia",
     "name": "The Marginalia (页边批注风格)",
     "description": "正面可交互：点击展开释义；Tufte 式页边批注双栏版式",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Basic",
     "fields_json": "[\"Term\", \"Definition\", \"Note\", \"Source\"]",
     "css_style": ".card, .card1 { background-color: #F1EDE5; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #26221B; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #282419; }\n.mg-sheet { max-width: 500px; margin: 0 auto; background: #FDFCF9; padding: 30px 30px 26px; box-shadow: 0 1px 2px rgba(38,34,27,0.07), 0 10px 26px rgba(38,34,27,0.09); display: flex; gap: 26px; text-align: left; cursor: pointer; box-sizing: border-box; }\n.nightMode .mg-sheet, .night_mode .mg-sheet, .card.nightMode .mg-sheet, .card.night_mode .mg-sheet, .card1.nightMode .mg-sheet, .card1.night_mode .mg-sheet { background: #FDFCF9 !important; color: #26221B !important; }\n.mg-main { flex: 1 1 auto; min-width: 0; }\n.mg-margin { flex: 0 0 118px; padding-top: 6px; }\n.mg-term { font-size: 1.42rem; font-weight: 600; line-height: 1.5; margin: 0; word-break: break-word; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 7px; text-decoration-color: #CDC3AD; }\n.mg-def { display: none; margin-top: 22px; font-size: 0.96rem; line-height: 1.9; color: #3A342B; word-break: break-word; }\n.mg-sheet.open .mg-def { display: block; }\n.mg-hint { margin-top: 26px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.62rem; letter-spacing: 0.24em; text-transform: uppercase; color: #BCB29D; }\n.mg-sheet.open .mg-hint { display: none; }\n.mg-note { display: none; font-style: italic; font-size: 0.78rem; line-height: 1.75; color: #9C4A22; word-break: break-word; }\n.mg-sheet.open .mg-note { display: block; }\n.mg-src { font-style: italic; font-size: 0.76rem; line-height: 1.7; color: #8B8069; margin-top: 14px; word-break: break-word; }\n.mg-margin-label { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-style: normal; font-size: 0.6rem; letter-spacing: 0.22em; text-transform: uppercase; color: #B3A88F; display: block; margin-bottom: 6px; }",
@@ -217,15 +217,15 @@
     "preview_front": "路径依赖 (Path Dependence)",
     "preview_back": "自我强化机制下沿既定路径演化，难以扭转",
     "preview_data_json": "{\"Term\": \"路径依赖 (Path Dependence)\", \"Definition\": \"制度或技术一旦进入某一轨道，便会在自我强化机制下沿既定路径演化，即使存在更优替代方案也难以扭转；其根源包括规模效应、学习效应、协调效应与适应性预期。\", \"Note\": \"QWERTY 键盘是最常被引用的例证\", \"Source\": \"David, 1985; North, 1990\"}",
-    "field_extraction_rules_json": "{\"Term\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"核心术语/概念\"}, \"Definition\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"术语释义\"}, \"Note\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"页边批注（例证/联想）\"}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"参考文献\"}}",
-    "generation_prompt": "请生成一个术语卡片，字段：Term(核心术语), Definition(释义), Note(页边批注，如例证或联想，可选), Source(参考文献，可选)。"
+    "field_extraction_rules_json": "{\"Term\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"核心术语/概念名（≤30字）\", \"max_length\": 30}, \"Definition\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"术语释义（≤200字）\", \"max_length\": 200}, \"Note\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"页边批注：例证/联想一句（≤60字）\", \"max_length\": 60}, \"Source\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"参考文献（≤40字）\", \"max_length\": 40}}",
+    "generation_prompt": "适用：术语 ↔ 释义（可附例证批注）。不适用：问句式问答、证明、推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Term 术语名（≤30字）；Definition 释义（≤200字）；Note 页边批注：例证或联想一句（≤60字）；Source 参考文献（≤40字）。"
   },
   {
     "id": "design-seminar",
     "name": "The Seminar (研讨讲义风格)",
     "description": "正面可交互：点击展开步骤；讲义式罗马数字编号，适合流程记忆",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Basic",
     "fields_json": "[\"Question\", \"Step1\", \"Step2\", \"Step3\", \"Step4\", \"Note\"]",
     "css_style": ".card, .card1 { background-color: #F0EDE6; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #26221B; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #27231C; }\n.sem-sheet { max-width: 480px; margin: 0 auto; background: #FBFAF6; padding: 28px 32px 24px; box-shadow: 0 1px 2px rgba(38,34,27,0.07), 0 10px 26px rgba(38,34,27,0.09); text-align: left; cursor: pointer; box-sizing: border-box; }\n.nightMode .sem-sheet, .night_mode .sem-sheet, .card.nightMode .sem-sheet, .card.night_mode .sem-sheet, .card1.nightMode .sem-sheet, .card1.night_mode .sem-sheet { background: #FBFAF6 !important; color: #26221B !important; }\n.sem-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.64rem; letter-spacing: 0.26em; text-transform: uppercase; color: #99907C; border-bottom: 1px solid #26221B; padding-bottom: 10px; }\n.sem-q { font-size: 1.18rem; font-weight: 600; line-height: 1.7; margin: 20px 0 6px; word-break: break-word; }\n.sem-steps { display: none; margin-top: 10px; }\n.sem-sheet.open .sem-steps { display: block; }\n.sem-step { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid #ECE7DB; }\n.sem-step:last-of-type { border-bottom: none; }\n.sem-num { flex: 0 0 2.1em; font-style: italic; font-weight: 600; color: #6B6A32; text-align: right; }\n.sem-text { flex: 1 1 auto; font-size: 0.94rem; line-height: 1.8; color: #3A342B; word-break: break-word; min-width: 0; }\n.sem-note { margin-top: 16px; font-size: 0.85rem; font-style: italic; line-height: 1.75; color: #6A6152; word-break: break-word; }\n.sem-note .sem-nb { font-style: normal; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.18em; color: #7A2E2B; margin-right: 8px; }\n.sem-hint { margin-top: 22px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.62rem; letter-spacing: 0.24em; text-transform: uppercase; color: #BCB29D; text-align: center; }\n.sem-sheet.open .sem-hint { display: none; }",
@@ -234,15 +234,15 @@
     "preview_front": "如何完成一次规范的文献综述？",
     "preview_back": "界定问题域 → 系统检索 → 编码归纳 → 综合评述",
     "preview_data_json": "{\"Question\": \"如何完成一次规范的文献综述？\", \"Step1\": \"界定问题域，确定检索词与纳入/排除标准\", \"Step2\": \"系统检索数据库，去重并初筛题录\", \"Step3\": \"精读入选文献，按主题或方法编码归纳\", \"Step4\": \"综合评述：指出共识、分歧与研究空白\", \"Note\": \"综述的目的不是罗列，而是对话与定位\"}",
-    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"要记忆的流程问题\"}, \"Step1\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"第一步\"}, \"Step2\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第二步\"}, \"Step3\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第三步\"}, \"Step4\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第四步\"}, \"Note\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"注意事项（N.B.）\"}}",
-    "generation_prompt": "请生成一个流程/步骤卡片，字段：Question(要记忆的流程问题), Step1~Step4(按顺序拆分的步骤，至少填 Step1), Note(注意事项，可选)。"
+    "field_extraction_rules_json": "{\"Question\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"要记忆的流程问题（≤80字）\", \"max_length\": 80}, \"Step1\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"第一步：一句（≤80字）\", \"max_length\": 80}, \"Step2\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第二步：一句（≤80字）\", \"max_length\": 80}, \"Step3\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第三步：一句（≤80字）\", \"max_length\": 80}, \"Step4\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"第四步：一句（≤80字）\", \"max_length\": 80}, \"Note\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"注意事项（N.B.）一句（≤60字）\", \"max_length\": 60}}",
+    "generation_prompt": "适用：有先后顺序的 1–4 步流程、算法或证明步骤骨架。不适用：超过 4 步、无顺序的内容或单句答案（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Question 要记忆的流程问题（≤80字）；Step1 必填、Step2~Step4 可选，每步一句（≤80字）；Note 注意事项（≤60字）。"
   },
   {
     "id": "design-nomenclature",
     "name": "The Nomenclature (术语表风格)",
     "description": "正面可交互：点击查阅释义；论文术语表式点线导引排版",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Basic",
     "fields_json": "[\"Symbol\", \"Name\", \"Detail\", \"Field\"]",
     "css_style": ".card, .card1 { background-color: #EFECE6; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #26221B; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #29251E; }\n.nom-sheet { max-width: 480px; margin: 0 auto; background: #FFFFFF; padding: 28px 32px 26px; box-shadow: 0 1px 2px rgba(38,34,27,0.07), 0 10px 26px rgba(38,34,27,0.09); text-align: left; cursor: pointer; box-sizing: border-box; }\n.nightMode .nom-sheet, .night_mode .nom-sheet, .card.nightMode .nom-sheet, .card.night_mode .nom-sheet, .card1.nightMode .nom-sheet, .card1.night_mode .nom-sheet { background: #FFFFFF !important; color: #26221B !important; }\n.nom-head { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.64rem; letter-spacing: 0.26em; text-transform: uppercase; color: #9A907D; border-bottom: 1px solid #26221B; padding-bottom: 10px; margin-bottom: 26px; }\n.nom-entry { display: flex; align-items: baseline; gap: 12px; }\n.nom-sym { font-size: 1.6rem; font-style: italic; font-weight: 600; line-height: 1.3; word-break: break-word; }\n.nom-leader { flex: 1 1 auto; border-bottom: 1px dotted #B8AE9C; transform: translateY(-0.28em); min-width: 30px; }\n.nom-name { font-size: 0.92rem; color: #574F41; text-align: right; line-height: 1.6; word-break: break-word; max-width: 55%; }\n.nom-field { margin-top: 8px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.64rem; letter-spacing: 0.2em; text-transform: uppercase; color: #A67C1D; text-align: right; }\n.nom-def { display: none; margin-top: 24px; border-top: 1px solid #ECE7DB; padding-top: 18px; }\n.nom-sheet.open .nom-def { display: block; }\n.nom-def-label { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.6rem; letter-spacing: 0.24em; text-transform: uppercase; color: #A67C1D; margin-bottom: 10px; }\n.nom-def-body { font-size: 0.95rem; line-height: 1.9; color: #3A342B; word-break: break-word; }\n.nom-hint { margin-top: 26px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.62rem; letter-spacing: 0.24em; text-transform: uppercase; color: #BCB29D; text-align: center; }\n.nom-sheet.open .nom-hint { display: none; }",
@@ -251,15 +251,15 @@
     "preview_front": "λ",
     "preview_back": "波长：相邻同相位点间的空间距离",
     "preview_data_json": "{\"Symbol\": \"λ\", \"Name\": \"波长 Wavelength\", \"Field\": \"波动光学\", \"Detail\": \"相邻两个同相位点之间的空间距离，与频率满足 λ = v / f。可见光波长约 380–780 nm，波长决定了光的颜色。\"}",
-    "field_extraction_rules_json": "{\"Symbol\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"符号/缩写/记号\"}, \"Name\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"名称/读法\"}, \"Detail\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"完整定义与说明\"}, \"Field\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"所属领域\"}}",
-    "generation_prompt": "请生成一个符号/术语卡片，字段：Symbol(符号或缩写), Name(名称), Detail(完整定义与说明), Field(所属领域，可选)。"
+    "field_extraction_rules_json": "{\"Symbol\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"仅符号/缩写/记号，大字显示（≤12字符）\", \"max_length\": 12}, \"Name\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"名称/读法（≤30字）\", \"max_length\": 30}, \"Detail\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"完整定义与说明（≤200字）\", \"max_length\": 200}, \"Field\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"所属领域（≤16字）\", \"max_length\": 16}}",
+    "generation_prompt": "适用：符号/缩写/记号 ↔ 名称与定义（论文术语表式）。不适用：没有专门符号的概念问答、证明、推导（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Symbol 仅符号或缩写，大字显示（≤12字符）；Name 名称/读法（≤30字）；Detail 定义与说明（≤200字）；Field 所属领域（≤16字）。"
   },
   {
     "id": "design-exam",
     "name": "The Examination (试卷风格)",
     "description": "试卷式填空：正面留白横线作答，背面以批阅笔色揭示，无脚本依赖",
     "author": "Anki Design",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "note_type": "Cloze",
     "fields_json": "[\"Text\", \"Section\", \"Extra\"]",
     "css_style": ".card, .card1 { background-color: #F1EEE7; padding: 20px; font-family: Georgia, 'Noto Serif SC', 'Songti SC', 'SimSun', serif; color: #26221B; }\n.card.nightMode, .card.night_mode, .card1.nightMode, .card1.night_mode { background-color: #28241D; }\n.exam-paper { max-width: 480px; margin: 0 auto; background: #FDFCF8; padding: 28px 32px 26px; box-shadow: 0 1px 2px rgba(38,34,27,0.07), 0 10px 26px rgba(38,34,27,0.09); text-align: left; box-sizing: border-box; }\n.nightMode .exam-paper, .night_mode .exam-paper, .card.nightMode .exam-paper, .card.night_mode .exam-paper, .card1.nightMode .exam-paper, .card1.night_mode .exam-paper { background: #FDFCF8 !important; color: #26221B !important; }\n.exam-head { text-align: center; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.66rem; letter-spacing: 0.3em; text-transform: uppercase; color: #6E6553; }\n.exam-rule { height: 5px; border-top: 2px solid #26221B; border-bottom: 1px solid #26221B; margin: 12px 0 24px; }\n.exam-text { font-size: 1.02rem; line-height: 2.05; word-break: break-word; }\n.exam-front .cloze { color: #B4AA98; font-size: 0.82em; letter-spacing: 0.14em; border-bottom: 1.5px solid #26221B; padding: 0 1.1em; white-space: nowrap; }\n.exam-front .cloze-hint { font-style: italic; font-size: 0.85em; color: #A79C87; margin-left: 4px; }\n.exam-back .cloze, .exam-back .cloze-revealed { color: #8C2B21; font-weight: 700; border-bottom: 1.5px solid rgba(140,43,33,0.45); padding: 0 0.2em; }\n.exam-remark { margin-top: 28px; }\n.exam-remark-sep { width: 88px; border-top: 1px solid #26221B; margin-bottom: 12px; }\n.exam-remark-body { font-size: 0.86rem; font-style: italic; line-height: 1.8; color: #59503F; word-break: break-word; }\n.exam-remark-body .exam-remark-label { font-style: normal; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; color: #8C2B21; margin-right: 8px; }",
@@ -268,7 +268,7 @@
     "preview_front": "热力学第一定律填空",
     "preview_back": "能量守恒：ΔU = Q + W",
     "preview_data_json": "{\"Section\": \"热力学 · 期末试卷\", \"Text\": \"热力学第一定律：{{c1::能量}}既不能被创造也不能被消灭，只能从一种形式{{c2::转化}}为另一种形式；系统内能的增量等于吸收的热量与外界对系统做功之和。\", \"Extra\": \"ΔU = Q + W（注意功的符号约定）\"}",
-    "field_extraction_rules_json": "{\"Text\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"包含 {{c1::...}} 填空标记的完整句子\"}, \"Section\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"科目/试卷标题\"}, \"Extra\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"评注/补充公式\"}}",
-    "generation_prompt": "请生成一个填空题，字段：Text(包含{{c1::...}}填空标记的完整句子), Section(科目或试卷标题，可选), Extra(评注或补充公式，可选)。"
+    "field_extraction_rules_json": "{\"Text\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"包含 {{c1::...}} 填空标记的完整陈述（≤250字）\", \"max_length\": 250}, \"Section\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"科目/试卷标题（≤24字）\", \"max_length\": 24}, \"Extra\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"评注或一条补充公式（≤80字）\", \"max_length\": 80}}",
+    "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。"
   }
 ]
