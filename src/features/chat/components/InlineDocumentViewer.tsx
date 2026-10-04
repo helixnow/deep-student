@@ -34,6 +34,7 @@ import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { isMobilePlatform } from '@/utils/platform';
 
 // ============================================================================
 // 类型定义
@@ -642,9 +643,13 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleCopy} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.copy')} title={t('common:actions.copy')}>
             {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
           </DsButton>
-          <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
-            <ArrowSquareOut size={15} />
-          </DsButton>
+          {/* 移动端只有一个 WebView：window.open(blob:) 会把整个应用替换成纯文本页且无法返回，
+              下载按钮（fileManager.saveTextFile）已覆盖导出需求 */}
+          {!isMobilePlatform() && (
+            <DsButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.open')} title={t('common:actions.open')}>
+              <ArrowSquareOut size={15} />
+            </DsButton>
+          )}
           <DsButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-muted hover:bg-[var(--interactive-hover)] [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" aria-label={t('common:actions.download')} title={t('common:actions.download')}>
             <Download size={15} />
           </DsButton>
