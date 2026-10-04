@@ -11,6 +11,7 @@ pub mod apkg_import;
 pub mod browser;
 pub mod enhanced_anki;
 pub mod fsrs_review;
+pub mod handout;
 pub mod helpers;
 pub mod mcp;
 pub mod media;

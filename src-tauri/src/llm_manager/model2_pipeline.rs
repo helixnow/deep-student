@@ -8112,6 +8112,31 @@ impl LLMManager {
         .await
     }
 
+    /// model2 raw prompt with explicit JSON mode. Background writing tasks (media handout)
+    /// need Markdown/plain-text output for summaries (`force_json=false`) and strict JSON for
+    /// structured section IR (`force_json=true`), on the same assigned model.
+    pub(crate) async fn call_model2_raw_prompt_opts(
+        &self,
+        user_prompt: &str,
+        force_json: bool,
+        caller_type: crate::llm_usage::CallerType,
+        task: &str,
+    ) -> Result<StandardModel2Output> {
+        let config = self.get_model2_config().await?;
+        self.call_raw_prompt_with_config_opts(
+            config,
+            user_prompt,
+            None,
+            RawPromptOptions {
+                force_json,
+                ..Default::default()
+            },
+            caller_type,
+            task,
+        )
+        .await
+    }
+
     /// Resolve one Anki Sidekick role against the current model assignments.
     ///
     /// Slot probing is deliberately best-effort: missing or concurrently removed

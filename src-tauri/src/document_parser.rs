@@ -2143,11 +2143,22 @@ impl DocumentParser {
     ///     { "type": "table", "rows": [["A1","B1"],["A2","B2"]] },
     ///     { "type": "list", "ordered": true, "items": ["项1","项2"] },
     ///     { "type": "code", "text": "代码块" },
+    ///     { "type": "image", "data": "<base64|data URL>", "caption": "图注" },
     ///     { "type": "pagebreak" }
     ///   ]
     /// }
     /// ```
     pub fn generate_docx_from_spec(spec: &serde_json::Value) -> Result<Vec<u8>, ParsingError> {
+        // 讲义/公文版式（`"template": "handout"`）整份走专用渲染；默认版式保持不变
+        if crate::docx_handout::is_handout_template(spec) {
+            let mut buf = Cursor::new(Vec::new());
+            crate::docx_handout::build_handout_docx(spec)
+                .build()
+                .pack(&mut buf)
+                .map_err(|e| ParsingError::DocxParsingError(format!("DOCX 生成失败: {}", e)))?;
+            return Ok(buf.into_inner());
+        }
+
         let mut docx = docx_rs::Docx::new();
 
         // 设置文档标题
@@ -2285,6 +2296,9 @@ impl DocumentParser {
                         docx_rs::Paragraph::new()
                             .add_run(docx_rs::Run::new().add_break(docx_rs::BreakType::Page)),
                     );
+                }
+                "image" => {
+                    docx = crate::docx_handout::add_default_image(docx, block);
                 }
                 _ => {
                     // 未知类型，当段落处理
