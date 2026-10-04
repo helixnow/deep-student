@@ -35,6 +35,17 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { archiveManifestDisplayText, isArchiveManifestText } from './archiveManifest';
 import { saveFiltersForFileName, saveResourceToDevice } from './saveResourceToDevice';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { isMobilePlatform } from '@/utils/platform';
+
+/**
+ * 富文档（docx/xlsx/pptx/epub）在 WebView 内整份解析，且预览组件需要 base64：
+ * 一个文件同时存在 ArrayBuffer + base64 + 解码副本 + 解析产物。桌面维持 100MB，
+ * 手机内存紧张（渲染进程 OOM 在 Android 上会杀掉整个应用），收紧到 30MB，
+ * 超限显示「文件过大」并提供外部打开/保存。
+ */
+const MOBILE_RICH_PREVIEW_MAX_BYTES = 30 * 1024 * 1024;
+const getRichPreviewMaxBytes = (): number =>
+  (isMobilePlatform() ? MOBILE_RICH_PREVIEW_MAX_BYTES : LARGE_FILE_THRESHOLD);
 
 // PDF 预览组件
 import {
@@ -477,7 +488,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
 
         const fileSize = await invoke<number>('get_file_size', { path: blobPath });
         if (!isMounted) return;
-        if (fileSize > LARGE_FILE_THRESHOLD) {
+        if (fileSize > getRichPreviewMaxBytes()) {
           setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
@@ -493,14 +504,14 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       // fallback, guarded by the database metadata size check above.
       const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
         attachmentId: node.id,
-        maxBytes: LARGE_FILE_THRESHOLD,
+        maxBytes: getRichPreviewMaxBytes(),
       });
 
       if (!isMounted) return;
 
       if (result?.found && result?.content) {
         const estimatedSize = estimateBase64Size(result.content);
-        if (estimatedSize > LARGE_FILE_THRESHOLD) {
+        if (estimatedSize > getRichPreviewMaxBytes()) {
           setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);
           return;
@@ -575,7 +586,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           !isAudio &&
           !isVideo &&
           knownSize &&
-          knownSize > LARGE_FILE_THRESHOLD
+          knownSize > getRichPreviewMaxBytes()
         ) {
           setError(t('learningHub:file.previewTooLarge'));
           setIsPreviewTooLarge(true);

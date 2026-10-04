@@ -359,6 +359,32 @@ export const attachmentDstuAdapter = {
   },
 
   /**
+   * 以已暂存的上传（stagePathUpload / stageBlobUpload）创建附件。
+   * 文件字节全程不进入 WebView。
+   */
+  async createFromStagedUpload(
+    staged: { uploadId: string; name: string; mimeType: string; size: number },
+    attachmentType: AttachmentType,
+    metadata?: Record<string, unknown>
+  ): Promise<Result<DstuNode, VfsError>> {
+    const type: DstuNodeType = attachmentType === 'image' ? 'image' : 'file';
+    const result = await dstu.create('/', {
+      type,
+      name: staged.name,
+      stagedUploadId: staged.uploadId,
+      metadata: {
+        mimeType: staged.mimeType,
+        fileSize: staged.size,
+        ...metadata,
+      },
+    });
+    if (!result.ok) {
+      reportError(result.error, i18next.t('mcp:dstu_attachment.createAttachment', { defaultValue: 'Create attachment' }));
+    }
+    return result;
+  },
+
+  /**
    * 更新附件元数据
    *
    * @param attachmentId 附件 ID

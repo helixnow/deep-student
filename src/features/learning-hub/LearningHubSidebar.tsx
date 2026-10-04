@@ -1511,11 +1511,14 @@ export function LearningHubSidebar({
       // 2. 图片类/其他文件：通过 attachmentDstuAdapter 创建
       const attachmentPaths = [...imagePaths, ...otherPaths];
       if (attachmentPaths.length > 0) {
-        // 经 read_file_bytes IPC 读取：兼容 Android content:// URI 与含中文/空格的
-        // Windows 路径（convertFileSrc + fetch 的 asset 协议对二者都会失败）
-        const { invoke } = await import('@tauri-apps/api/core');
+        // ★ 由 Rust 直接把文件（含 Android content:// URI、含中文/空格的 Windows 路径）
+        // 流式复制进暂存区，WebView 不再经手字节（旧路径 read_file_bytes → File →
+        // base64 → JSON IPC，3 个并发的 200MB 文件在手机上会撑爆渲染进程）。
+        const { stagePathUpload, abortStagedUpload, createByteBudgetLimiter } = await import('@/utils/stagedUpload');
         const { mimeTypeFromFileName } = await import('@/hooks/useTauriDragAndDrop');
         const limit = pLimit(3);
+        // 后端创建时会把暂存文件整份读入内存：按字节预算串行化大文件
+        const byteBudget = createByteBudgetLimiter(64 * 1024 * 1024);
 
         // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
         if (attachmentPaths.length > 1) {
@@ -1530,25 +1533,31 @@ export function LearningHubSidebar({
               const isImage = IMAGE_EXTENSIONS.has(ext);
 
               try {
-                let bytes: ArrayBuffer;
+                let staged: { uploadId: string; size: number };
                 try {
-                  bytes = await invoke<ArrayBuffer>('read_file_bytes', { path: filePath });
+                  staged = await stagePathUpload(filePath);
                 } catch (readError) {
                   debugLog.error('[LearningHub] 读取文件失败:', name, readError);
                   return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
                 }
 
-                const file = new File([bytes], name, {
-                  type: mimeTypeFromFileName(name)
-                    || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream'),
-                });
+                const mimeType = mimeTypeFromFileName(name)
+                  || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream');
 
-                const result = await attachmentDstuAdapter.create(
-                  file,
-                  isImage ? 'image' : 'file',
-                  currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
-                );
+                let result;
+                try {
+                  result = await byteBudget(staged.size, () => attachmentDstuAdapter.createFromStagedUpload(
+                    { uploadId: staged.uploadId, name, mimeType, size: staged.size },
+                    isImage ? 'image' : 'file',
+                    currentCreatableFolderId ? { folderId: currentCreatableFolderId } : undefined,
+                  ));
+                } catch (createError) {
+                  // 后端未消费（如 IPC 异常）时主动清理暂存文件；已消费则为幂等空操作
+                  void abortStagedUpload(staged.uploadId);
+                  throw createError;
+                }
                 if (!result.ok) {
+                  void abortStagedUpload(staged.uploadId);
                   // ★ 携带后端结构化拒绝原因（如"不支持的文件类型 .xyz"）
                   return { ok: false as const, name, reason: result.error.toUserMessage() };
                 }

@@ -31,6 +31,7 @@ import type {
 } from './types';
 import { getDstuLogger } from './logger';
 import { fileToBase64 } from './encoding';
+import { shouldUseStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
 // [FIX-D001] Use static top-level import to avoid race conditions in dynamic imports
 import { invalidateResourceCache } from '@/features/chat/context/vfsRefApiEnhancements';
 
@@ -309,9 +310,16 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
 
   try {
     let fileBase64: string | undefined;
-    if (options.file) {
+    let stagedUploadId = options.stagedUploadId;
+    if (!stagedUploadId && options.file) {
       try {
-        fileBase64 = await fileToBase64(options.file);
+        // ★ 大文件分块暂存到 Rust 临时文件，避免整份 base64 + JSON IPC 撑爆 WebView 内存
+        if (shouldUseStagedUpload(options.file.size)) {
+          const fileName = options.file instanceof File ? options.file.name : options.name;
+          stagedUploadId = await stageBlobUpload(options.file, { name: fileName });
+        } else {
+          fileBase64 = await fileToBase64(options.file);
+        }
       } catch (fileError: unknown) {
         // 如果是 File 对象则获取文件名，否则使用 unknown
         const fileName = options.file instanceof File ? options.file.name : 'unknown';
@@ -332,6 +340,7 @@ export async function create(path: string, options: DstuCreateOptions): Promise<
         name: options.name,
         content: options.content,
         fileBase64,
+        stagedUploadId,
         metadata: options.metadata,
       },
     });

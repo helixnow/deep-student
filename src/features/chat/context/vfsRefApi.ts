@@ -14,6 +14,7 @@ import { VFS_MAX_INJECTION_ITEMS } from './vfsRefTypes';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { ok, err, toVfsError, type Result, VfsErrorCode } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { shouldUseStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
 
 const LOG_PREFIX = '[VfsRefApi]';
 
@@ -557,7 +558,10 @@ export async function getResourceRefCountV2(
 export interface UploadAttachmentParams {
   name: string;
   mimeType: string;
-  base64Content: string;
+  /** 小文件快速路径：base64 / data URL 内容 */
+  base64Content?: string;
+  /** 大文件路径：已经由 stageBlobUpload/stagePathUpload 暂存的上传 ID（优先） */
+  stagedUploadId?: string;
   type?: 'image' | 'file';
   folderId?: string;
 }
@@ -619,7 +623,8 @@ export async function uploadAttachment(
     params: {
       name: params.name,
       mimeType: params.mimeType,
-      base64Content: params.base64Content,
+      base64Content: params.stagedUploadId ? '' : (params.base64Content ?? ''),
+      stagedUploadId: params.stagedUploadId,
       attachmentType: params.type,  // ★ 后端字段名是 attachment_type -> camelCase 为 attachmentType
       folderId: params.folderId,
     },
@@ -634,6 +639,32 @@ export async function uploadAttachment(
   return result;
 }
 
+/**
+ * 以 File/Blob 上传附件：大文件（> STAGED_UPLOAD_THRESHOLD）分块暂存后按
+ * stagedUploadId 上传，WebView 内不生成整份 base64；小文件仍走 base64 快速路径。
+ */
+export async function uploadAttachmentBlob(
+  file: Blob,
+  params: Omit<UploadAttachmentParams, 'base64Content' | 'stagedUploadId'> & {
+    onProgress?: (loaded: number, total: number) => void;
+    signal?: AbortSignal;
+  }
+): Promise<UploadAttachmentResult> {
+  const { onProgress, signal, ...rest } = params;
+  if (shouldUseStagedUpload(file.size)) {
+    const stagedUploadId = await stageBlobUpload(file, { name: rest.name, onProgress, signal });
+    return uploadAttachment({ ...rest, stagedUploadId });
+  }
+  const base64Content = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
+  onProgress?.(file.size, file.size);
+  return uploadAttachment({ ...rest, base64Content });
+}
+
 export const vfsRefApi = {
   // Result 版本（主要 API）
   getResourceRefsV2,
@@ -645,6 +676,7 @@ export const vfsRefApi = {
   resolveResourceRefsBatch,
   createSingleResourceRefData,
   uploadAttachment,
+  uploadAttachmentBlob,
   // 去重和通知辅助函数
   isDuplicateResourceRef,
   deduplicateResourceRefs,

@@ -34,6 +34,8 @@ import { IMAGE_TYPE_ID } from '../context/definitions/image';
 import { FILE_TYPE_ID } from '../context/definitions/file';
 import { formatUserFacingError } from '@/utils/errorUtils';
 import { vfsRefApi } from '../context/vfsRefApi';
+import { shouldUseStagedUpload } from '@/utils/stagedUpload';
+import { buildFileAccept } from '@/utils/fileAccept';
 import { logAttachment } from '../debug/chatV2Logger';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 // P1-08: 统一使用核心常量
@@ -79,6 +81,20 @@ const DEFAULT_ACCEPT_TYPES = Array.from(new Set([
   ...ATTACHMENT_ALLOWED_TYPES,
   ...ATTACHMENT_ALLOWED_EXTENSIONS.map((ext) => `.${ext}`),
 ]));
+
+/**
+ * `<input accept>`：MIME 在前（wry Android 首项为扩展名会崩溃），Android 额外
+ * 追加 octet-stream 兜底（MimeTypeMap 不认识的扩展名会被丢弃、文件置灰），
+ * 选完后仍由 isFileTypeAccepted 校验。
+ */
+function buildInputAccept(acceptTypes: readonly string[]): string {
+  const mimeTypes = acceptTypes.filter((type) => !type.startsWith('.'));
+  const extensions = acceptTypes.filter((type) => type.startsWith('.'));
+  if (mimeTypes.length === 0) return '*/*';
+  return buildFileAccept(mimeTypes, extensions, {
+    androidExtraMimeTypes: ['application/octet-stream'],
+  });
+}
 
 // P1-08: 使用统一常量，不再硬编码
 // 旧值: DEFAULT_MAX_SIZE = 10MB, DEFAULT_MAX_COUNT = 10
@@ -219,6 +235,15 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         status: 'pending',
       };
 
+      // ★ 大文件：不在 WebView 内读成 data URL（手机上会 OOM），上传时分块暂存
+      if (shouldUseStagedUpload(file.size)) {
+        if (attachment.type === 'image') {
+          attachment.previewUrl = URL.createObjectURL(file);
+        }
+        attachment.status = 'ready';
+        return attachment;
+      }
+
       // 🔧 P0修复：所有文件类型都读取内容到 previewUrl
       // 这确保文档、图片等所有附件都能正确传递给后端
       return new Promise((resolve) => {
@@ -270,13 +295,20 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
               typeId,
             });
 
-            const uploadResult = await vfsRefApi.uploadAttachment({
-              name: attachment.name,
-              mimeType: attachment.mimeType,
-              base64Content: attachment.previewUrl || '',
-              type: isImage ? 'image' : 'file',
-              folderId: targetFolderId,
-            });
+            const uploadResult = shouldUseStagedUpload(file.size)
+              ? await vfsRefApi.uploadAttachmentBlob(file, {
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                type: isImage ? 'image' : 'file',
+                folderId: targetFolderId,
+              })
+              : await vfsRefApi.uploadAttachment({
+                name: attachment.name,
+                mimeType: attachment.mimeType,
+                base64Content: attachment.previewUrl || '',
+                type: isImage ? 'image' : 'file',
+                folderId: targetFolderId,
+              });
 
             logAttachment('ui', 'vfs_upload_done', {
               sourceId: uploadResult.sourceId,
@@ -437,7 +469,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept={acceptTypes.join(',')}
+        accept={buildInputAccept(acceptTypes)}
         className="hidden"
         onChange={handleFileSelect}
       />

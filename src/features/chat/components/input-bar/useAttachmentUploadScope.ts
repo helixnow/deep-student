@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 interface UploadTask {
   reader: FileReader;
+  /** 分块暂存上传的取消信号（大文件路径） */
+  controller: AbortController;
   previewUrl: string;
   finished: boolean;
 }
@@ -23,6 +25,7 @@ export function useAttachmentUploadScope(
     if (!task) return;
     scope.tasks.delete(id);
     URL.revokeObjectURL(task.previewUrl);
+    task.controller.abort();
     if (task.reader.readyState === FileReader.LOADING) task.reader.abort();
   }, [scope]);
 
@@ -47,6 +50,7 @@ export function useAttachmentUploadScope(
     cancel(id);
     const task: UploadTask = {
       reader: new FileReader(),
+      controller: new AbortController(),
       previewUrl: URL.createObjectURL(file),
       finished: false,
     };
@@ -55,6 +59,7 @@ export function useAttachmentUploadScope(
     return {
       reader: task.reader,
       previewUrl: task.previewUrl,
+      signal: task.controller.signal,
       isActive: () => currentScopeRef.current === scope && !scope.disposed &&
         !task.finished && scope.tasks.get(id) === task,
       finish: () => { task.finished = true; },

@@ -203,6 +203,12 @@ export interface DstuCreateOptions {
   /** 文件（教材等二进制资源） */
   file?: File | Blob;
 
+  /**
+   * 已暂存的上传 ID（stageBlobUpload / stagePathUpload），优先于 file。
+   * 大文件不经 WebView base64 编码。
+   */
+  stagedUploadId?: string;
+
   /** 扩展元数据 */
   metadata?: Record<string, unknown>;
 }

@@ -24,7 +24,9 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
 import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
-import { vfsRefApi } from '../../context/vfsRefApi';
+import { vfsRefApi, type UploadAttachmentResult } from '../../context/vfsRefApi';
+import { shouldUseStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
+import { buildFileAccept } from '@/utils/fileAccept';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
 import { FILE_TYPE_ID } from '../../context/definitions/file';
@@ -403,13 +405,13 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   // 🔧 会话切换 key 跟踪
   const prevSessionSwitchKeyRef = useRef(sessionSwitchKey);
 
-  const fileAccept = useMemo(() => {
-    const acceptTypes = Array.from(new Set([
-      ...ATTACHMENT_ALLOWED_TYPES,
-      ...ATTACHMENT_ALLOWED_EXTENSIONS.map((ext) => `.${ext}`),
-    ]));
-    return acceptTypes.join(',');
-  }, []);
+  // ★ Android：wry 文件选择器会丢弃 MimeTypeMap 不认识的扩展名（.apkg/.xmind/.mm…），
+  // 这些文件会被置灰无法选择；追加 octet-stream 兜底，选完后由下方类型校验把关。
+  const fileAccept = useMemo(() => buildFileAccept(
+    ATTACHMENT_ALLOWED_TYPES,
+    ATTACHMENT_ALLOWED_EXTENSIONS,
+    { androidExtraMimeTypes: ['application/octet-stream'] },
+  ), []);
 
   // ========== 文件处理回调 ==========
 
@@ -580,18 +582,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           }
         }
       };
-      reader.onload = async () => {
-        if (!upload.isActive()) return;
-        const base64Result = reader.result as string;
-
-        logAttachment('ui', 'file_read_complete', {
-          fileName: file.name,
-          attachmentId,
-          isImage,
-          size: file.size,
-        });
-
-        // ★ VFS 引用模式：上传到 VFS 并创建 ContextRef
+      // ★ VFS 引用模式：上传到 VFS 并创建 ContextRef。
+      // uploadContent 负责把文件内容交给后端（小文件 base64 / 大文件分块暂存）。
+      const runVfsUpload = async (uploadContent: () => Promise<UploadAttachmentResult>) => {
         try {
           const typeId = isImage ? IMAGE_TYPE_ID : FILE_TYPE_ID;
 
@@ -607,12 +600,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           });
 
           // 1. 上传到 VFS
-          const uploadResult = await vfsRefApi.uploadAttachment({
-            name: file.name,
-            mimeType: file.type || 'application/octet-stream',
-            base64Content: base64Result,
-            type: isImage ? 'image' : 'file',
-          });
+          const uploadResult = await uploadContent();
           if (!upload.isActive()) return;
 
           logAttachment('ui', 'vfs_upload_done', {
@@ -843,6 +831,53 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         } finally {
           upload.finish();
         }
+      };
+
+      // ★ 大文件（> STAGED_UPLOAD_THRESHOLD）：File.slice 分块暂存到 Rust 临时文件，
+      // WebView 内不生成整份 base64/JSON（手机上 200MB 附件曾导致渲染进程 OOM）。
+      if (shouldUseStagedUpload(file.size)) {
+        let lastStagedPercent = 20;
+        void runVfsUpload(async () => {
+          const stagedUploadId = await stageBlobUpload(file, {
+            name: file.name,
+            signal: upload.signal,
+            onProgress: (loaded, total) => {
+              if (!upload.isActive() || total <= 0) return;
+              // 统一进度条：分块上传阶段占 20-40%
+              const percent = 20 + Math.round((loaded / total) * 20);
+              if (percent - lastStagedPercent >= 3 || percent >= 40) {
+                lastStagedPercent = percent;
+                onUpdateAttachment(attachmentId, { uploadProgress: percent, uploadStage: 'uploading' });
+              }
+            },
+          });
+          return vfsRefApi.uploadAttachment({
+            name: file.name,
+            mimeType: file.type || 'application/octet-stream',
+            stagedUploadId,
+            type: isImage ? 'image' : 'file',
+          });
+        });
+        return;
+      }
+
+      reader.onload = () => {
+        if (!upload.isActive()) return;
+        const base64Result = reader.result as string;
+
+        logAttachment('ui', 'file_read_complete', {
+          fileName: file.name,
+          attachmentId,
+          isImage,
+          size: file.size,
+        });
+
+        void runVfsUpload(() => vfsRefApi.uploadAttachment({
+          name: file.name,
+          mimeType: file.type || 'application/octet-stream',
+          base64Content: base64Result,
+          type: isImage ? 'image' : 'file',
+        }));
       };
       reader.onerror = () => {
         if (!upload.isActive()) return;
