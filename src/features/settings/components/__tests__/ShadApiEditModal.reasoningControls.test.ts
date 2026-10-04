@@ -67,4 +67,28 @@ describe('ShadApiEditModal reasoning controls', () => {
     expect(source).toContain('reasoningEffort: enabled ? prev.reasoningEffort : undefined');
     expect(source).toContain('thinkingBudget: enabled ? prev.thinkingBudget : undefined');
   });
+
+  it('renders the unified depth select in the Moonshot and MiniMax panels (K3/M3.1 locked-on still selectable)', () => {
+    const source = readFileSync(
+      resolve(process.cwd(), 'src/features/settings/components/ShadApiEditModal.tsx'),
+      'utf8'
+    );
+
+    // 回归：Moonshot/Kimi 专用面板在统一五档后必须提供档位选择器，
+    // 否则 K3（canDisable=false）在编辑器里没有任何可改档位的入口。
+    const moonshotStart = source.indexOf("{formData.modelAdapter === 'moonshot'");
+    const moonshotEnd = source.indexOf("{/* MiniMax", moonshotStart);
+    expect(moonshotStart).toBeGreaterThan(-1);
+    const moonshotPanel = source.slice(moonshotStart, moonshotEnd);
+    expect(moonshotPanel).toContain('profileUsesDiscreteEffort &&');
+    expect(moonshotPanel).toContain('profileReasoningOptions');
+
+    // MiniMax 同款：M3.1（强制思考）同样需要档位选择器。
+    const minimaxStart = source.indexOf("{formData.modelAdapter === 'minimax'");
+    const minimaxEnd = source.indexOf('</CardContent>', minimaxStart);
+    expect(minimaxStart).toBeGreaterThan(-1);
+    const minimaxPanel = source.slice(minimaxStart, minimaxEnd);
+    expect(minimaxPanel).toContain('profileUsesDiscreteEffort &&');
+    expect(minimaxPanel).toContain('profileReasoningOptions');
+  });
 });

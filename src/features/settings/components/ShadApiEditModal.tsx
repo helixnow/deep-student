@@ -2094,6 +2094,20 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               />
                             </div>
                           )}
+                          {profileUsesDiscreteEffort && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                                {t('settings:api.modal.reasoning.openai_label')}
+                              </Label>
+                              <AppSelect
+                                value={profileReasoningSelectValue}
+                                onValueChange={setProfileReasoningDepth}
+                                options={profileReasoningOptions}
+                                variant="outline"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
+                              />
+                            </div>
+                          )}
                           <p className="text-xs text-muted-foreground flex items-center gap-1">
                             <Info className="h-3 w-3" />
                             {t('settings:api.modal.moonshot.auto_config')}
@@ -2134,6 +2148,20 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 checked={profileThinkingEnabled}
                                 disabled={!profileReasoningControl.canDisable}
                                 onCheckedChange={v => setProfileThinkingEnabled(!!v)}
+                              />
+                            </div>
+                          )}
+                          {profileUsesDiscreteEffort && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                                {t('settings:api.modal.reasoning.openai_label')}
+                              </Label>
+                              <AppSelect
+                                value={profileReasoningSelectValue}
+                                onValueChange={setProfileReasoningDepth}
+                                options={profileReasoningOptions}
+                                variant="outline"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>
                           )}
