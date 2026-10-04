@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { getAllIndexStatus } from '@/api/vfsUnifiedIndexApi';
 import { MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
-import { openEmbeddingSettings, useEmbeddingReadiness } from '../../embeddingReadiness';
+import { isVectorIndexUnavailable, openEmbeddingSettings, useEmbeddingReadiness } from '../../embeddingReadiness';
 
 interface IndexStatusMiniBarProps {
   collapsed?: boolean;
@@ -150,6 +150,12 @@ export const IndexStatusMiniBar: React.FC<IndexStatusMiniBarProps> = ({
 
   // 嵌入模型不可用时，「N 项失败 / 待索引」只是症状：直接告诉学习者原因并一键去配置
   const embeddingBlocked = readiness?.ready === false && (failedCount > 0 || pendingCount > 0);
+
+  // 未编入向量索引的构建（Android mobile-slim）：资源永远不会被向量化，
+  // 「N 项待索引」只会误导；检索走关键词账本，不需要提示任何索引状态。
+  if (isVectorIndexUnavailable(readiness)) {
+    return null;
+  }
 
   if (!embeddingBlocked && !isIndexing && failedCount === 0 && pendingCount === 0) {
     return null;

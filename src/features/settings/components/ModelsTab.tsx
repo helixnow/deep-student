@@ -17,6 +17,8 @@ import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
 import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
+import { isVectorIndexUnavailable, useEmbeddingReadiness } from '@/features/learning-hub/embeddingReadiness';
+import { VectorIndexUnavailableNotice } from '@/features/learning-hub/components/VectorIndexUnavailableNotice';
 
 type TranslationDisplayMode = 'aligned' | 'streaming';
 
@@ -187,6 +189,8 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [ocrEngineConfigured, setOcrEngineConfigured] = useState(false);
+  // 未编入向量索引的构建（mobile-slim）：嵌入维度/模型绑定没有任何效果，换成说明
+  const vectorIndexUnavailable = isVectorIndexUnavailable(useEmbeddingReadiness());
 
   // 获取 OCR 引擎配置状态
   useEffect(() => {
@@ -415,7 +419,11 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
           </div>
           
           <div className="mt-8">
-             <DimensionManagement apiConfigs={apiConfigs} getEmbeddingApis={getEmbeddingApis} />
+             {vectorIndexUnavailable ? (
+               <VectorIndexUnavailableNotice />
+             ) : (
+               <DimensionManagement apiConfigs={apiConfigs} getEmbeddingApis={getEmbeddingApis} />
+             )}
           </div>
         </div></div>
 

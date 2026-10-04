@@ -3507,6 +3507,7 @@ pub async fn vfs_reindex_resource(
     lance_store: State<'_, Arc<crate::vfs::lance_store::VfsLanceStore>>,
 ) -> Result<usize, String> {
     log::info!("[VFS::handlers] vfs_reindex_resource: id={}", resource_id);
+    crate::vfs::ensure_vector_index_available()?;
 
     if !resource_id.starts_with("res_") {
         return Err(format!("Invalid resource ID format: {}", resource_id));
@@ -4190,6 +4191,9 @@ pub async fn vfs_batch_index_pending(
         "[VFS::handlers] vfs_batch_index_pending: batch_size={}",
         batch_size
     );
+    // Must run before claim_pending_resources: claiming flips rows to
+    // `indexing`, and a Lance-less build would then mark each one failed.
+    crate::vfs::ensure_vector_index_available()?;
 
     let indexing_service = VfsIndexingService::new(Arc::clone(&vfs_db));
     log::info!("[VFS::handlers] vfs_batch_index_pending: 获取索引配置...");
@@ -4508,6 +4512,9 @@ pub struct EmbeddingReadiness {
     pub model_name: Option<String>,
     /// 不可用原因（后端配置错误文案，已本地化）
     pub reason: Option<String>,
+    /// 当前构建是否编入向量索引（`lance` feature）。false（如 Android mobile-slim）时
+    /// 前端隐藏向量索引/嵌入维度 UI：资料检索仍走 SQLite 关键词账本，配置嵌入模型也无济于事。
+    pub vector_index_available: bool,
 }
 
 #[tauri::command]
@@ -4524,12 +4531,14 @@ pub async fn vfs_get_embedding_readiness(
                 config.name
             }),
             reason: None,
+            vector_index_available: crate::vfs::VECTOR_INDEX_AVAILABLE,
         },
         Err(error) => EmbeddingReadiness {
             ready: false,
             model_config_id: None,
             model_name: None,
             reason: Some(error.message),
+            vector_index_available: crate::vfs::VECTOR_INDEX_AVAILABLE,
         },
     })
 }
@@ -6402,6 +6411,8 @@ pub async fn vfs_multimodal_index(
     use crate::vfs::multimodal_service::{VfsMultimodalPage, VfsMultimodalService};
     use tokio::sync::mpsc;
 
+    crate::vfs::ensure_vector_index_available()?;
+
     let lance_store = Arc::clone(lance_store.inner());
 
     // 创建多模态服务
@@ -6742,6 +6753,8 @@ pub async fn vfs_multimodal_index_resource(
     use crate::multimodal::types::IndexProgressEvent;
     use crate::vfs::multimodal_service::VfsMultimodalService;
     use tokio::sync::mpsc;
+
+    crate::vfs::ensure_vector_index_available()?;
 
     let lance_store = Arc::clone(lance_store.inner());
 

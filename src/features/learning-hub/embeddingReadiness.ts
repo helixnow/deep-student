@@ -13,6 +13,12 @@ export interface EmbeddingReadiness {
   modelConfigId?: string | null;
   modelName?: string | null;
   reason?: string | null;
+  /**
+   * 当前构建是否编入向量索引（后端 `lance` feature，与 isS3Enabled 同为编译期能力）。
+   * Android mobile-slim 为 false：资料检索走关键词账本，向量索引/嵌入维度 UI 应隐藏。
+   * 旧后端不返回该字段 → undefined，按可用处理。
+   */
+  vectorIndexAvailable?: boolean;
 }
 
 let snapshot: EmbeddingReadiness | null = null;
@@ -50,6 +56,11 @@ export function useEmbeddingReadiness(): EmbeddingReadiness | null {
     return () => window.removeEventListener('focus', onFocus);
   }, []);
   return value;
+}
+
+/** 仅当后端明确声明未编入向量索引时为 true（未知状态不隐藏任何 UI） */
+export function isVectorIndexUnavailable(readiness: EmbeddingReadiness | null): boolean {
+  return readiness?.vectorIndexAvailable === false;
 }
 
 /** 直达「设置 › 模型 › 嵌入维度管理」 */

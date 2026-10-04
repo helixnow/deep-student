@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plugs } from '@phosphor-icons/react';
-import { openEmbeddingSettings, useEmbeddingReadiness } from '../embeddingReadiness';
+import { isVectorIndexUnavailable, openEmbeddingSettings, useEmbeddingReadiness } from '../embeddingReadiness';
 
 /**
  * 「知识库未启用」横幅：嵌入模型不可用时，说明后果与原因，并一键前往配置。
@@ -10,7 +10,8 @@ import { openEmbeddingSettings, useEmbeddingReadiness } from '../embeddingReadin
 export const EmbeddingReadinessBanner: React.FC<{ className?: string }> = ({ className }) => {
   const { t } = useTranslation('learningHub');
   const readiness = useEmbeddingReadiness();
-  if (!readiness || readiness.ready) return null;
+  // 未编入向量索引的构建：配置嵌入模型也不会启用向量化，不引导用户去配置
+  if (!readiness || readiness.ready || isVectorIndexUnavailable(readiness)) return null;
   return (
     <div role="alert" className={`flex items-start gap-3 border-b border-[hsl(var(--warning)/0.25)] bg-[hsl(var(--warning)/0.08)] px-4 py-3 text-sm ${className ?? ''}`}>
       <Plugs size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />

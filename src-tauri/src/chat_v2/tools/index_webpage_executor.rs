@@ -203,6 +203,14 @@ impl IndexWebpageToolExecutor {
                 true,
             ));
         }
+        if !crate::vfs::VECTOR_INDEX_AVAILABLE {
+            return Err(tool_error(
+                "VECTOR_INDEX_UNAVAILABLE",
+                crate::vfs::VECTOR_INDEX_UNAVAILABLE_MESSAGE,
+                "Do not retry: this build searches resources by keyword without a vector index.",
+                false,
+            ));
+        }
         let db = vfs_db(ctx)?;
         ensure_rebuild_target(&db, &resource_id)?;
         // 阶段间隙取消检查点：目标校验通过后、获取重量级依赖之前。

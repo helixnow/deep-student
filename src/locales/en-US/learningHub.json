@@ -1458,5 +1458,9 @@
     "title": "Knowledge base is off: no usable embedding model",
     "body": "You can upload and read materials, but they can’t be vectorized or retrieved in chat. Once an embedding model is configured, failed and pending items are re-indexed automatically.",
     "action": "Configure embeddings"
+  },
+  "vectorIndexUnavailable": {
+    "title": "This version searches by keyword",
+    "body": "This version doesn't include vector indexing, so your resources don't need to be indexed: once uploaded, they can be found by keyword in chat and search."
   }
 }

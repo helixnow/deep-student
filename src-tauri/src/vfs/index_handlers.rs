@@ -42,6 +42,7 @@ pub async fn vfs_reindex_unit(
     unit_id: String,
     mode: String, // "text" | "mm" | "both"
 ) -> Result<bool, String> {
+    crate::vfs::ensure_vector_index_available()?;
     let service = VfsIndexService::new(vfs_db.inner().clone());
     service
         .reset_unit_index(&unit_id, &mode)
@@ -60,6 +61,8 @@ pub async fn vfs_unified_batch_index(
     mode: String, // "text" | "mm" | "both"
     batch_size: Option<i32>,
 ) -> Result<BatchIndexResult, String> {
+    // Before any claim: process_pending_batch flips rows to `indexing`.
+    crate::vfs::ensure_vector_index_available()?;
     let raw_limit = batch_size.unwrap_or(10);
     let limit = raw_limit.clamp(1, 100) as u32;
 

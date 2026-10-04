@@ -97,6 +97,27 @@ pub use unified_retriever::{
 // 统一文本抽取策略（供 DSTU 等其他模块调用）
 pub use ref_handlers::extract_file_text_with_strategy;
 
+/// Whether this build can store vectors (the `lance` feature). Slim builds
+/// (Android `mobile-slim`) keep the SQLite text ledger and lexical retrieval
+/// but cannot embed/persist vectors, so every vector-index entry point must
+/// short-circuit before claiming resources, calling paid embedding APIs, or
+/// recording failures that the user cannot fix. Exposed to the frontend via
+/// `vfs_get_embedding_readiness.vectorIndexAvailable`.
+pub const VECTOR_INDEX_AVAILABLE: bool = cfg!(feature = "lance");
+
+/// User-facing reason returned by vector-index commands on builds without Lance.
+pub const VECTOR_INDEX_UNAVAILABLE_MESSAGE: &str =
+    "此版本不包含向量索引，无需建立索引：资料检索会自动使用关键词搜索。";
+
+/// Guard for vector-index commands; `Err` carries the user-facing reason.
+pub fn ensure_vector_index_available() -> Result<(), String> {
+    if VECTOR_INDEX_AVAILABLE {
+        Ok(())
+    } else {
+        Err(VECTOR_INDEX_UNAVAILABLE_MESSAGE.to_string())
+    }
+}
+
 pub const CANONICAL_FILE_FOLDER_ITEM_TYPE: &str = "file";
 
 pub fn canonical_folder_item_type(item_type: &str) -> &str {

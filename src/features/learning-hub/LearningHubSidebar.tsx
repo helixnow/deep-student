@@ -81,7 +81,7 @@ const getFileExtension = (name: string): string =>
   (name.split('.').pop() || '').toLowerCase();
 
 // 懒加载向量化状态视图
-const IndexStatusView = lazy(() => import('./views/IndexStatusView'));
+const IndexStatusView = lazy(() => import('./views/IndexStatusGate'));
 // ★ 2026-01-19: 懒加载 VFS 记忆管理视图
 const MemoryView = lazy(() => import('./views/MemoryView'));
 import { useDesktopStore, type DesktopRootConfig } from './stores/desktopStore';

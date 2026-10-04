@@ -2294,7 +2294,12 @@ impl VfsFullIndexingService {
         }
 
         // 2. 设置索引状态为进行中
-        VfsIndexStateRepo::mark_indexing(&self.db, resource_id)?;
+        // Lance-less builds never reach the vector step (see the early return
+        // after OCR recovery), so leave the state untouched instead of
+        // flipping it to `indexing` and then `failed`.
+        if crate::vfs::VECTOR_INDEX_AVAILABLE {
+            VfsIndexStateRepo::mark_indexing(&self.db, resource_id)?;
+        }
 
         // 2.1 旧向量删除已移至嵌入生成成功之后（见下方 index_chunks Ok 分支），
         // 避免先删后写导致嵌入生成失败时资源在 LanceDB 中完全丢失的检索空窗。
@@ -2325,6 +2330,7 @@ impl VfsFullIndexingService {
         // Content recovery can wait for OCR capacity and network responses.
         // Keep owned input data, not a pooled SQLite connection, across awaits.
         drop(conn);
+        let mut ocr_recovered = false;
         if needs_content_recovery
             && matches!(
                 resource.resource_type,
@@ -2345,6 +2351,7 @@ impl VfsFullIndexingService {
                         ocr_text.len()
                     );
                     content = Some(ocr_text);
+                    ocr_recovered = true;
                 }
                 Ok(None) => {
                     info!(
@@ -2359,6 +2366,32 @@ impl VfsFullIndexingService {
                     );
                 }
             }
+        }
+
+        // Lance-less builds (mobile-slim): stop before chunking/embedding.
+        // The OCR recovery above is deliberately kept: try_auto_ocr caches its
+        // text in resources.ocr_text / files.ocr_pages_json, which
+        // sync_resource_to_units feeds into vfs_index_units.text_content — the
+        // SQLite ledger that lexical retrieval (unified_retriever
+        // execute_fts_route) searches. Re-sync so that text is searchable now
+        // (the step-0 sync ran before OCR). Index state stays as-is (pending):
+        // nothing failed, and a backup restored on a Lance build still gets
+        // vectorised by its worker.
+        if !crate::vfs::VECTOR_INDEX_AVAILABLE {
+            if ocr_recovered {
+                match self.sync_resource_to_units(resource_id) {
+                    Ok(()) | Err(VfsError::InvalidArgument { .. }) => {}
+                    Err(error) => warn!(
+                        "[VfsFullIndexingService] Lexical ledger re-sync after OCR failed for {}: {}",
+                        resource_id, error
+                    ),
+                }
+            }
+            debug!(
+                "[VfsFullIndexingService] Vector index not compiled in; text ledger refreshed for {}",
+                resource_id
+            );
+            return Ok((0, 0));
         }
 
         // ★ 2026-01 修复：空内容资源标记为 indexed（0 chunks），而非 disabled
@@ -4269,6 +4302,10 @@ impl VfsFullIndexingService {
     /// ## 并行策略
     /// 使用 `max_concurrent` 配置控制并行度（默认 2）
     pub async fn process_pending_batch(&self, batch_size: u32) -> VfsResult<(usize, usize)> {
+        // Claiming flips rows to `indexing`; never claim what cannot be vectorised.
+        if !crate::vfs::VECTOR_INDEX_AVAILABLE {
+            return Ok((0, 0));
+        }
         // ★ F5 修复：每轮先排空 Lance 孤立向量队列，防止已删内容仍被 RAG 命中
         if let Err(e) = self.drain_lance_orphan_queue(200).await {
             warn!(
