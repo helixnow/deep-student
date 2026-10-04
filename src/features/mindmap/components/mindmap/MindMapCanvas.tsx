@@ -31,6 +31,10 @@ import { useAnimatedNodes } from '../../hooks/useAnimatedNodes';
 import { useMarqueeSelection } from '../../hooks/useMarqueeSelection';
 import { useCanvasDragMode, useCanvasWheelMode } from '../../hooks/useCanvasDragMode';
 import { useMomentumPan } from '../../hooks/useMomentumPan';
+import {
+  useViewportFollowContainerResize,
+  type FollowViewport,
+} from '../../hooks/useViewportFollowContainerResize';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
@@ -215,6 +219,8 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
   const momentumPan = useMomentumPan(reactFlowInstance, { enabled: !isExporting });
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const [isCanvasReady, setIsCanvasReady] = useState(false);
+  /** 最近一次自动 fitView 落定的视口；与当前视口不同即用户已手动平移/缩放 */
+  const autoFitViewportRef = useRef<FollowViewport | null>(null);
   // 有恢复视口时视为已 fit，避免挂载时 fitView 冲掉保真状态
   const hasFitView = useRef(!!safeInitialViewport);
   const skipMountLayoutFitRef = useRef(!!safeInitialViewport);
@@ -259,9 +265,13 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       rect.height <= 1
     ) return false;
     // 小图不放大超过 100%（maxZoom 2 会让三五个节点的图以 ~200% 打开）
-    fitView({ padding, duration, maxZoom: 1 });
+    autoFitViewportRef.current = null;
+    void Promise.resolve(fitView({ padding, duration, maxZoom: 1 })).then((fitted) => {
+      // 登记自动 fit 落定的视口：用户未改动前，容器变尺寸（窗口平铺等）会重新 fit
+      if (fitted) autoFitViewportRef.current = normalizeMindMapViewport(reactFlowInstance.getViewport());
+    });
     return true;
-  }, [fitView, isCanvasReady]);
+  }, [fitView, isCanvasReady, reactFlowInstance]);
 
   React.useImperativeHandle(ref, () => ({
     getViewport: () => (
@@ -974,6 +984,23 @@ const MindMapCanvasInner = React.forwardRef<MindMapCanvasHandle, MindMapCanvasPr
       return () => clearTimeout(timer);
     }
   }, [nodes.length, isCanvasReady, fitVisibleNodes]);
+
+  // 容器变尺寸（工作台窗口 floating → 平铺 / tileAll / 拖拽缩放）时视口跟随：
+  // 否则按大容器算出的 translate 会把整图推出小容器，onlyRenderVisibleElements
+  // 剔除后画布全空（MiniMap 仍显示全部节点）。
+  useViewportFollowContainerResize({
+    containerRef: canvasContainerRef,
+    autoFitViewportRef,
+    enabled: isCanvasReady && nodes.length > 0 && !isExporting,
+    adapter: {
+      getViewport: () => normalizeMindMapViewport(reactFlowInstance.getViewport()) ?? { ...DEFAULT_MINDMAP_VIEWPORT },
+      setViewport: (viewport) => {
+        const safeViewport = normalizeMindMapViewport(viewport);
+        if (safeViewport) void reactFlowInstance.setViewport(safeViewport, { duration: 0 });
+      },
+      refit: () => fitVisibleNodes(0),
+    },
+  });
 
   // 旧状态或零尺寸 fitView 可能留下非法 viewport；画布恢复可见时主动归一化。
   useEffect(() => {
