@@ -869,7 +869,12 @@
     "clearTrace": "Clear",
     "distribution": "Lifecycle distribution",
     "minimizedTag": "Minimized",
-    "close": "Close panel"
+    "close": "Close panel",
+    "firstFrame": "{{value}}→first frame",
+    "acrNoTransactions": "(no active transactions)",
+    "acrNoPresence": "(no active presence)",
+    "acrNoReceipts": "(no receipts yet · shown once StageManager is connected)",
+    "acrNoDomainEvents": "(no domain events yet)"
   },
   "notesWorkspace": {
     "title": "Notes",
@@ -1011,7 +1016,9 @@
     },
     "renameSync": {
       "updated": "Updated wiki links in {{count}} notes",
-      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually."
+      "incomplete": "Wiki links in {{count}} notes were not updated (unsaved changes or write failure). Please review them manually.",
+      "scanFailed": "Title updated, but linked sources could not be scanned. Wiki links may be out of sync; please check them manually.",
+      "truncated": "Too many linking notes for one batch. Only the first {{count}} were updated; process the rest later."
     },
     "tree": {
       "aria": "File tree",

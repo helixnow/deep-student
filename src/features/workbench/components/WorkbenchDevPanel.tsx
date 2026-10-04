@@ -249,11 +249,14 @@ interface PerfView {
   source: PerfSource;
 }
 
-function formatInteractionLine(s: InteractionSession): string {
+function formatInteractionLine(
+  s: InteractionSession,
+  formatFirstFrame: (value: string) => string,
+): string {
   const type =
     typeof s.meta?.typeId === 'string' ? s.meta.typeId : s.windowId?.slice(0, 6) ?? '?';
   const arm =
-    s.measures.armToFirstMoveMs != null ? `${s.measures.armToFirstMoveMs}ms→首帧` : '—→首帧';
+    formatFirstFrame(s.measures.armToFirstMoveMs != null ? `${s.measures.armToFirstMoveMs}ms` : '—');
   const armed = s.measures.armedMs != null ? ` armed${s.measures.armedMs}` : '';
   const total = s.measures.totalMs != null ? `${s.measures.totalMs}ms` : '—';
   const f = s.frame;
@@ -965,7 +968,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                           : undefined
                       }
                     >
-                      {formatInteractionLine(s)}
+                      {formatInteractionLine(s, (value) =>
+                        t('devPanel.firstFrame', { value, defaultValue: '{{value}}→首帧' }),
+                      )}
                     </li>
                   ))}
                 </HudScrollList>
@@ -1158,7 +1163,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                     <span className="wb-hud-muted">{acrDiagnostics.transactions.length}</span>
                   </div>
                   {acrDiagnostics.transactions.length === 0 ? (
-                    <div className="wb-hud-empty">（无活跃 transaction）</div>
+                    <div className="wb-hud-empty">
+                      {t('devPanel.acrNoTransactions', { defaultValue: '（无活跃 transaction）' })}
+                    </div>
                   ) : (
                     <HudScrollList variant="windows" className="wb-hud-winlist" data-testid="wb-hud-acr-transaction-list">
                       {acrDiagnostics.transactions.map((transaction) => (
@@ -1190,7 +1197,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                     <span className="wb-hud-muted">{presenceList.length}</span>
                   </div>
                   {presenceList.length === 0 ? (
-                    <div className="wb-hud-empty">（无活跃 presence）</div>
+                    <div className="wb-hud-empty">
+                      {t('devPanel.acrNoPresence', { defaultValue: '（无活跃 presence）' })}
+                    </div>
                   ) : (
                     <HudScrollList variant="windows" className="wb-hud-winlist">
                       {presenceList.map((p) => (
@@ -1223,7 +1232,11 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                     <span className="wb-hud-muted">{recentReceipts.length}/5</span>
                   </div>
                   {recentReceipts.length === 0 ? (
-                    <div className="wb-hud-empty">（尚无回执 · StageManager 接线后可见）</div>
+                    <div className="wb-hud-empty">
+                      {t('devPanel.acrNoReceipts', {
+                        defaultValue: '（尚无回执 · StageManager 接线后可见）',
+                      })}
+                    </div>
                   ) : (
                     <HudScrollList variant="windows" className="wb-hud-winlist" data-testid="wb-hud-acr-receipts">
                       {[...recentReceipts].reverse().map((r, i) => (
@@ -1258,7 +1271,9 @@ export const WorkbenchDevPanel: React.FC<WorkbenchDevPanelProps> = ({ className,
                     <span className="wb-hud-muted">{recentDomainEvents.length}/5</span>
                   </div>
                   {recentDomainEvents.length === 0 ? (
-                    <div className="wb-hud-empty">（尚无域事件）</div>
+                    <div className="wb-hud-empty">
+                      {t('devPanel.acrNoDomainEvents', { defaultValue: '（尚无域事件）' })}
+                    </div>
                   ) : (
                     <HudScrollList variant="windows" className="wb-hud-winlist">
                       {[...recentDomainEvents].reverse().map((ev, i) => (
