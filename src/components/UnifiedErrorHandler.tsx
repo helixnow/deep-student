@@ -115,7 +115,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
   if (errors.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-50 w-96 space-y-2">
+    <div className="fixed right-4 top-[calc(1rem+var(--mobile-safe-area-top,0px))] z-50 w-[min(24rem,calc(100vw-2rem))] space-y-2">
       {/* P0修复：批量清理按钮 */}
       {errors.length > 1 && (
         <div className="flex justify-end">
