@@ -22,12 +22,12 @@ const PRESET_LABELS = {
     legacy: ['笔记', 'Notes', 'Note'],
   },
   'resourceType.exam': {
-    fallback: 'Question Sets',
-    legacy: ['题目集', 'Question Sets', 'Question Set'],
+    fallback: 'Exam Sets',
+    legacy: ['题目集', 'Exam Sets', 'Question Sets', 'Question Set'],
   },
   'resourceType.essay': {
-    fallback: 'Essay Grading',
-    legacy: ['作文批改', '作文', 'Essay Grading', 'Essays', 'Essay'],
+    fallback: 'Essay Reviews',
+    legacy: ['作文批改', '作文', 'Essay Reviews', 'Essay Grading', 'Essays', 'Essay'],
   },
   'resourceType.translation': {
     fallback: 'Translations',

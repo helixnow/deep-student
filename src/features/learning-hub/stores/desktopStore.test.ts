@@ -123,7 +123,7 @@ describe('desktop preset shortcut labels follow the UI language', () => {
     await i18next.changeLanguage('en-US');
     expect(migrated.shortcuts.map(resolveShortcutName)).toEqual([
       'Notes',
-      'Question Sets',
+      'Exam Sets',
       '我的作文本',
       'Translations',
       'Mind Maps',
@@ -150,7 +150,7 @@ describe('desktop preset shortcut labels follow the UI language', () => {
     await i18next.changeLanguage('en-US');
     expect(shortcuts.slice(0, 3).map(resolveShortcutName)).toEqual([
       'Notes',
-      'Question Sets',
+      'Exam Sets',
       '我的作文本',
     ]);
     const stored = JSON.parse(localStorage.getItem('learning-hub-desktop') ?? '{}');
