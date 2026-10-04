@@ -52,7 +52,7 @@ const ACKNOWLEDGEMENT_GROUPS = [
     key: 'utilities',
     items: [
       'Class Variance Authority', 'Tailwind Merge', 'Mustache',
-      'heic2any', 'React Textarea Autosize', 'SnapDOM',
+      'React Textarea Autosize', 'SnapDOM',
     ],
   },
   {

@@ -31,17 +31,13 @@ import {
   RuntimeAutosaveCommitResponse,
 } from '../types';
 import { normalizeHistoryForBackend } from './normalizeHistory';
-import { t } from './i18n';
 import { v4 as uuidv4 } from 'uuid';
 // ★ 图谱模块已废弃 - 本地占位类型
 export type Tag = { id: string; name: string; color?: string };
 export type ProblemCard = { id: string; content_problem: string; content_insight?: string; notes?: string };
 export type CreateTagRequest = { name: string; color?: string; parent_id?: string; tag_type?: string; description?: string };
 export type LegacyCreateTagRequest = CreateTagRequest & { parent_tag_id?: string };
-// ★ 2026-07-08（审计 30-P1-4）：heic2any 体积可观且仅在用户上传 HEIC 图片时才需要，
-// 改为使用点动态 import()，避免经 tauriApi barrel 被静态拖入首屏 chunk
 import { getErrorMessage } from './errorUtils';
-import { debugLogger } from './debugLogger';
 import { DEBUG_TIMELINE_GLOBAL_KEYS } from '../config/debugPanel';
 import { sanitizeDebugMessageList } from './debugSnapshot';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
@@ -54,22 +50,6 @@ export const isTauriRuntime =
   typeof window !== 'undefined' &&
   (Boolean((window as any).__TAURI_INTERNALS__) ||
     Boolean((window as any).__TAURI_IPC__));
-
-// 全局调试日志函数
-let globalAddLog: ((message: string, data?: any) => void) | null = null;
-export const setGlobalDebugLogger = (addLog: (message: string, data?: any) => void) => {
-  globalAddLog = addLog;
-};
-const tauriDebugLog = (message: string, data?: any) => {
-  try {
-    void debugLogger.log('DEBUG', 'TAURI_API', message, data);
-  } catch (error) {
-    // debugLogger failed silently
-  }
-  if (globalAddLog) {
-    globalAddLog(message, data);
-  }
-};
 
 export const convertHistoryToUnifiedMessages = (history?: ChatMessage[] | null): any[] => {
   if (!history || history.length === 0) return [];
@@ -321,150 +301,7 @@ export function stripNullsDeep<T>(input: T): T {
   return input;
 }
 
-// ======================== File转换工具函数 ========================
-
-// 工具函数：将File对象转换为Base64字符串
-export const fileToBase64 = (file: File): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      void (async () => {
-        tauriDebugLog(`[Base64] Processing file: ${file.name}, size: ${file.size}, type: ${file.type}`);
-
-        let fileToProcess = file;
-        let heicConversionState: 'none' | 'success' | 'fallback' = 'none';
-        let heicFallbackMime: string | null = null;
-
-        // 检查是否是HEIC/HEIF格式 - 更强健的检测逻辑
-        const fileName = file.name.toLowerCase();
-        const fileType = file.type.toLowerCase();
-        const isHeicByExtension = fileName.endsWith('.heic') || fileName.endsWith('.heif');
-        const isHeicByMimeType = fileType === 'image/heic' || fileType === 'image/heif';
-        // 很多浏览器对HEIC文件的MIME类型识别不准确，主要依靠文件扩展名
-        const isHeic = isHeicByExtension || isHeicByMimeType;
-        tauriDebugLog(`[HEIC detect] type: "${file.type}", name: "${file.name}", ext: ${isHeicByExtension}, mime: ${isHeicByMimeType}, result: ${isHeic}`);
-
-        if (isHeic) {
-            tauriDebugLog(`[HEIC] Detected HEIC image: ${file.name}, converting to JPG...`);
-            tauriDebugLog(`[HEIC] File details:`, { name: file.name, size: file.size, type: file.type });
-            try {
-                const { default: heic2any } = await import('heic2any');
-                const conversionResult = await heic2any({
-                    blob: file,
-                    toType: "image/jpeg",
-                    quality: 0.9, // 适当提高质量以进行测试
-                });
-
-                if (!conversionResult) {
-                    throw new Error('heic2any returned null or undefined');
-                }
-
-                const convertedBlob = Array.isArray(conversionResult) ? conversionResult[0] : conversionResult;
-                
-                if (!(convertedBlob instanceof Blob)) {
-                    throw new Error(`Conversion result is not a valid Blob, actual type: ${typeof convertedBlob}`);
-                }
-                
-                tauriDebugLog('[HEIC] Converted blob details:', { size: convertedBlob.size, type: convertedBlob.type });
-
-                const newFileName = `${file.name.split('.').slice(0, -1).join('.') || file.name}.jpg`;
-                fileToProcess = new File([convertedBlob], newFileName, { type: 'image/jpeg' });
-                tauriDebugLog(`[HEIC] Conversion success: ${fileToProcess.name}, size: ${fileToProcess.size}, type: ${fileToProcess.type}`);
-                tauriDebugLog(`[HEIC] Created new File object:`, fileToProcess);
-                heicConversionState = 'success';
-
-            } catch (error) {
-                console.error(`[HEIC] Conversion failed:`, error);
-                console.warn(`[HEIC] Fallback: using original image: ${file.name}`);
-                tauriDebugLog(`[HEIC] Conversion error details:`, { 
-                    message: error instanceof Error ? error.message : String(error),
-                    stack: error instanceof Error ? error.stack : undefined,
-                    errorObject: error
-                });
-                
-                // Fallback: use original image and mark conversion as failed
-                fileToProcess = file;
-                heicConversionState = 'fallback';
-                heicFallbackMime = (() => {
-                    const normalized = file.type?.toLowerCase();
-                    if (normalized && normalized.startsWith('image/')) {
-                        return normalized;
-                    }
-                    if (fileName.endsWith('.heif')) {
-                        return 'image/heif';
-                    }
-                    return 'image/heic';
-                })();
-                tauriDebugLog(`[HEIC] Fallback: using original image: ${file.name}`);
-                
-                // Send fallback notification to debug channel and user
-                try {
-                    tauriDebugLog(`[HEIC] Conversion failed, using original: ${file.name}`);
-                    // Use unified notification system instead of window.alert
-                    if (typeof window !== 'undefined') {
-                        setTimeout(() => {
-                            // Dispatch global event to avoid direct component dependency
-                            window.dispatchEvent(new CustomEvent('showGlobalNotification', {
-                                detail: {
-                                    type: 'warning',
-                                    message: t('utils.notifications.heic_fallback', { fileName: file.name }),
-                                    title: t('utils.notifications.heic_compat_title')
-                                }
-                            }));
-                        }, 100);
-                    }
-                } catch {}
-                
-                // 注意：此处不再reject，而是继续使用原文件进行base64转换
-            }
-        }
-
-        const reader = new FileReader();
-        reader.readAsDataURL(fileToProcess);
-        reader.onload = () => {
-            const result = reader.result as string;
-            tauriDebugLog(`[Base64] DataURL prefix: ${result.substring(0, 50)}`);
-
-            const commaIndex = result.indexOf(',');
-            const base64Data = commaIndex >= 0 ? result.slice(commaIndex + 1) : result;
-            const dataUrlPrefix = commaIndex >= 0 ? result.slice(0, commaIndex) : '';
-
-            if (!base64Data || base64Data.length < 100) {
-                console.error(`[Base64] Abnormal data: length=${base64Data?.length || 0}`);
-                reject(new Error('Base64 data conversion failed or too short'));
-                return;
-            }
-
-            tauriDebugLog(`[Base64] Conversion success, length: ${base64Data.length}`);
-            if (heicConversionState === 'fallback') {
-                const normalizedMime = (() => {
-                    if (heicFallbackMime && heicFallbackMime.startsWith('image/')) {
-                        return heicFallbackMime;
-                    }
-                    if (dataUrlPrefix.startsWith('data:image/')) {
-                        const mimePart = dataUrlPrefix.substring('data:'.length);
-                        const sepIndex = mimePart.indexOf(';');
-                        return sepIndex >= 0 ? mimePart.substring(0, sepIndex) : mimePart;
-                    }
-                    return fileName.endsWith('.heif') ? 'image/heif' : 'image/heic';
-                })();
-                const safeMime = normalizedMime || 'image/heic';
-                const dataUrl = `data:${safeMime};base64,${base64Data}`;
-                tauriDebugLog(`[HEIC fallback] Returning as DataURL: ${dataUrl.substring(0, 48)}...`);
-                resolve(dataUrl);
-                return;
-            }
-
-            resolve(base64Data);
-        };
-        reader.onerror = error => {
-            console.error(`[Base64] FileReader error:`, error);
-            reject(error);
-        };
-      })().catch(reject);
-    });
-};
-
-// 工具函数：批量转换文件为Base64
-export const filesToBase64 = async (files: File[]): Promise<string[]> => {
-  const promises = files.map(file => fileToBase64(file));
-  return Promise.all(promises);
-};
+// ★ 2026-10：原 fileToBase64 / filesToBase64（内含 heic2any 转码）已删除——
+// 全仓库零调用方，且 heic2any 的 embind 胶水依赖 `new Function`，在 release CSP
+// `script-src 'self'` 下必然失败并静默回退原始 HEIC。HEIC 转换统一走
+// `utils/heicConversion.ts`（WebView 原生解码 / Android ImageDecoder）。

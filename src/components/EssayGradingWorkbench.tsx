@@ -34,6 +34,7 @@ import { ocrExtractText, TauriAPI } from '../utils/tauriApi';
 import { getErrorMessage } from '../utils/errorUtils';
 import { fileManager } from '../utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
+import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '../utils/heicConversion';
 import { useSaveAsNoteFlow, SaveAsNoteFolderPicker } from '@/shared/notes';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 
@@ -738,7 +739,23 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   }, []);
 
   // ★ 文件拖拽处理（两阶段：即时显示缩略图 + 异步 OCR）
-  const handleFilesDropped = useCallback(async (files: File[]) => {
+  // iPhone 照片多为 HEIC：先经平台原生解码转 JPEG，无法转换的逐个明确提示并剔除
+  const convertHeicImages = useCallback(async (files: File[]): Promise<File[]> => {
+    if (!files.some(isHeicFile)) return files;
+    const { files: prepared, failures } = await prepareHeicFiles(files);
+    for (const failure of failures) {
+      showGlobalNotification(
+        'error',
+        describeHeicConversionError(failure, t),
+        t('common:utils.notifications.heic_compat_title'),
+      );
+    }
+    return prepared;
+  }, [t]);
+
+  const handleFilesDropped = useCallback(async (droppedFiles: File[]) => {
+    if (droppedFiles.length === 0) return;
+    const files = await convertHeicImages(droppedFiles);
     if (files.length === 0) return;
 
     // 筛选出图片文件
@@ -936,7 +953,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     };
 
     processNext();
-  }, [t]);
+  }, [convertHeicImages, t]);
 
   // 删除单张上传图片
   const handleRemoveImage = useCallback((imageId: string) => {
@@ -1010,7 +1027,9 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
   }, [t]);
 
   // ★ 题目参考材料图片上传处理
-  const handleTopicFilesDropped = useCallback(async (files: File[]) => {
+  const handleTopicFilesDropped = useCallback(async (droppedFiles: File[]) => {
+    if (droppedFiles.length === 0) return;
+    const files = await convertHeicImages(droppedFiles);
     if (files.length === 0) return;
     const imageFiles = files.filter(file =>
       file.name.toLowerCase().match(/\.(png|jpg|jpeg|webp)$/)
@@ -1056,7 +1075,7 @@ export const EssayGradingWorkbench: React.FC<EssayGradingWorkbenchProps> = ({
     } catch (error: unknown) {
       showGlobalNotification('error', getErrorMessage(error));
     }
-  }, [t, topicImages.length]);
+  }, [convertHeicImages, t, topicImages.length]);
 
   // 删除题目参考图片
   const handleRemoveTopicImage = useCallback((imageId: string) => {

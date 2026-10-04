@@ -21,6 +21,7 @@ import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
+import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
 import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
 import { vfsRefApi } from '../../context/vfsRefApi';
@@ -444,8 +445,8 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     return () => { cancelled = true; };
   }, [effectiveChatModelId]);
 
-  // 处理文件转换为附件元数据并上传
-  const processFilesToAttachments = useCallback((files: File[]) => {
+  // 处理文件转换为附件元数据并上传（入参已完成 HEIC→JPEG 预处理）
+  const processPreparedFilesToAttachments = useCallback((files: File[]) => {
     if (!files.length || !isUploadScopeCurrent()) return;
 
     // 🆕 维护模式检查：阻止文件上传
@@ -862,6 +863,27 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     });
 
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, t, beginUpload, isUploadScopeCurrent]);
+
+  // HEIC/HEIF 先经平台原生解码转为 JPEG（WebView / Android ImageDecoder）；
+  // 无法转换时明确提示并拒收，不再把供应商不认的 HEIC 原样上传。
+  const processFilesToAttachments = useCallback((files: File[]) => {
+    if (!files.length || !isUploadScopeCurrent()) return;
+    if (!files.some(isHeicFile)) {
+      processPreparedFilesToAttachments(files);
+      return;
+    }
+    void prepareHeicFiles(files).then(({ files: prepared, failures }) => {
+      if (!isUploadScopeCurrent()) return;
+      for (const failure of failures) {
+        showGlobalNotification(
+          'error',
+          describeHeicConversionError(failure, t),
+          t('common:utils.notifications.heic_compat_title'),
+        );
+      }
+      if (prepared.length) processPreparedFilesToAttachments(prepared);
+    });
+  }, [processPreparedFilesToAttachments, isUploadScopeCurrent, t]);
 
   // ========== 相机拍照处理 ==========
   // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或

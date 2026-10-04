@@ -4,7 +4,7 @@
  */
 import demoConfig from "./vite.demo.config.ts";
 
-const HEAVY = ["@milkdown", "@xyflow", "recharts", "mermaid", "echarts", "pptx-preview", "exceljs", "docx-preview", "heic2any", "mcpService"];
+const HEAVY = ["@milkdown", "@xyflow", "recharts", "mermaid", "echarts", "pptx-preview", "exceljs", "docx-preview", "mcpService"];
 
 const tracePlugin = {
   name: "trace-heavy-imports",

@@ -10,6 +10,7 @@ import { getErrorMessage } from '../../../utils/errorUtils';
 import { extractFileName, extractFileExtension } from '../../../utils/fileManager';
 import { emitImageUploadDebug } from '../../../debug-panel/plugins/CrepeImageUploadDebugPlugin';
 import { showGlobalNotification } from '../../UnifiedNotification';
+import { convertHeicToJpeg, describeHeicConversionError, HeicConversionError, isHeicFile, sniffHeicMime } from '../../../utils/heicConversion';
 
 /**
  * 通过后端命令获取图片的 base64 数据
@@ -94,16 +95,35 @@ export const createImageUploader = (
   noteId: string | undefined,
   blobRegistry?: TransientBlobUrlRegistry
 ): ((file: File) => Promise<string>) => {
-  return async (file: File): Promise<string> => {
+  return async (inputFile: File): Promise<string> => {
     // 50MB - 与后端 notes_save_asset（file_manager.rs）的资产上限保持一致
     const MAX_IMAGE_SIZE_MB = 50;
     const MAX_IMAGE_SIZE = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-    if (file.size > MAX_IMAGE_SIZE) {
+    if (inputFile.size > MAX_IMAGE_SIZE) {
       showGlobalNotification(
         'warning',
         i18next.t('notes:upload.image_too_large', { limit: MAX_IMAGE_SIZE_MB })
       );
       return '';
+    }
+
+    // HEIC/HEIF：多数 WebView 无法显示，先经平台原生解码转 JPEG；
+    // 无法转换时明确提示并放弃插入，避免笔记里留下显示不出来的图片
+    let file = inputFile;
+    if (isHeicFile(inputFile)) {
+      try {
+        file = await convertHeicToJpeg(inputFile);
+      } catch (error) {
+        const failure = error instanceof HeicConversionError
+          ? error
+          : new HeicConversionError('decode_failed', inputFile.name, getErrorMessage(error));
+        showGlobalNotification(
+          'error',
+          describeHeicConversionError(failure, i18next.t.bind(i18next) as (key: string, options?: Record<string, unknown>) => string),
+          i18next.t('common:utils.notifications.heic_compat_title')
+        );
+        return '';
+      }
     }
 
     const nid = (noteId || '').trim();
@@ -386,7 +406,9 @@ function sniffImageMime(head: Uint8Array): string | null {
   if (startsWith(0x52, 0x49, 0x46, 0x46) && head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50) {
     return 'image/webp';
   }
-  return null;
+  // Android 媒体库 URI 无扩展名时，iPhone 照片只能靠 ftyp 品牌识别为 HEIC，
+  // 否则会被当成 png 跳过 HEIC→JPEG 转换
+  return sniffHeicMime(head);
 }
 
 const IMAGE_EXT_MIME: Record<string, string> = {

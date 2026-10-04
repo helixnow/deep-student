@@ -5,7 +5,7 @@
  * 1. 仅构建 demo.html 与 hero.html 入口（不含桌面主入口），输出到 dist-demo/
  * 2. 通过 build.modulePreload.resolveDependencies 阻止首屏预载重型 chunk：
  *    milkdown（笔记编辑器）/ mermaid / pptx / exceljs / docx / pdfjs /
- *    recharts / xyflow / heic2any 等仅在"附件预览、图表统计、笔记、
+ *    recharts / xyflow 等仅在"附件预览、图表统计、笔记、
  *    思维导图"等非会话场景用到，lazy 视图真正打开时仍会动态加载——
  *    功能零损失，仅砍掉首屏预载。
  *    会话链路（markdown / KaTeX / 代码高亮 / 流式渲染）完整保留。
@@ -222,7 +222,6 @@ const DEMO_NO_PRELOAD = [
   "vendor-pdfjs",
   "vendor-recharts",
   "vendor-xyflow",
-  "heic2any",
   "mcpService",
 ];
 

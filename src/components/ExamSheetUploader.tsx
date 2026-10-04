@@ -42,6 +42,7 @@ import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared
 import { UnifiedDragDropZone, DEFAULT_MAX_UPLOAD_FILE_SIZE, type FileTypeDefinition } from '@/components/shared/UnifiedDragDropZone';
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
 
 // ★ 试卷上传专用文件类型（支持 HEIC，与统一组件的 IMAGE 略有不同）
 // 导出给题目集启动台的拖放区域复用，保证两处接受的文件类型一致
@@ -846,9 +847,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 获取当前选择的文件类型
   const currentCategory = selectedFiles.length > 0 ? selectedFiles[0].category : null;
 
-  // 处理文件选择
-  const handleFileSelect = useCallback((files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+  // 处理文件选择（入参已完成 HEIC→JPEG 预处理）
+  const applySelectedFiles = useCallback((fileArray: File[]) => {
     const validFiles: FileInfo[] = [];
     
     for (const file of fileArray) {
@@ -895,6 +895,26 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       setSelectedFiles(prev => [...prev, ...validFiles]);
     }
   }, [categorizeFile, currentCategory, t]);
+
+  // iPhone 照片多为 HEIC：先经平台原生解码转 JPEG（WebView / Android ImageDecoder），
+  // 无法转换的明确提示并剔除，不再把 OCR/视觉模型不认的 HEIC 原样送下游。
+  const handleFileSelect = useCallback((files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (!fileArray.some(isHeicFile)) {
+      applySelectedFiles(fileArray);
+      return;
+    }
+    void prepareHeicFiles(fileArray).then(({ files: prepared, failures }) => {
+      for (const failure of failures) {
+        showGlobalNotification(
+          'error',
+          describeHeicConversionError(failure, t),
+          t('common:utils.notifications.heic_compat_title'),
+        );
+      }
+      if (prepared.length) applySelectedFiles(prepared);
+    });
+  }, [applySelectedFiles, t]);
 
   // 接收从题目集启动台拖入的初始文件：自动带入选择流程，消费后通知父组件清空。
   // 以引用记录已消费的数组：StrictMode（dev）双调用 effect 时不会把图片重复添加

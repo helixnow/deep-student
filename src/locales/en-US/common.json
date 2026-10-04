@@ -3501,7 +3501,9 @@
       "last_accessed": "Last Accessed"
     },
     "notifications": {
-      "heic_fallback": "HEIC conversion failed, using original image: {{fileName}}\nTip: Use JPG or PNG format for better compatibility",
+      "heic_unsupported": "{{fileName}} is a HEIC/HEIF photo, which can't be converted on this device. Export it as JPG or PNG and try again.",
+      "heic_android_too_old": "{{fileName}} is a HEIC/HEIF photo. Converting HEIC requires Android 9 or later; export it as JPG or PNG and try again.",
+      "heic_decode_failed": "Couldn't convert the HEIC/HEIF photo {{fileName}} (the file may be damaged or this device lacks a HEVC decoder). Export it as JPG or PNG and try again.",
       "heic_compat_title": "HEIC Format Compatibility"
     },
     "progress": {

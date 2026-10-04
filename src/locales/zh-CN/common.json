@@ -3444,7 +3444,9 @@
       "last_accessed": "最近访问"
     },
     "notifications": {
-      "heic_fallback": "HEIC转换失败，已使用原图：{{fileName}}\n提示：建议使用JPG或PNG格式以获得更好兼容性",
+      "heic_unsupported": "{{fileName}} 是 HEIC/HEIF 照片，当前设备无法转换。请先导出为 JPG 或 PNG 后再试。",
+      "heic_android_too_old": "{{fileName}} 是 HEIC/HEIF 照片，转换需要 Android 9 及以上系统。请先导出为 JPG 或 PNG 后再试。",
+      "heic_decode_failed": "HEIC/HEIF 照片 {{fileName}} 转换失败（文件可能已损坏，或设备缺少 HEVC 解码器）。请先导出为 JPG 或 PNG 后再试。",
       "heic_compat_title": "HEIC格式兼容性提示"
     },
     "progress": {
