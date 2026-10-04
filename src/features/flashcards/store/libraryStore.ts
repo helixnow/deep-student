@@ -139,6 +139,36 @@ const initialState = {
   statusCounts: null as AnkiLibraryStatusCounts | null,
 };
 
+/** 名称是否带有可识别的（短字母数字）扩展名，如 `notes.pdf`；不透明 ID 返回 false。 */
+function hasRecognizableExtension(fileName: string): boolean {
+  return /\.[a-z0-9]{1,8}$/i.test(fileName);
+}
+
+/** APKG 是 ZIP 容器：读取落盘文件头 4 字节核对 `PK\x03\x04`。读取失败视为不合法。 */
+async function stagedFileLooksLikeZip(
+  openFile: typeof import('@tauri-apps/plugin-fs').open,
+  stagedPath: string,
+): Promise<boolean> {
+  try {
+    const handle = await openFile(stagedPath, { read: true });
+    try {
+      const header = new Uint8Array(4);
+      const read = await handle.read(header);
+      return (
+        read === 4 &&
+        header[0] === 0x50 &&
+        header[1] === 0x4b &&
+        header[2] === 0x03 &&
+        header[3] === 0x04
+      );
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
+  } catch {
+    return false;
+  }
+}
+
 export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, get) => {
   let requestId = 0;
 
@@ -423,12 +453,16 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           // Control bytes are intentionally rejected in a filesystem name.
           // eslint-disable-next-line no-control-regex
           const fileName = (extractFileName(path) || '').replace(/[\\/:*?<>|\x00-\x1f]/g, '_');
-          if (!fileName.toLowerCase().endsWith('.apkg')) {
+          // 多数 Android provider 返回不透明 ID（`msf:1234`、`/document/446`），名称
+          // 里根本没有扩展名：此时无法按名判断，改为落盘后按内容（ZIP 魔数）校验，
+          // 真正的格式错误再由后端 APKG 解析器报出。只有名称带着别的扩展名时才前置拒绝。
+          const hasApkgName = fileName.toLowerCase().endsWith('.apkg');
+          if (!hasApkgName && hasRecognizableExtension(fileName)) {
             const message = i18n.t('flashcards:library.import.notApkg');
             set({ actionError: message });
             return { status: 'failed' as const, error: message };
           }
-          const [{ copyFile: copyViaBackend }, { appDataDir, join }, { mkdir, remove }] =
+          const [{ copyFile: copyViaBackend }, { appDataDir, join }, { mkdir, remove, open }] =
             await Promise.all([
               import('@/utils/chatApi'),
               import('@tauri-apps/api/path'),
@@ -436,10 +470,22 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
             ]);
           const stagedDir = await join(await appDataDir(), 'tmp_apkg_import');
           await mkdir(stagedDir, { recursive: true });
-          stagedPath = await join(stagedDir, fileName);
+          stagedPath = await join(
+            stagedDir,
+            hasApkgName ? fileName : `import_${Date.now()}.apkg`,
+          );
           await copyViaBackend(path, stagedPath);
           removeStaged = remove;
           importPath = stagedPath;
+          if (!hasApkgName && !(await stagedFileLooksLikeZip(open, stagedPath))) {
+            try {
+              await remove(stagedPath);
+            } catch { /* ignore */ }
+            stagedPath = null;
+            const message = i18n.t('flashcards:library.import.notApkg');
+            set({ actionError: message });
+            return { status: 'failed' as const, error: message };
+          }
         }
 
         try {

@@ -4,6 +4,7 @@
  *   预检），再走同一条 import_apkg_to_library；导入后清理 tmp（best-effort）。
  * - 桌面端真实路径：保持直传，不产生 tmp。
  * - 非 .apkg 显示名：友好友拒绝，不触发后端 zip 解析错误。
+ * - 不透明 document ID（无扩展名）：落盘为 import_*.apkg 后按 ZIP 魔数校验内容。
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,6 +12,17 @@ const invokeMock = vi.hoisted(() => vi.fn());
 const copyFileMock = vi.hoisted(() => vi.fn());
 const mkdirMock = vi.hoisted(() => vi.fn());
 const removeMock = vi.hoisted(() => vi.fn());
+const openMock = vi.hoisted(() => vi.fn());
+
+function fakeHandle(bytes: number[]) {
+  return {
+    read: vi.fn(async (buf: Uint8Array) => {
+      buf.set(bytes.slice(0, buf.length));
+      return Math.min(bytes.length, buf.length);
+    }),
+    close: vi.fn(async () => undefined),
+  };
+}
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: invokeMock }));
 vi.mock('@tauri-apps/api/path', () => ({
@@ -20,6 +32,7 @@ vi.mock('@tauri-apps/api/path', () => ({
 vi.mock('@tauri-apps/plugin-fs', () => ({
   mkdir: mkdirMock,
   remove: removeMock,
+  open: openMock,
 }));
 vi.mock('@/utils/fileManager', () => ({
   fileManager: {
@@ -90,6 +103,44 @@ describe('libraryStore.importApkg virtual URI staging', () => {
     expect(outcome.status).toBe('failed');
     expect(copyFileMock).not.toHaveBeenCalled();
     expect(invokeMock).not.toHaveBeenCalled();
+    expect(useFlashcardsLibraryStore.getState().actionError).toBeTruthy();
+  });
+
+  it('accepts opaque content:// document IDs and validates the staged file by ZIP magic', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1700000000000);
+    pickMock.mockResolvedValue('content://com.android.providers.downloads.documents/document/msf%3A1234');
+    copyFileMock.mockResolvedValue(undefined);
+    mkdirMock.mockResolvedValue(undefined);
+    removeMock.mockResolvedValue(undefined);
+    openMock.mockResolvedValue(fakeHandle([0x50, 0x4b, 0x03, 0x04, 0x14]));
+    invokeMock.mockResolvedValue({ importedCards: 4 });
+
+    const outcome = await useFlashcardsLibraryStore.getState().importApkg();
+
+    const staged = '/data/app/com.deepstudent.app/tmp_apkg_import/import_1700000000000.apkg';
+    expect(outcome).toEqual({ status: 'imported', importedCards: 4, reviewEnqueued: 0, reviewWithHistory: 0 });
+    expect(copyFileMock).toHaveBeenCalledWith(
+      'content://com.android.providers.downloads.documents/document/msf%3A1234',
+      staged,
+    );
+    expect(openMock).toHaveBeenCalledWith(staged, { read: true });
+    expect(invokeMock).toHaveBeenCalledWith('import_apkg_to_library', { path: staged });
+    expect(removeMock).toHaveBeenCalledWith(staged);
+    vi.restoreAllMocks();
+  });
+
+  it('rejects opaque content:// picks whose content is not a ZIP and cleans up', async () => {
+    pickMock.mockResolvedValue('content://com.android.providers.media.documents/document/446');
+    copyFileMock.mockResolvedValue(undefined);
+    mkdirMock.mockResolvedValue(undefined);
+    removeMock.mockResolvedValue(undefined);
+    openMock.mockResolvedValue(fakeHandle([0x25, 0x50, 0x44, 0x46]));
+
+    const outcome = await useFlashcardsLibraryStore.getState().importApkg();
+
+    expect(outcome.status).toBe('failed');
+    expect(invokeMock).not.toHaveBeenCalled();
+    expect(removeMock).toHaveBeenCalledTimes(1);
     expect(useFlashcardsLibraryStore.getState().actionError).toBeTruthy();
   });
 
