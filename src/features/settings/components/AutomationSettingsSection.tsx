@@ -17,6 +17,7 @@ import { GroupTitle } from './settingsTabPrimitives';
 import { Switch } from '@/components/ui/shad/Switch';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { isMobilePlatform } from '@/utils/platform';
 import { inputShellClass } from '@/components/ui/shad/inputShell';
 import {
   useAutomationStore,
@@ -448,6 +449,9 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
   const [rowMessage, setRowMessage] = useState<{ id: string; text: string } | null>(null);
 
   const desktopUnavailable = invoke === null;
+  // 「关闭窗口后驻留后台」只在桌面端实现（lib.rs CloseRequested 拦截）；移动端系统会冻结
+  // 后台应用，开关毫无作用——不展示开关，改为如实说明任务只在应用打开时运行。
+  const backgroundKeepAliveUnsupported = isMobilePlatform();
 
   useEffect(() => {
     if (desktopUnavailable) return;
@@ -1001,8 +1005,16 @@ export const AutomationSettingsSection: React.FC<AutomationSettingsSectionProps>
         </p>
       ) : (
         <div className={cn(embedded ? 'space-y-4' : 'space-y-3 rounded-2xl bg-muted px-3 py-3 sm:px-4')}>
+          {!embedded && backgroundKeepAliveUnsupported && (
+            <p
+              className="px-3 py-2.5 text-xs leading-relaxed text-muted-foreground"
+              data-testid="automation-background-mobile-note"
+            >
+              {t('settings:automation.background.mobile_note')}
+            </p>
+          )}
           {/* 后台运行开关：嵌入态由工作区自带同一开关（同一 store），这里仅设置页呈现 */}
-          {!embedded && (
+          {!embedded && !backgroundKeepAliveUnsupported && (
             <div
               className="overflow-hidden rounded-[var(--radius-shell-row,0.5rem)]"
               data-testid="automation-background-row"

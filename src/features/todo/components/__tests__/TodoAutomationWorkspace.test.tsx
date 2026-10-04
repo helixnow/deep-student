@@ -510,6 +510,19 @@ describe('TodoAutomationWorkspace', () => {
     expect(wrapper.dataset.open).toBe('false');
   });
 
+  it('shows a note instead of the background switch on mobile', () => {
+    const ua = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36');
+    try {
+      render(<TodoAutomationWorkspace />);
+      expect(screen.queryByRole('switch', { name: 'Keep running after closing the window' })).not.toBeInTheDocument();
+      expect(screen.getByTestId('automation-background-mobile-note')).toBeInTheDocument();
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
   it('toggles background execution through the store', () => {
     render(<TodoAutomationWorkspace />);
 

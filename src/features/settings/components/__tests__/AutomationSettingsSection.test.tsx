@@ -513,6 +513,20 @@ describe('AutomationSettingsSection', () => {
     ).toBeInTheDocument();
   });
 
+  it('replaces the background toggle with an honest note on mobile (no keep-alive there)', () => {
+    const ua = vi
+      .spyOn(window.navigator, 'userAgent', 'get')
+      .mockReturnValue('Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36');
+    try {
+      renderSection();
+      expect(screen.queryByTestId('automation-background-row')).not.toBeInTheDocument();
+      expect(screen.queryByRole('switch', { name: /background/i })).not.toBeInTheDocument();
+      expect(screen.getByTestId('automation-background-mobile-note')).toBeInTheDocument();
+    } finally {
+      ua.mockRestore();
+    }
+  });
+
   it('hides the background running row in embedded mode (workspace owns the toggle)', () => {
     renderSection({ embedded: true });
     expect(screen.queryByTestId('automation-background-row')).not.toBeInTheDocument();

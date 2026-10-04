@@ -59,6 +59,7 @@ import { formatAbsoluteTime, formatRelativeTime } from './automation/automationF
 import { computeNextRuns, formatWeekdayList } from './automation/scheduleMath';
 import '../styles/automation.css';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { isMobilePlatform } from '@/utils/platform';
 import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const CREATE_PANEL_ID = 'automation-create-panel';
@@ -258,6 +259,8 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
   const locale = i18n.resolvedLanguage || i18n.language || 'zh-CN';
   // 桌面端：标题栏迁入全局顶栏（hideHeader 的移动壳场景不参与）
   const headerPortalTarget = useTodoToolbarPortalTarget(titlebarPortalTarget);
+  // 关闭窗口后驻留后台仅桌面端实现；移动端系统会冻结后台应用，开关无效，改为说明
+  const backgroundKeepAliveUnsupported = isMobilePlatform();
 
   const automations = useAutomationStore((state) => state.automations);
   const count = useAutomationStore((state) => state.count);
@@ -757,6 +760,14 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 />
               </div>
             )}
+            {backgroundKeepAliveUnsupported ? (
+              <p
+                className="mt-3 px-1 text-xs leading-relaxed text-muted-foreground"
+                data-testid="automation-background-mobile-note"
+              >
+                {t('todo:automation.backgroundMobileNote')}
+              </p>
+            ) : (
             <div className="automation-card mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -783,6 +794,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                 />
               )}
             </div>
+            )}
           </section>
 
           {/* 内联创建面板（禁模态：概览下方 grid 0fr→1fr 展开） */}

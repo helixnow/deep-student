@@ -10,6 +10,7 @@ import i18next from 'i18next';
 import type { Command } from '../registry/types';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { useAutomationStore } from '@/features/todo/stores/useAutomationStore';
+import { isMobilePlatform } from '@/utils/platform';
 import {
   AUTOMATION_REQUEST_CREATE_EVENT,
   requestAutomationCreate,
@@ -94,6 +95,8 @@ export const automationCommands: Command[] = [
     icon: Pause,
     keywords: KEYWORDS,
     priority: 58,
+    // 后台驻留只在桌面端实现，移动端隐藏这对开关命令
+    isEnabled: () => !isMobilePlatform(),
     execute: async (deps) => {
       try {
         await setBackgroundEnabled(false);
@@ -111,6 +114,8 @@ export const automationCommands: Command[] = [
     icon: Play,
     keywords: KEYWORDS,
     priority: 57,
+    // 后台驻留只在桌面端实现，移动端隐藏这对开关命令
+    isEnabled: () => !isMobilePlatform(),
     execute: async (deps) => {
       try {
         await setBackgroundEnabled(true);

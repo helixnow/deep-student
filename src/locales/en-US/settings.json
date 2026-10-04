@@ -849,7 +849,8 @@
       "active_hint_idle": "Background scheduling active; no upcoming triggers",
       "paused_hint": "Background running is off; automations will not fire after the window closes",
       "confirm_hint": "Turn off background running? Once the window closes, no automations (including the heartbeat) will fire until it is re-enabled.",
-      "confirm": "Turn off background running"
+      "confirm": "Turn off background running",
+      "mobile_note": "Scheduled tasks run only while the app is open; they won't fire while it's in the background or closed."
     },
     "action_type": {
       "notify": "Notification + todo",
