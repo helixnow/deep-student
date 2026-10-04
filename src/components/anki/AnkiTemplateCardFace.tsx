@@ -30,12 +30,6 @@ export interface AnkiTemplateCardFaceProps {
   stageHeight?: number;
 }
 
-/** 舞台模式：body（即模板的 .card 背景）至少铺满 iframe 视口，内容纵向居中 */
-const STAGE_FILL_CSS = `
-html, body { min-height: 100vh; scrollbar-gutter: auto; }
-body { box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; margin: 0; }
-`;
-
 function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
   if (side === 'back') {
     return card.back || card.fields?.Back || card.text || '';
@@ -140,7 +134,9 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   const stageMode = stageHeight != null && stageHeight > 0;
   const cssContent = useMemo(
-    () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor }) + (stageMode ? STAGE_FILL_CSS : ''),
+    // 舞台 CSS（.card 铺满 + 纵向居中）见 CARD_FACE_STAGE_CSS：body 保持块级布局，
+    // 模板「纸张」的 max-width + margin:0 auto 才按 Anki 语义取自然宽度。
+    () => buildCardFaceCss(template?.css_style, { darkMode, surfaceColor, stage: stageMode }),
     [template?.css_style, darkMode, surfaceColor, stageMode],
   );
 

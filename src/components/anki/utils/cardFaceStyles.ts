@@ -73,8 +73,30 @@ export const CARD_FACE_DARK_CSS = `
 .anki-hint > .anki-hint-summary { color: #93c5fd; }
 `;
 
+/**
+ * 舞台模式（复习卡面）：body（即模板的 .card 背景）至少铺满 iframe 视口，内容纵向居中。
+ *
+ * 关键：body 必须保持块级布局，纵向居中只用 align-content（块容器对齐，
+ * Chromium 123+ / Safari 17.4+ / Firefox 125+；更旧的内核退化为顶部对齐，无其他副作用）。
+ * 曾用 `body { display:flex; flex-direction:column; justify-content:center }`——
+ * 内置 design-* 模板全都用 `max-width:Npx; margin:0 auto` 的「纸张」容器，
+ * 在 flex 列里横向 auto margin 会让子项不再拉伸、退化为 fit-content 宽度：
+ * 卡片缩成正文最长一行的宽度（The Architect 约 320px、glass 仅 185px），
+ * 再叠加 overflow 归一化（hidden→auto）后正文换行、溢出，卡片内出现纵横两条滚动条。
+ * 块级布局下 auto margin 才是 Anki 的语义：宽度 = min(可用宽度, max-width) 并水平居中。
+ *
+ * `safe center`：内容高于视口（自适应高度测量前的过渡帧）时退为顶部对齐，
+ * 不把内容顶端推出可滚动区；不支持 safe 关键字的内核沿用前一条 `center`。
+ */
+export const CARD_FACE_STAGE_CSS = `
+html, body { min-height: 100vh; scrollbar-gutter: auto; }
+body { box-sizing: border-box; margin: 0; align-content: center; align-content: safe center; }
+`;
+
 export interface BuildCardFaceCssOptions {
   darkMode?: boolean;
+  /** 舞台模式：.card 背景铺满 iframe 视口、内容纵向居中（见 CARD_FACE_STAGE_CSS） */
+  stage?: boolean;
   /**
    * 卡面文档的显式背景色（resolveCardFaceSurfaceColor 的解析值）。
    *
@@ -105,6 +127,9 @@ export function buildCardFaceCss(
   }
   if (options.darkMode) {
     parts.push(CARD_FACE_DARK_CSS);
+  }
+  if (options.stage) {
+    parts.push(CARD_FACE_STAGE_CSS);
   }
   return parts.join('\n');
 }
