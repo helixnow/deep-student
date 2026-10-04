@@ -2359,8 +2359,12 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         // `.chat-empty-composer-layout__input` 自己声明 surface-root。
         // （此前这里写死 `background: var(--shell-workspace-panel)`，把契约废掉了，
         //   输入区等于往消息列表上盖了一块白色板。）
-        // 🎨 移动端底部安全区 + 导航栏间距（使用 bottomGapValue 同时包含安全区域和导航栏高度）
-        paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
+        // 🎨 移动端底部安全区（bottomGapValue = safe-area/键盘 inset + gaps.mobile）。
+        // 不再看 isFullscreenContent：MobileSlidingLayout 在抽屉横向拖拽锁轴/侧屏展开
+        // 时登记 fullscreen claim，旧逻辑据此把 padding 换成 8px，输入栏在滑动途中
+        // 掉进 home indicator 区域、松手再弹回。底部导航早已移入侧栏（gaps.mobile=0），
+        // 安全区始终由输入栏自身占位，滑动期间保持不变。
+        paddingBottom: isMobile ? bottomGapValue : '8px',
         // 横屏刘海/手势条：左右安全区（竖屏两值为 0，等价原 px-4）
         paddingLeft: isMobile ? 'calc(1rem + var(--mobile-safe-area-left, 0px))' : undefined,
         paddingRight: isMobile ? 'calc(1rem + var(--mobile-safe-area-right, 0px))' : undefined,
