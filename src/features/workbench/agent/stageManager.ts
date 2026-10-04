@@ -883,10 +883,15 @@ function promoteManagedApply(
   syncPerfMonitorForActiveRuns();
 }
 
+/** 用户可见的中止/失败原因（回执 message 与 AgentStrip 共用）；调用时解析以跟随语言切换 */
+function tAgent(key: string, defaultValue: string, vars?: Record<string, string>): string {
+  return i18n.t(`workbench:agent.${key}`, { defaultValue, ...vars });
+}
+
 function cancelledBeforeApplyReceipt(
   correlationId: string,
   ops: AgentOp[],
-  message = '操作在准备阶段已取消，未开始执行',
+  message = tAgent('errors.cancelledBeforeApply', '操作在准备阶段已取消，未开始执行'),
 ): AcrBridgeResponse {
   return bridgeOk(correlationId, {
     status: 'cancelled',
@@ -1082,7 +1087,10 @@ function requestAbort(run: ActiveRun, reasonLabel: string): AcrReceipt | null {
     run.abortFallbackReceipt = run.driver.abort(run.key);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    run.abortFallbackReceipt = failedReceipt(0, `abort 异常: ${message}`);
+    run.abortFallbackReceipt = failedReceipt(
+      0,
+      tAgent('errors.abortFailed', 'abort 异常: {{error}}', { error: message }),
+    );
   }
   // Cancellation stops renewal immediately. The driver still gets a bounded
   // drain window to publish its authoritative partial receipt.
@@ -1124,7 +1132,7 @@ function healStalePresence(now = Date.now()): void {
     const run = activeByRun.get(p.runKey);
     if (run) {
       stopHeartbeat(run);
-      requestAbort(run, '操作心跳超时，已中止');
+      requestAbort(run, tAgent('errors.heartbeatTimeout', '操作心跳超时，已中止'));
     } else {
       usePresenceStore.getState().clearByRun(p.runKey);
       if (p.windowId) {
@@ -1625,7 +1633,7 @@ async function handleCloseWindow(
   const closed = await workbenchBus.closeWindow(windowId);
   if (closed) {
     // canClose 确认成功后再中止；若 store 订阅已先处理，此调用保持幂等。
-    abortRunForWindow(windowId, '窗口已关闭，操作中断');
+    abortRunForWindow(windowId, tAgent('errors.windowClosed', '窗口已关闭，操作中断'));
   }
   return bridgeOk(req.correlationId, { closed });
 }
@@ -2040,7 +2048,7 @@ async function handleApplyOps(
         windowId,
         typeId: target.typeId,
         status: 'acting',
-        label: ops[0]?.label ?? 'AI 正在操作',
+        label: ops[0]?.label ?? tAgent('core.operatingFallback', 'AI 正在操作'),
         startedAt: Date.now(),
         ttlMs: PRESENCE_TTL_MS,
         ...(placementHint ? { placementHint } : {}),
@@ -2096,7 +2104,10 @@ async function handleApplyOps(
       } catch {
         /* abort 失败仍返回 failed */
       }
-      receipt = failedReceipt(ops.length, `apply 异常: ${msg}`);
+      receipt = failedReceipt(
+        ops.length,
+        tAgent('errors.applyFailed', 'apply 异常: {{error}}', { error: msg }),
+      );
     } finally {
       try {
         pacer.dispose();
@@ -2428,7 +2439,10 @@ export const stageManager: StageManagerApi & {
       const nextIds = new Set(Object.keys(state.windows));
       for (const id of prevWindowIds) {
         if (!nextIds.has(id)) {
-          abortRunForWindow(id, '窗口已关闭（资源删除或用户关窗），操作中断');
+          abortRunForWindow(
+            id,
+            tAgent('errors.windowClosedOrRemoved', '窗口已关闭（资源删除或用户关窗），操作中断'),
+          );
         }
       }
       prevWindowIds = nextIds;
@@ -2500,16 +2514,17 @@ export const stageManager: StageManagerApi & {
     releasePerfMonitorOwner?.();
     releasePerfMonitorOwner = null;
     stopPresenceSweep();
+    const stoppedReason = tAgent('errors.stageStopped', 'StageManager 已停止，操作中断');
     for (const runId of [...activeByRun.keys()]) {
       const run = activeByRun.get(runId);
       if (run) {
         stopHeartbeat(run);
-        requestAbort(run, 'StageManager 已停止，操作中断');
+        requestAbort(run, stoppedReason);
         scheduleOrphanDeadline(run);
       }
     }
     for (const operation of managedOperations.values()) {
-      abortManagedOperation(operation, 'StageManager 已停止，操作中断');
+      abortManagedOperation(operation, stoppedReason);
     }
     clearAllDoneHoldTimers();
     usePresenceStore.getState().clearAll();

@@ -234,13 +234,18 @@ export const todoDriver: CollabDriver & {
             );
             const previousListId = useTodoStore.getState().activeListId;
             await applyShowList(listId);
-            state.done.push(op.label || `切换清单 ${listId}`);
+            const opLabel = op.label
+              || i18n.t('workbench:agent.drivers.todo.switchList', {
+                listId,
+                defaultValue: '切换清单 {{listId}}',
+              });
+            state.done.push(opLabel);
             state.entityIds.push(listId);
             state.applied += 1;
             if (previousListId !== listId) {
               state.pendingInverses.push({
                 invert: () => restoreList(previousListId),
-                label: op.label || `切换清单 ${listId}`,
+                label: opLabel,
               });
             }
             // 当前副作用已经完成；此后中止只能把后续 op 标为 undone。

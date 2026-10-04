@@ -5,8 +5,21 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 
-// error 文案走 i18n（forms:note_driver.*）：key-echo mock 让断言与语言无关
-vi.mock('@/i18n', () => ({ default: { t: (key: string) => key } }));
+// error 文案走 i18n（forms:note_driver.*）：key-echo mock 让断言与语言无关；
+// 回执/进度文案（workbench:agent.drivers.note.*）带 zh-CN defaultValue → 插值后返回原文
+vi.mock('@/i18n', () => ({
+  default: {
+    t: (key: string, opts?: unknown) => {
+      if (opts && typeof opts === 'object') {
+        const vars = opts as Record<string, unknown>;
+        if (typeof vars.defaultValue === 'string') {
+          return vars.defaultValue.replace(/\{\{(\w+)\}\}/g, (_, name: string) => String(vars[name] ?? ''));
+        }
+      }
+      return key;
+    },
+  },
+}));
 
 import {
   __resetContentDirtyRegistry,

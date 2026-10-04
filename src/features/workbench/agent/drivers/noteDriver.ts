@@ -34,6 +34,19 @@ import type {
   StageManagerApi,
 } from '../types';
 
+/**
+ * 用户可见文案（回执 done/undone/message 渲染在聊天工作台卡片，reportProgress 与
+ * reviewing label 渲染在 AgentStrip）：workbench:agent.drivers.note.*，调用时解析以跟随
+ * 语言切换；defaultValue 保留 zh-CN 原文。
+ */
+function tNote(key: string, defaultValue: string, vars?: Record<string, string | number>): string {
+  return i18n.t(`workbench:agent.drivers.note.${key}`, { defaultValue, ...vars });
+}
+
+function joinSteps(steps: string[]): string {
+  return steps.join(tNote('listSeparator', '；'));
+}
+
 type NoteEditorRegistration = {
   api: CrepeEditorApi;
   windowId?: string;
@@ -426,11 +439,11 @@ function dispatchSuggestionEvent(detail: {
   onSettled?: () => void;
 }): SuggestionDisposition {
   if (typeof window === 'undefined') {
-    return { accepted: false, reason: '当前环境没有可用的建议面板' };
+    return { accepted: false, reason: tNote('noSuggestionPanel', '当前环境没有可用的建议面板') };
   }
   let disposition: SuggestionDisposition = {
     accepted: false,
-    reason: '没有匹配的笔记编辑器认领建议',
+    reason: tNote('noSuggestionClaimer', '没有匹配的笔记编辑器认领建议'),
   };
   window.dispatchEvent(new CustomEvent('canvas:ai-edit-request', {
     detail: {
@@ -642,14 +655,14 @@ export function remapInsertPos(
 function readCompleteMarkdown(api: CrepeEditorApi): string {
   if (api.getFullDocument) return api.getFullDocument().markdown;
   if (api.isDocumentWindowed?.() && !api.getFullMarkdown) {
-    throw new Error('长笔记编辑器未提供安全的全文读取 API');
+    throw new Error(tNote('fullReadUnsupported', '长笔记编辑器未提供安全的全文读取 API'));
   }
   return api.getFullMarkdown?.() ?? api.getMarkdown();
 }
 
 async function flushRequired(api: CrepeEditorApi): Promise<void> {
   if (!api.flushPendingSave) {
-    throw new Error('编辑器未提供持久化确认能力');
+    throw new Error(tNote('saveConfirmUnsupported', '编辑器未提供持久化确认能力'));
   }
   await api.flushPendingSave();
 }
@@ -661,30 +674,32 @@ async function replaceCompleteMarkdown(
   baseline = api.getFullDocument?.(),
 ): Promise<void> {
   if (readCompleteMarkdown(api) !== expectedMarkdown) {
-    throw new Error('笔记正文已变化，OCC 校验失败');
+    throw new Error(tNote('contentChanged', '笔记正文已变化，OCC 校验失败'));
   }
 
   const canonical = api.normalizeMarkdown?.(markdown) ?? markdown;
 
   if (api.replaceFullDocument && baseline) {
     const applied = await api.replaceFullDocument(markdown, baseline);
-    if (applied.markdown !== canonical) throw new Error('全文替换后的内容验证失败');
+    if (applied.markdown !== canonical) throw new Error(tNote('replaceVerifyFailed', '全文替换后的内容验证失败'));
   } else if (api.replaceFullMarkdown) {
     const changed = await api.replaceFullMarkdown(canonical, { expectedMarkdown });
-    if (!changed) throw new Error('全文替换被编辑器拒绝');
+    if (!changed) throw new Error(tNote('replaceRejected', '全文替换被编辑器拒绝'));
   } else {
-    if (api.isDocumentWindowed?.()) throw new Error('长笔记编辑器未提供安全的全文写入 API');
+    if (api.isDocumentWindowed?.()) {
+      throw new Error(tNote('fullWriteUnsupported', '长笔记编辑器未提供安全的全文写入 API'));
+    }
     if (!api.setMarkdown(canonical)) {
-      throw new Error('编辑器拒绝 setMarkdown');
+      throw new Error(tNote('setMarkdownRejected', '编辑器拒绝 setMarkdown'));
     }
     if (api.getMarkdown() !== canonical) {
-      throw new Error('setMarkdown 后正文验证失败');
+      throw new Error(tNote('setMarkdownVerifyFailed', 'setMarkdown 后正文验证失败'));
     }
     await flushRequired(api);
   }
 
   if (readCompleteMarkdown(api) !== canonical) {
-    throw new Error('全文替换后的内容验证失败');
+    throw new Error(tNote('replaceVerifyFailed', '全文替换后的内容验证失败'));
   }
 }
 
@@ -740,7 +755,7 @@ async function applyNoteInsert(
 ): Promise<{ ok: boolean; reason?: string; startPos?: number; endPos?: number }> {
   const text = extractInsertText(op.payload);
   if (!text) {
-    return { ok: false, reason: '插入内容为空' };
+    return { ok: false, reason: tNote('emptyInsert', '插入内容为空') };
   }
 
   const anchor = parseAnchor(op.anchor);
@@ -748,7 +763,11 @@ async function applyNoteInsert(
   if (startPos == null) {
     return {
       ok: false,
-      reason: `无法解析锚点${anchor?.heading || anchor?.section ? `「${anchor.heading ?? anchor.section}」` : ''}`,
+      reason: anchor?.heading || anchor?.section
+        ? tNote('anchorUnresolvedNamed', '无法解析锚点「{{anchor}}」', {
+          anchor: (anchor.heading ?? anchor.section)!,
+        })
+        : tNote('anchorUnresolved', '无法解析锚点'),
     };
   }
 
@@ -797,7 +816,11 @@ async function applyNoteInsert(
       const dwellMs = structuredDwellMs(profile, segments[si]!.length);
       const insertedRange = api.agentInsertMarkdown(segments[si]!, mappedPos, dwellMs || undefined);
       if (!insertedRange || insertedRange.to <= insertedRange.from) {
-        structuredFailed = `编辑器未确认第 ${si + 1}/${segments.length} 段结构化插入`;
+        structuredFailed = tNote(
+          'structuredSegmentUnconfirmed',
+          '编辑器未确认第 {{index}}/{{total}} 段结构化插入',
+          { index: si + 1, total: segments.length },
+        );
         break;
       }
       if (structuredFrom == null) structuredFrom = insertedRange.from;
@@ -806,7 +829,11 @@ async function applyNoteInsert(
       run.reportProgress(
         stepIndex,
         totalOps,
-        `${op.label}（${Math.min(structuredChars, text.length)}/${text.length}）`,
+        tNote('progressChars', '{{label}}（{{done}}/{{total}}）', {
+          label: op.label,
+          done: Math.min(structuredChars, text.length),
+          total: text.length,
+        }),
         run.target.resourceId,
       );
       if (dwellMs > 0) await run.pacing.tick(dwellMs / profile.opIntervalMs);
@@ -819,7 +846,7 @@ async function applyNoteInsert(
       // 中途失败：已插入的前缀如实返回区间，交由调用方记账/报告
       return {
         ok: false,
-        reason: structuredFailed ?? '结构化插入失败',
+        reason: structuredFailed ?? tNote('structuredInsertFailed', '结构化插入失败'),
         startPos: structuredFrom,
         endPos: pos,
       };
@@ -874,7 +901,7 @@ async function applyNoteInsert(
     if (!insertedRange || insertedRange.to <= insertedRange.from) {
       return {
         ok: false,
-        reason: '编辑器未确认文本插入',
+        reason: tNote('textInsertUnconfirmed', '编辑器未确认文本插入'),
         startPos: ledgerFrom ?? startPos,
         endPos: pos,
       };
@@ -962,7 +989,7 @@ function handleDestructiveSuggestion(
     clearReviewing = markSuggestionReviewingGuarded(
       run.windowId,
       run.runId,
-      `等待确认：${op.label}`,
+      tNote('reviewingLabel', '等待确认：{{label}}', { label: op.label }),
     );
   }
 
@@ -973,7 +1000,11 @@ function handleDestructiveSuggestion(
       totalOps: 1,
       entityIds: noteId ? [noteId] : [],
       undone: [op.label],
-      message: `编辑建议未建立：${'reason' in disposition ? disposition.reason : '未知原因'}`,
+      message: tNote('suggestionNotCreatedReason', '编辑建议未建立：{{reason}}', {
+        reason: 'reason' in disposition
+          ? disposition.reason
+          : tNote('unknownReason', '未知原因'),
+      }),
     });
   }
 
@@ -983,10 +1014,13 @@ function handleDestructiveSuggestion(
     applied: 0,
     totalOps: 1,
     entityIds: noteId ? [noteId] : [],
-    done: [`已提交建议：${op.label}`],
+    done: [tNote('suggestionSubmittedItem', '已提交建议：{{label}}', { label: op.label })],
     undone: [],
     suggestionPending: true,
-    message: '已提交编辑建议，等待用户在 diff 面板确认（accept/reject）',
+    message: tNote(
+      'suggestionSubmitted',
+      '已提交编辑建议，等待用户在 diff 面板确认（accept/reject）',
+    ),
   });
 }
 
@@ -1032,14 +1066,14 @@ async function applyWindowedNoteInsert(
   api: CrepeEditorApi,
 ): Promise<{ ok: boolean; reason?: string; before?: string; after?: string }> {
   const text = extractInsertText(op.payload);
-  if (!text) return { ok: false, reason: '插入内容为空' };
+  if (!text) return { ok: false, reason: tNote('emptyInsert', '插入内容为空') };
 
   const baseline = api.getFullDocument?.();
   const before = baseline?.markdown ?? readCompleteMarkdown(api);
   const computed = computeWindowedInsertion(before, text, parseAnchor(op.anchor));
   if (computed.error) return { ok: false, reason: computed.error };
   if (!api.replaceFullDocument && !api.replaceFullMarkdown) {
-    return { ok: false, reason: '长笔记编辑器未提供安全的全文写入 API' };
+    return { ok: false, reason: tNote('fullWriteUnsupported', '长笔记编辑器未提供安全的全文写入 API') };
   }
 
   try {
@@ -1086,7 +1120,7 @@ async function applyDestructiveDirect(
     baseline = api.getFullDocument?.();
     previous = baseline?.markdown ?? readCompleteMarkdown(api);
   } catch {
-    return { ok: false, reason: '无法读取当前笔记正文' };
+    return { ok: false, reason: tNote('readFailed', '无法读取当前笔记正文') };
   }
   const computed = computeDestructiveMarkdown(previous, op);
   if (computed.error) {
@@ -1096,7 +1130,7 @@ async function applyDestructiveDirect(
     computed.content = api.normalizeMarkdown?.(computed.content) ?? computed.content;
     await replaceCompleteMarkdown(api, computed.content, previous, baseline);
   } catch (err) {
-    const reason = err instanceof Error ? err.message : 'setMarkdown 失败';
+    const reason = err instanceof Error ? err.message : tNote('setMarkdownFailed', 'setMarkdown 失败');
     if (readCompleteMarkdown(api) !== computed.content) {
       return { ok: false, reason };
     }
@@ -1148,7 +1182,7 @@ export const noteDriver: CollabDriver = {
         mode: 'frontend',
         totalOps: ops.length,
         undone: ops.map((o) => o.label),
-        message: '缺少 resourceId，无法定位笔记编辑器',
+        message: tNote('missingResourceId', '缺少 resourceId，无法定位笔记编辑器'),
       });
     }
 
@@ -1159,8 +1193,10 @@ export const noteDriver: CollabDriver = {
         mode: 'frontend',
         totalOps: ops.length,
         undone: ops.map((o) => o.label),
-        message:
+        message: tNote(
+          'editorNotMounted',
           '笔记编辑器未挂载（窗口未打开或未就绪），请改走后端数据面或先 open_app note',
+        ),
       });
     }
 
@@ -1208,7 +1244,7 @@ export const noteDriver: CollabDriver = {
             pendingSuggestion = suggestion;
             done.push(...suggestion.done);
           } else {
-            suggestionError = suggestion.message ?? '编辑建议未建立';
+            suggestionError = suggestion.message ?? tNote('suggestionNotCreated', '编辑建议未建立');
             undone.push(op.label);
           }
           // suggestion 未改文档：applied 保持 0（与 mindmapDriver 一致）
@@ -1244,7 +1280,7 @@ export const noteDriver: CollabDriver = {
           run.reportProgress(
             i + 1,
             ops.length,
-            direct.reason ?? '破坏类写入失败',
+            direct.reason ?? tNote('destructiveWriteFailed', '破坏类写入失败'),
             resourceId,
           );
         }
@@ -1253,7 +1289,12 @@ export const noteDriver: CollabDriver = {
 
       if (op.kind !== 'note_insert' && op.kind !== 'note_append') {
         undone.push(op.label);
-        run.reportProgress(i + 1, ops.length, `不支持的 op：${op.kind}`, resourceId);
+        run.reportProgress(
+          i + 1,
+          ops.length,
+          tNote('unsupportedOp', '不支持的 op：{{kind}}', { kind: op.kind }),
+          resourceId,
+        );
         continue;
       }
 
@@ -1284,7 +1325,7 @@ export const noteDriver: CollabDriver = {
           run.reportProgress(
             i + 1,
             ops.length,
-            result.reason ?? '长笔记全文写入失败',
+            result.reason ?? tNote('windowedWriteFailed', '长笔记全文写入失败'),
             resourceId,
           );
         }
@@ -1297,7 +1338,12 @@ export const noteDriver: CollabDriver = {
         const afterInsert = readCompleteMarkdown(api);
         if (afterInsert === beforeInsert) {
           undone.push(op.label);
-          run.reportProgress(i + 1, ops.length, '编辑器未确认正文发生变化', resourceId);
+          run.reportProgress(
+            i + 1,
+            ops.length,
+            tNote('contentUnchanged', '编辑器未确认正文发生变化'),
+            resourceId,
+          );
           continue;
         }
         lastInsertEnd = result.endPos;
@@ -1317,8 +1363,9 @@ export const noteDriver: CollabDriver = {
           const afterInsert = readCompleteMarkdown(api);
           if (afterInsert !== beforeInsert) {
             applied += 1;
-            done.push(`${op.label}（部分）`);
-            recordMarkdownInverse(run, api, beforeInsert, afterInsert, `${op.label}（部分）`);
+            const partialLabel = tNote('partialItem', '{{label}}（部分）', { label: op.label });
+            done.push(partialLabel);
+            recordMarkdownInverse(run, api, beforeInsert, afterInsert, partialLabel);
             try {
               await flushRequired(api);
             } catch (error) {
@@ -1337,8 +1384,9 @@ export const noteDriver: CollabDriver = {
         const afterInsert = readCompleteMarkdown(api);
         if (afterInsert !== beforeInsert) {
           applied += 1;
-          done.push(`${op.label}（部分）`);
-          recordMarkdownInverse(run, api, beforeInsert, afterInsert, `${op.label}（部分）`);
+          const partialLabel = tNote('partialItem', '{{label}}（部分）', { label: op.label });
+          done.push(partialLabel);
+          recordMarkdownInverse(run, api, beforeInsert, afterInsert, partialLabel);
           try {
             await flushRequired(api);
           } catch (error) {
@@ -1349,7 +1397,7 @@ export const noteDriver: CollabDriver = {
         run.reportProgress(
           i + 1,
           ops.length,
-          result.reason ?? '插入失败',
+          result.reason ?? tNote('insertFailed', '插入失败'),
           resourceId,
         );
         if (persistenceError) {
@@ -1363,7 +1411,9 @@ export const noteDriver: CollabDriver = {
       run.reportProgress(
         Math.max(1, done.length),
         ops.length,
-        `内容已应用，但自动保存失败：${persistenceError}`,
+        tNote('appliedSaveFailed', '内容已应用，但自动保存失败：{{error}}', {
+          error: persistenceError,
+        }),
         resourceId,
       );
     }
@@ -1415,21 +1465,28 @@ export const noteDriver: CollabDriver = {
       undone,
       suggestionPending: pendingSuggestion ? true : undefined,
       message: aborted
-        ? '操作已中断，已返回部分结果'
+        ? tNote('abortedPartial', '操作已中断，已返回部分结果')
         : persistenceError
-          ? `内容已在窗口中应用，但自动保存失败：${persistenceError}`
+          ? tNote('appliedInWindowSaveFailed', '内容已在窗口中应用，但自动保存失败：{{error}}', {
+            error: persistenceError,
+          })
           : suggestionError
             ? suggestionError
           : pendingSuggestion
             ? undone.length > 0
-              ? `已提交编辑建议；建议后的步骤尚未执行：${undone.join('；')}`
+              ? tNote('suggestionStepsPending', '已提交编辑建议；建议后的步骤尚未执行：{{steps}}', {
+                steps: joinSteps(undone),
+              })
               : applied > 0
-                ? '前序内容已保存，编辑建议等待用户在 diff 面板确认（accept/reject）'
+                ? tNote(
+                  'savedSuggestionPending',
+                  '前序内容已保存，编辑建议等待用户在 diff 面板确认（accept/reject）',
+                )
                 : pendingSuggestion.message
           : status === 'completed'
-            ? '已在前端实时应用并保存'
+            ? tNote('appliedAndSaved', '已在前端实时应用并保存')
             : undone.length > 0
-              ? `部分步骤未完成：${undone.join('；')}`
+              ? tNote('stepsIncomplete', '部分步骤未完成：{{steps}}', { steps: joinSteps(undone) })
               : undefined,
     });
     return aborted ? withUserPatch(receipt, 'note') : receipt;
@@ -1443,8 +1500,8 @@ export const noteDriver: CollabDriver = {
         status: 'partial',
         mode: 'frontend',
         done: [],
-        undone: ['已中止剩余步骤'],
-        message: 'noteDriver 已中止',
+        undone: [tNote('remainingAborted', '已中止剩余步骤')],
+        message: tNote('aborted', 'noteDriver 已中止'),
       }),
       'note',
     );
