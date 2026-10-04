@@ -186,6 +186,10 @@ async fn collect_from_library(
         let name = file.file_name.clone();
         let text =
             crate::vfs::ref_handlers::extract_file_text_with_strategy(&conn, file_id, &name, None);
+        // 音视频转写：按 ~600s 切片并注入 [媒体@id:时间] 锚点（非媒体文件原样返回）
+        let text = text.map(|t| {
+            crate::study_loop::media_source::prepare_media_text_for_generation(&conn, file_id, t)
+        });
         // 是否有现成 OCR 结果（用于标注来源，不触发新 OCR）
         let has_ocr =
             crate::vfs::ref_handlers::get_ocr_pages_text_with_conn(&conn, file_id).is_some();

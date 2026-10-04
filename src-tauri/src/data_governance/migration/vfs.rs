@@ -1081,6 +1081,17 @@ pub const V20261005_MEDIA_TRANSCRIPTS: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx_media_segments_status"])
 .idempotent();
 
+/// V20261006: 学习时长——每日累计秒数（设备本地计数，前端「可见且在场」才计时）。
+///
+/// 设计契约：docs/dev/media-learning/README.md §1.1 / §3。新建表，无危险 SQL。
+pub const V20261006_STUDY_TIME: MigrationDef = MigrationDef::new(
+    20261006,
+    "study_time",
+    include_str!("../../../migrations/vfs/V20261006__study_time.sql"),
+)
+.with_expected_tables(&["study_time_daily"])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1150,6 +1161,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260923_NOTE_HISTORY_INTEGRATION,
     V20260924_NOTE_EDITOR_LEASES,
     V20261005_MEDIA_TRANSCRIPTS,
+    V20261006_STUDY_TIME,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1230,6 +1242,8 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 音视频字幕段与播放进度（V20261005）
     "media_transcript_segments",
     "media_progress",
+    // 学习时长（V20261006，设备本地计数）
+    "study_time_daily",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
@@ -1244,7 +1258,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 57;
+pub const VFS_TABLE_COUNT: usize = 58;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1318,15 +1332,16 @@ mod tests {
 
     #[test]
     fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20261005);
+        assert_eq!(VFS_SCHEMA_VERSION, 20261006);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("media_transcripts")
+            Some("study_time")
         );
+        assert_eq!(V20261006_STUDY_TIME.expected_tables, &["study_time_daily"]);
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables
             .contains(&"insights"));

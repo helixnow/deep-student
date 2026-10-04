@@ -7730,6 +7730,9 @@ pub struct LearningActivity {
     pub date: String,
     pub count: u32,
     pub details: DailyActivityDetails,
+    /// 当日学习时长（秒，来自 study_time_daily；热力图「时长」口径）。不计入 `count`。
+    #[serde(default)]
+    pub study_seconds: u32,
 }
 
 /// 获取学习热力图数据
@@ -7743,6 +7746,7 @@ pub async fn get_learning_heatmap(
     use std::collections::HashMap;
 
     let mut daily_map: HashMap<String, DailyActivityDetails> = HashMap::new();
+    let mut study_seconds_by_date: HashMap<String, u32> = HashMap::new();
 
     // 初始化日期范围内的所有日期
     let start = chrono::NaiveDate::parse_from_str(&start_date, "%Y-%m-%d")
@@ -7920,6 +7924,17 @@ pub async fn get_learning_heatmap(
                     details.questions_answered = count;
                 }
             }
+
+            // 学习时长（study_time_daily，「可见且在场」计时）
+            for (date, seconds) in query_date_counts(
+                &conn,
+                "SELECT date, MIN(seconds, 86400) FROM study_time_daily
+                 WHERE date >= ?1 AND date <= ?2 AND seconds > 0",
+                &start_date,
+                &end_date,
+            ) {
+                study_seconds_by_date.insert(date, seconds);
+            }
         }
     }
 
@@ -7956,6 +7971,7 @@ pub async fn get_learning_heatmap(
                 + details.questions_answered;
 
             LearningActivity {
+                study_seconds: study_seconds_by_date.get(&date).copied().unwrap_or(0),
                 date,
                 count,
                 details,

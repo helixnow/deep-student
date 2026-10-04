@@ -525,6 +525,17 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Per-device playback resume position and watched time",
         },
+        // --- Study time (V20261006) ---
+        TableClassification {
+            database: "vfs",
+            table_name: "study_time_daily",
+            primary_key: "date",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Per-device daily study seconds (additive counter, cannot be row-LWW merged); included in database backup",
+        },
         // --- Notes persistent local state and shared learning relationships ---
         TableClassification {
             database: "vfs",

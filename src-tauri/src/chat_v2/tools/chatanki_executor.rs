@@ -8238,6 +8238,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         &params.tuning,
         preference_hint.as_deref(),
     );
+    apply_media_source_requirements(&mut options, &content_text, params.vfs_db.as_deref());
     if let Some(extra_requirements) = params.extra_requirements.as_ref() {
         persist_preference_observation_best_effort(
             &params.anki_db,
@@ -10120,6 +10121,13 @@ fn extract_text_from_refs(
                         _ => "".to_string(),
                     }
                 };
+                // 音视频转写：按 ~600s 切片并注入 [媒体@id:时间] 锚点，保证分段制卡后
+                // 每段都能写出可跳转的出处（非媒体文件原样返回）。
+                let text = crate::study_loop::media_source::prepare_media_text_for_generation(
+                    conn,
+                    &r.source_id,
+                    text,
+                );
 
                 if !text.trim().is_empty() {
                     let header = format!("\n\n# {}\n\n", r.name);
@@ -11333,6 +11341,37 @@ fn build_generation_options(
         enable_llm_critic: None,
         critic_token_budget: None,
         sidekick_model_routing: None,
+    }
+}
+
+/// 材料来自音视频转写（含 `[媒体@id:时间]` 锚点）时：追加「出处 + 一卡一事实」要求，
+/// 并把该媒体资源记为本次制卡来源（卡片库「查看来源」回到音视频）。
+fn apply_media_source_requirements(
+    options: &mut AnkiGenerationOptions,
+    content_text: &str,
+    vfs_db: Option<&VfsDatabase>,
+) {
+    use crate::study_loop::media_source::{
+        first_media_citation, media_file_name, MEDIA_CARD_REQUIREMENTS,
+    };
+    let Some((media_id, _)) = first_media_citation(content_text) else {
+        return;
+    };
+    let requirements = options.custom_requirements.take().unwrap_or_default();
+    options.custom_requirements = Some(if requirements.trim().is_empty() {
+        MEDIA_CARD_REQUIREMENTS.to_string()
+    } else {
+        format!("{requirements}\n{MEDIA_CARD_REQUIREMENTS}")
+    });
+    if options.source_ref.is_none() {
+        let title = vfs_db
+            .and_then(|db| db.get_conn_safe().ok())
+            .and_then(|conn| media_file_name(&conn, &media_id));
+        options.source_ref = Some(json!({
+            "kind": "resource",
+            "id": media_id,
+            "title": title,
+        }));
     }
 }
 
@@ -20962,5 +21001,48 @@ mod tests {
         )
         .expect("running refresh should succeed");
         assert!(!refreshed_running);
+    }
+
+    #[test]
+    fn media_transcript_material_adds_source_requirements_and_card_source() {
+        let mut opts = build_generation_options(
+            "复习第 3 讲",
+            "Default",
+            "Basic",
+            "## 片段 1/1 · [媒体@file_lecture3:00:00] 起\n[00:05] 正则化用于抑制过拟合",
+            None,
+            None,
+            None,
+            &ChatAnkiGenerationTuning::default(),
+            None,
+        );
+        apply_media_source_requirements(
+            &mut opts,
+            "## 片段 1/1 · [媒体@file_lecture3:00:00] 起",
+            None,
+        );
+        let requirements = opts.custom_requirements.as_deref().unwrap();
+        assert!(requirements.contains("学习目标：复习第 3 讲"));
+        assert!(requirements.contains("[媒体@资源ID:mm:ss]"));
+        assert_eq!(
+            opts.source_ref,
+            Some(json!({ "kind": "resource", "id": "file_lecture3", "title": null }))
+        );
+
+        let mut plain = build_generation_options(
+            "goal",
+            "Default",
+            "Basic",
+            "普通材料 [03:00]",
+            None,
+            None,
+            None,
+            &ChatAnkiGenerationTuning::default(),
+            None,
+        );
+        let before = plain.custom_requirements.clone();
+        apply_media_source_requirements(&mut plain, "普通材料 [03:00]", None);
+        assert_eq!(plain.custom_requirements, before);
+        assert!(plain.source_ref.is_none());
     }
 }

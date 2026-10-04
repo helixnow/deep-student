@@ -1080,6 +1080,14 @@
       "path": "vfs/V20261005__media_transcripts.sql",
       "sha256": "0e89be311858f836a09d44099b1f19c83f518a0f2b1036cbe4eb38120ac03359",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261006,
+      "name": "study_time",
+      "path": "vfs/V20261006__study_time.sql",
+      "sha256": "9a0519cd9de15432640d71d0d7478f04a24ba0937a34d60168882156673874dd",
+      "dangers": []
     }
   ]
 }

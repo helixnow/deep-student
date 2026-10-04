@@ -123,6 +123,7 @@ pub mod startup_cleanup;
 pub mod startup_gate;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
+pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_notification;
 pub mod system_permissions;
 #[allow(dead_code)]
@@ -2707,6 +2708,8 @@ pub fn run() {
             // 学习热力图命令
             // =================================================
             ,crate::commands::get_learning_heatmap
+            ,crate::study_loop::study_time::study_time_add
+            ,crate::study_loop::study_time::study_time_range
             // =================================================
             // Memory-as-VFS 记忆系统命令
             // =================================================

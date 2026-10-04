@@ -779,6 +779,8 @@ commands.allow = [
   "start_pdf_ocr_backend",
   "stream_chat_translation_aligned",
   "stream_chat_translation_plain",
+  "study_time_add",
+  "study_time_range",
   "switch_to_production_database",
   "switch_to_test_database",
   "sync_titlebar_sidebar_material",

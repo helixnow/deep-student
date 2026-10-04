@@ -294,6 +294,14 @@ pub fn build_generation_user_prompt(
         }
     }
 
+    // 音视频转写参考资料：解析末尾写可跳转的 [媒体@id:mm:ss] 出处
+    if reference_texts
+        .iter()
+        .any(|r| crate::study_loop::media_source::contains_media_anchor(&r.text))
+    {
+        prompt.push_str(crate::study_loop::media_source::MEDIA_QUESTION_REQUIREMENTS);
+    }
+
     if !reference_images.is_empty() {
         // 页面图作为 image 内容块附在本消息末尾（见 pipeline::build_user_message）
         prompt.push_str(&format!(
@@ -933,6 +941,40 @@ mod tests {
         assert!(prompt.contains("## 参考资料"));
         assert!(prompt.contains("### 文件：课本第2章.pdf"));
         assert!(prompt.contains("抛物线"));
+    }
+
+    #[test]
+    fn build_generation_user_prompt_adds_media_source_rules_only_for_transcripts() {
+        let request = QbankGenerationRequest {
+            exam_id: "exam_1".to_string(),
+            stream_session_id: "sess".to_string(),
+            model_config_id: None,
+            max_questions: 3,
+            specs: vec![],
+            difficulty: None,
+            topic_hint: None,
+            based_on_existing: false,
+            language: Some("zh-CN".to_string()),
+            reference_file_ids: vec!["file_lecture".to_string()],
+            reference_files_base64: vec![],
+            knowledge_points: vec![],
+        };
+        let media = vec![ReferenceText {
+            name: "第1讲.mp4".to_string(),
+            text: "## 片段 1/1 · [媒体@file_lecture:00:00] 起\n[00:05] 牛顿第一定律".to_string(),
+            source: ReferenceTextSource::TextLayer,
+        }];
+        let prompt = build_generation_user_prompt("物理", &[], &request, &media, &[]);
+        assert!(prompt.contains("## 音视频课程出处要求"));
+        assert!(prompt.contains("[媒体@资源ID:mm:ss]"));
+
+        let plain = vec![ReferenceText {
+            name: "讲义.pdf".to_string(),
+            text: "牛顿第一定律 [03:00]".to_string(),
+            source: ReferenceTextSource::TextLayer,
+        }];
+        let prompt = build_generation_user_prompt("物理", &[], &request, &plain, &[]);
+        assert!(!prompt.contains("音视频课程出处要求"));
     }
 
     #[test]

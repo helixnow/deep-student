@@ -242,6 +242,10 @@ impl LearningOverviewExecutor {
         };
 
         let activity_totals = aggregate_activities(&activities);
+        let study_seconds: u64 = activities
+            .iter()
+            .map(|item| u64::from(item.study_seconds))
+            .sum();
         let pomodoro_totals = aggregate_pomodoro(&pomodoro);
         let daily = merge_daily(&activities, &pomodoro, request.start_date, request.end_date);
         let (daily_page, has_more) = paginate(&daily, &request.page);
@@ -257,6 +261,8 @@ impl LearningOverviewExecutor {
                 },
                 "activityTotals": activity_totals_json(&activity_totals),
                 "focusTotals": pomodoro_totals,
+                // 学习时长（前端「可见且在场」计时，秒）
+                "studyTime": { "totalSeconds": study_seconds },
                 "questionBank": qbank,
                 "fsrsReview": fsrs,
                 "sm2Review": sm2_review,
@@ -940,9 +946,20 @@ fn collect_learning_activities(
     drop(apply);
     query_errors.extend(source_errors);
 
+    // 学习时长（study_time_daily）：只读补充，失败不影响其余数据源
+    let mut study_seconds_by_date: HashMap<String, u32> = HashMap::new();
+    if let Some(conn) = vfs_db.and_then(|db| db.get_conn_safe().ok()) {
+        if let Ok(days) = crate::study_loop::study_time::range(&conn, &start_date, &end_date) {
+            for day in days {
+                study_seconds_by_date.insert(day.date, day.seconds.clamp(0, 86_400) as u32);
+            }
+        }
+    }
+
     let mut activities = daily_map
         .into_iter()
         .map(|(date, details)| LearningActivity {
+            study_seconds: study_seconds_by_date.get(&date).copied().unwrap_or(0),
             date,
             count: details.chat_sessions
                 + details.chat_messages
@@ -1023,6 +1040,7 @@ fn merge_daily(
         daily.push(json!({
             "date": date_string,
             "activityCount": activity.map(|item| item.count).unwrap_or(0),
+            "studySeconds": activity.map(|item| item.study_seconds).unwrap_or(0),
             "activities": activity
                 .and_then(|item| serde_json::to_value(&item.details).ok())
                 .unwrap_or_else(|| json!({
@@ -1161,6 +1179,7 @@ mod tests {
         let activities = vec![LearningActivity {
             date: "2026-07-14".to_string(),
             count: 3,
+            study_seconds: 900,
             details: DailyActivityDetails {
                 chat_sessions: 1,
                 chat_messages: 2,
@@ -1264,6 +1283,13 @@ mod tests {
             ],
         )
         .expect("persist learning answer submission");
+        crate::study_loop::study_time::add_seconds(
+            &conn,
+            &activity_date.format("%Y-%m-%d").to_string(),
+            125,
+            0,
+        )
+        .expect("persist study time");
         drop(conn);
 
         let (activities, source_errors) = collect_learning_activities(
@@ -1280,6 +1306,8 @@ mod tests {
         assert_eq!(activities[0].details.chat_messages, 1);
         assert_eq!(activities[0].details.questions_answered, 1);
         assert_eq!(activities[0].count, 3);
+        // 学习时长单列，不计入活动次数
+        assert_eq!(activities[0].study_seconds, 125);
         let activity_totals = aggregate_activities(&activities);
         assert_eq!(activity_totals.chat_sessions, 1);
         assert_eq!(activity_totals.chat_messages, 1);
