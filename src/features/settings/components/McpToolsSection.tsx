@@ -104,6 +104,8 @@ import {
 } from './toolPermissionModel';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 import { McpDangerZoneSection } from './McpDangerZoneSection';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // Types
 interface McpServer {
@@ -877,6 +879,7 @@ function ServerEditPanel({
                     {t('settings:mcp_server_edit.command')} *
                   </label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={formData.command}
                     onChange={(e) => setFormData({ ...formData, command: e.target.value })}
                     className="font-mono"
@@ -889,6 +892,7 @@ function ServerEditPanel({
                     {t('settings:mcp_server_edit.args')}
                   </label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={formData.args}
                     onChange={(e) => setFormData({ ...formData, args: e.target.value })}
                     className="font-mono"
@@ -903,6 +907,7 @@ function ServerEditPanel({
                 </label>
                 <Input
                   type="url"
+                  {...TECHNICAL_INPUT_PROPS}
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                   className="font-mono"
@@ -1335,6 +1340,7 @@ function NewServerEditItem({
                       {t('settings:mcp_server_edit.command')} *
                     </label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={formData.command}
                     onChange={(e) => setFormData({ ...formData, command: e.target.value })}
                     className="font-mono"
@@ -1347,6 +1353,7 @@ function NewServerEditItem({
                     {t('settings:mcp_server_edit.args')}
                   </label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={formData.args}
                     onChange={(e) => setFormData({ ...formData, args: e.target.value })}
                     className="font-mono"
@@ -1361,6 +1368,7 @@ function NewServerEditItem({
                   </label>
                   <Input
                   type="url"
+                  {...TECHNICAL_INPUT_PROPS}
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
                   className="font-mono"
@@ -1897,6 +1905,7 @@ export function PresetServerSelector({
           <label className="text-sm font-medium">{t('settings:mcp.api_key')}</label>
           <Input
             type="password"
+            {...TECHNICAL_INPUT_PROPS}
             value={pendingApiKey}
             onChange={(e) => {
               setPendingApiKey(e.target.value);
@@ -2459,6 +2468,7 @@ function ShellCommandRulesSection() {
         <div className="mb-2 text-xs font-medium text-foreground">{t('settings:tool_permissions.shell_rules.preview_title')}</div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Input
+            {...TECHNICAL_INPUT_PROPS}
             value={previewCommand}
             onChange={event => setPreviewCommand(event.target.value)}
             placeholder={t('settings:tool_permissions.shell_rules.preview_placeholder')}
@@ -3251,13 +3261,14 @@ function ToolPermissionsSection({ toolsByServer, embedded = false }: {
             <div className="mb-3 flex min-w-0 flex-col lg:flex-row gap-2">
               <Input
                 ref={runtimeRootInputRef}
+                {...TECHNICAL_INPUT_PROPS}
                 value={newRuntimeRootPath}
                 onChange={(event) => {
                   setNewRuntimeRootPath(event.target.value);
                   setPendingRootRisk(null);
                 }}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
+                  if (event.key === 'Enter' && !isComposingKeyEvent(event)) {
                     event.preventDefault();
                     void handleAuthorizeRuntimeRoot();
                   }

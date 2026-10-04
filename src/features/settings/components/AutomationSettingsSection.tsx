@@ -40,6 +40,7 @@ import {
   type AutomationSessionMode,
   type AutomationUpdateInput,
 } from './automationSettingsApi';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 export interface AutomationSettingsSectionProps {
   invoke: AutomationInvoke | null;
@@ -310,6 +311,7 @@ const AutomationForm: React.FC<AutomationFormProps> = ({
             <span className="font-medium text-foreground">{t('settings:automation.edit.model_id')}</span>
             <input
               className={inputClassName}
+              {...TECHNICAL_INPUT_PROPS}
               value={draft.modelId}
               placeholder={t('settings:automation.edit.default_model')}
               onChange={(event) => patch({ modelId: event.target.value })}

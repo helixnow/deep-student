@@ -20,6 +20,7 @@ import { inputShellClass } from '@/components/ui/shad/inputShell';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { canRevealInFolder } from '@/utils/systemFileOpener';
 import { SettingsGroup } from './settingsTabPrimitives';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 /** 内建档案摘要（workspace_list_agent_profiles.builtin）。 */
 interface BuiltinProfileSummary {
@@ -328,6 +329,7 @@ const ProfileForm: React.FC<ProfileFormProps> = ({
               </span>
               <input
                 className={inputClassName}
+                {...TECHNICAL_INPUT_PROPS}
                 value={draft.model}
                 placeholder={t('settings:subagentProfiles.form.model_placeholder')}
                 onChange={(event) => patch({ model: event.target.value })}

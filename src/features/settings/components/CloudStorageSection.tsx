@@ -33,6 +33,7 @@ import {
   CLOUD_ENCRYPTION_PASSWORD_MIN_CHARS,
   localizeCloudStorageError,
 } from './data-governance/localizeCloudError';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -1388,6 +1389,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="space-y-2">
               <Label htmlFor="webdav-endpoint">{t('cloudStorage:webdav.endpoint')}</Label>
               <Input
+                {...TECHNICAL_INPUT_PROPS}
                 id="webdav-endpoint"
                 placeholder={t('cloudStorage:webdav.endpointPlaceholder')}
                 value={webdavConfig.endpoint}
@@ -1399,6 +1401,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="webdav-username">{t('cloudStorage:webdav.username')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="webdav-username"
                   placeholder={t('cloudStorage:webdav.usernamePlaceholder')}
                   value={webdavConfig.username}
@@ -1429,6 +1432,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="s3-endpoint">{t('cloudStorage:s3.endpoint')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="s3-endpoint"
                   placeholder={t('cloudStorage:s3.endpointPlaceholder')}
                   value={s3Config.endpoint}
@@ -1439,6 +1443,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="s3-bucket">{t('cloudStorage:s3.bucket')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="s3-bucket"
                   placeholder={t('cloudStorage:s3.bucketPlaceholder')}
                   value={s3Config.bucket}
@@ -1450,6 +1455,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="s3-access-key">{t('cloudStorage:s3.accessKeyId')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="s3-access-key"
                   placeholder={t('cloudStorage:s3.accessKeyIdPlaceholder')}
                   value={s3Config.accessKeyId}
@@ -1475,6 +1481,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="s3-region">{t('cloudStorage:s3.region')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="s3-region"
                   placeholder={t('cloudStorage:s3.regionPlaceholder')}
                   value={s3Config.region || ''}
@@ -1507,6 +1514,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             <div className="space-y-2">
               <Label htmlFor="ftp-endpoint">{t('cloudStorage:ftp.endpoint')}</Label>
               <Input
+                {...TECHNICAL_INPUT_PROPS}
                 id="ftp-endpoint"
                 placeholder={t('cloudStorage:ftp.endpointPlaceholder')}
                 value={ftpConfig.endpoint}
@@ -1518,6 +1526,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               <div className="space-y-2">
                 <Label htmlFor="ftp-username">{t('cloudStorage:ftp.username')}</Label>
                 <Input
+                  {...TECHNICAL_INPUT_PROPS}
                   id="ftp-username"
                   placeholder={t('cloudStorage:ftp.usernamePlaceholder')}
                   value={ftpConfig.username}
@@ -1546,6 +1555,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         <div className="space-y-2">
           <Label htmlFor="cloud-storage-root">{t('cloudStorage:root.label')}</Label>
           <Input
+            {...TECHNICAL_INPUT_PROPS}
             id="cloud-storage-root"
             placeholder={t('cloudStorage:root.placeholder')}
             value={root}

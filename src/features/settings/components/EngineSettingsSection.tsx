@@ -22,6 +22,7 @@ import {
   settingsQuietButtonSelectedRowClassName,
   settingsQuietInteractiveRowClassName,
 } from './SettingsCommon';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
@@ -515,6 +516,7 @@ export const EngineSettingsSection: React.FC<{
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.searxng_endpoint_label')}</div>
                           <Input
                     type="text"
+                    {...TECHNICAL_INPUT_PROPS}
                     value={config.webSearchSearxngEndpoint}
                     onChange={(e) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchSearxngEndpoint: e.target.value }))}
                     placeholder="https://searx.example.com"

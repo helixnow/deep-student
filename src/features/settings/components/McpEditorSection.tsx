@@ -31,6 +31,7 @@ import { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
 import { TauriAPI } from '@/utils/tauriApi';
 import { isAndroid } from '@/utils/platform';
 import type { UseMcpEditorSectionDeps, McpToolConfig } from './hookDepsTypes';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 interface McpTestResult {
   success: boolean;
@@ -1138,7 +1139,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             {transport === 'websocket' && (
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground">{t('settings:mcp.websocket_url')}</label>
-                <Input value={draft.url || ''} onChange={e => updateDraft({ url: e.target.value })} placeholder="ws://localhost:8000" />
+                <Input {...TECHNICAL_INPUT_PROPS} value={draft.url || ''} onChange={e => updateDraft({ url: e.target.value })} placeholder="ws://localhost:8000" />
               </div>
             )}
 
@@ -1147,6 +1148,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">{transport === 'streamable_http' ? t('settings:mcp_descriptions.http_endpoint_label', 'HTTP Endpoint *') : t('settings:mcp_descriptions.sse_endpoint_label', 'SSE Endpoint *')}</label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={draft.endpoint || draft.fetch?.url || ''}
                     onChange={e => updateDraft({ endpoint: e.target.value, fetch: { type: transport, url: e.target.value } })}
                     placeholder={transport === 'streamable_http' ? 'https://api.example.com/mcp/http' : 'https://api.example.com/mcp/sse'}
@@ -1198,6 +1200,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">{t('settings:mcp_descriptions.command_label')}</label>
                   <Input
+                    {...TECHNICAL_INPUT_PROPS}
                     value={draft.command || ''}
                     onChange={e => updateDraft({ command: e.target.value })}
                     placeholder={t('settings:mcp_descriptions.command_placeholder', 'npx')}
@@ -1549,7 +1552,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                   {transport === 'websocket' && (
                     <div className="space-y-2">
                       <label className="text-sm font-medium">{t('settings:mcp.websocket_url')}</label>
-                      <Input value={draft.url || ''} onChange={e => updateDraft({ url: e.target.value })} placeholder="ws://localhost:8000" />
+                      <Input {...TECHNICAL_INPUT_PROPS} value={draft.url || ''} onChange={e => updateDraft({ url: e.target.value })} placeholder="ws://localhost:8000" />
                     </div>
                   )}
 
@@ -1558,6 +1561,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       <div className="space-y-2">
                         <label className="text-sm font-medium">{transport === 'streamable_http' ? t('settings:mcp_descriptions.http_endpoint_label', 'HTTP Endpoint *') : t('settings:mcp_descriptions.sse_endpoint_label', 'SSE Endpoint *')}</label>
                         <Input
+                          {...TECHNICAL_INPUT_PROPS}
                           value={draft.endpoint || draft.fetch?.url || ''}
                           onChange={e => updateDraft({ endpoint: e.target.value, fetch: { type: transport, url: e.target.value } })}
                           placeholder={transport === 'streamable_http' ? 'https://api.example.com/mcp/http' : 'https://api.example.com/mcp/sse'}
@@ -1585,6 +1589,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       <div className="space-y-2">
                         <label className="text-sm font-medium">{t('settings:mcp_descriptions.command_label')}</label>
                         <Input
+                          {...TECHNICAL_INPUT_PROPS}
                           value={draft.command || ''}
                           onChange={e => updateDraft({ command: e.target.value })}
                           placeholder={t('settings:mcp_descriptions.command_placeholder', 'npx')}

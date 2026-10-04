@@ -46,6 +46,7 @@ import { AutomationScheduleEditor } from './AutomationScheduleEditor';
 import { AutomationStatusPill } from './AutomationStatusPill';
 import { formatAbsoluteTime, formatRelativeTime } from './automationFormat';
 import { computeNextRuns, formatWeekdayList } from './scheduleMath';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const NAME_MAX = 100;
 const PROMPT_MAX = 4000;
@@ -642,6 +643,7 @@ function AutomationCardEditForm({ automation, busy, onCancel, onSubmit }: Automa
               {t('todo:automation.model')}
             </label>
             <Input
+              {...TECHNICAL_INPUT_PROPS}
               id={`${idPrefix}-model`}
               value={draft.modelId}
               disabled={busy}

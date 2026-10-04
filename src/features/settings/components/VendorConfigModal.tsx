@@ -17,6 +17,7 @@ import {
   inferProviderTypeFromBaseUrl,
   normalizeApiProtocolForProviderType,
 } from './modelConverters';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 interface VendorConfigModalProps {
   open: boolean;
@@ -315,6 +316,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           <span>{t('settings:vendor_modal.base_url_label')}</span>
         </Label>
         <Input
+          {...TECHNICAL_INPUT_PROPS}
           id={baseUrlInputId}
           value={formData.baseUrl}
           onChange={e => {
@@ -451,6 +453,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           <div>
             <Label>{t('settings:vendor_modal.backup_api_keys_label', { defaultValue: 'Backup API keys' })}</Label>
             <Textarea
+              {...TECHNICAL_INPUT_PROPS}
               value={apiKeysInput}
               onChange={event => setApiKeysInput(event.target.value)}
               placeholder={t('settings:vendor_modal.backup_api_keys_placeholder', {

@@ -59,6 +59,7 @@ import { formatAbsoluteTime, formatRelativeTime } from './automation/automationF
 import { computeNextRuns, formatWeekdayList } from './automation/scheduleMath';
 import '../styles/automation.css';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const CREATE_PANEL_ID = 'automation-create-panel';
 const HISTORY_PANEL_ID = 'automation-history-panel';
@@ -1052,6 +1053,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                         <div className="space-y-1.5 text-sm">
                           <label htmlFor="automation-create-model" className="font-medium text-foreground">{t('todo:automation.model')}</label>
                           <Input
+                            {...TECHNICAL_INPUT_PROPS}
                             id="automation-create-model"
                             value={draft.modelId}
                             disabled={creating}

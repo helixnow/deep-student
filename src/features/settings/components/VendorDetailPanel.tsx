@@ -40,6 +40,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -850,7 +851,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                 <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
                 <span>{t('settings:vendor_modal.base_url_label')}</span>
               </Label>
-              <Input value={vendorFormData.baseUrl || ''} onChange={e => setVendorFormData(prev => ({ ...prev, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="font-mono" />
+              <Input {...TECHNICAL_INPUT_PROPS} value={vendorFormData.baseUrl || ''} onChange={e => setVendorFormData(prev => ({ ...prev, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="font-mono" />
             </div>
             <div className="md:col-span-2 space-y-2">
               <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
@@ -923,6 +924,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       <SaveIndicator status={baseUrlSaveStatus} />
                     </div>
                     <Input
+                      {...TECHNICAL_INPUT_PROPS}
                       value={baseUrlDraft}
                       onChange={(e) => setBaseUrlDraft(e.target.value)}
                       onKeyDown={(e) => {

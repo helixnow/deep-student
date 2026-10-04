@@ -48,6 +48,7 @@ import {
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import type { ConnectionTestOutcome } from '@/utils/settingsApi';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
@@ -999,6 +1000,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       </Label>
                       <div className="relative">
                         <Input
+                          {...TECHNICAL_INPUT_PROPS}
                           id={fieldIds.model}
                           value={formData.model}
                           onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
@@ -1116,6 +1118,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             {t('common:api_config_modal.base_url')}
                           </Label>
                           <Input
+                            {...TECHNICAL_INPUT_PROPS}
                             id={fieldIds.baseUrl}
                             type="url"
                             value={formData.baseUrl}

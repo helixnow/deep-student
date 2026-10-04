@@ -45,6 +45,7 @@ import {
 } from '@/features/chat/skills/communitySkillsUi';
 import './SkillTapBrowser.css';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 
 // ============================================================================
 // 常量
@@ -515,6 +516,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
         <div className="relative flex-1">
           <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
           <Input
+            {...TECHNICAL_INPUT_PROPS}
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => {

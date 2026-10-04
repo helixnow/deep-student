@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { TECHNICAL_INPUT_PROPS } from '@/components/ui/shad/technicalInputProps';
 import '../styles/api-key-field.css';
 
 interface ApiKeyFieldProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'className' | 'type'> {
@@ -53,7 +54,14 @@ export const ApiKeyField = React.forwardRef<HTMLInputElement, ApiKeyFieldProps>(
           'api-key-field__input',
           inputClassName
         )}
+        // 密钥不应被软键盘大写/纠错/学进词库，也不应被密码管理器当成登录密码
+        {...TECHNICAL_INPUT_PROPS}
+        data-lpignore="true"
+        data-1p-ignore=""
         {...props}
+        // 明文显示（type=text）时强制关闭自动完成：Android WebView 据此给 IME
+        // 加 NO_SUGGESTIONS，避免输入法联想/记住已显示的密钥
+        autoComplete={inputType === 'text' ? 'off' : (props.autoComplete ?? TECHNICAL_INPUT_PROPS.autoComplete)}
       />
       {extraActions}
       {canReveal && (
