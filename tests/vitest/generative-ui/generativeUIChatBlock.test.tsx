@@ -33,7 +33,7 @@ vi.mock('react-i18next', () => ({
         'action.copy_block': '复制该组件',
         'panel.no_intent': '无 UI 意图数据',
         'workbench.briefing.start_review': '开始复习',
-        'workbench.briefing.open_qbank': '打开题库',
+        'workbench.briefing.open_qbank': '打开题目集',
         'workbench.dashboard.open_task_dashboard': '打开制卡任务',
         'research.actions.copy_report': '复制报告',
         'research.actions.export_plan': '导出计划',

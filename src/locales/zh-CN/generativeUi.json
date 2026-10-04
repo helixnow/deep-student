@@ -175,7 +175,7 @@
       "correct_rate_row": "正确率",
       "start_review": "复习错题",
       "open_practice": "开始练习",
-      "empty_bank_title": "题库为空",
+      "empty_bank_title": "题目集为空",
       "empty_bank_description": "先导入或创建题目，再开始练习",
       "mistake_suggestion": "优先复习错题，巩固薄弱知识点",
       "status_list_title": "题目状态",
@@ -279,7 +279,7 @@
       "overdue_label": "{{count}} 项逾期",
       "pending_label": "{{count}} 项待办",
       "start_review": "开始复习",
-      "open_qbank": "打开题库"
+      "open_qbank": "打开题目集"
     },
     "dashboard": {
       "title": "AI 学习仪表盘",
@@ -309,7 +309,7 @@
       "trend_active": "可继续探索",
       "trend_empty": "目录为空",
       "start_review": "开始复习",
-      "open_qbank": "打开题库",
+      "open_qbank": "打开题目集",
       "due_review_title": "待复习",
       "due_review_trend": "有到期项",
       "review_calendar_title": "复习日历",
@@ -319,7 +319,7 @@
       "empty_alert_description": "添加笔记或资料后即可生成简报",
       "path_steps_title": "学习路径",
       "step_review": "开始复习",
-      "step_qbank": "打开题库",
+      "step_qbank": "打开题目集",
       "chart_title": "复习负荷",
       "chart_due": "待复习",
       "chart_series": "条目"

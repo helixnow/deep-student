@@ -16,7 +16,7 @@ vi.mock('react-i18next', () => ({
         'generativeUi:workbench.briefing.overdue_label': '{{count}} 项逾期',
         'generativeUi:workbench.briefing.pending_label': '{{count}} 项待办',
         'generativeUi:workbench.briefing.start_review': '开始复习',
-        'generativeUi:workbench.briefing.open_qbank': '打开题库',
+        'generativeUi:workbench.briefing.open_qbank': '打开题目集',
         'generativeUi:workbench.dashboard.anki_tasks_title': '进行中制卡',
         'generativeUi:workbench.dashboard.anki_tasks_trend_active': '后台运行',
         'generativeUi:workbench.dashboard.open_task_dashboard': '打开制卡任务',
