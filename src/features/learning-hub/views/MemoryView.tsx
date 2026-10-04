@@ -24,6 +24,7 @@ import {
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { fileManager } from '@/utils/fileManager';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -759,13 +760,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         showGlobalNotification('warning', t('memory.export_empty'));
         return;
       }
-      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `memories_${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      // 走系统保存对话框（兼容 Android SAF content:// 目标）；<a download> 在
+      // Android WebView 无 DownloadListener，会静默什么都不保存。
+      const fileName = `memories_${new Date().toISOString().slice(0, 10)}.json`;
+      const result = await fileManager.saveTextFile({
+        title: fileName,
+        defaultFileName: fileName,
+        content: JSON.stringify(exportData, null, 2),
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+      if (result.canceled) return;
       showGlobalNotification('success', t('memory.export_success', { count: exportData.length }));
     } catch (error: unknown) {
       console.error('[MemoryView] Export failed:', error);
