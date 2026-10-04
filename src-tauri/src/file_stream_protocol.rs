@@ -151,6 +151,10 @@ fn is_allowed_origin(origin: &str) -> bool {
         || origin == "https://localhost"
         || origin.starts_with("http://localhost:")
         || origin.starts_with("https://localhost:")
+        || origin == "http://127.0.0.1"
+        || origin == "https://127.0.0.1"
+        || origin.starts_with("http://127.0.0.1:")
+        || origin.starts_with("https://127.0.0.1:")
 }
 
 fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
@@ -722,6 +726,20 @@ pub async fn filestream_check_access(app: tauri::AppHandle, path: String) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn allowed_origins_match_pdf_protocol_rule() {
+        // 打包后的应用来源
+        assert!(is_allowed_origin("tauri://localhost"));
+        assert!(is_allowed_origin("http://tauri.localhost"));
+        // 开发服务器（devUrl = http://127.0.0.1:1422）：<video crossOrigin> 流式播放与截帧依赖它
+        assert!(is_allowed_origin("http://127.0.0.1:1422"));
+        assert!(is_allowed_origin("http://localhost:1422"));
+        // 前缀域名不得绕过
+        assert!(!is_allowed_origin("http://127.0.0.1.evil.com"));
+        assert!(!is_allowed_origin("http://localhost.evil.com"));
+        assert!(!is_allowed_origin("null"));
+    }
 
     #[test]
     fn test_parse_range_header() {
