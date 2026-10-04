@@ -2,562 +2,231 @@
 
 **简体中文** | [English](./README.md)
 
-<img src="./public/deepstudent-logo.svg" alt="DeepStudent" width="200" />
+<img src="./public/deepstudent-logo.svg" alt="DeepStudent" width="160" />
 
+# DeepStudent
 
-### 一个开源、本地优先的 AI 学习工作台
+### 只专注学习本身就够了，剩下的都交给我。
 
-> 不是学习难，是学习软件太散。
-
-把资料学习、笔记整理、思维导图、题目练习、翻译精读和复习制卡，装进一个统一的学习工作台。
-
-> 可以把它理解成：**研究笔记 + 知识工作台 + 思维导图 + 练习 + 翻译**
-> 但它们共享同一套学习数据与工作流。
+开源、本地优先的 AI 学习工作台。<br />
+它的学习 Agent，可直接操作学习桌面上的每一个应用。
 
 [![Release](https://img.shields.io/github/v/release/helixnow/deep-student?color=blue&label=release)](https://github.com/helixnow/deep-student/releases/latest)
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
 [![Stars](https://img.shields.io/github/stars/helixnow/deep-student?style=social)](https://github.com/helixnow/deep-student)
 
 [官网](https://deepstudent.cn) ·
-[**下载安装**](#下载安装) ·
-[快速入门](https://deepstudent.cn/docs/) ·
-[用户手册](https://deepstudent.cn/docs/) ·
-[反馈问题](https://github.com/helixnow/deep-student/issues) ·
+[**下载**](#安装) ·
+[快速上手](https://deepstudent.cn/start) ·
+[使用指南](https://deepstudent.cn/user-guide/) ·
+[问题反馈](https://github.com/helixnow/deep-student/issues) ·
 [参与贡献](./.github/CONTRIBUTING.md)
 
 </div>
 
 <p align="center">
-  <img src="./example/软件主页图.png" width="90%" alt="DeepStudent 主界面" />
+  <img src="./docs/assets/readme/zh/hero.webp" width="92%" alt="DeepStudent 学习桌面：学习 Agent 在对话窗口旁打开了思维导图和闪卡" />
 </p>
 
 ---
 
-## 为什么会有 DeepStudent
+## 一个学习 Agent，直接操作每一个应用
 
-学习流程散落在太多工具里——这边看材料，那边记笔记，另一处做导图，再一处刷题。
-PDF 阅读器、思维导图工具、翻译软件、笔记工具、学习平台、知网/arXiv、记忆卡工具、AI 助手……每个工具都是一座孤岛，学习数据一旦分散，搬运和维护的时间比学习本身还多。
+只需一句话，它即可打开对应的应用，完成笔记、思维导图、题目、卡片与复习计划；更长的任务，也能独立推进。
 
-DeepStudent 要解决的就是这件事：**让 AI 原生具备读写你全部学习数据的能力。** 你的一句话，就能让它从教材生成导图、从材料出题、把要点做成闪卡、搜索下载论文、调研互联网并写入笔记——全程不需要离开工作台。
+**直接动手。**
+笔记、思维导图、题目集、闪卡、待办、作文批改与翻译都有对应的 Agent 工具，结果直接写进应用，不停留在对话框里。它还能操作学习桌面本身，检索网页与学术论文，并生成 Word、PPT 与 Excel 文件。
 
----
+**长任务可托付。**
+调研、整理、出题可交给它连续推进：目标模式跨轮续跑，子代理并行处理，定时自动化按时执行。
 
-## 你能得到什么
+**每一步可控。**
+操作按风险分级审批，Ask / Plan / Craft 三种权限模式可选；笔记与学习桌面上的改动可撤销，回答中的引用可定位到原文页码、句子或导图节点。
 
-| 能力 | DeepStudent |
-|---|---|
-| 围绕资料 AI 问答 | ✓ 12 家供应商 |
-| 跨平台开箱即用 | ✓ Win/Mac/Linux/Android |
-| 智能记忆系统 | ✓ AI 驱动持久化 |
-| 笔记系统 | ✓ 富文本 + 标签 + AI |
-| AI 生成知识导图 | ✓ |
-| AI 出题 + 练习 | ✓ |
-| 闪卡 + 间隔重复 | ✓ APKG / FSRS |
-| 翻译与精读 | ✓ 7 种领域预设 |
-| 跨模块数据流转 | ✓ 统一数据层 |
+**懂你，可扩展。**
+记住你的薄弱点与学习习惯。内置 55 个技能按需加载，支持 MCP 接入外部工具，预置 13 家模型服务商，可按功能分别指定模型。
 
-> **核心不在「功能更多」，而在统一数据层。**
-> 同一份材料可以被阅读、提问、生成导图、出题、制卡、调研并写回系统——全程不需要在多个软件之间搬运数据。
-
-<details>
-<summary><b>📊 更多维度（基础设施 · 生态 · 协作）</b></summary>
-
-| 能力 | DeepStudent |
-|---|---|
-| 数据本地存储 | ✓ |
-| 云同步 | △ 实验性（偏备份式同步，非实时协作） |
-| 开源 / 可自托管 | ✓ AGPL-3.0 |
-| 统一数据层 (VFS) | ✓ |
-| 导入自动索引 | ✓ 含 OCR |
-| 导图 ↔ 大纲双模式 | ✓ |
-| 深度调研 + 论文搜索 | ✓ 多引擎 + arXiv |
-| AI 作文批改 | ✓ 多场景评分 |
-| MCP 生态 / 技能扩展 | ✓ 原生 + 预置服务<sup>1</sup> |
-| 多人协作 | ✗ |
-| 社区与生态 | △ 新项目 |
-
-<sup>1</sup> Agent 浏览器自动化：仅 Windows + macOS（Linux 虽有 WebKitGTK eval 桥代码，但 Agent 工具面仍关闭）
-
-</details>
+<p align="center">
+  <img src="./docs/assets/readme/zh/agent.webp" width="92%" alt="调研任务进行中：Agent 的任务面板逐步打勾，并把结果写入笔记" />
+</p>
 
 ---
 
-## 核心能力
+## Agent 能操作的应用
 
-### 1. 资料学习与智能对话
+所有应用都在学习桌面的 Dock 里：可以单独打开，可以并排摆放，也可以交给 Agent 打开。
 
-围绕你的材料持续学习，而不只是通用聊天。
+| 应用 | 用途 |
+|---|---|
+| **对话** | 围绕自己的资料学习，回答标注原文页码；支持分组、搜索与导出。 |
+| **资源库** | 教材、笔记、题目、文档统一入库，导入即建立 AI 检索索引（含 OCR）。 |
+| **教材** | PDF、Word、EPUB 阅读，高亮批注，划选文字即可提问。 |
+| **笔记** | 支持双链、标签与公式的 Markdown 笔记；Agent 的修改会高亮标注，可一键撤销。 |
+| **思维导图** | 一句话生成完整导图，大纲与画布两种视图，背诵模式遮住要点自测。 |
+| **题目集** | 拖入试卷或教材即可生成题目集；九种练习模式、自动判分，支持手写作答。 |
+| **闪卡** | 内置 FSRS 间隔重复与记忆曲线，APKG 双向导入导出，无需安装 Anki。 |
+| **Anki 制卡** | 一句话把 PDF、图片、笔记做成卡片，同步到 Anki 或导出 APKG。 |
+| **作文批改** | 按高考、雅思、考研等评分标准逐项打分，原文标注，逐句润色。 |
+| **翻译** | 整篇翻译、逐段对照，7 种领域预设。 |
+| **待办 · 番茄钟** | 今日的复习与待办汇总在同一张清单；专注计时与统计。 |
+| **技能** | 内置技能、社区技能与 MCP 服务；可安装，也可自己编写。 |
 
-- 多模态输入（图片 / PDF / Word 拖拽上传）与多轮对话
-- 引用面板直选知识库笔记或教材注入上下文，实时 Token 估算
-- 深度推理模式（思维链），展示完整思考过程
-- 多 Tab 会话与会话分支，探索不同解题路径
-- 权限模式 Ask / Plan / Craft（默认 Craft）：只读 · 先确认计划再执行 · 按工具审批策略执行
-- 学习桌面（OS / Workbench 模式）：围绕对话与资源的多窗口学习壳层
-- 多模型对比（实验性）：同一问题并排展示多个模型的回答
-- 会话分组、分组 System Prompt、默认技能配置
-- 子代理执行（实验性）：复杂任务自动拆解、后台完成
+<table>
+  <tr>
+    <td width="50%"><img src="./docs/assets/readme/zh/chat.webp" alt="对话：围绕资料的回答，标注页码出处" /></td>
+    <td width="50%"><img src="./docs/assets/readme/zh/mindmap.webp" alt="思维导图：画布视图中的生成结果" /></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/readme/zh/exam.webp" alt="题目集：答错后的 AI 解析" /></td>
+    <td><img src="./docs/assets/readme/zh/flashcards.webp" alt="闪卡：FSRS 复习与四档评分" /></td>
+  </tr>
+  <tr>
+    <td><img src="./docs/assets/readme/zh/notes.webp" alt="笔记：AI 修改处高亮，顶部留撤销条" /></td>
+    <td><img src="./docs/assets/readme/zh/essay.webp" alt="作文批改：分项评分与原文标注" /></td>
+  </tr>
+</table>
 
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/会话浏览.png" width="90%" alt="会话管理" /></p>
-<p align="center"><img src="./example/分组.png" width="90%" alt="会话分组" /></p>
-<p align="center"><img src="./example/anki-发送.png" width="90%" alt="引用与发送" /></p>
-<p align="center"><img src="./example/并行-1.png" width="90%" alt="多模型并行选择" /></p>
-<p align="center"><img src="./example/并行-2.png" width="90%" alt="多模型对比回复" /></p>
-</details>
+每个应用的完整说明见 [使用指南](https://deepstudent.cn/user-guide/)。
 
-### 2. 学习资源中心
+---
 
-把资料、笔记、题目、导图、翻译、卡片统一组织起来。
+## 数据默认存在本机
 
-- 笔记 / 教材 / 题库 / 导图等全格式管理
-- 导入后自动进入向量化队列（OCR → 分块 → Embedding → 索引），状态实时可视
-- 内置 PDF / DOCX 阅读器，双页阅读与书签标注
-- 阅读模式切换 — 移动端滚动时自动收起键盘，防止误触
-- 跨会话内容搜索与会话标签系统
-- 资源导出，支持多种格式适配器
-- 为后续问答、导图、制题、制卡提供统一数据源
+- **本机存储。** 资料、笔记、聊天记录与检索索引默认保存在本机（SQLite、LanceDB 与本地文件），可通过「设置 → 数据治理」备份和迁移。
+- **数据离开本机的情形。** 调用模型、外部搜索或 MCP 时，相关请求会发给你配置的服务；云同步与 Sentry 错误报告仅在主动开启后发送相应数据。
+- **开源可核对。** AGPL-3.0 许可，与隐私相关的实现都在本仓库中。
 
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/学习资源管理器.png" width="90%" alt="学习资源管理器" /></p>
-<p align="center"><img src="./example/笔记-1.png" width="90%" alt="笔记编辑" /></p>
-<p align="center"><img src="./example/向量化状态.png" width="90%" alt="向量化状态" /></p>
-</details>
+---
 
-### 3. 知识导图
+## 安装
 
-把知识整理成结构。
-
-- 一句话生成完整知识体系（如"生成高中生物导图"）
-- 多轮对话持续编辑节点
-- 大纲视图与导图视图切换，右键菜单编辑
-- 节点遮挡背诵模式
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/知识导图-1.png" width="90%" alt="对话生成" /></p>
-<p align="center"><img src="./example/知识导图-2.png" width="90%" alt="多轮编辑" /></p>
-<p align="center"><img src="./example/知识导图-3.png" width="90%" alt="完整导图" /></p>
-<p align="center"><img src="./example/知识导图-4.png" width="90%" alt="导图编辑" /></p>
-<p align="center"><img src="./example/知识导图-5.png" width="90%" alt="大纲视图" /></p>
-<p align="center"><img src="./example/知识导图-6.png" width="90%" alt="背诵模式" /></p>
-</details>
-
-### 4. 题目集与练习
-
-把教材、试卷变成可练习的题库。
-
-- 上传教材 / 试卷，AI 自动提取或生成题目集
-- 每日练习、限时练习、模拟考试，自动判分
-- 做题历史回顾 — 查看过往练习记录，追踪学习进度
-- AI 深度解析，分析知识点与解题思路
-- 按知识点掌握度追踪（回流薄弱点画像，并对 FSRS 复习做有界偏置）
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/题目集-1.png" width="90%" alt="一键出题" /></p>
-<p align="center"><img src="./example/题目集-2.png" width="90%" alt="题库视图" /></p>
-<p align="center"><img src="./example/题目集-5.png" width="90%" alt="知识点统计" /></p>
-<p align="center"><img src="./example/题目集-3.png" width="90%" alt="做题界面" /></p>
-<p align="center"><img src="./example/题目集-4.png" width="90%" alt="深度解析" /></p>
-</details>
-
-### 5. Anki 智能制卡
-
-把理解推进到长期记忆。
-
-- 对话中自然语言触发制卡（如"把这个文档做成卡片"），支持批量生成
-- 可视化模板编辑器（HTML / CSS / Mustache），实时预览
-- 任务看板，批量制卡进度追踪与断点续传
-- 3D 翻转预览，一键同步至 Anki
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/anki-制卡1.png" width="90%" alt="对话生成" /></p>
-<p align="center"><img src="./example/制卡任务.png" width="90%" alt="任务看板" /></p>
-<p align="center"><img src="./example/模板库-1.png" width="90%" alt="模板库" /></p>
-<p align="center"><img src="./example/模板库-2.png" width="90%" alt="模板编辑器" /></p>
-<p align="center"><img src="./example/anki-制卡2.png" width="90%" alt="3D预览" /></p>
-<p align="center"><img src="./example/anki-制卡3.png" width="90%" alt="Anki同步" /></p>
-</details>
-
-### 6. PDF / DOCX 智能阅读
-
-围绕文档学习，而不只是打开文档。
-
-- PDF、DOCX 全格式支持
-- 左侧对话，右侧阅读，分屏联动
-- 选取页面或片段自动注入聊天上下文
-- AI 回答可带页码引用
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/pdf阅读-1.png" width="90%" alt="PDF阅读" /></p>
-<p align="center"><img src="./example/pdf阅读-2.png" width="90%" alt="页面引用" /></p>
-<p align="center"><img src="./example/pdf阅读-3.png" width="90%" alt="引用跳转" /></p>
-<p align="center"><img src="./example/docx阅读-1.png" width="90%" alt="DOCX阅读" /></p>
-</details>
-
-<details>
-<summary><b>📋 更多能力（翻译 · 作文 · 调研 · 论文 · 记忆 · 技能 · 数据治理）</b></summary>
-
-### 7. 翻译工作台
-
-翻译是学习链的一环。
-
-- 全文翻译，左右分栏同步滚动
-- 逐段双语对照，精读友好
-- 7 种领域预设：通用 / 学术 / 技术 / 文学 / 法律 / 医学 / 日常对话
-- 自定义提示词与术语偏好
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/翻译-1.png" width="90%" alt="全文翻译" /></p>
-<p align="center"><img src="./example/翻译-2.png" width="90%" alt="逐段双语对照" /></p>
-<p align="center"><img src="./example/翻译-3.png" width="90%" alt="翻译设置" /></p>
-</details>
-
-### 8. AI 作文批改
-
-中英文写作批改与润色。
-
-- 高考 / 雅思 / 托福 / 四六级 / 考研等多场景
-- 多维度智能评分（词汇、语法、连贯性等），支持多轮迭代
-- 修改建议与高亮标注
-- 逐句润色对比
-- 自定义评分维度与批改设置
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/作文-1.png" width="90%" alt="类型选择与批改标注" /></p>
-<p align="center"><img src="./example/作文-2.png" width="90%" alt="评分结果" /></p>
-<p align="center"><img src="./example/作文-3.png" width="90%" alt="润色提升" /></p>
-<p align="center"><img src="./example/作文-4.png" width="90%" alt="批改设置" /></p>
-</details>
-
-### 9. 深度调研
-
-多步骤、长链路的调研 Agent。
-
-- 调研前交互式确认深度与格式偏好
-- 自动拆解任务：明确目标 → 联网搜索 → 本地检索 → 分析整理 → 生成报告
-- 支持 7 种搜索引擎（Google CSE / SerpAPI / Tavily / Brave / SearXNG / 智谱 / 博查）
-- 报告自动保存为笔记
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/调研-1.png" width="90%" alt="调研模式" /></p>
-<p align="center"><img src="./example/调研-2.png" width="90%" alt="多步执行" /></p>
-<p align="center"><img src="./example/调研-3.png" width="90%" alt="执行进度" /></p>
-<p align="center"><img src="./example/调研-5.png" width="90%" alt="自动保存笔记" /></p>
-<p align="center"><img src="./example/调研-4.png" width="90%" alt="最终报告" /></p>
-</details>
-
-### 10. 学术论文搜索与管理
-
-一站式论文检索、下载与引用。
-
-- 通过 arXiv / OpenAlex 搜索论文，返回结构化元数据
-- 批量下载 PDF，自动存入 VFS，多源自动回退（arXiv → Export 镜像 → Unpaywall）
-- SHA256 去重，避免重复导入
-- 支持 BibTeX、GB/T 7714、APA 引用格式
-- DOI 自动解析为开放获取链接
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/论文搜索-1.png" width="90%" alt="论文搜索" /></p>
-<p align="center"><img src="./example/论文搜索-2.png" width="90%" alt="论文下载" /></p>
-<p align="center"><img src="./example/论文搜索-3.png" width="90%" alt="论文阅读" /></p>
-</details>
-
-### 11. 智能记忆
-
-越用越懂你。
-
-受 [mem0](https://github.com/mem0ai/mem0) / [memU](https://github.com/NevaMind-AI/memU) 启发，在桌面端实现完整的记忆生命周期。
-
-- 每轮对话后自动提取用户事实（身份 / 偏好 / 目标 / 学科状态）
-- 新旧记忆向量比对，LLM 判定 ADD / UPDATE / APPEND / DELETE / NONE
-- 批量记忆写入，写入幂等性保障数据完整性
-- 分类汇总为画像，自动注入后续对话
-- 标签系统：90 天未命中降权，高频命中升权，搜索命中自动康复
-- 支持浏览、编辑、批量删除、导出
-- 隐私模式：一键禁止所有外部 API 调用
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/记忆-1.png" width="90%" alt="记忆提取" /></p>
-<p align="center"><img src="./example/记忆-2.png" width="90%" alt="记忆列表" /></p>
-<p align="center"><img src="./example/记忆-4.png" width="90%" alt="记忆视图" /></p>
-<p align="center"><img src="./example/记忆-3.png" width="90%" alt="记忆编辑" /></p>
-</details>
-
-### 12. 技能系统与 MCP 扩展
-
-可扩展的工作台，不是封闭的功能集合。
-
-- 技能（Skills）按需加载 AI 能力，激活时才加载对应工具，节省 Token
-- 内置 40+ 技能/工具组：制卡 · 调研 · 论文 · 导师 · 文献综述 · 试卷分析 · 导图 · 题库 · 记忆 · 会话管理 · Office 套件 · 待办 · 画布笔记 · 图片生成 · 网页抓取 · 子代理工作区等
-- community skill marketplace 技能市场：浏览 / 校验 / 安装社区技能（装前风险扫描）
-- 三级加载（内置 → 全局 → 项目级），支持 SKILL.md 自定义
-- MCP 协议兼容（支持预设的 OAuth），可连接 Arxiv、Context7 等外部工具
-- 预置 12 家模型供应商模板（含 Gemini），另支持自建多协议端点（Anthropic / Grok / Ollama 等）
-- 已适配 Gemini 3、GPT-5.5 / GPT-5.2 Pro、GLM-5、DeepSeek V4、Seed 2.0、Kimi K2.5 等最新模型
-
-<details>
-<summary>📸 查看截图</summary>
-<p align="center"><img src="./example/技能管理.png" width="90%" alt="技能管理" /></p>
-<p align="center"><img src="./example/mcp-1.png" width="90%" alt="MCP调用" /></p>
-<p align="center"><img src="./example/mcp-2.png" width="90%" alt="MCP管理" /></p>
-<p align="center"><img src="./example/模型分配.png" width="90%" alt="模型配置" /></p>
-<p align="center"><img src="./example/mcp-3.png" width="90%" alt="Arxiv搜索" /></p>
-</details>
-
-### 13. 本地优先与数据治理
-
-学习数据由你控制。
-
-- 全部数据本地存储（SQLite + LanceDB + Blob）
-- 全量 ZIP 备份与恢复（增量备份已下线），数据导入导出
-- AES-256-GCM 加密敏感数据，双槽位 A/B 切换
-- 审计日志，全操作可追溯
-- 云同步（实验性）：偏备份式同步；桌面端支持 WebDAV / S3 兼容存储 / 实验性 FTP，Android 仅 WebDAV。整包备份是完整 ZIP 单对象 PUT（没有增量传输、去重或 CDC）。默认「立即备份到云端」是便携归档，不能整槽恢复。已配置云端端到端加密密码时导出加密全保真 ZIP；读不到已存密码时会拒绝导出。非实时协作。
-
-</details>
-
-## 下载安装
-
-[![macOS](https://img.shields.io/badge/-macOS-black?style=flat-square&logo=apple&logoColor=white)](#下载安装)
-[![Windows](https://img.shields.io/badge/-Windows-blue?style=flat-square&logo=windows&logoColor=white)](#下载安装)
-[![Linux](https://img.shields.io/badge/-Linux-orange?style=flat-square&logo=linux&logoColor=white)](#下载安装)
-[![Android](https://img.shields.io/badge/-Android-green?style=flat-square&logo=android&logoColor=white)](#下载安装)
-
-前往 [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest) 下载最新版：
+从 [GitHub Releases](https://github.com/helixnow/deep-student/releases/latest) 或 [官网下载页](https://deepstudent.cn/download) 获取最新版本：
 
 | 平台 | 安装包 | 架构 |
 |:---:|---|---|
 | macOS | `.dmg` | Apple Silicon / Intel |
 | Windows | `.exe` | x86_64 |
-| Linux | `.deb` / `.AppImage` | x86_64 / arm64 |
+| Linux | `.deb` / `.rpm` / `.AppImage` | x86_64 |
 | Android | `.apk` | arm64 |
 
-> iOS 仅支持通过 Xcode 源码本地构建（无应用商店安装包），详见 [构建配置指南](./docs/BUILD-CONFIG.md)。
+> **iOS：** 仅支持通过 Xcode 从源码构建，详见 [构建配置](./docs/BUILD-CONFIG.md)。
+>
+> **macOS 提示「已损坏，无法打开」：** 在终端执行 `sudo xattr -r -d com.apple.quarantine "/Applications/Deep Student.app"`。
 
-### 上手建议
-
-第一次打开后，试试这条路径：
-
-1. 导入一份 PDF / 教材 / 论文
-2. 围绕材料发起对话
-3. 生成一份思维导图
-4. 继续生成题目集或闪卡
-5. 用翻译 / 精读继续深化
-
-这条路径最能体现 DeepStudent 的核心价值：不是单点功能，是一整条学习链。
+安装后，在「设置」中为任一预置模型服务商填入 API 密钥（或接入本地模型），然后打开对话直接提出需求，例如：「读一下教材第三章，画一张思维导图，再出 10 张卡片。」
 
 ---
 
-## 技术上有什么不同
+## 开发者
 
-如果你是开发者，这部分值得看。
-
-- **统一学习数据层** — 一份材料可以被读取、检索、结构化、练习、记忆，上层应用是同一份数据的不同视图
-- **Local-first** — 元数据（SQLite）、向量索引（LanceDB）、文件内容（Blob）全部本地存储
-- **技能驱动的可扩展架构** — 能力按需加载，配合 MCP 协议和多搜索引擎接入
-- **从材料到记忆的闭环** — 导入 → 理解 → 调研 → 结构化 → 练习 → 制卡 → 记忆
-
----
-
-## 架构概览
+### 架构
 
 ```
 DeepStudent
-├── 学习资料层：PDF / DOCX / 教材 / 题目 / 笔记 / 导图 / 翻译结果
-├── 统一数据层：VFS + SQLite 元数据 + LanceDB 向量索引 + Blob 文件存储
-├── 工作流层：对话 / 调研 / 导图 / 题目集 / 翻译 / 作文 / 记忆
-├── 扩展层：Skills / MCP / 多搜索引擎 / 自定义模型供应商
-└── 交互层：桌面端（macOS · Windows · Linux）与移动端（Android；iOS 仅源码构建）
+├── 界面层    学习桌面（macOS · Windows · Linux）与移动端（Android；iOS 源码构建）
+├── Agent 层  Chat V2 运行时 · 渐进披露的技能 · 审批与撤销 · 子代理 · MCP
+├── 应用层    对话 · 资源库 · 笔记 · 思维导图 · 题目集 · 闪卡 · 作文 · 翻译 · 待办 · 番茄钟
+├── 数据层    VFS · SQLite 元数据 · LanceDB 向量索引 · 本地 Blob 存储
+└── 集成      13 家模型服务商 · 7 个搜索引擎 · 6 个 OCR 引擎 · arXiv / Scholar
 ```
 
 <details>
-<summary>查看代码结构</summary>
+<summary>代码结构</summary>
 
 ```
 DeepStudent
-├── src/                    # React 前端
-│   ├── features/           #   特性模块（19 个：chat / learning-hub / mindmap / notes / pdf / practice / settings / todo / workbench / voice-input 等）
-│   │   └── chat/           #     Chat V2 对话引擎
-│   │       ├── core/       #       Store / 类型 / 注册表
-│   │       ├── skills/     #       技能系统 (builtin / builtin-tools / 加载器)
-│   │       ├── components/ #       对话 UI 组件
-│   │       └── plugins/    #       插件 (事件处理、块渲染)
-│   ├── components/         #   共享 UI 组件
-│   ├── stores/             #   Zustand 状态管理
-│   ├── mcp/                #   MCP 客户端 & 内置工具定义
-│   ├── essay-grading/      #   作文批改前端
-│   ├── translation/        #   翻译工作台前端
-│   ├── command-palette/    #   命令面板（快捷键 / 收藏 / 拼音搜索）
-│   ├── dstu/               #   DSTU 资源协议 & VFS API
-│   ├── api/                #   前端 API 层 (Tauri invoke 封装)
-│   ├── hooks/              #   React Hooks（主题、快捷键、平台检测等）
-│   ├── services/           #   服务层（更新检查、审计、日志等）
-│   ├── engines/            #   渲染引擎（Markdown、代码高亮等）
-│   ├── debug-panel/        #   调试面板 & 开发工具
-│   └── locales/            #   i18n 国际化（中 / 英）
-├── src-tauri/              # Tauri / Rust 后端
-│   └── src/
-│       ├── chat_v2/        #   对话 Pipeline & 工具执行器
-│       ├── llm_manager/    #   多模型管理 & 适配 (含 12 家内置供应商)
-│       ├── vfs/            #   虚拟文件系统 & 向量化索引
-│       ├── dstu/           #   DSTU 资源协议后端
-│       ├── tools/          #   联网搜索引擎适配 (7 引擎)
-│       ├── memory/         #   智能记忆（自进化画像 / 三层架构 / LLM 决策）
-│       ├── mcp/            #   MCP 协议实现
-│       ├── translation/    #   翻译 Pipeline 后端
-│       ├── cloud_storage/  #   云同步 (S3 / WebDAV；FTP 实验性)
-│       ├── data_governance/ #  备份、审计、迁移
-│       ├── essay_grading/  #   作文批改后端
-│       ├── qbank_grading/  #   题目集 AI 评分
-│       ├── crypto/         #   加密 & 安全存储 (AES-256-GCM)
-│       ├── multimodal/     #   多模态处理
-│       ├── ocr_adapters/   #   OCR 适配器 (6 引擎)
-│       └── llm_usage/      #   LLM 使用量追踪
-├── docs/                   # 用户文档 & 设计文档
-├── tests/                  # Vitest 单元测试 & Playwright CT
-└── .github/workflows/      # CI / Release 自动化
+├── src/                      # React 前端
+│   ├── features/             #   23 个功能模块（chat、workbench、flashcards、notes、mindmap、practice、
+│   │                         #   learning-hub、learning-today、insights、todo、pomodoro、browser 等）
+│   │   └── chat/             #     Chat V2：core store / skills（builtin、builtin-tools）/ components / plugins
+│   ├── components/           #   通用组件
+│   ├── stores/               #   Zustand 状态
+│   ├── dstu/                 #   DSTU 资源协议与 VFS API
+│   ├── essay-grading/        #   作文批改前端
+│   ├── translation/          #   翻译前端
+│   └── locales/              #   国际化（zh-CN / en-US）
+├── src-tauri/src/            # Tauri / Rust 后端
+│   ├── chat_v2/              #   Agent 管线与工具执行器
+│   ├── llm_manager/          #   模型服务商与适配
+│   ├── vfs/                  #   虚拟文件系统与向量索引
+│   ├── memory/               #   记忆与学习者画像
+│   ├── mcp/                  #   MCP 客户端
+│   ├── tools/                #   搜索引擎适配
+│   ├── ocr_adapters/         #   OCR 适配
+│   ├── cloud_storage/        #   云同步（S3 / WebDAV）
+│   └── data_governance/      #   备份、审计、迁移
+├── docs/                     # 使用指南与设计文档
+└── .github/workflows/        # CI 与发布自动化
 ```
 
 </details>
 
----
+### 技术栈
 
-## 技术栈
-
-| 领域 | 技术方案 |
-|------|----------|
-| **前端框架** | React 18 + TypeScript 5.6 + Vite 6 |
-| **UI 组件** | Tailwind CSS 3 + Radix UI + Phosphor Icons |
-| **桌面 / 移动** | Tauri 2 (Rust) — macOS · Windows · Linux · Android · iOS |
-| **数据存储** | SQLite (Rusqlite) + LanceDB (向量检索) + 本地 Blob |
-| **状态管理** | Zustand 5 + Immer |
-| **编辑器** | Milkdown (Markdown) + CodeMirror (代码) |
-| **文档处理** | PDF.js + pdfium-render + OCR 多引擎适配 |
-| **搜索引擎** | Google CSE · SerpAPI · Tavily · Brave · SearXNG · 智谱 · 博查 |
-| **CI / CD** | GitHub Actions — lint · type-check · build · Release Please |
-
----
-
-## 开发
-
-### 环境要求
-
-| 工具 | 版本 | 说明 |
-|------|------|------|
-| **Node.js** | v20+ | 前端构建 |
-| **Rust** | Stable | 后端编译（建议通过 [rustup](https://rustup.rs) 安装） |
-| **npm** | — | 包管理器（请勿混用 pnpm / yarn） |
+| 领域 | 技术 |
+|---|---|
+| 前端 | React 18 · TypeScript 5.6 · Vite 6 |
+| UI | Tailwind CSS 3 · Radix UI · Phosphor Icons |
+| 桌面 / 移动端 | Tauri 2（Rust） |
+| 数据 | SQLite（rusqlite）· LanceDB · 本地 Blob 存储 |
+| 状态管理 | Zustand 5 · Immer |
+| 编辑器 | Milkdown 7 · CodeMirror |
+| 文档处理 | PDF.js · pdfium-render · 多引擎 OCR |
+| CI / CD | GitHub Actions · Release Please |
 
 ### 本地开发
+
+需要 Node.js 20+、Rust stable（推荐用 [rustup](https://rustup.rs) 安装）与 npm（请勿混用 pnpm / yarn）。
 
 ```bash
 git clone https://github.com/helixnow/deep-student.git
 cd deep-student
-
 npm ci
 npm run tauri dev
 ```
 
-更多打包与构建信息见 [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)
+打包与跨平台构建见 [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md)。
 
----
-
-## 文档
+### 文档
 
 | 文档 | 说明 |
-|------|------|
-| [快速入门](./docs/user-guide/01-快速上手.md) | 10 分钟上手指南（[在线版](https://deepstudent.cn/docs/)） |
-| [用户手册](./docs/user-guide/README.md) | 完整功能使用说明，覆盖桌面 + 移动双端（[在线版](https://deepstudent.cn/docs/)） |
-| [构建配置](./docs/BUILD-CONFIG.md) | 全平台构建与打包 |
+|---|---|
+| [使用指南](https://deepstudent.cn/user-guide/) | 全部应用与工作流（源文件在 [`docs/user-guide`](./docs/user-guide/)） |
+| [路线图](https://deepstudent.cn/timeline) | 版本历程与后续计划 |
+| [构建配置](./docs/BUILD-CONFIG.md) | 跨平台构建与打包 |
 | [更新日志](./CHANGELOG.md) | 版本变更记录 |
-| [安全政策](./.github/SECURITY.md) | 漏洞报告流程 |
+| [安全策略](./.github/SECURITY.md) | 漏洞报告流程 |
 
 ---
 
-## 路线图
+## 参与贡献
 
-正在通往 **v1.0**，近期重点：
-
-- 用户体验与稳定性提升
-- 桌面端与移动端 UI/UX 优化
-- 云同步与备份能力增强
-- 资源全生命周期管理优化
-- 技能与工作流继续扩展
-- 更多新模型接入与适配
-
----
-
-## 项目历程
-
-DeepStudent 起源于 2025 年 3 月的一个 Python demo，经过近一年持续迭代：
-
-| 时间 | 里程碑 |
-|------|--------|
-| **2025.03** | 🌱 项目萌芽 — Python demo 原型，验证 AI 辅助学习的核心想法 |
-| **2025.05** | 🔄 技术栈迁移 — 切换至 Tauri + React + Rust 架构 |
-| **2025.08** | 🎨 大规模 UI 重构 — 迁移至 shadcn-ui，引入 Chat 架构、知识库向量化 |
-| **2025.09** | 📝 笔记系统与模板管理 — Milkdown 编辑器集成、Anki 模板批量导入 |
-| **2025.10** | 🌐 国际化与 E2E 测试 — i18n 全覆盖、Playwright 测试、Lance 向量存储迁移 |
-| **2025.11** | 💬 Chat V2 架构 — 全新对话引擎（多模型对比、工具事件系统、快照监控） |
-| **2025.12** | ⚡ 性能优化 — 会话加载并行化、配置缓存、DSTU 资源协议 |
-| **2026.01** | 🧩 技能系统与 VFS — 文件式技能加载、统一虚拟文件系统 |
-| **2026.02** | 🚀 开源发布 — 更名 DeepStudent，发布至 v0.9.23；新增翻译工作台、云同步、会话分支、智能记忆增强等 |
-| **2026.03** | 🐧 Linux 支持与安全加固 — Linux 构建支持（deb/AppImage）；待办事项与番茄钟系统；做题历史回顾；模型能力自动检测；移动端阅读模式；内容搜索与会话标签；资源导出；记忆批量写入与幂等性；跨会话权限检查；发布 v0.9.30–v0.9.35 |
-| **2026.04–06** | 🧱 架构与稳定性 — DeepSeek V4 / V3.2 系列适配；前端 `features/` 模块化重构与 Phosphor 图标迁移；真实环境多实例 E2E 测试体系；云同步收敛性整治；发布 v0.9.36–v0.9.40 |
-
----
-
-## 贡献
-
-欢迎一起把 DeepStudent 做得更好。
-
-1. 阅读 [CONTRIBUTING.md](./.github/CONTRIBUTING.md) 了解开发流程
-2. 提交 PR 前请通过 `npm run lint` 与类型检查
-3. Bug 与建议请提交 [Issue](https://github.com/helixnow/deep-student/issues)
-
----
+1. 阅读 [CONTRIBUTING.md](./.github/CONTRIBUTING.md) 了解开发流程。
+2. 提交 PR 前确认 `npm run lint` 与类型检查通过。
+3. 问题与建议请提交到 [Issues](https://github.com/helixnow/deep-student/issues)。
 
 ## 许可证
 
 [AGPL-3.0](./LICENSE)
 
----
-
 ## 致谢
 
-DeepStudent 的诞生离不开以下优秀的开源项目：
+DeepStudent 建立在这些开源项目之上：
 
-**框架与运行时**
+**框架与运行时** —
 [Tauri](https://tauri.app) · [React](https://react.dev) · [Vite](https://vite.dev) · [TypeScript](https://www.typescriptlang.org) · [Rust](https://www.rust-lang.org) · [Tokio](https://tokio.rs)
 
-**编辑器与内容渲染**
+**编辑器与渲染** —
 [Milkdown](https://milkdown.dev) · [ProseMirror](https://prosemirror.net) · [CodeMirror](https://codemirror.net) · [KaTeX](https://katex.org) · [Mermaid](https://mermaid.js.org) · [react-markdown](https://github.com/remarkjs/react-markdown)
 
-**UI 与样式**
+**UI** —
 [Tailwind CSS](https://tailwindcss.com) · [Radix UI](https://www.radix-ui.com) · [Phosphor Icons](https://phosphoricons.com) · [Framer Motion](https://www.framer.com/motion) · [Recharts](https://recharts.org) · [React Flow](https://reactflow.dev)
 
-**数据与状态**
+**数据与状态** —
 [LanceDB](https://lancedb.com) · [SQLite](https://www.sqlite.org) / [rusqlite](https://github.com/rusqlite/rusqlite) · [Apache Arrow](https://arrow.apache.org) · [Zustand](https://zustand.docs.pmnd.rs) · [Immer](https://immerjs.github.io/immer) · [Serde](https://serde.rs)
 
-**文档处理**
-[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/nicholasgasior/pdfium-render) · [docx-preview](https://github.com/nicholasgasior/docx-preview) · [docx-rs](https://github.com/cstkingkey/docx-rs) · [umya-spreadsheet](https://github.com/MathNya/umya-spreadsheet) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
+**文档处理** —
+[PDF.js](https://mozilla.github.io/pdf.js/) · [pdfium-render](https://github.com/ajrcarey/pdfium-render) · [docx-preview](https://github.com/VolodymyrBaydalka/docxjs) · [docx-rs](https://github.com/bokuweb/docx-rs) · [umya-spreadsheet](https://github.com/MathNya/umya-spreadsheet) · [Mustache](https://mustache.github.io) · [DOMPurify](https://github.com/cure53/DOMPurify)
 
-**国际化与工具链**
+**国际化与工具链** —
 [i18next](https://www.i18next.com) · [date-fns](https://date-fns.org) · [Vitest](https://vitest.dev) · [Playwright](https://playwright.dev) · [ESLint](https://eslint.org) · [Sentry](https://sentry.io)
-
----
-
-<p align="center">
-  <sub>Made with ❤️ for Lifelong Learners</sub>
-</p>
