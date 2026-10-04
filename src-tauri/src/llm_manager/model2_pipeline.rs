@@ -8816,7 +8816,6 @@ impl LLMManager {
         let mut request_body = json!({
             "model": config.model,
             "messages": messages,
-            "stream": false,
             "temperature": ocr_adapter.recommended_temperature()  // OCR 任务使用确定性输出
         });
 
@@ -8867,67 +8866,43 @@ impl LLMManager {
             user_prompt.chars().count()
         );
 
-        // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
-                &config,
-                &request_body,
-                None,
-                Some("ocr"),
-                "OCR RAW prompt 请求构建失败",
-            )
-            .await?;
-
         log_llm_request_audit(
             "OCR_RAW",
-            &preq.url,
+            &config.base_url,
             &config.model,
             &request_body,
             self.build_debug_persist_config().as_ref(),
         );
 
-        // 5. 发送请求
-        let response = if preq.is_codex() {
-            self.send_codex_request_with_single_refresh(&mut preq, None)
-                .await?
-        } else {
-            let mut request_builder = self
-                .client
-                .post(&preq.url)
-                .header("Accept", "application/json")
-                .header("Accept-Encoding", "identity");
-            for (k, v) in &preq.headers {
-                request_builder = request_builder.header(k, v);
-            }
-            request_builder.json(&preq.body).send().await.map_err(|e| {
-                AppError::network(format!("OCR_MODEL API请求失败: {}", e.without_url()))
-            })?
-        };
+        // 4. 流式传输（空闲超时 + 总时长硬上限，供应商拒绝流式时回退非流式）：
+        // 多页/稠密页 OCR 输出长，非流式请求易被网关 524/504 或固定总超时掐断。
+        let opts = super::single_shot_stream::SingleShotOptions::new(format!(
+            "OCR_MODEL({})",
+            config.model
+        ));
+        let completion = self
+            .single_shot_completion(
+                &config,
+                &request_body,
+                None,
+                Some("ocr"),
+                "OCR RAW prompt 请求构建失败",
+                &opts,
+                None,
+            )
+            .await?;
 
-        // 6. 检查响应状态
-        if !response.status().is_success() {
-            let status = response.status();
-            let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "OCR_MODEL API请求失败: {} - {}",
-                status, error_text
-            )));
+        let mut openai_like_json = json!({
+            "choices": [{
+                "index": 0,
+                "message": { "role": "assistant", "content": completion.content },
+                "finish_reason": completion.finish_reason,
+            }]
+        });
+        if let Some(usage) = completion.usage {
+            openai_like_json["usage"] = usage;
         }
-
-        // 7. 解析响应
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| AppError::llm(format!("解析OCR_MODEL响应失败: {}", e)))?;
-
-        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
-
-        let assistant_message = openai_like_json["choices"][0]["message"]["content"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let assistant_message = completion.content;
 
         Ok(StandardModel2Output {
             assistant_message,
