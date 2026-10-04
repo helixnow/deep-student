@@ -1,0 +1,20 @@
+/* 笔记内 [媒体@id:mm:ss] 时间戳锚点（暗色经 token 自适应） */
+.crepe-media-ref {
+  color: hsl(var(--primary));
+  background-color: hsl(var(--primary) / 0.08);
+  border-radius: 4px;
+  padding: 0 2px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.crepe-media-ref:hover {
+  background-color: hsl(var(--primary) / 0.16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crepe-media-ref {
+    transition: none;
+  }
+}

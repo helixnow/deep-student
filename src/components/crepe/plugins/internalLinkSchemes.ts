@@ -11,8 +11,9 @@ import { linkSchema } from '@milkdown/kit/preset/commonmark';
 
 import { NOTE_HREF_PROTOCOL } from './mention/types';
 import { PDF_REF_HREF_PROTOCOL } from './pdfRef/protocol';
+import { MEDIA_REF_HREF_PROTOCOL } from './mediaRef/protocol';
 
-const INTERNAL_LINK_PROTOCOLS = [PDF_REF_HREF_PROTOCOL, NOTE_HREF_PROTOCOL];
+const INTERNAL_LINK_PROTOCOLS = [PDF_REF_HREF_PROTOCOL, NOTE_HREF_PROTOCOL, MEDIA_REF_HREF_PROTOCOL];
 
 export function isInternalLinkHref(href: unknown): href is string {
   if (typeof href !== 'string') return false;

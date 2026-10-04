@@ -21,6 +21,7 @@ import type { WikilinkPluginConfig } from './wikilink';
 import { mentionPlugin } from './mention';
 import type { MentionPluginConfig } from './mention';
 import { pdfRefPlugin } from './pdfRef';
+import { mediaRefPlugin } from './mediaRef';
 import { internalLinkSchema } from './internalLinkSchemes';
 import { defaultWikilinkGetNotes } from './wikilink/defaultGetNotes';
 import { blockIdentityPlugin } from './blockIdentity';
@@ -85,6 +86,11 @@ export interface CrepePluginsOptions {
    * 纯 click 拦截 + pdf-ref:open 派发，无 UI、无数据依赖。
    */
   pdfRefLink?: boolean;
+  /**
+   * 媒体时间戳回链（`[媒体@id:mm:ss]` 文本标记 / mediaref:// 链接 → 打开音视频并跳转），
+   * 默认启用。装饰 + click 拦截 + media-ref:open 派发。
+   */
+  mediaRefLink?: boolean;
 }
 
 /**
@@ -105,6 +111,7 @@ export const applyCrepePlugins = (
     imageLightbox: enableImageLightbox = true,
     linkKeymap: enableLinkKeymap = true,
     pdfRefLink: enablePdfRefLink = true,
+    mediaRefLink: enableMediaRefLink = true,
   } = options;
 
   // 自动 Markdown 格式化
@@ -175,6 +182,11 @@ export const applyCrepePlugins = (
   if (enablePdfRefLink) {
     crepe.editor.use(pdfRefPlugin());
   }
+
+  // 讲义笔记的 [媒体@id:mm:ss] 锚点 / mediaref:// 链接 → 音视频跳到该时间
+  if (enableMediaRefLink) {
+    crepe.editor.use(mediaRefPlugin());
+  }
   crepe.editor.use(columnsPlugin(options.columns));
   crepe.editor.use(blockIdentityPlugin());
   // Notion 式块选择：Esc 选块、↑↓/Shift 扩选、Backspace 删除、Mod-D 复制
@@ -196,4 +208,5 @@ export const defaultPluginOptions: CrepePluginsOptions = {
   imageLightbox: true,
   linkKeymap: true,
   pdfRefLink: true,
+  mediaRefLink: true,
 };
