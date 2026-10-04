@@ -37,6 +37,7 @@ export const AnswerImageStrip: React.FC<AnswerImageStripProps> = ({
   readOnly = false,
   onRemove,
 }) => {
+  const { t } = useTranslation('common');
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [failed, setFailed] = useState<Set<string>>(new Set());
   const [previewImageId, setPreviewImageId] = useState<string | null>(null);
@@ -110,14 +111,16 @@ export const AnswerImageStrip: React.FC<AnswerImageStripProps> = ({
               <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground">
                 <ImageIcon size={20} />
                 {failed.has(img.id) && (
-                  <span className="text-[10px] mt-1 px-1 text-center">加载失败</span>
+                  <span className="text-[10px] mt-1 px-1 text-center">
+                    {t('common:messages.error.load_failed')}
+                  </span>
                 )}
               </div>
             )}
             {!readOnly && onRemove && (
               <button
                 type="button"
-                aria-label="移除图片"
+                aria-label={t('common:ui.buttons.remove_image')}
                 className="absolute top-0.5 right-0.5 p-0.5 rounded-full bg-background/80 text-foreground hover:bg-background"
                 onClick={(event) => {
                   event.stopPropagation();

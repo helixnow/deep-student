@@ -18,6 +18,8 @@
  * - 渲染错误结构化返回，绝不抛出异常
  */
 
+import i18next from 'i18next';
+
 export type AnkiTemplateSide = 'front' | 'back';
 
 export type TemplateRenderIssueCode =
@@ -112,6 +114,26 @@ export interface CompiledTemplate {
 const COMPILE_CACHE_LIMIT = 200;
 const compileCache = new Map<string, CompiledTemplate>();
 
+/** 编译结果含已本地化的 issue 文案，缓存键需带上当前语言 */
+function compileCacheKey(source: string): string {
+  return `${i18next.language ?? ''}\u0000${source}`;
+}
+
+/**
+ * 模板问题文案（用户可见：模板编辑器预览 / 卡面提示）。按界面语言经
+ * common:template_render.* 解析；i18n 未就绪（纯函数测试等）时退回 zh-CN 原文。
+ * 标签本身（含 {{ }}）作为变量传入，避免与 i18next 插值语法冲突。
+ */
+export function templateIssueMessage(
+  key: string,
+  fallback: string,
+  params: Record<string, string> = {},
+): string {
+  const translated = i18next.t(`common:template_render.${key}`, { defaultValue: fallback, ...params });
+  if (typeof translated === 'string' && translated) return translated;
+  return fallback.replace(/\{\{(\w+)\}\}/g, (match, name: string) => params[name] ?? match);
+}
+
 export function clearAnkiTemplateCache(): void {
   compileCache.clear();
 }
@@ -144,7 +166,8 @@ const TAG_PATTERN = /\{\{\{([\s\S]*?)\}\}\}|\{\{([\s\S]*?)\}\}/g;
 
 export function compileAnkiTemplate(template: string): CompiledTemplate {
   const source = typeof template === 'string' ? template : '';
-  const cached = compileCache.get(source);
+  const cacheKey = compileCacheKey(source);
+  const cached = compileCache.get(cacheKey);
   if (cached) return cached;
 
   const issues: TemplateRenderIssue[] = [];
@@ -167,7 +190,7 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     const rawTag = match[0];
 
     if (!rawContent) {
-      issues.push({ code: 'invalid-tag', message: '空的模板标签', tag: rawTag });
+      issues.push({ code: 'invalid-tag', message: templateIssueMessage('empty_tag', '空的模板标签'), tag: rawTag });
       continue;
     }
 
@@ -186,7 +209,9 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     if (head === '=' || head === '>') {
       issues.push({
         code: 'unsupported-tag',
-        message: `不支持的模板标签 {{${rawContent}}}`,
+        message: templateIssueMessage('unsupported_tag', '不支持的模板标签 {{tag}}', {
+          tag: `{{${rawContent}}}`,
+        }),
         tag: rawContent,
       });
       continue;
@@ -195,7 +220,7 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     if (head === '#' || head === '^') {
       const name = rawContent.slice(1).trim();
       if (!name) {
-        issues.push({ code: 'invalid-tag', message: '缺少名称的条件段', tag: rawContent });
+        issues.push({ code: 'invalid-tag', message: templateIssueMessage('section_missing_name', '缺少名称的条件段'), tag: rawContent });
         continue;
       }
       const node: SectionNode = {
@@ -215,7 +240,7 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
       if (stack.length === 0) {
         issues.push({
           code: 'unbalanced-close',
-          message: `多余的结束标签 {{/${name}}}`,
+          message: templateIssueMessage('extra_close', '多余的结束标签 {{tag}}', { tag: `{{/${name}}}` }),
           tag: rawContent,
         });
         continue;
@@ -224,7 +249,10 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
       if (open.name.toLowerCase() !== name.toLowerCase()) {
         issues.push({
           code: 'unbalanced-close',
-          message: `结束标签 {{/${name}}} 与开始标签 {{#${open.name}}} 不匹配`,
+          message: templateIssueMessage('close_mismatch', '结束标签 {{close}} 与开始标签 {{open}} 不匹配', {
+            close: `{{/${name}}}`,
+            open: `{{#${open.name}}}`,
+          }),
           tag: rawContent,
         });
         // 尽力恢复：若栈内存在同名开标签则一路弹出，否则忽略该关闭标签
@@ -251,7 +279,9 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     if (!fieldName && filters.length > 0) {
       issues.push({
         code: 'invalid-tag',
-        message: `过滤器缺少字段名 {{${rawContent}}}`,
+        message: templateIssueMessage('filter_missing_field', '过滤器缺少字段名 {{tag}}', {
+          tag: `{{${rawContent}}}`,
+        }),
         tag: rawContent,
       });
       continue;
@@ -260,7 +290,9 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
       if (!KNOWN_FILTERS.has(filter) && !filter.startsWith('tts')) {
         issues.push({
           code: 'unknown-filter',
-          message: `未知的模板过滤器「${filter}」，已按普通字段渲染`,
+          message: templateIssueMessage('unknown_filter', '未知的模板过滤器「{{filter}}」，已按普通字段渲染', {
+            filter,
+          }),
           tag: rawContent,
         });
       }
@@ -276,7 +308,10 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     const open = stack.pop()!;
     issues.push({
       code: 'unclosed-section',
-      message: `条件段 {{${open.inverted ? '^' : '#'}${open.name}}} 缺少结束标签 {{/${open.name}}}`,
+      message: templateIssueMessage('unclosed_section', '条件段 {{open}} 缺少结束标签 {{close}}', {
+        open: `{{${open.inverted ? '^' : '#'}${open.name}}}`,
+        close: `{{/${open.name}}}`,
+      }),
       tag: open.raw,
     });
   }
@@ -287,7 +322,7 @@ export function compileAnkiTemplate(template: string): CompiledTemplate {
     const oldestKey = compileCache.keys().next().value;
     if (oldestKey !== undefined) compileCache.delete(oldestKey);
   }
-  compileCache.set(source, compiled);
+  compileCache.set(cacheKey, compiled);
   return compiled;
 }
 
@@ -536,7 +571,9 @@ function resolveSpecialField(name: string, state: RenderState): string | null {
       if (state.side === 'front') {
         state.issues.push({
           code: 'frontside-on-front',
-          message: '{{FrontSide}} 只能用于背面模板',
+          message: templateIssueMessage('frontside_on_front', '{{tag}} 只能用于背面模板', {
+            tag: '{{FrontSide}}',
+          }),
           tag: name,
         });
         return '';
@@ -712,7 +749,7 @@ export function renderAnkiTemplate(
       issues: [
         {
           code: 'render-exception',
-          message: `模板渲染异常：${message}`,
+          message: templateIssueMessage('render_exception', '模板渲染异常：{{message}}', { message }),
         },
       ],
       ok: false,

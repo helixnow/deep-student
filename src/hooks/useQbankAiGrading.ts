@@ -13,6 +13,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { nanoid } from 'nanoid';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import i18n from '@/i18n';
 
 // ============================================================================
 // 类型定义
@@ -132,7 +133,7 @@ export function useQbankAiGrading() {
       setState((prev) => ({
         ...prev,
         isGrading: false,
-        error: 'AI 评判超时，请重试',
+        error: i18n.t('common:qbank_grading.timeout'),
       }));
       // 通知后端取消
       const sid = currentStreamSessionIdRef.current;
@@ -146,7 +147,7 @@ export function useQbankAiGrading() {
       // 超时可能发生在 listen 注册完成前，若不复位会永久拒绝后续 startGrading
       isStartingRef.current = false;
       // ★ R2-2: 结束进行中的 Promise（reject），与 error 事件路径一致，避免调用方挂起
-      failRef.current?.(new Error('AI 评判超时，请重试'));
+      failRef.current?.(new Error(i18n.t('common:qbank_grading.timeout')));
     }, TIMEOUT_MS);
   }, [cleanup]);
 
@@ -170,7 +171,7 @@ export function useQbankAiGrading() {
       return new Promise(async (resolve, reject) => {
         // 防重入
         if (isStartingRef.current || isActiveRef.current) {
-          reject(new Error('评判正在进行中'));
+          reject(new Error(i18n.t('common:qbank_grading.in_progress')));
           return;
         }
 
@@ -267,11 +268,11 @@ export function useQbankAiGrading() {
               setState((prev) => ({
                 ...prev,
                 isGrading: false,
-                error: payload.message || '评判失败',
+                error: payload.message || i18n.t('common:qbank_grading.failed'),
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
-              fail(new Error(payload.message || '评判失败'));
+              fail(new Error(payload.message || i18n.t('common:qbank_grading.failed')));
             }
 
             if (payload.type === 'cancelled') {

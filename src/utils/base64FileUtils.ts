@@ -5,6 +5,13 @@
  * 包括错误处理和性能优化。
  */
 
+import i18next from 'i18next';
+
+/** 用户可见错误文案：按界面语言解析，i18n 未就绪时退回 zh-CN 原文 */
+function localizedError(key: string, fallback: string): string {
+  return i18next.t(key, { defaultValue: fallback }) || fallback;
+}
+
 /**
  * 转换结果
  */
@@ -95,7 +102,7 @@ export function base64ToFile(
     if (!bytes || bytes.length === 0) {
       return {
         success: false,
-        error: 'Base64 内容为空或无效',
+        error: localizedError('common:file_errors.base64_empty', 'Base64 内容为空或无效'),
       };
     }
 
@@ -111,7 +118,9 @@ export function base64ToFile(
     console.error('[base64ToFile] Conversion failed:', err);
     return {
       success: false,
-      error: err instanceof Error ? err.message : '文件转换失败',
+      error: err instanceof Error
+        ? err.message
+        : localizedError('common:file_errors.conversion_failed', '文件转换失败'),
     };
   }
 }

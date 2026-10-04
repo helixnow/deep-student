@@ -392,7 +392,7 @@ export function useAppUpdater(): AppUpdaterController {
         if (!releaseChannel) {
           if (getUpdateChannel() === 'stable') {
             if (!silent) {
-              setState(prev => ({ ...prev, checking: false, error: { phase: 'check', message: '无法确认更新渠道，请稍后重试' } }));
+              setState(prev => ({ ...prev, checking: false, error: { phase: 'check', message: i18n.t('common:update.channelUnknown') } }));
             } else {
               setState(prev => ({ ...prev, checking: false }));
               console.warn('[Updater] Mobile channel probe failed; skipping check for stable user');
@@ -456,7 +456,7 @@ export function useAppUpdater(): AppUpdaterController {
         }
         if (channel === null) {
           if (!silent) {
-            setState(prev => ({ ...prev, checking: false, error: { phase: 'check', message: '无法连接更新服务器，请稍后重试' } }));
+            setState(prev => ({ ...prev, checking: false, error: { phase: 'check', message: i18n.t('common:update.serverUnreachable') } }));
           } else {
             setState(prev => ({ ...prev, checking: false }));
             console.warn('[Updater] Channel probe failed on both R2 and GitHub; skipping check for stable user');
@@ -543,7 +543,7 @@ export function useAppUpdater(): AppUpdaterController {
   const downloadApkAndInstall = useCallback(async () => {
     const info = state.info;
     if (!info?.apkUrl) {
-      setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: '更新已不可用，请稍后重试' } }));
+      setState(prev => ({ ...prev, downloading: false, error: { phase: 'unavailable', message: i18n.t('settings:about.update.error.unavailable') } }));
       return;
     }
     const { apkUrl, version } = info;

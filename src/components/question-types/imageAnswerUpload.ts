@@ -9,6 +9,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18n from '@/i18n';
 
 import type { QuestionImage } from '@/api/questionBankApi';
 import {
@@ -130,7 +131,7 @@ export interface PreparedAnswerImage {
 export async function compressImageAnswerImage(file: File): Promise<PreparedAnswerImage> {
   // 上传与信封使用同一 MIME 契约；不能先存入 VFS 再在提交时拒绝。
   if (!(IMAGE_ANSWER_MIME_TYPES as readonly string[]).includes(file.type)) {
-    throw new Error('不支持此图片格式，请选择 PNG、JPEG、WebP 或 GIF 图片');
+    throw new Error(i18n.t('common:image_answer.unsupported_format'));
   }
   // gif 不重编码，避免丢帧。
   if (file.type === 'image/gif') {
@@ -173,7 +174,9 @@ export async function compressImageAnswerImage(file: File): Promise<PreparedAnsw
 
 function assertFallbackSize(file: File): void {
   if (file.size > FALLBACK_MAX_BYTES) {
-    throw new Error(`图片过大（${(file.size / 1024 / 1024).toFixed(1)}MB），请选择小于 8MB 的图片或稍后重试`);
+    throw new Error(
+      i18n.t('common:image_answer.too_large', { size: (file.size / 1024 / 1024).toFixed(1) }),
+    );
   }
 }
 
@@ -185,7 +188,7 @@ function fileToBase64(file: File): Promise<string> {
       const comma = result.indexOf(',');
       resolve(comma >= 0 ? result.slice(comma + 1) : result);
     };
-    reader.onerror = () => reject(new Error('读取图片失败'));
+    reader.onerror = () => reject(new Error(i18n.t('common:image_answer.read_failed')));
     reader.readAsDataURL(file);
   });
 }

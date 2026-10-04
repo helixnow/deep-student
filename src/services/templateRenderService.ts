@@ -1,6 +1,7 @@
 import { CustomAnkiTemplate, AnkiCard } from '../types';
 import {
   renderAnkiTemplate,
+  templateIssueMessage,
   type AnkiRenderOptions,
   type AnkiSpecialFields,
   type TemplateRenderResult,
@@ -61,7 +62,12 @@ export class TemplateRenderService {
       const message = error instanceof Error ? error.message : String(error);
       const failure: TemplateRenderResult = {
         html: '',
-        issues: [{ code: 'render-exception', message: `卡片渲染失败：${message}` }],
+        issues: [
+          {
+            code: 'render-exception',
+            message: templateIssueMessage('card_render_failed', '卡片渲染失败：{{message}}', { message }),
+          },
+        ],
         ok: false,
       };
       return { front: failure, back: { ...failure, issues: [...failure.issues] } };

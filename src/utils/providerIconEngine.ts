@@ -7,6 +7,7 @@
  * 而不是API平台提供商（如SiliconFlow、Together等）
  */
 
+import i18next from 'i18next';
 import { stripGatewayPrefix } from './modelIdPrefix';
 
 export type ProviderBrand =
@@ -432,6 +433,22 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
 };
 
 /**
+ * 显示名为中文的品牌：按当前界面语言经 common:provider_brands.* 解析，
+ * 上表中文名作为 zh-CN 原文与 i18n 未就绪时的兜底。
+ */
+const LOCALIZED_PROVIDER_BRANDS: ReadonlySet<ProviderBrand> = new Set<ProviderBrand>([
+  'qwen', 'alibaba', 'bytedance', 'zhipu', 'tencent', 'moonshot', 'kuaishou', 'baidu',
+  'xfyun', 'senseTime', '01ai', 'baichuan', 'stepfun', 'baai', 'internlm', 'youdao',
+  'antling', 'teleai',
+]);
+
+function resolveProviderDisplayName(brand: ProviderBrand): string {
+  const fallback = PROVIDER_DISPLAY_NAMES[brand] || 'Unknown';
+  if (!LOCALIZED_PROVIDER_BRANDS.has(brand)) return fallback;
+  return i18next.t(`common:provider_brands.${brand}`, { defaultValue: fallback }) || fallback;
+}
+
+/**
  * 图标路径映射
  */
 function getIconPath(brand: ProviderBrand): string {
@@ -512,7 +529,7 @@ export function getProviderInfo(
 ): ProviderInfo {
   const brand = detectProviderBrand(modelIdOrName);
   const iconPath = getIconPath(brand);
-  const displayName = PROVIDER_DISPLAY_NAMES[brand] || 'Unknown';
+  const displayName = resolveProviderDisplayName(brand);
   
   // 如果没有提供category，尝试自动推断
   let inferredCategory: ProviderInfo['category'] = category || 'other';
@@ -555,7 +572,7 @@ export function getProviderIcon(modelIdOrName: string): string {
  */
 export function getProviderDisplayName(modelIdOrName: string): string {
   const brand = detectProviderBrand(modelIdOrName);
-  return PROVIDER_DISPLAY_NAMES[brand] || 'Unknown';
+  return resolveProviderDisplayName(brand);
 }
 
 /**
