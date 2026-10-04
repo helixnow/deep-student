@@ -786,7 +786,9 @@
     "quickExport": "导出",
     "noExportableCards": "暂无可导出的卡片",
     "retryStarted": "已重新触发 {{count}} 个失败任务",
-    "retryPartial": "{{succeeded}} 个任务已重试，{{failed}} 个失败"
+    "retryPartial": "{{succeeded}} 个任务已重试，{{failed}} 个失败",
+    "statsLoadFailed": "统计数据加载失败，任务列表不受影响",
+    "sessionWarningsHint": "存在失败或警告分段（不阻断运行与完成）"
   },
   "chatV2": {
     "generating": "正在生成卡片...",

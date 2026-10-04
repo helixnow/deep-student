@@ -188,7 +188,14 @@
       "notApkg": "请选择 .apkg 格式的 Anki 牌组文件",
       "failed": "Anki 牌组导入失败"
     },
-    "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。"
+    "emptyHint": "手动新建一张卡片，或导入本地 Anki 牌组（.apkg）。",
+    "queue": {
+      "inboxTitle": "已生成 · 待入队",
+      "inboxHint": "尚未进入复习计划，不会出现在到期队列",
+      "enqueueAll": "加入复习（{{count}}）",
+      "scheduledTitle": "复习队列",
+      "dueCount": "{{count}} 张已到期"
+    }
   },
   "session": {
     "title": "复习",
@@ -435,6 +442,29 @@
         "days": "{{value}} 天",
         "years": "{{value}} 年"
       }
+    },
+    "fsrsParams": {
+      "difficultyLow": "低（<4）",
+      "difficultyMid": "中（4–7）",
+      "difficultyHigh": "高（≥7）",
+      "localNote": "仅本地读取到期队列聚合，不上传任何数据",
+      "loading": "正在读取到期队列…",
+      "unavailable": "记忆参数暂不可用（需要支持 FSRS 调度的后端）",
+      "emptyQueue": "当前没有到期卡片，暂无可聚合的记忆参数",
+      "allNew_one": "到期队列共 {{count}} 张，均为未复习过的新卡，尚未产生 Stability / Difficulty",
+      "allNew_other": "到期队列共 {{count}} 张，均为未复习过的新卡，尚未产生 Stability / Difficulty",
+      "stabilityMedian": "Stability 中位",
+      "stabilityMean": "Stability 均值",
+      "stabilityRange": "Stability 区间",
+      "difficultyMedian": "Difficulty 中位",
+      "difficultyMean": "Difficulty 均值",
+      "withParams": "有参数卡片",
+      "stabilityHistogram": "Stability 分布",
+      "newExcluded_one": "另有 {{count}} 张未复习过的新卡尚无参数，未计入聚合",
+      "newExcluded_other": "另有 {{count}} 张未复习过的新卡尚无参数，未计入聚合",
+      "sampleCapped": "到期队列超过 {{limit}} 张，仅统计队列前 {{limit}} 张",
+      "title": "记忆状态分布（到期样本）",
+      "subtitle": "到期样本的 S / D 分布，非模型权重；样本受额度与队列策略影响"
     }
   }
 }

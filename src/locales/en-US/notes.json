@@ -1809,12 +1809,19 @@
       "danger": "Danger",
       "info": "Info"
     },
-    "cycleType": "Change callout type"
+    "cycleType": "Change callout type",
+    "toggleFold": "Collapse or expand"
   },
   "wikilink": {
     "noCandidates": "No candidate notes",
     "create": "Create \"{{title}}\"",
-    "empty": "No matching notes"
+    "empty": "No matching notes",
+    "aliasHint": "Alias mode: displays as “{{label}}” after inserting",
+    "headingHint": "Heading mode: link to a heading in “{{target}}”",
+    "previewLoading": "Loading…",
+    "previewEmpty": "(Empty note)",
+    "ambiguousTitle_one": "“{{target}}” matches {{count}} note with this title. Click to choose",
+    "ambiguousTitle_other": "“{{target}}” matches {{count}} notes with this title. Click to choose"
   },
   "wikilinkV2": {
     "createConfirm": "Create new note \"{{title}}\"?",
@@ -2152,5 +2159,8 @@
     "resource": "From material",
     "resource_page": "From material · p. {{page}}",
     "open": "Go to source"
+  },
+  "selection": {
+    "group": "More"
   }
 }

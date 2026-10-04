@@ -101,7 +101,9 @@
     "zoom_level": "缩放级别",
     "rotate_ccw": "逆时针旋转 90°",
     "outline_nav_failed": "无法跳转到该章节",
-    "highlight_rotation_disabled": "旋转视图下暂不支持划词高亮，请恢复原始方向后再试"
+    "highlight_rotation_disabled": "旋转视图下暂不支持划词高亮，请恢复原始方向后再试",
+    "pageJumpInvalid": "请输入有效页码",
+    "pageJumpOutOfRange": "页码超出范围（1–{{max}}）"
   },
   "bookmark": {
     "addBookmark": "添加书签",

@@ -1798,12 +1798,19 @@
       "danger": "危险",
       "info": "信息"
     },
-    "cycleType": "切换 Callout 类型"
+    "cycleType": "切换 Callout 类型",
+    "toggleFold": "折叠或展开"
   },
   "wikilink": {
     "noCandidates": "无候选笔记",
     "create": "创建 \"{{title}}\"",
-    "empty": "无匹配笔记"
+    "empty": "无匹配笔记",
+    "aliasHint": "别名模式：插入后显示「{{label}}」",
+    "headingHint": "标题模式：链接到「{{target}}」中的标题",
+    "previewLoading": "加载中…",
+    "previewEmpty": "（空笔记）",
+    "ambiguousTitle_one": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择",
+    "ambiguousTitle_other": "「{{target}}」命中 {{count}} 篇同名笔记，点击选择"
   },
   "wikilinkV2": {
     "createConfirm": "创建新笔记「{{title}}」？",
@@ -2151,5 +2158,8 @@
     "resource": "来自资料",
     "resource_page": "来自资料 · 第 {{page}} 页",
     "open": "回到来源"
+  },
+  "selection": {
+    "group": "更多"
   }
 }

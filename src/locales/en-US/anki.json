@@ -774,7 +774,9 @@
     "quickExport": "Export",
     "noExportableCards": "No exportable cards",
     "retryStarted": "Retried {{count}} failed tasks",
-    "retryPartial": "{{succeeded}} retried, {{failed}} failed"
+    "retryPartial": "{{succeeded}} retried, {{failed}} failed",
+    "statsLoadFailed": "Couldn't load stats. The task list is unaffected.",
+    "sessionWarningsHint": "Some segments failed or have warnings (doesn't block running or completion)"
   },
   "chatV2": {
     "generating": "Generating cards...",
