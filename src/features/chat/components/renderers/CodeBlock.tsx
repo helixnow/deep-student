@@ -1,6 +1,20 @@
-import React, { useEffect, useState, useRef, Component } from 'react';
+import React, { useEffect, useLayoutEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Copy, Check, Plus, Minus, ArrowCounterClockwise, Warning } from '@phosphor-icons/react';
+import {
+  Copy,
+  Check,
+  Plus,
+  Minus,
+  ArrowCounterClockwise,
+  ArrowSquareOut,
+  ArrowsInSimple,
+  ArrowsOutSimple,
+  Code,
+  DownloadSimple,
+  Eye,
+  ImageSquare,
+  Warning,
+} from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -10,12 +24,17 @@ import DOMPurify from 'dompurify';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { CodeBlockShell } from '../ui/CodeBlockShell';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
+import { ChatHtmlPreview } from '@/components/previews/ChatHtmlPreview';
+import { htmlUsesScripts, shouldAutoPreviewHtml } from '@/components/previews/chatHtmlPreviewDocument';
 import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
 import { shouldPauseHeavyContent } from '@/features/workbench/core/shellGestureFlags';
 import { reportFrontendError } from '@/logging/errorReporter';
 import { DEFAULT_RENDERER_CAPABILITIES, type RendererCapabilities } from './rendererCapabilities';
 import { RichCodeRenderer, type RichCodeRendererKind } from './RichCodeRenderer';
+import { CodeBlockMoreMenu, type CodeBlockMenuAction } from './CodeBlockMoreMenu';
+import { sanitizeSvgMarkup } from './progressiveSvg';
+import { useProgressiveSvg } from './useProgressiveSvg';
+import { downloadHtmlSource, downloadSvgSource, saveSvgAsPng, type SaveResult } from './codeBlockExport';
 // The blocked renderer needs the shared token palette without loading FlowToken.
 import '../../styles/flowtoken-patched.css';
 
@@ -271,6 +290,34 @@ const IDLE_CODE_SHELL_STYLE: React.CSSProperties = {
   containIntrinsicSize: 'auto 220px',
 };
 
+/**
+ * 图形预览视窗高度：按 SVG 固有宽高比随容器宽度计算，夹在 [MIN, MAX] 内。
+ * 宽扁的图不再被塞进固定 420px 的大框；流式时根标签（含 viewBox）最先写完，
+ * 首帧即确定高度，后续帧不跳动。触屏上限再压到 45% 视口高，避免一屏全是图。
+ */
+const PREVIEW_MIN_HEIGHT = 160;
+const PREVIEW_MAX_HEIGHT = 420;
+
+const getPreviewMaxHeight = (): number => {
+  if (typeof window === 'undefined') return PREVIEW_MAX_HEIGHT;
+  const coarse = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
+  return coarse
+    ? Math.max(PREVIEW_MIN_HEIGHT, Math.min(PREVIEW_MAX_HEIGHT, Math.round(window.innerHeight * 0.45)))
+    : PREVIEW_MAX_HEIGHT;
+};
+
+const clampNumber = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
+
+/** 从 HTML 的 <title> 推一个文件名，缺省 page.html */
+const htmlFileNameFor = (source: string): string => {
+  const title = /<title[^>]*>([^<]{1,80})<\/title>/i.exec(source)?.[1]?.trim();
+  const safe = title
+    ? Array.from(title).filter((ch) => ch.charCodeAt(0) >= 32).join('')
+      .replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim()
+    : '';
+  return `${safe || 'page'}.html`;
+};
+
 export const CodeBlock: React.FC<CodeBlockProps> = ({
   children,
   className,
@@ -282,7 +329,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const [running, setRunning] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [showRendered, setShowRendered] = useState(false);
-  const [htmlPreviewContent, setHtmlPreviewContent] = useState<string | null>(null);
   const [showRichRenderer, setShowRichRenderer] = useState(false);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -293,7 +339,16 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const contentOriginRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [mermaidError, setMermaidError] = useState<string | null>(null);
   const errorBoundaryKey = useRef(0);
-  
+  /** SVG 代码块：默认预览（流式渐进渲染），菜单可切到源码 */
+  const [svgView, setSvgView] = useState<'preview' | 'source'>('preview');
+  /** HTML 代码块：null = 按内容自动决定（完整文档/带样式默认预览） */
+  const [htmlViewOverride, setHtmlViewOverride] = useState<'preview' | 'source' | null>(null);
+  const [htmlExpanded, setHtmlExpanded] = useState(false);
+  /** 图形预览视窗高度（按宽高比计算）；null 时用 CSS 默认 */
+  const [previewHeight, setPreviewHeight] = useState<number | null>(null);
+  /** 用户手动缩放/平移过：之后的新帧与容器尺寸变化不再自动适配，尊重用户视角 */
+  const userAdjustedRef = useRef(false);
+
   // 生命周期跟踪：防止组件卸载后更新状态
   const isMountedRef = useRef(true);
   useEffect(() => {
@@ -303,10 +358,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     };
   }, []);
   const [contentSize, setContentSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  
+
   // 复制状态定时器引用，用于清理
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+
   // 组件卸载时清理定时器
   useEffect(() => {
     return () => {
@@ -320,42 +375,73 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const rawChildren = Array.isArray(children) ? (children as any[]).join('') : String(children ?? '');
   const codeContent = rawChildren.replace(/\n$/, '');
 
+  // 提取语言信息
+  const language = className?.replace('language-', '') || 'text';
+  const langLower = language.toLowerCase();
+  const canRunMermaid = langLower === 'mermaid';
+  const canRenderSvg = langLower === 'svg';
+  const canRenderHtml = langLower === 'html' || langLower === 'htm';
+  const canRenderXml = langLower === 'xml';
+  const richRendererKind: RichCodeRendererKind | null =
+    rendererCapabilities.charts && (langLower === 'vega-lite' || langLower === 'vega') ? 'vega-lite' :
+    rendererCapabilities.graphviz && langLower === 'dot' ? 'dot' :
+    rendererCapabilities.music && langLower === 'abc' ? 'abc' :
+    rendererCapabilities.timing && langLower === 'wavedrom' ? 'wavedrom' :
+    rendererCapabilities.chemicalFiles && ['mol', 'molfile', 'sdf'].includes(langLower) ? 'molecule-2d' :
+    rendererCapabilities.molecular3d && langLower === 'pdb' ? 'molecule-3d' :
+    rendererCapabilities.geojson && langLower === 'geojson' ? 'geojson' : null;
+  const canRenderRich = richRendererKind !== null;
+  /** SVG / HTML 走自动预览 + 「…」菜单；其余可视化保持手动「运行」 */
+  const hasLivePreview = canRenderSvg || canRenderHtml;
+
+  // ---- SVG：流式渐进渲染 ----
+  const progressiveSvg = useProgressiveSvg(codeContent, !!isStreaming, canRenderSvg && svgView === 'preview');
+  // 流式中根标签尚未写完时先给出预览占位；流结束仍无合法 SVG 则退回源码
+  const svgPreviewActive = canRenderSvg && svgView === 'preview' && (progressiveSvg !== null || !!isStreaming);
+
+  // ---- HTML：完整文档默认预览 ----
+  const htmlView: 'preview' | 'source' = canRenderHtml
+    ? htmlViewOverride ?? (shouldAutoPreviewHtml(codeContent) ? 'preview' : 'source')
+    : 'source';
+  const htmlPreviewActive = canRenderHtml && htmlView === 'preview';
+
+  /** 当前在图形预览视窗（缩放/平移）里显示的标记 */
+  const previewMarkup = canRenderSvg ? (svgPreviewActive ? progressiveSvg : null) : (showRendered ? renderedSvg : null);
+  const previewVisible = canRenderSvg ? svgPreviewActive : !!(renderedSvg && showRendered);
+
   // 记录上一次的代码内容用于防抖比较
   const prevCodeRef = useRef<string>('');
   const didAutoFitRef = useRef(false);
+  /** 上次布局所在的视窗元素：切回预览（视窗重新挂载）时需要重新布局 */
+  const lastPreviewElRef = useRef<HTMLDivElement | null>(null);
 
-  // 当代码内容变更时，重置渲染状态
-  // 使用 useMemo 避免流式过程中频繁触发
+  // 当代码内容变更时，重置手动渲染（mermaid / xml）的状态。
+  // SVG / HTML 预览随内容实时更新，不参与重置（否则流结束那一刻预览会被清掉）。
   useEffect(() => {
+    if (hasLivePreview) return;
     // 流式过程中不重置（除非内容完全不同的新代码块）
-    if (isStreaming && (renderedSvg || htmlPreviewContent)) {
+    if (isStreaming && renderedSvg) {
       return;
     }
     // 只有内容真正稳定后才重置
     if (prevCodeRef.current !== codeContent) {
       prevCodeRef.current = codeContent;
       setRenderedSvg(null);
-      setHtmlPreviewContent(null);
       setShowRichRenderer(false);
       setShowRendered(false);
       setScale(1);
       setOffset({ x: 0, y: 0 });
       setMermaidError(null);
+      setPreviewHeight(null);
+      userAdjustedRef.current = false;
       didAutoFitRef.current = false;
     }
-  }, [codeContent, htmlPreviewContent, isStreaming, renderedSvg]);
+  }, [codeContent, hasLivePreview, isStreaming, renderedSvg]);
 
   // 设置关闭后立刻退回源码，避免已卸载能力仍留在消息中继续渲染。
   useEffect(() => {
     setShowRichRenderer(false);
   }, [rendererCapabilities]);
-
-  // 切回渲染视图时允许再次自动适配
-  useEffect(() => {
-    if (showRendered) {
-      didAutoFitRef.current = false;
-    }
-  }, [showRendered]);
 
   const handleCopy = async () => {
     try {
@@ -377,22 +463,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   };
 
-  // 提取语言信息
-  const language = className?.replace('language-', '') || 'text';
-  const langLower = language.toLowerCase();
-  const canRunMermaid = langLower === 'mermaid';
-  const canRenderSvg = langLower === 'svg';
-  const canRenderHtml = langLower === 'html' || langLower === 'htm';
-  const canRenderXml = langLower === 'xml';
-  const richRendererKind: RichCodeRendererKind | null =
-    rendererCapabilities.charts && (langLower === 'vega-lite' || langLower === 'vega') ? 'vega-lite' :
-    rendererCapabilities.graphviz && langLower === 'dot' ? 'dot' :
-    rendererCapabilities.music && langLower === 'abc' ? 'abc' :
-    rendererCapabilities.timing && langLower === 'wavedrom' ? 'wavedrom' :
-    rendererCapabilities.chemicalFiles && ['mol', 'molfile', 'sdf'].includes(langLower) ? 'molecule-2d' :
-    rendererCapabilities.molecular3d && langLower === 'pdb' ? 'molecule-3d' :
-    rendererCapabilities.geojson && langLower === 'geojson' ? 'geojson' : null;
-  const canRenderRich = richRendererKind !== null;
+  /** 保存类动作的统一反馈：取消不提示，成功/失败给出通知 */
+  const runSaveAction = async (action: () => Promise<SaveResult>, failureKey: 'codeBlock.saveFailed' | 'codeBlock.imageExportFailed') => {
+    try {
+      const result = await action();
+      if (!result.canceled) {
+        try { showGlobalNotification('success', t('codeBlock.saved')); } catch {}
+      }
+    } catch (err: unknown) {
+      const message = getErrorMessage(err);
+      console.error('[CodeBlock] Save failed:', message);
+      try { showGlobalNotification('error', t(failureKey, { message })); } catch {}
+    }
+  };
 
   const handleRunMermaid = async () => {
     if (!canRunMermaid || isStreaming) return;
@@ -403,18 +486,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       // 手势期不启动渲染，结束后再跑（拖拽热路径禁止 mermaid 抢帧）
       await waitForShellGestureIdle();
       const lib: any = await import('mermaid');
-      
+
       if (!isMountedRef.current) return;
-      
+
       const mermaid = lib?.default ?? lib;
-      
+
       const currentIsDark = document.documentElement.classList.contains('dark') ||
                             document.documentElement.getAttribute('data-theme') === 'dark';
       const themeConfig = getMermaidThemeConfig(currentIsDark);
-      
+
       if (mermaid?.initialize) {
-        mermaid.initialize({ 
-          startOnLoad: false, 
+        mermaid.initialize({
+          startOnLoad: false,
           securityLevel: 'strict',
           ...themeConfig,
           flowchart: { useMaxWidth: true },
@@ -442,10 +525,10 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           FORBID_ATTR: ['xlink:href'],
         });
       }
-      
+
       // 异步操作完成后再次检查组件是否已卸载
       if (!isMountedRef.current) return;
-      
+
       setRenderedSvg(svg);
       setShowRendered(true);
     } catch (err: unknown) {
@@ -458,7 +541,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
 
       // 组件卸载后不更新状态
       if (!isMountedRef.current) return;
-      
+
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] Mermaid render failed:', errorMsg);
       setMermaidError(errorMsg);
@@ -473,8 +556,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     }
   };
 
-  const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
-
   const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;padding:0;background:#fff;color:#111;overflow:visible!important;height:auto;min-width:0}
     *,*:before,*:after{box-sizing:border-box}
@@ -485,45 +566,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     svg, img, canvas, table, pre, code, div, section, article { max-width: none !important; }
   </style></head><body>${inner}</body></html>`;
 
-  const handleRunHtml = () => {
-    if (!canRenderHtml || isStreaming) return;
-    try {
-      setMermaidError(null);
-      setHtmlPreviewContent(codeContent);
-      setShowRendered(true);
-    } catch (err: unknown) {
-      const errorMsg = getErrorMessage(err);
-      console.error('[CodeBlock] HTML render failed:', errorMsg);
-      setMermaidError(errorMsg);
-      setHtmlPreviewContent(null);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.htmlFailed'), detail: errorMsg }))}</span></div>`);
-      setShowRendered(true);
-    }
-  };
-
-  const handleRunSvg = () => {
-    if (!canRenderSvg || isStreaming) return;
-    try {
-      setMermaidError(null);
-      // 🔒 安全审计修复: 使用 DOMPurify 进行完整的 SVG 消毒
-      // 替代原来不完整的正则 <script> 移除（遗漏了 <foreignObject>、on* 属性变体、SVG animate 等向量）
-      const sanitized = DOMPurify.sanitize(String(codeContent), {
-        USE_PROFILES: { svg: true, svgFilters: true },
-        ADD_TAGS: ['style'], // SVG 内联样式
-        FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
-        FORBID_ATTR: ['xlink:href'],
-      });
-      setRenderedSvg(sanitized);
-      setShowRendered(true);
-    } catch (err: unknown) {
-      const errorMsg = getErrorMessage(err);
-      console.error('[CodeBlock] SVG render failed:', errorMsg);
-      setMermaidError(errorMsg);
-      setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${escapeHtml(t('codeBlock.errorWithDetail', { message: t('codeBlock.svgFailed'), detail: errorMsg }))}</span></div>`);
-      setShowRendered(true);
-    }
-  };
-
   const handleRunXml = () => {
     if (!canRenderXml || isStreaming) return;
     try {
@@ -532,8 +574,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       // 允许可选的 BOM、XML 声明与 DOCTYPE
       const isSvgXml = /^\uFEFF?(?:<\?xml[\s\S]*?\?>)?\s*(?:<!DOCTYPE[\s\S]*?>\s*)?<svg[\s>]/i.test(content);
       if (isSvgXml) {
-        // 作为 SVG 渲染
-        handleRunSvg();
+        // 作为 SVG 渲染（🔒 DOMPurify 完整消毒，见 progressiveSvg.sanitizeSvgMarkup）
+        setRenderedSvg(sanitizeSvgMarkup(content));
+        setShowRendered(true);
         return;
       }
       // 其他 XML：在 iframe 中以可读方式展示
@@ -566,10 +609,56 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     });
   };
 
+  /** 按给定视窗尺寸把内容等比适配并居中 */
+  const fitTo = (cw: number, ch: number) => {
+    const base = svgSizeRef.current;
+    if (!base.width || !base.height) return;
+    const w = Math.max(10, cw);
+    const h = Math.max(10, ch);
+    const k = Math.min(w / base.width, h / base.height);
+    const z = Math.max(0.05, Math.min(50, k));
+    setScale(z);
+    // 基于内容原点的居中
+    const O = contentOriginRef.current;
+    setOffset({ x: (w - base.width * z) / 2 - O.x * z, y: (h - base.height * z) / 2 - O.y * z });
+  };
+
+  const handleFitView = () => {
+    const el = previewRef.current;
+    if (!el) return;
+    userAdjustedRef.current = false;
+    fitTo(el.clientWidth, el.clientHeight);
+  };
+
+  /**
+   * 视窗布局：按宽高比算出高度（仅 SVG 内容），未被用户手动调整时自动适配。
+   * 在 layout effect / ResizeObserver 中调用，新高度与适配在同一帧生效。
+   */
+  const layoutPreview = () => {
+    const el = previewRef.current;
+    const base = svgSizeRef.current;
+    if (!el || !base.width || !base.height) return;
+    const cw = el.clientWidth;
+    let ch = el.clientHeight;
+    if (el.querySelector('svg') && cw > 0) {
+      ch = clampNumber(Math.round((cw * base.height) / base.width), PREVIEW_MIN_HEIGHT, getPreviewMaxHeight());
+      setPreviewHeight((prev) => (prev === ch ? prev : ch));
+    }
+    if (!userAdjustedRef.current) {
+      fitTo(cw, ch);
+    }
+    didAutoFitRef.current = true;
+  };
+  const layoutPreviewRef = useRef(layoutPreview);
+  layoutPreviewRef.current = layoutPreview;
+  const handleFitViewRef = useRef(handleFitView);
+  handleFitViewRef.current = handleFitView;
+
   const applyZoom = (factor: number, anchor?: { x: number; y: number }) => {
     const el = previewRef.current;
+    userAdjustedRef.current = true;
     setScale(oldScale => {
-      const newScale = clamp(oldScale * factor, 0.05, 50);
+      const newScale = clampNumber(oldScale * factor, 0.05, 50);
       if (!el) return newScale;
       const cx = (anchor ? anchor.x : el.clientWidth / 2);
       const cy = (anchor ? anchor.y : el.clientHeight / 2);
@@ -586,6 +675,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const handleZoomIn = () => applyZoom(1.2);
   const handleZoomOut = () => applyZoom(1/1.2);
   const handleResetView = () => {
+    userAdjustedRef.current = true;
     setScale(1);
     setOffset({ x: 0, y: 0 });
   };
@@ -595,7 +685,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   // 交还页面滚动（浏览器派发 pointercancel → endPan），横向起手的拖动才平移图表，
   // 避免整屏高的预览把对话滚动困住（见 markdown.css .mermaid-preview）。
   const onPanPointerDown = (e: React.PointerEvent) => {
-    if (!showRendered) return;
+    if (!previewVisible) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     // 捕获指针：拖出预览区域时 move/up 事件不丢失（替代原 onMouseLeave 兜底）
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -606,6 +696,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     if (!panning || !lastMouse) return;
     const dx = e.clientX - lastMouse.x;
     const dy = e.clientY - lastMouse.y;
+    if (dx !== 0 || dy !== 0) userAdjustedRef.current = true;
     setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
     setLastMouse({ x: e.clientX, y: e.clientY });
   };
@@ -633,25 +724,26 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   };
 
   useEffect(() => {
-    if (!showRendered || !renderedSvg || htmlPreviewContent) return;
+    if (!previewVisible) return;
     const el = previewRef.current;
     if (!el) return;
     const onWheelNative = (e: WheelEvent) => wheelHandlerRef.current(e);
     el.addEventListener('wheel', onWheelNative, { passive: false });
     return () => el.removeEventListener('wheel', onWheelNative);
-  }, [showRendered, renderedSvg, htmlPreviewContent]);
+  }, [previewVisible]);
 
   // 重置错误边界
   const handleErrorBoundaryReset = () => {
     errorBoundaryKey.current += 1;
     setMermaidError(null);
     setRenderedSvg(null);
-    setHtmlPreviewContent(null);
     setShowRendered(false);
   };
 
-  useEffect(() => {
-    if (!renderedSvg || !showRendered) return;
+  // 每帧新标记提交后、绘制前测量并固定尺寸：流式渐进渲染时新帧与旧帧尺寸一致，
+  // 视窗与变换保持不变，不会出现"先按错误尺寸画一帧再跳回"的闪动。
+  useLayoutEffect(() => {
+    if (!previewMarkup || !previewVisible) return;
     const el = previewRef.current;
     if (!el) return;
     const svg: SVGSVGElement | null = el.querySelector('svg');
@@ -662,8 +754,14 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       // 优先使用 viewBox 尺寸，原点设为 (0,0) 以避免负坐标导致初始位移
       const vb = svg.getAttribute('viewBox');
       if (vb) {
-        const parts = vb.trim().split(/\s+/).map(Number);
+        const parts = vb.trim().split(/[\s,]+/).map(Number);
         if (parts.length === 4) { w = parts[2]; h = parts[3]; ox = 0; oy = 0; }
+      }
+      // 次选 width/height 像素属性
+      if (!w || !h) {
+        const aw = Number(svg.getAttribute('width'));
+        const ah = Number(svg.getAttribute('height'));
+        if (aw > 0 && ah > 0) { w = aw; h = ah; }
       }
       // 退回 getBBox 宽高（不使用 x/y 作为原点）
       if (!w || !h) {
@@ -677,12 +775,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
         } catch {}
       }
       if (!w || !h) {
-        // 退化：尝试 width/height 属性
-        w = Number(svg.getAttribute('width')) || el.clientWidth || 800;
-        h = Number(svg.getAttribute('height')) || el.clientHeight || 600;
+        w = el.clientWidth || 800;
+        h = el.clientHeight || 600;
       }
-      svgSizeRef.current = { width: w, height: h };
-      contentOriginRef.current = { x: ox, y: oy };
       // 为 WebKit/Safari 修复：强制为 <svg> 写入像素尺寸，避免百分比导致的 0 宽高
       try {
         if (w > 0 && h > 0) {
@@ -733,58 +828,149 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           computeIframeSize();
           requestAnimationFrame(() => {
             if (isMountedRef.current) {
-              handleFitView();
+              handleFitViewRef.current();
             }
           });
         }, { once: true });
       }
+      if (!w || !h) return;
     }
+    const prevSize = svgSizeRef.current;
+    const sizeChanged = prevSize.width !== w || prevSize.height !== h;
+    svgSizeRef.current = { width: w, height: h };
+    contentOriginRef.current = { x: ox, y: oy };
     // 同步内容容器的固有尺寸
-    setContentSize({ width: w, height: h });
-    // 首次渲染时自动适配
-    if (!didAutoFitRef.current) {
-      if (w > 0 && h > 0) {
-        requestAnimationFrame(() => {
-          handleFitView();
-          didAutoFitRef.current = true;
-        });
-      } else {
-        setScale(1);
-        setOffset({ x: 0, y: 0 });
-      }
+    setContentSize((prev) => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+    const elChanged = lastPreviewElRef.current !== el;
+    lastPreviewElRef.current = el;
+    // 首帧、视窗重新挂载或固有尺寸变化时重新布局（流式新帧尺寸不变则视角保持不动）
+    if (sizeChanged || elChanged || !didAutoFitRef.current) {
+      layoutPreviewRef.current();
     }
-  }, [renderedSvg, showRendered]);
+  }, [previewMarkup, previewVisible]);
 
   // 监听视窗尺寸变化，自动适配
   useEffect(() => {
     const el = previewRef.current;
-    if (!el || !showRendered) return;
+    if (!el || !previewVisible) return;
+    if (typeof ResizeObserver !== 'function') return;
+    let lastWidth = el.clientWidth;
     const ro = new ResizeObserver(() => {
-      handleFitView();
+      // 只响应宽度变化：高度由 layoutPreview 自己写入，避免自激
+      const width = el.clientWidth;
+      if (width === lastWidth) return;
+      lastWidth = width;
+      layoutPreviewRef.current();
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [showRendered]);
+  }, [previewVisible]);
 
-  const handleFitView = () => {
-    const el = previewRef.current;
-    if (!el) return;
-    const base = svgSizeRef.current;
-    if (!base.width || !base.height) return;
-    const pad = 0; // 贴边展示
-    const cw = Math.max(10, el.clientWidth - pad);
-    const ch = Math.max(10, el.clientHeight - pad);
-    const k = Math.min(cw / base.width, ch / base.height);
-    const z = Math.max(0.05, Math.min(50, k));
-    setScale(z);
-    // 基于内容原点的居中
-    const O = contentOriginRef.current;
-    const offX = (cw - base.width * z) / 2 - O.x * z;
-    const offY = (ch - base.height * z) / 2 - O.y * z;
-    setOffset({ x: offX, y: offY });
-  };
+  // ---- 「…」更多菜单（SVG / HTML） ----
+  const showingSource = canRenderSvg ? !svgPreviewActive : !htmlPreviewActive;
+  const moreActions: CodeBlockMenuAction[] = [];
+  if (hasLivePreview) {
+    moreActions.push({
+      key: 'download',
+      label: t('codeBlock.download'),
+      icon: <DownloadSimple size={16} />,
+      disabled: !!isStreaming,
+      onSelect: () => {
+        void runSaveAction(
+          () => (canRenderSvg ? downloadSvgSource(codeContent) : downloadHtmlSource(codeContent, htmlFileNameFor(codeContent))),
+          'codeBlock.saveFailed',
+        );
+      },
+    });
+    if (canRenderSvg) {
+      moreActions.push({
+        key: 'save-image',
+        label: t('codeBlock.saveAsImage'),
+        icon: <ImageSquare size={16} />,
+        disabled: !!isStreaming || progressiveSvg === null,
+        onSelect: () => {
+          void runSaveAction(() => saveSvgAsPng(codeContent), 'codeBlock.imageExportFailed');
+        },
+      });
+    }
+    moreActions.push({
+      key: 'copy',
+      label: t('codeBlock.copyCode'),
+      icon: <Copy size={16} />,
+      onSelect: () => { void handleCopy(); },
+    });
+    moreActions.push({
+      key: 'toggle-view',
+      label: showingSource ? t('codeBlock.viewPreview') : t('codeBlock.viewCode'),
+      icon: showingSource ? <Eye size={16} /> : <Code size={16} />,
+      onSelect: () => {
+        if (canRenderSvg) {
+          setSvgView(showingSource ? 'preview' : 'source');
+        } else {
+          setHtmlViewOverride(showingSource ? 'preview' : 'source');
+        }
+      },
+    });
+    if (canRenderHtml) {
+      moreActions.push({
+        key: 'open-sandbox',
+        label: t('codeBlock.openSandbox'),
+        icon: <ArrowSquareOut size={16} />,
+        disabled: !!isStreaming,
+        onSelect: handleOpenSandbox,
+      });
+    }
+  }
 
-  const header = (
+  const zoomControls = (
+    <>
+      <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
+        <Minus size={14} />
+      </DsButton>
+      <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
+        <Plus size={14} />
+      </DsButton>
+      <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
+        <span style={{ fontSize: 12 }}>⤢</span>
+      </DsButton>
+      <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
+        <ArrowCounterClockwise size={14} />
+      </DsButton>
+    </>
+  );
+
+  const scriptsIgnored = htmlPreviewActive && htmlUsesScripts(codeContent);
+
+  const liveHeader = (
+    <div className="code-block-header">
+      <span className="code-block-lang">{language}</span>
+      {scriptsIgnored && (
+        <span className="code-block-badge" title={t('codeBlock.scriptsDisabledHint')}>
+          {t('codeBlock.scriptsDisabled')}
+        </span>
+      )}
+      <div className="code-block-actions">
+        {svgPreviewActive && progressiveSvg !== null && zoomControls}
+        {htmlPreviewActive && (
+          <DsButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className="code-block-copy"
+            onClick={() => setHtmlExpanded((v) => !v)}
+            aria-label={htmlExpanded ? t('codeBlock.collapsePreview') : t('codeBlock.expandPreview')}
+            title={htmlExpanded ? t('codeBlock.collapsePreview') : t('codeBlock.expandPreview')}
+            aria-pressed={htmlExpanded}
+          >
+            {htmlExpanded ? <ArrowsInSimple size={14} /> : <ArrowsOutSimple size={14} />}
+          </DsButton>
+        )}
+        <CodeBlockMoreMenu actions={moreActions} label={t('codeBlock.moreActions')} />
+      </div>
+    </div>
+  );
+
+  const legacyHeader = (
     <div className="code-block-header">
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
@@ -797,8 +983,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           <span>{copied ? t('codeBlock.copied') : t('codeBlock.copy')}</span>
         </DsButton>
 
-        {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml || canRenderRich) && (
-          (renderedSvg || htmlPreviewContent || showRichRenderer) ? (
+        {(canRunMermaid || canRenderXml || canRenderRich) && (
+          (renderedSvg || showRichRenderer) ? (
             <DsButton
               variant="ghost"
               size="sm"
@@ -810,109 +996,82 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
               <span>{(canRenderRich ? showRichRenderer : showRendered) ? t('codeBlock.source') : t('codeBlock.render')}</span>
             </DsButton>
           ) : (
-            <>
-              <DsButton
-                variant="ghost"
-                size="sm"
-                className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
-                onClick={
-                  canRunMermaid ? handleRunMermaid :
-                  canRenderSvg ? handleRunSvg :
-                  canRenderHtml ? handleRunHtml :
-                  canRenderXml ? handleRunXml :
-                  () => setShowRichRenderer(true)
-                }
-                disabled={!!isStreaming || running}
-                title={
-                  canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint') : t('codeBlock.runMermaid')) :
-                  canRenderSvg ? t('codeBlock.renderSvg') :
-                  canRenderHtml ? t('codeBlock.renderHtml') :
-                  canRenderXml ? t('codeBlock.renderXml') :
-                  t('codeBlock.run')
-                }
-              >
-                <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
-                <span>{running && canRunMermaid ? t('codeBlock.running') : t('codeBlock.run')}</span>
-              </DsButton>
-
-              {canRenderHtml && (
-                <DsButton
-                  variant="ghost"
-                  size="sm"
-                  className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
-                  onClick={handleOpenSandbox}
-                  disabled={!!isStreaming}
-                  title={t('codeBlock.openSandbox')}
-                >
-                  <span>{t('codeBlock.openSandbox')}</span>
-                </DsButton>
-              )}
-            </>
+            <DsButton
+              variant="ghost"
+              size="sm"
+              className="code-block-copy [@media(pointer:coarse)]:!min-h-11"
+              onClick={
+                canRunMermaid ? handleRunMermaid :
+                canRenderXml ? handleRunXml :
+                () => setShowRichRenderer(true)
+              }
+              disabled={!!isStreaming || running}
+              title={
+                canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint') : t('codeBlock.runMermaid')) :
+                canRenderXml ? t('codeBlock.renderXml') :
+                t('codeBlock.run')
+              }
+            >
+              <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
+              <span>{running && canRunMermaid ? t('codeBlock.running') : t('codeBlock.run')}</span>
+            </DsButton>
           )
         )}
 
-        {(renderedSvg && showRendered && !htmlPreviewContent) && (
-          <>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut')} title={t('codeBlock.zoomOut')}>
-              <Minus size={14} />
-            </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn')} title={t('codeBlock.zoomIn')}>
-              <Plus size={14} />
-            </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleFitView} aria-label={t('codeBlock.fitView')} title={t('codeBlock.fitView')}>
-              <span style={{ fontSize: 12 }}>⤢</span>
-            </DsButton>
-            <DsButton variant="ghost" size="icon" iconOnly className="code-block-copy [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={handleResetView} aria-label={t('codeBlock.resetView')} title={t('codeBlock.resetView')}>
-              <ArrowCounterClockwise size={14} />
-            </DsButton>
-          </>
-        )}
+        {previewVisible && zoomControls}
       </div>
     </div>
   );
 
-  return (
-    <CodeBlockShell
-      header={header}
-      stickyHeader
-      bodyClassName="code-block-body-shell"
-      style={isStreaming ? undefined : IDLE_CODE_SHELL_STYLE}
-    >
-      {showRichRenderer && richRendererKind ? (
-        <RichCodeRenderer kind={richRendererKind} source={codeContent} />
-      ) : htmlPreviewContent && showRendered ? (
-        <MermaidErrorBoundary
-          key={errorBoundaryKey.current}
-          fallbackCode={codeContent}
-          language={language}
-          onReset={handleErrorBoundaryReset}
+  const sourceView = (
+    <ScrollArea orientation="both" className="code-block-scroll-area">
+      <pre className="code-block code-block-inner">
+        <HighlightedCode className={className}>{rawChildren}</HighlightedCode>
+      </pre>
+    </ScrollArea>
+  );
+
+  let body: ReactNode;
+  if (showRichRenderer && richRendererKind) {
+    body = <RichCodeRenderer kind={richRendererKind} source={codeContent} />;
+  } else if (htmlPreviewActive) {
+    body = (
+      <MermaidErrorBoundary
+        key={errorBoundaryKey.current}
+        fallbackCode={codeContent}
+        language={language}
+        onReset={handleErrorBoundaryReset}
+      >
+        <ChatHtmlPreview
+          className={`chat-html-preview-stage${htmlExpanded ? ' is-expanded' : ''}`}
+          html={codeContent}
+          streaming={!!isStreaming}
+          title={t('codeBlock.htmlPreviewTitle')}
+        />
+      </MermaidErrorBoundary>
+    );
+  } else if (previewVisible) {
+    body = (
+      <MermaidErrorBoundary
+        key={errorBoundaryKey.current}
+        fallbackCode={codeContent}
+        language={language}
+        onReset={handleErrorBoundaryReset}
+      >
+        <div
+          className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
+          ref={previewRef}
+          data-no-screen-swipe
+          data-preview-kind={canRenderSvg ? 'svg' : undefined}
+          style={previewHeight !== null ? { height: previewHeight } : undefined}
+          onPointerDown={onPanPointerDown}
+          onPointerMove={onPanPointerMove}
+          onPointerUp={onPanPointerUp}
+          onPointerCancel={onPanPointerUp}
+          onDoubleClick={handleFitView}
         >
-          <HtmlSandboxPreview
-            mode="chat-safe"
-            className="html-preview-iframe"
-            htmlContent={htmlPreviewContent}
-            title="chat-html-preview"
-            height={320}
-          />
-        </MermaidErrorBoundary>
-      ) : renderedSvg && showRendered ? (
-        <MermaidErrorBoundary
-          key={errorBoundaryKey.current}
-          fallbackCode={codeContent}
-          language={language}
-          onReset={handleErrorBoundaryReset}
-        >
-          <div
-            className={`mermaid-preview ${panning ? 'panning' : ''} ${mermaidError ? 'has-error' : ''}`}
-            ref={previewRef}
-            data-no-screen-swipe
-            onPointerDown={onPanPointerDown}
-            onPointerMove={onPanPointerMove}
-            onPointerUp={onPanPointerUp}
-            onPointerCancel={onPanPointerUp}
-            onDoubleClick={handleFitView}
-          >
-            <div className="mermaid-canvas">
+          <div className="mermaid-canvas">
+            {previewMarkup ? (
               <div
                 className="mermaid-content"
                 style={{
@@ -921,18 +1080,27 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
                   width: contentSize.width || undefined,
                   height: contentSize.height || undefined,
                 }}
-                dangerouslySetInnerHTML={{ __html: renderedSvg }}
+                dangerouslySetInnerHTML={{ __html: previewMarkup }}
               />
-            </div>
+            ) : (
+              <div className="code-block-preview-pending">{t('codeBlock.previewPending')}</div>
+            )}
           </div>
-        </MermaidErrorBoundary>
-      ) : (
-        <ScrollArea orientation="both" className="code-block-scroll-area">
-          <pre className="code-block code-block-inner">
-            <HighlightedCode className={className}>{rawChildren}</HighlightedCode>
-          </pre>
-        </ScrollArea>
-      )}
+        </div>
+      </MermaidErrorBoundary>
+    );
+  } else {
+    body = sourceView;
+  }
+
+  return (
+    <CodeBlockShell
+      header={hasLivePreview ? liveHeader : legacyHeader}
+      stickyHeader
+      bodyClassName="code-block-body-shell"
+      style={isStreaming ? undefined : IDLE_CODE_SHELL_STYLE}
+    >
+      {body}
     </CodeBlockShell>
   );
 };

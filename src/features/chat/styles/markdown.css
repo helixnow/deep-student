@@ -255,9 +255,11 @@
   transition: border-radius 0.18s ease;
 }
 
-/* 吸顶 — wrapper 全直角，与脱离的 header 协同 */
+/* 吸顶 — 只有上沿变直角（与贴顶的 header 协同，此时 wrapper 顶部已滚出视窗）；
+   底部始终保持圆角：高预览块（SVG/HTML/Mermaid）吸顶时底部完整可见，
+   曾因整块置 0 出现"底部变直角"。 */
 .chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--stuck) {
-  border-radius: 0;
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
 }
 
 /* 划出 — wrapper 上直下圆，保留底部圆角与 header 的下圆角呼应 */
@@ -290,7 +292,8 @@
 
 .chat-v2 .markdown-content .code-block-body-shell {
   overflow: hidden;
-  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+  /* 内层裁剪圆角 = 外框圆角 - 1px 边框，与边框内沿严丝合缝 */
+  border-radius: 0 0 calc(var(--chat-block-radius) - 1px) calc(var(--chat-block-radius) - 1px);
 }
 
 /* Mermaid 预览容器：设置最小高度与拖拽态样式 */
@@ -362,15 +365,91 @@
   overflow: visible !important; /* 避免内部再滚动 */
 }
 
-/* HTML 预览 iframe：独立渲染容器，不使用 mermaid 的 zoom/pan */
-.chat-v2 .markdown-content .html-preview-iframe {
+/* 预览占位（流式中 <svg> 根标签尚未写完） */
+.chat-v2 .markdown-content .code-block-preview-pending {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  pointer-events: none;
+}
+
+/* HTML 预览舞台：固定高度、帧内滚动（无脚本沙箱帧无法向父页面汇报内容高度）。
+   双缓冲：新文档在下层透明帧加载完成后才换到前台，前台帧从不重建。 */
+.chat-v2 .markdown-content .chat-html-preview-stage {
+  position: relative;
+  width: 100%;
+  height: 420px;
+  overflow: hidden;
+  background: var(--chat-block-surface);
+  transition: height 0.2s ease;
+}
+
+.chat-v2 .markdown-content .chat-html-preview-stage.is-expanded {
+  height: min(85vh, 960px);
+}
+
+@media (pointer: coarse) {
+  .chat-v2 .markdown-content .chat-html-preview-stage {
+    height: min(420px, 55svh);
+  }
+
+  .chat-v2 .markdown-content .chat-html-preview-stage.is-expanded {
+    height: 80svh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-v2 .markdown-content .chat-html-preview-stage {
+    transition: none;
+  }
+}
+
+.chat-v2 .markdown-content .chat-html-preview-frame {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100%;
-  max-height: 70vh;
-  min-height: 120px;
+  height: 100%;
   border: none;
-  border-radius: 0 0 12px 12px;
-  background: hsl(var(--background));
+  /* 帧的配色方案跟随应用主题：页面里的 prefers-color-scheme 随之匹配；
+     未声明配色的页面仍按浏览器默认的浅色画布渲染（与真实浏览器一致） */
+  color-scheme: light;
+}
+
+.dark .chat-v2 .markdown-content .chat-html-preview-frame,
+[data-theme='dark'] .chat-v2 .markdown-content .chat-html-preview-frame {
+  color-scheme: dark;
+}
+
+/* 后台加载中的帧：保持"可见"（opacity 而非 visibility/display，避免浏览器节流
+   隐藏跨源帧的渲染导致交换后首帧空白），叠在前台帧之下且不可交互 */
+.chat-v2 .markdown-content .chat-html-preview-frame[data-state='loading'] {
+  opacity: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.chat-v2 .markdown-content .chat-html-preview-frame[data-state='front'] {
+  z-index: 1;
+}
+
+/* 头部小标签（如"脚本未运行"） */
+.chat-v2 .markdown-content .code-block-badge {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  line-height: 16px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 60%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .chat-v2 .markdown-content .code-block-header {

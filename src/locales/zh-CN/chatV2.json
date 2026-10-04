@@ -83,7 +83,22 @@
     "fitView": "适配视图",
     "resetView": "重置视图",
     "sandboxTitle": "HTML 沙箱",
-    "openSandbox": "在沙箱中打开"
+    "openSandbox": "在沙箱中打开",
+    "moreActions": "更多操作",
+    "download": "下载",
+    "saveAsImage": "保存为图片",
+    "copyCode": "复制代码",
+    "viewCode": "查看代码",
+    "viewPreview": "查看预览",
+    "saved": "已保存",
+    "saveFailed": "保存失败：{{message}}",
+    "imageExportFailed": "无法导出图片：{{message}}",
+    "previewPending": "正在生成预览…",
+    "htmlPreviewTitle": "HTML 预览",
+    "expandPreview": "展开预览",
+    "collapsePreview": "收起预览",
+    "scriptsDisabled": "脚本未运行",
+    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网、链接不可跳转。需要交互效果请下载 HTML 后用浏览器打开。"
   },
   "common": {
     "close": "关闭",

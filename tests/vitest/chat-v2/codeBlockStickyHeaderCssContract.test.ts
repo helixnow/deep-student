@@ -33,7 +33,9 @@ describe('CodeBlock sticky header CSS contract', () => {
     expect(wrapperRule).toContain('overflow: visible;');
 
     expect(stuckWrapperRuleStart).toBeGreaterThan(-1);
-    expect(stuckWrapperRule).toContain('border-radius: 0;');
+    // 吸顶时只有上沿直角：底部（高预览块吸顶时完整可见）必须保持圆角
+    expect(stuckWrapperRule).toContain('border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);');
+    expect(stuckWrapperRule).not.toMatch(/border-radius:\s*0;/);
 
     const exitingWrapperRuleStart = markdownCssSource.indexOf('.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--exiting) {');
     const exitingWrapperRuleEnd = markdownCssSource.indexOf('}', exitingWrapperRuleStart);

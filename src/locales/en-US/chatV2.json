@@ -83,7 +83,22 @@
     "fitView": "Fit View",
     "resetView": "Reset View",
     "sandboxTitle": "HTML Sandbox",
-    "openSandbox": "Open in Sandbox"
+    "openSandbox": "Open in Sandbox",
+    "moreActions": "More actions",
+    "download": "Download",
+    "saveAsImage": "Save as image",
+    "copyCode": "Copy code",
+    "viewCode": "View code",
+    "viewPreview": "View preview",
+    "saved": "Saved",
+    "saveFailed": "Save failed: {{message}}",
+    "imageExportFailed": "Could not export image: {{message}}",
+    "previewPending": "Generating preview…",
+    "htmlPreviewTitle": "HTML preview",
+    "expandPreview": "Expand preview",
+    "collapsePreview": "Collapse preview",
+    "scriptsDisabled": "Scripts not run",
+    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts, no network, links are inert. Download the HTML and open it in a browser for interactive behavior."
   },
   "common": {
     "close": "Close",
