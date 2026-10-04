@@ -347,7 +347,7 @@ const commands = {
     if (!name) fail('缺少资料名');
     const onHub = await rpc(`return !!document.querySelector('[role=option]') && [...document.querySelectorAll('[role=option]')].some(o => o.textContent.includes(${js(name)}));`);
     if (!onHub) {
-      await rpc(`const b = [...document.querySelectorAll('button')].find(b => window.__DS_TEST__.nameOf(b) === '学习资源' && window.__DS_TEST__.visible(b)); b && b.click(); return !!b;`);
+      await rpc(`const b = [...document.querySelectorAll('button')].find(b => /^(学习资源|Learning resources|Files)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)); b && b.click(); return !!b;`);
       const listed = await until(`return [...document.querySelectorAll('[role=option]')].some(o => o.textContent.includes(${js(name)}));`, `等列表出现「${name}」`, 300);
       if (!listed) fail(`学习资源列表里没有「${name}」`);
     }
@@ -389,7 +389,7 @@ const commands = {
     const text = pos[0];
     // 聊天输入框：可见的、在发送按钮所在表单里的 textarea
     const filled = await rpc(`
-      const send = [...document.querySelectorAll('button')].find(b => /^(发送|发送消息)$/.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b));
+      const send = [...document.querySelectorAll('button')].find(b => /^(发送|发送消息|Send|Send message)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b));
       if (!send) return { error: '找不到发送按钮（不在聊天页？）' };
       let box = send.closest('form,[class*=input-bar],[class*=composer],[class*=InputBar]') || document;
       const ta = [...box.querySelectorAll('textarea')].find(window.__DS_TEST__.visible);
@@ -400,9 +400,9 @@ const commands = {
     if (!filled?.ok) fail(filled?.error, filled);
     if (!filled.value?.trim()) fail('输入框是空的，未发送');
     const before = await rpc(`return document.querySelectorAll('.user-message-bubble').length;`);
-    const enabled = await until(`const b = [...document.querySelectorAll('button')].find(b => /^(发送|发送消息)$/.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)); return b && !b.disabled ? true : false;`, '等发送按钮可用', 200);
+    const enabled = await until(`const b = [...document.querySelectorAll('button')].find(b => /^(发送|发送消息|Send|Send message)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)); return b && !b.disabled ? true : false;`, '等发送按钮可用', 200);
     if (!enabled) fail('发送按钮一直不可用（输入未进入组件状态？）');
-    await rpc(`[...document.querySelectorAll('button')].find(b => /^(发送|发送消息)$/.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)).click(); return true;`);
+    await rpc(`[...document.querySelectorAll('button')].find(b => /^(发送|发送消息|Send|Send message)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b)).click(); return true;`);
     const sent = await until(`return document.querySelectorAll('.user-message-bubble').length > ${before};`, '等用户气泡出现', 300);
     if (!sent) fail('点了发送但没有出现新的用户气泡');
     done({ ok: true, sent: filled.value.slice(0, 80) });
@@ -421,7 +421,7 @@ const commands = {
     if (!r?.ok) fail(r?.error, r);
     // 多选卡：选中后还要点「提交」
     await sleep(300);
-    await rpc(`const s = [...document.querySelectorAll('button')].find(b => window.__DS_TEST__.nameOf(b) === '提交' && window.__DS_TEST__.visible(b) && !b.disabled); if (s) s.click(); return !!s;`);
+    await rpc(`const s = [...document.querySelectorAll('button')].find(b => /^(提交|Submit)$/i.test(window.__DS_TEST__.nameOf(b)) && window.__DS_TEST__.visible(b) && !b.disabled); if (s) s.click(); return !!s;`);
     while (Date.now() < deadline) {
       if (/ask_user\] Received response/.test(logSince(mark))) done({ ok: true, chose: r.chose });
       progress('等后端收到回答');
