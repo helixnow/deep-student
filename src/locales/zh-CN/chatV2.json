@@ -991,7 +991,8 @@
       "statsSimple": "{{count}} 条灵感",
       "existenceHint": "以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。",
       "saveCorrection": "保存纠正"
-    }
+    },
+    "skippedIncompatible": "已跳过 {{count}} 个不兼容的历史块"
   },
   "analysis": {
     "ocrInProgress": "OCR 正在进行中，请等待识别完成",
@@ -1346,7 +1347,9 @@
       "selection": "选区"
     },
     "sticky": "持久引用",
-    "clearAll": "清空所有引用"
+    "clearAll": "清空所有引用",
+    "previewFailedTitle": "无法打开引用预览",
+    "previewFailedDesc": "引用的资源不存在或已被移除"
   },
   "modelMention": {
     "suggestions": "模型建议",
@@ -1485,7 +1488,11 @@
     "openSavedNote": "打开笔记",
     "saveAsNoteFailed": "存为笔记失败",
     "saveAsNoteTruncated": "产物内容过长，已截断保存",
-    "collapsePanel": "折叠面板"
+    "collapsePanel": "折叠面板",
+    "showFullCommand": "展开完整命令",
+    "hideFullCommand": "收起完整命令",
+    "stepDetailExpand": "展开步骤详情",
+    "stepDetailCollapse": "收起步骤详情"
   },
   "shellOutput": {
     "title": "本地命令",
@@ -1784,7 +1791,8 @@
     "taskChanges": "{{count}} 项变更",
     "staleTopic": "待修复分组",
     "staleTopicDescription": "原分组已不可用的会话。",
-    "ungrouped": "未分组"
+    "ungrouped": "未分组",
+    "importSession": "导入会话快照"
   },
   "search": {
     "titleMode": "标题",
@@ -1792,7 +1800,8 @@
     "contentPlaceholder": "搜索对话内容...",
     "searching": "正在搜索...",
     "noContentResults": "未找到匹配的内容",
-    "contentResultCount": "找到 {{count}} 条匹配内容"
+    "contentResultCount": "找到 {{count}} 条匹配内容",
+    "contentSearchFailed": "内容搜索失败"
   },
   "tags": {
     "filterTitle": "按标签筛选",
@@ -1978,7 +1987,21 @@
     "suggestedCommand": "建议执行命令",
     "copy": "复制",
     "commandCopied": "命令已复制",
-    "copyFailed": "复制失败"
+    "copyFailed": "复制失败",
+    "finalization": {
+      "verifiedComplete": "已验收",
+      "completeWithExceptions": "完成（有例外）",
+      "partial": "部分完成",
+      "blocked": "受阻",
+      "outcomeUnknown": "结果未知",
+      "exceptionsToggle": "例外项（{{count}}）",
+      "kind": {
+        "artifactMissing": "产物缺失",
+        "hashMismatch": "哈希不符",
+        "invalidDeclaration": "申报非法",
+        "checkUnavailable": "检查不可用"
+      }
+    }
   },
   "renderer": {
     "aiThinkingProcess": "AI 思考过程",
