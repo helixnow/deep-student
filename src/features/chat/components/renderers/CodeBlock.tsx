@@ -591,8 +591,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   };
 
   // P1-11: 平移改用 Pointer Events —— 鼠标 / 触摸 / 触控笔统一处理。
-  // 触屏依赖 CSS touch-action: none（见 markdown.css .mermaid-preview），
-  // 否则浏览器会把单指拖动当作页面滚动而不派发 pointermove。
+  // 精确指针下 CSS touch-action: none；触屏（pointer: coarse）为 pan-y——纵向拖动
+  // 交还页面滚动（浏览器派发 pointercancel → endPan），横向起手的拖动才平移图表，
+  // 避免整屏高的预览把对话滚动困住（见 markdown.css .mermaid-preview）。
   const onPanPointerDown = (e: React.PointerEvent) => {
     if (!showRendered) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;

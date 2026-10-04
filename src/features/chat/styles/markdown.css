@@ -313,6 +313,18 @@
   cursor: grabbing;
 }
 
+/* 触屏：420px 高、touch-action:none 的预览在手机上几乎占满一屏，手指落在图上
+ * 时整段对话无法纵向滚动（被"困住"）。纵向手势交还浏览器做页面滚动
+ *（pan-y：浏览器接管时派发 pointercancel 结束平移），横向起手的拖动仍由
+ * Pointer Events 平移图表（接管后 dx/dy 都生效）；同时压低视窗高度。
+ * 桌面（精确指针）行为不变。 */
+@media (pointer: coarse) {
+  .chat-v2 .markdown-content .mermaid-preview {
+    height: min(420px, 45svh);
+    touch-action: pan-y;
+  }
+}
+
 .chat-v2 .markdown-content .mermaid-canvas {
   position: relative;
   width: 100%;
