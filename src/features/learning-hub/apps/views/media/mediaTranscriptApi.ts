@@ -211,6 +211,9 @@ export function normalizePlaybackProgress(raw: unknown): MediaPlaybackProgress |
 // 命令
 // ============================================================================
 
+/** media_progress_set 单次观看时长上限（与后端 MediaProgressUpdate 校验一致） */
+export const MAX_WATCHED_DELTA_MS = 120_000;
+
 export const mediaTranscriptApi = {
   async estimate(resourceId: string): Promise<TranscribeEstimate> {
     return normalizeEstimate(await invoke('media_transcribe_estimate', { resourceId }));
@@ -251,7 +254,8 @@ export const mediaTranscriptApi = {
         update.durationMs == null || !Number.isFinite(update.durationMs)
           ? null
           : Math.round(update.durationMs),
-      watchedDeltaMs: Math.max(0, Math.round(update.watchedDeltaMs)),
+      // 后端单次上限 120s（防异常累计灌入）
+      watchedDeltaMs: Math.min(MAX_WATCHED_DELTA_MS, Math.max(0, Math.round(update.watchedDeltaMs))),
       finished: Boolean(update.finished),
     });
   },
