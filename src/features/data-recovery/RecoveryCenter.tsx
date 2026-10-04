@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/T
 import { cn } from '@/lib/utils';
 import { formatBytes } from '@/types/dataGovernance';
 import { getMaintenanceStatus } from '@/api/dataGovernance';
+import { isMobilePlatform } from '@/utils/platform';
 import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import {
   exportStartupRecoveryIncident,
@@ -139,6 +140,8 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
   onDebugExit,
 }) => {
   const { t } = useTranslation(['data', 'common']);
+  // 移动端没有可打开的文件管理器入口（后端也会拒绝），只保留导出 ZIP 取数据。
+  const canOpenIncidentFolder = !isMobilePlatform();
   const [status, setStatus] = useState<StartupRecoveryStatus | null>(initialStatus);
   const [loading, setLoading] = useState(initialStatus == null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -385,7 +388,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <DsButton
+                    {canOpenIncidentFolder && <DsButton
                       size="sm"
                       variant="ghost"
                       className="[@media(pointer:coarse)]:!min-h-11"
@@ -397,7 +400,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
                     >
                       <FolderOpen size={14} className="mr-1.5" />
                       {t('data:recovery.open_incident_folder')}
-                    </DsButton>
+                    </DsButton>}
                     <DsButton
                       size="sm"
                       variant="secondary"
@@ -641,7 +644,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
               : t('data:recovery.settings_safety_note')}
           </p>
           {!debugPreview && <div className="mt-4 flex flex-wrap gap-2">
-            <DsButton
+            {canOpenIncidentFolder && <DsButton
               size="sm"
               variant="ghost"
               className="[@media(pointer:coarse)]:!min-h-11"
@@ -653,7 +656,7 @@ export const RecoveryCenter: React.FC<RecoveryCenterProps> = ({
             >
               <FolderOpen size={14} className="mr-1.5" />
               {t('data:recovery.open_incident_folder')}
-            </DsButton>
+            </DsButton>}
             <DsButton
               size="sm"
               variant="secondary"
