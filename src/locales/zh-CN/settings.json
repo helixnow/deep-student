@@ -220,7 +220,8 @@
         "unsupported_include_hint": "该模型不支持 include_thoughts 参数",
         "note": "系统会自动将这些设置映射到对应平台（OpenAI reasoning.effort、Claude thinking、Gemini thinkingBudget/include_thoughts）。",
         "generic_effort_toggle": "思考强度支持",
-        "generic_effort_toggle_hint": "开启后可为该模型选择思考强度档位（low / medium / high / xhigh，以 reasoning_effort 发送）；关闭时仅保留 thinking_budget 兜底。"
+        "generic_effort_toggle_hint": "开启后可为该模型选择思考强度档位（low / medium / high / xhigh，以 reasoning_effort 发送）；关闭时仅保留 thinking_budget 兜底。",
+        "unified_levels_hint": "思考强度统一五档；该模型实际支持的档位由后端在请求前按模型能力就近映射。"
       },
       "fields": {
         "api_key": "API 密钥",
@@ -2476,7 +2477,8 @@
     "none": "暂无",
     "prompts_resources_section": "Prompts & Resources",
     "toggle_enabled": "启用或停用服务器 {{name}}",
-    "disabled_badge": "已停用"
+    "disabled_badge": "已停用",
+    "builtinServerName": "内置工具"
   },
   "tool_permissions": {
     "title": "工具权限管理",

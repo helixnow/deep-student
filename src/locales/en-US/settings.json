@@ -220,7 +220,8 @@
         "unsupported_include_hint": "This model does not support the include_thoughts parameter",
         "note": "These settings map to provider-specific options (OpenAI reasoning.effort, Claude thinking, Gemini thinkingBudget/include_thoughts).",
         "generic_effort_toggle": "Reasoning intensity",
-        "generic_effort_toggle_hint": "When enabled, choose a reasoning intensity level (low / medium / high / xhigh, sent as reasoning_effort). When disabled, only the thinking_budget fallback is available."
+        "generic_effort_toggle_hint": "When enabled, choose a reasoning intensity level (low / medium / high / xhigh, sent as reasoning_effort). When disabled, only the thinking_budget fallback is available.",
+        "unified_levels_hint": "Reasoning effort uses five unified levels; before each request the backend maps them to the closest level this model supports."
       },
       "fields": {
         "api_key": "API Key",
@@ -2476,7 +2477,8 @@
     "none": "None",
     "prompts_resources_section": "Prompts & Resources",
     "toggle_enabled": "Enable or disable server {{name}}",
-    "disabled_badge": "Disabled"
+    "disabled_badge": "Disabled",
+    "builtinServerName": "Built-in Tools"
   },
   "tool_permissions": {
     "title": "Tool Permissions",

@@ -179,7 +179,9 @@ async function flushPendingRecords(): Promise<void> {
     const first = errors[0];
     const detail = first instanceof Error ? first.message : String(first);
     throw new Error(
-      errors.length > 1 ? `${detail}（另有 ${errors.length - 1} 条失败）` : detail,
+      errors.length > 1
+        ? `${detail}${i18n.t('todo:pomodoro.errors.moreFailures', { count: errors.length - 1, defaultValue: '（另有 {{count}} 条失败）' })}`
+        : detail,
     );
   }
 }

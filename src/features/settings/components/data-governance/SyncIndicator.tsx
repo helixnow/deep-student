@@ -13,6 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Warning, CheckCircle } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 
@@ -22,6 +23,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
   compact = false,
   refreshSignal,
 }) => {
+  const { t } = useTranslation('sync');
   const [counts, setCounts] = useState<DataGovernanceApi.RecordConflictCounts | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,23 +61,30 @@ export const SyncIndicator: React.FC<{ compact?: boolean; refreshSignal?: string
     return (
       <span className="inline-flex items-center gap-1 text-xs text-success">
         <CheckCircle size={12} />
-        无冲突
+        {t('indicator.noConflicts', { defaultValue: '无冲突' })}
       </span>
     );
   }
 
   const perDb = Object.entries(counts.per_database)
     .filter(([, entry]) => entry.groups > 0)
-    .map(([db, entry]) => `${db}: ${entry.groups} 组（${entry.rows} 行）`)
-    .join(', ');
+    .map(([db, entry]) =>
+      t('indicator.perDatabase', {
+        db,
+        groups: entry.groups,
+        rows: entry.rows,
+        defaultValue: '{{db}}: {{groups}} 组（{{rows}} 行）',
+      }),
+    )
+    .join(t('indicator.separator', { defaultValue: ', ' }));
 
   return (
     <span
       className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning ring-1 ring-inset ring-warning/30"
-      title={`未解决冲突：${perDb}`}
+      title={t('indicator.unresolvedTitle', { detail: perDb, defaultValue: '未解决冲突：{{detail}}' })}
     >
       <Warning size={12} />
-      {total} 组冲突
+      {t('indicator.conflictGroups', { count: total, defaultValue: '{{count}} 组冲突' })}
     </span>
   );
 };

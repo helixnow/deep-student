@@ -793,6 +793,9 @@
     "presets": {
       "label": "时长快捷预设",
       "setTitle": "将专注时长设为 {{count}} 分钟"
+    },
+    "errors": {
+      "moreFailures": "（另有 {{count}} 条失败）"
     }
   },
   "sidebar": {

@@ -195,7 +195,7 @@ export class TemplateAIEngine {
             return import('../utils/templateErrorAnalyzer').then((mod) => {
               const raw = store.streamState.currentContent || '';
               const backend = typeof event.payload.error === 'string' ? event.payload.error : '';
-              return (mod.analyzeTemplateError?.(raw, backend)) || backend || '解析失败';
+              return (mod.analyzeTemplateError?.(raw, backend)) || backend || i18n.t('analysis:input_bar.attachments.parse_failed', { defaultValue: '解析失败' });
             }).catch(() => event.payload.error);
           } catch {
             return event.payload.error;

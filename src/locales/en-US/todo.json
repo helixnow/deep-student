@@ -793,6 +793,9 @@
     "presets": {
       "label": "Duration presets",
       "setTitle": "Set focus duration to {{count}} min"
+    },
+    "errors": {
+      "moreFailures": " ({{count}} more failed)"
     }
   },
   "sidebar": {

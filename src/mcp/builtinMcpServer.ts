@@ -20,6 +20,7 @@
  * @see docs/design/Skills渐进披露架构设计.md
  */
 
+import i18n from '@/i18n';
 import { builtinToolSkills } from '../features/chat/skills/builtin-tools';
 
 // 内置服务器常量
@@ -29,6 +30,11 @@ export const BUILTIN_SERVER_ID = '__builtin__tools';
 export const BUILTIN_NAMESPACE = 'builtin-';
 export const BUILTIN_SERVER_NAME = '内置工具';
 export const BUILTIN_SERVER_NAME_EN = 'Built-in Tools';
+
+/** 内置服务器的界面显示名（调用时按当前语言求值） */
+export function getBuiltinServerDisplayName(): string {
+  return i18n.t('settings:mcp_server_list.builtinServerName', { defaultValue: BUILTIN_SERVER_NAME });
+}
 
 /**
  * 内置工具 Schema 定义
@@ -137,6 +143,7 @@ export function getBuiltinServer(_availableSearchEngines?: string[]): McpServer 
   // 从新的 Skills 系统动态获取所有内置工具
   // 使用静态导入的 builtinToolSkills（无循环依赖）
   const skills = builtinToolSkills;
+  const serverName = getBuiltinServerDisplayName();
 
   const tools: McpTool[] = [];
   for (const skill of skills) {
@@ -148,7 +155,7 @@ export function getBuiltinServer(_availableSearchEngines?: string[]): McpServer 
           description: tool.description,
           isOnline: true, // 内置工具始终在线
           serverId: BUILTIN_SERVER_ID,
-          serverName: BUILTIN_SERVER_NAME,
+          serverName,
         });
       }
     }
@@ -156,7 +163,7 @@ export function getBuiltinServer(_availableSearchEngines?: string[]): McpServer 
 
   return {
     id: BUILTIN_SERVER_ID,
-    name: BUILTIN_SERVER_NAME,
+    name: serverName,
     connected: true, // 内置服务器始终"已连接"
     toolsCount: tools.length,
     tools,

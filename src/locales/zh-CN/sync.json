@@ -206,5 +206,12 @@
     "conflictResolveFailed": "解决冲突失败: {{error}}",
     "conflictBatchResolvePartial": "部分冲突解决失败：成功 {{resolved}} 个，失败 {{failed}} 个",
     "conflictBatchResolveFailed": "批量解决冲突失败: {{error}}"
+  },
+  "indicator": {
+    "noConflicts": "无冲突",
+    "perDatabase": "{{db}}: {{groups}} 组（{{rows}} 行）",
+    "separator": ", ",
+    "unresolvedTitle": "未解决冲突：{{detail}}",
+    "conflictGroups": "{{count}} 组冲突"
   }
 }
