@@ -44,7 +44,7 @@ export const essayGradingSkill: SkillDefinition = {
 - **builtin-essay_grade_status**: 非阻塞查询任务状态
 
 ### 模式与历史
-- **builtin-essay_list_modes**: 列出内置模式、用户自定义模式和内置模式覆盖（gaokao/zhongkao/ielts/toefl/kaoyan/cet/practice 等），不确定用哪个模式时先调用
+- **builtin-essay_list_modes**: 列出内置模式、用户自定义模式和内置模式覆盖（gaokao/zhongkao/ielts/toefl/kaoyan/cet/practice 等）。**用户提到任何考试或评分标准（雅思大/小作文、托福、高考、考研、四六级等）时，必须先调用它，并把对应模式的 id 传给 essay_grade.mode_id**；不传 mode_id 会落到默认的日常练习模式（满分 100），与用户要求的标准不符。只有用户未指定任何标准时才可省略
 - **builtin-essay_list_sessions**: 列出历史批改会话
 - **builtin-essay_list_results**: 列出某会话的所有批改轮次摘要
 - **builtin-essay_get_result**: 获取某轮完整批改结果（原文 + 批改 + 评分）
@@ -118,7 +118,7 @@ export const essayGradingSkill: SkillDefinition = {
           topic: { type: 'string', description: '作文题目/题干，提供后核对是否切题' },
           mode_id: {
             type: 'string',
-            description: '批阅模式 ID，必须来自 essay_list_modes（含自定义模式）；不传用默认通用模式',
+            description: '批阅模式 ID，必须来自 essay_list_modes（含自定义模式）。用户点名考试/标准（雅思、托福、高考、考研、四六级等）时必填；不传则用默认日常练习模式（满分 100）',
           },
           model_config_id: {
             type: 'string',
