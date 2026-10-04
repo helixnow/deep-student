@@ -65,6 +65,7 @@ pub mod essay_grading;
 pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod figure_extractor;
+pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub mod file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
@@ -631,6 +632,11 @@ pub fn run() {
         .plugin(crate::unified_file_manager::saf_permission_plugin())
         // HEIC/HEIF → JPEG：Android WebView 无法解码 HEIC，走平台 ImageDecoder。
         .plugin(crate::heic_decoder::init());
+
+    // Android 专用：用其他应用打开 / 分享文件（opener 的 open_path 与
+    // reveal_item_in_dir 在 Android 均不可用，移动端统一走此插件）。
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(crate::external_file_opener::init());
 
     // 🔧 MCP 调试插件（通过 mcp-debug feature 启用）
     // 使用 hypothesi/mcp-server-tauri 桥接插件
@@ -1739,6 +1745,7 @@ pub fn run() {
             crate::commands::install_apk,
             crate::heic_decoder::convert_heic_to_jpeg,
             crate::commands::get_app_data_dir,
+            crate::external_file_opener::open_file_externally,
             crate::commands::process_pdf_ocr,
             crate::commands::init_pdf_ocr_session, // 🎯
             crate::commands::upload_pdf_ocr_page, // 🎯

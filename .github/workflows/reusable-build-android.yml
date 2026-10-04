@@ -321,6 +321,14 @@ jobs:
           cmp -s "$SRC" "$DST" || { echo "::error::file_paths.xml sync verification failed"; exit 1; }
           echo "✅ file_paths.xml synced from managed copy"
 
+          # 移动端"用其他应用打开/分享文件"：复用同一 FileProvider（cache/shared/）。
+          SRC="src-tauri/mobile/android/ExternalFilePlugin.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/ExternalFilePlugin.kt"
+          test -f "$SRC" || { echo "::error::managed ExternalFilePlugin.kt missing at $SRC"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::ExternalFilePlugin.kt sync verification failed"; exit 1; }
+          echo "✅ ExternalFilePlugin.kt synced from managed copy"
+
           if ! grep -qF 'androidx.core.content.FileProvider' "$MANIFEST"; then
             # ${applicationId} 是 manifest placeholder（gradle 构建时替换），
             # 用单引号防止 shell 展开。整段单行插入，与 build_android.sh 保持一致。

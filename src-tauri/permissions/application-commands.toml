@@ -588,6 +588,7 @@ commands.allow = [
   "ocr_extract_text",
   "open_log_file",
   "open_logs_folder",
+  "open_file_externally",
   "open_system_permission_settings",
   "openai_codex_auth_status",
   "openai_codex_login_cancel",

@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- NOTE: 此文件有受控副本 src-tauri/mobile/android/res/xml/file_paths.xml。 -->
-<!-- FileProvider 路径配置：仅暴露应用私有缓存下的 updates/ 目录（应用内更新 APK）。 -->
+<!-- FileProvider 路径配置：只暴露应用私有缓存下的两个专用子目录。 -->
+<!--   updates/：应用内更新下载的 APK（ApkInstallerPlugin）。 -->
+<!--   shared/ ：交给其他应用打开/分享的一次性只读副本（ExternalFilePlugin，Rust 侧 -->
+<!--             external_file_opener.rs 负责复制与 24h 过期清理）。原文件不直接暴露。 -->
 <paths>
     <cache-path name="updates" path="updates/" />
+    <cache-path name="shared" path="shared/" />
 </paths>

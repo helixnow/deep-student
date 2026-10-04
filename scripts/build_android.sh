@@ -231,6 +231,17 @@ sync_apk_installer_files() {
         cp "$SRC_XML" "$DST_XML"
         info "✓ file_paths.xml 已从受控副本同步"
     fi
+
+    # 同一 FileProvider 的第二个使用者：移动端"用其他应用打开/分享文件"
+    # （cache/shared/ 副本 → ACTION_VIEW / ACTION_SEND）。缺失时
+    # open_file_externally 在运行期报"插件未初始化"。
+    local SRC_OPEN_KT="$REPO_ROOT/src-tauri/mobile/android/ExternalFilePlugin.kt"
+    local DST_OPEN_KT="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/ExternalFilePlugin.kt"
+    [[ -f "$SRC_OPEN_KT" ]] || die "受控 Android 文件不存在: $SRC_OPEN_KT"
+    if ! cmp -s "$SRC_OPEN_KT" "$DST_OPEN_KT" 2>/dev/null; then
+        cp "$SRC_OPEN_KT" "$DST_OPEN_KT"
+        info "✓ ExternalFilePlugin.kt 已从受控副本同步"
+    fi
 }
 
 # 注入 FileProvider manifest 声明：应用内更新下载的 APK 以 content:// URI
