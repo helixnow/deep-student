@@ -5,8 +5,7 @@
  * 例外列表展开/收起、徽章与模型自述 result 并列展示、inline 形态。
  *
  * react-i18next 走全局别名 mock（tests/ct/mocks/react-i18next.tsx），
- * 新增的 completion.finalization.* 键尚未进 locale 文件 → 按组件内
- * defaultValue 中文兜底文案断言。
+ * mock 读取 zh-CN chatV2 词条 → 按 completion.finalization.* 中文文案断言。
  */
 import { describe, expect, it } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';

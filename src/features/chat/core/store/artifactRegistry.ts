@@ -22,6 +22,7 @@
  * 设计文档：docs/plans/2026-09-06-canvas-patterns-absorption.md P1
  */
 
+import i18n from 'i18next';
 import type { Block } from '../types/block';
 import type { Message } from '../types/message';
 import type { ContextRef } from '../../context/types';
@@ -35,6 +36,16 @@ import {
   firstString,
 } from '../../components/agent-task/extractors';
 import { extractMessageContentFromBlocks } from '../../components/message/messageItemUtils';
+
+/** 产物缺省标题（chatV2:artifacts.fallbackTitle.*）；i18n 未就绪时回落中文原文 */
+function artifactFallbackTitle(
+  key: 'generativeUi' | 'ankiCards',
+  fallback: string,
+  options?: Record<string, unknown>,
+): string {
+  const translated = i18n.t(`chatV2:artifacts.fallbackTitle.${key}`, { ...options, defaultValue: fallback });
+  return typeof translated === 'string' && translated ? translated : fallback;
+}
 
 // ============================================================================
 // 类型
@@ -178,7 +189,8 @@ export function deriveArtifactFromBlock(
     );
     if (!extracted || extracted.isStreaming) return null;
     const intent = typeof extracted.intent === 'string' ? null : extracted.intent;
-    const title = intent?.meta?.title?.trim() || '生成式 UI';
+    const title = intent?.meta?.title?.trim()
+      || artifactFallbackTitle('generativeUi', '生成式 UI');
     return {
       artifactId: block.id,
       kind: 'generative-ui',
@@ -193,7 +205,8 @@ export function deriveArtifactFromBlock(
   if (block.type === 'anki_cards') {
     const out = unwrapToolData(block.toolOutput);
     const cards = Array.isArray(out.cards) ? out.cards : [];
-    const title = firstString(out.title, out.deckName) ?? `Anki 卡片（${cards.length}）`;
+    const title = firstString(out.title, out.deckName)
+      ?? artifactFallbackTitle('ankiCards', `Anki 卡片（${cards.length}）`, { count: cards.length });
     return {
       artifactId: block.id,
       kind: 'anki-cards',

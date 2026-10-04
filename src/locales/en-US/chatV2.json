@@ -990,7 +990,14 @@
       "noResults": "No related insight cards found",
       "statsSimple": "{{count}} insights",
       "existenceHint": "Only card titles are shown. Ask follow-up questions to reveal more.",
-      "saveCorrection": "Save correction"
+      "saveCorrection": "Save correction",
+      "level": {
+        "existence": "Existence",
+        "recallPrompt": "Recall prompt",
+        "hint": "Hint",
+        "full": "Full text",
+        "directAnswer": "Direct answer"
+      }
     },
     "skippedIncompatible": "Skipped {{count}} incompatible history blocks"
   },
@@ -1062,7 +1069,9 @@
     "analysis": {
       "ocrInProgress": "OCR is in progress, please wait for recognition to complete",
       "retryOnlyInAnalysis": "retryOcr can only be called in analysis mode",
-      "noImagesToOcr": "No images available for OCR"
+      "noImagesToOcr": "No images available for OCR",
+      "ocrImageName": "OCR image {{index}}",
+      "autoPrompt": "Please analyze this question."
     },
     "textbook": {
       "reloadOnlyInTextbook": "reloadTextbook can only be called in textbook mode",
@@ -2007,7 +2016,20 @@
     "aiThinkingProcess": "AI Thinking Process",
     "imageLoadFailed": "Image failed to load",
     "incompleteMathFormula": "Incomplete math formula detected, rendering temporarily disabled",
-    "uncertain": "Uncertain"
+    "uncertain": "Uncertain",
+    "smiles": {
+      "drawFailed": "Failed to draw the structure",
+      "invalid": "Invalid SMILES",
+      "loadFailed": "Failed to load the structure renderer",
+      "structureLabel": "Molecular structure: {{smiles}}"
+    },
+    "rich": {
+      "remoteUrlNotAllowed": "This renderer only accepts inline data; remote URLs are not allowed.",
+      "geoJsonEmpty": "The GeoJSON has no geometry to display.",
+      "geoJsonInvalidCoordinates": "Invalid GeoJSON coordinates.",
+      "dotExternalResource": "DOT graphs may not reference external resources.",
+      "renderFailed": "Rendering failed."
+    }
   },
   "ocr": {
     "noQuestionContent": "No question content",
@@ -2333,7 +2355,8 @@
     "not_ready": "The current chat is not ready",
     "model2_missing": "Please configure a chat model in Settings → Model Assignment before sending messages.",
     "model2_auto_assigned": "Auto-assigned {{count}} models: {{models}}. You can review or change this in Settings → Model Assignment.",
-    "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment."
+    "model2_auto_assigned_single": "Auto-assigned \"{{model}}\" as the default chat model. You can review or change this in Settings → Model Assignment.",
+    "noModelAssigned": "(none)"
   },
   "imagePreview": {
     "partialNotFound": "Some image resources not found",
@@ -2360,7 +2383,8 @@
     "sourceIdAndHashRequired": "sourceId and newHash cannot be empty",
     "sourceIdRequired": "sourceId cannot be empty",
     "errorCode": "Error code: {{code}}",
-    "resourceNotFound": "Resource not found: {{sourceId}}"
+    "resourceNotFound": "Resource not found: {{sourceId}}",
+    "blobFetchFailed": "Failed to load image: {{message}}"
   },
   "errorBoundary": {
     "chatComponentError": "Chat component error",
@@ -2479,7 +2503,8 @@
         "delete": "Delete",
         "append": "Append",
         "write": "Write"
-      }
+      },
+      "ankiCardLabel": "Card {{id}} ({{fields}})"
     },
     "kind": {
       "generativeUi": "Generative UI",
@@ -2492,6 +2517,10 @@
       "minutesAgo": "{{count}}m ago",
       "hoursAgo": "{{count}}h ago",
       "daysAgo": "{{count}}d ago"
+    },
+    "fallbackTitle": {
+      "generativeUi": "Generative UI",
+      "ankiCards": "Anki Cards ({{count}})"
     }
   },
   "goal": {

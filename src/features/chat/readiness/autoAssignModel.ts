@@ -10,6 +10,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18n from 'i18next';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { sortApiConfigsByVendorOrder } from '@/utils/modelSorting';
@@ -368,7 +369,9 @@ export async function autoAssignAllModels(): Promise<AutoAssignResult> {
           } else {
             // 一个能用的都没有，清空为 null
             changes[slot.field] = null as any;
-            assignedNames.push('(无)');
+            assignedNames.push(
+              i18n.t('chatV2:readiness.noModelAssigned', { defaultValue: '(无)' }) || '(无)',
+            );
           }
         }
         // 模型存在且启用，跳过

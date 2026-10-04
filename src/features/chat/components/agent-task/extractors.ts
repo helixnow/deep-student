@@ -6,9 +6,20 @@
  * 全部为无副作用纯函数，便于单测与复用。
  */
 
+import i18n from 'i18next';
 import type { Block } from '../../core/types/block';
 import { blocksToSourceBundle } from '../panels/sourceAdapter';
 import { extractCompletionData, isAttemptCompletionTool } from '../CompletionCard';
+
+/** Anki 库卡更新的变更标签（chatV2:artifacts.changes.ankiCardLabel）；i18n 未就绪时回落中文 */
+function ankiCardChangeLabel(id: string, fields: string): string {
+  const translated = i18n.t('chatV2:artifacts.changes.ankiCardLabel', {
+    id,
+    fields,
+    defaultValue: '卡片 {{id}}（{{fields}}）',
+  });
+  return typeof translated === 'string' && translated ? translated : `卡片 ${id}（${fields}）`;
+}
 import type {
   ArtifactItem,
   ChangeAction,
@@ -366,7 +377,7 @@ export function extractChanges(blocks: Block[]): ChangeItem[] {
       const cardId = firstString(input.cardId, input.card_id, data.cardId, data.card_id);
       const fields = Object.keys(asRecord(input.fields) ?? {});
       label = fields.length > 0
-        ? `卡片 ${cardId ? cardId.slice(0, 8) : '?'}（${fields.join('/')}）`
+        ? ankiCardChangeLabel(cardId ? cardId.slice(0, 8) : '?', fields.join('/'))
         : (cardId ?? label);
       target = undefined;
     } else if (short.startsWith('docx_') || short.startsWith('xlsx_') || short.startsWith('pptx_') || short === 'paper_save') {

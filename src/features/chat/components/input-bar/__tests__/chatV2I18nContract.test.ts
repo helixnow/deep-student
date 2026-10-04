@@ -85,6 +85,30 @@ describe('ChatV2 i18n production contract', () => {
     }
   });
 
+  it('ships English copy for chat UI keys that were missing or hardcoded in Chinese', () => {
+    expect(enChatV2.goal.status.waitingUser).toBe('Waiting for your reply');
+    expect(enChatV2.goal.triggerLabel).toContain('{{status}}');
+    expect(enChatV2.completion.finalization.exceptionsToggle).toContain('{{count}}');
+    expect(enChatV2.completion.finalization.kind.hashMismatch).toBeTruthy();
+    expect(enChatV2.contextRef.previewFailedTitle).toBeTruthy();
+    expect(enChatV2.agentPanel.showFullCommand).toBeTruthy();
+    expect(enChatV2.agentPanel.stepDetailExpand).toBeTruthy();
+    expect(enChatV2.search.contentSearchFailed).toBeTruthy();
+    expect(enChatV2.browser.importSession).toBe(enChatV2.page.importSession);
+    expect(enChatV2.renderer.smiles.structureLabel).toContain('{{smiles}}');
+    expect(enChatV2.artifacts.fallbackTitle.ankiCards).toContain('{{count}}');
+    expect(enChatV2.blocks.insightRecall.level.directAnswer).toBeTruthy();
+
+    const goalChip = readSource('src/features/chat/components/GoalStatusChip.tsx');
+    const smiles = readSource('src/features/chat/components/renderers/InlineSmiles.tsx');
+    const insightRecall = readSource('src/features/chat/plugins/blocks/insightRecall.tsx');
+
+    expect(goalChip).not.toMatch(/(?:label|title|placeholder|aria-label)[:=]\s*['"][^'"]*[一-鿿]/);
+    expect(goalChip).not.toContain('会话目标：');
+    expect(smiles).not.toContain('`分子结构：');
+    expect(insightRecall).not.toContain("existence: '存在'");
+  });
+
   it('passes the active application locale to audited date formatters', () => {
     const sources = [
       'src/features/chat/components/MessageItem.tsx',

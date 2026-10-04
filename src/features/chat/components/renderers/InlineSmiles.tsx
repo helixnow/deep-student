@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface InlineSmilesProps {
   smiles: string;
@@ -16,6 +17,7 @@ function isDarkTheme(): boolean {
  * 管理的 SVG 元素，不接受任意 SVG/HTML 字符串，也不会引入远程资源。
  */
 export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
+  const { t } = useTranslation('chatV2');
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,21 +47,23 @@ export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
             try {
               drawer.draw(tree, svgRef.current, isDarkTheme() ? 'dark' : 'light');
             } catch (drawError) {
-              if (!cancelled) setError(drawError instanceof Error ? drawError.message : '结构式绘制失败');
+              if (!cancelled) setError(drawError instanceof Error ? drawError.message : t('renderer.smiles.drawFailed'));
             }
           },
           (parseError) => {
-            if (!cancelled) setError(parseError instanceof Error ? parseError.message : '无效的 SMILES');
+            if (!cancelled) setError(parseError instanceof Error ? parseError.message : t('renderer.smiles.invalid'));
           },
         );
       })
       .catch((loadError) => {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : '结构式渲染器加载失败');
+        if (!cancelled) setError(loadError instanceof Error ? loadError.message : t('renderer.smiles.loadFailed'));
       });
 
     return () => {
       cancelled = true;
     };
+    // t 仅用于错误兜底文案；不随语言切换重绘结构式
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [smiles]);
 
   if (error) {
@@ -70,9 +74,10 @@ export const InlineSmiles: React.FC<InlineSmilesProps> = ({ smiles }) => {
     );
   }
 
+  const structureLabel = t('renderer.smiles.structureLabel', { smiles });
   return (
-    <span className="inline-smiles" title={`分子结构：${smiles}`}>
-      <svg ref={svgRef} role="img" aria-label={`分子结构：${smiles}`} />
+    <span className="inline-smiles" title={structureLabel}>
+      <svg ref={svgRef} role="img" aria-label={structureLabel} />
     </span>
   );
 };

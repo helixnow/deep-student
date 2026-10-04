@@ -380,7 +380,10 @@ async function autoSendFirstMessage(
         }
       }
 
-      const fileName = `OCR 图片 ${index + 1}`;
+      const fileName = i18n.t('chatV2:mode.analysis.ocrImageName', {
+        index: index + 1,
+        defaultValue: 'OCR 图片 {{index}}',
+      }) || `OCR 图片 ${index + 1}`;
 
       // 1. 上传到 VFS attachments 表
       const uploadResult = await uploadAttachment({
@@ -433,7 +436,9 @@ async function autoSendFirstMessage(
     }
 
     // 发送分析请求（不再需要 attachments 参数）
-    await store.sendMessage('请分析这道题目');
+    await store.sendMessage(
+      i18n.t('chatV2:mode.analysis.autoPrompt', { defaultValue: '请分析这道题目' }) || '请分析这道题目',
+    );
   } catch (error: unknown) {
     // 如果发送失败，重置标记以允许重试
     store.updateModeState({ autoMessageSent: false });

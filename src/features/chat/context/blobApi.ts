@@ -8,6 +8,7 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import i18n from 'i18next';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 
@@ -145,7 +146,10 @@ export async function getBlobBase64(
   } catch (error: unknown) {
     const message = getErrorMessage(error);
     console.error(`${LOG_PREFIX} Failed to fetch blob ${blobHash.slice(0, 8)}...: ${message}`);
-    throw new Error(`获取图片失败: ${message}`);
+    throw new Error(
+      i18n.t('chatV2:vfsRef.blobFetchFailed', { message, defaultValue: '获取图片失败: {{message}}' })
+        || `获取图片失败: ${message}`,
+    );
   }
 }
 

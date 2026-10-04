@@ -205,8 +205,8 @@ const SuggestedCommand: React.FC<{ command: string; compact?: boolean }> = ({ co
 // ============================================================================
 
 /**
- * 文案走 chatV2:completion.finalization.*，一律带 defaultValue 中文兜底——
- * locale 键由文案线另行补齐，此组件不依赖其落地时序。
+ * 文案走 chatV2:completion.finalization.*（zh-CN / en-US 均已落地），
+ * defaultValue 中文兜底仅供测试 mock / 资源未加载时使用。
  */
 const VERDICT_META: Record<
   FinalizationVerdict,

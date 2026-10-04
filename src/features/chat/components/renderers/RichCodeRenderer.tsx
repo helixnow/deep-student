@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
+import i18n from 'i18next';
 
 export type RichCodeRendererKind =
   | 'vega-lite'
@@ -14,6 +15,12 @@ interface RichCodeRendererProps {
   kind: RichCodeRendererKind;
   source: string;
 }
+
+/** chatV2:renderer.rich.* 文案；i18n 未就绪（测试/极早期）时回落中文原文 */
+const richText = (key: string, fallback: string): string => {
+  const translated = i18n.t(`chatV2:renderer.rich.${key}`, { defaultValue: fallback });
+  return typeof translated === 'string' && translated ? translated : fallback;
+};
 
 const sanitizeSvg = (svg: string) => DOMPurify.sanitize(svg, {
   USE_PROFILES: { svg: true, svgFilters: true },
@@ -30,7 +37,7 @@ function rejectRemoteValue(value: unknown): void {
   if (!value || typeof value !== 'object') return;
   for (const [key, child] of Object.entries(value)) {
     if (key === 'url' && typeof child === 'string') {
-      throw new Error('该渲染器只接受内嵌数据，不允许远程 URL。');
+      throw new Error(richText('remoteUrlNotAllowed', '该渲染器只接受内嵌数据，不允许远程 URL。'));
     }
     rejectRemoteValue(child);
   }
@@ -47,7 +54,7 @@ function geoJsonSvg(source: string): string {
     else if (item.type && item.coordinates) geometries.push(item);
   };
   add(input);
-  if (!geometries.length) throw new Error('GeoJSON 中没有可显示的几何对象。');
+  if (!geometries.length) throw new Error(richText('geoJsonEmpty', 'GeoJSON 中没有可显示的几何对象。'));
 
   const points: Array<[number, number]> = [];
   const collect = (coords: any) => {
@@ -55,7 +62,7 @@ function geoJsonSvg(source: string): string {
     else if (Array.isArray(coords)) coords.forEach(collect);
   };
   geometries.forEach((geometry) => collect(geometry.coordinates));
-  if (!points.length) throw new Error('GeoJSON 坐标无效。');
+  if (!points.length) throw new Error(richText('geoJsonInvalidCoordinates', 'GeoJSON 坐标无效。'));
   const xs = points.map(([x]) => x);
   const ys = points.map(([, y]) => y);
   const minX = Math.min(...xs); const maxX = Math.max(...xs);
@@ -117,7 +124,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           });
           cleanup = () => result.finalize?.();
         } else if (kind === 'dot') {
-          if (/\b(?:image|href|URL)\s*=/i.test(source)) throw new Error('DOT 图不允许引用外部资源。');
+          if (/\b(?:image|href|URL)\s*=/i.test(source)) throw new Error(richText('dotExternalResource', 'DOT 图不允许引用外部资源。'));
           const { instance } = await import('@viz-js/viz');
           const viz = await instance();
           if (disposed) return;
@@ -153,7 +160,7 @@ export function RichCodeRenderer({ kind, source }: RichCodeRendererProps) {
           host.innerHTML = sanitizeSvg(geoJsonSvg(source));
         }
       } catch (cause) {
-        if (!disposed) setError(cause instanceof Error ? cause.message : '渲染失败。');
+        if (!disposed) setError(cause instanceof Error ? cause.message : richText('renderFailed', '渲染失败。'));
       }
     };
     void render();

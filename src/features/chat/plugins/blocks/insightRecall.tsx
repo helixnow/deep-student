@@ -35,12 +35,13 @@ interface BackendInsightRecallResult {
   escalatedTo?: string;
 }
 
-const LEVEL_BADGE: Record<string, string> = {
-  existence: '存在',
-  recall_prompt: '回忆提示',
-  hint: '提示',
-  full: '全文',
-  direct_answer: '直接答案',
+/** 披露级徽章：值 → chatV2:blocks.insightRecall.level.* 键后缀 */
+const LEVEL_BADGE_KEYS: Record<string, string> = {
+  existence: 'existence',
+  recall_prompt: 'recallPrompt',
+  hint: 'hint',
+  full: 'full',
+  direct_answer: 'directAnswer',
 };
 
 const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
@@ -134,7 +135,7 @@ const InsightRecallBlock: React.FC<BlockComponentProps> = React.memo(({ block, i
             )}
           >
             <Lightbulb size={12} />
-            <span>{LEVEL_BADGE[maxLevel] ?? maxLevel}</span>
+            <span>{LEVEL_BADGE_KEYS[maxLevel] ? t(`blocks.insightRecall.level.${LEVEL_BADGE_KEYS[maxLevel]}`) : maxLevel}</span>
           </span>
         )}
 

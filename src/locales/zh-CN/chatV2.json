@@ -990,7 +990,14 @@
       "noResults": "没有找到相关的灵感卡",
       "statsSimple": "{{count}} 条灵感",
       "existenceHint": "以上只显示了卡片标题。想唤起具体内容，可以继续追问或让 AI 逐步揭示。",
-      "saveCorrection": "保存纠正"
+      "saveCorrection": "保存纠正",
+      "level": {
+        "existence": "存在",
+        "recallPrompt": "回忆提示",
+        "hint": "提示",
+        "full": "全文",
+        "directAnswer": "直接答案"
+      }
     },
     "skippedIncompatible": "已跳过 {{count}} 个不兼容的历史块"
   },
@@ -1062,7 +1069,9 @@
     "analysis": {
       "ocrInProgress": "OCR 正在进行中，请等待识别完成",
       "retryOnlyInAnalysis": "retryOcr 只能在 analysis 模式下调用",
-      "noImagesToOcr": "没有图片可供 OCR"
+      "noImagesToOcr": "没有图片可供 OCR",
+      "ocrImageName": "OCR 图片 {{index}}",
+      "autoPrompt": "请分析这道题目"
     },
     "textbook": {
       "reloadOnlyInTextbook": "reloadTextbook 只能在 textbook 模式下调用",
@@ -2007,7 +2016,20 @@
     "aiThinkingProcess": "AI 思考过程",
     "imageLoadFailed": "图片加载失败",
     "incompleteMathFormula": "检测到未完成的数学公式，已暂时关闭公式渲染",
-    "uncertain": "不确定"
+    "uncertain": "不确定",
+    "smiles": {
+      "drawFailed": "结构式绘制失败",
+      "invalid": "无效的 SMILES",
+      "loadFailed": "结构式渲染器加载失败",
+      "structureLabel": "分子结构：{{smiles}}"
+    },
+    "rich": {
+      "remoteUrlNotAllowed": "该渲染器只接受内嵌数据，不允许远程 URL。",
+      "geoJsonEmpty": "GeoJSON 中没有可显示的几何对象。",
+      "geoJsonInvalidCoordinates": "GeoJSON 坐标无效。",
+      "dotExternalResource": "DOT 图不允许引用外部资源。",
+      "renderFailed": "渲染失败。"
+    }
   },
   "ocr": {
     "noQuestionContent": "暂无题目内容",
@@ -2333,7 +2355,8 @@
     "not_ready": "当前会话尚未就绪",
     "model2_missing": "请先在「设置 → 模型分配」配置对话模型后再发送消息。",
     "model2_auto_assigned": "已自动分配 {{count}} 个模型：{{models}}。可前往「设置 → 模型分配」查看或更改。",
-    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。"
+    "model2_auto_assigned_single": "已自动将「{{model}}」设为默认对话模型。可前往「设置 → 模型分配」查看或更改。",
+    "noModelAssigned": "(无)"
   },
   "imagePreview": {
     "partialNotFound": "部分图片资源未找到",
@@ -2360,7 +2383,8 @@
     "sourceIdAndHashRequired": "sourceId 和 newHash 不能为空",
     "sourceIdRequired": "sourceId 不能为空",
     "errorCode": "错误码: {{code}}",
-    "resourceNotFound": "资源未找到: {{sourceId}}"
+    "resourceNotFound": "资源未找到: {{sourceId}}",
+    "blobFetchFailed": "获取图片失败: {{message}}"
   },
   "errorBoundary": {
     "chatComponentError": "聊天组件出现错误",
@@ -2479,7 +2503,8 @@
         "delete": "删除",
         "append": "追加",
         "write": "写入"
-      }
+      },
+      "ankiCardLabel": "卡片 {{id}}（{{fields}}）"
     },
     "kind": {
       "generativeUi": "生成式 UI",
@@ -2492,6 +2517,10 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "daysAgo": "{{count}} 天前"
+    },
+    "fallbackTitle": {
+      "generativeUi": "生成式 UI",
+      "ankiCards": "Anki 卡片（{{count}}）"
     }
   },
   "goal": {
