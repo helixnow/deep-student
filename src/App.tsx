@@ -184,6 +184,16 @@ import {
   type PdfPageActivationTypeId,
 } from '@/features/workbench/core/workbenchBus';
 import { consumeHandoffDescriptor } from '@/features/workbench/core/handoffDescriptor';
+import {
+  requestLearningHubIntent,
+  type LearningHubIntentType,
+} from '@/features/learning-hub/navigation/pendingLearningHubIntent';
+import type { AppEventPayloads } from '@/events/app';
+import {
+  resolveClassicShellOpenNoteTarget,
+  type DstuOpenNoteDetail,
+} from '@/features/notes/openNoteEvent';
+import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge';
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
@@ -1512,15 +1522,24 @@ function App() {
 
   // 顶部安全区功能已移除
 
+  // 跨页「在学习资源中打开 X」：切到学习资源页并经握手投递打开意图。
+  // 监听者在 lazy LearningHubPage 内注册，首次进入 / 触屏 LRU 淘汰后重进时页面尚未
+  // 挂载，旧的「隔一帧 / 150ms 再派发」会早到即丢；握手挂起意图，页面监听器就位后重放。
+  // Workbench 启用时由 WorkbenchEventBridge 开窗，经典学习资源页不挂载，不挂起意图
+  // （否则切回经典壳时会重放陈旧意图）。
+  const openInLearningHub = useCallback(<K extends LearningHubIntentType>(
+    type: K,
+    detail: AppEventPayloads[K],
+  ) => {
+    setCurrentView('learning-hub');
+    if (workbenchBus.isEnabled()) return;
+    requestLearningHubIntent(type, detail);
+  }, [setCurrentView]);
+
   // ★ 2026-01 清理：知识库导航统一跳转到 Learning Hub
   useAppEvent(APP_EVENTS.NAVIGATE_TO_KNOWLEDGE_BASE, (detail) => {
-    setCurrentView('learning-hub');
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE, detail ?? {});
-      }, 0);
-    });
-  }, [setCurrentView]);
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE, detail ?? {});
+  }, [openInLearningHub]);
 
   // Chat V2 Integration Test: 集成测试页面入口（仅开发模式）
   useEffect(() => {
@@ -1550,11 +1569,8 @@ function App() {
       setCurrentView(targetView);
     }
 
-    if (detail.openResource && targetView === 'learning-hub') {
-      const dstuPath = detail.openResource;
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath });
-      }, 150);
+    if (detail.openResource && targetView === 'learning-hub' && !workbenchBus.isEnabled()) {
+      requestLearningHubIntent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: detail.openResource });
     }
   }, [setCurrentView, setTextbookReturnContext]);
 
@@ -1831,17 +1847,12 @@ function App() {
     const sessionId = detail?.sessionId;
     if (!sessionId) return;
 
-    setCurrentView('learning-hub');
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_EXAM, {
-          sessionId,
-          cardId: detail?.cardId ?? null,
-          mistakeId: detail?.mistakeId ?? null,
-        });
-      }, 0);
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_EXAM, {
+      sessionId,
+      cardId: detail?.cardId ?? null,
+      mistakeId: detail?.mistakeId ?? null,
     });
-  }, [setCurrentView]);
+  }, [openInLearningHub]);
 
   const handleNavigateToTranslation = useCallback((detail: {
     translationId: string;
@@ -1850,16 +1861,11 @@ function App() {
     const translationId = detail?.translationId;
     if (!translationId) return;
 
-    setCurrentView('learning-hub');
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_TRANSLATION, {
-          translationId,
-          title: detail?.title,
-        });
-      }, 0);
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_TRANSLATION, {
+      translationId,
+      title: detail?.title,
     });
-  }, [setCurrentView]);
+  }, [openInLearningHub]);
 
   const handleNavigateToEssay = useCallback((detail: {
     essayId: string;
@@ -1868,16 +1874,11 @@ function App() {
     const essayId = detail?.essayId;
     if (!essayId) return;
 
-    setCurrentView('learning-hub');
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_ESSAY, {
-          essayId,
-          title: detail?.title,
-        });
-      }, 0);
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_ESSAY, {
+      essayId,
+      title: detail?.title,
     });
-  }, [setCurrentView]);
+  }, [openInLearningHub]);
 
   const handleNavigateToNote = useCallback((detail: {
     noteId: string;
@@ -1886,16 +1887,26 @@ function App() {
     const noteId = detail?.noteId;
     if (!noteId) return;
 
-    setCurrentView('learning-hub');
-    requestAnimationFrame(() => {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, {
-          noteId,
-          source: detail?.source,
-        });
-      }, 0);
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, {
+      noteId,
+      source: detail?.source,
     });
-  }, [setCurrentView]);
+  }, [openInLearningHub]);
+
+  // 经典壳的 DSTU_OPEN_NOTE 宿主（Android/iOS 恒为经典壳）。WorkbenchEventBridge 只挂在
+  // WorkbenchDesktop 内：此前经典壳里 wikilink / @mention / note:// 链接点了没反应，
+  // 块链接跳转（source 'notes-editor'）空等 15s 超时；聊天页不可见时 Chat 自有事件
+  // 开进隐藏画布同样无效。落点规则见 resolveClassicShellOpenNoteTarget。
+  const handleClassicShellOpenNote = useCallback((event: Event) => {
+    if (workbenchBus.isEnabled()) return;
+    const detail = (event as CustomEvent<DstuOpenNoteDetail>).detail;
+    const target = resolveClassicShellOpenNoteTarget(detail, useViewStore.getState().currentView);
+    if (target !== 'learning-hub') return;
+    if (detail.heading) {
+      publishNotesHeadingTarget({ noteId: detail.noteId, heading: detail.heading });
+    }
+    handleNavigateToNote({ noteId: detail.noteId, source: detail.source });
+  }, [handleNavigateToNote]);
 
   const handlePrefillChatInput = useCallback((detail: {
     content: string;
@@ -1936,8 +1947,9 @@ function App() {
     { target: 'window', type: APP_EVENTS.NAVIGATE_TO_TRANSLATION, listener: toAppEventListener(handleNavigateToTranslation) },
     { target: 'window', type: APP_EVENTS.NAVIGATE_TO_ESSAY, listener: toAppEventListener(handleNavigateToEssay) },
     { target: 'window', type: APP_EVENTS.NAVIGATE_TO_NOTE, listener: toAppEventListener(handleNavigateToNote) },
+    { target: 'window', type: 'DSTU_OPEN_NOTE', listener: handleClassicShellOpenNote },
     { target: 'window', type: APP_EVENTS.PREFILL_CHAT_INPUT, listener: toAppEventListener(handlePrefillChatInput) },
-  ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handlePrefillChatInput]);
+  ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handleClassicShellOpenNote, handlePrefillChatInput]);
 
   // 处理页面切换（useCallback 稳定引用，避免 ModernSidebar 每次重渲染）
   const handleViewChange = useCallback((newView: CurrentView) => {

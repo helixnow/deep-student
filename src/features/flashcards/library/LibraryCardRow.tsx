@@ -62,7 +62,11 @@ const RATING_LABEL_KEY: Record<number, string> = {
 
 const RESET_DISARM_MS = 4000;
 
-/** 打开制卡来源：笔记走 DSTU_OPEN_NOTE（两种壳都有宿主），资料走 openResource（+ 跳页） */
+/**
+ * 打开制卡来源：笔记走 DSTU_OPEN_NOTE（source 非 Notes 自有 → Chat 侧契约：Workbench 下开进
+ * Chat 画布；经典壳下卡片库不是聊天页，由 App 路由到学习资源页以标签打开，见
+ * resolveClassicShellOpenNoteTarget），资料走 openResource（+ 跳页）
+ */
 function openCardSource(ref: { kind?: string; id?: string; title?: string; page?: number }): void {
   if (!ref.id) return;
   if (ref.kind === 'note') {

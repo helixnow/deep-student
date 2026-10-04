@@ -9,6 +9,9 @@
  * WorkbenchEventBridge（shouldWorkbenchHandleOpenNote）与
  * useChatPageEvents（shouldChatHandleOpenNote）。
  * 增删 source 必须同步 chat / workbench 两侧测试，勿单方面修改。
+ *
+ * 经典壳（Workbench 未启用；Android/iOS 恒为经典壳）没有 WorkbenchEventBridge，
+ * 落点改由 resolveClassicShellOpenNoteTarget 决定（App.tsx 与 useChatPageEvents 共用）。
  */
 export const NOTES_OWNED_OPEN_NOTE_SOURCES = [
   'notes-editor',
@@ -54,4 +57,27 @@ export function shouldWorkbenchHandleOpenNote(
 ): boolean {
   return Boolean(detail?.noteId)
     && (detail?.source == null || isNotesOwnedOpenNoteSource(detail.source));
+}
+
+/** 经典壳下 DSTU_OPEN_NOTE 的处理方。 */
+export type ClassicShellOpenNoteTarget = 'chat' | 'learning-hub';
+
+/**
+ * 经典壳（非 Workbench）下 DSTU_OPEN_NOTE 的落点。
+ *
+ * WorkbenchEventBridge 只挂在 WorkbenchDesktop 内：经典壳里 Notes 自有 / 无 source
+ * 的事件（wikilink、@mention、note:// 链接、块链接跳转）原本无人处理；Chat 自有事件在
+ * 聊天页不是当前视图时（视图保活隐藏或已被触屏 LRU 淘汰）开进聊天画布也等于没反应。
+ *
+ * - 'chat'：聊天页是当前视图且事件归 Chat → useChatPageEvents 开进聊天画布
+ * - 'learning-hub'：其余有效事件 → App 切到学习资源页并以标签打开
+ * - null：无 noteId，忽略
+ */
+export function resolveClassicShellOpenNoteTarget(
+  detail: DstuOpenNoteDetail | null | undefined,
+  currentView: string,
+): ClassicShellOpenNoteTarget | null {
+  if (!detail?.noteId) return null;
+  if (shouldChatHandleOpenNote(detail) && currentView === 'chat-v2') return 'chat';
+  return 'learning-hub';
 }

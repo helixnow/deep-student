@@ -11,16 +11,20 @@
  * - learningHubOpenNote: 从 ChatV2Page 打开笔记
  * - learningHubOpenResource: 通用资源打开（如思维导图）
  * - LEARNING_EVENTS.OPEN_TRANSLATE / LEARNING_EVENTS.OPEN_ESSAY_GRADING: 命令面板事件（常量来自 learning.commands.ts）
- * - learningHubNavigateToKnowledge: 知识库导航
+ * - learningHubNavigateToKnowledge: 知识库导航（DSTU_NAVIGATE_TO_KNOWLEDGE_BASE 由 App
+ *   切视图后经握手转发为本事件，此处不再直接监听，避免已挂载时处理两次）
+ *
+ * 监听器注册完成后标记就绪（markLearningHubReady），重放页面挂载前挂起的打开意图
+ * （见 navigation/pendingLearningHubIntent.ts）。
  */
 
 import { useEffect, useRef } from 'react';
 import { LEARNING_EVENTS } from '@/command-palette/modules/learning.commands';
 import {
-  DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT,
   LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT,
   type ResourceLocator,
 } from '../learningHubContracts';
+import { markLearningHubReady } from '../navigation/pendingLearningHubIntent';
 
 // ============================================================================
 // 事件数据类型定义
@@ -157,7 +161,7 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
       handlersRef.current.onCommandOpenEssayGrading?.();
     };
 
-    // ========== Learning Hub / DSTU 知识库导航 ==========
+    // ========== Learning Hub 知识库导航 ==========
     const handleNavigateToKnowledge = (evt: Event) => {
       const detail = (evt as CustomEvent<NavigateToKnowledgeEventDetail>).detail;
       handlersRef.current.onNavigateToKnowledge?.(detail);
@@ -172,10 +176,13 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
     window.addEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
     window.addEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
     window.addEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
-    window.addEventListener(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, handleNavigateToKnowledge);
+
+    // 监听器就位：进入就绪态并重放挂载前挂起的打开意图
+    const releaseReady = markLearningHubReady();
 
     // 统一清理所有事件监听器
     return () => {
+      releaseReady();
       window.removeEventListener('learningHubOpenExam', handleOpenExam);
       window.removeEventListener('learningHubOpenTranslation', handleOpenTranslation);
       window.removeEventListener('learningHubOpenEssay', handleOpenEssay);
@@ -184,7 +191,6 @@ export function useLearningHubEvents(handlers: LearningHubEventHandlers): void {
       window.removeEventListener(LEARNING_EVENTS.OPEN_TRANSLATE, handleCommandOpenTranslate);
       window.removeEventListener(LEARNING_EVENTS.OPEN_ESSAY_GRADING, handleCommandOpenEssayGrading);
       window.removeEventListener(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, handleNavigateToKnowledge);
-      window.removeEventListener(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, handleNavigateToKnowledge);
     };
   }, []); // 空依赖数组 - 只在挂载时注册，卸载时清理
 }

@@ -17,14 +17,17 @@ import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCom
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatSession } from '../types/session';
 import { useViewStore } from '@/stores/viewStore';
-import { APP_EVENTS, dispatchAppEvent } from '@/events/app';
+import { APP_EVENTS } from '@/events/app';
 import { CHAT_PANEL_PDF_FOCUS_SCOPE, requestPdfFocusUntilHandled } from './chatPdfFocus';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
 import {
+  resolveClassicShellOpenNoteTarget,
   shouldChatHandleOpenNote,
   type DstuOpenNoteDetail,
 } from '@/features/notes/openNoteEvent';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
 import {
   invalidatePendingChatNavigation,
   markChatPageReady,
@@ -77,10 +80,13 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       if (!shouldChatHandleOpenNote(event.detail)) return;
       const { noteId, source } = event.detail;
 
-      // 用户正在学习资源页（如 PDF 划词「保存为笔记」后点「打开笔记」）：聊天页此时是
-      // 保活隐藏的，开进聊天画布等于没反应——就地在学习资源页以标签打开
-      if (useViewStore.getState().currentView === 'learning-hub') {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, { noteId, source });
+      // 经典壳下聊天页不是当前视图（学习资源页 PDF 划词「保存为笔记」、卡片库来源、
+      // 周报等）：聊天页保活隐藏或已被淘汰，开进聊天画布等于没反应——
+      // 由 App 的经典壳 DSTU_OPEN_NOTE 宿主在学习资源页以标签打开（同一落点规则）。
+      if (
+        !workbenchBus.isEnabled()
+        && resolveClassicShellOpenNoteTarget(event.detail, useViewStore.getState().currentView) !== 'chat'
+      ) {
         return;
       }
 
@@ -479,7 +485,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
         isKnownResourceId(rawSourceId) &&
         useViewStore.getState().currentView === 'learning-hub'
       ) {
-        dispatchAppEvent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${rawSourceId}` });
+        requestLearningHubIntent(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${rawSourceId}` });
         requestPdfFocusUntilHandled({ sourceId: rawSourceId, pageNumber, quote });
         return;
       }
