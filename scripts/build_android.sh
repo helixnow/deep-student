@@ -264,12 +264,12 @@ inject_apk_file_provider() {
     fi
 }
 
-# 同步受控 MainActivity + SAF 唤醒插件到生成工程。
+# 同步受控 MainActivity + SAF 唤醒插件 + HEIC 解码插件到生成工程。
 # tauri android init 会生成裸模板 MainActivity，缺失这两段逻辑会导致
 # 返回手势直接退出 App、安全区退回猜测值。受控副本是单一事实源。
 sync_main_activity() {
     local FILE SRC DST
-    for FILE in MainActivity.kt SafPermissionPlugin.kt; do
+    for FILE in MainActivity.kt SafPermissionPlugin.kt HeicDecoderPlugin.kt; do
         SRC="$REPO_ROOT/src-tauri/mobile/android/$FILE"
         DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/$FILE"
         [[ -f "$SRC" ]] || die "受控 Android 文件不存在: $SRC"

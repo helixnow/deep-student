@@ -293,6 +293,15 @@ jobs:
           cmp -s "$SRC" "$DST" || { echo "::error::SafPermissionPlugin.kt sync verification failed"; exit 1; }
           echo "✅ SafPermissionPlugin.kt synced from managed copy"
 
+          # HEIC → JPEG 原生转码（convert_heic_to_jpeg 命令的 Kotlin 侧）。缺失时
+          # Android 上 HEIC 照片无法转码，只能报错拒收，因此 fail-closed。
+          SRC="src-tauri/mobile/android/HeicDecoderPlugin.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/HeicDecoderPlugin.kt"
+          test -f "$SRC" || { echo "::error::managed HeicDecoderPlugin.kt missing at $SRC"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::HeicDecoderPlugin.kt sync verification failed"; exit 1; }
+          echo "✅ HeicDecoderPlugin.kt synced from managed copy"
+
           # 应用内 APK 安装器：插件类 + FileProvider 路径配置 + manifest provider。
           # 缺失时 install_apk 命令在运行期才报错（用户点了"下载并安装"才发现装不了），
           # 因此这里 fail-closed。与 build_android.sh 的 sync_apk_installer_files /

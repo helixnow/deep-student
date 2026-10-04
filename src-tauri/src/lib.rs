@@ -68,6 +68,7 @@ pub mod figure_extractor;
 pub mod file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
+pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod injection_budget;
 pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
@@ -627,7 +628,9 @@ pub fn run() {
     #[cfg(target_os = "android")]
     let builder = builder
         .plugin(crate::apk_installer::init())
-        .plugin(crate::unified_file_manager::saf_permission_plugin());
+        .plugin(crate::unified_file_manager::saf_permission_plugin())
+        // HEIC/HEIF → JPEG：Android WebView 无法解码 HEIC，走平台 ImageDecoder。
+        .plugin(crate::heic_decoder::init());
 
     // 🔧 MCP 调试插件（通过 mcp-debug feature 启用）
     // 使用 hypothesi/mcp-server-tauri 桥接插件
@@ -1734,6 +1737,7 @@ pub fn run() {
             crate::commands::get_app_version,
             crate::commands::updater_install_supported,
             crate::commands::install_apk,
+            crate::heic_decoder::convert_heic_to_jpeg,
             crate::commands::get_app_data_dir,
             crate::commands::process_pdf_ocr,
             crate::commands::init_pdf_ocr_session, // 🎯
