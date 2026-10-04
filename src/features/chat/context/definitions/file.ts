@@ -75,6 +75,24 @@ function isPdfFile(name: string, mimeType?: string): boolean {
   return mimeType === 'application/pdf' || name.toLowerCase().endsWith('.pdf');
 }
 
+const MEDIA_EXTENSION_RE = /\.(mp3|m4a|aac|wav|flac|ogg|oga|opus|mp4|m4v|mov|mkv|webm|avi)$/i;
+
+/**
+ * 检查文件是否为音视频（媒体学习：转写段带时间戳，引用格式 `[媒体@id:mm:ss]`）
+ */
+export function isMediaFile(name: string, mimeType?: string): boolean {
+  return /^(audio|video)\//.test(mimeType ?? '') || MEDIA_EXTENSION_RE.test(name);
+}
+
+/** 音视频引用说明：时间点引用 + 按时间读转写（文案保持极短，随附件注入） */
+function createMediaMetaBlock(name: string, sourceId: string): ContentBlock {
+  return createXmlTextBlock(
+    'media_meta',
+    `引用该音视频的内容请写 [媒体@${sourceId}:mm:ss]（≥1小时用 h:mm:ss）；按时间读转写用 resource_read 的 time_start/time_end（秒）。`,
+    { name, source_id: sourceId }
+  );
+}
+
 function escapeXmlContent(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -399,8 +417,12 @@ export const fileDefinition: ContextTypeDefinition = {
       if (size) attrs.size = formatFileSize(size);
 
       const content = resolved.content || '';
+      const mediaMeta = isMediaFile(name, mimeType) ? [createMediaMetaBlock(name, sourceId)] : [];
       if (!content) {
-        return [createTextBlock(`<attachment name="${name}">${t('contextDef.file.invalid', {}, 'chatV2')}</attachment>`)];
+        return [
+          ...mediaMeta,
+          createTextBlock(`<attachment name="${name}">${t('contextDef.file.invalid', {}, 'chatV2')}</attachment>`),
+        ];
       }
 
       // 对于特别大的文件，可能需要截断
@@ -413,7 +435,7 @@ export const fileDefinition: ContextTypeDefinition = {
         truncated = true;
       }
 
-      const blocks: ContentBlock[] = [];
+      const blocks: ContentBlock[] = [...mediaMeta];
       if (truncated) {
         // ★ 截断提示前置 + 尾部保留原有 Note，模型不会把截断内容当完整文件
         blocks.push(createTextBlock(buildTruncationNotice(name, size)));
