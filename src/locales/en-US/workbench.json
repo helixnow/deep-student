@@ -104,7 +104,7 @@
         "actions": "Open folders, reveal or select resources, navigate, search, change view, and sort"
       },
       "exam": {
-        "name": "Question bank",
+        "name": "Exam Set",
         "actions": "Focus or move between questions, filter, switch practice/focus modes, and open settings"
       },
       "flashcards": {

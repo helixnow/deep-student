@@ -50,7 +50,7 @@ const ZH_TOKEN_MAP: Record<string, string> = {
   batch: '批量',
   import: '导入',
   export: '导出',
-  mindmap: '知识导图',
+  mindmap: '思维导图',
   edit: '编辑',
   nodes: '节点',
   node: '节点',

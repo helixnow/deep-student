@@ -56,7 +56,7 @@
     "permanentDelete": "永久删除",
     "addToDesktop": "添加到桌面",
     "addedToDesktop": "已添加到桌面",
-    "newMindMap": "新建知识导图",
+    "newMindMap": "新建思维导图",
     "newTodo": "新建待办列表",
     "deleteTitle": "确认删除",
     "export": "导出",
@@ -108,7 +108,7 @@
     "essay": "作文批改",
     "image": "图片",
     "file": "文档",
-    "mindmap": "知识导图",
+    "mindmap": "思维导图",
     "todo": "待办列表"
   },
   "actionBar": {
@@ -531,7 +531,7 @@
       "newTextbook": "导入资料…",
       "newTranslation": "新建翻译",
       "newEssay": "新建作文",
-      "newMindMap": "新建知识导图",
+      "newMindMap": "新建思维导图",
       "newTodo": "新建待办列表",
       "viewGrid": "网格视图",
       "viewList": "列表视图",
@@ -549,7 +549,7 @@
       "examSuccess": "题目集已创建",
       "translationSuccess": "翻译已创建",
       "essaySuccess": "作文已创建",
-      "mindmapSuccess": "知识导图已创建",
+      "mindmapSuccess": "思维导图已创建",
       "todoSuccess": "待办列表已创建",
       "defaultFolderName": "新建文件夹",
       "notAllowedHere": "当前视图不支持新建资源"
@@ -576,7 +576,7 @@
       "media": "媒体",
       "system": "系统",
       "aiKnowledge": "AI 知识",
-      "mindmaps": "知识导图",
+      "mindmaps": "思维导图",
       "todos": "待办列表"
     },
     "search": {
@@ -1007,7 +1007,7 @@
       "allExams": "全部题目集",
       "allEssays": "全部作文",
       "allTranslations": "全部翻译",
-      "mindmaps": "知识导图",
+      "mindmaps": "思维导图",
       "todos": "待办列表",
       "favorites": "收藏",
       "recentAccess": "最近访问"
