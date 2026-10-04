@@ -26,20 +26,36 @@ describe('chat v2 input bar radius contract', () => {
 
   it('uses the shell toolbar radius for the composer instead of oversized hard-coded corners', () => {
     expect(shadcnVariablesSource).toContain('--radius-shell-toolbar: 16px;');
-    // docked 只圆底部两角（rounded-b-*）、空态由 CSS 还原四角圆，两者都消费同一 token
     expect(inputBarSource).toContain('var(--radius-shell-toolbar)');
     expect(inputBarSource).not.toContain('rounded-[28px]');
   });
 
-  it('squares only the docked composer top corners and keeps the empty-state card fully rounded', () => {
-    // docked：顶部贴消息区，改直角消掉圆角缺口；底部两角仍是 shell toolbar 圆角
-    expect(inputBarSource).toContain('rounded-b-[var(--radius-shell-toolbar)]');
-    expect(inputBarSource).not.toContain("'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)]");
-    // 空态：居中悬浮卡，四角全圆
-    expect(beautifySource).toContain(
+  it('keeps all four composer corners rounded in every post-send state', () => {
+    // 发送后空态切到 docked、流式中、提问 / 审批卡占据壳体：桌面壳体始终四角全圆，
+    // 不允许任何状态把一侧圆角切掉（曾经 docked 顶部直角 = 发送后圆角「消失」）。
+    expect(inputBarSource).toContain(
+      "'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)]"
+    );
+    // 移动端悬浮卡同样四角全圆
+    expect(inputBarSource).toContain("'rounded-[22px] border-[color:var(--composer-panel-border)]");
+    for (const halfRounded of [
+      'rounded-b-[var(--radius-shell-toolbar)]',
+      'rounded-t-[var(--radius-shell-toolbar)]',
+      'rounded-t-none',
+      'rounded-b-none',
+      'rounded-none',
+    ]) {
+      expect(inputBarSource).not.toContain(halfRounded);
+    }
+    // 壳体圆角不应随状态（审批 / 流式 / 全屏内容）切换形状
+    const shellStart = inputBarSource.indexOf('data-composer-panel-anchor');
+    const shellEnd = inputBarSource.indexOf('>', inputBarSource.indexOf(')}', shellStart));
+    const shellClass = inputBarSource.slice(shellStart, shellEnd);
+    expect(shellClass).not.toMatch(/pendingApprovalRequest|isStreaming|isFullscreenContent/);
+    // 空态不再需要 CSS 补回圆角（docked 与空态同一形状）
+    expect(beautifySource).not.toContain(
       '.chat-v2 .chat-empty-composer-layout__input [data-composer-panel-anchor]'
     );
-    expect(beautifySource).toContain('border-radius: var(--radius-shell-toolbar);');
   });
 
   it('keeps the drag overlay radius inherited from the composer shell', () => {

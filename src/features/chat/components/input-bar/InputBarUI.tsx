@@ -2444,17 +2444,15 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
             'relative z-[200] border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
             isMobile
               ? 'rounded-[22px] border-[color:var(--composer-panel-border)] bg-[color:var(--surface-root)] px-3 py-2.5 shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)] focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)]'
-              // ★ 2026-10：桌面顶部两角改直角（rounded-b-*），底部两角保留圆角 = 沉底工具条。
-              // 原因：顶部与消息区零间距后，16px 圆角在 bbox 内留下一个方形「缺口」，
-              // 卡片白底与消息区白底同色，那块缺口读起来就是贴在圆角上的一坨白。
+              // ★ 2026-10 二修：桌面壳体在所有状态下四角全圆（空态 / 发送后 docked /
+              // 流式中 / 提问审批卡占据壳体）。曾为贴消息区把 docked 顶部两角改直角
+              // （rounded-b-*，commit 24009e714），结果发送一条消息、空态切到 docked 后
+              // 圆角「消失」，读起来像被截断——用户明确要求保留圆角。当时的「缺口」源于
+              // 根容器写死的不透明白板，那块白板已撤掉（根容器透明），圆角外露出的是
+              // 聊天页同色底，不再有白块。
               // 描边（1px border）完整保留 —— 它是这张卡唯一的轮廓。
-              : cn(
-                  // 提问 / 审批卡占据壳体时是一张独立卡片，四角都要圆角（顶部直角只适用于贴底的输入工具条）
-                  pendingApprovalRequest
-                    ? 'rounded-[var(--radius-shell-toolbar)]'
-                    : 'rounded-b-[var(--radius-shell-toolbar)]',
-                  'border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]',
-                )
+              // 契约：tests/vitest/chatV2InputBarRadiusContract.test.ts
+              : 'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}

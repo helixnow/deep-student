@@ -199,15 +199,6 @@
   max-width: none;
 }
 
-/* 空态 composer 是居中悬浮卡：四角全圆。
-   docked 态为了贴消息区把顶部两角改成直角（InputBarUI 的 rounded-b-*），
-   那条形状规则不适用于空态，这里显式还原成四角圆。
-   选择器特异性 (0,3,1) > Tailwind 单类 rounded-b-*，无需 !important。 */
-/* stylelint-disable-next-line selector-class-pattern -- BEM 双下划线，与本文件既有 empty-composer-layout__* 选择器同族 */
-.chat-v2 .chat-empty-composer-layout__input [data-composer-panel-anchor] {
-  border-radius: var(--radius-shell-toolbar);
-}
-
 /* 空态布局内层 thread 表面（ThreadEmptyStateShell 等）已被 __stack 统一限宽，
    内层再按 --chat-thread-max-w 的百分比分支限宽会逐层收窄（80%×80%），
    与 fixed 时代一致地平铺 stack 即可（44rem 固定值下本就不生效）。 */
