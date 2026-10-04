@@ -677,17 +677,25 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // scrollHeight 与 scrollTop 均未变化说明视口已钉底，重写只会白写并再触发
   // 一轮滚动事件；内容真实增长（scrollHeight 变化）或浏览器 clamp（scrollTop
   // 偏离账本）仍会正常跟随。
-  const lastFollowStateRef = useRef<{ top: number; height: number } | null>(null);
+  // 视口自身变矮（软键盘弹出 / 输入栏长高挤压列表）时 scrollHeight 与 scrollTop
+  // 都不变，但底部若干行已被裁出可视区——去重键必须包含 clientHeight。
+  const lastFollowStateRef = useRef<{ top: number; height: number; client: number } | null>(null);
   const followBottom = useCallback(() => {
     const el = viewportElement;
     if (!el || !atBottomRef.current) return;
     const height = el.scrollHeight;
+    const client = el.clientHeight;
     const last = lastFollowStateRef.current;
-    if (last && last.height === height && Math.abs(el.scrollTop - last.top) <= 0.5) {
+    if (
+      last
+      && last.height === height
+      && last.client === client
+      && Math.abs(el.scrollTop - last.top) <= 0.5
+    ) {
       return;
     }
     writeScroll(height);
-    lastFollowStateRef.current = { top: observedTopRef.current, height };
+    lastFollowStateRef.current = { top: observedTopRef.current, height, client };
   }, [viewportElement, writeScroll]);
 
   // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
@@ -781,8 +789,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   useEffect(() => {
     if (!viewportElement) return;
     const chatRoot = viewportElement.closest('.chat-v2');
-    const inputBar = chatRoot?.querySelector<HTMLElement>('.unified-input-docked');
-    if (!inputBar) return;
+    const inputBar = chatRoot?.querySelector<HTMLElement>('.unified-input-docked') ?? null;
 
     let rafId: number | null = null;
     const sync = () => {
@@ -796,22 +803,32 @@ const MessageListInner: React.FC<MessageListProps> = ({
       if (rafId === null) rafId = requestAnimationFrame(sync);
     };
 
+    // 视口变矮（软键盘弹出 / 输入栏长高）不改变内容高度，内容 ResizeObserver 与
+    // scroll 事件都不会触发；贴底时在此同帧重新钉底，否则最后几行被裁出可视区。
+    // followBottom 自带 atBottom 守卫：读者已滚离底部时不写，不与手动滚动抢所有权
+    const onViewportResize = () => {
+      followBottom();
+      schedule();
+    };
+
     schedule();
-    const resizeObserver = new ResizeObserver(schedule);
-    resizeObserver.observe(inputBar);
+    const resizeObserver = new ResizeObserver(onViewportResize);
     resizeObserver.observe(viewportElement);
     // 键盘 inset 走 inline style（padding/CSS 变量），高度不变时也要重测
     const mutationObserver = new MutationObserver(schedule);
-    mutationObserver.observe(inputBar, { attributes: true, attributeFilter: ['style', 'class'] });
-    window.visualViewport?.addEventListener('resize', schedule);
+    if (inputBar) {
+      resizeObserver.observe(inputBar);
+      mutationObserver.observe(inputBar, { attributes: true, attributeFilter: ['style', 'class'] });
+    }
+    window.visualViewport?.addEventListener('resize', onViewportResize);
 
     return () => {
       resizeObserver.disconnect();
       mutationObserver.disconnect();
-      window.visualViewport?.removeEventListener('resize', schedule);
+      window.visualViewport?.removeEventListener('resize', onViewportResize);
       if (rafId !== null) cancelAnimationFrame(rafId);
     };
-  }, [viewportElement]);
+  }, [viewportElement, followBottom]);
 
   // 🔧 P0：会话切换时清空 PDF 页图模块缓存，释放跨会话滞留的 dataUrl 堆内存
   useEffect(() => {

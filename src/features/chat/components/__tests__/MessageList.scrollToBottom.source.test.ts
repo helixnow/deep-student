@@ -81,7 +81,12 @@ describe('MessageList scroll-to-bottom source contract', () => {
     // 状态一致则跳过写入），写入仍走 writeScroll 记账
     expect(source).toContain('const height = el.scrollHeight;');
     expect(source).toContain('writeScroll(height);');
-    expect(source).toContain('lastFollowStateRef.current = { top: observedTopRef.current, height };');
+    // 去重键含 clientHeight：视口变矮（软键盘/输入栏长高）时内容高度不变也要重新钉底
+    expect(source).toContain('lastFollowStateRef.current = { top: observedTopRef.current, height, client };');
+    expect(source).toContain('&& last.client === client');
+    // 视口/visualViewport 尺寸变化时贴底重钉（followBottom 自带 atBottom 守卫）
+    expect(source).toContain('const resizeObserver = new ResizeObserver(onViewportResize);');
+    expect(source).toContain("window.visualViewport?.addEventListener('resize', onViewportResize);");
     // 常驻 RO 跟随（不限流式），log 节点随 listEpoch remount 时用 state 重新观察
     expect(source).toContain('new ResizeObserver(() => { followBottom(); })');
     expect(source).toContain('const [logElement, setLogElement] = useState<HTMLElement | null>(null);');
