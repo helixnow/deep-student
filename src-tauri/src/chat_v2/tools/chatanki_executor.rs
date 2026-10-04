@@ -2467,29 +2467,29 @@ impl ChatAnkiToolExecutor {
             }
         };
         attach_review_states(&mut page_cards, review_states);
+        // 验收入口顺带做字段长度软校验：模板字段超长（如整句证明塞进
+        // design-architect 的 Formula）在这里暴露给 Agent，促使其精简或换模板。
+        let mut output = json!({
+            "status": "ok",
+            "documentId": document_id,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "filter": args.filter.as_str(),
+            "cards": page_cards,
+            // P8：get_cards 返回库中全部 live 卡（含超限保留卡）；该字段表示
+            // 其中有多少张因 maxCards 上限未展示在预览块里。预览块归文档
+            // 拥有者所有，故用有效读会话查询（coordinator 作用域下同样准确）。
+            "hiddenOverLimitCount": lookup_hidden_over_limit_count(
+                ctx.chat_v2_db.as_deref(),
+                &read_session,
+                document_id,
+            ),
+        });
+        let cards = output["cards"].as_array().cloned().unwrap_or_default();
+        attach_field_limit_warnings(&mut output, ctx, &cards);
 
-        Ok(finish_chatanki_success(
-            call,
-            ctx,
-            start_time,
-            json!({
-                "status": "ok",
-                "documentId": document_id,
-                "total": total,
-                "page": page,
-                "pageSize": page_size,
-                "filter": args.filter.as_str(),
-                "cards": page_cards,
-                // P8：get_cards 返回库中全部 live 卡（含超限保留卡）；该字段表示
-                // 其中有多少张因 maxCards 上限未展示在预览块里。预览块归文档
-                // 拥有者所有，故用有效读会话查询（coordinator 作用域下同样准确）。
-                "hiddenOverLimitCount": lookup_hidden_over_limit_count(
-                    ctx.chat_v2_db.as_deref(),
-                    &read_session,
-                    document_id,
-                ),
-            }),
-        ))
+        Ok(finish_chatanki_success(call, ctx, start_time, output))
     }
 
     async fn execute_update_card(
@@ -2610,19 +2610,17 @@ impl ChatAnkiToolExecutor {
                         "update_card",
                     );
                 }
-                Ok(finish_chatanki_success(
-                    call,
-                    ctx,
-                    start_time,
-                    json!({
-                        "status": status,
-                        "documentId": document_id,
-                        "card": convert_card_for_tool(&updated, None),
-                        "mutationApplied": true,
-                        "retryable": false,
-                        "uiSync": ui_sync,
-                    }),
-                ))
+                let tool_card = convert_card_for_tool(&updated, None);
+                let mut output = json!({
+                    "status": status,
+                    "documentId": document_id,
+                    "card": tool_card.clone(),
+                    "mutationApplied": true,
+                    "retryable": false,
+                    "uiSync": ui_sync,
+                });
+                attach_field_limit_warnings(&mut output, ctx, std::slice::from_ref(&tool_card));
+                Ok(finish_chatanki_success(call, ctx, start_time, output))
             }
             AnkiCardVersionUpdate::Conflict(current) => Ok(finish_chatanki_success(
                 call,
@@ -2984,24 +2982,26 @@ impl ChatAnkiToolExecutor {
             );
         }
 
-        Ok(finish_chatanki_success(
-            call,
-            ctx,
-            start_time,
-            json!({
-                "status": status,
-                "documentId": document_id,
-                "total": total,
-                "updated": updated_count,
-                "conflicts": conflict_count,
-                "blocked": blocked_count,
-                "failed": failed_count,
-                "results": results,
-                "mutationApplied": updated_count > 0,
-                "retryable": conflict_count > 0,
-                "uiSync": ui_sync,
-            }),
-        ))
+        let updated_tool_cards: Vec<Value> = updated_cards
+            .iter()
+            .map(|card| convert_card_for_tool(card, None))
+            .collect();
+        let mut output = json!({
+            "status": status,
+            "documentId": document_id,
+            "total": total,
+            "updated": updated_count,
+            "conflicts": conflict_count,
+            "blocked": blocked_count,
+            "failed": failed_count,
+            "results": results,
+            "mutationApplied": updated_count > 0,
+            "retryable": conflict_count > 0,
+            "uiSync": ui_sync,
+        });
+        attach_field_limit_warnings(&mut output, ctx, &updated_tool_cards);
+
+        Ok(finish_chatanki_success(call, ctx, start_time, output))
     }
 
     /// 批量删除卡片（≤100 张）：逐卡执行与 `chatanki_delete_card` 相同的双 CAS
@@ -3363,24 +3363,21 @@ impl ChatAnkiToolExecutor {
             .map(|card| convert_card_for_tool(card, None))
             .collect();
         let inserted_count = inserted.len();
+        let mut output = json!({
+            "status": status,
+            "documentId": document_id,
+            "requested": requested_count,
+            "inserted": inserted_count,
+            "skipped": requested_count.saturating_sub(inserted_count),
+            "enqueuedForReview": enqueued,
+            "cards": output_cards.clone(),
+            "mutationApplied": inserted_count > 0,
+            "retryable": false,
+            "uiSync": ui_sync,
+        });
+        attach_field_limit_warnings(&mut output, ctx, &output_cards);
 
-        Ok(finish_chatanki_success(
-            call,
-            ctx,
-            start_time,
-            json!({
-                "status": status,
-                "documentId": document_id,
-                "requested": requested_count,
-                "inserted": inserted_count,
-                "skipped": requested_count.saturating_sub(inserted_count),
-                "enqueuedForReview": enqueued,
-                "cards": output_cards,
-                "mutationApplied": inserted_count > 0,
-                "retryable": false,
-                "uiSync": ui_sync,
-            }),
-        ))
+        Ok(finish_chatanki_success(call, ctx, start_time, output))
     }
 
     async fn execute_enqueue_review(
@@ -5823,6 +5820,7 @@ impl ChatAnkiToolExecutor {
             "page": page,
             "pageSize": page_size,
             "count": out.len(),
+            "selectionRule": CHATANKI_TEMPLATE_SELECTION_RULE,
             "templates": out,
         });
 
@@ -11473,15 +11471,64 @@ fn select_chatanki_template_page(
     (total, page_items)
 }
 
+/// list_templates 顶层的选模板规则（内容决定模板）。
+///
+/// 实测事故：讲义含中值定理证明，Agent 选了 design-architect（Formula 字段是
+/// 1.5rem 等宽大字、只容一条公式），把整句证明塞进 Formula/Expl，卡片不可读。
+/// 每个内置模板的 `generation_prompt` 写明适用/不适用，`fieldGuide` 给出逐字段
+/// 用途与 `maxChars`；这里给出跨模板的默认决策。
+const CHATANKI_TEMPLATE_SELECTION_RULE: &str = "按内容选模板，而不是按风格：\
+多句答案、定理陈述+证明要点、推导、原理解释等通用问答默认用 design-footnote（或 design-monograph）；\
+定义/术语/关键结论的填空用 design-glass（或 design-exam）；\
+其他 design-* 仅在内容完全符合其 generation_prompt「适用」与 fieldGuide 语义时使用，或用户点名该风格。\
+字段值必须遵守 fieldGuide.maxChars；内容放不进某字段（如把整句证明塞进 Formula）说明模板选错了，应换模板而不是硬塞。";
+
+/// 模板字段的紧凑说明：用途、是否必填、建议上限（来自 field_extraction_rules）。
+/// 按模板字段声明顺序输出（规则表是 HashMap，迭代序不稳定）。
+fn chatanki_template_field_guide(
+    fields: &[String],
+    rules: &HashMap<String, FieldExtractionRule>,
+) -> Vec<Value> {
+    fields
+        .iter()
+        .map(|field| {
+            let rule = rules.get(field).or_else(|| {
+                rules
+                    .iter()
+                    .find(|(key, _)| key.eq_ignore_ascii_case(field))
+                    .map(|(_, rule)| rule)
+            });
+            let mut item = serde_json::Map::new();
+            item.insert("name".to_string(), json!(field));
+            item.insert(
+                "required".to_string(),
+                json!(rule.map(|r| r.is_required).unwrap_or(false)),
+            );
+            if let Some(purpose) = rule
+                .map(|r| r.description.trim())
+                .filter(|d| !d.is_empty() && *d != field.as_str())
+            {
+                item.insert("purpose".to_string(), json!(purpose));
+            }
+            if let Some(max) = rule.and_then(|r| r.max_length) {
+                item.insert("maxChars".to_string(), json!(max));
+            }
+            match rule.map(|r| &r.field_type) {
+                Some(FieldType::Text) | None => {}
+                Some(other) => {
+                    item.insert("type".to_string(), json!(other));
+                }
+            }
+            Value::Object(item)
+        })
+        .collect()
+}
+
 fn chatanki_template_list_item(template: &crate::models::CustomAnkiTemplate) -> Value {
     let fields = normalize_template_fields(&template.fields);
     let rules = ensure_field_extraction_rules(&fields, &template.field_extraction_rules);
     let complexity_level = calculate_complexity_level(fields.len(), &template.note_type);
-    let use_case = if template.description.trim().is_empty() {
-        template.name.clone()
-    } else {
-        template.description.clone()
-    };
+    let field_guide = chatanki_template_field_guide(&fields, &rules);
     json!({
         "id": template.id,
         "name": template.name,
@@ -11492,11 +11539,144 @@ fn chatanki_template_list_item(template: &crate::models::CustomAnkiTemplate) -> 
         "fields": fields,
         "isActive": template.is_active,
         "complexityLevel": complexity_level,
-        "useCaseDescription": use_case,
-        "field_extraction_rules": rules,
+        // 字段契约（紧凑版）：取代原先整份 field_extraction_rules 的回显
+        "fieldGuide": field_guide,
+        // 内置模板在此写明「适用 / 不适用 / 逐字段要求」
         "generation_prompt": template.generation_prompt,
         "isBuiltIn": template.is_built_in,
     })
+}
+
+/// 字段长度软校验每次最多回显的告警条数（防止 100 张卡的批次撑爆工具结果）。
+const FIELD_LIMIT_WARNINGS_CAP: usize = 30;
+
+const FIELD_LIMIT_HINT: &str = "这些字段超出模板的建议长度，渲染后可能难以阅读。\
+请精简为该字段要求的形态（见 chatanki_list_templates 的 fieldGuide）；\
+如果内容本身就是多句解释/证明/推导，说明模板不合适：改用 design-footnote / design-monograph（问答）\
+或 design-glass / design-exam（填空），经 chatanki_retemplate 换模板后再补字段。";
+
+/// 粗略去掉 HTML 标签后按 Unicode 字符计长（标签不计入可读长度）。
+fn visible_char_count(value: &str) -> usize {
+    let mut in_tag = false;
+    let mut count = 0usize;
+    for ch in value.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => count += 1,
+            _ => {}
+        }
+    }
+    count
+}
+
+/// 在工具形态的卡片（convert_card_for_tool 输出）上找模板字段的值：
+/// 先按名大小写不敏感匹配 extraFields，再按别名回退到 front/back/text。
+fn tool_card_field_value<'a>(card: &'a Value, field: &str) -> Option<&'a str> {
+    if let Some(extra) = card.get("extraFields").and_then(Value::as_object) {
+        if let Some(value) = extra
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(field))
+            .and_then(|(_, value)| value.as_str())
+        {
+            return Some(value);
+        }
+    }
+    let normalized = normalize_template_card_field_key(field);
+    let core = if template_aliases(TemplateCardField::Front).contains(&normalized.as_str()) {
+        "front"
+    } else if template_aliases(TemplateCardField::Back).contains(&normalized.as_str()) {
+        "back"
+    } else if normalized == "text" {
+        "text"
+    } else {
+        return None;
+    };
+    card.get(core).and_then(Value::as_str)
+}
+
+/// 对照卡片模板的 `max_length` 做字段长度软校验（不拒写、不改卡）。
+///
+/// `lookup_rules` 按模板 ID 返回字段规则；无模板/无上限的卡跳过。
+/// 返回 `(告警列表（已按 FIELD_LIMIT_WARNINGS_CAP 截断）, 告警总数)`。
+fn compute_field_limit_warnings<F>(cards: &[Value], mut lookup_rules: F) -> (Vec<Value>, usize)
+where
+    F: FnMut(&str) -> Option<HashMap<String, FieldExtractionRule>>,
+{
+    let mut cache: HashMap<String, Option<HashMap<String, FieldExtractionRule>>> = HashMap::new();
+    let mut warnings = Vec::new();
+    let mut total = 0usize;
+    for card in cards {
+        if card
+            .get("isErrorCard")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        {
+            continue;
+        }
+        let Some(template_id) = card
+            .get("templateId")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+        else {
+            continue;
+        };
+        let rules = cache
+            .entry(template_id.to_string())
+            .or_insert_with(|| lookup_rules(template_id));
+        let Some(rules) = rules.as_ref() else {
+            continue;
+        };
+        // 按字段名排序，保证告警顺序确定
+        let mut limited: Vec<(&String, &FieldExtractionRule, u32)> = rules
+            .iter()
+            .filter_map(|(name, rule)| rule.max_length.map(|max| (name, rule, max)))
+            .collect();
+        limited.sort_by(|a, b| a.0.cmp(b.0));
+        for (field, rule, max) in limited {
+            let Some(value) = tool_card_field_value(card, field) else {
+                continue;
+            };
+            let length = visible_char_count(value);
+            if length <= max as usize {
+                continue;
+            }
+            total += 1;
+            if warnings.len() < FIELD_LIMIT_WARNINGS_CAP {
+                warnings.push(json!({
+                    "cardId": card.get("id").cloned().unwrap_or(Value::Null),
+                    "templateId": template_id,
+                    "field": field,
+                    "length": length,
+                    "maxChars": max,
+                    "purpose": rule.description,
+                }));
+            }
+        }
+    }
+    (warnings, total)
+}
+
+/// 把字段长度软校验结果挂到工具输出上（无告警时不加任何键，保持旧输出形态）。
+fn attach_field_limit_warnings(output: &mut Value, ctx: &ExecutionContext, cards: &[Value]) {
+    let Some(db) = ctx.main_db.as_ref().or(ctx.anki_db.as_ref()) else {
+        return;
+    };
+    let (warnings, total) = compute_field_limit_warnings(cards, |template_id| {
+        db.get_custom_template_by_id(template_id)
+            .ok()
+            .flatten()
+            .map(|template| template.field_extraction_rules)
+    });
+    if total == 0 {
+        return;
+    }
+    if let Some(object) = output.as_object_mut() {
+        object.insert("fieldLimitWarnings".to_string(), json!(warnings));
+        object.insert("fieldLimitWarningsTotal".to_string(), json!(total));
+        object.insert("fieldLimitHint".to_string(), json!(FIELD_LIMIT_HINT));
+    }
 }
 
 fn default_field_extraction_rules() -> HashMap<String, FieldExtractionRule> {
@@ -17405,6 +17585,190 @@ mod tests {
         assert_eq!(output["fields"], json!(["Text", "Extra"]));
         assert_eq!(output["noteType"], "Cloze");
         assert_eq!(output["isCloze"], true);
+    }
+
+    /// 从权威内置模板 JSON 构造某个模板（只填 list/校验用到的字段）。
+    fn builtin_template_for_test(id: &str) -> crate::models::CustomAnkiTemplate {
+        let all: Vec<Value> =
+            serde_json::from_str(include_str!("../../data/builtin-templates.json")).unwrap();
+        let raw = all
+            .into_iter()
+            .find(|t| t["id"] == id)
+            .unwrap_or_else(|| panic!("builtin template {id} missing"));
+        let now = chrono::Utc::now();
+        crate::models::CustomAnkiTemplate {
+            id: id.to_string(),
+            name: raw["name"].as_str().unwrap().to_string(),
+            description: raw["description"].as_str().unwrap().to_string(),
+            author: None,
+            version: raw["version"].as_str().unwrap().to_string(),
+            preview_front: String::new(),
+            preview_back: String::new(),
+            note_type: raw["note_type"].as_str().unwrap().to_string(),
+            fields: serde_json::from_str(raw["fields_json"].as_str().unwrap()).unwrap(),
+            generation_prompt: raw["generation_prompt"].as_str().unwrap().to_string(),
+            front_template: String::new(),
+            back_template: String::new(),
+            css_style: String::new(),
+            field_extraction_rules: serde_json::from_str(
+                raw["field_extraction_rules_json"].as_str().unwrap(),
+            )
+            .unwrap(),
+            created_at: now,
+            updated_at: now,
+            is_active: true,
+            is_built_in: true,
+            preview_data_json: None,
+        }
+    }
+
+    #[test]
+    fn test_chatanki_list_template_item_exposes_compact_field_guide_and_suitability() {
+        let template = builtin_template_for_test("design-architect");
+        let output = chatanki_template_list_item(&template);
+
+        // 紧凑字段契约：按声明顺序，带用途与上限；不再回显整份规则表
+        assert!(output.get("field_extraction_rules").is_none());
+        assert!(output.get("useCaseDescription").is_none());
+        let guide = output["fieldGuide"].as_array().expect("fieldGuide array");
+        let names: Vec<&str> = guide.iter().map(|g| g["name"].as_str().unwrap()).collect();
+        assert_eq!(names, vec!["ID", "Question", "Formula", "Expl"]);
+        let formula = &guide[2];
+        assert_eq!(formula["required"], true);
+        assert_eq!(formula["maxChars"], 60);
+        assert!(formula["purpose"].as_str().unwrap().contains("仅一条公式"));
+        assert!(guide.iter().all(|g| g.get("type").is_none()));
+
+        // 适用/不适用写在 generation_prompt，并指向通用问答模板
+        let prompt = output["generation_prompt"].as_str().unwrap();
+        assert!(prompt.contains("适用："));
+        assert!(prompt.contains("不适用："));
+        assert!(prompt.contains("design-footnote"));
+    }
+
+    #[test]
+    fn test_chatanki_template_field_guide_falls_back_for_rule_less_custom_fields() {
+        let fields = vec!["Front".to_string(), "Tags".to_string()];
+        let rules = ensure_field_extraction_rules(&fields, &HashMap::new());
+        let guide = chatanki_template_field_guide(&fields, &rules);
+        // 默认规则的 description 就是字段名本身：不重复输出 purpose，也没有 maxChars
+        assert_eq!(guide[0], json!({ "name": "Front", "required": true }));
+        assert_eq!(
+            guide[1],
+            json!({ "name": "Tags", "required": false, "type": "Array" })
+        );
+    }
+
+    #[test]
+    fn test_chatanki_list_templates_selection_rule_defaults_to_plain_qa_and_cloze() {
+        for id in [
+            "design-footnote",
+            "design-monograph",
+            "design-glass",
+            "design-exam",
+        ] {
+            assert!(
+                CHATANKI_TEMPLATE_SELECTION_RULE.contains(id),
+                "selection rule should name {id}"
+            );
+            // 规则里点名的回退模板必须真实存在于内置模板库
+            let _ = builtin_template_for_test(id);
+        }
+        for id in BUILTIN_FALLBACK_TEMPLATE_IDS {
+            assert!(CHATANKI_TEMPLATE_SELECTION_RULE.contains(id));
+        }
+    }
+
+    fn architect_rules() -> HashMap<String, FieldExtractionRule> {
+        builtin_template_for_test("design-architect").field_extraction_rules
+    }
+
+    #[test]
+    fn test_field_limit_warnings_flag_prose_stuffed_into_formula() {
+        let proof = "设 f 在 [a,b] 上连续、在 (a,b) 内可导，构造辅助函数 φ(x)=f(x)-f(a)-\
+                     (f(b)-f(a))/(b-a)·(x-a)，则 φ(a)=φ(b)=0，由罗尔定理存在 ξ 使 φ'(ξ)=0，即得结论。";
+        let cards = vec![
+            json!({
+                "id": "c-bad",
+                "templateId": "design-architect",
+                "front": "拉格朗日中值定理",
+                "back": "x",
+                "extraFields": {
+                    "question": "拉格朗日中值定理",
+                    "formula": proof,
+                    "expl": "一句话",
+                },
+            }),
+            json!({
+                "id": "c-ok",
+                "templateId": "design-architect",
+                "front": "拉格朗日中值定理",
+                "back": "x",
+                "extraFields": {
+                    "question": "拉格朗日中值定理",
+                    // HTML 标签不计入可读长度
+                    "formula": "<b>f'(ξ) = (f(b) - f(a)) / (b - a)</b>",
+                    "expl": "曲线上存在一点，其切线平行于端点连线。",
+                },
+            }),
+            json!({ "id": "c-plain", "templateId": null, "front": proof, "back": proof }),
+            json!({
+                "id": "c-error",
+                "templateId": "design-architect",
+                "isErrorCard": true,
+                "extraFields": { "formula": proof },
+            }),
+        ];
+        let mut lookups = 0;
+        let (warnings, total) = compute_field_limit_warnings(&cards, |id| {
+            lookups += 1;
+            (id == "design-architect").then(architect_rules)
+        });
+        assert_eq!(lookups, 1, "rules are cached per template id");
+        assert_eq!(total, 1);
+        assert_eq!(warnings.len(), 1);
+        let warning = &warnings[0];
+        assert_eq!(warning["cardId"], "c-bad");
+        assert_eq!(warning["field"], "Formula");
+        assert_eq!(warning["maxChars"], 60);
+        assert!(warning["length"].as_u64().unwrap() > 60);
+    }
+
+    #[test]
+    fn test_field_limit_warnings_fall_back_to_core_fields_and_cap_output() {
+        // Agent 只写 front/back 时按别名回退：Question -> front，Expl -> back
+        let long_back = "很长的解释。".repeat(30);
+        let cards: Vec<Value> = (0..40)
+            .map(|i| {
+                json!({
+                    "id": format!("c{i}"),
+                    "templateId": "design-architect",
+                    "front": "短问",
+                    "back": long_back,
+                    "extraFields": {},
+                })
+            })
+            .collect();
+        let (warnings, total) = compute_field_limit_warnings(&cards, |_| Some(architect_rules()));
+        assert_eq!(total, 40);
+        assert_eq!(warnings.len(), FIELD_LIMIT_WARNINGS_CAP);
+        assert!(warnings.iter().all(|w| w["field"] == "Expl"));
+    }
+
+    #[test]
+    fn test_field_limit_warnings_ignore_templates_without_limits() {
+        let cards = vec![json!({
+            "id": "c1",
+            "templateId": "custom",
+            "front": "很长".repeat(500),
+            "back": "很长".repeat(500),
+        })];
+        let fields = vec!["Front".to_string(), "Back".to_string()];
+        let (warnings, total) = compute_field_limit_warnings(&cards, |_| {
+            Some(ensure_field_extraction_rules(&fields, &HashMap::new()))
+        });
+        assert_eq!(total, 0);
+        assert!(warnings.is_empty());
     }
 
     #[test]
