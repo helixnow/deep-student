@@ -3,7 +3,7 @@
  * 集成 Tauri 文件系统和笔记资产管理
  */
 
-import { convertFileSrc, invoke } from '@tauri-apps/api/core';
+import { invoke } from '@tauri-apps/api/core';
 import { appDataDir } from '@tauri-apps/api/path';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { getErrorMessage } from '../../../utils/errorUtils';
@@ -376,10 +376,59 @@ export async function validateImageFile(file: File): Promise<void> {
   });
 }
 
+/** 按文件头魔数识别常见图片格式（无法识别返回 null） */
+function sniffImageMime(head: Uint8Array): string | null {
+  const startsWith = (...sig: number[]) => sig.every((b, i) => head[i] === b);
+  if (startsWith(0x89, 0x50, 0x4e, 0x47)) return 'image/png';
+  if (startsWith(0xff, 0xd8, 0xff)) return 'image/jpeg';
+  if (startsWith(0x47, 0x49, 0x46, 0x38)) return 'image/gif';
+  if (startsWith(0x42, 0x4d)) return 'image/bmp';
+  if (startsWith(0x52, 0x49, 0x46, 0x46) && head[8] === 0x57 && head[9] === 0x45 && head[10] === 0x42 && head[11] === 0x50) {
+    return 'image/webp';
+  }
+  return null;
+}
+
+const IMAGE_EXT_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  avif: 'image/avif',
+};
+
+/**
+ * 通过 Tauri IPC（read_file_bytes）把本地路径或移动端虚拟 URI 读成 File。
+ *
+ * 不用 convertFileSrc + fetch：Android 对话框返回 content:// URI，asset 协议
+ * 无法服务它（403）；Windows 含中文/空格的路径也会 fetch 失败。read_file_bytes
+ * 走 unified_file_manager，同时兼容本地路径与 content:// 等虚拟 URI。
+ */
+export async function readLocalImageFile(path: string): Promise<File> {
+  const rawBytes = await invoke<ArrayBuffer>('read_file_bytes', { path });
+  let fileName = extractFileName(path) || 'image.png';
+
+  // Android 媒体库 URI 常是不透明 ID（image:1234），无扩展名可推断，
+  // 先按文件头魔数嗅探 MIME，再退回扩展名映射。
+  let mimeType = sniffImageMime(new Uint8Array(rawBytes, 0, Math.min(rawBytes.byteLength, 12)));
+  if (mimeType && !/\.[a-z0-9]+$/i.test(fileName)) {
+    fileName = `${fileName.replace(/[:\s]+/g, '_')}.${mimeType.split('/')[1]}`;
+  }
+  if (!mimeType) {
+    mimeType = IMAGE_EXT_MIME[extractFileExtension(path)] || 'image/png';
+  }
+  return new File([rawBytes], fileName, { type: mimeType });
+}
+
 /**
  * 使用 Tauri dialog 选择图片文件
  * 在 Tauri 环境下替代浏览器原生 file input
- * 使用 convertFileSrc + fetch 方式读取文件（与 UnifiedDragDropZone 保持一致）
+ * 经 readLocalImageFile（read_file_bytes IPC）读取，兼容 Android content:// URI
  */
 export const pickImageWithTauriDialog = async (): Promise<File | null> => {
   // 检查是否在 Tauri 环境
@@ -409,39 +458,7 @@ export const pickImageWithTauriDialog = async (): Promise<File | null> => {
       return null;
     }
 
-    // 使用 convertFileSrc 将本地路径转换为 asset:// URL
-    const assetUrl = convertFileSrc(selected);
-    console.log('[imageUpload] Asset URL:', assetUrl);
-    
-    // 通过 fetch 读取文件内容
-    const response = await fetch(assetUrl);
-    if (!response.ok) {
-      console.error('[imageUpload] Fetch failed:', response.status, response.statusText);
-      throw new Error(`fetch_failed:${response.status}`);
-    }
-    
-    const blob = await response.blob();
-    const fileName = extractFileName(selected) || 'image.png';
-    
-    let mimeType = blob.type;
-    if (!mimeType || mimeType === 'application/octet-stream') {
-      const ext = extractFileExtension(selected) || 'png';
-      const mimeMap: Record<string, string> = {
-        png: 'image/png',
-        jpg: 'image/jpeg',
-        jpeg: 'image/jpeg',
-        gif: 'image/gif',
-        webp: 'image/webp',
-        bmp: 'image/bmp',
-        svg: 'image/svg+xml',
-        heic: 'image/heic',
-        heif: 'image/heif',
-      };
-      mimeType = mimeMap[ext] || 'image/png';
-    }
-
-    // 创建 File 对象
-    const file = new File([blob], fileName, { type: mimeType });
+    const file = await readLocalImageFile(selected);
     console.log('[imageUpload] File created:', file.name, file.size, file.type);
     return file;
   } catch (error) {

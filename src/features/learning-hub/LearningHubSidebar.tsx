@@ -1511,8 +1511,10 @@ export function LearningHubSidebar({
       // 2. 图片类/其他文件：通过 attachmentDstuAdapter 创建
       const attachmentPaths = [...imagePaths, ...otherPaths];
       if (attachmentPaths.length > 0) {
-        // 使用 convertFileSrc + fetch 读取本地文件
-        const { convertFileSrc } = await import('@tauri-apps/api/core');
+        // 经 read_file_bytes IPC 读取：兼容 Android content:// URI 与含中文/空格的
+        // Windows 路径（convertFileSrc + fetch 的 asset 协议对二者都会失败）
+        const { invoke } = await import('@tauri-apps/api/core');
+        const { mimeTypeFromFileName } = await import('@/hooks/useTauriDragAndDrop');
         const limit = pLimit(3);
 
         // ★ 2026-06-12（审阅问题 FE-M5）：批量导入显示进度横幅
@@ -1528,15 +1530,17 @@ export function LearningHubSidebar({
               const isImage = IMAGE_EXTENSIONS.has(ext);
 
               try {
-                const url = convertFileSrc(filePath);
-                const res = await fetch(url);
-                if (!res.ok) {
+                let bytes: ArrayBuffer;
+                try {
+                  bytes = await invoke<ArrayBuffer>('read_file_bytes', { path: filePath });
+                } catch (readError) {
+                  debugLog.error('[LearningHub] 读取文件失败:', name, readError);
                   return { ok: false as const, name, reason: t('finder.dragDrop.readFileFailed') };
                 }
 
-                const blob = await res.blob();
-                const file = new File([blob], name, {
-                  type: blob.type || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream'),
+                const file = new File([bytes], name, {
+                  type: mimeTypeFromFileName(name)
+                    || (isImage ? `image/${ext === 'jpg' ? 'jpeg' : ext}` : 'application/octet-stream'),
                 });
 
                 const result = await attachmentDstuAdapter.create(

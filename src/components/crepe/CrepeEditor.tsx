@@ -55,6 +55,7 @@ import {
   createImageUploader,
   createTransientBlobUrlRegistry,
   pickImageWithTauriDialog,
+  readLocalImageFile,
   validateImageFile,
 } from './features/imageUpload';
 import { bindBrowserImageUploads, createUploadLifecycle, handleNativeImageDrop, type UploadLifecycle } from './uploadLifecycle';
@@ -2531,7 +2532,6 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
           
           try {
             const { getCurrentWebview } = await import('@tauri-apps/api/webview');
-            const { convertFileSrc } = await import('@tauri-apps/api/core');
             
             // 检查是否已被销毁
             if (destroyed || dragDropSetupAborted) return;
@@ -2546,13 +2546,12 @@ export const CrepeEditor = forwardRef<CrepeEditorApi, CrepeEditorProps>((props, 
                 view: uploadView,
                 container,
                 lifecycle: uploadLifecycle,
+                // read_file_bytes IPC 兼容 content:// 与含中文/空格的 Windows 路径
+                // （asset 协议 fetch 对二者都会失败）；IPC 不可中断，读完再查 abort。
                 read: async (path, signal) => {
-                  const response = await fetch(convertFileSrc(path), { signal });
-                  if (!response.ok) throw new Error(`Failed to read image: ${response.status}`);
-                  const blob = await response.blob();
-                  return new File([blob], path.split(/[/\\]/).pop() || 'image', {
-                    type: blob.type || 'application/octet-stream',
-                  });
+                  const file = await readLocalImageFile(path);
+                  signal.throwIfAborted();
+                  return file;
                 },
               });
             });
