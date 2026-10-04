@@ -38,6 +38,7 @@ import type { ApiConfig } from '@/types';
 import type { QuestionType, Difficulty, Question } from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { buildCreateParams } from '@/utils/qbankDraftToParams';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 题型选项
@@ -331,6 +332,7 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
 
   const handleKnowledgeInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (isComposingKeyEvent(event)) return;
       if (event.key === 'Enter') {
         event.preventDefault();
         addManualKnowledgePoint();

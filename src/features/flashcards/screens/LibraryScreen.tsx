@@ -52,6 +52,7 @@ import {
 } from '../library/libraryView';
 import '../library/library.css';
 import { exportLibraryApkg } from '../library/exportLibrary';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 type Translate = (key: string, options?: Record<string, unknown>) => string;
 
@@ -635,7 +636,7 @@ export const LibraryScreen: React.FC = () => {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === 'Enter') handleSearchNow();
+              if (event.key === 'Enter' && !isComposingKeyEvent(event)) handleSearchNow();
             }}
             placeholder={t('library.searchPlaceholder')}
             className="h-9 pl-8 text-sm [@media(pointer:coarse)]:!h-11"

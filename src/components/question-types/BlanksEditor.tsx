@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Plus, X, Trash } from '@phosphor-icons/react';
 import type { FillBlankSpec } from './structured';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface BlanksEditorProps {
   blanks: FillBlankSpec[];
@@ -163,6 +164,7 @@ export const BlanksEditor: React.FC<BlanksEditorProps> = ({ blanks, onChange, cl
                 value={drafts[index] ?? ''}
                 onChange={(e) => setDrafts((prev) => ({ ...prev, [index]: e.target.value }))}
                 onKeyDown={(e) => {
+                  if (isComposingKeyEvent(e)) return;
                   if (e.key === 'Enter') {
                     e.preventDefault();
                     addAnswer(index);

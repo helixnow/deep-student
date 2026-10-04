@@ -54,6 +54,7 @@ import { useTranslation } from 'react-i18next';
 import type { Question, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { getQuestionTypeMeta, QUESTION_TYPE_ORDER } from './questionTypeMeta';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface QuestionBankManageViewProps {
   questions: Question[];
@@ -1051,6 +1052,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 value={batchTagInput}
                 onChange={(e) => setBatchTagInput(e.target.value)}
                 onKeyDown={(e) => {
+                  if (isComposingKeyEvent(e)) return;
                   if (e.key === 'Enter' && batchTagInput.trim()) {
                     e.preventDefault();
                     void handleBatchTags('add');

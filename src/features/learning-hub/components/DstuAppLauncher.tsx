@@ -47,6 +47,7 @@ import {
   getQuickAccessTypeFromLauncherType,
   type QuickAccessType,
 } from '../learningHubContracts';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 新建菜单项样式：触屏下项高 ≥44px（契约第 3/6 条），桌面保持原尺寸 */
 const CREATE_MENU_ITEM_CLASS =
@@ -292,7 +293,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           onBlur={() => setIsSearchFocused(false)}
           // 📱 操作闭环：搜索结果显示在中间屏文件列表，回车后收起抽屉查看结果
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && searchQuery.trim()) {
+            if (e.key === 'Enter' && !isComposingKeyEvent(e) && searchQuery.trim()) {
               onClose?.();
             }
           }}

@@ -35,6 +35,7 @@ import {
 } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionStatus, Difficulty } from '@/api/questionBankApi';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface TagNavigationViewProps {
   /** 所有题目 */
@@ -224,6 +225,7 @@ const TagGroupCard: React.FC<{
               value={renameValue ?? ''}
               onChange={(e) => onRenameValueChange?.(e.target.value)}
               onKeyDown={(e) => {
+                if (isComposingKeyEvent(e)) return;
                 if (e.key === 'Enter') {
                   e.preventDefault();
                   onRenameSubmit?.();

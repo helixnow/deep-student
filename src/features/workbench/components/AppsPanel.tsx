@@ -45,6 +45,7 @@ import { hasWorkbenchAppIcon, WorkbenchAppIcon } from './WorkbenchAppIcon';
 import './AppsPanel.css';
 import { resolveBrowserLaunchability } from '@/features/browser/gates';
 import { BROWSER_APP_TYPE_ID } from '@/features/workbench/apps/browser/register';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 退场动画保留挂载时长（与 CSS --wb-apps-duration 对齐） */
 export const APPS_PANEL_EXIT_MS = 200;
@@ -430,6 +431,8 @@ const AppsPanelComponent: React.FC<AppsPanelProps> = ({ className }) => {
   };
 
   const onRootKeyDown = (e: React.KeyboardEvent) => {
+    // 搜索框 IME 组字中的 Enter/方向键/Esc 属于输入法
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();

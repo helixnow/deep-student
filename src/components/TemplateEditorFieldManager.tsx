@@ -5,6 +5,7 @@ import { FieldExtractionRule } from '../types';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from './ui/shad/Input';
 import './TemplateEditorEnhancements.css';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface FieldRenameResult {
   ok: boolean;
@@ -90,6 +91,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
           onChange={(e) => setDraft(e.target.value)}
           onBlur={commit}
           onKeyDown={(e) => {
+            if (isComposingKeyEvent(e)) return;
             if (e.key === 'Enter') {
               e.preventDefault();
               commit();

@@ -37,6 +37,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { Command, CommandCategory, CommandView, DependencyResolver } from './registry/types';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // 扩展分类类型，包含特殊分组
 type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
@@ -411,6 +412,8 @@ export function CommandPalette() {
 
   // 键盘事件处理
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // 搜索框 IME 组字中的 Enter/方向键/Esc 属于输入法，不执行命令
+    if (isComposingKeyEvent(e)) return;
     // Escape / Tab 与焦点所在控件无关，始终由面板处理
     if (e.key === 'Escape') {
       e.preventDefault();

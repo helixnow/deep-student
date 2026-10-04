@@ -58,6 +58,7 @@ import { AutomationTemplatePicker } from './automation/AutomationTemplates';
 import { formatAbsoluteTime, formatRelativeTime } from './automation/automationFormat';
 import { computeNextRuns, formatWeekdayList } from './automation/scheduleMath';
 import '../styles/automation.css';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 const CREATE_PANEL_ID = 'automation-create-panel';
 const HISTORY_PANEL_ID = 'automation-history-panel';
@@ -848,7 +849,7 @@ export const TodoAutomationWorkspace: React.FC<TodoAutomationWorkspaceProps> = (
                         placeholder={t('todo:automation.nl.placeholder')}
                         onChange={(event) => setNlText(event.target.value)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && nlResult) {
+                          if (event.key === 'Enter' && !isComposingKeyEvent(event) && !event.metaKey && !event.ctrlKey && nlResult) {
                             event.preventDefault();
                             applyNlResult();
                           }

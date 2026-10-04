@@ -92,6 +92,7 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 // ★ 2026-02 修复：统一使用共享类型定义，避免重复定义不一致风险
 import type { IndexState } from '@/types/vfs-unified-index';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 类型和常量
@@ -2471,7 +2472,7 @@ export const IndexStatusView: React.FC = () => {
                 type="text"
                 value={testQuery}
                 onChange={(e) => setTestQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleTestSearch()}
+                onKeyDown={(e) => e.key === 'Enter' && !isComposingKeyEvent(e) && handleTestSearch()}
                 placeholder={t('indexStatus.test.placeholder')}
                 // 📱 16px 输入契约：.text-ui（typography.css 在 Tailwind 后加载）12px 会压过
                 // 输入外壳的非 important coarse text-base，须带 ! 防 iOS 聚焦缩放（同 FinderToolbar）

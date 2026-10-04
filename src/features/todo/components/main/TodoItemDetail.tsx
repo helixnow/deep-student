@@ -73,6 +73,7 @@ import { TagsEditor } from './detail/TagsEditor';
 import { SubtaskSection } from './detail/SubtaskSection';
 import { FocusHistorySection } from './detail/FocusHistorySection';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 属性行统一视觉：12px 圆角、悬停 --interactive-hover（对齐设计规范） */
 const PROPERTY_ROW_CLASS =
@@ -603,6 +604,8 @@ export const TodoItemDetail: React.FC<{
           onBlur={handleBlur}
           onKeyDown={(e) => {
             // Enter 提交（失焦触发保存），Shift+Enter 换行；Esc 还原并失焦（不冒泡关面板）
+            // IME 组字中的 Enter/Esc 属于输入法，不提交也不还原
+            if (isComposingKeyEvent(e)) return;
             if (e.key === 'Enter' && !e.shiftKey) {
               e.preventDefault();
               e.currentTarget.blur();
@@ -845,6 +848,7 @@ export const TodoItemDetail: React.FC<{
                   onChange={(e) => setIntervalDraft(e.target.value)}
                   onBlur={handleIntervalCommit}
                   onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleIntervalCommit();

@@ -38,6 +38,7 @@ import { aiBreakdownTodo } from '../../../api';
 import type { TodoItem } from '../../../types';
 import { InlineReveal } from './InlineReveal';
 import { ProgressRing } from './ProgressRing';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 勾选弹性动效时长（todo-check-pop 为 260ms，留缓冲后复位状态） */
 const CHECK_POP_MS = 300;
@@ -416,6 +417,7 @@ export const SubtaskSection: React.FC<{
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
+            if (isComposingKeyEvent(e)) return;
             if (e.key === 'Enter') {
               e.preventDefault();
               void handleAdd();

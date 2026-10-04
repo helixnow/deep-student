@@ -71,6 +71,7 @@ import {
   resolvePdfAnnotationSaveBaseline,
   subscribePdfAnnotationChanges,
 } from '../pdfAnnotationEvents';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;
@@ -3186,6 +3187,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   value={editingBookmarkTitle}
                   onChange={(e) => setEditingBookmarkTitle(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3277,7 +3279,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             placeholder={t('pdf:toolbar.search_placeholder')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            onKeyDown={(e) => e.key === 'Enter' && !isComposingKeyEvent(e) && handleSearch()}
           />
           {searchResults.length > 0 && (
             <span className="ds-search-info">

@@ -39,6 +39,7 @@ import { isOpenAICodexOAuthVendor } from '@/utils/vendorAuth';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { SettingsVirtualList, type SettingsVirtualItem } from './SettingsVirtualList';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // --- Save Status Indicator ---
 type SaveStatus = 'idle' | 'saving' | 'saved';
@@ -925,6 +926,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
                       value={baseUrlDraft}
                       onChange={(e) => setBaseUrlDraft(e.target.value)}
                       onKeyDown={(e) => {
+                        if (isComposingKeyEvent(e)) return;
                         if (e.key === 'Enter') {
                           (e.currentTarget as HTMLInputElement).blur();
                         }

@@ -35,6 +35,7 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { isMobilePlatform } from '@/utils/platform';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 类型定义
@@ -495,6 +496,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
 
   // 搜索框：Enter 下一处 / Shift+Enter 上一处
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       gotoMatch(e.shiftKey ? -1 : 1);

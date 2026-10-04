@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface DesktopShellTitleEditorProps {
   sessionId: string;
@@ -147,6 +148,7 @@ export function DesktopShellTitleEditor({
         }}
         onKeyDown={(event) => {
           event.stopPropagation();
+          if (isComposingKeyEvent(event)) return;
           if (event.key === 'Escape') {
             event.preventDefault();
             cancelEditing();

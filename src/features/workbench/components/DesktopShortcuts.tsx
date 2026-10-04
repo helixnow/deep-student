@@ -36,6 +36,7 @@ import {
 } from '../apps/files/desktopDragBridge';
 import { ActionItem } from './DesktopContextMenu';
 import './DesktopShortcuts.css';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ---------------------------------------------------------------------------
 // 打开快捷方式（与资源库桌面 handleShortcutClick 同语义，落点换成 workbench 窗口）
@@ -209,6 +210,7 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
           onDoubleClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => {
             e.stopPropagation();
+            if (isComposingKeyEvent(e)) return;
             if (e.key === 'Enter') commitOrCancel();
             else if (e.key === 'Escape') onRenameCancel();
           }}

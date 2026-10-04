@@ -6,6 +6,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { cn } from '@/utils/cn';
 import Z_INDEX from '@/config/zIndex';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface MessageSearchBarProps {
   placement?: 'floating' | 'header';
@@ -97,6 +98,7 @@ export const MessageSearchBar: React.FC<MessageSearchBarProps> = ({
     : '';
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (isComposingKeyEvent(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       onClose();

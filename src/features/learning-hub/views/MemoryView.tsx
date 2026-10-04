@@ -103,6 +103,7 @@ import { folderApi } from '@/dstu';
 import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
 import { registerMemoryDomainRefresh } from './memoryDomainRefresh';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 常量与类型定义
@@ -1130,6 +1131,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   value={newRootFolderTitle}
                   onChange={(e) => setNewRootFolderTitle(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
                     if (e.key === 'Enter' && newRootFolderTitle.trim() && !isMutating) {
                       e.preventDefault();
                       handleCreateRootFolder();
@@ -1179,6 +1181,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => {
+              if (isComposingKeyEvent(e)) return;
               if (e.key === 'Enter') handleSearch();
               else if (e.key === 'Escape' && searchQuery) handleClearSearch();
             }}

@@ -26,6 +26,7 @@ import {
 } from '@/api/memoryApi';
 import { getFolderTree } from '@/dstu/api/folderApi';
 import type { FolderTreeNode } from '@/dstu/types/folder';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // 分组标题
 // 设置行（使用共享 primitives）
@@ -298,6 +299,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 placeholder={t('settings:memory.defaultFolderName')}
                 className="h-8 flex-1 [@media(pointer:coarse)]:h-11"
                 onKeyDown={(e) => {
+                  if (isComposingKeyEvent(e)) return;
                   if (e.key === 'Enter') {
                     handleCreateFolder();
                   }

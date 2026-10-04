@@ -39,6 +39,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { FolderPickerDialog } from './FolderPickerDialog';
 import { folderApi } from '@/dstu';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 创建资源类型 */
 export type CreateResourceType = 'note' | 'exam' | 'essay' | 'translation' | 'mindmap';
@@ -326,6 +327,7 @@ function ShortcutCard({
   }, [editName, shortcut.name, onEditConfirm, onEditCancel]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       commitOrCancel();
     } else if (e.key === 'Escape') {

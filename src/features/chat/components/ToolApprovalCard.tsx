@@ -30,6 +30,7 @@ import {
 } from '@/features/chat/utils/toolDisplayName';
 import { getLocalizedApprovalDescription } from '@/features/chat/utils/approvalDescription';
 import type { PermissionPreset, ShellRuntimeApprovalScope } from '@/features/chat/core/types/store';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 类型定义
@@ -468,6 +469,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
                   value={rejectReason}
                   onChange={(e) => setRejectReason(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
                     if (e.key === 'Enter') {
                       e.preventDefault();
                       handleRejectWithReason();

@@ -51,6 +51,7 @@ import {
   type NumericEditorValue,
   BlanksEditor,
 } from '@/components/question-types';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 export interface QuestionInlineEditorProps {
   question: Question | null;
@@ -1013,7 +1014,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             <Input
               value={tagInput}
               onChange={(e) => setTagInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+              onKeyDown={(e) => e.key === 'Enter' && !isComposingKeyEvent(e) && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
               className="flex-1 text-sm h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:text-[16px]"
 />

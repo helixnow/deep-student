@@ -81,6 +81,7 @@ import { useTodoStore } from '../stores/useTodoStore';
 import { useTodoTrashView } from './TodoTrashDialog';
 import { useTodoViewHotkeys, todoHotkeyHint, TODO_SMART_VIEW_ORDER } from './todoShellNav';
 import type { TodoList, TodoViewFilter } from '../types';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface SmartView {
   id: TodoViewFilter;
@@ -725,6 +726,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
 
   const handleCreateKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // IME 组字中的 Enter/Escape 属于输入法（确认候选词），不提交
+      if (isComposingKeyEvent(e)) return;
       if (e.key === 'Enter') void handleCreateList();
       if (e.key === 'Escape') {
         setIsCreating(false);
@@ -785,6 +788,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect, onOpenTr
 
   const handleRenameKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (isComposingKeyEvent(e)) return;
       if (e.key === 'Enter') void commitRename();
       if (e.key === 'Escape') setRenamingListId(null);
     },

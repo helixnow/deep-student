@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { tweenFast } from '@/styles/motion-springs';
 import { tagDotColor } from './tagColor';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 const MAX_SUGGESTIONS = 6;
 
@@ -108,6 +109,8 @@ export const TagsEditor: React.FC<{
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // IME 组字中的 Enter/方向键/Esc 属于输入法，不提交、不移动高亮
+    if (isComposingKeyEvent(e)) return;
     if (showSuggestions && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
       e.preventDefault();
       const delta = e.key === 'ArrowDown' ? 1 : -1;

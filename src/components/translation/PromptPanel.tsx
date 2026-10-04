@@ -21,6 +21,7 @@ import {
 } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface PromptPanelProps {
   customPrompt: string;
@@ -214,6 +215,7 @@ const GlossaryEditor: React.FC<{
   const cancelEdit = () => setEditingKey(null);
 
   const handleAddKeyDown = (e: React.KeyboardEvent) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       handleAdd();
@@ -221,6 +223,7 @@ const GlossaryEditor: React.FC<{
   };
 
   const handleEditKeyDown = (e: React.KeyboardEvent) => {
+    if (isComposingKeyEvent(e)) return;
     if (e.key === 'Enter') {
       e.preventDefault();
       commitEdit();
@@ -459,6 +462,7 @@ const PromptTemplates: React.FC<{
             value={templateName}
             onChange={(e) => setTemplateName(e.target.value)}
             onKeyDown={(e) => {
+              if (isComposingKeyEvent(e)) return;
               if (e.key === 'Enter') {
                 e.preventDefault();
                 handleSaveTemplate();

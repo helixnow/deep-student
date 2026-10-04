@@ -20,6 +20,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { dstu, type DstuNode } from '@/dstu';
 import { cn } from '@/lib/utils';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 /** 列表条数上限：选择器只服务「找到要积累的那篇」，不做全量分页 */
 export const APPEND_NOTE_LIST_LIMIT = 50;
@@ -152,7 +153,7 @@ export const AppendToNotePicker: React.FC<AppendToNotePickerProps> = ({
         aria-label={t('chatV2:selectionToolbar.appendToNoteSearchPlaceholder', '搜索笔记标题或内容')}
         autoFocus={!inline}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && selected) {
+          if (e.key === 'Enter' && selected && !isComposingKeyEvent(e)) {
             e.preventDefault();
             handleConfirm();
           }

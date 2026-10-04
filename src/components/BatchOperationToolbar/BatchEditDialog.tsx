@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { Switch } from '@/components/ui/shad/Switch';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 interface BatchEditDialogProps {
   cards: AnkiCard[];
@@ -337,6 +338,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                       value={tagInput}
                       onChange={(e) => setTagInput(e.target.value)}
                       onKeyDown={(e) => {
+                        if (isComposingKeyEvent(e)) return;
                         if (e.key === 'Enter') {
                           e.preventDefault();
                           handleAddTag();

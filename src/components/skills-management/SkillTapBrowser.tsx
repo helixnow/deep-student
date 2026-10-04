@@ -44,6 +44,7 @@ import {
   type SkillMarketListUiStatus,
 } from '@/features/chat/skills/communitySkillsUi';
 import './SkillTapBrowser.css';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 常量
@@ -517,7 +518,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void handleBrowse();
+              if (e.key === 'Enter' && !isComposingKeyEvent(e)) void handleBrowse();
             }}
             placeholder={t('skills:tap.url_placeholder')}
             className="h-8 max-lg:h-11 [@media(pointer:coarse)]:!h-11 pl-8 pr-3 text-xs"
@@ -655,7 +656,7 @@ export const SkillTapBrowser: React.FC<SkillTapBrowserProps> = ({ onClose, class
             value={marketQuery}
             onChange={(e) => setMarketQuery(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') void loadSkillMarket();
+              if (e.key === 'Enter' && !isComposingKeyEvent(e)) void loadSkillMarket();
             }}
             placeholder={t('skills:tap.market.search_placeholder')}
             aria-label={t('skills:tap.market.search_placeholder')}

@@ -33,6 +33,7 @@ import {
 import { getSkillEmbeddedToolLabels, getSkillPermissionSummary } from '../packageMetadata';
 import { resolveEffectiveTrustStatus } from '../skillTrustStorage';
 import { getSkillUsageScore } from '../skillUsageStats';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
 // ============================================================================
 // 类型定义
@@ -346,6 +347,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   value={bundleNameInput}
                   onChange={(e) => setBundleNameInput(e.target.value)}
                   onKeyDown={(e) => {
+                    if (isComposingKeyEvent(e)) return;
                     if (e.key === 'Enter') handleSaveBundle();
                     if (e.key === 'Escape') setBundleNameInput(null);
                   }}
