@@ -1,5 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { DesktopShortcut } from '@/features/learning-hub/stores/desktopStore';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import i18next from 'i18next';
+import zhLearningHub from '@/locales/zh-CN/learningHub.json';
+import enLearningHub from '@/locales/en-US/learningHub.json';
+import {
+  getPresetAppShortcuts,
+  useDesktopStore,
+  type DesktopShortcut,
+} from '@/features/learning-hub/stores/desktopStore';
 
 const mocks = vi.hoisted(() => ({
   launch: vi.fn(),
@@ -19,7 +27,7 @@ vi.mock('../apps/files/desktopDragBridge', () => ({
   registerDesktopResourceDropHandler: vi.fn(() => vi.fn()),
 }));
 
-import { openDesktopShortcut } from './DesktopShortcuts';
+import { DesktopShortcutsLayer, openDesktopShortcut } from './DesktopShortcuts';
 
 function appShortcut(appType: 'exam' | 'mindmap'): DesktopShortcut {
   return {
@@ -54,5 +62,54 @@ describe('openDesktopShortcut learning apps', () => {
       typeId: 'notes',
       reason: 'shortcut',
     });
+  });
+});
+
+describe('DesktopShortcutsLayer preset labels', () => {
+  beforeAll(async () => {
+    await i18next.init({
+      lng: 'zh-CN',
+      fallbackLng: 'en-US',
+      resources: {
+        'zh-CN': { learningHub: zhLearningHub },
+        'en-US': { learningHub: enLearningHub },
+      },
+      interpolation: { escapeValue: false },
+    });
+  });
+
+  beforeEach(async () => {
+    await i18next.changeLanguage('zh-CN');
+    const [note, exam] = getPresetAppShortcuts();
+    useDesktopStore.setState({
+      shortcuts: [
+        { ...note, id: 'preset-note', position: 0, createdAt: '2026-01-01T00:00:00.000Z' },
+        // 用户改过名：不再带 presetKey
+        {
+          id: 'renamed-exam',
+          name: '我的错题',
+          type: exam.type,
+          target: exam.target,
+          position: 1,
+          createdAt: '2026-01-01T00:00:00.000Z',
+        },
+      ],
+      desktopRoot: { folderId: null, folderName: null, folderPath: null },
+    });
+  });
+
+  it('re-labels untouched presets live on languageChanged and keeps renamed ones', async () => {
+    render(<DesktopShortcutsLayer />);
+
+    expect(screen.getByRole('button', { name: '笔记' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '我的错题' })).toBeInTheDocument();
+
+    await act(async () => {
+      await i18next.changeLanguage('en-US');
+    });
+
+    expect(screen.getByRole('button', { name: 'Notes' })).toBeInTheDocument();
+    expect(screen.queryByText('笔记')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '我的错题' })).toBeInTheDocument();
   });
 });

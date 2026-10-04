@@ -22,6 +22,8 @@ import { useLongPress, type LongPressPoint } from '@/hooks/mobile/useLongPress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { DstuNodeType } from '@/dstu/types';
 import {
+  resolveShortcutName,
+  useDesktopShortcutName,
   useDesktopStore,
   type AppType,
   type DesktopShortcut,
@@ -94,7 +96,7 @@ export function openDesktopShortcut(
       const opened = launchResourceFromDragData({
         resourceId,
         resourceType,
-        title: shortcut.name,
+        title: resolveShortcutName(shortcut),
       });
       if (opened === null) {
         showGlobalNotification('error', t('desktop.resourceNotFound'));
@@ -154,7 +156,9 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
   onRenameCancel,
 }) => {
   const Icon = getShortcutIcon(shortcut);
-  const [editName, setEditName] = useState(shortcut.name);
+  // 预设快捷方式（未改名）跟随当前界面语言，语言切换时实时更新
+  const displayName = useDesktopShortcutName(shortcut);
+  const [editName, setEditName] = useState(displayName);
   // 触屏无双击语义：单击直接打开
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
   // 触屏长按 = 右键菜单（长按触发后抑制本次 click，避免同时打开快捷方式）
@@ -165,14 +169,14 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
   });
 
   useEffect(() => {
-    if (editing) setEditName(shortcut.name);
-  }, [editing, shortcut.name]);
+    if (editing) setEditName(displayName);
+  }, [editing, displayName]);
 
   const commitOrCancel = useCallback(() => {
     const next = editName.trim();
-    if (next && next !== shortcut.name) onRenameCommit(shortcut.id, next);
+    if (next && next !== displayName) onRenameCommit(shortcut.id, next);
     else onRenameCancel();
-  }, [editName, shortcut.id, shortcut.name, onRenameCommit, onRenameCancel]);
+  }, [editName, shortcut.id, displayName, onRenameCommit, onRenameCancel]);
 
   return (
     // div[role=button]（非 <button>）：重命名态内嵌 <input>，button 不允许
@@ -183,7 +187,7 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
       className="wb-desk-icon"
       data-menu-open={menuOpen ? 'true' : undefined}
       data-wb-desk-shortcut={shortcut.id}
-      aria-label={shortcut.name}
+      aria-label={displayName}
       {...longPress.bind}
       onClick={isTouchPrimary && !editing ? () => onOpen(shortcut) : undefined}
       onDoubleClick={editing ? undefined : () => onOpen(shortcut)}
@@ -217,7 +221,7 @@ const ShortcutIcon: React.FC<ShortcutIconProps> = ({
           onBlur={commitOrCancel}
         />
       ) : (
-        <span className="wb-desk-icon__label">{shortcut.name}</span>
+        <span className="wb-desk-icon__label">{displayName}</span>
       )}
     </div>
   );

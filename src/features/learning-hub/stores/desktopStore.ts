@@ -13,6 +13,19 @@ import { persist } from 'zustand/middleware';
 import i18next from 'i18next';
 import type { DstuNodeType } from '@/dstu/types';
 import type { QuickAccessType } from './finderStore';
+import {
+  getPresetLabelFallback,
+  isDesktopPresetKey,
+  isLegacyDefaultPresetName,
+  translatePresetLabel,
+  type DesktopPresetKey,
+} from './desktopShortcutLabels';
+
+export {
+  resolveShortcutName,
+  useDesktopShortcutName,
+  type DesktopPresetKey,
+} from './desktopShortcutLabels';
 
 /**
  * 快捷方式类型
@@ -43,8 +56,17 @@ export type AppAction = 'create' | 'list';
 export interface DesktopShortcut {
   /** 唯一标识 */
   id: string;
-  /** 显示名称 */
+  /**
+   * 显示名称（用户文本 / 资源标题；预设快捷方式为创建时的翻译快照）。
+   * 展示时请用 resolveShortcutName / useDesktopShortcutName：带 presetKey 的预设
+   * 会按当前语言实时解析。
+   */
   name: string;
+  /**
+   * 预设标签的稳定身份（learningHub 命名空间 i18n key）。存在即表示该预设
+   * 未被用户改名，名称跟随界面语言；renameShortcut 会清除它。
+   */
+  presetKey?: DesktopPresetKey;
   /** 快捷方式类型 */
   type: ShortcutType;
   /** 目标信息 */
@@ -79,74 +101,74 @@ export interface DesktopShortcut {
 /** Preset shortcut type (same shape as DesktopShortcut minus generated fields) */
 export type PresetShortcut = Omit<DesktopShortcut, 'id' | 'position' | 'createdAt'>;
 
+interface PresetDefinition {
+  presetKey: DesktopPresetKey;
+  type: ShortcutType;
+  target: DesktopShortcut['target'];
+}
+
+/** 预设定义（顺序即 addFromPreset 的索引，勿随意调整） */
+const PRESET_DEFINITIONS: readonly PresetDefinition[] = [
+  { presetKey: 'resourceType.note', type: 'app', target: { appType: 'note', action: 'list' } },
+  { presetKey: 'resourceType.exam', type: 'app', target: { appType: 'exam', action: 'list' } },
+  { presetKey: 'resourceType.essay', type: 'app', target: { appType: 'essay', action: 'list' } },
+  { presetKey: 'resourceType.translation', type: 'app', target: { appType: 'translation', action: 'list' } },
+  { presetKey: 'resourceType.mindmap', type: 'app', target: { appType: 'mindmap', action: 'list' } },
+  { presetKey: 'desktop.presets.allNotes', type: 'quickAccess', target: { quickAccessType: 'notes' } },
+  { presetKey: 'desktop.presets.allExams', type: 'quickAccess', target: { quickAccessType: 'exams' } },
+  { presetKey: 'desktop.presets.allEssays', type: 'quickAccess', target: { quickAccessType: 'essays' } },
+  { presetKey: 'desktop.presets.allTranslations', type: 'quickAccess', target: { quickAccessType: 'translations' } },
+  { presetKey: 'desktop.presets.mindmaps', type: 'quickAccess', target: { quickAccessType: 'mindmaps' } },
+  { presetKey: 'desktop.presets.favorites', type: 'quickAccess', target: { quickAccessType: 'favorites' } },
+  { presetKey: 'desktop.presets.recentAccess', type: 'quickAccess', target: { quickAccessType: 'recent' } },
+];
+
 /**
  * 预设的应用快捷方式（用户可以添加到桌面）
- * 返回当前语言的翻译版本，需在运行时调用（i18next 已初始化后）
+ * 返回当前语言的翻译版本，需在运行时调用（i18next 已初始化后）。
+ * 每项携带 presetKey，桌面展示时据此跟随界面语言。
  */
 export function getPresetAppShortcuts(): PresetShortcut[] {
-  const t = (key: string, fallback: string) => i18next.t(key, { defaultValue: fallback, ns: 'learningHub' });
-  return [
-    {
-      name: t('resourceType.note', 'Notes'),
-      type: 'app',
-      target: { appType: 'note', action: 'list' },
-    },
-    {
-      name: t('resourceType.exam', 'Question sets'),
-      type: 'app',
-      target: { appType: 'exam', action: 'list' },
-    },
-    {
-      name: t('resourceType.essay', 'Essay grading'),
-      type: 'app',
-      target: { appType: 'essay', action: 'list' },
-    },
-    {
-      name: t('resourceType.translation', 'Translation'),
-      type: 'app',
-      target: { appType: 'translation', action: 'list' },
-    },
-    {
-      name: t('resourceType.mindmap', 'Mind maps'),
-      type: 'app',
-      target: { appType: 'mindmap', action: 'list' },
-    },
-    {
-      name: t('desktop.presets.allNotes', 'All notes'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'notes' },
-    },
-    {
-      name: t('desktop.presets.allExams', 'All exams'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'exams' },
-    },
-    {
-      name: t('desktop.presets.allEssays', 'All essays'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'essays' },
-    },
-    {
-      name: t('desktop.presets.allTranslations', 'All translations'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'translations' },
-    },
-    {
-      name: t('desktop.presets.mindmaps', 'Mind maps'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'mindmaps' },
-    },
-    {
-      name: t('desktop.presets.favorites', 'Favorites'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'favorites' },
-    },
-    {
-      name: t('desktop.presets.recentAccess', 'Recent access'),
-      type: 'quickAccess',
-      target: { quickAccessType: 'recent' },
-    },
-  ];
+  return PRESET_DEFINITIONS.map((preset) => ({
+    name: translatePresetLabel(preset.presetKey, getPresetLabelFallback(preset.presetKey)),
+    presetKey: preset.presetKey,
+    type: preset.type,
+    target: { ...preset.target },
+  }));
+}
+
+/** 快捷方式目标对应的预设（app 仅匹配 list 动作的学习应用入口） */
+function findPresetForTarget(
+  shortcut: Pick<DesktopShortcut, 'type' | 'target'>,
+): PresetDefinition | undefined {
+  return PRESET_DEFINITIONS.find((preset) => {
+    if (preset.type !== shortcut.type) return false;
+    if (preset.type === 'app') {
+      return preset.target.appType === shortcut.target?.appType
+        && preset.target.action === shortcut.target?.action;
+    }
+    if (preset.type === 'quickAccess') {
+      return preset.target.quickAccessType === shortcut.target?.quickAccessType;
+    }
+    return false;
+  });
+}
+
+/**
+ * 为旧版持久化的预设快捷方式回填 presetKey：仅当目标匹配某预设、且名称是该
+ * 预设在任一语言（含历史版本）下的默认名称时回填——用户改过的名称保持不变。
+ */
+export function backfillPresetKeys(shortcuts: DesktopShortcut[]): DesktopShortcut[] {
+  let changed = false;
+  const migrated = shortcuts.map((shortcut) => {
+    if (!shortcut || typeof shortcut !== 'object') return shortcut;
+    if (isDesktopPresetKey(shortcut.presetKey)) return shortcut;
+    const preset = findPresetForTarget(shortcut);
+    if (!preset || !isLegacyDefaultPresetName(preset.presetKey, shortcut.name)) return shortcut;
+    changed = true;
+    return { ...shortcut, presetKey: preset.presetKey };
+  });
+  return changed ? migrated : shortcuts;
 }
 
 /** 将旧版“新建…”桌面图标升级为对应学习应用入口。 */
@@ -178,6 +200,7 @@ export function migrateCreateShortcutsToAppEntries(
     return {
       ...shortcut,
       name: entry.name,
+      presetKey: entry.presetKey,
       target: { ...shortcut.target, action: 'list' as const },
     };
   });
@@ -358,6 +381,24 @@ interface DesktopState {
 }
 
 /**
+ * 持久化版本：
+ * - 0（无版本）：预设快捷方式只存翻译后的 name
+ * - 1：预设快捷方式携带 presetKey，名称随界面语言解析
+ */
+export const DESKTOP_STORE_VERSION = 1;
+
+/** zustand persist migrate：旧数据回填 presetKey（并升级旧「新建…」入口） */
+export function migrateDesktopPersistedState(persisted: unknown): unknown {
+  if (!persisted || typeof persisted !== 'object') return persisted;
+  const state = persisted as { shortcuts?: unknown };
+  if (!Array.isArray(state.shortcuts)) return persisted;
+  const shortcuts = backfillPresetKeys(
+    migrateCreateShortcutsToAppEntries(state.shortcuts as DesktopShortcut[]),
+  );
+  return { ...state, shortcuts };
+}
+
+/**
  * 桌面快捷方式 Store
  *
  * 使用 localStorage 持久化，key 为 'learning-hub-desktop'
@@ -464,9 +505,12 @@ export const useDesktopStore = create<DesktopState>()(
 
       renameShortcut: (id, name) => {
         set({
-          shortcuts: get().shortcuts.map(s => 
-            s.id === id ? { ...s, name } : s
-          ),
+          shortcuts: get().shortcuts.map(s => {
+            if (s.id !== id) return s;
+            // 用户自定义名称优先：解除与预设本地化标签的绑定
+            const { presetKey: _presetKey, ...rest } = s;
+            return { ...rest, name };
+          }),
         });
       },
 
@@ -545,7 +589,9 @@ export const useDesktopStore = create<DesktopState>()(
       clearShortcuts: () => set({ shortcuts: [] }),
 
       initDefaultShortcuts: () => {
-        const shortcuts = migrateCreateShortcutsToAppEntries(get().shortcuts);
+        const shortcuts = backfillPresetKeys(
+          migrateCreateShortcutsToAppEntries(get().shortcuts),
+        );
         if (shortcuts !== get().shortcuts) {
           set({ shortcuts });
         }
@@ -572,6 +618,8 @@ export const useDesktopStore = create<DesktopState>()(
     }),
     {
       name: 'learning-hub-desktop',
+      version: DESKTOP_STORE_VERSION,
+      migrate: (persisted) => migrateDesktopPersistedState(persisted) as DesktopState,
     }
   )
 );

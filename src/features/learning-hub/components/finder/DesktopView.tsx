@@ -31,6 +31,7 @@ import {
   type AppType,
   type DesktopRootConfig,
   getPresetAppShortcuts,
+  useDesktopShortcutName,
 } from '../../stores/desktopStore';
 import type { QuickAccessType } from '../../stores/finderStore';
 import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogDescription, DsDialogBody, DsDialogFooter } from '@/components/ui/DsDialog';
@@ -306,25 +307,27 @@ function ShortcutCard({
   onEditCancel: () => void;
 }) {
   const { t } = useTranslation('common');
-  const [editName, setEditName] = useState(shortcut.name);
+  // 预设快捷方式（未改名）跟随当前界面语言，语言切换时实时更新
+  const displayName = useDesktopShortcutName(shortcut);
+  const [editName, setEditName] = useState(displayName);
   const Icon = getShortcutIcon(shortcut);
   // 触屏无右键：管理入口（打开/重命名/移除）需要常显「更多」按钮
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   useEffect(() => {
     if (isEditing) {
-      setEditName(shortcut.name);
+      setEditName(displayName);
     }
-  }, [isEditing, shortcut.name]);
+  }, [isEditing, displayName]);
 
   // 提交或取消：有有效修改则提交，否则取消（Enter/确认按钮/点击空白共用）
   const commitOrCancel = useCallback(() => {
-    if (editName.trim() && editName.trim() !== shortcut.name) {
+    if (editName.trim() && editName.trim() !== displayName) {
       onEditConfirm(editName.trim());
     } else {
       onEditCancel();
     }
-  }, [editName, shortcut.name, onEditConfirm, onEditCancel]);
+  }, [editName, displayName, onEditConfirm, onEditCancel]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (isComposingKeyEvent(e)) return;
@@ -339,7 +342,7 @@ function ShortcutCard({
     <div
       role="button"
       tabIndex={isEditing ? -1 : 0}
-      aria-label={shortcut.name}
+      aria-label={displayName}
       className={cn(
         'group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl cursor-pointer select-none',
         'w-[88px] shrink-0',
@@ -413,7 +416,7 @@ function ShortcutCard({
         </div>
       ) : (
         <span className="text-xs text-center font-medium text-foreground/80 group-hover:text-foreground line-clamp-2 max-w-[80px]">
-          {shortcut.name}
+          {displayName}
         </span>
       )}
     </div>
