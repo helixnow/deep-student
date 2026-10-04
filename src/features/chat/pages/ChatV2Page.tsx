@@ -186,9 +186,11 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
       }
     }
     // 🔧 Bug fix: 切换对话时关闭右侧预览面板，避免上一个对话的预览残留
+    // 移动端同时收回右屏：只清 openApp 会让右屏退化成资源库列表盖住新会话
     if (newId !== prev) {
       setOpenApp(null);
       setAttachmentPreviewOpen(false);
+      setMobileResourcePanelOpen(false);
       useSandboxWorkbenchStore.getState().closeSession(sandboxOwnerKey);
     }
     setCurrentSessionIdState(newId);
@@ -690,9 +692,32 @@ export const ChatV2Page: React.FC<ChatV2PageProps> = ({
     closeSandboxWorkbench(sandboxOwnerKey);
     setMobileResourcePanelOpen(false);
   }, [closeSandboxWorkbench, sandboxOwnerKey]);
-  // 右屏资源预览返回上一层（资源库列表），而非直接退回聊天
+  // 右屏资源预览的来源：右屏收起状态下直接带着资源进入（聊天正文附件/徽章经
+  // CHAT_OPEN_ATTACHMENT_PREVIEW 或 openResource）→ 视为"从聊天打开"；
+  // 右屏已展开时在资源库列表里点开 → 视为"从资源库打开"
+  const mobileOpenAppFromChatRef = useRef(false);
+  const prevMobileResourcePanelOpenRef = useRef(mobileResourcePanelOpen);
+  const prevOpenAppRef = useRef<OpenApp | null>(openApp);
+  useEffect(() => {
+    const panelWasOpen = prevMobileResourcePanelOpenRef.current;
+    const hadOpenApp = prevOpenAppRef.current !== null;
+    prevMobileResourcePanelOpenRef.current = mobileResourcePanelOpen;
+    prevOpenAppRef.current = openApp;
+    if (!mobileResourcePanelOpen || (hadOpenApp && !openApp)) {
+      mobileOpenAppFromChatRef.current = false;
+    } else if (!panelWasOpen) {
+      mobileOpenAppFromChatRef.current = openApp !== null || pendingOpenResource !== null;
+    }
+  }, [mobileResourcePanelOpen, openApp, pendingOpenResource]);
+  // 顶栏返回箭头：从资源库打开的预览返回上一层（资源库列表）；从聊天打开的
+  // 预览与 Android 返回键（MobileSlidingLayout → onScreenPositionChange('center')）
+  // 一致，直接回到对话，而不是落到用户从未进入过的资源库列表
   const closeMobileOpenApp = useCallback(() => {
     setOpenApp(null);
+    if (mobileOpenAppFromChatRef.current) {
+      mobileOpenAppFromChatRef.current = false;
+      setMobileResourcePanelOpen(false);
+    }
   }, []);
 
   // ===== Android 返回键：中屏子视图（会话浏览 / 分组编辑器）逐层返回 =====
