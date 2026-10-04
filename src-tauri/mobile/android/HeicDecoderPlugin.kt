@@ -64,6 +64,10 @@ class HeicDecoderPlugin(private val activity: Activity) : Plugin(activity) {
     // 解码大图耗时数百毫秒，放到后台线程，不占插件调用线程。
     executor.execute {
       try {
+        // 重复 SDK 判断：lint 的 NewApi 不会把外层 guard 传播进 lambda。
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+          throw IllegalStateException("HEIC decoding requires API 28")
+        }
         val (width, height) = decodeToJpeg(args)
         val result = JSObject()
         result.put("width", width)
