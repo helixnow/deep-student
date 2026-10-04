@@ -8,7 +8,7 @@
  * 视图层只消费这里导出的规范类型。
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // ============================================================================
@@ -52,9 +52,56 @@ export interface MediaTranscript {
 }
 
 export interface TranscribeEstimate {
-  durationMs: number;
-  plannedSegments: number;
+  /** 未能探测到时长时为 null */
+  durationMs: number | null;
+  plannedSegments: number | null;
   asrModel: string | null;
+  /** 语音识别（与语音输入共用的 API Key）是否已配置；未配置时后端 start 会报 settings-required */
+  asrConfigured: boolean;
+  /** true = 解码 + VAD 精确估算；false = 容器头快速探测 + 经验段长 */
+  exact: boolean;
+}
+
+/**
+ * 媒体命令错误：后端以 `{"code","message"}` JSON 字符串返回（MediaError::to_payload_string）。
+ * 包装为带 code 的 Error，message 直接可展示。
+ */
+export class MediaCommandError extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = 'MediaCommandError';
+  }
+}
+
+export function toMediaCommandError(raw: unknown): Error {
+  if (raw instanceof Error) return raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(trimmed) as { code?: unknown; message?: unknown };
+        if (typeof parsed.message === 'string') {
+          return new MediaCommandError(typeof parsed.code === 'string' ? parsed.code : 'unknown', parsed.message);
+        }
+      } catch {
+        /* 非 JSON：按普通文本 */
+      }
+    }
+    return new MediaCommandError('unknown', trimmed);
+  }
+  if (raw && typeof raw === 'object' && typeof (raw as { message?: unknown }).message === 'string') {
+    const r = raw as { code?: unknown; message: string };
+    return new MediaCommandError(typeof r.code === 'string' ? r.code : 'unknown', r.message);
+  }
+  return new MediaCommandError('unknown', String(raw));
+}
+
+async function invoke<T = unknown>(command: string, args: Record<string, unknown>): Promise<T> {
+  try {
+    return await tauriInvoke<T>(command, args);
+  } catch (err: unknown) {
+    throw toMediaCommandError(err);
+  }
 }
 
 export type TranscriptExportFormat = 'srt' | 'vtt' | 'txt';
@@ -176,6 +223,11 @@ export function normalizeTranscript(raw: unknown): MediaTranscript {
   if (status === 'none' && segments.some((s) => s.status === 'done')) {
     status = segments.every((s) => s.status === 'done') ? 'completed' : 'partial';
   }
+  // 取消于首段之前（后端 cancelled 且无段）：等同未转写，入口回到「转写」
+  if (status === 'partial' && segments.length === 0 && normalizeTranscriptStatus(r.status) === 'partial') {
+    const raw = typeof r.status === 'string' ? r.status.toLowerCase() : '';
+    if (raw === 'cancelled' || raw === 'canceled') status = 'none';
+  }
   const source = r.source === 'import' || r.source === 'asr' ? r.source : undefined;
   return {
     status,
@@ -188,10 +240,17 @@ export function normalizeTranscript(raw: unknown): MediaTranscript {
 export function normalizeEstimate(raw: unknown): TranscribeEstimate {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const model = r.asrModel ?? r.asr_model;
+  const duration = r.durationMs ?? r.duration_ms;
+  const planned = r.plannedSegments ?? r.planned_segments;
+  const configured = r.asrConfigured ?? r.asr_configured;
+  const asrModel = typeof model === 'string' && model ? model : null;
   return {
-    durationMs: toNumber(r.durationMs ?? r.duration_ms),
-    plannedSegments: toNumber(r.plannedSegments ?? r.planned_segments),
-    asrModel: typeof model === 'string' && model ? model : null,
+    durationMs: duration == null ? null : toNumber(duration),
+    plannedSegments: planned == null ? null : toNumber(planned),
+    asrModel,
+    // 旧形态无该字段时以「有模型名」近似
+    asrConfigured: typeof configured === 'boolean' ? configured : asrModel !== null,
+    exact: Boolean(r.exact),
   };
 }
 

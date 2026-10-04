@@ -320,7 +320,7 @@
     "estimateSegments": "Estimated segments",
     "estimateSegmentsValue": "About {{count}}",
     "estimateModel": "Recognition model",
-    "estimateNoModel": "No speech recognition model is configured. Choose one in Settings › Voice input first.",
+    "estimateNoModel": "Speech recognition isn't set up. Add the API key in Settings › Voice input first (shared with voice input).",
     "estimateFailed": "Couldn't estimate the transcription",
     "startConfirm": "Start transcription",
     "startFailed": "Couldn't start transcription",

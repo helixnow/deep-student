@@ -62,12 +62,15 @@ describe('useMediaTranscript', () => {
     const { result } = renderHook(() => useMediaTranscript({ resourceId: 'file_2' }));
     await waitFor(() => expect(result.current.loading).toBe(false));
 
-    invokeMock.mockResolvedValueOnce({ durationMs: 60_000, plannedSegments: 8, asrModel: null });
+    invokeMock.mockResolvedValueOnce({ durationMs: 60_000, plannedSegments: 8, asrModel: 'm', asrConfigured: true, exact: true });
     let estimate: Awaited<ReturnType<typeof result.current.requestEstimate>> | undefined;
     await act(async () => {
       estimate = await result.current.requestEstimate();
     });
-    expect(estimate).toEqual({ ok: true, value: { durationMs: 60_000, plannedSegments: 8, asrModel: null } });
+    expect(estimate).toEqual({
+      ok: true,
+      value: { durationMs: 60_000, plannedSegments: 8, asrModel: 'm', asrConfigured: true, exact: true },
+    });
     expect(result.current.estimate?.plannedSegments).toBe(8);
 
     invokeMock.mockResolvedValueOnce({});

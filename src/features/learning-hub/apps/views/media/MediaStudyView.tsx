@@ -584,7 +584,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             onSeek={seekToSegment}
             status={status}
             progress={progress}
-            error={transcriptState.error}
+            error={progress?.error ?? transcriptState.error}
             onCancel={handleCancel}
             cancelling={cancelling}
             onRetry={() => void handleRetry()}
@@ -612,20 +612,24 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         confirmVariant="primary"
         onConfirm={() => void handleConfirmStart()}
         loading={starting}
-        disabled={!estimate?.asrModel}
+        disabled={!estimate?.asrConfigured}
       >
         {estimate && (
           <div className="space-y-2">
             <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-lg bg-muted/50 px-3 py-2.5 text-sm">
               <dt className="text-muted-foreground">{t('learningHub:mediaTranscript.estimateDuration')}</dt>
               <dd className="tabular-nums text-foreground">
-                {formatMediaRefTimestamp(estimate.durationMs / 1000)}
+                {estimate.durationMs !== null ? formatMediaRefTimestamp(estimate.durationMs / 1000) : '—'}
               </dd>
               <dt className="text-muted-foreground">{t('learningHub:mediaTranscript.estimateSegments')}</dt>
               <dd className="tabular-nums text-foreground">
-                {t('learningHub:mediaTranscript.estimateSegmentsValue', {
-                  count: estimate.plannedSegments,
-                })}
+                {estimate.plannedSegments === null
+                  ? '—'
+                  : estimate.exact
+                    ? String(estimate.plannedSegments)
+                    : t('learningHub:mediaTranscript.estimateSegmentsValue', {
+                        count: estimate.plannedSegments,
+                      })}
               </dd>
               {estimate.asrModel && (
                 <>
@@ -634,7 +638,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                 </>
               )}
             </dl>
-            {!estimate.asrModel && (
+            {!estimate.asrConfigured && (
               <p className="text-xs text-warning" role="alert">
                 {t('learningHub:mediaTranscript.estimateNoModel')}
               </p>

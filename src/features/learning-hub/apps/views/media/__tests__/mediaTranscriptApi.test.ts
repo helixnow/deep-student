@@ -15,11 +15,19 @@ beforeEach(() => invokeMock.mockReset());
 
 describe('mediaTranscriptApi commands', () => {
   it('calls the contract command names with camelCase resourceId', async () => {
-    invokeMock.mockResolvedValue({ durationMs: 600_000, plannedSegments: 80, asrModel: 'whisper-1' });
+    invokeMock.mockResolvedValue({
+      durationMs: 600_000,
+      plannedSegments: 80,
+      asrModel: 'FunAudioLLM/SenseVoiceSmall',
+      asrConfigured: true,
+      exact: true,
+    });
     await expect(mediaTranscriptApi.estimate('file_1')).resolves.toEqual({
       durationMs: 600_000,
       plannedSegments: 80,
-      asrModel: 'whisper-1',
+      asrModel: 'FunAudioLLM/SenseVoiceSmall',
+      asrConfigured: true,
+      exact: true,
     });
     expect(invokeMock).toHaveBeenLastCalledWith('media_transcribe_estimate', { resourceId: 'file_1' });
 
@@ -69,6 +77,29 @@ describe('mediaTranscriptApi commands', () => {
   });
 });
 
+describe('command errors', () => {
+  it('unwraps the backend {code,message} JSON payload into a readable error', async () => {
+    invokeMock.mockRejectedValueOnce('{"code":"settings-required","message":"未配置语音识别"}');
+    await expect(mediaTranscriptApi.start('file_1')).rejects.toMatchObject({
+      code: 'settings-required',
+      message: '未配置语音识别',
+    });
+    invokeMock.mockRejectedValueOnce('plain failure');
+    await expect(mediaTranscriptApi.get('file_1')).rejects.toMatchObject({ message: 'plain failure' });
+  });
+
+  it('keeps null duration / segments from a failed probe', async () => {
+    invokeMock.mockResolvedValueOnce({ durationMs: null, plannedSegments: null, asrModel: 'm', asrConfigured: false, exact: false });
+    await expect(mediaTranscriptApi.estimate('file_1')).resolves.toEqual({
+      durationMs: null,
+      plannedSegments: null,
+      asrModel: 'm',
+      asrConfigured: false,
+      exact: false,
+    });
+  });
+});
+
 describe('normalizeTranscript', () => {
   it('maps numeric statuses, sorts segments and keeps progress', () => {
     const t = normalizeTranscript({
@@ -98,6 +129,14 @@ describe('normalizeTranscript', () => {
       }).status,
     ).toBe('partial');
     expect(normalizeTranscript(null)).toEqual({ status: 'none', segments: [], progress: null });
+  });
+
+  it('maps backend error / cancelled statuses', () => {
+    const seg = { idx: 0, startMs: 0, endMs: 1, text: 'a', status: 1 };
+    const pending = { idx: 1, startMs: 1, endMs: 2, text: '', status: 0 };
+    expect(normalizeTranscript({ status: 'error', segments: [] }).status).toBe('failed');
+    expect(normalizeTranscript({ status: 'cancelled', segments: [] }).status).toBe('none');
+    expect(normalizeTranscript({ status: 'cancelled', segments: [seg, pending] }).status).toBe('partial');
   });
 });
 

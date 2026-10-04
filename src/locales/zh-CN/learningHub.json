@@ -320,7 +320,7 @@
     "estimateSegments": "预计段数",
     "estimateSegmentsValue": "约 {{count}} 段",
     "estimateModel": "识别模型",
-    "estimateNoModel": "未配置语音识别模型，请先在「设置 › 语音输入」中选择模型。",
+    "estimateNoModel": "未配置语音识别：请先在「设置 › 语音输入」中填写 API Key（与语音输入共用）。",
     "estimateFailed": "无法估算转写量",
     "startConfirm": "开始转写",
     "startFailed": "无法开始转写",
