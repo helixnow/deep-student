@@ -83,7 +83,22 @@
     "fitView": "适配视图",
     "resetView": "重置视图",
     "sandboxTitle": "HTML 沙箱",
-    "openSandbox": "在沙箱中打开"
+    "openSandbox": "在沙箱中打开",
+    "moreActions": "更多操作",
+    "download": "下载",
+    "saveAsImage": "保存为图片",
+    "copyCode": "复制代码",
+    "viewCode": "查看代码",
+    "viewPreview": "查看预览",
+    "saved": "已保存",
+    "saveFailed": "保存失败：{{message}}",
+    "imageExportFailed": "无法导出图片：{{message}}",
+    "previewPending": "正在生成预览…",
+    "htmlPreviewTitle": "HTML 预览",
+    "expandPreview": "展开预览",
+    "collapsePreview": "收起预览",
+    "scriptsDisabled": "脚本未运行",
+    "scriptsDisabledHint": "聊天内预览运行在安全沙箱中：不执行脚本、不联网，外部链接会在系统浏览器中打开。需要交互效果请下载 HTML 后用浏览器打开。"
   },
   "common": {
     "close": "关闭",
@@ -95,7 +110,8 @@
     "justNow": "刚刚",
     "minutesAgo": "{{count}}分钟前",
     "hoursAgo": "{{count}}小时前",
-    "daysAgo": "{{count}}天前"
+    "daysAgo": "{{count}}天前",
+    "daysAgo_one": "{{count}}天前"
   },
   "messageList": {
     "empty": {
@@ -374,7 +390,7 @@
       "settingsRequiredTitle": "请先配置 SiliconFlow",
       "settingsRequiredMessage": "使用语音输入前，请先在设置中添加 SiliconFlow API Key。",
       "modelAssignmentRequiredTitle": "请先分配语音输入模型",
-      "modelAssignmentRequiredMessage": "开始录音前，请先到设置里为“语音输入 ASR 模型”完成分配。",
+      "modelAssignmentRequiredMessage": "开始录音前，请先在「设置 › 模型分配」中选择「语音识别（ASR）模型」。",
       "modelConfigMissingTitle": "语音输入模型需要处理",
       "modelConfigMissingMessage": "当前分配的 ASR 模型缺失，或已经不再支持语音输入。请到“设置 > 模型”中重新选择。",
       "modelDisabledTitle": "语音输入模型已被禁用",

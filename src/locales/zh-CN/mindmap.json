@@ -119,6 +119,7 @@
     "multiSheetNote": "合并自 {{count}} 个 .xmind 画布：{{titles}}",
     "labelsNote": "标签：{{labels}}",
     "markersNote": ".xmind 标记：{{markers}}",
+    "imagePlaceholderNote": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "imagePlaceholderNote_one": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "imagePlaceholderNote_other": "[图片占位] 原主题包含 {{count}} 张图片，未能随导入嵌入（缺少资源或超出内嵌大小限制）",
     "importing": "正在导入导图，请稍候…",
@@ -235,7 +236,8 @@
     "versionSource": "版本来源：{{source}}",
     "layoutSingle": "切换为单侧布局",
     "layoutBoth": "切换为两翼布局",
-    "nodeCount": "{{count}} 节点"
+    "nodeCount": "{{count}} 节点",
+    "nodeCount_one": "{{count}} 节点"
   },
   "structure": {
     "mindmap": "思维导图",
@@ -342,6 +344,7 @@
     "batchOutdent": "反缩进",
     "bulletClickHint": "单击选中 · ⌘单击聚焦此节点",
     "subtreeItemCount": "{{count}} 项",
+    "subtreeItemCount_one": "{{count}} 项",
     "bulletHint": "单击选中 · 双击聚焦 · ⌘单击聚焦",
     "batchCollapse": "折叠",
     "ghostNewLine": "新增一行",
@@ -508,6 +511,7 @@
       "minutesAgo": "{{count}} 分钟前",
       "hoursAgo": "{{count}} 小时前",
       "daysAgo": "{{count}} 天前",
+      "nodeCount": "{{count}} 个节点",
       "nodeCount_one": "{{count}} 个节点",
       "nodeCount_other": "{{count}} 个节点",
       "diffSummary": "较当前 +{{added}} / −{{removed}}",

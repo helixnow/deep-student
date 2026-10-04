@@ -1,5 +1,5 @@
 {
-  "title": "Learning Resources",
+  "title": "Files",
   "sidebar": {
     "title": "Finder"
   },
@@ -119,7 +119,8 @@
     "preview": "Preview",
     "noSelection": "No resource selected",
     "selectHint": "Select a resource to perform actions",
-    "itemCount": "{{count}} items"
+    "itemCount": "{{count}} items",
+    "itemCount_one": "{{count}} item"
   },
   "sort": {
     "title": "Sort",
@@ -203,9 +204,13 @@
   "time": {
     "justNow": "Just now",
     "minutesAgo": "{{count}} minutes ago",
+    "minutesAgo_one": "{{count}} minute ago",
     "hoursAgo": "{{count}} hours ago",
+    "hoursAgo_one": "{{count}} hour ago",
     "daysAgo": "{{count}} days ago",
-    "weeksAgo": "{{count}} weeks ago"
+    "daysAgo_one": "{{count}} day ago",
+    "weeksAgo": "{{count}} weeks ago",
+    "weeksAgo_one": "{{count}} week ago"
   },
   "grid": {
     "empty": "No content",
@@ -263,6 +268,107 @@
     "exitFullscreen": "Exit full screen",
     "progress": "Seek"
   },
+  "mediaHandout": {
+    "generate": "Handout",
+    "generateHint": "Generate an illustrated study handout from the transcript and frames, saved as a note",
+    "needTranscript": "Transcribe (or import subtitles) before generating a handout",
+    "cancel": "Cancel handout generation",
+    "openNote": "Open handout",
+    "done": "Handout \"{{title}}\" saved as a note",
+    "doneTextOnly": "Handout \"{{title}}\" saved as a note (video frames unavailable: extraction failed or no vision model configured)",
+    "cancelled": "Handout generation cancelled",
+    "failed": "Handout generation failed",
+    "outlineFailed": "Could not generate the handout outline. Please try again.",
+    "titleSuffix": " — Study Handout",
+    "sectionFallback": "This section could not be formatted. Please regenerate the handout.",
+    "frameFallbackCaption": "Lecture frame",
+    "phase": {
+      "transcript": "Reading transcript…",
+      "frames": "Extracting frames…",
+      "captions": "Reading frames…",
+      "outline": "Drafting outline…",
+      "writing": "Writing sections…",
+      "images": "Capturing figures…",
+      "saving": "Saving note…",
+      "done": "Done"
+    }
+  },
+  "mediaTranscript": {
+    "toolbarLabel": "Transcript and subtitles",
+    "transcribe": "Transcribe",
+    "retryFailed": "Retry failed segments",
+    "retry": "Transcribe again",
+    "cancel": "Cancel transcription",
+    "running": "Transcribing",
+    "queued": "Queued",
+    "progressCount": "{{completed}}/{{total}} segments",
+    "stage": {
+      "decode": "Decoding audio",
+      "vad": "Detecting speech",
+      "asr": "Recognizing speech",
+      "indexing": "Indexing",
+      "pending": "Waiting to start",
+      "unknown": "Processing"
+    },
+    "partialHint": "Unfinished segments: {{count}}. Completed segments are kept.",
+    "failedHint": "Transcription failed",
+    "estimateTitle": "Transcribe this {{kind}}?",
+    "kindAudio": "audio",
+    "kindVideo": "video",
+    "estimateDesc": "Each segment is sent to the speech recognition model and billed by usage. You can cancel at any time; completed segments are kept.",
+    "estimateDuration": "Duration",
+    "estimateSegments": "Estimated segments",
+    "estimateSegmentsValue": "About {{count}}",
+    "estimateModel": "Recognition model",
+    "estimateNoModel": "Speech recognition isn't set up. Choose a Speech Recognition (ASR) model in Settings › Model Assignment first (shared with Voice Input).",
+    "estimateFailed": "Couldn't estimate the transcription",
+    "startConfirm": "Start transcription",
+    "startFailed": "Couldn't start transcription",
+    "panelTitle": "Transcript",
+    "showPanel": "Show transcript panel",
+    "hidePanel": "Hide transcript panel",
+    "segmentCount": "Segments: {{count}}",
+    "searchLabel": "Search transcript",
+    "searchPlaceholder": "Search transcript…",
+    "clearSearch": "Clear search",
+    "searchResults": "Matches: {{count}}",
+    "noMatches": "No matching lines",
+    "copyAll": "Copy all",
+    "copySegment": "Copy this line",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "follow": "Jump to current line",
+    "seekTo": "Jump to {{time}}",
+    "segmentFailed": "(This segment failed to transcribe)",
+    "emptyRunning": "Transcribing. Finished segments will appear here.",
+    "listLabel": "Transcript lines",
+    "more": "More transcript actions",
+    "import": "Import subtitle file…",
+    "importFilterName": "Subtitle files (SRT / VTT / Bilibili JSON)",
+    "importSuccess": "Imported {{count}} subtitle lines",
+    "importFailed": "Couldn't import subtitles",
+    "exportSrt": "Export as SRT",
+    "exportVtt": "Export as WebVTT",
+    "exportTxt": "Export as plain text",
+    "exportSuccess": "Subtitles exported",
+    "exportFailed": "Couldn't export subtitles",
+    "captionsOn": "Show captions",
+    "captionsOff": "Hide captions",
+    "trackLabel": "Transcript",
+    "captureFrame": "Capture current frame and reference it in chat",
+    "captureFrameShort": "Capture frame",
+    "captureFailed": "Couldn't capture the frame",
+    "captureNotReady": "The video frame hasn't loaded yet",
+    "captureTainted": "This video source doesn't allow reading frames",
+    "frameTitle": "{{name}} · ▶ {{time}}",
+    "resumed": "Resumed from {{time}}"
+  },
+  "mediaRef": {
+    "badgeLabel": "Jump to {{time}} in “{{name}}”",
+    "unknownMedia": "Media",
+    "openFailed": "Couldn't open the referenced media",
+    "openFailedDesc": "It may have been deleted or moved"
+  },
   "filePreview": {
     "convertToNote": "Convert to note",
     "convertToNoteHint": "Edit in Notes: creates a note with the same name and moves the file to Trash (undoable)",
@@ -298,6 +404,7 @@
     "contents": "Contents",
     "searchPlaceholder": "Search this book",
     "searchCount": "{{count}} results",
+    "searchCount_one": "{{count}} result",
     "searching": "Searching...",
     "previousChapter": "Previous chapter",
     "nextChapter": "Next chapter",
@@ -507,8 +614,11 @@
     "hiddenFolders": "{{count}} hidden folder(s)"
   },
   "finder": {
-    "convertToNote": { "success": "Converted to note \"{{name}}\"" },
+    "convertToNote": {
+      "success": "Converted to note \"{{name}}\""
+    },
     "childCount": "{{count}} items",
+    "childCount_one": "{{count}} item",
     "matchFromIndex": "[Index]",
     "memoryMeta": {
       "type": {
@@ -723,6 +833,7 @@
     },
     "statusBar": {
       "itemCount": "{{count}} items",
+      "itemCount_one": "{{count}} item",
       "selectedCount": "{{count}} selected",
       "selectedOfTotal": "{{total}} items / {{selected}} selected"
     },
@@ -1485,5 +1596,17 @@
     "essay": "New Essay",
     "importedDocument": "Imported document",
     "importedNote": "Imported note"
+  },
+  "memoryFolders": {
+    "root": "Memory",
+    "preferences": "Preferences",
+    "personalBackground": "Personal background",
+    "workEnvironment": "Work environment",
+    "experience": "Experience",
+    "subjectStatus": "Subject status",
+    "keyDates": "Key dates",
+    "projects": "Projects",
+    "studyLog": "Study log",
+    "system": "System"
   }
 }

@@ -690,9 +690,13 @@
           "today": "Today",
           "yesterday": "Yesterday",
           "days_ago": "{{count}} day(s) ago",
+          "days_ago_one": "{{count}} day(s) ago",
           "weeks_ago": "{{count}} week(s) ago",
+          "weeks_ago_one": "{{count}} week(s) ago",
           "months_ago": "{{count}} month(s) ago",
-          "years_ago": "{{count}} year(s) ago"
+          "months_ago_one": "{{count}} month(s) ago",
+          "years_ago": "{{count}} year(s) ago",
+          "years_ago_one": "{{count}} year(s) ago"
         },
         "analysis_button": {
           "retry": "Retry analysis",
@@ -1070,9 +1074,13 @@
         "today": "今天",
         "yesterday": "昨天",
         "days_ago": "{{count}} 天前",
+        "days_ago_one": "{{count}} 天前",
         "weeks_ago": "{{count}} 周前",
+        "weeks_ago_one": "{{count}} 周前",
         "months_ago": "{{count}} 个月前",
-        "years_ago": "{{count}} 年前"
+        "months_ago_one": "{{count}} 个月前",
+        "years_ago": "{{count}} 年前",
+        "years_ago_one": "{{count}} 年前"
       },
       "analysis_button": {
         "retry": "重试分析",
@@ -1154,16 +1162,22 @@
   "time": {
     "now": "刚刚",
     "minutes_ago": "{{count}}分钟前",
+    "minutes_ago_one": "{{count}}分钟前",
     "hours_ago": "{{count}}小时前",
+    "hours_ago_one": "{{count}}小时前",
     "days_ago": "{{count}}天前",
+    "days_ago_one": "{{count}}天前",
     "created_at": "创建于",
     "updated_at": "更新于",
     "last_modified": "最后修改",
     "relative": {
       "yesterday": "昨天",
       "days_ago": "{{count}}天前",
+      "days_ago_one": "{{count}}天前",
       "weeks_ago": "{{count}}周前",
-      "months_ago": "{{count}}月前"
+      "weeks_ago_one": "{{count}}周前",
+      "months_ago": "{{count}}月前",
+      "months_ago_one": "{{count}}月前"
     }
   },
   "file": "文件",
@@ -1472,6 +1486,7 @@
       "template_4": "针对这些错题制定学习计划",
       "selected_mistakes": "已选错题",
       "count_label": "{{count}} 项",
+      "count_label_one": "{{count}} 项",
       "no_mistakes_selected_yet": "尚未选择错题",
       "creating_analysis": "正在创建复习分析...",
       "create_success_message": "创建成功！",
@@ -2222,6 +2237,7 @@
   "chat": {
     "sources": {
       "total": "{{count}} 个结果",
+      "total_one": "{{count}} 个结果",
       "empty": "暂无引用来源",
       "locate": "定位",
       "locateInGraph": "在图谱中定位",

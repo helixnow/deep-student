@@ -7,20 +7,17 @@
   "noSkillActive": "No skill active",
   "active": "Skill activated",
   "toolLoaded": "Skills loaded by tool call",
-
   "status": {
     "manualActivated": "Manually activated",
     "toolLoaded": "Loaded by tool call",
     "toolLoadedBadge": "Tool-loaded"
   },
-
   "bundles": {
     "activate": "Activate bundle {{name}}",
     "delete": "Delete bundle {{name}}",
     "save_current": "Save as bundle ({{count}})",
     "name_placeholder": "Bundle name"
   },
-
   "tap": {
     "entry": "Sources",
     "installing": "Installing…",
@@ -80,10 +77,10 @@
       "footer_hint": "Suspicious skills are filtered by default. Installs use scan + risk confirm; the source is recorded for update checks"
     }
   },
-
   "selector": {
     "title": "Skills",
     "count": "{{count}} items",
+    "count_one": "{{count}} item",
     "searchPlaceholder": "Search skills...",
     "refresh": "Refresh skill list",
     "noResults": "No matching skills found",
@@ -105,7 +102,6 @@
     "manage": "More settings",
     "installMore": "Get more skills"
   },
-
   "card": {
     "activate": "Activate",
     "deactivate": "Deactivate",
@@ -127,14 +123,12 @@
     "pinLoadedByTool": "Pin to this chat",
     "toolLoadedHint": "Temporarily loaded by a tool call; pin it to keep it active for the whole chat"
   },
-
   "location": {
     "global": "Global",
     "project": "Project",
     "builtin": "Built-in",
     "all": "All"
   },
-
   "skillType": {
     "all": "All Types",
     "composite": "Composite",
@@ -142,12 +136,10 @@
     "compositeHint": "Composite skills suggest loading other related skills",
     "standaloneHint": "Standalone skills contain a complete toolset"
   },
-
   "badge": {
     "active": "Active",
     "deactivate": "Deactivate skill"
   },
-
   "loader": {
     "loading": "Loading skills...",
     "loadSuccess": "Skills loaded",
@@ -155,7 +147,6 @@
     "refreshing": "Refreshing...",
     "refreshSuccess": "Skill list refreshed"
   },
-
   "errors": {
     "notFound": "Skill not found",
     "activateFailed": "Failed to activate skill",
@@ -171,7 +162,6 @@
       "dependency_unavailable": "Skill \"{{skillId}}\" cannot be activated because dependency \"{{dependencyId}}\" is unavailable."
     }
   },
-
   "command": {
     "noSkills": "No skills available",
     "availableSkills": "Available skills ({{count}}):\n{{list}}",
@@ -182,7 +172,6 @@
     "activateFailed": "Failed to activate skill: {{name}}",
     "error": "Skill command failed"
   },
-
   "management": {
     "title": "Skills Management",
     "create": "New Skill",
@@ -309,7 +298,6 @@
     "unset_default": "Unset Default",
     "enable": "Enable"
   },
-
   "editor": {
     "tab_basic": "Basic Info",
     "tab_content": "Content",
@@ -360,7 +348,6 @@
     "optional": "Optional",
     "embedded_tools_hint": "Embedded tools are injected into the LLM request when the skill is activated"
   },
-
   "builtinNames": {
     "knowledge-retrieval": "Knowledge Retrieval",
     "canvas-note": "Smart Notes",
@@ -379,6 +366,7 @@
     "subagent-worker": "Subagent Worker",
     "tutor-mode": "Tutor Mode",
     "chatanki": "ChatAnki",
+    "course-study": "Course Study",
     "literature-review": "Literature Review",
     "card-forge-mode": "Card Forge Mode",
     "research-mode": "Research Mode",
@@ -436,6 +424,7 @@
     "subagent-worker": "Delegate sub-tasks to specialized subagents and merge results.",
     "tutor-mode": "Socratic tutor that guides learning through questions and hints.",
     "chatanki": "End-to-end pipeline to turn documents into reviewable Anki cards.",
+    "course-study": "Answer from timestamped audio/video transcripts with clickable time citations, and make cards and questions anchored to lecture moments.",
     "literature-review": "Plan and draft literature reviews from papers and notes.",
     "card-forge-mode": "Focused card generation mode with structured prompts and review.",
     "research-mode": "Deep research mode for exploration, synthesis, and citations.",
@@ -455,12 +444,10 @@
     "media-tools": "Transcribe managed audio through the configured external ASR provider and write an auditable transcript artifact.",
     "office-fidelity-tools": "Inspect managed DOCX, XLSX, PPTX, and PDF files for fidelity risks without executing macros, decrypting files, or claiming unsupported preservation."
   },
-
   "favorite": {
     "add": "Add to favorites",
     "remove": "Remove from favorites"
   },
-
   "default": {
     "label": "Default",
     "isDefault": "Default enabled",
@@ -468,7 +455,6 @@
     "removeDefault": "Remove Default",
     "hint": "Default skills will be auto-activated when creating new sessions"
   },
-
   "package": {
     "source_builtin": "Built-in",
     "source_global": "Global",
@@ -517,7 +503,6 @@
     "enable": "Enable",
     "disable": "Disable"
   },
-
   "parser": {
     "artifactMustBeObject": "artifact must be an object (with intentSkeleton/dataTools/layoutLock)",
     "artifactSkeletonMustBeObject": "artifact.intentSkeleton must be an object (generative-ui intent skeleton)",
@@ -538,7 +523,6 @@
     "yamlParseError": "YAML parse failed",
     "extractMetadataFailed": "extractSkillMetadata failed ({{skillId}})"
   },
-
   "validation": {
     "id_required": "Please enter a skill ID",
     "id_invalid": "Skill ID can only contain lowercase letters, numbers, and hyphens (a-z, 0-9, -)",
@@ -551,7 +535,6 @@
     "description_too_long": "Description cannot exceed 1024 characters",
     "description_too_short": "Description should be at least 50 characters for better LLM discovery"
   },
-
   "storage": {
     "save_requires_tauri": "Cannot save customization outside the Tauri runtime",
     "reset_requires_tauri": "Cannot reset customization outside the Tauri runtime"

@@ -116,14 +116,14 @@ const SK_MUTED6 = 'rgba(101, 105, 114, 0.6)';
 const SK_LINE = 'rgba(224, 224, 224, 0.55)';
 const SK_CHIP_FG = 'rgb(59, 63, 69)';
 
-/** 标题栏：「所有技能 / 55 个」…「＋ 新建技能」| ⋯（titlebar 内坐标 = 窗口坐标 − 1）。 */
+/** 标题栏：「所有技能 / 56 个」…「＋ 新建技能」| ⋯（titlebar 内坐标 = 窗口坐标 − 1）。 */
 export const SkillsToolbar = () => {
   const tb = (x: number, y: number): CSSProperties => ({ position: 'absolute', left: x - 1, top: y - 1 });
   return (
     <>
       <span style={{ ...tb(80, 13), fontSize: 13, fontWeight: 600, lineHeight: '13px', color: FG }}>所有技能</span>
       <span style={{ ...tb(139, 14), fontSize: 11, fontWeight: 500, lineHeight: '11px', color: 'rgba(101, 105, 114, 0.4)' }}>/</span>
-      <span style={{ ...tb(149.5, 14), fontSize: 11, fontWeight: 500, lineHeight: '11px', color: MUTED }}>55 个</span>
+      <span style={{ ...tb(149.5, 14), fontSize: 11, fontWeight: 500, lineHeight: '11px', color: MUTED }}>56 个</span>
       <Plus size={14} color={MUTED} style={tb(848.7, 12.5)} />
       <span style={{ ...tb(868.7, 14), fontSize: 11, fontWeight: 500, lineHeight: '11px', color: MUTED }}>新建技能</span>
       <span style={{ ...tb(934.3, 12.5), width: 1, height: 14, background: 'rgba(224, 224, 224, 0.4)' }} />
@@ -216,14 +216,14 @@ export const SkillsWindow = () => (
       全部
     </T>
     <T x={386} y={53.3} size={10} weight={700} lh={15}>
-      55
+      56
     </T>
     <Package size={12} color={FG} style={at(419.5, 54.8)} />
     <T x={437} y={52.5} size={11} weight={500} lh={16.5}>
       内置
     </T>
     <T x={466.8} y={53.3} size={10} weight={500} lh={15}>
-      55
+      56
     </T>
     <span style={{ ...at(1, 83.5), width: 978, height: 1, background: SK_LINE }} />
     {SKILL_ROWS.map((row) => row.cards.map((c, i) => <SkillCardView key={c.name} x={SKILL_COL_X[i]} y={row.y} h={row.h} c={c} />))}

@@ -48,12 +48,14 @@
     "libraryEmptyHint": "Generate cards from learning material in chat first — the review queue builds up from there.",
     "goStats": "View statistics",
     "upNext": "Up next",
-    "upNextCount": "{{count}} cards"
+    "upNextCount": "{{count}} cards",
+    "upNextCount_one": "{{count}} card"
   },
   "library": {
     "title": "Card library",
     "loading": "Loading…",
     "total": "{{count}} cards",
+    "total_one": "{{count}} card",
     "totalFiltered": "{{count}} of {{all}} cards match",
     "reviewPage": "Review this page",
     "searchPlaceholder": "Search front / back / tags…",
@@ -137,6 +139,7 @@
       "apkg": "Imported from APKG"
     },
     "viewSource": "View source",
+    "playMediaSource": "Play the lecture from {{time}}",
     "resetProgress": "Reset progress",
     "resetProgressConfirm": "Click again to confirm (clears all review history)",
     "undoReview": "Undo last review",
@@ -344,6 +347,7 @@
     "streak": {
       "current": "Streak",
       "days": "{{count}} days",
+      "days_one": "{{count}} day",
       "best": "Best {{count}} days",
       "activeDays": "{{count}} active days"
     },

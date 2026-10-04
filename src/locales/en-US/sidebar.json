@@ -38,7 +38,7 @@
     "translation": "Translation",
     "essay_grading": "Essay Review",
     "canvas_board": "Canvas Board",
-    "learning_hub": "Learning Hub",
+    "learning_hub": "Files",
     "extensions": "Extensions",
     "chat_v2": "New Chat",
     "skills_management": "Skills Management",
@@ -48,13 +48,18 @@
     "workbench_mode": "Study Desktop",
     "show_workbench_mode": "Show Learning Desktop",
     "hide_workbench_mode": "Hide Learning Desktop",
+    "cards_hub": {
+      "aria": "Flashcards sections",
+      "review": "Review",
+      "generate": "Generate",
+      "templates": "Templates"
+    },
     "launcher": {
       "chat_v2": "Chat",
       "learning_hub": "Hub",
       "todo": "Todo",
       "skills_management": "Skills",
-      "task_dashboard": "Cards",
-      "flashcards": "Review",
+      "flashcards": "Flashcards",
       "data_management": "Data"
     }
   },

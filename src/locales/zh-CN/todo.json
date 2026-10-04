@@ -510,6 +510,7 @@
     "reminderBefore60": "提前 1 小时",
     "repeatNeedsDueDate": "重复任务需要锚定日期，已回填为今天",
     "daysAgo": "{{count}} 天前",
+    "daysAgo_one": "{{count}} 天前",
     "durationHours": "{{count}} 小时",
     "durationHoursMinutes": "{{hours}} 小时 {{minutes}} 分",
     "subtaskProgress": "已完成 {{done}}/{{total}} 个子任务",

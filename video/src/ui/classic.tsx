@@ -26,13 +26,11 @@ import {
   X,
 } from '@phosphor-icons/react';
 import {
-  StudyBlocksIcon,
   StudyBooksIcon,
   StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
   StudySettingsIcon,
-  StudyStackIcon,
   StudyTodoIcon,
 } from '@app/components/icons/StudySidebarIcons';
 import type { CSSProperties, ReactNode } from 'react';
@@ -73,9 +71,7 @@ const NAV: Array<{ label: string; Icon: (p: { className?: string }) => JSX.Eleme
   { label: S.nav.learningHub, Icon: StudyBooksIcon },
   { label: S.nav.todo, Icon: StudyTodoIcon },
   { label: S.nav.skills, Icon: StudyMagicWandIcon },
-  { label: S.nav.anki, Icon: StudyStackIcon },
   { label: S.nav.flashcards, Icon: StudyCardsIcon },
-  { label: S.nav.templates, Icon: StudyBlocksIcon },
 ];
 
 /** 第一幕（10-02 21:00）侧栏里已有的会话：与 08 侧栏同一批，相对时间往前推一天。 */
@@ -97,7 +93,8 @@ const SbIcon = ({ x, y, children }: { x: number; y: number; children: ReactNode 
   </span>
 );
 
-/** 几何取自真机经典壳（probe-cla-0，左栏 320 宽，坐标即窗口坐标）。 */
+/** 几何取自真机经典壳（probe-cla-0，左栏 320 宽，坐标即窗口坐标）。
+ * 2026-10-04 起闪卡合并 Anki 制卡 / 模板管理（51e8d7260），导航剩 5 项，下方分区整体上移两行（67.5）。 */
 export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]; t: number }) => (
   <div style={{ position: 'absolute', left: 0, top: 0, width: CW.nav, height: CW.h, background: tk.nav, fontFamily: font.ui, color: 'rgb(42, 45, 50)' }}>
     <span style={{ ...sb(14, 60.8), ...sbText(18, 18, 'rgb(42, 45, 50)', 600), fontFamily: font.display }}>DeepStudent</span>
@@ -111,12 +108,12 @@ export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]
         <span style={{ ...sb(39.5, 101.5 + 33.75 * i), ...sbText(14, 14, 'rgb(42, 45, 50)') }}>{label}</span>
       </div>
     ))}
-    <span style={{ ...sb(18.5, 357.8), ...sbText(13, 18, SB_SECTION) }}>{S.nav.topics}</span>
-    <CaretDown size={12.3} color={tk.mutedFg} style={sb(264.9, 360.6)} />
-    <FolderPlus size={12.3} color={tk.mutedFg} style={sb(289.4, 360.6)} />
-    <span style={{ ...sb(18.5, 397), ...sbText(13, 18, SB_SECTION) }}>{S.nav.conversations}</span>
+    <span style={{ ...sb(18.5, 290.3), ...sbText(13, 18, SB_SECTION) }}>{S.nav.topics}</span>
+    <CaretDown size={12.3} color={tk.mutedFg} style={sb(264.9, 293.1)} />
+    <FolderPlus size={12.3} color={tk.mutedFg} style={sb(289.4, 293.1)} />
+    <span style={{ ...sb(18.5, 329.5), ...sbText(13, 18, SB_SECTION) }}>{S.nav.conversations}</span>
     {rows.slice(0, 5).map((r, i) => {
-      const y = 419.5 + 33.75 * i;
+      const y = 352.0 + 33.75 * i;
       return (
         <div key={`${r.title}-${i}`} style={{ position: 'absolute', inset: 0, opacity: r.enter ?? 1, transform: `translateY(${(1 - (r.enter ?? 1)) * 4}px)` }}>
           {r.active ? <span style={{ ...sb(7, y), width: 306, height: 32, borderRadius: 14, background: SB_SEL }} /> : null}
@@ -129,7 +126,7 @@ export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]
         </div>
       );
     })}
-    {rows.length > 5 ? <span style={{ ...sb(38.5, 591.8), ...sbText(12, 12, tk.mutedFg) }}>{S.nav.showMore}</span> : null}
+    {rows.length > 5 ? <span style={{ ...sb(38.5, 524.3), ...sbText(12, 12, tk.mutedFg) }}>{S.nav.showMore}</span> : null}
     <SbIcon x={14.8} y={CW.h - 35.5}>
       <StudySettingsIcon className="ds-icon" />
     </SbIcon>

@@ -342,10 +342,12 @@
     "details": "状态",
     "updated": "修改日期",
     "questionCount": "{{count}} 道题",
+    "questionCount_one": "{{count}} 道题",
     "emptyQuestionSet": "尚未导入题目",
     "roundCount": "{{count}} 次批改",
     "notGraded": "尚未批改",
     "itemCount": "{{count}} 个项目",
+    "itemCount_one": "{{count}} 个项目",
     "openHint": "双击或按 Enter 打开",
     "retry": "重试",
     "untitled": "未命名"
@@ -381,7 +383,8 @@
     "sectionResources": "资源",
     "sectionChat": "聊天",
     "searching": "正在搜索…",
-    "resultCount": "{{count}} 个结果"
+    "resultCount": "{{count}} 个结果",
+    "resultCount_one": "{{count}} 个结果"
   },
   "window": {
     "close": "关闭",
@@ -971,6 +974,7 @@
       "emptyQuickOpenHint": "试试「搜索内容」进行全文匹配。",
       "tagHint": "可用 tag:标签 path:路径 key:value 过滤结果",
       "resultCount": "{{count}} 条结果",
+      "resultCount_one": "{{count}} 条结果",
       "recentGroup": "最近打开",
       "allGroup": "全部文件",
       "loadMore": "加载更多结果",
@@ -1064,6 +1068,7 @@
     "status": {
       "ready": "就绪",
       "fileCount": "{{count}} 个文件",
+      "fileCount_one": "{{count}} 个文件",
       "creatingNote": "正在创建笔记...",
       "creatingMindmap": "正在创建思维导图...",
       "splitNeedsAnotherTab": "请先打开另一标签页再分屏。",

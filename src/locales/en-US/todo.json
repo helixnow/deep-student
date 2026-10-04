@@ -510,6 +510,7 @@
     "reminderBefore60": "1 hour before",
     "repeatNeedsDueDate": "Repeating tasks need an anchor date — reset to today",
     "daysAgo": "{{count}} days ago",
+    "daysAgo_one": "{{count}} day ago",
     "durationHours": "{{count}} h",
     "durationHoursMinutes": "{{hours}} h {{minutes}} min",
     "subtaskProgress": "{{done}}/{{total}} subtasks done",

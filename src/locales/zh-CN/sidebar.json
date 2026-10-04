@@ -38,7 +38,7 @@
     "translation": "翻译",
     "essay_grading": "作文批改",
     "canvas_board": "白板",
-    "learning_hub": "学习资源",
+    "learning_hub": "资源库",
     "extensions": "扩展功能",
     "chat_v2": "新会话",
     "skills_management": "技能管理",
@@ -48,12 +48,17 @@
     "workbench_mode": "学习桌面",
     "show_workbench_mode": "显示学习桌面",
     "hide_workbench_mode": "隐藏学习桌面",
+    "cards_hub": {
+      "aria": "闪卡分区",
+      "review": "复习",
+      "generate": "制卡",
+      "templates": "模板"
+    },
     "launcher": {
       "chat_v2": "会话",
       "learning_hub": "资源",
       "todo": "待办",
       "skills_management": "技能",
-      "task_dashboard": "制卡",
       "flashcards": "闪卡",
       "data_management": "数据"
     }

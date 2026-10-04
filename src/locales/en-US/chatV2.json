@@ -83,7 +83,22 @@
     "fitView": "Fit View",
     "resetView": "Reset View",
     "sandboxTitle": "HTML Sandbox",
-    "openSandbox": "Open in Sandbox"
+    "openSandbox": "Open in Sandbox",
+    "moreActions": "More actions",
+    "download": "Download",
+    "saveAsImage": "Save as image",
+    "copyCode": "Copy code",
+    "viewCode": "View code",
+    "viewPreview": "View preview",
+    "saved": "Saved",
+    "saveFailed": "Save failed: {{message}}",
+    "imageExportFailed": "Could not export image: {{message}}",
+    "previewPending": "Generating preview…",
+    "htmlPreviewTitle": "HTML preview",
+    "expandPreview": "Expand preview",
+    "collapsePreview": "Collapse preview",
+    "scriptsDisabled": "Scripts not run",
+    "scriptsDisabledHint": "In-chat previews run in a secure sandbox: no scripts and no network; external links open in your system browser. Download the HTML and open it in a browser for interactive behavior."
   },
   "common": {
     "close": "Close",
@@ -95,7 +110,8 @@
     "justNow": "Just now",
     "minutesAgo": "{{count}} min ago",
     "hoursAgo": "{{count}} hr ago",
-    "daysAgo": "{{count}} days ago"
+    "daysAgo": "{{count}} days ago",
+    "daysAgo_one": "{{count}} day ago"
   },
   "messageList": {
     "empty": {
@@ -374,7 +390,7 @@
       "settingsRequiredTitle": "Set up SiliconFlow first",
       "settingsRequiredMessage": "Add a SiliconFlow API key in Settings before using voice input.",
       "modelAssignmentRequiredTitle": "Assign a voice input model",
-      "modelAssignmentRequiredMessage": "Choose a Voice Input ASR model in Settings before recording.",
+      "modelAssignmentRequiredMessage": "Choose a Speech Recognition (ASR) model in Settings › Model Assignment before recording.",
       "modelConfigMissingTitle": "Voice input model needs attention",
       "modelConfigMissingMessage": "The assigned ASR model is missing or no longer supports voice input. Pick another one in Settings > Models.",
       "modelDisabledTitle": "Voice input model is disabled",

@@ -654,10 +654,14 @@
         "relative": {
           "today": "Today",
           "yesterday": "Yesterday",
-          "days_ago": "{{count}} day(s) ago",
-          "weeks_ago": "{{count}} week(s) ago",
-          "months_ago": "{{count}} month(s) ago",
-          "years_ago": "{{count}} year(s) ago"
+          "days_ago": "{{count}} days ago",
+          "days_ago_one": "{{count}} day ago",
+          "weeks_ago": "{{count}} weeks ago",
+          "weeks_ago_one": "{{count}} week ago",
+          "months_ago": "{{count}} months ago",
+          "months_ago_one": "{{count}} month ago",
+          "years_ago": "{{count}} years ago",
+          "years_ago_one": "{{count}} year ago"
         },
         "analysis_button": {
           "retry": "Retry analysis",
@@ -751,16 +755,22 @@
   "time": {
     "now": "Just now",
     "minutes_ago": "{{count}} minutes ago",
+    "minutes_ago_one": "{{count}} minute ago",
     "hours_ago": "{{count}} hours ago",
+    "hours_ago_one": "{{count}} hour ago",
     "days_ago": "{{count}} days ago",
+    "days_ago_one": "{{count}} day ago",
     "created_at": "Created at",
     "updated_at": "Updated at",
     "last_modified": "Last modified",
     "relative": {
       "yesterday": "Yesterday",
       "days_ago": "{{count}} days ago",
+      "days_ago_one": "{{count}} day ago",
       "weeks_ago": "{{count}} weeks ago",
-      "months_ago": "{{count}} months ago"
+      "weeks_ago_one": "{{count}} week ago",
+      "months_ago": "{{count}} months ago",
+      "months_ago_one": "{{count}} month ago"
     }
   },
   "file": "File",
@@ -959,6 +969,7 @@
       "template_4": "Create study plan targeting these mistakes",
       "selected_mistakes": "Selected Mistakes",
       "count_label": "{{count}} items",
+      "count_label_one": "{{count}} item",
       "no_mistakes_selected_yet": "No mistakes selected yet",
       "creating_analysis": "Creating review analysis...",
       "create_success_message": "Created successfully!",
@@ -2155,6 +2166,7 @@
   "chat": {
     "sources": {
       "total": "{{count}} results",
+      "total_one": "{{count}} result",
       "empty": "No citations",
       "locate": "Locate",
       "locateInGraph": "Locate in graph",
@@ -2720,9 +2732,13 @@
         "today": "Today",
         "yesterday": "Yesterday",
         "days_ago": "{{count}} days ago",
+        "days_ago_one": "{{count}} day ago",
         "weeks_ago": "{{count}} weeks ago",
+        "weeks_ago_one": "{{count}} week ago",
         "months_ago": "{{count}} months ago",
-        "years_ago": "{{count}} years ago"
+        "months_ago_one": "{{count}} month ago",
+        "years_ago": "{{count}} years ago",
+        "years_ago_one": "{{count}} year ago"
       },
       "analysis_button": {
         "retry": "Retry Analysis",

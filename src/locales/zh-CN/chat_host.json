@@ -405,6 +405,7 @@
     "collapse": "折叠侧栏",
     "new_session": "新建会话",
     "session_count": "{{count}} 个会话",
+    "session_count_one": "{{count}} 个会话",
     "empty": "暂无会话",
     "start_new": "开始新会话",
     "close_session": "关闭会话",

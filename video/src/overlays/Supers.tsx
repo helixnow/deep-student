@@ -58,8 +58,8 @@ export const SUPERS: Super[] = [
   // 第三幕：越用越懂你
   { s: 54.1, e: 55.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
   { s: 56.1, e: 57.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
-  // 与同一时刻画面里技能窗的「全部 55 · 内置 55」对得上
-  { s: 58.0, e: 60.3, text: '55 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
+  // 与同一时刻画面里技能窗的「全部 56 · 内置 56」对得上
+  { s: 58.0, e: 60.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
   { s: 60.4, e: 62.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
   // 收尾
   { s: 62.3, e: 69.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },

@@ -61,6 +61,7 @@
     "embedding": "Embedding",
     "reranker": "Reranker",
     "voice_input": "Voice Input",
+    "media_transcription": "Media Transcription",
     "other": "Other"
   },
   "recent": {

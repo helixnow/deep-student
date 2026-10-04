@@ -405,6 +405,7 @@
     "collapse": "Collapse sidebar",
     "new_session": "New session",
     "session_count": "{{count}} sessions",
+    "session_count_one": "{{count}} session",
     "empty": "No sessions",
     "start_new": "Start a new session",
     "close_session": "Close session",

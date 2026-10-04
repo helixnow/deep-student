@@ -7,20 +7,17 @@
   "noSkillActive": "未激活任何技能",
   "active": "技能已激活",
   "toolLoaded": "工具调用已加载技能",
-
   "status": {
     "manualActivated": "手动激活",
     "toolLoaded": "工具调用加载",
     "toolLoadedBadge": "工具已加载"
   },
-
   "bundles": {
     "activate": "激活组合 {{name}}",
     "delete": "删除组合 {{name}}",
     "save_current": "存为组合 ({{count}})",
     "name_placeholder": "组合名称"
   },
-
   "tap": {
     "entry": "技能源",
     "installing": "安装中…",
@@ -80,10 +77,10 @@
       "footer_hint": "默认过滤可疑技能；安装走扫描与风险确认，会记录来源以便检查更新"
     }
   },
-
   "selector": {
     "title": "技能",
     "count": "{{count}} 项",
+    "count_one": "{{count}} 项",
     "searchPlaceholder": "搜索技能...",
     "refresh": "刷新技能列表",
     "noResults": "未找到匹配的技能",
@@ -105,7 +102,6 @@
     "manage": "更多设置",
     "installMore": "获取更多技能"
   },
-
   "card": {
     "activate": "激活",
     "deactivate": "取消激活",
@@ -127,14 +123,12 @@
     "pinLoadedByTool": "钉住到会话",
     "toolLoadedHint": "已由工具临时加载，钉住后整段会话持续生效"
   },
-
   "location": {
     "global": "全局",
     "project": "项目",
     "builtin": "内置",
     "all": "全部"
   },
-
   "skillType": {
     "all": "全部类型",
     "composite": "整合型",
@@ -142,12 +136,10 @@
     "compositeHint": "整合型技能会建议加载其他相关技能",
     "standaloneHint": "独立型技能自身包含完整工具集合"
   },
-
   "badge": {
     "active": "已激活",
     "deactivate": "取消激活技能"
   },
-
   "loader": {
     "loading": "正在加载技能...",
     "loadSuccess": "技能加载完成",
@@ -155,7 +147,6 @@
     "refreshing": "正在刷新...",
     "refreshSuccess": "技能列表已刷新"
   },
-
   "errors": {
     "notFound": "未找到技能",
     "activateFailed": "激活技能失败",
@@ -171,7 +162,6 @@
       "dependency_unavailable": "技能“{{skillId}}”无法激活，因为依赖技能“{{dependencyId}}”不可用。"
     }
   },
-
   "command": {
     "noSkills": "暂无可用技能",
     "availableSkills": "可用技能 ({{count}}):\n{{list}}",
@@ -182,7 +172,6 @@
     "activateFailed": "激活技能失败: {{name}}",
     "error": "技能命令执行失败"
   },
-
   "management": {
     "title": "技能管理",
     "create": "新建技能",
@@ -309,7 +298,6 @@
     "unset_default": "取消默认",
     "enable": "启用"
   },
-
   "editor": {
     "tab_basic": "基本信息",
     "tab_content": "技能内容",
@@ -360,7 +348,6 @@
     "optional": "可选",
     "embedded_tools_hint": "内嵌工具会在技能激活时注入到 LLM 请求中"
   },
-
   "builtinNames": {
     "knowledge-retrieval": "知识检索",
     "canvas-note": "智能笔记",
@@ -379,6 +366,7 @@
     "subagent-worker": "子代理",
     "tutor-mode": "导师模式",
     "chatanki": "ChatAnki 制卡",
+    "course-study": "课程学习",
     "literature-review": "文献综述助手",
     "card-forge-mode": "制卡模式",
     "research-mode": "调研模式",
@@ -436,6 +424,7 @@
     "subagent-worker": "将子任务分派给子代理并汇总结果。",
     "tutor-mode": "苏格拉底式导师，通过提问与提示引导学习。",
     "chatanki": "将文档转为可复习的 Anki 卡片的端到端流程。",
+    "course-study": "基于带时间戳的音视频转写检索作答，给出可跳转的时间引用，并按讲到的时刻制卡出题。",
     "literature-review": "规划并撰写文献综述，整合论文与笔记。",
     "card-forge-mode": "面向制卡的专注模式，提供结构化提示与复核。",
     "research-mode": "深度调研模式，用于探索、归纳与引用。",
@@ -455,12 +444,10 @@
     "media-tools": "通过已配置的外部 ASR 提供商转写受管音频，并写入可审计的转写产物。",
     "office-fidelity-tools": "只读检查受管 DOCX、XLSX、PPTX 与 PDF 的保真风险，不执行宏、不解密，也不声称保留未支持特性。"
   },
-
   "favorite": {
     "add": "收藏",
     "remove": "取消收藏"
   },
-
   "default": {
     "label": "默认",
     "isDefault": "默认开启",
@@ -468,7 +455,6 @@
     "removeDefault": "取消默认",
     "hint": "默认技能会在新建会话时自动激活"
   },
-
   "package": {
     "source_builtin": "内置",
     "source_global": "全局",
@@ -517,7 +503,6 @@
     "enable": "启用",
     "disable": "停用"
   },
-
   "parser": {
     "artifactMustBeObject": "artifact 字段必须是对象（含 intentSkeleton/dataTools/layoutLock）",
     "artifactSkeletonMustBeObject": "artifact.intentSkeleton 必须是对象（generative-ui intent 骨架）",
@@ -538,7 +523,6 @@
     "yamlParseError": "YAML 解析失败",
     "extractMetadataFailed": "extractSkillMetadata 失败 ({{skillId}})"
   },
-
   "validation": {
     "id_required": "请输入技能 ID",
     "id_invalid": "技能 ID 只能包含小写字母、数字和连字符（a-z, 0-9, -）",
@@ -551,7 +535,6 @@
     "description_too_long": "描述不能超过 1024 个字符",
     "description_too_short": "建议描述至少 50 字符，以便 LLM 更好地理解何时使用此技能"
   },
-
   "storage": {
     "save_requires_tauri": "非 Tauri 环境，无法保存自定义",
     "reset_requires_tauri": "非 Tauri 环境，无法重置自定义"

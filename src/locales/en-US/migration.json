@@ -77,7 +77,8 @@
       "source_files": "Source files",
       "important": "!important",
       "hardcoded_colors": "Hardcoded colors",
-      "files_count": "{{count}} files"
+      "files_count": "{{count}} files",
+      "files_count_one": "{{count}} file"
     },
     "sections": {
       "component_progress": "Component family migration progress",

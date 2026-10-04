@@ -41,7 +41,8 @@
     "title": "选择知识点",
     "description": "选择一个标签开始练习",
     "untagged": "未分类",
-    "questionCount": "{{count}} 题"
+    "questionCount": "{{count}} 题",
+    "questionCount_one": "{{count}} 题"
   },
   "timed": {
     "title": "限时练习",
