@@ -688,7 +688,11 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
   useMobileHeader('template-management', {
     title: isEditingMode
       ? (activeTab === 'create' ? t('tab_create') : editingTemplate?.name || t('tab_edit'))
-      : isSelectingMode ? t('page_title_select') : t('manager_title'),
+      : isSelectingMode
+        ? t('page_title_select')
+        // 经典壳中本页是「闪卡」页面的「模板」分区：根状态顶栏显示页面名「闪卡」，
+        // 分区由顶栏下方的分区条指示，不再重复「卡片模板管理」
+        : workbenchWindowId ? t('manager_title') : t('sidebar:navigation.flashcards', '闪卡'),
     showMenu: !isEditingMode && !selectingHeaderBack,
     showBackArrow: isEditingMode || selectingHeaderBack,
     onMenuClick: isEditingMode
@@ -725,7 +729,7 @@ export const TemplateManagementApp: React.FC<TemplateManagementAppProps> = ({
         </DsButton>
       </>
     ) : undefined,
-  }, [isEditingMode, isSelectingMode, activeTab, editingTemplate?.name, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t]);
+  }, [isEditingMode, isSelectingMode, activeTab, editingTemplate?.name, handleEditorBack, isCodeMode, screenPosition, selectingHeaderBack, onCancel, t, workbenchWindowId]);
 
   // Android 返回优先收起编辑器左右屏，其次走与顶栏相同的脏检查返回路径。
   useEffect(() => {

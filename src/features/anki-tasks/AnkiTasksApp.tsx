@@ -467,8 +467,13 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
     return map[sortKey];
   }, [sortKey, t]);
 
+  // 经典壳中本页是「闪卡」页面的「制卡」分区：页面标题由壳层承担（桌面标题栏「闪卡」+
+  // 分区条；移动顶栏「闪卡」+ 下方分区条），页内不再重复「Anki制卡」。
+  // Workbench 窗口保持应用自身名称（窗口标题栏 workbench:apps.taskDashboard 与页内标题）。
+  const isCardsHubSection = !workbenchWindowId;
+
   useMobileHeader('task-dashboard', {
-    title: t('taskDashboard.title'),
+    title: t('sidebar:navigation.flashcards', '闪卡'),
     subtitle: isSmallScreen ? undefined : t('taskDashboard.subtitle'),
     showMenu: true,
     onMenuClick: () => setSidebarOpen(true),
@@ -524,7 +529,12 @@ export const AnkiTasksApp: React.FC<AnkiTasksAppProps> = ({
         {!isSmallScreen && (
           <header className="wb-at-header">
             <div className="min-w-0">
-              <h2 className="wb-at-title">{t('taskDashboard.title')}</h2>
+              {isCardsHubSection ? (
+                // 分区名已由标题栏分区条显示；保留供读屏导航的标题，视觉上只留说明行
+                <h2 className="sr-only">{t('sidebar:navigation.cards_hub.generate', '制卡')}</h2>
+              ) : (
+                <h2 className="wb-at-title">{t('taskDashboard.title')}</h2>
+              )}
               <p className="wb-at-subtitle">{t('taskDashboard.subtitle')}</p>
             </div>
             <div className="wb-at-toolbar">
