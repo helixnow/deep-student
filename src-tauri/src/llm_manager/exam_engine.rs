@@ -2,8 +2,7 @@
 //!
 //! DeepSeek OCR 适配、PDF OCR 支持
 
-use crate::models::{AppError, AppErrorType, ExamCardBBox};
-use crate::providers::ProviderAdapter;
+use crate::models::{AppError, ExamCardBBox};
 use base64::{engine::general_purpose, Engine as _};
 use futures_util::{stream::FuturesUnordered, StreamExt};
 use image::imageops::FilterType;
@@ -14,26 +13,26 @@ use std::future::Future;
 use std::io::Cursor;
 use std::path::Path;
 
-use super::model2_pipeline::PreparedProviderRequest;
+use super::single_shot_stream::{run_single_shot, send_plain_request, SingleShotOptions};
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig,
-    ExamSegmentationCard, LLMManager, Result, EXAM_SEGMENT_MAX_DIMENSION,
-    EXAM_SEGMENT_MAX_IMAGE_BYTES,
+    build_provider_adapter, ApiConfig, ExamSegmentationCard, LLMManager, Result,
+    EXAM_SEGMENT_MAX_DIMENSION, EXAM_SEGMENT_MAX_IMAGE_BYTES,
 };
 
 // ── 渐进对冲 OCR 用数据结构 ──
 
-/// 预构建的单引擎 OCR 请求（所有字段 owned，可 tokio::spawn）
+/// 预构建的单引擎 OCR 请求（所有字段 owned，可 tokio::spawn）。
+///
+/// 只保存配置与 OpenAI 形状的请求体：传输层（流式/非流式回退）每次尝试都按
+/// 模式重新构建 provider 请求（见 `single_shot_stream`）。
 struct PreparedOcrRequest {
     idx: usize,
     engine_name: String,
     model_name: String,
-    model_adapter: String,
-    provider_type: Option<String>,
-    api_protocol: Option<String>,
-    supports_openai_responses: Option<bool>,
-    base_url: String,
-    request: PreparedProviderRequest,
+    config: ApiConfig,
+    api_key: String,
+    request_body: Value,
+    is_codex: bool,
 }
 
 enum PreparedOcrCandidate {
@@ -89,67 +88,6 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     }
 }
 
-async fn parse_single_ocr_response(
-    req: PreparedOcrRequest,
-    response: reqwest::Response,
-) -> std::result::Result<String, String> {
-    if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Engine #{} ({}) HTTP {}: {}",
-            req.idx,
-            req.engine_name,
-            status,
-            safe_truncate(&error_text, 200)
-        ));
-    }
-
-    let response_text = response.text().await.map_err(|e| {
-        format!(
-            "Engine #{} ({}) read failed: {}",
-            req.idx, req.engine_name, e
-        )
-    })?;
-
-    let response_json: Value = match serde_json::from_str(&response_text) {
-        Ok(value) => value,
-        Err(_) if req.request.is_codex() => {
-            crate::openai_codex::codex_sse_to_responses_json(&response_text).map_err(|error| {
-                format!(
-                    "Engine #{} ({}) Codex SSE parse failed: {}",
-                    req.idx, req.engine_name, error
-                )
-            })?
-        }
-        Err(error) => {
-            return Err(format!(
-                "Engine #{} ({}) JSON parse failed: {}",
-                req.idx, req.engine_name, error
-            ))
-        }
-    };
-
-    let temp_config = ApiConfig {
-        model: req.model_name.clone(),
-        model_adapter: req.model_adapter.clone(),
-        provider_type: req.provider_type.clone(),
-        api_protocol: req.api_protocol.clone(),
-        supports_openai_responses: req.supports_openai_responses,
-        base_url: req.base_url.clone(),
-        ..ApiConfig::default()
-    };
-    let openai_like = normalize_nonstream_response_to_openai(&temp_config, &response_json)
-        .map_err(|e| e.message)?;
-
-    let content = openai_like["choices"][0]["message"]["content"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-
-    Ok(content)
-}
-
 async fn run_ocr_with_deadline<T, F>(
     engine_idx: usize,
     engine_name: &str,
@@ -174,30 +112,72 @@ where
         })
 }
 
+/// 对冲 OCR 单引擎传输参数：不在引擎内重试（对冲本身就是冗余），流式按空闲
+/// 超时判活——慢但持续出字的稠密页不再被旧的 60s 固定总超时掐断。
+const HEDGE_ENGINE_HEADER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+const HEDGE_ENGINE_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
+const HEDGE_ENGINE_TOTAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+const HEDGE_ENGINE_NONSTREAM_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(180);
+
+fn hedge_engine_options(req: &PreparedOcrRequest) -> SingleShotOptions {
+    let mut opts = SingleShotOptions::new(format!("OCR-Hedge #{} ({})", req.idx, req.engine_name))
+        .with_max_retries(0)
+        .with_timeouts(
+            HEDGE_ENGINE_HEADER_TIMEOUT,
+            HEDGE_ENGINE_IDLE_TIMEOUT,
+            HEDGE_ENGINE_TOTAL_TIMEOUT,
+        );
+    opts.nonstream_timeout = HEDGE_ENGINE_NONSTREAM_TIMEOUT;
+    opts
+}
+
+/// 外层兜底时限：一次流式尝试 + 可能的一次非流式回退。
+fn hedge_engine_outer_deadline(opts: &SingleShotOptions) -> std::time::Duration {
+    opts.total_timeout + opts.nonstream_timeout + std::time::Duration::from_secs(5)
+}
+
 /// 执行普通 OCR 引擎请求（独立于 LLMManager，可 tokio::spawn）。
+/// 被取消（对冲已有赢家 / 调用方取消）时 future 被 drop，连同响应流一起关闭连接。
 async fn run_single_ocr_request(
     client: reqwest::Client,
     req: PreparedOcrRequest,
-    timeout_secs: u64,
 ) -> std::result::Result<String, String> {
-    debug_assert!(!req.request.is_codex());
+    debug_assert!(!req.is_codex);
+    let opts = hedge_engine_options(&req);
     let engine_idx = req.idx;
     let engine_name = req.engine_name.clone();
-    let timeout = std::time::Duration::from_secs(timeout_secs);
-    run_ocr_with_deadline(engine_idx, &engine_name, timeout, async move {
-        let mut builder = client.post(&req.request.url);
-        for (name, value) in &req.request.headers {
-            builder = builder.header(name, value);
-        }
-        let response = builder.json(&req.request.body).send().await.map_err(|e| {
-            format!(
-                "Engine #{} ({}) network error: {}",
-                req.idx, req.engine_name, e
+    let label = opts.label.clone();
+    run_ocr_with_deadline(
+        engine_idx,
+        &engine_name,
+        hedge_engine_outer_deadline(&opts),
+        async {
+            run_single_shot(
+                &opts,
+                &req.config,
+                |mode, request_timeout| {
+                    send_plain_request(
+                        &client,
+                        &req.config,
+                        &req.request_body,
+                        Some(req.api_key.as_str()),
+                        mode,
+                        request_timeout,
+                        &label,
+                    )
+                },
+                None,
             )
-        })?;
-
-        parse_single_ocr_response(req, response).await
-    })
+            .await
+            .map(|completion| completion.content)
+            .map_err(|error| {
+                format!(
+                    "Engine #{} ({}) failed: {}",
+                    req.idx, req.engine_name, error.message
+                )
+            })
+        },
+    )
     .await
 }
 
@@ -252,36 +232,41 @@ async fn system_ocr_full_page(
     }
 }
 
-/// Codex 请求必须保留 PreparedProviderRequest 中的 OAuth generation/session，才能在 401 后
-/// 刷新并只重发一次。该 future 借用 LLMManager，在调用方的 FuturesUnordered 中与后台引擎并发。
+/// Codex 请求需要 LLMManager（OAuth 401 刷新后只重发一次），因此不 spawn，而是作为
+/// future 在调用方的 FuturesUnordered 中与后台引擎并发；返回时被 drop 即关闭流。
 async fn run_single_codex_ocr_request(
     manager: &LLMManager,
-    mut req: PreparedOcrRequest,
-    timeout_secs: u64,
+    req: PreparedOcrRequest,
 ) -> OcrRequestResult {
-    debug_assert!(req.request.is_codex());
+    debug_assert!(req.is_codex);
+    let opts = hedge_engine_options(&req);
     let engine_idx = req.idx;
-    let engine_name = req.engine_name.clone();
-    let timeout = std::time::Duration::from_secs(timeout_secs);
-    let result = tokio::time::timeout(timeout, async {
-        let response = manager
-            .send_codex_request_with_single_refresh(&mut req.request, Some(timeout))
-            .await
-            .map_err(|error| {
-                format!(
-                    "Engine #{} ({}) Codex request failed: {}",
-                    engine_idx, engine_name, error.message
+    let result = run_ocr_with_deadline(
+        engine_idx,
+        &req.engine_name,
+        hedge_engine_outer_deadline(&opts),
+        async {
+            manager
+                .single_shot_completion(
+                    &req.config,
+                    &req.request_body,
+                    Some(req.api_key.as_str()),
+                    None,
+                    "OCR 对冲请求构建失败",
+                    &opts,
+                    None,
                 )
-            })?;
-        parse_single_ocr_response(req, response).await
-    })
-    .await
-    .unwrap_or_else(|_| {
-        Err(format!(
-            "Engine #{} ({}) timed out ({}s)",
-            engine_idx, engine_name, timeout_secs
-        ))
-    });
+                .await
+                .map(|completion| completion.content)
+                .map_err(|error| {
+                    format!(
+                        "Engine #{} ({}) Codex request failed: {}",
+                        engine_idx, req.engine_name, error.message
+                    )
+                })
+        },
+    )
+    .await;
 
     (engine_idx, result)
 }
@@ -522,7 +507,6 @@ impl LLMManager {
             "messages": messages,
             "temperature": adapter.recommended_temperature(),
             "max_tokens": max_tokens,
-            "stream": false,
         });
 
         crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
@@ -558,108 +542,55 @@ impl LLMManager {
             }
         }
 
-        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
+        // 估算请求体大小（用于诊断日志）
+        let body_size_estimate = serde_json::to_string(&request_body)
+            .map(|s| s.len())
+            .unwrap_or(0);
+        // 🔒 P1-2 修复：Gemini 系引擎的 URL query 中含 API key，日志必须先脱敏
+        info!(
+            "[DeepSeek-OCR] 页面 {} 发送请求 (streaming): base_url={}, body_size≈{}KB",
+            page_index,
+            super::model2_pipeline::sanitize_url_for_log(&config.base_url),
+            body_size_estimate / 1024
+        );
 
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
+        // 流式传输：稠密页输出数千 token 时，非流式请求会被网关（524/504）或
+        // 固定总超时掐断；流式按空闲超时判活。重试只给 1 次——引擎 fallback 链与
+        // 上层页级重试已提供冗余，且 5xx 页级快速失败语义（★E）依赖 details.status。
+        let opts = SingleShotOptions::new(format!("{}-OCR(page {})", engine_name, page_index))
+            .with_max_retries(1);
+        let completion = self
+            .single_shot_completion(
                 config,
                 &request_body,
                 None,
                 None,
                 "DeepSeek-OCR 请求构建失败",
+                &opts,
+                None,
             )
             .await?;
-
-        // 估算请求体大小（用于诊断日志）
-        let body_size_estimate = serde_json::to_string(&preq.body)
-            .map(|s| s.len())
-            .unwrap_or(0);
-        // 🔒 P1-2 修复：Gemini 系引擎的 URL query 中含 API key，日志必须先脱敏
-        info!(
-            "[DeepSeek-OCR] 页面 {} 发送请求: url={}, body_size≈{}KB",
-            page_index,
-            super::model2_pipeline::sanitize_url_for_log(&preq.url),
-            body_size_estimate / 1024
-        );
-
-        let response = if preq.is_codex() {
-            self.send_codex_request_with_single_refresh(&mut preq, None)
-                .await?
-        } else {
-            let mut request_builder = self.client.post(&preq.url);
-            for (name, value) in &preq.headers {
-                request_builder = request_builder.header(name, value);
-            }
-            request_builder.json(&preq.body).send().await.map_err(|e| {
-                AppError::network(format!("DeepSeek-OCR 请求失败: {}", e.without_url()))
-            })?
-        };
+        let content = completion.content;
+        let usage_json = completion.usage.clone().unwrap_or(Value::Null);
 
         info!(
-            "[DeepSeek-OCR] 页面 {} 收到响应: status={}",
+            "[DeepSeek-OCR] 页面 {} 收到响应: {} 字符 (attempts={}, stream={}, finish={:?})",
             page_index,
-            response.status()
+            content.len(),
+            completion.attempts,
+            completion.mode.is_stream(),
+            completion.finish_reason
         );
-
-        let status = response.status();
-        let retry_after_header = response
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|h| h.to_str().ok())
-            .map(|s| s.to_string());
-
-        let response_text = response
-            .text()
-            .await
-            .map_err(|e| AppError::llm(format!("读取 DeepSeek-OCR 响应失败: {}", e)))?;
-
-        if !status.is_success() {
-            let mut detail = json!({
-                "status": status.as_u16(),
-                "body": crate::debug_log_service::redact_sensitive_text(&response_text),
-                "provider": "deepseek-ocr",
-            });
-
-            if let Some(value) = retry_after_header {
-                if let Ok(seconds) = value.parse::<u64>() {
-                    if let Some(map) = detail.as_object_mut() {
-                        map.insert("retry_after_seconds".to_string(), json!(seconds));
-                        map.insert(
-                            "retry_after_ms".to_string(),
-                            json!(seconds.saturating_mul(1000)),
-                        );
-                    }
-                } else if let Some(map) = detail.as_object_mut() {
-                    map.insert("retry_after_raw".to_string(), json!(value));
-                }
-            }
-
-            return Err(AppError::with_details(
-                AppErrorType::LLM,
-                format!("DeepSeek-OCR 接口返回错误 {}", status),
-                detail,
-            ));
-        }
-
-        let response_json: Value = serde_json::from_str(&response_text).map_err(|e| {
-            AppError::llm(format!(
-                "解析 DeepSeek-OCR 响应 JSON 失败: {}, 原始内容: {}",
-                e, response_text
-            ))
-        })?;
-
-        let openai_like_json = normalize_nonstream_response_to_openai(config, &response_json)?;
-        let content = openai_like_json["choices"][0]["message"]["content"]
-            .as_str()
-            .ok_or_else(|| AppError::llm("DeepSeek-OCR 模型返回内容为空"))?
-            .to_string();
 
         self.emit_deepseek_debug(
             "info",
             "response",
             page_index,
-            &format!("响应状态: {}", status),
+            &format!(
+                "响应完成: attempts={}, stream={}",
+                completion.attempts,
+                completion.mode.is_stream()
+            ),
             None,
         );
         self.emit_deepseek_debug(
@@ -681,13 +612,13 @@ impl LLMManager {
             "response",
             page_index,
             "Token 使用情况",
-            Some(response_json["usage"].clone()),
+            Some(usage_json.clone()),
         );
 
         let approx_tokens_out = crate::utils::token_budget::estimate_tokens(&content);
 
         // 从 API 返回的 usage 数据中提取实际 token 数量
-        let usage_value = response_json.get("usage");
+        let usage_value = completion.usage.as_ref();
         let measured_prompt_tokens = usage_value
             .and_then(|u| u.get("prompt_tokens").or_else(|| u.get("input_tokens")))
             .and_then(|v| v.as_u64());
@@ -918,8 +849,9 @@ impl LLMManager {
     /// 1. 立即启动优先级最高的引擎
     /// 2. 若 10s 内无响应，并行启动下一个引擎（前一个不取消）
     /// 3. 每隔 10s 再追加一个引擎，直到所有引擎均已启动
-    /// 4. 每个引擎有独立 60s 硬超时
-    /// 5. 采用**最先返回成功结果**的那个引擎
+    /// 4. 远程引擎流式传输，按空闲超时（45s 无字节）判活、300s 硬上限；系统 OCR 60s
+    /// 5. 赢家返回后取消其余仍在运行的引擎（drop 流，停止计费）
+    /// 6. 采用**最先返回成功结果**的那个引擎
     pub async fn call_ocr_free_text_with_fallback(&self, image_path: &str) -> Result<String> {
         self.call_ocr_free_text_with_fallback_filtered(
             image_path,
@@ -950,7 +882,8 @@ impl LLMManager {
         use crate::ocr_circuit_breaker::OCR_CIRCUIT_BREAKER;
         use crate::providers::ProviderAdapter;
 
-        /// 单引擎硬超时
+        /// 系统 OCR（本地原生）单引擎硬超时；远程引擎改为流式空闲超时，
+        /// 见 `hedge_engine_options`
         const ENGINE_TIMEOUT_SECS: u64 = 60;
         /// 渐进对冲间隔：N 秒无响应则启动下一个引擎
         const HEDGE_INTERVAL_SECS: u64 = 10;
@@ -1061,7 +994,6 @@ impl LLMManager {
                 "messages": messages,
                 "temperature": adapter.recommended_temperature(),
                 "max_tokens": max_tokens,
-                "stream": false,
             });
 
             crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
@@ -1092,9 +1024,10 @@ impl LLMManager {
                 }
             }
 
+            // 预校验：请求能否构建（配置异常的引擎提前跳过，不计入熔断失败）。
+            // 真正发送时按传输模式（流式 / 非流式回退）重新构建。
             let provider: Box<dyn ProviderAdapter> = build_provider_adapter(config);
-
-            let preq = match self
+            let is_codex = match self
                 .prepare_provider_request(
                     provider.as_ref(),
                     config,
@@ -1105,7 +1038,7 @@ impl LLMManager {
                 )
                 .await
             {
-                Ok(p) => p,
+                Ok(p) => p.is_codex(),
                 Err(e) => {
                     warn!(
                         "[OCR-Hedge] Engine #{} ({}) request build failed: {}",
@@ -1121,12 +1054,10 @@ impl LLMManager {
                 idx,
                 engine_name: engine_type.as_str().to_string(),
                 model_name: config.model.clone(),
-                model_adapter: config.model_adapter.clone(),
-                provider_type: config.provider_type.clone(),
-                api_protocol: config.api_protocol.clone(),
-                supports_openai_responses: config.supports_openai_responses,
-                base_url: config.base_url.clone(),
-                request: preq,
+                config: config.clone(),
+                api_key,
+                request_body,
+                is_codex,
             }));
         }
 
@@ -1139,6 +1070,10 @@ impl LLMManager {
         }
 
         // ── 阶段 2：渐进对冲执行 ──
+        // 赛跑令牌：本函数返回（有赢家 / 全部失败 / 取消）时 drop guard 取消它，
+        // 后台仍在跑的落败引擎随之 drop 掉各自的流式响应，不再继续消耗 token。
+        let race_cancellation = cancellation_token.child_token();
+        let _race_guard = race_cancellation.clone().drop_guard();
         let total = prepared.len();
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<OcrRequestResult>();
         let mut local_codex_requests = FuturesUnordered::new();
@@ -1152,29 +1087,25 @@ impl LLMManager {
             let engine_idx = candidate.idx();
 
             match candidate {
-                PreparedOcrCandidate::Remote(req) if req.request.is_codex() => {
-                    local_codex_requests.push(run_single_codex_ocr_request(
-                        self,
-                        req,
-                        ENGINE_TIMEOUT_SECS,
-                    ));
+                PreparedOcrCandidate::Remote(req) if req.is_codex => {
+                    local_codex_requests.push(run_single_codex_ocr_request(self, req));
                 }
                 PreparedOcrCandidate::Remote(req) => {
                     let client = self.client.clone();
                     let tx_clone = tx.clone();
-                    let candidate_cancellation = cancellation_token.clone();
+                    let candidate_cancellation = race_cancellation.clone();
                     crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
                         let result = tokio::select! {
                             biased;
                             _ = candidate_cancellation.cancelled() => Err("OCR cancelled".to_string()),
-                            result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS) => result,
+                            result = run_single_ocr_request(client, req) => result,
                         };
                         let _ = tx_clone.send((engine_idx, result));
                     });
                 }
                 PreparedOcrCandidate::SystemOcr { image_bytes, .. } => {
                     let tx_clone = tx.clone();
-                    let candidate_cancellation = cancellation_token.clone();
+                    let candidate_cancellation = race_cancellation.clone();
                     crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
                         let result = tokio::select! {
                             biased;
@@ -1587,6 +1518,111 @@ mod tests {
         .expect("local request should produce a result");
 
         assert_eq!(result, (7, Ok("codex-result".to_string())));
+    }
+
+    /// A losing hedged engine is cancelled through the race token; its future
+    /// (and with it the streamed HTTP response) must be dropped so the provider
+    /// stops generating instead of streaming to completion in the background.
+    #[tokio::test]
+    async fn cancelled_hedge_engine_drops_its_stream() {
+        struct DropFlag(Arc<AtomicBool>);
+        impl Drop for DropFlag {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::SeqCst);
+            }
+        }
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
+        let address = listener.local_addr().unwrap();
+        let first_chunk_sent = Arc::new(AtomicBool::new(false));
+        let stream_dropped = Arc::new(AtomicBool::new(false));
+        let (sent_flag, dropped_flag) = (first_chunk_sent.clone(), stream_dropped.clone());
+        let server = hyper::Server::from_tcp(listener)
+            .unwrap()
+            .serve(make_service_fn(move |_| {
+                let (sent_flag, dropped_flag) = (sent_flag.clone(), dropped_flag.clone());
+                async move {
+                    Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                        let (sent_flag, dropped_flag) = (sent_flag.clone(), dropped_flag.clone());
+                        async move {
+                            let body = hyper::body::to_bytes(request.into_body()).await.unwrap();
+                            let body: Value = serde_json::from_slice(&body).unwrap();
+                            assert_eq!(body["stream"], json!(true), "hedged OCR must stream");
+                            // Endless, steady SSE stream: only a client disconnect ends it.
+                            let guard = DropFlag(dropped_flag);
+                            let stream = futures_util::stream::unfold(
+                                (guard, sent_flag),
+                                |(guard, sent_flag)| async move {
+                                    tokio::time::sleep(std::time::Duration::from_millis(30)).await;
+                                    sent_flag.store(true, Ordering::SeqCst);
+                                    let chunk = format!(
+                                        "data: {}\n\n",
+                                        json!({"choices":[{"index":0,"delta":{"content":"x"}}]})
+                                    );
+                                    Some((
+                                        Ok::<_, Infallible>(hyper::body::Bytes::from(chunk)),
+                                        (guard, sent_flag),
+                                    ))
+                                },
+                            );
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .header("content-type", "text/event-stream")
+                                    .body(Body::wrap_stream(stream))
+                                    .unwrap(),
+                            )
+                        }
+                    }))
+                }
+            }));
+        let server_task = tokio::spawn(server);
+
+        let request = PreparedOcrRequest {
+            idx: 1,
+            engine_name: "mock_engine".to_string(),
+            model_name: "mock-ocr".to_string(),
+            config: ApiConfig {
+                id: "hedge-drop-test".to_string(),
+                name: "hedge-drop-test".to_string(),
+                model: "mock-ocr".to_string(),
+                base_url: format!("http://{address}/v1"),
+                ..ApiConfig::default()
+            },
+            api_key: "test-key".to_string(),
+            request_body: json!({"model": "mock-ocr", "messages": []}),
+            is_codex: false,
+        };
+        let race = tokio_util::sync::CancellationToken::new();
+        let candidate_cancellation = race.clone();
+        let engine = tokio::spawn(async move {
+            tokio::select! {
+                biased;
+                _ = candidate_cancellation.cancelled() => Err("OCR cancelled".to_string()),
+                result = run_single_ocr_request(reqwest::Client::new(), request) => result,
+            }
+        });
+
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !first_chunk_sent.load(Ordering::SeqCst) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "stream never started"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        race.cancel();
+        assert_eq!(engine.await.unwrap(), Err("OCR cancelled".to_string()));
+
+        while !stream_dropped.load(Ordering::SeqCst) {
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "server-side stream must be dropped after the losing engine is cancelled"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        server_task.abort();
     }
 
     #[tokio::test]
