@@ -161,7 +161,8 @@ export function useMediaTranscript({
         const progress: TranscriptProgress = event.progress;
         setTranscript((prev) => ({
           ...(prev ?? EMPTY_TRANSCRIPT),
-          status: 'running',
+          // 后端 MediaStage::Queued 也经 progress 事件上报
+          status: progress.stage === 'queued' ? 'queued' : 'running',
           progress,
         }));
         scheduleRefetch();

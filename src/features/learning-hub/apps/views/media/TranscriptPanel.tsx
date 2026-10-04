@@ -363,7 +363,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <CircleNotch size={13} className="animate-spin text-primary motion-reduce:animate-none" aria-hidden="true" />
             <span className="truncate">
-              {status === 'queued'
+              {status === 'queued' || progress?.stage === 'queued'
                 ? t('learningHub:mediaTranscript.queued')
                 : t(`learningHub:mediaTranscript.stage.${stageKey}`)}
             </span>
