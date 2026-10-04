@@ -274,6 +274,11 @@ export interface MobileHeaderNav {
   canGoForward?: boolean;
   onForward?: () => void;
   fallbackTitle?: string;
+  /**
+   * 壳层注入的顶栏下方附属行（如闪卡中心的分区切换条）。仅在页面顶栏处于
+   * 根状态时渲染：页面切到返回箭头（子页 / 编辑 / 复习会话）或隐藏顶栏时自动让位。
+   */
+  accessory?: ReactNode;
 }
 
 const MobileHeaderNavContext = createContext<MobileHeaderNav | null>(null);

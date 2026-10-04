@@ -235,15 +235,28 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
 /** 页内顶栏：读 App 注入的返回/前进，跟主栏一起滑，不盖侧栏。 */
 export const MobileInFlowHeader: React.FC = () => {
   const nav = useMobileHeaderNav();
+  const config = useMobileHeaderContextSafe()?.config;
+  // 附属行只跟随根状态顶栏：返回箭头（子页/编辑/会话）、隐藏顶栏、浮动菜单形态都让位
+  const showAccessory = Boolean(nav?.accessory)
+    && !config?.hidden
+    && !config?.showBackArrow
+    && !config?.floatingMenuButton;
   return (
-    <UnifiedMobileHeader
-      canGoBack={nav?.canGoBack}
-      onBack={nav?.onBack}
-      canGoForward={nav?.canGoForward}
-      onForward={nav?.onForward}
-      fallbackTitle={nav?.fallbackTitle}
-      className="relative shrink-0"
-    />
+    <>
+      <UnifiedMobileHeader
+        canGoBack={nav?.canGoBack}
+        onBack={nav?.onBack}
+        canGoForward={nav?.canGoForward}
+        onForward={nav?.onForward}
+        fallbackTitle={nav?.fallbackTitle}
+        className="relative shrink-0"
+      />
+      {showAccessory ? (
+        <div data-mobile-shell="header-accessory" className="relative shrink-0">
+          {nav?.accessory}
+        </div>
+      ) : null}
+    </>
   );
 };
 
