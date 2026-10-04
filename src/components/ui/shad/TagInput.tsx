@@ -2,6 +2,8 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from './Input';
 import { X } from '@phosphor-icons/react';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { splitTagDraft } from '@/utils/tagDraft';
 
 export interface TagInputProps {
   value: string[];
@@ -19,18 +21,32 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const addToken = useCallback(
-    (raw: string) => {
-      const token = normalizeToken(raw);
-      if (!token) return;
-      if (value.some((t) => t.toLowerCase() === token.toLowerCase())) {
-        setDraft('');
-        return;
+  /** 提交若干标签（大小写不敏感去重），草稿置为 rest */
+  const addTokens = useCallback(
+    (raws: string[], rest = '') => {
+      const seen = new Set(value.map((t) => t.toLowerCase()));
+      const added: string[] = [];
+      for (const raw of raws) {
+        const token = normalizeToken(raw);
+        if (!token || seen.has(token.toLowerCase())) continue;
+        seen.add(token.toLowerCase());
+        added.push(token);
       }
-      onChange([...value, token]);
-      setDraft('');
+      if (added.length) onChange([...value, ...added]);
+      setDraft(rest);
     },
     [onChange, value]
+  );
+
+  // 📱 Android 软键盘的逗号 keydown 是 "Unidentified"/229，靠 keydown 永远提交不了；
+  // 改从输入值切分（硬件键盘的 ',' keydown 已 preventDefault，不会重复提交）
+  const applyDraft = useCallback(
+    (next: string) => {
+      const { tokens, rest } = splitTagDraft(next);
+      if (tokens.length) addTokens(tokens, rest);
+      else setDraft(next);
+    },
+    [addTokens]
   );
 
   const removeAt = useCallback(
@@ -46,10 +62,12 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (disabled) return;
+      // IME 组字中的 Enter/Tab 属于输入法（确认候选词），不提交半成品
+      if (isComposingKeyEvent(e)) return;
       if (e.key === 'Enter' || e.key === ',' || e.key === 'Tab') {
         if (draft.trim()) {
           e.preventDefault();
-          addToken(draft);
+          addTokens([draft]);
         }
       } else if (e.key === 'Backspace' && !draft && value.length) {
         // 删除最后一个
@@ -57,7 +75,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
         removeAt(value.length - 1);
       }
     },
-    [addToken, draft, removeAt, value, disabled]
+    [addTokens, draft, removeAt, value, disabled]
   );
 
   const chips = useMemo(
@@ -91,7 +109,15 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
         <Input
           ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            // 组字期间不切分：改写受控值会打断输入法，留给 compositionend 处理
+            if ((e.nativeEvent as InputEvent).isComposing) {
+              setDraft(e.target.value);
+              return;
+            }
+            applyDraft(e.target.value);
+          }}
+          onCompositionEnd={(e) => applyDraft(e.currentTarget.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
           disabled={disabled}

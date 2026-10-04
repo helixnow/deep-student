@@ -1,7 +1,7 @@
 /**
  * TagsEditor — 详情面板标签编辑（自动补全 + 彩色标签点 + 键盘导航）
  *
- * - Enter / 逗号提交；Esc 先收建议、再取消输入（不冒泡触发面板级关闭）
+ * - Enter / 逗号提交（含 Android 软键盘：逗号 keydown 是 229，改从输入值按 , / ， 切分）；Esc 先收建议、再取消输入（不冒泡触发面板级关闭）
  * - 空输入时 Backspace 删除最后一个标签
  * - 自动补全：基于已有标签（父组件从 store 只读汇总），↑/↓ 高亮、Enter 选中；
  *   无匹配时首行提供「创建 tag」内联流；建议行 onMouseDown preventDefault
@@ -20,6 +20,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { tweenFast } from '@/styles/motion-springs';
 import { tagDotColor } from './tagColor';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { splitTagDraft } from '@/utils/tagDraft';
 
 const MAX_SUGGESTIONS = 6;
 
@@ -75,15 +76,35 @@ export const TagsEditor: React.FC<{
     }, BACK_PRIORITY.overlay);
   }, [showSuggestions]);
 
-  const addTag = useCallback(
-    (raw: string) => {
-      const trimmed = raw.trim().replace(/^#/, '');
-      setDraft('');
+  /** 提交若干标签（# 前缀与首尾空白归一、大小写不敏感去重），草稿置为 rest */
+  const addTags = useCallback(
+    (raws: string[], rest = '') => {
+      const seen = new Set(lowerTags);
+      const added: string[] = [];
+      for (const raw of raws) {
+        const trimmed = raw.trim().replace(/^#/, '');
+        if (!trimmed || seen.has(trimmed.toLowerCase())) continue;
+        seen.add(trimmed.toLowerCase());
+        added.push(trimmed);
+      }
+      setDraft(rest);
       setHighlightIndex(-1);
-      if (!trimmed || lowerTags.has(trimmed.toLowerCase())) return;
-      onChange([...tags, trimmed]);
+      if (added.length) onChange([...tags, ...added]);
     },
     [tags, lowerTags, onChange],
+  );
+
+  const addTag = useCallback((raw: string) => addTags([raw]), [addTags]);
+
+  /** 逗号切分（输入值路径）：返回 true 表示已提交 */
+  const commitSeparated = useCallback(
+    (value: string) => {
+      const { tokens, rest } = splitTagDraft(value);
+      if (!tokens.length) return false;
+      addTags(tokens, rest);
+      return true;
+    },
+    [addTags],
   );
 
   const commitDraft = useCallback(() => {
@@ -204,8 +225,14 @@ export const TagsEditor: React.FC<{
         }
         aria-autocomplete="list"
         onChange={(e) => {
+          // 📱 Android 软键盘的逗号不走 keydown(',')，从输入值切分提交；
+          // 组字期间不切分（改写受控值会打断输入法），留给 compositionend
+          if (!(e.nativeEvent as InputEvent).isComposing && commitSeparated(e.target.value)) return;
           setDraft(e.target.value);
           setHighlightIndex(-1);
+        }}
+        onCompositionEnd={(e) => {
+          commitSeparated(e.currentTarget.value);
         }}
         onKeyDown={handleKeyDown}
         onFocus={() => setFocused(true)}
