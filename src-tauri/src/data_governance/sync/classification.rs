@@ -504,6 +504,27 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             has_json_blobs: false,
             merge_notes: "Local idempotency receipts for automation todo side effects",
         },
+        // --- Media learning (V20261005) ---
+        TableClassification {
+            database: "vfs",
+            table_name: "media_transcript_segments",
+            primary_key: "resource_id,idx",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Timestamped transcript segments (paid ASR output / imported subtitles); included in database backup, re-derivable per device",
+        },
+        TableClassification {
+            database: "vfs",
+            table_name: "media_progress",
+            primary_key: "resource_id",
+            category: SyncCategory::BackupOnly,
+            conflict_policy: ConflictPolicyClass::NoConflict,
+            business_unique_keys: "",
+            has_json_blobs: false,
+            merge_notes: "Per-device playback resume position and watched time",
+        },
         // --- Notes persistent local state and shared learning relationships ---
         TableClassification {
             database: "vfs",

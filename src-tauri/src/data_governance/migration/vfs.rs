@@ -1069,6 +1069,18 @@ pub const V20260924_NOTE_EDITOR_LEASES: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20261005: 音视频学习——字幕段（可续做转写/字幕导入）+ 断点续播进度。
+///
+/// 设计契约：docs/dev/media-learning/README.md §1.1。新建表 + 索引，无危险 SQL。
+pub const V20261005_MEDIA_TRANSCRIPTS: MigrationDef = MigrationDef::new(
+    20261005,
+    "media_transcripts",
+    include_str!("../../../migrations/vfs/V20261005__media_transcripts.sql"),
+)
+.with_expected_tables(&["media_transcript_segments", "media_progress"])
+.with_expected_indexes(&["idx_media_segments_status"])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1137,6 +1149,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260922_NOTE_STORAGE_FOUNDATIONS,
     V20260923_NOTE_HISTORY_INTEGRATION,
     V20260924_NOTE_EDITOR_LEASES,
+    V20261005_MEDIA_TRANSCRIPTS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1214,6 +1227,9 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "note_tags",
     // 笔记链接图（V20260725，派生数据，不参与同步）
     "note_links",
+    // 音视频字幕段与播放进度（V20261005）
+    "media_transcript_segments",
+    "media_progress",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
@@ -1228,7 +1244,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 55;
+pub const VFS_TABLE_COUNT: usize = 57;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1302,14 +1318,14 @@ mod tests {
 
     #[test]
     fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20260924);
+        assert_eq!(VFS_SCHEMA_VERSION, 20261005);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("note_editor_leases")
+            Some("media_transcripts")
         );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables

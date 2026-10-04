@@ -38,6 +38,7 @@ pub mod file_repo;
 pub mod folder_repo;
 pub mod index_segment_repo;
 pub mod index_unit_repo;
+pub mod media_transcript_repo;
 pub mod mindmap_repo;
 pub mod note_format_repo;
 pub mod note_history_restore;

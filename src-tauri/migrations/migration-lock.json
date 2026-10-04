@@ -1072,6 +1072,14 @@
       "path": "vfs/V20260924__note_editor_leases.sql",
       "sha256": "04004d03207bc511973730809433c3078fc202b78ade46c528704ada1594c0bd",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261005,
+      "name": "media_transcripts",
+      "path": "vfs/V20261005__media_transcripts.sql",
+      "sha256": "0e89be311858f836a09d44099b1f19c83f518a0f2b1036cbe4eb38120ac03359",
+      "dangers": []
     }
   ]
 }
