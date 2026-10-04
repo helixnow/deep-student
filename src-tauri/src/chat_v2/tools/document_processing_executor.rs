@@ -46,7 +46,7 @@ impl DocumentProcessingExecutor {
     }
 
     /// 清洗资源 ID：仅接受字母数字/下划线/连字符组成的 ID
-    fn sanitize_id(raw: &str) -> Result<String, String> {
+    pub(crate) fn sanitize_id(raw: &str) -> Result<String, String> {
         let trimmed = raw
             .trim()
             .trim_matches(|c| c == '"' || c == '\'' || c == '`');
@@ -69,7 +69,7 @@ impl DocumentProcessingExecutor {
     ///   ① files.resource_id = res（上传资源）
     ///   ② resources.source_id（引用资源 inline data=refs，source_id 指向 att_*/file_*）
     ///   ③ resources.source_id 指向的 resources 行再经 files.resource_id 反查
-    fn resolve_file(vfs_db: &Arc<VfsDatabase>, raw_id: &str) -> Result<VfsFile, String> {
+    pub(crate) fn resolve_file(vfs_db: &Arc<VfsDatabase>, raw_id: &str) -> Result<VfsFile, String> {
         let id = Self::sanitize_id(raw_id)?;
 
         if id.starts_with("file_") || id.starts_with("att_") {
@@ -229,7 +229,7 @@ impl DocumentProcessingExecutor {
             "mime_type": file.mime_type,
             "page_count": file.page_count,
             "message": "解析/OCR 管线已在后台启动",
-            "hint": "OCR 可能需要数分钟，请稍后用 document_parse_status 轮询。完成后可用 resource_read 读取全文，或用 qbank_import_document 把文档内容导入题库。",
+            "hint": "OCR 可能需要数分钟，请稍后用 document_parse_status 轮询。完成后可用 resource_read 读取全文。导入题库无需等待 OCR：直接用同一 resource_id 调用 qbank_import_document。",
         }))
     }
 
@@ -296,7 +296,7 @@ impl DocumentProcessingExecutor {
                     if s.stage == "error" {
                         "解析失败。可用 document_parse 重新发起（stage=full 重跑完整管线）。"
                     } else {
-                        "解析完成。可用 resource_read 读取全文；如需入题库，调用 qbank_import_document；入库题目可再用 review_schedule 安排复习。"
+                        "解析完成。可用 resource_read 读取全文；如需入题库，用同一 resource_id 调用 qbank_import_document；入库题目可再用 review_schedule 安排复习。"
                     }
                 } else {
                     "仍在处理中，请稍后再次调用 document_parse_status。"

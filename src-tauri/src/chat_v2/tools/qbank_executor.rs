@@ -4296,21 +4296,34 @@ impl QBankExecutor {
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
+        use super::qbank_import_source::{resolve_import_input, ImportInput};
         use crate::question_import_service::{ImportRequest, QuestionImportService};
+
+        // 输入：content（base64/纯文本，向后兼容）或资源库 resource_id/file_id（直接读 VFS，
+        // 无需 Agent 自行 base64 编码）。解析/OCR 未完成时原样返回 processing 提示。
+        let pdf_service = ctx.pdf_processing_service.clone();
+        let is_parse_running = move |file_id: &str| {
+            pdf_service
+                .as_ref()
+                .is_some_and(|service| service.is_running(file_id))
+        };
+        let resolved =
+            match resolve_import_input(ctx.vfs_db.as_ref(), &call.arguments, &is_parse_running)? {
+                ImportInput::Ready(resolved) => resolved,
+                ImportInput::NotReady(status) => return Ok(status),
+            };
 
         let _write_guard = QBANK_WRITE_LOCK.lock().await;
 
-        let content = call
+        let content = resolved.content.as_str();
+        let format = resolved.format.as_str();
+        let name = call
             .arguments
-            .get("content")
+            .get("name")
             .and_then(|v| v.as_str())
-            .ok_or("Missing 'content' parameter")?;
-        let format = call
-            .arguments
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("txt");
-        let name = call.arguments.get("name").and_then(|v| v.as_str());
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .or(resolved.default_name.as_deref());
         let session_id = call.arguments.get("session_id").and_then(|v| v.as_str());
         let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
 
@@ -4344,14 +4357,19 @@ impl QBankExecutor {
             std::slice::from_ref(&result.session_id),
         );
 
+        let mut payload = json!({
+            "success": true,
+            "session_id": result.session_id,
+            "name": result.name,
+            "imported_count": result.imported_count,
+            "total_questions": result.total_questions,
+        });
+        if let Some(source) = resolved.source {
+            payload["source"] = source;
+        }
+
         Ok(with_localized_message(
-            json!({
-                "success": true,
-                "session_id": result.session_id,
-                "name": result.name,
-                "imported_count": result.imported_count,
-                "total_questions": result.total_questions,
-            }),
+            payload,
             "chat.tools.qbank.questions_imported",
             json!({ "count": result.imported_count }),
             format!("成功导入 {} 道题目", result.imported_count),

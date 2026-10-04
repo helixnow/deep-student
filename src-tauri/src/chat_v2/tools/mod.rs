@@ -93,6 +93,7 @@ pub mod pptx_executor; // 🆕 PPTX 演示文稿读写工具执行器（ppt-rs�
 pub mod ptc_executor; // 🆕 PTC 程序化工具组合执行器（builtin-ptc_run，G05-P1）
 pub mod ptc_runtime; // 🆕 PTC Starlark 脚本运行时（白名单 + 预算 + trace）
 pub mod qbank_executor; // 🆕 智能题目集工具执行器
+pub(crate) mod qbank_import_source; // qbank_import_document 输入解析（content / 资源库 resource_id）
 pub mod registry;
 pub mod review_executor; // 🆕 间隔重复复习计划工具执行器（review_* 工具组，SM-2）
 pub mod role_pack_executor; // Versioned professional role pack registry (read-only)
