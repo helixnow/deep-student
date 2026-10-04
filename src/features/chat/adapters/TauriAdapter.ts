@@ -36,6 +36,7 @@ import {
   handleStreamAbort,
   clearEventContext,
   flushPendingBackendEvents,
+  registerBridgeStoreResolver,
   resetBridgeState,
 } from '../core/middleware/eventBridge';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
@@ -376,6 +377,17 @@ export class ChatV2TauriAdapter {
    */
   private getCurrentState(): ChatStore {
     return this.storeApi?.getState() ?? this.store;
+  }
+
+  /** eventBridge 最新 Store 解析器的注销函数（批量回放/冲刷路径防快照过期） */
+  private unregisterBridgeStoreResolver: (() => void) | null = null;
+
+  private ensureBridgeStoreResolver(): void {
+    if (this.unregisterBridgeStoreResolver || !this.storeApi) return;
+    this.unregisterBridgeStoreResolver = registerBridgeStoreResolver(
+      this.sessionId,
+      () => this.getCurrentState(),
+    );
   }
 
   /** Narrow storeApi for the adapter error channel (optional adapterError flag). */
@@ -811,6 +823,7 @@ export class ChatV2TauriAdapter {
    * 设置事件监听器
    */
   async setup(): Promise<void> {
+    this.ensureBridgeStoreResolver();
     if (this.isSetup) {
       console.warn(LOG_PREFIX, 'Already setup, skipping...');
       // 📊 性能打点：适配器已初始化，快速路径
@@ -1104,6 +1117,8 @@ export class ChatV2TauriAdapter {
    */
   async cleanup(): Promise<void> {
     console.log(LOG_PREFIX, 'Cleaning up...');
+    this.unregisterBridgeStoreResolver?.();
+    this.unregisterBridgeStoreResolver = null;
     this.cancelPendingStreamCompletion();
     // 🚀 性能修复（2026-09-06）：清理前冲刷所有制卡合并缓冲，避免待写卡片丢失
     for (const blockId of [...this.ankiCardFlushQueue.keys()]) {

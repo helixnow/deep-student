@@ -47,6 +47,42 @@ import {
 // ============================================================================
 
 /**
+ * 按 toolCallId 查找仍处于 preparing 的占位块（同一 toolCallId 一条逻辑工具调用）。
+ *
+ * 返回顺序：同消息的块优先（按 blockIds 顺序），其后为其它消息中的匹配块
+ * （向后兼容旧行为：消息 ID 异常时仍能复用占位块）。
+ */
+function findPreparingBlockIds(
+  store: ChatStore,
+  messageId: string,
+  toolCallId: string
+): string[] {
+  const sameMessage: string[] = [];
+  const otherMessages: string[] = [];
+  const message = store.messageMap?.get(messageId);
+  const orderedIds = message?.blockIds ?? [];
+  const seen = new Set<string>();
+  for (const id of orderedIds) {
+    const block = store.blocks.get(id);
+    if (block && block.toolCallId === toolCallId && block.isPreparing) {
+      sameMessage.push(id);
+      seen.add(id);
+    }
+  }
+  for (const [id, block] of store.blocks) {
+    if (seen.has(id)) continue;
+    if (block.toolCallId === toolCallId && block.isPreparing) {
+      if (block.messageId === messageId) {
+        sameMessage.push(id);
+      } else {
+        otherMessages.push(id);
+      }
+    }
+  }
+  return [...sameMessage, ...otherMessages];
+}
+
+/**
  * 更新 workspace_status 块的快照数据
  * 用于在 agents 变化后同步更新块的持久化数据
  */
@@ -201,14 +237,23 @@ const toolCallEventHandler: EventHandler = {
                 : 'mcp_tool';
 
     // 🆕 2026-01-16: 尝试复用已存在的 preparing 块
+    // 幂等：同一 toolCallId 只保留一个块。若因重复 preparing 事件 / 流重试残留
+    // 了多个占位块，复用第一个（保持其在时间线中的位置），其余同消息的占位块
+    // 直接移除——否则它们会以「准备中/执行中」孤儿行停留到 stream_complete。
     let preparingBlockId: string | undefined;
     if (toolCallId) {
-      // 查找具有相同 toolCallId 的 preparing 块
-      for (const [id, block] of store.blocks) {
-        if (block.toolCallId === toolCallId && block.isPreparing) {
-          preparingBlockId = id;
-          break;
-        }
+      const preparingIds = findPreparingBlockIds(store, messageId, toolCallId);
+      preparingBlockId = preparingIds[0];
+      const primaryMessageId = preparingBlockId
+        ? store.blocks.get(preparingBlockId)?.messageId
+        : undefined;
+      for (const extraId of preparingIds.slice(1)) {
+        if (store.blocks.get(extraId)?.messageId !== primaryMessageId) continue;
+        if (extraId === backendBlockId) continue;
+        console.warn(
+          `[ToolCall] Removing duplicate preparing block ${extraId} for toolCallId=${toolCallId}`
+        );
+        store.deleteBlock?.(extraId);
       }
     }
 
@@ -1052,6 +1097,25 @@ const toolCallPreparingEventHandler: EventHandler = {
             : isWorkbenchOpsToolName(toolName)
               ? 'workbench_ops'
               : 'mcp_tool';
+
+    // 幂等：同一 toolCallId 已有 preparing 占位块时不再新建（否则 tool_call start
+    // 只会提升其中一个，其余成为孤儿行）。后端换了 block_id 时原地改名，
+    // 让后续以新 block_id 寻址的参数预览 chunk 仍能落到这个占位块上。
+    const existingPreparingId = toolCallId
+      ? findPreparingBlockIds(store, messageId, toolCallId).find(
+          (id) => store.blocks.get(id)?.messageId === messageId
+        )
+      : undefined;
+    if (existingPreparingId) {
+      console.warn(
+        `[ToolCallPreparing] Duplicate preparing for toolCallId=${toolCallId}, reusing block ${existingPreparingId}`
+      );
+      if (backendBlockId && backendBlockId !== existingPreparingId && store.replaceBlockId) {
+        store.replaceBlockId(existingPreparingId, backendBlockId);
+        return backendBlockId;
+      }
+      return existingPreparingId;
+    }
 
     // 创建预渲染的工具块（使用后端 block_id 或前端生成）
     const blockId = backendBlockId

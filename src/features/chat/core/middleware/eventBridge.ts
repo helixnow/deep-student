@@ -204,6 +204,51 @@ const activeContexts = new Map<string, EventContext>();
 const bridgeStates = new Map<string, EventBridgeState>();
 const processedEventIds = new Map<string, ProcessedEventTracker>();
 
+// ============================================================================
+// 最新 Store 解析（批量回放防快照过期）
+// ============================================================================
+
+/**
+ * 会话 → 「读取最新 Store 状态」的解析器（由 TauriAdapter 以 storeApi.getState 注册）。
+ *
+ * 背景：调用方传入的 `store` 是 zustand `getState()` 的一次性快照，`blocks`
+ * 等 Map 在每次 set() 后整体替换。单事件直通路径每次都拿新快照，没问题；
+ * 但乱序缓冲回放（processBufferedEvents）、gap 超时冲刷（skipGapAndFlush，
+ * 快照甚至取自定时器启动时）、孤儿终止事件冲刷会在**同一份旧快照**上连续
+ * 处理多个事件——同批内先创建的 preparing 块对后续 tool_call start 不可见，
+ * start 找不到占位块便另建执行块，占位块成为孤儿：时间线同一工具出现
+ * 「准备中/执行中（计时不停）」+「已完成」两行，直到 stream_complete 才被清理。
+ */
+const storeResolvers = new Map<string, () => ChatStore>();
+
+/**
+ * 注册会话的最新 Store 解析器。返回注销函数（仅当仍是本解析器时才注销，
+ * 避免后注册的适配器被先前实例的清理误删）。
+ */
+export function registerBridgeStoreResolver(
+  sessionId: string,
+  resolver: () => ChatStore
+): () => void {
+  storeResolvers.set(sessionId, resolver);
+  return () => {
+    if (storeResolvers.get(sessionId) === resolver) {
+      storeResolvers.delete(sessionId);
+    }
+  };
+}
+
+/** 取会话最新 Store 状态；无解析器或解析失败时回退到传入快照。 */
+function resolveFreshStore(store: ChatStore): ChatStore {
+  const resolver = storeResolvers.get(store.sessionId);
+  if (!resolver) return store;
+  try {
+    const fresh = resolver();
+    return fresh && fresh.sessionId === store.sessionId ? fresh : store;
+  } catch {
+    return store;
+  }
+}
+
 function getOrCreateContext(sessionId: string, messageId: string): EventContext {
   let context = activeContexts.get(sessionId);
   if (!context || context.messageId !== messageId) {
@@ -704,7 +749,10 @@ function skipGapAndFlush(
  * 内部事件处理入口
  * 支持变体事件和普通事件
  */
-function processEventInternal(store: ChatStore, event: BackendEvent): void {
+function processEventInternal(snapshot: ChatStore, event: BackendEvent): void {
+  // 每个事件都基于最新状态处理：批量回放/冲刷路径传入的快照可能早已过期，
+  // 同批前序事件创建的块（如 preparing 占位块）在旧快照里不可见。
+  const store = resolveFreshStore(snapshot);
   const { type, variantId, messageId, modelId, status, error, phase, blockId, sequenceId } = event;
 
   if (shouldDropEventBySkillVersion(store, event)) {
@@ -1029,8 +1077,10 @@ function tryApplyOrphanTerminal(
     `[EventBridge] Replaying buffered orphan '${orphan.event.phase}' onto late-arriving start. ` +
       `type=${type}, blockId=${blockId}`
   );
-  applyTerminalEvent(store, handler, context, orphan.event, blockId);
-  autoSave.scheduleAutoSave(store);
+  // start 刚创建了块：用最新状态回放，终止处理器才能读到该块
+  const fresh = resolveFreshStore(store);
+  applyTerminalEvent(fresh, handler, context, orphan.event, blockId);
+  autoSave.scheduleAutoSave(fresh);
 }
 
 /**
@@ -1039,8 +1089,8 @@ function tryApplyOrphanTerminal(
  * 在孤儿窗口超时或流式终点（stream_complete）调用，保证检索结果等
  * end 数据不会因 start 丢失而静默消失。
  */
-export function flushOrphanTerminals(store: ChatStore): void {
-  const context = activeContexts.get(store.sessionId);
+export function flushOrphanTerminals(snapshot: ChatStore): void {
+  const context = activeContexts.get(snapshot.sessionId);
   if (!context) return;
   if (context.orphanTimer) {
     clearTimeout(context.orphanTimer);
@@ -1050,6 +1100,8 @@ export function flushOrphanTerminals(store: ChatStore): void {
 
   const orphans = context.orphanTerminals.splice(0, context.orphanTerminals.length);
   for (const { event } of orphans) {
+    // 定时器回调传入的是定时器启动时的快照：逐个事件取最新状态
+    const store = resolveFreshStore(snapshot);
     const handler = eventRegistry.get(event.type);
     if (!handler) continue;
 
@@ -1077,9 +1129,9 @@ export function flushOrphanTerminals(store: ChatStore): void {
       );
     }
 
-    applyTerminalEvent(store, handler, context, event, blockId);
+    applyTerminalEvent(resolveFreshStore(store), handler, context, event, blockId);
   }
-  autoSave.scheduleAutoSave(store);
+  autoSave.scheduleAutoSave(resolveFreshStore(snapshot));
 }
 
 // ============================================================================

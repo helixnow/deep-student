@@ -21,6 +21,7 @@ vi.mock('../../core/middleware/eventBridge', () => ({
   handleStreamAbort,
   clearEventContext: vi.fn(),
   resetBridgeState: vi.fn(),
+  registerBridgeStoreResolver: vi.fn(() => () => undefined),
 }));
 
 vi.mock('../../core/middleware/autoSave', () => ({
