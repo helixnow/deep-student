@@ -2,6 +2,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { QUICK_ASSISTANT_SHORTCUT } from './config';
+import { isMobilePlatform } from '@/utils/platform';
 
 export const QUICK_ASSISTANT_LABEL = 'quick-assistant';
 export const QUICK_ASSISTANT_SHOWN_EVENT = 'quick-assistant://shown';
@@ -79,7 +80,10 @@ export async function initializeQuickAssistantMainBridge(): Promise<() => void> 
 }
 
 export async function initializeQuickAssistantGlobalShortcut(): Promise<() => void> {
-  if (!isTauri()) return () => {};
+  // global-shortcut 插件仅在桌面端注册（Cargo 按 target 条件依赖）；移动端调用
+  // isRegistered 会 reject，使 main.tsx 的 Promise.all 整体失败、连带丢掉
+  // MainBridge 的清理函数。直接返回 no-op 清理。
+  if (!isTauri() || isMobilePlatform()) return () => {};
   const { register, unregister, isRegistered } = await import('@tauri-apps/plugin-global-shortcut');
 
   const syncRegistration = async () => {
