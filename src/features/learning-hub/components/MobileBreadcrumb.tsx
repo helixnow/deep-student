@@ -8,11 +8,14 @@
  * - 点击面包屑项可导航到对应层级
  */
 
-import React, { useRef, useState, useLayoutEffect, useCallback } from 'react';
+import React, { useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
+import { localizeMemoryBreadcrumbs } from '../memoryFolderLabels';
+import { useMemoryRootFolder } from '../hooks/useMemoryRootFolder';
 
 /**
  * 触屏面包屑命中区扩展：min-h 让按钮真正占出 44px（--touch-target-size，
@@ -44,10 +47,17 @@ export interface MobileBreadcrumbProps {
  */
 export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
   rootTitle,
-  breadcrumbs,
+  breadcrumbs: storedBreadcrumbs,
   onNavigate,
   className,
 }) => {
+  const { t } = useTranslation('learningHub');
+  // 记忆系统文件夹（记忆/经历/…）仅显示层本地化，导航按索引不受影响
+  const memoryRoot = useMemoryRootFolder();
+  const breadcrumbs = useMemo(
+    () => localizeMemoryBreadcrumbs(storedBreadcrumbs, memoryRoot, t),
+    [storedBreadcrumbs, memoryRoot, t],
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const fullPathRef = useRef<HTMLDivElement>(null);
   const collapsedPathRef = useRef<HTMLDivElement>(null);

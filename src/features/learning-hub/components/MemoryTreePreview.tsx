@@ -20,6 +20,7 @@ import {
 import { DsButton } from '@/components/ui/DsButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getMemoryTree, type FolderTreeNode } from '@/api/memoryApi';
+import { localizeMemoryFolderTitle } from '../memoryFolderLabels';
 
 interface MemoryTreePreviewProps {
   onNavigateToFolder?: (folderId: string) => void;
@@ -136,7 +137,7 @@ const TreeNode: React.FC<{
         <Folder size={14} className="text-amber-500 shrink-0" />
 
         {/* Title */}
-        <span className="text-[12px] truncate flex-1">{node.folder.title}</span>
+        <span className="text-[12px] truncate flex-1">{localizeMemoryFolderTitle(node.folder.title, t)}</span>
 
         {/* Stats bar */}
         <div className="flex items-center gap-1.5 shrink-0">

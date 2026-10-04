@@ -1491,5 +1491,17 @@
     "essay": "New Essay",
     "importedDocument": "Imported document",
     "importedNote": "Imported note"
+  },
+  "memoryFolders": {
+    "root": "Memory",
+    "preferences": "Preferences",
+    "personalBackground": "Personal background",
+    "workEnvironment": "Work environment",
+    "experience": "Experience",
+    "subjectStatus": "Subject status",
+    "keyDates": "Key dates",
+    "projects": "Projects",
+    "studyLog": "Study log",
+    "system": "System"
   }
 }

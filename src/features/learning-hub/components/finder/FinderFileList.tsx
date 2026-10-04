@@ -214,6 +214,8 @@ interface FinderFileRowProps {
   onContextMenu: (e: React.MouseEvent, item: DstuNode) => void;
   onEditConfirm?: (id: string, newName: string) => void;
   onEditCancel?: (id: string) => void;
+  /** 仅显示用名称（如记忆系统文件夹本地化）；重命名仍编辑 item.name */
+  displayName?: string;
 }
 
 /**
@@ -238,6 +240,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
   onContextMenu,
   onEditConfirm,
   onEditCancel,
+  displayName,
 }: FinderFileRowProps) {
   const handleSelect = useCallback(
     (mode: 'single' | 'toggle' | 'range') => onSelect(item.id, mode),
@@ -275,6 +278,7 @@ const FinderFileRow = React.memo(function FinderFileRow({
       onEditCancel={handleEditCancel}
       compact={compact}
       multiSelectMode={multiSelectMode}
+      displayName={displayName}
     />
   );
 });
@@ -321,6 +325,11 @@ interface FinderFileListProps {
   onRetry?: () => void;
   /** ★ 高亮标记的项 ID（如已关联资源） */
   highlightedIds?: Set<string>;
+  /**
+   * 仅显示用名称解析（如记忆系统文件夹按界面语言本地化）。
+   * 返回 undefined 时显示 item.name；重命名始终编辑存储名。
+   */
+  getItemDisplayName?: (item: DstuNode) => string | undefined;
   /** ★ 2026-06-12（审阅问题 FE-S2）：键盘 F2 请求重命名 */
   onRequestRename?: (item: DstuNode) => void;
   /**
@@ -378,6 +387,7 @@ export function FinderFileList({
   onSelectionChange,
   onRetry,
   highlightedIds,
+  getItemDisplayName,
   onRequestRename,
   parentDropTargets,
   specialDropTargets,
@@ -1247,6 +1257,7 @@ export function FinderFileList({
                       isSelected={selectedIds.has(item.id)}
                       isActive={activeFileId === item.id}
                       isHighlighted={highlightedIds?.has(item.id)}
+                      displayName={getItemDisplayName?.(item)}
                         isSpringLoading={springLoadFolderId === item.id}
                       onSelect={onSelect}
                       onOpen={onOpen}
@@ -1295,6 +1306,7 @@ export function FinderFileList({
                   onContextMenu={() => {}}
                   isDragOverlay
                   compact={compact}
+                  displayName={getItemDisplayName?.(activeItem)}
                 />
                 {dragCount > 1 && (
                   <div className={cn(
@@ -1386,6 +1398,7 @@ export function FinderFileList({
                         isSelected={selectedIds.has(item.id)}
                         isActive={activeFileId === item.id}
                         isHighlighted={highlightedIds?.has(item.id)}
+                        displayName={getItemDisplayName?.(item)}
                         isSpringLoading={springLoadFolderId === item.id}
                         onSelect={onSelect}
                         onOpen={onOpen}
@@ -1436,6 +1449,7 @@ export function FinderFileList({
                 onContextMenu={() => {}}
                 isDragOverlay
                 compact={compact}
+                displayName={getItemDisplayName?.(activeItem)}
               />
               {dragCount > 1 && (
                 <div className={cn(

@@ -196,8 +196,11 @@ export function TreeRow({
     }
   };
 
+  const displayName = item.displayNameKey
+    ? String(t(item.displayNameKey, { defaultValue: item.name }))
+    : displayQuickLearningLabel(item.name);
   const ariaLabel = folder
-    ? t('workbench:notesWorkspace.tree.folder', { name: displayQuickLearningLabel(item.name) })
+    ? t('workbench:notesWorkspace.tree.folder', { name: displayName })
     : item.kind === 'mindmap'
       ? t('workbench:notesWorkspace.tree.mindmap', { name: item.name })
       : t('workbench:notesWorkspace.tree.note', { name: item.name });
@@ -332,7 +335,7 @@ export function TreeRow({
           )}
         </span>
       ) : (
-        <span className="nwt-row-label">{displayQuickLearningLabel(item.name)}</span>
+        <span className="nwt-row-label">{displayName}</span>
       )}
       {item.favorite ? <Star className="nwt-favorite" size={12} weight="fill" aria-hidden /> : null}
       {!renaming ? (

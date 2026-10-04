@@ -5,6 +5,8 @@ import { Input } from '@/components/ui/shad/Input';
 export interface InlineEditTextProps {
   /** 当前值 */
   value: string;
+  /** 非编辑态显示的文本（仅显示用，如本地化系统名）；缺省显示 value，编辑始终基于 value */
+  displayValue?: string;
   /** 是否处于编辑状态 */
   isEditing: boolean;
   /** 确认编辑回调 */
@@ -49,6 +51,7 @@ function getTextWidthEm(value: string): number {
  */
 export const InlineEditText = React.memo(function InlineEditText({
   value,
+  displayValue,
   isEditing,
   onConfirm,
   onCancel,
@@ -174,7 +177,7 @@ export const InlineEditText = React.memo(function InlineEditText({
   if (!isEditing) {
     return (
       <span className={cn("truncate", textClassName, className)}>
-        {value}
+        {displayValue ?? value}
       </span>
     );
   }

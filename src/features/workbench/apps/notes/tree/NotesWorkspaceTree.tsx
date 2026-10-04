@@ -874,7 +874,11 @@ export function NotesWorkspaceTree({
                     <FileText size={15} />
                   )}
                 </span>
-                <span className="nwt-drag-overlay-title">{activeDragItem.name}</span>
+                <span className="nwt-drag-overlay-title">
+                  {activeDragItem.displayNameKey
+                    ? String(t(activeDragItem.displayNameKey, { defaultValue: activeDragItem.name }))
+                    : activeDragItem.name}
+                </span>
                 {draggedIds.length > 1 ? (
                   <span className="nwt-drag-overlay-badge">{draggedIds.length}</span>
                 ) : null}

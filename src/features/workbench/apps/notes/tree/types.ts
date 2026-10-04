@@ -22,6 +22,11 @@ export interface NotesWorkspaceTreeItem {
   path?: string;
   canRename?: boolean;
   canMove?: boolean;
+  /**
+   * Optional i18n key for a display-only label (e.g. system memory folders whose
+   * stored Chinese title is addressed by agent tools). Rename still edits `name`.
+   */
+  displayNameKey?: string;
 }
 
 export interface NotesWorkspaceTreeMenuItem {

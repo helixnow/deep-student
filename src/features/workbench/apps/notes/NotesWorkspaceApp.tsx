@@ -83,6 +83,7 @@ import {
   type NotesNavHistoryEntry,
 } from './hooks/useNotesNavHistory';
 import { nodeMatchesTags } from './parseTagQuery';
+import { useMemoryRootFolder } from '@/features/learning-hub/hooks/useMemoryRootFolder';
 import {
   NotesWorkspaceTree,
   mapWorkspaceTreeFolder,
@@ -1126,7 +1127,8 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     ),
     [filteredResources, folders, query, resourceFolderIds, selectedTags.length],
   );
-  const treeItems = useMemo(() => mapWorkspaceTreeFolder(tree), [tree]);
+  const memoryRoot = useMemoryRootFolder();
+  const treeItems = useMemo(() => mapWorkspaceTreeFolder(tree, { memoryRoot }), [memoryRoot, tree]);
   const folderEntries = useMemo(() => collectFolderEntries(treeItems), [treeItems]);
   const expandedIds = useMemo(
     () => expandedIdsFromCollapsedPaths(folderEntries, collapsedFolderPaths),

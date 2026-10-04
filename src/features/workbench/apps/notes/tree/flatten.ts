@@ -1,4 +1,9 @@
 import type { FlattenedTreeRow, NotesWorkspaceTreeItem } from './types';
+import {
+  getMemoryFolderLabelKey,
+  isMemoryRootFolder,
+  type MemoryRootRef,
+} from '@/features/learning-hub/memoryFolderLabels';
 
 export function isFolderItem(item: NotesWorkspaceTreeItem): boolean {
   return item.kind === 'folder';
@@ -185,18 +190,35 @@ function mapResources(
 
 export function mapWorkspaceTreeFolder(
   folder: WorkspaceTreeFolderSource,
-  options?: { includeRootChildrenOnly?: boolean },
+  options?: {
+    includeRootChildrenOnly?: boolean;
+    /**
+     * Memory root folder (from `memory_get_config`). Folders inside it whose
+     * stored title is a system-defined memory folder get a display-only
+     * `displayNameKey`. When the id is unknown, a top-level folder titled like
+     * the memory root is used as fallback.
+     */
+    memoryRoot?: MemoryRootRef | null;
+  },
 ): NotesWorkspaceTreeItem[] {
   const includeRootChildrenOnly = options?.includeRootChildrenOnly ?? true;
+  const memoryRoot = options?.memoryRoot ?? null;
 
-  const mapFolder = (node: WorkspaceTreeFolderSource): NotesWorkspaceTreeItem | null => {
+  const mapFolder = (
+    node: WorkspaceTreeFolderSource,
+    topLevel: boolean,
+    parentInMemory: boolean,
+  ): NotesWorkspaceTreeItem | null => {
     if (!node.id && !node.name) {
       // Virtual root — map children only.
       return null;
     }
+    const inMemory = parentInMemory
+      || isMemoryRootFolder({ id: node.id ?? null, title: node.name }, memoryRoot, { topLevel });
+    const displayNameKey = inMemory ? getMemoryFolderLabelKey(node.name) ?? undefined : undefined;
     const childFolders = listChildFolders(node.folders)
       .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
-      .map(mapFolder)
+      .map((child) => mapFolder(child, false, inMemory))
       .filter((child): child is NotesWorkspaceTreeItem => child !== null);
     const children = [...childFolders, ...mapResources(node.resources)];
 
@@ -212,6 +234,7 @@ export function mapWorkspaceTreeFolder(
         children,
         canRename: false,
         canMove: false,
+        ...(displayNameKey ? { displayNameKey } : {}),
       };
     }
 
@@ -223,18 +246,19 @@ export function mapWorkspaceTreeFolder(
       children,
       canRename: true,
       canMove: true,
+      ...(displayNameKey ? { displayNameKey } : {}),
     };
   };
 
   if (includeRootChildrenOnly && !folder.id && !folder.name) {
     const childFolders = listChildFolders(folder.folders)
       .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path))
-      .map(mapFolder)
+      .map((child) => mapFolder(child, true, false))
       .filter((child): child is NotesWorkspaceTreeItem => child !== null);
     return [...childFolders, ...mapResources(folder.resources)];
   }
 
-  const mapped = mapFolder(folder);
+  const mapped = mapFolder(folder, true, false);
   return mapped ? [mapped] : [];
 }
 

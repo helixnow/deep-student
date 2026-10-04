@@ -1491,5 +1491,17 @@
     "essay": "新作文",
     "importedDocument": "导入文档",
     "importedNote": "导入笔记"
+  },
+  "memoryFolders": {
+    "root": "记忆",
+    "preferences": "偏好",
+    "personalBackground": "个人背景",
+    "workEnvironment": "工作环境",
+    "experience": "经历",
+    "subjectStatus": "学科状态",
+    "keyDates": "时间节点",
+    "projects": "项目",
+    "studyLog": "学习日志",
+    "system": "__system__"
   }
 }

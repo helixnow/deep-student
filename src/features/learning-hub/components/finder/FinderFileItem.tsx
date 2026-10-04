@@ -52,6 +52,8 @@ export interface FinderFileItemProps {
   isHighlighted?: boolean;
   /** ★ 多选模式：触屏单击只切换选中，不再同时触发打开（避免文件夹 toggle+导航双触发） */
   multiSelectMode?: boolean;
+  /** 仅显示用名称（如记忆系统文件夹本地化）；内联重命名仍编辑 item.name */
+  displayName?: string;
 }
 
 interface SortableFinderFileItemProps extends FinderFileItemProps {
@@ -125,6 +127,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   compact = false,
   isHighlighted = false,
   multiSelectMode = false,
+  displayName,
 }: FinderFileItemProps) {
   const { t, i18n } = useTranslation(['learningHub', 'common']);
   const CustomIcon = TYPE_CUSTOM_ICONS[item.type] || IllustratedGenericFileIcon;
@@ -190,11 +193,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   const childCountLabel = item.type === 'folder' && item.childCount !== undefined
     ? t('learningHub:finder.childCount', { count: item.childCount })
     : undefined;
-  // 仅展示：旧作文标题里落库的中文预置模式名按界面语言显示；重命名编辑框仍用库内原名
-  const displayName = item.type === 'essay' ? localizeEssayTitle(item.name, t) : item.name;
+  // 仅展示用名称（重命名编辑框仍用库内原名 item.name）：调用方传入的显示名（如记忆系统文件夹本地化）优先；
+  // 旧作文标题里落库的中文预置模式名按界面语言显示
+  const shownName = displayName || (item.type === 'essay' ? localizeEssayTitle(item.name, t) : item.name);
   const rowTitle = snippet
-    ? `${displayName}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
-    : displayName;
+    ? `${shownName}\n${matchSource === 'index' ? `${t('learningHub:finder.matchFromIndex')} ` : ''}${snippet}`
+    : shownName;
 
   if (viewMode === 'list') {
     return (
@@ -235,7 +239,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         {/* 名称 + 收藏 */}
         <div className="flex-1 min-w-0 flex items-center gap-1.5">
           <InlineEditText
-            value={isEditing ? item.name : displayName}
+            value={item.name}
+            displayValue={shownName}
             isEditing={isEditing}
             onConfirm={handleEditConfirm}
             onCancel={handleEditCancel}
@@ -384,7 +389,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             'mx-auto block w-fit max-w-full rounded px-1 py-0.5 text-xs leading-tight font-normal line-clamp-2 break-words',
             isSelected ? 'bg-primary text-primary-foreground' : 'text-foreground/85'
           )}>
-            {displayName}
+            {shownName}
           </span>
         )}
       </div>

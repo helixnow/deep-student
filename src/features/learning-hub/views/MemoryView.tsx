@@ -104,6 +104,7 @@ import type { FolderTreeNode as DstuFolderTreeNode } from '@/dstu/types/folder';
 import type { ResourceListItem } from '../types';
 import { registerMemoryDomainRefresh } from './memoryDomainRefresh';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { localizeMemoryFolderPath, localizeMemoryFolderTitle } from '../memoryFolderLabels';
 
 // ============================================================================
 // 常量与类型定义
@@ -1299,7 +1300,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <div className="flex items-center gap-2">
           <FolderOpen size={14} />
           <span>{t('memory.root_folder')}:</span>
-          <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle')}</span>
+          <span className="font-medium text-foreground">{config.memoryRootFolderTitle ? localizeMemoryFolderTitle(config.memoryRootFolderTitle, t) : t('memory.defaultRootTitle')}</span>
           <DsButton
             variant="ghost" size="sm"
             onClick={handleOpenRootPicker}
@@ -2003,7 +2004,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <span>{new Date(memory.updatedAt).toLocaleDateString()}</span>
                           {memory.folderPath && (
-                            <span className="px-1.5 py-0 rounded bg-muted/50 text-2xs">{memory.folderPath}</span>
+                            <span className="px-1.5 py-0 rounded bg-muted/50 text-2xs">{localizeMemoryFolderPath(memory.folderPath, t)}</span>
                           )}
                           {memory.hits > 0 && (
                             <span className="text-2xs text-muted-foreground/50">{memory.hits} {t('memory.hits')}</span>
@@ -2146,7 +2147,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
             isFolderExpanded && 'rotate-90'
           )} />
           <Folder size={14} className="text-amber-500 flex-shrink-0" />
-          <span className="text-sm font-medium truncate">{node.folder.title}</span>
+          <span className="text-sm font-medium truncate">{localizeMemoryFolderTitle(node.folder.title, t)}</span>
           {hasChildren && (
             <span className="text-2xs text-muted-foreground/50 ml-auto">
               {node.items.length}

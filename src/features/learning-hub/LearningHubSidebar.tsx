@@ -11,6 +11,13 @@ import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { extractFileName, extractDisplayFileName, fileManager } from '@/utils/fileManager';
 import { exportResourceById } from './utils/exportResource';
 import { getMemoryConfig } from '@/api/memoryApi';
+import {
+  getMemoryFolderLabelKey,
+  isPathInMemoryRoot,
+  localizeMemoryBreadcrumbs,
+  localizeMemoryFolderTitle,
+  type MemoryRootRef,
+} from './memoryFolderLabels';
 import { MemoryFolderBanner } from './components/MemoryFolderBanner';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
@@ -303,6 +310,24 @@ export function LearningHubSidebar({
     effectivePath.breadcrumbs?.some(b => b.id === memoryRootFolderId)
   );
   const currentQuickAccessType = isInMemoryFolder ? 'memory' as QuickAccessType : baseQuickAccessType;
+
+  // 记忆系统文件夹（记忆/经历/学科状态…）存储名为中文且被智能体工具按路径寻址，
+  // 仅在显示层按界面语言本地化；重命名仍编辑存储名
+  const memoryRoot = useMemo<MemoryRootRef | null>(
+    () => (memoryRootFolderId ? { id: memoryRootFolderId } : null),
+    [memoryRootFolderId],
+  );
+  const displayBreadcrumbs = useMemo(
+    () => localizeMemoryBreadcrumbs(effectivePath.breadcrumbs, memoryRoot, t),
+    [effectivePath.breadcrumbs, memoryRoot, t],
+  );
+  const getItemDisplayName = useCallback((item: DstuNode): string | undefined => {
+    if (item.type !== 'folder' || !getMemoryFolderLabelKey(item.name)) return undefined;
+    const inMemory = isInMemoryFolder
+      || (memoryRootFolderId != null && item.id === memoryRootFolderId)
+      || isPathInMemoryRoot(item.path, memoryRoot);
+    return inMemory ? localizeMemoryFolderTitle(item.name, t) : undefined;
+  }, [isInMemoryFolder, memoryRoot, memoryRootFolderId, t]);
   const searchPlaceholder = t(getSearchPlaceholderKey(effectivePath));
   const canCreateInCurrentView = viewCapabilities.canCreate;
   const canSearchInCurrentView = viewCapabilities.canSearch;
@@ -2431,12 +2456,12 @@ export function LearningHubSidebar({
       { id: null, label: t('learningHub:title') },
     ];
     // 不含当前目录自身（最后一个 breadcrumb）
-    const ancestors = effectivePath.breadcrumbs.slice(0, -1);
+    const ancestors = displayBreadcrumbs.slice(0, -1);
     for (const crumb of ancestors) {
       targets.push({ id: crumb.id, label: crumb.name });
     }
     return targets;
-  }, [canDragDropInCurrentView, mode, effectivePath.viewKind, effectivePath.folderId, effectivePath.breadcrumbs, t]);
+  }, [canDragDropInCurrentView, mode, effectivePath.viewKind, effectivePath.folderId, effectivePath.breadcrumbs.length, displayBreadcrumbs, t]);
 
   // 拖拽快捷目标：收藏 / 回收站（拖拽时出现在列表顶栏）
   const specialDropTargets = useMemo(() => {
@@ -3647,10 +3672,10 @@ export function LearningHubSidebar({
               <DsButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', !isSmallScreen && '!h-4 !w-4')} title={t('learningHub:title')} aria-label={t('breadcrumb.home')}>
                 <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </DsButton>
-              {effectivePath.breadcrumbs.map((crumb, index) => (
+              {displayBreadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
                   <span className="text-muted-foreground/50 shrink-0">/</span>
-                  {index === effectivePath.breadcrumbs.length - 1 ? (
+                  {index === displayBreadcrumbs.length - 1 ? (
                     <span className="truncate text-foreground font-medium">{crumb.name}</span>
                   ) : (
                     <DsButton
@@ -3759,10 +3784,10 @@ export function LearningHubSidebar({
         {!isSmallScreen && mode === 'fullscreen' && !hideToolbarAndNav && (() => {
           const toolbar = (
             <FinderToolbar
-            breadcrumbs={effectivePath.breadcrumbs}
+            breadcrumbs={displayBreadcrumbs}
             onBreadcrumbClick={jumpToBreadcrumb}
             currentTitle={
-              effectivePath.breadcrumbs[effectivePath.breadcrumbs.length - 1]?.name ||
+              displayBreadcrumbs[displayBreadcrumbs.length - 1]?.name ||
               (currentQuickAccessType
                 ? t(`finder.quickAccess.${currentQuickAccessType}`)
                 : t('title'))
@@ -3984,6 +4009,7 @@ export function LearningHubSidebar({
             onSelectionChange={setSelectedIds}
             onRetry={handleRefresh}
             highlightedIds={highlightedIds}
+            getItemDisplayName={getItemDisplayName}
             onRequestRename={
               mode === 'canvas' || isTrashView
                 ? undefined
