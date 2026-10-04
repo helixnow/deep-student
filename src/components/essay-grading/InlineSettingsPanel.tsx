@@ -41,6 +41,11 @@ import type {
   SaveBuiltinOverrideInput,
 } from '@/essay-grading/essayGradingApi';
 import {
+  getDimensionDisplayName,
+  getModeDisplayDescription,
+  getModeDisplayName,
+} from '@/essay-grading/modeI18n';
+import {
   createCustomMode,
   updateCustomMode,
   deleteCustomMode,
@@ -587,7 +592,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                       title={t('essay_grading:mode.max_score', { score: mode.total_max_score })}
                       className={choiceChipClassName(mode.id === modeId)}
                     >
-                      {mode.name}
+                      {getModeDisplayName(mode, t)}
                     </DsButton>
                   ))}
                 </div>
@@ -596,7 +601,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                 {currentMode && (
                   <div className="ui-state-colors mt-1.5 space-y-2 rounded-md border border-primary/30 bg-primary/10 p-3">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-foreground/90">{currentMode.name}</span>
+                      <span className="text-sm font-medium text-foreground/90">{getModeDisplayName(currentMode, t)}</span>
                       {currentMode.is_builtin && (
                         <Badge variant="secondary" className="h-4 bg-muted/80 px-1 text-[10px] font-normal text-muted-foreground">
                           {t('settings:gradingMode.badgeBuiltin')}
@@ -608,7 +613,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                     </div>
                     {currentMode.description && (
                       <div className="text-xs leading-relaxed text-muted-foreground/80">
-                        {currentMode.description}
+                        {getModeDisplayDescription(currentMode, t)}
                       </div>
                     )}
                     {currentMode.score_dimensions.length > 0 && (
@@ -618,7 +623,7 @@ export const InlineSettingsPanel: React.FC<InlineSettingsPanelProps> = ({
                             key={idx}
                             className="inline-flex items-center rounded border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-foreground/70"
                           >
-                            {dim.name}
+                            {getDimensionDisplayName(currentMode.id, dim.name, t)}
                             <span className="ml-1 tabular-nums text-muted-foreground/60">{dim.max_score}</span>
                           </span>
                         ))}

@@ -12,6 +12,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorDetails, getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
+import { canonicalizeEssayModeId } from './modeIds';
 
 // ======================== 类型定义 ========================
 
@@ -258,30 +259,7 @@ const BUILTIN_MODE_ORDER = [
 
 const BUILTIN_MODE_ORDER_INDEX = new Map(BUILTIN_MODE_ORDER.map((id, index) => [id, index]));
 
-export function canonicalizeEssayModeId(modeId: string): string {
-  const trimmed = modeId.trim();
-  switch (trimmed) {
-    case 'ielts_task2':
-    case 'ielts_writing':
-      return 'ielts';
-    case 'ielts_task_1':
-      return 'ielts_task1';
-    case 'cet4':
-    case 'cet6':
-    case 'cet46':
-    case 'cet_46':
-      return 'cet';
-    case 'gaokao_english_short':
-    case 'gaokao_eng_short':
-      return 'gaokao_en_short';
-    case 'gaokao_english_long':
-    case 'gaokao_eng_long':
-    case 'gaokao_en_continuation':
-      return 'gaokao_en_long';
-    default:
-      return trimmed;
-  }
-}
+export { canonicalizeEssayModeId };
 
 function sortGradingModes(modes: GradingMode[]): GradingMode[] {
   const sorted = [...modes];

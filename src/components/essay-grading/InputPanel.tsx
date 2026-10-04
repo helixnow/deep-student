@@ -26,6 +26,7 @@ import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import { GRADING_PHASE_ORDER, type GradingPhase } from '@/essay-grading/gradingPhase';
+import { getModeDisplayName } from '@/essay-grading/modeI18n';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { UploadedImage } from '../EssayGradingWorkbench';
 import { cn } from '@/lib/utils';
@@ -362,7 +363,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               placeholder={t('essay_grading:mode.select')}
               options={modes.map((mode) => ({
                 value: mode.id,
-                label: mode.name,
+                label: getModeDisplayName(mode, t),
                 description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
               }))}
             />

@@ -56,6 +56,8 @@ interface ResultPanelProps {
   };
   /** 原文收起时轮次切换只能在结果区进行：各断点都显示前后翻页 */
   navigateRoundsInHeader?: boolean;
+  /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
+  gradingModeId?: string | null;
 }
 
 /** 错误/部分结果统一使用的细边框语义色条 */
@@ -119,6 +121,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
   isSavingMistakes,
   roundNavigation,
   navigateRoundsInHeader = false,
+  gradingModeId,
 }, ref) => {
   const { t } = useTranslation(['essay_grading', 'common']);
 
@@ -331,6 +334,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
               onApplySuggestion={onApplySuggestion}
               onUndoSuggestion={onUndoSuggestion}
               appliedSuggestionKeys={appliedSuggestionKeys}
+              gradingModeId={gradingModeId}
               toolbarAccessory={headerInTabs ? (
                 <>
                   {progressMeta}

@@ -59,6 +59,8 @@ interface StreamingAnnotatedTextProps {
   onUndoSuggestion?: (change: SuggestionChange) => void;
   /** 已采纳建议的稳定 key 集合（据此渲染已采纳态） */
   appliedSuggestionKeys?: ReadonlySet<string>;
+  /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
+  gradingModeId?: string | null;
 }
 
 type TFn = (key: string, options?: Record<string, unknown>) => string;
@@ -637,6 +639,7 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   onApplySuggestion,
   onUndoSuggestion,
   appliedSuggestionKeys,
+  gradingModeId,
 }) => {
   const { t } = useTranslation(['essay_grading']);
 
@@ -744,7 +747,7 @@ export const StreamingAnnotatedText: React.FC<StreamingAnnotatedTextProps> = ({
   return (
     <div ref={rootRef} className={cn('space-y-6', className)}>
       {/* 评分卡片 */}
-      {showScore && score && <ScoreCard score={score} />}
+      {showScore && score && <ScoreCard score={score} gradingModeId={gradingModeId} />}
       {scoreParseFailed && (
         <div className="px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">
           {t('essay_grading:score.parse_failed')}

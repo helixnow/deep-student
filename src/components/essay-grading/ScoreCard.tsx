@@ -3,18 +3,21 @@
  * 简洁、留白、细线边框、语义色 token
  * 支持：圆环动画、分数滚动、维度条加载动画、维度雷达图（≥3 维）
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { ParsedScore, DimensionScore } from '../../essay-grading/streamingMarkerParser';
 import type { GradeCode } from '../../essay-grading/types';
 import { wrapRadarLabel } from './radarLabel';
+import { getDimensionDisplayName } from '../../essay-grading/modeI18n';
 import { ChartBar, ChartPolar } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 
 interface ScoreCardProps {
   score: ParsedScore;
   className?: string;
+  /** 当前批阅模式 ID：预置模式的维度名按界面语言显示（仅展示，不改评分数据） */
+  gradingModeId?: string | null;
 }
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
@@ -207,8 +210,12 @@ const RadarChart: React.FC<{ dimensions: DimensionScore[]; mounted: boolean }> =
   );
 };
 
-export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
+export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className, gradingModeId }) => {
   const { t } = useTranslation('essay_grading');
+  const dimensions = useMemo(
+    () => score.dimensions.map((dim) => ({ ...dim, name: getDimensionDisplayName(gradingModeId, dim.name, t) })),
+    [score.dimensions, gradingModeId, t]
+  );
 
   const percentage = safePercentage(score.total, score.maxTotal);
   const gradeText = GRADE_TEXT_CLASS[score.grade] ?? GRADE_TEXT_CLASS.fail;
@@ -356,10 +363,10 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
 
           {showRadar ? (
             <div className="space-y-3">
-              <RadarChart dimensions={score.dimensions} mounted={mounted} />
+              <RadarChart dimensions={dimensions} mounted={mounted} />
               {/* 雷达模式下的分数速览 + 评语 */}
               <div className="space-y-1.5">
-                {score.dimensions.map((dim, index) => {
+                {dimensions.map((dim, index) => {
                   const dimPct = safePercentage(dim.score, dim.maxScore);
                   const dimGrade = getGradeCodeFromPercentage(dimPct);
                   return (
@@ -379,7 +386,7 @@ export const ScoreCard: React.FC<ScoreCardProps> = ({ score, className }) => {
             </div>
           ) : (
             <div className="space-y-3">
-              {score.dimensions.map((dim, index) => {
+              {dimensions.map((dim, index) => {
                 const dimPct = safePercentage(dim.score, dim.maxScore);
                 const dimGrade = getGradeCodeFromPercentage(dimPct);
                 return (

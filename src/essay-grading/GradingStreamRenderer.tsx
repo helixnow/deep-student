@@ -54,6 +54,8 @@ interface GradingStreamRendererProps {
   toolbarAccessory?: React.ReactNode;
   /** 工具栏下方、正文上方的提示条（错误 / 部分结果） */
   banner?: React.ReactNode;
+  /** 当前批阅模式 ID：评分卡里预置模式的维度名按界面语言显示（仅展示） */
+  gradingModeId?: string | null;
 }
 
 /** 距底部阈值：小于该值视为"贴底"，恢复自动跟随 */
@@ -96,6 +98,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   appliedSuggestionKeys,
   toolbarAccessory,
   banner,
+  gradingModeId,
 }) => {
   const { t } = useTranslation(['essay_grading']);
   const displayPlaceholder = placeholder || t('essay_grading:result_section.placeholder');
@@ -428,11 +431,12 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                 onApplySuggestion={onApplySuggestion}
                 onUndoSuggestion={onUndoSuggestion}
                 appliedSuggestionKeys={appliedSuggestionKeys}
+                gradingModeId={gradingModeId}
               />
             ) : (
               <>
                 {scoreOnly && (
-                  <ScoreCard score={scoreOnly} className="mb-6" />
+                  <ScoreCard score={scoreOnly} className="mb-6" gradingModeId={gradingModeId} />
                 )}
                 {scoreParseFailed && (
                   <div className="mb-6 px-4 py-3 rounded-lg border border-border/30 bg-muted/20 text-sm text-muted-foreground">

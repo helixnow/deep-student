@@ -470,5 +470,99 @@
       "corrections_title": "### 逐句修改对照",
       "empty_result": "（暂无批改内容）"
     }
+  },
+  "builtinModes": {
+    "gaokao": {
+      "name": "高考作文",
+      "description": "按照高考作文评分标准进行批改，总分60分",
+      "dimensions": {
+        "content": "内容",
+        "expression": "表达",
+        "development": "发展等级"
+      }
+    },
+    "gaokao_en_short": {
+      "name": "高考英语小作文",
+      "description": "高考英语应用文写作评分模式，总分15分",
+      "dimensions": {
+        "content_key_points": "Content & Key Points",
+        "language_quality": "Language Quality",
+        "format_register": "Format & Register"
+      }
+    },
+    "gaokao_en_long": {
+      "name": "高考英语大作文",
+      "description": "高考英语读后续写评分模式，总分25分",
+      "dimensions": {
+        "content_context_coherence": "Content & Context Coherence",
+        "language_use": "Language Use",
+        "cohesion_structure": "Cohesion & Structure"
+      }
+    },
+    "ielts": {
+      "name": "雅思大作文",
+      "description": "IELTS Writing Task 2（议论文）评分模式，总分9分",
+      "dimensions": {
+        "task_response": "Task Response",
+        "coherence_cohesion": "Coherence & Cohesion",
+        "lexical_resource": "Lexical Resource",
+        "grammatical_range_accuracy": "Grammatical Range & Accuracy"
+      }
+    },
+    "ielts_task1": {
+      "name": "雅思小作文",
+      "description": "IELTS Writing Task 1（Academic/General）评分模式，总分9分",
+      "dimensions": {
+        "task_achievement": "Task Achievement",
+        "coherence_cohesion": "Coherence & Cohesion",
+        "lexical_resource": "Lexical Resource",
+        "grammatical_range_accuracy": "Grammatical Range & Accuracy"
+      }
+    },
+    "kaoyan": {
+      "name": "考研英语大作文",
+      "description": "考研英语（一图画/二图表）Part B 评分模式，总分20分",
+      "dimensions": {
+        "content_task_fulfillment": "Content & Task Fulfillment",
+        "organization_coherence": "Organization & Coherence",
+        "language_accuracy": "Language & Accuracy"
+      }
+    },
+    "toefl": {
+      "name": "托福写作",
+      "description": "TOEFL iBT Writing 评分模式（2026新版含Academic Discussion），总分5分",
+      "dimensions": {
+        "content_relevance": "Content & Relevance",
+        "organization_coherence": "Organization & Coherence",
+        "language_use": "Language Use"
+      }
+    },
+    "zhongkao": {
+      "name": "中考作文",
+      "description": "按照中考作文评分标准进行批改，总分50分",
+      "dimensions": {
+        "content": "内容",
+        "expression": "表达",
+        "creativity": "创意"
+      }
+    },
+    "cet": {
+      "name": "四六级作文",
+      "description": "按照大学英语四六级作文评分标准进行批改，总分15分",
+      "dimensions": {
+        "content_relevance": "Content & Relevance",
+        "organization": "Organization",
+        "language": "Language"
+      }
+    },
+    "practice": {
+      "name": "日常练习",
+      "description": "宽松友好的批改模式，适合日常写作练习",
+      "dimensions": {
+        "creativity_expression": "创意与表达",
+        "content_completeness": "内容完整",
+        "language_conventions": "语言规范"
+      }
+    }
   }
 }

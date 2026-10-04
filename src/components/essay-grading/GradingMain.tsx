@@ -11,6 +11,7 @@ import { HorizontalResizable, VerticalResizable } from '../shared/Resizable';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
 import { inferGradingPhase, type GradingPhase } from '@/essay-grading/gradingPhase';
+import { getModeDisplayName } from '@/essay-grading/modeI18n';
 import type { EssayTextStats } from '@/essay-grading/textStats';
 import type { SuggestionChange } from '@/essay-grading/suggestionAnchors';
 import type { UploadedImage } from '../EssayGradingWorkbench';
@@ -213,7 +214,8 @@ export const GradingMain: React.FC<GradingMainProps> = ({
   const expandInput = React.useCallback(() => setInputExpanded(true), []);
   const collapseInput = React.useCallback(() => setInputExpanded(false), []);
   const canGrade = (inputText ?? '').trim().length > 0 || uploadedImages.length > 0;
-  const modeName = modes.find((mode) => mode.id === modeId)?.name;
+  const currentMode = modes.find((mode) => mode.id === modeId);
+  const modeName = currentMode ? getModeDisplayName(currentMode, t) : undefined;
   const modelName = (models.find((model) => model.id === modelId) ?? models.find((model) => model.is_default))?.name;
   const inputRef = React.useRef<HTMLTextAreaElement>(null);
   const resultRef = React.useRef<HTMLDivElement>(null);
@@ -322,6 +324,7 @@ export const GradingMain: React.FC<GradingMainProps> = ({
       currentRound={currentRound}
       roundNavigation={roundNavigation}
       navigateRoundsInHeader={inputCollapsed}
+      gradingModeId={modeId}
     />
   );
 
