@@ -30,6 +30,7 @@ pub mod handlers;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;
+pub mod lexical_bm25;
 #[cfg(feature = "lance")]
 pub mod lance_store;
 // lance feature 未启用时（如 mobile-slim），提供同名 API 的 no-op stub，

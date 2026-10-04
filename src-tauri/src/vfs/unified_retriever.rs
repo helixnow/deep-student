@@ -28,6 +28,7 @@ const ROUTE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_FTS_SCAN: usize = 1000;
 const MAX_FTS_TERMS: usize = 16;
 const MAX_FTS_TERM_CHARS: usize = 64;
+const MAX_BM25_TERMS: usize = 64;
 
 static PROFILE_CIRCUITS: OnceLock<Mutex<HashMap<String, ProfileCircuitBreaker>>> = OnceLock::new();
 static CIRCUIT_CLOCK: OnceLock<Instant> = OnceLock::new();
@@ -947,7 +948,7 @@ impl VfsUnifiedRetriever {
             "SELECT lexical.embedding_id, lexical.resource_id, lexical.chunk_index,
                     lexical.unit_index, lexical.content_text, lexical.metadata_json,
                     lexical.image_blob_hash, r.type, r.source_id, r.metadata_json,
-                    {folder_sql} AS folder_id, b.relative_path
+                    {folder_sql} AS folder_id, b.relative_path, lexical.exact_rank
              FROM (
                SELECT * FROM (
                  SELECT s.lance_row_id AS embedding_id, u.resource_id AS resource_id,
@@ -1016,27 +1017,54 @@ impl VfsUnifiedRetriever {
                     row.get::<_, Option<String>>(9)?,
                     row.get::<_, Option<String>>(10)?,
                     row.get::<_, Option<String>>(11)?,
+                    row.get::<_, i64>(12)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
         drop(stmt);
         drop(conn);
 
+        // The LIKE prefilter only counts distinct matched terms; rerank the bounded
+        // candidate window with BM25 (exact full-text matches stay first, ties keep the
+        // SQL order, so the result is deterministic).
+        let bm25_terms = bm25_query_terms(query);
+        let scores = crate::vfs::lexical_bm25::bm25_scores(
+            &bm25_terms,
+            &rows.iter().map(|row| row.4.as_str()).collect::<Vec<_>>(),
+            crate::vfs::lexical_bm25::Bm25Options::default(),
+        );
+        let mut ranked: Vec<(usize, f64)> = scores.into_iter().enumerate().collect();
+        ranked.sort_by(|(left, left_score), (right, right_score)| {
+            rows[*left]
+                .12
+                .cmp(&rows[*right].12)
+                .then_with(|| right_score.total_cmp(left_score))
+                .then_with(|| left.cmp(right))
+        });
+        let mut slots: Vec<Option<_>> = rows.into_iter().map(Some).collect();
+        let rows = ranked
+            .into_iter()
+            .filter_map(|(index, score)| slots[index].take().map(|row| (row, score)));
+
         let mut hits = Vec::new();
         let mut seen = HashSet::new();
         for (
-            embedding_id,
-            resource_id,
-            chunk_index,
-            unit_index,
-            text,
-            metadata,
-            blob_hash,
-            resource_type,
-            source_id,
-            resource_metadata,
-            folder_id,
-            blob_path,
+            (
+                embedding_id,
+                resource_id,
+                chunk_index,
+                unit_index,
+                text,
+                metadata,
+                blob_hash,
+                resource_type,
+                source_id,
+                resource_metadata,
+                folder_id,
+                blob_path,
+                _exact_rank,
+            ),
+            bm25_score,
         ) in rows
         {
             let resource_type = crate::vfs::VfsResourceType::from_str(&resource_type)
@@ -1080,7 +1108,7 @@ impl VfsUnifiedRetriever {
                 folder_id,
                 blob_hash,
                 image_url,
-                raw_score: None,
+                raw_score: (bm25_score > 0.0).then_some(bm25_score),
                 metadata: metadata_value,
             });
             if hits.len() >= fetch_limit {
@@ -1272,6 +1300,24 @@ fn extract_lexical_terms(query: &str) -> Vec<String> {
         }
     }
     terms
+}
+
+/// BM25 query terms: the shared tokenizer minus question/function-word noise
+/// (single-character stop words and bigrams inside a multi-character stop word).
+fn bm25_query_terms(query: &str) -> Vec<String> {
+    let mut seen = HashSet::new();
+    crate::vfs::lexical_bm25::tokenize(query)
+        .into_iter()
+        .filter(|token| {
+            let single = token.chars().count() == 1;
+            !token.chars().all(is_cjk)
+                || !CJK_STOP_WORDS.iter().any(|stop| {
+                    *stop == token.as_str() || (!single && stop.contains(token.as_str()))
+                })
+        })
+        .filter(|token| seen.insert(token.clone()))
+        .take(MAX_BM25_TERMS)
+        .collect()
 }
 
 fn is_cjk(character: char) -> bool {
@@ -2835,6 +2881,53 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert_eq!(hits[0].identity.resource_id, two_terms);
         assert_eq!(hits[1].identity.resource_id, one_term);
+    }
+
+    #[test]
+    fn lexical_route_reranks_equal_term_matches_with_bm25() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        // Both rows match every LIKE term; only BM25 (tf + length norm) separates them.
+        let focused = create_lexical_unit(
+            &db,
+            "note_bm25_focused",
+            "傅里叶变换的性质：线性性质、时移性质、频移性质，傅里叶变换把卷积变成乘积。",
+            0,
+        );
+        let diluted = create_lexical_unit(
+            &db,
+            "note_bm25_diluted",
+            &format!(
+                "课程目录：傅里叶变换、性质。{}",
+                "本章其余内容讨论采样定理与滤波器设计。".repeat(20)
+            ),
+            0,
+        );
+        let query = "傅里叶变换有哪些性质";
+        let request = UnifiedRetrievalRequest::text(query, 10);
+        let hits = VfsUnifiedRetriever::execute_fts_route(&db, query, &request, 10)
+            .expect("bm25 lexical ranking");
+        let order: Vec<&str> = hits
+            .iter()
+            .map(|hit| hit.identity.resource_id.as_str())
+            .collect();
+        assert_eq!(order, vec![focused.as_str(), diluted.as_str()]);
+        assert!(hits[0].raw_score > hits[1].raw_score);
+        // Deterministic: identical input yields identical order and scores.
+        let again = VfsUnifiedRetriever::execute_fts_route(&db, query, &request, 10)
+            .expect("bm25 lexical ranking (again)");
+        assert_eq!(
+            again.iter().map(|hit| hit.raw_score).collect::<Vec<_>>(),
+            hits.iter().map(|hit| hit.raw_score).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn bm25_query_terms_drop_question_words() {
+        let terms = bm25_query_terms("傅里叶变换有哪些性质");
+        assert!(terms.contains(&"变换".to_string()));
+        assert!(terms.contains(&"性质".to_string()));
+        assert!(!terms.contains(&"哪些".to_string()));
+        assert!(!terms.contains(&"有".to_string()));
     }
 
     #[test]
