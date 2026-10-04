@@ -2493,5 +2493,34 @@
       "hoursAgo": "{{count}}h ago",
       "daysAgo": "{{count}}d ago"
     }
+  },
+  "goal": {
+    "status": {
+      "active": "Goal in progress",
+      "waitingUser": "Waiting for your reply",
+      "paused": "Goal paused",
+      "blocked": "Goal blocked",
+      "budgetLimited": "Budget limit reached",
+      "usageLimited": "Usage limit reached",
+      "complete": "Goal complete"
+    },
+    "triggerLabel": "Session goal: {{status}}",
+    "pause": "Pause",
+    "resume": "Resume",
+    "edit": "Edit goal",
+    "clear": "Clear goal",
+    "objectivePlaceholder": "Goal description",
+    "budgetPlaceholder": "Token budget (optional, leave blank for no limit)",
+    "budgetAriaLabel": "Token budget",
+    "cancel": "Cancel",
+    "save": "Save",
+    "clearConfirm": "Clear",
+    "clearConfirmDescription": "Clearing stops the automatic continuation of this goal. This cannot be undone.",
+    "errors": {
+      "edit": "Failed to edit goal",
+      "pause": "Failed to pause goal",
+      "resume": "Failed to resume goal",
+      "clear": "Failed to clear goal"
+    }
   }
 }

@@ -10,6 +10,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import {
   CheckCircle,
@@ -54,8 +55,8 @@ import type { GoalStatus } from '../core/types';
 // ============================================================================
 
 interface GoalStatusMeta {
-  /** 短文本标签 */
-  label: string;
+  /** 短文本标签 i18n 键（chatV2:goal.status.*） */
+  labelKey: string;
   /** 图标着色（Tailwind 语义色） */
   iconClassName: string;
   /** 状态点着色（compact 模式） */
@@ -64,37 +65,37 @@ interface GoalStatusMeta {
 
 const GOAL_STATUS_META: Record<GoalStatus, GoalStatusMeta> = {
   active: {
-    label: '目标进行中',
+    labelKey: 'goal.status.active',
     iconClassName: 'text-primary',
     dotClassName: 'bg-primary',
   },
   waiting_user: {
-    label: '等待你的回答',
+    labelKey: 'goal.status.waitingUser',
     iconClassName: 'text-warning',
     dotClassName: 'bg-warning',
   },
   paused: {
-    label: '目标已暂停',
+    labelKey: 'goal.status.paused',
     iconClassName: 'text-muted-foreground',
     dotClassName: 'bg-muted-foreground',
   },
   blocked: {
-    label: '目标受阻',
+    labelKey: 'goal.status.blocked',
     iconClassName: 'text-destructive',
     dotClassName: 'bg-destructive',
   },
   budget_limited: {
-    label: '已达预算上限',
+    labelKey: 'goal.status.budgetLimited',
     iconClassName: 'text-warning',
     dotClassName: 'bg-warning',
   },
   usage_limited: {
-    label: '已达用量上限',
+    labelKey: 'goal.status.usageLimited',
     iconClassName: 'text-warning',
     dotClassName: 'bg-warning',
   },
   complete: {
-    label: '目标已完成',
+    labelKey: 'goal.status.complete',
     iconClassName: 'text-success',
     dotClassName: 'bg-success',
   },
@@ -154,6 +155,7 @@ function GoalStatusChipView({
   store: StoreApi<ChatStore>;
   compact?: boolean;
 }) {
+  const { t } = useTranslation('chatV2');
   const goal = useStore(
     store,
     useCallback((s: ChatStore) => s.goal, []),
@@ -210,10 +212,11 @@ function GoalStatusChipView({
     void runAction(async () => {
       await store.getState().editGoal(objective, tokenBudget);
       setEditOpen(false);
-    }, '编辑目标失败');
+    }, t('goal.errors.edit'));
   };
 
-  const triggerLabel = `会话目标：${meta.label}`;
+  const statusLabel = t(meta.labelKey);
+  const triggerLabel = t('goal.triggerLabel', { status: statusLabel });
 
   return (
     <>
@@ -251,7 +254,7 @@ function GoalStatusChipView({
               title={goal.objective}
             >
               {renderStatusIcon(goal.status, 13)}
-              <span className="max-w-[10rem] truncate">{meta.label}</span>
+              <span className="max-w-[10rem] truncate">{statusLabel}</span>
               {showTokens && (
                 <span className="tabular-nums text-muted-foreground/70">
                   {formatTokenCount(goal.tokensUsed)}
@@ -283,18 +286,18 @@ function GoalStatusChipView({
             <AppMenuItem
               icon={<Pause size={16} />}
               disabled={busy}
-              onClick={() => void runAction(() => store.getState().pauseGoal(), '暂停目标失败')}
+              onClick={() => void runAction(() => store.getState().pauseGoal(), t('goal.errors.pause'))}
             >
-              暂停
+              {t('goal.pause')}
             </AppMenuItem>
           )}
           {canResume && (
             <AppMenuItem
               icon={<Play size={16} />}
               disabled={busy}
-              onClick={() => void runAction(() => store.getState().resumeGoal(), '继续目标失败')}
+              onClick={() => void runAction(() => store.getState().resumeGoal(), t('goal.errors.resume'))}
             >
-              继续
+              {t('goal.resume')}
             </AppMenuItem>
           )}
           {!isComplete && (
@@ -302,7 +305,7 @@ function GoalStatusChipView({
               icon={<PencilSimple size={16} />}
               onClick={openEditDialog}
             >
-              编辑目标
+              {t('goal.edit')}
             </AppMenuItem>
           )}
           <AppMenuItem
@@ -311,7 +314,7 @@ function GoalStatusChipView({
             disabled={busy}
             onClick={() => setClearOpen(true)}
           >
-            清除目标
+            {t('goal.clear')}
           </AppMenuItem>
         </AppMenuContent>
       </AppMenu>
@@ -319,7 +322,7 @@ function GoalStatusChipView({
       {/* 编辑目标对话框 */}
       <DsDialog open={editOpen} onOpenChange={setEditOpen} maxWidth="max-w-md">
         <DsDialogHeader>
-          <DsDialogTitle>编辑目标</DsDialogTitle>
+          <DsDialogTitle>{t('goal.edit')}</DsDialogTitle>
         </DsDialogHeader>
         <DsDialogBody>
           <div className="flex flex-col gap-3">
@@ -327,22 +330,22 @@ function GoalStatusChipView({
               value={draftObjective}
               onChange={(event) => setDraftObjective(event.target.value)}
               rows={3}
-              placeholder="目标描述"
-              aria-label="目标描述"
+              placeholder={t('goal.objectivePlaceholder')}
+              aria-label={t('goal.objectivePlaceholder')}
             />
             <Input
               value={draftBudget}
               onChange={(event) => setDraftBudget(event.target.value)}
               type="number"
               min={1}
-              placeholder="token 预算（可选，留空不限）"
-              aria-label="token 预算"
+              placeholder={t('goal.budgetPlaceholder')}
+              aria-label={t('goal.budgetAriaLabel')}
             />
           </div>
         </DsDialogBody>
         <DsDialogFooter>
           <DsButton variant="ghost" size="sm" onClick={() => setEditOpen(false)} disabled={busy}>
-            取消
+            {t('goal.cancel')}
           </DsButton>
           <DsButton
             variant="primary"
@@ -350,7 +353,7 @@ function GoalStatusChipView({
             onClick={handleEditConfirm}
             disabled={busy || !draftObjective.trim()}
           >
-            保存
+            {t('goal.save')}
           </DsButton>
         </DsDialogFooter>
       </DsDialog>
@@ -359,13 +362,13 @@ function GoalStatusChipView({
       <DsAlertDialog
         open={clearOpen}
         onOpenChange={setClearOpen}
-        title="清除目标"
-        description="清除后系统将停止该目标的自动续跑，此操作不可撤销。"
-        confirmText="清除"
+        title={t('goal.clear')}
+        description={t('goal.clearConfirmDescription')}
+        confirmText={t('goal.clearConfirm')}
         loading={busy}
         onConfirm={() => {
           setClearOpen(false);
-          void runAction(() => store.getState().clearGoal(), '清除目标失败');
+          void runAction(() => store.getState().clearGoal(), t('goal.errors.clear'));
         }}
       />
     </>

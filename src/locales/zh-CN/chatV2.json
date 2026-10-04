@@ -2493,5 +2493,34 @@
       "hoursAgo": "{{count}} 小时前",
       "daysAgo": "{{count}} 天前"
     }
+  },
+  "goal": {
+    "status": {
+      "active": "目标进行中",
+      "waitingUser": "等待你的回答",
+      "paused": "目标已暂停",
+      "blocked": "目标受阻",
+      "budgetLimited": "已达预算上限",
+      "usageLimited": "已达用量上限",
+      "complete": "目标已完成"
+    },
+    "triggerLabel": "会话目标：{{status}}",
+    "pause": "暂停",
+    "resume": "继续",
+    "edit": "编辑目标",
+    "clear": "清除目标",
+    "objectivePlaceholder": "目标描述",
+    "budgetPlaceholder": "token 预算（可选，留空不限）",
+    "budgetAriaLabel": "token 预算",
+    "cancel": "取消",
+    "save": "保存",
+    "clearConfirm": "清除",
+    "clearConfirmDescription": "清除后系统将停止该目标的自动续跑，此操作不可撤销。",
+    "errors": {
+      "edit": "编辑目标失败",
+      "pause": "暂停目标失败",
+      "resume": "继续目标失败",
+      "clear": "清除目标失败"
+    }
   }
 }
