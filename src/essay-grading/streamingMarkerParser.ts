@@ -55,12 +55,36 @@ export interface PolishItem {
   polished: string;
 }
 
+const XML_NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+};
+
+/**
+ * 解码属性值里的 XML 实体：模型按 XML 写属性时会把 & 写成 &amp;
+ *（如雅思维度「Grammatical Range &amp; Accuracy」），不解码会原样显示在雷达图上。
+ * 只认标准命名实体与数字实体，其余 & 保持原样。
+ */
+export function decodeXmlEntities(value: string): string {
+  if (!value.includes('&')) return value;
+  return value.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (match, dec, hex, name) => {
+    if (dec || hex) {
+      const code = dec ? Number.parseInt(dec, 10) : Number.parseInt(hex, 16);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    }
+    return XML_NAMED_ENTITIES[String(name).toLowerCase()] ?? match;
+  });
+}
+
 /**
  * 宽松提取属性值：
  * 允许属性值内部出现同种引号字符（例如：text="包含 "引号" 的内容"）。
- * 结束引号判定：后续是空白+下一个属性，或字符串结束。
+ * 结束引号判定：后续是空白+下一个属性，或字符串结束。返回值已解码 XML 实体。
  */
-function extractAttributeValue(attrs: string, attrName: string): string | undefined {
+export function extractAttributeValue(attrs: string, attrName: string): string | undefined {
   // (?:^|\s) 边界防止匹配到其他属性名的后缀（如 old 误匹配 bold）
   const attrStartRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(['"])`, 'i');
   const startMatch = attrStartRegex.exec(attrs);
@@ -73,11 +97,12 @@ function extractAttributeValue(attrs: string, attrName: string): string | undefi
     if (attrs[i] !== quoteChar) continue;
     const tail = attrs.slice(i + 1);
     if (/^\s*$/.test(tail) || /^\s+[A-Za-z_][\w:.-]*\s*=/.test(tail)) {
-      return attrs.slice(valueStart, i);
+      return decodeXmlEntities(attrs.slice(valueStart, i));
     }
   }
 
-  return attrs.slice(valueStart).trim() || undefined;
+  const rest = attrs.slice(valueStart).trim();
+  return rest ? decodeXmlEntities(rest) : undefined;
 }
 
 /**

@@ -477,4 +477,11 @@ describe('malicious / adversarial input resilience', () => {
     expect(joined).toContain('被批注');
     expect(joined).toContain('后文');
   });
+
+  it('decodes XML entities in dim names and marker attributes', () => {
+    const score = parseScore(
+      '<score total="6.5" max="9"><dim name="Grammatical Range &amp; Accuracy" score="6" max="9">ok</dim></score>',
+    );
+    expect(score?.dimensions[0]?.name).toBe('Grammatical Range & Accuracy');
+  });
 });

@@ -13,6 +13,7 @@
 
 import type { ParsedMarkerType, ErrorType } from './markerTypes';
 import {
+  extractAttributeValue,
   parseScoreFromText,
   removeScoreTag as streamingRemoveScoreTag,
   stripNestedMarkerTags,
@@ -39,31 +40,6 @@ export interface ParsedMarker {
   // err（词汇表见 markerTypes.ErrorType，与后端 MARKER_INSTRUCTIONS 一致）
   errorType?: ErrorType;
   explanation?: string;
-}
-
-/**
- * 宽松提取属性值：
- * 允许属性值内部出现同种引号字符（例如：text="包含 "引号" 的内容"）。
- * 结束引号判定：后续是空白+下一个属性，或字符串结束。
- */
-function extractAttributeValue(attrs: string, attrName: string): string | undefined {
-  // (?:^|\s) 边界防止匹配到其他属性名的后缀（如 old 误匹配 bold）
-  const attrStartRegex = new RegExp(`(?:^|\\s)${attrName}\\s*=\\s*(['"])`, 'i');
-  const startMatch = attrStartRegex.exec(attrs);
-  if (!startMatch || startMatch.index == null) return undefined;
-
-  const quoteChar = startMatch[1];
-  const valueStart = startMatch.index + startMatch[0].length;
-
-  for (let i = valueStart; i < attrs.length; i += 1) {
-    if (attrs[i] !== quoteChar) continue;
-    const tail = attrs.slice(i + 1);
-    if (/^\s*$/.test(tail) || /^\s+[A-Za-z_][\w:.-]*\s*=/.test(tail)) {
-      return attrs.slice(valueStart, i);
-    }
-  }
-
-  return attrs.slice(valueStart).trim() || undefined;
 }
 
 /**

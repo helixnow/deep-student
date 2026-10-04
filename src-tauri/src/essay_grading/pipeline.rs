@@ -623,7 +623,51 @@ fn extract_attr(attrs: &str, name: &str) -> Option<String> {
     });
     re.captures_iter(attrs)
         .find(|cap| &cap[1] == name)
-        .map(|cap| cap[2].to_string())
+        .map(|cap| decode_xml_entities(&cap[2]))
+}
+
+/// 解码属性值里的 XML 实体：模型按 XML 写属性时会把 & 写成 &amp;
+/// （如雅思维度 `Grammatical Range &amp; Accuracy`），不解码则维度名与模式定义对不上、
+/// 前端原样显示实体。只认标准命名实体与数字实体，其余 `&` 保持原样。
+fn decode_xml_entities(value: &str) -> String {
+    if !value.contains('&') {
+        return value.to_string();
+    }
+    let mut out = String::with_capacity(value.len());
+    let mut rest = value;
+    while let Some(pos) = rest.find('&') {
+        out.push_str(&rest[..pos]);
+        let tail = &rest[pos..];
+        let decoded = tail.find(';').filter(|&end| end <= 10).and_then(|end| {
+            let entity = &tail[1..end];
+            let ch = match entity {
+                "amp" => Some('&'),
+                "lt" => Some('<'),
+                "gt" => Some('>'),
+                "quot" => Some('"'),
+                "apos" => Some('\''),
+                _ => entity
+                    .strip_prefix("#x")
+                    .or_else(|| entity.strip_prefix("#X"))
+                    .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                    .or_else(|| entity.strip_prefix('#').and_then(|dec| dec.parse::<u32>().ok()))
+                    .and_then(char::from_u32),
+            };
+            ch.map(|c| (c, end))
+        });
+        match decoded {
+            Some((c, end)) => {
+                out.push(c);
+                rest = &tail[end + 1..];
+            }
+            None => {
+                out.push('&');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// 从批改结果中解析评分
@@ -1687,6 +1731,16 @@ mod tests {
             let parsed = parse_score_from_result(&result, &mode).expect("应解析成功");
             assert_eq!(parsed.grade, expected, "total={total}");
         }
+    }
+
+    #[test]
+    fn extract_attr_decodes_xml_entities() {
+        let attrs = r#"name="Grammatical Range &amp; Accuracy" note="a &lt; b &#26159; &x;" "#;
+        assert_eq!(
+            extract_attr(attrs, "name").as_deref(),
+            Some("Grammatical Range & Accuracy")
+        );
+        assert_eq!(extract_attr(attrs, "note").as_deref(), Some("a < b 是 &x;"));
     }
 
     #[test]
