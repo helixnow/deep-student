@@ -137,6 +137,7 @@
       "apkg": "Imported from APKG"
     },
     "viewSource": "View source",
+    "playMediaSource": "Play the lecture from {{time}}",
     "resetProgress": "Reset progress",
     "resetProgressConfirm": "Click again to confirm (clears all review history)",
     "undoReview": "Undo last review",

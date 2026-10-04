@@ -137,6 +137,7 @@
       "apkg": "APKG 导入"
     },
     "viewSource": "查看来源",
+    "playMediaSource": "跳到课程 {{time}} 处播放",
     "resetProgress": "重置进度",
     "resetProgressConfirm": "再次点击确认（清除该卡全部复习记录）",
     "undoReview": "撤销最近评分",

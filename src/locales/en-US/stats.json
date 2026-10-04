@@ -26,6 +26,23 @@
       "essaysCreated": "Essays",
       "ankiCardsCreated": "Cards",
       "questionsAnswered": "Questions"
+    },
+    "metric": {
+      "label": "Heatmap metric",
+      "activity": "Activity",
+      "duration": "Time"
+    },
+    "duration": {
+      "label": "Study time",
+      "total": "Total time",
+      "noRecord": "No study time recorded",
+      "zero": "0 min",
+      "lessThanMinute": "Under 1 min",
+      "minutes": "{{minutes}} min",
+      "hours": "{{hours}} h",
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "totalAria": "{{duration}} of study time",
+      "legendHint": "Daily study time levels: under 15 min / 15–45 min / 45–90 min / over 90 min (counted only while the app is visible and you are present; playing audio or video counts)"
     }
   },
   "calendar": {

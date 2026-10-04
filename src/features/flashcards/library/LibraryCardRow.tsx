@@ -24,6 +24,8 @@ import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import type { AnkiLibraryCard, AnkiLibraryCardPatch } from '@/types';
 import { hasValidCloze } from '../cloze';
 import { CardMathText } from '../cardMathPreview';
+import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+import { cardMediaSourceTexts, findCardMediaSource } from './cardMediaSource';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
@@ -230,9 +232,12 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
   const legacySessionId = card.sourceType === 'chat_session' && typeof card.sourceId === 'string' && card.sourceId.trim()
     ? card.sourceId.trim() : null;
   const sourceSessionId = sourceRef ? null : (card.sourceSessionId?.trim() || legacySessionId);
+  // 音视频转写制成的卡：背面末尾的 [媒体@id:mm:ss] → 「▶ mm:ss」跳到讲到该知识点的时刻
+  const mediaSource = useMemo(() => findCardMediaSource(cardMediaSourceTexts(card)), [card]);
   const sourceKey = sourceRef
     ? (sourceRef.kind === 'note' ? 'library.source.note' : 'library.source.resource')
-    : sourceSessionId ? 'library.source.chat' : sourceLabelKey(card.sourceType);
+    : sourceSessionId ? 'library.source.chat'
+      : sourceLabelKey(card.sourceType) ?? (mediaSource ? 'library.source.resource' : null);
   const relativeDue = card.enqueued && !card.suspended
     ? formatRelativeDue(card.dueMs, locale)
     : null;
@@ -611,6 +616,18 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />
                             {translate('library.viewSource')}
+                          </button>
+                        ) : null}
+                        {mediaSource ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-0.5 text-primary hover:underline tabular-nums [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
+                            aria-label={translate('library.playMediaSource', { time: mediaSource.label })}
+                            title={translate('library.playMediaSource', { time: mediaSource.label })}
+                            onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
+                          >
+                            <Play size={11} weight="fill" aria-hidden="true" />
+                            {mediaSource.label}
                           </button>
                         ) : null}
                       </dd>

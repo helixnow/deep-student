@@ -734,6 +734,15 @@ function startNormalFrontendRuntime() {
     console.warn('[QuickAssistant] initialization failed:', error);
   });
 
+  // 学习时长：可见且在场才计时（docs/dev/media-learning §3），仅 Tauri 运行时上报
+  if ((window as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__) {
+    void import('./features/study-time/studyTimeTracker').then(({ startStudyTracking }) => {
+      registerCleanup(startStudyTracking());
+    }).catch((error) => {
+      console.warn('[StudyTime] tracker initialization failed:', error);
+    });
+  }
+
   window.addEventListener('systemSettingsChanged', handleSystemSettingsChanged);
   registerCleanup(() => window.removeEventListener('systemSettingsChanged', handleSystemSettingsChanged));
   window.addEventListener('beforeunload', handleBeforeUnload);

@@ -29,6 +29,8 @@ export interface LearningActivity {
   date: string;
   count: number;
   details: DailyActivityDetails;
+  /** 当日学习时长（秒；study_time_daily，「可见且在场」计时）。旧后端缺省为 0 */
+  studySeconds?: number;
 }
 
 /** 热力图数据格式（@uiw/react-heat-map 格式） */
@@ -46,6 +48,12 @@ export interface UseLearningHeatmapResult {
   totalActivities: number;
   activeDays: number;
   maxCount: number;
+  /** 区间内累计学习时长（秒） */
+  totalStudySeconds: number;
+  /** 有学习时长记录的天数 */
+  studyDays: number;
+  /** 单日最长学习时长（秒） */
+  maxStudySeconds: number;
   refresh: () => Promise<void>;
 }
 
@@ -115,8 +123,11 @@ export function useLearningHeatmap(months: number = 12): UseLearningHeatmapResul
     const totalActivities = data.reduce((sum, item) => sum + item.count, 0);
     const activeDays = data.filter(item => item.count > 0).length;
     const maxCount = data.reduce((max, item) => Math.max(max, item.count), 0);
-    
-    return { totalActivities, activeDays, maxCount };
+    const totalStudySeconds = data.reduce((sum, item) => sum + (item.studySeconds ?? 0), 0);
+    const studyDays = data.filter(item => (item.studySeconds ?? 0) > 0).length;
+    const maxStudySeconds = data.reduce((max, item) => Math.max(max, item.studySeconds ?? 0), 0);
+
+    return { totalActivities, activeDays, maxCount, totalStudySeconds, studyDays, maxStudySeconds };
   }, [data]);
 
   return {

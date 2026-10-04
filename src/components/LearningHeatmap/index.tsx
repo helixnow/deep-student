@@ -16,6 +16,9 @@ import { ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-
 import { cn } from '../../lib/utils';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { splitDuration, studyHeatLevel } from '@/features/study-time/studyLog';
+import type { TFunction } from 'i18next';
 import './LearningHeatmap.css';
 
 // ============================================================================
@@ -29,6 +32,19 @@ export interface LearningHeatmapProps {
   showStats?: boolean;
   /** 隐藏内部标题（由外层分组容器提供标题时使用） */
   hideTitle?: boolean;
+}
+
+/** 热力图口径：活动次数 / 学习时长 */
+export type LearningHeatmapMetric = 'activity' | 'duration';
+
+/** 秒 → 「1 小时 05 分」/「38 分钟」/「不到 1 分钟」 */
+export function formatStudyDuration(seconds: number, t: TFunction): string {
+  if (!(seconds > 0)) return t('heatmap.duration.zero');
+  const { hours, minutes } = splitDuration(seconds);
+  if (hours === 0 && minutes === 0) return t('heatmap.duration.lessThanMinute');
+  if (hours === 0) return t('heatmap.duration.minutes', { minutes });
+  if (minutes === 0) return t('heatmap.duration.hours', { hours });
+  return t('heatmap.duration.hoursMinutes', { hours, minutes: String(minutes).padStart(2, '0') });
 }
 
 // ============================================================================
@@ -138,10 +154,36 @@ const DETAIL_KEYS = [
   'questionsAnswered',
 ] as const;
 
-function HeatmapTooltip({ hover }: { hover: HoverState }) {
+function HeatmapTooltip({ hover, metric }: { hover: HoverState; metric: LearningHeatmapMetric }) {
   const { t, i18n } = useTranslation('stats');
   const { activity, dateKey } = hover;
   const count = activity?.count ?? 0;
+  const studySeconds = activity?.studySeconds ?? 0;
+
+  if (metric === 'duration') {
+    return createPortal(
+      <div
+        className={cn('lh-tooltip', hover.placement === 'below' && 'lh-tooltip-below')}
+        style={{ left: hover.left, top: hover.top }}
+        role="tooltip"
+      >
+        <div className="lh-tooltip-header">
+          <span className="lh-tooltip-date">{formatDate(dateKey, i18n.language)}</span>
+        </div>
+        {studySeconds > 0 ? (
+          <div className="lh-tooltip-details">
+            <div className="lh-tooltip-row">
+              <span>{t('heatmap.duration.label')}</span>
+              <span className="lh-tooltip-value">{formatStudyDuration(studySeconds, t)}</span>
+            </div>
+          </div>
+        ) : (
+          <div className="lh-tooltip-empty">{t('heatmap.duration.noRecord')}</div>
+        )}
+      </div>,
+      document.body
+    );
+  }
 
   return createPortal(
     <div
@@ -238,8 +280,12 @@ export function LearningHeatmap({
     totalActivities,
     activeDays,
     maxCount,
+    totalStudySeconds,
+    studyDays,
+    maxStudySeconds,
     refresh,
   } = useLearningHeatmap(months);
+  const [metric, setMetric] = useState<LearningHeatmapMetric>('activity');
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
@@ -260,13 +306,18 @@ export function LearningHeatmap({
     return map;
   }, [data]);
 
-  /** 色阶：0 = 空，1-4 按当日活动量相对峰值分档 */
+  /**
+   * 色阶：0 = 空，1-4。活动口径按当日活动量相对峰值分档；
+   * 时长口径用绝对刻度（15 / 45 / 90 分钟），避免每天 5 分钟也染成满格。
+   */
   const levelOf = useCallback(
-    (count: number) => {
+    (activity: LearningActivity | undefined) => {
+      if (metric === 'duration') return studyHeatLevel(activity?.studySeconds ?? 0);
+      const count = activity?.count ?? 0;
       if (count <= 0 || maxCount <= 0) return 0;
       return Math.min(4, Math.max(1, Math.ceil((count / maxCount) * 4)));
     },
-    [maxCount]
+    [maxCount, metric]
   );
 
   const contentWidth = grid.weeks.length * step - gap;
@@ -363,21 +414,44 @@ export function LearningHeatmap({
 
   return (
     <div className={cn('flex flex-col', className)}>
-      {/* 标题 */}
-      {!hideTitle && (
-        <div className="flex items-center gap-2 mb-4 pl-1">
-          <Pulse size={16} className="text-muted-foreground/70" />
-          <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
-        </div>
-      )}
+      {/* 标题 + 口径切换（活动 / 时长） */}
+      <div className={cn('flex items-center gap-2 mb-4 pl-1', hideTitle ? 'justify-end' : 'justify-between')}>
+        {!hideTitle && (
+          <div className="flex items-center gap-2 min-w-0">
+            <Pulse size={16} className="text-muted-foreground/70" />
+            <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
+          </div>
+        )}
+        <SegmentedControl<LearningHeatmapMetric>
+          size="compact"
+          ariaLabel={t('heatmap.metric.label')}
+          value={metric}
+          onValueChange={(next) => {
+            setMetric(next);
+            setHover(null);
+          }}
+          options={[
+            { value: 'activity', label: t('heatmap.metric.activity') },
+            { value: 'duration', label: t('heatmap.metric.duration') },
+          ]}
+        />
+      </div>
 
       {/* 统计卡片 */}
       {showStats && !loading && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-          <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.stats.totalActivities')} value={totalActivities} />
-          <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={activeDays} />
-          <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={maxCount} />
-        </div>
+        metric === 'duration' ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.duration.total')} value={formatStudyDuration(totalStudySeconds, t)} />
+            <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={studyDays} />
+            <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={formatStudyDuration(maxStudySeconds, t)} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <StatsCard icon={<TrendUp size={16} />} label={t('heatmap.stats.totalActivities')} value={totalActivities} />
+            <StatsCard icon={<Calendar size={16} />} label={t('heatmap.stats.activeDays')} value={activeDays} />
+            <StatsCard icon={<Lightning size={16} />} label={t('heatmap.stats.maxDaily')} value={maxCount} />
+          </div>
+        )
       )}
 
       {/* 热力图主体：左侧固定星期标签 + 右侧可横滚网格 */}
@@ -427,7 +501,11 @@ export function LearningHeatmap({
                 onMouseLeave={clearHover}
                 onClick={handleGridClick}
                 role="img"
-                aria-label={t('heatmap.totalActivities', { count: totalActivities })}
+                aria-label={
+                  metric === 'duration'
+                    ? t('heatmap.duration.totalAria', { duration: formatStudyDuration(totalStudySeconds, t) })
+                    : t('heatmap.totalActivities', { count: totalActivities })
+                }
               >
                 {grid.weeks.map(week =>
                   week.map(day => {
@@ -435,12 +513,11 @@ export function LearningHeatmap({
                       return <div key={day.getTime()} className="lh-cell lh-cell-future" />;
                     }
                     const dateKey = toDateKey(day);
-                    const count = byDate.get(dateKey)?.count ?? 0;
                     return (
                       <div
                         key={dateKey}
                         className={cn('lh-cell', dateKey === todayKey && 'is-today')}
-                        data-level={levelOf(count)}
+                        data-level={levelOf(byDate.get(dateKey))}
                         data-date={dateKey}
                       />
                     );
@@ -449,7 +526,7 @@ export function LearningHeatmap({
               </div>
 
               {/* 单例 tooltip */}
-              {hover && <HeatmapTooltip hover={hover} />}
+              {hover && <HeatmapTooltip hover={hover} metric={metric} />}
             </div>
           )}
         </CustomScrollArea>
@@ -457,7 +534,10 @@ export function LearningHeatmap({
 
       {/* 图例 */}
       {showLegend && !loading && (
-        <div className="flex items-center justify-end gap-2 mt-3 px-1">
+        <div
+          className="flex items-center justify-end gap-2 mt-3 px-1"
+          title={metric === 'duration' ? t('heatmap.duration.legendHint') : undefined}
+        >
           <span className="lh-legend-label">{t('heatmap.legend.less', 'Less')}</span>
           <div className="flex" style={{ gap }}>
             {[0, 1, 2, 3, 4].map(level => (
