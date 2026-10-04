@@ -52,6 +52,30 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
         }
     }
 }
+/// 清理崩溃遗留的媒体 PCM 临时文件（> 1 天）
+fn sweep_stale_media_temp(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    let cutoff = std::time::SystemTime::now() - Duration::from_secs(24 * 3600);
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_spool = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with("media-pcm-"))
+            .unwrap_or(false);
+        let stale = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .map(|t| t < cutoff)
+            .unwrap_or(false);
+        if is_spool && stale {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 use crate::file_manager::FileManager;
 use crate::llm_manager::{LLMManager, MAX_OCR_CONCURRENCY};
 use crate::models::PdfOcrTextBlock;
@@ -80,6 +104,10 @@ pub enum MediaType {
     Pdf,
     /// 图片
     Image,
+    /// 音频（转写流水线：queued → decode → vad → asr → indexing）
+    Audio,
+    /// 视频（取音轨转写，阶段同音频）
+    Video,
 }
 
 impl MediaType {
@@ -87,6 +115,8 @@ impl MediaType {
         match self {
             MediaType::Pdf => "pdf",
             MediaType::Image => "image",
+            MediaType::Audio => "audio",
+            MediaType::Video => "video",
         }
     }
 
@@ -94,6 +124,8 @@ impl MediaType {
         match s {
             "pdf" => Some(MediaType::Pdf),
             "image" => Some(MediaType::Image),
+            "audio" => Some(MediaType::Audio),
+            "video" => Some(MediaType::Video),
             _ => None,
         }
     }
@@ -104,9 +136,18 @@ impl MediaType {
             Some(MediaType::Pdf)
         } else if mime.starts_with("image/") {
             Some(MediaType::Image)
+        } else if mime.starts_with("audio/") {
+            Some(MediaType::Audio)
+        } else if mime.starts_with("video/") {
+            Some(MediaType::Video)
         } else {
             None
         }
+    }
+
+    /// 是否为音视频（走媒体转写流水线）
+    pub fn is_av(&self) -> bool {
+        matches!(self, MediaType::Audio | MediaType::Video)
     }
 }
 
@@ -134,6 +175,16 @@ pub enum ProcessingStage {
     CompletedWithIssues,
     /// 处理失败
     Error,
+    /// 音视频：排队等待全局转写槽位
+    Queued,
+    /// 音视频：解码为 16 kHz 单声道
+    Decode,
+    /// 音视频：语音活动检测与分段
+    Vad,
+    /// 音视频：逐段语音识别
+    Asr,
+    /// 音视频：转写文本索引
+    Indexing,
 }
 
 impl ProcessingStage {
@@ -150,6 +201,11 @@ impl ProcessingStage {
             ProcessingStage::Completed => "completed",
             ProcessingStage::CompletedWithIssues => "completed_with_issues",
             ProcessingStage::Error => "error",
+            ProcessingStage::Queued => "queued",
+            ProcessingStage::Decode => "decode",
+            ProcessingStage::Vad => "vad",
+            ProcessingStage::Asr => "asr",
+            ProcessingStage::Indexing => "indexing",
         }
     }
 
@@ -167,6 +223,11 @@ impl ProcessingStage {
             "completed" => ProcessingStage::Completed,
             "completed_with_issues" => ProcessingStage::CompletedWithIssues,
             "error" => ProcessingStage::Error,
+            "queued" => ProcessingStage::Queued,
+            "decode" => ProcessingStage::Decode,
+            "vad" => ProcessingStage::Vad,
+            "asr" => ProcessingStage::Asr,
+            "indexing" => ProcessingStage::Indexing,
             _ => ProcessingStage::Pending,
         }
     }
@@ -340,6 +401,35 @@ pub struct MediaProcessingProgressEvent {
     pub file_id: String,
     pub status: ProcessingProgress,
     pub media_type: String,
+}
+
+/// 音视频转写进度事件（同走 `media-processing-progress`，payload 在通用字段之外
+/// 带 `stage` / `completedSegments` / `totalSegments`，见设计契约 §1.3）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaTranscriptionProgressEvent {
+    pub file_id: String,
+    pub status: ProcessingProgress,
+    /// `audio` | `video`
+    pub media_type: String,
+    /// queued / decode / vad / asr / indexing
+    pub stage: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_segments: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_segments: Option<i64>,
+}
+
+/// 音视频转写完成事件（同走 `media-processing-completed`）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaTranscriptionCompletedEvent {
+    pub file_id: String,
+    pub ready_modes: Vec<String>,
+    pub stage: String,
+    pub media_type: String,
+    pub completed_segments: i64,
+    pub total_segments: i64,
 }
 
 /// 完成事件（统一媒体处理事件）
@@ -624,10 +714,15 @@ impl PdfProcessingService {
         );
 
         // 根据媒体类型选择默认起始阶段
-        let start_stage = start_from_stage.unwrap_or(match media_type {
-            MediaType::Pdf => ProcessingStage::OcrProcessing,
-            MediaType::Image => ProcessingStage::ImageCompression,
-        });
+        // 音视频总是从排队开始（续做由字幕段表承担，与传入阶段无关）
+        let start_stage = if media_type.is_av() {
+            ProcessingStage::Queued
+        } else {
+            start_from_stage.unwrap_or(match media_type {
+                MediaType::Pdf => ProcessingStage::OcrProcessing,
+                _ => ProcessingStage::ImageCompression,
+            })
+        };
 
         // ★ P0 修复：使用原子操作检查并插入，避免 TOCTOU 竞态条件
         // ★ P0-2 修复：使用 generation counter 避免 cancel+restart 竞态
@@ -710,6 +805,16 @@ impl PdfProcessingService {
                         )
                         .await
                 }
+                MediaType::Audio | MediaType::Video => {
+                    service
+                        .run_media_pipeline_internal(
+                            &file_id_clone,
+                            mt,
+                            cancel_token.clone(),
+                            generation,
+                        )
+                        .await
+                }
             };
 
             // 注意：running_tasks.remove 现在由 _cleanup_guard 在 drop 时自动执行
@@ -775,6 +880,301 @@ impl PdfProcessingService {
         Ok(())
     }
 
+    // ========================================================================
+    // 音视频转写流水线（docs/dev/media-learning/README.md §1.2）
+    // ========================================================================
+
+    /// 媒体转写临时目录（16 kHz PCM spool；位于应用数据目录，Android 上可写）
+    pub fn media_temp_dir(&self) -> PathBuf {
+        self.db.app_data_dir().join("tmp").join("media")
+    }
+
+    /// 构建受管 ASR 后端（语音输入同一 Key 与模型槽位）
+    pub async fn build_media_asr_backend(
+        &self,
+    ) -> Result<Arc<dyn crate::media::asr::AsrBackend>, crate::media::MediaError> {
+        let api_key =
+            crate::voice_input::resolve_asr_api_key(&self.settings_db).ok_or_else(|| {
+                crate::media::MediaError::AsrFatal {
+                code: "settings-required".to_string(),
+                message:
+                    "未配置语音识别：请在设置中填写 SiliconFlow API Key（与语音输入共用）后再转写"
+                        .to_string(),
+            }
+            })?;
+        let model = crate::media::asr::resolve_asr_model(&self.llm_manager).await;
+        let backend = crate::media::asr::HttpAsrBackend::new(
+            crate::voice_input::DEFAULT_SILICONFLOW_BASE_URL,
+            &api_key,
+            model,
+            None,
+        )?;
+        Ok(Arc::new(backend))
+    }
+
+    /// 用户取消：停止任务并把状态落为稳定的 `cancelled`（不会被启动恢复自动续跑）
+    pub fn cancel_media(&self, file_id: &str) -> VfsResult<bool> {
+        let was_running = self.cancel(file_id)?;
+        let conn = self.db.get_conn_safe()?;
+        conn.execute(
+            r#"UPDATE files
+               SET processing_status = 'cancelled', processing_error = NULL
+               WHERE id = ?1 AND processing_status IN ('queued','decode','vad','asr','indexing','pending')"#,
+            params![file_id],
+        )?;
+        Ok(was_running)
+    }
+
+    async fn emit_media_progress(
+        &self,
+        file_id: &str,
+        media_type: MediaType,
+        update: &crate::media::pipeline::MediaProgressUpdate,
+        generation: u64,
+    ) {
+        if self.skip_stale_task_side_effects(file_id, Some(generation), "emit_media_progress") {
+            return;
+        }
+        let progress = ProcessingProgress {
+            stage: update.stage.as_str().to_string(),
+            current_page: None,
+            total_pages: None,
+            percent: update.percent.clamp(0.0, 100.0),
+            ready_modes: vec![],
+            media_type: Some(media_type.as_str().to_string()),
+            failed_stages: None,
+        };
+        if let Ok(conn) = self.db.get_conn_safe() {
+            let progress_json = serde_json::to_string(&progress).unwrap_or_default();
+            if let Err(e) = conn.execute(
+                r#"UPDATE files
+                   SET processing_status = ?1,
+                       processing_progress = ?2,
+                       processing_started_at = COALESCE(processing_started_at, ?3)
+                   WHERE id = ?4"#,
+                params![
+                    progress.stage,
+                    progress_json,
+                    chrono::Utc::now().timestamp_millis(),
+                    file_id
+                ],
+            ) {
+                warn!(
+                    "[MediaProcessingService] Failed to persist media progress for {}: {}",
+                    file_id, e
+                );
+            }
+        }
+        if let Some(app_handle) = self.get_app_handle().await {
+            let event = MediaTranscriptionProgressEvent {
+                file_id: file_id.to_string(),
+                status: progress,
+                media_type: media_type.as_str().to_string(),
+                stage: update.stage.as_str().to_string(),
+                completed_segments: update.completed_segments,
+                total_segments: update.total_segments,
+            };
+            if let Err(e) = app_handle.emit("media-processing-progress", &event) {
+                warn!(
+                    "[MediaProcessingService] Failed to emit media progress event: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    /// 音视频流水线：转写（排队/解码/VAD/ASR）→ 索引 → 完成事件
+    async fn run_media_pipeline_internal(
+        &self,
+        file_id: &str,
+        media_type: MediaType,
+        cancel_token: CancellationToken,
+        generation: u64,
+    ) -> VfsResult<()> {
+        use crate::media::pipeline::{MediaProgressUpdate, MediaStage};
+        use crate::media::MediaError;
+
+        let mut current_stage = MediaStage::Queued;
+        // 字幕导入的计划不跑 ASR：不要求配置 ASR Key
+        let imported = self
+            .db
+            .get_conn_safe()
+            .ok()
+            .and_then(|conn| {
+                crate::vfs::repos::media_transcript_repo::MediaTranscriptRepo::plan_info_with_conn(
+                    &conn, file_id,
+                )
+                .ok()
+                .flatten()
+            })
+            .map(|(_, source)| {
+                source == crate::vfs::repos::media_transcript_repo::SEGMENT_SOURCE_IMPORT
+            })
+            .unwrap_or(false);
+        let backend = if imported {
+            Ok(Arc::new(crate::media::asr::UnavailableBackend)
+                as Arc<dyn crate::media::asr::AsrBackend>)
+        } else {
+            self.build_media_asr_backend().await
+        };
+        let result: Result<crate::media::pipeline::TranscriptionOutcome, MediaError> = match backend
+        {
+            Err(e) => Err(e),
+            Ok(backend) => {
+                let temp_dir = self.media_temp_dir();
+                sweep_stale_media_temp(&temp_dir);
+                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<MediaProgressUpdate>();
+                let fut = crate::media::pipeline::transcribe_resource(
+                    Arc::clone(&self.db),
+                    file_id,
+                    backend,
+                    Some(temp_dir),
+                    cancel_token.clone(),
+                    Some(tx),
+                );
+                tokio::pin!(fut);
+                let result = loop {
+                    tokio::select! {
+                        res = &mut fut => break res,
+                        Some(update) = rx.recv() => {
+                            current_stage = update.stage;
+                            self.emit_media_progress(file_id, media_type, &update, generation).await;
+                        }
+                    }
+                };
+                while let Ok(update) = rx.try_recv() {
+                    current_stage = update.stage;
+                    self.emit_media_progress(file_id, media_type, &update, generation)
+                        .await;
+                }
+                result
+            }
+        };
+
+        let outcome = match result {
+            Ok(outcome) => outcome,
+            Err(MediaError::Cancelled) => {
+                info!(
+                    "[MediaProcessingService] Media transcription cancelled: {}",
+                    file_id
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                let payload = e.to_payload_string();
+                let stage = ProcessingStage::from_str(current_stage.as_str());
+                warn!(
+                    "[MediaProcessingService] Media transcription failed for {} at {}: {}",
+                    file_id,
+                    current_stage.as_str(),
+                    e
+                );
+                if let Err(db_err) = self.set_error(file_id, &payload, stage, Some(generation)) {
+                    error!(
+                        "[MediaProcessingService] Failed to set media error status: {}",
+                        db_err
+                    );
+                }
+                self.emit_error(
+                    file_id,
+                    &payload,
+                    current_stage.as_str(),
+                    media_type,
+                    Some(generation),
+                )
+                .await;
+                return Ok(());
+            }
+        };
+
+        let mut ready_modes: Vec<String> = if outcome.transcript_chars > 0 {
+            vec!["text".to_string()]
+        } else {
+            vec![]
+        };
+
+        if outcome.transcript_chars > 0 {
+            self.emit_media_progress(
+                file_id,
+                media_type,
+                &MediaProgressUpdate {
+                    stage: MediaStage::Indexing,
+                    percent: 92.0,
+                    completed_segments: Some(outcome.done_segments),
+                    total_segments: Some(outcome.total_segments),
+                },
+                generation,
+            )
+            .await;
+            if let Err(e) = self
+                .stage_vector_indexing(file_id, &mut ready_modes, media_type, generation)
+                .await
+            {
+                warn!(
+                    "[MediaProcessingService] Indexing after transcription failed for {}: {}",
+                    file_id, e
+                );
+            }
+        }
+
+        let final_stage = if outcome.failed_segments > 0 {
+            ProcessingStage::CompletedWithIssues
+        } else {
+            ProcessingStage::Completed
+        };
+        let progress = ProcessingProgress {
+            stage: final_stage.as_str().to_string(),
+            current_page: None,
+            total_pages: None,
+            percent: 100.0,
+            ready_modes: ready_modes.clone(),
+            media_type: Some(media_type.as_str().to_string()),
+            failed_stages: (outcome.failed_segments > 0).then(|| {
+                vec![ProcessingIssue {
+                    stage: ProcessingStage::Asr.as_str().to_string(),
+                    message: format!(
+                        "{} 段转写失败，可重新转写补齐（已完成的段会保留）",
+                        outcome.failed_segments
+                    ),
+                    retriable: true,
+                }]
+            }),
+        };
+        self.update_processing_status(
+            file_id,
+            final_stage,
+            Some(&progress),
+            None,
+            Some(generation),
+        )
+        .await?;
+
+        if self.skip_stale_task_side_effects(file_id, Some(generation), "emit_media_completed") {
+            return Ok(());
+        }
+        if let Some(app_handle) = self.get_app_handle().await {
+            let event = MediaTranscriptionCompletedEvent {
+                file_id: file_id.to_string(),
+                ready_modes,
+                stage: final_stage.as_str().to_string(),
+                media_type: media_type.as_str().to_string(),
+                completed_segments: outcome.done_segments,
+                total_segments: outcome.total_segments,
+            };
+            if let Err(e) = app_handle.emit("media-processing-completed", &event) {
+                warn!(
+                    "[MediaProcessingService] Failed to emit media completed event: {}",
+                    e
+                );
+            }
+        }
+        info!(
+            "[MediaProcessingService] Media transcription done for {}: {}/{} segments, {} failed",
+            file_id, outcome.done_segments, outcome.total_segments, outcome.failed_segments
+        );
+        Ok(())
+    }
+
     /// 检测媒体类型（MIME 或文件扩展名）
     fn detect_media_type(&self, file_id: &str) -> VfsResult<MediaType> {
         let conn = self.db.get_conn_safe()?;
@@ -788,6 +1188,11 @@ impl PdfProcessingService {
 
         MediaType::from_mime(&mime_type)
             .or_else(|| {
+                match crate::media::media_kind(&mime_type, file_name.as_deref().unwrap_or("")) {
+                    Some(crate::media::MediaKind::Audio) => return Some(MediaType::Audio),
+                    Some(crate::media::MediaKind::Video) => return Some(MediaType::Video),
+                    None => {}
+                }
                 let lower_name = file_name.as_deref()?.to_lowercase();
                 if lower_name.ends_with(".pdf") {
                     Some(MediaType::Pdf)
@@ -2627,7 +3032,8 @@ impl PdfProcessingService {
             Some(s)
                 if (s.stage == "error"
                     || s.stage == "completed_with_issues"
-                    || s.stage == "pending")
+                    || s.stage == "pending"
+                    || s.stage == "cancelled")
                     && !self.is_running(file_id) =>
             {
                 // 检测媒体类型，选择正确的重试起始阶段
@@ -2635,6 +3041,7 @@ impl PdfProcessingService {
                 let start_stage = match media_type {
                     MediaType::Pdf => ProcessingStage::OcrProcessing,
                     MediaType::Image => ProcessingStage::ImageCompression,
+                    MediaType::Audio | MediaType::Video => ProcessingStage::Queued,
                 };
 
                 info!(
@@ -2690,7 +3097,8 @@ impl PdfProcessingService {
                     r#"SELECT id FROM files
                    WHERE processing_status IN (
                        'text_extraction', 'page_rendering', 'page_compression',
-                       'image_compression', 'ocr_processing', 'vector_indexing'
+                       'image_compression', 'ocr_processing', 'vector_indexing',
+                       'queued', 'decode', 'vad', 'asr', 'indexing'
                    )"#,
                 )
                 .map_err(|e| VfsError::Database(format!("Failed to prepare stuck query: {}", e)))?;
@@ -3045,12 +3453,19 @@ impl PdfProcessingService {
                 reason: format!("File {} has no associated resource", file_id),
             })?;
 
+        // 音视频沿用契约阶段名 "indexing"，PDF/图片保持 "vector_indexing"
+        let stage_label = if media_type.is_av() {
+            ProcessingStage::Indexing.as_str()
+        } else {
+            ProcessingStage::VectorIndexing.as_str()
+        };
+
         // 5. 发送进度事件：开始向量索引
         // ★ P1-1 修复：向量索引范围 75%-95%，与 OCR 结束的 75% 衔接
         self.emit_progress(
             file_id,
             ProcessingProgress {
-                stage: "vector_indexing".to_string(),
+                stage: stage_label.to_string(),
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 75.0,
@@ -3131,7 +3546,7 @@ impl PdfProcessingService {
         self.emit_progress(
             file_id,
             ProcessingProgress {
-                stage: "vector_indexing".to_string(),
+                stage: stage_label.to_string(),
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 85.0,
@@ -3218,7 +3633,7 @@ impl PdfProcessingService {
         self.emit_progress(
             file_id,
             ProcessingProgress {
-                stage: "vector_indexing".to_string(),
+                stage: stage_label.to_string(),
                 current_page: None,
                 total_pages: file.page_count.map(|p| p as usize),
                 percent: 95.0,
@@ -3964,7 +4379,11 @@ impl PartialOrd for ProcessingStage {
 impl Ord for ProcessingStage {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         let self_order = match self {
-            ProcessingStage::Pending => 0,
+            ProcessingStage::Pending | ProcessingStage::Queued => 0,
+            ProcessingStage::Decode => 1,
+            ProcessingStage::Vad => 2,
+            ProcessingStage::Asr => 5,
+            ProcessingStage::Indexing => 6,
             ProcessingStage::TextExtraction => 1,
             ProcessingStage::PageRendering => 2,
             ProcessingStage::PageCompression => 3,
@@ -3976,7 +4395,11 @@ impl Ord for ProcessingStage {
             ProcessingStage::Error => 9,
         };
         let other_order = match other {
-            ProcessingStage::Pending => 0,
+            ProcessingStage::Pending | ProcessingStage::Queued => 0,
+            ProcessingStage::Decode => 1,
+            ProcessingStage::Vad => 2,
+            ProcessingStage::Asr => 5,
+            ProcessingStage::Indexing => 6,
             ProcessingStage::TextExtraction => 1,
             ProcessingStage::PageRendering => 2,
             ProcessingStage::PageCompression => 3,

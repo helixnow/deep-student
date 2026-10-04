@@ -61,6 +61,7 @@
     "embedding": "向量嵌入",
     "reranker": "重排序",
     "voice_input": "语音输入",
+    "media_transcription": "音视频转写",
     "other": "其他"
   },
   "recent": {

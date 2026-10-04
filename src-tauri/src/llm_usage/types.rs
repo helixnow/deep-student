@@ -37,6 +37,8 @@ pub enum CallerType {
     Reranker,
     /// 语音输入（ASR / Speech-to-Text）
     VoiceInput,
+    /// 音视频转写（媒体学习流水线的逐段 ASR）
+    MediaTranscription,
     /// 其他/自定义调用方
     Other(String),
 }
@@ -60,6 +62,7 @@ impl std::fmt::Display for CallerType {
             CallerType::Embedding => write!(f, "embedding"),
             CallerType::Reranker => write!(f, "reranker"),
             CallerType::VoiceInput => write!(f, "voice_input"),
+            CallerType::MediaTranscription => write!(f, "media_transcription"),
             CallerType::Other(s) => write!(f, "other:{}", s),
         }
     }
@@ -85,6 +88,7 @@ impl CallerType {
             "embedding" => CallerType::Embedding,
             "reranker" => CallerType::Reranker,
             "voice_input" => CallerType::VoiceInput,
+            "media_transcription" => CallerType::MediaTranscription,
             other => {
                 if let Some(custom) = other.strip_prefix("other:") {
                     CallerType::Other(custom.to_string())
@@ -108,6 +112,7 @@ impl CallerType {
             CallerType::Embedding => "文本嵌入",
             CallerType::Reranker => "重排序",
             CallerType::VoiceInput => "语音输入",
+            CallerType::MediaTranscription => "音视频转写",
             CallerType::Other(_) => "其他",
         }
     }
@@ -846,6 +851,10 @@ mod tests {
         assert_eq!(CallerType::from_str("chat_v2"), CallerType::ChatV2);
         assert_eq!(CallerType::from_str("translation"), CallerType::Translation);
         assert_eq!(CallerType::from_str("voice_input"), CallerType::VoiceInput);
+        assert_eq!(
+            CallerType::from_str("media_transcription"),
+            CallerType::MediaTranscription
+        );
         assert_eq!(
             CallerType::from_str("other:custom"),
             CallerType::Other("custom".to_string())

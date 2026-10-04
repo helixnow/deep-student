@@ -11,8 +11,12 @@
 //! - [`transcript`]：`[mm:ss] 文本` 行格式（extracted_text 与 resource_read 共用）
 //! - [`commands`]：Tauri 命令（`media_transcribe_*` / `media_transcript_*` / `media_progress_*`）
 
+pub mod asr;
+pub mod commands;
 pub mod decoder;
+pub mod pipeline;
 pub mod resample;
+pub mod subtitle;
 pub mod transcript;
 pub mod vad;
 pub mod wav;

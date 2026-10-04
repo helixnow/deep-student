@@ -13,9 +13,9 @@ use crate::models::{AppError, AppErrorType};
 
 type Result<T> = std::result::Result<T, AppError>;
 
-const DEFAULT_PROVIDER_ID: &str = "siliconflow";
-const DEFAULT_SILICONFLOW_BASE_URL: &str = "https://api.siliconflow.cn/v1";
-const DEFAULT_SILICONFLOW_MODEL: &str = "TeleAI/TeleSpeechASR";
+pub(crate) const DEFAULT_PROVIDER_ID: &str = "siliconflow";
+pub(crate) const DEFAULT_SILICONFLOW_BASE_URL: &str = "https://api.siliconflow.cn/v1";
+pub(crate) const DEFAULT_SILICONFLOW_MODEL: &str = "TeleAI/TeleSpeechASR";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct VoiceInputAsrCapability {
@@ -63,16 +63,18 @@ fn voice_input_error(error_type: AppErrorType, code: &str, message: impl Into<St
 }
 
 fn build_voice_input_http_client() -> Result<Client> {
-    Client::builder()
-        .timeout(Duration::from_secs(90))
-        .build()
-        .map_err(|error| {
-            voice_input_error(
-                AppErrorType::Network,
-                "network-failed",
-                format!("Failed to create voice input HTTP client: {}", error),
-            )
-        })
+    build_asr_http_client(Duration::from_secs(90))
+}
+
+/// 受管 ASR 共用的 HTTP 客户端（语音输入与媒体转写）
+pub(crate) fn build_asr_http_client(timeout: Duration) -> Result<Client> {
+    Client::builder().timeout(timeout).build().map_err(|error| {
+        voice_input_error(
+            AppErrorType::Network,
+            "network-failed",
+            format!("Failed to create voice input HTTP client: {}", error),
+        )
+    })
 }
 
 fn resolve_audio_extension(mime_type: &str) -> &'static str {
@@ -145,11 +147,15 @@ fn build_siliconflow_form(
 }
 
 fn resolve_siliconflow_api_key(state: &AppState) -> Option<String> {
+    resolve_asr_api_key(&state.database)
+}
+
+/// 受管 ASR（SiliconFlow）API Key：用户配置优先，其次内置 Key
+pub(crate) fn resolve_asr_api_key(database: &crate::database::Database) -> Option<String> {
     ["builtin-siliconflow.api_key", "siliconflow.api_key"]
         .iter()
         .find_map(|key| {
-            state
-                .database
+            database
                 .get_secret(key)
                 .ok()
                 .flatten()
@@ -203,24 +209,35 @@ fn record_voice_input_usage(
     success: bool,
     error_message: Option<String>,
 ) {
-    let mut record = UsageRecord::new(
+    record_asr_usage(
         CallerType::VoiceInput,
-        resolve_requested_model_id(request),
-        0,
-        0,
-    )
-    .with_provider_id(resolve_requested_provider_id(request))
-    // ASR 端点不返回 token usage，0/0 是本地占位而非 API 实测；
-    // 不标注会落 schema 默认 "api"，把无测量伪装成实测
-    .with_token_source(crate::chat_v2::types::TokenSource::Heuristic.to_string())
-    .with_duration(latency_ms);
+        &resolve_requested_provider_id(request),
+        &resolve_requested_model_id(request),
+        request.config_id.as_deref(),
+        latency_ms,
+        success,
+        error_message,
+    );
+}
 
-    if let Some(config_id) = request
-        .config_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+/// 记录一次受管 ASR 调用（语音输入 / 媒体转写共用）
+pub(crate) fn record_asr_usage(
+    caller: CallerType,
+    provider_id: &str,
+    model: &str,
+    config_id: Option<&str>,
+    latency_ms: u64,
+    success: bool,
+    error_message: Option<String>,
+) {
+    let mut record = UsageRecord::new(caller, model.to_string(), 0, 0)
+        .with_provider_id(provider_id.to_string())
+        // ASR 端点不返回 token usage，0/0 是本地占位而非 API 实测；
+        // 不标注会落 schema 默认 "api"，把无测量伪装成实测
+        .with_token_source(crate::chat_v2::types::TokenSource::Heuristic.to_string())
+        .with_duration(latency_ms);
+
+    if let Some(config_id) = config_id.map(str::trim).filter(|value| !value.is_empty()) {
         record = record.with_config_id(config_id.to_string());
     }
 
@@ -231,6 +248,82 @@ fn record_voice_input_usage(
     crate::llm_usage::record_usage_record(record);
 }
 
+/// 受管 ASR HTTP 调用错误（保留状态码与 Retry-After，供媒体转写做 AIMD / 重试决策）
+#[derive(Debug, Clone)]
+pub enum AsrHttpError {
+    /// 传输层失败（连接 / 超时）
+    Transport { timeout: bool, message: String },
+    /// 非 2xx 响应
+    Status {
+        status: u16,
+        retry_after: Option<Duration>,
+        body: String,
+    },
+}
+
+impl std::fmt::Display for AsrHttpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AsrHttpError::Transport { message, .. } => write!(f, "{}", message),
+            AsrHttpError::Status { status, body, .. } => write!(f, "HTTP {} {}", status, body),
+        }
+    }
+}
+
+/// 解析 Retry-After（秒数或 HTTP-date）
+pub(crate) fn parse_retry_after(value: &str) -> Option<Duration> {
+    let value = value.trim();
+    if let Ok(secs) = value.parse::<u64>() {
+        return Some(Duration::from_secs(secs.min(600)));
+    }
+    let when = chrono::DateTime::parse_from_rfc2822(value).ok()?;
+    let delta = when.timestamp_millis() - chrono::Utc::now().timestamp_millis();
+    Some(Duration::from_millis(delta.clamp(0, 600_000) as u64))
+}
+
+/// POST `{base_url}/audio/transcriptions`（multipart），成功返回响应体文本
+pub(crate) async fn post_asr_form(
+    client: &Client,
+    base_url: &str,
+    api_key: &str,
+    form: Form,
+) -> std::result::Result<String, AsrHttpError> {
+    let endpoint = format!("{}/audio/transcriptions", base_url.trim_end_matches('/'));
+    let response = client
+        .post(endpoint)
+        .bearer_auth(api_key.trim())
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|error| AsrHttpError::Transport {
+            timeout: error.is_timeout(),
+            message: format!("ASR request failed: {}", error),
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let retry_after = response
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(parse_retry_after);
+        let body = response.text().await.unwrap_or_default();
+        return Err(AsrHttpError::Status {
+            status: status.as_u16(),
+            retry_after,
+            body: body.chars().take(500).collect(),
+        });
+    }
+
+    response
+        .text()
+        .await
+        .map_err(|error| AsrHttpError::Transport {
+            timeout: error.is_timeout(),
+            message: format!("ASR response read failed: {}", error),
+        })
+}
+
 async fn transcribe_with_siliconflow(
     client: &Client,
     base_url: &str,
@@ -239,52 +332,38 @@ async fn transcribe_with_siliconflow(
 ) -> Result<VoiceInputTranscribeResponse> {
     let audio_bytes = decode_audio_payload(&request.audio_base64)?;
     let form = build_siliconflow_form(request, audio_bytes)?;
-    let endpoint = format!("{}/audio/transcriptions", base_url.trim_end_matches('/'));
 
-    let response = client
-        .post(endpoint)
-        .bearer_auth(api_key.trim())
-        .multipart(form)
-        .send()
+    let body = post_asr_form(client, base_url, api_key, form)
         .await
-        .map_err(|error| {
-            let code = if error.is_timeout() {
-                "timeout"
-            } else {
-                "network-failed"
-            };
-            voice_input_error(
+        .map_err(|error| match error {
+            AsrHttpError::Transport { timeout, message } => voice_input_error(
                 AppErrorType::Network,
-                code,
-                format!("Voice input request failed: {}", error),
-            )
+                if timeout { "timeout" } else { "network-failed" },
+                format!("Voice input request failed: {}", message),
+            ),
+            AsrHttpError::Status { status, body, .. } => {
+                let code = match status {
+                    401 | 403 => "auth-failed",
+                    429 => "rate-limited",
+                    _ => "transcription-failed",
+                };
+                let message = match code {
+                    "auth-failed" => {
+                        "Voice input authentication failed. Check the SiliconFlow API key."
+                    }
+                    "rate-limited" => "Voice input is being rate limited by SiliconFlow.",
+                    _ => "Voice input transcription failed.",
+                };
+                voice_input_error(
+                    AppErrorType::LLM,
+                    code,
+                    format!("{} HTTP {} {}", message, status, body),
+                )
+            }
         })?;
 
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let code = match status.as_u16() {
-            401 | 403 => "auth-failed",
-            429 => "rate-limited",
-            500..=599 => "transcription-failed",
-            _ => "transcription-failed",
-        };
-        let message = match code {
-            "auth-failed" => "Voice input authentication failed. Check the SiliconFlow API key.",
-            "rate-limited" => "Voice input is being rate limited by SiliconFlow.",
-            _ => "Voice input transcription failed.",
-        };
-        return Err(voice_input_error(
-            AppErrorType::LLM,
-            code,
-            format!("{} HTTP {} {}", message, status.as_u16(), body),
-        ));
-    }
-
-    let payload = response
-        .json::<SiliconFlowTranscriptionResponse>()
-        .await
-        .map_err(|error| {
+    let payload =
+        serde_json::from_str::<SiliconFlowTranscriptionResponse>(&body).map_err(|error| {
             voice_input_error(
                 AppErrorType::Validation,
                 "transcription-failed",
