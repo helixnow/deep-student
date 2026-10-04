@@ -988,20 +988,38 @@ pub(crate) fn build_in_loop_skill_messages(
 pub(crate) fn insert_skill_messages_after_tool_result(
     messages: &mut Vec<LegacyChatMessage>,
     tool_call_id: &str,
+    round_last_tool_call_id: Option<&str>,
     skill_messages: Vec<LegacyChatMessage>,
 ) {
     if skill_messages.is_empty() {
         return;
     }
-    let insert_at = messages
-        .iter()
-        .rposition(|msg| {
-            msg.tool_result
-                .as_ref()
-                .is_some_and(|tr| tr.call_id == tool_call_id)
-        })
-        .map(|pos| pos + 1)
+    // 优先插到本轮最后一个工具结果之后。插在轮内中间会把并行工具调用组从
+    // 中间劈开（merge_consecutive_tool_calls 把 user 消息当轮次边界 flush），
+    // 第二个 assistant 丢失该轮 reasoning_content，触发官方 DeepSeek V4
+    // thinking 模式 400（"reasoning_content must be passed back"）。
+    // 找不到轮尾（旧数据/结果被清理）时回退锚点自身结果之后（旧行为）。
+    let locate_after_tool_result = |call_id: &str| {
+        messages
+            .iter()
+            .rposition(|msg| {
+                msg.tool_result
+                    .as_ref()
+                    .is_some_and(|tr| tr.call_id == call_id)
+            })
+            .map(|pos| pos + 1)
+    };
+    let mut insert_at = round_last_tool_call_id
+        .and_then(locate_after_tool_result)
+        .or_else(|| locate_after_tool_result(tool_call_id))
         .unwrap_or(messages.len());
+    // 同轮多批 load_skills 依序追加：跳过已插入的瞬态技能消息保持批次顺序
+    while messages
+        .get(insert_at)
+        .is_some_and(is_transient_skill_message)
+    {
+        insert_at += 1;
+    }
     messages.splice(insert_at..insert_at, skill_messages);
 }
 
@@ -2613,7 +2631,12 @@ mod tests {
         );
         injected.extend(batch.audit.injected_skill_ids.iter().cloned());
 
-        insert_skill_messages_after_tool_result(&mut messages, "call-load-skills", batch.messages);
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-skills",
+            None,
+            batch.messages,
+        );
 
         // 新技能恰好插在 tool result 之后
         assert_eq!(messages.len(), 6);
@@ -2639,7 +2662,12 @@ mod tests {
             &HashSet::new(),
             4,
         );
-        insert_skill_messages_after_tool_result(&mut messages, "call-missing", orphan.messages);
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-missing",
+            None,
+            orphan.messages,
+        );
         assert_eq!(messages.len(), 7);
         assert!(is_transient_skill_message(&messages[6]));
         let prefix_fallback: Vec<(String, String)> = messages[..3]
@@ -2647,5 +2675,90 @@ mod tests {
             .map(|m| (m.role.clone(), m.content.clone()))
             .collect();
         assert_eq!(prefix_snapshot, prefix_fallback);
+    }
+
+    /// 并行工具轮的锚点必须落在本轮最后一个 tool result 之后：插在轮内
+    /// 中间会把 merge_consecutive_tool_calls 的工具调用组劈开，第二个
+    /// assistant 丢失 reasoning_content，触发官方 DeepSeek V4 thinking 400。
+    #[test]
+    fn test_p1_8_in_loop_skills_insert_after_round_last_tool_result() {
+        let make_pair = |call_id: &str, tool_name: &str| {
+            let mut call = make_empty_message("assistant", String::new());
+            call.tool_call = Some(crate::models::ToolCall {
+                id: call_id.to_string(),
+                tool_name: tool_name.to_string(),
+                args_json: json!({}),
+            });
+            let mut result = make_empty_message("tool", "ok".to_string());
+            result.tool_result = Some(crate::models::ToolResult {
+                call_id: call_id.to_string(),
+                ok: true,
+                error: None,
+                error_details: None,
+                data_json: Some(json!({ "ok": true })),
+                usage: None,
+                citations: None,
+            });
+            (call, result)
+        };
+        let (call1, result1) = make_pair("call-load-skills", "load_skills");
+        let (call2, result2) = make_pair("call-shell", "local_shell_execute");
+        let mut messages = vec![call1, result1, call2, result2];
+
+        let batch = vec![make_transient_skill_message("skill-x", "round skill body")];
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-skills",
+            Some("call-shell"),
+            batch.clone(),
+        );
+        // 技能消息在本轮最后一个 tool result 之后，而不是两个结果中间
+        assert_eq!(messages.len(), 5);
+        assert!(messages[3]
+            .tool_result
+            .as_ref()
+            .is_some_and(|t| t.call_id == "call-shell"));
+        assert!(is_transient_skill_message(&messages[4]));
+
+        // 回退：轮尾 call_id 找不到时回退锚点自身位置（旧行为）
+        let mut messages = vec![make_pair("call-load-skills", "load_skills").0];
+        messages.push(make_pair("call-load-skills", "load_skills").1);
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-skills",
+            Some("call-gone"),
+            batch,
+        );
+        assert_eq!(messages.len(), 3);
+        assert!(is_transient_skill_message(&messages[2]));
+
+        // 同轮多批：都落在轮尾之后且保持批次顺序
+        let (call1, result1) = make_pair("call-load-a", "load_skills");
+        let (call2, result2) = make_pair("call-load-b", "load_skills");
+        let (call3, result3) = make_pair("call-shell", "local_shell_execute");
+        let mut messages = vec![call1, result1, call2, result2, call3, result3];
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-a",
+            Some("call-shell"),
+            vec![make_transient_skill_message("skill-a", "batch A")],
+        );
+        insert_skill_messages_after_tool_result(
+            &mut messages,
+            "call-load-b",
+            Some("call-shell"),
+            vec![make_transient_skill_message("skill-b", "batch B")],
+        );
+        assert_eq!(messages.len(), 8);
+        assert!(is_transient_skill_message(&messages[6]));
+        assert_eq!(
+            transient_skill_message_skill_id(&messages[6]).as_deref(),
+            Some("skill-a")
+        );
+        assert!(is_transient_skill_message(&messages[7]));
+        assert_eq!(
+            transient_skill_message_skill_id(&messages[7]).as_deref(),
+            Some("skill-b")
+        );
     }
 }

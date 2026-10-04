@@ -317,6 +317,7 @@ fn mixed_edit_delete_intact_judged_per_anchor_with_deduped_signal() {
     anchors.tool_anchored = vec![ToolAnchoredSkills {
         tool_call_id: "call_load_skills_1".to_string(),
         skill_ids: vec!["skill-b".to_string()],
+        round_last_tool_call_id: None,
     }];
 
     // 当轮合并正文：a 未动、b 已编辑、c 已删除（缺席）

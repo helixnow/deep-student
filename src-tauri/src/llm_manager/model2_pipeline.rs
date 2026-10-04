@@ -895,6 +895,67 @@ pub(crate) fn apply_generation_params(
     }
 }
 
+/// 官方 DeepSeek V4 Thinking 模式的发送前结构自检（兜底层）。
+///
+/// 官方 thinking_mode 文档：带 `tools` 的请求必须全量回传历史
+/// `reasoning_content`，任何 assistant(tool_calls) 消息缺失都会 400
+/// （"The `reasoning_content` in the thinking mode must be passed back"）。
+/// 历史会话无法完全保证（旧版把环内技能锚点插在并行工具结果中间、
+/// thinking 块被压缩后重放回退），发送前对缺失的消息补空串占位并告警；
+/// 空串是合法回传（与 merge 处"空字符串也必须回传"同一约定）。
+fn ensure_official_deepseek_v4_reasoning_passback(body: &mut Value, config: &ApiConfig) {
+    if !crate::llm_manager::adapters::is_official_deepseek_v4(config) {
+        return;
+    }
+    if body
+        .get("thinking")
+        .and_then(|t| t.get("type"))
+        .and_then(Value::as_str)
+        == Some("disabled")
+    {
+        return;
+    }
+    let has_tools = body
+        .get("tools")
+        .and_then(Value::as_array)
+        .is_some_and(|tools| !tools.is_empty());
+    if !has_tools {
+        return;
+    }
+    let Some(messages) = body.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+    let mut healed = 0usize;
+    for msg in messages.iter_mut() {
+        let is_tool_call_assistant = msg.get("role").and_then(Value::as_str) == Some("assistant")
+            && msg
+                .get("tool_calls")
+                .and_then(Value::as_array)
+                .is_some_and(|calls| !calls.is_empty());
+        if !is_tool_call_assistant {
+            continue;
+        }
+        if msg
+            .get("reasoning_content")
+            .and_then(Value::as_str)
+            .is_none()
+        {
+            if let Some(obj) = msg.as_object_mut() {
+                obj.insert(
+                    "reasoning_content".to_string(),
+                    Value::String(String::new()),
+                );
+                healed += 1;
+            }
+        }
+    }
+    if healed > 0 {
+        warn!(
+            "[DeepSeek V4 passback] 请求中 {healed} 条 assistant(tool_calls) 消息缺失 reasoning_content，已补空串占位（官方 thinking 模式要求全量回传）"
+        );
+    }
+}
+
 fn attach_reasoning_passback_payload(
     assistant_msg: &mut Value,
     policy: ReasoningPassbackPolicy,
@@ -2637,6 +2698,86 @@ mod tests {
         );
 
         assert_eq!(assistant_msg.get("reasoning_content"), Some(&json!("")));
+    }
+
+    #[test]
+    fn test_official_v4_passback_self_check_heals_missing_reasoning_on_tool_calls() {
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4.1-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": "deepseek-v4.1-flash",
+            "thinking": { "type": "enabled" },
+            "tools": [{ "type": "function", "function": { "name": "t", "parameters": {} } }],
+            "messages": [
+                { "role": "system", "content": "s" },
+                { "role": "user", "content": "u1" },
+                { "role": "assistant", "content": "", "reasoning_content": "thought",
+                  "tool_calls": [{ "id": "c1", "type": "function", "function": { "name": "t", "arguments": "{}" } }] },
+                { "role": "tool", "tool_call_id": "c1", "content": "r" },
+                { "role": "assistant", "content": "",
+                  "tool_calls": [{ "id": "c2", "type": "function", "function": { "name": "t", "arguments": "{}" } }] },
+                { "role": "tool", "tool_call_id": "c2", "content": "r2" },
+                { "role": "user", "content": "continue" }
+            ]
+        });
+
+        ensure_official_deepseek_v4_reasoning_passback(&mut body, &config);
+
+        let messages = body["messages"].as_array().unwrap();
+        // 已有 reasoning 的消息不动
+        assert_eq!(messages[2]["reasoning_content"], json!("thought"));
+        // 缺失的 tool_calls assistant 补空串占位
+        assert_eq!(messages[4]["reasoning_content"], json!(""));
+        // 非工具 assistant 不受影响
+        assert!(messages[6].get("reasoning_content").is_none());
+    }
+
+    #[test]
+    fn test_official_v4_passback_self_check_noop_cases() {
+        let official = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let tool_call_assistant = json!({
+            "role": "assistant", "content": "",
+            "tool_calls": [{ "id": "c1", "type": "function", "function": { "name": "t", "arguments": "{}" } }]
+        });
+        let make_body = |thinking: Value, tools: Value| {
+            json!({
+                "thinking": thinking,
+                "tools": tools,
+                "messages": [tool_call_assistant.clone()]
+            })
+        };
+
+        // thinking 关闭：无回传要求，不补
+        let mut body = make_body(json!({ "type": "disabled" }), json!([{}]));
+        ensure_official_deepseek_v4_reasoning_passback(&mut body, &official);
+        assert!(body["messages"][0].get("reasoning_content").is_none());
+
+        // 无 tools：官方会忽略 reasoning_content，不补
+        let mut body = make_body(json!({ "type": "enabled" }), json!([]));
+        ensure_official_deepseek_v4_reasoning_passback(&mut body, &official);
+        assert!(body["messages"][0].get("reasoning_content").is_none());
+
+        // 非官方 host（中转站）：不动
+        let mut relay_config = official.clone();
+        relay_config.base_url = "https://relay.example.com/v1".to_string();
+        let mut body = make_body(json!({ "type": "enabled" }), json!([{}]));
+        ensure_official_deepseek_v4_reasoning_passback(&mut body, &relay_config);
+        assert!(body["messages"][0].get("reasoning_content").is_none());
     }
 
     #[test]
@@ -5662,6 +5803,7 @@ impl LLMManager {
         // 简化：不再在此处估算输入token
 
         apply_generation_params(&mut request_body, &config, &quirks);
+        ensure_official_deepseek_v4_reasoning_passback(&mut request_body, &config);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
         if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
@@ -7338,6 +7480,7 @@ impl LLMManager {
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         apply_generation_params(&mut request_body, &config, &quirks);
+        ensure_official_deepseek_v4_reasoning_passback(&mut request_body, &config);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
         let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
         if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {

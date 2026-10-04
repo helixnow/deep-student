@@ -1267,6 +1267,13 @@ pub struct ToolAnchoredSkills {
     pub tool_call_id: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub skill_ids: Vec<String>,
+    /// 该轮（同一次 LLM 响应）最后一个工具调用的 provider tool_call_id。
+    /// 锚点重放插到该结果之后与 live 同位；插在轮内中间会把并行工具调用组
+    /// 劈开（merge 把 user 消息当轮次边界 flush），第二个 assistant 丢失
+    /// reasoning_content，触发官方 DeepSeek V4 thinking 模式 400。
+    /// 旧数据无此字段时回退到锚点自身位置。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub round_last_tool_call_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
