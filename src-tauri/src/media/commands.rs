@@ -438,6 +438,7 @@ pub async fn media_transcript_import(
             .map_err(|e| err(MediaError::Io(e.to_string())))?
             .map_err(err)?
     };
+    super::pipeline::refresh_index(&db, &info.file_id);
     log::info!(
         "[media::commands] imported {} subtitle cues for {}",
         count,

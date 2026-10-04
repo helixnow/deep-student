@@ -832,8 +832,8 @@ fn resolve_single_ref_with_conn(
                             (
                                 Some(format!(
                                     "[音频文件: {}（resourceId: {}）。该音频尚未转写，内容不可直接读取。\
-                                     若需要其中的语音内容，可调用 media_transcribe 工具（传入该 resourceId 或 attachment_stage 的 handle）转写为文本；\
-                                     WMA 格式暂不支持转写]",
+                                     若需要其中的语音内容，可调用 media_transcribe 工具（传入该 resourceId）转写为带 [mm:ss] 时间戳的文本；\
+                                     Opus/WMA 编码需先转为 MP3/M4A]",
                                     title, r.source_id
                                 )),
                                 Some(format!(
@@ -844,12 +844,12 @@ fn resolve_single_ref_with_conn(
                         } else if is_video {
                             (
                                 Some(format!(
-                                    "[视频文件: {}。当前不支持提取视频音轨或画面内容，视频内容无法送入对话；\
-                                     仅文件名可用作参考]",
-                                    title
+                                    "[视频文件: {}（resourceId: {}）。该视频尚未转写，画面内容不可读取。\
+                                     若需要其中的语音内容，可调用 media_transcribe 工具（传入该 resourceId）提取音轨并转写为带 [mm:ss] 时间戳的文本]",
+                                    title, r.source_id
                                 )),
                                 Some(format!(
-                                    "「{}」是视频文件，当前不支持提取视频内容",
+                                    "「{}」是视频文件且尚未转写，模型可通过 media_transcribe 工具转写音轨",
                                     title
                                 )),
                             )

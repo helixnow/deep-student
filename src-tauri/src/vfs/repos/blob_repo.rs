@@ -21,6 +21,36 @@ use crate::vfs::types::VfsBlob;
 
 static BLOB_FILE_MUTATION_LOCK: Mutex<()> = Mutex::new(());
 
+/// 流式暂存的 blob 内容（位于 `vfs_blobs/.staging/`，与最终位置同一文件系统，可原子 rename）。
+///
+/// 未被 [`VfsBlobRepo::store_staged_blob_with_conn`] 消费时，drop 即删除临时文件。
+#[derive(Debug)]
+pub struct StagedBlob {
+    path: Option<PathBuf>,
+    pub hash: String,
+    pub size: u64,
+}
+
+impl StagedBlob {
+    pub fn path(&self) -> Option<&Path> {
+        self.path.as_deref()
+    }
+}
+
+impl Drop for StagedBlob {
+    fn drop(&mut self) {
+        if let Some(path) = self.path.take() {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// blob 内容来源
+enum BlobSource<'a> {
+    Bytes(&'a [u8]),
+    Staged(&'a mut StagedBlob),
+}
+
 fn lock_blob_file_mutation() -> VfsResult<MutexGuard<'static, ()>> {
     BLOB_FILE_MUTATION_LOCK
         .lock()
@@ -79,12 +109,98 @@ impl VfsBlobRepo {
         mime_type: Option<&str>,
         extension: Option<&str>,
     ) -> VfsResult<VfsBlob> {
+        Self::store_blob_source_with_conn(
+            conn,
+            blobs_dir,
+            BlobSource::Bytes(data),
+            mime_type,
+            extension,
+        )
+    }
+
+    /// 把任意 reader 流式写入 `vfs_blobs/.staging/`，边写边算 SHA-256，不整文件进内存。
+    ///
+    /// 超过 `max_bytes` 立即中止并删除临时文件。结果交给
+    /// [`Self::store_staged_blob_with_conn`] 登记（同 hash 去重、原子 rename）。
+    pub fn stage_stream(
+        blobs_dir: &Path,
+        reader: &mut dyn std::io::Read,
+        max_bytes: u64,
+    ) -> VfsResult<StagedBlob> {
+        let staging_dir = blobs_dir.join(".staging");
+        fs::create_dir_all(&staging_dir)
+            .map_err(|e| VfsError::Io(format!("Failed to create blob staging dir: {}", e)))?;
+        // .tmp 后缀：崩溃残留由 sweep_stale_temp_files（>24h）统一清理
+        let path = staging_dir.join(format!("{}.tmp", nanoid::nanoid!(16)));
+        let mut staged = StagedBlob {
+            path: Some(path.clone()),
+            hash: String::new(),
+            size: 0,
+        };
+        let file = fs::File::create(&path)
+            .map_err(|e| VfsError::Io(format!("Failed to create staged blob: {}", e)))?;
+        let mut writer = std::io::BufWriter::with_capacity(1024 * 1024, file);
+        let mut hasher = Sha256::new();
+        let mut buf = vec![0u8; 1024 * 1024];
+        loop {
+            let n = match reader.read(&mut buf) {
+                Ok(0) => break,
+                Ok(n) => n,
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(e) => return Err(VfsError::Io(format!("Failed to read upload stream: {}", e))),
+            };
+            staged.size += n as u64;
+            if staged.size > max_bytes {
+                return Err(VfsError::InvalidArgument {
+                    param: "content".to_string(),
+                    reason: format!("File too large: max {}MB", max_bytes / (1024 * 1024)),
+                });
+            }
+            hasher.update(&buf[..n]);
+            writer
+                .write_all(&buf[..n])
+                .map_err(|e| VfsError::Io(format!("Failed to write staged blob: {}", e)))?;
+        }
+        writer
+            .flush()
+            .map_err(|e| VfsError::Io(format!("Failed to flush staged blob: {}", e)))?;
+        staged.hash = hex::encode(hasher.finalize());
+        Ok(staged)
+    }
+
+    /// 登记流式暂存的 blob（同 hash 已有文件则丢弃暂存，否则原子 rename 到最终位置）
+    pub fn store_staged_blob_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        staged: &mut StagedBlob,
+        mime_type: Option<&str>,
+        extension: Option<&str>,
+    ) -> VfsResult<VfsBlob> {
+        Self::store_blob_source_with_conn(
+            conn,
+            blobs_dir,
+            BlobSource::Staged(staged),
+            mime_type,
+            extension,
+        )
+    }
+
+    fn store_blob_source_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        mut source: BlobSource<'_>,
+        mime_type: Option<&str>,
+        extension: Option<&str>,
+    ) -> VfsResult<VfsBlob> {
         // 与物理删除的 quarantine 阶段串行，避免 ref_count 复活与文件 claim
         // 交错后产生有 metadata、无文件的悬挂 blob。
         let _file_guard = lock_blob_file_mutation()?;
 
         // 1. 计算哈希
-        let hash = Self::compute_hash(data);
+        let (hash, data_len) = match &source {
+            BlobSource::Bytes(data) => (Self::compute_hash(data), data.len() as u64),
+            BlobSource::Staged(staged) => (staged.hash.clone(), staged.size),
+        };
         debug!("[VFS::BlobRepo] Computed hash: {}", hash);
 
         // An enclosing upload SAVEPOINT is deferred. Reserve its write lock
@@ -149,11 +265,31 @@ impl VfsBlobRepo {
         // 4. 幂等写入文件（相同 hash 意味着相同内容，覆写安全）
         //    如果文件已存在且大小匹配，跳过写入以优化性能
         let should_write = match fs::metadata(&absolute_path) {
-            Ok(meta) => meta.len() != data.len() as u64,
+            Ok(meta) => meta.len() != data_len,
             Err(_) => true, // 文件不存在，需要写入
         };
 
-        if should_write {
+        if let BlobSource::Staged(staged) = &mut source {
+            let staged_path = staged
+                .path
+                .clone()
+                .ok_or_else(|| VfsError::Internal("staged blob already consumed".to_string()))?;
+            if should_write {
+                // 同一文件系统（vfs_blobs/.staging → vfs_blobs/xx/）：原子 rename
+                if let Err(e) = fs::rename(&staged_path, &absolute_path) {
+                    error!(
+                        "[VFS::BlobRepo] Failed to move staged blob into place: {}",
+                        e
+                    );
+                    return Err(VfsError::Io(format!(
+                        "Failed to move staged blob into place: {}",
+                        e
+                    )));
+                }
+                staged.path = None;
+            }
+            // 已存在同内容文件：staged 由 drop 清理
+        } else if should_write {
             // Atomic write: write to temp file first, then rename to avoid
             // corrupted blobs if the process is killed mid-write.
             // ★ 2026-06-12（审阅问题 M 类）：tmp 文件名加入随机后缀。
@@ -168,6 +304,9 @@ impl VfsBlobRepo {
                     VfsError::Io(format!("Failed to create temp blob file: {}", e))
                 })?;
 
+                let BlobSource::Bytes(data) = &source else {
+                    return Err(VfsError::Internal("unexpected blob source".to_string()));
+                };
                 file.write_all(data).map_err(|e| {
                     error!("[VFS::BlobRepo] Failed to write temp blob file: {}", e);
                     VfsError::Io(format!("Failed to write temp blob file: {}", e))
@@ -212,7 +351,7 @@ impl VfsBlobRepo {
         //    - 如果 hash 不存在：插入新记录，ref_count = 1
         //    - 如果 hash 已存在：ref_count + 1（UNIQUE 约束在 hash 列）
         let now = chrono::Utc::now().timestamp_millis();
-        let size = data.len() as i64;
+        let size = data_len as i64;
 
         conn.execute_batch("SAVEPOINT blob_store_metadata")?;
         let stored = (|| -> VfsResult<(i32, i64)> {

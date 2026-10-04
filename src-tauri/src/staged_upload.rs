@@ -30,6 +30,17 @@ use tauri::{AppHandle, Manager, Window};
 
 /// 单个暂存上传的硬上限（与附件 `MAX_FILE_BYTES` / `read_file_bytes` 上限对齐）
 pub const STAGED_UPLOAD_MAX_BYTES: u64 = 200 * 1024 * 1024;
+/// 音视频暂存上限（消费方流式写入 blob，不整文件进内存；设计契约 media-learning §4）
+pub const STAGED_UPLOAD_MEDIA_MAX_BYTES: u64 = crate::media::MAX_MEDIA_IMPORT_BYTES;
+
+/// 按文件名决定暂存上限：音视频 4 GB，其余 200 MB
+pub fn max_bytes_for_name(name: &str) -> u64 {
+    if crate::media::media_kind("", name).is_some() {
+        STAGED_UPLOAD_MEDIA_MAX_BYTES
+    } else {
+        STAGED_UPLOAD_MAX_BYTES
+    }
+}
 /// 单个分块的硬上限（前端默认 4MB，这里留余量）
 pub const STAGED_UPLOAD_MAX_CHUNK_BYTES: usize = 16 * 1024 * 1024;
 /// 闲置超时：超过该时间未追加/未消费的暂存上传视为放弃（页面刷新、崩溃等）
@@ -210,7 +221,7 @@ fn prepare_dir(dir: &Path) -> Result<(), String> {
 
 /// 申请一个分块上传（核心逻辑，目录显式传入便于测试）。
 pub fn begin_in(dir: &Path, name: &str, total_size: u64, max_bytes: u64) -> Result<String, String> {
-    let max_bytes = max_bytes.min(STAGED_UPLOAD_MAX_BYTES);
+    let max_bytes = max_bytes.min(STAGED_UPLOAD_MEDIA_MAX_BYTES);
     if total_size > max_bytes {
         return Err(too_large_error(total_size, max_bytes));
     }
@@ -314,7 +325,7 @@ pub fn stage_from_reader(
     reader: &mut dyn Read,
     max_bytes: u64,
 ) -> Result<(String, u64), String> {
-    let max_bytes = max_bytes.min(STAGED_UPLOAD_MAX_BYTES);
+    let max_bytes = max_bytes.min(STAGED_UPLOAD_MEDIA_MAX_BYTES);
     prepare_dir(dir)?;
     let id = uuid::Uuid::new_v4().simple().to_string();
     let path = part_path(dir, &id);
@@ -440,7 +451,8 @@ pub async fn staged_upload_begin(
 ) -> Result<String, String> {
     let dir = staging_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        begin_in(&dir, &name, total_size, STAGED_UPLOAD_MAX_BYTES)
+        let max_bytes = max_bytes_for_name(&name);
+        begin_in(&dir, &name, total_size, max_bytes)
     })
     .await
     .map_err(|e| format!("Staged upload task failed: {}", e))?
@@ -487,7 +499,7 @@ pub async fn staged_upload_from_path(
         let mut reader = crate::unified_file_manager::open_read_stream(&window, &path)
             .map_err(|e| e.to_string())?;
         let (upload_id, size) =
-            stage_from_reader(&dir, &name, &mut reader, STAGED_UPLOAD_MAX_BYTES)?;
+            stage_from_reader(&dir, &name, &mut reader, max_bytes_for_name(&name))?;
         Ok(StagedFromPath { upload_id, size })
     })
     .await
@@ -543,7 +555,26 @@ mod tests {
     fn begin_enforces_size_limit() {
         let dir = tmp();
         assert!(begin_in(dir.path(), "big", 11, 10).is_err());
-        assert!(begin_in(dir.path(), "big", STAGED_UPLOAD_MAX_BYTES + 1, u64::MAX).is_err());
+        assert!(begin_in(
+            dir.path(),
+            "big",
+            STAGED_UPLOAD_MEDIA_MAX_BYTES + 1,
+            u64::MAX
+        )
+        .is_err());
+        // 非音视频仍按 200 MB；音视频放宽到 4 GB
+        assert_eq!(max_bytes_for_name("doc.pdf"), STAGED_UPLOAD_MAX_BYTES);
+        assert_eq!(
+            max_bytes_for_name("lecture.MP4"),
+            STAGED_UPLOAD_MEDIA_MAX_BYTES
+        );
+        assert!(begin_in(
+            dir.path(),
+            "big.pdf",
+            STAGED_UPLOAD_MAX_BYTES + 1,
+            max_bytes_for_name("big.pdf")
+        )
+        .is_err());
         assert!(begin_in(dir.path(), "ok", 10, 10).is_ok());
     }
 

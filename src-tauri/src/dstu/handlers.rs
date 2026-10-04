@@ -647,6 +647,85 @@ pub async fn dstu_get(
 ///
 /// ## 返回
 /// 新创建的资源节点
+/// 音视频分块暂存导入：流式写入 blob 并建 files 行；非音视频 / 非暂存返回 None 走原路径。
+async fn dstu_create_media_from_staged(
+    window: &Window,
+    vfs_db: &Arc<VfsDatabase>,
+    resource_type: &str,
+    staged: Option<&crate::staged_upload::StagedFile>,
+    name: &str,
+    mime_type: Option<&str>,
+    folder_id: Option<&str>,
+) -> Result<Option<DstuNode>, String> {
+    let Some(staged) = staged else {
+        return Ok(None);
+    };
+    let mime = mime_type.unwrap_or("").to_string();
+    if resource_type != "files" || crate::media::media_kind(&mime, name).is_none() {
+        return Ok(None);
+    }
+    let path = staged.path().to_path_buf();
+    let db = Arc::clone(vfs_db);
+    let name = if name.trim().is_empty() {
+        staged.name().to_string()
+    } else {
+        name.to_string()
+    };
+    let folder_id = folder_id.map(str::to_string);
+    let file = tauri::async_runtime::spawn_blocking(
+        move || -> Result<crate::vfs::types::VfsFile, String> {
+            let mut reader = std::fs::File::open(&path)
+                .map_err(|e| format!("Failed to open staged upload: {}", e))?;
+            let mut blob_stage = VfsBlobRepo::stage_stream(
+                db.blobs_dir(),
+                &mut reader,
+                crate::media::MAX_MEDIA_IMPORT_BYTES,
+            )
+            .map_err(|e| e.to_string())?;
+            let size = blob_stage.size as i64;
+            let extension = std::path::Path::new(&name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(|e| e.to_ascii_lowercase());
+            let mime = if mime.contains('/') {
+                mime
+            } else {
+                "application/octet-stream".to_string()
+            };
+            let blob = {
+                let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+                VfsBlobRepo::store_staged_blob_with_conn(
+                    &conn,
+                    db.blobs_dir(),
+                    &mut blob_stage,
+                    Some(&mime),
+                    extension.as_deref(),
+                )
+                .map_err(|e| e.to_string())?
+            };
+            VfsFileRepo::create_file_in_folder(
+                &db,
+                &blob.hash,
+                &name,
+                size,
+                "file",
+                Some(&mime),
+                Some(&blob.hash),
+                None,
+                folder_id.as_deref(),
+            )
+            .map_err(|e| e.to_string())
+        },
+    )
+    .await
+    .map_err(|e| format!("Media import task failed: {}", e))??;
+    crate::media::commands::spawn_auto_transcribe_if_short_audio(
+        tauri::Manager::app_handle(window),
+        file.id.clone(),
+    );
+    Ok(Some(file_to_dstu_node(&file)))
+}
+
 #[tauri::command]
 pub async fn dstu_create(
     path: String,
@@ -1148,6 +1227,25 @@ pub async fn dstu_create(
                 }
                 _ => None,
             };
+            // ★ 音视频分块暂存：流式写入 blob（边拷边算 hash，上限 4 GB），不整文件读入内存
+            if let Some(node) = dstu_create_media_from_staged(
+                &window,
+                &vfs_db,
+                resource_type,
+                staged_file.as_ref(),
+                &options.name,
+                metadata.get("mimeType").and_then(|v| v.as_str()),
+                folder_id.as_deref(),
+            )
+            .await?
+            {
+                emit_watch_event(&window, DstuWatchEvent::created(&node.path, node.clone()));
+                log::info!(
+                    "[DSTU::handlers] dstu_create: created {} (streamed media)",
+                    node.path
+                );
+                return Ok(node);
+            }
             let file_data = if let Some(staged) = staged_file {
                 let max_bytes = max_file_size as u64;
                 tauri::async_runtime::spawn_blocking(move || staged.read_bounded(max_bytes))

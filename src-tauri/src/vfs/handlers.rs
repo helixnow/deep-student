@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::utils::unicode::sanitize_unicode;
 use crate::vfs::attachment_config::AttachmentConfig;
@@ -1403,278 +1403,6 @@ pub struct VfsUploadAttachmentParamsExt {
     pub folder_id: Option<String>,
 }
 
-/// 自动转写的音频大小上限（与 media_transcribe 工具的受管 ASR 限额一致）
-const AUTO_TRANSCRIBE_MAX_AUDIO_BYTES: usize = 25 * 1024 * 1024;
-
-/// 判断上传是否是音频文件（MIME 或扩展名）
-fn is_audio_upload(name: &str, mime_type: &str) -> bool {
-    if mime_type.trim().to_lowercase().starts_with("audio/") {
-        return true;
-    }
-    let ext = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .map(|s| s.to_lowercase());
-    matches!(
-        ext.as_deref(),
-        Some("mp3" | "wav" | "ogg" | "m4a" | "flac" | "aac" | "opus" | "wma")
-    )
-}
-
-/// 通过文件签名确认音频容器类型（供受管 ASR 使用的 MIME）
-///
-/// 与 `media_executor::media_signature` 保持一致的接受范围：
-/// MP3 / WAV / OGG / FLAC / M4A（MP4 audio ftyp）/ ADTS AAC。
-/// WMA（ASF 容器）与视频容器返回明确的不支持原因。
-fn detect_audio_mime_by_signature(bytes: &[u8]) -> Result<&'static str, String> {
-    if bytes.starts_with(b"ID3")
-        || bytes.starts_with(b"\xff\xfb")
-        || bytes.starts_with(b"\xff\xf3")
-        || bytes.starts_with(b"\xff\xf2")
-    {
-        Ok("audio/mpeg")
-    } else if bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WAVE" {
-        Ok("audio/wav")
-    } else if bytes.starts_with(b"OggS") {
-        Ok("audio/ogg")
-    } else if bytes.starts_with(b"fLaC") {
-        Ok("audio/flac")
-    } else if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
-        // ISO BMFF：仅接受确认为音频的 M4A/M4B/M4P 品牌，其余按视频容器拒绝
-        let brand = &bytes[8..12];
-        if brand.starts_with(b"M4A") || brand.starts_with(b"M4B") || brand.starts_with(b"M4P") {
-            Ok("audio/mp4")
-        } else {
-            Err("视频容器（MP4/MOV 等）暂不支持提取音轨转写".to_string())
-        }
-    } else if bytes.len() >= 2 && bytes[0] == 0xff && (bytes[1] & 0xf6) == 0xf0 {
-        // ADTS AAC 帧头（0xFFF1 / 0xFFF9 等）
-        Ok("audio/aac")
-    } else if bytes.starts_with(b"\x30\x26\xb2\x75\x8e\x66\xcf\x11") {
-        Err("WMA（ASF 容器）暂不支持转写，请先转换为 MP3/WAV/M4A".to_string())
-    } else if bytes.starts_with(b"\x1a\x45\xdf\xa3") {
-        Err("WebM/MKV 容器暂不支持提取音轨转写".to_string())
-    } else {
-        Err("无法通过文件签名确认音频格式（支持 MP3/WAV/OGG/FLAC/M4A/AAC）".to_string())
-    }
-}
-
-/// 把可读的处理状态写入 files 行（音频转写状态显式化，仅日志用户不可见）
-fn mark_audio_processing_note(vfs_db: &VfsDatabase, file_id: &str, note: &str) {
-    match vfs_db.get_conn_safe() {
-        Ok(conn) => {
-            if let Err(e) = conn.execute(
-                "UPDATE files SET processing_error = ?1 WHERE id = ?2",
-                rusqlite::params![note, file_id],
-            ) {
-                log::warn!(
-                    "[VFS::handlers] Failed to record audio processing note for {}: {}",
-                    file_id,
-                    e
-                );
-            }
-        }
-        Err(e) => {
-            log::warn!(
-                "[VFS::handlers] Failed to get connection for audio note {}: {}",
-                file_id,
-                e
-            );
-        }
-    }
-}
-
-/// ★ 音频导入后的可选转写流水线（异步，不阻塞导入）
-///
-/// 复用现有语音输入 ASR 基建（`voice_input_transcribe_with_state`）：
-/// - ASR 未配置 → 在 files.processing_error 标记可读状态后跳过；
-/// - 转写成功 → 写入 files.extracted_text + resources OCR 文本并重建索引单元，
-///   使音频内容可被检索与注入对话。
-fn spawn_audio_transcription_if_applicable(
-    app: &AppHandle,
-    vfs_db: Arc<VfsDatabase>,
-    file_id: String,
-    resource_id: Option<String>,
-    file_name: String,
-    audio_base64: String,
-) {
-    use base64::Engine as _;
-
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let Some(state) = app.try_state::<crate::commands::AppState>() else {
-            log::warn!(
-                "[VFS::handlers] AppState unavailable, skip audio transcription for {}",
-                file_id
-            );
-            return;
-        };
-
-        let asr = crate::voice_input::voice_input_asr_capability(&state);
-        if !asr.configured {
-            log::info!(
-                "[VFS::handlers] ASR not configured, skip audio transcription for {}",
-                file_id
-            );
-            mark_audio_processing_note(
-                &vfs_db,
-                &file_id,
-                "音频未自动转写：未配置语音输入 ASR（SiliconFlow API Key）。可在设置中配置后重新导入，或在对话中调用 media_transcribe 工具转写",
-            );
-            return;
-        }
-
-        // 解码前按编码长度估算，超过受管 ASR 限额直接跳过
-        let estimated = audio_base64.len() / 4 * 3;
-        if estimated > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
-            mark_audio_processing_note(
-                &vfs_db,
-                &file_id,
-                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
-            );
-            return;
-        }
-        let bytes = match base64::engine::general_purpose::STANDARD.decode(&audio_base64) {
-            Ok(bytes) => bytes,
-            Err(e) => {
-                log::warn!(
-                    "[VFS::handlers] Failed to decode audio for transcription {}: {}",
-                    file_id,
-                    e
-                );
-                return;
-            }
-        };
-        if bytes.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES {
-            mark_audio_processing_note(
-                &vfs_db,
-                &file_id,
-                "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
-            );
-            return;
-        }
-
-        let mime = match detect_audio_mime_by_signature(&bytes) {
-            Ok(mime) => mime,
-            Err(reason) => {
-                mark_audio_processing_note(
-                    &vfs_db,
-                    &file_id,
-                    &format!("音频未自动转写：{}", reason),
-                );
-                return;
-            }
-        };
-
-        let request = crate::voice_input::VoiceInputTranscribeRequest {
-            audio_base64,
-            mime_type: mime.to_string(),
-            provider_id: None,
-            model: None,
-            config_id: None,
-            language: None,
-            prompt: None,
-            duration_ms: None,
-        };
-
-        match crate::voice_input::voice_input_transcribe_with_state(request, &state).await {
-            Ok(transcript) if !transcript.text.trim().is_empty() => {
-                let text = transcript.text.trim().to_string();
-                log::info!(
-                    "[VFS::handlers] Audio transcribed for {} ({}): {} chars",
-                    file_id,
-                    file_name,
-                    text.len()
-                );
-                match vfs_db.get_conn_safe() {
-                    Ok(conn) => {
-                        if let Err(e) = conn.execute(
-                            "UPDATE files SET extracted_text = ?1, processing_error = NULL WHERE id = ?2",
-                            rusqlite::params![text, file_id],
-                        ) {
-                            log::warn!(
-                                "[VFS::handlers] Failed to store transcript for {}: {}",
-                                file_id,
-                                e
-                            );
-                            return;
-                        }
-                        if let Some(ref resource_id) = resource_id {
-                            if let Err(e) =
-                                VfsResourceRepo::save_ocr_text_with_conn(&conn, resource_id, &text)
-                            {
-                                log::warn!(
-                                    "[VFS::handlers] Failed to persist transcript OCR text for {}: {}",
-                                    resource_id,
-                                    e
-                                );
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "[VFS::handlers] Failed to get connection for transcript {}: {}",
-                            file_id,
-                            e
-                        );
-                        return;
-                    }
-                }
-
-                // 触发既有文本索引（与文档上传一致的 Units 同步路径）
-                if let Some(resource_id) = resource_id {
-                    let index_service = VfsIndexService::new(vfs_db.clone());
-                    let input = UnitBuildInput {
-                        resource_id: resource_id.clone(),
-                        resource_type: "file".to_string(),
-                        data: None,
-                        ocr_text: Some(text.clone()),
-                        ocr_pages_json: None,
-                        blob_hash: None,
-                        page_count: None,
-                        extracted_text: Some(text),
-                        preview_json: None,
-                    };
-                    match index_service.sync_resource_units(input) {
-                        Ok(units) => log::info!(
-                            "[VFS::handlers] Synced {} units for transcribed audio {}",
-                            units.len(),
-                            file_id
-                        ),
-                        Err(e) => log::warn!(
-                            "[VFS::handlers] Failed to sync units for transcribed audio {}: {}",
-                            file_id,
-                            e
-                        ),
-                    }
-                }
-            }
-            Ok(_) => {
-                mark_audio_processing_note(
-                    &vfs_db,
-                    &file_id,
-                    "音频转写结果为空（可能是无语音内容）",
-                );
-            }
-            Err(e) => {
-                log::warn!(
-                    "[VFS::handlers] Audio transcription failed for {}: {}",
-                    file_id,
-                    e.message
-                );
-                mark_audio_processing_note(
-                    &vfs_db,
-                    &file_id,
-                    &format!(
-                        "音频自动转写失败：{}。可在对话中调用 media_transcribe 工具重试",
-                        e.message
-                    ),
-                );
-            }
-        }
-    });
-}
-
 #[tauri::command]
 pub async fn vfs_upload_attachment(
     app: AppHandle,
@@ -1721,32 +1449,23 @@ fn upload_attachment_blocking(
         }
     };
 
+    // ★ 音视频：流式写入 blob（边拷边算 hash，不整文件进内存，上限 4 GB）；
+    // 转写统一走媒体流水线（docs/dev/media-learning §1.2），不再导入时整段 ASR。
+    let is_media = crate::media::media_kind(&params.mime_type, &params.name).is_some();
+
     // ★ 大文件分块暂存路径：从暂存区取走完整文件（StagedFile drop 即删除临时文件）
-    let staged_bytes = match params.staged_upload_id.as_deref() {
+    let staged_file = match params.staged_upload_id.as_deref() {
         Some(upload_id) if !upload_id.is_empty() => {
-            let staged = crate::staged_upload::take_staged_upload(upload_id)?;
+            Some(crate::staged_upload::take_staged_upload(upload_id)?)
+        }
+        _ => None,
+    };
+    let staged_bytes = match staged_file.as_ref() {
+        Some(staged) if !is_media => {
             let max_bytes = VfsAttachmentRepo::max_upload_size_bytes(&params.mime_type) as u64;
             Some(staged.read_bounded(max_bytes)?)
         }
         _ => None,
-    };
-
-    // ★ 音频附件：留存 base64 供导入后的可选转写流水线使用（其余类型不复制；
-    // 超过受管 ASR 25MB 限额的大音频不复制，避免峰值内存翻倍）
-    let is_audio = is_audio_upload(&params.name, &params.mime_type);
-    let audio_within_asr_limit = match staged_bytes.as_ref() {
-        Some(bytes) => bytes.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES,
-        None => params.base64_content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES / 3 * 4 + 4,
-    };
-    let audio_base64_for_transcription = if is_audio && audio_within_asr_limit {
-        Some(match staged_bytes.as_ref() {
-            Some(bytes) => {
-                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, bytes)
-            }
-            None => params.base64_content.clone(),
-        })
-    } else {
-        None
     };
 
     let upload_params = VfsUploadAttachmentParams {
@@ -1756,45 +1475,55 @@ fn upload_attachment_blocking(
         attachment_type: params.attachment_type,
     };
 
-    let result = match staged_bytes.as_deref() {
-        Some(bytes) => VfsAttachmentRepo::upload_bytes_with_folder(
-            &vfs_db,
-            &upload_params,
-            bytes,
-            target_folder_id.as_deref(),
-        ),
-        None => VfsAttachmentRepo::upload_with_folder(
-            &vfs_db,
-            upload_params,
-            target_folder_id.as_deref(),
-        ),
+    let result = if is_media {
+        match staged_file.as_ref() {
+            Some(staged) => {
+                let mut file = std::fs::File::open(staged.path())
+                    .map_err(|e| format!("Failed to open staged upload: {}", e))?;
+                VfsAttachmentRepo::upload_media_stream_with_folder(
+                    &vfs_db,
+                    &upload_params,
+                    &mut file,
+                    target_folder_id.as_deref(),
+                )
+            }
+            None => {
+                use base64::Engine as _;
+                let bytes = base64::engine::general_purpose::STANDARD
+                    .decode(upload_params.base64_content.trim())
+                    .map_err(|e| format!("Base64 decode failed: {}", e))?;
+                VfsAttachmentRepo::upload_media_stream_with_folder(
+                    &vfs_db,
+                    &upload_params,
+                    &mut std::io::Cursor::new(bytes),
+                    target_folder_id.as_deref(),
+                )
+            }
+        }
+    } else {
+        match staged_bytes.as_deref() {
+            Some(bytes) => VfsAttachmentRepo::upload_bytes_with_folder(
+                &vfs_db,
+                &upload_params,
+                bytes,
+                target_folder_id.as_deref(),
+            ),
+            None => VfsAttachmentRepo::upload_with_folder(
+                &vfs_db,
+                upload_params,
+                target_folder_id.as_deref(),
+            ),
+        }
     }
     .map_err(|e| e.to_string())?;
     drop(staged_bytes);
+    drop(staged_file);
 
-    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
-    if let Some(audio_base64) = audio_base64_for_transcription {
-        let has_transcript = result
-            .attachment
-            .extracted_text
-            .as_ref()
-            .map(|t| !t.trim().is_empty())
-            .unwrap_or(false);
-        if result.is_new && !has_transcript {
-            spawn_audio_transcription_if_applicable(
-                &app,
-                Arc::clone(&vfs_db),
-                result.source_id.clone(),
-                result.attachment.resource_id.clone(),
-                params.name.clone(),
-                audio_base64,
-            );
-        }
-    } else if is_audio && !audio_within_asr_limit && result.is_new {
-        mark_audio_processing_note(
-            &vfs_db,
-            &result.source_id,
-            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
+    // ★ 短音频（< 10 分钟）导入后自动开始转写（保持原"导入即转写"体验；其余由用户触发）
+    if is_media {
+        crate::media::commands::spawn_auto_transcribe_if_short_audio(
+            &app,
+            result.source_id.clone(),
         );
     }
 
@@ -2989,34 +2718,9 @@ fn upload_file_blocking(
         None
     };
 
-    // ★ 音频导入后自动转写（异步，不阻塞导入；ASR 未配置则标记状态后跳过）
-    if created
-        && is_audio_upload(&params.name, &params.mime_type)
-        && file
-            .extracted_text
-            .as_ref()
-            .map(|t| t.trim().is_empty())
-            .unwrap_or(true)
-        && content.len() <= AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
-    {
-        let audio_base64 = BASE64.encode(&content);
-        spawn_audio_transcription_if_applicable(
-            &app,
-            Arc::clone(&vfs_db),
-            file.id.clone(),
-            file.resource_id.clone(),
-            params.name.clone(),
-            audio_base64,
-        );
-    } else if created
-        && is_audio_upload(&params.name, &params.mime_type)
-        && content.len() > AUTO_TRANSCRIBE_MAX_AUDIO_BYTES
-    {
-        mark_audio_processing_note(
-            &vfs_db,
-            &file.id,
-            "音频超过 25MB 自动转写上限，未转写。可裁剪后重新导入",
-        );
+    // ★ 短音频（< 10 分钟）导入后自动开始转写（媒体流水线，docs/dev/media-learning §1.2）
+    if created && crate::media::media_kind(&params.mime_type, &params.name).is_some() {
+        crate::media::commands::spawn_auto_transcribe_if_short_audio(&app, file.id.clone());
     }
 
     // ★ 2026-02 修复：PDF/图片 上传后异步触发 Pipeline

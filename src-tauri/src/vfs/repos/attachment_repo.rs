@@ -1417,6 +1417,203 @@ impl VfsAttachmentRepo {
 
     /// ★ 2026-02-08 修复：使用 SAVEPOINT 事务保护，确保 upload + add_to_folder 两步操作的原子性。
     /// 防止 upload 成功但 add_to_folder 失败导致附件缺少文件夹映射（孤儿附件）。
+    /// 音视频流式导入：reader → `vfs_blobs/.staging`（边拷边算 SHA-256，不整文件进内存），
+    /// 上限 [`crate::media::MAX_MEDIA_IMPORT_BYTES`]（4 GB）；同内容去重复用已有附件。
+    ///
+    /// 只做存储登记，不做文本提取；转写由媒体流水线（`media_transcribe_start`）负责。
+    pub fn upload_media_stream_with_folder(
+        db: &VfsDatabase,
+        params: &VfsUploadAttachmentParams,
+        reader: &mut dyn std::io::Read,
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsUploadAttachmentResult> {
+        Self::validate_upload_type(&params.name, &params.mime_type)?;
+        if crate::media::media_kind(&params.mime_type, &params.name).is_none() {
+            return Err(VfsError::InvalidArgument {
+                param: "mime_type".to_string(),
+                reason: format!("Not an audio/video file: {}", params.name),
+            });
+        }
+        let mut staged = VfsBlobRepo::stage_stream(
+            db.blobs_dir(),
+            reader,
+            crate::media::MAX_MEDIA_IMPORT_BYTES,
+        )?;
+
+        const BUSY_RETRIES: usize = 4;
+        for attempt in 0..BUSY_RETRIES {
+            let conn = db.get_conn_safe()?;
+            conn.execute("SAVEPOINT upload_media_stream", [])
+                .map_err(|e| VfsError::Database(format!("Failed to create savepoint: {}", e)))?;
+            let result = Self::register_staged_media_with_conn(
+                &conn,
+                db.blobs_dir(),
+                params,
+                &mut staged,
+                folder_id,
+            );
+            match result {
+                Ok(res) => {
+                    conn.execute("RELEASE upload_media_stream", [])
+                        .map_err(|e| {
+                            VfsError::Database(format!("Failed to release savepoint: {}", e))
+                        })?;
+                    return Ok(res);
+                }
+                Err(err) => {
+                    let _ = conn.execute("ROLLBACK TO upload_media_stream", []);
+                    let _ = conn.execute("RELEASE upload_media_stream", []);
+                    if Self::is_sqlite_busy_error(&err)
+                        && attempt < BUSY_RETRIES - 1
+                        && staged.path().is_some()
+                    {
+                        std::thread::sleep(Duration::from_millis(80u64 << attempt.min(4)));
+                        continue;
+                    }
+                    return Err(err);
+                }
+            }
+        }
+        Err(VfsError::Database(
+            "upload_media_stream retry exhausted due to SQLITE_BUSY".to_string(),
+        ))
+    }
+
+    fn register_staged_media_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        params: &VfsUploadAttachmentParams,
+        staged: &mut crate::vfs::repos::blob_repo::StagedBlob,
+        folder_id: Option<&str>,
+    ) -> VfsResult<VfsUploadAttachmentResult> {
+        let content_hash = staged.hash.clone();
+        let size = staged.size as i64;
+        let attachment_type = params
+            .attachment_type
+            .clone()
+            .unwrap_or_else(|| Self::infer_type_from_mime(&params.mime_type));
+
+        let result = if let Some(existing) = Self::get_by_hash_with_conn(conn, &content_hash)? {
+            if existing.deleted_at.is_some() {
+                Self::restore_and_rename_with_conn(conn, &existing.id, &params.name)?;
+            }
+            let attachment = Self::get_by_id_with_conn(conn, &existing.id)?.unwrap_or(existing);
+            info!(
+                "[VFS::AttachmentRepo] Media already exists, reusing {} ({})",
+                attachment.id, content_hash
+            );
+            VfsUploadAttachmentResult {
+                source_id: attachment.id.clone(),
+                resource_hash: attachment.content_hash.clone(),
+                is_new: false,
+                attachment,
+                processing_status: None,
+                processing_percent: None,
+                ready_modes: None,
+                content_kind: None,
+            }
+        } else {
+            let extension = Self::infer_extension(&params.mime_type, &params.name);
+            let blob = VfsBlobRepo::store_staged_blob_with_conn(
+                conn,
+                blobs_dir,
+                staged,
+                Some(&params.mime_type),
+                extension.as_deref(),
+            )?;
+            let metadata = VfsResourceMetadata {
+                name: Some(params.name.clone()),
+                mime_type: Some(params.mime_type.clone()),
+                size: Some(staged.size),
+                ..Default::default()
+            };
+            let resource = VfsResourceRepo::create_or_reuse_external_with_conn(
+                conn,
+                VfsResourceType::File,
+                &blob.hash,
+                &blob.hash,
+                None,
+                None,
+                Some(&metadata),
+            )?;
+            let attachment_id = VfsAttachment::generate_id();
+            let now = chrono::Utc::now()
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string();
+            conn.execute(
+                r#"
+                INSERT INTO files (
+                    id, resource_id, blob_hash, type, name, mime_type, size,
+                    content_hash, sha256, file_name, created_at, updated_at
+                )
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8, ?5, ?9, ?9)
+                "#,
+                params![
+                    attachment_id,
+                    resource.resource_id,
+                    blob.hash,
+                    attachment_type,
+                    params.name,
+                    params.mime_type,
+                    size,
+                    content_hash,
+                    now,
+                ],
+            )?;
+            conn.execute(
+                "UPDATE resources SET source_id = ?1, source_table = 'files' WHERE id = ?2 AND source_id IS NULL",
+                params![attachment_id, resource.resource_id],
+            )?;
+            info!(
+                "[VFS::AttachmentRepo] Streamed media import: {} ({} bytes)",
+                attachment_id, size
+            );
+            VfsUploadAttachmentResult {
+                source_id: attachment_id.clone(),
+                resource_hash: content_hash.clone(),
+                is_new: true,
+                attachment: VfsAttachment {
+                    id: attachment_id,
+                    resource_id: Some(resource.resource_id),
+                    blob_hash: Some(blob.hash),
+                    attachment_type: attachment_type.clone(),
+                    name: params.name.clone(),
+                    mime_type: params.mime_type.clone(),
+                    size,
+                    content_hash,
+                    is_favorite: false,
+                    created_at: now.clone(),
+                    updated_at: now,
+                    preview_json: None,
+                    extracted_text: None,
+                    page_count: None,
+                    deleted_at: None,
+                },
+                processing_status: None,
+                processing_percent: None,
+                ready_modes: None,
+                content_kind: None,
+            }
+        };
+
+        let item_type = if result.attachment.attachment_type == "image" {
+            "image"
+        } else {
+            "file"
+        };
+        if VfsFolderRepo::get_folder_item_by_item_id_with_conn(conn, item_type, &result.source_id)?
+            .is_none()
+        {
+            let folder_item = VfsFolderItem::new(
+                folder_id.map(|s| s.to_string()),
+                item_type.to_string(),
+                result.source_id.clone(),
+            );
+            VfsFolderRepo::add_item_to_folder_with_conn(conn, &folder_item)?;
+        }
+        Ok(result)
+    }
+
     pub fn upload_with_folder_conn(
         conn: &Connection,
         blobs_dir: &Path,

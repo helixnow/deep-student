@@ -221,16 +221,89 @@ impl MediaToolExecutor {
                 "audio/aac"
             ],
             "unavailableReasonCode": unavailable_reason_code,
+            // VFS 音视频资源（resourceId）走应用内转写流水线：symphonia 纯 Rust 解码
+            // （不安装 ffmpeg、不改系统环境）→ VAD 分段 → 逐段 ASR，可续做、无 25MB 限制。
+            // runtime root 上的裸文件仍走整段 ASR（仅音频、≤ 25MB）。
             "videoAudioExtraction": {
-                "available": false,
-                "reasonCode": "SAFE_DEPENDENCY_UNAVAILABLE",
-                "reason": "未发现应用管理的安全视频音轨提取依赖；不会安装 ffmpeg 或修改系统环境"
+                "available": true,
+                "scope": "vfs_resource",
+                "runtime": "media_transcription_pipeline",
+                "containers": ["mp4", "m4a", "mov", "mkv", "webm", "ogg", "wav", "mp3", "flac", "aac"],
+                "codecs": ["aac", "alac", "mp3", "flac", "vorbis", "pcm", "adpcm"],
+                "unsupportedCodecs": ["opus", "ac3", "eac3", "dts", "wma"],
+                "maxBytes": crate::media::MAX_MEDIA_IMPORT_BYTES,
+                "resumable": true,
+                "reason": "VFS 音视频资源由应用内解码（symphonia）+ 分段 ASR 转写；Opus/AC-3/WMA 音轨需先转为 MP4(AAC)/M4A/MP3"
             },
             "configuration": {
                 "configured": available,
                 "requirement": "ASR execution requires the existing SiliconFlow voice-input API key"
             },
         })
+    }
+
+    /// 媒体转写流水线：已完成直接返回带时间戳的转写；否则入队并最多等待 60 s
+    async fn execute_vfs_pipeline(
+        app: &tauri::AppHandle,
+        vfs_db: std::sync::Arc<crate::vfs::database::VfsDatabase>,
+        info: crate::media::pipeline::MediaFileInfo,
+    ) -> Result<Value, String> {
+        use crate::media::commands::build_view;
+        use crate::vfs::pdf_processing_service::PdfProcessingService;
+        const WAIT_SECS: u64 = 60;
+        const MAX_TRANSCRIPT_CHARS: usize = 20_000;
+
+        let service = app
+            .try_state::<std::sync::Arc<PdfProcessingService>>()
+            .ok_or("MEDIA_CAPABILITY_UNAVAILABLE: media processing service is not registered")?
+            .inner()
+            .clone();
+        let mut view = build_view(&vfs_db, &info, service.is_running(&info.file_id), false)
+            .map_err(|e| format!("MEDIA_SOURCE_READ_FAILED: {}", e))?;
+        if view.status != "completed" && !service.is_running(&info.file_id) {
+            service
+                .start_pipeline(&info.file_id, None)
+                .await
+                .map_err(|e| format!("MEDIA_ASR_UNAVAILABLE: {}", e))?;
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(WAIT_SECS);
+        loop {
+            let running = service.is_running(&info.file_id);
+            view = build_view(&vfs_db, &info, running, false)
+                .map_err(|e| format!("MEDIA_SOURCE_READ_FAILED: {}", e))?;
+            if !running || std::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
+        let transcript = {
+            let conn = vfs_db
+                .get_conn_safe()
+                .map_err(|e| format!("MEDIA_SOURCE_READ_FAILED: {}", e))?;
+            let segments = crate::vfs::repos::media_transcript_repo::MediaTranscriptRepo::list_segments_with_conn(
+                &conn,
+                &info.file_id,
+            )
+            .map_err(|e| format!("MEDIA_SOURCE_READ_FAILED: {}", e))?;
+            crate::media::transcript::build_transcript_text(&segments)
+        };
+        let truncated = transcript.chars().count() > MAX_TRANSCRIPT_CHARS;
+        let transcript: String = transcript.chars().take(MAX_TRANSCRIPT_CHARS).collect();
+        Ok(json!({
+            "ok": view.status != "error",
+            "resourceId": info.file_id,
+            "mediaType": view.media_type,
+            "status": view.status,
+            "progress": view.progress,
+            "transcript": transcript,
+            "transcriptTruncated": truncated,
+            "citationFormat": format!("[媒体@{}:mm:ss]", info.file_id),
+            "hint": if view.status == "completed" {
+                "转写已完成。长内容请用 resource_read 按 time_start/time_end（秒）分段读取；回答引用时间点用 citationFormat。"
+            } else {
+                "转写在后台继续（已完成的段已保存）。稍后用 resource_read 读取带 [mm:ss] 时间戳的转写。"
+            },
+        }))
     }
 
     async fn execute_transcribe(
@@ -248,6 +321,14 @@ impl MediaToolExecutor {
                 "MEDIA_ASR_UNAVAILABLE: configure the existing SiliconFlow voice-input API key in Settings"
                     .into(),
             );
+        }
+        // ★ VFS 音视频资源：走媒体转写流水线（分段、可续做、支持视频音轨与长音频）
+        if let Some(resource_id) = Self::vfs_resource_locator(args) {
+            if let Some(vfs_db) = ctx.vfs_db.clone() {
+                if let Ok(info) = crate::media::pipeline::load_media_file(&vfs_db, &resource_id) {
+                    return Self::execute_vfs_pipeline(app, vfs_db, info).await;
+                }
+            }
         }
         // ★ 双寻址：优先 VFS resourceId（会话附件/资源库文件），否则走 runtime root 定位
         let (bytes, source_uri, derived_from_ids): (Vec<u8>, String, Vec<String>) =
@@ -499,13 +580,14 @@ mod tests {
     }
 
     #[test]
-    fn video_capability_fails_closed_without_extractor() {
+    fn video_capability_reports_in_app_pipeline() {
         let capability = MediaToolExecutor::capability(None);
-        assert_eq!(capability["videoAudioExtraction"]["available"], false);
+        assert_eq!(capability["videoAudioExtraction"]["available"], true);
         assert_eq!(
-            capability["videoAudioExtraction"]["reasonCode"],
-            "SAFE_DEPENDENCY_UNAVAILABLE"
+            capability["videoAudioExtraction"]["runtime"],
+            "media_transcription_pipeline"
         );
+        assert_eq!(capability["videoAudioExtraction"]["scope"], "vfs_resource");
     }
 
     #[test]

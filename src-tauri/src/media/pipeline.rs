@@ -248,6 +248,7 @@ struct DbSink {
     plan_version: i64,
     done: i64,
     total: i64,
+    since_refresh: i64,
     tx: Option<UnboundedSender<MediaProgressUpdate>>,
 }
 
@@ -287,6 +288,12 @@ impl AsrSink for DbSink {
             bounds,
         )?;
         self.done += 1;
+        self.since_refresh += 1;
+        if self.since_refresh >= PARTIAL_REFRESH_EVERY {
+            self.since_refresh = 0;
+            write_transcript_text(&self.vfs_db, &self.file_id)?;
+            refresh_index(&self.vfs_db, &self.file_id);
+        }
         self.report();
         Ok(())
     }
@@ -322,6 +329,20 @@ pub fn write_transcript_text(vfs_db: &VfsDatabase, file_id: &str) -> Result<usiz
     Ok(text.chars().count())
 }
 
+/// 转写变化后刷新检索：时间窗词法单元立即重建、向量标记待刷新（best-effort）
+pub fn refresh_index(vfs_db: &Arc<VfsDatabase>, file_id: &str) {
+    if let Err(e) = crate::vfs::media_index::refresh_transcript_index(vfs_db, file_id) {
+        log::warn!(
+            "[media::pipeline] refresh transcript index failed for {}: {}",
+            file_id,
+            e
+        );
+    }
+}
+
+/// 长转写过程中每完成多少段刷新一次转写文本与检索（部分转写即可搜索）
+const PARTIAL_REFRESH_EVERY: i64 = 20;
+
 /// 运行一次转写（排队 → 解码 → VAD → ASR → 写转写文本）。
 ///
 /// 不负责索引与任务状态（由 `PdfProcessingService` 承载）。
@@ -353,6 +374,7 @@ pub async fn transcribe_resource(
             if source == SEGMENT_SOURCE_IMPORT {
                 drop(conn);
                 let chars = write_transcript_text(&vfs_db, &file_id)?;
+                refresh_index(&vfs_db, &file_id);
                 let conn = vfs_db.get_conn_safe()?;
                 let counts = MediaTranscriptRepo::counts_with_conn(&conn, &file_id)?;
                 return Ok(TranscriptionOutcome {
@@ -449,6 +471,9 @@ pub async fn transcribe_resource(
         (outcome, jobs)
     };
     if let PlanOutcome::Rebuilt { plan_version } = outcome {
+        // 旧计划的段已删除：转写文本与检索同步清掉
+        write_transcript_text(&vfs_db, &file_id)?;
+        refresh_index(&vfs_db, &file_id);
         log::info!(
             "[media::pipeline] plan rebuilt for {} (plan_version={})",
             file_id,
@@ -466,6 +491,7 @@ pub async fn transcribe_resource(
         plan_version: outcome.plan_version(),
         done: counts.done,
         total: counts.total,
+        since_refresh: 0,
         tx: tx.clone(),
     };
     sink.report();
@@ -485,6 +511,7 @@ pub async fn transcribe_resource(
 
     // 无论 ASR 是否中途失败，已完成段都写进转写文本（续做时追加）
     let chars = write_transcript_text(&vfs_db, &file_id)?;
+    refresh_index(&vfs_db, &file_id);
     asr_result?;
 
     let counts = {
