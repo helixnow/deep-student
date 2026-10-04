@@ -267,6 +267,31 @@
     "exitFullscreen": "退出全屏",
     "progress": "播放进度"
   },
+  "mediaHandout": {
+    "generate": "生成讲义",
+    "generateHint": "根据字幕与画面生成图文讲义，保存为笔记",
+    "needTranscript": "请先完成转写（或导入字幕）后再生成讲义",
+    "cancel": "取消生成讲义",
+    "openNote": "打开讲义",
+    "done": "讲义「{{title}}」已保存为笔记",
+    "doneTextOnly": "讲义「{{title}}」已保存为笔记（未能使用视频画面：抽帧失败或未配置视觉模型）",
+    "cancelled": "已取消生成讲义",
+    "failed": "讲义生成失败",
+    "outlineFailed": "讲义大纲生成失败，请重试",
+    "titleSuffix": " 学习讲义",
+    "sectionFallback": "本节正文格式异常，请重新生成讲义。",
+    "frameFallbackCaption": "课程画面",
+    "phase": {
+      "transcript": "读取字幕…",
+      "frames": "抽取画面…",
+      "captions": "理解画面…",
+      "outline": "生成大纲…",
+      "writing": "撰写章节…",
+      "images": "重抽高清配图…",
+      "saving": "保存笔记…",
+      "done": "完成"
+    }
+  },
   "mediaTranscript": {
     "toolbarLabel": "转写与字幕",
     "transcribe": "转写",

@@ -267,6 +267,31 @@
     "exitFullscreen": "Exit full screen",
     "progress": "Seek"
   },
+  "mediaHandout": {
+    "generate": "Handout",
+    "generateHint": "Generate an illustrated study handout from the transcript and frames, saved as a note",
+    "needTranscript": "Transcribe (or import subtitles) before generating a handout",
+    "cancel": "Cancel handout generation",
+    "openNote": "Open handout",
+    "done": "Handout \"{{title}}\" saved as a note",
+    "doneTextOnly": "Handout \"{{title}}\" saved as a note (video frames unavailable: extraction failed or no vision model configured)",
+    "cancelled": "Handout generation cancelled",
+    "failed": "Handout generation failed",
+    "outlineFailed": "Could not generate the handout outline. Please try again.",
+    "titleSuffix": " — Study Handout",
+    "sectionFallback": "This section could not be formatted. Please regenerate the handout.",
+    "frameFallbackCaption": "Lecture frame",
+    "phase": {
+      "transcript": "Reading transcript…",
+      "frames": "Extracting frames…",
+      "captions": "Reading frames…",
+      "outline": "Drafting outline…",
+      "writing": "Writing sections…",
+      "images": "Capturing figures…",
+      "saving": "Saving note…",
+      "done": "Done"
+    }
+  },
   "mediaTranscript": {
     "toolbarLabel": "Transcript and subtitles",
     "transcribe": "Transcribe",

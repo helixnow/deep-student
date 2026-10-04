@@ -48,6 +48,7 @@ import { useMediaProgressSync } from './useMediaProgressSync';
 import { useMediaFocusListener } from './useMediaFocusListener';
 import { TranscriptPanel, selectDisplaySegments } from './TranscriptPanel';
 import { findActiveSegmentIndex } from './transcriptVtt';
+import { HandoutGenerateButton } from '@/features/media-handout';
 import { formatMediaRefTimestamp } from './mediaRefTime';
 import { captureVideoFrame, CaptureFrameError, frameFileName } from './captureVideoFrame';
 
@@ -465,6 +466,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         )}
 
         <div className="flex-1" />
+
+        {/* 讲义：字幕 → 抽帧/帧说明 → 大纲 → 分节 → 落为笔记（docs/dev/media-learning §3） */}
+        <HandoutGenerateButton
+          resourceId={resourceId}
+          kind={kind}
+          src={src}
+          fileName={fileName}
+          hasTranscript={hasDoneSegments && !running}
+        />
 
         {isVideo && (
           <DsButton
