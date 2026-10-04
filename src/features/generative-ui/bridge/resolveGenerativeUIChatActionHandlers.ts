@@ -36,6 +36,7 @@ import {
 } from '../handlers/copyBlockActionHandlers';
 import type { IntentExportMarkdownLabels } from '../utils/buildIntentExportMarkdown';
 import type { ResearchExportMarkdownLabels } from '../utils/buildResearchExportMarkdown';
+import { buildExportMarkdownI18nLabels } from '../utils/buildExportMarkdownI18nLabels';
 import {
   EXPORT_INTENT_ACTION_ID,
   createExportIntentActionHandlers,
@@ -53,6 +54,20 @@ import {
  */
 function fallbackLabel(key: string, defaultValue: string): string {
   return String(i18n.t(`generativeUi:${key}`, { defaultValue }));
+}
+
+/**
+ * 调用方未传导出标签时（如产物面板），按当前语言解析导出 Markdown 的字段名；
+ * 未加载/缺失的键剔除，交给纯函数构建器的内置默认值兜底。
+ */
+function localizedExportLabels<T extends object>(pick: (labels: ReturnType<typeof buildExportMarkdownI18nLabels>) => T): Partial<T> {
+  const all = buildExportMarkdownI18nLabels((key) => {
+    const text = i18n.t(`generativeUi:${key}`, { defaultValue: '' });
+    return typeof text === 'string' && text !== key && !text.endsWith(`:${key}`) ? text : '';
+  });
+  return Object.fromEntries(
+    Object.entries(pick(all)).filter(([, value]) => typeof value === 'string' && value.length > 0),
+  ) as Partial<T>;
 }
 
 export const NOTE_EDIT_ACTION_IDS = ['apply-note-edit', 'dismiss-note-suggestion'] as const;
@@ -91,6 +106,8 @@ export function resolveGenerativeUIChatActionHandlers(
   input: ResolveGenerativeUIChatActionHandlersInput,
 ): Record<string, GenerativeActionDefinition> {
   const actionIds = new Set(collectGenerativeUIActionIds(input.intent));
+  const intentExportLabels = input.intentExportLabels ?? localizedExportLabels((labels) => labels.intent);
+  const researchExportLabels = input.researchExportLabels ?? localizedExportLabels((labels) => labels.research);
   const handlers: Record<string, GenerativeActionDefinition> = Object.create(null);
   const workbench = createWorkbenchLearningHandlers(input.workbenchLabels);
 
@@ -129,7 +146,7 @@ export function resolveGenerativeUIChatActionHandlers(
             buildResearchExportMarkdownFromIntent(
               input.intent,
               input.intent.meta?.title,
-              input.researchExportLabels,
+              researchExportLabels,
             ),
           getIntent: () => input.intent,
         },
@@ -138,7 +155,7 @@ export function resolveGenerativeUIChatActionHandlers(
           exportPlan: fallbackLabel('research.actions.export_plan', '导出计划'),
           exportIntent: fallbackLabel('research.actions.export_intent', '导出全部意图'),
         },
-        input.intentExportLabels,
+        intentExportLabels,
       ),
     );
   }
@@ -219,7 +236,7 @@ export function resolveGenerativeUIChatActionHandlers(
             input.researchLabels?.exportIntent ??
             fallbackLabel('research.actions.export_intent', '导出全部意图'),
         },
-        input.intentExportLabels,
+        intentExportLabels,
       ),
     );
   }

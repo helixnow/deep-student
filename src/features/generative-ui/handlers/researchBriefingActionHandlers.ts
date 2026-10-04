@@ -1,12 +1,18 @@
 /**
  * Research 场景 action handlers — Chat / HPIAS 面板上下文注入
  */
+import i18next from 'i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import type { GenerativeActionDefinition, GenerativeUIIntent } from '../types';
 import {
   buildIntentExportMarkdown,
   type IntentExportMarkdownLabels,
 } from '../utils/buildIntentExportMarkdown';
+
+function exportIntentFallbackLabel(): string {
+  const text = i18next.t('generativeUi:research.actions.export_intent', { defaultValue: '复制为 Markdown' });
+  return typeof text === 'string' && text ? text : '复制为 Markdown';
+}
 
 export interface ResearchBriefingActionCallbacks {
   getReportBody: () => string;
@@ -49,7 +55,7 @@ export function createResearchBriefingActionHandlers(
     },
     'export-intent': {
       id: 'export-intent',
-      label: labels.exportIntent ?? '导出全部意图',
+      label: labels.exportIntent ?? exportIntentFallbackLabel(),
       riskLevel: 'low',
       handler: async () => {
         const intent = callbacks.getIntent?.();
