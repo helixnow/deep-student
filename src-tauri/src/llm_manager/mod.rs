@@ -7,6 +7,7 @@ pub(crate) mod provider_quirks;
 mod rag_extension;
 pub(crate) mod reasoning_level_map;
 pub mod routing;
+pub(crate) mod single_shot_stream;
 pub mod utf8_stream;
 
 // 连接测试（commands::test_api_connection）复用生产请求构造的 token 上限逻辑，

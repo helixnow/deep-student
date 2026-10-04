@@ -4463,6 +4463,42 @@ impl LLMManager {
         Ok(())
     }
 
+    /// Synchronous request preparation for every non-Codex-OAuth config.
+    ///
+    /// Background tasks that run without an `LLMManager` borrow (hedged OCR
+    /// engines spawned onto the runtime) use this to rebuild a provider request
+    /// per attempt, e.g. when switching between streaming and non-streaming.
+    pub(crate) fn prepare_plain_provider_request(
+        adapter: &dyn ProviderAdapter,
+        config: &ApiConfig,
+        request_body: &Value,
+        api_key_override: Option<&str>,
+        session_id: Option<&str>,
+        build_error_context: &str,
+    ) -> Result<PreparedProviderRequest> {
+        if Self::is_openai_codex_oauth(config) {
+            return Err(AppError::configuration(
+                "OpenAI Codex OAuth 请求必须经由 LLMManager 准备",
+            ));
+        }
+        let api_key = api_key_override.unwrap_or(config.api_key.as_str());
+        let provider_request = adapter
+            .build_request(&config.base_url, api_key, &config.model, request_body)
+            .map_err(|error| Self::provider_error(build_error_context, error))?;
+        let mut prepared = PreparedProviderRequest::from_provider(provider_request);
+        merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
+
+        // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
+        if provider_accepts_prompt_cache_key(config) {
+            let session_id = stable_prompt_cache_key(session_id);
+            if let Some(body) = prepared.body.as_object_mut() {
+                body.entry("prompt_cache_key".to_string())
+                    .or_insert_with(|| Value::String(session_id));
+            }
+        }
+        Ok(prepared)
+    }
+
     pub(crate) async fn prepare_provider_request(
         &self,
         adapter: &dyn ProviderAdapter,
@@ -4472,6 +4508,16 @@ impl LLMManager {
         session_id: Option<&str>,
         build_error_context: &str,
     ) -> Result<PreparedProviderRequest> {
+        if !Self::is_openai_codex_oauth(config) {
+            return Self::prepare_plain_provider_request(
+                adapter,
+                config,
+                request_body,
+                api_key_override,
+                session_id,
+                build_error_context,
+            );
+        }
         let api_key = api_key_override.unwrap_or(config.api_key.as_str());
         let provider_request = adapter
             .build_request(&config.base_url, api_key, &config.model, request_body)
@@ -4482,15 +4528,6 @@ impl LLMManager {
         // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
         let session_id = stable_prompt_cache_key(session_id);
 
-        if !Self::is_openai_codex_oauth(config) {
-            if provider_accepts_prompt_cache_key(config) {
-                if let Some(body) = prepared.body.as_object_mut() {
-                    body.entry("prompt_cache_key".to_string())
-                        .or_insert_with(|| Value::String(session_id.clone()));
-                }
-            }
-            return Ok(prepared);
-        }
         if !should_use_openai_responses_for_config(config) {
             return Err(AppError::configuration(
                 "OpenAI Codex OAuth 仅支持 OpenAI Responses 协议",
