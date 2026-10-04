@@ -6,7 +6,7 @@
  * 快捷键（空格 / ← → / M）、缓冲指示。
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   MusicNotes,
@@ -29,6 +29,7 @@ import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
+import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 
 export interface AudioPlayerProps {
   src: string;
@@ -40,6 +41,12 @@ export interface AudioPlayerProps {
   /** 所属标签页是否活跃；false 时自动暂停 */
   isActive?: boolean;
   onError: () => void;
+  /** 外部驱动句柄（转写面板点击跳转、引用跳转） */
+  handleRef?: React.Ref<MediaPlayerHandle>;
+  /** 播放状态变化（~10Hz，用于字幕跟随高亮与断点续播） */
+  onStatusChange?: (status: MediaPlayerStatus) => void;
+  /** 紧凑布局（与字幕面板同屏时缩小封面与留白） */
+  compact?: boolean;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -49,6 +56,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   compatibilityHint,
   isActive = true,
   onError,
+  handleRef,
+  onStatusChange,
+  compact = false,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const {
@@ -64,6 +74,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     isBuffering,
     isReady,
     togglePlay,
+    play,
+    pause,
     seekTo,
     seekBy,
     setVolume,
@@ -71,6 +83,21 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     setRate,
     toggleLoop,
   } = useMediaPlayback<HTMLAudioElement>({ src, isActive, onError });
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      getElement: () => mediaRef.current,
+      seekTo,
+      play,
+      pause,
+    }),
+    [mediaRef, seekTo, play, pause],
+  );
+
+  useEffect(() => {
+    onStatusChange?.({ currentTime, duration, isPlaying, isReady });
+  }, [onStatusChange, currentTime, duration, isPlaying, isReady]);
 
   const handleKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -119,23 +146,29 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
   return (
     <CustomScrollArea className="h-full min-h-0 bg-background" orientation="both">
-      <div className="flex min-h-full min-w-full items-center justify-center p-6">
+      <div className={cn('flex min-h-full min-w-full items-center justify-center', compact ? 'p-3' : 'p-6')}>
         <div
           role="group"
           aria-label={fileName}
           tabIndex={0}
           onKeyDown={handleKeyDown}
           className={cn(
-            'ui-rise-in w-full max-w-md rounded-2xl border border-border bg-background p-6',
+            'ui-rise-in w-full max-w-md rounded-2xl border border-border bg-background',
+            compact ? 'p-4' : 'p-6',
             'outline-none focus-visible:ring-2 focus-visible:ring-ring/30',
           )}
         >
           <audio ref={mediaRef} src={src} preload="metadata" />
 
-          <div className="flex flex-col items-center gap-5">
-          {/* 封面占位 */}
-          <div className="flex h-36 w-36 items-center justify-center rounded-2xl bg-muted">
-            <MusicNotes size={56} className="text-muted-foreground/60" aria-hidden="true" />
+          <div className={cn('flex flex-col items-center', compact ? 'gap-3' : 'gap-5')}>
+          {/* 封面占位（紧凑布局缩小，给字幕面板让出高度） */}
+          <div
+            className={cn(
+              'flex items-center justify-center rounded-2xl bg-muted',
+              compact ? 'h-16 w-16' : 'h-36 w-36',
+            )}
+          >
+            <MusicNotes size={compact ? 28 : 56} className="text-muted-foreground/60" aria-hidden="true" />
           </div>
 
           {/* 文件名 + 附加信息 */}

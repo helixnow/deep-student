@@ -251,6 +251,22 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     }
   }, []);
 
+  /** 外部驱动（引用跳转 / 转写面板点击）：开始播放，自动播放策略拒绝时静默 */
+  const play = useCallback(() => {
+    const el = mediaRef.current;
+    if (!el || !el.paused) return;
+    void el.play().catch((err: unknown) => {
+      const name = (err as DOMException | null)?.name;
+      // AbortError：被 pause/切源打断；NotAllowedError：无用户手势的自动播放被拒
+      if (name === 'AbortError' || name === 'NotAllowedError') return;
+      onErrorRef.current?.();
+    });
+  }, []);
+
+  const pause = useCallback(() => {
+    mediaRef.current?.pause();
+  }, []);
+
   const seekTo = useCallback((time: number) => {
     const el = mediaRef.current;
     if (!el) return;
@@ -327,6 +343,8 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     isBuffering,
     isReady,
     togglePlay,
+    play,
+    pause,
     seekTo,
     seekBy,
     setVolume,

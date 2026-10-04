@@ -66,7 +66,7 @@ import {
   resolveVideoMimeType,
 } from './mediaPreviewUtils';
 import { PreviewStatus } from './PreviewStatus';
-import { AudioPlayer, VideoPlayer } from './media';
+import { MediaStudyView } from './media/MediaStudyView';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import {
@@ -811,30 +811,25 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         ? t('learningHub:file.mediaUnsupportedWarning')
         : undefined;
 
-      if (isAudio) {
-        return (
-          <AudioPlayer
-            key={mediaSource.url}
-            src={mediaSource.url}
-            fileName={node.name}
-            meta={
-              typeof node.size === 'number' && node.size > 0
-                ? formatFileSize(node.size)
-                : undefined
-            }
-            compatibilityHint={compatibilityHint}
-            isActive={isActive}
-            onError={handleMediaError}
-          />
-        );
-      }
+      // 播放器 + 转写/字幕面板 + 时间戳跳转（media-ref:focus）+ 断点续播 + 截帧引用；
+      // 以 node.id 为 key：切资源时转写状态/续播/字幕轨整体重建（播放器内部按 src 重挂）
       return (
-        <VideoPlayer
-          key={mediaSource.url}
+        <MediaStudyView
+          key={node.id}
+          kind={isAudio ? 'audio' : 'video'}
           src={mediaSource.url}
+          resourceId={node.id}
+          sourceId={node.sourceId}
+          nodePath={node.path}
           fileName={node.name}
+          meta={
+            typeof node.size === 'number' && node.size > 0
+              ? formatFileSize(node.size)
+              : undefined
+          }
           compatibilityHint={compatibilityHint}
           isActive={isActive}
+          focusScopeId={focusScopeId}
           onError={handleMediaError}
         />
       );

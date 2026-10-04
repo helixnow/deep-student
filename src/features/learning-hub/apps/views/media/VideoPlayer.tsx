@@ -7,7 +7,7 @@
  * 缓冲指示、单击暂停 / 双击全屏。
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Play,
@@ -31,6 +31,7 @@ import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
 
@@ -42,6 +43,16 @@ export interface VideoPlayerProps {
   /** 所属标签页是否活跃；false 时自动暂停 */
   isActive?: boolean;
   onError: () => void;
+  /** 外部驱动句柄（转写面板点击跳转、引用跳转、帧截取） */
+  handleRef?: React.Ref<MediaPlayerHandle>;
+  /** 播放状态变化（~10Hz，用于字幕跟随高亮与断点续播） */
+  onStatusChange?: (status: MediaPlayerStatus) => void;
+  /** 渲染在 <video> 内的子节点（WebVTT <track>） */
+  trackSlot?: React.ReactNode;
+  /** 帧截取需要 CORS 模式读取 filestream，canvas 才不被污染 */
+  crossOrigin?: 'anonymous';
+  /** 悬浮控制条上的附加按钮（字幕开关等），插在倍速按钮之前 */
+  extraControls?: React.ReactNode;
 }
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
@@ -54,6 +65,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   compatibilityHint,
   isActive = true,
   onError,
+  handleRef,
+  onStatusChange,
+  trackSlot,
+  crossOrigin,
+  extraControls,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -76,6 +92,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     isBuffering,
     isReady,
     togglePlay,
+    play,
+    pause,
     seekTo,
     seekBy,
     setVolume,
@@ -83,6 +101,21 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     setRate,
     toggleLoop,
   } = useMediaPlayback<HTMLVideoElement>({ src, isActive, onError });
+
+  useImperativeHandle(
+    handleRef,
+    () => ({
+      getElement: () => mediaRef.current,
+      seekTo,
+      play,
+      pause,
+    }),
+    [mediaRef, seekTo, play, pause],
+  );
+
+  useEffect(() => {
+    onStatusChange?.({ currentTime, duration, isPlaying, isReady });
+  }, [onStatusChange, currentTime, duration, isPlaying, isReady]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current !== null) {
@@ -254,6 +287,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       <video
         ref={mediaRef}
         src={src}
+        crossOrigin={crossOrigin}
         preload="metadata"
         className="absolute inset-0 h-full w-full object-contain"
         onPointerDown={handleVideoPointerDown}
@@ -263,7 +297,9 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           if (lastPointerTypeRef.current !== 'mouse') return;
           void toggleFullscreen();
         }}
-      />
+      >
+        {trackSlot}
+      </video>
 
       {/* 顶部信息条：文件名 +（可选）兼容性提示 */}
       <div
@@ -411,6 +447,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
               />
             </div>
           </div>
+
+          {extraControls}
 
           <PlaybackRateMenu
             rate={rate}
