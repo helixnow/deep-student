@@ -5,7 +5,11 @@
  * 供侧栏右键菜单与命令面板（NOTES_EXPORT_CURRENT）共用。
  *
  * 流程：查询支持格式 → 优先 markdown → dstu_export → 按 payloadType 走
- * 文本/二进制/临时文件三种保存路径（桌面端文件对话框）。
+ * 文本/二进制/临时文件三种保存路径（系统保存对话框）。
+ *
+ * Android 同样走这条管线：dialogSave 发起 ACTION_CREATE_DOCUMENT 拿到 content://
+ * 目标，文本经 save_text_to_file、临时文件（含文件夹 ZIP）经 copy_file、二进制经
+ * plugin-fs writeFile 写入——与备份 ZIP / APKG 导出同一通道。
  */
 
 import type { TFunction } from 'i18next';
@@ -14,9 +18,20 @@ import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
-/** 移动端 WebView 不支持文件保存对话框 */
+/**
+ * 仍不支持保存对话框导出的平台：仅 iOS（未接入/未验证系统保存通道）。
+ * Android 已经由 SAF ACTION_CREATE_DOCUMENT + content:// 写入支持，不在此列。
+ */
 export function isExportUnsupportedPlatform(): boolean {
-  return typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent;
+  if (/android/i.test(ua)) return false;
+  return /iphone|ipad|ipod/i.test(ua);
+}
+
+/** Android 保存得到的是 content:// URI，提示里展示建议文件名而非不透明 URI */
+function displaySavedPath(path: string, suggestedFilename: string): string {
+  return /^(content|ph|asset):\/\//i.test(path.trim()) ? suggestedFilename : path;
 }
 
 /**
@@ -46,8 +61,8 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
       return header + (editor.getPlainMarkdown?.() ?? draft.markdown);
     };
     if (isExportUnsupportedPlatform()) {
-      // 移动端没有文件保存对话框：文本资源（笔记/翻译/作文）降级为「复制 Markdown」，
-      // 让移动端用户有可用出口而非死路警告；二进制资源（PDF/图片）维持不支持提示。
+      // iOS 未接入保存通道：文本资源（笔记/翻译/作文）降级为「复制 Markdown」，
+      // 让用户有可用出口而非死路警告；二进制资源（PDF/图片）维持不支持提示。
       if (/^(note_|tr_|essay_)/.test(resourceId)) {
         try {
           const result = await dstu.exportResource(`/${resourceId}`, 'markdown');
@@ -111,7 +126,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
         }],
       });
       if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
         return true;
       }
       return false;
@@ -131,7 +146,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
         filters: [{ name: ext.toUpperCase(), extensions: [ext] }],
       });
       if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
         return true;
       }
       return false;
@@ -144,7 +159,7 @@ export async function exportResourceById(resourceId: string, t: TFunction, windo
         defaultFileName: payload.suggestedFilename,
       });
       if (!result.canceled && result.path) {
-        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: result.path }));
+        showGlobalNotification('success', t('contextMenu.exportSuccess', { path: displaySavedPath(result.path, payload.suggestedFilename) }));
         return true;
       }
       return false;
