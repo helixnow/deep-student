@@ -38,6 +38,9 @@ export function q(s) {
 }
 
 export function findWindowId() {
+  // DS_WINDOW_PID：同时开着多个 Deep Student（如正式版 + 隔离档案的 dev 版）时按进程锁定窗口，
+  // 否则按窗口名会先命中别的实例，截到不该截的数据。
+  const pid = Number(process.env.DS_WINDOW_PID || 0);
   const swiftSrc = `
 import CoreGraphics
 import Foundation
@@ -49,7 +52,9 @@ for opts in [CGWindowListOption([.optionOnScreenOnly, .excludeDesktopElements]),
     let layer = (w[kCGWindowLayer as String] as? Int) ?? 0
     let bounds = (w[kCGWindowBounds as String] as? [String: Any]) ?? [:]
     let height = (bounds["Height"] as? Double) ?? 0
-    if (owner == "deep-student" || owner == "Deep Student") && layer == 0 && height > 200 {
+    let ownerPid = (w[kCGWindowOwnerPID as String] as? Int) ?? 0
+    let pidMatches = ${pid} == 0 || ownerPid == ${pid}
+    if pidMatches && (owner == "deep-student" || owner == "Deep Student") && layer == 0 && height > 200 {
       print(w[kCGWindowNumber as String] ?? 0); exit(0)
     }
   }
