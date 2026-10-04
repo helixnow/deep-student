@@ -2,7 +2,7 @@ import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT } from '@/features/learning-hub/learningHubContracts';
+import { LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT } from '@/features/learning-hub/learningHubContracts';
 
 const pageMocks = vi.hoisted(() => ({
   dstuGet: vi.fn(),
@@ -94,7 +94,9 @@ describe('LearningHubPage events', () => {
   it('opens a document tab for manage locator events instead of routing to memory', async () => {
     render(<LearningHubPage />);
 
-    window.dispatchEvent(new CustomEvent(DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT, {
+    // DSTU_NAVIGATE_TO_KNOWLEDGE_BASE 由 App 切视图后经握手原样转发为本事件
+    //（pendingLearningHubIntent），页面不再直接监听 DSTU 原始事件。
+    window.dispatchEvent(new CustomEvent(LEARNING_HUB_NAVIGATE_TO_KNOWLEDGE_EVENT, {
       detail: {
         preferTab: 'manage',
         locator: {
