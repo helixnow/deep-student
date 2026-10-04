@@ -15,6 +15,8 @@ export function useTranscriptTrack(segments: readonly TranscriptSegment[], enabl
   const [captionsOn, setCaptionsOn] = useState(true);
   const syncRef = useRef<ReturnType<typeof createCueSynchronizer> | null>(null);
   const blobUrlRef = useRef<string | null>(null);
+  /** 生成 blob 时用的段：新 `<track>` 元素（播放器 stream→blob 回退重挂）重新从 seed 起算差量 */
+  const seedRef = useRef<TranscriptSegment[]>([]);
   const trackElRef = useRef<HTMLTrackElement | null>(null);
   const loadedRef = useRef(false);
   const segmentsRef = useRef(segments);
@@ -28,6 +30,7 @@ export function useTranscriptTrack(segments: readonly TranscriptSegment[], enabl
   useEffect(() => {
     if (!hasRenderable || syncRef.current) return;
     const seed = segmentsRef.current.slice();
+    seedRef.current = seed;
     syncRef.current = createCueSynchronizer(seed);
     const url = URL.createObjectURL(new Blob([buildWebVtt(seed)], { type: 'text/vtt' }));
     blobUrlRef.current = url;
@@ -73,9 +76,14 @@ export function useTranscriptTrack(segments: readonly TranscriptSegment[], enabl
   /** callback ref：挂上 `<track>` 时订阅 load */
   const trackRef = useCallback(
     (el: HTMLTrackElement | null) => {
+      const isNewElement = el !== null && el !== trackElRef.current;
       trackElRef.current = el;
       loadedRef.current = false;
       if (!el) return;
+      // 新 `<track>` 只会加载 blob 里的 seed cue：已应用状态按 seed 重置
+      if (isNewElement && syncRef.current) {
+        syncRef.current = createCueSynchronizer(seedRef.current);
+      }
       const onLoad = () => {
         loadedRef.current = true;
         applyMode();
