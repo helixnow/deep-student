@@ -30,7 +30,8 @@ async function buildReport(t: (key: string, options?: Record<string, unknown>) =
 const linkClass =
   'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[12px] text-muted-foreground transition-colors hover:bg-[var(--interactive-hover)] hover:text-foreground disabled:opacity-50 [@media(pointer:coarse)]:min-h-11';
 
-export const WeeklyReportActions: React.FC = () => {
+/** compact：只留「本周周报」一个入口（预览里仍可与 AI 复盘 / 存为笔记），给对话首页用 */
+export const WeeklyReportActions: React.FC<{ compact?: boolean }> = ({ compact = false }) => {
   const { t } = useTranslation('data');
   const tr = useCallback((key: string, options?: Record<string, unknown>) => t(key, options) as string, [t]);
   const saveAsNoteFlow = useSaveAsNoteFlow({ openSource: 'weekly-report' });
@@ -69,7 +70,7 @@ export const WeeklyReportActions: React.FC = () => {
   }, [busy, tr]);
 
   return (
-    <span className="ml-auto flex items-center gap-1">
+    <span className={compact ? 'inline-flex items-center' : 'ml-auto flex items-center gap-1'}>
       <button
         type="button"
         className={linkClass}
@@ -79,15 +80,17 @@ export const WeeklyReportActions: React.FC = () => {
         <ChartLineUp size={13} aria-hidden="true" />
         {tr('weekly_report.save_note', { defaultValue: '本周周报' })}
       </button>
-      <button
-        type="button"
-        className={linkClass}
-        disabled={busy}
-        onClick={() => void run(reviewWithAi)}
-      >
-        <ChatCircleText size={13} aria-hidden="true" />
-        {tr('weekly_report.chat', { defaultValue: '与 AI 复盘' })}
-      </button>
+      {!compact && (
+        <button
+          type="button"
+          className={linkClass}
+          disabled={busy}
+          onClick={() => void run(reviewWithAi)}
+        >
+          <ChatCircleText size={13} aria-hidden="true" />
+          {tr('weekly_report.chat', { defaultValue: '与 AI 复盘' })}
+        </button>
+      )}
       <Dialog open={preview !== null} onOpenChange={(open) => { if (!open) setPreview(null); }}>
         {preview ? (
           <DialogContent

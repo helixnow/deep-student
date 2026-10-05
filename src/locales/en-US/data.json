@@ -33,7 +33,7 @@
   "today_center": {
     "weak_title": "Weak spots",
     "weak_hint": "Explain and practice in chat",
-    "weak_prompt": "Help me review my weak spot “{{concept}}”: explain the core idea in three sentences, give me 3 practice questions from easy to hard, then tell me where people most often go wrong.",
+    "weak_prompt": "Help me review my weak spot “{{concept}}”: explain the core idea in three sentences; then write 3 practice questions from easy to hard into the question set “Weak-spot practice” with the question bank tools, using “{{concept}}” as the first knowledge tag of each question — I'll answer them there so my mastery updates; finally tell me where people most often go wrong.",
     "cards_due": "Cards due",
     "mistakes_due": "Mistakes to review",
     "notes_due": "Notes to review",
