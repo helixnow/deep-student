@@ -25,7 +25,18 @@ describe('daily learning digest', () => {
     await checkDailyLearningDigest(MORNING);
     await checkDailyLearningDigest(new Date(2026, 9, 2, 9, 0, 0));
     expect(sendMock).toHaveBeenCalledTimes(1);
-    expect(sendMock).toHaveBeenCalledWith('今日有 19 项待复习', '卡片 16 张、错题 2 道、笔记 1 篇');
+    expect(sendMock).toHaveBeenCalledWith('今日有 19 项待复习', '卡片 16 张、错题 2 道、笔记 1 篇', { target: 'review:cards' });
+  });
+
+  it('points the notification at the first review line that has work', async () => {
+    loadMock.mockResolvedValue({ cards: 0, mistakes: 3, notes: 2, dueNotes: [] });
+    await checkDailyLearningDigest(MORNING);
+    expect(sendMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), { target: 'review:mistakes' });
+
+    localStorage.clear();
+    loadMock.mockResolvedValue({ cards: 0, mistakes: 0, notes: 2, dueNotes: [] });
+    await checkDailyLearningDigest(MORNING);
+    expect(sendMock).toHaveBeenLastCalledWith(expect.any(String), expect.any(String), { target: 'review:notes' });
   });
 
   it('stays quiet before 7am and when nothing is due', async () => {

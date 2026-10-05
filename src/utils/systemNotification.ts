@@ -16,6 +16,7 @@
  * 非 Tauri 环境 / 权限缺失时静默退化。
  */
 
+import { rememberNotificationTarget } from './notificationRouting';
 import { getSetting, saveSetting } from './settingsApi';
 import { isTauriRuntime } from './shared';
 
@@ -139,6 +140,8 @@ export interface SystemNotificationOptions {
    * 在 background 策略下即使应用在前台也发送（never 策略仍然禁止）。
    */
   force?: boolean;
+  /** 点通知要打开的界面（路由见 notificationRouting）：手机经 extra 带回，桌面按回到前台推断 */
+  target?: string;
 }
 
 export type SystemNotificationPermissionState =
@@ -212,7 +215,9 @@ export async function sendSystemNotification(
       granted = (await requestPermission()) === 'granted';
     }
     if (!granted) return false;
-    sendNotification({ title, body });
+    const target = options?.target;
+    sendNotification(target ? { title, body, extra: { target } } : { title, body });
+    if (target && (await isAppInBackground())) rememberNotificationTarget(target);
     return true;
   } catch (e) {
     console.warn('[SystemNotification] Failed to send:', e);

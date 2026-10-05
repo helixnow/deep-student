@@ -13,6 +13,7 @@
  */
 
 import i18n from '@/i18n';
+import { initNotificationRouting } from '@/utils/notificationRouting';
 import { listReminderItems, listTodayItems } from './api';
 import type { TodoItem } from './types';
 
@@ -112,6 +113,16 @@ function saveFired(fired: Map<string, number>): void {
 // ============================================================================
 // 通知发送
 // ============================================================================
+
+let stopNotificationRouting: (() => void) | null = null;
+
+/** 学习到期汇总带 `review:cards|mistakes|notes`：点通知直接进对应复习 */
+function openNotificationTarget(target: string): void {
+  const review = target.startsWith('review:') ? target.slice('review:'.length) : '';
+  if (review !== 'cards' && review !== 'mistakes' && review !== 'notes') return;
+  void import('@/features/learning-today/openTodayReview')
+    .then(({ openTodayReviewTarget }) => openTodayReviewTarget(review));
+}
 
 // ★ 8.1 统一通知策略：到点提醒是用户主动设置的，force 绕过 background 前台拦截。
 // 返回是否实际发出（策略拦截/权限缺失/非 Tauri 环境返回 false）
@@ -270,6 +281,7 @@ export async function checkDailyLearningDigest(now: Date): Promise<void> {
           notes: due.notes,
           defaultValue: '卡片 {{cards}} 张、错题 {{mistakes}} 道、笔记 {{notes}} 篇',
         }),
+        { target: `review:${due.cards > 0 ? 'cards' : due.mistakes > 0 ? 'mistakes' : 'notes'}` },
       );
     }
     localStorage.setItem(LEARNING_DIGEST_STORAGE_KEY, today);
@@ -423,6 +435,7 @@ export function initReminderScheduler(): () => void {
   lastTickAt = Date.now();
   timer = setInterval(onIntervalTick, CHECK_INTERVAL_MS);
   document.addEventListener('visibilitychange', onVisibilityChange);
+  stopNotificationRouting = initNotificationRouting(openNotificationTarget);
   // 启动即检查一次（错过的提醒在此聚合补发）
   void checkReminders();
   return stopReminderScheduler;
@@ -433,6 +446,8 @@ export function stopReminderScheduler(): void {
     clearInterval(timer);
     timer = null;
   }
+  stopNotificationRouting?.();
+  stopNotificationRouting = null;
   if (exactTimer !== null) {
     clearTimeout(exactTimer);
     exactTimer = null;
