@@ -34,7 +34,7 @@ Its study agent works directly in every app on your Study Desktop.
 One sentence is enough. The agent opens the right app and produces the notes, mind maps, questions, cards and review plan; longer tasks it carries through on its own.
 
 **It does the work.**
-Notes, mind maps, exam sets, flashcards, todos, essay review and translation all have agent tools, so results land directly in the app instead of staying in a chat window. It can also operate the Study Desktop itself, research the web and academic papers, and produce Word, PowerPoint and Excel files.
+Notes, mind maps, exam sets, flashcards, todos, essay review and translation all have agent tools, so results land directly in the app instead of staying in a chat window. It can also operate the Study Desktop itself, research the web and academic papers, turn a recorded lecture into timestamped notes, and produce Word, PowerPoint and Excel files.
 
 **Long tasks, handed off.**
 Research, organizing and question writing keep moving without you: goal mode continues across turns, sub-agents work in parallel, and scheduled automations run on time.
@@ -43,7 +43,7 @@ Research, organizing and question writing keep moving without you: goal mode con
 Actions are approved by risk level, with Ask / Plan / Craft permission modes. Edits to notes and the Study Desktop can be undone, and answers cite the page, sentence or mind-map node they came from.
 
 **Knows you, grows with you.**
-It remembers your weak spots and study habits. 55 built-in skills load on demand, MCP connects external tools, and 13 model providers are preset — with a different model per feature if you like.
+It remembers your weak spots and study habits. 56 built-in skills load on demand, MCP connects external tools, and 13 model providers are preset — with a different model per feature if you like.
 
 <p align="center">
   <img src="./docs/assets/readme/en/agent.webp" width="92%" alt="The agent opens a note on the Study Desktop and asks for approval before a high-risk edit" />
@@ -58,13 +58,13 @@ Every app sits in the Study Desktop's Dock. Open one on its own, place several s
 | App | What it does |
 |---|---|
 | **Chat** | Study around your own materials; answers cite the original page. Groups, search and export. |
-| **Files** | Textbooks, notes, question sets and documents in one library, indexed for AI search on import (OCR included). |
+| **Files** | Textbooks, notes, question sets, documents, audio and video in one library, indexed for AI search on import (OCR included). |
+| **Audio & Video** | Transcribe lectures and recordings with timestamps, follow along with a synced transcript, and get answers that cite and jump to the exact moment; turn a lesson into an illustrated handout in Notes. |
 | **Textbook** | PDF, Word and EPUB reading with highlights and notes; select text and ask about it. |
 | **Notes** | Markdown notes with backlinks, tags and math; agent edits are highlighted and can be undone. |
 | **Mind Map** | A full mind map from one sentence; outline and canvas views, plus a recite mode that hides key nodes. |
 | **Exam Set** | Drop in an exam or textbook and get a question set; nine practice modes, auto grading, handwritten answers. |
-| **Flashcards** | Built-in FSRS spaced repetition, memory curves, APKG import and export — no Anki install required. |
-| **Anki Cards** | Turn PDFs, images and notes into cards with one request; sync to Anki or export APKG. |
+| **Flashcards** | Review, card making and templates in one place: built-in FSRS spaced repetition and memory curves, cards from PDFs, images, notes or videos in one request, APKG import/export and Anki sync — no Anki install required. |
 | **Essay Review** | Scores against exam rubrics (Gaokao, IELTS, postgraduate exams and more), inline marks, sentence polishing. |
 | **Translation** | Full-text translation with paragraph-by-paragraph comparison and 7 domain presets. |
 | **Todo · Pomodoro** | Today's reviews and tasks in one list; a focus timer with stats. |
@@ -84,6 +84,10 @@ Every app sits in the Study Desktop's Dock. Open one on its own, place several s
     <td><img src="./docs/assets/readme/en/essay.webp" alt="Essay Review: rubric scores and inline marks" /></td>
   </tr>
 </table>
+
+<p align="center">
+  <img src="./docs/assets/readme/en/media.webp" width="92%" alt="Audio & Video: a lecture video with its synced, timestamped transcript" />
+</p>
 
 Full guides for every app: [deepstudent.cn/user-guide](https://deepstudent.cn/user-guide/) (Chinese).
 
