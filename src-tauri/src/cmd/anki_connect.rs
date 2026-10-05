@@ -953,6 +953,26 @@ pub async fn export_cards_as_apkg(
 ) -> Result<String> {
     export_cards_as_apkg_with_template(selected_cards, deck_name, note_type, None, state).await
 }
+/// 导出前为已入队卡片附上本地 FSRS 进度（排期 / 记忆状态 / 复习记录）。
+/// 读取失败只告警：导出内容本身不受影响，进度按导入快照或新卡导出。
+fn attach_fsrs_progress(state: &AppState, cards: &mut [AnkiCard]) {
+    let ids: Vec<String> = cards.iter().map(|card| card.id.clone()).collect();
+    let service = crate::fsrs_review_service::FsrsReviewService::new(state.anki_database.clone());
+    match service.load_export_progress(&ids) {
+        Ok(progress) => {
+            for card in cards.iter_mut() {
+                if let Some(value) = progress.get(&card.id) {
+                    card.extra_fields.insert(
+                        crate::apkg_exporter_service::FSRS_EXPORT_METADATA_KEY.to_string(),
+                        value.to_string(),
+                    );
+                }
+            }
+        }
+        Err(error) => log::warn!("[apkg export] failed to load FSRS progress: {}", error),
+    }
+}
+
 /// 导出选定的卡片为.apkg文件（支持模板）
 #[tauri::command]
 pub async fn export_cards_as_apkg_with_template(
@@ -965,6 +985,8 @@ pub async fn export_cards_as_apkg_with_template(
     if selected_cards.is_empty() {
         return Err(AppError::validation("没有选择任何卡片".to_string()));
     }
+    let mut selected_cards = selected_cards;
+    attach_fsrs_progress(&state, &mut selected_cards);
 
     // 多模板导出修复：从每张卡片的 template_id 解析模板
     // 优先使用显式传入的 template_id，其次使用卡片自身的 template_id
@@ -1109,6 +1131,8 @@ pub async fn export_multi_template_apkg(
     if cards.is_empty() {
         return Err(AppError::validation("没有卡片可以导出"));
     }
+    let mut cards = cards;
+    attach_fsrs_progress(&state, &mut cards);
 
     let db = &state.database;
 

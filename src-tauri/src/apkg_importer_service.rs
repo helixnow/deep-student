@@ -1249,7 +1249,7 @@ struct PendingCardRow {
     sched: Option<CardSchedState>,
 }
 
-/// Anki cards 表的调度信息快照（SM-2 语义）。
+/// Anki cards 表的调度信息快照（SM-2 语义 + Anki 23.10+ `cards.data` 里的 FSRS 记忆状态）。
 #[derive(Clone, Copy)]
 struct CardSchedState {
     card_type: i64,
@@ -1259,6 +1259,30 @@ struct CardSchedState {
     factor: i64,
     reps: i64,
     lapses: i64,
+    /// `cards.data` 的 `s` / `d`：在 Anki 里启用 FSRS 时的真实记忆状态
+    fsrs_memory: Option<(f64, f64)>,
+    /// `cards.data` 的 `lrt`（上次复习的 unix 秒，Anki 25.x 起写入）
+    last_review_secs: Option<i64>,
+}
+
+/// 解析 Anki `cards.data`（JSON）里的 FSRS 记忆状态与上次复习时间。
+fn parse_card_fsrs_data(raw: &str) -> (Option<(f64, f64)>, Option<i64>) {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return (None, None);
+    };
+    let stability = value
+        .get("s")
+        .and_then(|v| v.as_f64())
+        .filter(|s| s.is_finite() && *s > 0.0);
+    let difficulty = value
+        .get("d")
+        .and_then(|v| v.as_f64())
+        .filter(|d| d.is_finite() && (1.0..=10.0).contains(d));
+    let last_review = value
+        .get("lrt")
+        .and_then(|v| v.as_i64())
+        .filter(|t| *t > ANKI_DUE_TIMESTAMP_THRESHOLD);
+    (stability.zip(difficulty), last_review)
 }
 
 impl CardSchedState {
@@ -1330,6 +1354,7 @@ fn parse_collection_database(
     // 调度列（type/queue/due/ivl/factor/reps/lapses）在真实 Anki 包中始终存在；
     // 缺失时（如极简合成包）静默退化为不读取调度信息。
     let has_sched_columns = cards_table_has_sched_columns(&conn)?;
+    let has_card_data = has_sched_columns && cards_table_has_column(&conn, "data")?;
     let has_note_data: bool = conn
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM pragma_table_info('notes') WHERE name = 'data')",
@@ -1338,10 +1363,10 @@ fn parse_collection_database(
         )
         .map_err(collection_sql_error)?;
     let note_data_select = if has_note_data { "n.data" } else { "''" };
-    let sched_select = if has_sched_columns {
-        ", c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses"
-    } else {
-        ""
+    let sched_select = match (has_sched_columns, has_card_data) {
+        (true, true) => ", c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses, c.data",
+        (true, false) => ", c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses",
+        _ => "",
     };
     // 按 note 分组读取（组内相邻），便于 reversed 卡去重与 Cloze 折叠。
     let sql = format!(
@@ -1422,6 +1447,15 @@ fn parse_collection_database(
             });
         }
         let sched = if has_sched_columns {
+            let (fsrs_memory, last_review_secs) = if has_card_data {
+                row.get::<_, Option<String>>(15)
+                    .map_err(collection_sql_error)?
+                    .as_deref()
+                    .map(parse_card_fsrs_data)
+                    .unwrap_or((None, None))
+            } else {
+                (None, None)
+            };
             Some(CardSchedState {
                 card_type: row.get(8).map_err(collection_sql_error)?,
                 queue: row.get(9).map_err(collection_sql_error)?,
@@ -1430,6 +1464,8 @@ fn parse_collection_database(
                 factor: row.get(12).map_err(collection_sql_error)?,
                 reps: row.get(13).map_err(collection_sql_error)?,
                 lapses: row.get(14).map_err(collection_sql_error)?,
+                fsrs_memory,
+                last_review_secs,
             })
         } else {
             None
@@ -1606,6 +1642,15 @@ fn cards_table_has_sched_columns(conn: &Connection) -> Result<bool, AppError> {
     Ok(["type", "queue", "due", "ivl", "factor", "reps", "lapses"]
         .iter()
         .all(|column| columns.contains(*column)))
+}
+
+fn cards_table_has_column(conn: &Connection, column: &str) -> Result<bool, AppError> {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('cards') WHERE name = ?1)",
+        [column],
+        |row| row.get(0),
+    )
+    .map_err(collection_sql_error)
 }
 
 fn install_collection_progress_handler(conn: &Connection) {
@@ -2408,34 +2453,39 @@ fn persist_package(
 /// Anki 调度列中「due 是 unix 秒时间戳」的判定阈值（≈2001-09）。
 /// 天数制 due（距 crt 的天数）远小于此值；学习队列（queue=1）的 due 是时间戳。
 const ANKI_DUE_TIMESTAMP_THRESHOLD: i64 = 1_000_000_000;
-/// 导入卡缺少 FSRS 难度历史时的中性难度（FSRS 难度区间 1..=10）。
-const IMPORTED_NEUTRAL_DIFFICULTY: f64 = 5.0;
 const MS_PER_DAY: i64 = 86_400_000;
+/// 换算 SM-2 卡片时假定的历史保持率（Anki「Historical retention」默认值）。
+const SM2_HISTORICAL_RETENTION: f32 = 0.9;
+/// Anki 默认起始难易度系数（缺失/异常 factor 时使用）。
+const ANKI_DEFAULT_EASE: f32 = 2.5;
 
-/// Anki 难易度系数（factor，千分比，默认 2500 = 250%）→ FSRS 难度（1..=10）。
-///
-/// 系数越低说明这张卡在 Anki 里被反复按「困难/重来」，越难：1300（下限）≈ 8.5，
-/// 2500 ≈ 5.0，3500 及以上 ≈ 2.0。缺失/异常值（0、负数）取中性 5.0。
-fn anki_ease_to_fsrs_difficulty(factor: i64) -> f64 {
-    if factor <= 0 {
-        return IMPORTED_NEUTRAL_DIFFICULTY;
+/// SM-2 排期 → FSRS 记忆状态（fsrs-rs `memory_state_from_sm2`，与 Anki 启用 FSRS 时同一换算）。
+fn sm2_to_fsrs_memory(factor: i64, interval_days: i64) -> (f64, f64) {
+    let ease = if factor > 0 {
+        factor as f32 / 1000.0
+    } else {
+        ANKI_DEFAULT_EASE
+    };
+    let interval = interval_days.max(1) as f32;
+    match fsrs::FSRS::default().memory_state_from_sm2(ease, interval, SM2_HISTORICAL_RETENTION) {
+        Ok(memory) => (f64::from(memory.stability), f64::from(memory.difficulty)),
+        Err(_) => (f64::from(interval), 5.0),
     }
-    let ease = factor as f64 / 1000.0;
-    (IMPORTED_NEUTRAL_DIFFICULTY + (2.5 - ease) * 3.0).clamp(1.0, 10.0)
 }
 
-/// 把 Anki（SM-2）调度列换算为 FSRS 初始状态。
+/// 把 Anki 调度列换算为 FSRS 初始状态。
 ///
 /// Anki 语义：`type` 0=new 1=learning 2=review 3=relearning；`queue` -1=暂停、
 /// -2/-3=埋藏、0=new、1=学习（due 为 unix 秒）、2=复习（due 为距 `col.crt` 的天数）、
 /// 3=跨日学习（due 为天数）；`ivl` 正数为天、负数为秒。
 ///
-/// 换算规则（刻意保持简单，首次在本应用评分后由 FSRS 自行校正）：
+/// 换算规则：
 /// - new → New、立即到期；
-/// - review → Review，稳定度 ≈ max(ivl, 1) 天，难度由 Anki 难易度系数换算（缺省 5.0），
-///   `scheduled_days = ivl`，due = crt + due 天，上次复习 ≈ due - ivl（不晚于现在）；
-/// - learning/relearning → Learning/Relearning，稳定度 max(ivl, 1) 天（短期稳定度
-///   需要正数基准），due 按时间戳或天数换算；
+/// - 记忆状态：`cards.data` 带 FSRS 的 s / d（在 Anki 里启用过 FSRS）时原样沿用；
+///   否则按 fsrs-rs `memory_state_from_sm2`（ease、ivl、历史保持率 0.9）换算；
+/// - review → Review，`scheduled_days = ivl`，due = crt + due 天；上次复习优先取
+///   `cards.data.lrt`，否则 ≈ due - ivl（不晚于现在）；
+/// - learning/relearning → 同上，换算时间隔至少按 1 天，due 按时间戳或天数换算；
 /// - reps/lapses 沿用 Anki；queue=-1 → 暂停；埋藏是临时状态，不沿用；
 /// - 缺 `crt` 时天数制 due 无法换算 → 立即到期。
 fn anki_sched_to_fsrs(
@@ -2465,14 +2515,18 @@ fn anki_sched_to_fsrs(
         }
     };
     let ivl_days = sched.ivl.max(0);
-    let stability = (ivl_days as f64).max(1.0);
-    let last_review_ms = due_ms
-        .saturating_sub(ivl_days.saturating_mul(MS_PER_DAY))
+    let (stability, difficulty) = sched
+        .fsrs_memory
+        .unwrap_or_else(|| sm2_to_fsrs_memory(sched.factor, ivl_days));
+    let last_review_ms = sched
+        .last_review_secs
+        .map(|secs| secs.saturating_mul(1000))
+        .unwrap_or_else(|| due_ms.saturating_sub(ivl_days.saturating_mul(MS_PER_DAY)))
         .min(now_ms);
     FsrsImportedSchedule {
         state,
         stability: Some(stability),
-        difficulty: Some(anki_ease_to_fsrs_difficulty(sched.factor)),
+        difficulty: Some(difficulty),
         elapsed_days: 0.0,
         scheduled_days: ivl_days as f64,
         reps: sched.reps.clamp(0, i32::MAX as i64) as i32,
@@ -4825,8 +4879,9 @@ mod tests {
         assert_eq!(review.state, FsrsState::Review.as_i32());
         assert_eq!(review.due_ms, crt_ms + 105 * day_ms);
         assert_eq!(review.last_review_ms, Some(crt_ms + 95 * day_ms));
-        assert_eq!(review.stability, Some(10.0));
-        assert_eq!(review.difficulty, Some(5.0));
+        let (expected_s, expected_d) = sm2_to_fsrs_memory(2500, 10);
+        assert_eq!(review.stability, Some(expected_s));
+        assert_eq!(review.difficulty, Some(expected_d));
         assert_eq!(review.scheduled_days, 10.0);
         assert_eq!((review.reps, review.lapses), (6, 1));
         assert!(!review.suspended);
@@ -4911,11 +4966,30 @@ mod tests {
     }
 
     #[test]
-    fn anki_ease_maps_to_fsrs_difficulty() {
-        assert!((anki_ease_to_fsrs_difficulty(2500) - 5.0).abs() < 1e-9);
-        assert!(anki_ease_to_fsrs_difficulty(1300) > 8.0);
-        assert!((anki_ease_to_fsrs_difficulty(4000) - 1.0).abs() < 1e-9);
-        assert!((anki_ease_to_fsrs_difficulty(0) - 5.0).abs() < 1e-9);
+    fn sm2_schedule_converts_with_fsrs_memory_state_from_sm2() {
+        // 历史保持率 0.9 时稳定度 = 间隔；ease 越低难度越高
+        let (stability, default_d) = sm2_to_fsrs_memory(2500, 10);
+        assert!((stability - 10.0).abs() < 1e-4);
+        let (_, hard_d) = sm2_to_fsrs_memory(1300, 10);
+        let (_, easy_d) = sm2_to_fsrs_memory(3500, 10);
+        assert!(hard_d > default_d && default_d > easy_d);
+        for d in [default_d, hard_d, easy_d] {
+            assert!((1.0..=10.0).contains(&d));
+        }
+        // 缺失 factor 按 Anki 默认 2.5
+        assert_eq!(sm2_to_fsrs_memory(0, 10), sm2_to_fsrs_memory(2500, 10));
+    }
+
+    #[test]
+    fn card_data_fsrs_memory_is_parsed_and_validated() {
+        assert_eq!(
+            parse_card_fsrs_data(r#"{"s":12.5,"d":6.2,"dr":0.9,"lrt":1790000000}"#),
+            (Some((12.5, 6.2)), Some(1_790_000_000))
+        );
+        assert_eq!(parse_card_fsrs_data(r#"{"pos":3}"#), (None, None));
+        assert_eq!(parse_card_fsrs_data(r#"{"s":0,"d":6.2}"#), (None, None));
+        assert_eq!(parse_card_fsrs_data(r#"{"s":3,"d":11}"#), (None, None));
+        assert_eq!(parse_card_fsrs_data("not json"), (None, None));
     }
 
     #[test]
@@ -4929,6 +5003,8 @@ mod tests {
             factor: 2500,
             reps: 3,
             lapses: 1,
+            fsrs_memory: None,
+            last_review_secs: None,
         };
         // Missing crt: day-number due cannot be resolved → due now.
         let review = anki_sched_to_fsrs(&sched(2, 2, 400, 12), None, now_ms);
@@ -4939,19 +5015,28 @@ mod tests {
         let relearn = anki_sched_to_fsrs(&sched(3, 1, 1_799_999_000, 3), Some(1), now_ms);
         assert_eq!(relearn.state, FsrsState::Relearning);
         assert_eq!(relearn.due_ms, 1_799_999_000_000);
-        assert_eq!(relearn.stability, Some(3.0));
+        assert!((relearn.stability.expect("relearn stability") - 3.0).abs() < 1e-4);
         // Day-learning queue (3): due is a day number relative to crt.
         let crt = 1_700_000_000i64;
         let day_learn = anki_sched_to_fsrs(&sched(1, 3, 50, 0), Some(crt), now_ms);
         assert_eq!(day_learn.state, FsrsState::Learning);
         assert_eq!(day_learn.due_ms, crt * 1000 + 50 * MS_PER_DAY);
-        assert_eq!(day_learn.stability, Some(1.0));
+        assert!((day_learn.stability.expect("learning stability") - 1.0).abs() < 1e-4);
         // Suspended new card stays New but suspended; buried cards are not suspended.
         let new_suspended = anki_sched_to_fsrs(&sched(0, -1, 7, 0), Some(crt), now_ms);
         assert_eq!(new_suspended.state, FsrsState::New);
         assert!(new_suspended.suspended);
         assert_eq!(new_suspended.reps, 0);
         assert!(!anki_sched_to_fsrs(&sched(2, -2, 50, 4), Some(crt), now_ms).suspended);
+
+        // Anki 里启用过 FSRS：沿用 cards.data 的记忆状态与上次复习时间
+        let mut fsrs_card = sched(2, 2, 400, 12);
+        fsrs_card.fsrs_memory = Some((30.5, 7.25));
+        fsrs_card.last_review_secs = Some(1_799_000_000);
+        let converted = anki_sched_to_fsrs(&fsrs_card, Some(crt), now_ms);
+        assert_eq!(converted.stability, Some(30.5));
+        assert_eq!(converted.difficulty, Some(7.25));
+        assert_eq!(converted.last_review_ms, Some(1_799_000_000_000));
     }
 
     #[test]

@@ -58,8 +58,9 @@ pub const MAX_EXPORT_MEDIA_FILE_BYTES: u64 = 256 * 1024 * 1024;
 
 /// 导入时由 apkg_importer_service 注入的元数据保留字段。
 /// 再导出时必须过滤，避免这些键污染 Anki model 字段表。
-/// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致。
-const RESERVED_IMPORT_METADATA_FIELDS: [&str; 14] = [
+/// 后 7 个为调度信息键，与 apkg_importer_service::ANKI_SCHED_METADATA_KEYS 一致；
+/// `AnkiFsrs` 为导出时注入的本应用 FSRS 进度（见 [`FSRS_EXPORT_METADATA_KEY`]）。
+const RESERVED_IMPORT_METADATA_FIELDS: [&str; 15] = [
     "AnkiNoteId",
     "AnkiCardId",
     "AnkiCardOrd",
@@ -74,7 +75,13 @@ const RESERVED_IMPORT_METADATA_FIELDS: [&str; 14] = [
     "AnkiFactor",
     "AnkiReps",
     "AnkiLapses",
+    FSRS_EXPORT_METADATA_KEY,
 ];
+
+/// 导出命令从本地 FSRS 表加载进度后写入的元数据键（JSON，见
+/// `FsrsReviewService::load_export_progress`）；导出器据此回写 Anki 排期、
+/// `cards.data` 记忆状态与 revlog。
+pub const FSRS_EXPORT_METADATA_KEY: &str = "AnkiFsrs";
 
 fn is_reserved_import_metadata_field(name: &str) -> bool {
     RESERVED_IMPORT_METADATA_FIELDS
@@ -501,14 +508,172 @@ fn cloze_card_ords(text: &str) -> Vec<i64> {
     }
 }
 
-/// 导出时回写的调度状态（由导入注入的 AnkiSched* 元数据换算而来）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// 导出时回写的调度状态：优先本应用 FSRS 进度，其次导入时注入的 AnkiSched* 元数据。
+#[derive(Debug, Clone, PartialEq)]
 struct CardSchedRestore {
     due: i64,
     ivl: i64,
     factor: i64,
     reps: i64,
     lapses: i64,
+    /// 本应用 FSRS 进度；None 为导入元数据回写的旧路径（复习卡 type=2/queue=2）
+    fsrs: Option<FsrsSchedExport>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct FsrsSchedExport {
+    card_type: i64,
+    queue: i64,
+    left: i64,
+    /// `cards.data`：Anki 23.10+ 的 FSRS 记忆状态（s / d / dr / decay / lrt）
+    data: String,
+    revlog: Vec<RevlogExport>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct RevlogExport {
+    id_ms: i64,
+    ease: i64,
+    /// 复习卡为天数；学习步为负的秒数（Anki revlog 约定）
+    ivl: i64,
+    last_ivl: i64,
+    factor: i64,
+    time_ms: i64,
+    /// 0=learn 1=review 2=relearn
+    kind: i64,
+}
+
+/// FSRS 难度（1..=10）→ Anki 难易度系数（千分比）：D=1 → 3000，D=10 → 1300。
+fn fsrs_difficulty_to_factor(difficulty: f64) -> i64 {
+    let d = difficulty.clamp(1.0, 10.0);
+    ((1.3 + (10.0 - d) / 9.0 * 1.7) * 1000.0).round() as i64
+}
+
+/// 解析 `AnkiFsrs` 元数据并换算成 Anki 排期。新卡返回 None（按新卡导出）。
+///
+/// 复习卡的 due 是「距导出当天的逻辑日数」（导出集合 crt = 导出时刻），
+/// 过期卡记为今天到期；学习卡当天到期用 unix 秒（queue=1），跨日用天数（queue=3）。
+fn fsrs_sched_restore(raw: &str, now_ms: i64) -> Option<CardSchedRestore> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let state = value.get("state")?.as_i64()?;
+    if !(1..=3).contains(&state) {
+        return None;
+    }
+    let stability = value.get("s").and_then(|v| v.as_f64()).filter(|s| *s > 0.0)?;
+    let difficulty = value.get("d").and_then(|v| v.as_f64())?;
+    let due_ms = value.get("due").and_then(|v| v.as_i64())?;
+    let rollover = value
+        .get("rollover")
+        .and_then(|v| v.as_u64())
+        .map(|v| v.min(23) as u32)
+        .unwrap_or(crate::fsrs_scheduler::DEFAULT_DAY_ROLLOVER_HOUR);
+    let reps = value.get("reps").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+    let lapses = value.get("lapses").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+    let suspended = value.get("susp").and_then(|v| v.as_bool()).unwrap_or(false);
+    let factor = fsrs_difficulty_to_factor(difficulty);
+    let local = chrono::Local;
+    let days_until_due = if due_ms > now_ms {
+        i64::from(crate::fsrs_scheduler::logical_days_between(
+            now_ms, due_ms, &local, rollover,
+        ))
+    } else {
+        0
+    };
+
+    let (card_type, mut queue, due, ivl, left) = if state == 2 {
+        let ivl = value
+            .get("ivl")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(stability)
+            .round()
+            .clamp(1.0, 36_500.0) as i64;
+        (2, 2, days_until_due, ivl, 0)
+    } else {
+        let (_, next_day_start) =
+            crate::fsrs_scheduler::logical_day_bounds_ms(now_ms, &local, rollover);
+        let ivl = if state == 3 {
+            stability.round().clamp(1.0, 36_500.0) as i64
+        } else {
+            0
+        };
+        if due_ms < next_day_start {
+            (state, 1, due_ms.max(0) / 1000, ivl, 1001)
+        } else {
+            (state, 3, days_until_due, ivl, 1001)
+        }
+    };
+    if suspended {
+        queue = -1;
+    }
+
+    let round4 = |v: f64| (v * 10_000.0).round() / 10_000.0;
+    let mut data = serde_json::Map::new();
+    data.insert("s".into(), serde_json::json!(round4(stability)));
+    data.insert("d".into(), serde_json::json!(round4(difficulty.clamp(1.0, 10.0))));
+    if let Some(dr) = value.get("dr").and_then(|v| v.as_f64()).filter(|v| *v > 0.0 && *v < 1.0) {
+        data.insert("dr".into(), serde_json::json!(round4(dr)));
+    }
+    if let Some(decay) = value.get("decay").and_then(|v| v.as_f64()).filter(|v| *v > 0.0) {
+        data.insert("decay".into(), serde_json::json!(round4(decay)));
+    }
+    if let Some(lrt) = value.get("lrt").and_then(|v| v.as_i64()) {
+        data.insert("lrt".into(), serde_json::json!(lrt / 1000));
+    }
+
+    let mut revlog = Vec::new();
+    let mut last_ivl = 0i64;
+    for entry in value.get("rev").and_then(|v| v.as_array()).into_iter().flatten() {
+        let Some(row) = entry.as_array() else { continue };
+        let int = |index: usize| row.get(index).and_then(|v| v.as_i64());
+        let (Some(review_ms), Some(rating), Some(state_before), Some(state_after)) =
+            (int(0), int(1), int(2), int(3))
+        else {
+            continue;
+        };
+        if !(1..=4).contains(&rating) {
+            continue;
+        }
+        let scheduled_days = row.get(4).and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let entry_ivl = if state_after == 2 {
+            scheduled_days.round().max(1.0) as i64
+        } else {
+            let seconds = int(5)
+                .map(|due_after| (due_after - review_ms) / 1000)
+                .unwrap_or(60)
+                .max(60);
+            -seconds
+        };
+        let kind = match state_before {
+            2 => 1,
+            3 => 2,
+            _ => 0,
+        };
+        revlog.push(RevlogExport {
+            id_ms: review_ms,
+            ease: rating,
+            ivl: entry_ivl,
+            last_ivl,
+            factor: if kind == 0 { 0 } else { factor },
+            time_ms: int(6).unwrap_or(0).clamp(0, 600_000),
+            kind,
+        });
+        last_ivl = entry_ivl;
+    }
+
+    Some(CardSchedRestore {
+        due,
+        ivl,
+        factor,
+        reps,
+        lapses,
+        fsrs: Some(FsrsSchedExport {
+            card_type,
+            queue,
+            left,
+            data: serde_json::Value::Object(data).to_string(),
+            revlog,
+        }),
+    })
 }
 
 /// 从卡片元数据（AnkiIvl/AnkiReps/AnkiFactor/AnkiDue/AnkiLapses）保守重建调度状态：
@@ -517,6 +682,10 @@ struct CardSchedRestore {
 ///   （即“导入后 ivl 天内到期”），避免卡片被排到遥远未来；
 /// - factor 越界时回退 Anki 默认 2500。
 fn card_sched_restore(card: &AnkiCard) -> Option<CardSchedRestore> {
+    if let Some(raw) = card.extra_fields.get(FSRS_EXPORT_METADATA_KEY) {
+        // 有本应用进度时以它为准（导入快照已过时）；新卡按新卡导出
+        return fsrs_sched_restore(raw, Utc::now().timestamp_millis());
+    }
     let get = |key: &str| {
         card.extra_fields
             .get(key)
@@ -541,7 +710,36 @@ fn card_sched_restore(card: &AnkiCard) -> Option<CardSchedRestore> {
         factor,
         reps: reps.min(1_000_000),
         lapses,
+        fsrs: None,
     })
+}
+
+/// 写入一条 revlog；Anki 以毫秒时间戳作主键，撞号时顺延 1ms。
+fn insert_revlog_row(conn: &Connection, card_id: i64, entry: &RevlogExport) -> Result<(), String> {
+    let mut id = entry.id_ms;
+    for _ in 0..1000 {
+        let inserted = conn
+            .execute(
+                "INSERT OR IGNORE INTO revlog (id, cid, usn, ease, ivl, lastIvl, factor, time, type)
+                 VALUES (?, ?, -1, ?, ?, ?, ?, ?, ?)",
+                params![
+                    id,
+                    card_id,
+                    entry.ease,
+                    entry.ivl,
+                    entry.last_ivl,
+                    entry.factor,
+                    entry.time_ms,
+                    entry.kind
+                ],
+            )
+            .map_err(|error| format!("插入复习记录失败: {}", error))?;
+        if inserted == 1 {
+            return Ok(());
+        }
+        id += 1;
+    }
+    Err("复习记录主键冲突过多".to_string())
 }
 
 fn insert_anki_card_rows(
@@ -555,6 +753,32 @@ fn insert_anki_card_rows(
 ) -> Result<(), String> {
     for ord in card_ords {
         let card_id = next_apkg_card_id();
+        if let Some((sched, fsrs)) = sched.and_then(|s| s.fsrs.as_ref().map(|f| (s, f))) {
+            conn.execute(
+                "INSERT INTO cards (id, nid, did, ord, mod, usn, type, queue, due, ivl, factor, reps, lapses, left, odue, odid, flags, data) VALUES (?, ?, ?, ?, ?, -1, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?)",
+                params![
+                    card_id,
+                    note_id,
+                    deck_id,
+                    ord,
+                    now,
+                    fsrs.card_type,
+                    fsrs.queue,
+                    sched.due,
+                    sched.ivl,
+                    sched.factor,
+                    sched.reps,
+                    sched.lapses,
+                    fsrs.left,
+                    fsrs.data
+                ],
+            )
+            .map_err(|error| format!("插入卡片失败: {}", error))?;
+            for entry in &fsrs.revlog {
+                insert_revlog_row(conn, card_id, entry)?;
+            }
+            continue;
+        }
         if let Some(sched) = sched {
             // 携带导入调度元数据的卡片：按复习卡（type=2/queue=2）回写 SM-2 状态
             conn.execute(
@@ -2776,6 +3000,7 @@ mod tests {
                 factor: 2500,
                 reps: 9,
                 lapses: 2,
+                fsrs: None,
             })
         );
 
@@ -2795,6 +3020,7 @@ mod tests {
                 factor: 2300,
                 reps: 4,
                 lapses: 0,
+                fsrs: None,
             })
         );
     }
@@ -2873,6 +3099,123 @@ mod tests {
             )
             .expect("load fresh card schedule");
         assert_eq!((fresh_type, fresh_queue, fresh_ivl), (0, 0, 0));
+    }
+
+    #[tokio::test]
+    async fn export_writes_local_fsrs_progress_memory_state_and_revlog() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let out = tmp.path().join("fsrs-progress.apkg");
+        let now_ms = Utc::now().timestamp_millis();
+        let day = 86_400_000i64;
+
+        let mut reviewed = test_card("fsrs-reviewed", "fsrs front", "fsrs back");
+        // 导入快照（AnkiIvl 等）已过时：本应用进度优先
+        reviewed.extra_fields = HashMap::from([
+            ("AnkiIvl".to_string(), "3".to_string()),
+            ("AnkiReps".to_string(), "1".to_string()),
+            (
+                FSRS_EXPORT_METADATA_KEY.to_string(),
+                serde_json::json!({
+                    "v": 1, "state": 2, "s": 12.5, "d": 6.0, "dr": 0.9, "decay": 0.1542,
+                    "ivl": 12.0, "due": now_ms + 5 * day + 3_600_000,
+                    "lrt": now_ms - 7 * day, "reps": 4, "lapses": 1, "susp": false,
+                    "rollover": 4,
+                    "rev": [
+                        [now_ms - 20 * day, 3, 0, 1, 0.0, now_ms - 20 * day + 600_000, 4_000],
+                        [now_ms - 19 * day, 3, 1, 2, 2.0, now_ms - 17 * day, 3_000],
+                        [now_ms - 7 * day, 1, 2, 3, 0.0, now_ms - 7 * day + 600_000, 9_000],
+                    ],
+                })
+                .to_string(),
+            ),
+        ]);
+        let mut fresh = test_card("fsrs-fresh", "fresh front", "fresh back");
+        fresh.extra_fields = HashMap::from([(
+            FSRS_EXPORT_METADATA_KEY.to_string(),
+            serde_json::json!({"v": 1, "state": 0, "due": now_ms, "reps": 0, "lapses": 0, "rev": []})
+                .to_string(),
+        )]);
+
+        export_cards_to_apkg_with_full_template(
+            vec![reviewed, fresh],
+            "FsrsDeck".to_string(),
+            "Basic".to_string(),
+            out.clone(),
+            None,
+            None,
+        )
+        .await
+        .expect("export apkg with FSRS progress");
+
+        let db_path = tmp.path().join("fsrs-progress.anki2");
+        extract_collection(&out, &db_path);
+        let conn = Connection::open(&db_path).expect("open collection");
+        let (card_id, card_type, queue, due, ivl, reps, lapses, data): (
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            i64,
+            String,
+        ) = conn
+            .query_row(
+                "SELECT c.id, c.type, c.queue, c.due, c.ivl, c.reps, c.lapses, c.data
+                 FROM cards c
+                 INNER JOIN notes n ON n.id = c.nid
+                 WHERE n.flds LIKE 'fsrs front%'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                        row.get(5)?,
+                        row.get(6)?,
+                        row.get(7)?,
+                    ))
+                },
+            )
+            .expect("load exported FSRS card");
+        assert_eq!((card_type, queue, ivl, reps, lapses), (2, 2, 12, 4, 1));
+        assert!((5..=6).contains(&due), "due is relative to export day, got {due}");
+        let data: serde_json::Value = serde_json::from_str(&data).expect("card data json");
+        assert_eq!(data["s"], serde_json::json!(12.5));
+        assert_eq!(data["d"], serde_json::json!(6.0));
+        assert_eq!(data["dr"], serde_json::json!(0.9));
+        assert_eq!(data["lrt"], serde_json::json!((now_ms - 7 * day) / 1000));
+        // 本应用进度不得作为字段泄漏进 note
+        let flds: String = conn
+            .query_row(
+                "SELECT n.flds FROM notes n INNER JOIN cards c ON c.nid = n.id WHERE c.id = ?1",
+                [card_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!flds.contains("\"rev\""));
+
+        let revlog: Vec<(i64, i64, i64)> = conn
+            .prepare("SELECT ease, ivl, type FROM revlog WHERE cid = ?1 ORDER BY id")
+            .unwrap()
+            .query_map([card_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .collect::<SqliteResult<_>>()
+            .unwrap();
+        assert_eq!(revlog, vec![(3, -600, 0), (3, 2, 0), (1, -600, 1)]);
+
+        let (fresh_type, fresh_queue): (i64, i64) = conn
+            .query_row(
+                "SELECT c.type, c.queue FROM cards c
+                 INNER JOIN notes n ON n.id = c.nid
+                 WHERE n.flds LIKE 'fresh front%'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((fresh_type, fresh_queue), (0, 0));
     }
 
     #[tokio::test]

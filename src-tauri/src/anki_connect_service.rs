@@ -151,7 +151,7 @@ fn normalize_key(key: &str) -> String {
 /// 导入时由 apkg_importer_service 注入的元数据保留字段（与
 /// `apkg_exporter_service::RESERVED_IMPORT_METADATA_FIELDS` 名单一致）。
 /// 这些键只在本应用内部有意义，不得作为字段值来源发给 Anki。
-const RESERVED_IMPORT_METADATA_FIELDS: [&str; 13] = [
+const RESERVED_IMPORT_METADATA_FIELDS: [&str; 14] = [
     "AnkiNoteId",
     "AnkiCardId",
     "AnkiCardOrd",
@@ -165,6 +165,7 @@ const RESERVED_IMPORT_METADATA_FIELDS: [&str; 13] = [
     "AnkiFactor",
     "AnkiReps",
     "AnkiLapses",
+    crate::apkg_exporter_service::FSRS_EXPORT_METADATA_KEY,
 ];
 
 fn is_reserved_import_metadata_field(name: &str) -> bool {
