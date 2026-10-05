@@ -510,7 +510,10 @@ impl ChatV2Pipeline {
         let mut frozen_tool_schemas: HashMap<String, Value> = HashMap::new();
         let mut injected_skill_ids: std::collections::HashSet<String> =
             std::collections::HashSet::new();
-        let mut in_loop_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+        // (锚点 load_skills tool_call_id, 本轮最后一个 tool_call_id, 技能消息批次)。
+        // 插入位置取轮尾：详见 insert_skill_messages_after_tool_result 的轮中劈开问题。
+        let mut in_loop_skill_batches: Vec<(String, Option<String>, Vec<LegacyChatMessage>)> =
+            Vec::new();
         let mut cumulative_skill_audit = SkillInjectionAudit::default();
         let mut previous_empty_required_tools: std::collections::HashSet<String> =
             std::collections::HashSet::new();
@@ -794,12 +797,14 @@ impl ChatV2Pipeline {
                 let tool_count = tool_messages.len();
                 messages.extend(tool_messages);
 
-                // P1-8：环内 load_skills 新加载的技能按记录顺序回放到对应
-                // tool result 之后，当前 user 之前的内存前缀保持逐字节不变。
-                for (anchor_call_id, batch) in &in_loop_skill_batches {
+                // P1-8：环内 load_skills 新加载的技能回放到该轮最后一个
+                // tool result 之后、当前 user 之前（不在轮内结果中间插入，
+                // 避免劈开并行工具调用组丢 reasoning_content）。
+                for (anchor_call_id, round_last_call_id, batch) in &in_loop_skill_batches {
                     insert_skill_messages_after_tool_result(
                         &mut messages,
                         anchor_call_id,
+                        round_last_call_id.as_deref(),
                         batch.clone(),
                     );
                 }
@@ -2026,10 +2031,16 @@ impl ChatV2Pipeline {
                                             .options
                                             .skill_injection_anchors
                                             .get_or_insert_with(Default::default);
+                                        // 本轮最后一个工具调用：live 与重放共同的后移插入位
+                                        let round_last_call_id = tool_results
+                                            .last()
+                                            .and_then(|r| r.tool_call_id.clone())
+                                            .filter(|id| !id.is_empty());
                                         anchors.tool_anchored.push(
                                             crate::chat_v2::types::ToolAnchoredSkills {
                                                 tool_call_id: anchor_call_id.clone(),
                                                 skill_ids: batch.audit.injected_skill_ids.clone(),
+                                                round_last_tool_call_id: round_last_call_id.clone(),
                                             },
                                         );
                                         for (id, digest) in content_digests {
@@ -2040,8 +2051,11 @@ impl ChatV2Pipeline {
                                             batch.audit.injected_skill_ids.len(),
                                             anchor_call_id
                                         );
-                                        in_loop_skill_batches
-                                            .push((anchor_call_id, batch.messages));
+                                        in_loop_skill_batches.push((
+                                            anchor_call_id,
+                                            round_last_call_id,
+                                            batch.messages,
+                                        ));
                                     }
                                 }
                             }
@@ -4094,17 +4108,22 @@ mod tests {
 
         // 模拟 execute_with_tools 每轮的消息组装
         let build_round = |tool_msgs: &[LegacyChatMessage],
-                           in_loop_batches: &[(String, Vec<LegacyChatMessage>)]|
+                           in_loop_batches: &[(
+            String,
+            Option<String>,
+            Vec<LegacyChatMessage>,
+        )]|
          -> Vec<LegacyChatMessage> {
             let mut messages = history.clone();
             let insertion_index = messages.len();
             insert_transient_skill_messages(&mut messages, insertion_index, turn_skills.clone());
             messages.push(current_user.clone());
             messages.extend(tool_msgs.to_vec());
-            for (anchor_call_id, batch) in in_loop_batches {
+            for (anchor_call_id, round_last_call_id, batch) in in_loop_batches {
                 insert_skill_messages_after_tool_result(
                     &mut messages,
                     anchor_call_id,
+                    round_last_call_id.as_deref(),
                     batch.clone(),
                 );
             }
@@ -4143,6 +4162,7 @@ mod tests {
         let tool_round1 = vec![load_call.clone(), load_result.clone()];
         let batches = vec![(
             "call-load".to_string(),
+            Some("call-load".to_string()),
             vec![make_transient_skill_message(
                 "skill-lazy",
                 "lazy skill body",

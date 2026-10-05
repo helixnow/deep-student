@@ -326,11 +326,16 @@ impl ChatV2Pipeline {
                     chat_history.push(assistant_tool_msg);
                     chat_history.push(tool_msg);
 
-                    // P1-8：环内加载的技能还原到该 load_skills tool result 之后
-                    // （与 live 的 insert_skill_messages_after_tool_result 同位）
+                    // P1-8：环内加载的技能还原到该轮最后一个 tool result 之后
+                    // （与 live 的轮尾插入同位）。旧数据无 round_last_tool_call_id
+                    // 时回退锚点自身位置。
                     let mut still_pending = Vec::with_capacity(pending_tool_anchored.len());
                     for anchored in pending_tool_anchored.drain(..) {
-                        if anchored.tool_call_id != anchor_call_id {
+                        let matches_entry = match anchored.round_last_tool_call_id.as_deref() {
+                            Some(round_last) => round_last == anchor_call_id,
+                            None => anchored.tool_call_id == anchor_call_id,
+                        };
+                        if !matches_entry {
                             still_pending.push(anchored);
                             continue;
                         }
