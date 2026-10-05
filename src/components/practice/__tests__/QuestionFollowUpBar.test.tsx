@@ -37,6 +37,21 @@ describe('QuestionFollowUpBar', () => {
     expect(screen.queryByRole('button', { name: /出处/ })).toBeNull();
   });
 
+  it('jumps to the lecture moment when the explanation cites a media anchor', () => {
+    const opened = vi.fn();
+    document.addEventListener('media-ref:open', opened);
+    render(
+      <QuestionFollowUpBar
+        question={{ ...(question as object), explanation: '加法\n[媒体@file_lec2:03:05]' } as never}
+        examId="exam_1"
+      />,
+    );
+    expect(screen.queryByRole('button', { name: /^出处$/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /回看 03:05/ }));
+    expect((opened.mock.calls[0][0] as CustomEvent).detail).toEqual({ resourceId: 'file_lec2', seconds: 185 });
+    document.removeEventListener('media-ref:open', opened);
+  });
+
   it('parses source refs defensively', () => {
     expect(questionSourceResourceId('{"resourceIds":["a","b"]}')).toBe('a');
     expect(questionSourceResourceId('not json')).toBeNull();

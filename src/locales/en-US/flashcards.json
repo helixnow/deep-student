@@ -301,6 +301,8 @@
     "distribution": "Rating distribution",
     "undoNudgeRated": "Rated {{rating}}",
     "undoNudgeGeneric": "Review recorded",
+    "rewatchSource": "Rewatch {{time}}",
+    "rewatchSourceTitle": "Go back to {{time}} in the lecture and rewatch the part this card covers",
     "cardTimeCappedTitle": "Over 1 minute on this card (display capped; stats unaffected)"
   },
   "settings": {

@@ -301,6 +301,8 @@
     "distribution": "评分分布",
     "undoNudgeRated": "已评：{{rating}}",
     "undoNudgeGeneric": "已记录复习",
+    "rewatchSource": "回看 {{time}}",
+    "rewatchSourceTitle": "回到课程 {{time}}，重看讲到这张卡的片段",
     "cardTimeCappedTitle": "本卡用时已超过 1 分钟（仅显示封顶，不影响统计）"
   },
   "settings": {

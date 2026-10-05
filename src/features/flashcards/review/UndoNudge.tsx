@@ -29,6 +29,8 @@ export interface UndoNudgeProps {
   rating: FsrsRating | null;
   busy: boolean;
   onUndo: () => void;
+  /** 撤销按钮前的附加操作（如评「重来」后回看课程片段） */
+  secondaryAction?: React.ReactNode;
 }
 
 export const UndoNudge: React.FC<UndoNudgeProps> = ({
@@ -36,6 +38,7 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
   rating,
   busy,
   onUndo,
+  secondaryAction,
 }) => {
   const { t } = useTranslation('flashcards');
   // 初始化为挂载时的栈顶：只对「挂载后新增的评分」弹提示，
@@ -72,6 +75,7 @@ export const UndoNudge: React.FC<UndoNudgeProps> = ({
       className="wb-fc-undo-nudge flex items-center gap-2 rounded-full py-0.5 pl-3 pr-0.5 text-xs"
     >
       <span className="min-w-0 truncate">{message}</span>
+      {secondaryAction}
       <DsButton
         type="button"
         variant="ghost"

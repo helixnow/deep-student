@@ -28,8 +28,10 @@ import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/componen
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { cn } from '@/utils/cn';
 import { hasValidCloze } from '../cloze';
+import { findReviewCardMediaSource, type CardMediaSource } from '../library/cardMediaSource';
 import { useSwipeRating } from '../hooks/useSwipeRating';
 import { isEditableTarget } from '../isEditableTarget';
 import {
@@ -176,6 +178,31 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const flipAriaLabel = flipped
     ? t('session.showFront')
     : t('session.showBack');
+
+  // 音视频转写制成的卡：翻面后可回看讲到该知识点的片段；评「重来」后提示条里也给回看入口
+  const currentMediaSource = React.useMemo(() => findReviewCardMediaSource(current), [current]);
+  const lastReviewMediaSource = React.useMemo(() => {
+    if (!lastReview || lastReview.rating !== 1) return null;
+    return findReviewCardMediaSource(lastReview.queueSnapshot?.find((card) => card.id === lastReview.cardStateId));
+  }, [lastReview]);
+  const renderMediaChip = (source: CardMediaSource) => (
+    <DsButton
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="wb-fc-media-chip max-w-full gap-1 rounded-full text-xs"
+      aria-label={t('review.rewatchSourceTitle', { time: source.label })}
+      title={t('review.rewatchSourceTitle', { time: source.label })}
+      // 窗口级快捷键会把 Space/Enter 当翻面/评分，聚焦本按钮时让给按钮本身
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') event.stopPropagation();
+      }}
+      onClick={() => dispatchOpenMediaRef(source.resourceId, source.seconds)}
+    >
+      <Play size={11} weight="fill" aria-hidden="true" />
+      <span className="truncate">{t('review.rewatchSource', { time: source.label })}</span>
+    </DsButton>
+  );
 
   // ---- 前端计时（本卡用时 + 本轮用时） ----
   const cardKey = current ? `${current.id}:${current.ankiCardId ?? ''}` : null;
@@ -809,6 +836,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           swipe={swipe}
           swipeEnabled={swipeEnabled}
           ratingLabel={(key) => t(key)}
+          backAccessory={currentMediaSource ? renderMediaChip(currentMediaSource) : null}
         />
       )}
 
@@ -821,6 +849,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
               rating={lastReview?.rating ?? null}
               busy={ratingBusy}
               onUndo={() => void undoLastReview()}
+              secondaryAction={lastReviewMediaSource ? renderMediaChip(lastReviewMediaSource) : null}
             />
           </div>
           <RatingBar
