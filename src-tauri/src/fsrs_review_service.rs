@@ -1,10 +1,10 @@
 //! FSRS 闪卡复习服务
 //!
 //! 调度状态与复习日志独立于 `anki_cards` 内容表。
-//! 调度算法使用官方轻量 crate `rs-fsrs`（MIT，仅 scheduler，不含优化器）。
+//! 记忆模型使用 fsrs-rs（与 Anki 同一实现，FSRS-6）；学习步、fuzz、逻辑日等
+//! Anki 调度规则见 [`crate::fsrs_scheduler`]。
 
-use chrono::{DateTime, Local, TimeZone, Utc};
-use rs_fsrs::{Card as RsFsrsCard, Rating as RsFsrsRating, State as RsFsrsState, FSRS as RsFsrs};
+use chrono::{Local, Utc};
 use rusqlite::{params, OptionalExtension, TransactionBehavior};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -12,12 +12,13 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::database::{AnkiLibraryScope, Database};
+use crate::fsrs_scheduler::{self, CardPhase, CardSnapshot, ScheduledDelay, SchedulerContext};
 use crate::models::{AppError, AppErrorType};
 
 type Result<T> = std::result::Result<T, AppError>;
 
-/// 参数版本标记（rs-fsrs 1.2.x 默认权重）
-pub const FSRS_PARAMS_VERSION: &str = "rs-fsrs-1.2";
+/// 调度器版本标记（fsrs-rs 6.6 / FSRS-6）；旧数据为 `rs-fsrs-1.2`（FSRS-5 默认权重）。
+pub const FSRS_PARAMS_VERSION: &str = "fsrs-rs-6.6";
 
 /// 默认牌组 ID（与迁移 seed 一致）
 pub const DEFAULT_DECK_ID: &str = "deck_default";
@@ -99,8 +100,6 @@ pub const DEFAULT_NEW_PER_DAY: u32 = 20;
 pub const DEFAULT_REVIEWS_PER_DAY: u32 = 200;
 /// leech 阈值默认值（Anki 默认 8 次 lapse 标记 leech）
 pub const DEFAULT_LEECH_THRESHOLD: u32 = 8;
-/// rs-fsrs 默认最大间隔（天），fuzz 计算时使用
-const MAXIMUM_INTERVAL_DAYS: f64 = 36_500.0;
 
 /// 持久化的卡片调度状态
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +128,9 @@ pub struct FsrsCardState {
     /// bury 到期时间（本地日切次日零点，毫秒）；到期后自动恢复调度
     #[serde(default)]
     pub buried_until_ms: Option<i64>,
+    /// 当前所处的学习 / 重学步序号（0 起，见 V20261005）
+    #[serde(default)]
+    pub learning_step: u32,
 }
 
 /// 到期队列项：调度状态 + anki_cards 正反面（供复习 UI）
@@ -163,6 +165,9 @@ pub struct FsrsRateResult {
     pub log_id: String,
     pub scheduled_days: f64,
     pub due_ms: i64,
+    /// 本次评分顺带埋藏到次日的同笔记兄弟卡（state id）
+    #[serde(default)]
+    pub buried_siblings: Vec<String>,
 }
 
 /// 单档评分预览间隔（只读，不写库）
@@ -391,9 +396,38 @@ pub struct FsrsSchedulerConfig {
     pub leech_threshold: u32,
     /// "suspend"：标记 leech 并自动暂停；"mark"：仅标记
     pub leech_action: String,
-    /// 是否启用确定性 fuzz（默认关闭，保持调度可复现）
+    /// 间隔 fuzz（Anki 公式，因子按卡片确定性生成；默认开启，打散同批卡片的到期日）
     pub enable_fuzz: bool,
+    /// 学习步（分钟），默认 1m 10m
+    pub learning_steps: Vec<f64>,
+    /// 重学步（分钟），默认 10m；为空时答错直接按 FSRS 天数复习
+    pub relearning_steps: Vec<f64>,
+    /// 最大复习间隔（天）
+    pub maximum_interval: u32,
+    /// 「下一天开始于」本地小时（0–23），默认 4（与 Anki 一致）
+    pub day_rollover_hour: u32,
+    /// FSRS 参数（17 / 19 / 21 个）；为空时使用 FSRS-6 默认参数
+    pub fsrs_params: Vec<f32>,
+    /// 最近一次优化器写入参数的时间与训练所用复习数（未优化过为 None）
+    #[serde(default)]
+    pub fsrs_optimized_at_ms: Option<i64>,
+    #[serde(default)]
+    pub fsrs_optimized_review_count: Option<u32>,
+    /// 评分后把同一笔记的新卡 / 复习卡兄弟埋藏到次日（Anki sibling burying）
+    pub bury_new_siblings: bool,
+    pub bury_review_siblings: bool,
+    /// 复习卡排序：`due`（到期先后）/ `retrievability`（最可能忘的先复习，适合清积压）/ `random`
+    pub review_order: String,
+    /// 新卡与复习卡的先后：`after`（复习后）/ `before`（复习前）/ `mix`（均匀穿插）
+    pub new_review_order: String,
+    /// 单次作答计时上限（秒），超过按上限记录（Anki 默认 60）
+    pub max_answer_seconds: u32,
 }
+
+pub const REVIEW_ORDERS: [&str; 3] = ["due", "retrievability", "random"];
+pub const NEW_REVIEW_ORDERS: [&str; 3] = ["after", "before", "mix"];
+const DEFAULT_MAX_ANSWER_SECONDS: u32 = 60;
+const MAX_ANSWER_SECONDS_LIMIT: u32 = 3600;
 
 impl Default for FsrsSchedulerConfig {
     fn default() -> Self {
@@ -404,8 +438,39 @@ impl Default for FsrsSchedulerConfig {
             desired_retention: DEFAULT_DESIRED_RETENTION,
             leech_threshold: DEFAULT_LEECH_THRESHOLD,
             leech_action: "suspend".to_string(),
-            enable_fuzz: false,
+            enable_fuzz: true,
+            learning_steps: fsrs_scheduler::DEFAULT_LEARNING_STEPS_MINUTES.to_vec(),
+            relearning_steps: fsrs_scheduler::DEFAULT_RELEARNING_STEPS_MINUTES.to_vec(),
+            maximum_interval: fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS,
+            day_rollover_hour: fsrs_scheduler::DEFAULT_DAY_ROLLOVER_HOUR,
+            fsrs_params: Vec::new(),
+            fsrs_optimized_at_ms: None,
+            fsrs_optimized_review_count: None,
+            bury_new_siblings: true,
+            bury_review_siblings: true,
+            review_order: "due".to_string(),
+            new_review_order: "after".to_string(),
+            max_answer_seconds: DEFAULT_MAX_ANSWER_SECONDS,
         }
+    }
+}
+
+impl FsrsSchedulerConfig {
+    /// 当前逻辑日的毫秒边界 `[start, next_start)`（本地时区 + 日切小时）。
+    pub fn day_bounds_ms(&self, now_ms: i64) -> (i64, i64) {
+        fsrs_scheduler::logical_day_bounds_ms(now_ms, &Local, self.day_rollover_hour)
+    }
+
+    /// 时间戳所在逻辑日的日期 key（YYYY-MM-DD）。
+    pub fn date_key(&self, ms: i64) -> String {
+        fsrs_scheduler::logical_day(ms, &Local, self.day_rollover_hour)
+            .format("%Y-%m-%d")
+            .to_string()
+    }
+
+    pub fn forgetting_curve(&self) -> FsrsForgettingCurve {
+        let (decay, factor) = fsrs_scheduler::forgetting_curve_constants(&self.fsrs_params);
+        FsrsForgettingCurve { decay, factor }
     }
 }
 
@@ -427,7 +492,68 @@ pub struct FsrsSchedulerConfigUpdate {
     pub leech_action: Option<String>,
     #[serde(default)]
     pub enable_fuzz: Option<bool>,
+    #[serde(default)]
+    pub learning_steps: Option<Vec<f64>>,
+    #[serde(default)]
+    pub relearning_steps: Option<Vec<f64>>,
+    #[serde(default)]
+    pub maximum_interval: Option<u32>,
+    #[serde(default)]
+    pub day_rollover_hour: Option<u32>,
+    /// 空数组 = 恢复默认参数
+    #[serde(default)]
+    pub fsrs_params: Option<Vec<f32>>,
+    #[serde(default)]
+    pub bury_new_siblings: Option<bool>,
+    #[serde(default)]
+    pub bury_review_siblings: Option<bool>,
+    #[serde(default)]
+    pub review_order: Option<String>,
+    #[serde(default)]
+    pub new_review_order: Option<String>,
+    #[serde(default)]
+    pub max_answer_seconds: Option<u32>,
 }
+
+/// 模型评估指标（fsrs-rs `evaluate`）：log loss 越低预测越准，RMSE(bins) 衡量校准度。
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsModelEvaluation {
+    pub log_loss: f32,
+    pub rmse_bins: f32,
+}
+
+/// 参数优化结果
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsOptimizeResult {
+    /// `optimized`：已应用新参数；`already_optimal`：新参数不优于当前；
+    /// `not_enough_data`：可训练的复习记录不足
+    pub status: String,
+    /// 参与训练的卡片数 / 训练样本数 / 复习记录数
+    pub card_count: u32,
+    pub item_count: u32,
+    pub review_count: u32,
+    pub current: Option<FsrsModelEvaluation>,
+    pub optimized: Option<FsrsModelEvaluation>,
+    /// 调用结束后生效的参数（21 个）
+    pub params: Vec<f32>,
+    /// 按新参数重算记忆状态的卡数
+    pub recomputed_cards: u32,
+}
+
+/// 一张卡的复习历史（按逻辑日折算的 FSRS 输入）
+struct CardReviewHistory {
+    card_state_id: String,
+    /// 导入卡等历史不完整的卡：第一条日志之前的记忆状态
+    starting: Option<fsrs::MemoryState>,
+    reviews: Vec<fsrs::FSRSReview>,
+}
+
+/// 可训练样本少于此数时不调用优化器（fsrs-rs 少于 8 个样本直接返回默认参数）
+const MIN_TRAINING_ITEMS: usize = 8;
+/// config_json 中记录「记忆状态按哪个调度器版本重算过」的键
+const MEMORY_STATE_VERSION_KEY: &str = "memory_state_version";
 
 /// bury / unbury 结果。重复操作不写库（changed=false）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -459,7 +585,44 @@ pub struct FsrsDailyReviewStat {
     pub easy: i64,
     /// 当日引入的新卡复习数（state_before = New）
     pub new_introduced: i64,
+    /// 当日作答用时合计（毫秒，按评分记录的 duration_ms）
+    #[serde(default)]
+    pub study_ms: i64,
 }
+
+/// 某个时段的真实保留率（每张卡每天首次 Review 复习，非「重来」即通过）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsTrueRetentionRow {
+    /// `today` / `yesterday` / `week`（近 7 天）/ `month`（近 30 天）/ `year`（近 365 天）
+    pub period: String,
+    pub young_reviews: i64,
+    pub young_passed: i64,
+    pub mature_reviews: i64,
+    pub mature_passed: i64,
+}
+
+/// 已学卡此刻的记忆分布（未暂停、有稳定度与上次复习时间）。
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct FsrsMemoryDistributions {
+    pub cards: i64,
+    /// 难度 1–10 分 10 档
+    pub difficulty: Vec<i64>,
+    /// 稳定度（天）分档：<1 / 1–3 / 3–7 / 7–14 / 14–30 / 30–90 / 90–180 / 180–365 / ≥365
+    pub stability: Vec<i64>,
+    /// 可提取率 0–100% 分 10 档
+    pub retrievability: Vec<i64>,
+}
+
+const STABILITY_BUCKET_UPPER_DAYS: [f64; 8] = [1.0, 3.0, 7.0, 14.0, 30.0, 90.0, 180.0, 365.0];
+const TRUE_RETENTION_PERIODS: [(&str, u32, u32); 5] = [
+    ("today", 0, 0),
+    ("yesterday", 1, 1),
+    ("week", 0, 6),
+    ("month", 0, 29),
+    ("year", 0, 364),
+];
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -533,6 +696,11 @@ pub struct FsrsReviewStatistics {
     pub daily_limits: FsrsDailyLimitsStatus,
     /// 未来 15 个本地日的到期预测（含今天积压桶）；只含 count > 0 的日期
     pub due_forecast: Vec<FsrsDueForecastDay>,
+    /// 按时段的真实保留率（Anki True Retention 表）
+    #[serde(default)]
+    pub true_retention: Vec<FsrsTrueRetentionRow>,
+    #[serde(default)]
+    pub memory_distributions: FsrsMemoryDistributions,
 }
 
 /// 记忆曲线「近 N 天真实保留率」的统计窗口
@@ -540,7 +708,7 @@ const MEMORY_TRUE_RETENTION_DAYS: u32 = 30;
 /// 单卡记忆历史最多返回的复习日志条数（按时间升序取最早的这些）
 const MEMORY_HISTORY_MAX_REVIEWS: i64 = 2000;
 
-/// 遗忘曲线常数，与调度器 `rs_fsrs::Parameters::forgetting_curve` 同源：
+/// 遗忘曲线常数，与调度所用 FSRS 参数同源（FSRS-6 的衰减来自参数 w20）：
 /// R(t, S) = (1 + factor · t / S)^decay，t 以天计；t = S 时 R = 90%。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -550,11 +718,8 @@ pub struct FsrsForgettingCurve {
 }
 
 impl FsrsForgettingCurve {
-    fn scheduler() -> Self {
-        Self {
-            decay: rs_fsrs::Parameters::DECAY,
-            factor: rs_fsrs::Parameters::FACTOR,
-        }
+    pub fn retrievability(&self, elapsed_days: f64, stability: f64) -> f64 {
+        fsrs_scheduler::retrievability(elapsed_days, stability, self.decay, self.factor)
     }
 }
 
@@ -650,6 +815,7 @@ struct ScheduleOutcome {
     due_ms: i64,
     reps: i32,
     lapses: i32,
+    learning_step: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -712,6 +878,9 @@ struct FsrsStateBeforeSnapshot {
     leech: bool,
     #[serde(default)]
     buried_until_ms: Option<i64>,
+    /// 早于 V20261005 的快照缺少学习步序号；旧调度器没有可配置学习步，0 即正确值。
+    #[serde(default)]
+    learning_step: u32,
 }
 
 impl FsrsStateBeforeSnapshot {
@@ -737,6 +906,7 @@ impl FsrsStateBeforeSnapshot {
             desired_retention: state.desired_retention,
             leech: state.leech,
             buried_until_ms: state.buried_until_ms,
+            learning_step: state.learning_step,
         }
     }
 
@@ -1607,27 +1777,28 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("准备 Library 复习状态查询失败: {}", e)))?;
         let rows = stmt
             .query_map(rusqlite::params_from_iter(normalized_ids.iter()), |row| {
-                let card_id: String = row.get(20)?;
-                let is_error_card = row.get::<_, i32>(21)? != 0;
+                let c = Self::STATE_COLUMN_COUNT;
+                let card_id: String = row.get(c + 1)?;
+                let is_error_card = row.get::<_, i32>(c + 2)? != 0;
                 let state_id: Option<String> = row.get(0)?;
                 let record = state_id
                     .map(|_| {
                         Ok::<FsrsAgentStateRecord, rusqlite::Error>(FsrsAgentStateRecord {
                             state: Self::map_state_row(row)?,
-                            review_version: row.get(19)?,
+                            review_version: row.get(c)?,
                         })
                     })
                     .transpose()?;
-                let latest_log_id: Option<String> = row.get(22)?;
+                let latest_log_id: Option<String> = row.get(c + 3)?;
                 let latest = latest_log_id
                     .map(|log_id| {
                         Ok::<FsrsAgentReviewLogRecord, rusqlite::Error>(FsrsAgentReviewLogRecord {
                             log_id,
-                            anki_card_id: row.get(23)?,
-                            rating: row.get(24)?,
-                            review_ms: row.get(25)?,
-                            state_before_json: row.get(26)?,
-                            updated_at: row.get(27)?,
+                            anki_card_id: row.get(c + 4)?,
+                            rating: row.get(c + 5)?,
+                            review_ms: row.get(c + 6)?,
+                            state_before_json: row.get(c + 7)?,
+                            updated_at: row.get(c + 8)?,
                         })
                     })
                     .transpose()?;
@@ -1710,7 +1881,6 @@ impl FsrsReviewService {
         let limit = limit.unwrap_or(50).min(500) as i64;
         let now = Utc::now();
         let now_ms = now.timestamp_millis();
-        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
         // 取稍多再排序截断，避免薄弱卡被 due 略晚挡在 limit 外
         let fetch_limit = if concept_scores.is_some() {
             (limit * 3).min(500)
@@ -1723,13 +1893,14 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
         let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let (day_start_ms, next_day_start_ms) = config.day_bounds_ms(now_ms);
         let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
         let new_remaining =
             (config.new_per_day as i64 - counters.new_introduced).clamp(0, fetch_limit);
         let review_remaining =
             (config.reviews_per_day as i64 - counters.reviews_done).clamp(0, fetch_limit);
 
-        let bucket_sql = |due_condition: &str| {
+        let bucket_sql = |due_condition: &str, order: &str| {
             format!(
                 "SELECT {},
                         COALESCE(a.front, ''), COALESCE(a.back, ''), COALESCE(a.tags_json, '[]'),
@@ -1745,28 +1916,30 @@ impl FsrsReviewService {
                    AND s.suspended = 0
                    AND (s.buried_until_ms IS NULL OR s.buried_until_ms <= ?1)
                    AND {}
-                 ORDER BY s.due_ms ASC
+                 ORDER BY {}
                  LIMIT ?3",
                 Self::STATE_COLUMNS,
-                due_condition
+                due_condition,
+                order
             )
         };
         let map_due_row = |row: &rusqlite::Row<'_>| -> rusqlite::Result<FsrsDueCard> {
             let state = Self::map_state_row(row)?;
+            let c = Self::STATE_COLUMN_COUNT;
             // 防御历史/导入行的 NULL：SQL 已 COALESCE，这里再兜底一次。
-            let front: String = row.get::<_, Option<String>>(19)?.unwrap_or_default();
-            let back: String = row.get::<_, Option<String>>(20)?.unwrap_or_default();
-            let tags_json: Option<String> = row.get(21)?;
+            let front: String = row.get::<_, Option<String>>(c)?.unwrap_or_default();
+            let back: String = row.get::<_, Option<String>>(c + 1)?.unwrap_or_default();
+            let tags_json: Option<String> = row.get(c + 2)?;
             let tags: Vec<String> = tags_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
                 .unwrap_or_default();
-            let extra_fields_json: Option<String> = row.get(24)?;
+            let extra_fields_json: Option<String> = row.get(c + 5)?;
             let extra_fields: HashMap<String, String> = extra_fields_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
                 .unwrap_or_default();
-            let images_json: Option<String> = row.get(25)?;
+            let images_json: Option<String> = row.get(c + 6)?;
             let images: Vec<String> = images_json
                 .as_deref()
                 .and_then(|json| serde_json::from_str(json).ok())
@@ -1776,41 +1949,70 @@ impl FsrsReviewService {
                 front,
                 back,
                 tags,
-                text: row.get(22)?,
-                template_id: row.get(23)?,
+                text: row.get(c + 3)?,
+                template_id: row.get(c + 4)?,
                 extra_fields,
                 images,
-                is_error_card: row.get::<_, i32>(26)? != 0,
-                error_content: row.get(27)?,
+                is_error_card: row.get::<_, i32>(c + 7)? != 0,
+                error_content: row.get(c + 8)?,
             })
         };
-        // (due 条件, ?2 参数, 本桶 LIMIT)。?2 恒为对应的时间界，令三个桶共享参数形状。
-        let buckets: [(&str, i64, i64); 3] = [
-            // Learning / Relearning：精确到期时间
-            ("s.state IN (1, 3) AND s.due_ms <= ?2", now_ms, fetch_limit),
-            // Review：本地日切窗口
-            (
-                "s.state = 2 AND s.due_ms < ?2",
-                next_day_start_ms,
-                review_remaining,
-            ),
-            // New：入队即到期，受每日新卡额度约束
-            ("s.state = 0 AND s.due_ms <= ?2", now_ms, new_remaining),
-        ];
-
-        let mut out: Vec<FsrsDueCard> = Vec::new();
-        for (condition, boundary_ms, bucket_limit) in buckets {
-            if bucket_limit <= 0 || (concept_scores.is_none() && out.len() as i64 >= limit) {
-                continue;
+        // 每个桶：(due 条件, 排序, ?2 时间界, 本桶 LIMIT)；?1 恒为 now。
+        let fetch_bucket = |condition: &str,
+                            order: &str,
+                            boundary_ms: i64,
+                            bucket_limit: i64|
+         -> Result<Vec<FsrsDueCard>> {
+            if bucket_limit <= 0 {
+                return Ok(Vec::new());
             }
             let mut stmt = conn
-                .prepare(&bucket_sql(condition))
+                .prepare(&bucket_sql(condition, order))
                 .map_err(|e| AppError::database(format!("准备到期查询失败: {}", e)))?;
             let rows = stmt
-                .query_map(params![now_ms, boundary_ms, bucket_limit], map_due_row)
+                .query_map(params![now_ms, boundary_ms, bucket_limit], &map_due_row)
                 .map_err(|e| AppError::database(format!("查询到期卡片失败: {}", e)))?;
-            for row in rows {
-                out.push(row.map_err(|e| AppError::database(format!("解析到期行失败: {}", e)))?);
+            rows.map(|row| row.map_err(|e| AppError::database(format!("解析到期行失败: {}", e))))
+                .collect()
+        };
+        // 按可提取率升序 ⇔ 按「已过时间 / 稳定度」降序（遗忘曲线单调），无需在 SQL 里求幂
+        let review_order = match config.review_order.as_str() {
+            "retrievability" => {
+                "(?1 - COALESCE(s.last_review_ms, s.due_ms)) * 1.0 / MAX(COALESCE(s.stability, 0.0), 0.001) DESC, s.due_ms ASC"
+            }
+            "random" => "random()",
+            _ => "s.due_ms ASC",
+        };
+        // Learning / Relearning：精确到期时间，不受额度限制
+        let mut out = fetch_bucket(
+            "s.state IN (1, 3) AND s.due_ms <= ?2",
+            "s.due_ms ASC",
+            now_ms,
+            fetch_limit,
+        )?;
+        // Review：逻辑日窗口，受每日复习额度约束
+        let review = fetch_bucket(
+            "s.state = 2 AND s.due_ms < ?2",
+            review_order,
+            next_day_start_ms,
+            review_remaining,
+        )?;
+        // New：入队即到期，受每日新卡额度约束
+        let new = fetch_bucket(
+            "s.state = 0 AND s.due_ms <= ?2",
+            "s.due_ms ASC",
+            now_ms,
+            new_remaining,
+        )?;
+        match config.new_review_order.as_str() {
+            "before" => {
+                out.extend(new);
+                out.extend(review);
+            }
+            "mix" => out.extend(interleave_new_cards(review, new)),
+            _ => {
+                out.extend(review);
+                out.extend(new);
             }
         }
         if concept_scores.is_none() {
@@ -1942,10 +2144,7 @@ impl FsrsReviewService {
         let state_before_json =
             serde_json::to_string(&FsrsStateBeforeSnapshot::from_state(&before))
                 .map_err(|e| AppError::database(format!("序列化评分前状态失败: {}", e)))?;
-        let mut outcome = schedule_review(&before, rating, now_ms, config.desired_retention);
-        if config.enable_fuzz {
-            apply_deterministic_fuzz(&mut outcome, &before, now_ms);
-        }
+        let mut outcome = schedule_review(&before, rating, now_ms, &config)?;
         apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
         let log_id = resolved_op_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
 
@@ -1977,6 +2176,7 @@ impl FsrsReviewService {
                 leech = ?14,
                 suspended = ?15,
                 desired_retention = ?16,
+                learning_step = ?17,
                 buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL
@@ -2001,6 +2201,7 @@ impl FsrsReviewService {
                     if leech_flag { 1 } else { 0 },
                     if auto_suspend { 1 } else { 0 },
                     config.desired_retention,
+                    outcome.learning_step,
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -2021,6 +2222,7 @@ impl FsrsReviewService {
                 leech = ?13,
                 suspended = ?14,
                 desired_retention = ?15,
+                learning_step = ?16,
                 buried_until_ms = NULL,
                 local_version = COALESCE(local_version, 0) + 1
              WHERE id = ?12 AND deleted_at IS NULL",
@@ -2040,6 +2242,7 @@ impl FsrsReviewService {
                     if leech_flag { 1 } else { 0 },
                     if auto_suspend { 1 } else { 0 },
                     config.desired_retention,
+                    outcome.learning_step,
                 ],
             )
             .map_err(|e| AppError::database(format!("更新 fsrs_card_states 失败: {}", e)))?
@@ -2112,6 +2315,8 @@ impl FsrsReviewService {
 
         let card_state = Self::load_state_by_id(&tx, card_state_id)?
             .ok_or_else(|| AppError::database("state missing after update"))?;
+        let buried_siblings =
+            Self::bury_siblings_in_tx(&tx, &card_state, &config, now_ms, &now_rfc)?;
 
         tx.commit()
             .map_err(|e| AppError::database(format!("提交评分事务失败: {}", e)))?;
@@ -2126,6 +2331,131 @@ impl FsrsReviewService {
             log_id,
             scheduled_days: outcome.scheduled_days,
             due_ms: outcome.due_ms,
+            buried_siblings,
+        })
+    }
+
+    /// Anki sibling burying：把同一笔记（同一导入批次的 `AnkiNoteId`，或本地拆卡的
+    /// `_note_key`）的新卡 / 复习卡埋藏到下一个逻辑日。学习中的兄弟卡不埋（同 Anki 默认）。
+    fn bury_siblings_in_tx(
+        conn: &rusqlite::Connection,
+        rated: &FsrsCardState,
+        config: &FsrsSchedulerConfig,
+        now_ms: i64,
+        now_rfc: &str,
+    ) -> Result<Vec<String>> {
+        if !config.bury_new_siblings && !config.bury_review_siblings {
+            return Ok(Vec::new());
+        }
+        let note: Option<(String, Option<String>)> = conn
+            .query_row(
+                "SELECT task_id,
+                        CASE WHEN json_valid(extra_fields_json) THEN COALESCE(
+                            CAST(json_extract(extra_fields_json, '$.AnkiNoteId') AS TEXT),
+                            json_extract(extra_fields_json, '$._note_key')
+                        ) END
+                 FROM anki_cards WHERE id = ?1",
+                params![rated.anki_card_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("读取兄弟卡笔记失败: {}", e)))?;
+        let Some((task_id, Some(note_key))) = note else {
+            return Ok(Vec::new());
+        };
+        let (_, next_day_start) = config.day_bounds_ms(now_ms);
+        let mut stmt = conn
+            .prepare(
+                "SELECT s.id
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 WHERE a.task_id = ?1
+                   AND s.id != ?2
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND s.suspended = 0
+                   AND (s.buried_until_ms IS NULL OR s.buried_until_ms < ?3)
+                   AND ((s.state = 0 AND ?4) OR (s.state = 2 AND ?5))
+                   AND json_valid(a.extra_fields_json)
+                   AND COALESCE(
+                         CAST(json_extract(a.extra_fields_json, '$.AnkiNoteId') AS TEXT),
+                         json_extract(a.extra_fields_json, '$._note_key')
+                       ) = ?6",
+            )
+            .map_err(|e| AppError::database(format!("准备兄弟卡查询失败: {}", e)))?;
+        let siblings: Vec<String> = stmt
+            .query_map(
+                params![
+                    task_id,
+                    rated.id,
+                    next_day_start,
+                    config.bury_new_siblings,
+                    config.bury_review_siblings,
+                    note_key
+                ],
+                |row| row.get(0),
+            )
+            .map_err(|e| AppError::database(format!("查询兄弟卡失败: {}", e)))?
+            .collect::<rusqlite::Result<_>>()
+            .map_err(|e| AppError::database(format!("读取兄弟卡失败: {}", e)))?;
+        for sibling in &siblings {
+            conn.execute(
+                "UPDATE fsrs_card_states
+                 SET buried_until_ms = ?1,
+                     updated_at = ?2,
+                     local_version = COALESCE(local_version, 0) + 1
+                 WHERE id = ?3",
+                params![next_day_start, now_rfc, sibling],
+            )
+            .map_err(|e| AppError::database(format!("埋藏兄弟卡失败: {}", e)))?;
+        }
+        Ok(siblings)
+    }
+
+    /// 手动埋藏 / 取消埋藏（Anki bury card）：埋藏到下一个逻辑日开始，之后自动恢复。
+    pub fn set_buried(&self, card_state_id: &str, buried: bool) -> Result<FsrsBuryResult> {
+        if card_state_id.trim().is_empty() {
+            return Err(AppError::validation("cardStateId is required"));
+        }
+        let now_ms = Utc::now().timestamp_millis();
+        let now_rfc = Utc::now().to_rfc3339();
+        let mut conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(format!("开启埋藏事务失败: {}", e)))?;
+        let before = Self::load_state_by_id(&tx, card_state_id)?.ok_or_else(|| {
+            AppError::not_found(format!("fsrs card state not found: {}", card_state_id))
+        })?;
+        let config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+        let currently_buried = before.buried_until_ms.is_some_and(|until| until > now_ms);
+        if currently_buried == buried {
+            tx.commit()
+                .map_err(|e| AppError::database(format!("提交埋藏事务失败: {}", e)))?;
+            return Ok(FsrsBuryResult {
+                state: before,
+                changed: false,
+            });
+        }
+        let until = buried.then(|| config.day_bounds_ms(now_ms).1);
+        tx.execute(
+            "UPDATE fsrs_card_states
+             SET buried_until_ms = ?1,
+                 updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1
+             WHERE id = ?3 AND deleted_at IS NULL",
+            params![until, now_rfc, card_state_id],
+        )
+        .map_err(|e| AppError::database(format!("更新埋藏状态失败: {}", e)))?;
+        let state = Self::load_state_by_id(&tx, card_state_id)?
+            .ok_or_else(|| AppError::database("state missing after bury update"))?;
+        tx.commit()
+            .map_err(|e| AppError::database(format!("提交埋藏事务失败: {}", e)))?;
+        Ok(FsrsBuryResult {
+            state,
+            changed: true,
         })
     }
 
@@ -2158,14 +2488,10 @@ impl FsrsReviewService {
             &conn,
             before.deck_id.as_deref().unwrap_or(DEFAULT_DECK_ID),
         )?;
+        // fuzz 因子只依赖 (card_state_id, reps)，同一张卡预览与评分结果一致
+        let outcomes = schedule_all_ratings(&before, now_ms, &config)?;
         let mut intervals = Vec::with_capacity(4);
-        for rating_u8 in 1u8..=4 {
-            let rating = FsrsRating::from_u8(rating_u8).expect("1..=4 is valid");
-            let mut outcome = schedule_review(&before, rating, now_ms, config.desired_retention);
-            if config.enable_fuzz {
-                // fuzz 因子只依赖 (card_state_id, reps)，同一张卡预览与评分结果一致
-                apply_deterministic_fuzz(&mut outcome, &before, now_ms);
-            }
+        for (rating_u8, mut outcome) in (1u8..=4).zip(outcomes) {
             apply_mastery_bias_to_outcome(&mut outcome, mastery_score, now_ms);
             intervals.push(FsrsPreviewInterval {
                 rating: rating_u8,
@@ -2439,6 +2765,7 @@ impl FsrsReviewService {
                     desired_retention = ?13,
                     leech = ?18,
                     buried_until_ms = ?19,
+                    learning_step = ?20,
                     updated_at = ?14,
                     local_version = COALESCE(local_version, 0) + 1
                  WHERE id = ?15
@@ -2465,6 +2792,7 @@ impl FsrsReviewService {
                     expected_state_updated_at,
                     if snapshot.leech { 1 } else { 0 },
                     snapshot.buried_until_ms,
+                    snapshot.learning_step,
                 ],
             )
             .map_err(|e| AppError::database(format!("恢复 FSRS 卡片状态失败: {}", e)))?;
@@ -2770,6 +3098,7 @@ impl FsrsReviewService {
                     desired_retention = ?13,
                     leech = ?20,
                     buried_until_ms = ?21,
+                    learning_step = ?22,
                     updated_at = ?14,
                     local_version = COALESCE(local_version, 0) + 1
                  WHERE id = ?15
@@ -2808,6 +3137,7 @@ impl FsrsReviewService {
                     record.state.updated_at,
                     if snapshot.leech { 1 } else { 0 },
                     snapshot.buried_until_ms,
+                    snapshot.learning_step,
                 ],
             )
             .map_err(|e| AppError::database(format!("恢复 Agent FSRS 卡片状态失败: {}", e)))?;
@@ -2926,7 +3256,6 @@ impl FsrsReviewService {
     /// 统计。`due` 与 [`Self::get_due`] 使用同一套到期窗口 / bury / 每日额度语义。
     pub fn get_stats(&self) -> Result<FsrsStats> {
         let now_ms = Utc::now().timestamp_millis();
-        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
 
         let conn = self
             .db
@@ -2934,6 +3263,7 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
         let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let (day_start_ms, next_day_start_ms) = config.day_bounds_ms(now_ms);
         let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
         let new_remaining = (config.new_per_day as i64 - counters.new_introduced).max(0);
         let review_remaining = (config.reviews_per_day as i64 - counters.reviews_done).max(0);
@@ -3080,6 +3410,67 @@ impl FsrsReviewService {
                 ));
             }
         }
+        for (name, steps) in [
+            ("learningSteps", update.learning_steps.as_ref()),
+            ("relearningSteps", update.relearning_steps.as_ref()),
+        ] {
+            let Some(steps) = steps else { continue };
+            if steps.len() > fsrs_scheduler::MAX_STEPS
+                || steps.iter().any(|m| {
+                    !m.is_finite() || *m <= 0.0 || *m > fsrs_scheduler::MAX_STEP_MINUTES
+                })
+            {
+                return Err(AppError::validation(format!(
+                    "{name} must contain at most {} positive minute values up to {}",
+                    fsrs_scheduler::MAX_STEPS,
+                    fsrs_scheduler::MAX_STEP_MINUTES
+                )));
+            }
+        }
+        if update.maximum_interval.is_some_and(|v| {
+            v == 0 || v > fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS
+        }) {
+            return Err(AppError::validation(format!(
+                "maximumInterval must be within [1, {}]",
+                fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS
+            )));
+        }
+        if update.day_rollover_hour.is_some_and(|v| v > 23) {
+            return Err(AppError::validation("dayRolloverHour must be within [0, 23]"));
+        }
+        if update
+            .review_order
+            .as_deref()
+            .is_some_and(|v| !REVIEW_ORDERS.contains(&v))
+        {
+            return Err(AppError::validation(
+                "reviewOrder must be 'due', 'retrievability' or 'random'",
+            ));
+        }
+        if update
+            .new_review_order
+            .as_deref()
+            .is_some_and(|v| !NEW_REVIEW_ORDERS.contains(&v))
+        {
+            return Err(AppError::validation(
+                "newReviewOrder must be 'after', 'before' or 'mix'",
+            ));
+        }
+        if update
+            .max_answer_seconds
+            .is_some_and(|v| v == 0 || v > MAX_ANSWER_SECONDS_LIMIT)
+        {
+            return Err(AppError::validation(format!(
+                "maxAnswerSeconds must be within [1, {MAX_ANSWER_SECONDS_LIMIT}]"
+            )));
+        }
+        if let Some(params) = update.fsrs_params.as_deref() {
+            if !params.is_empty() && fsrs::check_and_fill_parameters(params).is_err() {
+                return Err(AppError::validation(
+                    "fsrsParams must contain 17, 19 or 21 finite values",
+                ));
+            }
+        }
 
         let now_rfc = Utc::now().to_rfc3339();
         let mut conn = self
@@ -3097,6 +3488,7 @@ impl FsrsReviewService {
             params![DEFAULT_DECK_ID, now_rfc],
         )
         .map_err(|e| AppError::database(format!("确保默认牌组失败: {}", e)))?;
+        let before_config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
 
         let raw: Option<String> = tx
             .query_row(
@@ -3167,6 +3559,44 @@ impl FsrsReviewService {
         if let Some(v) = update.enable_fuzz {
             set_field(obj, "enable_fuzz", "enableFuzz", serde_json::json!(v));
         }
+        if let Some(v) = update.learning_steps.as_ref() {
+            set_field(obj, "learning_steps", "learningSteps", serde_json::json!(v));
+        }
+        if let Some(v) = update.relearning_steps.as_ref() {
+            set_field(
+                obj,
+                "relearning_steps",
+                "relearningSteps",
+                serde_json::json!(v),
+            );
+        }
+        if let Some(v) = update.maximum_interval {
+            set_field(obj, "maximum_interval", "maximumInterval", serde_json::json!(v));
+        }
+        if let Some(v) = update.day_rollover_hour {
+            set_field(obj, "day_rollover_hour", "dayRolloverHour", serde_json::json!(v));
+        }
+        if let Some(v) = update.bury_new_siblings {
+            set_field(obj, "bury_new_siblings", "buryNewSiblings", serde_json::json!(v));
+        }
+        if let Some(v) = update.bury_review_siblings {
+            set_field(obj, "bury_review_siblings", "buryReviewSiblings", serde_json::json!(v));
+        }
+        if let Some(v) = update.review_order.as_deref() {
+            set_field(obj, "review_order", "reviewOrder", serde_json::json!(v));
+        }
+        if let Some(v) = update.new_review_order.as_deref() {
+            set_field(obj, "new_review_order", "newReviewOrder", serde_json::json!(v));
+        }
+        if let Some(v) = update.max_answer_seconds {
+            set_field(obj, "max_answer_seconds", "maxAnswerSeconds", serde_json::json!(v));
+        }
+        if let Some(v) = update.fsrs_params.as_ref() {
+            set_field(obj, "fsrs_params", "fsrsParams", serde_json::json!(v));
+            // 手动写入 / 恢复默认参数后，旧的优化记录不再描述当前参数
+            obj.remove("fsrs_optimized_at_ms");
+            obj.remove("fsrs_optimized_review_count");
+        }
 
         let serialized = serde_json::to_string(&value)
             .map_err(|e| AppError::database(format!("序列化调度配置失败: {}", e)))?;
@@ -3181,9 +3611,473 @@ impl FsrsReviewService {
         .map_err(|e| AppError::database(format!("写入牌组调度配置失败: {}", e)))?;
 
         let config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+        // 参数变化后按复习日志重算记忆状态（不改到期时间，同 Anki 默认）
+        if config.fsrs_params != before_config.fsrs_params {
+            Self::recompute_memory_states_in_tx(&tx, &config, &now_rfc)?;
+        }
         tx.commit()
             .map_err(|e| AppError::database(format!("提交调度配置事务失败: {}", e)))?;
         Ok(config)
+    }
+
+    /// 读改写默认牌组的 config_json（调用方事务内）。
+    fn patch_config_json_in_tx(
+        conn: &rusqlite::Connection,
+        now_rfc: &str,
+        patch: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+    ) -> Result<()> {
+        Self::ensure_default_deck(conn, now_rfc)?;
+        let raw: Option<String> = conn
+            .query_row(
+                "SELECT config_json FROM anki_decks WHERE id = ?1 AND deleted_at IS NULL",
+                params![DEFAULT_DECK_ID],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("读取牌组调度配置失败: {}", e)))?
+            .flatten();
+        let mut value = raw
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+            .filter(serde_json::Value::is_object)
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = value.as_object_mut() {
+            patch(obj);
+        }
+        let serialized = serde_json::to_string(&value)
+            .map_err(|e| AppError::database(format!("序列化调度配置失败: {}", e)))?;
+        conn.execute(
+            "UPDATE anki_decks
+             SET config_json = ?1,
+                 updated_at = ?2,
+                 local_version = COALESCE(local_version, 0) + 1
+             WHERE id = ?3 AND deleted_at IS NULL",
+            params![serialized, now_rfc, DEFAULT_DECK_ID],
+        )
+        .map_err(|e| AppError::database(format!("写入牌组调度配置失败: {}", e)))?;
+        Ok(())
+    }
+
+    /// 读取全部存活卡的复习历史，间隔天数按逻辑日折算。
+    ///
+    /// 第一条日志评分前是 New 的卡视为完整历史；否则（APKG 导入沿用 Anki 进度等）
+    /// 以第一条日志的评分前稳定度 / 难度为起点，评分前状态缺失的卡跳过。
+    fn load_review_histories(
+        conn: &rusqlite::Connection,
+        rollover_hour: u32,
+    ) -> Result<Vec<CardReviewHistory>> {
+        struct LogRow {
+            card_state_id: String,
+            rating: i64,
+            review_ms: i64,
+            state_before: i32,
+            stability_before: Option<f64>,
+            difficulty_before: Option<f64>,
+            elapsed_days: Option<f64>,
+            state_before_json: Option<String>,
+        }
+        let mut stmt = conn
+            .prepare(
+                "SELECT l.card_state_id, l.rating, l.review_ms, l.state_before,
+                        l.stability_before, l.difficulty_before, l.elapsed_days, l.state_before_json
+                 FROM fsrs_review_logs l
+                 INNER JOIN fsrs_card_states s ON s.id = l.card_state_id
+                 INNER JOIN anki_cards a ON a.id = l.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE l.deleted_at IS NULL
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL
+                   AND COALESCE(a.is_error_card, 0) = 0
+                 ORDER BY l.card_state_id, l.review_ms ASC, l.created_at ASC, l.id ASC",
+            )
+            .map_err(|e| AppError::database(format!("准备复习历史查询失败: {}", e)))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(LogRow {
+                    card_state_id: row.get(0)?,
+                    rating: row.get(1)?,
+                    review_ms: row.get(2)?,
+                    state_before: row.get(3)?,
+                    stability_before: row.get(4)?,
+                    difficulty_before: row.get(5)?,
+                    elapsed_days: row.get(6)?,
+                    state_before_json: row.get(7)?,
+                })
+            })
+            .map_err(|e| AppError::database(format!("查询复习历史失败: {}", e)))?;
+
+        let mut histories: Vec<CardReviewHistory> = Vec::new();
+        let mut current: Option<(CardReviewHistory, Option<i64>, bool)> = None;
+        let flush = |entry: Option<(CardReviewHistory, Option<i64>, bool)>,
+                         out: &mut Vec<CardReviewHistory>| {
+            if let Some((history, _, valid)) = entry {
+                if valid && !history.reviews.is_empty() {
+                    out.push(history);
+                }
+            }
+        };
+        for row in rows {
+            let row = row.map_err(|e| AppError::database(format!("读取复习历史行失败: {}", e)))?;
+            let same_card = current
+                .as_ref()
+                .is_some_and(|(history, _, _)| history.card_state_id == row.card_state_id);
+            if !same_card {
+                flush(current.take(), &mut histories);
+                let (starting, previous_ms, valid) = if row.state_before == FsrsState::New.as_i32()
+                {
+                    (None, None, true)
+                } else {
+                    match (row.stability_before, row.difficulty_before) {
+                        (Some(s), Some(d)) if s > 0.0 && s.is_finite() && d.is_finite() => {
+                            let snapshot_last_review = row
+                                .state_before_json
+                                .as_deref()
+                                .and_then(|json| {
+                                    serde_json::from_str::<FsrsStateBeforeSnapshot>(json).ok()
+                                })
+                                .and_then(|snapshot| snapshot.last_review_ms);
+                            let previous_ms = snapshot_last_review.or_else(|| {
+                                row.elapsed_days.map(|days| {
+                                    row.review_ms - (days.max(0.0).round() as i64) * MS_PER_DAY
+                                })
+                            });
+                            (
+                                Some(fsrs::MemoryState {
+                                    stability: s as f32,
+                                    difficulty: d as f32,
+                                }),
+                                previous_ms,
+                                true,
+                            )
+                        }
+                        _ => (None, None, false),
+                    }
+                };
+                current = Some((
+                    CardReviewHistory {
+                        card_state_id: row.card_state_id.clone(),
+                        starting,
+                        reviews: Vec::new(),
+                    },
+                    previous_ms,
+                    valid,
+                ));
+            }
+            let Some((history, previous_ms, _)) = current.as_mut() else {
+                continue;
+            };
+            if !(1..=4).contains(&row.rating) {
+                continue;
+            }
+            let delta_t = previous_ms
+                .map(|previous| {
+                    fsrs_scheduler::logical_days_between(
+                        previous,
+                        row.review_ms,
+                        &Local,
+                        rollover_hour,
+                    )
+                })
+                .unwrap_or(0);
+            history.reviews.push(fsrs::FSRSReview {
+                rating: row.rating as u32,
+                delta_t,
+            });
+            *previous_ms = Some(row.review_ms);
+        }
+        flush(current.take(), &mut histories);
+        Ok(histories)
+    }
+
+    /// 训练样本（Anki 口径）：只用完整历史；每个「跨日复习」形成一个样本，
+    /// 样本包含该次复习及之前的全部复习。返回 (样本, 对应卡序号, 用到的复习数, 卡数)。
+    fn training_items(histories: &[CardReviewHistory]) -> (Vec<fsrs::FSRSItem>, Vec<i64>, u32, u32) {
+        let mut items = Vec::new();
+        let mut card_ids = Vec::new();
+        let mut review_count = 0u32;
+        let mut card_count = 0u32;
+        for (index, history) in histories.iter().enumerate() {
+            if history.starting.is_some() {
+                continue;
+            }
+            let mut used = false;
+            for end in 1..history.reviews.len() {
+                if history.reviews[end].delta_t == 0 {
+                    continue;
+                }
+                items.push(fsrs::FSRSItem {
+                    reviews: history.reviews[..=end].to_vec(),
+                });
+                card_ids.push(index as i64);
+                used = true;
+            }
+            if used {
+                card_count += 1;
+                review_count += history.reviews.len() as u32;
+            }
+        }
+        (items, card_ids, review_count, card_count)
+    }
+
+    /// 按当前参数重放复习日志，重算所有有历史的卡的稳定度 / 难度（不改到期时间）。
+    fn recompute_memory_states_in_tx(
+        conn: &rusqlite::Connection,
+        config: &FsrsSchedulerConfig,
+        now_rfc: &str,
+    ) -> Result<u32> {
+        let histories = Self::load_review_histories(conn, config.day_rollover_hour)?;
+        let fsrs = fsrs_scheduler::build_fsrs(&config.fsrs_params);
+        let mut stmt = conn
+            .prepare(
+                "UPDATE fsrs_card_states
+                 SET stability = ?1,
+                     difficulty = ?2,
+                     updated_at = ?3,
+                     local_version = COALESCE(local_version, 0) + 1
+                 WHERE id = ?4
+                   AND deleted_at IS NULL
+                   AND state != 0
+                   AND (stability IS NULL OR difficulty IS NULL
+                        OR ABS(stability - ?1) > 1e-6 OR ABS(difficulty - ?2) > 1e-6)",
+            )
+            .map_err(|e| AppError::database(format!("准备记忆状态重算失败: {}", e)))?;
+        let mut updated = 0u32;
+        for history in histories {
+            let item = fsrs::FSRSItem {
+                reviews: history.reviews,
+            };
+            let Ok(memory) = fsrs.memory_state(item, history.starting) else {
+                continue;
+            };
+            let changed = stmt
+                .execute(params![
+                    f64::from(memory.stability),
+                    f64::from(memory.difficulty),
+                    now_rfc,
+                    history.card_state_id
+                ])
+                .map_err(|e| AppError::database(format!("写入重算记忆状态失败: {}", e)))?;
+            updated += changed as u32;
+        }
+        Ok(updated)
+    }
+
+    /// 一次性升级：调度器换代后按新模型重算存量卡的记忆状态（已重算过则只读一行配置）。
+    pub fn ensure_memory_states_current(&self) -> Result<u32> {
+        let mut conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let recorded: Option<String> = conn
+            .query_row(
+                "SELECT CASE WHEN json_valid(config_json)
+                        THEN json_extract(config_json, '$.memory_state_version') END
+                 FROM anki_decks WHERE id = ?1 AND deleted_at IS NULL",
+                params![DEFAULT_DECK_ID],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()
+            .map_err(|e| AppError::database(format!("读取记忆状态版本失败: {}", e)))?
+            .flatten();
+        if recorded.as_deref() == Some(FSRS_PARAMS_VERSION) {
+            return Ok(0);
+        }
+        let now_rfc = Utc::now().to_rfc3339();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(format!("开启记忆状态升级事务失败: {}", e)))?;
+        let config = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+        let updated = Self::recompute_memory_states_in_tx(&tx, &config, &now_rfc)?;
+        Self::patch_config_json_in_tx(&tx, &now_rfc, |obj| {
+            obj.insert(
+                MEMORY_STATE_VERSION_KEY.to_string(),
+                serde_json::json!(FSRS_PARAMS_VERSION),
+            );
+        })?;
+        tx.commit()
+            .map_err(|e| AppError::database(format!("提交记忆状态升级失败: {}", e)))?;
+        if updated > 0 {
+            info!(
+                "[FsrsReviewService] recomputed {} memory states for {}",
+                updated, FSRS_PARAMS_VERSION
+            );
+        }
+        Ok(updated)
+    }
+
+    /// 导出 APKG 时随卡片写入 Anki 的 FSRS 进度（`AnkiFsrs` 元数据，JSON）。
+    ///
+    /// 只返回存活且已入队的卡；复习日志按时间升序（Anki revlog 顺序）。
+    pub fn load_export_progress(
+        &self,
+        anki_card_ids: &[String],
+    ) -> Result<HashMap<String, serde_json::Value>> {
+        let mut out = HashMap::new();
+        if anki_card_ids.is_empty() {
+            return Ok(out);
+        }
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let decay = -config.forgetting_curve().decay;
+        for chunk in anki_card_ids.chunks(400) {
+            let placeholders = vec!["?"; chunk.len()].join(", ");
+            let states_sql = format!(
+                "SELECT {}
+                 FROM fsrs_card_states s
+                 INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                 INNER JOIN document_tasks dt ON dt.id = a.task_id
+                 WHERE s.anki_card_id IN ({placeholders})
+                   AND s.deleted_at IS NULL
+                   AND a.deleted_at IS NULL
+                   AND dt.deleted_at IS NULL",
+                Self::STATE_COLUMNS
+            );
+            let mut stmt = conn
+                .prepare(&states_sql)
+                .map_err(|e| AppError::database(format!("准备导出进度查询失败: {}", e)))?;
+            let states: Vec<FsrsCardState> = stmt
+                .query_map(rusqlite::params_from_iter(chunk.iter()), Self::map_state_row)
+                .map_err(|e| AppError::database(format!("查询导出进度失败: {}", e)))?
+                .collect::<rusqlite::Result<_>>()
+                .map_err(|e| AppError::database(format!("读取导出进度失败: {}", e)))?;
+            let mut log_stmt = conn
+                .prepare(
+                    "SELECT review_ms, rating, state_before, state_after, scheduled_days,
+                            due_after_ms, duration_ms
+                     FROM fsrs_review_logs
+                     WHERE card_state_id = ?1 AND deleted_at IS NULL
+                     ORDER BY review_ms ASC, created_at ASC, id ASC",
+                )
+                .map_err(|e| AppError::database(format!("准备导出日志查询失败: {}", e)))?;
+            for state in states {
+                let reviews: Vec<serde_json::Value> = log_stmt
+                    .query_map(params![state.id], |row| {
+                        Ok(serde_json::json!([
+                            row.get::<_, i64>(0)?,
+                            row.get::<_, i64>(1)?,
+                            row.get::<_, i64>(2)?,
+                            row.get::<_, i64>(3)?,
+                            row.get::<_, Option<f64>>(4)?.unwrap_or(0.0),
+                            row.get::<_, Option<i64>>(5)?,
+                            row.get::<_, Option<i64>>(6)?,
+                        ]))
+                    })
+                    .map_err(|e| AppError::database(format!("查询导出日志失败: {}", e)))?
+                    .collect::<rusqlite::Result<_>>()
+                    .map_err(|e| AppError::database(format!("读取导出日志失败: {}", e)))?;
+                out.insert(
+                    state.anki_card_id.clone(),
+                    serde_json::json!({
+                        "v": 1,
+                        "state": state.state,
+                        "s": state.stability,
+                        "d": state.difficulty,
+                        "dr": state.desired_retention.unwrap_or(config.desired_retention),
+                        "decay": decay,
+                        "ivl": state.scheduled_days,
+                        "due": state.due_ms,
+                        "lrt": state.last_review_ms,
+                        "reps": state.reps,
+                        "lapses": state.lapses,
+                        "susp": state.suspended,
+                        "rollover": config.day_rollover_hour,
+                        "rev": reviews,
+                    }),
+                );
+            }
+        }
+        Ok(out)
+    }
+
+    /// 用复习日志优化 FSRS 参数（fsrs-rs `compute_parameters`，与 Anki 同一优化器）。
+    ///
+    /// 新参数的 log loss 低于当前参数才写入，并按新参数重算记忆状态；否则保持不变。
+    pub fn optimize_parameters(&self) -> Result<FsrsOptimizeResult> {
+        let conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let histories = Self::load_review_histories(&conn, config.day_rollover_hour)?;
+        drop(conn);
+        let (items, card_ids, review_count, card_count) = Self::training_items(&histories);
+        let current_params = fsrs_scheduler::effective_parameters(&config.fsrs_params);
+        let mut result = FsrsOptimizeResult {
+            status: "not_enough_data".to_string(),
+            card_count,
+            item_count: items.len() as u32,
+            review_count,
+            current: None,
+            optimized: None,
+            params: current_params.clone(),
+            recomputed_cards: 0,
+        };
+        if items.len() < MIN_TRAINING_ITEMS {
+            return Ok(result);
+        }
+
+        let evaluate = |params: &[f32]| -> Option<FsrsModelEvaluation> {
+            let fsrs = fsrs::FSRS::new(params).ok()?;
+            fsrs.evaluate(items.clone(), |_| true)
+                .ok()
+                .filter(|e| e.log_loss.is_finite() && e.rmse_bins.is_finite())
+                .map(|e| FsrsModelEvaluation {
+                    log_loss: e.log_loss,
+                    rmse_bins: e.rmse_bins,
+                })
+        };
+        result.current = evaluate(&current_params);
+        let optimized_params = fsrs::compute_parameters(fsrs::ComputeParametersInput {
+            train_set: items.clone(),
+            card_ids: Some(card_ids),
+            enable_short_term: true,
+            num_relearning_steps: Some(
+                fsrs_scheduler::sanitize_steps(&config.relearning_steps).len(),
+            ),
+            ..Default::default()
+        })
+        .map_err(|e| AppError::validation(format!("FSRS 参数优化失败: {:?}", e)))?;
+        result.optimized = evaluate(&optimized_params);
+
+        let improved = match (result.current, result.optimized) {
+            (Some(current), Some(optimized)) => optimized.log_loss + 1e-6 < current.log_loss,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if !improved {
+            result.status = "already_optimal".to_string();
+            return Ok(result);
+        }
+
+        let now_ms = Utc::now().timestamp_millis();
+        let now_rfc = Utc::now().to_rfc3339();
+        let mut conn = self
+            .db
+            .get_conn_safe()
+            .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|e| AppError::database(format!("开启参数写入事务失败: {}", e)))?;
+        Self::patch_config_json_in_tx(&tx, &now_rfc, |obj| {
+            obj.remove("fsrsParams");
+            obj.insert("fsrs_params".to_string(), serde_json::json!(optimized_params));
+            obj.insert("fsrs_optimized_at_ms".to_string(), serde_json::json!(now_ms));
+            obj.insert(
+                "fsrs_optimized_review_count".to_string(),
+                serde_json::json!(review_count),
+            );
+        })?;
+        let applied = Self::load_scheduler_config(&tx, DEFAULT_DECK_ID)?;
+        result.recomputed_cards = Self::recompute_memory_states_in_tx(&tx, &applied, &now_rfc)?;
+        tx.commit()
+            .map_err(|e| AppError::database(format!("提交优化参数失败: {}", e)))?;
+        result.status = "optimized".to_string();
+        result.params = fsrs_scheduler::effective_parameters(&applied.fsrs_params);
+        Ok(result)
     }
 
     /// 一次性聚合统计：热力图（每日复习）/ 评分分布 / 状态构成 / 留存率 /
@@ -3194,8 +4088,6 @@ impl FsrsReviewService {
     pub fn get_review_statistics(&self, days: Option<u32>) -> Result<FsrsReviewStatistics> {
         let days = days.unwrap_or(365).clamp(7, 730);
         let now_ms = Utc::now().timestamp_millis();
-        let (day_start_ms, next_day_start_ms) = local_day_bounds_ms();
-        let window_start_ms = day_start_ms - (i64::from(days) - 1) * MS_PER_DAY;
 
         let conn = self
             .db
@@ -3203,18 +4095,28 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
 
         let config = Self::load_scheduler_config(&conn, DEFAULT_DECK_ID)?;
+        let (day_start_ms, next_day_start_ms) = config.day_bounds_ms(now_ms);
+        let window_start_ms = day_start_ms - (i64::from(days) - 1) * MS_PER_DAY;
         let counters = Self::load_daily_counters(&conn, day_start_ms, next_day_start_ms)?;
 
         // ---- 窗口内复习日志：每日聚合 / 评分分布 / 留存率 ----
         let mut daily: BTreeMap<String, FsrsDailyReviewStat> = BTreeMap::new();
         let mut rating_distribution = FsrsRatingDistribution::default();
         let mut retention = FsrsRetentionStats::default();
+        let mut true_retention: Vec<FsrsTrueRetentionRow> = TRUE_RETENTION_PERIODS
+            .iter()
+            .map(|(period, _, _)| FsrsTrueRetentionRow {
+                period: (*period).to_string(),
+                ..FsrsTrueRetentionRow::default()
+            })
+            .collect();
         {
             let mut stmt = conn
                 .prepare(
                     // ORDER BY review_ms ASC：留存按「每张卡每天首次复习」去重时需要
                     // 先看到当天最早的一次（F10，对齐 Anki True Retention）。
-                    "SELECT l.review_ms, l.rating, l.state_before, l.stability_before, l.card_state_id
+                    "SELECT l.review_ms, l.rating, l.state_before, l.stability_before, l.card_state_id,
+                            l.duration_ms
                      FROM fsrs_review_logs l
                      INNER JOIN fsrs_card_states s ON s.id = l.card_state_id
                      INNER JOIN anki_cards a ON a.id = l.anki_card_id
@@ -3236,18 +4138,19 @@ impl FsrsReviewService {
                         row.get::<_, Option<i64>>(2)?,
                         row.get::<_, Option<f64>>(3)?,
                         row.get::<_, String>(4)?,
+                        row.get::<_, Option<i64>>(5)?,
                     ))
                 })
                 .map_err(|e| AppError::database(format!("查询复习日志统计失败: {}", e)))?;
             // (card_state_id, local date)：True Retention 每张卡每天只计首次复习
             let mut retention_seen: HashSet<(String, String)> = HashSet::new();
             for row in rows {
-                let (review_ms, rating, state_before, stability_before, card_state_id) =
+                let (review_ms, rating, state_before, stability_before, card_state_id, duration_ms) =
                     row.map_err(|e| AppError::database(format!("读取复习日志行失败: {}", e)))?;
                 if !(1..=4).contains(&rating) {
                     continue;
                 }
-                let date = local_date_key(review_ms);
+                let date = config.date_key(review_ms);
                 let retention_key = (card_state_id, date.clone());
                 let entry = daily
                     .entry(date.clone())
@@ -3259,8 +4162,10 @@ impl FsrsReviewService {
                         good: 0,
                         easy: 0,
                         new_introduced: 0,
+                        study_ms: 0,
                     });
                 entry.total += 1;
+                entry.study_ms += duration_ms.unwrap_or(0).max(0);
                 rating_distribution.total += 1;
                 match rating {
                     1 => {
@@ -3288,6 +4193,26 @@ impl FsrsReviewService {
                 if state_before == Some(2) && retention_seen.insert(retention_key) {
                     let passed = rating >= 2;
                     let mature = stability_before.map(|s| s >= 21.0).unwrap_or(false);
+                    let days_ago = fsrs_scheduler::logical_days_between(
+                        review_ms,
+                        now_ms,
+                        &Local,
+                        config.day_rollover_hour,
+                    );
+                    for (row, (_, from, to)) in
+                        true_retention.iter_mut().zip(TRUE_RETENTION_PERIODS.iter())
+                    {
+                        if days_ago < *from || days_ago > *to {
+                            continue;
+                        }
+                        if mature {
+                            row.mature_reviews += 1;
+                            row.mature_passed += i64::from(passed);
+                        } else {
+                            row.young_reviews += 1;
+                            row.young_passed += i64::from(passed);
+                        }
+                    }
                     if mature {
                         retention.mature_reviews += 1;
                         if passed {
@@ -3366,7 +4291,7 @@ impl FsrsReviewService {
         // ---- 到期预测：今天一桶收全部积压，未来按本地日分桶 ----
         const FORECAST_DAYS: i64 = 15;
         let horizon_ms = day_start_ms + FORECAST_DAYS * MS_PER_DAY;
-        let today_key = local_date_key(day_start_ms);
+        let today_key = config.date_key(day_start_ms);
         let mut forecast: BTreeMap<String, i64> = BTreeMap::new();
         {
             let mut stmt = conn
@@ -3392,7 +4317,7 @@ impl FsrsReviewService {
                 let key = if due_ms < next_day_start_ms {
                     today_key.clone()
                 } else {
-                    local_date_key(due_ms)
+                    config.date_key(due_ms)
                 };
                 *forecast.entry(key).or_insert(0) += 1;
             }
@@ -3402,6 +4327,63 @@ impl FsrsReviewService {
             .filter(|(_, count)| *count > 0)
             .map(|(date, count)| FsrsDueForecastDay { date, count })
             .collect();
+
+        // ---- 记忆分布：已学卡此刻的难度 / 稳定度 / 可提取率 ----
+        let curve = config.forgetting_curve();
+        let mut memory_distributions = FsrsMemoryDistributions {
+            cards: 0,
+            difficulty: vec![0; 10],
+            stability: vec![0; STABILITY_BUCKET_UPPER_DAYS.len() + 1],
+            retrievability: vec![0; 10],
+        };
+        {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT s.stability, s.difficulty, s.last_review_ms
+                     FROM fsrs_card_states s
+                     INNER JOIN anki_cards a ON a.id = s.anki_card_id
+                     INNER JOIN document_tasks dt ON dt.id = a.task_id
+                     WHERE s.deleted_at IS NULL
+                       AND a.deleted_at IS NULL
+                       AND dt.deleted_at IS NULL
+                       AND COALESCE(a.is_error_card, 0) = 0
+                       AND {}",
+                    Self::MEMORIZED_CONDITION
+                ))
+                .map_err(|e| AppError::database(format!("准备记忆分布查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, f64>(0)?,
+                        row.get::<_, Option<f64>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                })
+                .map_err(|e| AppError::database(format!("查询记忆分布失败: {}", e)))?;
+            for row in rows {
+                let (stability, difficulty, last_review_ms) =
+                    row.map_err(|e| AppError::database(format!("读取记忆分布行失败: {}", e)))?;
+                if !stability.is_finite() || stability <= 0.0 {
+                    continue;
+                }
+                memory_distributions.cards += 1;
+                if let Some(d) = difficulty.filter(|d| d.is_finite()) {
+                    let bucket = (d.clamp(1.0, 10.0) - 1.0).floor().min(9.0) as usize;
+                    memory_distributions.difficulty[bucket] += 1;
+                }
+                let stability_bucket = STABILITY_BUCKET_UPPER_DAYS
+                    .iter()
+                    .position(|upper| stability < *upper)
+                    .unwrap_or(STABILITY_BUCKET_UPPER_DAYS.len());
+                memory_distributions.stability[stability_bucket] += 1;
+                let elapsed_days = (now_ms - last_review_ms).max(0) as f64 / MS_PER_DAY as f64;
+                let r = curve.retrievability(elapsed_days, stability);
+                if r.is_finite() {
+                    let bucket = (r.clamp(0.0, 1.0) * 10.0).floor().min(9.0) as usize;
+                    memory_distributions.retrievability[bucket] += 1;
+                }
+            }
+        }
 
         Ok(FsrsReviewStatistics {
             generated_at_ms: now_ms,
@@ -3413,6 +4395,8 @@ impl FsrsReviewService {
             retention,
             daily_limits,
             due_forecast,
+            true_retention,
+            memory_distributions,
         })
     }
 
@@ -3448,6 +4432,7 @@ impl FsrsReviewService {
                 .map_err(|e| AppError::database(format!("读取记忆曲线行失败: {}", e)))?
         };
 
+        let curve = config.forgetting_curve();
         let (memorized_count, retrievability_sum) = {
             let mut stmt = conn
                 .prepare(&format!(
@@ -3472,7 +4457,7 @@ impl FsrsReviewService {
                 let (stability, last_review_ms) =
                     row.map_err(|e| AppError::database(format!("读取可提取率行失败: {}", e)))?;
                 let elapsed_days = (now_ms - last_review_ms).max(0) as f64 / MS_PER_DAY as f64;
-                let r = rs_fsrs::Parameters::forgetting_curve(elapsed_days, stability);
+                let r = curve.retrievability(elapsed_days, stability);
                 if r.is_finite() {
                     count += 1;
                     sum += r;
@@ -3484,7 +4469,7 @@ impl FsrsReviewService {
         Ok(FsrsMemoryOverview {
             generated_at_ms: now_ms,
             desired_retention: config.desired_retention,
-            curve: FsrsForgettingCurve::scheduler(),
+            curve,
             recent,
             memorized_count,
             average_retrievability: if memorized_count > 0 {
@@ -3558,7 +4543,7 @@ impl FsrsReviewService {
         Ok(FsrsCardMemoryHistory {
             generated_at_ms: now_ms,
             desired_retention: config.desired_retention,
-            curve: FsrsForgettingCurve::scheduler(),
+            curve: config.forgetting_curve(),
             card,
             reviews,
         })
@@ -3708,16 +4693,18 @@ impl FsrsReviewService {
             updated_at: row.get(16)?,
             leech: row.get::<_, i32>(17)? != 0,
             buried_until_ms: row.get(18)?,
+            learning_step: row.get::<_, i64>(19)?.clamp(0, i64::from(u32::MAX)) as u32,
         })
     }
 
-    /// `map_state_row` 对应的标准列清单（0..=18）。所有加载 FsrsCardState 的
-    /// SQL 必须以这 19 列开头，追加列从索引 19 起。
+    /// `map_state_row` 对应的标准列清单（0..[`Self::STATE_COLUMN_COUNT`]）。所有加载
+    /// FsrsCardState 的 SQL 必须以这些列开头，追加列从 `STATE_COLUMN_COUNT` 起编号。
     const STATE_COLUMNS: &'static str =
         "s.id, s.anki_card_id, s.deck_id, s.state, s.stability, s.difficulty,
              s.elapsed_days, s.scheduled_days, s.reps, s.lapses, s.due_ms, s.last_review_ms,
              s.suspended, s.fsrs_params_version, s.desired_retention, s.created_at, s.updated_at,
-             COALESCE(s.leech, 0), s.buried_until_ms";
+             COALESCE(s.leech, 0), s.buried_until_ms, COALESCE(s.learning_step, 0)";
+    const STATE_COLUMN_COUNT: usize = 20;
 
     fn load_state_by_id(conn: &rusqlite::Connection, id: &str) -> Result<Option<FsrsCardState>> {
         conn.query_row(
@@ -3778,7 +4765,7 @@ impl FsrsReviewService {
             |row| {
                 Ok(FsrsAgentStateRecord {
                     state: Self::map_state_row(row)?,
-                    review_version: row.get(19)?,
+                    review_version: row.get(Self::STATE_COLUMN_COUNT)?,
                 })
             },
         )
@@ -3986,6 +4973,7 @@ impl FsrsReviewService {
             log_id,
             scheduled_days,
             due_ms,
+            buried_siblings: Vec::new(),
         }))
     }
 
@@ -4007,7 +4995,12 @@ impl FsrsReviewService {
                 Self::STATE_COLUMNS
             ),
             params![id],
-            |row| Ok((Self::map_state_row(row)?, row.get::<_, i32>(19)? != 0)),
+            |row| {
+                Ok((
+                    Self::map_state_row(row)?,
+                    row.get::<_, i32>(Self::STATE_COLUMN_COUNT)? != 0,
+                ))
+            },
         )
         .optional()
         .map_err(|e| AppError::database(format!("加载待评分 card state 失败: {}", e)))
@@ -4100,6 +5093,63 @@ impl FsrsReviewService {
         if let Some(v) = field("enable_fuzz", "enableFuzz").as_bool() {
             config.enable_fuzz = v;
         }
+        let read_steps = |value: serde_json::Value| -> Option<Vec<f64>> {
+            let items = value.as_array()?;
+            let parsed: Vec<f64> = items.iter().filter_map(|v| v.as_f64()).collect();
+            (parsed.len() == items.len()).then(|| fsrs_scheduler::sanitize_steps(&parsed))
+        };
+        if let Some(steps) = read_steps(field("learning_steps", "learningSteps")) {
+            config.learning_steps = steps;
+        }
+        if let Some(steps) = read_steps(field("relearning_steps", "relearningSteps")) {
+            config.relearning_steps = steps;
+        }
+        if let Some(v) = field("maximum_interval", "maximumInterval").as_u64() {
+            if (1..=u64::from(fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS)).contains(&v) {
+                config.maximum_interval = v as u32;
+            }
+        }
+        if let Some(v) = field("day_rollover_hour", "dayRolloverHour").as_u64() {
+            if v <= 23 {
+                config.day_rollover_hour = v as u32;
+            }
+        }
+        if let Some(items) = field("fsrs_params", "fsrsParams").as_array() {
+            let params: Vec<f32> = items
+                .iter()
+                .filter_map(|v| v.as_f64())
+                .map(|v| v as f32)
+                .collect();
+            if params.len() == items.len() && fsrs::check_and_fill_parameters(&params).is_ok() {
+                config.fsrs_params = params;
+            }
+        }
+        if let Some(v) = field("bury_new_siblings", "buryNewSiblings").as_bool() {
+            config.bury_new_siblings = v;
+        }
+        if let Some(v) = field("bury_review_siblings", "buryReviewSiblings").as_bool() {
+            config.bury_review_siblings = v;
+        }
+        if let Some(v) = field("review_order", "reviewOrder").as_str() {
+            if REVIEW_ORDERS.contains(&v) {
+                config.review_order = v.to_string();
+            }
+        }
+        if let Some(v) = field("new_review_order", "newReviewOrder").as_str() {
+            if NEW_REVIEW_ORDERS.contains(&v) {
+                config.new_review_order = v.to_string();
+            }
+        }
+        if let Some(v) = field("max_answer_seconds", "maxAnswerSeconds").as_u64() {
+            if (1..=u64::from(MAX_ANSWER_SECONDS_LIMIT)).contains(&v) {
+                config.max_answer_seconds = v as u32;
+            }
+        }
+        config.fsrs_optimized_at_ms = value.get("fsrs_optimized_at_ms").and_then(|v| v.as_i64());
+        config.fsrs_optimized_review_count = value
+            .get("fsrs_optimized_review_count")
+            .and_then(|v| v.as_u64())
+            .map(|v| v.min(u64::from(u32::MAX)) as u32);
         Ok(config)
     }
 
@@ -4135,176 +5185,146 @@ impl FsrsReviewService {
     }
 }
 
-fn day_bounds_ms<Tz>(now: &DateTime<Tz>) -> Option<(i64, i64)>
-where
-    Tz: TimeZone + Clone,
-{
-    let timezone = now.timezone();
-    let today = now.date_naive();
-    let tomorrow = today.succ_opt()?;
-    let start = timezone
-        .from_local_datetime(&today.and_hms_opt(0, 0, 0)?)
-        .earliest()?;
-    let next_start = timezone
-        .from_local_datetime(&tomorrow.and_hms_opt(0, 0, 0)?)
-        .earliest()?;
-    Some((start.timestamp_millis(), next_start.timestamp_millis()))
+/// 新卡按比例均匀穿插进复习卡（Anki「与复习混合」）。
+fn interleave_new_cards(review: Vec<FsrsDueCard>, new: Vec<FsrsDueCard>) -> Vec<FsrsDueCard> {
+    if new.is_empty() || review.is_empty() {
+        let mut out = review;
+        out.extend(new);
+        return out;
+    }
+    let total = review.len() + new.len();
+    let new_len = new.len();
+    let mut reviews = review.into_iter();
+    let mut news = new.into_iter();
+    let mut out = Vec::with_capacity(total);
+    let mut placed_new = 0usize;
+    for index in 0..total {
+        let new_due = (index + 1) * new_len / total > placed_new;
+        let next = if new_due {
+            news.next().or_else(|| reviews.next())
+        } else {
+            reviews.next().or_else(|| news.next())
+        };
+        if let Some(card) = next {
+            if card.state.state == FsrsState::New.as_i32() {
+                placed_new += 1;
+            }
+            out.push(card);
+        }
+    }
+    out
 }
 
-/// 本地时区「今天」的毫秒边界 `[day_start, next_day_start)`。
+fn to_phase(state: FsrsState) -> CardPhase {
+    match state {
+        FsrsState::New => CardPhase::New,
+        FsrsState::Learning => CardPhase::Learning,
+        FsrsState::Review => CardPhase::Review,
+        FsrsState::Relearning => CardPhase::Relearning,
+    }
+}
+
+fn from_phase(phase: CardPhase) -> FsrsState {
+    match phase {
+        CardPhase::New => FsrsState::New,
+        CardPhase::Learning => FsrsState::Learning,
+        CardPhase::Review => FsrsState::Review,
+        CardPhase::Relearning => FsrsState::Relearning,
+    }
+}
+
+/// 用**当前生效的牌组配置**计算四档评分结果（预览与评分共用，顺序 Again..Easy）。
 ///
-/// 到期窗口 / 每日额度 / bury 到期均以本地日切为准（对齐 Anki 语义）。
-/// 极端时区折叠导致零点不存在时回退 UTC 日界，保证总能返回。
-fn local_day_bounds_ms() -> (i64, i64) {
-    let local_now = Local::now();
-    day_bounds_ms(&local_now)
-        .or_else(|| day_bounds_ms(&Utc::now()))
-        .unwrap_or_else(|| {
-            let now_ms = Utc::now().timestamp_millis();
-            let start = (now_ms / MS_PER_DAY) * MS_PER_DAY;
-            (start, start + MS_PER_DAY)
-        })
-}
-
-/// 时间戳 → 本地时区日期 key（YYYY-MM-DD）；极端时区解析失败时回退 UTC。
-fn local_date_key(ms: i64) -> String {
-    if let chrono::LocalResult::Single(dt) = Local.timestamp_millis_opt(ms) {
-        return dt.format("%Y-%m-%d").to_string();
-    }
-    Utc.timestamp_millis_opt(ms)
-        .single()
-        .map(|dt| dt.format("%Y-%m-%d").to_string())
-        .unwrap_or_else(|| "1970-01-01".to_string())
-}
-
-/// 确定性间隔 fuzz（enable_fuzz 时应用）：打散同批卡片的到期聚堆。
-///
-/// - 因子只依赖 `(card_state_id, reps)`：同一张卡在 preview 与 rate 中结果
-///   一致（见 `preview_intervals`），跨进程/重启也可复现；
-/// - 仅对进入 Review 状态且间隔 >= 2.5 天的调度生效（Learning/Relearning
-///   的分钟级步进不抖动），fuzz 幅度分档对齐 Anki；
-/// - 抖动后间隔 clamp 到 `[1, MAXIMUM_INTERVAL_DAYS]`，due/scheduled_days 同步更新。
-fn apply_deterministic_fuzz(outcome: &mut ScheduleOutcome, before: &FsrsCardState, now_ms: i64) {
-    if outcome.state != FsrsState::Review {
-        return;
-    }
-    let interval_days = outcome.scheduled_days;
-    if interval_days < 2.5 {
-        return;
-    }
-
-    // Anki 分档 fuzz 幅度
-    let fuzz_range_days = if interval_days < 7.0 {
-        (interval_days * 0.15).max(1.0)
-    } else if interval_days < 30.0 {
-        (interval_days * 0.10).max(2.0)
-    } else {
-        (interval_days * 0.05).max(4.0)
+/// 保持率、学习步、参数一律取当前配置而非卡片入队时的快照（见 F01），卡片上的
+/// `desired_retention` 列仅作为「当时使用的配置」审计快照。间隔天数按逻辑日差
+/// （本地时区 + 日切小时）计算：到期当天任何时刻复习都计满间隔。
+fn schedule_all_ratings(
+    before: &FsrsCardState,
+    now_ms: i64,
+    config: &FsrsSchedulerConfig,
+) -> Result<[ScheduleOutcome; 4]> {
+    let fsrs = fsrs_scheduler::build_fsrs(&config.fsrs_params);
+    let learning_steps = fsrs_scheduler::sanitize_steps(&config.learning_steps);
+    let relearning_steps = fsrs_scheduler::sanitize_steps(&config.relearning_steps);
+    let memory = match (before.stability, before.difficulty) {
+        (Some(s), Some(d)) if s.is_finite() && d.is_finite() && s > 0.0 => {
+            Some(fsrs::MemoryState {
+                stability: s as f32,
+                difficulty: d as f32,
+            })
+        }
+        _ => None,
     };
-
-    // 稳定种子 → [0, 1) 因子。DefaultHasher（SipHash 固定密钥）跨运行确定。
-    use std::hash::{Hash, Hasher};
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    before.id.hash(&mut hasher);
-    outcome.reps.hash(&mut hasher);
-    let unit = (hasher.finish() % 10_000) as f64 / 10_000.0;
-
-    let fuzzed_days = (interval_days + (unit * 2.0 - 1.0) * fuzz_range_days)
-        .clamp(1.0, MAXIMUM_INTERVAL_DAYS)
-        .round();
-    if (fuzzed_days - interval_days).abs() < f64::EPSILON {
-        return;
-    }
-    outcome.scheduled_days = fuzzed_days;
-    outcome.due_ms = now_ms + (fuzzed_days * MS_PER_DAY as f64) as i64;
-}
-
-fn ms_to_datetime(ms: i64) -> chrono::DateTime<Utc> {
-    Utc.timestamp_millis_opt(ms)
-        .single()
-        .unwrap_or_else(|| Utc.timestamp_opt(0, 0).single().unwrap_or_else(Utc::now))
-}
-
-fn datetime_to_ms(dt: chrono::DateTime<Utc>) -> i64 {
-    dt.timestamp_millis()
-}
-
-fn to_rs_state(state: FsrsState) -> RsFsrsState {
-    match state {
-        FsrsState::New => RsFsrsState::New,
-        FsrsState::Learning => RsFsrsState::Learning,
-        FsrsState::Review => RsFsrsState::Review,
-        FsrsState::Relearning => RsFsrsState::Relearning,
-    }
-}
-
-fn from_rs_state(state: RsFsrsState) -> FsrsState {
-    match state {
-        RsFsrsState::New => FsrsState::New,
-        RsFsrsState::Learning => FsrsState::Learning,
-        RsFsrsState::Review => FsrsState::Review,
-        RsFsrsState::Relearning => FsrsState::Relearning,
-    }
-}
-
-fn to_rs_rating(rating: FsrsRating) -> RsFsrsRating {
-    match rating {
-        FsrsRating::Again => RsFsrsRating::Again,
-        FsrsRating::Hard => RsFsrsRating::Hard,
-        FsrsRating::Good => RsFsrsRating::Good,
-        FsrsRating::Easy => RsFsrsRating::Easy,
-    }
-}
-
-fn to_rs_card(before: &FsrsCardState) -> RsFsrsCard {
-    let due = ms_to_datetime(before.due_ms);
-    let last_review = before.last_review_ms.map(ms_to_datetime).unwrap_or(due);
-    RsFsrsCard {
-        due,
-        stability: before.stability.unwrap_or(0.0),
-        difficulty: before.difficulty.unwrap_or(0.0),
-        elapsed_days: before.elapsed_days.round() as i64,
-        scheduled_days: before.scheduled_days.round() as i64,
+    let days_elapsed = before
+        .last_review_ms
+        .map(|last| {
+            fsrs_scheduler::logical_days_between(last, now_ms, &Local, config.day_rollover_hour)
+        })
+        .unwrap_or(0);
+    let snapshot = CardSnapshot {
+        phase: to_phase(FsrsState::from_i32(before.state)),
+        memory,
+        learning_step: before.learning_step,
+        days_elapsed,
         reps: before.reps,
         lapses: before.lapses,
-        state: to_rs_state(FsrsState::from_i32(before.state)),
-        last_review,
-    }
+    };
+    let ctx = SchedulerContext {
+        fsrs: &fsrs,
+        desired_retention: config.desired_retention as f32,
+        learning_steps: &learning_steps,
+        relearning_steps: &relearning_steps,
+        maximum_interval: config.maximum_interval.max(1),
+        fuzz_factor: config
+            .enable_fuzz
+            .then(|| fsrs_scheduler::fuzz_factor_for(&before.id, before.reps)),
+    };
+    let answers = fsrs_scheduler::schedule(&snapshot, &ctx)
+        .map_err(|e| AppError::validation(format!("FSRS 调度计算失败: {:?}", e)))?;
+    let to_outcome = |answer: &fsrs_scheduler::ScheduledAnswer| {
+        let (due_ms, scheduled_days) = match answer.delay {
+            ScheduledDelay::Minutes(minutes) => (
+                fsrs_scheduler::learning_due_ms(now_ms, minutes, &Local, config.day_rollover_hour),
+                0.0,
+            ),
+            ScheduledDelay::Days(days) => (
+                now_ms.saturating_add(i64::from(days).saturating_mul(MS_PER_DAY)),
+                f64::from(days),
+            ),
+        };
+        ScheduleOutcome {
+            state: from_phase(answer.phase),
+            stability: f64::from(answer.memory.stability),
+            difficulty: f64::from(answer.memory.difficulty),
+            scheduled_days,
+            elapsed_days: f64::from(days_elapsed),
+            due_ms,
+            reps: answer.reps,
+            lapses: answer.lapses,
+            learning_step: answer.learning_step,
+        }
+    };
+    Ok([
+        to_outcome(&answers.again),
+        to_outcome(&answers.hard),
+        to_outcome(&answers.good),
+        to_outcome(&answers.easy),
+    ])
 }
 
-/// 使用 `rs-fsrs` 官方调度器计算下一次复习。
-///
-/// `desired_retention` 由调用方传入**当前生效的牌组配置**（而非卡片入队时写入的
-/// 快照），确保用户在设置页修改目标保持率后，下一次评分与间隔预览都会按新值调度
-/// （见 F01）。卡片上的 `desired_retention` 列仅作为「当时使用的配置」审计快照。
 fn schedule_review(
     before: &FsrsCardState,
     rating: FsrsRating,
     now_ms: i64,
-    desired_retention: f64,
-) -> ScheduleOutcome {
-    let mut params = rs_fsrs::Parameters::default();
-    if desired_retention > 0.0 && desired_retention < 1.0 {
-        params.request_retention = desired_retention;
-    }
-    // 复习结果需可复现，关闭 fuzz
-    params.enable_fuzz = false;
-
-    let fsrs = RsFsrs::new(params);
-    let now = ms_to_datetime(now_ms);
-    let info = fsrs.next(to_rs_card(before), now, to_rs_rating(rating));
-    let card = info.card;
-
-    ScheduleOutcome {
-        state: from_rs_state(card.state),
-        stability: card.stability,
-        difficulty: card.difficulty,
-        scheduled_days: card.scheduled_days as f64,
-        elapsed_days: card.elapsed_days as f64,
-        due_ms: datetime_to_ms(card.due),
-        reps: card.reps,
-        lapses: card.lapses,
-    }
+    config: &FsrsSchedulerConfig,
+) -> Result<ScheduleOutcome> {
+    let [again, hard, good, easy] = schedule_all_ratings(before, now_ms, config)?;
+    Ok(match rating {
+        FsrsRating::Again => again,
+        FsrsRating::Hard => hard,
+        FsrsRating::Good => good,
+        FsrsRating::Easy => easy,
+    })
 }
 
 enum ExistingLogLookup {
@@ -4361,6 +5381,7 @@ fn apply_mastery_bias_to_outcome(
 mod tests {
     use super::*;
     use crate::data_governance::migration::{MigrationCoordinator, MISTAKES_MIGRATIONS};
+    use chrono::TimeZone;
     use crate::data_governance::schema_registry::DatabaseId;
     use rusqlite::params;
     use serde_json::{json, Value};
@@ -4387,15 +5408,16 @@ mod tests {
             updated_at: "t".into(),
             leech: false,
             buried_until_ms: None,
+            learning_step: 0,
         }
     }
 
     #[test]
     fn new_good_enters_learning_ten_minutes() {
-        // rs-fsrs BasicScheduler: New + Good → Learning, due +10min
+        // 默认学习步 1m 10m：New + Good → 第 2 步，10 分钟后
         let before = blank_new_card();
         let now = 1_700_000_000_000_i64;
-        let out = schedule_review(&before, FsrsRating::Good, now, DEFAULT_DESIRED_RETENTION);
+        let out = schedule_review(&before, FsrsRating::Good, now, &FsrsSchedulerConfig::default()).expect("schedule");
         assert_eq!(out.state, FsrsState::Learning);
         assert_eq!(out.scheduled_days, 0.0);
         assert_eq!(out.due_ms, now + 10 * MS_PER_MINUTE);
@@ -4405,8 +5427,8 @@ mod tests {
     }
 
     #[test]
-    fn again_on_review_relearns_in_five_minutes() {
-        // rs-fsrs: Review + Again → Relearning, due +5min, lapses++
+    fn again_on_review_relearns_after_ten_minutes() {
+        // 默认重学步 10m：Review + Again → Relearning，10 分钟后，lapses++
         let now = 1_700_000_000_000_i64;
         let mut before = blank_new_card();
         before.state = FsrsState::Review.as_i32();
@@ -4415,10 +5437,10 @@ mod tests {
         before.scheduled_days = 5.0;
         before.due_ms = now;
         before.last_review_ms = Some(now - 5 * MS_PER_DAY);
-        let out = schedule_review(&before, FsrsRating::Again, now, DEFAULT_DESIRED_RETENTION);
+        let out = schedule_review(&before, FsrsRating::Again, now, &FsrsSchedulerConfig::default()).expect("schedule");
         assert_eq!(out.state, FsrsState::Relearning);
         assert_eq!(out.lapses, 1);
-        assert_eq!(out.due_ms, now + 5 * MS_PER_MINUTE);
+        assert_eq!(out.due_ms, now + 10 * MS_PER_MINUTE);
         assert_eq!(out.scheduled_days, 0.0);
     }
 
@@ -4433,11 +5455,11 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 4 * MS_PER_DAY);
 
-        let hard = schedule_review(&before, FsrsRating::Hard, now, DEFAULT_DESIRED_RETENTION);
+        let hard = schedule_review(&before, FsrsRating::Hard, now, &FsrsSchedulerConfig::default()).expect("schedule");
         assert_eq!(hard.state, FsrsState::Review);
         assert!(hard.scheduled_days >= 1.0);
 
-        let easy = schedule_review(&before, FsrsRating::Easy, now, DEFAULT_DESIRED_RETENTION);
+        let easy = schedule_review(&before, FsrsRating::Easy, now, &FsrsSchedulerConfig::default()).expect("schedule");
         assert_eq!(easy.state, FsrsState::Review);
         assert!(easy.scheduled_days > hard.scheduled_days);
     }
@@ -4634,7 +5656,7 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 10 * MS_PER_DAY);
 
-        let fsrs_out = schedule_review(&before, FsrsRating::Good, now, DEFAULT_DESIRED_RETENTION);
+        let fsrs_out = schedule_review(&before, FsrsRating::Good, now, &FsrsSchedulerConfig::default()).expect("schedule");
         let interval = fsrs_out.due_ms.saturating_sub(now);
         assert!(
             interval >= 60 * 60 * 1000,
@@ -4689,8 +5711,9 @@ mod tests {
             &before,
             FsrsRating::Good,
             rate_now,
-            DEFAULT_DESIRED_RETENTION,
-        );
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         let expected_due = apply_mastery_due_bias(0.0, rate_now, fsrs_only.due_ms);
 
         let biased = service
@@ -4736,8 +5759,9 @@ mod tests {
             &before_hi,
             FsrsRating::Good,
             rate_now_hi,
-            DEFAULT_DESIRED_RETENTION,
-        );
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         let high = service
             .rate_with_mastery_bias(&state_hi, 3, Some(10), Some(0.95), None)
             .expect("high bias");
@@ -4882,6 +5906,13 @@ mod tests {
             }
         }
         let service = FsrsReviewService::new(db.clone());
+        // 两张不同卡的 fuzz 因子不同；本用例比较「同一 FSRS 间隔」上的偏置，关闭 fuzz
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                enable_fuzz: Some(false),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .unwrap();
         let seed_review = |card_id: &str, stability: f64, scheduled_days: f64| -> String {
             let enq = service.enqueue_cards(&[card_id.to_string()]).unwrap();
             let sid = enq.states[0].id.clone();
@@ -4935,8 +5966,9 @@ mod tests {
             &before_cap,
             FsrsRating::Good,
             rate_now,
-            DEFAULT_DESIRED_RETENTION,
-        );
+            &service.get_scheduler_config().unwrap(),
+        )
+        .expect("schedule");
         let capped = service
             .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0), None)
             .unwrap();
@@ -4970,8 +6002,8 @@ mod tests {
     }
 
     #[test]
-    fn params_version_is_rs_fsrs() {
-        assert!(FSRS_PARAMS_VERSION.starts_with("rs-fsrs-"));
+    fn params_version_marks_fsrs_rs_scheduler() {
+        assert!(FSRS_PARAMS_VERSION.starts_with("fsrs-rs-"));
     }
 
     #[test]
@@ -4982,10 +6014,22 @@ mod tests {
             .single()
             .unwrap();
 
-        let (start, next_start) = day_bounds_ms(&local_now).unwrap();
+        let now_ms = local_now.timestamp_millis();
 
+        // 日切 0 点：与旧行为一致
+        let (start, next_start) =
+            fsrs_scheduler::logical_day_bounds_ms(now_ms, &timezone, 0);
         assert_eq!(start, 1_783_699_200_000); // 2026-07-10T16:00:00Z
         assert_eq!(next_start, 1_783_785_600_000); // 2026-07-11T16:00:00Z
+
+        // 默认日切 4 点：凌晨 1:30 仍属于前一个逻辑日
+        let (start, next_start) = fsrs_scheduler::logical_day_bounds_ms(
+            now_ms,
+            &timezone,
+            fsrs_scheduler::DEFAULT_DAY_ROLLOVER_HOUR,
+        );
+        assert_eq!(start, 1_783_627_200_000); // 2026-07-09T20:00:00Z = 07-10 04:00 +08
+        assert_eq!(next_start, 1_783_713_600_000); // 2026-07-10T20:00:00Z = 07-11 04:00 +08
     }
 
     fn setup_migrated_fsrs_db() -> (TempDir, Arc<Database>) {
@@ -5427,7 +6471,8 @@ mod tests {
         assert_eq!(overview.recent[0].front, "front-card-mem-b");
         assert_eq!(overview.memorized_count, 2);
         // t = S 时 R 恰为 90%
-        let expected = (0.9 + rs_fsrs::Parameters::forgetting_curve(1.0, 2.0)) / 2.0;
+        let curve = FsrsSchedulerConfig::default().forgetting_curve();
+        let expected = (0.9 + curve.retrievability(1.0, 2.0)) / 2.0;
         let average = overview
             .average_retrievability
             .expect("average retrievability");
@@ -5436,8 +6481,10 @@ mod tests {
             "average retrievability {average} should be {expected}"
         );
         assert!((overview.desired_retention - DEFAULT_DESIRED_RETENTION).abs() < 1e-9);
-        assert_eq!(overview.curve, FsrsForgettingCurve::scheduler());
-        assert!((overview.curve.factor - 19.0 / 81.0).abs() < 1e-12);
+        assert_eq!(overview.curve, curve);
+        // FSRS-6 默认衰减 0.1542：factor = 0.9^(-1/0.1542) - 1
+        assert!((overview.curve.decay + 0.1542).abs() < 1e-6);
+        assert!((overview.curve.factor - (0.9f64.powf(-1.0 / 0.1542) - 1.0)).abs() < 1e-6);
         assert_eq!(
             overview.true_retention,
             FsrsTrueRetention {
@@ -5493,7 +6540,7 @@ mod tests {
         assert_eq!(history.card.card_state_id, state_id);
         assert_eq!(history.card.state, FsrsState::Review.as_i32());
         assert_eq!(history.card.last_rating, Some(3));
-        assert_eq!(history.curve, FsrsForgettingCurve::scheduler());
+        assert_eq!(history.curve, FsrsSchedulerConfig::default().forgetting_curve());
         let ratings: Vec<u8> = history.reviews.iter().map(|review| review.rating).collect();
         assert_eq!(ratings, vec![3, 3]);
         assert!(history.reviews[0].review_ms <= history.reviews[1].review_ms);
@@ -7664,7 +8711,9 @@ mod tests {
     fn remove_v20260711_history_and_objects(db: &Database) {
         let conn = db.get_conn_safe().expect("open mistakes connection");
         conn.execute_batch(
-            "DELETE FROM refinery_schema_history WHERE version >= 20260711;
+            "-- 只抹掉启动兼容重放边界（20260801）内的历史：边界之后的迁移按设计由
+             -- Refinery 正常执行，不支持「列已在、历史丢失」的中间态。
+             DELETE FROM refinery_schema_history WHERE version >= 20260711 AND version <= 20260801;
 
              DROP TRIGGER IF EXISTS trg__change_log_anki_decks_insert;
              DROP TRIGGER IF EXISTS trg__change_log_anki_decks_update;
@@ -7927,7 +8976,7 @@ mod tests {
         {
             let conn = db.get_conn_safe().expect("open mistakes connection");
             conn.execute(
-                "DELETE FROM refinery_schema_history WHERE version >= 20260711",
+                "DELETE FROM refinery_schema_history WHERE version >= 20260711 AND version <= 20260801",
                 [],
             )
             .expect("remove migration history for idempotent replay");
@@ -8327,5 +9376,633 @@ mod tests {
         );
         assert_eq!(restored.review_version, 3);
         assert_eq!(restored.last_review_ms, first.card_state.last_review_ms);
+    }
+
+    /// 2026-08-01 起第 `day_offset` 天的本地中午（远离日切与夏令时切换），用于构造跨日复习历史。
+    fn local_noon_ms(day_offset: i64) -> i64 {
+        let base = chrono::Local
+            .with_ymd_and_hms(2026, 8, 1, 12, 0, 0)
+            .earliest()
+            .expect("local noon exists");
+        (base + chrono::Duration::days(day_offset)).timestamp_millis()
+    }
+
+    fn insert_review_log(
+        db: &Database,
+        state_id: &str,
+        card_id: &str,
+        rating: i32,
+        state_before: i32,
+        review_ms: i64,
+    ) {
+        let conn = db.get_conn_safe().expect("conn");
+        conn.execute(
+            "INSERT INTO fsrs_review_logs (
+                id, card_state_id, anki_card_id, rating, state_before, state_after,
+                review_ms, fsrs_params_version, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, 2, ?6, ?7, ?8, ?8)",
+            params![
+                uuid::Uuid::new_v4().to_string(),
+                state_id,
+                card_id,
+                rating,
+                state_before,
+                review_ms,
+                FSRS_PARAMS_VERSION,
+                format!("2026-08-01T00:00:{:02}Z", review_ms % 60),
+            ],
+        )
+        .expect("insert review log");
+    }
+
+    /// 把卡片状态写成「已复习」，S/D 故意写成与历史不符的值，便于观察重算。
+    fn seed_review_state(db: &Database, state_id: &str, last_review_ms: i64, due_ms: i64) {
+        let conn = db.get_conn_safe().expect("conn");
+        conn.execute(
+            "UPDATE fsrs_card_states
+             SET state = 2, stability = 99.0, difficulty = 9.0, reps = 3,
+                 last_review_ms = ?1, due_ms = ?2
+             WHERE id = ?3",
+            params![last_review_ms, due_ms, state_id],
+        )
+        .expect("seed review state");
+    }
+
+    fn load_memory(db: &Database, state_id: &str) -> (f64, f64, i64) {
+        let conn = db.get_conn_safe().expect("conn");
+        conn.query_row(
+            "SELECT stability, difficulty, due_ms FROM fsrs_card_states WHERE id = ?1",
+            params![state_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .expect("load memory")
+    }
+
+    #[test]
+    fn scheduler_config_validates_and_round_trips_scheduling_fields() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        let service = FsrsReviewService::new(db);
+        let defaults = service.get_scheduler_config().expect("defaults");
+        assert_eq!(defaults.learning_steps, vec![1.0, 10.0]);
+        assert_eq!(defaults.relearning_steps, vec![10.0]);
+        assert_eq!(defaults.day_rollover_hour, 4);
+        assert!(defaults.enable_fuzz, "fuzz is on by default like Anki");
+        assert!(defaults.fsrs_params.is_empty());
+
+        let updated = service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                learning_steps: Some(vec![1.0, 10.0, 60.0]),
+                relearning_steps: Some(vec![]),
+                maximum_interval: Some(365),
+                day_rollover_hour: Some(0),
+                enable_fuzz: Some(false),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .expect("update scheduling fields");
+        assert_eq!(updated.learning_steps, vec![1.0, 10.0, 60.0]);
+        assert!(updated.relearning_steps.is_empty());
+        assert_eq!(updated.maximum_interval, 365);
+        assert_eq!(updated.day_rollover_hour, 0);
+        assert!(!updated.enable_fuzz);
+        assert_eq!(service.get_scheduler_config().unwrap(), updated);
+
+        for invalid in [
+            FsrsSchedulerConfigUpdate {
+                learning_steps: Some(vec![0.0]),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                maximum_interval: Some(0),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                day_rollover_hour: Some(24),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                fsrs_params: Some(vec![1.0, 2.0]),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+        ] {
+            assert!(service.update_scheduler_config(&invalid).is_err());
+        }
+        assert_eq!(service.get_scheduler_config().unwrap(), updated);
+    }
+
+    #[test]
+    fn rate_follows_configured_learning_steps_and_undo_restores_step() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-steps", "task-steps", "card-steps");
+        let service = FsrsReviewService::new(db.clone());
+        // 日切放在离现在 12 小时处，保证分钟级学习步不会跨日
+        let hour = chrono::Timelike::hour(&chrono::Local::now());
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                learning_steps: Some(vec![2.0, 20.0, 60.0]),
+                day_rollover_hour: Some((hour + 12) % 24),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .unwrap();
+        let state_id = service
+            .enqueue_cards(&["card-steps".to_string()])
+            .unwrap()
+            .states[0]
+            .id
+            .clone();
+
+        let near = |due_ms: i64, minutes: i64| {
+            let expected = Utc::now().timestamp_millis() + minutes * MS_PER_MINUTE;
+            (due_ms - expected).abs() < 5_000
+        };
+        let first = service.rate(&state_id, 3, None, None).unwrap();
+        assert_eq!(first.card_state.state, FsrsState::Learning.as_i32());
+        assert_eq!(first.card_state.learning_step, 1);
+        assert!(near(first.due_ms, 20), "Good on a new card moves to the second step");
+
+        let second = service.rate(&state_id, 3, None, None).unwrap();
+        assert_eq!(second.card_state.learning_step, 2);
+        assert!(near(second.due_ms, 60));
+
+        let again = service.rate(&state_id, 1, None, None).unwrap();
+        assert_eq!(again.card_state.state, FsrsState::Learning.as_i32());
+        assert_eq!(again.card_state.learning_step, 0);
+        assert!(near(again.due_ms, 2));
+
+        let undone = service
+            .undo_last_review(&again.log_id, &state_id)
+            .expect("undo the Again rating");
+        assert_eq!(undone.state.learning_step, 2);
+        assert_eq!(undone.state.due_ms, second.due_ms);
+
+        let third = service.rate(&state_id, 3, None, None).unwrap();
+        assert_eq!(third.card_state.state, FsrsState::Review.as_i32());
+        assert_eq!(third.card_state.learning_step, 0);
+        assert!(third.scheduled_days >= 1.0);
+    }
+
+    #[test]
+    fn changing_parameters_recomputes_memory_states_without_moving_due() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-recompute", "task-recompute", "card-recompute");
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = service
+            .enqueue_cards(&["card-recompute".to_string()])
+            .unwrap()
+            .states[0]
+            .id
+            .clone();
+        insert_review_log(&db, &state_id, "card-recompute", 3, 0, local_noon_ms(0));
+        insert_review_log(&db, &state_id, "card-recompute", 3, 2, local_noon_ms(2));
+        insert_review_log(&db, &state_id, "card-recompute", 3, 2, local_noon_ms(7));
+        let due = local_noon_ms(20);
+        seed_review_state(&db, &state_id, local_noon_ms(7), due);
+
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                fsrs_params: Some(fsrs::DEFAULT_PARAMETERS.to_vec()),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .expect("explicit parameters trigger a recompute");
+
+        let expected = fsrs::FSRS::default()
+            .memory_state(
+                fsrs::FSRSItem {
+                    reviews: vec![
+                        fsrs::FSRSReview { rating: 3, delta_t: 0 },
+                        fsrs::FSRSReview { rating: 3, delta_t: 2 },
+                        fsrs::FSRSReview { rating: 3, delta_t: 5 },
+                    ],
+                },
+                None,
+            )
+            .unwrap();
+        let (stability, difficulty, due_after) = load_memory(&db, &state_id);
+        assert!((stability - f64::from(expected.stability)).abs() < 1e-4);
+        assert!((difficulty - f64::from(expected.difficulty)).abs() < 1e-4);
+        assert_eq!(due_after, due, "recomputing memory never reschedules");
+    }
+
+    #[test]
+    fn memory_state_upgrade_runs_once_per_scheduler_version() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-upgrade", "task-upgrade", "card-upgrade");
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = service
+            .enqueue_cards(&["card-upgrade".to_string()])
+            .unwrap()
+            .states[0]
+            .id
+            .clone();
+        insert_review_log(&db, &state_id, "card-upgrade", 3, 0, local_noon_ms(0));
+        insert_review_log(&db, &state_id, "card-upgrade", 3, 2, local_noon_ms(3));
+        seed_review_state(&db, &state_id, local_noon_ms(3), local_noon_ms(10));
+
+        assert_eq!(service.ensure_memory_states_current().unwrap(), 1);
+        let (stability, _, _) = load_memory(&db, &state_id);
+        assert!(stability < 99.0, "legacy memory state was recomputed");
+
+        seed_review_state(&db, &state_id, local_noon_ms(3), local_noon_ms(10));
+        assert_eq!(service.ensure_memory_states_current().unwrap(), 0);
+        let (stability, _, _) = load_memory(&db, &state_id);
+        assert_eq!(stability, 99.0, "the upgrade must not repeat");
+    }
+
+    #[test]
+    fn optimizer_reports_not_enough_data_for_a_tiny_history() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-tiny", "task-tiny", "card-tiny");
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = service
+            .enqueue_cards(&["card-tiny".to_string()])
+            .unwrap()
+            .states[0]
+            .id
+            .clone();
+        insert_review_log(&db, &state_id, "card-tiny", 3, 0, local_noon_ms(0));
+        insert_review_log(&db, &state_id, "card-tiny", 3, 2, local_noon_ms(2));
+
+        let result = service.optimize_parameters().expect("optimize");
+        assert_eq!(result.status, "not_enough_data");
+        assert_eq!(result.item_count, 1);
+        assert!(service.get_scheduler_config().unwrap().fsrs_params.is_empty());
+    }
+
+    #[test]
+    fn optimizer_trains_on_cross_day_history_and_keeps_due_dates() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-opt", "task-opt", "card-opt-0");
+        for index in 1..120 {
+            insert_card_for_task(&db, "doc-opt", "task-opt", &format!("card-opt-{index}"));
+        }
+        let service = FsrsReviewService::new(db.clone());
+        let card_ids: Vec<String> = (0..120).map(|i| format!("card-opt-{i}")).collect();
+        let states = service.enqueue_cards(&card_ids).unwrap().states;
+        let mut seed: u64 = 0x5eed;
+        let mut dues = HashMap::new();
+        for state in &states {
+            insert_review_log(&db, &state.id, &state.anki_card_id, 3, 0, local_noon_ms(0));
+            let mut day = 0;
+            for interval in [1, 3, 8, 21] {
+                day += interval;
+                seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+                // 间隔越长越容易忘：伪随机地按间隔给出 Again / Good / Easy
+                let roll = (seed >> 33) % 100;
+                let rating = if roll < 5 + interval as u64 * 2 {
+                    1
+                } else if roll > 90 {
+                    4
+                } else {
+                    3
+                };
+                insert_review_log(&db, &state.id, &state.anki_card_id, rating, 2, local_noon_ms(day));
+            }
+            let due = local_noon_ms(day + 30);
+            seed_review_state(&db, &state.id, local_noon_ms(day), due);
+            dues.insert(state.id.clone(), due);
+        }
+
+        let result = service.optimize_parameters().expect("optimize");
+        assert_eq!(result.card_count, 120);
+        assert_eq!(result.item_count, 480);
+        assert_eq!(result.review_count, 600);
+        assert!(result.current.is_some());
+        assert!(result.optimized.is_some());
+        assert_eq!(result.params.len(), 21);
+        let config = service.get_scheduler_config().unwrap();
+        match result.status.as_str() {
+            "optimized" => {
+                assert_eq!(config.fsrs_params.len(), 21);
+                assert_eq!(config.fsrs_optimized_review_count, Some(600));
+                assert!(config.fsrs_optimized_at_ms.is_some());
+                assert_eq!(result.recomputed_cards, 120);
+            }
+            "already_optimal" => assert!(config.fsrs_params.is_empty()),
+            other => panic!("unexpected optimizer status {other}"),
+        }
+        for (state_id, due) in dues {
+            assert_eq!(load_memory(&db, &state_id).2, due);
+        }
+    }
+
+    #[test]
+    fn review_statistics_report_true_retention_periods_distributions_and_study_time() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-ret", "task-ret", "card-ret-a");
+        insert_card_for_task(&db, "doc-ret", "task-ret", "card-ret-b");
+        let service = FsrsReviewService::new(db.clone());
+        let states = service
+            .enqueue_cards(&["card-ret-a".to_string(), "card-ret-b".to_string()])
+            .unwrap()
+            .states;
+        let (a, b) = (&states[0], &states[1]);
+        let config = service.get_scheduler_config().unwrap();
+        let now = Utc::now().timestamp_millis();
+        let (day_start, _) = config.day_bounds_ms(now);
+        let conn = db.get_conn_safe().unwrap();
+        let insert = |state: &FsrsCardState, rating: i32, review_ms: i64, stability_before: f64| {
+            conn.execute(
+                "INSERT INTO fsrs_review_logs (
+                    id, card_state_id, anki_card_id, rating, state_before, state_after,
+                    stability_before, review_ms, duration_ms, fsrs_params_version,
+                    created_at, updated_at
+                 ) VALUES (?1, ?2, ?3, ?4, 2, 2, ?5, ?6, 4000, ?7, 't', 't')",
+                params![
+                    uuid::Uuid::new_v4().to_string(),
+                    state.id,
+                    state.anki_card_id,
+                    rating,
+                    stability_before,
+                    review_ms,
+                    FSRS_PARAMS_VERSION
+                ],
+            )
+            .unwrap();
+        };
+        // 今天：a 年轻卡通过（同日第二次复习不计入）、b 成熟卡忘记
+        insert(a, 3, day_start + 60_000, 5.0);
+        insert(a, 1, day_start + 120_000, 5.0);
+        insert(b, 1, day_start + 60_000, 30.0);
+        // 昨天：a 通过；10 天前：b 通过
+        insert(a, 3, day_start - MS_PER_DAY + 60_000, 4.0);
+        insert(b, 4, day_start - 10 * MS_PER_DAY + 60_000, 25.0);
+        conn.execute(
+            "UPDATE fsrs_card_states SET state = 2, stability = 2.5, difficulty = 4.2,
+                    last_review_ms = ?1 WHERE id = ?2",
+            params![now, a.id],
+        )
+        .unwrap();
+        conn.execute(
+            "UPDATE fsrs_card_states SET state = 2, stability = 40.0, difficulty = 8.7,
+                    last_review_ms = ?1 WHERE id = ?2",
+            params![now - 80 * MS_PER_DAY, b.id],
+        )
+        .unwrap();
+        drop(conn);
+
+        let stats = service.get_review_statistics(Some(30)).unwrap();
+        let row = |period: &str| {
+            stats
+                .true_retention
+                .iter()
+                .find(|row| row.period == period)
+                .cloned()
+                .unwrap()
+        };
+        let today = row("today");
+        assert_eq!((today.young_reviews, today.young_passed), (1, 1));
+        assert_eq!((today.mature_reviews, today.mature_passed), (1, 0));
+        let yesterday = row("yesterday");
+        assert_eq!((yesterday.young_reviews, yesterday.young_passed), (1, 1));
+        assert_eq!(yesterday.mature_reviews, 0);
+        let month = row("month");
+        assert_eq!((month.young_reviews, month.mature_reviews), (2, 2));
+        assert_eq!((month.young_passed, month.mature_passed), (2, 1));
+
+        let today_key = config.date_key(now);
+        let today_stat = stats
+            .daily_reviews
+            .iter()
+            .find(|day| day.date == today_key)
+            .unwrap();
+        assert_eq!(today_stat.study_ms, 12_000);
+
+        let dist = &stats.memory_distributions;
+        assert_eq!(dist.cards, 2);
+        assert_eq!(dist.difficulty[3], 1, "D=4.2 falls in the 4–5 bucket");
+        assert_eq!(dist.difficulty[7], 1, "D=8.7 falls in the 8–9 bucket");
+        assert_eq!(dist.stability[1], 1, "S=2.5 days falls in 1–3");
+        assert_eq!(dist.stability[5], 1, "S=40 days falls in 30–90");
+        assert_eq!(dist.retrievability[9], 1, "just reviewed ≈ 100%");
+        assert_eq!(dist.retrievability.iter().sum::<i64>(), 2);
+    }
+
+    fn set_note_key(db: &Database, card_id: &str, note_id: &str) {
+        let conn = db.get_conn_safe().expect("conn");
+        conn.execute(
+            "UPDATE anki_cards SET extra_fields_json = ?1 WHERE id = ?2",
+            params![json!({ "AnkiNoteId": note_id }).to_string(), card_id],
+        )
+        .expect("set note key");
+    }
+
+    fn due_state_ids(service: &FsrsReviewService) -> Vec<String> {
+        service
+            .get_due(Some(100))
+            .expect("due")
+            .into_iter()
+            .map(|card| card.state.id)
+            .collect()
+    }
+
+    #[test]
+    fn rating_buries_new_and_review_siblings_of_the_same_note() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-sib", "task-sib", "card-sib-a");
+        insert_card_for_task(&db, "doc-sib", "task-sib", "card-sib-b");
+        insert_card_for_task(&db, "doc-sib", "task-sib", "card-sib-c");
+        insert_card_for_task(&db, "doc-sib", "task-sib", "card-other");
+        for card in ["card-sib-a", "card-sib-b", "card-sib-c"] {
+            set_note_key(&db, card, "42");
+        }
+        set_note_key(&db, "card-other", "43");
+        let service = FsrsReviewService::new(db.clone());
+        let ids: Vec<String> = ["card-sib-a", "card-sib-b", "card-sib-c", "card-other"]
+            .iter()
+            .map(|id| id.to_string())
+            .collect();
+        let states = service.enqueue_cards(&ids).unwrap().states;
+        let state_of = |card: &str| {
+            states
+                .iter()
+                .find(|s| s.anki_card_id == card)
+                .unwrap()
+                .id
+                .clone()
+        };
+        // card-sib-c 已在复习中且今天到期
+        {
+            let conn = db.get_conn_safe().unwrap();
+            let now = Utc::now().timestamp_millis();
+            conn.execute(
+                "UPDATE fsrs_card_states SET state = 2, stability = 5.0, difficulty = 5.0,
+                        reps = 3, due_ms = ?1, last_review_ms = ?2 WHERE id = ?3",
+                params![now - 1000, now - 5 * MS_PER_DAY, state_of("card-sib-c")],
+            )
+            .unwrap();
+        }
+
+        let rated = service.rate(&state_of("card-sib-a"), 3, None, None).unwrap();
+        let mut buried = rated.buried_siblings.clone();
+        buried.sort();
+        let mut expected = vec![state_of("card-sib-b"), state_of("card-sib-c")];
+        expected.sort();
+        assert_eq!(buried, expected, "new and review siblings are buried");
+
+        let due = due_state_ids(&service);
+        assert!(!due.contains(&state_of("card-sib-b")));
+        assert!(!due.contains(&state_of("card-sib-c")));
+        assert!(due.contains(&state_of("card-other")), "other notes are unaffected");
+        assert_eq!(service.get_stats().unwrap().buried, 2);
+    }
+
+    #[test]
+    fn sibling_burying_can_be_disabled() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-nosib", "task-nosib", "card-nosib-a");
+        insert_card_for_task(&db, "doc-nosib", "task-nosib", "card-nosib-b");
+        set_note_key(&db, "card-nosib-a", "7");
+        set_note_key(&db, "card-nosib-b", "7");
+        let service = FsrsReviewService::new(db.clone());
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                bury_new_siblings: Some(false),
+                bury_review_siblings: Some(false),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .unwrap();
+        let states = service
+            .enqueue_cards(&["card-nosib-a".to_string(), "card-nosib-b".to_string()])
+            .unwrap()
+            .states;
+        let rated = service.rate(&states[0].id, 3, None, None).unwrap();
+        assert!(rated.buried_siblings.is_empty());
+        assert!(due_state_ids(&service).contains(&states[1].id));
+    }
+
+    #[test]
+    fn manual_bury_hides_a_card_until_the_next_logical_day() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-bury", "task-bury", "card-bury");
+        let service = FsrsReviewService::new(db.clone());
+        let state_id = service
+            .enqueue_cards(&["card-bury".to_string()])
+            .unwrap()
+            .states[0]
+            .id
+            .clone();
+
+        let buried = service.set_buried(&state_id, true).unwrap();
+        assert!(buried.changed);
+        let config = service.get_scheduler_config().unwrap();
+        let (_, next_day_start) = config.day_bounds_ms(Utc::now().timestamp_millis());
+        assert_eq!(buried.state.buried_until_ms, Some(next_day_start));
+        assert!(!due_state_ids(&service).contains(&state_id));
+        assert!(!service.set_buried(&state_id, true).unwrap().changed);
+
+        let restored = service.set_buried(&state_id, false).unwrap();
+        assert!(restored.changed);
+        assert_eq!(restored.state.buried_until_ms, None);
+        assert!(due_state_ids(&service).contains(&state_id));
+    }
+
+    #[test]
+    fn review_order_and_new_review_mix_follow_configuration() {
+        let (_temp_dir, db) = setup_migrated_fsrs_db();
+        insert_task_and_card(&db, "doc-order", "task-order", "card-r0");
+        let mut ids = vec!["card-r0".to_string()];
+        for name in ["card-r1", "card-r2", "card-r3", "card-n0", "card-n1"] {
+            insert_card_for_task(&db, "doc-order", "task-order", name);
+            ids.push(name.to_string());
+        }
+        let service = FsrsReviewService::new(db.clone());
+        let states = service.enqueue_cards(&ids).unwrap().states;
+        let state_of = |card: &str| {
+            states
+                .iter()
+                .find(|s| s.anki_card_id == card)
+                .unwrap()
+                .id
+                .clone()
+        };
+        let now = Utc::now().timestamp_millis();
+        // (card, 稳定度, 距上次复习天数, due 提前量)：due 越早 ≠ 越可能忘
+        let reviews = [
+            ("card-r0", 2.0, 4, 4),  // elapsed/S = 2.0
+            ("card-r1", 40.0, 40, 3), // 1.0
+            ("card-r2", 1.0, 5, 2),  // 5.0 → 最可能忘
+            ("card-r3", 10.0, 15, 1), // 1.5
+        ];
+        {
+            let conn = db.get_conn_safe().unwrap();
+            for (card, stability, elapsed, early) in reviews {
+                conn.execute(
+                    "UPDATE fsrs_card_states SET state = 2, stability = ?1, difficulty = 5.0,
+                            reps = 3, due_ms = ?2, last_review_ms = ?3 WHERE id = ?4",
+                    params![
+                        stability,
+                        now - early * 60_000,
+                        now - elapsed * MS_PER_DAY,
+                        state_of(card)
+                    ],
+                )
+                .unwrap();
+            }
+        }
+
+        let order = |service: &FsrsReviewService| -> Vec<String> {
+            let due = due_state_ids(service);
+            due.iter()
+                .map(|id| {
+                    states
+                        .iter()
+                        .find(|s| &s.id == id)
+                        .unwrap()
+                        .anki_card_id
+                        .clone()
+                })
+                .collect()
+        };
+        assert_eq!(
+            order(&service),
+            ["card-r0", "card-r1", "card-r2", "card-r3", "card-n0", "card-n1"],
+            "default: reviews by due date, then new cards"
+        );
+
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                review_order: Some("retrievability".into()),
+                new_review_order: Some("before".into()),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .unwrap();
+        assert_eq!(
+            order(&service),
+            ["card-n0", "card-n1", "card-r2", "card-r0", "card-r3", "card-r1"],
+            "new cards first, then least retrievable reviews first"
+        );
+
+        service
+            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
+                review_order: Some("due".into()),
+                new_review_order: Some("mix".into()),
+                ..FsrsSchedulerConfigUpdate::default()
+            })
+            .unwrap();
+        assert_eq!(
+            order(&service),
+            ["card-r0", "card-r1", "card-n0", "card-r2", "card-r3", "card-n1"],
+            "new cards spread evenly among reviews"
+        );
+
+        for invalid in [
+            FsrsSchedulerConfigUpdate {
+                review_order: Some("oldest".into()),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                new_review_order: Some("never".into()),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                new_review_order: Some("sometimes".into()),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+            FsrsSchedulerConfigUpdate {
+                max_answer_seconds: Some(0),
+                ..FsrsSchedulerConfigUpdate::default()
+            },
+        ] {
+            assert!(service.update_scheduler_config(&invalid).is_err());
+        }
     }
 }

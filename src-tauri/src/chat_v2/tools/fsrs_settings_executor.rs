@@ -74,13 +74,13 @@ impl FsrsSettingsExecutor {
         let request = parse_update_request(arguments)?;
         let service = Self::require_service(ctx)?;
         let update = FsrsSchedulerConfigUpdate {
-            learn_ahead_minutes: None,
             new_per_day: request.new_per_day,
             reviews_per_day: request.reviews_per_day,
             desired_retention: request.desired_retention,
             leech_threshold: request.leech_threshold,
             leech_action: request.leech_action.clone(),
             enable_fuzz: request.enable_fuzz,
+            ..FsrsSchedulerConfigUpdate::default()
         };
         let config = service.update_scheduler_config(&update).map_err(|e| {
             fsrs_settings_error(

@@ -986,7 +986,7 @@ mod tests {
     use crate::data_governance::migration::MigrationCoordinator;
     use crate::data_governance::schema_registry::DatabaseId;
     use crate::database::Database;
-    use crate::fsrs_review_service::FsrsReviewService;
+    use crate::fsrs_review_service::{FsrsReviewService, FsrsSchedulerConfigUpdate};
     use crate::mastery::bias::{apply_mastery_due_bias, mastery_due_bias_delta_ms, MAX_ADVANCE_MS};
     use crate::memory::learner_profile::load_profile_from_db;
     use crate::question_bank_service::QuestionBankService;
@@ -1119,6 +1119,12 @@ mod tests {
         let state_lo = enqueue_review_state(&fsrs_db, "card_e2e_lo");
         let state_hi = enqueue_review_state(&fsrs_db, "card_e2e_hi");
         let fsrs = FsrsReviewService::new(fsrs_db.clone());
+        // 两张不同卡的 fuzz 因子不同；本用例比较同一 FSRS 间隔上的偏置，关闭 fuzz
+        fsrs.update_scheduler_config(&FsrsSchedulerConfigUpdate {
+            enable_fuzz: Some(false),
+            ..FsrsSchedulerConfigUpdate::default()
+        })
+        .expect("disable fuzz");
 
         let mut t0 = Utc::now().timestamp_millis();
         set_now_override_ms(Some(t0));

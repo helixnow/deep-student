@@ -70,6 +70,7 @@ pub mod figure_extractor;
 pub mod file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
+pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod injection_budget;
@@ -2793,6 +2794,9 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_get_card_memory_history
             ,crate::cmd::fsrs_review::fsrs_get_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
+            ,crate::cmd::fsrs_review::fsrs_optimize_parameters
+            ,crate::cmd::fsrs_review::fsrs_bury_card
+            ,crate::cmd::fsrs_review::fsrs_unbury_card
             ,crate::cmd::fsrs_review::fsrs_reset_card_progress
             // =================================================
             // Insight Recall v2 灵感库（阶段一：可信记录）

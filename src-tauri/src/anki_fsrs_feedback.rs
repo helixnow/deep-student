@@ -169,14 +169,17 @@ pub struct SplitSuggestion {
 // 纯函数：画像构建
 // ============================================================
 
-/// 按 FSRS-5 遗忘曲线计算单卡当前可提取性；无复习记录返回 None。
+/// 按 FSRS-6 默认遗忘曲线计算单卡当前可提取性；无复习记录返回 None。
 fn card_retrievability(row: &FsrsFeedbackRow, now_ms: i64) -> Option<f64> {
     let stability = row.stability.filter(|s| *s > 0.0)?;
     let last_review_ms = row.last_review_ms?;
     let elapsed_days = ((now_ms - last_review_ms) as f64 / MS_PER_DAY).max(0.0);
-    Some(rs_fsrs::Parameters::forgetting_curve(
+    let (decay, factor) = crate::fsrs_scheduler::forgetting_curve_constants(&[]);
+    Some(crate::fsrs_scheduler::retrievability(
         elapsed_days,
         stability,
+        decay,
+        factor,
     ))
 }
 
@@ -827,7 +830,12 @@ mod tests {
         assert!(json.contains("avgRetrievability"), "camelCase 键: {json}");
         assert!(json.contains("highLapseTemplates"));
         assert!(json.contains("confusableTags"));
-        let back: UserReviewProfile = serde_json::from_str(&json).expect("deserialize");
+        let mut back: UserReviewProfile = serde_json::from_str(&json).expect("deserialize");
+        // serde_json 未开 float_roundtrip，浮点解析可能差 1 ulp
+        let parsed = back.avg_retrievability.expect("parsed retrievability");
+        let original = profile.avg_retrievability.expect("original retrievability");
+        assert!((parsed - original).abs() < 1e-12);
+        back.avg_retrievability = profile.avg_retrievability;
         assert_eq!(back, profile);
     }
 

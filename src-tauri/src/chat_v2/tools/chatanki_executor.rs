@@ -16173,6 +16173,7 @@ mod tests {
             updated_at: "updated".to_string(),
             leech: false,
             buried_until_ms: None,
+            learning_step: 0,
         };
         let mut skipped_state = state.clone();
         skipped_state.id = "state-skipped".to_string();

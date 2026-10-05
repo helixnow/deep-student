@@ -6,9 +6,10 @@
 
 use crate::commands::AppState;
 use crate::fsrs_review_service::{
-    FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsMemoryOverview,
-    FsrsPreviewResult, FsrsRateResult, FsrsResetResult, FsrsReviewService, FsrsReviewStatistics,
-    FsrsSchedulerConfig, FsrsSchedulerConfigUpdate, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
+    FsrsBuryResult, FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsMemoryOverview,
+    FsrsOptimizeResult, FsrsPreviewResult, FsrsRateResult, FsrsResetResult, FsrsReviewService,
+    FsrsReviewStatistics, FsrsSchedulerConfig, FsrsSchedulerConfigUpdate, FsrsStats,
+    FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
@@ -174,6 +175,13 @@ pub async fn fsrs_enqueue_cards(
     Ok(result)
 }
 
+/// 调度器换代后的一次性记忆状态重算；失败只告警，不阻塞读取。
+fn ensure_memory_states_current(service: &FsrsReviewService, caller: &str) {
+    if let Err(error) = service.ensure_memory_states_current() {
+        log::warn!("[{}] memory state upgrade failed: {}", caller, error);
+    }
+}
+
 /// 获取到期卡片
 #[tauri::command]
 pub async fn fsrs_get_due(
@@ -181,6 +189,7 @@ pub async fn fsrs_get_due(
     state: State<'_, AppState>,
 ) -> Result<Vec<FsrsDueCard>> {
     let service = FsrsReviewService::new(state.anki_database.clone());
+    ensure_memory_states_current(&service, "fsrs_get_due");
     if let Some(vfs) = state.vfs_db.as_ref() {
         let mastery = crate::mastery::MasteryService::new(vfs.clone());
         // F11：补偿是尽力而为的旁路，读取/确认失败不能让到期列表整体失败。
@@ -514,6 +523,36 @@ pub async fn fsrs_suspend_card(
     Ok(result)
 }
 
+/// 埋藏一张卡到下一个逻辑日（Anki bury）。重复埋藏为无写入的成功结果。
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_bury_card(
+    app: AppHandle,
+    cardStateId: String,
+    state: State<'_, AppState>,
+) -> Result<FsrsBuryResult> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    let result = service.set_buried(&cardStateId, true)?;
+    let cards = [(result.state.id.as_str(), result.state.anki_card_id.as_str())];
+    emit_fsrs_changed(&app, result.changed, "user", "bury", &cards, &[]);
+    Ok(result)
+}
+
+/// 取消埋藏。重复取消为无写入的成功结果。
+#[tauri::command]
+#[allow(non_snake_case)]
+pub async fn fsrs_unbury_card(
+    app: AppHandle,
+    cardStateId: String,
+    state: State<'_, AppState>,
+) -> Result<FsrsBuryResult> {
+    let service = FsrsReviewService::new(state.anki_database.clone());
+    let result = service.set_buried(&cardStateId, false)?;
+    let cards = [(result.state.id.as_str(), result.state.anki_card_id.as_str())];
+    emit_fsrs_changed(&app, result.changed, "user", "unbury", &cards, &[]);
+    Ok(result)
+}
+
 /// 恢复一张已暂停的 FSRS 卡片。重复恢复为无写入的成功结果。
 #[tauri::command]
 #[allow(non_snake_case)]
@@ -533,6 +572,7 @@ pub async fn fsrs_unsuspend_card(
 #[tauri::command]
 pub async fn fsrs_get_stats(state: State<'_, AppState>) -> Result<FsrsStats> {
     let service = FsrsReviewService::new(state.anki_database.clone());
+    ensure_memory_states_current(&service, "fsrs_get_stats");
     service.get_stats()
 }
 
@@ -583,6 +623,22 @@ pub async fn fsrs_update_scheduler_config(
 ) -> Result<FsrsSchedulerConfig> {
     let service = FsrsReviewService::new(state.anki_database.clone());
     service.update_scheduler_config(&update)
+}
+
+/// 用本地复习日志优化 FSRS 参数（CPU 密集，放到阻塞线程池执行）
+#[tauri::command]
+pub async fn fsrs_optimize_parameters(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<FsrsOptimizeResult> {
+    let db = state.anki_database.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        FsrsReviewService::new(db).optimize_parameters()
+    })
+    .await
+    .map_err(|e| AppError::internal(format!("FSRS 参数优化任务异常: {}", e)))??;
+    emit_fsrs_changed(&app, result.recomputed_cards > 0, "user", "optimize", &[], &[]);
+    Ok(result)
 }
 
 /// 重置一张卡的 FSRS 进度（清历史日志 + 重建 New 状态；危险操作，前端二次确认）

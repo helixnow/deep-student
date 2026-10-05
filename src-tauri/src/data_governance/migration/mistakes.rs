@@ -283,6 +283,15 @@ pub const V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON: MigrationDef = MigrationD
 )
 .idempotent();
 
+/// V20261005: FSRS 学习步序号（可配置学习步 / 重学步）
+pub const V20261005_FSRS_LEARNING_STEP: MigrationDef = MigrationDef::new(
+    20261005,
+    "fsrs_learning_step",
+    include_str!("../../../migrations/mistakes/V20261005__fsrs_learning_step.sql"),
+)
+.with_expected_columns(&[("fsrs_card_states", "learning_step")])
+.idempotent();
+
 /// V20260720: durable FSRS -> mastery outbox marker.
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
@@ -436,6 +445,7 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260723_TEMPLATE_USER_STATE,
         V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED,
         V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON,
+        V20261005_FSRS_LEARNING_STEP,
     ],
 };
 
@@ -691,9 +701,18 @@ mod tests {
             .sql
             .contains("WHERE extra_fields_json IS NULL"));
 
+        let learning_step = MISTAKES_MIGRATIONS
+            .get(20261005)
+            .expect("V20261005 should exist");
+        assert_eq!(learning_step.name, "fsrs_learning_step");
+        assert!(learning_step.idempotent);
+        assert!(learning_step
+            .expected_columns
+            .contains(&("fsrs_card_states", "learning_step")));
+
         assert_eq!(
             MISTAKES_MIGRATIONS.latest_version(),
-            20260824,
+            20261005,
             "Latest version should track the newest published mistakes migration"
         );
     }

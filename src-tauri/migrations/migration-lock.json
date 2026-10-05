@@ -513,6 +513,14 @@
       "dangers": []
     },
     {
+      "database": "mistakes",
+      "version": 20261005,
+      "name": "fsrs_learning_step",
+      "path": "mistakes/V20261005__fsrs_learning_step.sql",
+      "sha256": "2e9308cca6547a3cc66154560f98840d094e075549bd14d7d53db6299275c798",
+      "dangers": []
+    },
+    {
       "database": "vfs",
       "version": 20260130,
       "name": "init",

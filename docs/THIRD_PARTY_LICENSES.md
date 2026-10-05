@@ -62,7 +62,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
 
 ## Vendored 依赖
 
-`lancedb` 和 `object_store` 通过 `[patch.crates-io]` 使用本地修改版本；根据 Apache-2.0 第 4(b) 条，修改后的文件需注明变更。`rs-fsrs` 是未修改的直接 path 依赖。
+`lancedb` 和 `object_store` 通过 `[patch.crates-io]` 使用本地修改版本；根据 Apache-2.0 第 4(b) 条，修改后的文件需注明变更。
 
 - **lancedb** v0.22.1（`src-tauri/vendor/lancedb/`）
   - 上游仓库：https://github.com/lancedb/lancedb
@@ -77,12 +77,11 @@ cd src-tauri && cargo tree --format "{p} {l}"
   - 修改目的：为不支持 rename/hard_link 的文件系统（如 exFAT）增加 copy 回退，使 Lance 数据可存放于此类卷
   - 修改范围：仅 `src/local.rs` 运行时行为（PermissionDenied/Unsupported 回退分支，含临时文件 + 同目录 rename 的原子性保障），带 `DEEP-STUDENT PATCH` 行内标记；详见 `vendor/object_store/PATCHES.md`
 
-- **rs-fsrs** v1.2.1（`src-tauri/vendor/rs-fsrs/`）
-  - 上游仓库：https://github.com/open-spaced-repetition/rs-fsrs
-  - 许可证：MIT，Copyright (c) 2023 Open Spaced Repetition
-  - 用途：FSRS 闪卡调度器（不包含参数优化器）
-  - 本地状态：未修改的 vendored 源码副本；完整许可证见 `vendor/rs-fsrs/LICENSE`
-  - 二进制发行：Tauri 会将该完整许可证打包为 `$RESOURCE/licenses/rs-fsrs-MIT.txt`
+- **fsrs**（fsrs-rs）v6.6.2（crates.io 普通依赖，非 vendored）
+  - 上游仓库：https://github.com/open-spaced-repetition/fsrs-rs
+  - 许可证：BSD-3-Clause，Copyright (c) 2023, Open Spaced Repetition
+  - 用途：FSRS-6 记忆模型与参数优化器（与 Anki 同一实现）
+  - 二进制发行：许可证全文随 `legal/THIRD_PARTY_NOTICES.txt` 打包为 `$RESOURCE/licenses/THIRD_PARTY_NOTICES.txt`（满足 BSD-3-Clause 第 2 条）
 
 ---
 

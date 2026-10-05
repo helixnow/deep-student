@@ -58,7 +58,7 @@ if (!fs.existsSync(noticePath)) {
       fail(`${label} changed without regenerating third-party notices.`);
     }
   }
-  for (const required of ['rs-fsrs@1.2.1', 'lancedb@0.22.1', 'object_store@0.12.4', 'PDFium chromium/7350']) {
+  for (const required of ['fsrs@6.6.2', 'lancedb@0.22.1', 'object_store@0.12.4', 'PDFium chromium/7350']) {
     if (!notices.includes(required)) fail(`Generated notices do not include ${required}.`);
   }
   for (const required of ['format@0.2.2', 'unzipper@0.12.5']) {
@@ -107,7 +107,6 @@ const requiredResources = {
   'vendor/lancedb/LICENSE': 'licenses/lancedb-Apache-2.0.txt',
   'vendor/object_store/LICENSE.txt': 'licenses/object_store-LICENSE.txt',
   'vendor/object_store/NOTICE.txt': 'licenses/object_store-NOTICE.txt',
-  'vendor/rs-fsrs/LICENSE': 'licenses/rs-fsrs-MIT.txt',
   'resources/pdfium/LICENSE.pdfium-binaries': 'licenses/pdfium-binaries-MIT.txt',
   'resources/pdfium/licenses/': 'licenses/pdfium/',
 };

@@ -63,7 +63,6 @@
       "vendor/lancedb/LICENSE": "licenses/lancedb-Apache-2.0.txt",
       "vendor/object_store/LICENSE.txt": "licenses/object_store-LICENSE.txt",
       "vendor/object_store/NOTICE.txt": "licenses/object_store-NOTICE.txt",
-      "vendor/rs-fsrs/LICENSE": "licenses/rs-fsrs-MIT.txt",
       "resources/pdfium/LICENSE.pdfium-binaries": "licenses/pdfium-binaries-MIT.txt",
       "resources/pdfium/licenses/": "licenses/pdfium/"
     },

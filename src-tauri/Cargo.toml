@@ -108,8 +108,8 @@ quick-xml = "0.37"   # XML 解析
 bincode = "1.3"
 # 并行计算优化
 rayon = "1.8"
-# FSRS 调度（仅 scheduler，不含优化器/Burn；vendored 避免 crates.io 拉取不稳）
-rs-fsrs = { path = "vendor/rs-fsrs", features = ["serde"] }
+# FSRS 记忆模型 + 参数优化器（与 Anki 同一实现；6.x 运行时不依赖 Burn）
+fsrs = "=6.6.2"
 # 高性能并发哈希表
 dashmap = "5.5.3"
 log = "0.4"
