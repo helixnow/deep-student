@@ -119,6 +119,7 @@ CREATE TABLE media_progress (
 | `media_library_list()` / `media_related_notes(resource_id)` | 子应用库页：列出音视频 File 资源（时长、转写状态、观看进度）；按来源媒体列讲义笔记 |
 | `media_study_ledger(resource_ids, include_card_ids?)` | 本课台账（批量）：闪卡（制卡任务 `source_ref.id`）数 / 到期 / 新卡，题目（`source_ref.resourceIds` 或解析出处）数 / 作答 / 正确率 / 错题 / 所在题目集 |
 | `media_checkpoints(resource_id)` | 课中检查点：解析里锚定到本课某一刻的题目，按时刻排序 |
+| `media_chapters(resource_id)` | 讲义章节：最新讲义笔记的 `##` 小节标题 + 起点（秒） |
 
 事件：沿用 `media-processing-progress` / `-completed` / `-error`，payload 带 `mediaType: 'audio'|'video'`、`stage`、`completedSegments`、`totalSegments`。
 
@@ -162,7 +163,9 @@ CREATE TABLE media_progress (
   不暂停，可切「到点暂停」），判分走 `qbank_submit_answer`，答错「回看这一段」，回看后再播到会再问。
 - **学习总览**：`learning_overview` 输出 `media.recentCourses`（看到哪、观看分钟、最近答错的检查点时刻，均带 `[媒体@…]`）。
 - **播放器**：触屏双击左 / 右侧 ±10 s、视频播放中屏幕常亮（Wake Lock）、倍速到 3×、字幕面板字号三档。
-- **未做 / 后续**：今日学习的「音视频」线（等 `learning-today` 的在途改动合并）、讲义小节 → 进度条章节与分章进度、
+- **讲义章节**：`media_chapters` 从最新讲义笔记解析 `##` 小节 + 其后第一个本课锚点；进度条画章节线，工具栏显示当前章节，
+  讲义分区列章节（看过的打勾、当前高亮，点击跳转）。
+- **未做 / 后续**：今日学习的「音视频」线（等 `learning-today` 的在途改动合并）、页内直接出题（题目集 + 草稿审核）、
   掌握度对无标签媒体题按「课名 · 章节」聚合、影院模式。
 
 ## 4. 平台

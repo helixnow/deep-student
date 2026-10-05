@@ -1659,5 +1659,8 @@
     "false": "错",
     "toolbar": "检查点 {{done}}/{{total}}",
     "toolbarTitle": "这节课有 {{total}} 道锚定到时刻的检查题，播到时会提示作答；点这里做下一道"
+  },
+  "mediaChapters": {
+    "current": "本章：{{title}}"
   }
 }

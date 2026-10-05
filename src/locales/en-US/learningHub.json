@@ -1659,5 +1659,8 @@
     "false": "False",
     "toolbar": "Checkpoints {{done}}/{{total}}",
     "toolbarTitle": "{{total}} questions are anchored to moments in this lecture and pop up as you watch. Click to do the next one"
+  },
+  "mediaChapters": {
+    "current": "Chapter: {{title}}"
   }
 }

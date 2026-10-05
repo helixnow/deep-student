@@ -74,6 +74,7 @@ import {
   type MediaCheckpoint,
 } from './mediaCheckpoints';
 import { CHECKPOINT_REWATCH_LEAD_SECONDS, MediaCheckpointCard } from './MediaCheckpointCard';
+import { chapterIndexAt, useMediaChapters } from './mediaChapters';
 import type { MediaScrubberMarker, MediaScrubberRange } from './MediaScrubber';
 import {
   MEDIA_STUDY_TRANSCRIPT_TAB,
@@ -208,6 +209,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     setActiveSegmentIdx((prev) => (prev === idx ? prev : idx));
   }, []);
 
+  // ---------------------------------------------------------------- 讲义章节（仅音视频学习页）
+  const chapters = useMediaChapters(resourceId, Boolean(companion));
+  const chaptersRef = useRef(chapters);
+  chaptersRef.current = chapters;
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
+  useEffect(() => {
+    setCurrentChapterIndex(chapterIndexAt(chapters, lastTimeRef.current));
+  }, [chapters]);
+
   // ---------------------------------------------------------------- 课中检查点（仅音视频学习页）
   const { checkpoints, recordResult: recordCheckpointResult } = useMediaCheckpoints(resourceId, Boolean(companion));
   const checkpointsRef = useRef(checkpoints);
@@ -233,6 +243,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       setIsReady((prev) => (prev === s.isReady ? prev : s.isReady));
       recomputeActive(s.currentTime);
       onProgressStatus(s);
+      if (chaptersRef.current.length > 0) {
+        const chapterIndex = chapterIndexAt(chaptersRef.current, s.currentTime);
+        setCurrentChapterIndex((prev) => (prev === chapterIndex ? prev : chapterIndex));
+      }
       if (s.isPlaying && checkpointsRef.current.length > 0) {
         // 答对过的不再打断；答错的回看后再播到会再问一次
         const open = checkpointsRef.current.filter((cp) => checkpointState(cp) !== 'correct');
@@ -491,11 +505,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     [],
   );
 
-  // 检查点：进度条按作答状态标点，答错的标出回看区间
+  // 进度条：讲义章节画竖线，检查点按作答状态标点，答错的标出回看区间
   const scrubberMarkers = useMemo<MediaScrubberMarker[]>(
-    () => checkpoints.map((cp) => ({ at: cp.seconds, kind: 'checkpoint', state: checkpointState(cp) })),
-    [checkpoints],
+    () => [
+      ...chapters.map((chapter): MediaScrubberMarker => ({ at: chapter.seconds, kind: 'chapter' })),
+      ...checkpoints.map((cp): MediaScrubberMarker => ({ at: cp.seconds, kind: 'checkpoint', state: checkpointState(cp) })),
+    ],
+    [chapters, checkpoints],
   );
+  const currentChapter = currentChapterIndex >= 0 ? chapters[currentChapterIndex] : null;
   const scrubberHighlights = useMemo<MediaScrubberRange[]>(
     () => checkpoints
       .filter((cp) => checkpointState(cp) === 'wrong')
@@ -535,10 +553,12 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       doneSegments,
       totalSegments: transcript?.progress?.totalSegments || segments.length,
       segments,
+      chapters,
+      currentChapterIndex,
       seekTo: seekToSeconds,
       getCurrentTime,
     }),
-    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments, seekToSeconds, getCurrentTime],
+    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments, chapters, currentChapterIndex, seekToSeconds, getCurrentTime],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -682,6 +702,16 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         )}
 
         <div className="flex-1" />
+
+        {companion && currentChapter && (
+          <span
+            className="hidden min-w-0 max-w-[16rem] truncate px-1 text-xs text-muted-foreground sm:inline"
+            title={currentChapter.title}
+            data-media-current-chapter=""
+          >
+            {t('learningHub:mediaChapters.current', { title: currentChapter.title })}
+          </span>
+        )}
 
         {companion && checkpoints.length > 0 && (
           <DsButton

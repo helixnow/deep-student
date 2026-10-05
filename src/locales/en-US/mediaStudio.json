@@ -153,5 +153,8 @@
     "questionsUntried": "Not tried yet",
     "practice": "Practice",
     "empty": "No cards or questions from this lecture yet. Use the buttons above to make some."
+  },
+  "chapters": {
+    "title": "Chapters {{current}}/{{total}}"
   }
 }

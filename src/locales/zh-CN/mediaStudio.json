@@ -153,5 +153,8 @@
     "questionsUntried": "还没做过",
     "practice": "去做题",
     "empty": "这节课还没有产出卡片或题目：用上面的按钮制卡、出题。"
+  },
+  "chapters": {
+    "title": "章节 {{current}}/{{total}}"
   }
 }

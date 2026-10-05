@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import {
   CardsThree,
   ChatCircleText,
+  Check,
   CircleNotch,
   ClockCounterClockwise,
   ListChecks,
@@ -30,7 +31,7 @@ import {
 } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import type { MediaStudyCompanionRenderContext } from '@/features/learning-hub/apps/views/media/mediaStudyCompanion';
 import type { TranscriptSegment } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
-import { buildMediaRefMarker } from '@/features/learning-hub/apps/views/media/mediaRefTime';
+import { buildMediaRefMarker, formatMediaRefTimestamp } from '@/features/learning-hub/apps/views/media/mediaRefTime';
 import { makeMediaCards } from '@/features/learning-hub/apps/views/media/mediaCards';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -163,6 +164,42 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
           <p className="text-xs text-muted-foreground">{t('learningHub:mediaHandout.needTranscript')}</p>
         ) : null}
       </div>
+
+      {ctx.chapters.length > 0 ? (
+        <div className={sectionClass} data-media-chapters="">
+          <h4 className={sectionTitleClass}>
+            {t('mediaStudio:chapters.title', { current: Math.max(0, ctx.currentChapterIndex + 1), total: ctx.chapters.length })}
+          </h4>
+          <ol className="flex flex-col gap-0.5">
+            {ctx.chapters.map((chapter, index) => {
+              const current = index === ctx.currentChapterIndex;
+              const passed = index < ctx.currentChapterIndex;
+              return (
+                <li key={`${chapter.seconds}-${index}`}>
+                  <DsButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => ctx.seekTo(chapter.seconds)}
+                    aria-current={current ? 'true' : undefined}
+                    className={cn(
+                      '!h-auto w-full !justify-start gap-2.5 !py-1.5 text-left',
+                      current && 'bg-primary/10',
+                    )}
+                  >
+                    <span className={cn('shrink-0 font-mono text-xs tabular-nums', current ? 'text-primary' : 'text-muted-foreground')}>
+                      {formatMediaRefTimestamp(chapter.seconds)}
+                    </span>
+                    <span className={cn('min-w-0 flex-1 whitespace-normal text-sm', passed ? 'text-muted-foreground' : 'text-foreground')}>
+                      {chapter.title}
+                    </span>
+                    {passed ? <Check size={13} className="shrink-0 text-muted-foreground" aria-hidden="true" /> : null}
+                  </DsButton>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      ) : null}
 
       <div className={sectionClass}>
         <h4 className={sectionTitleClass}>{t('mediaStudio:handout.listTitle')}</h4>
