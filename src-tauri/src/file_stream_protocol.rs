@@ -31,6 +31,10 @@ const DEFAULT_CORS_ORIGIN: &str = "tauri://localhost";
 /// 避免恶意或异常超大本地文件触发无界分配。
 const FILE_STREAM_MAX_RESPONSE_BYTES: u64 = 200 * 1024 * 1024;
 const FILE_STREAM_MAX_IN_FLIGHT_BYTES: u64 = 400 * 1024 * 1024;
+/// 音视频单次 Range 响应的分段大小。媒体元素的首个请求通常是 `bytes=0-`（要整个文件），
+/// 超过这个大小时只回一段并在 Content-Range 里写明，播放器按它继续请求后续区间；
+/// 这样任意大小的视频都能在应用内播放，内存占用也与文件大小无关。
+const FILE_STREAM_MEDIA_CHUNK_BYTES: u64 = 16 * 1024 * 1024;
 
 static FILE_STREAM_IN_FLIGHT_BYTES: AtomicU64 = AtomicU64::new(0);
 
@@ -78,6 +82,20 @@ fn checked_response_len(len: u64) -> Option<usize> {
         None
     } else {
         Some(len as usize)
+    }
+}
+
+fn is_streamed_media(content_type: &str) -> bool {
+    let content_type = content_type.trim().to_ascii_lowercase();
+    content_type.starts_with("video/") || content_type.starts_with("audio/")
+}
+
+/// 音视频的大 Range 截成一段；其它类型原样返回（PDF.js 等精确分块客户端不能被截断）
+fn clamp_media_range(content_type: &str, start: u64, end: u64) -> u64 {
+    if is_streamed_media(content_type) && end - start + 1 > FILE_STREAM_MEDIA_CHUNK_BYTES {
+        start + FILE_STREAM_MEDIA_CHUNK_BYTES - 1
+    } else {
+        end
     }
 }
 
@@ -513,8 +531,10 @@ pub fn handle_asset_protocol(
             let range_str = range_value.to_str()?;
 
             if let Some((start, end)) = parse_range_header(range_str, file_size) {
-                // end 已在 parse_range_header 中 clamp 到 file_size-1，
-                // 不做静默截断（与 pdfstream 审计结论一致，避免破坏客户端分块状态机）。
+                // end 已在 parse_range_header 中 clamp 到 file_size-1。
+                // 非媒体不做截断（与 pdfstream 审计结论一致，避免破坏客户端分块状态机）；
+                // 音视频按段返回，Content-Range 如实写出实际区间。
+                let end = clamp_media_range(&content_type, start, end);
                 let content_length = end - start + 1;
                 let Some(buffer_len) = checked_response_len(content_length) else {
                     warn!(
@@ -1134,43 +1154,94 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_oversized_get_and_open_range_are_rejected_without_reading_body() {
-        use std::fs::OpenOptions;
-
-        let temp_dir = tempfile::tempdir().expect("tempdir");
-        let media_path = temp_dir.path().join("oversized.mp4");
-        let file = OpenOptions::new()
+    fn sparse_file(dir: &Path, name: &str, len: u64) -> String {
+        let path = dir.join(name);
+        std::fs::OpenOptions::new()
             .create(true)
             .write(true)
-            .open(&media_path)
-            .expect("create sparse media");
-        file.set_len(FILE_STREAM_MAX_RESPONSE_BYTES + 1)
+            .open(&path)
+            .expect("create sparse file")
+            .set_len(len)
             .expect("set sparse length");
+        let text = path.to_string_lossy();
+        format!(
+            "filestream://localhost/{}",
+            urlencoding::encode(text.as_ref())
+        )
+    }
 
-        let media_path_text = media_path.to_string_lossy();
-        let encoded = urlencoding::encode(media_path_text.as_ref());
-        let uri = format!("filestream://localhost/{}", encoded);
+    fn make_range_request(uri: &str, range: &str) -> tauri::http::Request<Vec<u8>> {
+        tauri::http::Request::builder()
+            .method(tauri::http::Method::GET)
+            .uri(uri)
+            .header("Range", range)
+            .body(Vec::new())
+            .expect("Range request")
+    }
+
+    #[test]
+    fn test_oversized_get_is_rejected_and_media_ranges_are_served_in_chunks() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let size = 2 * 1024 * 1024 * 1024u64;
+        let uri = sparse_file(temp_dir.path(), "lecture-2g.mp4", size);
         let allowed_dirs = vec![temp_dir.path().canonicalize().expect("canonical tempdir")];
         let blob_dirs: Vec<PathBuf> = Vec::new();
 
-        let get = make_get_request(&uri);
-        let response =
-            handle_asset_protocol(&get, &allowed_dirs, &blob_dirs).expect("GET response");
+        let response = handle_asset_protocol(&make_get_request(&uri), &allowed_dirs, &blob_dirs)
+            .expect("GET response");
         assert_eq!(
             response.status(),
             tauri::http::StatusCode::PAYLOAD_TOO_LARGE
         );
         assert!(response.body().is_empty());
 
-        let range = tauri::http::Request::builder()
-            .method(tauri::http::Method::GET)
-            .uri(&uri)
-            .header("Range", "bytes=0-")
-            .body(Vec::new())
-            .expect("Range request");
-        let response =
-            handle_asset_protocol(&range, &allowed_dirs, &blob_dirs).expect("Range response");
+        // 媒体元素的首个 `bytes=0-` → 只回第一段，Content-Range 写明总长
+        let response = handle_asset_protocol(
+            &make_range_request(&uri, "bytes=0-"),
+            &allowed_dirs,
+            &blob_dirs,
+        )
+        .expect("Range response");
+        assert_eq!(response.status(), tauri::http::StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get("Content-Range").unwrap(),
+            &format!("bytes 0-{}/{}", FILE_STREAM_MEDIA_CHUNK_BYTES - 1, size)
+        );
+        assert_eq!(response.body().len() as u64, FILE_STREAM_MEDIA_CHUNK_BYTES);
+
+        // 拖动到末尾附近：剩余不足一段时按文件末尾收口
+        let tail_start = size - 1024;
+        let response = handle_asset_protocol(
+            &make_range_request(&uri, &format!("bytes={}-", tail_start)),
+            &allowed_dirs,
+            &blob_dirs,
+        )
+        .expect("tail Range response");
+        assert_eq!(response.status(), tauri::http::StatusCode::PARTIAL_CONTENT);
+        assert_eq!(
+            response.headers().get("Content-Range").unwrap(),
+            &format!("bytes {}-{}/{}", tail_start, size - 1, size)
+        );
+        assert_eq!(response.body().len(), 1024);
+    }
+
+    #[test]
+    fn test_oversized_non_media_range_is_still_rejected_without_truncation() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let uri = sparse_file(
+            temp_dir.path(),
+            "oversized.pdf",
+            FILE_STREAM_MAX_RESPONSE_BYTES + 1,
+        );
+        let allowed_dirs = vec![temp_dir.path().canonicalize().expect("canonical tempdir")];
+        let blob_dirs: Vec<PathBuf> = Vec::new();
+
+        let response = handle_asset_protocol(
+            &make_range_request(&uri, "bytes=0-"),
+            &allowed_dirs,
+            &blob_dirs,
+        )
+        .expect("Range response");
         assert_eq!(
             response.status(),
             tauri::http::StatusCode::RANGE_NOT_SATISFIABLE
