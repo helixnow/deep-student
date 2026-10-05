@@ -72,19 +72,9 @@ export async function handleTodoActivation(ctx: ActivationContext): Promise<Acti
     case 'focusItem': {
       const itemId = payloadString(ctx.payload, 'itemId');
       if (!itemId) return invalid('focusItem 需要 payload.itemId');
-      let item = useTodoStore.getState().items.find((candidate) => candidate.id === itemId);
-      if (!item) {
-        const { getTodoItem } = await import('@/features/todo/api');
-        item = await getTodoItem(itemId) ?? undefined;
-      }
-      if (!item) return invalid('focusItem 指向的待办不存在');
       await closeTrashViewBestEffort();
-      const current = useTodoStore.getState();
-      current.setWorkspaceView('todos');
-      if (current.filter.view !== 'all') current.setViewFilter('all');
-      if (current.activeListId !== item.todoListId) current.setActiveList(item.todoListId);
-      await useTodoStore.getState().loadItems(item.todoListId, false);
-      useTodoStore.getState().selectItem(itemId);
+      // store.focusItem 负责取不在当前视图的待办、切清单，并扛住刚挂载窗口的 initialize 重置
+      if (await store.focusItem(itemId) === 'missing') return invalid('focusItem 指向的待办不存在');
       agentFlash('todo', itemId);
       const after = useTodoStore.getState();
       return ackIf(after.selectedItemId === itemId && after.workspaceView === 'todos');

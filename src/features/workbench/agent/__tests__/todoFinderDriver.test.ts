@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock 工厂提升：fn 必须经 vi.hoisted 创建
-const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
+const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, focusItem, requestQuickAdd, initialize, enterFolder, navigateTo, setSelectedIds, agentFlash, todoState, finderState } = vi.hoisted(() => {
   const todoState = {
     activeListId: null as string | null,
     selectedItemId: null as string | null,
@@ -31,6 +31,11 @@ const { setActiveList, selectItem, setViewFilter, setWorkspaceView, loadItems, r
   setViewFilter: vi.fn((view: string) => { todoState.filter.view = view; }),
   setWorkspaceView: vi.fn((view: 'todos' | 'automations') => { todoState.workspaceView = view; }),
   loadItems: vi.fn(async () => undefined),
+  focusItem: vi.fn(async (id: string): Promise<'focused' | 'missing' | 'deferred'> => {
+    todoState.workspaceView = 'todos';
+    todoState.selectedItemId = id;
+    return 'focused';
+  }),
   requestQuickAdd: vi.fn((dueDate?: string) => {
     todoState.quickAddPreset = { dueDate, requestId: 'qa-1' };
   }),
@@ -50,6 +55,7 @@ vi.mock('@/features/todo/stores/useTodoStore', () => ({
       setViewFilter,
       setWorkspaceView,
       loadItems,
+      focusItem,
       requestQuickAdd,
       initialize,
       reloadCurrentView: vi.fn(async () => undefined),
@@ -167,9 +173,20 @@ describe('todo / files onActivation', () => {
       payload: { itemId: 'item-9' },
     });
     expect(result).toEqual({ handled: true, acknowledged: true });
-    expect(setWorkspaceView).toHaveBeenCalledWith('todos');
-    expect(selectItem).toHaveBeenCalledWith('item-9');
+    expect(focusItem).toHaveBeenCalledWith('item-9');
     expect(agentFlash).toHaveBeenCalledWith('todo', 'item-9');
+  });
+
+  it('todo focusItem 指向不存在的待办 → INVALID_ARGS，不闪烁', async () => {
+    focusItem.mockResolvedValueOnce('missing');
+    const result = await handleTodoActivation({
+      windowId: 'w1',
+      instanceKey: null,
+      action: 'focusItem',
+      payload: { itemId: 'gone' },
+    });
+    expect(result).toMatchObject({ handled: false, code: 'INVALID_ARGS' });
+    expect(agentFlash).not.toHaveBeenCalledWith('todo', 'gone');
   });
 
   it('todo quickAdd → 打开默认清单并预填日期', async () => {

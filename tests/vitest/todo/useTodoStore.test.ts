@@ -209,4 +209,65 @@ describe('useTodoStore', () => {
     expect(api.reorderTodoLists).toHaveBeenCalledWith(['l3', 'l1', 'l2']);
     expect(useTodoStore.getState().lists.map((l) => l.id)).toEqual(['l3', 'l1', 'l2']);
   });
+
+  describe('focusItem', () => {
+    const inbox = makeList({ id: 'list-inbox', isDefault: true });
+    const listB = makeList({ id: 'list-b' });
+    const target = makeItem({ id: 'ti_target', todoListId: 'list-b', title: '交线代作业' });
+
+    beforeEach(() => {
+      vi.mocked(api.listTodayItems).mockResolvedValue([]);
+      vi.mocked(api.searchTodoItems).mockResolvedValue([]);
+      vi.mocked(api.ensureInbox).mockResolvedValue(inbox);
+      vi.mocked(api.listTodoLists).mockResolvedValue([inbox, listB]);
+      vi.mocked(api.getTodoItem).mockImplementation(async (id) => (id === target.id ? target : null));
+      vi.mocked(api.listTodoItems).mockImplementation(async (listId) => (
+        listId === 'list-b' ? [target] : [makeItem({ id: 'ti_inbox', todoListId: 'list-inbox' })]
+      ));
+    });
+
+    it('switches to the list of a todo outside the current view and selects it', async () => {
+      useTodoStore.setState({
+        filter: { view: 'today', search: '作业', priorityFilter: null, showCompleted: false },
+        items: [makeItem({ id: 'ti_today', todoListId: 'list-inbox' })],
+      });
+
+      await expect(useTodoStore.getState().focusItem('ti_target')).resolves.toBe('focused');
+
+      const state = useTodoStore.getState();
+      expect(state.filter.view).toBe('all');
+      expect(state.filter.search).toBe('');
+      expect(state.activeListId).toBe('list-b');
+      expect(state.selectedItemId).toBe('ti_target');
+    });
+
+    it('reports a deleted todo as missing', async () => {
+      await expect(useTodoStore.getState().focusItem('ti_gone')).resolves.toBe('missing');
+      expect(useTodoStore.getState().selectedItemId).toBeNull();
+    });
+
+    it('survives the todo page mounting right after the focus request', async () => {
+      const focusing = useTodoStore.getState().focusItem('ti_target');
+      // 待办页 / 窗口这时才挂载：initialize 不能把清单重置回收件箱
+      await Promise.all([focusing, useTodoStore.getState().initialize()]);
+
+      const state = useTodoStore.getState();
+      expect(state.activeListId).toBe('list-b');
+      expect(state.selectedItemId).toBe('ti_target');
+    });
+
+    it('lets a later initialize open the inbox again once the focus request is stale', async () => {
+      await useTodoStore.getState().focusItem('ti_target');
+      const now = Date.now();
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
+      try {
+        await useTodoStore.getState().initialize();
+      } finally {
+        clock.mockRestore();
+      }
+
+      expect(useTodoStore.getState().activeListId).toBe('list-inbox');
+      expect(useTodoStore.getState().selectedItemId).toBeNull();
+    });
+  });
 });

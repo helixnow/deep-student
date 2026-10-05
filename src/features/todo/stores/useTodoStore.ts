@@ -34,6 +34,13 @@ const TRASH_PAGE_SIZE = 100;
 // 每次应用启动只发一次逾期系统通知（模块级，store 为单例）
 let overdueNotifiedThisLaunch = false;
 
+/**
+ * 刚请求聚焦的待办：待办页 / 窗口此时才挂载的话，initialize() 会把清单重置到收件箱、
+ * 清掉选中；窗口期内的 initialize 改为重新聚焦这一条。
+ */
+let pendingFocus: { itemId: string; at: number } | null = null;
+const FOCUS_SURVIVES_INIT_MS = 10_000;
+
 // ★ 8.1 统一通知策略：经全局三档管线发送（仅后台/总是/从不）
 // 逾期汇总属于用户主动关心的提醒，force 绕过 background 前台拦截
 async function sendSystemNotification(title: string, body: string): Promise<void> {
@@ -263,6 +270,12 @@ interface TodoState {
   moveItemToList: (itemId: string, targetListId: string) => Promise<void>;
   reorderLists: (listIds: string[]) => Promise<void>;
   selectItem: (itemId: string | null) => void;
+  /**
+   * 打开并选中某条待办（通知直达、桌面议程、agent focusItem 共用）：
+   * 不在当前视图时切到它所在清单的 all 视图再选中。
+   * 'deferred' = 这次加载被别的加载顶掉（如页面刚挂载的 initialize，它会接着聚焦）。
+   */
+  focusItem: (itemId: string) => Promise<'focused' | 'missing' | 'deferred'>;
   requestQuickAdd: (dueDate?: string) => void;
   clearQuickAddPreset: (requestId: number) => void;
 
@@ -1040,6 +1053,24 @@ export const useTodoStore = create<TodoState>((set, get) => {
 
   selectItem: (itemId) => set({ selectedItemId: itemId }),
 
+  focusItem: async (itemId) => {
+    pendingFocus = { itemId, at: Date.now() };
+    const item = get().items.find((candidate) => candidate.id === itemId)
+      ?? await api.getTodoItem(itemId).catch(() => null);
+    if (!item) {
+      pendingFocus = null;
+      return 'missing';
+    }
+    get().setWorkspaceView('todos');
+    if (get().filter.search) get().setSearch('');
+    if (get().filter.view !== 'all') get().setViewFilter('all');
+    if (get().activeListId !== item.todoListId) get().setActiveList(item.todoListId);
+    await get().loadItems(item.todoListId, item.status === 'completed');
+    if (!get().items.some((candidate) => candidate.id === itemId)) return 'deferred';
+    get().selectItem(itemId);
+    return 'focused';
+  },
+
   requestQuickAdd: (dueDate) => set((state) => ({
     quickAddPreset: {
       dueDate,
@@ -1691,7 +1722,14 @@ export const useTodoStore = create<TodoState>((set, get) => {
       await api.ensureInbox(i18n.t('todo:views.inbox'));
       await get().loadLists();
       const lists = get().lists;
-      if (lists.length > 0) {
+      const focus = pendingFocus && Date.now() - pendingFocus.at <= FOCUS_SURVIVES_INIT_MS
+        ? pendingFocus.itemId
+        : null;
+      pendingFocus = null;
+      if (focus) {
+        await get().focusItem(focus);
+        pendingFocus = null;
+      } else if (lists.length > 0) {
         const defaultList = lists.find((l) => l.isDefault) || lists[0];
         get().setActiveList(defaultList.id);
       }

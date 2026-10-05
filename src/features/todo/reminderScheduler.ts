@@ -116,8 +116,18 @@ function saveFired(fired: Map<string, number>): void {
 
 let stopNotificationRouting: (() => void) | null = null;
 
-/** 学习到期汇总带 `review:cards|mistakes|notes`：点通知直接进对应复习 */
+const TODO_TARGET_PREFIX = 'todo:';
+
+/**
+ * 点通知直达：到点提醒带 `todo:<id>` → 打开并选中那条待办；
+ * 学习到期汇总带 `review:cards|mistakes|notes` → 直接进对应复习
+ */
 function openNotificationTarget(target: string): void {
+  if (target.startsWith(TODO_TARGET_PREFIX)) {
+    const itemId = target.slice(TODO_TARGET_PREFIX.length);
+    if (itemId) void import('./openTodoItem').then(({ openTodoItem }) => openTodoItem(itemId));
+    return;
+  }
   const review = target.startsWith('review:') ? target.slice('review:'.length) : '';
   if (review !== 'cards' && review !== 'mistakes' && review !== 'notes') return;
   void import('@/features/learning-today/openTodayReview')
@@ -126,9 +136,9 @@ function openNotificationTarget(target: string): void {
 
 // ★ 8.1 统一通知策略：到点提醒是用户主动设置的，force 绕过 background 前台拦截。
 // 返回是否实际发出（策略拦截/权限缺失/非 Tauri 环境返回 false）
-async function sendSystemNotification(title: string, body: string): Promise<boolean> {
+async function sendSystemNotification(title: string, body: string, target?: string): Promise<boolean> {
   const { sendSystemNotification: send } = await import('@/utils/systemNotification');
-  return await send(title, body, { force: true });
+  return await send(title, body, target ? { force: true, target } : { force: true });
 }
 
 function reminderBody(item: TodoItem): string {
@@ -150,11 +160,12 @@ function digestBody(items: TodoItem[], moreKey: string): string {
     : titles;
 }
 
-/** 错过提醒聚合补发：启动/唤醒后一次性通知，避免逐条轰炸 */
+/** 错过提醒聚合补发：启动/唤醒后一次性通知，避免逐条轰炸；只错过一条时点开直达它 */
 async function sendMissedDigest(missed: TodoItem[]): Promise<boolean> {
   return await sendSystemNotification(
     i18n.t('todo:reminder.missedTitle', { count: missed.length }),
     digestBody(missed, 'todo:reminder.missedBodyMore'),
+    missed.length === 1 ? `${TODO_TARGET_PREFIX}${missed[0].id}` : undefined,
   );
 }
 
@@ -373,6 +384,7 @@ async function checkReminders(): Promise<void> {
         sentOk = await sendSystemNotification(
           i18n.t('todo:reminder.notificationTitle', { title: item.title }),
           reminderBody(item),
+          `${TODO_TARGET_PREFIX}${item.id}`,
         );
       } catch {
         sentOk = false;
