@@ -26,7 +26,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
-import { MediaScrubber } from './MediaScrubber';
+import { MediaScrubber, type MediaScrubberMarker, type MediaScrubberRange } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
@@ -47,6 +47,9 @@ export interface AudioPlayerProps {
   onStatusChange?: (status: MediaPlayerStatus) => void;
   /** 紧凑布局（与字幕面板同屏时缩小封面与留白） */
   compact?: boolean;
+  /** 进度条上的时间标记（检查点 / 章节）与需回看区间 */
+  scrubberMarkers?: readonly MediaScrubberMarker[];
+  scrubberHighlights?: readonly MediaScrubberRange[];
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -59,6 +62,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   handleRef,
   onStatusChange,
   compact = false,
+  scrubberMarkers,
+  scrubberHighlights,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const {
@@ -191,6 +196,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
               disabled={!isReady}
               ariaLabel={t('learningHub:mediaPreview.progress')}
               onSeek={seekTo}
+              markers={scrubberMarkers}
+              highlightRanges={scrubberHighlights}
             />
             <div className="flex justify-between text-xs tabular-nums text-muted-foreground">
               <span>{formatMediaTime(currentTime)}</span>
