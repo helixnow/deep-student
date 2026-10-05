@@ -2167,3 +2167,52 @@
   .textLayer span.ds-pdf-quote-flash,
   .react-pdf__Page__textContent span.ds-pdf-quote-flash { animation: none; }
 }
+
+/* 框选提问：盖在页面视口上方的覆盖层（只在框选模式挂载，位置由组件按视口测量） */
+.ds-pdf__capture-layer {
+  position: absolute;
+  z-index: 140;
+  cursor: crosshair;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  background: hsl(var(--foreground) / 0.04);
+}
+
+.ds-pdf__capture-layer[data-busy='true'] {
+  cursor: progress;
+}
+
+.ds-pdf__capture-hint {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 24px);
+  padding: 4px 4px 4px 12px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  box-shadow: 0 4px 16px hsl(var(--ring) / 0.12);
+  font-size: 12px;
+  cursor: default;
+}
+
+.ds-pdf__capture-hint > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ds-pdf__capture-rect {
+  position: absolute;
+  border: 1.5px solid hsl(var(--primary));
+  border-radius: 2px;
+  background: hsl(var(--primary) / 0.12);
+  pointer-events: none;
+}

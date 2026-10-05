@@ -129,6 +129,31 @@ function openChatSession(sessionId: string): void {
   window.setTimeout(fire, 1200);
 }
 
+/**
+ * 「已引用到对话」提示。从学习资源等页面引用时，引用进的是当前会话或隐藏草稿——
+ * 提示里给「去对话」直达那一个会话；否则用户从侧栏点进别的会话找不到这条引用，
+ * 它过后又冒在不相干的新会话里。
+ */
+export function notifyAddedToChat(sessionId: string, description: string): void {
+  // 学习桌面：视图恒为 chat-v2，按「对话窗口是否在最前」判断（PDF 等窗口里引用时要给「去对话」）
+  const notInChat = workbenchBus.isEnabled()
+    ? !isChatWindowFocused()
+    : useViewStore.getState().currentView !== 'chat-v2';
+  showGlobalNotification(
+    'success',
+    t('selectionRef.added', { defaultValue: '已引用到对话' }, 'chatV2'),
+    description,
+    notInChat
+      ? {
+          action: {
+            label: t('selectionRef.goToChat', { defaultValue: '去对话' }, 'chatV2'),
+            onClick: () => openChatSession(sessionId),
+          },
+        }
+      : undefined,
+  );
+}
+
 // ============================================================================
 // 主入口
 // ============================================================================
@@ -185,26 +210,7 @@ export async function selectionToChat(
     };
 
     store.getState().addContextRef(contextRef);
-
-    // 从学习资源等页面引用时，引用进的是当前会话或隐藏草稿——提示里给「去对话」直达那一个会话；
-    // 否则用户从侧栏点进别的会话找不到这条引用，它过后又冒在不相干的新会话里
-    // 学习桌面：视图恒为 chat-v2，按「对话窗口是否在最前」判断（PDF 等窗口里引用时要给「去对话」）
-    const notInChat = workbenchBus.isEnabled()
-      ? !isChatWindowFocused()
-      : useViewStore.getState().currentView !== 'chat-v2';
-    showGlobalNotification(
-      'success',
-      t('selectionRef.added', { defaultValue: '已引用到对话' }, 'chatV2'),
-      buildSelectionDisplayName(source),
-      notInChat
-        ? {
-            action: {
-              label: t('selectionRef.goToChat', { defaultValue: '去对话' }, 'chatV2'),
-              onClick: () => openChatSession(activeSessionId),
-            },
-          }
-        : undefined,
-    );
+    notifyAddedToChat(activeSessionId, buildSelectionDisplayName(source));
 
     console.log(LOG_PREFIX, 'selection added:', { kind: source.kind, locator: source.locator });
     return { success: true, contextRef };

@@ -30,6 +30,7 @@ import { buildFileAccept } from '@/utils/fileAccept';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
 import { FILE_TYPE_ID } from '../../context/definitions/file';
+import { useChatInputInbox } from '../../context/chatInputInbox';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates } from '../../core/types/common';
@@ -919,6 +920,9 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       if (prepared.length) processPreparedFilesToAttachments(prepared);
     });
   }, [processPreparedFilesToAttachments, isUploadScopeCurrent, t]);
+
+  // 别的页面交给本会话的文件（PDF 框选截图等）：与粘贴同一条附件流程
+  useChatInputInbox(sessionId, isReady, processFilesToAttachments);
 
   // ========== 相机拍照处理 ==========
   // R3 能力三分离：拍照入口按「平台/捕获能力」判定（Android/iOS，或

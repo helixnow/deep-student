@@ -103,7 +103,18 @@
     "outline_nav_failed": "Couldn't jump to this section",
     "highlight_rotation_disabled": "Text highlighting is unavailable while the view is rotated. Restore the original orientation and try again",
     "pageJumpInvalid": "Enter a valid page number",
-    "pageJumpOutOfRange": "Page out of range (1–{{max}})"
+    "pageJumpOutOfRange": "Page out of range (1–{{max}})",
+    "capture_ask": "Ask about a region"
+  },
+  "capture": {
+    "hint": "Drag to frame what you want to ask about (formulas and figures work too)",
+    "hint_touch": "Drag with your finger to frame what you want to ask about",
+    "working": "Capturing…",
+    "not_rendered": "This page hasn't finished rendering yet. Try again in a moment.",
+    "failed": "Couldn't capture that area. Try another spot.",
+    "file_name": "{{name}}-p{{page}}-capture",
+    "source": "{{name}}, page {{page}} (capture)",
+    "untitled": "PDF"
   },
   "bookmark": {
     "addBookmark": "Add Bookmark",

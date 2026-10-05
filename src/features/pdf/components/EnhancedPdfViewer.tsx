@@ -55,7 +55,8 @@ import {
   ArrowCounterClockwise,
   LockSimple,
   BookOpenText,
-  Copy
+  Copy,
+  Crop
 } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
@@ -82,6 +83,9 @@ pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wra
 // 学习动作（做笔记/翻译/出题/制卡/引用到对话）统一由它承载，
 // viewer 内建的 ds-highlight-menu 只保留高亮选色 + 复制，不再重复这些入口。
 const PdfSelectionActions = React.lazy(() => import('./PdfSelectionActions'));
+
+// 框选提问覆盖层：点了「框选提问」才加载
+const PdfRegionCapture = React.lazy(() => import('./PdfRegionCapture'));
 
 // 侧栏批注面板（筛选/导出为笔记/回链）同样懒加载：它静态依赖 shared/notes
 // 的目录选择流程（FolderPickerDialog），不能随 PDF 主 chunk 打包。
@@ -558,6 +562,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
   // 工具栏响应式：宽度不足时收折次要按钮到"更多"菜单
   const [isToolbarCompact, setIsToolbarCompact] = useState<boolean>(false);
   const [showMoreMenu, setShowMoreMenu] = useState<boolean>(false);
+  const [regionCaptureActive, setRegionCaptureActive] = useState<boolean>(false);
   const toolbarRef = useRef<HTMLDivElement>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
@@ -670,6 +675,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
     setSearchRangesByPage(new Map());
     setPasswordState('none');
     passwordCallbackRef.current = null;
+    setRegionCaptureActive(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在文档源变化时重置
   }, [fileSourceKey]);
 
@@ -3336,6 +3342,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         />
       </React.Suspense>
 
+      {regionCaptureActive && numPages > 0 && (
+        <React.Suspense fallback={null}>
+          <PdfRegionCapture
+            containerRef={containerRef}
+            viewportRef={pageContainerRef}
+            documentTitle={fileName}
+            isTouch={isCoarsePointer}
+            onExit={() => setRegionCaptureActive(false)}
+          />
+        </React.Suspense>
+      )}
+
       {/* 划词菜单：桌面为选区上方浮动菜单（钳位到视口内，贴顶时翻到选区下方）；
           移动端改为 viewer 内底部内联色板条
           （absolute bottom，非 fixed body 层，避让底栏与 safe-area）。
@@ -3927,6 +3945,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
               </DsButton>
             )}
 
+            <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${regionCaptureActive ? 'active' : ''}`} onClick={() => setRegionCaptureActive(prev => !prev)} disabled={numPages === 0} title={t('pdf:toolbar.capture_ask')} aria-label={t('pdf:toolbar.capture_ask')} aria-pressed={regionCaptureActive}>
+              <Crop size={16} />
+            </DsButton>
+
             {/* 批注列表（并入侧栏批注 tab） */}
             {highlights.length > 0 && (
               <DsButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'highlights' ? 'active' : ''}`} onClick={() => toggleSidebar('highlights')} title={t('pdf:toolbar.show_highlights')} aria-label={t('pdf:toolbar.show_highlights')}>
@@ -4112,6 +4134,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                     <span>{t('pdf:toolbar.highlight')}</span>
                   </DsButton>
                 )}
+                <DsButton variant="ghost" size="sm" className={`ds-more-item ${regionCaptureActive ? 'active' : ''}`} disabled={numPages === 0} onClick={() => { setRegionCaptureActive(prev => !prev); setShowMoreMenu(false); }}>
+                  <Crop size={14} />
+                  <span>{t('pdf:toolbar.capture_ask')}</span>
+                </DsButton>
                 {highlights.length > 0 && (
                   <DsButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'highlights' ? 'active' : ''}`} onClick={() => { toggleSidebar('highlights'); setShowMoreMenu(false); }}>
                     <Highlighter size={14} weight="fill" />
