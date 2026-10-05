@@ -18,7 +18,10 @@ use serde::Serialize;
 use tauri::State;
 
 use super::commands::derive_status;
-use super::{media_kind, MediaError, MediaKind, AUDIO_EXTENSIONS, VIDEO_EXTENSIONS};
+use super::{
+    is_link_item, media_kind, MediaError, MediaKind, AUDIO_EXTENSIONS, BILIBILI_LINK_EXTENSION,
+    VIDEO_EXTENSIONS,
+};
 use crate::dstu::handler_utils::node_converters::{
     parse_timestamp, sanitize_textbook_display_name,
 };
@@ -65,6 +68,8 @@ pub struct MediaLibraryItem {
     pub mime_type: String,
     /// audio | video
     pub kind: String,
+    /// B 站链接条目（没有本地音视频，播放走内嵌播放器）
+    pub is_link: bool,
     /// Unix 毫秒
     pub created_at: i64,
     /// Unix 毫秒
@@ -106,7 +111,11 @@ fn media_candidate_clause() -> String {
         "lower(COALESCE(f.mime_type, '')) LIKE 'audio/%'".to_string(),
         "lower(COALESCE(f.mime_type, '')) LIKE 'video/%'".to_string(),
     ];
-    for ext in AUDIO_EXTENSIONS.iter().chain(VIDEO_EXTENSIONS.iter()) {
+    for ext in AUDIO_EXTENSIONS
+        .iter()
+        .chain(VIDEO_EXTENSIONS.iter())
+        .chain(std::iter::once(&BILIBILI_LINK_EXTENSION))
+    {
         parts.push(format!("lower(f.file_name) LIKE '%.{}'", ext));
     }
     format!("({})", parts.join(" OR "))
@@ -306,6 +315,7 @@ pub fn list_media_library_with_conn(
                     .unwrap_or(0);
             Some(MediaLibraryItem {
                 name: sanitize_textbook_display_name(&row.file_name, &row.created_at),
+                is_link: is_link_item(&row.mime_type, &row.file_name),
                 id: row.id,
                 resource_id: row.resource_id,
                 folder_id,

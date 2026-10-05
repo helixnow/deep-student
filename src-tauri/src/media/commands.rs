@@ -21,7 +21,7 @@ use tauri::{State, Window};
 use tokio_util::sync::CancellationToken;
 
 use super::pipeline::{
-    load_media_file, resolve_media_source, write_transcript_text, MediaFileInfo,
+    link_only_error, load_media_file, resolve_media_source, write_transcript_text, MediaFileInfo,
 };
 use super::subtitle::{export_segments, parse_subtitle, ExportFormat, MAX_SUBTITLE_BYTES};
 use super::MediaError;
@@ -244,7 +244,7 @@ fn vfs(state: &State<'_, Arc<VfsDatabase>>) -> Arc<VfsDatabase> {
     Arc::clone(state.inner())
 }
 
-async fn load(vfs_db: &Arc<VfsDatabase>, id: &str) -> Result<MediaFileInfo, MediaError> {
+pub(crate) async fn load(vfs_db: &Arc<VfsDatabase>, id: &str) -> Result<MediaFileInfo, MediaError> {
     let db = Arc::clone(vfs_db);
     let id = id.to_string();
     tokio::task::spawn_blocking(move || load_media_file(&db, &id))
@@ -265,6 +265,9 @@ pub fn estimate_impl(
                 .and_then(|p| p.duration_ms);
             return Ok((duration, Some(counts.total), true));
         }
+    }
+    if info.is_link_item() {
+        return Err(link_only_error());
     }
     let source = resolve_media_source(vfs_db, &info.file_id)?;
     let ext = info.extension();
@@ -337,6 +340,9 @@ pub async fn media_transcribe_start(
         return Ok(status_view(current));
     }
     if current.progress.source.as_deref() != Some("import") {
+        if info.is_link_item() {
+            return Err(err(link_only_error()));
+        }
         if let Err(error) =
             crate::voice_input::resolve_asr_endpoint(&state.llm_manager, &state.database).await
         {
@@ -427,28 +433,39 @@ pub async fn media_transcript_import(
         crate::unified_file_manager::read_all_bytes_bounded(&window, &path, MAX_SUBTITLE_BYTES)
             .map_err(|e| err(MediaError::Io(e.message)))?;
     let file_name = crate::unified_file_manager::extract_file_name(&path);
+    import_subtitle_bytes(&db, &service, &info, file_name, bytes)
+        .await
+        .map_err(err)
+}
 
+/// 字幕字节 → 替换为导入段 → 刷新检索 → 交给媒体任务承载方完成索引（文件导入与 B 站字幕共用）
+pub(crate) async fn import_subtitle_bytes(
+    db: &Arc<VfsDatabase>,
+    service: &Arc<PdfProcessingService>,
+    info: &MediaFileInfo,
+    file_name: String,
+    bytes: Vec<u8>,
+) -> Result<TranscriptView, MediaError> {
     // 正在 ASR：先停（字幕导入替换整份计划）
     if service.is_running(&info.file_id) {
         service
             .cancel_media(&info.file_id)
-            .map_err(|e| err(MediaError::Database(e.to_string())))?;
+            .map_err(|e| MediaError::Database(e.to_string()))?;
     }
     let count = {
-        let db = Arc::clone(&db);
+        let db = Arc::clone(db);
         let info = info.clone();
         tokio::task::spawn_blocking(move || import_subtitle_impl(&db, &info, &file_name, &bytes))
             .await
-            .map_err(|e| err(MediaError::Io(e.to_string())))?
-            .map_err(err)?
+            .map_err(|e| MediaError::Io(e.to_string()))??
     };
-    super::pipeline::refresh_index(&db, &info.file_id);
+    super::pipeline::refresh_index(db, &info.file_id);
     log::info!(
         "[media::commands] imported {} subtitle cues for {}",
         count,
         info.file_id
     );
-    // 走媒体任务承载方完成索引（导入计划不跑 ASR、不占全局转写槽位）
+    // 导入计划不跑 ASR、不占全局转写槽位，只完成索引
     if let Err(e) = service.start_pipeline(&info.file_id, None).await {
         log::warn!(
             "[media::commands] failed to schedule indexing for {}: {}",
@@ -457,7 +474,7 @@ pub async fn media_transcript_import(
         );
     }
     let running = service.is_running(&info.file_id);
-    build_view(&db, &info, running, true).map_err(err)
+    build_view(db, info, running, true)
 }
 
 /// 生成导出内容（无已完成段时报错）

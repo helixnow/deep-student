@@ -97,6 +97,17 @@ impl MediaFileInfo {
             .and_then(|e| e.to_str())
             .map(|e| e.to_ascii_lowercase())
     }
+
+    /// B 站链接条目：内容是描述 JSON，没有本地音视频
+    pub fn is_link_item(&self) -> bool {
+        super::is_link_item(&self.mime_type, &self.file_name)
+    }
+}
+
+pub(crate) fn link_only_error() -> MediaError {
+    MediaError::LinkOnly(
+        "B 站链接条目没有本地音视频，不能语音转写；字幕来自 B 站，可在「⋯」菜单里重新获取".into(),
+    )
 }
 
 /// 解析 `files.id`（也接受 `res_*` 资源 ID）
@@ -387,6 +398,9 @@ pub async fn transcribe_resource(
                 });
             }
         }
+    }
+    if info.is_link_item() {
+        return Err(link_only_error());
     }
 
     let _guard = tokio::select! {

@@ -11,8 +11,10 @@
 //! - [`transcript`]：`[mm:ss] 文本` 行格式（extracted_text 与 resource_read 共用）
 //! - [`commands`]：Tauri 命令（`media_transcribe_*` / `media_transcript_*` / `media_progress_*`）
 //! - [`library`]：「音视频」子应用的资源库视图（`media_library_list` / `media_related_notes`）
+//! - [`bilibili`]：B 站链接 → 字幕（新建链接条目 / 给已有媒体挂字幕，`media_bilibili_*`）
 
 pub mod asr;
+pub mod bilibili;
 pub mod commands;
 pub mod decoder;
 pub mod library;
@@ -53,6 +55,12 @@ pub enum MediaError {
     /// ASR 不可用 / 未配置 / 鉴权失败（整任务终止）
     #[error("{message}")]
     AsrFatal { code: String, message: String },
+    /// 链接条目没有本地音视频，不能解码 / 转写
+    #[error("{0}")]
+    LinkOnly(String),
+    /// B 站接口：链接无效 / 不支持 / 视频不可用 / 无字幕 / 请求失败（code 以 `bilibili-` 开头）
+    #[error("{message}")]
+    Bilibili { code: String, message: String },
 }
 
 impl MediaError {
@@ -67,6 +75,8 @@ impl MediaError {
             MediaError::NotFound(_) => "not-found",
             MediaError::InvalidInput(_) => "invalid-input",
             MediaError::AsrFatal { code, .. } => code.as_str(),
+            MediaError::LinkOnly(_) => "media-link-only",
+            MediaError::Bilibili { code, .. } => code.as_str(),
         }
     }
 
@@ -116,8 +126,22 @@ fn extension_of(name: &str) -> Option<String> {
         .map(|s| s.to_ascii_lowercase())
 }
 
+/// B 站链接条目的 MIME：内容是一小段描述 JSON（见 [`bilibili::BiliLinkDescriptor`]），
+/// 按视频归类进音视频库，但没有本地音视频可解码
+pub const BILIBILI_LINK_MIME: &str = "video/x-bilibili";
+pub const BILIBILI_LINK_EXTENSION: &str = "bilibili";
+
+/// 是否为链接条目（MIME 或扩展名任一命中）
+pub fn is_link_item(mime_type: &str, file_name: &str) -> bool {
+    mime_type.trim().eq_ignore_ascii_case(BILIBILI_LINK_MIME)
+        || extension_of(file_name).as_deref() == Some(BILIBILI_LINK_EXTENSION)
+}
+
 /// 依据 MIME 或文件名判断是否为音视频（`application/octet-stream` 等走扩展名兜底）
 pub fn media_kind(mime_type: &str, file_name: &str) -> Option<MediaKind> {
+    if is_link_item(mime_type, file_name) {
+        return Some(MediaKind::Video);
+    }
     let mime = mime_type.trim().to_ascii_lowercase();
     if mime.starts_with("audio/") {
         return Some(MediaKind::Audio);
@@ -155,6 +179,18 @@ mod tests {
         );
         assert_eq!(media_kind("", "talk.m4a"), Some(MediaKind::Audio));
         assert_eq!(media_kind("application/pdf", "a.pdf"), None);
+    }
+
+    #[test]
+    fn bilibili_link_items_are_video_without_local_media() {
+        assert!(is_link_item("video/x-bilibili", "课.bilibili"));
+        assert!(is_link_item("application/octet-stream", "课.BILIBILI"));
+        assert!(!is_link_item("video/mp4", "课.mp4"));
+        assert_eq!(
+            media_kind("application/octet-stream", "课.bilibili"),
+            Some(MediaKind::Video)
+        );
+        assert_eq!(MediaError::LinkOnly("x".into()).code(), "media-link-only");
     }
 
     #[test]

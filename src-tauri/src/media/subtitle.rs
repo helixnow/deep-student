@@ -1,6 +1,6 @@
 //! 字幕导入（`.srt` / `.vtt` / B 站 BCC JSON）与导出（srt / vtt / txt）
 //!
-//! 只解析用户自行获得的字幕文件（设计契约 §0：不做平台下载）。
+//! 解析用户自己的字幕文件，以及 [`super::bilibili`] 从 B 站接口取回的 BCC JSON（不下载平台音视频）。
 //! 编码：UTF-8（含 BOM）优先，UTF-16 BOM 与 GB18030 兜底（国内字幕常见 GBK）。
 
 use crate::vfs::repos::media_transcript_repo::{MediaSegmentRow, PlannedSpan, SEGMENT_STATUS_DONE};

@@ -215,6 +215,7 @@ const SUPPORTED_MIME_TYPES: &[&str] = &[
     "video/x-m4v",
     "video/x-ms-wmv",
     "video/x-flv",
+    crate::media::BILIBILI_LINK_MIME,
     // archives
     "application/zip",
     "application/x-zip-compressed",
