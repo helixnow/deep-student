@@ -59,7 +59,7 @@ Every app sits in the Study Desktop's Dock. Open one on its own, place several s
 |---|---|
 | **Chat** | Study around your own materials; answers cite the original page. Groups, search and export. |
 | **Files** | Textbooks, notes, question sets, documents, audio and video in one library, indexed for AI search on import (OCR included). |
-| **Audio & Video** | Transcribe lectures and recordings with timestamps, follow along with a synced transcript, and get answers that cite and jump to the exact moment; turn a lesson into an illustrated handout in Notes. |
+| **Media** | Transcribe lectures and recordings with timestamps, follow along with a synced transcript, and get answers that cite and jump to the exact moment; turn a lesson into an illustrated handout in Notes. |
 | **Textbook** | PDF, Word and EPUB reading with highlights and notes; select text and ask about it. |
 | **Notes** | Markdown notes with backlinks, tags and math; agent edits are highlighted and can be undone. |
 | **Mind Map** | A full mind map from one sentence; outline and canvas views, plus a recite mode that hides key nodes. |
@@ -86,7 +86,7 @@ Every app sits in the Study Desktop's Dock. Open one on its own, place several s
 </table>
 
 <p align="center">
-  <img src="./docs/assets/readme/en/media.webp" width="92%" alt="Audio & Video: a lecture video with its synced, timestamped transcript" />
+  <img src="./docs/assets/readme/en/media.webp" width="92%" alt="Media: a lecture video with its synced, timestamped transcript" />
 </p>
 
 Full guides for every app: [deepstudent.cn/user-guide](https://deepstudent.cn/user-guide/) (Chinese).
@@ -128,9 +128,9 @@ After installing, add an API key for one of the preset model providers (or a loc
 DeepStudent
 ├── Interface      Study Desktop (macOS · Windows · Linux) and mobile (Android; iOS source build)
 ├── Agent          Chat V2 runtime · skills with progressive disclosure · approvals & undo · sub-agents · MCP
-├── Apps           chat · files · notes · mind map · exam set · flashcards · essay · translation · todo · pomodoro
+├── Apps           chat · files · media · notes · mind map · exam set · flashcards · essay · translation · todo · pomodoro
 ├── Data layer     VFS · SQLite metadata · LanceDB vector index · local blob storage
-└── Integrations   13 model providers · 7 web search engines · 6 OCR engines · arXiv / Scholar
+└── Integrations   13 model providers · 8 web search engines · 6 OCR engines · arXiv / Scholar
 ```
 
 <details>
@@ -139,8 +139,8 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                      # React frontend
-│   ├── features/             #   23 feature modules (chat, workbench, flashcards, notes, mindmap, practice,
-│   │                         #   learning-hub, learning-today, insights, todo, pomodoro, browser, …)
+│   ├── features/             #   26 feature modules (chat, workbench, flashcards, notes, mindmap, practice,
+│   │                         #   learning-hub, media-studio, learning-today, insights, todo, pomodoro, browser, …)
 │   │   └── chat/             #     Chat V2: core store / skills (builtin, builtin-tools) / components / plugins
 │   ├── components/           #   Shared UI
 │   ├── stores/               #   Zustand stores
@@ -195,7 +195,7 @@ Packaging and cross-platform builds: [BUILD-CONFIG.md](./docs/BUILD-CONFIG.md).
 | Document | Description |
 |---|---|
 | [User guide](https://deepstudent.cn/user-guide/) | Every app and workflow (Chinese; source in [`docs/user-guide`](./docs/user-guide/)) |
-| [Roadmap](https://deepstudent.cn/timeline) | Release history and what's next |
+| [Project history](https://deepstudent.cn/timeline) | How DeepStudent evolved, from early experiments to v0.10 (Chinese) |
 | [Build configuration](./docs/BUILD-CONFIG.md) | Cross-platform build & packaging |
 | [Changelog](./CHANGELOG.md) | Version history |
 | [Security policy](./.github/SECURITY.md) | Reporting vulnerabilities |
