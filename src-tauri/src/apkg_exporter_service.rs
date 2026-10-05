@@ -559,7 +559,10 @@ fn fsrs_sched_restore(raw: &str, now_ms: i64) -> Option<CardSchedRestore> {
     if !(1..=3).contains(&state) {
         return None;
     }
-    let stability = value.get("s").and_then(|v| v.as_f64()).filter(|s| *s > 0.0)?;
+    let stability = value
+        .get("s")
+        .and_then(|v| v.as_f64())
+        .filter(|s| *s > 0.0)?;
     let difficulty = value.get("d").and_then(|v| v.as_f64())?;
     let due_ms = value.get("due").and_then(|v| v.as_i64())?;
     let rollover = value
@@ -567,8 +570,16 @@ fn fsrs_sched_restore(raw: &str, now_ms: i64) -> Option<CardSchedRestore> {
         .and_then(|v| v.as_u64())
         .map(|v| v.min(23) as u32)
         .unwrap_or(crate::fsrs_scheduler::DEFAULT_DAY_ROLLOVER_HOUR);
-    let reps = value.get("reps").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
-    let lapses = value.get("lapses").and_then(|v| v.as_i64()).unwrap_or(0).max(0);
+    let reps = value
+        .get("reps")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        .max(0);
+    let lapses = value
+        .get("lapses")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0)
+        .max(0);
     let suspended = value.get("susp").and_then(|v| v.as_bool()).unwrap_or(false);
     let factor = fsrs_difficulty_to_factor(difficulty);
     let local = chrono::Local;
@@ -609,11 +620,22 @@ fn fsrs_sched_restore(raw: &str, now_ms: i64) -> Option<CardSchedRestore> {
     let round4 = |v: f64| (v * 10_000.0).round() / 10_000.0;
     let mut data = serde_json::Map::new();
     data.insert("s".into(), serde_json::json!(round4(stability)));
-    data.insert("d".into(), serde_json::json!(round4(difficulty.clamp(1.0, 10.0))));
-    if let Some(dr) = value.get("dr").and_then(|v| v.as_f64()).filter(|v| *v > 0.0 && *v < 1.0) {
+    data.insert(
+        "d".into(),
+        serde_json::json!(round4(difficulty.clamp(1.0, 10.0))),
+    );
+    if let Some(dr) = value
+        .get("dr")
+        .and_then(|v| v.as_f64())
+        .filter(|v| *v > 0.0 && *v < 1.0)
+    {
         data.insert("dr".into(), serde_json::json!(round4(dr)));
     }
-    if let Some(decay) = value.get("decay").and_then(|v| v.as_f64()).filter(|v| *v > 0.0) {
+    if let Some(decay) = value
+        .get("decay")
+        .and_then(|v| v.as_f64())
+        .filter(|v| *v > 0.0)
+    {
         data.insert("decay".into(), serde_json::json!(round4(decay)));
     }
     if let Some(lrt) = value.get("lrt").and_then(|v| v.as_i64()) {
@@ -622,8 +644,15 @@ fn fsrs_sched_restore(raw: &str, now_ms: i64) -> Option<CardSchedRestore> {
 
     let mut revlog = Vec::new();
     let mut last_ivl = 0i64;
-    for entry in value.get("rev").and_then(|v| v.as_array()).into_iter().flatten() {
-        let Some(row) = entry.as_array() else { continue };
+    for entry in value
+        .get("rev")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+    {
+        let Some(row) = entry.as_array() else {
+            continue;
+        };
         let int = |index: usize| row.get(index).and_then(|v| v.as_i64());
         let (Some(review_ms), Some(rating), Some(state_before), Some(state_after)) =
             (int(0), int(1), int(2), int(3))
@@ -3181,7 +3210,10 @@ mod tests {
             )
             .expect("load exported FSRS card");
         assert_eq!((card_type, queue, ivl, reps, lapses), (2, 2, 12, 4, 1));
-        assert!((5..=6).contains(&due), "due is relative to export day, got {due}");
+        assert!(
+            (5..=6).contains(&due),
+            "due is relative to export day, got {due}"
+        );
         let data: serde_json::Value = serde_json::from_str(&data).expect("card data json");
         assert_eq!(data["s"], serde_json::json!(12.5));
         assert_eq!(data["d"], serde_json::json!(6.0));

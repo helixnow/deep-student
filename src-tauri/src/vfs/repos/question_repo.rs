@@ -1342,11 +1342,21 @@ impl VfsQuestionRepo {
 
         let mut conditions: Vec<String> = Vec::new();
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
-        if let Some(exam_id) = filters.exam_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(exam_id) = filters
+            .exam_id
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             params_vec.push(Box::new(exam_id.to_string()));
             conditions.push(format!("q.exam_id = ?{}", params_vec.len()));
         }
-        if let Some(search) = filters.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if let Some(search) = filters
+            .search
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
             params_vec.push(Box::new(format!(
                 "%{}%",
                 crate::vfs::repos::escape_like_pattern(search)
@@ -1361,7 +1371,8 @@ impl VfsQuestionRepo {
             .map(|condition| format!(" AND {condition}"))
             .collect::<String>();
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
         let total: i64 = conn.query_row(
             &format!("SELECT COUNT(*) {BASE}{extra}"),
             params_refs.as_slice(),
@@ -1392,7 +1403,8 @@ impl VfsQuestionRepo {
             "#,
             limit_idx + 1
         );
-        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let params_refs: Vec<&dyn rusqlite::ToSql> =
+            params_vec.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&query_sql)?;
         let items: Vec<MistakeQuestion> = stmt
             .query_map(params_refs.as_slice(), |row| {
@@ -3004,7 +3016,12 @@ mod tests {
                 .expect("insert exam");
             }
         }
-        let make = |exam_id: &str, content: &str, status: &str, attempts: i32, correct: i32, last: &str| {
+        let make = |exam_id: &str,
+                    content: &str,
+                    status: &str,
+                    attempts: i32,
+                    correct: i32,
+                    last: &str| {
             let question = VfsQuestionRepo::create_question(
                 &db,
                 &CreateQuestionParams {
@@ -3039,9 +3056,23 @@ mod tests {
         let qa1 = make("exam-a", "极限定义", "review", 3, 0, "2026-10-03T00:00:00Z");
         let qa2 = make("exam-a", "导数", "review", 5, 1, "2026-10-01T00:00:00Z");
         make("exam-a", "已掌握", "mastered", 2, 1, "2026-10-04T00:00:00Z");
-        let qa_deleted = make("exam-a", "删掉的错题", "review", 1, 0, "2026-10-04T00:00:00Z");
+        let qa_deleted = make(
+            "exam-a",
+            "删掉的错题",
+            "review",
+            1,
+            0,
+            "2026-10-04T00:00:00Z",
+        );
         let qb1 = make("exam-b", "完形填空", "review", 1, 0, "2026-10-04T00:00:00Z");
-        make("exam-gone", "题目集已删", "review", 1, 0, "2026-10-04T00:00:00Z");
+        make(
+            "exam-gone",
+            "题目集已删",
+            "review",
+            1,
+            0,
+            "2026-10-04T00:00:00Z",
+        );
         {
             let conn = db.get_conn_safe().expect("open conn");
             conn.execute(
@@ -3057,7 +3088,11 @@ mod tests {
         }
 
         let ids = |result: &MistakeListResult| -> Vec<String> {
-            result.items.iter().map(|item| item.question.id.clone()).collect()
+            result
+                .items
+                .iter()
+                .map(|item| item.question.id.clone())
+                .collect()
         };
         let list = |filters: MistakeListFilters, page: u32, page_size: u32| {
             VfsQuestionRepo::list_mistakes(&db, &filters, page, page_size).expect("list mistakes")
@@ -3070,19 +3105,48 @@ mod tests {
         assert_eq!(
             recent.exams,
             vec![
-                MistakeExamCount { exam_id: "exam-a".into(), exam_name: Some("高数".into()), count: 2 },
-                MistakeExamCount { exam_id: "exam-b".into(), exam_name: Some("英语".into()), count: 1 },
+                MistakeExamCount {
+                    exam_id: "exam-a".into(),
+                    exam_name: Some("高数".into()),
+                    count: 2
+                },
+                MistakeExamCount {
+                    exam_id: "exam-b".into(),
+                    exam_name: Some("英语".into()),
+                    count: 1
+                },
             ]
         );
 
-        let by_errors = list(MistakeListFilters { sort: Some("errors".into()), ..Default::default() }, 1, 50);
+        let by_errors = list(
+            MistakeListFilters {
+                sort: Some("errors".into()),
+                ..Default::default()
+            },
+            1,
+            50,
+        );
         assert_eq!(ids(&by_errors), vec![qa2.clone(), qa1.clone(), qb1.clone()]);
 
-        let only_a = list(MistakeListFilters { exam_id: Some("exam-a".into()), ..Default::default() }, 1, 50);
+        let only_a = list(
+            MistakeListFilters {
+                exam_id: Some("exam-a".into()),
+                ..Default::default()
+            },
+            1,
+            50,
+        );
         assert_eq!(ids(&only_a), vec![qa1.clone(), qa2.clone()]);
         assert_eq!(only_a.exams.len(), 2, "exam counts ignore the exam filter");
 
-        let by_tag = list(MistakeListFilters { search: Some("链式".into()), ..Default::default() }, 1, 50);
+        let by_tag = list(
+            MistakeListFilters {
+                search: Some("链式".into()),
+                ..Default::default()
+            },
+            1,
+            50,
+        );
         assert_eq!(ids(&by_tag), vec![qa2.clone()]);
 
         let first = list(MistakeListFilters::default(), 1, 2);
