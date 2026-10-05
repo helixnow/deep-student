@@ -849,5 +849,23 @@
     "nav_aborted": "todo 导航已中止",
     "run_not_found": "todo run 不存在或已结束",
     "run_ended": "run 已结束"
+  },
+  "links": {
+    "title": "关联资料",
+    "add": "添加",
+    "empty": "把要用的笔记、教材、题目集挂在这里，开始做时一键打开。",
+    "loading": "读取中…",
+    "missing": "这份资料已删除或找不到了",
+    "open": "打开「{{name}}」",
+    "remove": "取消关联「{{name}}」",
+    "searchPlaceholder": "搜索笔记、教材、题目集…",
+    "recent": "最近打开",
+    "searchResults": "搜索结果",
+    "searching": "正在搜索…",
+    "noResults": "没有找到匹配的资料",
+    "noRecent": "还没有最近打开的资料，输入关键词搜索",
+    "linked": "已关联",
+    "count": "{{count}} 份关联资料",
+    "openFromRow": "打开关联资料（{{count}}）"
   }
 }

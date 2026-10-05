@@ -72,6 +72,7 @@ import { InlineConfirmDelete } from './detail/InlineConfirmDelete';
 import { TagsEditor } from './detail/TagsEditor';
 import { SubtaskSection } from './detail/SubtaskSection';
 import { FocusHistorySection } from './detail/FocusHistorySection';
+import { LinkedResourcesSection } from './detail/LinkedResourcesSection';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 
@@ -968,6 +969,10 @@ export const TodoItemDetail: React.FC<{
             <SubtaskSection item={item} subtasks={subtasks} />
           </div>
         )}
+
+        <div className={SECTION_CLASS}>
+          <LinkedResourcesSection item={item} onSaved={markSaved} />
+        </div>
 
         <div className={cn(SECTION_CLASS, 'space-y-2')}>
           <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">

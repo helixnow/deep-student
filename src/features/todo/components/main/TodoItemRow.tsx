@@ -26,6 +26,7 @@ import {
   CheckCircle,
   DotsSixVertical,
   Minus,
+  Paperclip,
   Play,
   Repeat,
   Trash,
@@ -48,11 +49,13 @@ import {
   formatLocalDate,
   isDueToday,
   mondayWeekStart,
+  parseAttachments,
   parseRepeatRule,
   parseTags,
   repeatRuleLabel,
 } from '../../types';
 import { formatDueDateLabel, isDisplayOverdue } from './dueDateLabel';
+import { openLinkedResource } from './detail/linkedResources';
 import { RescheduleMenu } from './RescheduleMenu';
 import { RowPriorityMenu } from './RowPriorityMenu';
 import '../../styles/todo-motion.css';
@@ -367,6 +370,7 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
   const overdue = isDisplayOverdue(item);
   const dueToday = isDueToday(item);
   const tags = parseTags(item.tagsJson);
+  const links = useMemo(() => parseAttachments(item.attachmentsJson), [item.attachmentsJson]);
   const isCompleted = item.status === 'completed';
   const repeatRule = parseRepeatRule(item.repeatJson);
   const isTouchPrimary = useMediaQuery('(pointer: coarse)');
@@ -841,8 +845,18 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
           item.estimatedPomodoros ||
           repeatRule ||
           item.reminder ||
+          links.length > 0 ||
           subtaskProgress) && (
           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+            {links.length > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground"
+                title={t('todo:links.count', { count: links.length })}
+              >
+                <Paperclip size={12} aria-hidden="true" />
+                {links.length}
+              </span>
+            )}
             {subtaskProgress && (
               <span
                 className={cn(
@@ -961,6 +975,25 @@ const TodoItemRowInner: React.FC<TodoItemRowProps> = ({
         <span className="flex-shrink-0 [@media(pointer:coarse)]:hidden">
           <RescheduleMenu item={item} />
         </span>
+      )}
+
+      {links.length > 0 && (
+        <DsButton
+          variant="utility"
+          size="icon"
+          iconOnly
+          onClick={(e) => {
+            e.stopPropagation();
+            // 只挂了一份就直接打开；多份进详情挑
+            if (links.length === 1) openLinkedResource(links[0]);
+            else onSelect(item.id);
+          }}
+          title={t('todo:links.openFromRow', { count: links.length })}
+          aria-label={t('todo:links.openFromRow', { count: links.length })}
+          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5"
+        >
+          <Paperclip size={16} />
+        </DsButton>
       )}
 
       {!isCompleted && (
