@@ -320,6 +320,95 @@ pub fn media_learning_summary(
     Ok(serde_json::json!({ "recentCourses": courses }))
 }
 
+/// 讲义章节：最新讲义笔记里的小节标题与起点
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaChapter {
+    pub title: String,
+    pub seconds: u32,
+}
+
+fn strip_media_refs(text: &str) -> String {
+    let mut out = text.to_string();
+    while let Some(start) = out.find("[媒体@") {
+        match out[start..].find(']') {
+            Some(end) => out.replace_range(start..start + end + 1, ""),
+            None => break,
+        }
+    }
+    out.trim().to_string()
+}
+
+/// 讲义笔记 Markdown → 章节：每个 `##` 小节标题配其后第一个本课锚点
+/// （讲义每节以 `[媒体@id:mm:ss]` 开头，见 features/media-handout/markdown.ts），按时刻排序去重
+pub fn parse_handout_chapters(markdown: &str, resource_id: &str) -> Vec<MediaChapter> {
+    use crate::study_loop::media_source::media_citation_seconds_for;
+    let mut chapters: Vec<MediaChapter> = Vec::new();
+    let mut pending: Option<String> = None;
+    for line in markdown.lines() {
+        let trimmed = line.trim();
+        if let Some(heading) = trimmed.strip_prefix("## ") {
+            let title = strip_media_refs(heading);
+            pending = None;
+            if title.is_empty() {
+                continue;
+            }
+            match media_citation_seconds_for(heading, resource_id) {
+                Some(seconds) => chapters.push(MediaChapter { title, seconds }),
+                None => pending = Some(title),
+            }
+            continue;
+        }
+        if let Some(title) = pending.as_ref() {
+            if let Some(seconds) = media_citation_seconds_for(trimmed, resource_id) {
+                chapters.push(MediaChapter {
+                    title: title.clone(),
+                    seconds,
+                });
+                pending = None;
+            }
+        }
+    }
+    chapters.sort_by_key(|chapter| chapter.seconds);
+    chapters.dedup_by_key(|chapter| chapter.seconds);
+    chapters
+}
+
+fn chapters_with_conn(conn: &Connection, resource_id: &str) -> Result<Vec<MediaChapter>, String> {
+    let notes = super::library::list_related_notes_with_conn(conn, resource_id)
+        .map_err(|e| e.to_payload_string())?;
+    for note in notes {
+        let content =
+            crate::vfs::repos::note_repo::VfsNoteRepo::get_note_content_with_conn(conn, &note.id)
+                .map_err(|e| e.to_string())?;
+        let chapters = parse_handout_chapters(content.as_deref().unwrap_or(""), resource_id);
+        if !chapters.is_empty() {
+            return Ok(chapters);
+        }
+    }
+    Ok(Vec::new())
+}
+
+#[tauri::command]
+pub async fn media_chapters(
+    resource_id: String,
+    state: State<'_, crate::commands::AppState>,
+) -> Result<Vec<MediaChapter>, String> {
+    let Some(vfs_db) = state.vfs_db.clone() else {
+        return Ok(Vec::new());
+    };
+    let resource_id = resource_id.trim().to_string();
+    if resource_id.is_empty() {
+        return Ok(Vec::new());
+    }
+    tokio::task::spawn_blocking(move || {
+        let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+        chapters_with_conn(&conn, &resource_id)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// 去空白、去重，保持首次出现顺序，截到上限
 fn normalize_ids(resource_ids: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
@@ -406,6 +495,27 @@ mod tests {
         )
         .unwrap();
         conn
+    }
+
+    #[test]
+    fn parses_handout_sections_into_chapters() {
+        let markdown = "# 第 3 讲 讲义\n\n课程概述\n\n## 一、过拟合\n\n[媒体@file_lec:00:30]\n\n要点\n\n\
+                        ## 二、正则化 [媒体@file_lec:12:30]\n\n### 小标题\n\n## 三、没有锚点\n\n普通段落\n\n\
+                        ## 四、别的课\n\n[媒体@file_other:05:00]\n\n## 五、重复时刻\n\n[媒体@file_lec:00:30]";
+        assert_eq!(
+            parse_handout_chapters(markdown, "file_lec"),
+            vec![
+                MediaChapter {
+                    title: "一、过拟合".into(),
+                    seconds: 30
+                },
+                MediaChapter {
+                    title: "二、正则化".into(),
+                    seconds: 750
+                },
+            ]
+        );
+        assert!(parse_handout_chapters("没有标题", "file_lec").is_empty());
     }
 
     #[test]

@@ -495,6 +495,7 @@ commands.allow = [
   "media_bilibili_logout",
   "media_bilibili_stream_quality",
   "media_bilibili_probe",
+  "media_chapters",
   "media_checkpoints",
   "media_library_list",
   "media_progress_get",
