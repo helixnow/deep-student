@@ -3,7 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { ChatCircleText, CopySimple, FileText } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { Question } from '@/api/questionBankApi';
-import { sendSelectionToChatInput } from '@/features/pdf/selectionStudyActions';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
+
+/** 每道题的追问都是独立话题：新开对话再填入，不混进正在聊的别的会话 */
+function prefillNewChat(content: string): void {
+  dispatchAppEvent(APP_EVENTS.PREFILL_CHAT_INPUT, { content, autoSend: false, newSession: true });
+}
 
 /** 题目出处 {"resourceIds":[…]} → 首个资料 id */
 export function questionSourceResourceId(sourceRef: string | null | undefined): string | null {
@@ -29,7 +34,7 @@ function questionBlock(question: Question, labels: { stem: string; options: stri
 
 /**
  * 做题结果后的追问栏：错题 → 在对话里讲解 / 生成同类题 / 回到出处。
- * 讲解与同类题都是填入聊天输入框（不自动发送），学习者可补充后再发。
+ * 讲解与同类题都是新开对话填入输入框（不自动发送），学习者可补充后再发。
  */
 export const QuestionFollowUpBar: React.FC<{
   question: Question;
@@ -51,7 +56,7 @@ export const QuestionFollowUpBar: React.FC<{
     const intro = isCorrect === false
       ? t('followUp.askWrong', { defaultValue: '这道题我做错了，请指出我的错误思路，讲清考点，再给我一道巩固练习。' })
       : t('followUp.ask', { defaultValue: '请帮我讲解这道题的考点与解题思路。' });
-    sendSelectionToChatInput({ text: `${intro}\n\n${questionBlock(question, labels)}${mine}` });
+    prefillNewChat(`${intro}\n\n${questionBlock(question, labels)}${mine}`);
   };
 
   const similar = () => {
@@ -59,7 +64,7 @@ export const QuestionFollowUpBar: React.FC<{
       defaultValue: '请基于下面这道题，生成 2 道考查同一知识点、难度相近的同类题，并加入题目集（id: {{examId}}）。',
       examId,
     });
-    sendSelectionToChatInput({ text: `${intro}\n\n${questionBlock(question, labels)}` });
+    prefillNewChat(`${intro}\n\n${questionBlock(question, labels)}`);
   };
 
   const openSource = () => {
