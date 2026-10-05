@@ -107,6 +107,27 @@
 .nlv-chip[data-due='overdue'] { background: hsl(var(--warning, 38 92% 50%) / 16%); color: hsl(var(--warning, 32 90% 38%)); }
 .nlv-chip[data-due='today'] { background: hsl(var(--primary) / 12%); color: hsl(var(--primary)); }
 
+/* 近期复习：行 + 行尾「复习完成」并排，行本身仍是打开笔记的整行按钮 */
+.nlv-item {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.nlv-item > .nlv-row {
+  flex: 1;
+  min-width: 0;
+}
+
+.nlv-review-done.nlv-review-done {
+  flex-shrink: 0;
+  gap: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.nlv-review-done.nlv-review-done:hover { color: hsl(var(--foreground)); }
+
 @container (max-width: 300px) {
   .nlv-row-chips { display: none; }
 }

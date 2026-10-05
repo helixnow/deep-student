@@ -35,6 +35,8 @@ describe('Finder notes learning views', () => {
     expect(screen.getByText('高数')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: '近期复习' }));
     expect(screen.getByText(/2026-09-20 · /)).toHaveAttribute('data-due', 'overdue');
+    // 近期复习的每一行带「复习完成」，不用打开属性面板改日期
+    expect(screen.getByRole('button', { name: /复习完成/ })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /微积分/ }));
     expect(onOpen).toHaveBeenCalledWith(notes[0]);
     view.unmount();

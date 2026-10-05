@@ -1,12 +1,50 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FileText } from '@phosphor-icons/react';
+import { CheckCircle, FileText } from '@phosphor-icons/react';
+import { AppMenu, AppMenuContent, AppMenuItem, AppMenuTrigger } from '@/components/ui/app-menu/AppMenu';
+import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   learningPropsFromMetadata, localCalendarDate, MASTERY_STATES, readNoteLearningProps,
   selectLearningViewNotes, type LearningViewNote, type NoteLearningView,
 } from '../noteLearningProps';
+import { NOTE_REVIEW_INTERVALS, rescheduleNoteReview } from '../noteReviewSchedule';
 import { NoteGlyph } from './NoteGlyph';
 import './NoteLearningViews.css';
+
+/** 「近期复习」行尾：复习完成后选下次时间（或标记掌握），不用再打开属性面板手改日期。 */
+function ReviewDoneMenu({ noteId }: { noteId: string }) {
+  const { t } = useTranslation('notes');
+  const [busy, setBusy] = useState(false);
+  const choose = (days: number | null) => {
+    if (busy) return;
+    setBusy(true);
+    rescheduleNoteReview(noteId, days)
+      .then((nextDate) => showGlobalNotification('success', nextDate
+        ? t('learning.review_done.scheduled', { date: nextDate })
+        : t('learning.review_done.cleared')))
+      .catch((error: unknown) => showGlobalNotification('error', t('learning.review_done.failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton variant="ghost" size="sm" disabled={busy} className="nlv-review-done" title={t('learning.review_done.menu')}>
+          <CheckCircle size={14} aria-hidden="true" />
+          {t('learning.review_done.label')}
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align="end" width={180}>
+        {NOTE_REVIEW_INTERVALS.map((days) => (
+          <AppMenuItem key={days} onClick={() => choose(days)}>{t(`learning.review_done.d${days}`)}</AppMenuItem>
+        ))}
+        <AppMenuItem onClick={() => choose(null)}>{t('learning.review_done.mastered')}</AppMenuItem>
+      </AppMenuContent>
+    </AppMenu>
+  );
+}
 
 /** The host owns loading, filtering and DSTU subscriptions. This component never copies note data. */
 export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onOpen, activeId, now = new Date() }: {
@@ -42,7 +80,7 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
               const props = readNoteLearningProps(learningPropsFromMetadata(note.metadata));
               const due = props.reviewDate ? (props.reviewDate < today ? 'overdue' : props.reviewDate === today ? 'today' : 'later') : undefined;
               const subtitle = [props.course, props.chapter].filter(Boolean).join(' / ');
-              return <li key={note.id}>
+              return <li key={note.id} className={view === 'review' ? 'nlv-item' : undefined}>
                 <button type="button" className="nlv-row" aria-current={note.id === activeId ? 'true' : undefined} onClick={() => onOpen(note)}>
                   <span className="nlv-row-icon"><NoteGlyph noteId={note.id} size={16} fallback={<FileText size={16} aria-hidden="true" />} /></span>
                   <span className="nlv-row-body">
@@ -56,6 +94,7 @@ export function NoteLearningViews<T extends LearningViewNote>({ notes, view, onO
                     </span>}
                   </span>
                 </button>
+                {view === 'review' && <ReviewDoneMenu noteId={note.id} />}
               </li>;
             })}
           </ul>
