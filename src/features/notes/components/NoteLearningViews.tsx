@@ -33,7 +33,7 @@ function ReviewDoneMenu({ noteId }: { noteId: string }) {
       <AppMenuTrigger asChild>
         <DsButton variant="ghost" size="sm" disabled={busy} className="nlv-review-done" title={t('learning.review_done.menu')}>
           <CheckCircle size={14} aria-hidden="true" />
-          {t('learning.review_done.label')}
+          <span className="nlv-review-done-label">{t('learning.review_done.label')}</span>
         </DsButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={180}>

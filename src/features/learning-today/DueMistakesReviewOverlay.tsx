@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle, CircleNotch, WarningCircle } from '@phosphor-icons/react';
@@ -6,6 +6,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { ReviewSession } from '@/components/ReviewSession';
 import { Z_INDEX } from '@/config/zIndex';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { BACK_PRIORITY, registerBackHandler } from '@/app/navigation/androidBackCoordinator';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DUE_MISTAKES_SESSION_KEY, closeDueMistakesReview, loadDueMistakeItems } from './dueMistakesReview';
@@ -50,6 +51,21 @@ export const DueMistakesReviewOverlay: React.FC = () => {
     void refreshTodayLearning();
   }, [endSession]);
 
+  // 自绘浮层不在 Radix 的 Escape 兜底里：Android 返回键要显式接住，否则会切走浮层下面的页面。
+  // 已提交的评分都已落库，返回只丢本地剩余队列（与「退出」同语义）。
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => registerBackHandler(() => {
+    closeRef.current();
+    return true;
+  }, BACK_PRIORITY.overlay), []);
+
+  // 打开即把焦点移进浮层，键盘 / 读屏不留在背后的触发按钮上
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    dialogRef.current?.focus({ preventScroll: true });
+  }, []);
+
   // 复习中由 ReviewSession 自己的「退出」二次确认负责，Esc 只用来关掉加载 / 空 / 失败态
   useEventRegistry(
     phase.kind === 'ready'
@@ -73,10 +89,12 @@ export const DueMistakesReviewOverlay: React.FC = () => {
       data-testid="due-mistakes-review"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex h-full w-full flex-col overflow-hidden bg-background pt-[var(--android-safe-area-top,env(safe-area-inset-top,0px))] sm:h-[min(860px,calc(100dvh-6rem))] sm:w-[min(920px,calc(100vw-3rem))] sm:rounded-xl sm:border sm:border-border sm:pt-0 sm:shadow-xl"
+        tabIndex={-1}
+        className="flex h-full w-full flex-col overflow-hidden bg-background pt-[var(--mobile-safe-area-top)] outline-none sm:h-[min(860px,calc(100dvh-6rem))] sm:w-[min(920px,calc(100vw-3rem))] sm:rounded-xl sm:border sm:border-border sm:pt-0 sm:shadow-xl"
       >
         <div className="flex flex-shrink-0 items-baseline gap-2 border-b border-border/50 px-4 py-2.5">
           <h2 className="text-sm font-semibold text-foreground">{title}</h2>
