@@ -15,6 +15,9 @@ export type MistakeSort = 'recent' | 'errors';
 
 export const MISTAKE_PAGE_SIZE = 50;
 
+/** 批量重做一套最多多少题（同题目集练习交接的 1–100 题上限） */
+export const MISTAKE_REDO_LIMIT = 100;
+
 export interface MistakeItem {
   question: Question;
   examId: string;

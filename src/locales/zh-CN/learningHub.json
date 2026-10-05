@@ -1646,6 +1646,17 @@
     "correctAnswer": "正确答案",
     "explanation": "解析",
     "noAnswer": "（没有记录到作答）",
-    "redo": "去题目集重做"
+    "redo": "去题目集重做",
+    "redoAll": "重做这 {{count}} 题",
+    "redoSelected": "重做所选 {{count}} 题",
+    "clearSelection": "取消选择",
+    "redoSet": {
+      "title": "错题重做",
+      "from": "出自「{{exam}}」",
+      "loading": "正在准备这套错题…",
+      "empty": "这些错题都不在了",
+      "emptyHint": "可能已经被删除，回错题本刷新看看。",
+      "skipped": "已跳过 {{count}} 道已删除的题"
+    }
   }
 }

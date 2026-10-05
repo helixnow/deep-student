@@ -89,11 +89,20 @@
   border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
 }
 
+/* 勾选框 + 行按钮；勾选框的触控热区由 Checkbox 基元自己撑到 44px */
+.mb-line {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-left: 8px;
+}
+
 /* 整行是 DsButton：双类选择器压过按钮自带的定高 / 居中 / 不换行 / 加粗 */
 .mb-row.mb-row {
+  flex: 1;
   justify-content: flex-start;
   gap: 8px;
-  width: 100%;
+  min-width: 0;
   height: auto;
   min-height: 44px;
   padding: 6px 8px;
@@ -111,7 +120,7 @@
   background: var(--interactive-hover, hsl(var(--muted)));
 }
 
-.mb-item[data-expanded='true'] > .mb-row {
+.mb-item[data-expanded='true'] > .mb-line > .mb-row {
   background: var(--interactive-selected, hsl(var(--accent)));
 }
 
@@ -156,11 +165,12 @@
   white-space: nowrap;
 }
 
+/* 左侧与行文字对齐：勾选框列 8 + 16 + 2，再加行内边距 8 */
 .mb-detail {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 6px 8px 12px;
+  padding: 6px 8px 12px 34px;
 }
 
 .mb-detail-stem {

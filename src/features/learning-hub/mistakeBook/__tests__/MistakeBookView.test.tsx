@@ -6,10 +6,47 @@ const mocks = vi.hoisted(() => ({
   listMistakes: vi.fn(),
   openQuestionInExam: vi.fn(),
   openDueMistakesReview: vi.fn(),
+  // 稳定引用：每次渲染换新 t 会让 load 重建、重复请求
+  t: (key: string, options?: Record<string, unknown>) => {
+    const map: Record<string, string> = {
+      'learningHub:mistakeBook.summary': `${options?.count} 道错题 · 来自 ${options?.exams} 个题目集`,
+      'learningHub:mistakeBook.summaryFiltered': `筛选出 ${options?.count} 道 · 共 ${options?.all} 道错题`,
+      'learningHub:mistakeBook.reviewDue': '复习到期错题',
+      'learningHub:mistakeBook.refresh': '刷新错题本',
+      'learningHub:mistakeBook.examFilter': '按题目集筛选',
+      'learningHub:mistakeBook.allExams': '全部题目集',
+      'learningHub:mistakeBook.sortLabel': '错题排序',
+      'learningHub:mistakeBook.sort.recent': '最近做错',
+      'learningHub:mistakeBook.sort.errors': '错得最多',
+      'learningHub:mistakeBook.wrongTimes': `错 ${options?.count} 次`,
+      'learningHub:mistakeBook.myAnswer': '我的答案',
+      'learningHub:mistakeBook.correctAnswer': '正确答案',
+      'learningHub:mistakeBook.redo': '去题目集重做',
+      'learningHub:mistakeBook.redoAll': `重做这 ${options?.count} 题`,
+      'learningHub:mistakeBook.redoSelected': `重做所选 ${options?.count} 题`,
+      'learningHub:mistakeBook.clearSelection': '取消选择',
+      'learningHub:mistakeBook.empty': '还没有错题',
+      'learningHub:mistakeBook.noMatches': '没有匹配的错题',
+      'review:questionType.single_choice': '单选题',
+      'review:questions.errorCause.neverCorrect': '从未答对',
+    };
+    return map[key] ?? key;
+  },
 }));
 
-vi.mock('../mistakeBookApi', () => ({ listMistakes: mocks.listMistakes }));
+vi.mock('../mistakeBookApi', () => ({ listMistakes: mocks.listMistakes, MISTAKE_REDO_LIMIT: 100 }));
 vi.mock('../mistakeBookNavigation', () => ({ openQuestionInExam: mocks.openQuestionInExam }));
+vi.mock('../MistakeRedoOverlay', () => ({
+  default: ({ questionIds, examNames, onClose }: {
+    questionIds: string[];
+    examNames: Record<string, string | null>;
+    onClose: () => void;
+  }) => (
+    <div data-testid="redo-overlay" data-ids={questionIds.join(',')} data-exams={JSON.stringify(examNames)}>
+      <button type="button" onClick={onClose}>关闭重做</button>
+    </div>
+  ),
+}));
 vi.mock('@/features/learning-today/dueMistakesReview', () => ({ openDueMistakesReview: mocks.openDueMistakesReview }));
 vi.mock('@/components/practice/QuestionFollowUpBar', () => ({
   QuestionFollowUpBar: () => <div data-testid="follow-up" />,
@@ -17,31 +54,7 @@ vi.mock('@/components/practice/QuestionFollowUpBar', () => ({
 vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: vi.fn() }));
 vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => undefined },
-  useTranslation: () => ({
-    i18n: { language: 'zh-CN' },
-    t: (key: string, options?: Record<string, unknown>) => {
-      const map: Record<string, string> = {
-        'learningHub:mistakeBook.summary': `${options?.count} 道错题 · 来自 ${options?.exams} 个题目集`,
-        'learningHub:mistakeBook.summaryFiltered': `筛选出 ${options?.count} 道 · 共 ${options?.all} 道错题`,
-        'learningHub:mistakeBook.reviewDue': '复习到期错题',
-        'learningHub:mistakeBook.refresh': '刷新错题本',
-        'learningHub:mistakeBook.examFilter': '按题目集筛选',
-        'learningHub:mistakeBook.allExams': '全部题目集',
-        'learningHub:mistakeBook.sortLabel': '错题排序',
-        'learningHub:mistakeBook.sort.recent': '最近做错',
-        'learningHub:mistakeBook.sort.errors': '错得最多',
-        'learningHub:mistakeBook.wrongTimes': `错 ${options?.count} 次`,
-        'learningHub:mistakeBook.myAnswer': '我的答案',
-        'learningHub:mistakeBook.correctAnswer': '正确答案',
-        'learningHub:mistakeBook.redo': '去题目集重做',
-        'learningHub:mistakeBook.empty': '还没有错题',
-        'learningHub:mistakeBook.noMatches': '没有匹配的错题',
-        'review:questionType.single_choice': '单选题',
-        'review:questions.errorCause.neverCorrect': '从未答对',
-      };
-      return map[key] ?? key;
-    },
-  }),
+  useTranslation: () => ({ i18n: { language: 'zh-CN' }, t: mocks.t }),
 }));
 
 import { MistakeBookView } from '../MistakeBookView';
@@ -117,10 +130,34 @@ describe('MistakeBookView', () => {
     expect(screen.getByText('筛选出 1 道 · 共 3 道错题')).toBeInTheDocument();
   });
 
+  it('redoes the listed mistakes as one set, or only the ticked ones, then reloads', async () => {
+    mocks.listMistakes.mockResolvedValue(page([
+      { id: 'q1', examId: 'exam-a', examName: '高数' },
+      { id: 'q2', examId: 'exam-b', examName: '英语' },
+    ]));
+    render(<MistakeBookView search="" />);
+    await screen.findByText('题干 q1');
+
+    fireEvent.click(screen.getByRole('button', { name: '重做这 2 题' }));
+    const overlay = await screen.findByTestId('redo-overlay');
+    expect(overlay).toHaveAttribute('data-ids', 'q1,q2');
+    expect(JSON.parse(overlay.getAttribute('data-exams') ?? '{}')).toEqual({ 'exam-a': '高数', 'exam-b': '英语' });
+
+    fireEvent.click(screen.getByRole('button', { name: '关闭重做' }));
+    await waitFor(() => expect(screen.queryByTestId('redo-overlay')).toBeNull());
+    await waitFor(() => expect(mocks.listMistakes).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole('checkbox', { name: '题干 q2' }));
+    expect(screen.getByRole('button', { name: '取消选择' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重做所选 1 题' }));
+    expect(await screen.findByTestId('redo-overlay')).toHaveAttribute('data-ids', 'q2');
+  });
+
   it('says so when there are no mistakes yet', async () => {
     mocks.listMistakes.mockResolvedValue({ items: [], total: 0, page: 1, hasMore: false, exams: [] });
     render(<MistakeBookView search="" />);
     expect(await screen.findByText('还没有错题')).toBeInTheDocument();
     expect(screen.queryByLabelText('按题目集筛选')).toBeNull();
+    expect(screen.queryByRole('button', { name: /重做/ })).toBeNull();
   });
 });

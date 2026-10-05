@@ -1646,6 +1646,17 @@
     "correctAnswer": "Correct answer",
     "explanation": "Explanation",
     "noAnswer": "(no answer recorded)",
-    "redo": "Redo in question set"
+    "redo": "Redo in question set",
+    "redoAll": "Redo these ({{count}})",
+    "redoSelected": "Redo selected ({{count}})",
+    "clearSelection": "Clear selection",
+    "redoSet": {
+      "title": "Redo mistakes",
+      "from": "From “{{exam}}”",
+      "loading": "Preparing this set…",
+      "empty": "These questions are gone",
+      "emptyHint": "They may have been deleted. Refresh the mistake book to check.",
+      "skipped": "Skipped deleted: {{count}}"
+    }
   }
 }

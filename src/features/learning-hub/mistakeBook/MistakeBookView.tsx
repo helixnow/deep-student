@@ -1,12 +1,14 @@
 /**
  * 跨题目集错题本：Finder「题目集」入口下的「错题本」视图。
  * 错题 = 答错后还没掌握的题（status review，与题目集内「错题本」同口径）；按题目集 / 关键词筛选，
- * 展开看我的答案与正确答案，可回题目集重做、问 AI、生成同类题；顶部直达「到期错题复习」。
+ * 展开看我的答案与正确答案，可回题目集重做、问 AI、生成同类题；顶部直达「到期错题复习」，
+ * 勾选一批（不勾就是当前列出的）可当一套题重做。
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, ArrowSquareOut, CaretDown, Lightning } from '@phosphor-icons/react';
+import { ArrowClockwise, ArrowCounterClockwise, ArrowSquareOut, CaretDown, Lightning } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { QuestionFollowUpBar } from '@/components/practice/QuestionFollowUpBar';
@@ -17,9 +19,18 @@ import { CardMathText } from '@/features/flashcards/cardMathPreview';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
-import { listMistakes, type MistakeExamCount, type MistakeItem, type MistakeSort } from './mistakeBookApi';
+import {
+  MISTAKE_REDO_LIMIT,
+  listMistakes,
+  type MistakeExamCount,
+  type MistakeItem,
+  type MistakeSort,
+} from './mistakeBookApi';
 import { openQuestionInExam } from './mistakeBookNavigation';
 import './mistakeBook.css';
+
+// 重做浮层带着整套做题界面：点了才加载
+const LazyMistakeRedoOverlay = React.lazy(() => import('./MistakeRedoOverlay'));
 
 /** 题目集下拉的「全部」取值（题目集 id 不会以 `::` 开头） */
 const EXAM_FILTER_ALL = '::all';
@@ -38,7 +49,9 @@ const MistakeRow: React.FC<{
   item: MistakeItem;
   expanded: boolean;
   onToggle: () => void;
-}> = ({ item, expanded, onToggle }) => {
+  selected: boolean;
+  onSelect: (selected: boolean) => void;
+}> = ({ item, expanded, onToggle, selected, onSelect }) => {
   const { t, i18n } = useTranslation(['learningHub', 'review']);
   const { question, examId, examName } = item;
   const causes = getErrorCauses(question);
@@ -50,28 +63,36 @@ const MistakeRow: React.FC<{
     relativeDay(question.lastAttemptAt, i18n.language),
   ].filter(Boolean).join(' · ');
   const detailId = `mb-detail-${question.id}`;
+  const stemId = `mb-stem-${question.id}`;
 
   return (
     <li className="mb-item" data-expanded={expanded ? 'true' : undefined}>
-      <DsButton
-        variant="ghost"
-        className="mb-row"
-        aria-expanded={expanded}
-        aria-controls={expanded ? detailId : undefined}
-        onClick={onToggle}
-      >
-        <span className="mb-row-body">
-          <span className="mb-row-stem">
-            {question.content ? <CardMathText text={question.content} inline /> : t('review:questions.noContent')}
+      <div className="mb-line">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={(value) => onSelect(value === true)}
+          aria-labelledby={stemId}
+        />
+        <DsButton
+          variant="ghost"
+          className="mb-row"
+          aria-expanded={expanded}
+          aria-controls={expanded ? detailId : undefined}
+          onClick={onToggle}
+        >
+          <span className="mb-row-body">
+            <span id={stemId} className="mb-row-stem">
+              {question.content ? <CardMathText text={question.content} inline /> : t('review:questions.noContent')}
+            </span>
+            <span className="mb-row-meta">{meta}</span>
           </span>
-          <span className="mb-row-meta">{meta}</span>
-        </span>
-        {causes[0] ? (
-          <span className={cn('mb-chip', ERROR_CAUSE_STYLE[causes[0]])}>
-            {t(`review:questions.errorCause.${causes[0]}`)}
-          </span>
-        ) : null}
-      </DsButton>
+          {causes[0] ? (
+            <span className={cn('mb-chip', ERROR_CAUSE_STYLE[causes[0]])}>
+              {t(`review:questions.errorCause.${causes[0]}`)}
+            </span>
+          ) : null}
+        </DsButton>
+      </div>
       {expanded ? (
         <div id={detailId} className="mb-detail">
           <p className="mb-detail-stem"><CardMathText text={question.content} /></p>
@@ -132,6 +153,8 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [redoIds, setRedoIds] = useState<string[] | null>(null);
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -190,6 +213,44 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
     }
   }, [examId, hasMore, loadingMore, page, search, sort, t]);
 
+  // 重读 / 换筛选后，不在列表里的勾选作废
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (prev.size === 0) return prev;
+      const listed = new Set(items.map((item) => item.question.id));
+      const next = new Set(Array.from(prev).filter((id) => listed.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
+
+  const toggleSelected = useCallback((questionId: string, selected: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (selected) next.add(questionId);
+      else next.delete(questionId);
+      return next;
+    });
+  }, []);
+
+  // 勾了就重做勾的，没勾就重做当前列出的；按列表顺序
+  const redoSet = useMemo(() => {
+    const source = selectedIds.size > 0 ? items.filter((item) => selectedIds.has(item.question.id)) : items;
+    return source.slice(0, MISTAKE_REDO_LIMIT).map((item) => item.question.id);
+  }, [items, selectedIds]);
+
+  const examNames = useMemo(() => {
+    const names: Record<string, string | null> = {};
+    for (const item of items) names[item.examId] = item.examName;
+    return names;
+  }, [items]);
+
+  const closeRedo = useCallback(() => {
+    setRedoIds(null);
+    setSelectedIds(new Set());
+    // 答对的题已移出错题本
+    void load();
+  }, [load]);
+
   const allTotal = useMemo(() => exams.reduce((sum, exam) => sum + exam.count, 0), [exams]);
   const filtered = examId !== null || search.trim().length > 0;
   const summary = filtered
@@ -201,6 +262,19 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
       <div className="mb-head">
         <p className="mb-summary">{loading && items.length === 0 ? t('learningHub:mistakeBook.loading') : summary}</p>
         <div className="mb-head-actions">
+          {selectedIds.size > 0 ? (
+            <DsButton variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())}>
+              {t('learningHub:mistakeBook.clearSelection')}
+            </DsButton>
+          ) : null}
+          {redoSet.length > 0 ? (
+            <DsButton variant="ghost" size="sm" onClick={() => setRedoIds(redoSet)}>
+              <ArrowCounterClockwise size={14} aria-hidden="true" />
+              {selectedIds.size > 0
+                ? t('learningHub:mistakeBook.redoSelected', { count: redoSet.length })
+                : t('learningHub:mistakeBook.redoAll', { count: redoSet.length })}
+            </DsButton>
+          ) : null}
           <DsButton variant="ghost" size="sm" onClick={openDueMistakesReview}>
             <Lightning size={14} aria-hidden="true" />
             {t('learningHub:mistakeBook.reviewDue')}
@@ -279,6 +353,8 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
                 item={item}
                 expanded={expandedId === item.question.id}
                 onToggle={() => setExpandedId((prev) => (prev === item.question.id ? null : item.question.id))}
+                selected={selectedIds.has(item.question.id)}
+                onSelect={(selected) => toggleSelected(item.question.id, selected)}
               />
             ))}
           </ul>
@@ -291,6 +367,12 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
           </div>
         ) : null}
       </div>
+
+      {redoIds ? (
+        <Suspense fallback={null}>
+          <LazyMistakeRedoOverlay questionIds={redoIds} examNames={examNames} onClose={closeRedo} />
+        </Suspense>
+      ) : null}
     </div>
   );
 };

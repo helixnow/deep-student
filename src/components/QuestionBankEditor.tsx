@@ -1485,8 +1485,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
         return;
       }
-      // 盖在做题页上的模态层（如跨题目集错题复习）里的按键归模态层，背后不选项 / 不提交
-      if (isKeyEventFromOtherModal(e)) {
+      // 盖在做题页上的模态层（如跨题目集错题复习）里的按键归模态层，背后不选项 / 不提交；
+      // 编辑器自己就在那个模态层里（错题重做浮层）时照常处理
+      if (isKeyEventFromOtherModal(e, containerRef.current)) {
         return;
       }
       
@@ -1713,7 +1714,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           </div>
         )}
 
-        {/* 练习模式 */}
+        {/* 练习模式（宿主不接管模式切换时不显示，如跨题目集的错题重做） */}
+        {onModeChange && (
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-muted-foreground">{t('editor.practiceMode')}</h4>
           <AppSelect value={practiceMode} onValueChange={(v) => handleModeChange(v as PracticeMode)}
@@ -1733,6 +1735,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 />
           )}
         </div>
+        )}
 
         {/* 计时器控制 */}
         {showTimer && (
@@ -2821,6 +2824,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   // ========== 桌面端布局（去 head 化） ==========
   return (
     <div
+      ref={containerRef}
       data-agent-qbank-editor
       className={cn('relative flex flex-col h-full bg-background', className)}
     >

@@ -20,7 +20,7 @@ import {
 } from '@/stores/questionBankStore';
 
 // Store 侧类型（snake_case，与 Rust 序列化一致）
-interface StoreQuestion {
+export interface StoreQuestion {
   id: string;
   card_id?: string;
   question_label?: string;
@@ -102,7 +102,7 @@ function generateClientRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-function convertToApiQuestion(q: StoreQuestion): Question {
+export function convertToApiQuestion(q: StoreQuestion): Question {
   const question: Question = {
     id: q.id,
     cardId: q.card_id || q.id,
