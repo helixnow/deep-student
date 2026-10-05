@@ -70,7 +70,9 @@ export const TodayReviewHint: React.FC = () => {
     );
   }
 
-  if (items.length === 0 && !hasWeak) return null;
+  // 有卡片或复习计划（做过题）就留着周报入口：没到期、薄弱点又只有无标签题时也能看本周周报
+  const hasHistory = (today.cardsTotal ?? 0) > 0 || (today.plansTotal ?? 0) > 0;
+  if (items.length === 0 && !hasWeak && !hasHistory) return null;
 
   return (
     <div className="mt-3 flex flex-col items-center gap-1" data-testid="today-review-hint">

@@ -78,4 +78,12 @@ describe('TodayReviewHint', () => {
     expect(screen.getByTestId('weekly-report').dataset.compact).toBe('true');
     expect(screen.queryByText('今日待复习')).toBeNull();
   });
+
+  it('keeps the weekly report for a learner with history on a day with nothing due and no tagged weak spots', () => {
+    Object.assign(snapshot, { cardsTotal: 0, plansTotal: 4 });
+    render(<TodayReviewHint />);
+    expect(screen.getByTestId('weekly-report')).toBeTruthy();
+    expect(screen.queryByTestId('weak-strip')).toBeNull();
+    expect(screen.queryByText('今日待复习')).toBeNull();
+  });
 });
