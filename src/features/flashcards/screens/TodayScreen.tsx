@@ -19,8 +19,9 @@ import { cardDisplayFront } from '../cardDisplay';
 import { CardMathText } from '../cardMathPreview';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { PullToRefresh } from '@/components/mobile';
-import type { FsrsStats } from '@/types';
+import type { AnkiLibraryDeckCount, FsrsStats } from '@/types';
 import { useFsrsReviewStore } from '../store/fsrsReviewStore';
+import { DeckReviewPanel } from '../components/DeckReviewPanel';
 import { subscribeFlashcardsDueRefresh } from '../events';
 import { useReviewActivity, computeCurrentStreak } from '../hooks/useReviewActivity';
 import { useCountUp } from '../hooks/useCountUp';
@@ -211,15 +212,27 @@ export const TodayScreen: React.FC = () => {
   const progressPercent = Math.round(progress * 100);
   const learningCount = stats == null ? null : stats.learning + stats.relearning;
   // 新生成的卡默认停在卡片库「待入队」，不进复习统计：单独取卡片库总数，
-  // 否则有卡却显示「卡片库还是空的」，学习者以为卡片丢了
+  // 否则有卡却显示「卡片库还是空的」，学习者以为卡片丢了。同一请求顺带取牌组计数。
+  // 依赖整个 stats：每次评分 / 刷新后重取，牌组到期数跟着变
   const [libraryTotal, setLibraryTotal] = useState<number | null>(null);
+  const [decks, setDecks] = useState<AnkiLibraryDeckCount[] | null>(null);
   useEffect(() => {
     let cancelled = false;
-    invoke<{ total?: number }>('list_anki_library_cards', { request: { page: 1, pageSize: 1 } })
-      .then((res) => { if (!cancelled) setLibraryTotal(typeof res?.total === 'number' ? res.total : null); })
-      .catch(() => { if (!cancelled) setLibraryTotal(null); });
+    invoke<{ total?: number; decks?: AnkiLibraryDeckCount[] }>('list_anki_library_cards', {
+      request: { page: 1, pageSize: 1, includeDecks: true },
+    })
+      .then((res) => {
+        if (cancelled) return;
+        setLibraryTotal(typeof res?.total === 'number' ? res.total : null);
+        setDecks(Array.isArray(res?.decks) ? res.decks : null);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setLibraryTotal(null);
+        setDecks(null);
+      });
     return () => { cancelled = true; };
-  }, [stats?.total]);
+  }, [stats]);
   const pendingEnqueue = stats != null && libraryTotal != null ? Math.max(0, libraryTotal - stats.total) : 0;
   // 卡库为空：走建库引导，而不是「今日全部完成」
   const libraryEmpty = stats != null && stats.total === 0 && pendingEnqueue === 0;
@@ -386,6 +399,8 @@ export const TodayScreen: React.FC = () => {
               ) : null}
             </div>
           </section>
+
+          {!loading ? <DeckReviewPanel decks={decks} /> : null}
 
           {loading ? (
             <div className="wb-fc-list">

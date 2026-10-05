@@ -51,6 +51,23 @@
     "learnMoreEmpty": "没有待学的新卡了",
     "learnMoreFailed": "没能取到待学新卡，请重试",
     "adjustDailyLimit": "调整每日新卡上限",
+    "decks": {
+      "title": "按牌组复习",
+      "hint": "只复习一个牌组（含子牌组），评分照常记录",
+      "ungrouped": "未分组",
+      "due": "到期 {{count}}",
+      "new": "新卡 {{count}}",
+      "nothingDue": "今天没有到期",
+      "review": "复习 {{count}}",
+      "reviewAria": "复习「{{name}}」的 {{count}} 张到期卡",
+      "learnNew": "学 {{count}} 张新卡",
+      "learnNewAria": "学「{{name}}」的 {{count}} 张新卡",
+      "openLibrary": "在卡片库查看「{{name}}」",
+      "expand": "展开「{{name}}」的子牌组",
+      "collapse": "收起「{{name}}」的子牌组",
+      "empty": "这个牌组暂时没有可复习的卡",
+      "failed": "没能取到这个牌组的卡，请重试"
+    },
     "upNext": "接下来",
     "upNextCount": "{{count}} 张",
     "upNextCount_one": "{{count}} 张"
@@ -114,6 +131,11 @@
       "asc": "升序",
       "desc": "降序",
       "reset": "恢复默认排序"
+    },
+    "deck": {
+      "label": "牌组",
+      "all": "全部牌组",
+      "ungrouped": "未分组"
     },
     "filteredCount": "本页命中 {{shown}} / {{total}} 张",
     "noMatches": "没有符合当前搜索或筛选的卡片",

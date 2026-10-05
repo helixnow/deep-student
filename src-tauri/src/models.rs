@@ -1443,6 +1443,12 @@ pub struct ListAnkiCardsRequest {
     pub sort: Option<String>,
     #[serde(default)]
     pub sort_desc: Option<bool>,
+    /// 牌组筛选（制卡任务的 deck_name）：命中该牌组及其子牌组（`名称::…`）；空串 = 未分组
+    #[serde(default)]
+    pub deck: Option<String>,
+    /// 响应附带 `decks`：全库按牌组的计数（不受搜索 / 状态 / 牌组筛选影响）
+    #[serde(default)]
+    pub include_decks: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

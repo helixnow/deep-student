@@ -145,6 +145,46 @@
   opacity: 0.75;
 }
 
+.fc-lib-deck-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.fc-lib-deck-select {
+  appearance: none;
+  max-width: 240px;
+  padding: 3px 22px 3px 9px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.fc-lib-deck-select[data-active='true'] {
+  border-color: color-mix(in hsl, hsl(var(--foreground)) 45%, transparent 55%);
+  background: color-mix(in hsl, hsl(var(--foreground)) 9%, transparent 91%);
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.fc-lib-deck-select:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 1px;
+}
+
+.fc-lib-deck-caret {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground));
+}
+
 .fc-lib-result-count {
   margin-left: auto;
   font-size: 11px;
@@ -574,6 +614,11 @@
     padding: 8px 12px;
   }
 
+  .fc-lib-deck-select {
+    min-height: 44px;
+    padding: 8px 28px 8px 12px;
+  }
+
   /* 行内操作钮（入队/复习/暂停/删除/展开）：DsButton 在 lg 断点后压缩高度，
      宽屏触屏平板会跌破触控基线，这里兜底 ≥44px */
   .fc-lib-row-actions button {
@@ -671,6 +716,19 @@
     border-radius: 6px;
     padding-inline: 10px;
     font-size: var(--font-size-xs, 12px);
+  }
+
+  .fc-lib-deck-select-wrap {
+    flex: 1;
+  }
+
+  /* iOS 聚焦 <16px 的 select 会触发页面自动放大 */
+  .fc-lib-deck-select {
+    flex: 1;
+    max-width: none;
+    min-height: 44px;
+    border-radius: 6px;
+    font-size: 16px;
   }
 
   .fc-lib-kbd-hint {

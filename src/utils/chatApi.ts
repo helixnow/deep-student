@@ -150,6 +150,8 @@ export async function listAnkiLibraryCards(
     status: params?.status,
     sort: params?.sort,
     sortDesc: params?.sort_desc,
+    deck: params?.deck,
+    includeDecks: params?.include_decks,
   };
   return invoke<AnkiLibraryListResponse>('list_anki_library_cards', { request });
 }

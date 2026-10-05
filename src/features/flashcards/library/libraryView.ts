@@ -20,6 +20,17 @@ export type LibraryCardStatus =
   | 'relearning'
   | 'enqueued';
 
+/** 卡片库条目 → 批次复习的预置正文（startBatchSession 的 cards） */
+export function toReviewContent(card: AnkiLibraryCard) {
+  return {
+    id: card.stateId || card.id,
+    ankiCardId: card.id,
+    front: card.front || card.fields?.Front || '',
+    back: card.back || card.fields?.Back || card.text || '',
+    tags: card.tags,
+  };
+}
+
 export function getCardStatus(card: AnkiLibraryCard): LibraryCardStatus {
   if (!card.enqueued) return 'notEnqueued';
   if (card.suspended) return 'suspended';

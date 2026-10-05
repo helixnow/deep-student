@@ -3,6 +3,7 @@ import i18n from '@/i18n';
 import type {
   AnkiLibraryCard,
   AnkiLibraryCardPatch,
+  AnkiLibraryDeckCount,
   AnkiLibraryListResponse,
   AnkiLibraryStatusCounts,
 } from '@/types';
@@ -64,9 +65,14 @@ interface FlashcardsLibraryState {
   sortDir: LibrarySortDir;
   /** 各状态全集计数（旧后端无此字段时为 null，界面退回本页计数） */
   statusCounts: AnkiLibraryStatusCounts | null;
+  /** 牌组筛选（含子牌组）；null = 全部，'' = 未分组 */
+  deckFilter: string | null;
+  /** 全库按牌组计数（旧后端无此字段时为 null，界面不显示牌组筛选） */
+  decks: AnkiLibraryDeckCount[] | null;
 
   setSearchInput: (value: string) => void;
   setStatusFilter: (filter: LibraryStatusFilter) => void;
+  setDeckFilter: (deck: string | null) => void;
   /** 再次点击当前排序键时翻转方向。 */
   toggleSort: (key: Exclude<LibrarySortKey, 'default'>) => void;
   clearSort: () => void;
@@ -137,6 +143,8 @@ const initialState = {
   sortKey: 'default' as LibrarySortKey,
   sortDir: 'asc' as LibrarySortDir,
   statusCounts: null as AnkiLibraryStatusCounts | null,
+  deckFilter: null as string | null,
+  decks: null as AnkiLibraryDeckCount[] | null,
 };
 
 /** 名称是否带有可识别的（短字母数字）扩展名，如 `notes.pdf`；不透明 ID 返回 false。 */
@@ -255,6 +263,11 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       set({ statusFilter: filter, page: 1 });
       if (get().loaded) void get().load(get().query, 1);
     },
+    setDeckFilter: (deck) => {
+      if (get().deckFilter === deck) return;
+      set({ deckFilter: deck, page: 1 });
+      if (get().loaded) void get().load(get().query, 1);
+    },
     toggleSort: (key) => {
       const { sortKey, sortDir } = get();
       if (sortKey === key) {
@@ -271,6 +284,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
     clearFilters: () => {
       set({
         statusFilter: 'all',
+        deckFilter: null,
         sortKey: 'default',
         sortDir: 'asc',
         searchInput: '',
@@ -288,7 +302,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
       const currentRequest = ++requestId;
       set({ loading: true, loadError: null });
       try {
-        const { statusFilter, sortKey, sortDir } = get();
+        const { statusFilter, deckFilter, sortKey, sortDir } = get();
         const response: AnkiLibraryListResponse = await listAnkiLibraryCards({
           search: normalizedQuery || undefined,
           page: requestedPage,
@@ -296,6 +310,8 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           status: statusFilter === 'all' ? undefined : statusFilter,
           sort: sortKey === 'default' ? undefined : sortKey,
           sort_desc: sortKey === 'default' ? undefined : sortDir === 'desc',
+          deck: deckFilter ?? undefined,
+          include_decks: true,
         });
         if (currentRequest !== requestId) return false;
 
@@ -314,6 +330,7 @@ export const useFlashcardsLibraryStore = create<FlashcardsLibraryState>((set, ge
           loading: false,
           loaded: true,
           statusCounts: response.statusCounts ?? null,
+          decks: Array.isArray(response.decks) ? response.decks : null,
         });
         return true;
       } catch (error) {

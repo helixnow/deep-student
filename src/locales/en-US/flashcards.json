@@ -51,6 +51,23 @@
     "learnMoreEmpty": "No new cards left to learn",
     "learnMoreFailed": "Couldn't load new cards, please try again",
     "adjustDailyLimit": "Adjust daily new-card limit",
+    "decks": {
+      "title": "Review by deck",
+      "hint": "Review a single deck (subdecks included); ratings count as usual",
+      "ungrouped": "No deck",
+      "due": "{{count}} due",
+      "new": "{{count}} new",
+      "nothingDue": "Nothing due today",
+      "review": "Review {{count}}",
+      "reviewAria": "Review {{count}} due cards in {{name}}",
+      "learnNew": "Learn {{count}} new",
+      "learnNewAria": "Learn {{count}} new cards in {{name}}",
+      "openLibrary": "Show {{name}} in the library",
+      "expand": "Expand subdecks of {{name}}",
+      "collapse": "Collapse subdecks of {{name}}",
+      "empty": "Nothing to review in this deck right now",
+      "failed": "Couldn't load this deck's cards, please try again"
+    },
     "upNext": "Up next",
     "upNextCount": "{{count}} cards",
     "upNextCount_one": "{{count}} card"
@@ -114,6 +131,11 @@
       "asc": "Ascending",
       "desc": "Descending",
       "reset": "Reset to default order"
+    },
+    "deck": {
+      "label": "Deck",
+      "all": "All decks",
+      "ungrouped": "No deck"
     },
     "filteredCount": "{{shown}} of {{total}} on this page",
     "noMatches": "No cards match the current search or filter",

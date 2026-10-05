@@ -52,6 +52,9 @@ vi.mock('react-i18next', () => ({
         'library.previous': '上一页',
         'library.next': '下一页',
         'library.confirmDelete': '确定删除这张卡片吗？',
+        'library.deck.label': '牌组',
+        'library.deck.all': '全部牌组',
+        'library.deck.ungrouped': '未分组',
         'common:cancel': '取消',
       }[key] ?? (typeof fallback === 'string' ? fallback : key);
     },
@@ -168,6 +171,7 @@ describe('LibraryScreen', () => {
       search: undefined,
       page: 1,
       page_size: 20,
+      include_decks: true,
     });
 
     fireEvent.click(screen.getByRole('button', { name: '下一页' }));
@@ -176,6 +180,7 @@ describe('LibraryScreen', () => {
       search: undefined,
       page: 2,
       page_size: 20,
+      include_decks: true,
     });
 
     fireEvent.change(screen.getByPlaceholderText('搜索正面 / 背面 / 标签'), {
@@ -187,7 +192,43 @@ describe('LibraryScreen', () => {
       search: 'needle',
       page: 1,
       page_size: 20,
+      include_decks: true,
     });
+  });
+
+  it('filters by deck (subdecks included) once the library has more than one deck', async () => {
+    const decks = [
+      { name: '数学::极限', all: 3, due: 1, new: 1, notEnqueued: 1 },
+      { name: '数学::导数', all: 2, due: 0, new: 2, notEnqueued: 0 },
+      { name: '', all: 1, due: 0, new: 0, notEnqueued: 1 },
+    ];
+    mocks.listCards.mockImplementation(async ({ deck }: { deck?: string }) => ({
+      ...response([card(deck === undefined ? 'any-deck' : `deck-${deck || 'none'}`)], 1, 1),
+      decks,
+    }));
+
+    render(<LibraryScreen />);
+    expect(await screen.findByText('front any-deck')).toBeInTheDocument();
+    const select = screen.getByLabelText('牌组') as HTMLSelectElement;
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+      '全部牌组',
+      '数学 (5)',
+      '\u3000导数 (2)',
+      '\u3000极限 (3)',
+      '未分组 (1)',
+    ]);
+
+    fireEvent.change(select, { target: { value: '数学' } });
+    expect(await screen.findByText('front deck-数学')).toBeInTheDocument();
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, deck: '数学' }));
+
+    fireEvent.change(select, { target: { value: '' } });
+    expect(await screen.findByText('front deck-none')).toBeInTheDocument();
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({ deck: '' }));
+
+    fireEvent.change(select, { target: { value: '::all' } });
+    expect(await screen.findByText('front any-deck')).toBeInTheDocument();
+    expect(useFlashcardsLibraryStore.getState().deckFilter).toBeNull();
   });
 
   it('ignores a stale page response that resolves after a newer search', async () => {

@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 
 import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
+  CaretDown,
   CaretLeft,
   CaretRight,
   DotsThree,
@@ -49,7 +50,9 @@ import {
   matchesStatusFilter,
   partitionLibraryQueues,
   sortLibraryCards,
+  toReviewContent,
 } from '../library/libraryView';
+import { buildDeckTree, flattenDeckTree } from '../library/deckTree';
 import '../library/library.css';
 import { exportLibraryApkg } from '../library/exportLibrary';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
@@ -71,15 +74,8 @@ const FILTER_OPTIONS: LibraryStatusFilter[] = [
 
 const SORT_OPTIONS: Array<Exclude<LibrarySortKey, 'default'>> = ['due', 'created', 'front'];
 
-function toReviewContent(card: AnkiLibraryCard) {
-  return {
-    id: card.stateId || card.id,
-    ankiCardId: card.id,
-    front: card.front || card.fields?.Front || '',
-    back: card.back || card.fields?.Back || card.text || '',
-    tags: card.tags,
-  };
-}
+/** 牌组下拉的「全部」取值：牌组名不会以 `::` 开头，'' 已用于「未分组」 */
+const DECK_FILTER_ALL = '::all';
 
 export const LibraryScreen: React.FC = () => {
   const { t } = useTranslation('flashcards');
@@ -100,10 +96,13 @@ export const LibraryScreen: React.FC = () => {
   const busyCardId = useFlashcardsLibraryStore((state) => state.busyCardId);
   const bulkBusy = useFlashcardsLibraryStore((state) => state.bulkBusy);
   const statusFilter = useFlashcardsLibraryStore((state) => state.statusFilter);
+  const deckFilter = useFlashcardsLibraryStore((state) => state.deckFilter);
+  const decks = useFlashcardsLibraryStore((state) => state.decks);
   const sortKey = useFlashcardsLibraryStore((state) => state.sortKey);
   const sortDir = useFlashcardsLibraryStore((state) => state.sortDir);
   const setSearch = useFlashcardsLibraryStore((state) => state.setSearchInput);
   const setStatusFilter = useFlashcardsLibraryStore((state) => state.setStatusFilter);
+  const setDeckFilter = useFlashcardsLibraryStore((state) => state.setDeckFilter);
   const toggleSort = useFlashcardsLibraryStore((state) => state.toggleSort);
   const clearSort = useFlashcardsLibraryStore((state) => state.clearSort);
   const clearActionError = useFlashcardsLibraryStore((state) => state.clearActionError);
@@ -206,6 +205,11 @@ export const LibraryScreen: React.FC = () => {
     }
     return counts;
   }, [items, statusCounts]);
+
+  const deckOptions = useMemo(() => flattenDeckTree(buildDeckTree(decks ?? [])), [decks]);
+  // 只有一个牌组时筛选没有意义；已选中的牌组即使被删空也保留下拉，方便切回全部
+  const showDeckFilter = (decks?.length ?? 0) >= 2 || deckFilter !== null;
+  const deckFilterMissing = deckFilter !== null && !deckOptions.some((node) => node.path === deckFilter);
 
   const selectedCards = useMemo(
     () => visibleItems.filter((card) => selectedIds.has(card.id)),
@@ -405,10 +409,14 @@ export const LibraryScreen: React.FC = () => {
   const handleClearFilters = () => {
     void useFlashcardsLibraryStore.getState().clearFilters();
   };
-  // 搜索或状态筛选生效时，空列表表示「没有命中」而不是「库是空的」
-  const isFiltered = query.length > 0 || statusFilter !== 'all';
-  const totalLabel = statusFilter !== 'all' && statusCounts
-    ? translate('library.totalFiltered', { count: total, all: statusCounts.all })
+  // 搜索 / 状态 / 牌组筛选生效时，空列表表示「没有命中」而不是「库是空的」
+  const isFiltered = query.length > 0 || statusFilter !== 'all' || deckFilter !== null;
+  // 选了牌组时 statusCounts 只是该牌组的全集，全库总数从牌组计数求和
+  const libraryAll = deckFilter !== null && decks
+    ? decks.reduce((sum, deck) => sum + deck.all, 0)
+    : statusCounts?.all;
+  const totalLabel = (statusFilter !== 'all' || deckFilter !== null) && libraryAll != null
+    ? translate('library.totalFiltered', { count: total, all: libraryAll })
     : translate('library.total', { count: statusCounts?.all ?? total });
 
   // ---------- 新建 / 导入 ----------
@@ -656,7 +664,7 @@ export const LibraryScreen: React.FC = () => {
             className="relative"
           >
             <SlidersHorizontal size={18} />
-            {statusFilter !== 'all' || sortKey !== 'default' ? <span className="fc-lib-filter-dot" /> : null}
+            {statusFilter !== 'all' || deckFilter !== null || sortKey !== 'default' ? <span className="fc-lib-filter-dot" /> : null}
           </DsButton>
         )}
       </div>
@@ -720,6 +728,37 @@ export const LibraryScreen: React.FC = () => {
             );
           })}
         </div>
+        {showDeckFilter ? (
+          <div className="fc-lib-filters-group">
+            <label className="fc-lib-filters-label" htmlFor={`${filtersId}-deck`}>
+              {translate('library.deck.label')}
+            </label>
+            <span className="fc-lib-deck-select-wrap">
+              <select
+                id={`${filtersId}-deck`}
+                className="fc-lib-deck-select"
+                data-active={deckFilter !== null ? 'true' : undefined}
+                value={deckFilter ?? DECK_FILTER_ALL}
+                onChange={(event) => setDeckFilter(
+                  event.target.value === DECK_FILTER_ALL ? null : event.target.value,
+                )}
+              >
+                <option value={DECK_FILTER_ALL}>{translate('library.deck.all')}</option>
+                {deckOptions.map((node) => (
+                  <option key={node.path || '::ungrouped'} value={node.path}>
+                    {`${'\u3000'.repeat(node.depth)}${node.path ? node.label : translate('library.deck.ungrouped')} (${node.all})`}
+                  </option>
+                ))}
+                {deckFilterMissing ? (
+                  <option value={deckFilter ?? ''}>
+                    {deckFilter || translate('library.deck.ungrouped')}
+                  </option>
+                ) : null}
+              </select>
+              <CaretDown size={10} className="fc-lib-deck-caret" aria-hidden="true" />
+            </span>
+          </div>
+        ) : null}
         <div
           className="fc-lib-filters-group"
           role="group"

@@ -256,6 +256,70 @@
   font-weight: 500;
 }
 
+/* ==== 按牌组复习 ======================================================== */
+
+.wb-fcx-decks {
+  padding: 4px 0 6px;
+}
+
+.wb-fcx-deck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 4px 0 4px calc(var(--deck-depth, 0) * 16px);
+  border-bottom: 1px solid color-mix(in hsl, hsl(var(--border)) 45%, transparent 55%);
+}
+
+.wb-fcx-deck:last-child {
+  border-bottom: none;
+}
+
+/* 叶子牌组的占位与 DsButton iconOnly sm 同宽（<lg 与触屏为触控尺寸），名称列对齐 */
+.wb-fcx-deck-toggle {
+  flex: none;
+  color: hsl(var(--muted-foreground));
+}
+
+span.wb-fcx-deck-toggle {
+  width: var(--touch-target-size, 44px);
+}
+
+@media (min-width: 1024px) and (pointer: fine) {
+  span.wb-fcx-deck-toggle {
+    width: var(--button-height-sm, 28px);
+  }
+}
+
+.wb-fcx-deck-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wb-fcx-deck-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+}
+
+.wb-fcx-deck-counts {
+  font-size: 11px;
+  line-height: 1.35;
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-fcx-deck-action,
+.wb-fcx-deck-library {
+  flex: none;
+}
+
 /* ==== 进度环 =========================================================== */
 
 .wb-fcx-ring {

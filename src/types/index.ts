@@ -832,6 +832,18 @@ export interface AnkiLibraryListResponse {
   total: number;
   /** 旧后端没有该字段 */
   statusCounts?: AnkiLibraryStatusCounts;
+  /** 请求带 include_decks 时返回（全库，不受筛选影响）；旧后端没有该字段 */
+  decks?: AnkiLibraryDeckCount[];
+}
+
+/** 卡片库按牌组的计数；牌组 = 制卡任务的 deck_name（`学科::主题` 原样），空串 = 未分组 */
+export interface AnkiLibraryDeckCount {
+  name: string;
+  all: number;
+  /** 已到期的学习 / 复习卡（不含新卡） */
+  due: number;
+  new: number;
+  notEnqueued: number;
 }
 
 export interface ListAnkiCardsParams {
@@ -844,6 +856,9 @@ export interface ListAnkiCardsParams {
   /** 服务端排序：default | due | created | front */
   sort?: string;
   sort_desc?: boolean;
+  /** 牌组及其子牌组；'' = 未分组 */
+  deck?: string;
+  include_decks?: boolean;
 }
 
 export interface FsrsStats {

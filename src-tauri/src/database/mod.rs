@@ -7787,7 +7787,22 @@ impl Database {
             params.push(Value::from(pattern));
         }
 
-        // 各状态计数：模板 / 搜索条件下的全集（不受状态筛选影响），SELECT 里的 now 占位先绑定
+        if let Some(deck_value) = filter.deck.as_deref().map(str::trim) {
+            if deck_value.is_empty() {
+                clauses.push(format!("{LIBRARY_DECK_EXPR} = ''"));
+            } else {
+                // 子牌组按前缀比对（区分大小写，与 GROUP BY 口径一致；不走 LIKE 免转义）
+                let prefix = format!("{deck_value}::");
+                clauses.push(format!(
+                    "({LIBRARY_DECK_EXPR} = ? OR substr({LIBRARY_DECK_EXPR}, 1, ?) = ?)"
+                ));
+                params.push(Value::from(deck_value.to_string()));
+                params.push(Value::from(prefix.chars().count() as i64));
+                params.push(Value::from(prefix));
+            }
+        }
+
+        // 各状态计数：模板 / 搜索 / 牌组条件下的全集（不受状态筛选影响），SELECT 里的 now 占位先绑定
         let base_where = format!("WHERE {}", clauses.join(" AND "));
         let counts_sql = format!(
             "SELECT
@@ -7897,7 +7912,8 @@ impl Database {
                     THEN 1 ELSE 0
                 END,
                 dt.source_session_id,
-                json_extract(dt.anki_generation_options_json, '$.source_ref')
+                CASE WHEN json_valid(dt.anki_generation_options_json)
+                    THEN json_extract(dt.anki_generation_options_json, '$.source_ref') END
              FROM anki_cards ac
              INNER JOIN document_tasks dt ON dt.id = ac.task_id
              LEFT JOIN fsrs_card_states fs
@@ -7972,7 +7988,48 @@ impl Database {
 
         Ok((items, total, counts))
     }
+
+    /// 全库按牌组计数（牌组名层级原样，父牌组的合计由调用方按 `::` 汇总）。
+    pub fn list_anki_library_deck_counts(&self) -> Result<Vec<AnkiLibraryDeckCount>> {
+        let conn = self.get_conn_safe()?;
+        let now_ms = Utc::now().timestamp_millis();
+        let sql = format!(
+            "SELECT
+                {LIBRARY_DECK_EXPR} AS deck,
+                COUNT(*),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state != 0 AND fs.due_ms <= ?1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 0 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN fs.id IS NULL THEN 1 ELSE 0 END), 0)
+             FROM anki_cards ac
+             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             LEFT JOIN fsrs_card_states fs
+               ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
+             WHERE ac.deleted_at IS NULL AND dt.deleted_at IS NULL
+             GROUP BY deck
+             ORDER BY deck"
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(params![now_ms], |row| {
+            Ok(AnkiLibraryDeckCount {
+                name: row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                all: row.get::<_, i64>(1)?.max(0) as u64,
+                due: row.get::<_, i64>(2)?.max(0) as u64,
+                new: row.get::<_, i64>(3)?.max(0) as u64,
+                not_enqueued: row.get::<_, i64>(4)?.max(0) as u64,
+            })
+        })?;
+        let mut decks = Vec::new();
+        for row in rows {
+            decks.push(row?);
+        }
+        Ok(decks)
+    }
 }
+
+/// 卡片所属牌组 = 制卡任务选项里的 deck_name（ChatAnki / APKG 导入 / 文档制卡都写这里），
+/// 去首尾空白，缺失为空串。
+const LIBRARY_DECK_EXPR: &str = "COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json) \
+     THEN json_extract(dt.anki_generation_options_json, '$.deck_name') END), '')";
 
 /// 卡片库列表的调度状态筛选与排序（取值与前端 LibraryStatusFilter / LibrarySortKey 一致；
 /// 未知值按「全部 / 默认顺序」处理）。
@@ -7983,6 +8040,21 @@ pub struct AnkiLibraryListFilter {
     /// default | due | created | front
     pub sort: Option<String>,
     pub sort_desc: Option<bool>,
+    /// 牌组及其子牌组；Some("") = 未分组
+    pub deck: Option<String>,
+}
+
+/// 卡片库按牌组的计数（`list_anki_library_cards` 响应的 `decks`）
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AnkiLibraryDeckCount {
+    /// 牌组全名（`学科::主题` 原样）；空串 = 未分组
+    pub name: String,
+    pub all: u64,
+    /// 已到期的学习 / 复习卡（不含新卡，与状态计数 due 同口径）
+    pub due: u64,
+    pub new: u64,
+    pub not_enqueued: u64,
 }
 
 /// 卡片库各状态计数（模板 / 搜索条件下的全集，不受状态筛选影响）
@@ -8838,6 +8910,134 @@ mod tests {
         let source_ref = items[0].source_ref.as_ref().expect("source_ref");
         assert_eq!(source_ref["kind"], "note");
         assert_eq!(source_ref["id"], "note_abc");
+        Ok(())
+    }
+
+    #[test]
+    fn list_anki_library_cards_filters_and_counts_by_deck() -> anyhow::Result<()> {
+        let dir = tempdir()?;
+        let db = setup_migrated_db(dir.path())?;
+        let save = |task_id: &str, options: &str, card_ids: &[&str]| -> anyhow::Result<()> {
+            let task = DocumentTask {
+                id: task_id.to_string(),
+                document_id: format!("doc-{task_id}"),
+                original_document_name: task_id.to_string(),
+                segment_index: 0,
+                content_segment: "fixture".to_string(),
+                status: TaskStatus::Completed,
+                created_at: "2026-10-05T00:00:00Z".to_string(),
+                updated_at: "2026-10-05T00:00:00Z".to_string(),
+                error_message: None,
+                anki_generation_options_json: options.to_string(),
+            };
+            let cards: Vec<AnkiCard> = card_ids
+                .iter()
+                .map(|id| AnkiCard {
+                    id: id.to_string(),
+                    task_id: task_id.to_string(),
+                    front: format!("front {id}"),
+                    back: format!("back {id}"),
+                    text: None,
+                    tags: vec![],
+                    images: vec![],
+                    is_error_card: false,
+                    error_content: None,
+                    created_at: "2026-10-05T00:00:01Z".to_string(),
+                    updated_at: "2026-10-05T00:00:01Z".to_string(),
+                    extra_fields: std::collections::HashMap::new(),
+                    template_id: None,
+                })
+                .collect();
+            db.save_document_task_with_cards_atomic(&task, &cards)?;
+            Ok(())
+        };
+        save("t-lim", r#"{"deck_name":"数学::极限"}"#, &["lim-due", "lim-new"])?;
+        save("t-der", r#"{"deck_name":"数学::导数"}"#, &["der-due"])?;
+        save("t-math", r#"{"deck_name":"数学"}"#, &["math-unqueued"])?;
+        save("t-mathx", r#"{"deck_name":"数学x"}"#, &["mathx-due"])?;
+        save("t-eng", r#"{"deck_name":"  英语 "}"#, &["eng-due"])?;
+        save("t-none", "{}", &["none-unqueued"])?;
+        save("t-bad", "{}", &["bad-suspended"])?;
+
+        let now_text = Utc::now().to_rfc3339();
+        let past_due = Utc::now().timestamp_millis() - 1_000;
+        {
+            let conn = db.get_conn_safe()?;
+            conn.execute(
+                "UPDATE document_tasks SET anki_generation_options_json = 'not json' WHERE id = 't-bad'",
+                [],
+            )?;
+            for (state_id, card_id, state, suspended) in [
+                ("s-lim-due", "lim-due", 2, 0),
+                ("s-lim-new", "lim-new", 0, 0),
+                ("s-der-due", "der-due", 1, 0),
+                ("s-mathx-due", "mathx-due", 2, 0),
+                ("s-eng-due", "eng-due", 2, 0),
+                ("s-bad", "bad-suspended", 2, 1),
+            ] {
+                conn.execute(
+                    "INSERT INTO fsrs_card_states (
+                        id, anki_card_id, state, due_ms, suspended, created_at, updated_at
+                     ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
+                    params![state_id, card_id, state, past_due, suspended, &now_text],
+                )?;
+            }
+        }
+
+        let decks = db.list_anki_library_deck_counts()?;
+        let deck = |name: &str| decks.iter().find(|deck| deck.name == name).cloned();
+        assert_eq!(decks.len(), 6, "{decks:?}");
+        assert_eq!(
+            deck(""),
+            Some(AnkiLibraryDeckCount {
+                name: String::new(),
+                all: 2,
+                due: 0,
+                new: 0,
+                not_enqueued: 1,
+            })
+        );
+        assert_eq!(
+            deck("数学::极限"),
+            Some(AnkiLibraryDeckCount {
+                name: "数学::极限".to_string(),
+                all: 2,
+                due: 1,
+                new: 1,
+                not_enqueued: 0,
+            })
+        );
+        assert_eq!(deck("数学::导数").map(|d| d.due), Some(1));
+        assert_eq!(deck("数学").map(|d| (d.all, d.not_enqueued)), Some((1, 1)));
+        assert_eq!(deck("英语").map(|d| d.due), Some(1));
+
+        let list = |deck: &str, status: Option<&str>| -> anyhow::Result<(Vec<String>, u64, AnkiLibraryStatusCounts)> {
+            let (items, total, counts) = db.list_anki_library_cards_filtered(
+                None,
+                None,
+                &AnkiLibraryListFilter {
+                    status: status.map(str::to_string),
+                    deck: Some(deck.to_string()),
+                    ..Default::default()
+                },
+                1,
+                50,
+            )?;
+            let mut ids: Vec<String> = items.into_iter().map(|item| item.card.id).collect();
+            ids.sort();
+            Ok((ids, total, counts))
+        };
+
+        // 父牌组含子牌组，但不含同前缀的「数学x」
+        let (ids, total, counts) = list("数学", None)?;
+        assert_eq!(ids, vec!["der-due", "lim-due", "lim-new", "math-unqueued"]);
+        assert_eq!(total, 4);
+        assert_eq!((counts.all, counts.due, counts.new, counts.not_enqueued), (4, 2, 1, 1));
+        assert_eq!(list("数学", Some("due"))?.0, vec!["der-due", "lim-due"]);
+        assert_eq!(list("数学::极限", None)?.0, vec!["lim-due", "lim-new"]);
+        assert_eq!(list(" 英语 ", None)?.0, vec!["eng-due"]);
+        assert_eq!(list("", None)?.0, vec!["bad-suspended", "none-unqueued"]);
+        assert_eq!(list("物理", None)?.1, 0);
         Ok(())
     }
 

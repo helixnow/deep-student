@@ -130,4 +130,24 @@ describe('flashcards library store', () => {
     useFlashcardsLibraryStore.getState().setStatusFilter('suspended');
     expect(mocks.listCards).toHaveBeenCalledTimes(2);
   });
+
+  it('牌组筛选交给服务端并随列表取回牌组计数；清除筛选回到全部牌组', async () => {
+    const decks = [{ name: '数学::极限', all: 3, due: 1, new: 1, notEnqueued: 1 }];
+    mocks.listCards.mockResolvedValue({ items: [card()], total: 1, page: 1, pageSize: 20, decks });
+    await useFlashcardsLibraryStore.getState().load('', 2);
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({
+      deck: undefined,
+      include_decks: true,
+    }));
+    expect(useFlashcardsLibraryStore.getState().decks).toEqual(decks);
+
+    useFlashcardsLibraryStore.getState().setDeckFilter('');
+    await vi.waitFor(() => expect(mocks.listCards).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 1, deck: '' }),
+    ));
+
+    await useFlashcardsLibraryStore.getState().clearFilters();
+    expect(useFlashcardsLibraryStore.getState().deckFilter).toBeNull();
+    expect(mocks.listCards).toHaveBeenLastCalledWith(expect.objectContaining({ deck: undefined }));
+  });
 });
