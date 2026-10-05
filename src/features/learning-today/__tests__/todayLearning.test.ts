@@ -11,7 +11,8 @@ const note = (id: string, reviewDate?: string) => ({
 
 describe('loadTodayLearning', () => {
   it('sums the three review lines with one shared definition of "due"', async () => {
-    invoke.mockImplementation(async (cmd: string) => cmd === 'fsrs_get_stats' ? { due: 7 } : { due_today: 2, overdue_count: 3 });
+    // 后端 due_today = next_review_date ≤ 今天，已含 overdue_count，不能再相加
+    invoke.mockImplementation(async (cmd: string) => cmd === 'fsrs_get_stats' ? { due: 7 } : { due_today: 5, overdue_count: 3 });
     list.mockResolvedValue({ ok: true, value: [note('a', '2026-09-30'), note('b', '2026-10-01'), note('c', '2026-10-05'), note('d')] });
     const today = await loadTodayLearning(new Date('2026-10-01T12:00:00'));
     expect(today).toMatchObject({ cards: 7, mistakes: 5, notes: 2 });

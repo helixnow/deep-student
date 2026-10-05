@@ -4,7 +4,7 @@
  * 笔记的复习日期则只是装饰。
  *
  * - cards：FSRS 到期卡片（fsrs_get_stats.due）
- * - mistakes：SM-2 错题复习（review_plan_get_stats：今日到期 + 已逾期）
+ * - mistakes：SM-2 错题复习（review_plan_get_stats.due_today，后端口径为 next_review_date ≤ 今天，已含逾期）
  * - notes：study_review_date ≤ 今天 的笔记
  */
 import { invoke } from '@tauri-apps/api/core';
@@ -36,8 +36,8 @@ async function countDueNotes(now: Date): Promise<TodayLearning['dueNotes']> {
 export async function loadTodayLearning(now = new Date()): Promise<TodayLearning> {
   const [cards, mistakes, dueNotes] = await Promise.all([
     invoke<{ due?: number }>('fsrs_get_stats').then((s) => s?.due ?? 0).catch(() => 0),
-    invoke<{ due_today?: number; overdue_count?: number }>('review_plan_get_stats', { examId: null })
-      .then((s) => (s?.due_today ?? 0) + (s?.overdue_count ?? 0)).catch(() => 0),
+    invoke<{ due_today?: number }>('review_plan_get_stats', { examId: null })
+      .then((s) => s?.due_today ?? 0).catch(() => 0),
     countDueNotes(now).catch(() => []),
   ]);
   return { cards, mistakes, notes: dueNotes.length, dueNotes };
