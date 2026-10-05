@@ -374,7 +374,13 @@
     "quoteSelection": "引用到对话",
     "cardsFromSelection": "制卡",
     "quoteIntro": "《{{name}}》{{ref}} 起的字幕：",
-    "quoteFailed": "无法引用到对话"
+    "quoteFailed": "无法引用到对话",
+    "textSize": "字幕字号：{{size}}（点击切换）",
+    "textSizeLabel": {
+      "sm": "小",
+      "base": "中",
+      "lg": "大"
+    }
   },
   "mediaCards": {
     "deckName": "音视频",
