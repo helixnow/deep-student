@@ -28,6 +28,7 @@ import {
   type PracticeHandoffHydrationResult,
 } from '@/stores/questionBankStore';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+import { useExamDueReviewCount } from './useExamDueReviewCount';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { AppSelect, AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu';
@@ -337,16 +338,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     toggleFavorite: toggleFavoriteInSession,
   } = useQuestionBankSession({ examId: sessionId });
   const hasQuestions = questions.length > 0;
+  const sm2DueCount = useExamDueReviewCount(sessionId);
 
   // 二级视图（收纳进 Tab 栏「更多」菜单）：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理
   const secondaryTabs = useMemo(() => ([
     { mode: 'review' as ViewMode, label: t('learningHub:exam.tab.wrongAnswers'), icon: XCircle, badge: stats?.review ?? 0 },
-    { mode: 'sm2' as ViewMode, label: t('review:title'), icon: ClockCounterClockwise, badge: 0 },
+    { mode: 'sm2' as ViewMode, label: t('review:title'), icon: ClockCounterClockwise, badge: sm2DueCount },
     { mode: 'favorites' as ViewMode, label: t('learningHub:exam.tab.favorites'), icon: Star, badge: 0 },
     { mode: 'tags' as ViewMode, label: t('learningHub:exam.tab.topics'), icon: Tag, badge: 0 },
     { mode: 'stats' as ViewMode, label: t('learningHub:exam.tab.stats'), icon: ChartBar, badge: 0 },
     { mode: 'manage' as ViewMode, label: t('learningHub:exam.tab.manage'), icon: GearSix, badge: 0 },
-  ]), [t, stats?.review]);
+  ]), [t, stats?.review, sm2DueCount]);
 
   // 专注模式（从 Store 获取 — 全局 UI 偏好，不需要本地化）
   const focusMode = useQuestionBankStore(state => state.focusMode);
@@ -2393,6 +2395,14 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     )}
                   >
                     {activeSecondaryTab?.label ?? t('learningHub:exam.tab.more')}
+                    {sm2DueCount > 0 && viewMode !== 'sm2' && (
+                      <span
+                        className="min-w-[18px] rounded-full bg-warning/15 px-1.5 py-px text-center text-2xs font-medium tabular-nums text-warning"
+                        aria-hidden="true"
+                      >
+                        {sm2DueCount > 99 ? '99+' : sm2DueCount}
+                      </span>
+                    )}
                     <CaretDown
                       size={12}
                       className="opacity-60 transition-transform duration-200 ease-out motion-reduce:transition-none group-aria-expanded:rotate-180"
