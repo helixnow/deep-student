@@ -9,7 +9,16 @@ import {
 import { applyClozeMarkup, extractClozeOrdinals, type TemplateRenderIssue } from '@/services/ankiTemplateEngine';
 import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './utils/cardFaceStyles';
 import { renderCardFaceLatexHtml, renderCardTemplateMath } from './utils/cardFaceLatex';
+import {
+  CARD_FACE_HELPER_SCRIPT,
+  injectCardMedia,
+  isInteractiveCardHtml,
+  looksLikeHtml,
+  soundNames,
+  useCardMediaMap,
+} from './utils/cardMedia';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
+import { cn } from '@/utils/cn';
 
 export type AnkiCardFace = 'front' | 'back';
 
@@ -28,6 +37,12 @@ export interface AnkiTemplateCardFaceProps {
    * 与 Anki 复习窗口一致，模板本身就是卡片，宿主不再另套卡片框。
    */
   stageHeight?: number;
+  /**
+   * 复习舞台：卡面含提示折叠 / 音频 / 链接 / 模板脚本时放开 iframe 指针事件，
+   * 点击空白处经 `onFrameClick` 交给宿主（翻面）；不含时整块透传给宿主。
+   */
+  interactiveFrame?: boolean;
+  onFrameClick?: () => void;
 }
 
 function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
@@ -94,15 +109,19 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   emptyText = '',
   showRenderIssues = true,
   stageHeight,
+  interactiveFrame = false,
+  onFrameClick,
 }) => {
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
+  const media = useCardMediaMap(card.images);
 
   const rendered = useMemo<DetailedCardRenderResult | null>(() => {
     if (!template) return null;
-    // renderCardDetailed 内部结构化捕获所有异常，不会抛出
+    // renderCardDetailed 内部结构化捕获所有异常，不会抛出；[sound:] 原样保留，下面换成 <audio>
     return TemplateRenderService.renderCardDetailed(card, template, {
       clozeOrdinal: resolveClozeOrdinal(card, template),
+      soundStrategy: 'keep',
     });
   }, [card, template]);
 
@@ -110,15 +129,24 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   const htmlContent = faceResult?.html?.trim() || '';
   const issues = faceResult?.issues ?? [];
   const plainText = fallbackText ?? defaultFaceText(card, side);
+  const frontHtml = rendered?.front?.html ?? (template ? '' : defaultFaceText(card, 'front'));
   const previewHtml = useMemo(() => {
-    if (htmlContent) return renderCardTemplateMath(htmlContent);
-    if (!template && extractClozeOrdinals(plainText).length > 0) {
-      return renderCardTemplateMath(applyClozeMarkup(plainText, {
-        side, ordinal: resolveClozeOrdinal(card),
-      }));
+    let html = '';
+    if (htmlContent) {
+      html = htmlContent;
+    } else if (!template && extractClozeOrdinals(plainText).length > 0) {
+      html = applyClozeMarkup(plainText, { side, ordinal: resolveClozeOrdinal(card) });
+    } else if (!template && looksLikeHtml(plainText)) {
+      // 外部 Anki 牌组的字段是 HTML：按 HTML 渲染，而不是当纯文本转义
+      html = plainText;
     }
-    return '';
-  }, [htmlContent, template, plainText, card, side]);
+    if (!html) return '';
+    // 背面不自动重放正面的音频（同 Anki：{{FrontSide}} 里的音频不自动播放）
+    const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
+    return renderCardTemplateMath(injectCardMedia(html, media, { noAutoplay }));
+  }, [htmlContent, template, plainText, card, side, media, frontHtml]);
+  const frameInteractive = interactiveFrame && isInteractiveCardHtml(previewHtml);
+  const frameHtml = frameInteractive ? `${previewHtml}${CARD_FACE_HELPER_SCRIPT}` : previewHtml;
 
   // fallback 视图：\( \)、\[ \]、$、$$ 公式经 KaTeX 渲染；无公式时保持纯文本零成本
   const latexHtml = useMemo(
@@ -127,6 +155,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   );
   const imageSrcs = useMemo(
     () => (card.images ?? [])
+      .filter((image) => !/\.(mp3|ogg|oga|opus|wav|m4a|aac|flac|webm|mp4)$/i.test(image.trim()))
       .map(resolveCardImageSrc)
       .filter((src): src is string => src != null),
     [card.images],
@@ -142,17 +171,19 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
 
   return (
     <div
-      className={className}
+      className={cn(className, interactiveFrame && !frameInteractive && 'pointer-events-none')}
       data-anki-card-face={side}
-      data-render-mode={htmlContent ? 'template' : previewHtml ? 'cloze' : 'plain'}
+      data-render-mode={htmlContent ? 'template' : previewHtml ? 'html' : 'plain'}
+      data-interactive={frameInteractive ? 'true' : undefined}
     >
       {previewHtml ? (
         <ShadowDomPreview
-          htmlContent={previewHtml}
+          htmlContent={frameHtml}
           cssContent={cssContent}
           compact={compact}
           fidelity="anki"
           minHeight={stageMode ? stageHeight : undefined}
+          onFrameClick={frameInteractive ? onFrameClick : undefined}
         />
       ) : (
         <div className="flex min-w-0 flex-col items-center gap-2">

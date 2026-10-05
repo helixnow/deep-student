@@ -55,6 +55,8 @@ export interface ReviewCard {
   errorContent?: string | null;
   /** 当前调度状态是否暂停；活动 session 会跳过暂停卡。 */
   suspended?: boolean;
+  /** 本轮内被埋藏（手动或兄弟卡埋藏，明天再出现）；活动 session 跳过。 */
+  buried?: boolean;
   /** 评分 CAS：进入队列时的 last_review_ms（null=从未评过） */
   lastReviewMs?: number | null;
   /**
@@ -87,8 +89,8 @@ export interface ReviewReceipt {
 /** 会话内撤销栈深度上限（Anki 为无限撤销；这里按快照内存开销取有界值） */
 export const REVIEW_UNDO_LIMIT = 20;
 
-/** 单次作答用时上限：超过按上限截断（对齐 Anki max answer time：挂机不应污染用时统计） */
-export const MAX_ANSWER_DURATION_MS = 10 * 60_000;
+/** 单次作答用时默认上限（Anki 默认 60 秒）；调度设置的 maxAnswerSeconds 可覆盖。挂机不应污染用时统计。 */
+export const MAX_ANSWER_DURATION_MS = 60_000;
 
 function pushReviewReceipt(history: ReviewReceipt[], receipt: ReviewReceipt): ReviewReceipt[] {
   const next = [...history, receipt];
@@ -111,8 +113,8 @@ function createClientOpId(): string {
 export interface SuspendedReviewReceipt {
   cardStateId: string;
   queueIndex: number;
-  /** 暂停来源：缺省=用户手动；'leech'=达到 lapse 阈值被后端自动暂停 */
-  reason?: 'leech';
+  /** 来源：缺省=用户手动暂停；'leech'=达到 lapse 阈值被后端自动暂停；'bury'=手动埋藏到明天 */
+  reason?: 'leech' | 'bury';
 }
 
 export type ReviewSessionErrorKind =
@@ -152,6 +154,8 @@ interface FsrsReviewState {
   /** 后端统计的真实到期总数（可能大于本轮 dueCards.length） */
   dueTotal: number;
   learnAheadMinutes: number;
+  /** 单次作答用时上限（毫秒，来自调度设置 maxAnswerSeconds） */
+  maxAnswerMs: number;
   queue: ReviewCard[];
   queueIndex: number;
   flipped: boolean;
@@ -244,6 +248,8 @@ interface FsrsReviewState {
     template?: ReviewEditTemplate | null,
   ) => Promise<boolean>;
   suspendCurrent: () => Promise<boolean>;
+  /** 埋藏当前卡到明天（Anki bury）；可用 resumeLastSuspended 取消。 */
+  buryCurrent: () => Promise<boolean>;
   resumeLastSuspended: () => Promise<boolean>;
   /**
    * 跳过当前卡：移到本轮队列末尾稍后再练（纯前端队列操作，不触碰调度状态）。
@@ -327,9 +333,13 @@ function hasReviewContent(
   );
 }
 
+function isHiddenInSession(card: ReviewCard | undefined): boolean {
+  return card?.suspended === true || card?.buried === true;
+}
+
 function nextReviewableIndex(queue: ReviewCard[], start: number): number {
   let index = Math.max(0, start);
-  while (index < queue.length && queue[index]?.suspended === true) index += 1;
+  while (index < queue.length && isHiddenInSession(queue[index])) index += 1;
   return index;
 }
 
@@ -452,16 +462,26 @@ async function fetchDueFromBackend(): Promise<ReviewCard[]> {
   return cards;
 }
 
-async function fetchLearnAheadMinutes(): Promise<number> {
+interface SessionSchedulerConfig {
+  learnAheadMinutes: number;
+  maxAnswerMs: number;
+}
+
+async function fetchSessionConfig(): Promise<SessionSchedulerConfig> {
+  // No confirmed setting: wait until learning cards are actually due.
+  const config: SessionSchedulerConfig = { learnAheadMinutes: 0, maxAnswerMs: MAX_ANSWER_DURATION_MS };
   try {
     const result = await invoke<Record<string, unknown>>('fsrs_get_scheduler_config');
     const minutes = result?.learnAheadMinutes ?? result?.learn_ahead_minutes;
     if (typeof minutes === 'number' && Number.isInteger(minutes) && minutes >= 0 && minutes <= 60) {
-      return minutes;
+      config.learnAheadMinutes = minutes;
+    }
+    const seconds = result?.maxAnswerSeconds ?? result?.max_answer_seconds;
+    if (typeof seconds === 'number' && Number.isInteger(seconds) && seconds >= 1 && seconds <= 3600) {
+      config.maxAnswerMs = seconds * 1000;
     }
   } catch { /* Older backends may not expose scheduler configuration. */ }
-  // No confirmed setting: wait until learning cards are actually due.
-  return 0;
+  return config;
 }
 
 function parseDueTotalFromStats(result: unknown): number | null {
@@ -665,10 +685,91 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+type StoreSet = (
+  partial: Partial<FsrsReviewState> | ((state: FsrsReviewState) => Partial<FsrsReviewState>),
+) => void;
+type StoreGet = () => FsrsReviewState;
+
+/** 暂停 / 埋藏当前卡：后端写入成功后在本轮队列内隐藏，并记下可撤回的回执。 */
+async function hideCurrentCard(
+  set: StoreSet,
+  get: StoreGet,
+  kind: 'suspend' | 'bury',
+): Promise<boolean> {
+  const sessionGeneration = get().sessionGeneration;
+  const { queue, queueIndex, ratingBusy } = get();
+  if (ratingBusy) return false;
+  const current = queue[queueIndex];
+  if (!current) return false;
+
+  set({ ratingBusy: true, error: null, errorKind: null });
+  try {
+    const result = await invoke<unknown>(kind === 'bury' ? 'fsrs_bury_card' : 'fsrs_suspend_card', {
+      cardStateId: current.id,
+    });
+    if (get().sessionGeneration !== sessionGeneration) {
+      requestFlashcardsDueRefresh();
+      return false;
+    }
+    if (!result || typeof result !== 'object') {
+      throw new Error(i18n.t('flashcards:session.errors.invalidSuspendResponse'));
+    }
+    const resultRow = result as Record<string, unknown>;
+    const state = resultRow.state;
+    const stateId = state && typeof state === 'object'
+      ? (state as Record<string, unknown>).id
+      : undefined;
+    if (stateId !== current.id || typeof resultRow.changed !== 'boolean') {
+      throw new Error(i18n.t('flashcards:session.errors.mismatchedSuspendResponse'));
+    }
+    set((state) => {
+      // await 期间队列可能被外部 reconcile 调整；按 id 定位而不是沿用旧下标
+      const liveIndex = state.queue.findIndex((card) => card.id === current.id);
+      const baseIndex = liveIndex >= 0 ? liveIndex : Math.min(queueIndex, state.queue.length);
+      const queue = state.queue.map((card) => (
+        card.id !== current.id
+          ? card
+          : kind === 'bury' ? { ...card, buried: true } : { ...card, suspended: true }
+      ));
+      return {
+        queue,
+        queueIndex: nextReviewableIndex(queue, baseIndex + (liveIndex >= 0 ? 1 : 0)),
+        flipped: false,
+        flippedAtMs: null,
+        ratingBusy: false,
+        lastRated: null,
+        ratingPreviews: null,
+        lastSuspended: resultRow.changed
+          ? {
+            cardStateId: current.id,
+            queueIndex: baseIndex,
+            ...(kind === 'bury' ? { reason: 'bury' as const } : {}),
+          }
+          : null,
+        error: null,
+        errorKind: null,
+      };
+    });
+    requestFlashcardsDueRefresh();
+    return true;
+  } catch (error) {
+    if (get().sessionGeneration !== sessionGeneration) return false;
+    set({
+      ratingBusy: false,
+      error: errorMessage(error, i18n.t('flashcards:session.errors.suspendFailed')),
+      errorKind: 'suspend',
+    });
+    return false;
+  } finally {
+    if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
+  }
+}
+
 export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
   screen: 'today',
   sessionMode: null,
   learnAheadMinutes: LEARNING_STEP_REQUEUE_WINDOW_MS / 60_000,
+  maxAnswerMs: MAX_ANSWER_DURATION_MS,
   dueCards: [],
   dueTotal: 0,
   queue: [],
@@ -733,10 +834,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       && get().dueLoadGeneration === dueLoadGeneration;
     set({ dueLoadGeneration, loading: true, error: null, errorKind: null });
     try {
-      const [fromBackend, dueTotal, learnAheadMinutes] = await Promise.all([
+      const [fromBackend, dueTotal, sessionConfig] = await Promise.all([
         fetchDueFromBackend(),
         fetchDueTotalFromStats(),
-        fetchLearnAheadMinutes(),
+        fetchSessionConfig(),
       ]);
       // stats 失败时：若本批打满上限，保留上次诚实总数，避免把 50 当成「刚好 50」。
       if (!isCurrent()) return false;
@@ -750,7 +851,8 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       }
       set({
         dueCards: fromBackend,
-        learnAheadMinutes,
+        learnAheadMinutes: sessionConfig.learnAheadMinutes,
+        maxAnswerMs: sessionConfig.maxAnswerMs,
         dueTotal: resolvedTotal,
         loading: false,
       });
@@ -894,11 +996,12 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
       const enqueued = await enqueueBatchForReview(ankiIds, contentByAnkiId);
       if (get().sessionGeneration !== sessionGeneration) return false;
-      const learnAheadMinutes = await fetchLearnAheadMinutes();
+      const sessionConfig = await fetchSessionConfig();
       if (get().sessionGeneration !== sessionGeneration) return false;
       set({
         queue: enqueued,
-        learnAheadMinutes,
+        learnAheadMinutes: sessionConfig.learnAheadMinutes,
+        maxAnswerMs: sessionConfig.maxAnswerMs,
         queueIndex: nextReviewableIndex(enqueued, 0),
         flipped: false,
         flippedAtMs: null,
@@ -1252,7 +1355,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
     // 卡面提供从题目展示到评分的有效用时；没有测量值时不猜测。
     const durationMs = typeof answerDurationMs === 'number' && Number.isFinite(answerDurationMs)
-      ? Math.round(Math.min(Math.max(0, answerDurationMs), MAX_ANSWER_DURATION_MS))
+      ? Math.round(Math.min(Math.max(0, answerDurationMs), get().maxAnswerMs))
       : null;
 
     const queueSnapshot = queue.map((card) => ({ ...card }));
@@ -1316,6 +1419,11 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       const ratedSuspended = cardState && typeof cardState === 'object'
         ? (cardState as Record<string, unknown>).suspended === true
         : false;
+      // 后端在同一事务里把同笔记的兄弟卡埋藏到明天：本轮不再出现
+      const rawBuried = readAliasedValue(row, 'buriedSiblings', 'buried_siblings');
+      const buriedSiblingIds = new Set(
+        Array.isArray(rawBuried) ? rawBuried.filter((id): id is string => typeof id === 'string') : [],
+      );
       const now = Date.now();
       // 学习步「稍后重现」：评分后仍处于 Learning/Relearning 且 due 落在
       // ≤LEARNING_STEP_REQUEUE_WINDOW_MS 的未来窗口内的卡保留在本轮队尾
@@ -1335,7 +1443,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       // learning cards. Keep the committed rating even if this read fails.
       let extraDue: ReviewCard[] = [];
       let allowEarly = true;
-      const tail = get().queue.slice(get().queueIndex + 1).filter((card) => !card.suspended);
+      const tail = get().queue.slice(get().queueIndex + 1).filter((card) => !isHiddenInSession(card));
       const hasEarly = isLearningStepDue || tail.some((card) => (card.learningDueMs ?? 0) > now);
       const hasDue = tail.some((card) => (card.learningDueMs ?? 0) <= now)
         || (shouldRequeue && !isLearningStepDue);
@@ -1398,9 +1506,15 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
           nextIndex = nextReviewableIndex(nextQueue, baseIndex + 1);
         }
 
+        if (buriedSiblingIds.size > 0) {
+          nextQueue = nextQueue.map((card) => (
+            buriedSiblingIds.has(card.id) ? { ...card, buried: true } : card
+          ));
+          nextIndex = nextReviewableIndex(nextQueue, nextIndex);
+        }
         const remaining = nextQueue.slice(nextIndex);
         const activeIds = new Set(remaining.map((card) => card.id));
-        const dueCards = extraDue.filter((card) => !card.suspended && !activeIds.has(card.id));
+        const dueCards = extraDue.filter((card) => !isHiddenInSession(card) && !activeIds.has(card.id));
         const replenishedIds = new Set(dueCards.map((card) => card.id));
         const completed = nextQueue.slice(0, nextIndex).filter((card) => !replenishedIds.has(card.id));
         const early = (card: ReviewCard) => (card.learningDueMs ?? 0) > Date.now();
@@ -1713,69 +1827,9 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
     }
   },
 
-  suspendCurrent: async () => {
-    const sessionGeneration = get().sessionGeneration;
-    const { queue, queueIndex, ratingBusy } = get();
-    if (ratingBusy) return false;
-    const current = queue[queueIndex];
-    if (!current) return false;
+  suspendCurrent: () => hideCurrentCard(set, get, 'suspend'),
 
-    set({ ratingBusy: true, error: null, errorKind: null });
-    try {
-      const result = await invoke<unknown>('fsrs_suspend_card', {
-        cardStateId: current.id,
-      });
-      if (get().sessionGeneration !== sessionGeneration) {
-        requestFlashcardsDueRefresh();
-        return false;
-      }
-      if (!result || typeof result !== 'object') {
-        throw new Error(i18n.t('flashcards:session.errors.invalidSuspendResponse'));
-      }
-      const resultRow = result as Record<string, unknown>;
-      const state = resultRow.state;
-      const stateId = state && typeof state === 'object'
-        ? (state as Record<string, unknown>).id
-        : undefined;
-      if (stateId !== current.id || typeof resultRow.changed !== 'boolean') {
-        throw new Error(i18n.t('flashcards:session.errors.mismatchedSuspendResponse'));
-      }
-      set((state) => {
-        // await 期间队列可能被外部 reconcile 调整；按 id 定位而不是沿用旧下标
-        const liveIndex = state.queue.findIndex((card) => card.id === current.id);
-        const baseIndex = liveIndex >= 0 ? liveIndex : Math.min(queueIndex, state.queue.length);
-        const queue = state.queue.map((card) => (
-          card.id === current.id ? { ...card, suspended: true } : card
-        ));
-        return {
-          queue,
-          queueIndex: nextReviewableIndex(queue, baseIndex + (liveIndex >= 0 ? 1 : 0)),
-          flipped: false,
-          flippedAtMs: null,
-          ratingBusy: false,
-          lastRated: null,
-          ratingPreviews: null,
-          lastSuspended: resultRow.changed
-            ? { cardStateId: current.id, queueIndex: baseIndex }
-            : null,
-          error: null,
-          errorKind: null,
-        };
-      });
-      requestFlashcardsDueRefresh();
-      return true;
-    } catch (error) {
-      if (get().sessionGeneration !== sessionGeneration) return false;
-      set({
-        ratingBusy: false,
-        error: errorMessage(error, i18n.t('flashcards:session.errors.suspendFailed')),
-        errorKind: 'suspend',
-      });
-      return false;
-    } finally {
-      if (get().sessionGeneration === sessionGeneration) flushPendingExternalRates();
-    }
-  },
+  buryCurrent: () => hideCurrentCard(set, get, 'bury'),
 
   resumeLastSuspended: async () => {
     const sessionGeneration = get().sessionGeneration;
@@ -1784,9 +1838,10 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
 
     set({ ratingBusy: true, error: null, errorKind: null });
     try {
-      const result = await invoke<unknown>('fsrs_unsuspend_card', {
-        cardStateId: lastSuspended.cardStateId,
-      });
+      const result = await invoke<unknown>(
+        lastSuspended.reason === 'bury' ? 'fsrs_unbury_card' : 'fsrs_unsuspend_card',
+        { cardStateId: lastSuspended.cardStateId },
+      );
       if (get().sessionGeneration !== sessionGeneration) {
         requestFlashcardsDueRefresh();
         return false;
@@ -1804,7 +1859,7 @@ export const useFsrsReviewStore = create<FsrsReviewState>((set, get) => ({
       }
       set((state) => {
         const queue = state.queue.map((card) => (
-          card.id === lastSuspended.cardStateId ? { ...card, suspended: false } : card
+          card.id === lastSuspended.cardStateId ? { ...card, suspended: false, buried: false } : card
         ));
         // await 期间队列可能被外部 reconcile 调整；按 id 定位恢复位置，找不到时钳制旧下标
         const liveIndex = queue.findIndex((card) => card.id === lastSuspended.cardStateId);

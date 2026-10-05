@@ -235,8 +235,8 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             >
               {/* 不再对 iframe 设 max-h 上限：iframe 高度随内容自适应，
                   超长卡片由外层 .wb-fc-card 的统一 viewport 滚动。
-                  此前 55vh 截断 + pointer-events-none 会让 iframe 内部滚动不可达，
-                  长内容（图片/长文/公式）被裁掉且无法查看。 */}
+                  卡面只在含提示折叠 / 音频 / 链接 / 脚本时接收指针（点空白处仍翻面），
+                  其余卡面整块透传，保持点击翻面与滑动评分。 */}
               <AnkiTemplateCardFace
                 card={renderCard}
                 template={template}
@@ -245,7 +245,9 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 fallbackText={fallbackText}
                 emptyText={flipped ? noBackText : noFrontText}
                 stageHeight={templateMode ? stageHeight : undefined}
-                className={cn('pointer-events-none flex min-h-0 flex-1', templateMode ? 'flex-col' : 'items-center justify-center')}
+                interactiveFrame
+                onFrameClick={disabled ? undefined : onFlip}
+                className={cn('flex min-h-0 flex-1', templateMode ? 'flex-col' : 'items-center justify-center')}
               />
             </div>
             <span className="wb-fc-card-flip-hint" aria-hidden="true">

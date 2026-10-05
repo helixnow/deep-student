@@ -693,6 +693,7 @@ commands.allow = [
   "qbank_toggle_favorite",
   "qbank_update_question",
   "rag_rebuild_fts_index",
+  "read_anki_media",
   "read_debug_log_file",
   "read_file_bytes",
   "read_file_text",

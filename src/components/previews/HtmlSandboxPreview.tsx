@@ -20,6 +20,8 @@ export interface HtmlSandboxPreviewProps {
   minHeight?: number;
   className?: string;
   style?: React.CSSProperties;
+  /** iframe 内点击非交互区域时回调（卡面辅助脚本发出 `sdp-click`） */
+  onFrameClick?: () => void;
 }
 
 /** srcDoc 的轻量指纹（djb2），仅用作 React key */
@@ -40,6 +42,7 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   minHeight,
   className,
   style,
+  onFrameClick,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState<number>(typeof height === 'number' ? height : 200);
@@ -82,6 +85,16 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [height, mode]);
+
+  useEffect(() => {
+    if (!onFrameClick || mode !== 'template-safe') return undefined;
+    const handleClick = (event: MessageEvent) => {
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === 'sdp-click') onFrameClick();
+    };
+    window.addEventListener('message', handleClick);
+    return () => window.removeEventListener('message', handleClick);
+  }, [mode, onFrameClick]);
 
   return (
     <iframe

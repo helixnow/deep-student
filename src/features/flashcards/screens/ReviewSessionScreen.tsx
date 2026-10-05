@@ -2,7 +2,8 @@
  * 复习会话：模板卡面、Cloze、评分、撤销、编辑、暂停/跳过。
  *
  * 键盘流：Space/Enter 翻面（已翻面时评 Good）、1–4 评分、
- * Z 或 Ctrl/Cmd+Z 撤销、E 编辑、S 跳过；编辑中 Esc 取消、Ctrl/Cmd+Enter 保存。
+ * Z 或 Ctrl/Cmd+Z 撤销、E 编辑、S 跳过、- 埋藏到明天、R 重播音频；
+ * 编辑中 Esc 取消、Ctrl/Cmd+Enter 保存。
  */
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -17,6 +18,7 @@ import {
   Hourglass,
   Info,
   Lightning,
+  Moon,
   Pause,
   PencilSimple,
   Play,
@@ -29,6 +31,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem } from '@/components/ui/app-menu/AppMenu';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useAnkiTemplateLoader } from '@/hooks/useAnkiTemplateLoader';
+import { replayCardAudio } from '@/components/anki/utils/cardMedia';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/utils/cn';
 import { hasValidCloze } from '../cloze';
@@ -126,6 +129,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const lastRated = useFsrsReviewStore((state) => state.lastRated);
   const lastReview = useFsrsReviewStore((state) => state.lastReview);
   const lastSuspended = useFsrsReviewStore((state) => state.lastSuspended);
+  const resumeLabel = lastSuspended?.reason === 'bury' ? t('session.unbury') : t('session.resume');
   const retryBatchRequest = useFsrsReviewStore((state) => state.retryBatchRequest);
   const sessionRatedCount = useFsrsReviewStore((state) => state.sessionRatedCount);
   const sessionRatingCounts = useFsrsReviewStore((state) => state.sessionRatingCounts);
@@ -150,6 +154,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const undoLastReview = useFsrsReviewStore((state) => state.undoLastReview);
   const updateCurrentCard = useFsrsReviewStore((state) => state.updateCurrentCard);
   const suspendCurrent = useFsrsReviewStore((state) => state.suspendCurrent);
+  const buryCurrent = useFsrsReviewStore((state) => state.buryCurrent);
   const resumeLastSuspended = useFsrsReviewStore((state) => state.resumeLastSuspended);
   const skipCurrent = useFsrsReviewStore((state) => state.skipCurrent);
   const retryBatchSession = useFsrsReviewStore((state) => state.retryBatchSession);
@@ -376,12 +381,23 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
       beginEdit();
       return;
     }
+    if (event.key.toLowerCase() === 'r' || event.code === 'KeyR') {
+      event.preventDefault();
+      replayCardAudio(document.querySelector('.wb-fc-card-stage') ?? document);
+      return;
+    }
+    if (event.key === '-' || event.code === 'Minus' || event.code === 'NumpadSubtract') {
+      event.preventDefault();
+      void buryCurrent();
+      return;
+    }
     if (event.key.toLowerCase() === 's' || event.code === 'KeyS') {
       event.preventDefault();
       skipCurrent();
     }
   }, [
     beginEdit,
+    buryCurrent,
     current,
     editing,
     flipped,
@@ -439,13 +455,14 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <AppMenuItem icon={<ChatCircleText size={18} />} onClick={askAi}>{t('session.askAi')}</AppMenuItem>
             <AppMenuItem icon={<PencilSimple size={18} />} disabled={ratingBusy || templateLoading || !current.ankiCardId} onClick={beginEdit}>{t('session.edit')}</AppMenuItem>
             <AppMenuItem icon={<SkipForward size={18} />} disabled={ratingBusy} onClick={skipCurrent}>{t('review.skip')}</AppMenuItem>
+            <AppMenuItem icon={<Moon size={18} />} disabled={ratingBusy} onClick={() => void buryCurrent()}>{t('session.bury')}</AppMenuItem>
             <AppMenuItem icon={<Pause size={18} />} disabled={ratingBusy} onClick={() => void suspendCurrent()}>{t('session.suspend')}</AppMenuItem>
           </>}
-          {lastSuspended && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{t('session.resume')}</AppMenuItem>}
+          {lastSuspended && <AppMenuItem icon={<Play size={18} />} disabled={ratingBusy} onClick={() => void resumeLastSuspended()}>{resumeLabel}</AppMenuItem>}
         </AppMenuContent>
       </AppMenu>}
     </>,
-  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended, openSource, askAi]);
+  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, resumeLabel, templateLoading, beginEdit, skipCurrent, suspendCurrent, buryCurrent, resumeLastSuspended, openSource, askAi]);
 
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
@@ -699,8 +716,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             iconOnly
             disabled={ratingBusy}
             onClick={() => void resumeLastSuspended()}
-            aria-label={t('session.resume')}
-            title={t('session.resume')}
+            aria-label={resumeLabel}
+            title={resumeLabel}
             className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
           >
             <Play size={16} />
@@ -759,6 +776,20 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
           className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
         >
           <SkipForward size={16} />
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          disabled={ratingBusy}
+          onClick={() => void buryCurrent()}
+          aria-label={t('session.bury')}
+          aria-keyshortcuts="-"
+          title={`${t('session.bury')} · -`}
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        >
+          <Moon size={16} />
         </DsButton>
         <DsButton
           type="button"

@@ -12,6 +12,7 @@ interface ShadowDomPreviewProps {
   height?: number;
   fidelity?: 'default' | 'anki';
   minHeight?: number;
+  onFrameClick?: () => void;
 }
 
 export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
@@ -21,6 +22,7 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
   height,
   fidelity = 'default',
   minHeight,
+  onFrameClick,
 }) => {
   const props: HtmlSandboxPreviewProps = {
     mode: 'template-safe',
@@ -31,6 +33,7 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
     fidelity,
     title: 'card-preview',
     minHeight,
+    onFrameClick,
   };
 
   return <HtmlSandboxPreview {...props} />;

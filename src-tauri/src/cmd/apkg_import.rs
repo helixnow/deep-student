@@ -241,3 +241,78 @@ mod tests {
         assert_eq!(value["mediaReport"]["mediaDir"], "/tmp/anki_media");
     }
 }
+
+/// 单个卡片媒体文件的读取上限（字节）。
+const ANKI_MEDIA_MAX_BYTES: u64 = 25 * 1024 * 1024;
+
+fn anki_media_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "bmp" => "image/bmp",
+        "avif" => "image/avif",
+        "mp3" => "audio/mpeg",
+        "ogg" | "oga" => "audio/ogg",
+        "opus" => "audio/opus",
+        "wav" => "audio/wav",
+        "m4a" | "aac" => "audio/mp4",
+        "flac" => "audio/flac",
+        "webm" => "audio/webm",
+        "mp4" => "video/mp4",
+        _ => return None,
+    })
+}
+
+/// 读取 APKG 导入落盘的卡片媒体为 data URL，供沙箱卡面（CSP 只放行 data:）显示图片与播放音频。
+///
+/// 只允许读取应用数据目录下的 `anki_media`，且限制类型与大小；不在范围内一律拒绝。
+#[tauri::command]
+pub async fn read_anki_media(path: String, state: State<'_, AppState>) -> Result<String> {
+    let media_root = state
+        .file_manager
+        .get_writable_app_data_dir()
+        .join("anki_media");
+    tokio::task::spawn_blocking(move || {
+        let not_allowed = || {
+            command_error(
+                AppErrorType::Validation,
+                "只能读取已导入的卡片媒体",
+                APKG_ERROR_INVALID_INPUT,
+            )
+        };
+        let root = std::fs::canonicalize(&media_root).map_err(|_| not_allowed())?;
+        let target = std::fs::canonicalize(Path::new(path.trim())).map_err(|_| not_allowed())?;
+        if !target.starts_with(&root) {
+            return Err(not_allowed());
+        }
+        let mime = anki_media_mime(&target).ok_or_else(not_allowed)?;
+        let metadata = std::fs::metadata(&target).map_err(|_| not_allowed())?;
+        if !metadata.is_file() || metadata.len() > ANKI_MEDIA_MAX_BYTES {
+            return Err(not_allowed());
+        }
+        let bytes = std::fs::read(&target).map_err(|error| {
+            command_error(
+                AppErrorType::FileSystem,
+                format!("读取卡片媒体失败: {error}"),
+                APKG_ERROR_IO,
+            )
+        })?;
+        use base64::Engine as _;
+        Ok(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(bytes)
+        ))
+    })
+    .await
+    .map_err(|error| {
+        command_error(
+            AppErrorType::Unknown,
+            format!("读取卡片媒体任务失败: {error}"),
+            APKG_IMPORT_JOIN_ERROR_CODE,
+        )
+    })?
+}

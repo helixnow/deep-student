@@ -2796,6 +2796,7 @@ pub fn run() {
             ,crate::cmd::fsrs_review::fsrs_update_scheduler_config
             ,crate::cmd::fsrs_review::fsrs_optimize_parameters
             ,crate::cmd::fsrs_review::fsrs_bury_card
+            ,crate::cmd::apkg_import::read_anki_media
             ,crate::cmd::fsrs_review::fsrs_unbury_card
             ,crate::cmd::fsrs_review::fsrs_reset_card_progress
             // =================================================
