@@ -87,7 +87,8 @@
   "card": {
     "question": "Question",
     "answer": "Answer",
-    "explanation": "Explanation"
+    "explanation": "Explanation",
+    "correctOption": "Correct option"
   },
 
   "action": {

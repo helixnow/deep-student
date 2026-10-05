@@ -116,6 +116,55 @@ const previewNextInterval = (quality: ReviewQuality, plan: ReviewPlan): number =
 };
 
 // ============================================================================
+// 选择题选项
+// ============================================================================
+
+/** 答案是否只由选项键组成（"B" / "AC" / "A, C"）；整句式答案不当成选项高亮 */
+function parseChoiceAnswer(answer: string | undefined, keys: Set<string>): Set<string> {
+  const raw = (answer ?? '').trim().toUpperCase();
+  if (!raw) return new Set();
+  if (keys.has(raw)) return new Set([raw]);
+  const letters = [...raw.replace(/[\s,，、;；]+/g, '')];
+  return letters.length > 0 && letters.every((ch) => keys.has(ch)) ? new Set(letters) : new Set();
+}
+
+/** 选择题选项：翻面前只列选项，翻面后标出正确项。题干里不一定写了选项，不列就只剩题干和一个「B」。 */
+const ReviewOptionList: React.FC<{
+  options: Array<{ key: string; content: string }>;
+  answer?: string;
+  revealed: boolean;
+  correctLabel: string;
+}> = ({ options, answer, revealed, correctLabel }) => {
+  const correct = useMemo(
+    () => parseChoiceAnswer(answer, new Set(options.map((option) => option.key.trim().toUpperCase()))),
+    [answer, options],
+  );
+  return (
+    <ul className="mt-3 space-y-1.5" data-testid="review-options">
+      {options.map((option) => {
+        const isCorrect = revealed && correct.has(option.key.trim().toUpperCase());
+        return (
+          <li
+            key={option.key}
+            data-correct={isCorrect || undefined}
+            className={cn(
+              'flex items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
+              isCorrect ? 'border-success/40 bg-success/5' : 'border-border/60',
+            )}
+          >
+            <span className="shrink-0 font-medium tabular-nums text-muted-foreground">{option.key}.</span>
+            <div className="min-w-0 flex-1 prose prose-sm dark:prose-invert max-w-none">
+              <MarkdownRenderer content={option.content} />
+            </div>
+            {isCorrect && <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-success" aria-label={correctLabel} />}
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
+// ============================================================================
 // 结构化题型答案降级显示（matching/ordering/numeric）
 //
 // 复习会话是"回忆-对照"流，不做交互作答；对结构化新题型把 structured_data
@@ -825,6 +874,14 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 content={question?.content || t('review:unknownQuestion')}
               />
             </div>
+            {question?.options && question.options.length > 0 && (
+              <ReviewOptionList
+                options={question.options}
+                answer={question.answer}
+                revealed={showAnswer}
+                correctLabel={t('review:card.correctOption', { defaultValue: '正确选项' })}
+              />
+            )}
           </div>
 
           {/* 答案区域：grid-rows 技巧实现 0 → auto 高度的展开动画 */}

@@ -87,7 +87,8 @@
   "card": {
     "question": "题目",
     "answer": "答案",
-    "explanation": "解析"
+    "explanation": "解析",
+    "correctOption": "正确选项"
   },
 
   "action": {

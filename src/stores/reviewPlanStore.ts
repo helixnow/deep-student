@@ -137,6 +137,8 @@ export interface ReviewSessionQuestion {
   question_type: string;
   difficulty?: string;
   tags: string[];
+  /** 选择题选项（题干里不一定写了选项；复习时不显示就只剩题干和一个「B」） */
+  options?: Array<{ key: string; content: string }> | null;
   /**
    * 🆕 2026-07 题型扩展：matching/ordering/numeric 等结构化题型的数据
    * （对象或 JSON 字符串）。可选字段，旧数据/旧调用方不受影响。
