@@ -35,6 +35,30 @@ export function parseMediaRefTimestamp(raw: unknown): number | null {
   return parts[0] * 60 + secs;
 }
 
+/** `[媒体@{resource_id}:{mm:ss}]` 的正则源（组 1 资源 id，组 2 时间） */
+export const MEDIA_REF_PATTERN_SOURCE = String.raw`\[媒体@([^\s:\]]+):(\d{1,3}(?::\d{1,3}){1,2})\]`;
+
+export interface MediaRefTarget {
+  resourceId: string;
+  seconds: number;
+  /** 原文时间标签（mm:ss / h:mm:ss） */
+  label: string;
+}
+
+/** 依次扫描文本，返回第一个合法的媒体引用 */
+export function findFirstMediaRef(texts: Array<string | null | undefined>): MediaRefTarget | null {
+  for (const text of texts) {
+    if (!text) continue;
+    const re = new RegExp(MEDIA_REF_PATTERN_SOURCE, 'g');
+    let match: RegExpExecArray | null;
+    while ((match = re.exec(text)) !== null) {
+      const seconds = parseMediaRefTimestamp(match[2]);
+      if (seconds !== null) return { resourceId: match[1], seconds, label: match[2] };
+    }
+  }
+  return null;
+}
+
 /** 构造引用标记文本：`[媒体@file_x:12:34]` */
 export function buildMediaRefMarker(resourceId: string, seconds: number): string {
   return `[媒体@${resourceId}:${formatMediaRefTimestamp(seconds)}]`;

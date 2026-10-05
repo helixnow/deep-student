@@ -349,6 +349,35 @@
   opacity: 1;
 }
 
+/* 背面附加操作（回看课程片段）：浮在卡面左下角，与右下角的翻面提示错开 */
+.wb-fc-card-accessory {
+  position: absolute;
+  bottom: 8px;
+  left: 10px;
+  z-index: 1;
+  max-width: calc(100% - 20px);
+  animation: wb-fc-fade-up 180ms var(--wb-ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.wb-fc-card-accessory .wb-fc-media-chip {
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--primary));
+  background: hsl(var(--popover) / 0.92);
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06), 0 4px 12px hsl(var(--foreground) / 0.08);
+  backdrop-filter: blur(8px);
+}
+
+.wb-fc-undo-nudge .wb-fc-media-chip {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--primary));
+}
+
+.wb-fc-card-accessory .wb-fc-media-chip:hover,
+.wb-fc-undo-nudge .wb-fc-media-chip:hover {
+  background: hsl(var(--primary) / 0.1);
+}
+
 /* 翻面动画：内容已同步切换，动画呈现后半程翻转（-90° → 0°）。
    两个等价 keyframes 交替触发以重启动画。 */
 .wb-fc-card-face {
@@ -768,7 +797,8 @@
   .wb-fc-summary-icon,
   .wb-fc-summary-panel,
   .wb-fc-edit-panel,
-  .wb-fc-session-error {
+  .wb-fc-session-error,
+  .wb-fc-card-accessory {
     animation: none;
   }
 
