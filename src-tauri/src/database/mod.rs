@@ -7787,14 +7787,18 @@ impl Database {
             params.push(Value::from(pattern));
         }
 
+        // 牌组名按任务算一次（子查询不相关，选项 JSON 不随卡片数重复解析）
         if let Some(deck_value) = filter.deck.as_deref().map(str::trim) {
             if deck_value.is_empty() {
-                clauses.push(format!("{LIBRARY_DECK_EXPR} = ''"));
+                clauses.push(format!(
+                    "ac.task_id IN (SELECT dt.id FROM document_tasks dt WHERE {LIBRARY_DECK_EXPR} = '')"
+                ));
             } else {
                 // 子牌组按前缀比对（区分大小写，与 GROUP BY 口径一致；不走 LIKE 免转义）
                 let prefix = format!("{deck_value}::");
                 clauses.push(format!(
-                    "({LIBRARY_DECK_EXPR} = ? OR substr({LIBRARY_DECK_EXPR}, 1, ?) = ?)"
+                    "ac.task_id IN (SELECT dt.id FROM document_tasks dt
+                     WHERE {LIBRARY_DECK_EXPR} = ? OR substr({LIBRARY_DECK_EXPR}, 1, ?) = ?)"
                 ));
                 params.push(Value::from(deck_value.to_string()));
                 params.push(Value::from(prefix.chars().count() as i64));
@@ -7994,19 +7998,24 @@ impl Database {
         let conn = self.get_conn_safe()?;
         let now_ms = Utc::now().timestamp_millis();
         let sql = format!(
-            "SELECT
-                {LIBRARY_DECK_EXPR} AS deck,
+            "WITH task_decks AS MATERIALIZED (
+                SELECT dt.id AS task_id, {LIBRARY_DECK_EXPR} AS deck
+                FROM document_tasks dt
+                WHERE dt.deleted_at IS NULL
+             )
+             SELECT
+                td.deck,
                 COUNT(*),
                 COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state != 0 AND fs.due_ms <= ?1 THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN fs.id IS NOT NULL AND COALESCE(fs.suspended, 0) = 0 AND fs.state = 0 THEN 1 ELSE 0 END), 0),
                 COALESCE(SUM(CASE WHEN fs.id IS NULL THEN 1 ELSE 0 END), 0)
              FROM anki_cards ac
-             INNER JOIN document_tasks dt ON dt.id = ac.task_id
+             INNER JOIN task_decks td ON td.task_id = ac.task_id
              LEFT JOIN fsrs_card_states fs
                ON fs.anki_card_id = ac.id AND fs.deleted_at IS NULL
-             WHERE ac.deleted_at IS NULL AND dt.deleted_at IS NULL
-             GROUP BY deck
-             ORDER BY deck"
+             WHERE ac.deleted_at IS NULL
+             GROUP BY td.deck
+             ORDER BY td.deck"
         );
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params![now_ms], |row| {
