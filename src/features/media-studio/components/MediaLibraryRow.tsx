@@ -199,6 +199,8 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({
     item.lastWatchedAt
       ? t('mediaStudio:row.lastWatched', { time: formatRelativeTime(item.lastWatchedAt, now, locale) })
       : t('mediaStudio:row.notStarted'),
+    item.cardCount ? t('mediaStudio:row.cards', { count: item.cardCount }) : null,
+    item.questionCount ? t('mediaStudio:row.questions', { count: item.questionCount }) : null,
     hideFolder ? null : item.folderName,
   ].filter(Boolean).join(' · ');
 

@@ -1,7 +1,8 @@
 /**
  * 学习页伴随分区：讲义 / 问答 / 练习（字幕分区由 MediaStudyView 自带）。
- * 全部复用既有能力：讲义 = useGenerateHandout + 来源回链笔记；问答 / 练习 = 新对话 +
- * 媒体引用 + 课程学习技能（mediaChat.ts）；进度 = media_progress_get。
+ * 全部复用既有能力：讲义 = useGenerateHandout + 来源回链笔记；问答 / 出题 = 新对话 +
+ * 媒体引用 + 课程学习技能（mediaChat.ts）；制卡 = CardForge 直接制卡（mediaCards.ts，
+ * 对话里定制作为次要入口）；本课台账 = media_study_ledger；进度 = media_progress_get。
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -27,13 +28,22 @@ import {
   type MediaPlaybackProgress,
 } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import type { MediaStudyCompanionRenderContext } from '@/features/learning-hub/apps/views/media/mediaStudyCompanion';
+import type { TranscriptSegment } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import { buildMediaRefMarker } from '@/features/learning-hub/apps/views/media/mediaRefTime';
+import { makeMediaCards } from '@/features/learning-hub/apps/views/media/mediaCards';
+import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import {
   buildTranscriptQuote,
   RECENT_MOMENT_WINDOW_SECONDS,
   segmentsInWindow,
 } from '@/features/learning-hub/apps/views/media/transcriptExcerpt';
-import { mediaStudioApi, type MediaRelatedNote } from '../api';
+import {
+  ledgerAccuracy,
+  mediaStudioApi,
+  type MediaRelatedNote,
+  type MediaStudyLedger,
+} from '../api';
 import { formatDuration, formatRelativeTime, watchedMinutes } from '../libraryModel';
 import { startMediaChat } from '../mediaChat';
 
@@ -275,14 +285,37 @@ export const MediaAskTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; meta
 // 练习 + 进度
 // ============================================================================
 
+/** 整节课直接制卡的张数：约每 10 分钟 6 张，6–40 张 */
+export function lectureCardBudget(segments: readonly TranscriptSegment[]): number {
+  const done = segments.filter((seg) => seg.status === 'done' && seg.text.trim());
+  if (done.length === 0) return 0;
+  const spanMs = Math.max(...done.map((seg) => seg.endMs)) - Math.min(...done.map((seg) => seg.startMs));
+  return Math.min(40, Math.max(6, Math.round((spanMs / 600_000) * 6)));
+}
+
+/** 「复习本课卡片」：与聊天制卡块同一入口（已开窗 activate，未开窗 fallbackLaunch） */
+function reviewLectureCards(cardIds: string[]): void {
+  if (cardIds.length === 0) return;
+  const payload = { screen: 'session' as const, mode: 'batch' as const, cardIds };
+  void workbenchBus.activate({
+    typeId: 'flashcards',
+    instanceKey: '',
+    action: 'startReview',
+    payload,
+    fallbackLaunch: { typeId: 'flashcards', reason: 'api', payload },
+  });
+}
+
 export const MediaPracticeTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; meta: MediaTabMeta; visible: boolean }> = ({
   ctx,
   meta,
   visible,
 }) => {
-  const { t } = useTranslation(['mediaStudio']);
+  const { t } = useTranslation(['mediaStudio', 'learningHub']);
   const { starting, start } = useStartChat(meta, ctx.resourceId);
   const [playback, setPlayback] = useState<MediaPlaybackProgress | null>(null);
+  const [ledger, setLedger] = useState<MediaStudyLedger | null>(null);
+  const [makingCards, setMakingCards] = useState(false);
   const name = meta.name.replace(/\.[^.]+$/, '') || meta.name;
 
   useEffect(() => {
@@ -291,44 +324,140 @@ export const MediaPracticeTab: React.FC<{ ctx: MediaStudyCompanionRenderContext;
     void mediaTranscriptApi.getProgress(ctx.resourceId)
       .then((value) => { if (!cancelled) setPlayback(value); })
       .catch(() => undefined);
+    void mediaStudioApi.studyLedger([ctx.resourceId], true)
+      .then(([value]) => { if (!cancelled) setLedger(value ?? null); })
+      .catch(() => undefined);
     return () => { cancelled = true; };
   }, [ctx.resourceId, visible]);
 
-  const actions = [
-    { key: 'cards', icon: CardsThree },
-    { key: 'questions', icon: ListChecks },
-  ] as const;
+  // 整节课直接制卡：不开聊天，CardForge 后台任务（任务台跟踪），来源记为该媒体
+  const makeCards = useCallback(async () => {
+    if (makingCards) return;
+    setMakingCards(true);
+    try {
+      await makeMediaCards({
+        resourceId: ctx.resourceId,
+        fileName: meta.name,
+        segments: ctx.segments,
+        maxCards: lectureCardBudget(ctx.segments),
+        t,
+      });
+    } finally {
+      setMakingCards(false);
+    }
+  }, [ctx.resourceId, ctx.segments, makingCards, meta.name, t]);
 
   const duration = formatDuration(playback?.durationMs ?? null);
   const position = formatDuration(playback?.lastPositionMs ?? null);
   const minutes = watchedMinutes(playback?.watchedMs);
+  const accuracy = ledger ? ledgerAccuracy(ledger) : null;
+  const busy = starting !== null || makingCards;
 
   return (
     <TabScroll>
       <div className={sectionClass}>
         <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:practice.intro')}</p>
-        {actions.map(({ key, icon: Icon }) => (
-          <DsButton
-            key={key}
-            variant="ghost"
-            size="sm"
-            onClick={() => void start(key, t(`mediaStudio:practice.prompt.${key}`, { name }))}
-            disabled={starting !== null || !ctx.hasTranscript}
-            data-media-practice={key}
-            className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2.5 text-left')}
-          >
-            {starting === key
-              ? <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              : <Icon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
-            <span className="flex min-w-0 flex-1 flex-col">
-              <span className="text-sm text-foreground">{t(`mediaStudio:practice.${key}`)}</span>
-              <span className="whitespace-normal text-xs text-muted-foreground">{t(`mediaStudio:practice.${key}Hint`)}</span>
-            </span>
-          </DsButton>
-        ))}
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => void makeCards()}
+          disabled={busy || !ctx.hasTranscript}
+          data-media-practice="cards"
+          className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2.5 text-left')}
+        >
+          {makingCards
+            ? <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <CardsThree size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm text-foreground">{t('mediaStudio:practice.cards')}</span>
+            <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:practice.cardsHint')}</span>
+          </span>
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => void start('questions', t('mediaStudio:practice.prompt.questions', { name }))}
+          disabled={busy || !ctx.hasTranscript}
+          data-media-practice="questions"
+          className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2.5 text-left')}
+        >
+          {starting === 'questions'
+            ? <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <ListChecks size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm text-foreground">{t('mediaStudio:practice.questions')}</span>
+            <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:practice.questionsHint')}</span>
+          </span>
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => void start('cardsChat', t('mediaStudio:practice.prompt.cards', { name }))}
+          disabled={busy || !ctx.hasTranscript}
+          data-media-practice="cards-chat"
+          className="self-start gap-1.5 text-xs text-muted-foreground"
+        >
+          {starting === 'cardsChat'
+            ? <CircleNotch size={13} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <ChatCircleText size={13} aria-hidden="true" />}
+          {t('mediaStudio:practice.cardsInChat')}
+        </DsButton>
         {!ctx.hasTranscript ? (
           <p className="text-xs text-muted-foreground">{t('mediaStudio:practice.needTranscript')}</p>
         ) : null}
+      </div>
+
+      <div className={sectionClass} data-media-ledger="">
+        <h4 className={sectionTitleClass}>{t('mediaStudio:ledger.title')}</h4>
+        {ledger && (ledger.cardCount > 0 || ledger.questionCount > 0) ? (
+          <div className="flex flex-col gap-1.5">
+            <div className="study-shell-secondary-card flex items-center gap-2.5 px-3 py-2">
+              <CardsThree size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm text-foreground">{t('mediaStudio:ledger.cards', { count: ledger.cardCount })}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {t('mediaStudio:ledger.cardsDetail', { due: ledger.cardsDue, fresh: ledger.cardsNew })}
+                </span>
+              </span>
+              <DsButton
+                variant={ledger.cardsDue > 0 ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => reviewLectureCards(ledger.cardIds)}
+                disabled={ledger.cardIds.length === 0}
+                data-media-ledger-review=""
+                className="shrink-0"
+              >
+                {t('mediaStudio:ledger.reviewCards')}
+              </DsButton>
+            </div>
+            <div className="study-shell-secondary-card flex items-center gap-2.5 px-3 py-2">
+              <ListChecks size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="text-sm text-foreground">{t('mediaStudio:ledger.questions', { count: ledger.questionCount })}</span>
+                <span className="text-xs tabular-nums text-muted-foreground">
+                  {accuracy === null
+                    ? t('mediaStudio:ledger.questionsUntried')
+                    : t('mediaStudio:ledger.questionsDetail', { accuracy, wrong: ledger.questionsWrong })}
+                </span>
+              </span>
+              <DsButton
+                variant={ledger.questionsWrong > 0 ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => {
+                  const examId = ledger.examIds[0];
+                  if (examId) dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_EXAM_SHEET, { sessionId: examId });
+                }}
+                disabled={ledger.examIds.length === 0}
+                data-media-ledger-practice=""
+                className="shrink-0"
+              >
+                {t('mediaStudio:ledger.practice')}
+              </DsButton>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-muted-foreground">{t('mediaStudio:ledger.empty')}</p>
+        )}
       </div>
 
       <div className={sectionClass} data-media-progress="">

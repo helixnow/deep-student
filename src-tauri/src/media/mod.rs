@@ -19,6 +19,7 @@ pub mod bilibili_auth;
 pub mod bilibili_stream;
 pub mod commands;
 pub mod decoder;
+pub mod ledger;
 pub mod library;
 pub mod pipeline;
 pub mod resample;

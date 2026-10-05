@@ -43,6 +43,17 @@ export function useMediaLibrary(enabled = true): MediaLibraryState {
       idsRef.current = new Set(next.map((item) => item.id));
       setItems(next);
       setError(null);
+      // 行内「卡 N · 题 M」：台账单独一次批量查询，列表先出、计数后补，失败不影响列表
+      void mediaStudioApi.studyLedger(next.map((item) => item.id))
+        .then((ledgers) => {
+          if (generation !== generationRef.current) return;
+          const byId = new Map(ledgers.map((ledger) => [ledger.resourceId, ledger]));
+          setItems((prev) => prev.map((item) => {
+            const ledger = byId.get(item.id);
+            return ledger ? { ...item, cardCount: ledger.cardCount, questionCount: ledger.questionCount } : item;
+          }));
+        })
+        .catch(() => undefined);
     } catch (err: unknown) {
       if (generation !== generationRef.current) return;
       setError(getErrorMessage(err));
