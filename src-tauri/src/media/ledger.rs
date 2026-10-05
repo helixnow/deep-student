@@ -257,6 +257,69 @@ pub async fn media_checkpoints(
     .map_err(|e| e.to_string())?
 }
 
+/// 学习总览（AI 工具）里的「在看的课」：最近播放的音视频 + 位置 + 答错的检查点时刻，
+/// 让模型能说出「第 3 讲 12:30 的正则化错了两次」，并给出可跳转的 `[媒体@…]` 引用。
+pub fn media_learning_summary(
+    conn: &Connection,
+    limit: usize,
+) -> rusqlite::Result<serde_json::Value> {
+    use crate::study_loop::media_source::{format_media_clock, media_citation};
+    const WEAK_PER_COURSE: usize = 5;
+    const QUESTION_PREVIEW_CHARS: usize = 80;
+
+    let mut stmt = conn.prepare(
+        "SELECT p.resource_id, f.file_name, p.last_position_ms, p.duration_ms, p.watched_ms,
+                p.finished, p.updated_at
+         FROM media_progress p
+         JOIN files f ON f.id = p.resource_id AND f.status = 'active' AND f.deleted_at IS NULL
+         WHERE p.watched_ms > 0
+         ORDER BY p.updated_at DESC
+         LIMIT ?1",
+    )?;
+    let rows = stmt
+        .query_map([limit as i64], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)? != 0,
+                row.get::<_, i64>(6)?,
+            ))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+
+    let secs = |ms: i64| u32::try_from(ms.max(0) / 1000).unwrap_or(u32::MAX);
+    let mut courses = Vec::with_capacity(rows.len());
+    for (id, name, position_ms, duration_ms, watched_ms, finished, updated_at) in rows {
+        let weak: Vec<serde_json::Value> = checkpoints_with_conn(conn, &id)?
+            .into_iter()
+            .filter(|cp| cp.is_correct == Some(false))
+            .take(WEAK_PER_COURSE)
+            .map(|cp| {
+                serde_json::json!({
+                    "ref": media_citation(&id, cp.seconds),
+                    "question": cp.content.chars().take(QUESTION_PREVIEW_CHARS).collect::<String>(),
+                    "attempts": cp.attempt_count,
+                })
+            })
+            .collect();
+        courses.push(serde_json::json!({
+            "resourceId": id,
+            "name": name,
+            "position": format_media_clock(secs(position_ms)),
+            "positionRef": media_citation(&id, secs(position_ms)),
+            "duration": duration_ms.map(|ms| format_media_clock(secs(ms))),
+            "watchedMinutes": watched_ms.max(0) / 60_000,
+            "finished": finished,
+            "lastWatchedAt": updated_at,
+            "wrongCheckpoints": weak,
+        }));
+    }
+    Ok(serde_json::json!({ "recentCourses": courses }))
+}
+
 /// 去空白、去重，保持首次出现顺序，截到上限
 fn normalize_ids(resource_ids: Vec<String>) -> Vec<String> {
     let mut seen = std::collections::HashSet::new();
@@ -455,6 +518,30 @@ mod tests {
 [媒体@file_lec:12:30]', 'single_choice', '[{"key":"A","content":"甲"}]', 1, 1, 1, '2026-10-05', '2026-10-05'),
                  ('q9', 'exam_b', '判断', '见 [媒体@file_other:00:10] 与 [媒体@file_lec:1:02:03]', 'true_false', NULL, 0, 0, NULL, '2026-10-05', '2026-10-05'),
                  ('q10', 'exam_gone', '已删题目集', '[媒体@file_lec:00:05]', 'single_choice', NULL, 0, 0, NULL, '2026-10-05', '2026-10-05');"#,
+        )
+        .unwrap();
+
+        conn.execute_batch(
+            "INSERT INTO files (id, sha256, file_name, size, mime_type, type, status, created_at, updated_at)
+               VALUES ('file_lec', 'sha_lec', '第3讲.mp4', 1, 'video/mp4', 'video', 'active', '2026-10-05', '2026-10-05');
+             INSERT INTO media_progress (resource_id, last_position_ms, duration_ms, watched_ms, finished, updated_at)
+               VALUES ('file_lec', 1510000, 2880000, 1920000, 0, 1759640000000);
+             UPDATE questions SET attempt_count = 2, is_correct = 0 WHERE id = 'q9';",
+        )
+        .unwrap();
+        let summary = media_learning_summary(&conn, 5).unwrap();
+        let course = &summary["recentCourses"][0];
+        assert_eq!(course["position"], "25:10");
+        assert_eq!(course["positionRef"], "[媒体@file_lec:25:10]");
+        assert_eq!(course["watchedMinutes"], 32);
+        assert_eq!(
+            course["wrongCheckpoints"][0]["ref"],
+            "[媒体@file_lec:1:02:03]"
+        );
+        assert_eq!(course["wrongCheckpoints"][0]["attempts"], 2);
+        conn.execute(
+            "UPDATE questions SET attempt_count = 0, is_correct = NULL WHERE id = 'q9'",
+            [],
         )
         .unwrap();
 
