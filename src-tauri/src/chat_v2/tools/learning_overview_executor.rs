@@ -241,6 +241,28 @@ impl LearningOverviewExecutor {
             }
         };
 
+        // 在看的课：最近播放的音视频、看到哪、答错的检查点时刻（带可跳转的 [媒体@…] 引用）
+        let media = vfs_db.and_then(|db| {
+            let summary = db
+                .get_conn_safe()
+                .map_err(|e| e.to_string())
+                .and_then(|conn| {
+                    crate::media::ledger::media_learning_summary(&conn, 5)
+                        .map_err(|e| e.to_string())
+                });
+            match summary {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    source_errors.push(source_error(
+                        "media",
+                        "音视频学习进度暂时不可用",
+                        format!("Media learning progress is unavailable: {error}"),
+                    ));
+                    None
+                }
+            }
+        });
+
         let activity_totals = aggregate_activities(&activities);
         let study_seconds: u64 = activities
             .iter()
@@ -263,6 +285,7 @@ impl LearningOverviewExecutor {
                 "focusTotals": pomodoro_totals,
                 // 学习时长（前端「可见且在场」计时，秒）
                 "studyTime": { "totalSeconds": study_seconds },
+                "media": media,
                 "questionBank": qbank,
                 "fsrsReview": fsrs,
                 "sm2Review": sm2_review,
