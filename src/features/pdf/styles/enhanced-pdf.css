@@ -432,7 +432,9 @@
   border-bottom: 1px solid hsl(var(--border));
 }
 
-.ds-search-input {
+/* 限定在 PDF 搜索栏内：ds-search-input 也是共用 Input（type=search）的标记类，
+   全局规则会在本样式表加载后覆盖全应用搜索框的左内边距，把放大镜图标压到文字上 */
+.ds-pdf__search-bar .ds-search-input {
   flex: 1;
   /* 允许在窄屏被压缩，避免命中计数/按钮把搜索栏挤出横向溢出 */
   min-width: 0;
@@ -1734,7 +1736,7 @@
   }
 
   /* 搜索输入框同理：≥44px 触控高度 + 16px 防 iOS 聚焦缩放 */
-  .ds-search-input {
+  .ds-pdf__search-bar .ds-search-input {
     height: 44px;
     font-size: 16px;
   }
