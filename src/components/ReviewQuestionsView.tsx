@@ -22,8 +22,10 @@ import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTyp
 import { ERROR_CAUSE_STYLE, getErrorCauses } from '@/components/review/errorCauses';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
+import { CardMathText } from '@/features/flashcards/cardMathPreview';
 import { useTranslation, Trans } from 'react-i18next';
 import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBankApi';
+import './ReviewQuestionsView.css';
 
 /** 错题排序方式：默认（题目顺序）/ 错误次数 / 最近错误 */
 type ReviewSortBy = 'default' | 'errors' | 'recent';
@@ -221,6 +223,7 @@ const ReviewQuestionCard: React.FC<{
   }, [question.lastAttemptAt, t]);
 
   const hasUserAnswer = Boolean(question.userAnswer?.trim());
+  const stemText = question.content || question.ocrText || '';
 
   return (
     <div
@@ -285,8 +288,8 @@ const ReviewQuestionCard: React.FC<{
           )}
 
           {/* 题目内容 */}
-          <p className="flex-1 truncate text-sm text-foreground/80">
-            {question.content || question.ocrText || t('review:questions.noContent')}
+          <p className="rqv-math flex-1 truncate text-sm text-foreground/80">
+            {stemText ? <CardMathText text={stemText} inline /> : t('review:questions.noContent')}
           </p>
 
           {/* 错因标签（首个；完整列表见展开明细） */}
@@ -329,7 +332,7 @@ const ReviewQuestionCard: React.FC<{
       >
         <div className="min-h-0 overflow-hidden">
           {isExpanded && (
-            <div className="px-2 pb-2 pt-0.5 sm:pl-[4.5rem]">
+            <div className="rqv-math px-2 pb-2 pt-0.5 sm:pl-[4.5rem]">
               {/* 错因标签完整列表（窄屏行内只显示首个，这里补全） */}
               {errorCauses.length > 0 && (
                 <div className="mb-2 flex flex-wrap items-center gap-1.5">
@@ -357,7 +360,9 @@ const ReviewQuestionCard: React.FC<{
                     'text-sm break-words whitespace-pre-wrap',
                     hasUserAnswer ? 'text-foreground/90' : 'italic text-muted-foreground'
                   )}>
-                    {hasUserAnswer ? question.userAnswer : t('review:questions.noAnswerRecorded')}
+                    {hasUserAnswer
+                      ? <CardMathText text={question.userAnswer ?? ''} />
+                      : t('review:questions.noAnswerRecorded')}
                   </p>
                 </div>
                 {/* 正确答案 */}
@@ -370,7 +375,9 @@ const ReviewQuestionCard: React.FC<{
                     'text-sm break-words whitespace-pre-wrap',
                     question.answer?.trim() ? 'text-foreground/90' : 'italic text-muted-foreground'
                   )}>
-                    {question.answer?.trim() || t('review:questions.noContent')}
+                    {question.answer?.trim()
+                      ? <CardMathText text={question.answer.trim()} />
+                      : t('review:questions.noContent')}
                   </p>
                 </div>
               </div>
@@ -382,7 +389,7 @@ const ReviewQuestionCard: React.FC<{
                     {t('review:questions.explanation')}
                   </p>
                   <p className="text-sm text-foreground/80 break-words whitespace-pre-wrap line-clamp-6">
-                    {question.explanation}
+                    <CardMathText text={question.explanation} />
                   </p>
                 </div>
               )}
