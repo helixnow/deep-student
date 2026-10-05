@@ -496,7 +496,15 @@
     "reviewNavLabel": "Hardest-first review navigation",
     "reviewPrev": "Previous difficult item",
     "reviewNext": "Next difficult item",
-    "reviewStop": "End review"
+    "reviewStop": "End review",
+    "missCards_one": "Make a card from {{count}} miss",
+    "missCards_other": "Make cards from {{count}} misses",
+    "missCardsHint": "Turn the points you revealed this session (couldn't recall) into flashcards for daily review; their source links back to this mind map",
+    "missCardsDone_one": "Added {{count}} card to review",
+    "missCardsDone_other": "Added {{count}} cards to review",
+    "missCardsFailed": "Couldn't create cards: {{error}}",
+    "missCardsDeck": "Mind map recall",
+    "missCardsTag": "mindmap-recall"
   },
   "clipboard": {
     "pasteParseFailed": "Pasted content is too large or too deep to parse"

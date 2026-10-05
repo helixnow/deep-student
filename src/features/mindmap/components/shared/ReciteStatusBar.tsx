@@ -1,9 +1,11 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, CaretLeft, CaretRight, Eye, EyeSlash, Fire, X } from '@phosphor-icons/react';
+import { BookOpen, CaretLeft, CaretRight, Cards, Eye, EyeSlash, Fire, X } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useMindMapStore, useMindMapStoreApi } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
+import { buildReciteMissCards } from '../../utils/reciteCards';
 
 /**
  * 复习导航后把目标行/节点滚入视野（大纲行有 data-node-id；画布由 focus effect 居中）。
@@ -43,11 +45,43 @@ export const ReciteStatusBar: React.FC = () => {
   const startReciteReview = useMindMapStore(s => s.startReciteReview);
   const stepReciteReview = useMindMapStore(s => s.stepReciteReview);
   const stopReciteReview = useMindMapStore(s => s.stopReciteReview);
+  const reciteSessionLog = useMindMapStore(s => s.reciteSessionLog);
+  const mindmapId = useMindMapStore(s => s.mindmapId);
 
   const progress = useMemo(() => {
     if (!reciteMode) return { total: 0, revealed: 0 };
     return countBlankProgress(document.root, revealedBlanks);
   }, [reciteMode, document.root, revealedBlanks]);
+
+  // 本次背诵里翻开过的空 → 卡片；已存过的节点不重复存（同一会话连点两次）
+  const [savedNodeIds, setSavedNodeIds] = useState<ReadonlySet<string>>(() => new Set());
+  const [savingCards, setSavingCards] = useState(false);
+  const missCards = useMemo(
+    () => (reciteMode ? buildReciteMissCards(document.root, reciteSessionLog).filter((card) => !savedNodeIds.has(card.nodeId)) : []),
+    [reciteMode, document.root, reciteSessionLog, savedNodeIds],
+  );
+  const saveMissCards = useCallback(async () => {
+    if (savingCards || missCards.length === 0) return;
+    setSavingCards(true);
+    try {
+      const { saveReciteMissCards } = await import('../../utils/saveReciteMissCards');
+      const count = await saveReciteMissCards({
+        cards: missCards,
+        mindmapId,
+        title: document.root.text ?? '',
+        deckPrefix: t('recite.missCardsDeck'),
+        tag: t('recite.missCardsTag'),
+      });
+      setSavedNodeIds((prev) => new Set([...prev, ...missCards.map((card) => card.nodeId)]));
+      showGlobalNotification('success', t('recite.missCardsDone', { count }));
+    } catch (error: unknown) {
+      showGlobalNotification('error', t('recite.missCardsFailed', {
+        error: error instanceof Error ? error.message : String(error),
+      }));
+    } finally {
+      setSavingCards(false);
+    }
+  }, [document.root.text, mindmapId, missCards, savingCards, t]);
 
   const scrollToCurrentReviewNode = useCallback(() => {
     const { reciteReviewQueue, reciteReviewIndex } = storeApi.getState();
@@ -181,6 +215,20 @@ export const ReciteStatusBar: React.FC = () => {
         >
           <Fire size={14} />
           {t('recite.reviewStart', { defaultValue: '难点优先' })}
+        </DsButton>
+      )}
+
+      {missCards.length > 0 && (
+        <DsButton
+          variant="ghost"
+          onClick={() => void saveMissCards()}
+          disabled={savingCards}
+          className="mm-recite-status-action h-7 px-2 text-xs gap-1"
+          title={t('recite.missCardsHint')}
+          data-testid="mm-recite-miss-cards"
+        >
+          <Cards size={14} />
+          {t('recite.missCards', { count: missCards.length })}
         </DsButton>
       )}
 

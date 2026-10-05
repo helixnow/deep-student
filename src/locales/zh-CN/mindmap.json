@@ -493,7 +493,15 @@
     "reviewNavLabel": "难点优先复习导航",
     "reviewPrev": "上一个难点",
     "reviewNext": "下一个难点",
-    "reviewStop": "结束复习"
+    "reviewStop": "结束复习",
+    "missCards_one": "背不出的做成卡片（{{count}}）",
+    "missCards_other": "背不出的做成卡片（{{count}}）",
+    "missCardsHint": "把这次单独翻开过（没背出来）的要点做成闪卡，进入每天的复习；卡片出处会回到这张导图",
+    "missCardsDone_one": "已把 {{count}} 张卡片加入复习",
+    "missCardsDone_other": "已把 {{count}} 张卡片加入复习",
+    "missCardsFailed": "没能做成卡片：{{error}}",
+    "missCardsDeck": "导图背诵",
+    "missCardsTag": "导图背诵"
   },
   "errors": {
     "notFound": "未找到思维导图"
