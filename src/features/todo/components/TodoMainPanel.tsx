@@ -12,7 +12,8 @@
  * 子组件拆分在 ./main/ 目录（行、详情、四象限、改期菜单等）。
  */
 
-import { loadTodayLearning, openDueNotesReview, type TodayLearning } from '@/features/learning-today/todayLearning';
+import { loadTodayLearning, type TodayLearning } from '@/features/learning-today/todayLearning';
+import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
@@ -78,7 +79,6 @@ import { BulkActionBar } from './main/BulkActionBar';
 import { mergeBatchItemsResults, runChunkedBulk } from './main/bulkChunks';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { InlineReveal } from './main/detail/InlineReveal';
-import { APP_EVENTS, dispatchAppEvent } from '@/events';
 
 // formatDueDateLabel 的实现移到 main/dueDateLabel.ts（行/chip/quick add 共用）；
 // 这里保持导出位置不变（tests/vitest/todo/formatDueDateLabel.test.ts 从本模块导入）
@@ -268,9 +268,7 @@ const ReviewLinkCard: React.FC = () => {
   if (!today || total <= 0) return null;
 
   const open = () => {
-    if (today.cards > 0) dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_VIEW, { view: 'flashcards' });
-    else if (today.mistakes > 0) dispatchAppEvent(APP_EVENTS.NAVIGATE_TO_TAB, { tabName: 'learning-hub' });
-    else openDueNotesReview();
+    openTodayReviewTarget(today.cards > 0 ? 'cards' : today.mistakes > 0 ? 'mistakes' : 'notes');
   };
   const parts = [
     today.cards > 0 && t('todo:reviewLink.cards', { defaultValue: '卡片 {{count}}', count: today.cards }),

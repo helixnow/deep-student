@@ -12,7 +12,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Cards, CheckSquare, CircleNotch, ArrowRight, Notebook, WarningDiamond } from '@phosphor-icons/react';
-import { loadTodayLearning, openDueNotesReview } from '@/features/learning-today/todayLearning';
+import { loadTodayLearning } from '@/features/learning-today/todayLearning';
+import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import { WeakConceptsStrip } from './WeakConceptsStrip';
 import { WeeklyReportActions } from './WeeklyReportActions';
 
@@ -142,7 +143,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
           count={counts.mistakesDue}
           hint={t('today_center.go')}
           highlight={counts.mistakesDue > 0}
-          onClick={() => onNavigate?.('learning-hub')}
+          onClick={() => openTodayReviewTarget('mistakes')}
         />
         <ActionCard
           icon={<Notebook size={18} />}
@@ -150,7 +151,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
           count={counts.notesDue}
           hint={t('today_center.go')}
           highlight={counts.notesDue > 0}
-          onClick={openDueNotesReview}
+          onClick={() => openTodayReviewTarget('notes')}
         />
         <ActionCard
           icon={<CheckSquare size={18} />}

@@ -35,6 +35,7 @@ import { WindowControls } from './components/WindowControls';
 import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
 import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MobilePageScaffold } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
+import { DueMistakesReviewHost } from '@/features/learning-today/DueMistakesReviewHost';
 import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 import { ensureAutoSyncSchedulerStarted, useAutoSyncStore } from '@/stores/syncStatusStore';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
@@ -3286,6 +3287,9 @@ function App() {
 
       {/* Global Pomodoro Timer（workbench 激活时药丸让位给菜单栏/番茄窗投射） */}
       <GlobalPomodoroWidget workbenchActive={workbenchActive} />
+
+      {/* 跨题目集的到期错题复习（「今日待复习 · 错题」各入口共用，两种壳都挂在这里） */}
+      <DueMistakesReviewHost />
 
       {/* 🆕 首启欢迎引导（协议同意后、未配置 AI 服务时展示一次） */}
       {welcomeOnboardingOpen && (

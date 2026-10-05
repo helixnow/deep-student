@@ -7,11 +7,7 @@ import React, { useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Cards, Notebook, WarningDiamond } from '@phosphor-icons/react';
 import { getTodayLearningSnapshot, refreshTodayLearning, subscribeTodayLearning } from './todayLearningStore';
-import { openDueNotesReview } from './todayLearning';
-
-const navigate = (view: string) => {
-  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view } }));
-};
+import { openTodayReviewTarget } from './openTodayReview';
 
 export const TodayReviewHint: React.FC = () => {
   const { t } = useTranslation('data');
@@ -19,9 +15,9 @@ export const TodayReviewHint: React.FC = () => {
   useEffect(() => { void refreshTodayLearning(); }, []);
 
   const items = [
-    { key: 'cards', count: today.cards, icon: <Cards size={14} aria-hidden="true" />, label: t('today_center.cards_due', { defaultValue: '到期卡片' }), onClick: () => navigate('flashcards') },
-    { key: 'mistakes', count: today.mistakes, icon: <WarningDiamond size={14} aria-hidden="true" />, label: t('today_center.mistakes_due', { defaultValue: '错题复习' }), onClick: () => navigate('learning-hub') },
-    { key: 'notes', count: today.notes, icon: <Notebook size={14} aria-hidden="true" />, label: t('today_center.notes_due', { defaultValue: '待复习笔记' }), onClick: () => openDueNotesReview() },
+    { key: 'cards', count: today.cards, icon: <Cards size={14} aria-hidden="true" />, label: t('today_center.cards_due', { defaultValue: '到期卡片' }), onClick: () => openTodayReviewTarget('cards') },
+    { key: 'mistakes', count: today.mistakes, icon: <WarningDiamond size={14} aria-hidden="true" />, label: t('today_center.mistakes_due', { defaultValue: '错题复习' }), onClick: () => openTodayReviewTarget('mistakes') },
+    { key: 'notes', count: today.notes, icon: <Notebook size={14} aria-hidden="true" />, label: t('today_center.notes_due', { defaultValue: '待复习笔记' }), onClick: () => openTodayReviewTarget('notes') },
   ].filter((item) => item.count > 0);
   if (items.length === 0) return null;
 

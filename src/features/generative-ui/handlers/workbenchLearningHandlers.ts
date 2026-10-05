@@ -4,6 +4,8 @@
 
 import i18next from 'i18next';
 import { workbenchBus } from '@/features/workbench';
+import { getTodayLearningSnapshot } from '@/features/learning-today/todayLearningStore';
+import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import type { GenerativeActionDefinition } from '../types';
 
 /** Fallback labels resolve on read so module-level handler maps follow language switches. */
@@ -30,6 +32,7 @@ export interface WorkbenchLearningHandlerLabels {
   exportPlan?: string;
   openTaskDashboard?: string;
   reviewNotes?: string;
+  reviewMistakes?: string;
 }
 
 export function createWorkbenchLearningHandlers(
@@ -41,7 +44,19 @@ export function createWorkbenchLearningHandlers(
       get label() { return labels.startReview ?? fallbackLabel('workbench.briefing.start_review', '开始复习'); },
       riskLevel: 'low',
       handler: async () => {
-        await workbenchBus.activateDetailed(FLASHCARDS_DUE_ACTIVATE);
+        // 没有到期卡片、只有错题 / 笔记到期时，「开始复习」进对应复习而不是空的闪卡队列
+        const today = getTodayLearningSnapshot();
+        if (today.cards === 0 && today.mistakes > 0) openTodayReviewTarget('mistakes');
+        else if (today.cards === 0 && today.notes > 0) openTodayReviewTarget('notes');
+        else await workbenchBus.activateDetailed(FLASHCARDS_DUE_ACTIVATE);
+      },
+    },
+    'review-mistakes': {
+      id: 'review-mistakes',
+      get label() { return labels.reviewMistakes ?? fallbackLabel('workbench.dashboard.review_mistakes', '复习错题'); },
+      riskLevel: 'low',
+      handler: async () => {
+        openTodayReviewTarget('mistakes');
       },
     },
     'open-qbank': {
@@ -57,7 +72,7 @@ export function createWorkbenchLearningHandlers(
       get label() { return labels.exportPlan ?? fallbackLabel('research.actions.export_plan', '导出计划'); },
       riskLevel: 'medium',
       handler: async () => {
-        workbenchBus.launch({ typeId: 'learning-hub', reason: 'api' });
+        workbenchBus.launch({ typeId: 'files', reason: 'api' });
       },
     },
     'review-notes': {
@@ -65,8 +80,7 @@ export function createWorkbenchLearningHandlers(
       get label() { return labels.reviewNotes ?? fallbackLabel('workbench.dashboard.review_notes', '复习笔记'); },
       riskLevel: 'low',
       handler: async () => {
-        const { openDueNotesReview } = await import('@/features/learning-today/todayLearning');
-        openDueNotesReview(() => workbenchBus.launch({ typeId: 'learning-hub', reason: 'api' }));
+        openTodayReviewTarget('notes');
       },
     },
     'open-task-dashboard': {

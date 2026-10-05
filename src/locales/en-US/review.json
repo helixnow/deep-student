@@ -291,5 +291,14 @@
       "conditions": "The outer factor is proportional to the inner derivative"
     },
     "submit": "Save insight"
+  },
+  "dueAll": {
+    "title": "Mistake review",
+    "subtitle": "Mistakes due today across all question sets",
+    "loading": "Preparing due mistakes…",
+    "empty": "No mistakes due today",
+    "emptyHint": "Questions you get wrong join the review plan automatically and show up here when due.",
+    "loadFailed": "Couldn't load due mistakes",
+    "skipped": "Deleted questions skipped: {{count}}"
   }
 }
