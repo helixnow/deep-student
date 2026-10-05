@@ -36,6 +36,7 @@
     "finished": "已看完",
     "progress": "观看进度",
     "rename": "重命名",
+    "bilibiliBadge": "B 站",
     "renameFailed": "重命名失败",
     "reveal": "在资源库中显示",
     "delete": "删除",
@@ -46,6 +47,7 @@
   },
   "import": {
     "button": "导入音视频",
+    "bilibili": "B 站链接",
     "filterName": "音频 / 视频",
     "dropHint": "松开导入音视频",
     "progress": "正在导入 {{index}}/{{total}}：{{name}}",

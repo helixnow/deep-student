@@ -11,6 +11,9 @@
  * 音视频子应用（学习页）经 MediaStudyCompanionContext 注入讲义 / 问答 / 练习分区：
  * 字幕面板变为「字幕 / 讲义 / 问答 / 练习」分段面板（始终可见），讲义入口移入讲义分区；
  * 资源库与聊天右侧面板无 context，工具栏多一个「在音视频中学习」跳转。
+ *
+ * B 站链接条目（`bilibili` 非空）：播放走内嵌播放器，没有本地音视频——不能转写、截帧、
+ * 挂字幕轨、记播放进度；讲义只基于字幕（不抽帧）；字幕从 B 站重新获取。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -27,6 +30,8 @@ import {
   CircleNotch,
   ArrowClockwise,
   ArrowSquareOut,
+  ArrowUpRight,
+  Television,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -44,8 +49,12 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { fileManager } from '@/utils/fileManager';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import { uploadAttachmentBlob } from '@/features/chat/context/vfsRefApi';
+import { openUrl } from '@/utils/urlOpener';
 import { AudioPlayer } from './AudioPlayer';
 import { VideoPlayer } from './VideoPlayer';
+import { BilibiliEmbedPlayer } from './BilibiliEmbedPlayer';
+import { BilibiliLinkDialog, type BilibiliLinkDialogMode } from './BilibiliLinkDialog';
+import { buildBilibiliPageUrl, type BilibiliLinkDescriptor } from './bilibiliLinkApi';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 import type { TranscriptExportFormat, TranscriptSegment } from './mediaTranscriptApi';
 import { useMediaTranscript } from './useMediaTranscript';
@@ -84,6 +93,8 @@ export interface MediaStudyViewProps {
   isActive?: boolean;
   focusScopeId?: string;
   onError: () => void;
+  /** B 站链接条目的描述；非空时用内嵌播放器 */
+  bilibili?: BilibiliLinkDescriptor | null;
 }
 
 function useContainerWidth(ref: React.RefObject<HTMLElement | null>): number {
@@ -115,6 +126,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   isActive = true,
   focusScopeId,
   onError,
+  bilibili = null,
 }) => {
   const { t } = useTranslation(['learningHub', 'common']);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -122,6 +134,9 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const containerWidth = useContainerWidth(rootRef);
   const sideLayout = containerWidth >= SIDE_LAYOUT_MIN_WIDTH;
   const isVideo = kind === 'video';
+  const isLink = bilibili !== null;
+  /** 讲义 / 伴随分区按此取帧：链接条目没有可抽帧的画面 */
+  const contentKind = isLink ? 'audio' : kind;
   const companion = useMediaStudyCompanion();
 
   // ---------------------------------------------------------------- 转写
@@ -144,7 +159,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     : (panelPref ?? true) && (hasTranscript || running);
 
   // ---------------------------------------------------------------- 字幕轨（视频）
-  const { trackSrc, trackRef, captionsOn, toggleCaptions } = useTranscriptTrack(segments, isVideo);
+  const { trackSrc, trackRef, captionsOn, toggleCaptions } = useTranscriptTrack(segments, isVideo && !isLink);
 
   // ---------------------------------------------------------------- 播放状态 / 跟随高亮
   const [isReady, setIsReady] = useState(false);
@@ -156,7 +171,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const externalSeekRef = useRef(false);
   const { onStatus: onProgressStatus, resumedFromRef } = useMediaProgressSync({
     resourceId,
-    enabled: true,
+    enabled: !isLink,
     handleRef,
     hasExternalSeek: () => externalSeekRef.current,
   });
@@ -304,6 +319,28 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     }
   }, [transcriptState, t]);
 
+  // ---------------------------------------------------------------- B 站字幕 / 在 B 站打开
+  const [bilibiliDialogOpen, setBilibiliDialogOpen] = useState(false);
+  const bilibiliDialogMode = useMemo<BilibiliLinkDialogMode>(
+    () =>
+      bilibili
+        ? { kind: 'refetch', resourceId, name: fileName, url: bilibili.url, page: bilibili.page }
+        : { kind: 'attach', resourceId, name: fileName },
+    [bilibili, resourceId, fileName],
+  );
+  const handleBilibiliDone = useCallback(
+    (result: { segments: number }) => {
+      void transcriptState.refresh();
+      setPanelPref(true);
+      showGlobalNotification('success', t('learningHub:mediaBilibili.attached', { count: result.segments }));
+    },
+    [transcriptState, t],
+  );
+  const handleOpenOnBilibili = useCallback(() => {
+    if (!bilibili) return;
+    void openUrl(buildBilibiliPageUrl(bilibili, lastTimeRef.current));
+  }, [bilibili]);
+
   const handleExport = useCallback(
     async (format: TranscriptExportFormat) => {
       try {
@@ -385,7 +422,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const companionRenderContext = useMemo<MediaStudyCompanionRenderContext>(
     () => ({
       resourceId,
-      kind,
+      kind: contentKind,
       src,
       fileName,
       transcriptStatus: status,
@@ -394,7 +431,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       totalSegments: transcript?.progress?.totalSegments || segments.length,
       seekTo: seekToSeconds,
     }),
-    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
+    [resourceId, contentKind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -404,7 +441,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       : status === 'failed'
         ? t('learningHub:mediaTranscript.retry')
         : t('learningHub:mediaTranscript.transcribe');
-  const showTranscribeButton = !running && status !== 'completed';
+  const showTranscribeButton = !isLink && !running && status !== 'completed';
   const progress = transcript?.progress ?? null;
 
   const captionsButton =
@@ -434,7 +471,14 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       </DsButton>
     ) : null;
 
-  const player = isVideo ? (
+  const player = bilibili ? (
+    <BilibiliEmbedPlayer
+      link={bilibili}
+      isActive={isActive}
+      handleRef={handleRef}
+      onStatusChange={handleStatusChange}
+    />
+  ) : isVideo ? (
     <VideoPlayer
       key={src}
       src={src}
@@ -539,14 +583,29 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         {!companion && (
           <HandoutGenerateButton
             resourceId={resourceId}
-            kind={kind}
+            kind={contentKind}
             src={src}
             fileName={fileName}
             hasTranscript={hasDoneSegments && !running}
           />
         )}
 
-        {isVideo && (
+        {isLink && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={handleOpenOnBilibili}
+            aria-label={t('learningHub:mediaBilibili.openOnBilibili')}
+            title={t('learningHub:mediaBilibili.openOnBilibili')}
+            className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs')}
+            data-bilibili-open=""
+          >
+            <ArrowUpRight size={14} aria-hidden="true" />
+            <span className="max-sm:hidden">{t('learningHub:mediaBilibili.openOnBilibili')}</span>
+          </DsButton>
+        )}
+
+        {isVideo && !isLink && (
           <DsButton
             variant="ghost"
             size="sm"
@@ -619,13 +678,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
               <DotsThree size={18} weight="bold" aria-hidden="true" />
             </DsButton>
           </AppMenuTrigger>
-          <AppMenuContent align="end" width={200}>
+          <AppMenuContent align="end" width={220}>
             <AppMenuItem
               icon={<FileArrowUp size={15} aria-hidden="true" />}
               disabled={running}
               onClick={() => void handleImport()}
             >
               {t('learningHub:mediaTranscript.import')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Television size={15} aria-hidden="true" />}
+              disabled={running}
+              onClick={() => setBilibiliDialogOpen(true)}
+            >
+              {isLink ? t('learningHub:mediaBilibili.refetch') : t('learningHub:mediaBilibili.fromLink')}
             </AppMenuItem>
             <AppMenuSeparator />
             {(['srt', 'vtt', 'txt'] as const).map((format) => (
@@ -731,20 +797,32 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <DsButton
-                      variant="primary"
-                      size="sm"
-                      onClick={() => void handleTranscribeClick()}
-                      disabled={estimating || starting || transcriptState.loading}
-                      className="gap-1.5"
-                    >
-                      {estimating || starting ? (
-                        <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-                      ) : (
-                        <Waveform size={14} aria-hidden="true" />
-                      )}
-                      {t('learningHub:mediaTranscript.transcribe')}
-                    </DsButton>
+                    {isLink ? (
+                      <DsButton
+                        variant="primary"
+                        size="sm"
+                        onClick={() => setBilibiliDialogOpen(true)}
+                        className="gap-1.5"
+                      >
+                        <Television size={14} aria-hidden="true" />
+                        {t('learningHub:mediaBilibili.refetch')}
+                      </DsButton>
+                    ) : (
+                      <DsButton
+                        variant="primary"
+                        size="sm"
+                        onClick={() => void handleTranscribeClick()}
+                        disabled={estimating || starting || transcriptState.loading}
+                        className="gap-1.5"
+                      >
+                        {estimating || starting ? (
+                          <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                        ) : (
+                          <Waveform size={14} aria-hidden="true" />
+                        )}
+                        {t('learningHub:mediaTranscript.transcribe')}
+                      </DsButton>
+                    )}
                     <DsButton
                       variant="ghost"
                       size="sm"
@@ -754,6 +832,17 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                       <FileArrowUp size={14} aria-hidden="true" />
                       {t('learningHub:mediaTranscript.import')}
                     </DsButton>
+                    {!isLink && (
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setBilibiliDialogOpen(true)}
+                        className="gap-1.5"
+                      >
+                        <Television size={14} aria-hidden="true" />
+                        {t('learningHub:mediaBilibili.fromLink')}
+                      </DsButton>
+                    )}
                   </div>
                 </div>
               )}
@@ -787,6 +876,13 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           />
         )}
       </div>
+
+      <BilibiliLinkDialog
+        open={bilibiliDialogOpen}
+        mode={bilibiliDialogMode}
+        onOpenChange={setBilibiliDialogOpen}
+        onDone={handleBilibiliDone}
+      />
 
       {/* 费用确认 */}
       <DsAlertDialog

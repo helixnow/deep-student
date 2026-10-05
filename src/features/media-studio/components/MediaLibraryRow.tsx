@@ -14,6 +14,7 @@ import {
   FolderOpen,
   MusicNotes,
   PencilSimple,
+  Television,
   Trash,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -27,6 +28,7 @@ import {
 } from '@/components/ui/app-menu';
 import { useLongPress } from '@/hooks/mobile/useLongPress';
 import type { TranscriptExportFormat } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
+import { stripBilibiliExtension } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import type { MediaLibraryItem } from '../api';
 import {
   formatDuration,
@@ -40,6 +42,7 @@ import { useBreakpoint } from '@/hooks/useBreakpoint';
 export type MediaRowAction =
   | { type: 'rename' }
   | { type: 'importSubtitle' }
+  | { type: 'bilibiliSubtitle' }
   | { type: 'exportSubtitle'; format: TranscriptExportFormat }
   | { type: 'reveal' }
   | { type: 'delete' };
@@ -105,7 +108,8 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
     item.folderName,
   ].filter(Boolean).join(' · ');
 
-  const Icon = item.kind === 'audio' ? MusicNotes : FilmStrip;
+  const Icon = item.isLink ? Television : item.kind === 'audio' ? MusicNotes : FilmStrip;
+  const displayName = item.isLink ? stripBilibiliExtension(item.name) : item.name;
   const act = useCallback((action: MediaRowAction) => onAction(item, action), [item, onAction]);
 
   return (
@@ -121,7 +125,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
           variant="ghost"
           onClick={() => onOpen(item)}
           {...longPress.bind}
-          aria-label={t('mediaStudio:row.open', { name: item.name })}
+          aria-label={t('mediaStudio:row.open', { name: displayName })}
           className="!h-auto min-w-0 flex-1 !justify-start gap-3 !p-0 text-left hover:!bg-transparent"
         >
           <span
@@ -132,7 +136,12 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
           </span>
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="min-w-0 truncate text-sm font-medium text-foreground">{item.name}</span>
+              <span className="min-w-0 truncate text-sm font-medium text-foreground">{displayName}</span>
+              {item.isLink ? (
+                <span className="study-shell-badge study-shell-badge--borderless shrink-0" data-media-link-badge="">
+                  {t('mediaStudio:row.bilibiliBadge')}
+                </span>
+              ) : null}
               {finished ? (
                 <CheckCircle size={14} weight="fill" className="shrink-0 text-success" aria-label={t('mediaStudio:row.finished')} />
               ) : null}
@@ -165,7 +174,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
               variant="ghost"
               size="icon"
               iconOnly
-              aria-label={t('mediaStudio:row.more', { name: item.name })}
+              aria-label={t('mediaStudio:row.more', { name: displayName })}
               title={t('common:more')}
               className="!h-8 !w-8 shrink-0 text-muted-foreground"
             >
@@ -175,6 +184,9 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
           <AppMenuContent align="end" width={220}>
             <AppMenuItem icon={<FileArrowUp size={15} aria-hidden="true" />} onClick={() => act({ type: 'importSubtitle' })}>
               {t('learningHub:mediaTranscript.import')}
+            </AppMenuItem>
+            <AppMenuItem icon={<Television size={15} aria-hidden="true" />} onClick={() => act({ type: 'bilibiliSubtitle' })}>
+              {item.isLink ? t('learningHub:mediaBilibili.refetch') : t('learningHub:mediaBilibili.fromLink')}
             </AppMenuItem>
             {(['srt', 'vtt', 'txt'] as const).map((format) => (
               <AppMenuItem

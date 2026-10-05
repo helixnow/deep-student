@@ -35,6 +35,7 @@ function item(id: string, over: Partial<MediaLibraryItem> = {}): MediaLibraryIte
     name: `${id}.mp4`,
     kind: 'video',
     mimeType: 'video/mp4',
+    isLink: false,
     size: 1,
     folderId: null,
     folderName: null,
@@ -114,13 +115,31 @@ describe('MediaLibraryPage', () => {
     render(<MediaLibraryPage library={library([item('a')])} importer={imp} onOpen={vi.fn()} isSmallScreen titlebarTarget={null} />);
     const bar = document.querySelector('[data-media-import-bar]') as HTMLElement;
     expect(bar).toBeTruthy();
-    fireEvent.click(within(bar).getByRole('button'));
+    fireEvent.click(within(bar).getByRole('button', { name: /mediaStudio:import.button/ }));
     expect(imp.pick).toHaveBeenCalled();
+    expect(within(bar).getByRole('button', { name: /mediaStudio:import.bilibili/ })).toBeTruthy();
     const input = document.querySelector('[data-media-import-input]') as HTMLInputElement;
     expect(input.multiple).toBe(true);
     expect(input.accept.startsWith('audio/*,video/*')).toBe(true);
     expect(screen.getByTestId('dropzone').dataset.enabled).toBe('false');
     // 每行的 ⋯ 菜单按钮可达
     expect(screen.getByRole('button', { name: 'mediaStudio:row.more' })).toBeTruthy();
+  });
+
+  it('Bilibili link button opens the import dialog; link rows show a badge without the .bilibili suffix', () => {
+    const items = [
+      item('link', { name: '线性代数 P2 矩阵.bilibili', mimeType: 'video/x-bilibili', isLink: true }),
+      item('local'),
+    ];
+    render(<MediaLibraryPage library={library(items)} importer={importer(false)} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={null} />);
+
+    const linkRow = document.querySelector('[data-media-row="link"]') as HTMLElement;
+    expect(within(linkRow).getByText('线性代数 P2 矩阵')).toBeTruthy();
+    expect(linkRow.querySelector('[data-media-link-badge]')).toBeTruthy();
+    expect(document.querySelector('[data-media-row="local"] [data-media-link-badge]')).toBeNull();
+
+    expect(document.querySelector('[data-bilibili-dialog]')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /mediaStudio:import.bilibili/ }));
+    expect(document.querySelector('[data-bilibili-dialog="create"]')).toBeTruthy();
   });
 });

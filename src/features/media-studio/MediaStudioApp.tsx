@@ -10,7 +10,8 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { FilmStrip, MusicNotes } from '@phosphor-icons/react';
+import { FilmStrip, MusicNotes, Television } from '@phosphor-icons/react';
+import { stripBilibiliExtension } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import { useMobileHeader } from '@/components/layout/MobileHeaderContext';
 import { MobileSlidingLayout } from '@/components/layout/MobileSlidingLayout';
 import {
@@ -127,6 +128,7 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
       library={library}
       importer={importer}
       onOpen={handleOpen}
+      onOpenId={openStudy}
       isSmallScreen={isSmallScreen}
       titlebarTarget={titlebarTarget}
     />
@@ -138,7 +140,7 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
       {recent.length === 0 ? (
         <p className="px-3 py-2 text-xs text-muted-foreground">{t('mediaStudio:drawer.empty')}</p>
       ) : recent.map((item) => {
-        const Icon = item.kind === 'audio' ? MusicNotes : FilmStrip;
+        const Icon = item.isLink ? Television : item.kind === 'audio' ? MusicNotes : FilmStrip;
         return (
           <DsButton
             key={item.id}
@@ -151,7 +153,9 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
             }}
           >
             <span className={mobileDrawerRowIconWrapClassName}><Icon size={16} weight="duotone" /></span>
-            <span className={mobileDrawerRowTitleClassName}>{item.name}</span>
+            <span className={mobileDrawerRowTitleClassName}>
+              {item.isLink ? stripBilibiliExtension(item.name) : item.name}
+            </span>
           </DsButton>
         );
       })}

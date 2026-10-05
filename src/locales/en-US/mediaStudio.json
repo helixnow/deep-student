@@ -38,6 +38,7 @@
     "finished": "Finished",
     "progress": "Watch progress",
     "rename": "Rename",
+    "bilibiliBadge": "Bilibili",
     "renameFailed": "Couldn't rename",
     "reveal": "Show in Library",
     "delete": "Delete",
@@ -48,6 +49,7 @@
   },
   "import": {
     "button": "Import media",
+    "bilibili": "Bilibili link",
     "filterName": "Audio / video",
     "dropHint": "Drop to import audio or video",
     "progress": "Importing {{index}}/{{total}}: {{name}}",

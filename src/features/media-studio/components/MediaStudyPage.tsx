@@ -17,6 +17,7 @@ import {
 import { dstu } from '@/dstu';
 import type { DstuNode } from '@/dstu/types';
 import FileContentView from '@/features/learning-hub/apps/views/FileContentView';
+import { stripBilibiliExtension } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import {
   MEDIA_STUDY_TRANSCRIPT_TAB,
   MediaStudyCompanionContext,
@@ -69,9 +70,10 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
     return () => { cancelled = true; };
   }, [resourceId, t]);
 
+  const displayName = node ? stripBilibiliExtension(node.name) : '';
   useEffect(() => {
-    onTitleChange?.(node?.name ?? null);
-  }, [node?.name, onTitleChange]);
+    onTitleChange?.(displayName || null);
+  }, [displayName, onTitleChange]);
 
   const meta = useMemo<MediaTabMeta>(() => ({
     name: node?.name ?? resourceId,
@@ -121,7 +123,7 @@ export const MediaStudyPage: React.FC<MediaStudyPageProps> = ({
       </span>
       <span className="text-muted-foreground/40">/</span>
       <span className={cn(inTitlebar ? TITLEBAR_META_CLASS : 'text-xs text-muted-foreground', 'min-w-0 truncate')}>
-        {node?.name ?? ''}
+        {displayName}
       </span>
     </div>
   );

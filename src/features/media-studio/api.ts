@@ -7,6 +7,7 @@ import {
   normalizeTranscriptStatus,
   type TranscriptStatus,
 } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
+import { isBilibiliLinkItem } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 
 export type MediaKind = 'audio' | 'video';
 
@@ -30,6 +31,8 @@ export interface MediaLibraryItem {
   name: string;
   kind: MediaKind;
   mimeType: string;
+  /** B 站链接条目（没有本地音视频，播放走内嵌播放器） */
+  isLink: boolean;
   size: number;
   folderId: string | null;
   folderName: string | null;
@@ -100,6 +103,7 @@ export function normalizeLibraryItem(raw: unknown): MediaLibraryItem | null {
     name,
     kind: inferMediaKind(r.kind, mimeType, name),
     mimeType,
+    isLink: Boolean(pick(r, 'isLink', 'is_link')) || isBilibiliLinkItem(mimeType, name),
     size: num(r.size) ?? 0,
     folderId: str(pick(r, 'folderId', 'folder_id')),
     folderName: str(pick(r, 'folderName', 'folder_name')),

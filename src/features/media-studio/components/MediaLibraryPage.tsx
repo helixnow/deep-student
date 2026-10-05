@@ -15,6 +15,7 @@ import {
   MagnifyingGlass,
   Notebook,
   Subtitles,
+  Television,
   UploadSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -34,6 +35,15 @@ import { dstu } from '@/dstu';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { mediaTranscriptApi } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
+import {
+  BilibiliLinkDialog,
+  type BilibiliLinkDialogMode,
+  type BilibiliLinkDialogResult,
+} from '@/features/learning-hub/apps/views/media/BilibiliLinkDialog';
+import {
+  bilibiliLinkApi,
+  stripBilibiliExtension,
+} from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import type { MediaLibraryItem } from '../api';
 import {
   countByFilter,
@@ -53,6 +63,8 @@ export interface MediaLibraryPageProps {
   library: MediaLibraryState;
   importer: MediaImportController;
   onOpen: (item: MediaLibraryItem) => void;
+  /** 打开刚从 B 站链接导入的条目（列表里可能还没有它） */
+  onOpenId?: (id: string) => void;
   isSmallScreen: boolean;
   /** 经典壳桌面顶栏槽位；null 时标题行在页内 */
   titlebarTarget: HTMLElement | null;
@@ -62,6 +74,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   library,
   importer,
   onOpen,
+  onOpenId,
   isSmallScreen,
   titlebarTarget,
 }) => {
@@ -71,6 +84,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const [renaming, setRenaming] = useState<{ item: MediaLibraryItem; name: string } | null>(null);
   const [deleting, setDeleting] = useState<MediaLibraryItem | null>(null);
   const [busy, setBusy] = useState(false);
+  const [bilibiliMode, setBilibiliMode] = useState<BilibiliLinkDialogMode | null>(null);
   const { items, loaded, error, refresh, removeLocal } = library;
 
   const counts = useMemo(() => countByFilter(items), [items]);
@@ -106,6 +120,26 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
             void refresh();
           } catch (err: unknown) {
             showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.importFailed'));
+          }
+        })();
+        return;
+      case 'bilibiliSubtitle':
+        if (!item.isLink) {
+          setBilibiliMode({ kind: 'attach', resourceId: item.id, name: item.name });
+          return;
+        }
+        void (async () => {
+          try {
+            const link = await bilibiliLinkApi.getLink(item.id);
+            setBilibiliMode({
+              kind: 'refetch',
+              resourceId: item.id,
+              name: stripBilibiliExtension(item.name),
+              url: link.url,
+              page: link.page,
+            });
+          } catch (err: unknown) {
+            showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaBilibili.loadFailed'));
           }
         })();
         return;
@@ -160,6 +194,23 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
     setDeleting(null);
   }, [deleting, removeLocal, t]);
 
+  const handleBilibiliDone = useCallback((result: BilibiliLinkDialogResult) => {
+    const mode = bilibiliMode;
+    void refresh();
+    if (mode?.kind === 'create') {
+      const name = stripBilibiliExtension(result.name);
+      showGlobalNotification(
+        'success',
+        result.created
+          ? t('learningHub:mediaBilibili.created', { name, count: result.segments })
+          : t('learningHub:mediaBilibili.updated', { name, count: result.segments }),
+      );
+      onOpenId?.(result.fileId);
+      return;
+    }
+    showGlobalNotification('success', t('learningHub:mediaBilibili.attached', { count: result.segments }));
+  }, [bilibiliMode, onOpenId, refresh, t]);
+
   // ---------------------------------------------------------------- 导入
   const onFilesDropped = useCallback((files: File[]) => {
     void importer.importSources(files.map((file) => ({ kind: 'file' as const, file })));
@@ -186,6 +237,19 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
     </DsButton>
   );
 
+  const bilibiliButton = (inTitlebar: boolean) => (
+    <DsButton
+      variant={inTitlebar ? 'shell' : 'ghost'}
+      size="sm"
+      onClick={() => setBilibiliMode({ kind: 'create' })}
+      data-media-bilibili=""
+      className={inTitlebar ? TITLEBAR_CONTROL_CLASS : 'gap-1.5'}
+    >
+      <Television size={14} aria-hidden="true" />
+      {t('mediaStudio:import.bilibili')}
+    </DsButton>
+  );
+
   const headerRow = (inTitlebar: boolean) => (
     <div className={cn('flex min-w-0 items-center justify-between gap-3', inTitlebar && 'pointer-events-auto h-full flex-1')}>
       <div className="flex min-w-0 items-center gap-2">
@@ -201,7 +265,12 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           </>
         ) : null}
       </div>
-      {!isSmallScreen ? importButton(inTitlebar) : null}
+      {!isSmallScreen ? (
+        <div className="flex shrink-0 items-center gap-1.5">
+          {bilibiliButton(inTitlebar)}
+          {importButton(inTitlebar)}
+        </div>
+      ) : null}
     </div>
   );
 
@@ -265,7 +334,12 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           </li>
         ))}
       </ul>
-      {!isSmallScreen ? <div className="mt-4">{importButton(false)}</div> : null}
+      {!isSmallScreen ? (
+        <div className="mt-4 flex items-center justify-center gap-2">
+          {importButton(false)}
+          {bilibiliButton(false)}
+        </div>
+      ) : null}
       <p className="study-shell-empty-state__description mt-3">{t('mediaStudio:empty.subtitleNote')}</p>
     </div>
   );
@@ -381,18 +455,29 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px))' }}
           data-media-import-bar=""
         >
-          <DsButton
-            variant="primary"
-            onClick={importer.pick}
-            disabled={importer.importing}
-            data-media-import=""
-            className="w-full gap-1.5"
-          >
-            {importer.importing
-              ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-              : <UploadSimple size={16} aria-hidden="true" />}
-            {t('mediaStudio:import.button')}
-          </DsButton>
+          <div className="flex items-center gap-2">
+            <DsButton
+              variant="primary"
+              onClick={importer.pick}
+              disabled={importer.importing}
+              data-media-import=""
+              className="flex-1 gap-1.5"
+            >
+              {importer.importing
+                ? <CircleNotch size={16} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                : <UploadSimple size={16} aria-hidden="true" />}
+              {t('mediaStudio:import.button')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              onClick={() => setBilibiliMode({ kind: 'create' })}
+              data-media-bilibili=""
+              className="shrink-0 gap-1.5"
+            >
+              <Television size={16} aria-hidden="true" />
+              {t('mediaStudio:import.bilibili')}
+            </DsButton>
+          </div>
         </div>
       ) : null}
 
@@ -417,6 +502,13 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           className="h-9 text-sm"
         />
       </DsAlertDialog>
+
+      <BilibiliLinkDialog
+        open={bilibiliMode !== null}
+        mode={bilibiliMode ?? { kind: 'create' }}
+        onOpenChange={(open) => { if (!open) setBilibiliMode(null); }}
+        onDone={handleBilibiliDone}
+      />
 
       <DsAlertDialog
         open={deleting !== null}

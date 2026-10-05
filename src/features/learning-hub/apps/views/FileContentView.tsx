@@ -67,6 +67,11 @@ import {
 } from './mediaPreviewUtils';
 import { PreviewStatus } from './PreviewStatus';
 import { MediaStudyView } from './media/MediaStudyView';
+import {
+  bilibiliLinkApi,
+  isBilibiliLinkItem,
+  type BilibiliLinkDescriptor,
+} from './media/bilibiliLinkApi';
 import { createPreviewPersistController } from './previewPersistence';
 import { useReferenceToChat } from '@/features/learning-hub/useReferenceToChat';
 import {
@@ -135,6 +140,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const [textContent, setTextContent] = useState<string | null>(null);
   const [base64Content, setBase64Content] = useState<string | null>(null);
   const [mediaSource, setMediaSource] = useState<MediaSourceState | null>(null);
+  const [bilibiliLink, setBilibiliLink] = useState<BilibiliLinkDescriptor | null>(null);
   // filestream 播放失败（协议/解码问题）后置 true，回退到 blob URL 方案
   const [streamBlocked, setStreamBlocked] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -163,8 +169,10 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
   const isPdf = previewMode === 'pdf';
   const isAudio = previewMode === 'audio';
   const isVideo = previewMode === 'video';
+  // B 站链接条目：内容是描述 JSON，没有本地音视频，走内嵌播放器
+  const isBilibiliLink = (isAudio || isVideo) && isBilibiliLinkItem(mimeType, node.name);
   const needsRichPreview = isDocx || isExcel || isPptx;
-  const needsBinaryPreview = needsRichPreview || isEpub || isAudio || isVideo;
+  const needsBinaryPreview = (needsRichPreview || isEpub || isAudio || isVideo) && !isBilibiliLink;
   const canPreviewText = previewMode === 'text';
   // ★ 2026-07-20：压缩包兜底预览——zip 导入时后端已生成条目清单（extracted_text），
   // 预览页尝试加载清单只读展示；rar/7z 无解析依赖，仅展示说明文案
@@ -219,6 +227,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setTextContent(null);
     setBase64Content(null);
     setMediaSource(null); // 旧 blob URL 由 [mediaSource] 清理 effect 释放
+    setBilibiliLink(null);
     setStreamBlocked(false);
     setError(null);
     setIsPreviewTooLarge(false);
@@ -368,6 +377,28 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
     setStreamBlocked(false);
     setRetryCount((c) => c + 1);
   }, []);
+
+  // B 站链接条目：读描述（bvid / 分 P / 时长），交给内嵌播放器
+  useEffect(() => {
+    if (!isBilibiliLink) return;
+    let cancelled = false;
+    setError(null);
+    setIsLoading(true);
+    bilibiliLinkApi
+      .getLink(node.id)
+      .then((link) => {
+        if (!cancelled) setBilibiliLink(link);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(getErrorMessage(err));
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isBilibiliLink, node.id, retryCount]);
 
   // ★ 播放器错误：stream 播放失败 → 回退 blob 方案重新加载；blob 也失败 → 错误态
   const mediaSourceKindRef = useRef<MediaSourceState['kind'] | null>(null);
@@ -778,6 +809,24 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
             isActive={isActive}
           />
         </div>
+      );
+    }
+
+    if (isBilibiliLink && bilibiliLink) {
+      return (
+        <MediaStudyView
+          key={node.id}
+          kind="video"
+          src=""
+          bilibili={bilibiliLink}
+          resourceId={node.id}
+          sourceId={node.sourceId}
+          nodePath={node.path}
+          fileName={node.name}
+          isActive={isActive}
+          focusScopeId={focusScopeId}
+          onError={handleMediaError}
+        />
       );
     }
 

@@ -18,6 +18,7 @@ function item(over: Partial<MediaLibraryItem> & { id: string }): MediaLibraryIte
     name: `${over.id}.mp4`,
     kind: 'video',
     mimeType: 'video/mp4',
+    isLink: false,
     size: 1,
     folderId: null,
     folderName: null,
@@ -53,6 +54,13 @@ describe('api normalization (media_library_list shape)', () => {
     expect(parsed.progress).toBeNull();
     expect(normalizeLibraryItem({ name: 'no id' })).toBeNull();
     expect(toMillis('2026-10-01T00:00:00Z')).toBe(Date.parse('2026-10-01T00:00:00Z'));
+  });
+
+  it('marks Bilibili link items from the backend flag or the link MIME / extension', () => {
+    expect(normalizeLibraryItem({ id: 'file_l', name: '线代.bilibili', mimeType: 'video/x-bilibili', kind: 'video', isLink: true })!)
+      .toMatchObject({ kind: 'video', isLink: true });
+    expect(normalizeLibraryItem({ id: 'file_m', name: '课.bilibili', mime_type: 'application/octet-stream' })!.isLink).toBe(true);
+    expect(normalizeLibraryItem({ id: 'file_v', name: 'L1.mp4', mimeType: 'video/mp4' })!.isLink).toBe(false);
   });
 
   it('maps related notes', () => {
