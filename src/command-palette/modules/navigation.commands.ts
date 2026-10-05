@@ -121,8 +121,8 @@ export function getNavigationCommands(): Command[] {
     // ==================== 学习相关视图 ====================
     {
       id: 'nav.goto.learning-hub',
-      name: i18next.t('command_palette:commands.nav.goto.learning-hub', 'Go to Learning Hub'),
-      description: i18next.t('command_palette:descriptions.nav.goto.learning-hub', 'Integrated learning resource center'),
+      name: i18next.t('command_palette:commands.nav.goto.learning-hub', 'Go to Files'),
+      description: i18next.t('command_palette:descriptions.nav.goto.learning-hub', 'Files: manage and search textbooks, notes, exam sets and documents'),
       category: 'navigation',
       shortcut: 'mod+shift+7',
       icon: GraduationCap,
