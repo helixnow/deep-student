@@ -281,7 +281,13 @@
       "start_review": "Start review",
       "open_qbank": "Open exam set",
       "due_review_title": "Due today",
-      "due_breakdown": "Cards {{cards}} · Mistakes {{mistakes}} · Notes {{notes}}"
+      "due_breakdown": "Cards {{cards}} · Mistakes {{mistakes}} · Notes {{notes}}",
+      "tile_cards": "Cards",
+      "tile_mistakes": "Mistakes",
+      "tile_notes": "Notes",
+      "overdue_short": "{{count}} late",
+      "due_total": "{{count}} due today",
+      "all_clear": "Nothing due today"
     },
     "dashboard": {
       "title": "AI learning dashboard",

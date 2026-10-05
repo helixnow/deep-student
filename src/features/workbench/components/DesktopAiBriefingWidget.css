@@ -1,14 +1,18 @@
 .wb-ai-briefing-widget {
   /* 定位由父容器 .wb-desktop-widget-column 承担（右上角纵列，日程下方）；
-     空间不足时本组件收缩滚动，日程保持定高 */
+     内容定高约 170px，空间不足时收缩滚动，日程保持定高 */
+  display: flex;
   width: 100%;
   min-height: 96px;
   flex: 0 1 auto;
-  padding: 12px 14px;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
   overflow: auto;
   border-radius: var(--wb-radius-xl, 18px);
   box-shadow: var(--wb-shadow-idle);
   pointer-events: auto;
+  color: var(--text-primary, hsl(var(--foreground)));
   transition:
     box-shadow 180ms ease,
     opacity var(--wb-motion-standard, 280ms) var(--wb-ease-out, ease-out);
@@ -31,16 +35,131 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 8px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--text-primary, hsl(var(--foreground)));
 }
 
-.wb-ai-briefing-body .generative-ui-root {
-  gap: 8px;
+.wb-ai-briefing-summary {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  white-space: nowrap;
 }
 
-.wb-ai-briefing-body .generative-ui-panel {
-  gap: 8px;
+.wb-ai-briefing-tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wb-ai-briefing-tile {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid hsl(var(--foreground) / 0.08);
+  border-radius: 12px;
+  background: hsl(var(--foreground) / 0.05);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.wb-ai-briefing-tile:hover {
+  border-color: hsl(var(--foreground) / 0.16);
+  background: hsl(var(--foreground) / 0.1);
+}
+
+.wb-ai-briefing-tile:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 1px;
+}
+
+.wb-ai-briefing-tile-count {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-ai-briefing-tile-label {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 11.5px;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wb-ai-briefing-tile[data-empty] .wb-ai-briefing-tile-count {
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  font-weight: 500;
+}
+
+.wb-ai-briefing-tile-alert {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: hsl(var(--destructive) / 0.14);
+  color: hsl(var(--destructive));
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.wb-ai-briefing-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.wb-ai-briefing-actions:empty {
+  display: none;
+}
+
+.wb-ai-briefing-action {
+  flex: 1 1 0;
+  min-height: 30px;
+  padding: 0 12px;
+  border: 1px solid hsl(var(--foreground) / 0.1);
+  border-radius: 10px;
+  background: hsl(var(--foreground) / 0.05);
+  color: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.wb-ai-briefing-action:hover {
+  background: hsl(var(--foreground) / 0.1);
+}
+
+.wb-ai-briefing-action-primary {
+  border-color: transparent;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.wb-ai-briefing-action-primary:hover {
+  background: hsl(var(--primary) / 0.9);
+}
+
+.wb-ai-briefing-action:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 1px;
+}
+
+@media (pointer: coarse) {
+  .wb-ai-briefing-tile,
+  .wb-ai-briefing-action {
+    min-height: var(--touch-target-size, 44px);
+  }
 }

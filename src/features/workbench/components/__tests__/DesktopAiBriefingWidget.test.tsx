@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
 vi.mock('react-i18next', () => ({
@@ -22,10 +22,23 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/features/generative-ui/handlers/workbenchLearningHandlers', () => ({
-  workbenchLearningHandlers: {},
-  createWorkbenchLearningHandlers: () => ({}),
+const { startReview, openQbank, openTodayReviewTarget, launch } = vi.hoisted(() => ({
+  startReview: vi.fn(),
+  openQbank: vi.fn(),
+  openTodayReviewTarget: vi.fn(),
+  launch: vi.fn(),
 }));
+
+vi.mock('@/features/generative-ui/handlers/workbenchLearningHandlers', () => ({
+  createWorkbenchLearningHandlers: () => ({
+    'start-review': { id: 'start-review', label: '开始复习', riskLevel: 'low', handler: startReview },
+    'open-qbank': { id: 'open-qbank', label: '打开题目集', riskLevel: 'low', handler: openQbank },
+  }),
+}));
+
+vi.mock('@/features/learning-today/openTodayReview', () => ({ openTodayReviewTarget }));
+
+vi.mock('../../core/workbenchBus', () => ({ workbenchBus: { launch } }));
 
 const flashcardsDueState = { count: 3 };
 
@@ -56,12 +69,6 @@ vi.mock('@/features/learning-today/todayLearningStore', () => ({
 
 import { DesktopAiBriefingWidget } from '../DesktopAiBriefingWidget';
 
-function expectChartOrTable(scope: HTMLElement) {
-  const chart = scope.querySelector('[data-testid="generative-ui-chart"], [data-generative-chart]');
-  const table = scope.querySelector('[data-testid="generative-ui-table"], [data-generative-table]');
-  expect(chart || table).toBeTruthy();
-}
-
 describe('DesktopAiBriefingWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -70,21 +77,43 @@ describe('DesktopAiBriefingWidget', () => {
     todoAgendaSnapshot.items = [{ id: '1', dueDate: '2000-01-01', status: 'pending' as const }];
   });
 
-  it('renders briefing widget with due flashcards stat', () => {
+  it('shows the four counts in one row with the total in the header', () => {
+    flashcardsDueState.count = 2;
+    Object.assign(todayState, { cards: 2, mistakes: 4, notes: 1 });
     render(<DesktopAiBriefingWidget />);
-    const widget = screen.getByTestId('wb-ai-briefing-widget');
-    expect(widget).toBeInTheDocument();
-    expect(screen.getAllByText('到期闪卡').length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1);
-    expectChartOrTable(widget);
+    expect(screen.getByTestId('wb-ai-briefing-tile-cards').textContent).toContain('2');
+    expect(screen.getByTestId('wb-ai-briefing-tile-mistakes').textContent).toContain('4');
+    expect(screen.getByTestId('wb-ai-briefing-tile-notes').textContent).toContain('1');
+    expect(screen.getByTestId('wb-ai-briefing-tile-todos').textContent).toContain('1');
+    expect(screen.getByTestId('wb-ai-briefing-summary').textContent).toBe('generativeUi:workbench.briefing.due_total');
+    expect(screen.queryByRole('table')).toBeNull();
   });
 
-  it('counts due mistakes and notes, so a day with no cards no longer looks empty', () => {
-    flashcardsDueState.count = 0;
-    Object.assign(todayState, { cards: 0, mistakes: 4, notes: 1 });
+  it('marks overdue todos and sends each tile to its own place', () => {
     render(<DesktopAiBriefingWidget />);
-    const widget = screen.getByTestId('wb-ai-briefing-widget');
-    expect(widget.textContent).toContain('5');
-    expect(widget.textContent).toContain('generativeUi:workbench.dashboard.due_mistakes_title');
+    const todos = screen.getByTestId('wb-ai-briefing-tile-todos');
+    expect(todos.textContent).toContain('generativeUi:workbench.briefing.overdue_short');
+    fireEvent.click(screen.getByTestId('wb-ai-briefing-tile-mistakes'));
+    fireEvent.click(screen.getByTestId('wb-ai-briefing-tile-cards'));
+    fireEvent.click(todos);
+    expect(openTodayReviewTarget.mock.calls).toEqual([['mistakes'], ['cards']]);
+    expect(launch).toHaveBeenCalledWith({ typeId: 'todo', reason: 'api' });
+  });
+
+  it('hides 开始复习 when nothing is due but keeps 打开题目集', () => {
+    flashcardsDueState.count = 0;
+    Object.assign(todayState, { cards: 0, mistakes: 0, notes: 0 });
+    render(<DesktopAiBriefingWidget />);
+    expect(screen.queryByRole('button', { name: '开始复习' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '打开题目集' }));
+    expect(openQbank).toHaveBeenCalled();
+    expect(screen.getByTestId('wb-ai-briefing-summary').textContent).toBe('generativeUi:workbench.briefing.all_clear');
+    expect(screen.getByTestId('wb-ai-briefing-tile-cards').hasAttribute('data-empty')).toBe(true);
+  });
+
+  it('starts the review from the primary action when something is due', () => {
+    render(<DesktopAiBriefingWidget />);
+    fireEvent.click(screen.getByRole('button', { name: '开始复习' }));
+    expect(startReview).toHaveBeenCalled();
   });
 });
