@@ -68,6 +68,7 @@ vi.mock('@/features/learning-today/todayLearningStore', () => ({
 }));
 
 import { DesktopAiBriefingWidget } from '../DesktopAiBriefingWidget';
+import { DESKTOP_WIDGET_COLLAPSE_KEY, reloadDesktopWidgetCollapse } from '../desktopWidgetCollapse';
 
 describe('DesktopAiBriefingWidget', () => {
   beforeEach(() => {
@@ -75,6 +76,8 @@ describe('DesktopAiBriefingWidget', () => {
     flashcardsDueState.count = 3;
     Object.assign(todayState, { cards: 3, mistakes: 0, notes: 0 });
     todoAgendaSnapshot.items = [{ id: '1', dueDate: '2000-01-01', status: 'pending' as const }];
+    localStorage.removeItem(DESKTOP_WIDGET_COLLAPSE_KEY);
+    reloadDesktopWidgetCollapse();
   });
 
   it('shows the four counts in one row with the total in the header', () => {
@@ -115,5 +118,21 @@ describe('DesktopAiBriefingWidget', () => {
     render(<DesktopAiBriefingWidget />);
     fireEvent.click(screen.getByRole('button', { name: '开始复习' }));
     expect(startReview).toHaveBeenCalled();
+  });
+
+  it('collapses to the header with the total and remembers it', () => {
+    const view = render(<DesktopAiBriefingWidget />);
+    fireEvent.click(screen.getByTestId('wb-ai-briefing-collapse'));
+    expect(screen.queryByTestId('wb-ai-briefing-tile-cards')).toBeNull();
+    expect(screen.queryByRole('button', { name: '开始复习' })).toBeNull();
+    expect(screen.getByTestId('wb-ai-briefing-summary')).toBeTruthy();
+    expect(screen.getByTestId('wb-ai-briefing-collapse').getAttribute('aria-expanded')).toBe('false');
+    expect(JSON.parse(localStorage.getItem(DESKTOP_WIDGET_COLLAPSE_KEY) ?? '[]')).toEqual(['briefing']);
+    view.unmount();
+    reloadDesktopWidgetCollapse();
+    render(<DesktopAiBriefingWidget />);
+    expect(screen.queryByTestId('wb-ai-briefing-tile-cards')).toBeNull();
+    fireEvent.click(screen.getByTestId('wb-ai-briefing-collapse'));
+    expect(screen.getByTestId('wb-ai-briefing-tile-cards')).toBeTruthy();
   });
 });

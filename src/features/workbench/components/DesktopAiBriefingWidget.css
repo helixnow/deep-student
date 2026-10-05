@@ -47,6 +47,36 @@
   white-space: nowrap;
 }
 
+.wb-ai-briefing-collapse {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  margin-right: -4px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, hsl(var(--muted-foreground)));
+  cursor: pointer;
+}
+
+.wb-ai-briefing-collapse:hover {
+  background: hsl(var(--foreground) / 0.08);
+  color: var(--text-primary, hsl(var(--foreground)));
+}
+
+.wb-ai-briefing-collapse:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 1px;
+}
+
+.wb-ai-briefing-widget[data-collapsed] {
+  min-height: 0;
+  padding-block: 10px;
+}
+
 .wb-ai-briefing-tiles {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -158,6 +188,11 @@
 }
 
 @media (pointer: coarse) {
+  .wb-ai-briefing-collapse {
+    width: var(--touch-target-size, 44px);
+    height: var(--touch-target-size, 44px);
+  }
+
   .wb-ai-briefing-tile,
   .wb-ai-briefing-action {
     min-height: var(--touch-target-size, 44px);

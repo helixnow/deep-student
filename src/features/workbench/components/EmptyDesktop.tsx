@@ -2,8 +2,11 @@
  * 空桌面引导（A4：4 步首启 tour）
  * ---------------------------------------------------------------------------
  * 桌面上没有任何窗口时展示的轻量引导：
- * - 主 CTA（打开资源库）**始终在**——tour 关掉的只是 tour，空桌面不该变成
- *   一块什么都点不到的壁纸；
+ * - 新用户（tour 未关）：顶部居中一张卡——标题、主 CTA（打开资源库）、可选的恢复 CTA 与 tour；
+ *   不压左侧桌面图标列，也不再重复 tour 第一步的 Dock 说明；
+ * - tour 关掉后（2026-10 收敛）：卡片整个不再出现——Dock 与桌面右键菜单都能开资源库，
+ *   老用户每次清空桌面都被一张卡挡住左上角太碍事；只在有可恢复快照时留一枚
+ *   「恢复上次桌面」胶囊；
  * - 4 步 tour：Dock 应用 → ⌘K/Ctrl+K 搜索 → 状态栏 → Agent 控制；
  *   「跳过」仅本会话隐藏，「不再显示」/「完成」写入 localStorage 永久消隐，
  *   两者都只作用于 tour 区块；
@@ -163,6 +166,27 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
   const isLast = clampedIndex >= steps.length - 1;
   const searchShortcut = isMacOS() ? '⌘K' : 'Ctrl+K';
 
+  const restoreLabel = restoreWindowCount > 0
+    ? t('workbench:emptyDesktop.actionRestoreSessionCount', { count: restoreWindowCount })
+    : t('workbench:emptyDesktop.actionRestoreSession');
+
+  if (!tourVisible) {
+    if (!restoreAvailable || !onRestoreSession) return null;
+    return (
+      <div className="wb-empty-desktop">
+        <button
+          type="button"
+          className="wb-empty-restore-pill wb-glass"
+          data-testid="wb-empty-restore-session"
+          onClick={onRestoreSession}
+        >
+          <ClockCounterClockwise size={16} weight="duotone" aria-hidden="true" />
+          {restoreLabel}
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="wb-empty-desktop">
       <div ref={cardRef} className="wb-empty-card wb-glass wb-glass-highlight wb-empty-card-pro" role="note">
@@ -174,9 +198,6 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
         <h2 className="wb-empty-title wb-empty-rise wb-empty-rise-2">
           {t('workbench:emptyDesktop.title')}
         </h2>
-        <p className="wb-empty-hint wb-empty-rise wb-empty-rise-3">
-          {t('workbench:emptyDesktop.hint')}
-        </p>
 
         <div
           className="wb-empty-cta-block wb-empty-rise wb-empty-rise-4"
@@ -195,94 +216,88 @@ export const EmptyDesktop: React.FC<EmptyDesktopProps> = React.memo(({
               onClick={onRestoreSession}
             >
               <ClockCounterClockwise size={18} weight="duotone" aria-hidden="true" />
-              {restoreWindowCount > 0
-                ? t('workbench:emptyDesktop.actionRestoreSessionCount', {
-                    count: restoreWindowCount,
-                  })
-                : t('workbench:emptyDesktop.actionRestoreSession')}
+              {restoreLabel}
             </button>
           ) : null}
         </div>
 
-        {tourVisible ? (
-          <div
-            className="wb-empty-tour wb-empty-rise wb-empty-rise-5"
-            role="region"
-            aria-label={t('workbench:emptyDesktop.tourTitle')}
-            data-testid="wb-empty-tour"
-            data-tour-step={stepId}
-          >
-            <div className="wb-empty-tour-head">
-              <span className="wb-empty-tour-icon" aria-hidden="true">
-                {TOUR_ICONS[stepId]}
-              </span>
-              <span className="wb-empty-tour-title">
-                {t('workbench:emptyDesktop.tourTitle')}
-              </span>
-              <span className="wb-empty-tour-progress" data-testid="wb-empty-tour-progress">
-                {t('workbench:emptyDesktop.tourStep', {
-                  current: clampedIndex + 1,
-                  total: steps.length,
-                })}
-              </span>
-            </div>
-
-            <div className="wb-empty-tour-body">
-              <h3 className="wb-empty-tour-step-title">
-                {t(`workbench:emptyDesktop.tourSteps.${stepId}.title`)}
-              </h3>
-              <p className="wb-empty-tour-step-desc">
-                {stepId === 'search'
-                  ? t('workbench:emptyDesktop.tourSteps.search.body', { shortcut: searchShortcut })
-                  : t(`workbench:emptyDesktop.tourSteps.${stepId}.body`)}
-              </p>
-              {stepId === 'search' ? (
-                <p className="wb-empty-tour-shortcut" data-testid="wb-empty-tour-shortcut">
-                  <kbd className="wb-empty-kbd">{searchShortcut}</kbd>
-                </p>
-              ) : null}
-            </div>
-
-            <div className="wb-empty-tour-dots" aria-hidden="true">
-              {steps.map((id, index) => (
-                <span
-                  key={id}
-                  className="wb-empty-tour-dot"
-                  data-active={index === clampedIndex ? 'true' : undefined}
-                />
-              ))}
-            </div>
-
-            <div className="wb-empty-tour-actions">
-              <button
-                type="button"
-                className="wb-empty-tour-btn wb-empty-tour-btn-ghost"
-                data-testid="wb-empty-tour-skip"
-                onClick={skipSession}
-              >
-                {t('workbench:emptyDesktop.tourSkip')}
-              </button>
-              <button
-                type="button"
-                className="wb-empty-tour-btn wb-empty-tour-btn-ghost"
-                data-testid="wb-empty-tour-dont-show"
-                onClick={dismissForever}
-              >
-                {t('workbench:emptyDesktop.tourDontShow')}
-              </button>
-              <button
-                type="button"
-                className="wb-empty-tour-btn wb-empty-tour-btn-primary"
-                data-testid="wb-empty-tour-next"
-                onClick={goNext}
-              >
-                {isLast
-                  ? t('workbench:emptyDesktop.tourDone')
-                  : t('workbench:emptyDesktop.tourNext')}
-              </button>
-            </div>
+        <div
+          className="wb-empty-tour wb-empty-rise wb-empty-rise-5"
+          role="region"
+          aria-label={t('workbench:emptyDesktop.tourTitle')}
+          data-testid="wb-empty-tour"
+          data-tour-step={stepId}
+        >
+          <div className="wb-empty-tour-head">
+            <span className="wb-empty-tour-icon" aria-hidden="true">
+              {TOUR_ICONS[stepId]}
+            </span>
+            <span className="wb-empty-tour-title">
+              {t('workbench:emptyDesktop.tourTitle')}
+            </span>
+            <span className="wb-empty-tour-progress" data-testid="wb-empty-tour-progress">
+              {t('workbench:emptyDesktop.tourStep', {
+                current: clampedIndex + 1,
+                total: steps.length,
+              })}
+            </span>
           </div>
-        ) : null}
+
+          <div className="wb-empty-tour-body">
+            <h3 className="wb-empty-tour-step-title">
+              {t(`workbench:emptyDesktop.tourSteps.${stepId}.title`)}
+            </h3>
+            <p className="wb-empty-tour-step-desc">
+              {stepId === 'search'
+                ? t('workbench:emptyDesktop.tourSteps.search.body', { shortcut: searchShortcut })
+                : t(`workbench:emptyDesktop.tourSteps.${stepId}.body`)}
+            </p>
+            {stepId === 'search' ? (
+              <p className="wb-empty-tour-shortcut" data-testid="wb-empty-tour-shortcut">
+                <kbd className="wb-empty-kbd">{searchShortcut}</kbd>
+              </p>
+            ) : null}
+          </div>
+
+          <div className="wb-empty-tour-dots" aria-hidden="true">
+            {steps.map((id, index) => (
+              <span
+                key={id}
+                className="wb-empty-tour-dot"
+                data-active={index === clampedIndex ? 'true' : undefined}
+              />
+            ))}
+          </div>
+
+          <div className="wb-empty-tour-actions">
+            <button
+              type="button"
+              className="wb-empty-tour-btn wb-empty-tour-btn-ghost"
+              data-testid="wb-empty-tour-skip"
+              onClick={skipSession}
+            >
+              {t('workbench:emptyDesktop.tourSkip')}
+            </button>
+            <button
+              type="button"
+              className="wb-empty-tour-btn wb-empty-tour-btn-ghost"
+              data-testid="wb-empty-tour-dont-show"
+              onClick={dismissForever}
+            >
+              {t('workbench:emptyDesktop.tourDontShow')}
+            </button>
+            <button
+              type="button"
+              className="wb-empty-tour-btn wb-empty-tour-btn-primary"
+              data-testid="wb-empty-tour-next"
+              onClick={goNext}
+            >
+              {isLast
+                ? t('workbench:emptyDesktop.tourDone')
+                : t('workbench:emptyDesktop.tourNext')}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

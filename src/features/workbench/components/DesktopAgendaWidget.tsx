@@ -9,8 +9,10 @@ import React, {
 import { useTranslation } from 'react-i18next';
 import {
   ArrowRight,
+  CaretDown,
   CaretLeft,
   CaretRight,
+  CaretUp,
   Check,
   Plus,
   WarningCircle,
@@ -26,6 +28,7 @@ import {
   getTodoAgendaSnapshot,
   subscribeTodoAgenda,
 } from '../apps/system/todoAgendaSource';
+import { useDesktopWidgetCollapsed } from './desktopWidgetCollapse';
 import './DesktopAgendaWidget.css';
 
 const CALENDAR_DAY_COUNT = 42;
@@ -84,6 +87,7 @@ function agendaSort(a: TodoItem, b: TodoItem): number {
 
 export const DesktopAgendaWidget: React.FC = React.memo(() => {
   const { t, i18n } = useTranslation('workbench');
+  const [collapsed, toggleCollapsed] = useDesktopWidgetCollapsed('agenda');
   const snapshot = useSyncExternalStore(
     subscribeTodoAgenda,
     getTodoAgendaSnapshot,
@@ -329,6 +333,7 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
       aria-label={t('agenda.label')}
       data-testid="wb-agenda-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
+      data-collapsed={collapsed || undefined}
       onClick={(event) => {
         if (event.target === event.currentTarget) void openTodoView();
       }}
@@ -376,6 +381,17 @@ export const DesktopAgendaWidget: React.FC = React.memo(() => {
             title={t('agenda.quickAdd')}
           >
             <Plus size={16} weight="bold" />
+          </button>
+          <button
+            type="button"
+            className="wb-agenda-icon-button wb-agenda-collapse-button"
+            data-testid="wb-agenda-collapse"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
+            aria-label={collapsed ? t('desktopWidgets.expand') : t('desktopWidgets.collapse')}
+            title={collapsed ? t('desktopWidgets.expand') : t('desktopWidgets.collapse')}
+          >
+            {collapsed ? <CaretDown size={15} weight="bold" /> : <CaretUp size={15} weight="bold" />}
           </button>
         </div>
       </header>

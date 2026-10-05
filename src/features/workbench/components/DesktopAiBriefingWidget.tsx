@@ -10,7 +10,7 @@
  */
 import React, { useMemo, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkle } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, Sparkle } from '@phosphor-icons/react';
 import { createWorkbenchLearningHandlers } from '@/features/generative-ui/handlers/workbenchLearningHandlers';
 import { openTodayReviewTarget, type TodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import {
@@ -29,6 +29,7 @@ import {
   subscribeTodoAgenda,
 } from '../apps/system/todoAgendaSource';
 import { formatLocalDateKey } from './DesktopAgendaWidget';
+import { useDesktopWidgetCollapsed } from './desktopWidgetCollapse';
 import './DesktopAiBriefingWidget.css';
 
 interface BriefingTile {
@@ -43,6 +44,7 @@ interface BriefingTile {
 export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
   const { t } = useTranslation(['workbench', 'generativeUi']);
   const widgetRef = useRef<HTMLElement | null>(null);
+  const [collapsed, toggleCollapsed] = useDesktopWidgetCollapsed('briefing');
   const dueCards = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
   const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
@@ -95,6 +97,7 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
       className="wb-ai-briefing-widget wb-glass wb-glass-highlight"
       data-testid="wb-ai-briefing-widget"
       data-wb-widget-dim={hasVisibleWindows || undefined}
+      data-collapsed={collapsed || undefined}
       aria-label={t('generativeUi:workbench.briefing_label')}
     >
       <WallpaperReplica hostRef={widgetRef} />
@@ -106,45 +109,60 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
             ? t('generativeUi:workbench.briefing.due_total', { count: totalDue })
             : t('generativeUi:workbench.briefing.all_clear')}
         </span>
+        <button
+          type="button"
+          className="wb-ai-briefing-collapse"
+          data-testid="wb-ai-briefing-collapse"
+          onClick={toggleCollapsed}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? t('workbench:desktopWidgets.expand') : t('workbench:desktopWidgets.collapse')}
+          title={collapsed ? t('workbench:desktopWidgets.expand') : t('workbench:desktopWidgets.collapse')}
+        >
+          {collapsed ? <CaretDown size={14} weight="bold" /> : <CaretUp size={14} weight="bold" />}
+        </button>
       </header>
 
-      <div className="wb-ai-briefing-tiles">
-        {tiles.map((tile) => (
-          <button
-            key={tile.key}
-            type="button"
-            className="wb-ai-briefing-tile"
-            data-testid={`wb-ai-briefing-tile-${tile.key}`}
-            data-empty={tile.count === 0 || undefined}
-            onClick={tile.onOpen}
-          >
-            <span className="wb-ai-briefing-tile-count">{tile.count}</span>
-            <span className="wb-ai-briefing-tile-label">{tile.label}</span>
-            {tile.alert ? <span className="wb-ai-briefing-tile-alert">{tile.alert}</span> : null}
-          </button>
-        ))}
-      </div>
+      {collapsed ? null : (
+        <>
+          <div className="wb-ai-briefing-tiles">
+            {tiles.map((tile) => (
+              <button
+                key={tile.key}
+                type="button"
+                className="wb-ai-briefing-tile"
+                data-testid={`wb-ai-briefing-tile-${tile.key}`}
+                data-empty={tile.count === 0 || undefined}
+                onClick={tile.onOpen}
+              >
+                <span className="wb-ai-briefing-tile-count">{tile.count}</span>
+                <span className="wb-ai-briefing-tile-label">{tile.label}</span>
+                {tile.alert ? <span className="wb-ai-briefing-tile-alert">{tile.alert}</span> : null}
+              </button>
+            ))}
+          </div>
 
-      <div className="wb-ai-briefing-actions">
-        {totalDue > 0 && startReview ? (
-          <button
-            type="button"
-            className="wb-ai-briefing-action wb-ai-briefing-action-primary"
-            onClick={() => { void startReview.handler(); }}
-          >
-            {startReview.label}
-          </button>
-        ) : null}
-        {openQbank ? (
-          <button
-            type="button"
-            className="wb-ai-briefing-action"
-            onClick={() => { void openQbank.handler(); }}
-          >
-            {openQbank.label}
-          </button>
-        ) : null}
-      </div>
+          <div className="wb-ai-briefing-actions">
+            {totalDue > 0 && startReview ? (
+              <button
+                type="button"
+                className="wb-ai-briefing-action wb-ai-briefing-action-primary"
+                onClick={() => { void startReview.handler(); }}
+              >
+                {startReview.label}
+              </button>
+            ) : null}
+            {openQbank ? (
+              <button
+                type="button"
+                className="wb-ai-briefing-action"
+                onClick={() => { void openQbank.handler(); }}
+              >
+                {openQbank.label}
+              </button>
+            ) : null}
+          </div>
+        </>
+      )}
     </section>
   );
 });

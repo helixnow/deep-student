@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 describe('引导卡渲染', () => {
-  it('渲染标题 / 提示 / 单主 CTA / tour', () => {
+  it('渲染标题 / 单主 CTA / tour', () => {
     render(<EmptyDesktop />);
     expect(screen.getByText('你的学习桌面')).toBeTruthy();
     expect(screen.getByRole('group', { name: '快速开始' })).toBeTruthy();
@@ -78,12 +78,12 @@ describe('4 步 tour', () => {
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
-  it('不再显示 → 只隐藏 tour，主 CTA 常驻并写入 localStorage', () => {
-    render(<EmptyDesktop />);
+  it('不再显示 → 整张引导卡收起（Dock / 右键菜单仍能开资源库）并写入 localStorage', () => {
+    const { container } = render(<EmptyDesktop />);
     fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
     expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(screen.getByText('你的学习桌面')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
+    expect(screen.queryByText('你的学习桌面')).toBeNull();
+    expect(container.firstChild).toBeNull();
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
   });
 
@@ -98,12 +98,25 @@ describe('4 步 tour', () => {
     expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
   });
 
-  it('已关闭过 → 重新挂载不展示 tour，但主 CTA 常驻', () => {
+  it('已关闭过 → 重新挂载不渲染引导卡', () => {
     localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
-    render(<EmptyDesktop />);
-    expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(screen.getByText('你的学习桌面')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /打开资源库/ })).toBeTruthy();
+    const { container } = render(<EmptyDesktop />);
+    expect(container.firstChild).toBeNull();
+  });
+
+  it('已关闭过且有可恢复快照 → 只留「恢复上次桌面」胶囊', () => {
+    localStorage.setItem(EMPTY_DESKTOP_ONBOARDING_KEY, '1');
+    const onRestoreSession = vi.fn();
+    render(<EmptyDesktop restoreAvailable restoreWindowCount={2} onRestoreSession={onRestoreSession} />);
+    expect(screen.queryByText('你的学习桌面')).toBeNull();
+    expect(screen.queryByRole('button', { name: /打开资源库/ })).toBeNull();
+    fireEvent.click(screen.getByTestId('wb-empty-restore-session'));
+    expect(onRestoreSession).toHaveBeenCalled();
+  });
+
+  it('tour 进行中不再重复 Dock 说明（第一步已讲）', () => {
+    const { container } = render(<EmptyDesktop />);
+    expect(container.querySelector('.wb-empty-hint')).toBeNull();
   });
 });
 

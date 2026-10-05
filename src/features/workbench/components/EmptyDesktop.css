@@ -8,14 +8,17 @@
  * prefers-reduced-motion / minimal 材质档下进场动画关停。
  */
 
-/* ==== 卡片（单主 CTA，不必为三卡加宽） ==== */
+/* ==== 卡片（单主 CTA，不必为三卡加宽） ====
+ * 顶部居中：左上角会压住桌面图标列（DesktopShortcutsLayer），右侧是日程 / 简报栏 */
 .wb-empty-card.wb-empty-card-pro {
   position: absolute;
   top: 18px;
-  left: 24px;
+  right: 0;
+  left: 0;
   width: 292px;
   /* 窄桌面（<412px 工作区）下钳到非负，避免负 max-width 布局未定义行为 */
   max-width: max(180px, calc(100% - 412px));
+  margin-inline: auto;
   padding: 20px 22px 18px;
   align-items: flex-start;
   text-align: left;
@@ -30,6 +33,37 @@
 
 .wb-empty-card-pro .wb-empty-icons {
   margin-bottom: 6px;
+}
+
+/* ==== tour 关掉后：只剩一枚「恢复上次桌面」胶囊（无可恢复快照时整层不渲染） ==== */
+.wb-empty-restore-pill {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  box-shadow: var(--wb-shadow-idle);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-primary, hsl(var(--foreground)));
+  white-space: nowrap;
+  pointer-events: auto;
+  transform: translateX(-50%);
+  transition: box-shadow 160ms ease;
+}
+
+.wb-empty-restore-pill:hover {
+  box-shadow: var(--wb-shadow-focused, var(--wb-shadow-idle));
+}
+
+.wb-empty-restore-pill:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
 }
 
 /* ==== 主 CTA ==== */
@@ -341,5 +375,17 @@
     min-height: 44px;
     padding: 8px 14px;
     font-size: 13px;
+  }
+}
+
+/* 右上角日程 / 简报栏开着时（宽 min(340px, 100% - 48px) + 右距 24px），卡片与胶囊在栏左侧的空白里居中；
+   窄桌面（<768px）该栏整体隐藏，回到全宽居中 */
+@media (min-width: 768px) {
+  .wb-desktop-widget-column ~ .wb-empty-desktop .wb-empty-card.wb-empty-card-pro {
+    right: 388px;
+  }
+
+  .wb-desktop-widget-column ~ .wb-empty-desktop .wb-empty-restore-pill {
+    left: calc((100% - 388px) / 2);
   }
 }

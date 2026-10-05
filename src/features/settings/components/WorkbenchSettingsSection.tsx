@@ -72,6 +72,8 @@ export const WORKBENCH_SETTING_KEYS = {
   restoreSession: 'desktop.workbenchRestoreSession',
   /** 桌面组件（日程小组件等）显隐；缺省显示，与桌面右键菜单同一 key */
   desktopWidgets: 'desktop.workbenchDesktopWidgets',
+  widgetAgenda: 'desktop.workbenchWidgetAgenda',
+  widgetBriefing: 'desktop.workbenchWidgetBriefing',
   /** 菜单栏自动隐藏（StatusBar 自读；见 menuBarAutohideStore） */
   menuBarAutohide: 'desktop.workbenchMenuBarAutohide',
   /** 双击标题栏行为（WindowTitleBar 自读；见 titleBarBehaviorStore） */
@@ -188,6 +190,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
   const [dockAutohide, setDockAutohide] = useState(false);
   const [restoreSession, setRestoreSession] = useState(false);
   const [desktopWidgets, setDesktopWidgets] = useState(true);
+  const [widgetAgenda, setWidgetAgenda] = useState(true);
+  const [widgetBriefing, setWidgetBriefing] = useState(true);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [menuBarAutohide, setMenuBarAutohide] = useState(false);
   const [titleBarDoubleClick, setTitleBarDoubleClick] = useState<TitleBarDoubleClickAction>('zoom');
@@ -217,6 +221,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         autohideVal,
         restoreSessionVal,
         desktopWidgetsVal,
+        widgetAgendaVal,
+        widgetBriefingVal,
         menuBarAutohideVal,
         titleBarDoubleClickVal,
         devPanelVal,
@@ -236,6 +242,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
         read(WORKBENCH_SETTING_KEYS.dockAutohide),
         read(WORKBENCH_SETTING_KEYS.restoreSession),
         read(WORKBENCH_SETTING_KEYS.desktopWidgets),
+        read(WORKBENCH_SETTING_KEYS.widgetAgenda),
+        read(WORKBENCH_SETTING_KEYS.widgetBriefing),
         read(WORKBENCH_SETTING_KEYS.menuBarAutohide),
         read(WORKBENCH_SETTING_KEYS.titleBarDoubleClick),
         read(WORKBENCH_SETTING_KEYS.devPanel),
@@ -258,6 +266,8 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
       setRestoreSession(String(restoreSessionVal ?? '') === 'true');
       // 缺省（从未设置）= 显示，只有显式 'false' 才隐藏
       setDesktopWidgets(String(desktopWidgetsVal ?? '') !== 'false');
+      setWidgetAgenda(String(widgetAgendaVal ?? '') !== 'false');
+      setWidgetBriefing(String(widgetBriefingVal ?? '') !== 'false');
       setMenuBarAutohide(String(menuBarAutohideVal ?? '') === 'true');
       setTitleBarDoubleClick(parseTitleBarDoubleClickAction(titleBarDoubleClickVal));
       setDevPanel(String(devPanelVal ?? '') === 'true');
@@ -720,6 +730,32 @@ export const WorkbenchSettingsSection: React.FC<WorkbenchSettingsSectionProps> =
           if (!loaded) return;
           setDesktopWidgets(next);
           void persist(WORKBENCH_SETTING_KEYS.desktopWidgets, String(next), next);
+        }}
+      />
+
+      <SwitchRow
+        title={t('workbench:settings.desktopWidgets.agenda.title')}
+        description={t('workbench:settings.desktopWidgets.agenda.desc')}
+        checked={widgetAgenda}
+        loading={!loaded}
+        disabled={!desktopWidgets}
+        onCheckedChange={(next) => {
+          if (!loaded) return;
+          setWidgetAgenda(next);
+          void persist(WORKBENCH_SETTING_KEYS.widgetAgenda, String(next), next);
+        }}
+      />
+
+      <SwitchRow
+        title={t('workbench:settings.desktopWidgets.briefing.title')}
+        description={t('workbench:settings.desktopWidgets.briefing.desc')}
+        checked={widgetBriefing}
+        loading={!loaded}
+        disabled={!desktopWidgets}
+        onCheckedChange={(next) => {
+          if (!loaded) return;
+          setWidgetBriefing(next);
+          void persist(WORKBENCH_SETTING_KEYS.widgetBriefing, String(next), next);
         }}
       />
 

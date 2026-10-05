@@ -107,6 +107,9 @@ const SETTING_KEYS = {
   restoreSession: 'desktop.workbenchRestoreSession',
   /** 桌面组件（日程小组件）显隐；缺省显示，桌面右键菜单与设置页共用该 key */
   desktopWidgets: 'desktop.workbenchDesktopWidgets',
+  /** 总开关打开时，日程 / AI 学习简报各自的显隐（缺省显示，设置页分项切换） */
+  widgetAgenda: 'desktop.workbenchWidgetAgenda',
+  widgetBriefing: 'desktop.workbenchWidgetBriefing',
   devPanel: 'desktop.workbenchDevPanel',
 } as const;
 
@@ -269,6 +272,8 @@ export const WorkbenchDesktop: React.FC = () => {
   const [dockSize, setDockSize] = useState(DOCK_SIZE_DEFAULT);
   const [dockAutohide, setDockAutohide] = useState(false);
   const [desktopWidgets, setDesktopWidgets] = useState(true);
+  const [widgetAgenda, setWidgetAgenda] = useState(true);
+  const [widgetBriefing, setWidgetBriefing] = useState(true);
   const [devPanel, setDevPanel] = useState(false);
   /**
    * 「恢复上次桌面」次级 CTA 的可用性：仅在关闭自动恢复、且启动时确有快照的
@@ -304,6 +309,8 @@ export const WorkbenchDesktop: React.FC = () => {
         dockSizeVal,
         autohideVal,
         desktopWidgetsVal,
+        widgetAgendaVal,
+        widgetBriefingVal,
         devPanelVal,
       ] = await Promise.all([
         readSetting(SETTING_KEYS.materialTier),
@@ -312,6 +319,8 @@ export const WorkbenchDesktop: React.FC = () => {
         readSetting(SETTING_KEYS.dockSize),
         readSetting(SETTING_KEYS.dockAutohide),
         readSetting(SETTING_KEYS.desktopWidgets),
+        readSetting(SETTING_KEYS.widgetAgenda),
+        readSetting(SETTING_KEYS.widgetBriefing),
         readSetting(SETTING_KEYS.devPanel),
       ]);
       if (cancelled) return;
@@ -329,6 +338,8 @@ export const WorkbenchDesktop: React.FC = () => {
       setDockAutohide(String(autohideVal ?? '') === 'true');
       // 桌面组件缺省显示（保持现状），只有显式 'false' 才隐藏
       setDesktopWidgets(String(desktopWidgetsVal ?? '') !== 'false');
+      setWidgetAgenda(String(widgetAgendaVal ?? '') !== 'false');
+      setWidgetBriefing(String(widgetBriefingVal ?? '') !== 'false');
       // 无启动参数时强制关闭 HUD；带参时默认开（可用设置关掉）
       if (isWorkbenchDiagnosticsRequested()) {
         setDevPanel(devPanelVal == null || String(devPanelVal) === '' || String(devPanelVal) === 'true');
@@ -360,6 +371,12 @@ export const WorkbenchDesktop: React.FC = () => {
           break;
         case SETTING_KEYS.desktopWidgets:
           setDesktopWidgets(value !== false);
+          break;
+        case SETTING_KEYS.widgetAgenda:
+          setWidgetAgenda(value !== false);
+          break;
+        case SETTING_KEYS.widgetBriefing:
+          setWidgetBriefing(value !== false);
           break;
         case SETTING_KEYS.devPanel:
           setDevPanel(isWorkbenchDiagnosticsRequested() && value === true);
@@ -598,10 +615,10 @@ export const WorkbenchDesktop: React.FC = () => {
       >
         {/* 桌面组件可关：关掉后窄工作区不再被日程与 AI 简报组件挤占。
             两组件收进右上角纵列（.wb-desktop-widget-column），简报不再与桌面图标重叠 */}
-        {hydrated && desktopWidgets && (
+        {hydrated && desktopWidgets && (widgetAgenda || widgetBriefing) && (
           <div className="wb-desktop-widget-column">
-            <DesktopAgendaWidget />
-            <DesktopAiBriefingWidget />
+            {widgetAgenda && <DesktopAgendaWidget />}
+            {widgetBriefing && <DesktopAiBriefingWidget />}
           </div>
         )}
         {/* 桌面快捷方式图标层：与资源库「桌面」视图共用 desktopStore，双向同步 */}

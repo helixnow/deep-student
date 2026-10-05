@@ -548,3 +548,17 @@
     flex-basis: 44px;
   }
 }
+
+/* 手动折叠：只留标题行（月份 + 待办数 + 新建 / 展开），月历与列表收起 */
+.wb-agenda-widget[data-collapsed] {
+  height: auto;
+  padding-block: 10px;
+}
+
+.wb-agenda-widget[data-collapsed] .wb-agenda-calendar,
+.wb-agenda-widget[data-collapsed] .wb-agenda-divider,
+.wb-agenda-widget[data-collapsed] .wb-agenda-list-header,
+.wb-agenda-widget[data-collapsed] .wb-agenda-list,
+.wb-agenda-widget[data-collapsed] .wb-agenda-icon-button:not(.wb-agenda-add-button, .wb-agenda-collapse-button) {
+  display: none;
+}
