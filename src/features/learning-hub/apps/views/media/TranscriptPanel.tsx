@@ -1,9 +1,11 @@
 /**
- * TranscriptPanel — 字幕面板（搜索 / 点击跳转 / 跟随高亮 / 复制）
+ * TranscriptPanel — 字幕面板（搜索 / 点击跳转 / 跟随高亮 / 复制 / 选段引用与制卡）
  *
  * - 桌面宽布局为播放器右侧侧栏，窄布局（手机 / 聊天右侧窄面板）在播放器下方。
  * - 跟随：当前段变化时把它滚入列表视口；用户手动滚动后 4s 内不抢滚动，
  *   「定位到当前播放」按钮可随时回到当前段。搜索时停止跟随。
+ * - 选段：宿主提供 onQuoteSelection / onMakeCardsFromSelection 时可进入选择模式，
+ *   点行勾选（Shift 连选），底部操作条把选中段引用到对话或制卡（同 PDF 划词闭环）。
  * - 行组件 memo 化：播放中只有新旧两个高亮行重渲染。
  */
 
@@ -11,9 +13,14 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from '
 import { useTranslation } from 'react-i18next';
 import {
   ArrowClockwise,
+  CardsThree,
+  ChatCircleText,
+  CheckSquare,
   Copy,
   Crosshair,
+  ListChecks,
   MagnifyingGlass,
+  Square,
   X,
   CircleNotch,
 } from '@phosphor-icons/react';
@@ -86,6 +93,10 @@ interface RowProps {
   onSeek: (seg: TranscriptSegment) => void;
   onCopy: (seg: TranscriptSegment) => void;
   registerRow: (idx: number, el: HTMLElement | null) => void;
+  /** 选择模式：点行勾选而非跳转 */
+  selecting: boolean;
+  selected: boolean;
+  onToggle: (seg: TranscriptSegment, range: boolean) => void;
 }
 
 const TranscriptRow = memo(function TranscriptRow({
@@ -95,10 +106,14 @@ const TranscriptRow = memo(function TranscriptRow({
   onSeek,
   onCopy,
   registerRow,
+  selecting,
+  selected,
+  onToggle,
 }: RowProps) {
   const { t } = useTranslation(['learningHub']);
   const time = formatTranscriptClock(seg.startMs);
   const failed = seg.status === 'failed';
+  const selectable = selecting && !failed;
   return (
     <li
       ref={(el) => registerRow(seg.idx, el)}
@@ -107,17 +122,35 @@ const TranscriptRow = memo(function TranscriptRow({
     >
       <button
         type="button"
-        onClick={() => onSeek(seg)}
+        onClick={(event) => {
+          if (selecting) {
+            if (selectable) onToggle(seg, event.shiftKey);
+            return;
+          }
+          onSeek(seg);
+        }}
+        disabled={selecting && !selectable}
         aria-current={active ? 'true' : undefined}
-        aria-label={`${t('learningHub:mediaTranscript.seekTo', { time })}: ${failed ? t('learningHub:mediaTranscript.segmentFailed') : seg.text}`}
+        aria-pressed={selectable ? selected : undefined}
+        aria-label={`${selecting
+          ? t('learningHub:mediaTranscript.selectSegment', { time })
+          : t('learningHub:mediaTranscript.seekTo', { time })}: ${failed ? t('learningHub:mediaTranscript.segmentFailed') : seg.text}`}
         className={cn(
           'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1.5 text-left',
           '[@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:py-2.5',
           'transition-colors duration-150 motion-reduce:transition-none',
           'outline-none focus-visible:ring-2 focus-visible:ring-ring/40',
-          active ? 'bg-primary/10' : 'hover:bg-[var(--interactive-hover)]',
+          selectable && selected
+            ? 'bg-primary/10'
+            : active && !selecting ? 'bg-primary/10' : 'hover:bg-[var(--interactive-hover)]',
+          selecting && !selectable && 'opacity-50',
         )}
       >
+        {selecting ? (
+          selected
+            ? <CheckSquare size={16} weight="fill" className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+            : <Square size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        ) : null}
         <span
           className={cn(
             'mt-px shrink-0 font-mono text-[11px] tabular-nums leading-5',
@@ -135,7 +168,7 @@ const TranscriptRow = memo(function TranscriptRow({
           {failed ? t('learningHub:mediaTranscript.segmentFailed') : highlight(seg.text, query)}
         </span>
       </button>
-      {!failed && (
+      {!failed && !selecting && (
         <button
           type="button"
           onClick={() => onCopy(seg)}
@@ -174,6 +207,10 @@ export interface TranscriptPanelProps {
   /** 宿主容器自带分隔线时关闭面板自身的边框 */
   bordered?: boolean;
   className?: string;
+  /** 选中段 → 引用到对话（按时间排序）；与 onMakeCardsFromSelection 任一提供即可进入选择模式 */
+  onQuoteSelection?: (segments: TranscriptSegment[]) => void;
+  /** 选中段 → 制卡 */
+  onMakeCardsFromSelection?: (segments: TranscriptSegment[]) => void;
 }
 
 export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
@@ -191,9 +228,15 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   hideTitle = false,
   bordered = true,
   className,
+  onQuoteSelection,
+  onMakeCardsFromSelection,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const [query, setQuery] = useState('');
+  const canSelect = Boolean(onQuoteSelection || onMakeCardsFromSelection);
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIdx, setSelectedIdx] = useState<ReadonlySet<number>>(() => new Set());
+  const rangeAnchorRef = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const rowsRef = useRef(new Map<number, HTMLElement>());
   const lastUserScrollAtRef = useRef(0);
@@ -267,6 +310,52 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
     [copy],
   );
 
+  // ---------------------------------------------------------------- 选段
+  const exitSelecting = useCallback(() => {
+    setSelecting(false);
+    setSelectedIdx(new Set());
+    rangeAnchorRef.current = null;
+  }, []);
+
+  const handleToggle = useCallback(
+    (seg: TranscriptSegment, range: boolean) => {
+      const anchor = rangeAnchorRef.current;
+      setSelectedIdx((prev) => {
+        const next = new Set(prev);
+        if (range && anchor !== null) {
+          const ids = visibleSegments.filter((s) => s.status === 'done').map((s) => s.idx);
+          const from = ids.indexOf(anchor);
+          const to = ids.indexOf(seg.idx);
+          if (from >= 0 && to >= 0) {
+            for (const idx of ids.slice(Math.min(from, to), Math.max(from, to) + 1)) next.add(idx);
+            return next;
+          }
+        }
+        if (next.has(seg.idx)) next.delete(seg.idx);
+        else next.add(seg.idx);
+        return next;
+      });
+      rangeAnchorRef.current = seg.idx;
+    },
+    [visibleSegments],
+  );
+
+  const selectedSegments = useMemo(
+    () => displaySegments
+      .filter((seg) => selectedIdx.has(seg.idx) && seg.status === 'done')
+      .sort((a, b) => a.startMs - b.startMs),
+    [displaySegments, selectedIdx],
+  );
+
+  const runSelectionAction = useCallback(
+    (action: ((segments: TranscriptSegment[]) => void) | undefined) => {
+      if (!action || selectedSegments.length === 0) return;
+      action(selectedSegments);
+      exitSelecting();
+    },
+    [exitSelecting, selectedSegments],
+  );
+
   const running = status === 'running' || status === 'queued';
   const stageKey = progress?.stage && STAGE_KEYS.has(progress.stage) ? progress.stage : 'unknown';
   const percent = progress
@@ -299,6 +388,25 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
         </span>
         <div className="flex-1" />
+        {canSelect && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
+            disabled={!selecting && doneCount === 0}
+            aria-pressed={selecting}
+            aria-label={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+            title={selecting ? t('learningHub:mediaTranscript.selectDone') : t('learningHub:mediaTranscript.selectMode')}
+            data-transcript-select-toggle=""
+            className={cn(
+              'h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11',
+              selecting && 'bg-primary/10 text-primary',
+            )}
+          >
+            <ListChecks size={15} aria-hidden="true" />
+          </DsButton>
+        )}
         <DsButton
           variant="ghost"
           size="sm"
@@ -459,11 +567,69 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 onSeek={onSeek}
                 onCopy={handleCopySegment}
                 registerRow={registerRow}
+                selecting={selecting}
+                selected={selectedIdx.has(seg.idx)}
+                onToggle={handleToggle}
               />
             ))}
           </ul>
         )}
       </div>
+
+      {/* 选段操作条 */}
+      {selecting && (
+        <div
+          className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border/60 bg-background px-3 py-2 pb-[calc(0.5rem+var(--mobile-safe-area-bottom,0px))]"
+          role="toolbar"
+          aria-label={t('learningHub:mediaTranscript.selectionToolbar')}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              e.stopPropagation();
+              exitSelecting();
+            }
+          }}
+        >
+          <span className="mr-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
+            {selectedSegments.length > 0
+              ? t('learningHub:mediaTranscript.selectedCount', { count: selectedSegments.length })
+              : t('learningHub:mediaTranscript.selectHint')}
+          </span>
+          {onQuoteSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => runSelectionAction(onQuoteSelection)}
+              disabled={selectedSegments.length === 0}
+              className="gap-1.5"
+            >
+              <ChatCircleText size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.quoteSelection')}
+            </DsButton>
+          )}
+          {onMakeCardsFromSelection && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => runSelectionAction(onMakeCardsFromSelection)}
+              disabled={selectedSegments.length === 0}
+              className="gap-1.5"
+            >
+              <CardsThree size={14} aria-hidden="true" />
+              {t('learningHub:mediaTranscript.cardsFromSelection')}
+            </DsButton>
+          )}
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={exitSelecting}
+            aria-label={t('learningHub:mediaTranscript.selectDone')}
+            title={t('learningHub:mediaTranscript.selectDone')}
+          >
+            <X size={14} aria-hidden="true" />
+          </DsButton>
+        </div>
+      )}
     </section>
   );
 };

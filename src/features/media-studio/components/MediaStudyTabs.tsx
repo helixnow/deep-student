@@ -9,6 +9,7 @@ import {
   CardsThree,
   ChatCircleText,
   CircleNotch,
+  ClockCounterClockwise,
   ListChecks,
   Notebook,
   Sparkle,
@@ -26,6 +27,12 @@ import {
   type MediaPlaybackProgress,
 } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import type { MediaStudyCompanionRenderContext } from '@/features/learning-hub/apps/views/media/mediaStudyCompanion';
+import { buildMediaRefMarker } from '@/features/learning-hub/apps/views/media/mediaRefTime';
+import {
+  buildTranscriptQuote,
+  RECENT_MOMENT_WINDOW_SECONDS,
+  segmentsInWindow,
+} from '@/features/learning-hub/apps/views/media/transcriptExcerpt';
 import { mediaStudioApi, type MediaRelatedNote } from '../api';
 import { formatDuration, formatRelativeTime, watchedMinutes } from '../libraryModel';
 import { startMediaChat } from '../mediaChat';
@@ -183,7 +190,21 @@ export const MediaHandoutTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; 
 // 问答
 // ============================================================================
 
-const ASK_PROMPTS = ['summary', 'keyPoints', 'explain'] as const;
+const ASK_PROMPTS = ['summary', 'keyPoints'] as const;
+
+/** 「问刚才这段」：播放位置前 1 分钟的字幕连同锚点预填进新对话；还没字幕时只带锚点让模型按时间读转写 */
+export function buildRecentMomentPrompt(
+  ctx: Pick<MediaStudyCompanionRenderContext, 'resourceId' | 'segments' | 'getCurrentTime'>,
+  name: string,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  const now = Math.max(0, ctx.getCurrentTime());
+  const from = Math.max(0, now - RECENT_MOMENT_WINDOW_SECONDS);
+  const quote = buildTranscriptQuote(ctx.resourceId, segmentsInWindow(ctx.segments, from * 1000, now * 1000 + 1));
+  return quote
+    ? t('mediaStudio:ask.prompt.moment', { name, ref: quote.marker, quote: quote.quote })
+    : t('mediaStudio:ask.prompt.momentNoTranscript', { name, ref: buildMediaRefMarker(ctx.resourceId, from) });
+}
 
 export const MediaAskTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; meta: MediaTabMeta }> = ({ ctx, meta }) => {
   const { t } = useTranslation(['mediaStudio']);
@@ -213,6 +234,22 @@ export const MediaAskTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; meta
       </div>
       <div className={sectionClass}>
         <h4 className={sectionTitleClass}>{t('mediaStudio:ask.quickTitle')}</h4>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => void start('moment', buildRecentMomentPrompt(ctx, name, t))}
+          disabled={starting !== null}
+          data-media-ask-moment=""
+          className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2 text-left')}
+        >
+          {starting === 'moment'
+            ? <CircleNotch size={14} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <ClockCounterClockwise size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="whitespace-normal text-sm text-foreground">{t('mediaStudio:ask.quick.moment')}</span>
+            <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:ask.quick.momentHint')}</span>
+          </span>
+        </DsButton>
         {ASK_PROMPTS.map((key) => (
           <DsButton
             key={key}

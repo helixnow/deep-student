@@ -12,6 +12,7 @@
 import type { ContextTypeDefinition, Resource, ContentBlock, FormatOptions } from '../types';
 import { createImageBlock, createTextBlock, createXmlTextBlock } from '../types';
 import { t } from '@/utils/i18n';
+import { buildMediaRefMarker } from '@/features/learning-hub/apps/views/media/mediaRefTime';
 import { extractImagePayload, extractImageOcrText } from '../imagePayload';
 
 /**
@@ -30,6 +31,20 @@ export interface ImageMetadata {
   height?: number;
   /** 描述/alt文本 */
   description?: string;
+  /** 音视频截帧：来源媒体资源 ID 与时刻（秒） */
+  mediaResourceId?: string;
+  mediaSeconds?: number;
+  /** 音视频截帧：该时刻前后的字幕（`[mm:ss] 文本` 行） */
+  mediaTranscriptExcerpt?: string;
+}
+
+/** 音视频截帧附带的前后字幕：模型只看画面时不知道老师此刻在讲什么 */
+export function mediaFrameContextBlock(metadata: ImageMetadata | undefined): ContentBlock | null {
+  const excerpt = metadata?.mediaTranscriptExcerpt?.trim();
+  if (!excerpt || !metadata?.mediaResourceId || typeof metadata.mediaSeconds !== 'number') return null;
+  return createXmlTextBlock('media_frame_context', excerpt, {
+    media_ref: buildMediaRefMarker(metadata.mediaResourceId, metadata.mediaSeconds),
+  });
 }
 
 /**
@@ -188,7 +203,10 @@ export const imageDefinition: ContextTypeDefinition = {
       if (blocks.length === 0) {
         return [createTextBlock(`<image name="${name}">${t('contextDef.image.invalid', {}, 'chatV2')}</image>`)];
       }
-      
+
+      const frameContext = mediaFrameContextBlock(metadata);
+      if (frameContext) blocks.push(frameContext);
+
       return blocks;
     }
 
