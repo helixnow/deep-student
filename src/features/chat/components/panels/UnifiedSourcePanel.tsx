@@ -28,6 +28,7 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { TextShimmer } from '../ui/TextShimmer';
 import { setPendingMemoryLocate } from '@/utils/pendingMemoryLocate';
 import { publishMindmapNodeTarget } from '@/features/mindmap/nodeTargetBridge';
+import { publishNotesQuoteTarget } from '@/features/notes/quoteTarget';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import { MultimodalSourceCard, resolveMultimodalImageSrc } from './MultimodalSourceCard';
 import {
@@ -403,11 +404,11 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       setOpen(true);
       setLocalHighlightId(target.id);
 
-      // 从回答回到原文一步到位：带页码的 PDF / 教材与导图来源直接在右侧打开并定位
+      // 从回答回到原文一步到位：带页码的 PDF / 教材、导图与笔记来源直接在右侧打开并定位
       //（此前只高亮下方来源卡，还要再点一次）。网页等外部来源不自动打开。
       const sourceId = target.sourceId ?? target.raw?.source_id ?? '';
       const isPagedDoc = /^(tb_|file_|att_)/.test(sourceId) && typeof target.pageIndex === 'number' && target.pageIndex >= 0;
-      if (isPagedDoc || sourceId.startsWith('mm_')) {
+      if (isPagedDoc || /^(mm_|note_)/.test(sourceId)) {
         locateResourceRef.current?.(target);
       }
 
@@ -670,6 +671,16 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
       if (chunkText) publishMindmapNodeTarget({ mindmapId, chunkText });
       window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
         detail: { id: mindmapId, type: 'mindmap', title: locator.title || item.title || mindmapId },
+      }));
+      return;
+    }
+    // 笔记来源：同样留在聊天页右侧打开，并按命中片段滚到所在的块（旧行为是跳去学习中心、停在笔记开头）
+    const noteId = locator.sourceId?.startsWith('note_') ? locator.sourceId : null;
+    if (noteId) {
+      const chunkText = item.raw?.chunk_text || item.snippet || '';
+      if (chunkText) publishNotesQuoteTarget({ noteId, quote: chunkText });
+      window.dispatchEvent(new CustomEvent('CHAT_OPEN_ATTACHMENT_PREVIEW', {
+        detail: { id: noteId, type: 'note', title: locator.title || item.title || noteId },
       }));
       return;
     }

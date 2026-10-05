@@ -6,6 +6,7 @@ import { TextSelection } from '@milkdown/prose/state';
 import type { FullDocumentSearchApi } from './fullDocument';
 import { createMarkdownWindow, composeWindowedSave } from './markdownWindow';
 import { aiReviewSessionKey, readAIReviewSession, storeAIReviewSession } from './aiReviewModel';
+import { clearPendingNotesQuoteTargetsForTests, publishNotesQuoteTarget } from './quoteTarget';
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), get: vi.fn(), metadata: vi.fn(), copy: vi.fn(async () => true), export: vi.fn(async () => ({ canceled: false, path: '/test.md' })) }));
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mocks.invoke, convertFileSrc: (path: string) => path }));
@@ -127,5 +128,28 @@ describe('real Notes host entrances', () => {
     fireEvent.click(screen.getByRole('button', { name: '导出原文' }));
     await waitFor(() => expect(mocks.export).toHaveBeenCalledWith(expect.objectContaining({ content: raw })));
     h.unmount(); expect(save).not.toHaveBeenCalled();
+  });
+});
+
+describe('knowledge-base quote target', () => {
+  afterEach(clearPendingNotesQuoteTargetsForTests);
+  const scrolledTo = (text: string) => vi.mocked(Element.prototype.scrollIntoView).mock.contexts
+    .find(el => (el as HTMLElement).textContent?.trim() === text) as HTMLElement | undefined;
+
+  it('scrolls to and flashes the block a retrieval chunk starts in, leaving the selection alone', async () => {
+    const paragraph = '若存在非零向量 x 使 Ax = λx，则称 λ 为特征值。';
+    await mount(`# 线性代数\n\n## 特征值\n\n${paragraph}\n\n1. 求特征多项式\n2. 解特征方程\n\n## 二次型\n\n可以通过正交变换化为标准形。\n`);
+    const view = api!.getCrepe()!.editor.ctx.get(editorViewCtx);
+    const selection = view.state.selection.from;
+    act(() => publishNotesQuoteTarget({ noteId: 'note_host', quote: '向量 x 使 Ax = λx，则称 λ 为特征值。\n1. 求特征多项式\n2. 解特征方程\n## 二次型' }));
+    await waitFor(() => expect(scrolledTo(paragraph)).toBeTruthy());
+    expect(scrolledTo(paragraph)!.classList.contains('crepe-heading-locate-flash')).toBe(true);
+    expect(view.state.selection.from).toBe(selection);
+  });
+
+  it('consumes a target published before the editor mounts', async () => {
+    publishNotesQuoteTarget({ noteId: 'note_host', quote: '可以通过正交变换化为标准形。' });
+    await mount('# 线性代数\n\n第一段\n\n可以通过正交变换化为标准形。\n');
+    await waitFor(() => expect(scrolledTo('可以通过正交变换化为标准形。')).toBeTruthy());
   });
 });

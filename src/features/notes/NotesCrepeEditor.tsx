@@ -70,12 +70,19 @@ import { insertWikilink } from '@/components/crepe/plugins/wikilink/autocomplete
 import { editorViewCtx } from '@milkdown/kit/core';
 import { openQuickAssistantWindow } from '@/quick-assistant/window';
 import { isMobilePlatform } from '@/utils/platform';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import {
   consumeNotesHeadingTarget,
   NOTES_HEADING_TARGET_EVENT,
   notesHeadingTargetMatches,
   type NotesHeadingTarget,
 } from './headingTargetBridge';
+import {
+  consumeNotesQuoteTarget,
+  findQuoteBlockIndex,
+  NOTES_QUOTE_TARGET_EVENT,
+  type NotesQuoteTarget,
+} from './quoteTarget';
 import {
   CREATE_FROM_WIKILINK_EVENT,
   createNoteFromWikilinkTitle,
@@ -1531,6 +1538,48 @@ const NotesCrepeEditorBody: React.FC<NotesCrepeEditorProps> = ({
     if (pending) scroll(pending);
     return () => window.removeEventListener(NOTES_HEADING_TARGET_EVENT, onHeadingTarget);
   }, [editorApi, noteId]);
+
+  // 知识库命中片段：滚到片段所在的块并闪一下；不动选区、不抢焦点（从聊天侧栏点进来时焦点该留在聊天）
+  const locateQuote = useCallback(async (quote: string) => {
+    if (!editorApi) return;
+    try { await (editorApi as FullDocumentSearchApi).materializeFullDocument(); }
+    catch (error) { showGlobalNotification('error', String(error)); return; }
+    try {
+      const view = editorApi.getCrepe?.()?.editor.ctx.get(editorViewCtx);
+      if (!view || view.isDestroyed) return;
+      const positions: number[] = [];
+      const texts: string[] = [];
+      view.state.doc.descendants((node, pos) => {
+        if (!node.isTextblock) return true;
+        positions.push(pos);
+        texts.push(node.textContent);
+        return false;
+      });
+      const index = findQuoteBlockIndex(texts, quote);
+      const dom = index >= 0 ? view.nodeDOM(positions[index]) : null;
+      if (!(dom instanceof HTMLElement)) return;
+      dom.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+      dom.classList.remove('crepe-heading-locate-flash');
+      // 强制 reflow：连续定位到同一块时重新播放闪烁
+      void dom.offsetWidth;
+      dom.classList.add('crepe-heading-locate-flash');
+      window.setTimeout(() => dom.classList.remove('crepe-heading-locate-flash'), 1300);
+    } catch { /* 编辑器已卸载：不定位 */ }
+  }, [editorApi]);
+  const handleQuoteTarget = useCallback((event: Event) => {
+    const detail = (event as CustomEvent<NotesQuoteTarget>).detail;
+    if (!editorApi || !noteId || detail?.noteId !== noteId || !detail.quote) return;
+    consumeNotesQuoteTarget(noteId);
+    void locateQuote(detail.quote);
+  }, [editorApi, noteId, locateQuote]);
+  useEventRegistry([
+    { target: 'window', type: NOTES_QUOTE_TARGET_EVENT, listener: handleQuoteTarget },
+  ], [handleQuoteTarget]);
+  useEffect(() => {
+    if (!editorApi || !noteId) return;
+    const pending = consumeNotesQuoteTarget(noteId);
+    if (pending) void locateQuote(pending);
+  }, [editorApi, noteId, locateQuote]);
 
   // 未解析 wikilink 点击 → 创建笔记 → 刷新链接样式 → DSTU_OPEN_NOTE
   useEffect(() => {
