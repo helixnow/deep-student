@@ -131,6 +131,11 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
         paramsList,
       });
       setImportedCount(created.length);
+      // 已打开的题目集（ExamContentView）只听这个事件刷新；字面量同 qbankDriver 的
+      // QBANK_REFRESH_EVENT，不静态引入工作台 agent 驱动
+      window.dispatchEvent(new CustomEvent('qbank:refresh', {
+        detail: { source: 'user', action: 'import', entityIds: created.map((question) => question.id) },
+      }));
       showGlobalNotification(
         'success',
         t('exam_sheet:aiGeneration.importSuccess', { count: created.length }),
