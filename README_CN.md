@@ -60,7 +60,7 @@
 |---|---|
 | **对话** | 围绕自己的资料学习，回答标注原文页码；支持分组、搜索与导出。 |
 | **资源库** | 教材、笔记、题目、文档与音视频统一入库，导入即建立 AI 检索索引（含 OCR）。 |
-| **音视频学习** | 网课、讲座录音一键转写为带时间戳的字幕，边看边对照；AI 回答引用到具体时刻，点一下跳回原处；还能整理成图文讲义存为笔记。 |
+| **音视频** | 网课、讲座录音一键转写为带时间戳的字幕，边看边对照；AI 回答引用到具体时刻，可一键跳回原处，也可整理成图文讲义存为笔记。 |
 | **教材** | PDF、Word、EPUB 阅读，高亮批注，划选文字即可提问。 |
 | **笔记** | 支持双链、标签与公式的 Markdown 笔记；Agent 的修改会高亮标注，可一键撤销。 |
 | **思维导图** | 一句话生成完整导图，大纲与画布两种视图，背诵模式遮住要点自测。 |
@@ -87,7 +87,7 @@
 </table>
 
 <p align="center">
-  <img src="./docs/assets/readme/zh/media.webp" width="92%" alt="音视频学习：网课视频与同步滚动的带时间戳字幕" />
+  <img src="./docs/assets/readme/zh/media.webp" width="92%" alt="音视频：网课视频与同步滚动的带时间戳字幕" />
 </p>
 
 每个应用的完整说明见 [使用指南](https://deepstudent.cn/user-guide/)。
@@ -129,9 +129,9 @@
 DeepStudent
 ├── 界面层    学习桌面（macOS · Windows · Linux）与移动端（Android；iOS 源码构建）
 ├── Agent 层  Chat V2 运行时 · 渐进披露的技能 · 审批与撤销 · 子代理 · MCP
-├── 应用层    对话 · 资源库 · 笔记 · 思维导图 · 题目集 · 闪卡 · 作文 · 翻译 · 待办 · 番茄钟
+├── 应用层    对话 · 资源库 · 音视频 · 笔记 · 思维导图 · 题目集 · 闪卡 · 作文 · 翻译 · 待办 · 番茄钟
 ├── 数据层    VFS · SQLite 元数据 · LanceDB 向量索引 · 本地 Blob 存储
-└── 集成      13 家模型服务商 · 7 个搜索引擎 · 6 个 OCR 引擎 · arXiv / Scholar
+└── 集成      13 家模型服务商 · 8 个搜索引擎 · 6 个 OCR 引擎 · arXiv / Scholar
 ```
 
 <details>
@@ -140,8 +140,8 @@ DeepStudent
 ```
 DeepStudent
 ├── src/                      # React 前端
-│   ├── features/             #   23 个功能模块（chat、workbench、flashcards、notes、mindmap、practice、
-│   │                         #   learning-hub、learning-today、insights、todo、pomodoro、browser 等）
+│   ├── features/             #   26 个功能模块（chat、workbench、flashcards、notes、mindmap、practice、
+│   │                         #   learning-hub、media-studio、learning-today、insights、todo、pomodoro、browser 等）
 │   │   └── chat/             #     Chat V2：core store / skills（builtin、builtin-tools）/ components / plugins
 │   ├── components/           #   通用组件
 │   ├── stores/               #   Zustand 状态
@@ -196,7 +196,7 @@ npm run tauri dev
 | 文档 | 说明 |
 |---|---|
 | [使用指南](https://deepstudent.cn/user-guide/) | 全部应用与工作流（源文件在 [`docs/user-guide`](./docs/user-guide/)） |
-| [路线图](https://deepstudent.cn/timeline) | 版本历程与后续计划 |
+| [项目历程](https://deepstudent.cn/timeline) | 从早期实验到 v0.10 的版本演进与历次重构 |
 | [构建配置](./docs/BUILD-CONFIG.md) | 跨平台构建与打包 |
 | [更新日志](./CHANGELOG.md) | 版本变更记录 |
 | [安全策略](./.github/SECURITY.md) | 漏洞报告流程 |
