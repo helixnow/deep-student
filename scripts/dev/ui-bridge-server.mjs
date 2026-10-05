@@ -11,7 +11,7 @@
 import http from 'node:http';
 import { WebSocketServer } from 'ws';
 
-const PORT = 17423;
+const PORT = Number(process.env.DS_UI_BRIDGE_PORT) || 17423;
 
 const sockets = new Set();
 let nextId = 1;

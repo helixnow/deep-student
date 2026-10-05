@@ -13,7 +13,9 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { LogicalSize } from '@tauri-apps/api/dpi';
 
-const BRIDGE_URL = 'ws://127.0.0.1:17423/app';
+// VITE_DS_UI_BRIDGE_PORT：并行跑多个 dev 实例时各用一个桥（默认 17423），避免测试命令落到别人的窗口
+const BRIDGE_PORT = Number(import.meta.env.VITE_DS_UI_BRIDGE_PORT) || 17423;
+const BRIDGE_URL = `ws://127.0.0.1:${BRIDGE_PORT}/app`;
 
 // ---------------------------------------------------------------------------
 // 控制台/错误采集（环形缓冲）
