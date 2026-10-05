@@ -3,8 +3,9 @@
  *
  * 卡片库预置一套「高等数学 · 错题本」旧卡，其中三张今天到期；对话里生成的
  * 卡片点「加入卡片库」后也会进库，「复习这批」把它们排进复习。
- * 调度用与桌面版相同的 FSRS-5（rs-fsrs 1.2 默认参数，学习步 1m / 5m / 10m），
- * 旧卡的复习历史也按这套调度逐次模拟出来，记忆曲线、间隔预览都和桌面版一致。
+ * 调度用与桌面版相同的 FSRS-6（fsrs-rs 默认参数）与 Anki 学习步（1m 10m / 重学 10m，
+ * 凌晨 4 点日切，演示里不加 fuzz），旧卡的复习历史也按这套调度逐次模拟出来，
+ * 记忆曲线、间隔预览都和桌面版一致。
  * 评分按真实后端的响应形状回写（logId / dueMs / cardState），到期队列、
  * 今日统计、热力图和评分分布都跟着变；只存在内存里，刷新页面回到初始状态。
  */
@@ -19,32 +20,61 @@ const LEARN_AHEAD_MINUTES = 20;
 type CardStateKind = 0 | 1 | 2 | 3;
 type Rating = 1 | 2 | 3 | 4;
 
-// ---- FSRS-5：与 src-tauri/vendor/rs-fsrs 的 Parameters / BasicScheduler 同一套公式 ----
+// ---- FSRS-6（fsrs-rs 默认参数）+ Anki 学习步：与 src-tauri/src/fsrs_scheduler.rs 同一套规则 ----
 
 const W = [
-  0.4072, 1.1829, 3.1262, 15.4722, 7.2102, 0.5316, 1.0651, 0.0234, 1.616, 0.1544, 1.0824, 1.9813,
-  0.0953, 0.2975, 2.2042, 0.2407, 2.9466, 0.5034, 0.6567,
+  0.212, 1.2931, 2.3065, 8.2956, 6.4133, 0.8334, 3.0194, 0.001, 1.8722, 0.1666, 0.796, 1.4835, 0.0614,
+  0.2629, 1.6483, 0.6014, 1.8729, 0.5425, 0.0912, 0.0658, 0.1542,
 ];
-const DECAY = -0.5;
-const FACTOR = 19 / 81;
+const DECAY = -W[20];
+const FACTOR = 0.9 ** (1 / DECAY) - 1;
 const DESIRED_RETENTION = 0.9;
 const MAX_INTERVAL_DAYS = 36_500;
+const LEARNING_STEPS_MINUTES = [1, 10];
+const RELEARNING_STEPS_MINUTES = [10];
+const DAY_ROLLOVER_HOUR = 4;
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const forgettingCurve = (elapsedDays: number, stability: number) => (1 + (FACTOR * elapsedDays) / stability) ** DECAY;
-const initDifficulty = (rating: Rating) => clamp(W[4] - Math.exp(W[5] * (rating - 1)) + 1, 1, 10);
-const initStability = (rating: Rating) => Math.max(W[rating - 1], 0.1);
-const nextInterval = (stability: number) =>
-  clamp(Math.round((stability / FACTOR) * (DESIRED_RETENTION ** (1 / DECAY) - 1)), 1, MAX_INTERVAL_DAYS);
-const nextDifficulty = (difficulty: number, rating: Rating) =>
-  clamp(W[7] * initDifficulty(4) + (1 - W[7]) * (difficulty - W[6] * (rating - 3)), 1, 10);
-const shortTermStability = (stability: number, rating: Rating) => stability * Math.exp(W[17] * (rating - 3 + W[18]));
-const nextRecallStability = (difficulty: number, stability: number, retrievability: number, rating: Rating) => {
-  const modifier = rating === 2 ? W[15] : rating === 4 ? W[16] : 1;
-  return stability * (Math.exp(W[8]) * (11 - difficulty) * stability ** -W[9] * (Math.exp((1 - retrievability) * W[10]) - 1) * modifier + 1);
-};
-const nextForgetStability = (difficulty: number, stability: number, retrievability: number) =>
-  W[11] * difficulty ** -W[12] * ((stability + 1) ** W[13] - 1) * Math.exp((1 - retrievability) * W[14]);
+const initDifficulty = (rating: Rating) => W[4] - Math.exp(W[5] * (rating - 1)) + 1;
+const intervalDays = (stability: number, minimum = 1) =>
+  clamp(Math.round((stability / FACTOR) * (DESIRED_RETENTION ** (1 / DECAY) - 1)), Math.min(minimum, MAX_INTERVAL_DAYS), MAX_INTERVAL_DAYS);
+
+/** 逻辑日序号：本地时间过了日切小时才算新的一天 */
+function logicalDay(ms: number): number {
+  const shifted = new Date(ms - DAY_ROLLOVER_HOUR * HOUR);
+  return Math.round(Date.UTC(shifted.getFullYear(), shifted.getMonth(), shifted.getDate()) / DAY);
+}
+
+interface MemoryState {
+  stability: number;
+  difficulty: number;
+}
+
+/** fsrs-rs `step`：同一逻辑日内走短期公式，跨日按遗忘曲线计算 */
+function step(memory: MemoryState | null, rating: Rating, daysElapsed: number): MemoryState {
+  if (!memory) {
+    return { stability: W[rating - 1], difficulty: clamp(initDifficulty(rating), 1, 10) };
+  }
+  const { stability: s, difficulty: d } = memory;
+  let stability: number;
+  if (daysElapsed === 0) {
+    const sinc = Math.exp(W[17] * (rating - 3 + W[18])) * s ** -W[19];
+    stability = s * (rating >= 2 ? Math.max(sinc, 1) : sinc);
+  } else {
+    const r = forgettingCurve(daysElapsed, s);
+    if (rating === 1) {
+      const lapse = W[11] * d ** -W[12] * ((s + 1) ** W[13] - 1) * Math.exp((1 - r) * W[14]);
+      stability = Math.min(lapse, s / Math.exp(W[17] * W[18]));
+    } else {
+      const modifier = rating === 2 ? W[15] : rating === 4 ? W[16] : 1;
+      stability = s * (Math.exp(W[8]) * (11 - d) * s ** -W[9] * (Math.exp((1 - r) * W[10]) - 1) * modifier + 1);
+    }
+  }
+  const damped = d + ((10 - d) * (-W[6] * (rating - 3))) / 9;
+  const difficulty = clamp(W[7] * (initDifficulty(4) - damped) + damped, 1, 10);
+  return { stability: clamp(stability, 0.001, 36_500), difficulty };
+}
 
 interface Memory {
   state: CardStateKind;
@@ -53,6 +83,8 @@ interface Memory {
   lastReviewMs: number | null;
   reps: number;
   lapses: number;
+  /** 当前学习 / 重学步序号 */
+  learningStep?: number;
 }
 
 interface Scheduled extends Memory {
@@ -60,43 +92,50 @@ interface Scheduled extends Memory {
   scheduledDays: number;
 }
 
+function hardDelay(steps: number[], index: number): number {
+  const current = steps[Math.min(index, steps.length - 1)];
+  if (index > 0) return current;
+  return steps.length > 1 ? (current + steps[1]) / 2 : Math.min(current * 1.5, current + 1440);
+}
+
 function schedule(card: Memory, rating: Rating, now: number): Scheduled {
-  const base = { reps: card.reps + 1, lapses: card.lapses, lastReviewMs: now };
-  if (card.state === 0) {
-    const stability = initStability(rating);
-    const difficulty = initDifficulty(rating);
-    if (rating === 4) {
-      const days = nextInterval(stability);
-      return { ...base, state: 2, stability, difficulty, dueMs: now + days * DAY, scheduledDays: days };
+  const hasMemory = card.state !== 0 && card.stability > 0;
+  const daysElapsed = hasMemory && card.lastReviewMs != null
+    ? Math.max(0, logicalDay(now) - logicalDay(card.lastReviewMs))
+    : 0;
+  const next = step(hasMemory ? { stability: card.stability, difficulty: card.difficulty } : null, rating, daysElapsed);
+  const base = { reps: card.reps + 1, lapses: card.lapses, lastReviewMs: now, ...next };
+  const minutes = (state: CardStateKind, learningStep: number, delay: number): Scheduled => ({
+    ...base, state, learningStep, dueMs: now + delay * MINUTE, scheduledDays: 0,
+  });
+  const review = (days: number, lapses = card.lapses): Scheduled => ({
+    ...base, lapses, state: 2, learningStep: 0, dueMs: now + days * DAY, scheduledDays: days,
+  });
+
+  if (card.state === 2 && hasMemory) {
+    if (rating === 1) {
+      return RELEARNING_STEPS_MINUTES.length > 0
+        ? { ...minutes(3, 0, RELEARNING_STEPS_MINUTES[0]), lapses: card.lapses + 1 }
+        : review(intervalDays(next.stability), card.lapses + 1);
     }
-    const minutes = rating === 1 ? 1 : rating === 2 ? 5 : 10;
-    return { ...base, state: 1, stability, difficulty, dueMs: now + minutes * MINUTE, scheduledDays: 0 };
+    const prior = { stability: card.stability, difficulty: card.difficulty };
+    const hard = intervalDays(step(prior, 2, daysElapsed).stability);
+    const good = intervalDays(step(prior, 3, daysElapsed).stability, hard + 1);
+    const easy = intervalDays(step(prior, 4, daysElapsed).stability, good + 1);
+    return review(rating === 2 ? hard : rating === 3 ? good : easy);
   }
-  const elapsedDays = card.lastReviewMs == null ? 0 : Math.trunc((now - card.lastReviewMs) / DAY);
-  if (card.state === 1 || card.state === 3) {
-    const stability = shortTermStability(card.stability, rating);
-    const difficulty = nextDifficulty(card.difficulty, rating);
-    if (rating <= 2) {
-      return { ...base, state: card.state, stability, difficulty, dueMs: now + (rating === 1 ? 5 : 10) * MINUTE, scheduledDays: 0 };
-    }
-    const good = nextInterval(rating === 4 ? shortTermStability(card.stability, 3) : stability);
-    const days = rating === 4 ? Math.max(nextInterval(stability), good + 1) : good;
-    return { ...base, state: 2, stability, difficulty, dueMs: now + days * DAY, scheduledDays: days };
-  }
-  const retrievability = forgettingCurve(elapsedDays, card.stability);
-  const difficulty = nextDifficulty(card.difficulty, rating);
-  if (rating === 1) {
-    const stability = nextForgetStability(card.difficulty, card.stability, retrievability);
-    return { ...base, lapses: card.lapses + 1, state: 3, stability, difficulty, dueMs: now + 5 * MINUTE, scheduledDays: 0 };
-  }
-  const recall = (r: Rating) => nextRecallStability(card.difficulty, card.stability, retrievability, r);
-  let hard = nextInterval(recall(2));
-  let good = nextInterval(recall(3));
-  hard = Math.min(hard, good);
-  good = Math.max(good, hard + 1);
-  const easy = Math.max(nextInterval(recall(4)), good + 1);
-  const days = rating === 2 ? hard : rating === 3 ? good : easy;
-  return { ...base, state: 2, stability: recall(rating), difficulty, dueMs: now + days * DAY, scheduledDays: days };
+
+  const relearning = card.state === 3 && hasMemory;
+  const steps = relearning ? RELEARNING_STEPS_MINUTES : LEARNING_STEPS_MINUTES;
+  const stepState: CardStateKind = relearning ? 3 : 1;
+  const index = hasMemory ? Math.min(card.learningStep ?? 0, steps.length - 1) : 0;
+  const prior = hasMemory ? { stability: card.stability, difficulty: card.difficulty } : null;
+  const goodDays = intervalDays(step(prior, 3, daysElapsed).stability);
+  if (rating === 4) return review(intervalDays(step(prior, 4, daysElapsed).stability, goodDays + 1));
+  if (rating === 1) return minutes(stepState, 0, steps[0]);
+  if (rating === 2) return minutes(stepState, index, hardDelay(steps, index));
+  const goodStep = hasMemory ? index + 1 : 1;
+  return goodStep < steps.length ? minutes(stepState, goodStep, steps[goodStep]) : review(goodDays);
 }
 
 // ---- 卡片与复习记录 ----
@@ -444,6 +483,7 @@ export function handleDemoFlashcards(cmd: string, args: Record<string, unknown>)
       const logId = `demo-log-${logSeq++}`;
       Object.assign(card, {
         state: next.state,
+        learningStep: next.learningStep ?? 0,
         stability: next.stability,
         difficulty: next.difficulty,
         dueMs: next.dueMs,
