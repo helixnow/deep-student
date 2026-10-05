@@ -52,7 +52,7 @@ import { useMediaTranscript } from './useMediaTranscript';
 import { useTranscriptTrack } from './useTranscriptTrack';
 import { useMediaProgressSync } from './useMediaProgressSync';
 import { matchesMediaFocusTarget, useMediaFocusListener } from './useMediaFocusListener';
-import { takePendingMediaFocus } from './mediaRefEvents';
+import { rememberPendingMediaFocus, takePendingMediaFocus } from './mediaRefEvents';
 import { TranscriptPanel, selectDisplaySegments } from './TranscriptPanel';
 import { findActiveSegmentIndex } from './transcriptVtt';
 import { HandoutGenerateButton } from '@/features/media-handout';
@@ -363,6 +363,17 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     }
   }, [fileName, referenceToChat, resourceId, t]);
 
+  // ---------------------------------------------------------------- 在音视频中学习
+  // 交接：本视图暂停（保活的资源库标签不能和学习页同时出声）；正在播放时把当前位置作为
+  // 待兑现跳转交给学习页，接着从同一秒继续播放
+  const handleOpenInStudio = useCallback(() => {
+    const handle = handleRef.current;
+    const el = handle?.getElement();
+    if (el && !el.paused) rememberPendingMediaFocus(resourceId, Math.floor(el.currentTime));
+    handle?.pause();
+    openMediaStudio(resourceId);
+  }, [resourceId]);
+
   // ---------------------------------------------------------------- 伴随面板（音视频子应用）
   const seekToSeconds = useCallback((seconds: number) => {
     const handle = handleRef.current;
@@ -585,7 +596,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             variant="ghost"
             size="sm"
             iconOnly
-            onClick={() => openMediaStudio(resourceId)}
+            onClick={handleOpenInStudio}
             aria-label={t('learningHub:mediaTranscript.openInStudio')}
             title={t('learningHub:mediaTranscript.openInStudio')}
             data-media-open-in-studio=""
