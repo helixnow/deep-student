@@ -44,7 +44,11 @@
     "todo_due": "今日待办",
     "active_jobs": "运行中任务",
     "go": "前往",
-    "hint_title": "今日待复习"
+    "hint_title": "今日待复习",
+    "starter_title": "第一次用？三步走通",
+    "starter_steps": "导入资料 → 在资料菜单里选「用这份资料制卡」→ 每天回这里复习",
+    "starter_action": "打开资源库",
+    "starter_dismiss": "不再显示"
   },
   "export_title": "数据导出",
   "export_description": "导出您的所有错题数据，包括图片和聊天记录，以及系统设置。",

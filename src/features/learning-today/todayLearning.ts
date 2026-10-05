@@ -16,6 +16,9 @@ export interface TodayLearning {
   mistakes: number;
   notes: number;
   dueNotes: Array<{ id: string; name: string; reviewDate: string }>;
+  /** 卡片 / 错题复习计划总数；读取失败时缺省（不能据此判断「新用户」） */
+  cardsTotal?: number;
+  plansTotal?: number;
 }
 
 async function countDueNotes(now: Date): Promise<TodayLearning['dueNotes']> {
@@ -34,13 +37,19 @@ async function countDueNotes(now: Date): Promise<TodayLearning['dueNotes']> {
 }
 
 export async function loadTodayLearning(now = new Date()): Promise<TodayLearning> {
-  const [cards, mistakes, dueNotes] = await Promise.all([
-    invoke<{ due?: number }>('fsrs_get_stats').then((s) => s?.due ?? 0).catch(() => 0),
-    invoke<{ due_today?: number }>('review_plan_get_stats', { examId: null })
-      .then((s) => s?.due_today ?? 0).catch(() => 0),
+  const [cardStats, planStats, dueNotes] = await Promise.all([
+    invoke<{ due?: number; total?: number }>('fsrs_get_stats').catch(() => null),
+    invoke<{ due_today?: number; total_plans?: number }>('review_plan_get_stats', { examId: null }).catch(() => null),
     countDueNotes(now).catch(() => []),
   ]);
-  return { cards, mistakes, notes: dueNotes.length, dueNotes };
+  return {
+    cards: cardStats?.due ?? 0,
+    mistakes: planStats?.due_today ?? 0,
+    notes: dueNotes.length,
+    dueNotes,
+    ...(typeof cardStats?.total === 'number' ? { cardsTotal: cardStats.total } : {}),
+    ...(typeof planStats?.total_plans === 'number' ? { plansTotal: planStats.total_plans } : {}),
+  };
 }
 
 /**

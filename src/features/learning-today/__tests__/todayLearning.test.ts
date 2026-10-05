@@ -19,6 +19,16 @@ describe('loadTodayLearning', () => {
     expect(today.dueNotes.map((n) => n.id)).toEqual(['a', 'b']);
   });
 
+  it('reports card and review-plan totals only when they were actually read', async () => {
+    invoke.mockImplementation(async (cmd: string) => cmd === 'fsrs_get_stats' ? { due: 0, total: 0 } : { due_today: 0, total_plans: 3 });
+    list.mockResolvedValue({ ok: true, value: [] });
+    expect(await loadTodayLearning(new Date('2026-10-01T12:00:00'))).toMatchObject({ cardsTotal: 0, plansTotal: 3 });
+    invoke.mockRejectedValue(new Error('offline'));
+    const degraded = await loadTodayLearning(new Date('2026-10-01T12:00:00'));
+    expect(degraded.cardsTotal).toBeUndefined();
+    expect(degraded.plansTotal).toBeUndefined();
+  });
+
   it('degrades each line independently on failure', async () => {
     invoke.mockImplementation(async (cmd: string) => { if (cmd === 'fsrs_get_stats') throw new Error('x'); return { due_today: 1 }; });
     list.mockResolvedValue({ ok: false });

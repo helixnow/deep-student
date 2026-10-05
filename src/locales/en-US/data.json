@@ -44,7 +44,11 @@
     "todo_due": "Todos today",
     "active_jobs": "Active jobs",
     "go": "Open",
-    "hint_title": "Due today"
+    "hint_title": "Due today",
+    "starter_title": "New here? Three steps",
+    "starter_steps": "Import material → choose “Make Flashcards from This” in its menu → come back here daily to review",
+    "starter_action": "Open library",
+    "starter_dismiss": "Don't show again"
   },
   "export_title": "Data Export",
   "export_description": "Export all your mistake data, including images and chat history, as well as system settings.",

@@ -2,9 +2,12 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { snapshot, openTodayReviewTarget, weakState } = vi.hoisted(() => ({
-  snapshot: { cards: 0, mistakes: 0, notes: 0, dueNotes: [] as unknown[] },
+const { snapshot, openTodayReviewTarget, openResourceLibrary, weakState } = vi.hoisted(() => ({
+  snapshot: { cards: 0, mistakes: 0, notes: 0, dueNotes: [] as unknown[] } as {
+    cards: number; mistakes: number; notes: number; dueNotes: unknown[]; cardsTotal?: number; plansTotal?: number;
+  },
   openTodayReviewTarget: vi.fn(),
+  openResourceLibrary: vi.fn(),
   weakState: { value: [] as Array<{ conceptKey: string; score: number; total: number; wrongCount: number }> | null },
 }));
 vi.mock('../todayLearningStore', () => ({
@@ -12,7 +15,7 @@ vi.mock('../todayLearningStore', () => ({
   subscribeTodayLearning: () => () => {},
   refreshTodayLearning: async () => {},
 }));
-vi.mock('../openTodayReview', () => ({ openTodayReviewTarget }));
+vi.mock('../openTodayReview', () => ({ openTodayReviewTarget, openResourceLibrary }));
 vi.mock('@/components/dashboard/WeakConceptsStrip', () => ({
   useWeakConcepts: () => weakState.value,
   WeakConceptsStrip: ({ concepts }: { concepts?: Array<{ conceptKey: string }> | null }) =>
@@ -27,8 +30,31 @@ import { TodayReviewHint } from '../TodayReviewHint';
 describe('TodayReviewHint', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    Object.assign(snapshot, { cards: 0, mistakes: 0, notes: 0 });
+    Object.assign(snapshot, { cards: 0, mistakes: 0, notes: 0, cardsTotal: undefined, plansTotal: undefined });
     weakState.value = [];
+    localStorage.removeItem('learningToday.starterDismissed');
+  });
+
+  it('walks a brand-new learner through the loop, and can be dismissed for good', () => {
+    Object.assign(snapshot, { cardsTotal: 0, plansTotal: 0 });
+    const view = render(<TodayReviewHint />);
+    expect(screen.getByTestId('today-starter').textContent).toContain('导入资料');
+    fireEvent.click(screen.getByRole('button', { name: /打开资源库/ }));
+    expect(openResourceLibrary).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '不再显示' }));
+    expect(screen.queryByTestId('today-starter')).toBeNull();
+    view.unmount();
+    render(<TodayReviewHint />);
+    expect(screen.queryByTestId('today-starter')).toBeNull();
+  });
+
+  it('does not show the starter when the totals could not be read or the learner already has cards', () => {
+    const view = render(<TodayReviewHint />);
+    expect(screen.queryByTestId('today-starter')).toBeNull();
+    view.unmount();
+    Object.assign(snapshot, { cardsTotal: 12, plansTotal: 0 });
+    render(<TodayReviewHint />);
+    expect(screen.queryByTestId('today-starter')).toBeNull();
   });
 
   it('renders nothing for a learner with nothing due and no answer history', () => {

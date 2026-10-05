@@ -32,6 +32,12 @@ async function openFlashcardsToday(workbench: boolean): Promise<void> {
   window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'flashcards' } }));
 }
 
+/** 打开资源库（新用户引导「先导入一份资料」用） */
+export function openResourceLibrary(): void {
+  if (workbenchBus.isEnabled()) workbenchBus.launch({ typeId: 'files', reason: 'api' });
+  else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } }));
+}
+
 export function openTodayReviewTarget(target: TodayReviewTarget): void {
   const workbench = workbenchBus.isEnabled();
   switch (target) {

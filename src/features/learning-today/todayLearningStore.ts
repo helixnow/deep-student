@@ -21,7 +21,10 @@ export function refreshTodayLearning(): Promise<void> {
   if (inflight) return inflight;
   inflight = loadTodayLearning()
     .then((next) => {
-      if (next.cards === snapshot.cards && next.mistakes === snapshot.mistakes && next.notes === snapshot.notes) return;
+      if (
+        next.cards === snapshot.cards && next.mistakes === snapshot.mistakes && next.notes === snapshot.notes
+        && next.cardsTotal === snapshot.cardsTotal && next.plansTotal === snapshot.plansTotal
+      ) return;
       snapshot = next;
       for (const fn of Array.from(listeners)) fn();
     })
