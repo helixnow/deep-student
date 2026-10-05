@@ -94,6 +94,18 @@ describe('TranscriptPanel', () => {
     expect(onRetry).toHaveBeenCalled();
   });
 
+  it('cycles the transcript text size and remembers it', () => {
+    window.localStorage.removeItem('media-study.transcriptTextSize');
+    renderPanel();
+    const toggle = screen.getByRole('button', { name: /字幕字号/ });
+    expect(toggle).toHaveAttribute('data-transcript-text-size', 'sm');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('data-transcript-text-size', 'base');
+    expect(screen.getByText('动量法加速收敛').className).toContain('text-base');
+    expect(window.localStorage.getItem('media-study.transcriptTextSize')).toBe('base');
+    window.localStorage.removeItem('media-study.transcriptTextSize');
+  });
+
   it('offers selection only when the host can quote or make cards', () => {
     renderPanel();
     expect(screen.queryByRole('button', { name: '选择字幕段' })).toBeNull();

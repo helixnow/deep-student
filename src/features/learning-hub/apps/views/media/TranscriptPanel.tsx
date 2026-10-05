@@ -21,6 +21,7 @@ import {
   ListChecks,
   MagnifyingGlass,
   Square,
+  TextAa,
   X,
   CircleNotch,
 } from '@phosphor-icons/react';
@@ -37,6 +38,24 @@ import { formatTranscriptClock } from './mediaRefTime';
 
 /** 手动滚动后暂停自动跟随的时长 */
 export const FOLLOW_PAUSE_AFTER_USER_SCROLL_MS = 4000;
+
+export type TranscriptTextSize = 'sm' | 'base' | 'lg';
+const TEXT_SIZES: readonly TranscriptTextSize[] = ['sm', 'base', 'lg'];
+const TEXT_SIZE_CLASS: Record<TranscriptTextSize, string> = {
+  sm: 'text-sm leading-5',
+  base: 'text-base leading-6',
+  lg: 'text-lg leading-7',
+};
+const TEXT_SIZE_KEY = 'media-study.transcriptTextSize';
+
+function readTextSize(): TranscriptTextSize {
+  try {
+    const stored = window.localStorage.getItem(TEXT_SIZE_KEY);
+    return TEXT_SIZES.includes(stored as TranscriptTextSize) ? (stored as TranscriptTextSize) : 'sm';
+  } catch {
+    return 'sm';
+  }
+}
 
 const STAGE_KEYS = new Set(['decode', 'vad', 'asr', 'indexing', 'pending']);
 
@@ -97,6 +116,7 @@ interface RowProps {
   selecting: boolean;
   selected: boolean;
   onToggle: (seg: TranscriptSegment, range: boolean) => void;
+  textSize: TranscriptTextSize;
 }
 
 const TranscriptRow = memo(function TranscriptRow({
@@ -109,6 +129,7 @@ const TranscriptRow = memo(function TranscriptRow({
   selecting,
   selected,
   onToggle,
+  textSize,
 }: RowProps) {
   const { t } = useTranslation(['learningHub']);
   const time = formatTranscriptClock(seg.startMs);
@@ -161,7 +182,8 @@ const TranscriptRow = memo(function TranscriptRow({
         </span>
         <span
           className={cn(
-            'min-w-0 flex-1 break-words pr-6 text-sm leading-5',
+            'min-w-0 flex-1 break-words pr-6',
+            TEXT_SIZE_CLASS[textSize],
             failed ? 'italic text-muted-foreground' : active ? 'text-foreground' : 'text-foreground/85',
           )}
         >
@@ -234,6 +256,18 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   const { t } = useTranslation(['learningHub']);
   const [query, setQuery] = useState('');
   const canSelect = Boolean(onQuoteSelection || onMakeCardsFromSelection);
+  const [textSize, setTextSize] = useState<TranscriptTextSize>(readTextSize);
+  const cycleTextSize = useCallback(() => {
+    setTextSize((prev) => {
+      const next = TEXT_SIZES[(TEXT_SIZES.indexOf(prev) + 1) % TEXT_SIZES.length];
+      try {
+        window.localStorage.setItem(TEXT_SIZE_KEY, next);
+      } catch {
+        // 存储不可用时只在本次生效
+      }
+      return next;
+    });
+  }, []);
   const [selecting, setSelecting] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<ReadonlySet<number>>(() => new Set());
   const rangeAnchorRef = useRef<number | null>(null);
@@ -388,6 +422,18 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
             : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
         </span>
         <div className="flex-1" />
+        <DsButton
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={cycleTextSize}
+          aria-label={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+          title={t('learningHub:mediaTranscript.textSize', { size: t(`learningHub:mediaTranscript.textSizeLabel.${textSize}`) })}
+          data-transcript-text-size={textSize}
+          className="h-8 w-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11"
+        >
+          <TextAa size={15} aria-hidden="true" />
+        </DsButton>
         {canSelect && (
           <DsButton
             variant="ghost"
@@ -570,6 +616,7 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
                 selecting={selecting}
                 selected={selectedIdx.has(seg.idx)}
                 onToggle={handleToggle}
+                textSize={textSize}
               />
             ))}
           </ul>
