@@ -89,14 +89,22 @@
   border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
 }
 
+/* 整行是 DsButton：双类选择器压过按钮自带的定高 / 居中 / 不换行 / 加粗 */
 .mb-row.mb-row {
+  justify-content: flex-start;
   gap: 8px;
+  width: 100%;
+  height: auto;
   min-height: 44px;
   padding: 6px 8px;
   border-color: transparent;
   border-radius: var(--shell-nav-row-radius, 8px);
   background: transparent;
   color: hsl(var(--foreground));
+  font-weight: 400;
+  line-height: 1.375;
+  text-align: left;
+  white-space: normal;
 }
 
 .mb-row.mb-row:hover {

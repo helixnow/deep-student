@@ -54,7 +54,7 @@ const MistakeRow: React.FC<{
     <li className="mb-item" data-expanded={expanded ? 'true' : undefined}>
       <DsButton
         variant="ghost"
-        className="mb-row h-auto lg:h-auto w-full justify-start whitespace-normal text-left font-normal leading-snug"
+        className="mb-row"
         aria-expanded={expanded}
         aria-controls={expanded ? detailId : undefined}
         onClick={onToggle}

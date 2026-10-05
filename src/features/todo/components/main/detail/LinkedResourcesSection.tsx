@@ -133,7 +133,7 @@ export const LinkedResourcesSection: React.FC<{ item: TodoItem; onSaved: () => v
                   disabled={summary?.missing}
                   title={summary?.missing ? t('todo:links.missing') : t('todo:links.open', { name })}
                   onClick={() => openLinkedResource(value)}
-                  className="!h-auto min-w-0 flex-1 justify-start gap-2 py-1.5 text-left font-normal"
+                  className="!h-auto min-w-0 flex-1 !justify-start !py-1.5 !text-left !font-normal"
                 >
                   {isLinkUrl(value) ? <Globe size={16} className="shrink-0" /> : <ResourceGlyph type={summary?.type ?? null} />}
                   <span className={summary?.missing ? 'truncate line-through' : 'truncate'}>{name}</span>
@@ -199,7 +199,7 @@ export const LinkedResourcesSection: React.FC<{ item: TodoItem; onSaved: () => v
                         size="sm"
                         disabled={linked}
                         onClick={() => add(node)}
-                        className="!h-auto w-full justify-start gap-2 py-1.5 text-left font-normal"
+                        className="!h-auto !w-full !justify-start !py-1.5 !text-left !font-normal"
                       >
                         <ResourceGlyph type={node.type} />
                         <span className="min-w-0 flex-1 truncate">{node.name}</span>
