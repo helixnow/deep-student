@@ -131,7 +131,7 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
         viewportRef={attachViewport}
       >
         {content || isStreaming ? (
-          <div className="px-4 pt-6 pb-16 text-base leading-relaxed whitespace-pre-wrap break-words">
+          <div data-selectable="true" className="px-4 pt-6 pb-16 text-base leading-relaxed whitespace-pre-wrap break-words">
             {segments.map((segment, i) =>
               i < segments.length - 1 ? (
                 <StaticSegment key={i} text={segment} />

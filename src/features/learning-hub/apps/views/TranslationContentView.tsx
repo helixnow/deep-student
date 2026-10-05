@@ -34,6 +34,7 @@ import { registerContentAgentSurface } from '@/features/workbench/apps/content/c
 import { normalizeResourceInstanceKey } from '@/features/workbench/apps/content/resourceIdentity';
 import { dstu } from '@/dstu';
 import { buildTranslationAutoTitle, isDefaultResourceName } from '@/dstu/autoTitle';
+import { useIsMobile } from '@/hooks/useBreakpoint';
 
 /** 段落数：按空行/换行切分后剔除空白段（供 agent 观察投影） */
 function countParagraphs(text: string): number {
@@ -51,6 +52,11 @@ const createWorkbenchLazy = () =>
 
 // 模块级共享实例：多个翻译标签页复用同一 chunk 请求
 let sharedWorkbenchLazy = createWorkbenchLazy();
+
+// 划词（解释 / 翻译 / 存为笔记 / 制卡 / 引用到聊天）与 PDF / EPUB / Office 预览共用一套
+const SelectionActions = lazy(() =>
+  import('@/features/pdf/components/PdfSelectionActions').then((m) => ({ default: m.PdfSelectionActions })),
+);
 
 // ============================================================================
 // 保存状态
@@ -261,6 +267,8 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   externalSettingsOpen,
 }) => {
   const { t } = useTranslation(['translation', 'common', 'learningHub']);
+  const isNarrow = useIsMobile();
+  const workbenchAreaRef = useRef<HTMLDivElement | null>(null);
 
   // 翻译会话状态
   // 首帧同步初始化：metadata 已含完整内容时（重新打开已有翻译的常见场景）
@@ -640,7 +648,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
         </div>
       )}
 
-      <div className="relative flex-1 min-h-0">
+      <div ref={workbenchAreaRef} className="relative flex-1 min-h-0">
         <WorkbenchErrorBoundary key={`${node.id}:${workbenchEpoch}`} fallback={workbenchFallback}>
           <Suspense
             fallback={<TranslationSkeleton label={t('translation:contentView.skeleton_loading')} />}
@@ -686,6 +694,19 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
               )}
             </span>
           </div>
+        )}
+
+        {!externalSettingsOpen && (
+          <Suspense fallback={null}>
+            <SelectionActions
+              containerRef={workbenchAreaRef}
+              enabled
+              isMobileLike={isNarrow}
+              documentTitle={node.name}
+              selectionSourceId={node.id}
+              selectionKind="translation"
+            />
+          </Suspense>
         )}
       </div>
     </div>

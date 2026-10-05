@@ -28,6 +28,8 @@ function getKindLabel(kind?: SelectionRefData['source']['kind']): string {
       return 'EPUB';
     case 'document':
       return 'Document';
+    case 'translation':
+      return 'Translation';
     case 'mindmap':
       return 'Mindmap';
     case 'note':

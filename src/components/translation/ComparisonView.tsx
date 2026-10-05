@@ -94,7 +94,8 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
 
   return (
     <CustomScrollArea className="flex-1 min-h-0">
-      <div ref={setContainerRef} className="p-4 space-y-0">
+      {/* 逐段对照是精读视图：放开选中，才能划词查词 / 制卡 / 引用到聊天（全局默认禁选） */}
+      <div ref={setContainerRef} data-selectable="true" className="p-4 space-y-0">
         {/* 表头（窄容器合并为单行：语向 + 状态 + 段数） */}
         {isNarrow ? (
           <div className="flex items-center gap-2 pt-1 pb-3 mb-1 border-b sticky top-0 bg-background z-10 text-xs font-medium text-muted-foreground min-w-0">

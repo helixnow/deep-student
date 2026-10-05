@@ -32,7 +32,7 @@ import { SELECTION_TYPE_ID } from './definitions/selection';
 // ============================================================================
 
 /** 选区来源种类 */
-export type SelectionSourceKind = 'pdf' | 'epub' | 'document' | 'message' | 'mindmap' | 'note';
+export type SelectionSourceKind = 'pdf' | 'epub' | 'document' | 'translation' | 'message' | 'mindmap' | 'note';
 
 /**
  * 选区快照数据（存进 Resource.data 的 JSON）。
