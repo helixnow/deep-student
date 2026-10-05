@@ -10,6 +10,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { dstu, type DstuNode } from '@/dstu';
 import { learningPropsFromMetadata, localCalendarDate, readNoteLearningProps } from '@/features/notes/noteLearningProps';
+import { requestLearningHubQuickAccess } from '@/features/learning-hub/navigation/quickAccessRequest';
 
 export interface TodayLearning {
   cards: number;
@@ -58,13 +59,10 @@ export async function loadTodayLearning(now = new Date()): Promise<TodayLearning
  */
 export function openDueNotesReview(openLearningHub?: () => void): void {
   try { localStorage.setItem('learningHub.notesLearningView', 'review'); } catch { /* 偏好写入失败不影响跳转 */ }
+  // 学习中心已挂载时视图标签不会重读偏好：显式通知切到「近期复习」
+  window.dispatchEvent(new CustomEvent('learningHub:notes-learning-view', { detail: { view: 'review' } }));
+  // 访达按宿主分桶，改 default 桶在经典壳里不生效：交给挂载着的全屏访达在自己的桶里跳
+  requestLearningHubQuickAccess('notes');
   if (openLearningHub) openLearningHub();
   else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } }));
-  void import('@/features/learning-hub/stores/finderStore').then(({ useFinderStore }) => {
-    window.setTimeout(() => {
-      useFinderStore.getState().quickAccessNavigate('notes');
-      // 学习中心已挂载时视图标签不会重读偏好：显式通知切到「近期复习」
-      window.dispatchEvent(new CustomEvent('learningHub:notes-learning-view', { detail: { view: 'review' } }));
-    }, 150);
-  });
 }

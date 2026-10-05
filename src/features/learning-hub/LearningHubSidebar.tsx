@@ -180,6 +180,8 @@ import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews
 import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
 import { FinderViewTabs, NotesLearningViewTabs, useNotesLearningView } from './components/finder/NotesLearningViewTabs';
 import { useExamsView, type ExamsFinderView } from './mistakeBook/mistakeBookNavigation';
+import { LEARNING_HUB_QUICK_ACCESS_EVENT, takePendingLearningHubQuickAccess } from './navigation/quickAccessRequest';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 const MistakeBookView = lazy(() =>
   import('./mistakeBook/MistakeBookView').then((module) => ({ default: module.MistakeBookView })),
@@ -1119,6 +1121,24 @@ export function LearningHubSidebar({
     }
     quickAccessNavigate(type);
   }, [enterFolder, quickAccessNavigate, t]);
+
+  // 外部请求打开某个快捷入口：只由全屏访达在本桶执行（同上面注册「活跃访达」的条件）
+  const handlesQuickAccessRequests = mode !== 'canvas' && sessionActive !== false;
+  useEffect(() => {
+    if (!handlesQuickAccessRequests) return;
+    const requested = takePendingLearningHubQuickAccess();
+    if (requested) void handleQuickAccessNavigate(requested);
+    // 只在成为全屏访达时消费一次挂起请求；之后的请求走事件
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handlesQuickAccessRequests]);
+  useEventRegistry(handlesQuickAccessRequests ? [{
+    target: 'window',
+    type: LEARNING_HUB_QUICK_ACCESS_EVENT,
+    listener: () => {
+      const requested = takePendingLearningHubQuickAccess();
+      if (requested) void handleQuickAccessNavigate(requested);
+    },
+  }] : [], [handlesQuickAccessRequests, handleQuickAccessNavigate]);
 
   const focusSearchInput = useCallback(() => {
     setQuickAccessCollapsed(false);

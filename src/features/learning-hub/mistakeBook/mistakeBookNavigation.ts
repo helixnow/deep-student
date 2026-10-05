@@ -2,11 +2,12 @@
  * 错题本的两种跳转：
  * - 从错题回到题目集里的这道题（两种壳都走 NAVIGATE_TO_VIEW + openResource 开题目集，
  *   再用题目集视图已监听的 QBANK_FOCUS_EVENT 定位；题目异步加载，带 ack 重试）
- * - 从别处打开「题目集 › 错题本」（同 openDueNotesReview：写视图偏好 → 开学习资源 → 切快捷入口）
+ * - 从别处打开「题目集 › 错题本」（同 openDueNotesReview：写视图偏好 → 请求快捷入口 → 开学习资源）
  */
 import { useCallback, useState } from 'react';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { workbenchBus } from '@/features/workbench/core/workbenchBus';
+import { requestLearningHubQuickAccess } from '../navigation/quickAccessRequest';
 
 export type ExamsFinderView = 'all' | 'mistakes';
 
@@ -41,15 +42,11 @@ export function openQuestionInExam(examId: string, questionId: string): void {
 
 export function openMistakeBook(): void {
   try { localStorage.setItem(EXAMS_VIEW_STORAGE_KEY, 'mistakes'); } catch { /* 偏好写入失败不影响跳转 */ }
+  // 已挂载的视图标签不会重读偏好：显式通知切到错题本
+  window.dispatchEvent(new CustomEvent(EXAMS_VIEW_EVENT, { detail: { view: 'mistakes' } }));
+  requestLearningHubQuickAccess('exams');
   if (workbenchBus.isEnabled()) workbenchBus.launch({ typeId: 'files', reason: 'api' });
   else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'learning-hub' } }));
-  void import('@/features/learning-hub/stores/finderStore').then(({ useFinderStore }) => {
-    window.setTimeout(() => {
-      useFinderStore.getState().quickAccessNavigate('exams');
-      // 学习资源已挂载时视图标签不会重读偏好：显式通知切到错题本
-      window.dispatchEvent(new CustomEvent(EXAMS_VIEW_EVENT, { detail: { view: 'mistakes' } }));
-    }, 150);
-  });
 }
 
 /** 「题目集」入口下的视图（全部题目集 / 错题本），记住上次选择 */
