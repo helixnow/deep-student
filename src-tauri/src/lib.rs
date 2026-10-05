@@ -1813,6 +1813,8 @@ pub fn run() {
             crate::media::commands::media_transcript_export,
             crate::media::commands::media_progress_get,
             crate::media::commands::media_progress_set,
+            crate::media::library::media_library_list,
+            crate::media::library::media_related_notes,
             crate::secret_prompt::secret_prompt_submit,
             crate::secret_prompt::secret_prompt_status,
             crate::secret_prompt::secret_prompt_discard,

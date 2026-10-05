@@ -10,10 +10,12 @@
 //! - [`subtitle`]：`.srt` / `.vtt` / B 站 BCC JSON 导入与 srt / vtt / txt 导出
 //! - [`transcript`]：`[mm:ss] 文本` 行格式（extracted_text 与 resource_read 共用）
 //! - [`commands`]：Tauri 命令（`media_transcribe_*` / `media_transcript_*` / `media_progress_*`）
+//! - [`library`]：「音视频」子应用的资源库视图（`media_library_list` / `media_related_notes`）
 
 pub mod asr;
 pub mod commands;
 pub mod decoder;
+pub mod library;
 pub mod pipeline;
 pub mod resample;
 pub mod subtitle;
@@ -99,11 +101,11 @@ pub enum MediaKind {
     Video,
 }
 
-const AUDIO_EXTENSIONS: &[&str] = &[
+pub(crate) const AUDIO_EXTENSIONS: &[&str] = &[
     "mp3", "wav", "ogg", "oga", "m4a", "m4b", "flac", "aac", "opus", "wma", "aiff", "aif", "caf",
     "weba",
 ];
-const VIDEO_EXTENSIONS: &[&str] = &[
+pub(crate) const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv", "flv", "3gp", "ts", "mts", "m2ts",
 ];
 

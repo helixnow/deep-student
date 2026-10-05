@@ -24,7 +24,7 @@ use crate::vfs::{
 
 /// ★ 移动端修复：当教材/文件的 file_name 是不透明 document ID 时，
 /// 生成用户友好的显示名称（兼容旧数据）。
-fn sanitize_textbook_display_name(file_name: &str, created_at: &str) -> String {
+pub(crate) fn sanitize_textbook_display_name(file_name: &str, created_at: &str) -> String {
     let trimmed = file_name.trim();
     // 分离扩展名和主文件名
     let (base, ext) = match trimmed.rfind('.') {
