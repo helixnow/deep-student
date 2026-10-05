@@ -44,7 +44,11 @@
     "deleteTitle": "Delete “{{name}}”?",
     "deleteDesc": "It moves to the Library trash together with its transcript and watch progress. You can restore it from the trash.",
     "deleteFailed": "Couldn't delete",
-    "deleted": "Deleted “{{name}}”"
+    "deleted": "Deleted “{{name}}”",
+    "cards_one": "{{count}} card",
+    "cards_other": "{{count}} cards",
+    "questions_one": "{{count}} question",
+    "questions_other": "{{count}} questions"
   },
   "import": {
     "button": "Import media",
@@ -111,16 +115,17 @@
     "failed": "Couldn't start the chat"
   },
   "practice": {
-    "intro": "Make cards and questions from what was taught. A new chat opens with the instruction filled in, and you send it when ready.",
+    "intro": "Make cards and questions from this lecture's transcript: cards are generated in the background; questions open in chat for you to confirm.",
     "cards": "Make flashcards",
-    "cardsHint": "Cards go to Flashcards for review, and their source jumps back to the video",
+    "cardsHint": "Generates cards from the transcript without opening a chat. They go into flashcard review, with a link back to the video",
     "questions": "Generate practice questions",
     "questionsHint": "Questions go to Question sets for practice and review",
     "prompt": {
       "cards": "Make flashcards from the transcript of the lecture “{{name}}”: cover the core concepts, definitions and common mistakes, about 10 cards, each citing its timestamp as the source.",
       "questions": "Create a question set from the transcript of the lecture “{{name}}”: mostly multiple choice, fill-in and short answer, 5-10 questions, each with the answer, an explanation and its timestamp citation."
     },
-    "needTranscript": "Transcribe or import subtitles first."
+    "needTranscript": "Transcribe or import subtitles first.",
+    "cardsInChat": "Make cards in chat (add your own requirements)"
   },
   "progress": {
     "title": "Progress",
@@ -132,5 +137,18 @@
     "finished": "Finished",
     "transcript": "Transcript",
     "segments": "{{done}}/{{total}} segments"
+  },
+  "ledger": {
+    "title": "This lecture",
+    "cards_one": "{{count}} flashcard",
+    "cards_other": "{{count}} flashcards",
+    "cardsDetail": "{{due}} due · {{fresh}} new",
+    "reviewCards": "Review these cards",
+    "questions_one": "{{count}} question",
+    "questions_other": "{{count}} questions",
+    "questionsDetail": "{{accuracy}}% correct · {{wrong}} wrong",
+    "questionsUntried": "Not tried yet",
+    "practice": "Practice",
+    "empty": "No cards or questions from this lecture yet. Use the buttons above to make some."
   }
 }

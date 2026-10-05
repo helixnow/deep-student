@@ -42,7 +42,11 @@
     "deleteTitle": "删除「{{name}}」？",
     "deleteDesc": "将移到资源库回收站，字幕与观看进度随之移走；可在回收站恢复。",
     "deleteFailed": "删除失败",
-    "deleted": "已删除「{{name}}」"
+    "deleted": "已删除「{{name}}」",
+    "cards_one": "卡 {{count}}",
+    "cards_other": "卡 {{count}}",
+    "questions_one": "题 {{count}}",
+    "questions_other": "题 {{count}}"
   },
   "import": {
     "button": "导入音视频",
@@ -109,16 +113,17 @@
     "failed": "无法开始对话"
   },
   "practice": {
-    "intro": "按讲到的时刻出卡、出题：新开对话并预填指令，你确认后发送。",
+    "intro": "按这节课的字幕制卡、出题：制卡直接在后台生成，出题在对话里由你确认后发送。",
     "cards": "制作闪卡",
-    "cardsHint": "卡片进入「闪卡」复习，来源可跳回视频",
+    "cardsHint": "不开对话，直接按字幕制卡，进入闪卡复习，背面可回看视频",
     "questions": "生成练习题",
     "questionsHint": "题目进入「题目集」，可做题与错题复盘",
     "prompt": {
       "cards": "请根据《{{name}}》这节课的字幕制作闪卡：覆盖核心概念、定义和易错点，约 10 张；每张卡在来源中注明对应的时间引用。",
       "questions": "请根据《{{name}}》这节课的字幕出一组练习题并创建题目集：单选、填空、简答为主，共 5-10 题，每题附答案、解析和对应的时间引用。"
     },
-    "needTranscript": "需要先转写或导入字幕。"
+    "needTranscript": "需要先转写或导入字幕。",
+    "cardsInChat": "在对话中制卡（可补充要求）"
   },
   "progress": {
     "title": "学习进度",
@@ -132,5 +137,18 @@
     "minutes_other": "{{count}} 分钟"
   },
   "count_one": "{{count}} 个",
-  "count_other": "{{count}} 个"
+  "count_other": "{{count}} 个",
+  "ledger": {
+    "title": "本课台账",
+    "cards_one": "闪卡 {{count}} 张",
+    "cards_other": "闪卡 {{count}} 张",
+    "cardsDetail": "到期 {{due}} · 新卡 {{fresh}}",
+    "reviewCards": "复习本课卡片",
+    "questions_one": "题目 {{count}} 道",
+    "questions_other": "题目 {{count}} 道",
+    "questionsDetail": "正确率 {{accuracy}}% · 错题 {{wrong}}",
+    "questionsUntried": "还没做过",
+    "practice": "去做题",
+    "empty": "这节课还没有产出卡片或题目：用上面的按钮制卡、出题。"
+  }
 }

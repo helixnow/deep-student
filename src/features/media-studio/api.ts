@@ -1,5 +1,5 @@
 /**
- * 音视频子应用 IPC 边界（media_library_list / media_related_notes）。
+ * 音视频子应用 IPC 边界（media_library_list / media_related_notes / media_study_ledger）。
  * 宽松归一化（camel / snake 均接受），单测只需 mock 本模块或 invoke。
  */
 import { invoke } from '@tauri-apps/api/core';
@@ -43,6 +43,28 @@ export interface MediaLibraryItem {
   lastWatchedAt: number | null;
   /** 由本媒体生成的讲义笔记数（后端未提供时为 null） */
   handoutCount: number | null;
+  /** 本课产出的闪卡 / 题目数（台账另行拉取，未到达时为 null） */
+  cardCount?: number | null;
+  questionCount?: number | null;
+}
+
+/** 本课学习台账：由该媒体产出的闪卡 / 题目统计（media_study_ledger） */
+export interface MediaStudyLedger {
+  resourceId: string;
+  cardCount: number;
+  /** 此刻到期的学习 / 复习卡（不含新卡） */
+  cardsDue: number;
+  cardsNew: number;
+  /** anki_cards.id；仅 includeCardIds 时有值 */
+  cardIds: string[];
+  questionCount: number;
+  questionsAttempted: number;
+  attemptTotal: number;
+  correctTotal: number;
+  /** 最近一次答错的题数 */
+  questionsWrong: number;
+  /** 本课题目所在题目集（题多的在前） */
+  examIds: string[];
 }
 
 export interface MediaRelatedNote {
@@ -138,6 +160,37 @@ export function normalizeRelatedNote(raw: unknown): MediaRelatedNote | null {
   };
 }
 
+function strList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
+}
+
+export function normalizeStudyLedger(raw: unknown): MediaStudyLedger | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const r = raw as Raw;
+  const resourceId = str(pick(r, 'resourceId', 'resource_id'));
+  if (!resourceId) return null;
+  const count = (camel: string, snake: string) => Math.max(0, num(pick(r, camel, snake)) ?? 0);
+  return {
+    resourceId,
+    cardCount: count('cardCount', 'card_count'),
+    cardsDue: count('cardsDue', 'cards_due'),
+    cardsNew: count('cardsNew', 'cards_new'),
+    cardIds: strList(pick(r, 'cardIds', 'card_ids')),
+    questionCount: count('questionCount', 'question_count'),
+    questionsAttempted: count('questionsAttempted', 'questions_attempted'),
+    attemptTotal: count('attemptTotal', 'attempt_total'),
+    correctTotal: count('correctTotal', 'correct_total'),
+    questionsWrong: count('questionsWrong', 'questions_wrong'),
+    examIds: strList(pick(r, 'examIds', 'exam_ids')),
+  };
+}
+
+/** 正确率（0–100 取整）；没有作答记录时为 null */
+export function ledgerAccuracy(ledger: Pick<MediaStudyLedger, 'attemptTotal' | 'correctTotal'>): number | null {
+  if (ledger.attemptTotal <= 0) return null;
+  return Math.round((Math.min(ledger.correctTotal, ledger.attemptTotal) / ledger.attemptTotal) * 100);
+}
+
 function normalizeList<T>(raw: unknown, fn: (item: unknown) => T | null): T[] {
   const list = Array.isArray(raw)
     ? raw
@@ -154,5 +207,13 @@ export const mediaStudioApi = {
 
   async relatedNotes(resourceId: string): Promise<MediaRelatedNote[]> {
     return normalizeList(await invoke('media_related_notes', { resourceId }), normalizeRelatedNote);
+  },
+
+  async studyLedger(resourceIds: string[], includeCardIds = false): Promise<MediaStudyLedger[]> {
+    if (resourceIds.length === 0) return [];
+    return normalizeList(
+      await invoke('media_study_ledger', { resourceIds, includeCardIds }),
+      normalizeStudyLedger,
+    );
   },
 };

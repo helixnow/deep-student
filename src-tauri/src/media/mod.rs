@@ -15,6 +15,7 @@
 pub mod asr;
 pub mod commands;
 pub mod decoder;
+pub mod ledger;
 pub mod library;
 pub mod pipeline;
 pub mod resample;

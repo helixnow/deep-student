@@ -487,6 +487,7 @@ commands.allow = [
   "media_progress_get",
   "media_progress_set",
   "media_related_notes",
+  "media_study_ledger",
   "media_transcribe_cancel",
   "media_transcribe_estimate",
   "media_transcribe_start",
