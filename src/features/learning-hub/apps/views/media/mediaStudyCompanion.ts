@@ -6,7 +6,8 @@
  * 资源库 / 聊天右侧面板不提供 context，保持原有布局——同一个播放器、同一套转写逻辑。
  */
 import { createContext, useContext, type ReactNode } from 'react';
-import type { TranscriptStatus } from './mediaTranscriptApi';
+import type { TranscriptSegment, TranscriptStatus } from './mediaTranscriptApi';
+import type { MediaChapter } from './mediaChapters';
 
 /** 字幕分区固定 id（默认分区） */
 export const MEDIA_STUDY_TRANSCRIPT_TAB = 'transcript';
@@ -23,7 +24,14 @@ export interface MediaStudyCompanionRenderContext {
   /** 已完成段数 / 计划段数 */
   doneSegments: number;
   totalSegments: number;
+  /** 全部字幕段（含待转写 / 失败段，按 idx 序） */
+  segments: readonly TranscriptSegment[];
+  /** 讲义章节（最新讲义的小节起点）与当前所在章节下标（-1 = 第一章之前 / 无章节） */
+  chapters: readonly MediaChapter[];
+  currentChapterIndex: number;
   seekTo: (seconds: number) => void;
+  /** 播放器当前时间（秒）；「问刚才这段」等按此刻取字幕 */
+  getCurrentTime: () => number;
 }
 
 export interface MediaStudyCompanionTab {

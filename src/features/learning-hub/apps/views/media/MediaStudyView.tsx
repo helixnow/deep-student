@@ -27,6 +27,7 @@ import {
   CircleNotch,
   ArrowClockwise,
   ArrowSquareOut,
+  Target,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -56,8 +57,25 @@ import { rememberPendingMediaFocus, takePendingMediaFocus } from './mediaRefEven
 import { TranscriptPanel, selectDisplaySegments } from './TranscriptPanel';
 import { findActiveSegmentIndex } from './transcriptVtt';
 import { HandoutGenerateButton } from '@/features/media-handout';
+import { sendSelectionToChatInput } from '@/features/pdf/selectionStudyActions';
 import { formatMediaRefTimestamp } from './mediaRefTime';
 import { captureVideoFrame, CaptureFrameError, frameFileName } from './captureVideoFrame';
+import {
+  buildTranscriptQuote,
+  FRAME_CONTEXT_RADIUS_SECONDS,
+  formatTranscriptLines,
+  segmentsInWindow,
+} from './transcriptExcerpt';
+import { makeMediaCards } from './mediaCards';
+import {
+  checkpointState,
+  findCrossedCheckpoint,
+  useMediaCheckpoints,
+  type MediaCheckpoint,
+} from './mediaCheckpoints';
+import { CHECKPOINT_REWATCH_LEAD_SECONDS, MediaCheckpointCard } from './MediaCheckpointCard';
+import { chapterIndexAt, useMediaChapters } from './mediaChapters';
+import type { MediaScrubberMarker, MediaScrubberRange } from './MediaScrubber';
 import {
   MEDIA_STUDY_TRANSCRIPT_TAB,
   useMediaStudyCompanion,
@@ -67,6 +85,27 @@ import { openMediaStudio } from '@/features/media-studio/mediaStudioNavigation';
 
 /** 字幕面板放到右侧所需的最小容器宽度 */
 export const SIDE_LAYOUT_MIN_WIDTH = 720;
+
+/** 「到点暂停作答」偏好（默认只标记不打断） */
+const PAUSE_AT_CHECKPOINTS_KEY = 'media-study.pauseAtCheckpoints';
+/** 答错的检查点在进度条上标出的回看区间：锚点前 15 秒到后 30 秒 */
+const WEAK_RANGE_AFTER_SECONDS = 30;
+
+function readPauseAtCheckpoints(): boolean {
+  try {
+    return window.localStorage.getItem(PAUSE_AT_CHECKPOINTS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writePauseAtCheckpoints(value: boolean): void {
+  try {
+    window.localStorage.setItem(PAUSE_AT_CHECKPOINTS_KEY, value ? '1' : '0');
+  } catch {
+    // 存储不可用时只在本次会话生效
+  }
+}
 
 const toolbarButtonClass =
   'h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11';
@@ -170,12 +209,54 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     setActiveSegmentIdx((prev) => (prev === idx ? prev : idx));
   }, []);
 
+  // ---------------------------------------------------------------- 讲义章节（仅音视频学习页）
+  const chapters = useMediaChapters(resourceId, Boolean(companion));
+  const chaptersRef = useRef(chapters);
+  chaptersRef.current = chapters;
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1);
+  useEffect(() => {
+    setCurrentChapterIndex(chapterIndexAt(chapters, lastTimeRef.current));
+  }, [chapters]);
+
+  // ---------------------------------------------------------------- 课中检查点（仅音视频学习页）
+  const { checkpoints, recordResult: recordCheckpointResult } = useMediaCheckpoints(resourceId, Boolean(companion));
+  const checkpointsRef = useRef(checkpoints);
+  checkpointsRef.current = checkpoints;
+  const promptedCheckpointsRef = useRef(new Set<string>());
+  const [activeCheckpoint, setActiveCheckpoint] = useState<MediaCheckpoint | null>(null);
+  const [pauseAtCheckpoints, setPauseAtCheckpointsState] = useState(readPauseAtCheckpoints);
+  const pauseAtCheckpointsRef = useRef(pauseAtCheckpoints);
+  pauseAtCheckpointsRef.current = pauseAtCheckpoints;
+  const setPauseAtCheckpoints = useCallback((value: boolean) => {
+    setPauseAtCheckpointsState(value);
+    writePauseAtCheckpoints(value);
+  }, []);
+  useEffect(() => {
+    promptedCheckpointsRef.current = new Set();
+    setActiveCheckpoint(null);
+  }, [resourceId]);
+
   const handleStatusChange = useCallback(
     (s: MediaPlayerStatus) => {
+      const previousTime = lastTimeRef.current;
       lastTimeRef.current = s.currentTime;
       setIsReady((prev) => (prev === s.isReady ? prev : s.isReady));
       recomputeActive(s.currentTime);
       onProgressStatus(s);
+      if (chaptersRef.current.length > 0) {
+        const chapterIndex = chapterIndexAt(chaptersRef.current, s.currentTime);
+        setCurrentChapterIndex((prev) => (prev === chapterIndex ? prev : chapterIndex));
+      }
+      if (s.isPlaying && checkpointsRef.current.length > 0) {
+        // 答对过的不再打断；答错的回看后再播到会再问一次
+        const open = checkpointsRef.current.filter((cp) => checkpointState(cp) !== 'correct');
+        const crossed = findCrossedCheckpoint(open, previousTime, s.currentTime, promptedCheckpointsRef.current);
+        if (crossed) {
+          promptedCheckpointsRef.current.add(crossed.questionId);
+          setActiveCheckpoint(crossed);
+          if (pauseAtCheckpointsRef.current) handleRef.current?.pause();
+        }
+      }
     },
     [recomputeActive, onProgressStatus],
   );
@@ -330,7 +411,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     if (!(el instanceof HTMLVideoElement)) return;
     setCapturing(true);
     try {
-      const timestamp = formatMediaRefTimestamp(el.currentTime);
+      const seconds = el.currentTime;
+      const timestamp = formatMediaRefTimestamp(seconds);
       const blob = await captureVideoFrame(el);
       const name = frameFileName(fileName, timestamp);
       const uploaded = await uploadAttachmentBlob(blob, {
@@ -338,6 +420,12 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         mimeType: 'image/png',
         type: 'image',
       });
+      // 模型只看到一张图时不知道老师此刻在讲什么：附上前后 30 秒字幕（图片上下文定义消费）
+      const excerpt = formatTranscriptLines(segmentsInWindow(
+        segments,
+        (seconds - FRAME_CONTEXT_RADIUS_SECONDS) * 1000,
+        (seconds + FRAME_CONTEXT_RADIUS_SECONDS) * 1000,
+      ));
       await referenceToChat({
         sourceType: 'image',
         sourceId: uploaded.sourceId,
@@ -346,7 +434,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           mimeType: 'image/png',
           size: blob.size,
           mediaResourceId: resourceId,
-          mediaSeconds: Math.floor(el.currentTime),
+          mediaSeconds: Math.floor(seconds),
+          ...(excerpt ? { mediaTranscriptExcerpt: excerpt } : {}),
         },
       });
     } catch (err: unknown) {
@@ -361,7 +450,37 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     } finally {
       setCapturing(false);
     }
-  }, [fileName, referenceToChat, resourceId, t]);
+  }, [fileName, referenceToChat, resourceId, segments, t]);
+
+  // ---------------------------------------------------------------- 字幕选段 → 引用到对话 / 制卡
+  // 学习页（有 companion）新开课程对话（附媒体 + 课程学习技能，同问答分区）；
+  // 资源库 / 聊天右侧面板预填当前对话的输入框（同 PDF 划词「添加到聊天」）。
+  const handleQuoteSelection = useCallback((selected: TranscriptSegment[]) => {
+    const quote = buildTranscriptQuote(resourceId, selected);
+    if (!quote) return;
+    const title = fileName.replace(/\.[^.]+$/, '') || fileName;
+    const text = `${t('learningHub:mediaTranscript.quoteIntro', { name: title, ref: quote.marker })}\n${quote.quote}\n\n`;
+    if (!companion) {
+      sendSelectionToChatInput({ text, sourceName: fileName });
+      return;
+    }
+    void import('@/features/media-studio/mediaChat')
+      .then(({ startMediaChat }) => startMediaChat({ resourceId, name: fileName, prompt: text, referenceToChat }))
+      .catch((err: unknown) => {
+        showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.quoteFailed'));
+      });
+  }, [companion, fileName, referenceToChat, resourceId, t]);
+
+  const handleCardsFromSelection = useCallback((selected: TranscriptSegment[]) => {
+    void makeMediaCards({
+      resourceId,
+      fileName,
+      segments: selected,
+      extraRequirements: t('learningHub:mediaCards.selectionRequirement'),
+      maxCards: Math.min(10, Math.max(3, Math.ceil(selected.length / 3))),
+      t,
+    });
+  }, [fileName, resourceId, t]);
 
   // ---------------------------------------------------------------- 在音视频中学习
   // 交接：本视图暂停（保活的资源库标签不能和学习页同时出声）；正在播放时把当前位置作为
@@ -381,6 +500,47 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     handle.seekTo(seconds);
     handle.play();
   }, []);
+  const getCurrentTime = useCallback(
+    () => handleRef.current?.getElement()?.currentTime ?? lastTimeRef.current,
+    [],
+  );
+
+  // 进度条：讲义章节画竖线，检查点按作答状态标点，答错的标出回看区间
+  const scrubberMarkers = useMemo<MediaScrubberMarker[]>(
+    () => [
+      ...chapters.map((chapter): MediaScrubberMarker => ({ at: chapter.seconds, kind: 'chapter' })),
+      ...checkpoints.map((cp): MediaScrubberMarker => ({ at: cp.seconds, kind: 'checkpoint', state: checkpointState(cp) })),
+    ],
+    [chapters, checkpoints],
+  );
+  const currentChapter = currentChapterIndex >= 0 ? chapters[currentChapterIndex] : null;
+  const scrubberHighlights = useMemo<MediaScrubberRange[]>(
+    () => checkpoints
+      .filter((cp) => checkpointState(cp) === 'wrong')
+      .map((cp) => ({
+        from: Math.max(0, cp.seconds - CHECKPOINT_REWATCH_LEAD_SECONDS),
+        to: cp.seconds + WEAK_RANGE_AFTER_SECONDS,
+      })),
+    [checkpoints],
+  );
+  const checkpointsDone = useMemo(
+    () => checkpoints.filter((cp) => checkpointState(cp) === 'correct').length,
+    [checkpoints],
+  );
+  const openNextCheckpoint = useCallback(() => {
+    const next = checkpoints.find((cp) => checkpointState(cp) !== 'correct') ?? checkpoints[0];
+    if (next) setActiveCheckpoint(next);
+  }, [checkpoints]);
+  const rewatchCheckpoint = useCallback((seconds: number) => {
+    // 回看后再播到锚点时重新提问
+    if (activeCheckpoint) promptedCheckpointsRef.current.delete(activeCheckpoint.questionId);
+    setActiveCheckpoint(null);
+    seekToSeconds(seconds);
+  }, [activeCheckpoint, seekToSeconds]);
+  const resumeAfterCheckpoint = useCallback(() => {
+    setActiveCheckpoint(null);
+    handleRef.current?.play();
+  }, []);
   const doneSegments = useMemo(() => segments.filter((s) => s.status === 'done').length, [segments]);
   const companionRenderContext = useMemo<MediaStudyCompanionRenderContext>(
     () => ({
@@ -392,9 +552,13 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       hasTranscript: hasDoneSegments && !running,
       doneSegments,
       totalSegments: transcript?.progress?.totalSegments || segments.length,
+      segments,
+      chapters,
+      currentChapterIndex,
       seekTo: seekToSeconds,
+      getCurrentTime,
     }),
-    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
+    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments, chapters, currentChapterIndex, seekToSeconds, getCurrentTime],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -446,6 +610,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       onStatusChange={handleStatusChange}
       crossOrigin="anonymous"
       extraControls={captionsButton}
+      scrubberMarkers={scrubberMarkers}
+      scrubberHighlights={scrubberHighlights}
       trackSlot={
         trackSrc ? (
           <track
@@ -469,6 +635,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
       compact={panelOpen && !sideLayout}
+      scrubberMarkers={scrubberMarkers}
+      scrubberHighlights={scrubberHighlights}
     />
   );
 
@@ -534,6 +702,30 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         )}
 
         <div className="flex-1" />
+
+        {companion && currentChapter && (
+          <span
+            className="hidden min-w-0 max-w-[16rem] truncate px-1 text-xs text-muted-foreground sm:inline"
+            title={currentChapter.title}
+            data-media-current-chapter=""
+          >
+            {t('learningHub:mediaChapters.current', { title: currentChapter.title })}
+          </span>
+        )}
+
+        {companion && checkpoints.length > 0 && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={openNextCheckpoint}
+            title={t('learningHub:mediaCheckpoint.toolbarTitle', { total: checkpoints.length })}
+            data-media-checkpoint-toolbar=""
+            className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs tabular-nums')}
+          >
+            <Target size={14} aria-hidden="true" />
+            {t('learningHub:mediaCheckpoint.toolbar', { done: checkpointsDone, total: checkpoints.length })}
+          </DsButton>
+        )}
 
         {/* 讲义：字幕 → 抽帧/帧说明 → 大纲 → 分节 → 落为笔记（docs/dev/media-learning §3） */}
         {!companion && (
@@ -678,6 +870,18 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                 : 'min-h-0 flex-1 border-t border-border',
             )}
           >
+            {activeCheckpoint && (
+              <MediaCheckpointCard
+                key={activeCheckpoint.questionId}
+                checkpoint={activeCheckpoint}
+                pauseAtCheckpoints={pauseAtCheckpoints}
+                onPauseAtCheckpointsChange={setPauseAtCheckpoints}
+                onSeek={rewatchCheckpoint}
+                onResume={resumeAfterCheckpoint}
+                onClose={() => setActiveCheckpoint(null)}
+                onAnswered={recordCheckpointResult}
+              />
+            )}
             <div className="shrink-0 px-3 pb-1 pt-2">
               <SegmentedControl<string>
                 ariaLabel={companion.ariaLabel}
@@ -718,6 +922,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   hideTitle
                   bordered={false}
                   className="min-h-0 flex-1"
+                  onQuoteSelection={handleQuoteSelection}
+                  onMakeCardsFromSelection={handleCardsFromSelection}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
@@ -784,6 +990,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             retrying={starting}
             layout={sideLayout ? 'side' : 'bottom'}
             className={sideLayout ? 'w-[340px] shrink-0 xl:w-[380px]' : 'min-h-0 flex-1'}
+            onQuoteSelection={handleQuoteSelection}
+            onMakeCardsFromSelection={handleCardsFromSelection}
           />
         )}
       </div>

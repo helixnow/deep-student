@@ -49,6 +49,9 @@ export const learningOverviewToolsSkill: SkillDefinition = {
 - \`partial=true\` 表示一个或多个数据源不可用。必须查看 \`sourceErrors\` 并明确说明缺失来源，
   不能把缺失的题库、FSRS、SM-2、热力图或番茄钟数据描述成 0。
 - \`fsrsReview\` 是 Anki/FSRS 调度统计；\`sm2Review\` 是题库复习计划统计，两者不可混为同一队列。
+- \`media.recentCourses\` 是最近在看的音视频课（当前快照）：\`position/positionRef\` 为看到的位置，
+  \`wrongCheckpoints\` 为最近一次答错的课中检查点（\`ref\` 为该知识点在课里的时刻）。提到具体时刻时
+  原样写出 \`[媒体@…]\` 引用，用户可点击回看；没有该字段或列表为空时不要编造观看记录。
 - 番茄钟时长统一为秒；需要分钟或小时时由 Agent 在回答中换算，并保留合理精度。
 `,
   allowedTools: [

@@ -102,6 +102,22 @@ pub fn first_media_citation(text: &str) -> Option<(String, u32)> {
     None
 }
 
+/// 文本里第一个指向 `resource_id` 的 `[媒体@id:时间]` 引用 → 秒
+pub fn media_citation_seconds_for(text: &str, resource_id: &str) -> Option<u32> {
+    let needle = format!("[媒体@{}:", resource_id);
+    let mut cursor = text;
+    while let Some(pos) = cursor.find(&needle) {
+        let after = &cursor[pos + needle.len()..];
+        if let Some(end) = after.find(']') {
+            if let Some(seconds) = parse_clock(&after[..end]) {
+                return Some(seconds);
+            }
+        }
+        cursor = after;
+    }
+    None
+}
+
 /// 文本是否带媒体锚点（由 [`chunk_transcript_for_generation`] 注入）
 pub fn contains_media_anchor(text: &str) -> bool {
     first_media_citation(text).is_some()
@@ -246,6 +262,14 @@ mod tests {
         );
         assert!(first_media_citation("[媒体@:12:30]").is_none());
         assert!(!contains_media_anchor("普通文本 [12:30]"));
+    }
+
+    #[test]
+    fn finds_citation_seconds_for_one_resource() {
+        let text = "见 [媒体@file_abc:12:30] 与 [媒体@file_def:99:99] [媒体@file_def:1:00:00]";
+        assert_eq!(media_citation_seconds_for(text, "file_def"), Some(3600));
+        assert_eq!(media_citation_seconds_for(text, "file_abc"), Some(750));
+        assert_eq!(media_citation_seconds_for(text, "file_ab"), None);
     }
 
     #[test]

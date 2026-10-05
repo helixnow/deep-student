@@ -12,6 +12,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { CustomAnkiTemplate } from '@/types';
 import { cn } from '@/utils/cn';
 import { hasValidCloze, renderClozeText } from '../cloze';
+import { withoutCardMediaSourceRefs } from '../library/cardMediaSource';
 import type {
   SwipeDirection,
   SwipeRatingState,
@@ -97,6 +98,8 @@ export interface ReviewCardSurfaceProps {
    * agentFlash 定位当前复习卡（agent 改卡/入队后的实体级演出）。
    */
   agentEntityId?: string;
+  /** 翻面后浮在卡面左下角的附加操作（如「▶ 回看 mm:ss」）；不触发翻面与滑动手势 */
+  backAccessory?: React.ReactNode;
 }
 
 type AnimPhase = 'none' | 'a' | 'b';
@@ -118,15 +121,18 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   swipeEnabled = false,
   ratingLabel,
   agentEntityId,
+  backAccessory,
 }) => {
   const side = flipped ? 'back' : 'front';
-  const isCloze = hasValidCloze(card.text);
+  // 媒体出处锚点由 backAccessory 的回看按钮承载，卡面不再露出原文
+  const displayCard = React.useMemo(() => withoutCardMediaSourceRefs(card), [card]);
+  const isCloze = hasValidCloze(displayCard.text);
   const fallbackText = isCloze
-    ? renderClozeText(card.text ?? '', flipped)
+    ? renderClozeText(displayCard.text ?? '', flipped)
     : flipped
-      ? card.back || card.text || ''
-      : card.front || card.text || '';
-  const renderCard = React.useMemo(() => toRenderableReviewCard(card), [card]);
+      ? displayCard.back || displayCard.text || ''
+      : displayCard.front || displayCard.text || '';
+  const renderCard = React.useMemo(() => toRenderableReviewCard(displayCard), [displayCard]);
 
   // 交替使用两个等价动画类以重启 CSS 动画；卡片切换时用入场动画而非翻面动画。
   const cardKey = `${card.id}:${card.ankiCardId ?? ''}`;
@@ -197,7 +203,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
         : undefined}
     >
       <div
-        className={cn('flex min-h-0 min-w-0 flex-1', swipe && 'wb-fc-swipe-card')}
+        className={cn('relative flex min-h-0 min-w-0 flex-1', swipe && 'wb-fc-swipe-card')}
         style={swipeState ? swipeTransformStyle(swipeState) : undefined}
       >
         <CustomScrollArea
@@ -254,6 +260,15 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
             </span>
           </div>
         </CustomScrollArea>
+        {flipped && backAccessory ? (
+          <div
+            className="wb-fc-card-accessory"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {backAccessory}
+          </div>
+        ) : null}
       </div>
 
       {/* 拖动方向色带反馈（边缘细条 + 评分标签），随进度增强 */}

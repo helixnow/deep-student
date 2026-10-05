@@ -42,7 +42,11 @@
     "deleteTitle": "删除「{{name}}」？",
     "deleteDesc": "将移到资源库回收站，字幕与观看进度随之移走；可在回收站恢复。",
     "deleteFailed": "删除失败",
-    "deleted": "已删除「{{name}}」"
+    "deleted": "已删除「{{name}}」",
+    "cards_one": "卡 {{count}}",
+    "cards_other": "卡 {{count}}",
+    "questions_one": "题 {{count}}",
+    "questions_other": "题 {{count}}"
   },
   "import": {
     "button": "导入音视频",
@@ -94,29 +98,35 @@
     "needTranscript": "还没有字幕：先转写或导入字幕，回答会更准确。",
     "quickTitle": "常用问题",
     "quick": {
+      "moment": "问刚才这段",
+      "momentHint": "自动带上播放位置前 1 分钟的字幕，不用自己报时间",
       "summary": "总结这节课",
-      "keyPoints": "列出重点和难点",
-      "explain": "解释我没听懂的地方"
+      "keyPoints": "列出重点和难点"
     },
     "prompt": {
       "summary": "请总结《{{name}}》这节课的主要内容，按讲解顺序分点列出，每点附上对应的时间引用。",
       "keyPoints": "请列出《{{name}}》这节课的重点和难点，并说明每个难点为什么容易出错，附上对应的时间引用。",
-      "explain": "《{{name}}》这节课里我有一段没听懂（在下面补充时间点或内容）：\n"
+      "moment": "《{{name}}》{{ref}} 起这一段我没太听懂，请结合下面的字幕讲清楚：讲了什么、为什么这样讲，必要时举个例子；回答带时间引用。\n\n{{quote}}\n\n",
+      "momentNoTranscript": "《{{name}}》{{ref}} 之后这一分钟我没太听懂，请按时间读这段转写后讲清楚，回答带时间引用。\n"
     },
     "citationHint": "回答里的时间引用可点击，播放器会跳到那一刻。",
     "failed": "无法开始对话"
   },
   "practice": {
-    "intro": "按讲到的时刻出卡、出题：新开对话并预填指令，你确认后发送。",
+    "intro": "按这节课的字幕制卡、出题：制卡直接在后台生成，出题在对话里由你确认后发送。",
     "cards": "制作闪卡",
-    "cardsHint": "卡片进入「闪卡」复习，来源可跳回视频",
+    "cardsHint": "不开对话，直接按字幕制卡，进入闪卡复习，背面可回看视频",
     "questions": "生成练习题",
     "questionsHint": "题目进入「题目集」，可做题与错题复盘",
     "prompt": {
       "cards": "请根据《{{name}}》这节课的字幕制作闪卡：覆盖核心概念、定义和易错点，约 10 张；每张卡在来源中注明对应的时间引用。",
-      "questions": "请根据《{{name}}》这节课的字幕出一组练习题并创建题目集：单选、填空、简答为主，共 5-10 题，每题附答案、解析和对应的时间引用。"
+      "questions": "请根据《{{name}}》这节课的字幕出一组练习题并创建题目集：单选、填空、简答为主，共 5-10 题，每题附答案、解析和对应的时间引用。",
+      "checkpoints": "请为《{{name}}》生成课中检查点并创建题目集「{{name}} · 检查点」：按讲解顺序大约每 5 分钟一道，以单选、判断为主；三分之二是启发思考的题（为什么、如果…会怎样、和前面哪个概念有关），三分之一是回忆刚讲内容的题。每题 explanation 末尾另起一行写依据出处 [媒体@{{id}}:mm:ss]，时间取这道题考查的内容讲到的那一刻，不得编造。"
     },
-    "needTranscript": "需要先转写或导入字幕。"
+    "needTranscript": "需要先转写或导入字幕。",
+    "cardsInChat": "在对话中制卡（可补充要求）",
+    "checkpoints": "生成课中检查点",
+    "checkpointsHint": "约每 5 分钟一道锚定时刻的题，播到时提示作答，进度条上可见"
   },
   "progress": {
     "title": "学习进度",
@@ -130,5 +140,21 @@
     "minutes_other": "{{count}} 分钟"
   },
   "count_one": "{{count}} 个",
-  "count_other": "{{count}} 个"
+  "count_other": "{{count}} 个",
+  "ledger": {
+    "title": "本课台账",
+    "cards_one": "闪卡 {{count}} 张",
+    "cards_other": "闪卡 {{count}} 张",
+    "cardsDetail": "到期 {{due}} · 新卡 {{fresh}}",
+    "reviewCards": "复习本课卡片",
+    "questions_one": "题目 {{count}} 道",
+    "questions_other": "题目 {{count}} 道",
+    "questionsDetail": "正确率 {{accuracy}}% · 错题 {{wrong}}",
+    "questionsUntried": "还没做过",
+    "practice": "去做题",
+    "empty": "这节课还没有产出卡片或题目：用上面的按钮制卡、出题。"
+  },
+  "chapters": {
+    "title": "章节 {{current}}/{{total}}"
+  }
 }

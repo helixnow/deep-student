@@ -27,11 +27,19 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
-import { MediaScrubber } from './MediaScrubber';
+import { MediaScrubber, type MediaScrubberMarker, type MediaScrubberRange } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
+import { useScreenWakeLock } from './useScreenWakeLock';
+
+/** 触屏双击判定窗口 */
+const DOUBLE_TAP_MS = 280;
+/** 左 / 右两侧各占画面宽度的比例（双击快退 / 快进区） */
+const DOUBLE_TAP_ZONE = 0.35;
+/** 双击快进退提示的显示时长 */
+const SEEK_FLASH_MS = 650;
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
 /** 低于该宽度（px）收起循环与音量，保证控件一行放得下 */
@@ -55,6 +63,9 @@ export interface VideoPlayerProps {
   crossOrigin?: 'anonymous';
   /** 悬浮控制条上的附加按钮（字幕开关等），插在倍速按钮之前 */
   extraControls?: React.ReactNode;
+  /** 进度条上的时间标记（检查点 / 章节）与需回看区间 */
+  scrubberMarkers?: readonly MediaScrubberMarker[];
+  scrubberHighlights?: readonly MediaScrubberRange[];
 }
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
@@ -72,6 +83,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   trackSlot,
   crossOrigin,
   extraControls,
+  scrubberMarkers,
+  scrubberHighlights,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -175,7 +188,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     [showControls, isPlaying],
   );
 
-  const handleVideoClick = useCallback(() => {
+  const runSingleTap = useCallback(() => {
     if (lastPointerTypeRef.current !== 'mouse' && !controlsVisibleAtPointerDownRef.current) {
       // 仅唤出控制条（并重新调度自动隐藏），不切换播放
       scheduleHideControls();
@@ -184,6 +197,56 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // 播放/暂停状态变化后的控制条显隐由 isPlaying effect 统一调度
     togglePlay();
   }, [scheduleHideControls, togglePlay]);
+
+  // 触屏双击左 / 右侧 ±10 秒：只有落在两侧的轻触等一个双击窗口，中间轻触照旧立即响应
+  const tapRef = useRef<{ at: number; side: 'left' | 'right' | null; timer: number | null }>({
+    at: 0,
+    side: null,
+    timer: null,
+  });
+  const [seekFlash, setSeekFlash] = useState<{ side: 'left' | 'right'; key: number } | null>(null);
+  useEffect(() => () => {
+    if (tapRef.current.timer !== null) window.clearTimeout(tapRef.current.timer);
+  }, []);
+  useEffect(() => {
+    if (!seekFlash) return undefined;
+    const timer = window.setTimeout(() => setSeekFlash(null), SEEK_FLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, [seekFlash]);
+
+  const handleVideoClick = useCallback((event: React.MouseEvent<HTMLVideoElement>) => {
+    if (lastPointerTypeRef.current === 'mouse') {
+      runSingleTap();
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = rect.width > 0 ? (event.clientX - rect.left) / rect.width : 0.5;
+    const side = x < DOUBLE_TAP_ZONE ? 'left' : x > 1 - DOUBLE_TAP_ZONE ? 'right' : null;
+    const tap = tapRef.current;
+    const now = Date.now();
+    if (tap.timer !== null) window.clearTimeout(tap.timer);
+    tap.timer = null;
+    if (side && tap.side === side && now - tap.at < DOUBLE_TAP_MS) {
+      tap.side = null;
+      seekBy(side === 'left' ? -SKIP_SECONDS : SKIP_SECONDS);
+      setSeekFlash({ side, key: now });
+      return;
+    }
+    if (!side) {
+      tap.side = null;
+      runSingleTap();
+      return;
+    }
+    tap.at = now;
+    tap.side = side;
+    tap.timer = window.setTimeout(() => {
+      tap.timer = null;
+      tap.side = null;
+      runSingleTap();
+    }, DOUBLE_TAP_MS);
+  }, [runSingleTap, seekBy]);
+
+  useScreenWakeLock(isPlaying);
 
   const toggleFullscreen = useCallback(async () => {
     const container = containerRef.current;
@@ -359,6 +422,22 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {trackSlot}
       </video>
 
+      {seekFlash && (
+        <div
+          key={seekFlash.key}
+          aria-hidden="true"
+          data-seek-flash={seekFlash.side}
+          className={cn(
+            'pointer-events-none absolute inset-y-0 flex w-1/3 items-center justify-center',
+            seekFlash.side === 'left' ? 'left-0' : 'right-0',
+          )}
+        >
+          <span className="rounded-full bg-black/55 px-3 py-1.5 text-sm font-medium tabular-nums text-white">
+            {seekFlash.side === 'left' ? `−${SKIP_SECONDS}s` : `+${SKIP_SECONDS}s`}
+          </span>
+        </div>
+      )}
+
       {/* 顶部信息条：文件名 +（可选）兼容性提示 */}
       <div
         className={cn(
@@ -411,6 +490,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           appearance="overlay"
           ariaLabel={t('learningHub:mediaPreview.progress')}
           onSeek={seekTo}
+          markers={scrubberMarkers}
+          highlightRanges={scrubberHighlights}
         />
 
         <div className="mt-1.5 flex items-center gap-1">

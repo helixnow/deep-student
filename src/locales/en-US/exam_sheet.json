@@ -699,6 +699,8 @@
     "similarPrompt": "Based on the question below, create 2 similar questions testing the same concept at a similar difficulty, and add them to the question set (id: {{examId}}).",
     "askAction": "Ask AI",
     "similarAction": "Similar questions",
-    "sourceAction": "Source"
+    "sourceAction": "Source",
+    "mediaSourceAction": "Rewatch {{time}}",
+    "mediaSourceTitle": "Go back to {{time}} in the lecture and rewatch the part this question is based on"
   }
 }

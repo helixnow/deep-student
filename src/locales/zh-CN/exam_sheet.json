@@ -699,6 +699,8 @@
     "similarPrompt": "请基于下面这道题，生成 2 道考查同一知识点、难度相近的同类题，并加入题目集（id: {{examId}}）。",
     "askAction": "问 AI 讲解",
     "similarAction": "生成同类题",
-    "sourceAction": "出处"
+    "sourceAction": "出处",
+    "mediaSourceAction": "回看 {{time}}",
+    "mediaSourceTitle": "回到课程 {{time}}，重看这道题依据的片段"
   }
 }

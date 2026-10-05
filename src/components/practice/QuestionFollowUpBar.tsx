@@ -1,9 +1,11 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChatCircleText, CopySimple, FileText } from '@phosphor-icons/react';
+import { ChatCircleText, CopySimple, FileText, Play } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
 import type { Question } from '@/api/questionBankApi';
 import { sendSelectionToChatInput } from '@/features/pdf/selectionStudyActions';
+import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
+import { findFirstMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefTime';
 
 /** 题目出处 {"resourceIds":[…]} → 首个资料 id */
 export function questionSourceResourceId(sourceRef: string | null | undefined): string | null {
@@ -45,6 +47,11 @@ export const QuestionFollowUpBar: React.FC<{
     explanation: t('followUp.explanation', { defaultValue: '解析：' }),
   };
   const sourceId = questionSourceResourceId(question.sourceRef);
+  // 音视频出的题：解析末尾的 [媒体@…] 比资料 id 更准，出处直接跳到依据所在时刻
+  const mediaSource = React.useMemo(
+    () => findFirstMediaRef([question.explanation, question.content]),
+    [question.explanation, question.content],
+  );
 
   const askAi = () => {
     const mine = userAnswer?.trim() ? `\n${t('followUp.mine', { defaultValue: '我的答案：' })}${userAnswer.trim()}` : '';
@@ -76,11 +83,22 @@ export const QuestionFollowUpBar: React.FC<{
       <DsButton variant="ghost" size="sm" onClick={similar} className="[@media(pointer:coarse)]:min-h-11">
         <CopySimple size={15} aria-hidden="true" />{t('followUp.similarAction', { defaultValue: '生成同类题' })}
       </DsButton>
-      {sourceId && (
+      {mediaSource ? (
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => dispatchOpenMediaRef(mediaSource.resourceId, mediaSource.seconds)}
+          title={t('followUp.mediaSourceTitle', { time: mediaSource.label, defaultValue: '回到课程 {{time}}，重看这道题依据的片段' })}
+          className="tabular-nums [@media(pointer:coarse)]:min-h-11"
+        >
+          <Play size={14} weight="fill" aria-hidden="true" />
+          {t('followUp.mediaSourceAction', { time: mediaSource.label, defaultValue: '回看 {{time}}' })}
+        </DsButton>
+      ) : sourceId ? (
         <DsButton variant="ghost" size="sm" onClick={openSource} className="[@media(pointer:coarse)]:min-h-11">
           <FileText size={15} aria-hidden="true" />{t('followUp.sourceAction', { defaultValue: '出处' })}
         </DsButton>
-      )}
+      ) : null}
     </div>
   );
 };

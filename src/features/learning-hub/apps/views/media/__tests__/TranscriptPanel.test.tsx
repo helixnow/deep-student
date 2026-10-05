@@ -93,4 +93,41 @@ describe('TranscriptPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: /重试失败段/ }));
     expect(onRetry).toHaveBeenCalled();
   });
+
+  it('cycles the transcript text size and remembers it', () => {
+    window.localStorage.removeItem('media-study.transcriptTextSize');
+    renderPanel();
+    const toggle = screen.getByRole('button', { name: /字幕字号/ });
+    expect(toggle).toHaveAttribute('data-transcript-text-size', 'sm');
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('data-transcript-text-size', 'base');
+    expect(screen.getByText('动量法加速收敛').className).toContain('text-base');
+    expect(window.localStorage.getItem('media-study.transcriptTextSize')).toBe('base');
+    window.localStorage.removeItem('media-study.transcriptTextSize');
+  });
+
+  it('offers selection only when the host can quote or make cards', () => {
+    renderPanel();
+    expect(screen.queryByRole('button', { name: '选择字幕段' })).toBeNull();
+  });
+
+  it('selects lines (shift for a range, skipping failed ones) and hands them over in time order', () => {
+    const onQuoteSelection = vi.fn();
+    const onMakeCardsFromSelection = vi.fn();
+    const { onSeek } = renderPanel({ onQuoteSelection, onMakeCardsFromSelection });
+    fireEvent.click(screen.getByRole('button', { name: '选择字幕段' }));
+    fireEvent.click(screen.getByText('动量法加速收敛'));
+    fireEvent.click(screen.getByText('梯度下降的直觉'), { shiftKey: true });
+    expect(onSeek).not.toHaveBeenCalled();
+    expect(screen.getByText('已选 3 段')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /引用到对话/ }));
+    expect(onQuoteSelection.mock.calls[0][0].map((seg: TranscriptSegment) => seg.idx)).toEqual([0, 1, 4]);
+    expect(screen.queryByRole('toolbar')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: '选择字幕段' }));
+    fireEvent.click(screen.getByText('学习率太大会震荡'));
+    fireEvent.click(screen.getByRole('button', { name: /制卡/ }));
+    expect(onMakeCardsFromSelection.mock.calls[0][0].map((seg: TranscriptSegment) => seg.idx)).toEqual([1]);
+  });
 });

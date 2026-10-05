@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 /** 可选倍速档位 */
-export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
+export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
 
 const VOLUME_STORAGE_KEY = 'dstu-media-player-volume';
 const RATE_STORAGE_KEY = 'dstu-media-player-rate';

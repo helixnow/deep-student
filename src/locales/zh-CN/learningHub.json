@@ -364,7 +364,31 @@
     "captureNotReady": "视频画面尚未加载",
     "captureTainted": "当前视频源不允许读取画面",
     "frameTitle": "{{name}} · ▶ {{time}}",
-    "resumed": "已从 {{time}} 继续播放"
+    "resumed": "已从 {{time}} 继续播放",
+    "selectMode": "选择字幕段",
+    "selectDone": "退出选择",
+    "selectSegment": "选择 {{time}}",
+    "selectionToolbar": "选中字幕的操作",
+    "selectedCount": "已选 {{count}} 段",
+    "selectHint": "点字幕勾选，Shift 可连选",
+    "quoteSelection": "引用到对话",
+    "cardsFromSelection": "制卡",
+    "quoteIntro": "《{{name}}》{{ref}} 起的字幕：",
+    "quoteFailed": "无法引用到对话",
+    "textSize": "字幕字号：{{size}}（点击切换）",
+    "textSizeLabel": {
+      "sm": "小",
+      "base": "中",
+      "lg": "大"
+    }
+  },
+  "mediaCards": {
+    "deckName": "音视频",
+    "tooShort": "字幕内容太少，无法制卡",
+    "started": "已开始制卡，完成后进入闪卡复习，背面可回看课程片段",
+    "failed": "制卡失败",
+    "openTaskDashboard": "查看任务",
+    "selectionRequirement": "只针对选中的这几段字幕制卡，不要扩展到片段之外。"
   },
   "mediaRef": {
     "badgeLabel": "跳转到「{{name}}」的 {{time}}",
@@ -1614,5 +1638,29 @@
     "projects": "项目",
     "studyLog": "学习日志",
     "system": "__system__"
+  },
+  "mediaCheckpoint": {
+    "title": "检查点 · {{time}}",
+    "pauseAt": "到点暂停",
+    "later": "稍后再做",
+    "submit": "提交",
+    "showAnswer": "显示参考答案",
+    "referenceAnswer": "参考答案：{{answer}}",
+    "selfCorrect": "我答对了",
+    "selfWrong": "我答错了",
+    "correct": "答对了",
+    "wrong": "答错了",
+    "correctAnswer": "正确答案：{{answer}}",
+    "manualGrading": "已提交，请对照参考答案自评",
+    "rewatch": "回看这一段",
+    "resume": "继续播放",
+    "submitFailed": "提交答案失败",
+    "true": "对",
+    "false": "错",
+    "toolbar": "检查点 {{done}}/{{total}}",
+    "toolbarTitle": "这节课有 {{total}} 道锚定到时刻的检查题，播到时会提示作答；点这里做下一道"
+  },
+  "mediaChapters": {
+    "current": "本章：{{title}}"
   }
 }
