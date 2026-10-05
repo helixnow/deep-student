@@ -403,7 +403,6 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             kind="subtitles"
             label={t('learningHub:mediaTranscript.trackLabel')}
             src={trackSrc}
-            default
           />
         ) : null
       }
