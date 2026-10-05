@@ -93,13 +93,15 @@
 
   "action": {
     "skip": "跳过",
-    "showAnswer": "显示答案"
+    "showAnswer": "显示答案",
+    "checkAnswer": "核对答案"
   },
 
   "keyboard": {
     "space": "空格",
     "ratingHint": "按 1-4 快速评分",
-    "spaceGood": "空格 = 良好"
+    "spaceGood": "空格 = 良好",
+    "spaceSuggested": "空格 = 建议评分"
   },
 
   "questionType": {
@@ -292,6 +294,12 @@
       "conditions": "内层导数与外因子成比例"
     },
     "submit": "确认入库"
+  },
+  "answerFirst": {
+    "yourAnswer": "你的答案",
+    "placeholder": "先写下你的答案再看（可选，会记进复习记录）",
+    "correct": "答对了，建议「{{rating}}」",
+    "wrong": "你选了 {{picked}}，正确是 {{answer}}，建议「{{rating}}」"
   },
   "dueAll": {
     "title": "错题复习",

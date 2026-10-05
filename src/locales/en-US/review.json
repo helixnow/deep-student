@@ -93,13 +93,15 @@
 
   "action": {
     "skip": "Skip",
-    "showAnswer": "Show Answer"
+    "showAnswer": "Show Answer",
+    "checkAnswer": "Check answer"
   },
 
   "keyboard": {
     "space": "Space",
     "ratingHint": "Press 1-4 to rate",
-    "spaceGood": "Space = Good"
+    "spaceGood": "Space = Good",
+    "spaceSuggested": "Space = suggested rating"
   },
 
   "questionType": {
@@ -292,6 +294,12 @@
       "conditions": "The outer factor is proportional to the inner derivative"
     },
     "submit": "Save insight"
+  },
+  "answerFirst": {
+    "yourAnswer": "Your answer",
+    "placeholder": "Write your answer before revealing (optional, saved to the review log)",
+    "correct": "Correct — suggested: {{rating}}",
+    "wrong": "You picked {{picked}}, the answer is {{answer}} — suggested: {{rating}}"
   },
   "dueAll": {
     "title": "Mistake review",

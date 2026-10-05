@@ -78,6 +78,8 @@ interface SessionStats {
 }
 
 interface RatingButtonProps {
+  /** 按作答对错给出的建议评分：加描边强调，空格 / 回车即选它 */
+  suggested?: boolean;
   quality: ReviewQuality;
   label: string;
   sublabel: string;
@@ -128,28 +130,47 @@ function parseChoiceAnswer(answer: string | undefined, keys: Set<string>): Set<s
   return letters.length > 0 && letters.every((ch) => keys.has(ch)) ? new Set(letters) : new Set();
 }
 
-/** 选择题选项：翻面前只列选项，翻面后标出正确项。题干里不一定写了选项，不列就只剩题干和一个「B」。 */
+const normalizeOptionKey = (key: string) => key.trim().toUpperCase();
+
+/**
+ * 选择题选项：翻面前可点选作答（先答再看，答案会记进复习记录），翻面后标出正确项与选错的项。
+ * 题干里不一定写了选项，不列就只剩题干和一个「B」。
+ */
 const ReviewOptionList: React.FC<{
   options: Array<{ key: string; content: string }>;
-  answer?: string;
+  correctKeys: Set<string>;
+  selected: string[];
   revealed: boolean;
+  onToggle: (key: string) => void;
   correctLabel: string;
-}> = ({ options, answer, revealed, correctLabel }) => {
-  const correct = useMemo(
-    () => parseChoiceAnswer(answer, new Set(options.map((option) => option.key.trim().toUpperCase()))),
-    [answer, options],
-  );
-  return (
-    <ul className="mt-3 space-y-1.5" data-testid="review-options">
-      {options.map((option) => {
-        const isCorrect = revealed && correct.has(option.key.trim().toUpperCase());
-        return (
-          <li
-            key={option.key}
+}> = ({ options, correctKeys, selected, revealed, onToggle, correctLabel }) => (
+  <ul className="mt-3 space-y-1.5" data-testid="review-options">
+    {options.map((option) => {
+      const key = normalizeOptionKey(option.key);
+      const isSelected = selected.includes(key);
+      const isCorrect = revealed && correctKeys.has(key);
+      const isWrongPick = revealed && isSelected && !correctKeys.has(key);
+      return (
+        <li key={option.key}>
+          <button
+            type="button"
+            disabled={revealed}
+            aria-pressed={isSelected}
+            onClick={() => onToggle(key)}
             data-correct={isCorrect || undefined}
+            data-wrong={isWrongPick || undefined}
             className={cn(
-              'flex items-start gap-2 rounded-md border px-3 py-2 text-sm transition-colors',
-              isCorrect ? 'border-success/40 bg-success/5' : 'border-border/60',
+              'flex w-full items-start gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors',
+              '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]',
+              !revealed && 'cursor-pointer hover:bg-[var(--interactive-hover)]',
+              revealed && 'cursor-default',
+              isCorrect
+                ? 'border-success/40 bg-success/5'
+                : isWrongPick
+                  ? 'border-destructive/40 bg-destructive/5'
+                  : isSelected
+                    ? 'border-primary/50 bg-primary/5'
+                    : 'border-border/60',
             )}
           >
             <span className="shrink-0 font-medium tabular-nums text-muted-foreground">{option.key}.</span>
@@ -157,12 +178,12 @@ const ReviewOptionList: React.FC<{
               <MarkdownRenderer content={option.content} />
             </div>
             {isCorrect && <CheckCircle size={16} weight="fill" className="mt-0.5 shrink-0 text-success" aria-label={correctLabel} />}
-          </li>
-        );
-      })}
-    </ul>
-  );
-};
+          </button>
+        </li>
+      );
+    })}
+  </ul>
+);
 
 // ============================================================================
 // 结构化题型答案降级显示（matching/ordering/numeric）
@@ -280,18 +301,21 @@ const RatingButton: React.FC<RatingButtonProps> = ({
   onClick,
   disabled,
   shortcutKey,
+  suggested,
 }) => (
   <DsButton
     variant="ghost" size="sm"
     onClick={onClick}
     disabled={disabled}
     aria-keyshortcuts={shortcutKey}
+    data-suggested={suggested || undefined}
     className={cn(
       'relative !p-2 !h-auto min-h-11 !rounded-md flex-col !items-center !gap-1',
       // 触屏拇指可达：coarse 指针放大到 ≥56px 命中高度（桌面不受影响）
       '[@media(pointer:coarse)]:!min-h-14',
       'border ui-press',
       'disabled:opacity-50 disabled:cursor-not-allowed',
+      suggested && 'ring-2 ring-current ring-offset-1 ring-offset-background',
       color
     )}
   >
@@ -509,6 +533,31 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   const progress = getSessionProgress();
   const sessionStats = getSessionStats();
 
+  // 先答再看：选择题点选、其它题型可先写下答案；翻面后按对错建议评分，作答随评分记进复习记录
+  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
+  const [draftAnswer, setDraftAnswer] = useState('');
+  const currentQuestion = currentItem?.question;
+  const choiceOptions = currentQuestion?.options && currentQuestion.options.length > 0 ? currentQuestion.options : null;
+  const correctKeys = useMemo(
+    () => (choiceOptions
+      ? parseChoiceAnswer(currentQuestion?.answer, new Set(choiceOptions.map((option) => normalizeOptionKey(option.key))))
+      : new Set<string>()),
+    [choiceOptions, currentQuestion?.answer],
+  );
+  const multiChoice = (currentQuestion?.question_type ?? '').includes('multiple') || correctKeys.size > 1;
+  const answerVerdict: 'correct' | 'wrong' | null =
+    showAnswer && selectedKeys.length > 0 && correctKeys.size > 0
+      ? (selectedKeys.length === correctKeys.size && selectedKeys.every((key) => correctKeys.has(key)) ? 'correct' : 'wrong')
+      : null;
+  const suggestedQuality: ReviewQuality | null = answerVerdict === 'correct' ? 3 : answerVerdict === 'wrong' ? 0 : null;
+  const userAnswer = selectedKeys.length > 0 ? [...selectedKeys].sort().join('') : draftAnswer.trim() || undefined;
+  const toggleOption = useCallback((key: string) => {
+    setSelectedKeys((prev) => {
+      if (multiChoice) return prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key];
+      return prev[0] === key ? [] : [key];
+    });
+  }, [multiChoice]);
+
   const isSessionComplete =
     session.isActive &&
     session.queue.length > 0 &&
@@ -531,6 +580,8 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
   // 重置答案显示状态
   useEffect(() => {
     setShowAnswer(false);
+    setSelectedKeys([]);
+    setDraftAnswer('');
   }, [session.currentIndex, session.startTime]);
 
   // 处理评分
@@ -540,7 +591,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
       ratingInFlightRef.current = true;
 
       try {
-        await submitReview(quality);
+        await submitReview(quality, userAnswer);
 
         // Read latest state after async update to avoid stale closure values
         const latestSession = useReviewPlanStore.getState().session;
@@ -574,7 +625,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         ratingInFlightRef.current = false;
       }
     },
-    [isProcessing, currentItem, submitReview, elapsedTime, onComplete, t]
+    [isProcessing, currentItem, submitReview, userAnswer, elapsedTime, onComplete, t]
   );
 
   // 处理跳过
@@ -607,25 +658,32 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         } else if (e.key === 'ArrowRight') {
           e.preventDefault();
           handleSkip();
+        } else if (choiceOptions && /^[a-z]$/i.test(e.key)) {
+          // 选择题：按选项字母点选
+          const key = e.key.toUpperCase();
+          if (choiceOptions.some((option) => normalizeOptionKey(option.key) === key)) {
+            e.preventDefault();
+            toggleOption(key);
+          }
         }
         return;
       }
 
       // 答案已显示：1-4 评分（映射 Again/Hard/Good/Easy）；
-      // 空格/回车 = 良好（Anki 同款高频路径：一路空格过卡）
+      // 空格/回车 = 建议评分（作答可判对错时），否则良好（Anki 同款高频路径：一路空格过卡）
       const qualityByKey: Record<string, ReviewQuality> = { '1': 0, '2': 2, '3': 3, '4': 5 };
       if (e.key in qualityByKey) {
         e.preventDefault();
         void handleRate(qualityByKey[e.key]);
       } else if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        void handleRate(3);
+        void handleRate(suggestedQuality ?? 3);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [session.isActive, currentItem, showAnswer, handleRate, handleSkip, belongsToOtherExam, isActive]);
+  }, [session.isActive, currentItem, showAnswer, handleRate, handleSkip, belongsToOtherExam, isActive, choiceOptions, toggleOption, suggestedQuality]);
 
   const finishSession = useCallback(() => {
     endSession();
@@ -874,14 +932,32 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 content={question?.content || t('review:unknownQuestion')}
               />
             </div>
-            {question?.options && question.options.length > 0 && (
+            {choiceOptions ? (
               <ReviewOptionList
-                options={question.options}
-                answer={question.answer}
+                options={choiceOptions}
+                correctKeys={correctKeys}
+                selected={selectedKeys}
                 revealed={showAnswer}
+                onToggle={toggleOption}
                 correctLabel={t('review:card.correctOption', { defaultValue: '正确选项' })}
               />
-            )}
+            ) : !showAnswer ? (
+              <textarea
+                value={draftAnswer}
+                onChange={(event) => setDraftAnswer(event.target.value)}
+                rows={2}
+                aria-label={t('review:answerFirst.yourAnswer', { defaultValue: '你的答案' })}
+                placeholder={t('review:answerFirst.placeholder', { defaultValue: '先写下你的答案再看（可选，会记进复习记录）' })}
+                className="mt-3 w-full resize-y rounded-md border border-border/60 bg-transparent px-3 py-2 text-sm outline-none focus:border-ring"
+              />
+            ) : draftAnswer.trim() ? (
+              <div className="mt-3 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm" data-testid="review-your-answer">
+                <h3 className="mb-1 text-xs font-medium text-muted-foreground">
+                  {t('review:answerFirst.yourAnswer', { defaultValue: '你的答案' })}
+                </h3>
+                <p className="whitespace-pre-wrap break-words text-foreground">{draftAnswer.trim()}</p>
+              </div>
+            ) : null}
           </div>
 
           {/* 答案区域：grid-rows 技巧实现 0 → auto 高度的展开动画 */}
@@ -950,7 +1026,9 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               className="min-h-11 flex-1 gap-2 min-w-[160px] sm:flex-initial [@media(pointer:coarse)]:!min-h-12"
             >
               <Eye size={16} />
-              {t('review:action.showAnswer')}
+              {userAnswer
+                ? t('review:action.checkAnswer', { defaultValue: '核对答案' })
+                : t('review:action.showAnswer')}
               <kbd className="hidden sm:inline-flex items-center justify-center h-4 px-1.5 rounded border border-current/30 text-[10px] font-mono leading-none opacity-60">
                 {t('review:keyboard.space')}
               </kbd>
@@ -959,13 +1037,34 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
         ) : (
           /* 评分按钮：Anki 配色（红/橙/绿/蓝）+ 预估间隔标签 */
           <div className="max-w-lg mx-auto">
+            {answerVerdict && (
+              <p
+                role="status"
+                data-testid="review-verdict"
+                className={cn(
+                  'mb-2 text-center text-sm font-medium',
+                  answerVerdict === 'correct' ? 'text-success' : 'text-destructive',
+                )}
+              >
+                {answerVerdict === 'correct'
+                  ? t('review:answerFirst.correct', { rating: t('review:rating.good'), defaultValue: '答对了，建议「{{rating}}」' })
+                  : t('review:answerFirst.wrong', {
+                    picked: [...selectedKeys].sort().join(''),
+                    answer: [...correctKeys].sort().join(''),
+                    rating: t('review:rating.again'),
+                    defaultValue: '你选了 {{picked}}，正确是 {{answer}}，建议「{{rating}}」',
+                  })}
+              </p>
+            )}
             <p
               className="text-xs text-center text-muted-foreground mb-3"
               title={`${t('review:tips.ratingTitle')} ${t('review:tips.ratingDesc')}`}
             >
               {t('review:rating.prompt')}
               <span className="hidden sm:inline text-muted-foreground/60 ml-2">
-                {t('review:keyboard.ratingHint')} · {t('review:keyboard.spaceGood')}
+                {t('review:keyboard.ratingHint')} · {suggestedQuality !== null
+                  ? t('review:keyboard.spaceSuggested', { defaultValue: '空格 = 建议评分' })
+                  : t('review:keyboard.spaceGood')}
               </span>
             </p>
             {/* 评分指南：首题翻面后展示一次完整说明，之后收进上方 title */}
@@ -984,6 +1083,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 onClick={() => handleRate(0)}
                 disabled={isProcessing}
                 shortcutKey="1"
+                suggested={suggestedQuality === 0}
               />
               <RatingButton
                 quality={2}
@@ -1004,6 +1104,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 onClick={() => handleRate(3)}
                 disabled={isProcessing}
                 shortcutKey="3"
+                suggested={suggestedQuality === 3}
               />
               <RatingButton
                 quality={5}
