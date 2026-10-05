@@ -135,7 +135,7 @@ export const TodayCommandCenter: React.FC<TodayCommandCenterProps> = ({ onNaviga
           count={counts.cardsDue}
           hint={t('today_center.go')}
           highlight={counts.cardsDue > 0}
-          onClick={() => onNavigate?.('flashcards')}
+          onClick={() => openTodayReviewTarget('cards')}
         />
         <ActionCard
           icon={<WarningDiamond size={18} />}

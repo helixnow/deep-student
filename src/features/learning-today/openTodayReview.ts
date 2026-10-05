@@ -10,12 +10,36 @@ import { openDueNotesReview } from './todayLearning';
 
 export type TodayReviewTarget = 'cards' | 'mistakes' | 'notes';
 
+/** 闪卡落到「今日」页；正在复习就不打断，只把闪卡带到前面。 */
+async function openFlashcardsToday(workbench: boolean): Promise<void> {
+  const { useFsrsReviewStore } = await import('@/features/flashcards/store/fsrsReviewStore');
+  const inSession = useFsrsReviewStore.getState().screen === 'session';
+  if (workbench) {
+    if (inSession) {
+      workbenchBus.launch({ typeId: 'flashcards', reason: 'api' });
+      return;
+    }
+    await workbenchBus.activateDetailed({
+      typeId: 'flashcards',
+      instanceKey: '',
+      action: 'showScreen',
+      payload: { screen: 'today' },
+      fallbackLaunch: { typeId: 'flashcards', reason: 'api', payload: { screen: 'today' } },
+    });
+    return;
+  }
+  if (!inSession) useFsrsReviewStore.getState().setScreen('today');
+  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'flashcards' } }));
+}
+
 export function openTodayReviewTarget(target: TodayReviewTarget): void {
   const workbench = workbenchBus.isEnabled();
   switch (target) {
     case 'cards':
-      if (workbench) workbenchBus.launch({ typeId: 'flashcards', reason: 'api' });
-      else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'flashcards' } }));
+      void openFlashcardsToday(workbench).catch(() => {
+        if (workbench) workbenchBus.launch({ typeId: 'flashcards', reason: 'api' });
+        else window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'flashcards' } }));
+      });
       return;
     case 'mistakes':
       openDueMistakesReview();
