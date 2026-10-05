@@ -364,7 +364,25 @@
     "captureNotReady": "The video frame hasn't loaded yet",
     "captureTainted": "This video source doesn't allow reading frames",
     "frameTitle": "{{name}} · ▶ {{time}}",
-    "resumed": "Resumed from {{time}}"
+    "resumed": "Resumed from {{time}}",
+    "selectMode": "Select lines",
+    "selectDone": "Done selecting",
+    "selectSegment": "Select {{time}}",
+    "selectionToolbar": "Actions for selected lines",
+    "selectedCount": "Selected: {{count}}",
+    "selectHint": "Tap lines to select; Shift-click selects a range",
+    "quoteSelection": "Quote in chat",
+    "cardsFromSelection": "Make cards",
+    "quoteIntro": "Transcript of “{{name}}” from {{ref}}:",
+    "quoteFailed": "Couldn't quote in chat"
+  },
+  "mediaCards": {
+    "deckName": "Media",
+    "tooShort": "Not enough transcript to make cards",
+    "started": "Making cards. They'll go into flashcard review, with a link back to the lecture on the back",
+    "failed": "Couldn't make cards",
+    "openTaskDashboard": "View task",
+    "selectionRequirement": "Only make cards from the selected lines; don't go beyond them."
   },
   "mediaRef": {
     "badgeLabel": "Jump to {{time}} in “{{name}}”",

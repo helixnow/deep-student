@@ -364,7 +364,25 @@
     "captureNotReady": "视频画面尚未加载",
     "captureTainted": "当前视频源不允许读取画面",
     "frameTitle": "{{name}} · ▶ {{time}}",
-    "resumed": "已从 {{time}} 继续播放"
+    "resumed": "已从 {{time}} 继续播放",
+    "selectMode": "选择字幕段",
+    "selectDone": "退出选择",
+    "selectSegment": "选择 {{time}}",
+    "selectionToolbar": "选中字幕的操作",
+    "selectedCount": "已选 {{count}} 段",
+    "selectHint": "点字幕勾选，Shift 可连选",
+    "quoteSelection": "引用到对话",
+    "cardsFromSelection": "制卡",
+    "quoteIntro": "《{{name}}》{{ref}} 起的字幕：",
+    "quoteFailed": "无法引用到对话"
+  },
+  "mediaCards": {
+    "deckName": "音视频",
+    "tooShort": "字幕内容太少，无法制卡",
+    "started": "已开始制卡，完成后进入闪卡复习，背面可回看课程片段",
+    "failed": "制卡失败",
+    "openTaskDashboard": "查看任务",
+    "selectionRequirement": "只针对选中的这几段字幕制卡，不要扩展到片段之外。"
   },
   "mediaRef": {
     "badgeLabel": "跳转到「{{name}}」的 {{time}}",

@@ -96,14 +96,16 @@
     "needTranscript": "No transcript yet. Transcribe or import subtitles first for better answers.",
     "quickTitle": "Quick questions",
     "quick": {
+      "moment": "Ask about what I just watched",
+      "momentHint": "Brings in the last minute of transcript before the playhead, no need to give the time",
       "summary": "Summarize this lecture",
-      "keyPoints": "List key points and hard parts",
-      "explain": "Explain a part I didn't get"
+      "keyPoints": "List key points and hard parts"
     },
     "prompt": {
       "summary": "Summarize the lecture “{{name}}” in the order it was taught, as bullet points, each with its timestamp citation.",
       "keyPoints": "List the key points and difficult parts of the lecture “{{name}}”, explain why each difficult part is easy to get wrong, and add timestamp citations.",
-      "explain": "There's a part of the lecture “{{name}}” I didn't understand (add the time or what was said below):\n"
+      "moment": "I didn't quite get the part of “{{name}}” starting at {{ref}}. Using the transcript below, explain what was said and why, with an example if it helps, and cite timestamps.\n\n{{quote}}\n\n",
+      "momentNoTranscript": "I didn't quite get the minute of “{{name}}” after {{ref}}. Read the transcript for that time range, explain it clearly, and cite timestamps.\n"
     },
     "citationHint": "Timestamps in answers are clickable and jump the player to that moment.",
     "failed": "Couldn't start the chat"

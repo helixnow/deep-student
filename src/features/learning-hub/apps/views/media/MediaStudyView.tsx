@@ -56,8 +56,16 @@ import { rememberPendingMediaFocus, takePendingMediaFocus } from './mediaRefEven
 import { TranscriptPanel, selectDisplaySegments } from './TranscriptPanel';
 import { findActiveSegmentIndex } from './transcriptVtt';
 import { HandoutGenerateButton } from '@/features/media-handout';
+import { sendSelectionToChatInput } from '@/features/pdf/selectionStudyActions';
 import { formatMediaRefTimestamp } from './mediaRefTime';
 import { captureVideoFrame, CaptureFrameError, frameFileName } from './captureVideoFrame';
+import {
+  buildTranscriptQuote,
+  FRAME_CONTEXT_RADIUS_SECONDS,
+  formatTranscriptLines,
+  segmentsInWindow,
+} from './transcriptExcerpt';
+import { makeMediaCards } from './mediaCards';
 import {
   MEDIA_STUDY_TRANSCRIPT_TAB,
   useMediaStudyCompanion,
@@ -330,7 +338,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     if (!(el instanceof HTMLVideoElement)) return;
     setCapturing(true);
     try {
-      const timestamp = formatMediaRefTimestamp(el.currentTime);
+      const seconds = el.currentTime;
+      const timestamp = formatMediaRefTimestamp(seconds);
       const blob = await captureVideoFrame(el);
       const name = frameFileName(fileName, timestamp);
       const uploaded = await uploadAttachmentBlob(blob, {
@@ -338,6 +347,12 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         mimeType: 'image/png',
         type: 'image',
       });
+      // 模型只看到一张图时不知道老师此刻在讲什么：附上前后 30 秒字幕（图片上下文定义消费）
+      const excerpt = formatTranscriptLines(segmentsInWindow(
+        segments,
+        (seconds - FRAME_CONTEXT_RADIUS_SECONDS) * 1000,
+        (seconds + FRAME_CONTEXT_RADIUS_SECONDS) * 1000,
+      ));
       await referenceToChat({
         sourceType: 'image',
         sourceId: uploaded.sourceId,
@@ -346,7 +361,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           mimeType: 'image/png',
           size: blob.size,
           mediaResourceId: resourceId,
-          mediaSeconds: Math.floor(el.currentTime),
+          mediaSeconds: Math.floor(seconds),
+          ...(excerpt ? { mediaTranscriptExcerpt: excerpt } : {}),
         },
       });
     } catch (err: unknown) {
@@ -361,7 +377,37 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     } finally {
       setCapturing(false);
     }
-  }, [fileName, referenceToChat, resourceId, t]);
+  }, [fileName, referenceToChat, resourceId, segments, t]);
+
+  // ---------------------------------------------------------------- 字幕选段 → 引用到对话 / 制卡
+  // 学习页（有 companion）新开课程对话（附媒体 + 课程学习技能，同问答分区）；
+  // 资源库 / 聊天右侧面板预填当前对话的输入框（同 PDF 划词「添加到聊天」）。
+  const handleQuoteSelection = useCallback((selected: TranscriptSegment[]) => {
+    const quote = buildTranscriptQuote(resourceId, selected);
+    if (!quote) return;
+    const title = fileName.replace(/\.[^.]+$/, '') || fileName;
+    const text = `${t('learningHub:mediaTranscript.quoteIntro', { name: title, ref: quote.marker })}\n${quote.quote}\n\n`;
+    if (!companion) {
+      sendSelectionToChatInput({ text, sourceName: fileName });
+      return;
+    }
+    void import('@/features/media-studio/mediaChat')
+      .then(({ startMediaChat }) => startMediaChat({ resourceId, name: fileName, prompt: text, referenceToChat }))
+      .catch((err: unknown) => {
+        showGlobalNotification('error', getErrorMessage(err), t('learningHub:mediaTranscript.quoteFailed'));
+      });
+  }, [companion, fileName, referenceToChat, resourceId, t]);
+
+  const handleCardsFromSelection = useCallback((selected: TranscriptSegment[]) => {
+    void makeMediaCards({
+      resourceId,
+      fileName,
+      segments: selected,
+      extraRequirements: t('learningHub:mediaCards.selectionRequirement'),
+      maxCards: Math.min(10, Math.max(3, Math.ceil(selected.length / 3))),
+      t,
+    });
+  }, [fileName, resourceId, t]);
 
   // ---------------------------------------------------------------- 在音视频中学习
   // 交接：本视图暂停（保活的资源库标签不能和学习页同时出声）；正在播放时把当前位置作为
@@ -381,6 +427,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     handle.seekTo(seconds);
     handle.play();
   }, []);
+  const getCurrentTime = useCallback(
+    () => handleRef.current?.getElement()?.currentTime ?? lastTimeRef.current,
+    [],
+  );
   const doneSegments = useMemo(() => segments.filter((s) => s.status === 'done').length, [segments]);
   const companionRenderContext = useMemo<MediaStudyCompanionRenderContext>(
     () => ({
@@ -392,9 +442,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       hasTranscript: hasDoneSegments && !running,
       doneSegments,
       totalSegments: transcript?.progress?.totalSegments || segments.length,
+      segments,
       seekTo: seekToSeconds,
+      getCurrentTime,
     }),
-    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
+    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments, seekToSeconds, getCurrentTime],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -718,6 +770,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   hideTitle
                   bordered={false}
                   className="min-h-0 flex-1"
+                  onQuoteSelection={handleQuoteSelection}
+                  onMakeCardsFromSelection={handleCardsFromSelection}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
@@ -784,6 +838,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             retrying={starting}
             layout={sideLayout ? 'side' : 'bottom'}
             className={sideLayout ? 'w-[340px] shrink-0 xl:w-[380px]' : 'min-h-0 flex-1'}
+            onQuoteSelection={handleQuoteSelection}
+            onMakeCardsFromSelection={handleCardsFromSelection}
           />
         )}
       </div>
