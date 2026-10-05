@@ -220,14 +220,14 @@ describe('速查表可发现性', () => {
 // ---------------------------------------------------------------------------
 
 describe('空桌面与引导解耦', () => {
-  it('跳过 tour 后主 CTA 仍在；「重新查看引导」可复活 tour', () => {
+  it('跳过 tour 后引导卡收起（Dock / 右键菜单仍能开资源库）；「重新查看引导」可复活 tour', () => {
     render(<EmptyDesktop />);
     expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
 
     fireEvent.click(screen.getByTestId('wb-empty-tour-skip'));
     expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    // 主 CTA 不随 tour 一起消失
-    expect(screen.getByText('打开资源库')).toBeTruthy();
+    // 2026-10：tour 关掉后整张卡不再挡桌面
+    expect(screen.queryByText('打开资源库')).toBeNull();
 
     act(() => {
       window.dispatchEvent(new CustomEvent('workbench:empty-desktop-replay-tour'));
@@ -235,13 +235,13 @@ describe('空桌面与引导解耦', () => {
     expect(screen.getByTestId('wb-empty-tour')).toBeTruthy();
   });
 
-  it('「不再显示」永久消隐 tour，主 CTA 与卡片仍渲染；重播清掉持久标记', () => {
+  it('「不再显示」永久消隐 tour 与引导卡；重播清掉持久标记', () => {
     render(<EmptyDesktop />);
     fireEvent.click(screen.getByTestId('wb-empty-tour-dont-show'));
 
     expect(localStorage.getItem(EMPTY_DESKTOP_ONBOARDING_KEY)).toBe('1');
     expect(screen.queryByTestId('wb-empty-tour')).toBeNull();
-    expect(screen.getByText('打开资源库')).toBeTruthy();
+    expect(screen.queryByText('打开资源库')).toBeNull();
 
     act(() => {
       window.dispatchEvent(new CustomEvent('workbench:empty-desktop-replay-tour'));
