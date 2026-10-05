@@ -1552,19 +1552,18 @@ function App() {
   // 一律在学习资源页以标签打开并跳转。聊天页自己处理（右侧附件面板，见 useChatPageEvents）；
   // 这里不依赖聊天页挂载——触屏 LRU 可能已淘汰它，否则从其它页面点击会无响应或在
   // 隐藏的聊天面板里出声。跳转由媒体视图就绪后领取待兑现意图兜底（mediaRefEvents）。
-  useEffect(() => {
-    const onMediaRefOpen = (event: Event) => {
-      if (workbenchBus.isEnabled() || currentViewRef.current === 'chat-v2') return;
-      const { resourceId, seconds } = (event as CustomEvent<{ resourceId?: string; seconds?: number }>).detail ?? {};
-      if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return;
-      openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${resourceId}` });
-      void import('@/features/learning-hub/apps/views/media/mediaRefEvents').then(
-        ({ requestMediaFocusUntilHandled }) => requestMediaFocusUntilHandled({ resourceId, seconds }),
-      );
-    };
-    document.addEventListener('media-ref:open', onMediaRefOpen);
-    return () => document.removeEventListener('media-ref:open', onMediaRefOpen);
+  const handleMediaRefOpen = useCallback((event: Event) => {
+    if (workbenchBus.isEnabled() || currentViewRef.current === 'chat-v2') return;
+    const { resourceId, seconds } = (event as CustomEvent<{ resourceId?: string; seconds?: number }>).detail ?? {};
+    if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return;
+    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${resourceId}` });
+    void import('@/features/learning-hub/apps/views/media/mediaRefEvents').then(
+      ({ requestMediaFocusUntilHandled }) => requestMediaFocusUntilHandled({ resourceId, seconds }),
+    );
   }, [openInLearningHub]);
+  useEventRegistry([
+    { target: 'document', type: 'media-ref:open', listener: handleMediaRefOpen },
+  ], [handleMediaRefOpen]);
 
   // ★ 2026-01 清理：知识库导航统一跳转到 Learning Hub
   useAppEvent(APP_EVENTS.NAVIGATE_TO_KNOWLEDGE_BASE, (detail) => {
