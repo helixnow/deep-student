@@ -25,7 +25,7 @@ import {
   stripBilibiliExtension,
   type BilibiliLinkDescriptor,
 } from '../bilibiliLinkApi';
-import { BilibiliLinkDialog } from '../BilibiliLinkDialog';
+import { BilibiliLinkDialog, summarizeBilibiliBatch, type BilibiliBatchSummary } from '../BilibiliLinkDialog';
 import { BILIBILI_EMBED_SANDBOX, BilibiliEmbedPlayer } from '../BilibiliEmbedPlayer';
 import type { MediaPlayerHandle, MediaPlayerStatus } from '../mediaPlayerHandle';
 
@@ -164,7 +164,9 @@ describe('BilibiliLinkDialog', () => {
 
     await waitFor(() => expect(document.querySelector('[data-bilibili-probe="BV1xx411c7mD"]')).toBeTruthy());
     expect(screen.getByText('线性代数')).toBeTruthy();
-    expect(document.querySelector('[data-bilibili-page-select]')).toBeTruthy();
+    // 新建模式的多 P 视频：勾选清单，默认只勾链接里的那一 P → 仍是单个导入
+    expect(document.querySelector('[data-bilibili-page-check="2"]')?.getAttribute('data-state')).toBe('checked');
+    expect(document.querySelector('[data-bilibili-page-check="1"]')?.getAttribute('data-state')).toBe('unchecked');
     expect(document.querySelector('[data-bilibili-track-select]')?.textContent).toContain('中文（中国）');
 
     fireEvent.click(confirm);
@@ -243,6 +245,138 @@ describe('BilibiliLinkDialog', () => {
     expect((document.querySelector('[data-bilibili-link-input]') as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByRole('button', { name: /learningHub:mediaBilibili.parse/ })).toBeNull();
     await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('media_bilibili_probe', { input: LINK.url, page: 2 }));
+  });
+});
+
+const THREE_PARTS = {
+  ...PROBE,
+  pages: [
+    { page: 1, cid: 1001, part: '01 向量', durationMs: 300_000 },
+    { page: 2, cid: 1002, part: '02 矩阵', durationMs: 300_000 },
+    { page: 3, cid: 1003, part: '03 行列式', durationMs: 300_000 },
+  ],
+};
+const CANONICAL = 'https://www.bilibili.com/video/BV1xx411c7mD';
+const errorPayload = (code: string, message: string) => Promise.reject(JSON.stringify({ code, message }));
+
+async function lookUp(link = 'https://b23.tv/AbC123') {
+  fireEvent.change(document.querySelector('[data-bilibili-link-input]') as HTMLInputElement, { target: { value: link } });
+  fireEvent.click(screen.getByRole('button', { name: /learningHub:mediaBilibili.parse/ }));
+  await waitFor(() => expect(document.querySelector('[data-bilibili-pages]')).toBeTruthy());
+}
+
+describe('BilibiliLinkDialog · multi-part batch', () => {
+  it('lists parts with the linked one checked, imports every selected part in order and summarizes', async () => {
+    respond({
+      media_bilibili_probe: () => THREE_PARTS,
+      media_bilibili_create: (args) =>
+        args.page === 2
+          ? errorPayload('bilibili-no-subtitle', '第 2 P没有可用字幕')
+          : { fileId: `file_p${String(args.page)}`, name: 'x.bilibili', created: args.page === 1, segments: 10 },
+    });
+    const onDone = vi.fn();
+    render(
+      <BilibiliLinkDialog open mode={{ kind: 'create' }} onOpenChange={vi.fn()} onDone={onDone} batchIntervalMs={0} retryDelayMs={0} />,
+    );
+    await lookUp();
+    const checked = () =>
+      Array.from(document.querySelectorAll('[data-bilibili-page-check]'))
+        .filter((el) => el.getAttribute('data-state') === 'checked')
+        .map((el) => el.getAttribute('data-bilibili-page-check'));
+    expect(checked()).toEqual(['2']);
+    // 多 P：勾选清单代替单选下拉
+    expect(document.querySelector('[data-bilibili-page-select]')).toBeNull();
+    const confirm = document.querySelector('[data-bilibili-confirm]') as HTMLButtonElement;
+    expect(confirm.textContent).toBe('learningHub:mediaBilibili.confirmCreate');
+
+    fireEvent.click(document.querySelector('[data-bilibili-select-none]') as HTMLElement);
+    expect(confirm.disabled).toBe(true);
+    fireEvent.click(document.querySelector('[data-bilibili-select-all]') as HTMLElement);
+    expect(checked()).toEqual(['1', '2', '3']);
+    expect(confirm.textContent).toBe('learningHub:mediaBilibili.confirmBatch');
+
+    fireEvent.click(confirm);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const creates = invokeMock.mock.calls.filter(([command]) => command === 'media_bilibili_create').map(([, args]) => args);
+    expect(creates).toEqual([1, 2, 3].map((page) => ({ input: CANONICAL, page, lan: 'zh-CN' })));
+    expect(onDone).toHaveBeenCalledWith({
+      fileId: 'file_p1',
+      created: true,
+      segments: 20,
+      name: '线性代数',
+      batch: { total: 3, created: 1, updated: 1, skipped: [2], failed: [], remaining: 0 },
+    });
+  });
+
+  it('retries a failed request once, then stops the batch and reports what is left', async () => {
+    respond({
+      media_bilibili_probe: () => THREE_PARTS,
+      media_bilibili_create: () => errorPayload('bilibili-request-failed', 'B 站暂时拦截了请求（风控）'),
+    });
+    const onDone = vi.fn();
+    render(
+      <BilibiliLinkDialog open mode={{ kind: 'create' }} onOpenChange={vi.fn()} onDone={onDone} batchIntervalMs={0} retryDelayMs={0} />,
+    );
+    await lookUp();
+    fireEvent.click(document.querySelector('[data-bilibili-select-all]') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-bilibili-confirm]') as HTMLElement);
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(invokeMock.mock.calls.filter(([command]) => command === 'media_bilibili_create')).toHaveLength(2);
+    expect(onDone.mock.calls[0][0].batch).toEqual({
+      total: 3,
+      created: 0,
+      updated: 0,
+      skipped: [],
+      failed: [{ page: 1, message: 'B 站暂时拦截了请求（风控）' }],
+      remaining: 2,
+    });
+  });
+
+  it('stop finishes the current part and leaves the rest', async () => {
+    let release: () => void = () => {};
+    respond({
+      media_bilibili_probe: () => THREE_PARTS,
+      media_bilibili_create: (args) =>
+        new Promise((resolve) => {
+          release = () => resolve({ fileId: `file_p${String(args.page)}`, name: 'x', created: true, segments: 5 });
+        }),
+    });
+    const onDone = vi.fn();
+    const onOpenChange = vi.fn();
+    render(
+      <BilibiliLinkDialog open mode={{ kind: 'create' }} onOpenChange={onOpenChange} onDone={onDone} batchIntervalMs={0} retryDelayMs={0} />,
+    );
+    await lookUp();
+    fireEvent.click(document.querySelector('[data-bilibili-select-all]') as HTMLElement);
+    fireEvent.click(document.querySelector('[data-bilibili-confirm]') as HTMLElement);
+    await waitFor(() => expect(document.querySelector('[data-bilibili-batch-progress]')?.textContent).toContain('learningHub:mediaBilibili.batchProgress'));
+
+    fireEvent.click(document.querySelector('[data-bilibili-stop]') as HTMLElement);
+    expect((document.querySelector('[data-bilibili-stop]') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => release());
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(onDone.mock.calls[0][0].batch).toMatchObject({ created: 1, remaining: 2 });
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it('summarizes batch results with locale-appropriate separators and a capped page list', () => {
+    const t = (key: string, options?: Record<string, unknown>) => `${key.split('.').pop()}(${JSON.stringify(options ?? {})})`;
+    const summary: BilibiliBatchSummary = {
+      total: 20,
+      created: 8,
+      updated: 1,
+      skipped: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+      failed: [{ page: 12, message: '超时' }],
+      remaining: 8,
+    };
+    const zh = summarizeBilibiliBatch(summary, t, 'zh-CN');
+    expect(zh.split('；')).toHaveLength(4);
+    expect(zh).toContain('batchDone({"count":9})');
+    expect(zh).toContain('"pages":"P2、P3、P4、P5、P6、P7、P8、P9 (+2)"');
+    expect(zh).toContain('"message":"超时"');
+    expect(zh).toContain('batchStopped({"count":8})');
+    const en = summarizeBilibiliBatch({ ...summary, skipped: [2, 3], failed: [], remaining: 0 }, t, 'en-US');
+    expect(en).toBe('batchDone({"count":9}); batchSkipped({"pages":"P2, P3"})');
   });
 });
 

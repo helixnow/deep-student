@@ -37,6 +37,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { mediaTranscriptApi } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
 import {
   BilibiliLinkDialog,
+  summarizeBilibiliBatch,
   type BilibiliLinkDialogMode,
   type BilibiliLinkDialogResult,
 } from '@/features/learning-hub/apps/views/media/BilibiliLinkDialog';
@@ -78,7 +79,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   isSmallScreen,
   titlebarTarget,
 }) => {
-  const { t } = useTranslation(['mediaStudio', 'learningHub', 'common']);
+  const { t, i18n } = useTranslation(['mediaStudio', 'learningHub', 'common']);
   const [filter, setFilter] = useState<MediaLibraryFilter>('all');
   const [query, setQuery] = useState('');
   const [renaming, setRenaming] = useState<{ item: MediaLibraryItem; name: string } | null>(null);
@@ -197,6 +198,14 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const handleBilibiliDone = useCallback((result: BilibiliLinkDialogResult) => {
     const mode = bilibiliMode;
     void refresh();
+    if (result.batch) {
+      const { batch } = result;
+      showGlobalNotification(
+        batch.failed.length > 0 || batch.remaining > 0 ? 'warning' : 'success',
+        summarizeBilibiliBatch(batch, t, i18n.resolvedLanguage ?? i18n.language),
+      );
+      return;
+    }
     if (mode?.kind === 'create') {
       const name = stripBilibiliExtension(result.name);
       showGlobalNotification(
@@ -209,7 +218,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       return;
     }
     showGlobalNotification('success', t('learningHub:mediaBilibili.attached', { count: result.segments }));
-  }, [bilibiliMode, onOpenId, refresh, t]);
+  }, [bilibiliMode, i18n.language, i18n.resolvedLanguage, onOpenId, refresh, t]);
 
   // ---------------------------------------------------------------- 导入
   const onFilesDropped = useCallback((files: File[]) => {

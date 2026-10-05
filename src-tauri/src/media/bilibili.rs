@@ -17,8 +17,9 @@
 //! | `media_bilibili_import_subtitle(resourceId, input, page?, lan?)` | 给已有媒体导入 B 站字幕 |
 //! | `media_bilibili_link_get(resourceId)` | 读链接条目的描述（内嵌播放器用） |
 
-use std::sync::{Arc, LazyLock};
-use std::time::Duration;
+use std::collections::HashMap;
+use std::sync::{Arc, LazyLock, Mutex};
+use std::time::{Duration, Instant};
 
 use regex::Regex;
 use reqwest::header::{HeaderMap, HeaderValue, LOCATION, REFERER};
@@ -53,6 +54,12 @@ const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
 /// 交给字幕解析器的文件名（`.json` → BCC）
 const SUBTITLE_FILE_NAME: &str = "bilibili.json";
 const MAX_FILE_STEM_CHARS: usize = 100;
+/// 多 P 批量导入时每 P 各调一次 create：视频信息短时缓存，不重复请求（降低风控概率）
+const VIDEO_CACHE_TTL: Duration = Duration::from_secs(600);
+const VIDEO_CACHE_MAX_ENTRIES: usize = 64;
+
+static VIDEO_CACHE: LazyLock<Mutex<HashMap<String, (Instant, BiliVideo)>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub const ERR_INVALID_LINK: &str = "bilibili-invalid-link";
 pub const ERR_UNSUPPORTED_LINK: &str = "bilibili-unsupported-link";
@@ -475,7 +482,38 @@ impl BiliClient {
         }
     }
 
+    fn video_cache_key(&self, id: &BiliVideoId) -> String {
+        match id {
+            BiliVideoId::Bv(bvid) => format!("{}|{}", self.api_base, bvid),
+            BiliVideoId::Av(aid) => format!("{}|av{}", self.api_base, aid),
+        }
+    }
+
     pub async fn video(&self, id: &BiliVideoId) -> Result<BiliVideo, MediaError> {
+        let key = self.video_cache_key(id);
+        let cached = VIDEO_CACHE.lock().ok().and_then(|c| c.get(&key).cloned());
+        if let Some((at, video)) = cached {
+            if at.elapsed() < VIDEO_CACHE_TTL {
+                return Ok(video);
+            }
+        }
+        let video = self.fetch_video(id).await?;
+        if let Ok(mut cache) = VIDEO_CACHE.lock() {
+            cache.retain(|_, (at, _)| at.elapsed() < VIDEO_CACHE_TTL);
+            if cache.len() >= VIDEO_CACHE_MAX_ENTRIES {
+                cache.clear();
+            }
+            let now = Instant::now();
+            cache.insert(key, (now, video.clone()));
+            cache.insert(
+                self.video_cache_key(&BiliVideoId::Bv(video.bvid.clone())),
+                (now, video.clone()),
+            );
+        }
+        Ok(video)
+    }
+
+    async fn fetch_video(&self, id: &BiliVideoId) -> Result<BiliVideo, MediaError> {
         let query = match id {
             BiliVideoId::Bv(bvid) => ("bvid", bvid.clone()),
             BiliVideoId::Av(aid) => ("aid", aid.to_string()),
@@ -1232,7 +1270,8 @@ mod tests {
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(view_body())
-            .expect(2)
+            // 第二次 lookup（同一视频另一 P）命中视频信息缓存，不再请求
+            .expect(1)
             .create_async()
             .await;
         let dm = server
