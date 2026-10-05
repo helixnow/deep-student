@@ -10,6 +10,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.2](https://github.com/helixnow/deep-student/compare/v0.10.1...v0.10.2) (2026-10-05)
+
+
+### Features
+
+* **apkg:** carry FSRS progress through .apkg export and import ([9cbf315](https://github.com/helixnow/deep-student/commit/9cbf315ec86ee57e21c9476d9f7cba1b4421ebd0))
+* **asr:** transcribe with the assigned model's own provider; default to Qwen3-ASR-1.7B ([70e7bac](https://github.com/helixnow/deep-student/commit/70e7bac39b512ad1cf89f2943749f85f6ce260c8))
+* **capability:** ASR kind in the model registry; suffix-style and relay ASR ids now match ([4a8fb8d](https://github.com/helixnow/deep-student/commit/4a8fb8d8c9b81dd3ad8eeb7420c24accdc5fd13b))
+* **chat:** 今日待复习 on the mobile empty chat too ([340b26b](https://github.com/helixnow/deep-student/commit/340b26bdc03359105895dc203b8f6d8cb5e8deea))
+* **flashcards:** bury cards, hide buried siblings and play card media while reviewing ([89294bd](https://github.com/helixnow/deep-student/commit/89294bded586f20e3cc6445b293eff2c734eaa89))
+* **flashcards:** review by deck from Today and filter the library by deck ([3e1130f](https://github.com/helixnow/deep-student/commit/3e1130f883d27ce68e4fd5b204357366c1a8b7fc))
+* **flashcards:** true retention by period, memory distributions and study time on statistics ([aabed2d](https://github.com/helixnow/deep-student/commit/aabed2d6a0be8fae2725f40eece3260a531a00bd))
+* **flashcards:** view source and ask AI while reviewing; learn a batch of new cards today ([f41466c](https://github.com/helixnow/deep-student/commit/f41466cd682ac137cce6becbb709fa786ddbc996))
+* **fsrs:** schedule with FSRS-6 via fsrs-rs, Anki learning steps and a parameter optimizer ([6d4209e](https://github.com/helixnow/deep-student/commit/6d4209e29d20606cb77853a01785d79e7d42b578))
+* **media-studio:** cover thumbnails and steadier rows in the library ([4f86640](https://github.com/helixnow/deep-student/commit/4f86640611caae5911bbebcb1a829a779c2024a2))
+* **media-studio:** import from a Bilibili link and watch link items in an embedded player ([7f6c694](https://github.com/helixnow/deep-student/commit/7f6c69465825d63263f665a843a1d9c62f5ec3a1))
+* **media-studio:** import several parts of a Bilibili collection at once ([20a7392](https://github.com/helixnow/deep-student/commit/20a7392f851dc1126f9f105c5172066c0d31526a))
+* **media:** hand playback off when jumping from the library view to the Media study page ([4918717](https://github.com/helixnow/deep-student/commit/4918717b2c9ea3e5a6ff149c7e797ec6e7c1471d))
+* **media:** media_library_list and media_related_notes commands for the media sub-app ([8998887](https://github.com/helixnow/deep-student/commit/8998887fd90e7a57f49f0cc7c36744bf71b07ea9))
+* **media:** subtitles from a Bilibili link without downloading; link items stay VFS files ([bcfa286](https://github.com/helixnow/deep-student/commit/bcfa2862770d34218834f7455c07631f78c72b8e))
+* **media:** 音视频 sub-app — library, study page and entry points ([d180308](https://github.com/helixnow/deep-student/commit/d180308fad7215c2fee8e9e7647204916b3cc2a1))
+* **mindmap:** turn the blanks you could not recall into flashcards ([3296b3c](https://github.com/helixnow/deep-student/commit/3296b3c6b92dfbdad5fd6d1b2be138422b7bd671))
+* **notes:** mark a due note reviewed and pick the next date from 近期复习 ([32f4580](https://github.com/helixnow/deep-student/commit/32f45800f113a9edc202884f4079f23a042a96a2))
+* **notes:** open a knowledge-base citation at the passage it quotes ([2f716ab](https://github.com/helixnow/deep-student/commit/2f716ab516808e1b57cead7de349000d9de7dba5))
+* **pdf:** ask about a region of a page by dragging a box around it ([ea94c75](https://github.com/helixnow/deep-student/commit/ea94c757411c0c1b75ba2a02c05ff5ed26e68928))
+* **practice:** one mistake book across all question sets ([16b8782](https://github.com/helixnow/deep-student/commit/16b8782dad8daf48cb6c8350c6c95142aa441001))
+* **practice:** redo a batch of mistakes as one set from the mistake book ([cd39199](https://github.com/helixnow/deep-student/commit/cd391992ded885d4b0a190e48b8d547cca29e990))
+* **practice:** render formulas in each question set's mistake view ([d5a284b](https://github.com/helixnow/deep-student/commit/d5a284b0db865866b5fbc33f48030b19f5f1cc70))
+* **practice:** render formulas in the mistake book ([d88c16a](https://github.com/helixnow/deep-student/commit/d88c16a9cbb473ee25f93bc14136534389bd1e74))
+* **practice:** 问 AI 讲解 and 生成同类题 open a fresh conversation ([67b8104](https://github.com/helixnow/deep-student/commit/67b810415f9fd931842c342f138c42dfe8d1f83a))
+* **qbank:** show due review counts on 复习计划 and the 更多 tab ([34447bd](https://github.com/helixnow/deep-student/commit/34447bd9719ad5f1d56bd79a69661ec1e224562b))
+* **review:** answer before revealing in the mistake review ([0abb078](https://github.com/helixnow/deep-student/commit/0abb07892c1648bf1e0d5671c0c49f0fec7d5319))
+* **today:** a dismissible three-step starter on the chat home for brand-new learners ([c7c290a](https://github.com/helixnow/deep-student/commit/c7c290a5494881fface99dad920ec4ab3d4cad11))
+* **today:** open due reviews on the study desktop and review all due mistakes in one go ([900b1a5](https://github.com/helixnow/deep-student/commit/900b1a5f51779c0389acbe4333286add85bcaa80))
+* **today:** tapping the learning reminder opens the review it is about ([3e244b7](https://github.com/helixnow/deep-student/commit/3e244b7fcb43f16a25f510dd4b7a4f3e86acf6eb))
+* **today:** weak spots and the weekly report on the chat home; weak-spot practice lands in the question bank ([d68050d](https://github.com/helixnow/deep-student/commit/d68050de6e706f982cc717d35b832621277276f1))
+* **today:** weekly report counts presence-based study time, not only pomodoro focus ([1ad9ef5](https://github.com/helixnow/deep-student/commit/1ad9ef5fa5b0f0b421bc0239b8a408672efe7446))
+* **todo:** link notes, textbooks and question sets to a todo ([b5032ac](https://github.com/helixnow/deep-student/commit/b5032ac64c1b0e9a489d02e30f3afc18ff7ffa63))
+* **todo:** tapping a todo reminder opens that todo ([50e8a15](https://github.com/helixnow/deep-student/commit/50e8a1582d2a3c81af1996bffcbb0e2ccba590a6))
+* **translation:** selectable bilingual text with the shared selection toolbar ([f595f39](https://github.com/helixnow/deep-student/commit/f595f393776eb08c1d436be06c4609a0f03b76d8))
+* **workbench:** a compact learning briefing on the desktop ([ef5779a](https://github.com/helixnow/deep-student/commit/ef5779acde23f6af79f078a3d56ed0587b31ed83))
+* **workbench:** quieter empty desktop; collapse and hide each desktop widget ([06b2d78](https://github.com/helixnow/deep-student/commit/06b2d7800458a83d96874b310b624c1c7299da86))
+* **workbench:** status bar rhythm and desktop briefing count due mistakes and notes ([99468e1](https://github.com/helixnow/deep-student/commit/99468e124b7bfcb885a53de92299e4e87307a9f2))
+
+
+### Bug Fixes
+
+* **command-palette:** 跳转资源库的命令改用应用名「资源库 / Files」，搜索仍认「学习中心 / hub」 ([c6fec16](https://github.com/helixnow/deep-student/commit/c6fec166d24462c4b12b096d63cad0137790d88c))
+* **i18n:** mirror plural keys in the zh-CN mediaStudio namespace ([7a9047e](https://github.com/helixnow/deep-student/commit/7a9047e3ad5158875eac2b0c58c9cc84c84afb74))
+* **learning-hub:** let 导入资料… pick audio, video and images ([fe3a919](https://github.com/helixnow/deep-student/commit/fe3a91942d8d8ab08083a4c3b2ede5516a24f335))
+* **learning-hub:** 待复习笔记 and 查看全部错题 land on the right category in the classic shell ([1cf453f](https://github.com/helixnow/deep-student/commit/1cf453f7c50b4dd253030eed33a540e92b64d5e2))
+* **llm:** keep reasoning passback intact around in-loop skill anchors ([#437](https://github.com/helixnow/deep-student/issues/437)) ([505a26b](https://github.com/helixnow/deep-student/commit/505a26b9b7f9d33a74dff51ef8e53776d49240cf))
+* **media-studio:** load the Bilibili cover on first parse ([654600c](https://github.com/helixnow/deep-student/commit/654600c726103ce24a85387772969c365b778022))
+* **media:** attach the lecture without delay when chat is already a blank draft ([81909b8](https://github.com/helixnow/deep-student/commit/81909b8cafe026d760f6f36a2c0ddfe971d7c5b1))
+* **media:** serve large audio/video ranges in 16 MB chunks so multi-GB lectures play in-app ([425ea2b](https://github.com/helixnow/deep-student/commit/425ea2b189af79a5ccfdc5077faa95b5d67fe80f))
+* **media:** show a library row's status chip once ([f906b21](https://github.com/helixnow/deep-student/commit/f906b214967b5dc811ed4f3167e72a0b46db3bc4))
+* **mobile:** Android back closes the mistakes review; notes 复习完成 fits narrow lists ([d9b7f6d](https://github.com/helixnow/deep-student/commit/d9b7f6d3a748518a2f6964e67e55e4037dd53b62))
+* **pdf:** scope .ds-search-input rules to the PDF search bar ([6c206f8](https://github.com/helixnow/deep-student/commit/6c206f890f8dbc3048c066eb4bef755b2ab34aa3))
+* **qbank:** refresh an open question set after importing questions from chat ([c2adcbc](https://github.com/helixnow/deep-student/commit/c2adcbcefec3f683b2a6b6cb337ee0f3faf6c48d))
+* **review:** background practice and flashcard shortcuts yield to modal review layers ([ddcdb83](https://github.com/helixnow/deep-student/commit/ddcdb83da256ae822187ace933c0ee8206bc958a))
+* **review:** make the picked option in the mistake review visible in dark mode ([a2fce64](https://github.com/helixnow/deep-student/commit/a2fce64e54da224db2b28327b5f8c7bdb4440928))
+* **review:** show choice options in the SM-2 mistake review ([0576471](https://github.com/helixnow/deep-student/commit/057647117a9a6314f07532dc49dd9b658905a250))
+* **today:** keep 本周周报 on the chat home for learners with history ([9dd7897](https://github.com/helixnow/deep-student/commit/9dd789778315d2a324d593237128b83a383deff7))
+* **today:** stop counting overdue mistakes twice in 今日学习 ([214cbaf](https://github.com/helixnow/deep-student/commit/214cbaf10351148847127152cb210a7f10cb9a16))
+* **today:** 到期卡片 lands on the flashcards Today screen in both shells ([ac373f5](https://github.com/helixnow/deep-student/commit/ac373f5a84f3eaaeb06d5bda4d2f37bffa5373f0))
+* **ui:** mistake rows and todo links actually left-align and size to content ([c27423f](https://github.com/helixnow/deep-student/commit/c27423fc805f9823bc14f8fa25c9b60b5bc262c5))
+* **workbench:** give 音视频 and AI 仪表盘 their illustrated icons in the launcher and Dock ([2336800](https://github.com/helixnow/deep-student/commit/233680061416f437813514204c96e7607c28d303))
+
+
+### Performance Improvements
+
+* **flashcards:** resolve each task's deck once instead of once per card ([b5e6069](https://github.com/helixnow/deep-student/commit/b5e6069daa3f1c3e236a2f108717dcffb87b9808))
+
 ## [0.10.1](https://github.com/helixnow/deep-student/compare/v0.10.0...v0.10.1) (2026-10-05)
 
 
