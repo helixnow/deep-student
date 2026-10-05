@@ -296,8 +296,11 @@ pub async fn media_transcribe_estimate(
 ) -> CmdResult<TranscribeEstimate> {
     let db = vfs(&vfs_db);
     let info = load(&db, &resource_id).await.map_err(err)?;
-    let model = super::asr::resolve_asr_model(&state.llm_manager).await;
-    let configured = crate::voice_input::resolve_asr_api_key(&state.database).is_some();
+    let (asr_model, configured) =
+        match crate::voice_input::resolve_asr_endpoint(&state.llm_manager, &state.database).await {
+            Ok(endpoint) => (endpoint.model, true),
+            Err(error) => (error.model, false),
+        };
     let (duration_ms, planned_segments, exact) = {
         let db = Arc::clone(&db);
         tokio::task::spawn_blocking(move || estimate_impl(&db, &info))
@@ -308,7 +311,7 @@ pub async fn media_transcribe_estimate(
     Ok(TranscribeEstimate {
         duration_ms,
         planned_segments,
-        asr_model: model.model,
+        asr_model,
         asr_configured: configured,
         exact,
     })
@@ -333,14 +336,15 @@ pub async fn media_transcribe_start(
     if current.status == "completed" {
         return Ok(status_view(current));
     }
-    if current.progress.source.as_deref() != Some("import")
-        && crate::voice_input::resolve_asr_api_key(&state.database).is_none()
-    {
-        return Err(err(MediaError::AsrFatal {
-            code: "settings-required".into(),
-            message: "未配置语音识别：请在设置中填写 SiliconFlow API Key（与语音输入共用）后再转写"
-                .into(),
-        }));
+    if current.progress.source.as_deref() != Some("import") {
+        if let Err(error) =
+            crate::voice_input::resolve_asr_endpoint(&state.llm_manager, &state.database).await
+        {
+            return Err(err(MediaError::AsrFatal {
+                code: error.code.into(),
+                message: error.message,
+            }));
+        }
     }
     service
         .start_pipeline(&info.file_id, None)
@@ -582,9 +586,12 @@ pub fn spawn_auto_transcribe_if_short_audio(app: &tauri::AppHandle, file_id: Str
         ) else {
             return;
         };
-        if crate::voice_input::resolve_asr_api_key(&state.database).is_none() {
+        if let Err(error) =
+            crate::voice_input::resolve_asr_endpoint(&state.llm_manager, &state.database).await
+        {
             log::info!(
-                "[media::commands] ASR not configured, skip auto transcription for {}",
+                "[media::commands] ASR not configured ({}), skip auto transcription for {}",
+                error.code,
                 file_id
             );
             return;

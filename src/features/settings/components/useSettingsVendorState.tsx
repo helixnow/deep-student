@@ -1016,7 +1016,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         api._voiceInputDisabledReason === 'provider-unavailable'
           ? t(
               'settings:voice_input.labels.provider_unavailable_reason',
-              'Visible in the ASR catalog, but the current runtime can only transcribe with SiliconFlow.'
+              'This model only offers realtime streaming or asynchronous file jobs, or its provider has no OpenAI-compatible recognition API, so it cannot transcribe yet.'
             )
           : api._voiceInputDisabledReason === 'model-disabled'
           ? t(

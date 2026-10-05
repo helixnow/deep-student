@@ -14,10 +14,7 @@ import i18n from 'i18next';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { sortApiConfigsByVendorOrder } from '@/utils/modelSorting';
-import {
-  isAudioTranscriptionApi,
-  isVoiceInputProviderSupported,
-} from '@/voice-input/modelSelection';
+import { isVoiceInputAssignableApi } from '@/voice-input/modelSelection';
 import { ensureModelsCacheLoaded, getCachedModels } from '../hooks/useAvailableModels';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 
@@ -94,13 +91,10 @@ export function isDiscontinuedOcrModel(api: ApiConfig): boolean {
 
 /**
  * 是否为可用的语音输入 ASR 模型
- * 与 getVisibleVoiceInputApis 的区别：只取 enabled + 支持的供应商
+ * 与 getVisibleVoiceInputApis 的区别：只取 enabled + 运行时能调用的模型
  */
 function isAsrModel(api: ApiConfig): boolean {
-  if (!api.enabled) return false;
-  if (!isAudioTranscriptionApi(api)) return false;
-  const providerScope = (api.providerScope ?? api.providerType ?? '').toLowerCase();
-  return isVoiceInputProviderSupported(providerScope);
+  return api.enabled && isVoiceInputAssignableApi(api);
 }
 
 // ============================================================================

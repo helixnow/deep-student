@@ -1368,6 +1368,7 @@ struct ModelCapabilities {
     image_generation: bool,
     audio_transcription: bool,
     provider_id: Option<String>,
+    api_protocol: Option<String>,
 }
 
 impl From<&ApiConfig> for ModelCapabilities {
@@ -1380,6 +1381,7 @@ impl From<&ApiConfig> for ModelCapabilities {
             image_generation: config.is_image_generation,
             audio_transcription: is_audio_transcription_model(config),
             provider_id: provider_id(config),
+            api_protocol: config.api_protocol.clone(),
         }
     }
 }
@@ -1402,7 +1404,10 @@ fn validate_model_for_slot(
         AssignmentSlot::ExamSheetOcr => capabilities.multimodal,
         AssignmentSlot::VoiceInputAsr => {
             capabilities.audio_transcription
-                && capabilities.provider_id.as_deref() == Some("siliconflow")
+                && crate::voice_input::asr_provider_supported(
+                    capabilities.provider_id.as_deref(),
+                    capabilities.api_protocol.as_deref(),
+                )
         }
         AssignmentSlot::ImageGeneration => capabilities.image_generation,
         _ => !capabilities.embedding && !capabilities.reranker,
@@ -1434,42 +1439,9 @@ fn provider_id(config: &ApiConfig) -> Option<String> {
 }
 
 fn is_audio_transcription_model(config: &ApiConfig) -> bool {
-    if config.is_embedding || config.is_reranker {
-        return false;
-    }
-    let descriptor = format!("{} {}", config.model, config.name).to_ascii_lowercase();
-    let excluded = [
-        "tts",
-        "text-to-speech",
-        "text_to_speech",
-        "speech-synthesis",
-        "speech_synthesis",
-        "speech-generation",
-        "speech_generation",
-    ]
-    .iter()
-    .any(|needle| descriptor.contains(needle));
-    if excluded {
-        return false;
-    }
-
-    let separated = descriptor.replace(['/', '_'], "-");
-    let parts: Vec<&str> = separated.split('-').collect();
-    parts.iter().any(|part| matches!(*part, "asr" | "stt"))
-        || [
-            "transcrib",
-            "whisper",
-            "sensevoice",
-            "telespeechasr",
-            "speech-to-text",
-            "speechasr",
-            "gpt-4o-transcribe",
-            "gpt-4o-mini-transcribe",
-            "qwen3-asr",
-            "scribe-v",
-        ]
-        .iter()
-        .any(|needle| separated.contains(needle))
+    !config.is_embedding
+        && !config.is_reranker
+        && crate::voice_input::is_asr_model(&config.model, &config.name)
 }
 
 fn safe_model_json(config: &ApiConfig) -> Value {
@@ -1643,6 +1615,7 @@ mod tests {
             image_generation: false,
             audio_transcription: false,
             provider_id: Some("openai".to_string()),
+            api_protocol: Some("openai_responses".to_string()),
         }
     }
 
@@ -1913,11 +1886,16 @@ mod tests {
         image.image_generation = true;
         assert!(validate_model_for_slot(AssignmentSlot::ImageGeneration, &image).is_ok());
 
+        assert!(validate_model_for_slot(AssignmentSlot::VoiceInputAsr, &text).is_err());
         let mut asr = text.clone();
         asr.audio_transcription = true;
-        assert!(validate_model_for_slot(AssignmentSlot::VoiceInputAsr, &asr).is_err());
-        asr.provider_id = Some("siliconflow".to_string());
         assert!(validate_model_for_slot(AssignmentSlot::VoiceInputAsr, &asr).is_ok());
+        asr.provider_id = Some("custom".to_string());
+        asr.api_protocol = Some("openai_chat_completions".to_string());
+        assert!(validate_model_for_slot(AssignmentSlot::VoiceInputAsr, &asr).is_ok());
+        asr.provider_id = Some("anthropic".to_string());
+        asr.api_protocol = Some("anthropic_messages".to_string());
+        assert!(validate_model_for_slot(AssignmentSlot::VoiceInputAsr, &asr).is_err());
 
         let mut disabled = text;
         disabled.enabled = false;

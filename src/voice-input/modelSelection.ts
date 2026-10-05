@@ -1,5 +1,6 @@
 import type { ApiConfig, ModelAssignments } from '@/types';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
+import { stripGatewayPrefix } from '@/utils/modelIdPrefix';
 
 import type { VoiceInputAssignedModel } from './types';
 
@@ -12,7 +13,16 @@ export type VoiceInputSelectableApi = ApiConfig & {
   _voiceInputDisabledReason?: VoiceInputSelectableApiDisabledReason;
 };
 
-const SUPPORTED_VOICE_INPUT_PROVIDERS = new Set(['siliconflow']);
+/**
+ * 转写走分配模型所属供应商的 OpenAI 兼容接口（/audio/transcriptions，
+ * 百炼 qwen3-asr-flash 为 /chat/completions + input_audio）。
+ * 以下提供方 / 协议没有这类接口；与 Rust `voice_input::asr_provider_supported` 保持一致。
+ */
+const ASR_UNSUPPORTED_PROVIDERS = new Set(['anthropic', 'gemini', 'google', 'openai_codex']);
+const ASR_UNSUPPORTED_PROTOCOLS = new Set(['anthropic_messages', 'google_generate_content']);
+/** 只有实时流 / 异步文件转写接口的 ASR 模型（如 qwen3-asr-flash-realtime / -filetrans） */
+const ASR_UNSUPPORTED_TRANSPORT_REGEX = /realtime|streaming|filetrans/i;
+
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   siliconflow: 'SiliconFlow',
@@ -48,10 +58,14 @@ function getProviderLabel(api: Pick<ApiConfig, 'vendorName' | 'providerType' | '
 }
 
 export function isVoiceInputProviderSupported(providerId: string | undefined): boolean {
-  if (!providerId) {
-    return false;
-  }
-  return SUPPORTED_VOICE_INPUT_PROVIDERS.has(providerId.toLowerCase());
+  return !providerId || !ASR_UNSUPPORTED_PROVIDERS.has(providerId.toLowerCase());
+}
+
+/** 这条模型配置能否被应用内转写调用（供应商协议 + 模型接口形态） */
+function isVoiceInputRuntimeSupported(api: ApiConfig): boolean {
+  if (!isVoiceInputProviderSupported(getProviderId(api))) return false;
+  if (api.apiProtocol && ASR_UNSUPPORTED_PROTOCOLS.has(api.apiProtocol)) return false;
+  return !ASR_UNSUPPORTED_TRANSPORT_REGEX.test(stripGatewayPrefix(api.model));
 }
 
 export function isAudioTranscriptionApi(api: ApiConfig): boolean {
@@ -73,7 +87,7 @@ export function isAudioTranscriptionApi(api: ApiConfig): boolean {
 }
 
 export function isVoiceInputAssignableApi(api: ApiConfig): boolean {
-  return isAudioTranscriptionApi(api) && isVoiceInputProviderSupported(getProviderId(api));
+  return isAudioTranscriptionApi(api) && isVoiceInputRuntimeSupported(api);
 }
 
 export function getAssignableVoiceInputApis(
@@ -99,10 +113,7 @@ export function getVisibleVoiceInputApis(
 ): VoiceInputSelectableApi[] {
   const audioApis = apis.filter((api) => isAudioTranscriptionApi(api));
   let candidates: VoiceInputSelectableApi[] = audioApis.map((api) => {
-    const providerId = getProviderId(api);
-    const disabledReason: VoiceInputSelectableApiDisabledReason | undefined = !isVoiceInputProviderSupported(
-      providerId
-    )
+    const disabledReason: VoiceInputSelectableApiDisabledReason | undefined = !isVoiceInputRuntimeSupported(api)
       ? 'provider-unavailable'
       : !api.enabled
       ? 'model-disabled'
@@ -122,10 +133,9 @@ export function getVisibleVoiceInputApis(
   if (currentValue && !candidates.some((api) => api.id === currentValue)) {
     const currentApi = audioApis.find((api) => api.id === currentValue);
     if (currentApi) {
-      const providerId = getProviderId(currentApi);
       const disabledReason: VoiceInputSelectableApiDisabledReason | undefined = !currentApi.enabled
         ? 'model-disabled'
-        : !isVoiceInputProviderSupported(providerId)
+        : !isVoiceInputRuntimeSupported(currentApi)
         ? 'provider-unavailable'
         : undefined;
 
@@ -180,8 +190,7 @@ export function resolveVoiceInputModelAssignment(
     return buildAssignedModel(assignedApi, 'model-config-missing');
   }
 
-  const providerId = getProviderId(assignedApi);
-  if (!isVoiceInputProviderSupported(providerId)) {
+  if (!isVoiceInputRuntimeSupported(assignedApi)) {
     return buildAssignedModel(assignedApi, 'provider-unavailable');
   }
 

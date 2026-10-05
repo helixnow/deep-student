@@ -190,7 +190,7 @@ impl MediaToolExecutor {
     }
 
     fn capability(asr: Option<VoiceInputAsrCapability>) -> Value {
-        let available = asr.is_some_and(|value| value.configured);
+        let available = asr.as_ref().is_some_and(|value| value.configured);
         let unavailable_reason_code = if available {
             Value::Null
         } else if asr.is_some() {
@@ -198,8 +198,8 @@ impl MediaToolExecutor {
         } else {
             Value::String("APP_STATE_UNAVAILABLE".into())
         };
-        let provider_id = asr.map(|value| value.provider_id);
-        let provider_name = asr.map(|value| value.provider_name);
+        let provider_id = asr.as_ref().map(|value| value.provider_id.clone());
+        let provider_name = asr.as_ref().map(|value| value.provider_name.clone());
         let model = asr.map(|value| value.model);
         json!({
             "ok": true,
@@ -237,7 +237,7 @@ impl MediaToolExecutor {
             },
             "configuration": {
                 "configured": available,
-                "requirement": "ASR execution requires the existing SiliconFlow voice-input API key"
+                "requirement": "ASR execution uses the voice-input ASR model assigned in Settings › Model Assignment (any OpenAI-compatible provider), or the default SiliconFlow model when a SiliconFlow API key is configured"
             },
         })
     }
@@ -315,10 +315,10 @@ impl MediaToolExecutor {
         let state = app
             .try_state::<AppState>()
             .ok_or("MEDIA_CAPABILITY_UNAVAILABLE: AppState is not registered")?;
-        let asr = voice_input_asr_capability(&state);
+        let asr = voice_input_asr_capability(&state).await;
         if !asr.configured {
             return Err(
-                "MEDIA_ASR_UNAVAILABLE: configure the existing SiliconFlow voice-input API key in Settings"
+                "MEDIA_ASR_UNAVAILABLE: assign a voice-input ASR model in Settings › Model Assignment, or configure a SiliconFlow API key for the default model"
                     .into(),
             );
         }
@@ -507,10 +507,10 @@ impl ToolExecutor for MediaToolExecutor {
         ctx.emit_tool_call_start(&call.name, call.arguments.clone(), Some(&call.id));
         let result = match strip_tool_namespace(&call.name) {
             "media_capabilities" => {
-                let asr = ctx
-                    .window_ref()
-                    .try_state::<AppState>()
-                    .map(|state| voice_input_asr_capability(&state));
+                let asr = match ctx.window_ref().try_state::<AppState>() {
+                    Some(state) => Some(voice_input_asr_capability(&state).await),
+                    None => None,
+                };
                 Ok(Self::capability(asr))
             }
             "media_transcribe" => self.execute_transcribe(&call.arguments, ctx).await,
@@ -648,21 +648,24 @@ mod tests {
     #[test]
     fn capability_reflects_resolved_asr_configuration() {
         let asr = VoiceInputAsrCapability {
-            provider_id: "siliconflow",
-            provider_name: "SiliconFlow",
-            model: "TeleAI/TeleSpeechASR",
+            provider_id: "siliconflow".into(),
+            provider_name: "SiliconFlow".into(),
+            model: "Qwen/Qwen3-ASR-1.7B".into(),
             configured: false,
         };
-        let unavailable = MediaToolExecutor::capability(Some(asr));
+        let unavailable = MediaToolExecutor::capability(Some(asr.clone()));
         assert_eq!(unavailable["available"], false);
         assert_eq!(unavailable["unavailableReasonCode"], "ASR_NOT_CONFIGURED");
         assert_eq!(unavailable["provider"]["name"], "SiliconFlow");
 
         let available = MediaToolExecutor::capability(Some(VoiceInputAsrCapability {
+            provider_id: "custom".into(),
+            provider_name: "统一出口".into(),
+            model: "qwen3-asr-flash".into(),
             configured: true,
-            ..asr
         }));
         assert_eq!(available["available"], true);
+        assert_eq!(available["provider"]["model"], "qwen3-asr-flash");
         assert_eq!(available["configuration"]["configured"], true);
         assert!(available["unavailableReasonCode"].is_null());
     }

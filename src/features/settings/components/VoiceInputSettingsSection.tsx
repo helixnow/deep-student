@@ -227,7 +227,7 @@ function ModelStatusHint({
     }),
     'provider-unavailable': t('settings:voice_input.assignment_provider_unavailable_message', {
       defaultValue:
-        'This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.',
+        'This model has no usable recognition endpoint. Transcription needs an OpenAI-compatible request/response ASR API; Anthropic or Gemini native APIs and realtime- or file-job-only models (such as qwen3-asr-flash-realtime / -filetrans) cannot be used. Pick another ASR model.',
     }),
   };
 

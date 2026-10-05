@@ -10,12 +10,15 @@ import type {
 class VoiceInputProviderRegistry {
   private readonly providers = new Map<string, VoiceInputProvider>();
 
+  constructor(private readonly fallback: VoiceInputProvider) {}
+
   register(provider: VoiceInputProvider): void {
     this.providers.set(provider.id, provider);
   }
 
+  /** 没有专用实现的供应商走后端受管转写（后端按 configId 取该模型配置的 base_url / key） */
   get(providerId: string): VoiceInputProvider | null {
-    return this.providers.get(providerId) ?? null;
+    return this.providers.get(providerId) ?? this.fallback;
   }
 }
 
@@ -37,9 +40,7 @@ async function transcribeViaTauri(
   });
 }
 
-export const voiceInputProviderRegistry = new VoiceInputProviderRegistry();
-
-voiceInputProviderRegistry.register({
-  id: 'siliconflow',
+export const voiceInputProviderRegistry = new VoiceInputProviderRegistry({
+  id: 'managed',
   transcribeOnce: transcribeViaTauri,
 });

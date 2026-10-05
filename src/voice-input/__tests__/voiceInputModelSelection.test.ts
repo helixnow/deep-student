@@ -11,14 +11,14 @@ import {
 function createApiConfig(overrides: Partial<ApiConfig> = {}): ApiConfig {
   return {
     id: overrides.id ?? 'cfg-1',
-    name: overrides.name ?? 'SiliconFlow - TeleAI/TeleSpeechASR',
+    name: overrides.name ?? 'SiliconFlow - Qwen/Qwen3-ASR-1.7B',
     vendorId: overrides.vendorId ?? 'vendor-sf',
     vendorName: overrides.vendorName ?? 'SiliconFlow',
     providerType: overrides.providerType ?? 'siliconflow',
     providerScope: overrides.providerScope ?? 'siliconflow',
     apiKey: overrides.apiKey ?? '***',
     baseUrl: overrides.baseUrl ?? 'https://api.siliconflow.cn/v1',
-    model: overrides.model ?? 'TeleAI/TeleSpeechASR',
+    model: overrides.model ?? 'Qwen/Qwen3-ASR-1.7B',
     isMultimodal: overrides.isMultimodal ?? false,
     isReasoning: overrides.isReasoning ?? false,
     isEmbedding: overrides.isEmbedding ?? false,
@@ -54,12 +54,13 @@ function createAssignments(
 }
 
 describe('voice input model selection', () => {
-  it('only exposes runtime-compatible ASR models in assignment lists', () => {
+  it('exposes ASR models from any OpenAI-compatible provider, relays included', () => {
     const apis = [
+      createApiConfig({ id: 'sf-asr' }),
       createApiConfig({
-        id: 'sf-asr',
-        model: 'TeleAI/TeleSpeechASR',
-        name: 'SiliconFlow - TeleAI/TeleSpeechASR',
+        id: 'sf-xingchen',
+        model: 'XingChenAGI/XingChenASR-V3.2-Ultra',
+        name: 'SiliconFlow - XingChenAGI/XingChenASR-V3.2-Ultra',
       }),
       createApiConfig({
         id: 'sf-text',
@@ -73,25 +74,49 @@ describe('voice input model selection', () => {
         model: 'gpt-4o-mini-transcribe',
         name: 'OpenAI - gpt-4o-mini-transcribe',
       }),
-    ];
-
-    expect(getAssignableVoiceInputApis(apis).map((api) => api.id)).toEqual(['sf-asr']);
-  });
-
-  it('keeps unsupported ASR models visible but disabled in assignment lists', () => {
-    const apis = [
       createApiConfig({
-        id: 'sf-asr',
-        model: 'TeleAI/TeleSpeechASR',
-        name: 'SiliconFlow - TeleAI/TeleSpeechASR',
+        id: 'dashscope-asr',
+        providerType: 'qwen',
+        providerScope: 'qwen',
+        apiProtocol: 'openai_chat_completions',
+        model: 'qwen3-asr-flash',
+        name: 'qwen3-asr-flash',
       }),
       createApiConfig({
-        id: 'openai-asr',
-        providerType: 'openai',
-        providerScope: 'openai',
-        vendorName: 'OpenAI',
-        model: 'gpt-4o-mini-transcribe',
-        name: 'OpenAI - gpt-4o-mini-transcribe',
+        id: 'relay-asr',
+        providerType: 'custom',
+        providerScope: undefined,
+        model: 'relay-gw_qwen3-asr-flash-2026-02-10',
+        name: 'relay-gw_qwen3-asr-flash-2026-02-10',
+      }),
+    ];
+
+    expect(getAssignableVoiceInputApis(apis).map((api) => api.id)).toEqual([
+      'sf-asr',
+      'sf-xingchen',
+      'openai-asr',
+      'dashscope-asr',
+      'relay-asr',
+    ]);
+  });
+
+  it('keeps unusable ASR models visible but disabled in assignment lists', () => {
+    const apis = [
+      createApiConfig({ id: 'sf-asr' }),
+      createApiConfig({
+        id: 'dashscope-realtime',
+        providerType: 'qwen',
+        providerScope: 'qwen',
+        model: 'qwen3-asr-flash-realtime',
+        name: 'qwen3-asr-flash-realtime',
+      }),
+      createApiConfig({
+        id: 'anthropic-asr',
+        providerType: 'anthropic',
+        providerScope: 'anthropic',
+        apiProtocol: 'anthropic_messages',
+        model: 'whisper-1',
+        name: 'whisper-1',
       }),
     ];
 
@@ -108,7 +133,12 @@ describe('voice input model selection', () => {
         disabledReason: null,
       },
       {
-        id: 'openai-asr',
+        id: 'dashscope-realtime',
+        disabled: true,
+        disabledReason: 'provider-unavailable',
+      },
+      {
+        id: 'anthropic-asr',
         disabled: true,
         disabledReason: 'provider-unavailable',
       },
@@ -119,8 +149,6 @@ describe('voice input model selection', () => {
     const apis = [
       createApiConfig({
         id: 'sf-asr-disabled',
-        model: 'TeleAI/TeleSpeechASR',
-        name: 'SiliconFlow - TeleAI/TeleSpeechASR',
         enabled: false,
       }),
     ];
@@ -144,22 +172,41 @@ describe('voice input model selection', () => {
     const assignments = createAssignments({
       voice_input_asr_model_config_id: 'sf-asr',
     });
-    const apis = [
-      createApiConfig({
-        id: 'sf-asr',
-        model: 'TeleAI/TeleSpeechASR',
-        name: 'SiliconFlow - TeleAI/TeleSpeechASR',
-      }),
-    ];
+    const apis = [createApiConfig({ id: 'sf-asr' })];
 
     expect(resolveVoiceInputModelAssignment(assignments, apis)).toEqual({
       status: 'ready',
       configId: 'sf-asr',
       providerId: 'siliconflow',
       providerLabel: 'SiliconFlow',
-      model: 'TeleAI/TeleSpeechASR',
-      modelLabel: 'SiliconFlow - TeleAI/TeleSpeechASR',
+      model: 'Qwen/Qwen3-ASR-1.7B',
+      modelLabel: 'SiliconFlow - Qwen/Qwen3-ASR-1.7B',
       disabled: false,
+    });
+  });
+
+  it('resolves a relay-hosted ASR model as a ready target', () => {
+    const assignments = createAssignments({
+      voice_input_asr_model_config_id: 'relay-asr',
+    });
+    const apis = [
+      createApiConfig({
+        id: 'relay-asr',
+        vendorName: '统一出口',
+        providerType: 'custom',
+        providerScope: undefined,
+        baseUrl: 'http://relay.example.test/v1',
+        model: 'Qwen/Qwen3-ASR-0.6B',
+        name: 'Qwen/Qwen3-ASR-0.6B',
+      }),
+    ];
+
+    expect(resolveVoiceInputModelAssignment(assignments, apis)).toMatchObject({
+      status: 'ready',
+      configId: 'relay-asr',
+      providerId: 'custom',
+      providerLabel: '统一出口',
+      model: 'Qwen/Qwen3-ASR-0.6B',
     });
   });
 
@@ -173,27 +220,28 @@ describe('voice input model selection', () => {
     });
   });
 
-  it('surfaces unsupported providers instead of pretending the assignment is usable', () => {
+  it('surfaces unusable transports instead of pretending the assignment is usable', () => {
     const assignments = createAssignments({
-      voice_input_asr_model_config_id: 'openai-asr',
+      voice_input_asr_model_config_id: 'dashscope-filetrans',
     });
     const apis = [
       createApiConfig({
-        id: 'openai-asr',
-        providerType: 'openai',
-        providerScope: 'openai',
-        model: 'gpt-4o-mini-transcribe',
-        name: 'OpenAI - gpt-4o-mini-transcribe',
+        id: 'dashscope-filetrans',
+        vendorName: '通义千问',
+        providerType: 'qwen',
+        providerScope: 'qwen',
+        model: 'qwen3-asr-flash-filetrans',
+        name: 'qwen3-asr-flash-filetrans',
       }),
     ];
 
     expect(resolveVoiceInputModelAssignment(assignments, apis)).toEqual({
       status: 'provider-unavailable',
-      configId: 'openai-asr',
-      providerId: 'openai',
-      providerLabel: 'OpenAI',
-      model: 'gpt-4o-mini-transcribe',
-      modelLabel: 'OpenAI - gpt-4o-mini-transcribe',
+      configId: 'dashscope-filetrans',
+      providerId: 'qwen',
+      providerLabel: '通义千问',
+      model: 'qwen3-asr-flash-filetrans',
+      modelLabel: 'qwen3-asr-flash-filetrans',
       disabled: false,
     });
   });

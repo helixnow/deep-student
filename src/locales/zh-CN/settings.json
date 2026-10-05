@@ -85,7 +85,7 @@
     "assignment_disabled_title": "当前分配的 ASR 模型已禁用",
     "assignment_disabled_message": "启用该模型，或在“设置 > 模型”里改选其他 ASR 模型。",
     "assignment_provider_unavailable_title": "当前提供方暂不可用",
-    "assignment_provider_unavailable_message": "当前只支持 SiliconFlow 转写，请改选 SiliconFlow 的 ASR 模型。",
+    "assignment_provider_unavailable_message": "这个模型没有可用的识别接口：转写需要 OpenAI 兼容的普通识别接口，Anthropic / Gemini 原生接口和只支持实时流、异步文件转写的模型（如 qwen3-asr-flash-realtime / -filetrans）用不了，请改选其它 ASR 模型。",
     "open_model_settings": "模型",
     "open_api_settings": "APIs",
     "open_usage_statistics": "统计",
@@ -109,7 +109,7 @@
     },
     "labels": {
       "coming_soon": "即将支持",
-      "provider_unavailable_reason": "这个 ASR 模型会显示在目录里，但当前运行时实际只能用 SiliconFlow 做转写。",
+      "provider_unavailable_reason": "这个模型只有实时流 / 异步文件转写接口，或所属提供方没有 OpenAI 兼容的识别接口，暂时不能用来转写。",
       "disabled_model_reason": "请先启用这个 ASR 模型，再把它分配给语音输入。"
     },
     "status": {

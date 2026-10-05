@@ -889,26 +889,18 @@ impl PdfProcessingService {
         self.db.app_data_dir().join("tmp").join("media")
     }
 
-    /// 构建受管 ASR 后端（语音输入同一 Key 与模型槽位）
+    /// 构建受管 ASR 后端（与语音输入共用模型槽位）
     pub async fn build_media_asr_backend(
         &self,
     ) -> Result<Arc<dyn crate::media::asr::AsrBackend>, crate::media::MediaError> {
-        let api_key =
-            crate::voice_input::resolve_asr_api_key(&self.settings_db).ok_or_else(|| {
-                crate::media::MediaError::AsrFatal {
-                code: "settings-required".to_string(),
-                message:
-                    "未配置语音识别：请在设置中填写 SiliconFlow API Key（与语音输入共用）后再转写"
-                        .to_string(),
-            }
-            })?;
-        let model = crate::media::asr::resolve_asr_model(&self.llm_manager).await;
-        let backend = crate::media::asr::HttpAsrBackend::new(
-            crate::voice_input::DEFAULT_SILICONFLOW_BASE_URL,
-            &api_key,
-            model,
-            None,
-        )?;
+        let endpoint =
+            crate::voice_input::resolve_asr_endpoint(&self.llm_manager, &self.settings_db)
+                .await
+                .map_err(|error| crate::media::MediaError::AsrFatal {
+                    code: error.code.to_string(),
+                    message: error.message,
+                })?;
+        let backend = crate::media::asr::HttpAsrBackend::new(endpoint, None)?;
         Ok(Arc::new(backend))
     }
 

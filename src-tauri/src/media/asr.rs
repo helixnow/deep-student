@@ -1,11 +1,12 @@
 //! 逐段 ASR：每段编码为 WAV，走语音输入同一套受管 ASR 配置与模型槽位
-//! （`voice_input_asr_model_config_id`），AIMD 自适应并发。
+//! （`voice_input_asr_model_config_id`，任何 OpenAI 兼容供应商），AIMD 自适应并发。
 //!
 //! - 连续成功（达到当前并发数次）并发 +1；429 并发减半并按 Retry-After 冷却；
 //! - 400 类请求错误不重试（该段记失败）；401/403/404 终止整个任务（鉴权 / 模型不可用）；
 //! - 5xx / 网络错误指数退避重试；
-//! - 仅当模型支持（whisper 系）时请求 `response_format=verbose_json`，用句级时间戳收紧段边界，
-//!   服务端拒绝该参数时自动降级为段级时间戳；
+//! - `/audio/transcriptions` 形态下仅当模型支持（whisper 系）时请求 `response_format=verbose_json`，
+//!   用句级时间戳收紧段边界，服务端拒绝该参数时自动降级为段级时间戳；
+//!   百炼 `qwen3-asr-flash` 走 `/chat/completions` + `input_audio`，只有段级时间戳；
 //! - 每次调用记入 llm_usage（`CallerType::MediaTranscription`）。
 
 use std::collections::VecDeque;
@@ -23,7 +24,10 @@ use tokio_util::sync::CancellationToken;
 use super::wav::{encode_wav_mono_16k, PcmSpool};
 use super::MediaError;
 use crate::llm_usage::CallerType;
-use crate::voice_input::{post_asr_form, record_asr_usage, AsrHttpError};
+use crate::voice_input::{
+    clean_asr_text, parse_chat_transcript, post_asr_chat_input_audio, post_asr_form,
+    record_asr_usage, AsrEndpoint, AsrHttpError, AsrProtocol,
+};
 
 /// 段音频前后余量（毫秒）
 pub const CLIP_PAD_MS: i64 = 100;
@@ -42,60 +46,9 @@ const MAX_RATE_LIMIT_ATTEMPTS: u32 = 8;
 /// 连续多少段最终失败后终止整个任务（避免网络断开时把整课刷成失败）
 const MAX_CONSECUTIVE_SEGMENT_FAILURES: usize = 5;
 
-/// 解析后的 ASR 模型（来自语音输入槽位）
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AsrModel {
-    pub provider_id: String,
-    pub model: String,
-    pub config_id: Option<String>,
-    pub supports_verbose_json: bool,
-}
-
-impl AsrModel {
-    pub fn from_model(provider_id: &str, model: &str, config_id: Option<String>) -> Self {
-        Self {
-            provider_id: provider_id.to_string(),
-            model: model.to_string(),
-            config_id,
-            supports_verbose_json: model_supports_verbose_json(model),
-        }
-    }
-}
-
 /// 只有 whisper 系模型确定支持 `verbose_json`（句级时间戳）
 pub fn model_supports_verbose_json(model: &str) -> bool {
     model.to_ascii_lowercase().contains("whisper")
-}
-
-/// 解析语音输入 ASR 槽位：已分配且可用的 SiliconFlow 模型优先，否则用默认模型
-pub async fn resolve_asr_model(llm: &crate::llm_manager::LLMManager) -> AsrModel {
-    use crate::voice_input::{DEFAULT_PROVIDER_ID, DEFAULT_SILICONFLOW_MODEL};
-    let fallback = AsrModel::from_model(DEFAULT_PROVIDER_ID, DEFAULT_SILICONFLOW_MODEL, None);
-    let Ok(assignments) = llm.get_model_assignments().await else {
-        return fallback;
-    };
-    let Some(config_id) = assignments
-        .voice_input_asr_model_config_id
-        .filter(|id| !id.trim().is_empty())
-    else {
-        return fallback;
-    };
-    let Ok(configs) = llm.get_api_configs().await else {
-        return fallback;
-    };
-    let Some(cfg) = configs.into_iter().find(|c| c.id == config_id) else {
-        return fallback;
-    };
-    let provider = cfg
-        .provider_scope
-        .as_deref()
-        .or(cfg.provider_type.as_deref())
-        .map(|p| p.trim().to_ascii_lowercase())
-        .unwrap_or_else(|| DEFAULT_PROVIDER_ID.to_string());
-    if !cfg.enabled || provider != DEFAULT_PROVIDER_ID || cfg.model.trim().is_empty() {
-        return fallback;
-    }
-    AsrModel::from_model(DEFAULT_PROVIDER_ID, cfg.model.trim(), Some(cfg.id))
 }
 
 /// 一段的识别结果
@@ -130,7 +83,7 @@ struct TranscriptionBody {
 pub fn parse_transcription_body(body: &str) -> Result<AsrClipResult, String> {
     let parsed: TranscriptionBody =
         serde_json::from_str(body).map_err(|e| format!("Invalid ASR response: {}", e))?;
-    let text = parsed.text.unwrap_or_default().trim().to_string();
+    let text = clean_asr_text(&parsed.text.unwrap_or_default());
     let speech_bounds_ms = parsed.segments.as_ref().and_then(|segs| {
         let start = segs
             .iter()
@@ -156,20 +109,13 @@ pub fn parse_transcription_body(body: &str) -> Result<AsrClipResult, String> {
 /// 走 voice_input 共用 HTTP 内核的 ASR 后端
 pub struct HttpAsrBackend {
     client: Client,
-    base_url: String,
-    api_key: String,
-    model: AsrModel,
+    endpoint: AsrEndpoint,
     language: Option<String>,
     verbose_enabled: AtomicBool,
 }
 
 impl HttpAsrBackend {
-    pub fn new(
-        base_url: &str,
-        api_key: &str,
-        model: AsrModel,
-        language: Option<String>,
-    ) -> Result<Self, MediaError> {
+    pub(crate) fn new(endpoint: AsrEndpoint, language: Option<String>) -> Result<Self, MediaError> {
         let client = Client::builder()
             .timeout(ASR_REQUEST_TIMEOUT)
             .build()
@@ -177,12 +123,11 @@ impl HttpAsrBackend {
                 code: "network-failed".into(),
                 message: format!("创建 ASR HTTP 客户端失败: {}", e),
             })?;
-        let verbose = model.supports_verbose_json;
+        let verbose = endpoint.protocol == AsrProtocol::Transcriptions
+            && model_supports_verbose_json(&endpoint.model);
         Ok(Self {
             client,
-            base_url: base_url.to_string(),
-            api_key: api_key.to_string(),
-            model,
+            endpoint,
             language,
             verbose_enabled: AtomicBool::new(verbose),
         })
@@ -197,7 +142,7 @@ impl HttpAsrBackend {
                 message: e.to_string(),
             })?;
         let mut form = Form::new()
-            .text("model", self.model.model.clone())
+            .text("model", self.endpoint.model.clone())
             .part("file", part);
         if verbose {
             form = form.text("response_format", "verbose_json");
@@ -209,15 +154,13 @@ impl HttpAsrBackend {
     }
 }
 
-#[async_trait]
-impl AsrBackend for HttpAsrBackend {
-    async fn transcribe(&self, wav: Vec<u8>) -> Result<AsrClipResult, AsrHttpError> {
-        let started = Instant::now();
+impl HttpAsrBackend {
+    async fn transcribe_multipart(&self, wav: Vec<u8>) -> Result<AsrClipResult, AsrHttpError> {
         let mut verbose = self.verbose_enabled.load(Ordering::Relaxed);
         let mut result;
         loop {
             let form = self.build_form(wav.clone(), verbose)?;
-            result = post_asr_form(&self.client, &self.base_url, &self.api_key, form).await;
+            result = post_asr_form(&self.client, &self.endpoint, form).await;
             // 服务端不认 verbose_json → 本任务后续一律降级为段级时间戳
             if verbose
                 && matches!(&result, Err(AsrHttpError::Status { status, body, .. })
@@ -229,23 +172,49 @@ impl AsrBackend for HttpAsrBackend {
             }
             break;
         }
-        let latency = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
-        let parsed = match result {
-            Ok(body) => parse_transcription_body(&body).map_err(|message| {
-                AsrHttpError::Status {
-                    // 当作可重试的服务端异常
-                    status: 502,
-                    retry_after: None,
-                    body: message,
-                }
-            }),
-            Err(e) => Err(e),
+        result.and_then(|body| parse_transcription_body(&body).map_err(malformed_response))
+    }
+
+    async fn transcribe_chat(&self, wav: Vec<u8>) -> Result<AsrClipResult, AsrHttpError> {
+        let body = post_asr_chat_input_audio(
+            &self.client,
+            &self.endpoint,
+            &wav,
+            "audio/wav",
+            self.language.as_deref(),
+        )
+        .await?;
+        let (text, _language) = parse_chat_transcript(&body).map_err(malformed_response)?;
+        Ok(AsrClipResult {
+            text,
+            speech_bounds_ms: None,
+        })
+    }
+}
+
+/// 2xx 但响应体解析不了：当作可重试的服务端异常
+fn malformed_response(message: String) -> AsrHttpError {
+    AsrHttpError::Status {
+        status: 502,
+        retry_after: None,
+        body: message,
+    }
+}
+
+#[async_trait]
+impl AsrBackend for HttpAsrBackend {
+    async fn transcribe(&self, wav: Vec<u8>) -> Result<AsrClipResult, AsrHttpError> {
+        let started = Instant::now();
+        let parsed = match self.endpoint.protocol {
+            AsrProtocol::Transcriptions => self.transcribe_multipart(wav).await,
+            AsrProtocol::ChatInputAudio => self.transcribe_chat(wav).await,
         };
+        let latency = started.elapsed().as_millis().min(u64::MAX as u128) as u64;
         record_asr_usage(
             CallerType::MediaTranscription,
-            &self.model.provider_id,
-            &self.model.model,
-            self.model.config_id.as_deref(),
+            &self.endpoint.provider_id,
+            &self.endpoint.model,
+            self.endpoint.config_id.as_deref(),
             latency,
             parsed.is_ok(),
             parsed.as_ref().err().map(|e| e.to_string()),
@@ -254,7 +223,7 @@ impl AsrBackend for HttpAsrBackend {
     }
 
     fn model_label(&self) -> String {
-        self.model.model.clone()
+        self.endpoint.model.clone()
     }
 }
 
@@ -669,6 +638,10 @@ mod tests {
         })
     }
 
+    fn endpoint(base_url: &str, api_key: &str, model: &str) -> AsrEndpoint {
+        AsrEndpoint::new("siliconflow", "SiliconFlow", base_url, api_key, model, None).unwrap()
+    }
+
     #[test]
     fn aimd_additive_increase_multiplicative_decrease() {
         let mut a = Aimd::new(2, 1, 4);
@@ -740,8 +713,11 @@ mod tests {
         let r = parse_transcription_body(r#"{"text":"plain"}"#).unwrap();
         assert_eq!(r.speech_bounds_ms, None);
         assert!(parse_transcription_body("not json").is_err());
+        let r =
+            parse_transcription_body(r#"{"text":"language Chinese<asr_text>讲到这里"}"#).unwrap();
+        assert_eq!(r.text, "讲到这里");
         assert!(model_supports_verbose_json("FunAudioLLM/whisper-large-v3"));
-        assert!(!model_supports_verbose_json("TeleAI/TeleSpeechASR"));
+        assert!(!model_supports_verbose_json("Qwen/Qwen3-ASR-1.7B"));
     }
 
     #[tokio::test(start_paused = true)]
@@ -873,9 +849,7 @@ mod tests {
             .create_async()
             .await;
         let backend = HttpAsrBackend::new(
-            &format!("{}/v1", server.url()),
-            "sk-media",
-            AsrModel::from_model("siliconflow", "whisper-1", None),
+            endpoint(&format!("{}/v1", server.url()), "sk-media", "whisper-1"),
             None,
         )
         .unwrap();
@@ -885,6 +859,37 @@ mod tests {
             .unwrap();
         assert_eq!(r.text, "段落");
         assert_eq!(r.speech_bounds_ms, Some((200, 700)));
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn http_backend_sends_qwen_flash_segments_as_input_audio() {
+        let mut server = mockito::Server::new_async().await;
+        let mock = server
+            .mock("POST", "/compatible-mode/v1/chat/completions")
+            .match_header("authorization", "Bearer sk-qwen")
+            .match_body(mockito::Matcher::Regex(
+                r#""data":"data:audio/wav;base64,UklGR"#.into(),
+            ))
+            .with_status(200)
+            .with_body(r#"{"choices":[{"message":{"content":"这一段"}}]}"#)
+            .create_async()
+            .await;
+        let backend = HttpAsrBackend::new(
+            endpoint(
+                &format!("{}/compatible-mode/v1", server.url()),
+                "sk-qwen",
+                "qwen3-asr-flash",
+            ),
+            None,
+        )
+        .unwrap();
+        let r = backend
+            .transcribe(encode_wav_mono_16k(&[0i16; 1600]))
+            .await
+            .unwrap();
+        assert_eq!(r.text, "这一段");
+        assert_eq!(r.speech_bounds_ms, None);
         mock.assert_async().await;
     }
 
@@ -907,9 +912,7 @@ mod tests {
             .create_async()
             .await;
         let backend = HttpAsrBackend::new(
-            &format!("{}/v1", server.url()),
-            "sk",
-            AsrModel::from_model("siliconflow", "whisper-large", None),
+            endpoint(&format!("{}/v1", server.url()), "sk", "whisper-large"),
             None,
         )
         .unwrap();
@@ -931,9 +934,7 @@ mod tests {
             .create_async()
             .await;
         let backend = HttpAsrBackend::new(
-            &format!("{}/v1", server.url()),
-            "sk",
-            AsrModel::from_model("siliconflow", "TeleAI/TeleSpeechASR", None),
+            endpoint(&format!("{}/v1", server.url()), "sk", "Qwen/Qwen3-ASR-1.7B"),
             None,
         )
         .unwrap();

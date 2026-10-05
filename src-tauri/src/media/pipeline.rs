@@ -533,9 +533,10 @@ pub async fn transcribe_resource(
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::media::asr::{AsrClipResult, AsrModel, HttpAsrBackend};
+    use crate::media::asr::{AsrClipResult, HttpAsrBackend};
     use crate::media::decoder::tests::write_wav;
     use crate::vfs::database::setup_migrated_test_db;
+    use crate::voice_input::AsrEndpoint;
 
     /// 合成"讲课"：语音块（200 Hz + 谐波）与静音交替
     pub(crate) fn lecture_wav(path: &Path, blocks: &[(f64, bool)], rate: u32) {
@@ -636,9 +637,15 @@ pub(crate) mod tests {
         let _ = (&ok, &bad);
         let backend: Arc<dyn AsrBackend> = Arc::new(
             HttpAsrBackend::new(
-                &format!("{}/v1", server.url()),
-                "sk-test",
-                AsrModel::from_model("siliconflow", "TeleAI/TeleSpeechASR", None),
+                AsrEndpoint::new(
+                    "siliconflow",
+                    "SiliconFlow",
+                    &format!("{}/v1", server.url()),
+                    "sk-test",
+                    "Qwen/Qwen3-ASR-1.7B",
+                    None,
+                )
+                .unwrap(),
                 None,
             )
             .unwrap(),
