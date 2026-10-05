@@ -76,11 +76,12 @@ export const MediaStudioApp: React.FC<MediaStudioAppProps> = ({
   }, [payloadResourceId, openStudy]);
 
   const handleOpen = useCallback((item: MediaLibraryItem) => openStudy(item.id), [openStudy]);
+  const refreshLibrary = library.refresh;
   const handleBack = useCallback(() => {
     closeStudy();
     // 回库页时对账一次（观看进度 / 转写状态在学习页里变了）
-    void library.refresh();
-  }, [closeStudy, library]);
+    void refreshLibrary();
+  }, [closeStudy, refreshLibrary]);
 
   const inStudy = Boolean(activeResourceId);
   const title = inStudy ? studyTitle ?? t('mediaStudio:title') : t('mediaStudio:title');

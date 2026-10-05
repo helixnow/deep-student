@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 vi.mock('@/features/chat/core/session/sessionManager', () => ({ sessionManager: {} }));
 
 import { APP_EVENTS } from '@/events';
-import { requestNewChatSession } from '../mediaChat';
+import { isCurrentUngroupedDraft, requestNewChatSession } from '../mediaChat';
+import { DRAFT_SESSION_METADATA_KEY, getDraftSessionScope, getHiddenDraftSessionScope } from '@/features/chat/pages/draftSession';
 
 function fakeManager(current: string | null) {
   let listener: ((event: { type: string; sessionId?: string | null }) => void) | null = null;
@@ -54,5 +55,20 @@ describe('requestNewChatSession', () => {
     await expect(pending).resolves.toBe('sess_draft');
     window.removeEventListener(APP_EVENTS.CHAT_NEW_SESSION, newSession);
     expect(newSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('isCurrentUngroupedDraft', () => {
+  const scopeOf = (metadata: unknown) => getHiddenDraftSessionScope(metadata as never);
+  const manager = (metadata: unknown) => ({
+    getCurrentSessionId: () => 'sess_1',
+    subscribe: () => () => undefined,
+    get: () => ({ getState: () => ({ sessionMetadata: metadata }) }),
+  });
+
+  it('recognizes the blank new chat that "new session" reuses without switching', () => {
+    const draft = { [DRAFT_SESSION_METADATA_KEY]: { hidden: true, scope: getDraftSessionScope('chat', null) } };
+    expect(isCurrentUngroupedDraft(manager(draft), scopeOf, getDraftSessionScope('chat', null))).toBe(true);
+    expect(isCurrentUngroupedDraft(manager({}), scopeOf, getDraftSessionScope('chat', null))).toBe(false);
   });
 });
