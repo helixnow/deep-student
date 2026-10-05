@@ -35,6 +35,7 @@ import {
   watchRatio,
   type StatusChipTone,
 } from '../libraryModel';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 
 export type MediaRowAction =
   | { type: 'rename' }
@@ -86,6 +87,9 @@ export interface MediaLibraryRowProps {
 export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen, onAction }: MediaLibraryRowProps) {
   const { t, i18n } = useTranslation(['mediaStudio', 'learningHub', 'common']);
   const [menuOpen, setMenuOpen] = useState(false);
+  // 状态徽章只渲染一处：手机与元信息同行，桌面在行尾（不能靠 sm:hidden——
+  // study-shell-badge 自带 display 会盖掉 hidden，导致两处同时出现）
+  const { isSmallScreen } = useBreakpoint();
   const longPress = useLongPress({ onLongPress: () => setMenuOpen(true) });
 
   const duration = formatDuration(item.durationMs);
@@ -135,7 +139,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
             </span>
             <span className="flex min-w-0 items-center gap-2">
               {/* 手机：状态徽章与元信息同一行（桌面在行尾） */}
-              <MediaStatusChip item={item} className="sm:hidden" />
+              {isSmallScreen ? <MediaStatusChip item={item} /> : null}
               <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{meta}</span>
             </span>
             {ratio !== null && !finished ? (
@@ -153,7 +157,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
           </span>
         </DsButton>
 
-        <MediaStatusChip item={item} className="max-sm:hidden" />
+        {isSmallScreen ? null : <MediaStatusChip item={item} />}
 
         <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
           <AppMenuTrigger asChild>
