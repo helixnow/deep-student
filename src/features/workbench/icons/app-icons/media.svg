@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
+  <linearGradient id="md_body" x1="75" x2="75" y1="24" y2="112" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D5EAE8" offset="1"/>
+  </linearGradient>
+  <rect x="16" y="24" width="118" height="84" rx="12" fill="url(#md_body)" stroke="#A6C4CB" stroke-width="3"/>
+  <linearGradient id="md_screen" x1="75" x2="75" y1="34" y2="98" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14607E" offset="0"/>
+    <stop stop-color="#1D3F6E" offset="1"/>
+  </linearGradient>
+  <rect x="26" y="34" width="98" height="64" rx="7" fill="url(#md_screen)"/>
+  <linearGradient id="md_play" x1="68" x2="88" y1="50" y2="82" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M66 52.5v27a3 3 0 0 0 4.6 2.5l21.4-13.5a3 3 0 0 0 0-5L70.6 50a3 3 0 0 0-4.6 2.5z" fill="url(#md_play)"/>
+  <linearGradient id="md_wave" x1="75" x2="75" y1="116" y2="136" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#5FD0CB" offset="0"/>
+    <stop stop-color="#14A5A0" offset="1"/>
+  </linearGradient>
+  <g fill="url(#md_wave)">
+    <rect x="40" y="122" width="7" height="10" rx="3.5"/>
+    <rect x="52" y="117" width="7" height="20" rx="3.5"/>
+    <rect x="64" y="120" width="7" height="14" rx="3.5"/>
+    <rect x="76" y="115" width="7" height="24" rx="3.5"/>
+    <rect x="88" y="119" width="7" height="16" rx="3.5"/>
+    <rect x="100" y="123" width="7" height="8" rx="3.5"/>
+  </g>
+  <path d="M34 42h22" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity=".35"/>
+</svg>

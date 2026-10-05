@@ -1,8 +1,8 @@
 /**
  * 移动抽屉全局应用入口契约：
- * 1. head 之下固定启动器网格（3 列 × 2 行，6 个入口），不随页内列表滚动。
+ * 1. head 之下固定启动器网格（3 列，7 个入口），不随页内列表滚动。
  * 2. 不含搜索与命令、总览；制卡任务与模板并入「闪卡」（闪卡中心页内分区切换）。
- *    格子文案两字：会话 / 资源 / 待办 / 技能 / 闪卡 / 数据。
+ *    格子文案：会话 / 资源 / 音视频 / 待办 / 技能 / 闪卡 / 数据（音视频为产品名，不缩写）。
  * 3. 当前视图高亮，不从网格里拿掉；闪卡中心任一分区活跃时「闪卡」高亮。
  */
 import React from 'react';
@@ -29,12 +29,13 @@ describe('MobileSidebarNavigation app launcher', () => {
     setCurrentView('chat-v2');
   });
 
-  it('renders the six launcher destinations as a 3-column grid', () => {
+  it('renders the seven launcher destinations as a 3-column grid', () => {
     render(<MobileSidebarNavigation />);
 
     expect(MOBILE_APP_LAUNCHER_VIEWS).toEqual([
       'chat-v2',
       'learning-hub',
+      'media',
       'todo',
       'skills-management',
       'flashcards',
@@ -44,6 +45,7 @@ describe('MobileSidebarNavigation app launcher', () => {
     expect(getButtonLabels()).toEqual([
       '会话',
       '资源',
+      '音视频',
       '待办',
       '技能',
       '闪卡',
@@ -134,4 +136,23 @@ describe('MobileSidebarNavigation app launcher', () => {
       expect(onNavigate).toHaveBeenCalledWith(view);
     },
   );
+});
+
+describe('MobileSidebarNavigation media launcher', () => {
+  beforeEach(() => {
+    cleanup();
+    setCurrentView('chat-v2');
+  });
+
+  it('navigates to the media sub-app and marks it current there', () => {
+    const onNavigate = vi.fn();
+    render(<MobileSidebarNavigation onNavigate={onNavigate} />);
+    fireEvent.click(screen.getByRole('button', { name: '音视频' }));
+    expect(onNavigate).toHaveBeenCalledWith('media');
+    cleanup();
+
+    setCurrentView('media');
+    render(<MobileSidebarNavigation />);
+    expect(screen.getByRole('button', { name: '音视频' })).toHaveAttribute('aria-current', 'page');
+  });
 });

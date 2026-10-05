@@ -294,6 +294,9 @@
     }
   },
   "mediaTranscript": {
+    "openInStudio": "Study in Media",
+    "emptyTitle": "No subtitles yet",
+    "emptyHint": "Transcribe to search while you watch, jump by tapping lines, and ask questions, build handouts and practice from the transcript. Have a subtitle file? Import it instead and skip the transcription cost.",
     "toolbarLabel": "Transcript and subtitles",
     "transcribe": "Transcribe",
     "retryFailed": "Retry failed segments",

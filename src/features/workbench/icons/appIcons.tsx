@@ -21,6 +21,7 @@ import taskDashboardUrl from './app-icons/taskDashboard.svg';
 import aiDashboardUrl from './app-icons/aiDashboard.svg';
 import filesUrl from './app-icons/files.svg';
 import mindmapUrl from './app-icons/mindmap.svg';
+import mediaUrl from './app-icons/media.svg';
 
 /**
  * 全彩插画风应用图标（独立 SVG 资源，统一青绿→藏青主色 + 琥珀/橙点缀）。
@@ -48,6 +49,7 @@ export const APP_ICON_URLS: Record<string, string> = {
   aiDashboard: aiDashboardUrl,
   files: filesUrl,
   mindmap: mindmapUrl,
+  media: mediaUrl,
 };
 
 export function hasIllustratedAppIcon(typeId: string): boolean {

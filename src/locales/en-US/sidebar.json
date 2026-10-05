@@ -39,6 +39,7 @@
     "essay_grading": "Essay Review",
     "canvas_board": "Canvas Board",
     "learning_hub": "Files",
+    "media": "Media",
     "extensions": "Extensions",
     "chat_v2": "New Chat",
     "skills_management": "Skills Management",
@@ -57,6 +58,7 @@
     "launcher": {
       "chat_v2": "Chat",
       "learning_hub": "Hub",
+      "media": "Media",
       "todo": "Todo",
       "skills_management": "Skills",
       "flashcards": "Flashcards",

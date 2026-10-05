@@ -20,6 +20,7 @@ export type CurrentView =
   | 'crepe-demo'
   | 'pdf-reader'
   | 'learning-hub'      // Learning Hub 学习资源全屏模式
+  | 'media'             // 音视频（资源库音视频的专用视角：转写 / 字幕 / 讲义 / 问答 / 练习）
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面
   | 'flashcards'        // 闪卡复习（传统壳入口；OS 模式仍走学习桌面应用）

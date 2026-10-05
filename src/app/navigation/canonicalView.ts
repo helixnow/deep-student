@@ -26,6 +26,10 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   'bridge-to-irec': 'chat-v2',
   // 2026-09: 模板 JSON 预览页已移除，历史记录重定向回模板管理
   'template-json-preview': 'template-management',
+  // 2026-10: 音视频子应用（别名兼容外部深链 / 命令）
+  'media-studio': 'media',
+  'audio-video': 'media',
+  'media-learning': 'media',
 };
 
 const BASE_CANONICAL_VIEWS: CurrentView[] = [
@@ -38,6 +42,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'ui-lab',
   'pdf-reader',
   'learning-hub',
+  'media',
   'skills-management',
   'todo',
   'flashcards',

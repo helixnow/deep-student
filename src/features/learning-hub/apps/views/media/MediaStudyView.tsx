@@ -7,6 +7,10 @@
  *
  * 布局：容器宽 ≥ SIDE_LAYOUT_MIN_WIDTH 时字幕面板在右侧；否则（手机 / 窄面板）
  * 在播放器下方。顶部一条工具栏放转写入口与字幕操作。
+ *
+ * 音视频子应用（学习页）经 MediaStudyCompanionContext 注入讲义 / 问答 / 练习分区：
+ * 字幕面板变为「字幕 / 讲义 / 问答 / 练习」分段面板（始终可见），讲义入口移入讲义分区；
+ * 资源库与聊天右侧面板无 context，工具栏多一个「在音视频中学习」跳转。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -22,10 +26,12 @@ import {
   X,
   CircleNotch,
   ArrowClockwise,
+  ArrowSquareOut,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { DsAlertDialog } from '@/components/ui/DsDialog';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -52,6 +58,12 @@ import { findActiveSegmentIndex } from './transcriptVtt';
 import { HandoutGenerateButton } from '@/features/media-handout';
 import { formatMediaRefTimestamp } from './mediaRefTime';
 import { captureVideoFrame, CaptureFrameError, frameFileName } from './captureVideoFrame';
+import {
+  MEDIA_STUDY_TRANSCRIPT_TAB,
+  useMediaStudyCompanion,
+  type MediaStudyCompanionRenderContext,
+} from './mediaStudyCompanion';
+import { openMediaStudio } from '@/features/media-studio/mediaStudioNavigation';
 
 /** 字幕面板放到右侧所需的最小容器宽度 */
 export const SIDE_LAYOUT_MIN_WIDTH = 720;
@@ -110,6 +122,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const containerWidth = useContainerWidth(rootRef);
   const sideLayout = containerWidth >= SIDE_LAYOUT_MIN_WIDTH;
   const isVideo = kind === 'video';
+  const companion = useMediaStudyCompanion();
 
   // ---------------------------------------------------------------- 转写
   const transcriptState = useMediaTranscript({
@@ -125,7 +138,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const hasDoneSegments = useMemo(() => segments.some((s) => s.status === 'done'), [segments]);
 
   const [panelPref, setPanelPref] = useState<boolean | null>(null);
-  const panelOpen = (panelPref ?? true) && (hasTranscript || running);
+  // 子应用分段面板始终可用（无字幕时字幕分区给出转写 / 导入入口）；手机布局下不可收起
+  const panelOpen = companion
+    ? (panelPref ?? true) || !sideLayout
+    : (panelPref ?? true) && (hasTranscript || running);
 
   // ---------------------------------------------------------------- 字幕轨（视频）
   const { trackSrc, trackRef, captionsOn, toggleCaptions } = useTranscriptTrack(segments, isVideo);
@@ -347,6 +363,29 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     }
   }, [fileName, referenceToChat, resourceId, t]);
 
+  // ---------------------------------------------------------------- 伴随面板（音视频子应用）
+  const seekToSeconds = useCallback((seconds: number) => {
+    const handle = handleRef.current;
+    if (!handle) return;
+    handle.seekTo(seconds);
+    handle.play();
+  }, []);
+  const doneSegments = useMemo(() => segments.filter((s) => s.status === 'done').length, [segments]);
+  const companionRenderContext = useMemo<MediaStudyCompanionRenderContext>(
+    () => ({
+      resourceId,
+      kind,
+      src,
+      fileName,
+      transcriptStatus: status,
+      hasTranscript: hasDoneSegments && !running,
+      doneSegments,
+      totalSegments: transcript?.progress?.totalSegments || segments.length,
+      seekTo: seekToSeconds,
+    }),
+    [resourceId, kind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
+  );
+
   // ---------------------------------------------------------------- 渲染
   const transcribeLabel =
     status === 'partial'
@@ -486,13 +525,15 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         <div className="flex-1" />
 
         {/* 讲义：字幕 → 抽帧/帧说明 → 大纲 → 分节 → 落为笔记（docs/dev/media-learning §3） */}
-        <HandoutGenerateButton
-          resourceId={resourceId}
-          kind={kind}
-          src={src}
-          fileName={fileName}
-          hasTranscript={hasDoneSegments && !running}
-        />
+        {!companion && (
+          <HandoutGenerateButton
+            resourceId={resourceId}
+            kind={kind}
+            src={src}
+            fileName={fileName}
+            hasTranscript={hasDoneSegments && !running}
+          />
+        )}
 
         {isVideo && (
           <DsButton
@@ -513,7 +554,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           </DsButton>
         )}
 
-        {(hasTranscript || running) && (
+        {(companion ? sideLayout : hasTranscript || running) && (
           <DsButton
             variant="ghost"
             size="sm"
@@ -536,6 +577,21 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             )}
           >
             <Subtitles size={16} aria-hidden="true" />
+          </DsButton>
+        )}
+
+        {!companion && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            iconOnly
+            onClick={() => openMediaStudio(resourceId)}
+            aria-label={t('learningHub:mediaTranscript.openInStudio')}
+            title={t('learningHub:mediaTranscript.openInStudio')}
+            data-media-open-in-studio=""
+            className="h-8 w-8"
+          >
+            <ArrowSquareOut size={16} aria-hidden="true" />
           </DsButton>
         )}
 
@@ -588,14 +644,122 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             'min-h-0 min-w-0',
             !panelOpen || sideLayout
               ? 'flex-1'
-              : isVideo
-                ? 'h-[45%] min-h-[200px] shrink-0'
-                : 'h-[300px] shrink-0',
+              : companion
+                ? isVideo
+                  // 手机学习页：播放器固定在上方，16:9 且不超过 42% 视口高
+                  ? 'aspect-video max-h-[42svh] w-full shrink-0'
+                  : 'shrink-0'
+                : isVideo
+                  ? 'h-[45%] min-h-[200px] shrink-0'
+                  : 'h-[300px] shrink-0',
           )}
         >
           {player}
         </div>
-        {panelOpen && (
+        {panelOpen && companion && (
+          <section
+            aria-label={companion.ariaLabel}
+            data-media-study-companion={sideLayout ? 'side' : 'bottom'}
+            className={cn(
+              'flex min-h-0 flex-col bg-background',
+              sideLayout
+                ? 'w-[340px] shrink-0 border-l border-border xl:w-[380px]'
+                : 'min-h-0 flex-1 border-t border-border',
+            )}
+          >
+            <div className="shrink-0 px-3 pb-1 pt-2">
+              <SegmentedControl<string>
+                ariaLabel={companion.ariaLabel}
+                value={companion.activeTab}
+                onValueChange={companion.onActiveTabChange}
+                options={[
+                  { value: MEDIA_STUDY_TRANSCRIPT_TAB, label: t('learningHub:mediaTranscript.panelTitle') },
+                  ...companion.tabs.map((tab) => ({ value: tab.id, label: tab.label })),
+                ]}
+                size="compact"
+                stretch
+                // 本仓 cn 不做 tailwind-merge：覆盖基元默认宽度需用 important（同 CardsHubTabs）
+                className="!flex !w-full !flex-nowrap"
+                itemClassName="!flex-1 whitespace-nowrap"
+              />
+            </div>
+            <div
+              // Tailwind 的 .flex 会压过 [hidden]，可见性用类切换
+              className={cn(
+                'min-h-0 flex-1 flex-col',
+                companion.activeTab === MEDIA_STUDY_TRANSCRIPT_TAB ? 'flex' : 'hidden',
+              )}
+              data-media-study-tab={MEDIA_STUDY_TRANSCRIPT_TAB}
+            >
+              {hasTranscript || running || status === 'partial' || status === 'failed' ? (
+                <TranscriptPanel
+                  segments={segments}
+                  activeSegmentIdx={activeSegmentIdx}
+                  onSeek={seekToSegment}
+                  status={status}
+                  progress={progress}
+                  error={progress?.error ?? transcriptState.error}
+                  onCancel={handleCancel}
+                  cancelling={cancelling}
+                  onRetry={() => void handleRetry()}
+                  retrying={starting}
+                  layout={sideLayout ? 'side' : 'bottom'}
+                  hideTitle
+                  bordered={false}
+                  className="min-h-0 flex-1"
+                />
+              ) : (
+                <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 py-8 text-center">
+                  <Subtitles size={28} weight="duotone" className="text-muted-foreground/60" aria-hidden="true" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t('learningHub:mediaTranscript.emptyTitle')}
+                    </p>
+                    <p className="max-w-xs text-xs leading-relaxed text-muted-foreground">
+                      {t('learningHub:mediaTranscript.emptyHint')}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <DsButton
+                      variant="primary"
+                      size="sm"
+                      onClick={() => void handleTranscribeClick()}
+                      disabled={estimating || starting || transcriptState.loading}
+                      className="gap-1.5"
+                    >
+                      {estimating || starting ? (
+                        <CircleNotch size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                      ) : (
+                        <Waveform size={14} aria-hidden="true" />
+                      )}
+                      {t('learningHub:mediaTranscript.transcribe')}
+                    </DsButton>
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void handleImport()}
+                      className="gap-1.5"
+                    >
+                      <FileArrowUp size={14} aria-hidden="true" />
+                      {t('learningHub:mediaTranscript.import')}
+                    </DsButton>
+                  </div>
+                </div>
+              )}
+            </div>
+            {companion.tabs.map((tab) => (
+              // 分区常驻挂载、仅切换可见：讲义生成等进行中的任务不因切换分区被中止
+              <div
+                key={tab.id}
+                className={cn('min-h-0 flex-1 flex-col', companion.activeTab === tab.id ? 'flex' : 'hidden')}
+                data-media-study-tab={tab.id}
+              >
+                {tab.render(companionRenderContext)}
+              </div>
+            ))}
+          </section>
+        )}
+        {panelOpen && !companion && (
           <TranscriptPanel
             segments={segments}
             activeSegmentIdx={activeSegmentIdx}

@@ -24,6 +24,7 @@ import {
   House,
   Lightning,
   Cards,
+  MonitorPlay,
 } from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 
@@ -62,6 +63,19 @@ export function getNavigationCommands(): Command[] {
       priority: 95,
       execute: (deps) => {
         deps.navigate('skills-management');
+      },
+    },
+    // 音视频（资源库音视频的专用视角）
+    {
+      id: 'nav.goto.media',
+      name: i18next.t('command_palette:commands.nav.goto.media', 'Go to Media'),
+      description: i18next.t('command_palette:descriptions.nav.goto.media', 'Lectures and recordings: transcripts, handouts, Q&A and practice'),
+      category: 'navigation',
+      icon: MonitorPlay,
+      keywords: kw('nav.goto.media'),
+      priority: 96,
+      execute: (deps) => {
+        deps.navigate('media');
       },
     },
     // 闪卡中心（复习 / 制卡 / 模板 三个分区，对应三个视图 id）

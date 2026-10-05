@@ -158,6 +158,7 @@ import {
   LazyPdfReader,
   LazyTodoPage,
   LazyFlashcardsPage,
+  LazyMediaStudioPage,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
   LazyLLMOutputPlayground,
@@ -500,6 +501,7 @@ const WORKBENCH_APP_BY_CLASSIC_VIEW: Partial<Record<CurrentView, string>> = {
   'task-dashboard': 'taskDashboard',
   'sandbox-workbench': 'sandbox',
   'flashcards': 'flashcards',
+  'media': 'media',
 };
 
 const BRIDGE_COMPLETION_REASONS = new Set([
@@ -1549,18 +1551,23 @@ function App() {
   }, [setCurrentView]);
 
   // 媒体时间戳引用（`[媒体@id:mm:ss]`，闪卡来源按钮、笔记锚点等）：经典壳下除聊天页外
-  // 一律在学习资源页以标签打开并跳转。聊天页自己处理（右侧附件面板，见 useChatPageEvents）；
-  // 这里不依赖聊天页挂载——触屏 LRU 可能已淘汰它，否则从其它页面点击会无响应或在
-  // 隐藏的聊天面板里出声。跳转由媒体视图就绪后领取待兑现意图兜底（mediaRefEvents）。
+  // 一律在「音视频」学习页打开并跳转（docs/dev/media-learning §0.5）。聊天页自己处理（右侧
+  // 附件面板，见 useChatPageEvents）；这里不依赖聊天页挂载——触屏 LRU 可能已淘汰它，否则从
+  // 其它页面点击会无响应或在隐藏的聊天面板里出声。跳转只投给子应用学习页的播放器
+  // （targetScopeId），资源库保活标签里同一媒体不会抢走 seek；学习页就绪晚于重发窗口时
+  // 由媒体视图领取待兑现意图兜底（mediaRefEvents）。
   const handleMediaRefOpen = useCallback((event: Event) => {
     if (workbenchBus.isEnabled() || currentViewRef.current === 'chat-v2') return;
     const { resourceId, seconds } = (event as CustomEvent<{ resourceId?: string; seconds?: number }>).detail ?? {};
     if (!resourceId || typeof seconds !== 'number' || !Number.isFinite(seconds) || seconds < 0) return;
-    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_RESOURCE, { dstuPath: `/${resourceId}` });
-    void import('@/features/learning-hub/apps/views/media/mediaRefEvents').then(
-      ({ requestMediaFocusUntilHandled }) => requestMediaFocusUntilHandled({ resourceId, seconds }),
-    );
-  }, [openInLearningHub]);
+    void Promise.all([
+      import('@/features/media-studio/mediaStudioNavigation'),
+      import('@/features/learning-hub/apps/views/media/mediaRefEvents'),
+    ]).then(([{ openMediaStudio, MEDIA_STUDIO_FOCUS_SCOPE }, { requestMediaFocusUntilHandled }]) => {
+      openMediaStudio(resourceId);
+      requestMediaFocusUntilHandled({ resourceId, seconds, targetScopeId: MEDIA_STUDIO_FOCUS_SCOPE });
+    });
+  }, []);
   useEventRegistry([
     { target: 'document', type: 'media-ref:open', listener: handleMediaRefOpen },
   ], [handleMediaRefOpen]);
@@ -2657,6 +2664,7 @@ function App() {
     const labels: Partial<Record<CurrentView, string>> = {
       'chat-v2': t('sidebar:navigation.chat_v2'),
       'learning-hub': t('sidebar:navigation.learning_hub'),
+      'media': t('sidebar:navigation.media'),
       'settings': t('sidebar:navigation.settings'),
       'dashboard': t('common:navigation.dashboard'),
       // 闪卡中心三个分区共用页面标题，分区由标题旁的 CardsHubTabs 指示
@@ -2750,6 +2758,13 @@ function App() {
       <LazyFlashcardsPage isActive={isFlashcardsActive} />
     </Suspense>
   ), [isFlashcardsActive]);
+
+  const isMediaActive = currentView === 'media';
+  const mediaStudioContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyMediaStudioPage isActive={isMediaActive} />
+    </Suspense>
+  ), [isMediaActive]);
 
   const styleDebugContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -2984,12 +2999,12 @@ function App() {
                 className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
                 style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
               >
-                {currentView === 'learning-hub' || currentView === 'todo' || currentView === 'skills-management' ? (
+                {currentView === 'learning-hub' || currentView === 'todo' || currentView === 'skills-management' || currentView === 'media' ? (
                   <div
                     ref={setDesktopPageHeaderTarget}
                     className="h-full min-w-0 flex-1"
                     data-no-drag
-                    data-shell-slot={currentView === 'learning-hub' ? 'learning-hub-toolbar' : currentView === 'todo' ? 'todo-toolbar' : 'skills-toolbar'}
+                    data-shell-slot={currentView === 'learning-hub' ? 'learning-hub-toolbar' : currentView === 'todo' ? 'todo-toolbar' : currentView === 'media' ? 'media-toolbar' : 'skills-toolbar'}
                   />
                 ) : currentView === 'chat-v2' && currentChatHeaderSessionId && currentChatHeaderTitle ? (
                   <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -3209,6 +3224,9 @@ function App() {
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}
+
+              {/* 音视频（资源库音视频的专用视角） */}
+              {renderViewLayer('media', mediaStudioContent)}
 
               {renderViewLayer('sandbox-workbench', sandboxWorkbenchContent)}
 

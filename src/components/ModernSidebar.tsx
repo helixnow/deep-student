@@ -330,7 +330,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
         return item.view === 'chat-v2';
       }
       // 闪卡中心（复习 / 制卡 / 模板）只占一个入口：flashcards 代表整个分区组
-      return ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'flashcards', 'ui-lab'].includes(item.view);
+      return ['chat-v2', 'learning-hub', 'media', 'todo', 'skills-management', 'flashcards', 'ui-lab'].includes(item.view);
     }),
     [navItems, navigationScope]
   );

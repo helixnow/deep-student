@@ -39,6 +39,7 @@
     "essay_grading": "作文批改",
     "canvas_board": "白板",
     "learning_hub": "资源库",
+    "media": "音视频",
     "extensions": "扩展功能",
     "chat_v2": "新会话",
     "skills_management": "技能管理",
@@ -57,6 +58,7 @@
     "launcher": {
       "chat_v2": "会话",
       "learning_hub": "资源",
+      "media": "音视频",
       "todo": "待办",
       "skills_management": "技能",
       "flashcards": "闪卡",

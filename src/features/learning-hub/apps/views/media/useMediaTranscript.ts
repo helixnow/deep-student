@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import {
   mediaTranscriptApi,
   subscribeMediaProcessingEvents,
@@ -188,6 +189,14 @@ export function useMediaTranscript({
     }, TRANSCRIPT_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [enabled, isRunning, fetchTranscript]);
+
+  // 回到前台立即对账：Android 切后台期间 WebView 冻结，事件可能丢失，转写却在后端继续推进
+  const handleVisibility = useCallback(() => {
+    if (enabled && document.visibilityState === 'visible') scheduleRefetch(true);
+  }, [enabled, scheduleRefetch]);
+  useEventRegistry([
+    { target: 'document', type: 'visibilitychange', listener: handleVisibility },
+  ], [handleVisibility]);
 
   const requestEstimate = useCallback(async () => {
     setEstimating(true);

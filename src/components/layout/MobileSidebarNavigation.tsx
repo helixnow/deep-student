@@ -25,6 +25,7 @@ import {
   StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
+  StudyMediaIcon,
   StudyTodoIcon,
 } from '@/components/icons/StudySidebarIcons';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
@@ -52,6 +53,7 @@ export const MobileAppNavigationProvider: React.FC<{
 const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
   'chat-v2': StudyChatIcon,
   'learning-hub': StudyBooksIcon,
+  media: StudyMediaIcon,
   todo: StudyTodoIcon,
   'skills-management': StudyMagicWandIcon,
   flashcards: StudyCardsIcon,
@@ -61,6 +63,7 @@ const LAUNCHER_ICONS: Record<MobileAppLauncherView, React.ElementType> = {
 const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
   'chat-v2': { key: 'sidebar:navigation.launcher.chat_v2', fallback: '会话' },
   'learning-hub': { key: 'sidebar:navigation.launcher.learning_hub', fallback: '资源' },
+  media: { key: 'sidebar:navigation.launcher.media', fallback: '音视频' },
   todo: { key: 'sidebar:navigation.launcher.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.launcher.skills_management', fallback: '技能' },
   flashcards: { key: 'sidebar:navigation.launcher.flashcards', fallback: '闪卡' },
@@ -70,6 +73,7 @@ const LAUNCHER_SHORT_LABEL: Record<MobileAppLauncherView, { key: string; fallbac
 const LAUNCHER_FULL_LABEL: Record<MobileAppLauncherView, { key: string; fallback: string }> = {
   'chat-v2': { key: 'sidebar:navigation.sessions', fallback: '会话' },
   'learning-hub': { key: 'sidebar:navigation.learning_hub', fallback: '资源库' },
+  media: { key: 'sidebar:navigation.media', fallback: '音视频' },
   todo: { key: 'sidebar:navigation.todo', fallback: '待办' },
   'skills-management': { key: 'sidebar:navigation.skills_management', fallback: '技能管理' },
   flashcards: { key: 'sidebar:navigation.flashcards', fallback: '闪卡' },

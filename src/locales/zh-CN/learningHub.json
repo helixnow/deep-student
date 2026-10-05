@@ -294,6 +294,9 @@
     }
   },
   "mediaTranscript": {
+    "openInStudio": "在音视频中学习",
+    "emptyTitle": "还没有字幕",
+    "emptyHint": "转写后可边看边查、点字幕跳转，并基于字幕提问、生成讲义和练习。已有字幕文件可直接导入，免去转写费用。",
     "toolbarLabel": "转写与字幕",
     "transcribe": "转写",
     "retryFailed": "重试失败段",

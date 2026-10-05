@@ -143,6 +143,11 @@ export const LazyFlashcardsPage = React.lazy(() =>
   import('@/features/flashcards/FlashcardsApp').then(m => ({ default: m.FlashcardsApp }))
 );
 
+// 音视频子应用（资源库音视频的专用视角；学习桌面同样以「音视频」窗口承载）
+export const LazyMediaStudioPage = React.lazy(() =>
+  import('@/features/media-studio/MediaStudioApp').then(m => ({ default: m.MediaStudioApp }))
+);
+
 // 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除
 const DevNull: React.FC<any> = () => null;
 const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });

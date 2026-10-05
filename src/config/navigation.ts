@@ -6,6 +6,7 @@ import {
   StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
+  StudyMediaIcon,
   StudySettingsIcon,
   StudyTodoIcon,
 } from '../components/icons/StudySidebarIcons';
@@ -24,6 +25,7 @@ export type NavViewType =
   | 'template-management'
   | 'chat-v2'
   | 'learning-hub'
+  | 'media'
   | 'skills-management'
   | 'ui-lab'
   | 'todo'
@@ -59,6 +61,13 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
       name: t('sidebar:navigation.learning_hub', '资源库'),
       view: 'learning-hub',
       icon: StudyBooksIcon,
+    },
+    // ★ 音视频（2026-10）：资源库音视频的专用视角，串起「看课」闭环
+    // （导入 → 转写 → 边看边查 → 提问 → 讲义 → 制卡/出题），见 docs/dev/media-learning §0.5
+    {
+      name: t('sidebar:navigation.media', '音视频'),
+      view: 'media',
+      icon: StudyMediaIcon,
     },
     // ★ 待办事项放在学习资源后面
     {
@@ -100,13 +109,14 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
 };
 
 /**
- * 移动端所有侧栏在 head 之下的二行三列应用入口。
+ * 移动端所有侧栏在 head 之下的三列应用入口（7 个：会话 资源 音视频 / 待办 技能 闪卡 / 数据）。
  * 不含设置（抽屉顶栏齿轮）、命令面板；制卡任务与模板并入「闪卡」入口
  * （闪卡中心页内分区切换，见 app/navigation/cardsHub.ts）。
  */
 export const MOBILE_APP_LAUNCHER_VIEWS = [
   'chat-v2',
   'learning-hub',
+  'media',
   'todo',
   'skills-management',
   'flashcards',

@@ -7,6 +7,7 @@
  * - templates     模板管理（features/template-management · TemplateManagementApp）
  * - taskDashboard 制卡任务（features/anki-tasks · AnkiTasksApp，Dock 角标 = 活跃任务数）
  * - flashcards    闪卡复习（FlashcardsApp，Dock 角标 = 到期数，M3 占位）
+ * - media         音视频（MediaStudioApp：库页 / 学习页，同经典壳 media 视图）
  * - settings      设置（Settings + SettingsShellSidebar）
  * - pomodoro      番茄钟（PomodoroPanel，投射目标，Dock 角标 = 运行中圆点）
  *
@@ -269,6 +270,18 @@ export function registerSystemApps(): void {
     // R1-15：startReview → applyLaunchPayload
     onActivation: handleFlashcardsActivation,
     agentManifest: createFlashcardsAgentManifest(handleFlashcardsActivation),
+  });
+
+  // 音视频（资源库音视频的专用视角；与经典壳 'media' 视图同一个 MediaStudioApp）
+  appRegistry.register({
+    typeId: 'media',
+    nameKey: 'workbench:apps.media',
+    icon: <AppIconImage typeId="media" className="h-8 w-8" />,
+    instanceMode: 'single',
+    memoryWeight: 2,
+    defaultFrame: { w: 1100, h: 700 },
+    minSize: { w: 560, h: 440 },
+    render: React.lazy(() => import('./MediaStudioAppWindow')),
   });
 
   appRegistry.register({

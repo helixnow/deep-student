@@ -65,6 +65,8 @@ const VIEW_BY_TYPE_ID: Record<string, string> = {
   sandbox: 'sandbox-workbench',
   // 闪卡传统壳页面（2026-09）：OS 模式之外也有独立入口，降级为导航而非 no-op
   flashcards: 'flashcards',
+  // 音视频子应用（2026-10）：学习桌面「音视频」窗口 ↔ 经典壳 'media' 视图
+  media: 'media',
 };
 
 /** 有意 no-op 的 typeId：legacy 壳没有对应页面，不做导航也不 warn。

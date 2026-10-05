@@ -169,6 +169,10 @@ export interface TranscriptPanelProps {
   onRetry?: () => void;
   retrying?: boolean;
   layout: 'side' | 'bottom';
+  /** 宿主已有分区标题（音视频子应用分段面板）时隐藏「字幕」标题 */
+  hideTitle?: boolean;
+  /** 宿主容器自带分隔线时关闭面板自身的边框 */
+  bordered?: boolean;
   className?: string;
 }
 
@@ -184,6 +188,8 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   onRetry,
   retrying = false,
   layout,
+  hideTitle = false,
+  bordered = true,
   className,
 }) => {
   const { t } = useTranslation(['learningHub']);
@@ -276,16 +282,18 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
       aria-label={t('learningHub:mediaTranscript.panelTitle')}
       className={cn(
         'flex min-h-0 flex-col bg-background',
-        layout === 'side' ? 'border-l border-border' : 'border-t border-border',
+        bordered && (layout === 'side' ? 'border-l border-border' : 'border-t border-border'),
         className,
       )}
     >
       {/* 头部：标题 + 计数 + 复制 / 定位 */}
       <div className="flex h-10 shrink-0 items-center gap-1 px-3">
-        <h3 className="text-sm font-medium text-foreground">
-          {t('learningHub:mediaTranscript.panelTitle')}
-        </h3>
-        <span className="ml-1 text-xs tabular-nums text-muted-foreground">
+        {!hideTitle && (
+          <h3 className="text-sm font-medium text-foreground">
+            {t('learningHub:mediaTranscript.panelTitle')}
+          </h3>
+        )}
+        <span className={cn('text-xs tabular-nums text-muted-foreground', !hideTitle && 'ml-1')}>
           {searching
             ? t('learningHub:mediaTranscript.searchResults', { count: visibleSegments.length })
             : t('learningHub:mediaTranscript.segmentCount', { count: displaySegments.length })}
