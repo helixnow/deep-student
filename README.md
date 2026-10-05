@@ -97,6 +97,7 @@ Full guides for every app: [deepstudent.cn/user-guide](https://deepstudent.cn/us
 
 - **Local storage.** Materials, notes, chats and indexes are stored locally (SQLite, LanceDB and local files). Back up or migrate via *Settings → Data governance*.
 - **When data leaves your machine.** Model calls, web search and MCP send the relevant requests to the services you configured; cloud sync and Sentry error reporting send data only when you turn them on.
+- **Cloud sync (experimental).** Desktop supports WebDAV, S3-compatible storage and experimental FTP; Android is WebDAV only. Each backup uploads the whole package as a single ZIP (no incremental transfer, dedup or CDC). The default cloud ZIP is a portable archive and cannot slot-restore; with a cloud E2EE password configured, *Backup to Cloud Now* exports an encrypted full-fidelity ZIP, and if that password cannot be read, export is refused rather than falling back to a portable archive. It is not real-time collaboration.
 - **Open source, verifiable.** AGPL-3.0. Everything privacy-related is in this repository.
 
 ---
