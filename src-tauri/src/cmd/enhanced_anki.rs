@@ -535,9 +535,8 @@ pub async fn list_anki_library_cards(
         if let Some(decks) = deck_counts {
             object.insert(
                 "decks".to_string(),
-                serde_json::to_value(&decks).map_err(|error| {
-                    AppError::internal(format!("序列化牌组计数失败: {error}"))
-                })?,
+                serde_json::to_value(&decks)
+                    .map_err(|error| AppError::internal(format!("序列化牌组计数失败: {error}")))?,
             );
         }
     }

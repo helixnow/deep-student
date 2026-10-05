@@ -8037,7 +8037,8 @@ impl Database {
 
 /// 卡片所属牌组 = 制卡任务选项里的 deck_name（ChatAnki / APKG 导入 / 文档制卡都写这里），
 /// 去首尾空白，缺失为空串。
-const LIBRARY_DECK_EXPR: &str = "COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json) \
+const LIBRARY_DECK_EXPR: &str =
+    "COALESCE(TRIM(CASE WHEN json_valid(dt.anki_generation_options_json) \
      THEN json_extract(dt.anki_generation_options_json, '$.deck_name') END), '')";
 
 /// 卡片库列表的调度状态筛选与排序（取值与前端 LibraryStatusFilter / LibrarySortKey 一致；
@@ -8960,7 +8961,11 @@ mod tests {
             db.save_document_task_with_cards_atomic(&task, &cards)?;
             Ok(())
         };
-        save("t-lim", r#"{"deck_name":"数学::极限"}"#, &["lim-due", "lim-new"])?;
+        save(
+            "t-lim",
+            r#"{"deck_name":"数学::极限"}"#,
+            &["lim-due", "lim-new"],
+        )?;
         save("t-der", r#"{"deck_name":"数学::导数"}"#, &["der-due"])?;
         save("t-math", r#"{"deck_name":"数学"}"#, &["math-unqueued"])?;
         save("t-mathx", r#"{"deck_name":"数学x"}"#, &["mathx-due"])?;
@@ -9020,7 +9025,9 @@ mod tests {
         assert_eq!(deck("数学").map(|d| (d.all, d.not_enqueued)), Some((1, 1)));
         assert_eq!(deck("英语").map(|d| d.due), Some(1));
 
-        let list = |deck: &str, status: Option<&str>| -> anyhow::Result<(Vec<String>, u64, AnkiLibraryStatusCounts)> {
+        let list = |deck: &str,
+                    status: Option<&str>|
+         -> anyhow::Result<(Vec<String>, u64, AnkiLibraryStatusCounts)> {
             let (items, total, counts) = db.list_anki_library_cards_filtered(
                 None,
                 None,
@@ -9041,7 +9048,10 @@ mod tests {
         let (ids, total, counts) = list("数学", None)?;
         assert_eq!(ids, vec!["der-due", "lim-due", "lim-new", "math-unqueued"]);
         assert_eq!(total, 4);
-        assert_eq!((counts.all, counts.due, counts.new, counts.not_enqueued), (4, 2, 1, 1));
+        assert_eq!(
+            (counts.all, counts.due, counts.new, counts.not_enqueued),
+            (4, 2, 1, 1)
+        );
         assert_eq!(list("数学", Some("due"))?.0, vec!["der-due", "lim-due"]);
         assert_eq!(list("数学::极限", None)?.0, vec!["lim-due", "lim-new"]);
         assert_eq!(list(" 英语 ", None)?.0, vec!["eng-due"]);

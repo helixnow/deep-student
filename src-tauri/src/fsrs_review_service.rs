@@ -3416,9 +3416,9 @@ impl FsrsReviewService {
         ] {
             let Some(steps) = steps else { continue };
             if steps.len() > fsrs_scheduler::MAX_STEPS
-                || steps.iter().any(|m| {
-                    !m.is_finite() || *m <= 0.0 || *m > fsrs_scheduler::MAX_STEP_MINUTES
-                })
+                || steps
+                    .iter()
+                    .any(|m| !m.is_finite() || *m <= 0.0 || *m > fsrs_scheduler::MAX_STEP_MINUTES)
             {
                 return Err(AppError::validation(format!(
                     "{name} must contain at most {} positive minute values up to {}",
@@ -3427,16 +3427,19 @@ impl FsrsReviewService {
                 )));
             }
         }
-        if update.maximum_interval.is_some_and(|v| {
-            v == 0 || v > fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS
-        }) {
+        if update
+            .maximum_interval
+            .is_some_and(|v| v == 0 || v > fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS)
+        {
             return Err(AppError::validation(format!(
                 "maximumInterval must be within [1, {}]",
                 fsrs_scheduler::DEFAULT_MAXIMUM_INTERVAL_DAYS
             )));
         }
         if update.day_rollover_hour.is_some_and(|v| v > 23) {
-            return Err(AppError::validation("dayRolloverHour must be within [0, 23]"));
+            return Err(AppError::validation(
+                "dayRolloverHour must be within [0, 23]",
+            ));
         }
         if update
             .review_order
@@ -3571,25 +3574,55 @@ impl FsrsReviewService {
             );
         }
         if let Some(v) = update.maximum_interval {
-            set_field(obj, "maximum_interval", "maximumInterval", serde_json::json!(v));
+            set_field(
+                obj,
+                "maximum_interval",
+                "maximumInterval",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.day_rollover_hour {
-            set_field(obj, "day_rollover_hour", "dayRolloverHour", serde_json::json!(v));
+            set_field(
+                obj,
+                "day_rollover_hour",
+                "dayRolloverHour",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.bury_new_siblings {
-            set_field(obj, "bury_new_siblings", "buryNewSiblings", serde_json::json!(v));
+            set_field(
+                obj,
+                "bury_new_siblings",
+                "buryNewSiblings",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.bury_review_siblings {
-            set_field(obj, "bury_review_siblings", "buryReviewSiblings", serde_json::json!(v));
+            set_field(
+                obj,
+                "bury_review_siblings",
+                "buryReviewSiblings",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.review_order.as_deref() {
             set_field(obj, "review_order", "reviewOrder", serde_json::json!(v));
         }
         if let Some(v) = update.new_review_order.as_deref() {
-            set_field(obj, "new_review_order", "newReviewOrder", serde_json::json!(v));
+            set_field(
+                obj,
+                "new_review_order",
+                "newReviewOrder",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.max_answer_seconds {
-            set_field(obj, "max_answer_seconds", "maxAnswerSeconds", serde_json::json!(v));
+            set_field(
+                obj,
+                "max_answer_seconds",
+                "maxAnswerSeconds",
+                serde_json::json!(v),
+            );
         }
         if let Some(v) = update.fsrs_params.as_ref() {
             set_field(obj, "fsrs_params", "fsrsParams", serde_json::json!(v));
@@ -3710,7 +3743,7 @@ impl FsrsReviewService {
         let mut histories: Vec<CardReviewHistory> = Vec::new();
         let mut current: Option<(CardReviewHistory, Option<i64>, bool)> = None;
         let flush = |entry: Option<(CardReviewHistory, Option<i64>, bool)>,
-                         out: &mut Vec<CardReviewHistory>| {
+                     out: &mut Vec<CardReviewHistory>| {
             if let Some((history, _, valid)) = entry {
                 if valid && !history.reviews.is_empty() {
                     out.push(history);
@@ -3792,7 +3825,9 @@ impl FsrsReviewService {
 
     /// 训练样本（Anki 口径）：只用完整历史；每个「跨日复习」形成一个样本，
     /// 样本包含该次复习及之前的全部复习。返回 (样本, 对应卡序号, 用到的复习数, 卡数)。
-    fn training_items(histories: &[CardReviewHistory]) -> (Vec<fsrs::FSRSItem>, Vec<i64>, u32, u32) {
+    fn training_items(
+        histories: &[CardReviewHistory],
+    ) -> (Vec<fsrs::FSRSItem>, Vec<i64>, u32, u32) {
         let mut items = Vec::new();
         let mut card_ids = Vec::new();
         let mut review_count = 0u32;
@@ -3940,7 +3975,10 @@ impl FsrsReviewService {
                 .prepare(&states_sql)
                 .map_err(|e| AppError::database(format!("准备导出进度查询失败: {}", e)))?;
             let states: Vec<FsrsCardState> = stmt
-                .query_map(rusqlite::params_from_iter(chunk.iter()), Self::map_state_row)
+                .query_map(
+                    rusqlite::params_from_iter(chunk.iter()),
+                    Self::map_state_row,
+                )
                 .map_err(|e| AppError::database(format!("查询导出进度失败: {}", e)))?
                 .collect::<rusqlite::Result<_>>()
                 .map_err(|e| AppError::database(format!("读取导出进度失败: {}", e)))?;
@@ -4064,8 +4102,14 @@ impl FsrsReviewService {
             .map_err(|e| AppError::database(format!("开启参数写入事务失败: {}", e)))?;
         Self::patch_config_json_in_tx(&tx, &now_rfc, |obj| {
             obj.remove("fsrsParams");
-            obj.insert("fsrs_params".to_string(), serde_json::json!(optimized_params));
-            obj.insert("fsrs_optimized_at_ms".to_string(), serde_json::json!(now_ms));
+            obj.insert(
+                "fsrs_params".to_string(),
+                serde_json::json!(optimized_params),
+            );
+            obj.insert(
+                "fsrs_optimized_at_ms".to_string(),
+                serde_json::json!(now_ms),
+            );
             obj.insert(
                 "fsrs_optimized_review_count".to_string(),
                 serde_json::json!(review_count),
@@ -5381,8 +5425,8 @@ fn apply_mastery_bias_to_outcome(
 mod tests {
     use super::*;
     use crate::data_governance::migration::{MigrationCoordinator, MISTAKES_MIGRATIONS};
-    use chrono::TimeZone;
     use crate::data_governance::schema_registry::DatabaseId;
+    use chrono::TimeZone;
     use rusqlite::params;
     use serde_json::{json, Value};
     use tempfile::TempDir;
@@ -5417,7 +5461,13 @@ mod tests {
         // 默认学习步 1m 10m：New + Good → 第 2 步，10 分钟后
         let before = blank_new_card();
         let now = 1_700_000_000_000_i64;
-        let out = schedule_review(&before, FsrsRating::Good, now, &FsrsSchedulerConfig::default()).expect("schedule");
+        let out = schedule_review(
+            &before,
+            FsrsRating::Good,
+            now,
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         assert_eq!(out.state, FsrsState::Learning);
         assert_eq!(out.scheduled_days, 0.0);
         assert_eq!(out.due_ms, now + 10 * MS_PER_MINUTE);
@@ -5437,7 +5487,13 @@ mod tests {
         before.scheduled_days = 5.0;
         before.due_ms = now;
         before.last_review_ms = Some(now - 5 * MS_PER_DAY);
-        let out = schedule_review(&before, FsrsRating::Again, now, &FsrsSchedulerConfig::default()).expect("schedule");
+        let out = schedule_review(
+            &before,
+            FsrsRating::Again,
+            now,
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         assert_eq!(out.state, FsrsState::Relearning);
         assert_eq!(out.lapses, 1);
         assert_eq!(out.due_ms, now + 10 * MS_PER_MINUTE);
@@ -5455,11 +5511,23 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 4 * MS_PER_DAY);
 
-        let hard = schedule_review(&before, FsrsRating::Hard, now, &FsrsSchedulerConfig::default()).expect("schedule");
+        let hard = schedule_review(
+            &before,
+            FsrsRating::Hard,
+            now,
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         assert_eq!(hard.state, FsrsState::Review);
         assert!(hard.scheduled_days >= 1.0);
 
-        let easy = schedule_review(&before, FsrsRating::Easy, now, &FsrsSchedulerConfig::default()).expect("schedule");
+        let easy = schedule_review(
+            &before,
+            FsrsRating::Easy,
+            now,
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         assert_eq!(easy.state, FsrsState::Review);
         assert!(easy.scheduled_days > hard.scheduled_days);
     }
@@ -5656,7 +5724,13 @@ mod tests {
         before.due_ms = now;
         before.last_review_ms = Some(now - 10 * MS_PER_DAY);
 
-        let fsrs_out = schedule_review(&before, FsrsRating::Good, now, &FsrsSchedulerConfig::default()).expect("schedule");
+        let fsrs_out = schedule_review(
+            &before,
+            FsrsRating::Good,
+            now,
+            &FsrsSchedulerConfig::default(),
+        )
+        .expect("schedule");
         let interval = fsrs_out.due_ms.saturating_sub(now);
         assert!(
             interval >= 60 * 60 * 1000,
@@ -6017,8 +6091,7 @@ mod tests {
         let now_ms = local_now.timestamp_millis();
 
         // 日切 0 点：与旧行为一致
-        let (start, next_start) =
-            fsrs_scheduler::logical_day_bounds_ms(now_ms, &timezone, 0);
+        let (start, next_start) = fsrs_scheduler::logical_day_bounds_ms(now_ms, &timezone, 0);
         assert_eq!(start, 1_783_699_200_000); // 2026-07-10T16:00:00Z
         assert_eq!(next_start, 1_783_785_600_000); // 2026-07-11T16:00:00Z
 
@@ -6540,7 +6613,10 @@ mod tests {
         assert_eq!(history.card.card_state_id, state_id);
         assert_eq!(history.card.state, FsrsState::Review.as_i32());
         assert_eq!(history.card.last_rating, Some(3));
-        assert_eq!(history.curve, FsrsSchedulerConfig::default().forgetting_curve());
+        assert_eq!(
+            history.curve,
+            FsrsSchedulerConfig::default().forgetting_curve()
+        );
         let ratings: Vec<u8> = history.reviews.iter().map(|review| review.rating).collect();
         assert_eq!(ratings, vec![3, 3]);
         assert!(history.reviews[0].review_ms <= history.reviews[1].review_ms);
@@ -9517,7 +9593,10 @@ mod tests {
         let first = service.rate(&state_id, 3, None, None).unwrap();
         assert_eq!(first.card_state.state, FsrsState::Learning.as_i32());
         assert_eq!(first.card_state.learning_step, 1);
-        assert!(near(first.due_ms, 20), "Good on a new card moves to the second step");
+        assert!(
+            near(first.due_ms, 20),
+            "Good on a new card moves to the second step"
+        );
 
         let second = service.rate(&state_id, 3, None, None).unwrap();
         assert_eq!(second.card_state.learning_step, 2);
@@ -9568,9 +9647,18 @@ mod tests {
             .memory_state(
                 fsrs::FSRSItem {
                     reviews: vec![
-                        fsrs::FSRSReview { rating: 3, delta_t: 0 },
-                        fsrs::FSRSReview { rating: 3, delta_t: 2 },
-                        fsrs::FSRSReview { rating: 3, delta_t: 5 },
+                        fsrs::FSRSReview {
+                            rating: 3,
+                            delta_t: 0,
+                        },
+                        fsrs::FSRSReview {
+                            rating: 3,
+                            delta_t: 2,
+                        },
+                        fsrs::FSRSReview {
+                            rating: 3,
+                            delta_t: 5,
+                        },
                     ],
                 },
                 None,
@@ -9624,7 +9712,11 @@ mod tests {
         let result = service.optimize_parameters().expect("optimize");
         assert_eq!(result.status, "not_enough_data");
         assert_eq!(result.item_count, 1);
-        assert!(service.get_scheduler_config().unwrap().fsrs_params.is_empty());
+        assert!(service
+            .get_scheduler_config()
+            .unwrap()
+            .fsrs_params
+            .is_empty());
     }
 
     #[test]
@@ -9654,7 +9746,14 @@ mod tests {
                 } else {
                     3
                 };
-                insert_review_log(&db, &state.id, &state.anki_card_id, rating, 2, local_noon_ms(day));
+                insert_review_log(
+                    &db,
+                    &state.id,
+                    &state.anki_card_id,
+                    rating,
+                    2,
+                    local_noon_ms(day),
+                );
             }
             let due = local_noon_ms(day + 30);
             seed_review_state(&db, &state.id, local_noon_ms(day), due);
@@ -9831,7 +9930,9 @@ mod tests {
             .unwrap();
         }
 
-        let rated = service.rate(&state_of("card-sib-a"), 3, None, None).unwrap();
+        let rated = service
+            .rate(&state_of("card-sib-a"), 3, None, None)
+            .unwrap();
         let mut buried = rated.buried_siblings.clone();
         buried.sort();
         let mut expected = vec![state_of("card-sib-b"), state_of("card-sib-c")];
@@ -9841,7 +9942,10 @@ mod tests {
         let due = due_state_ids(&service);
         assert!(!due.contains(&state_of("card-sib-b")));
         assert!(!due.contains(&state_of("card-sib-c")));
-        assert!(due.contains(&state_of("card-other")), "other notes are unaffected");
+        assert!(
+            due.contains(&state_of("card-other")),
+            "other notes are unaffected"
+        );
         assert_eq!(service.get_stats().unwrap().buried, 2);
     }
 
@@ -9917,9 +10021,9 @@ mod tests {
         let now = Utc::now().timestamp_millis();
         // (card, 稳定度, 距上次复习天数, due 提前量)：due 越早 ≠ 越可能忘
         let reviews = [
-            ("card-r0", 2.0, 4, 4),  // elapsed/S = 2.0
+            ("card-r0", 2.0, 4, 4),   // elapsed/S = 2.0
             ("card-r1", 40.0, 40, 3), // 1.0
-            ("card-r2", 1.0, 5, 2),  // 5.0 → 最可能忘
+            ("card-r2", 1.0, 5, 2),   // 5.0 → 最可能忘
             ("card-r3", 10.0, 15, 1), // 1.5
         ];
         {

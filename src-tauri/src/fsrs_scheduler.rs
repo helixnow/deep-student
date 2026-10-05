@@ -105,7 +105,9 @@ pub fn schedule(
 ) -> Result<ScheduledAnswers, fsrs::FSRSError> {
     let memory = match card.phase {
         CardPhase::New => None,
-        _ => card.memory.filter(|m| m.stability > 0.0 && m.difficulty > 0.0),
+        _ => card
+            .memory
+            .filter(|m| m.stability > 0.0 && m.difficulty > 0.0),
     };
     let days_elapsed = if memory.is_some() {
         card.days_elapsed
@@ -118,10 +120,22 @@ pub fn schedule(
     let reps = card.reps.saturating_add(1);
     let answers = match (card.phase, memory) {
         (CardPhase::Review, Some(_)) => review_answers(card, ctx, &next, reps),
-        (CardPhase::Relearning, Some(_)) => {
-            stepped_answers(card, ctx, &next, reps, ctx.relearning_steps, CardPhase::Relearning)
-        }
-        _ => stepped_answers(card, ctx, &next, reps, ctx.learning_steps, CardPhase::Learning),
+        (CardPhase::Relearning, Some(_)) => stepped_answers(
+            card,
+            ctx,
+            &next,
+            reps,
+            ctx.relearning_steps,
+            CardPhase::Relearning,
+        ),
+        _ => stepped_answers(
+            card,
+            ctx,
+            &next,
+            reps,
+            ctx.learning_steps,
+            CardPhase::Learning,
+        ),
     };
     Ok(answers)
 }
@@ -333,8 +347,17 @@ fn constrained_fuzz_bounds(interval: f32, minimum: u32, maximum: u32) -> (u32, u
 }
 
 /// Anki `with_review_fuzz`。
-pub fn with_review_fuzz(fuzz_factor: Option<f32>, interval: f32, minimum: u32, maximum: u32) -> u32 {
-    let interval = if interval.is_finite() { interval } else { minimum as f32 };
+pub fn with_review_fuzz(
+    fuzz_factor: Option<f32>,
+    interval: f32,
+    minimum: u32,
+    maximum: u32,
+) -> u32 {
+    let interval = if interval.is_finite() {
+        interval
+    } else {
+        minimum as f32
+    };
     match fuzz_factor {
         Some(factor) => {
             let (lower, upper) = constrained_fuzz_bounds(interval, minimum, maximum);
@@ -350,7 +373,11 @@ pub fn with_review_fuzz(fuzz_factor: Option<f32>, interval: f32, minimum: u32, m
 /// （FNV-1a + splitmix64 收尾；`DefaultHasher` 不保证跨版本稳定）。
 pub fn fuzz_factor_for(card_state_id: &str, reps: i32) -> f32 {
     let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-    for byte in card_state_id.as_bytes().iter().chain(reps.to_le_bytes().iter()) {
+    for byte in card_state_id
+        .as_bytes()
+        .iter()
+        .chain(reps.to_le_bytes().iter())
+    {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
@@ -375,8 +402,7 @@ pub fn sanitize_steps(steps: &[f64]) -> Vec<f64> {
 
 /// 校验并补全 FSRS 参数（17 / 19 / 21 个）；非法时回退默认参数。
 pub fn effective_parameters(params: &[f32]) -> Vec<f32> {
-    fsrs::check_and_fill_parameters(params)
-        .unwrap_or_else(|_| fsrs::DEFAULT_PARAMETERS.to_vec())
+    fsrs::check_and_fill_parameters(params).unwrap_or_else(|_| fsrs::DEFAULT_PARAMETERS.to_vec())
 }
 
 pub fn build_fsrs(params: &[f32]) -> FSRS {
@@ -453,7 +479,12 @@ pub fn logical_day_bounds_ms<Tz: TimeZone>(now_ms: i64, tz: &Tz, rollover_hour: 
 }
 
 /// 学习步到期时间：不跨日按分钟计；跨过日切时按 Anki 换算为若干天后的逻辑日起点。
-pub fn learning_due_ms<Tz: TimeZone>(now_ms: i64, minutes: f64, tz: &Tz, rollover_hour: u32) -> i64 {
+pub fn learning_due_ms<Tz: TimeZone>(
+    now_ms: i64,
+    minutes: f64,
+    tz: &Tz,
+    rollover_hour: u32,
+) -> i64 {
     let delay_ms = (minutes.max(0.0) * 60_000.0).round() as i64;
     let due = now_ms.saturating_add(delay_ms);
     let (_, next_day_start) = logical_day_bounds_ms(now_ms, tz, rollover_hour);
@@ -626,15 +657,24 @@ mod tests {
         let fsrs = FSRS::default();
         for stability in [0.5f32, 1.0, 3.0, 12.0, 80.0] {
             for fuzz in [None, Some(0.0), Some(0.5), Some(0.99)] {
-                let out = schedule(&review_card(stability, stability.round() as u32), &ctx(&fsrs, fuzz))
-                    .unwrap();
+                let out = schedule(
+                    &review_card(stability, stability.round() as u32),
+                    &ctx(&fsrs, fuzz),
+                )
+                .unwrap();
                 let days = |a: &ScheduledAnswer| match a.delay {
                     ScheduledDelay::Days(d) => d,
                     other => panic!("expected days, got {other:?}"),
                 };
                 assert!(days(&out.hard) >= 1);
-                assert!(days(&out.good) > days(&out.hard), "S={stability} fuzz={fuzz:?}");
-                assert!(days(&out.easy) > days(&out.good), "S={stability} fuzz={fuzz:?}");
+                assert!(
+                    days(&out.good) > days(&out.hard),
+                    "S={stability} fuzz={fuzz:?}"
+                );
+                assert!(
+                    days(&out.easy) > days(&out.good),
+                    "S={stability} fuzz={fuzz:?}"
+                );
             }
         }
     }
@@ -711,9 +751,15 @@ mod tests {
         let now = ms(&tz, 2026, 10, 1, 23, 0);
         assert_eq!(learning_due_ms(now, 10.0, &tz, 4), now + 10 * 60_000);
         // 6 小时后越过 04:00 日切 → 次日逻辑日起点
-        assert_eq!(learning_due_ms(now, 360.0, &tz, 4), ms(&tz, 2026, 10, 2, 4, 0));
+        assert_eq!(
+            learning_due_ms(now, 360.0, &tz, 4),
+            ms(&tz, 2026, 10, 2, 4, 0)
+        );
         // 1 天步长 → 次日逻辑日起点
-        assert_eq!(learning_due_ms(now, 1440.0, &tz, 4), ms(&tz, 2026, 10, 2, 4, 0));
+        assert_eq!(
+            learning_due_ms(now, 1440.0, &tz, 4),
+            ms(&tz, 2026, 10, 2, 4, 0)
+        );
     }
 
     #[test]
