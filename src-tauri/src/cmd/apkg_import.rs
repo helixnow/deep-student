@@ -267,6 +267,39 @@ fn anki_media_mime(path: &Path) -> Option<&'static str> {
     })
 }
 
+/// `read_anki_media` 的同步实现：路径必须解析（含软链接）到 `media_root` 之内。
+fn read_anki_media_in(media_root: &Path, path: &str) -> Result<String> {
+    let not_allowed = || {
+        command_error(
+            AppErrorType::Validation,
+            "只能读取已导入的卡片媒体",
+            APKG_ERROR_INVALID_INPUT,
+        )
+    };
+    let root = std::fs::canonicalize(media_root).map_err(|_| not_allowed())?;
+    let target = std::fs::canonicalize(Path::new(path.trim())).map_err(|_| not_allowed())?;
+    if !target.starts_with(&root) {
+        return Err(not_allowed());
+    }
+    let mime = anki_media_mime(&target).ok_or_else(not_allowed)?;
+    let metadata = std::fs::metadata(&target).map_err(|_| not_allowed())?;
+    if !metadata.is_file() || metadata.len() > ANKI_MEDIA_MAX_BYTES {
+        return Err(not_allowed());
+    }
+    let bytes = std::fs::read(&target).map_err(|error| {
+        command_error(
+            AppErrorType::FileSystem,
+            format!("读取卡片媒体失败: {error}"),
+            APKG_ERROR_IO,
+        )
+    })?;
+    use base64::Engine as _;
+    Ok(format!(
+        "data:{mime};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
+}
+
 /// 读取 APKG 导入落盘的卡片媒体为 data URL，供沙箱卡面（CSP 只放行 data:）显示图片与播放音频。
 ///
 /// 只允许读取应用数据目录下的 `anki_media`，且限制类型与大小；不在范围内一律拒绝。
@@ -276,43 +309,81 @@ pub async fn read_anki_media(path: String, state: State<'_, AppState>) -> Result
         .file_manager
         .get_writable_app_data_dir()
         .join("anki_media");
-    tokio::task::spawn_blocking(move || {
-        let not_allowed = || {
+    tokio::task::spawn_blocking(move || read_anki_media_in(&media_root, &path))
+        .await
+        .map_err(|error| {
             command_error(
-                AppErrorType::Validation,
-                "只能读取已导入的卡片媒体",
-                APKG_ERROR_INVALID_INPUT,
+                AppErrorType::Unknown,
+                format!("读取卡片媒体任务失败: {error}"),
+                APKG_IMPORT_JOIN_ERROR_CODE,
             )
-        };
-        let root = std::fs::canonicalize(&media_root).map_err(|_| not_allowed())?;
-        let target = std::fs::canonicalize(Path::new(path.trim())).map_err(|_| not_allowed())?;
-        if !target.starts_with(&root) {
-            return Err(not_allowed());
+        })?
+}
+
+#[cfg(test)]
+mod anki_media_tests {
+    use super::*;
+
+    fn media_root() -> (tempfile::TempDir, PathBuf) {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("anki_media");
+        std::fs::create_dir_all(&root).unwrap();
+        (dir, root)
+    }
+
+    #[test]
+    fn reads_media_inside_root_as_data_url() {
+        let (_dir, root) = media_root();
+        let file = root.join("deck").join("cat.PNG");
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(&file, b"png").unwrap();
+
+        let url = read_anki_media_in(&root, &format!(" {} ", file.display())).unwrap();
+        assert_eq!(url, "data:image/png;base64,cG5n");
+    }
+
+    #[test]
+    fn rejects_paths_that_resolve_outside_root() {
+        let (dir, root) = media_root();
+        let outside = dir.path().join("secret.png");
+        std::fs::write(&outside, b"x").unwrap();
+
+        let traversal = root.join("..").join("secret.png");
+        assert!(read_anki_media_in(&root, &traversal.to_string_lossy()).is_err());
+        assert!(read_anki_media_in(&root, &outside.to_string_lossy()).is_err());
+
+        #[cfg(unix)]
+        {
+            let link = root.join("link.png");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            assert!(read_anki_media_in(&root, &link.to_string_lossy()).is_err());
         }
-        let mime = anki_media_mime(&target).ok_or_else(not_allowed)?;
-        let metadata = std::fs::metadata(&target).map_err(|_| not_allowed())?;
-        if !metadata.is_file() || metadata.len() > ANKI_MEDIA_MAX_BYTES {
-            return Err(not_allowed());
-        }
-        let bytes = std::fs::read(&target).map_err(|error| {
-            command_error(
-                AppErrorType::FileSystem,
-                format!("读取卡片媒体失败: {error}"),
-                APKG_ERROR_IO,
-            )
-        })?;
-        use base64::Engine as _;
-        Ok(format!(
-            "data:{mime};base64,{}",
-            base64::engine::general_purpose::STANDARD.encode(bytes)
-        ))
-    })
-    .await
-    .map_err(|error| {
-        command_error(
-            AppErrorType::Unknown,
-            format!("读取卡片媒体任务失败: {error}"),
-            APKG_IMPORT_JOIN_ERROR_CODE,
-        )
-    })?
+    }
+
+    #[test]
+    fn rejects_unknown_types_directories_missing_and_oversized_files() {
+        let (_dir, root) = media_root();
+        let text = root.join("notes.txt");
+        std::fs::write(&text, b"x").unwrap();
+        assert!(read_anki_media_in(&root, &text.to_string_lossy()).is_err());
+
+        let dir_with_ext = root.join("folder.png");
+        std::fs::create_dir_all(&dir_with_ext).unwrap();
+        assert!(read_anki_media_in(&root, &dir_with_ext.to_string_lossy()).is_err());
+
+        let missing = root.join("missing.png");
+        assert!(read_anki_media_in(&root, &missing.to_string_lossy()).is_err());
+
+        let big = root.join("big.mp3");
+        let file = std::fs::File::create(&big).unwrap();
+        file.set_len(ANKI_MEDIA_MAX_BYTES + 1).unwrap();
+        let error = read_anki_media_in(&root, &big.to_string_lossy()).unwrap_err();
+        assert_eq!(
+            error
+                .details
+                .as_ref()
+                .and_then(|details| details["errorCode"].as_str()),
+            Some(APKG_ERROR_INVALID_INPUT)
+        );
+    }
 }
