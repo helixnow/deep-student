@@ -387,6 +387,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           {/* 模式插件 Footer */}
           {renderFooter()}
 
+          {/* 手机空会话：今日待复习 / 薄弱点 / 周报贴在输入栏上方（桌面在空态输入框下方） */}
+          {shouldAutoFocusMobileEmptyComposer && (
+            <div className="flex-shrink-0 px-4 pb-1">
+              <TodayReviewHint />
+            </div>
+          )}
+
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
 
           {/* Agent todo panel — 贴在输入栏上方 */}
