@@ -34,6 +34,8 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 
 const HIDE_CONTROLS_DELAY_MS = 2500;
+/** 低于该宽度（px）收起循环与音量，保证控件一行放得下 */
+const NARROW_PLAYER_WIDTH = 520;
 
 export interface VideoPlayerProps {
   src: string;
@@ -268,6 +270,62 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   const VolumeIcon = muted || volume === 0 ? SpeakerX : volume < 0.5 ? SpeakerLow : SpeakerHigh;
   const controlsVisible = showControls || !isPlaying;
 
+  // 窄播放器（手机竖屏 / 窄分栏）：一行放不下全部控件时收起循环与音量（触屏音量走系统按键），
+  // 避免时间文本被挤成竖排、全屏按钮被挤出画面
+  const [isNarrow, setIsNarrow] = useState(false);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => {
+      setIsNarrow((entry?.contentRect.width ?? 0) < NARROW_PLAYER_WIDTH);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // 画面字幕避让底部控制条：控制条可见时按其实际高度把 cue 底边放到它上方，
+  // 隐藏时回落到画面底部附近（手机上控制条占画面比例远大于桌面，固定百分比必然重叠）
+  const controlsBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const video = mediaRef.current;
+    const bar = controlsBarRef.current;
+    if (!video || !bar) return;
+    const apply = () => {
+      const videoRect = video.getBoundingClientRect();
+      if (!videoRect.height) return;
+      // 从进度条顶端算起（控制条上沿是透明渐变垫高区，不计入避让高度）
+      const controlsTop = (bar.firstElementChild ?? bar).getBoundingClientRect().top;
+      const occupied = controlsVisible ? Math.max(0, videoRect.bottom - controlsTop) : 0;
+      const line = Math.max(50, Math.min(94, Math.floor(100 * (1 - occupied / videoRect.height)) - 2));
+      for (const track of Array.from(video.textTracks)) {
+        for (const cue of Array.from(track.cues ?? []) as VTTCue[]) {
+          if (cue.line === line && !cue.snapToLines) continue;
+          cue.snapToLines = false;
+          cue.line = line;
+          cue.lineAlign = 'end';
+        }
+      }
+    };
+    apply();
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(apply);
+    ro?.observe(video);
+    ro?.observe(bar);
+    // 增量加入的 cue / 新挂的轨道在下一次 cuechange 时校正
+    const tracks = video.textTracks;
+    const bindTrack = (track: TextTrack) => track.addEventListener('cuechange', apply);
+    for (const track of Array.from(tracks)) bindTrack(track);
+    const onAddTrack = (event: TrackEvent) => {
+      if (event.track) bindTrack(event.track as TextTrack);
+      apply();
+    };
+    tracks.addEventListener('addtrack', onAddTrack);
+    return () => {
+      ro?.disconnect();
+      tracks.removeEventListener('addtrack', onAddTrack);
+      for (const track of Array.from(tracks)) track.removeEventListener('cuechange', apply);
+    };
+  }, [mediaRef, controlsVisible]);
+
   return (
     <div
       ref={containerRef}
@@ -338,6 +396,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
       {/* 底部悬浮控制条（全屏/刘海屏下避让底部手势安全区） */}
       <div
+        ref={controlsBarRef}
         className={cn(
           'absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/70 via-black/35 to-transparent px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom,0px))] pt-10',
           'transition-opacity duration-150 motion-reduce:transition-none',
@@ -406,47 +465,49 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             <ArrowClockwise size={16} aria-hidden="true" />
           </DsButton>
 
-          <span className="ml-1.5 text-xs tabular-nums text-white/90">
+          <span className="ml-1.5 shrink-0 whitespace-nowrap text-xs tabular-nums text-white/90">
             {formatMediaTime(currentTime)}
             <span className="text-white/50"> / {isReady ? formatMediaTime(duration) : '--:--'}</span>
           </span>
 
           <div className="flex-1" />
 
-          {/* 音量：按钮 + hover 展开滑杆 */}
-          <div className="group/volume flex items-center gap-1">
-            <DsButton
-              variant="ghost"
-              size="sm"
-              iconOnly
-              aria-label={
-                muted
-                  ? t('learningHub:mediaPreview.unmute')
-                  : t('learningHub:mediaPreview.mute')
-              }
-              title={
-                muted
-                  ? t('learningHub:mediaPreview.unmute')
-                  : t('learningHub:mediaPreview.mute')
-              }
-              onClick={toggleMute}
-              className={overlayButtonClass}
-            >
-              <VolumeIcon size={16} aria-hidden="true" />
-            </DsButton>
-            {/* 触屏无 hover 无法展开滑杆，直接隐藏（对齐 AudioPlayer）；
-                保留静音钮，音量走系统控制 */}
-            <div className="w-0 overflow-hidden transition-all duration-150 group-hover/volume:w-20 motion-reduce:transition-none [@media(pointer:coarse)]:hidden">
-              <Slider
-                value={[muted ? 0 : volume]}
-                max={1}
-                step={0.05}
-                onValueChange={handleVolumeSlider}
-                aria-label={t('learningHub:mediaPreview.volume')}
-                className="w-20"
-              />
+          {/* 音量：按钮 + hover 展开滑杆（窄播放器收起） */}
+          {!isNarrow && (
+            <div className="group/volume flex items-center gap-1">
+              <DsButton
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={
+                  muted
+                    ? t('learningHub:mediaPreview.unmute')
+                    : t('learningHub:mediaPreview.mute')
+                }
+                title={
+                  muted
+                    ? t('learningHub:mediaPreview.unmute')
+                    : t('learningHub:mediaPreview.mute')
+                }
+                onClick={toggleMute}
+                className={overlayButtonClass}
+              >
+                <VolumeIcon size={16} aria-hidden="true" />
+              </DsButton>
+              {/* 触屏无 hover 无法展开滑杆，直接隐藏（对齐 AudioPlayer）；
+                  保留静音钮，音量走系统控制 */}
+              <div className="w-0 overflow-hidden transition-all duration-150 group-hover/volume:w-20 motion-reduce:transition-none [@media(pointer:coarse)]:hidden">
+                <Slider
+                  value={[muted ? 0 : volume]}
+                  max={1}
+                  step={0.05}
+                  onValueChange={handleVolumeSlider}
+                  aria-label={t('learningHub:mediaPreview.volume')}
+                  className="w-20"
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {extraControls}
 
@@ -457,18 +518,20 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             onOpenChange={setRateMenuOpen}
           />
 
-          <DsButton
-            variant="ghost"
-            size="sm"
-            iconOnly
-            aria-label={t('learningHub:mediaPreview.loop')}
-            aria-pressed={loop}
-            title={t('learningHub:mediaPreview.loop')}
-            onClick={toggleLoop}
-            className={cn(overlayButtonClass, loop && 'bg-[var(--overlay-control-hover)]')}
-          >
-            <Repeat size={16} aria-hidden="true" />
-          </DsButton>
+          {!isNarrow && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label={t('learningHub:mediaPreview.loop')}
+              aria-pressed={loop}
+              title={t('learningHub:mediaPreview.loop')}
+              onClick={toggleLoop}
+              className={cn(overlayButtonClass, loop && 'bg-[var(--overlay-control-hover)]')}
+            >
+              <Repeat size={16} aria-hidden="true" />
+            </DsButton>
+          )}
 
           <DsButton
             variant="ghost"
