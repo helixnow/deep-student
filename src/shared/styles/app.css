@@ -755,6 +755,11 @@ body {
   color: var(--button-danger-foreground);
 }
 
+/* 中性实底：utility 底在暗色卡片上近乎透明，需要读作「胶囊」时用它 */
+.study-shell-badge--muted {
+  background: color-mix(in hsl, hsl(var(--foreground)) 8%, transparent 92%);
+}
+
 .study-shell-badge--borderless {
   border-color: transparent;
 }

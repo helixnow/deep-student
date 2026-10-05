@@ -36,6 +36,7 @@ function item(id: string, over: Partial<MediaLibraryItem> = {}): MediaLibraryIte
     kind: 'video',
     mimeType: 'video/mp4',
     isLink: false,
+    coverUrl: null,
     size: 1,
     folderId: null,
     folderName: null,
@@ -128,7 +129,12 @@ describe('MediaLibraryPage', () => {
 
   it('Bilibili link button opens the import dialog; link rows show a badge without the .bilibili suffix', () => {
     const items = [
-      item('link', { name: '线性代数 P2 矩阵.bilibili', mimeType: 'video/x-bilibili', isLink: true }),
+      item('link', {
+        name: '线性代数 P2 矩阵.bilibili',
+        mimeType: 'video/x-bilibili',
+        isLink: true,
+        coverUrl: 'https://i0.hdslb.com/bfs/archive/a.jpg',
+      }),
       item('local'),
     ];
     render(<MediaLibraryPage library={library(items)} importer={importer(false)} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={null} />);
@@ -137,6 +143,15 @@ describe('MediaLibraryPage', () => {
     expect(within(linkRow).getByText('线性代数 P2 矩阵')).toBeTruthy();
     expect(linkRow.querySelector('[data-media-link-badge]')).toBeTruthy();
     expect(document.querySelector('[data-media-row="local"] [data-media-link-badge]')).toBeNull();
+    // 封面：referrerpolicy 必须先于 src 设置（WebKit 设 src 即发请求，B 站图床拒绝本地 Referer）
+    const cover = linkRow.querySelector('img') as HTMLImageElement;
+    expect(cover.getAttribute('src')).toBe('https://i0.hdslb.com/bfs/archive/a.jpg');
+    const attrs = [...cover.attributes].map((attr) => attr.name);
+    expect(attrs.indexOf('referrerpolicy')).toBeLessThan(attrs.indexOf('src'));
+    expect(document.querySelector('[data-media-row="local"] img')).toBeNull();
+    // 封面加载失败退回图标
+    fireEvent.error(cover);
+    expect(linkRow.querySelector('img')).toBeNull();
 
     expect(document.querySelector('[data-bilibili-dialog]')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /mediaStudio:import.bilibili/ }));

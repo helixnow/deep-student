@@ -19,6 +19,7 @@ function item(over: Partial<MediaLibraryItem> & { id: string }): MediaLibraryIte
     kind: 'video',
     mimeType: 'video/mp4',
     isLink: false,
+    coverUrl: null,
     size: 1,
     folderId: null,
     folderName: null,
@@ -54,6 +55,16 @@ describe('api normalization (media_library_list shape)', () => {
     expect(parsed.progress).toBeNull();
     expect(normalizeLibraryItem({ name: 'no id' })).toBeNull();
     expect(toMillis('2026-10-01T00:00:00Z')).toBe(Date.parse('2026-10-01T00:00:00Z'));
+  });
+
+  it('keeps a link cover only when it is an https URL', () => {
+    const base = { id: 'file_c', name: '线代.bilibili', mimeType: 'video/x-bilibili', kind: 'video', isLink: true };
+    expect(normalizeLibraryItem({ ...base, coverUrl: 'https://i0.hdslb.com/bfs/archive/a.jpg' })!.coverUrl)
+      .toBe('https://i0.hdslb.com/bfs/archive/a.jpg');
+    expect(normalizeLibraryItem({ ...base, cover_url: 'https://i1.hdslb.com/b.jpg' })!.coverUrl).toBe('https://i1.hdslb.com/b.jpg');
+    expect(normalizeLibraryItem({ ...base, coverUrl: 'javascript:alert(1)' })!.coverUrl).toBeNull();
+    expect(normalizeLibraryItem({ ...base, coverUrl: 'http://i0.hdslb.com/a.jpg' })!.coverUrl).toBeNull();
+    expect(normalizeLibraryItem({ ...base })!.coverUrl).toBeNull();
   });
 
   it('marks Bilibili link items from the backend flag or the link MIME / extension', () => {

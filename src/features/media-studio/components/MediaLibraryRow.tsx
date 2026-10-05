@@ -1,5 +1,6 @@
 /**
- * 音视频库列表行：类型图标 · 名称 · 时长 / 最近观看 · 转写状态徽章 · 观看进度 · ⋯ 菜单。
+ * 音视频库列表行：16:9 缩略图（B 站封面 / 类型图标，底边是观看进度）· 名称 · 时长 / 最近观看 ·
+ * 转写状态徽章 · ⋯ 菜单。进度条画在缩略图里，各行高度一致。
  * 触屏：整行 ≥ 64px、⋯ 按钮 44px；长按与 ⋯ 打开同一个 AppMenu（本仓无底部动作表基元）。
  */
 import React, { memo, useCallback, useState } from 'react';
@@ -48,7 +49,8 @@ export type MediaRowAction =
   | { type: 'delete' };
 
 const CHIP_TONE_CLASS: Record<StatusChipTone, string> = {
-  neutral: '',
+  // utility 底在暗色下近乎透明，「未转写」读起来像裸文字；与其它状态同为实底胶囊
+  neutral: 'study-shell-badge--muted',
   primary: 'study-shell-badge--primary',
   success: 'study-shell-badge--success',
   warning: 'study-shell-badge--warning',
@@ -76,6 +78,61 @@ export const MediaStatusChip: React.FC<MediaStatusChipProps> = ({ item, classNam
         <CircleNotch size={11} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
       ) : null}
       {label}
+    </span>
+  );
+};
+
+interface MediaThumbProps {
+  item: MediaLibraryItem;
+  icon: React.ReactNode;
+  /** 观看进度 0..1；null 不画（未开始 / 看完 / 时长未知） */
+  ratio: number | null;
+}
+
+/** 16:9 缩略图：B 站条目显示封面（加载失败退回图标），左上角「B 站」角标；底边观看进度 */
+const MediaThumb: React.FC<MediaThumbProps> = ({ item, icon, ratio }) => {
+  const { t } = useTranslation(['mediaStudio']);
+  const [coverFailed, setCoverFailed] = useState(false);
+  const cover = item.coverUrl && !coverFailed ? item.coverUrl : null;
+  return (
+    <span
+      className="relative flex h-12 w-[86px] shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] text-muted-foreground"
+    >
+      {cover ? (
+        // referrerPolicy 必须写在 src 前：WebKit 一拿到 src 就发请求，带本地 Referer 会被图床 403
+        <img
+          referrerPolicy="no-referrer"
+          src={cover}
+          alt=""
+          loading="lazy"
+          draggable={false}
+          onError={() => setCoverFailed(true)}
+          className="h-full w-full object-cover"
+        />
+      ) : (
+        <span aria-hidden="true">{icon}</span>
+      )}
+      {item.isLink ? (
+        <span
+          className="absolute left-1 top-1 rounded px-1 text-[10px] font-medium leading-4 text-white"
+          style={{ background: 'rgb(0 0 0 / 0.55)' }}
+          data-media-link-badge=""
+        >
+          {t('mediaStudio:row.bilibiliBadge')}
+        </span>
+      ) : null}
+      {ratio !== null ? (
+        <span
+          className="absolute inset-x-0 bottom-0 block h-[3px] bg-black/25"
+          role="progressbar"
+          aria-label={t('mediaStudio:row.progress')}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={Math.round(ratio * 100)}
+        >
+          <span className="block h-full bg-primary" style={{ width: `${Math.round(ratio * 100)}%` }} />
+        </span>
+      ) : null}
     </span>
   );
 };
@@ -128,20 +185,10 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
           aria-label={t('mediaStudio:row.open', { name: displayName })}
           className="!h-auto min-w-0 flex-1 !justify-start gap-3 !p-0 text-left hover:!bg-transparent"
         >
-          <span
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-shell-control)] bg-[color:var(--surface-muted)] text-muted-foreground"
-            aria-hidden="true"
-          >
-            <Icon size={20} weight="duotone" />
-          </span>
+          <MediaThumb item={item} icon={<Icon size={20} weight="duotone" />} ratio={finished ? null : ratio} />
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 truncate text-sm font-medium text-foreground">{displayName}</span>
-              {item.isLink ? (
-                <span className="study-shell-badge study-shell-badge--borderless shrink-0" data-media-link-badge="">
-                  {t('mediaStudio:row.bilibiliBadge')}
-                </span>
-              ) : null}
               {finished ? (
                 <CheckCircle size={14} weight="fill" className="shrink-0 text-success" aria-label={t('mediaStudio:row.finished')} />
               ) : null}
@@ -151,18 +198,6 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
               {isSmallScreen ? <MediaStatusChip item={item} /> : null}
               <span className="min-w-0 truncate text-xs text-muted-foreground tabular-nums">{meta}</span>
             </span>
-            {ratio !== null && !finished ? (
-              <span
-                className="block h-1 w-full max-w-60 overflow-hidden rounded-full bg-[color:var(--surface-muted)]"
-                role="progressbar"
-                aria-label={t('mediaStudio:row.progress')}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(ratio * 100)}
-              >
-                <span className="block h-full rounded-full bg-primary" style={{ width: `${Math.round(ratio * 100)}%` }} />
-              </span>
-            ) : null}
           </span>
         </DsButton>
 

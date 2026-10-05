@@ -70,6 +70,8 @@ pub struct MediaLibraryItem {
     pub kind: String,
     /// B 站链接条目（没有本地音视频，播放走内嵌播放器）
     pub is_link: bool,
+    /// 链接条目的封面（来自条目描述，已限定 B 站图床域名）；本地文件为 null
+    pub cover_url: Option<String>,
     /// Unix 毫秒
     pub created_at: i64,
     /// Unix 毫秒
@@ -316,6 +318,7 @@ pub fn list_media_library_with_conn(
             Some(MediaLibraryItem {
                 name: sanitize_textbook_display_name(&row.file_name, &row.created_at),
                 is_link: is_link_item(&row.mime_type, &row.file_name),
+                cover_url: None,
                 id: row.id,
                 resource_id: row.resource_id,
                 folder_id,
@@ -413,12 +416,21 @@ pub async fn media_library_list(
     let db = Arc::clone(vfs_db.inner());
     let service = Arc::clone(pdf_processing_service.inner());
     tokio::task::spawn_blocking(move || {
-        let conn = db.get_conn_safe()?;
-        list_media_library_with_conn(
-            &conn,
-            &|id| service.is_running(id),
-            limit.map(|l| l as usize),
-        )
+        let mut items = {
+            let conn = db.get_conn_safe()?;
+            list_media_library_with_conn(
+                &conn,
+                &|id| service.is_running(id),
+                limit.map(|l| l as usize),
+            )?
+        };
+        // 链接条目的描述只有几百字节，逐条读出封面；读不到（文件缺失 / 旧格式）就不显示封面
+        for item in items.iter_mut().filter(|item| item.is_link) {
+            item.cover_url = crate::media::bilibili::read_link_descriptor(&db, &item.id)
+                .ok()
+                .and_then(|descriptor| descriptor.cover);
+        }
+        Ok(items)
     })
     .await
     .map_err(|e| err(MediaError::Io(e.to_string())))?

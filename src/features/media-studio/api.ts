@@ -33,6 +33,8 @@ export interface MediaLibraryItem {
   mimeType: string;
   /** B 站链接条目（没有本地音视频，播放走内嵌播放器） */
   isLink: boolean;
+  /** 链接条目的封面（https，B 站图床）；本地文件为 null */
+  coverUrl: string | null;
   size: number;
   folderId: string | null;
   folderName: string | null;
@@ -88,6 +90,10 @@ export function inferMediaKind(kind: unknown, mimeType: string, name: string): M
   return AUDIO_EXT.test(name) ? 'audio' : 'video';
 }
 
+function httpsUrl(value: string | null): string | null {
+  return value && value.startsWith('https://') ? value : null;
+}
+
 export function normalizeLibraryItem(raw: unknown): MediaLibraryItem | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Raw;
@@ -104,6 +110,7 @@ export function normalizeLibraryItem(raw: unknown): MediaLibraryItem | null {
     kind: inferMediaKind(r.kind, mimeType, name),
     mimeType,
     isLink: Boolean(pick(r, 'isLink', 'is_link')) || isBilibiliLinkItem(mimeType, name),
+    coverUrl: httpsUrl(str(pick(r, 'coverUrl', 'cover_url'))),
     size: num(r.size) ?? 0,
     folderId: str(pick(r, 'folderId', 'folder_id')),
     folderName: str(pick(r, 'folderName', 'folder_name')),
