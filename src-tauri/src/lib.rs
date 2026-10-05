@@ -2682,6 +2682,7 @@ pub fn run() {
             // 智能题目集命令（Question Bank V2）
             // =================================================
             ,crate::commands::qbank_list_questions
+            ,crate::commands::qbank_list_mistakes         // 跨题目集错题本
             ,crate::commands::qbank_search_questions      // FTS5 全文搜索
             ,crate::commands::qbank_rebuild_fts_index     // FTS5 索引重建
             ,crate::commands::qbank_get_question

@@ -123,6 +123,17 @@ impl QuestionBankService {
             .map_err(|e| AppError::database(e.to_string()))
     }
 
+    /// 跨题目集错题本（分页）
+    pub fn list_mistakes(
+        &self,
+        filters: &crate::vfs::repos::question_repo::MistakeListFilters,
+        page: u32,
+        page_size: u32,
+    ) -> Result<crate::vfs::repos::question_repo::MistakeListResult, AppError> {
+        VfsQuestionRepo::list_mistakes(&self.vfs_db, filters, page, page_size)
+            .map_err(|e| AppError::database(e.to_string()))
+    }
+
     /// 全文搜索题目（FTS5）
     ///
     /// # Arguments

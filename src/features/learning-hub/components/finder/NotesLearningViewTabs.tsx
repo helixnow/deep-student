@@ -37,18 +37,39 @@ export function useNotesLearningView(): [NotesLearningFinderView, (view: NotesLe
   return [view, update];
 }
 
-/** Notion 式数据库视图标签：仅在 Finder「笔记」智能文件夹出现，切换同一份列表的投影 */
-export function NotesLearningViewTabs({ value, onChange }: { value: NotesLearningFinderView; onChange: (view: NotesLearningFinderView) => void }) {
-  const { t } = useTranslation('notes');
+/** Notion 式数据库视图标签条：Finder 智能文件夹顶部，切换同一入口下的不同投影 */
+export function FinderViewTabs<T extends string>({ views, value, onChange, ariaLabel }: {
+  views: Array<{ key: T; icon: React.ElementType; label: string }>;
+  value: T;
+  onChange: (view: T) => void;
+  ariaLabel: string;
+}) {
   return (
-    <div className="nlvt" role="tablist" aria-label={t('learning.views_label')}>
-      {VIEWS.map(({ key, icon: Icon }) => (
+    <div className="nlvt" role="tablist" aria-label={ariaLabel}>
+      {views.map(({ key, icon: Icon, label }) => (
         <button key={key} type="button" role="tab" aria-selected={value === key} className="nlvt-tab"
           onClick={() => onChange(key)}>
           <Icon size={14} aria-hidden="true" />
-          <span>{key === 'list' ? t('learning.views.all', { defaultValue: '全部' }) : t(`learning.views.${key}`)}</span>
+          <span>{label}</span>
         </button>
       ))}
     </div>
+  );
+}
+
+/** 仅在 Finder「笔记」智能文件夹出现 */
+export function NotesLearningViewTabs({ value, onChange }: { value: NotesLearningFinderView; onChange: (view: NotesLearningFinderView) => void }) {
+  const { t } = useTranslation('notes');
+  return (
+    <FinderViewTabs
+      views={VIEWS.map(({ key, icon }) => ({
+        key,
+        icon,
+        label: key === 'list' ? t('learning.views.all', { defaultValue: '全部' }) : t(`learning.views.${key}`),
+      }))}
+      value={value}
+      onChange={onChange}
+      ariaLabel={t('learning.views_label')}
+    />
   );
 }

@@ -51,6 +51,12 @@ export const DueMistakesReviewOverlay: React.FC = () => {
     void refreshTodayLearning();
   }, [endSession]);
 
+  // 今天没有到期的也可能有没掌握的错题：去跨题目集错题本
+  const openAllMistakes = useCallback(() => {
+    close();
+    void import('@/features/learning-hub/mistakeBook/mistakeBookNavigation').then(({ openMistakeBook }) => openMistakeBook());
+  }, [close]);
+
   // 自绘浮层不在 Radix 的 Escape 兜底里：Android 返回键要显式接住，否则会切走浮层下面的页面。
   // 已提交的评分都已落库，返回只丢本地剩余队列（与「退出」同语义）。
   const closeRef = useRef(close);
@@ -140,9 +146,16 @@ export const DueMistakesReviewOverlay: React.FC = () => {
               </>
             )}
             {phase.kind !== 'loading' && (
-              <DsButton variant="ghost" size="sm" onClick={close} className="mt-1">
-                {t('common:close')}
-              </DsButton>
+              <div className="mt-1 flex flex-wrap items-center justify-center gap-1.5">
+                {phase.kind === 'empty' && (
+                  <DsButton variant="ghost" size="sm" onClick={openAllMistakes}>
+                    {t('review:dueAll.openMistakeBook', { defaultValue: '查看全部错题' })}
+                  </DsButton>
+                )}
+                <DsButton variant="ghost" size="sm" onClick={close}>
+                  {t('common:close')}
+                </DsButton>
+              </div>
             )}
           </div>
         )}

@@ -210,6 +210,7 @@
     "emptyTitle": "Great! No Wrong Answers",
     "emptyDesc": "You've mastered all questions, keep it up!<br/>Try challenging harder questions.",
     "masteryTip": "Auto-marked as mastered after <highlight>2 correct</highlight> answers in a row",
+    "allMistakes": "Mistakes from all sets",
     "myAnswer": "My Answer",
     "correctAnswer": "Correct Answer",
     "noAnswerRecorded": "No answer recorded",
@@ -308,6 +309,7 @@
     "empty": "No mistakes due today",
     "emptyHint": "Questions you get wrong join the review plan automatically and show up here when due.",
     "loadFailed": "Couldn't load due mistakes",
-    "skipped": "Deleted questions skipped: {{count}}"
+    "skipped": "Deleted questions skipped: {{count}}",
+    "openMistakeBook": "See all mistakes"
   }
 }

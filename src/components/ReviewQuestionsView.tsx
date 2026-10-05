@@ -19,6 +19,7 @@ import {
 } from '@phosphor-icons/react';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
+import { ERROR_CAUSE_STYLE, getErrorCauses } from '@/components/review/errorCauses';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { generateCardsFromText } from '@/features/anki/generateCardsFromText';
 import { useTranslation, Trans } from 'react-i18next';
@@ -26,38 +27,6 @@ import type { Question, QuestionBankStats, Difficulty } from '@/api/questionBank
 
 /** 错题排序方式：默认（题目顺序）/ 错误次数 / 最近错误 */
 type ReviewSortBy = 'default' | 'errors' | 'recent';
-
-/**
- * 错因标签（由作答统计推导，无需后端字段）：
- * - neverCorrect: 从未答对
- * - repeatedErrors: 反复错（错误 ≥3 次）
- * - highErrorRate: 高错误率（≥60% 且尝试 ≥2 次）
- * - stale: 久未复习（>14 天）
- */
-type ErrorCause = 'neverCorrect' | 'repeatedErrors' | 'highErrorRate' | 'stale';
-
-const STALE_DAYS = 14;
-
-const getErrorCauses = (question: Question): ErrorCause[] => {
-  const attempts = question.attemptCount || 0;
-  const correct = question.correctCount || 0;
-  const errors = attempts - correct;
-  const causes: ErrorCause[] = [];
-
-  if (attempts > 0 && correct === 0) {
-    causes.push('neverCorrect');
-  } else if (errors >= 3) {
-    causes.push('repeatedErrors');
-  } else if (attempts >= 2 && errors / attempts >= 0.6) {
-    causes.push('highErrorRate');
-  }
-
-  if (question.lastAttemptAt) {
-    const diffDays = (Date.now() - new Date(question.lastAttemptAt).getTime()) / 86400000;
-    if (diffDays > STALE_DAYS) causes.push('stale');
-  }
-  return causes;
-};
 
 /** 把选中的错题整理成制卡素材：题干 + 我的答案 + 正确答案 + 解析 */
 function buildCardSourceFromQuestions(
@@ -84,13 +53,6 @@ function buildCardSourceFromQuestions(
     })
     .join('\n\n');
 }
-
-const ERROR_CAUSE_STYLE: Record<ErrorCause, string> = {
-  neverCorrect: 'bg-destructive/10 text-destructive',
-  repeatedErrors: 'bg-warning/10 text-warning',
-  highErrorRate: 'bg-warning/10 text-warning',
-  stale: 'bg-info/10 text-info',
-};
 
 export interface ReviewQuestionsViewProps {
   /** 所有题目（组件内部会过滤出 review 状态的） */
@@ -758,9 +720,20 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
       <div className="flex-shrink-0 px-4 py-1.5">
         <div className="flex items-center gap-2 rounded-md bg-info/10 px-3 py-2 text-xs text-muted-foreground">
           <Warning size={14} className="shrink-0 text-info" />
-          <span>
+          <span className="min-w-0 flex-1">
             <Trans i18nKey="review:questions.masteryTip" components={{ highlight: <span className="font-medium text-info" /> }} />
           </span>
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="!h-auto shrink-0 !px-1.5 !py-0.5 text-xs"
+            onClick={() => {
+              void import('@/features/learning-hub/mistakeBook/mistakeBookNavigation')
+                .then(({ openMistakeBook }) => openMistakeBook());
+            }}
+          >
+            {t('review:questions.allMistakes')}
+          </DsButton>
         </div>
       </div>
 

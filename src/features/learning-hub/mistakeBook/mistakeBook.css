@@ -1,0 +1,276 @@
+/* 跨题目集错题本（Finder「题目集」› 错题本）：与 Finder 列表行同密度 */
+
+.mb {
+  container: mb / inline-size;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  font-size: 13px;
+}
+
+.mb-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  padding: 8px 12px 4px;
+}
+
+.mb-summary {
+  margin: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.mb-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 12px 6px;
+}
+
+.mb-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mb-select {
+  appearance: none;
+  max-width: 260px;
+  height: 28px;
+  padding: 0 24px 0 10px;
+  border: 1px solid color-mix(in hsl, hsl(var(--border)) 60%, transparent 40%);
+  border-radius: var(--radius-shell-control, 8px);
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 12px;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.mb-select:focus-visible {
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 1px;
+}
+
+.mb-select-caret {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: hsl(var(--muted-foreground));
+}
+
+.mb-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 8px 16px;
+}
+
+.mb-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mb-item + .mb-item {
+  border-top: 1px solid color-mix(in hsl, hsl(var(--border)) 40%, transparent 60%);
+}
+
+.mb-row.mb-row {
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border-color: transparent;
+  border-radius: var(--shell-nav-row-radius, 8px);
+  background: transparent;
+  color: hsl(var(--foreground));
+}
+
+.mb-row.mb-row:hover {
+  background: var(--interactive-hover, hsl(var(--muted)));
+}
+
+.mb-item[data-expanded='true'] > .mb-row {
+  background: var(--interactive-selected, hsl(var(--accent)));
+}
+
+.mb-row-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mb-row-stem {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.mb-row-meta {
+  overflow: hidden;
+  color: hsl(var(--muted-foreground));
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mb-chip {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.mb-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 8px 12px;
+}
+
+.mb-detail-stem {
+  margin: 0;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mb-detail-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.mb-option-key {
+  font-weight: 500;
+}
+
+.mb-answers {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+}
+
+.mb-answers > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.mb-answers dt {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.mb-answers dd {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mb-answers [data-tone='mine'] dd {
+  color: hsl(var(--destructive));
+}
+
+.mb-answers [data-tone='correct'] dd {
+  color: hsl(var(--success, 142 60% 34%));
+}
+
+.mb-explanation {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 8;
+  color: hsl(var(--foreground) / 0.8);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mb-explanation-label {
+  margin-right: 6px;
+  color: hsl(var(--muted-foreground));
+  font-size: 12px;
+}
+
+.mb-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.mb-note {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 32px 16px;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
+
+.mb-note p {
+  margin: 0;
+}
+
+.mb-note-title {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.mb-note-detail {
+  max-width: 320px;
+  font-size: 12px;
+}
+
+.mb-more {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+@container mb (max-width: 300px) {
+  .mb-chip {
+    display: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .mb-row.mb-row {
+    min-height: 52px;
+  }
+
+  /* iOS 聚焦 <16px 的 select 会触发页面自动放大 */
+  .mb-select {
+    height: 44px;
+    font-size: 16px;
+  }
+}

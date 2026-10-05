@@ -7105,6 +7105,30 @@ pub async fn qbank_list_questions(
     service.list_questions(&request.exam_id, &filters, page, page_size)
 }
 
+/// 跨题目集错题本请求
+#[derive(Debug, Clone, Deserialize)]
+pub struct ListMistakesRequest {
+    #[serde(default)]
+    pub filters: crate::vfs::repos::question_repo::MistakeListFilters,
+    #[serde(default = "default_page")]
+    pub page: u32,
+    #[serde(default = "default_page_size")]
+    pub page_size: u32,
+}
+
+/// 跨题目集列出错题（status = review），附题目集名与各题目集计数
+#[tauri::command]
+pub async fn qbank_list_mistakes(
+    request: ListMistakesRequest,
+    state: State<'_, AppState>,
+) -> Result<crate::vfs::repos::question_repo::MistakeListResult> {
+    let service = state
+        .question_bank_service
+        .as_ref()
+        .ok_or_else(|| AppError::internal("QuestionBankService not initialized"))?;
+    service.list_mistakes(&request.filters, request.page, request.page_size)
+}
+
 // ============================================================================
 // FTS5 全文搜索命令
 // ============================================================================

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffe
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { MagnifyingGlass, Plus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
+import { MagnifyingGlass, Plus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House, ListBullets, XCircle } from '@phosphor-icons/react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
@@ -178,7 +178,12 @@ import { getSearchPlaceholderKey, matchesLiveName } from './utils/searchHonesty'
 import { pruneSelectionAgainstItems } from './stores/selectionPrune';
 import { NoteLearningViews } from '@/features/notes/components/NoteLearningViews';
 import { CreateLearningNoteDialog } from '@/features/notes/components/CreateLearningNoteDialog';
-import { NotesLearningViewTabs, useNotesLearningView } from './components/finder/NotesLearningViewTabs';
+import { FinderViewTabs, NotesLearningViewTabs, useNotesLearningView } from './components/finder/NotesLearningViewTabs';
+import { useExamsView, type ExamsFinderView } from './mistakeBook/mistakeBookNavigation';
+
+const MistakeBookView = lazy(() =>
+  import('./mistakeBook/MistakeBookView').then((module) => ({ default: module.MistakeBookView })),
+);
 
 /** ★ Bug4: canvas 模式下不应显示的特殊视图（仅显示层 fallback，不写回 store） */
 const CANVAS_BLOCKED_VIEW_KINDS = new Set(['indexStatus', 'memory', 'desktop']);
@@ -338,7 +343,12 @@ export function LearningHubSidebar({
       || isPathInMemoryRoot(item.path, memoryRoot);
     return inMemory ? localizeMemoryFolderTitle(item.name, t) : undefined;
   }, [isInMemoryFolder, memoryRoot, memoryRootFolderId, t]);
-  const searchPlaceholder = t(getSearchPlaceholderKey(effectivePath));
+  // 「题目集」入口：全部题目集 / 跨题目集错题本（错题本里搜索框改搜错题）
+  const [examsView, setExamsView] = useExamsView();
+  const examsMistakesActive = currentQuickAccessType === 'exams' && mode !== 'canvas' && examsView === 'mistakes';
+  const searchPlaceholder = examsMistakesActive
+    ? t('mistakeBook.searchPlaceholder')
+    : t(getSearchPlaceholderKey(effectivePath));
   const canCreateInCurrentView = viewCapabilities.canCreate;
   const canSearchInCurrentView = viewCapabilities.canSearch;
   const canDeleteInCurrentView = viewCapabilities.canDelete;
@@ -3874,7 +3884,24 @@ export function LearningHubSidebar({
           {currentQuickAccessType === 'notes' && mode !== 'canvas' && (
             <NotesLearningViewTabs value={notesLearningView} onChange={setNotesLearningView} />
           )}
-          {currentQuickAccessType === 'notes' && mode !== 'canvas' && notesLearningView !== 'list' ? (
+          {currentQuickAccessType === 'exams' && mode !== 'canvas' && (
+            <FinderViewTabs<ExamsFinderView>
+              views={[
+                { key: 'all', icon: ListBullets, label: t('mistakeBook.tabs.all') },
+                { key: 'mistakes', icon: XCircle, label: t('mistakeBook.tabs.mistakes') },
+              ]}
+              value={examsView}
+              onChange={setExamsView}
+              ariaLabel={t('mistakeBook.tabs.label')}
+            />
+          )}
+          {examsMistakesActive ? (
+            <div className="min-h-0 flex-1">
+              <Suspense fallback={null}>
+                <MistakeBookView search={debouncedSearchQuery} />
+              </Suspense>
+            </div>
+          ) : currentQuickAccessType === 'notes' && mode !== 'canvas' && notesLearningView !== 'list' ? (
             <div className="min-h-0 flex-1">
               <NoteLearningViews notes={displayedItems.filter((item) => item.type === 'note')} view={notesLearningView}
                 activeId={activeFileId} onOpen={handleOpen} />

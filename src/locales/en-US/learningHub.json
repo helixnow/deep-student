@@ -1614,5 +1614,38 @@
     "projects": "Projects",
     "studyLog": "Study log",
     "system": "System"
+  },
+  "mistakeBook": {
+    "tabs": {
+      "label": "Question set views",
+      "all": "All question sets",
+      "mistakes": "Mistakes"
+    },
+    "summary": "{{count}} mistakes across {{exams}} question sets",
+    "summaryFiltered": "{{count}} shown · {{all}} mistakes in total",
+    "reviewDue": "Review due mistakes",
+    "refresh": "Refresh mistakes",
+    "examFilter": "Filter by question set",
+    "allExams": "All question sets",
+    "sortLabel": "Sort mistakes",
+    "sort": {
+      "recent": "Most recent",
+      "errors": "Most missed"
+    },
+    "searchPlaceholder": "Search mistakes (question, answer, topic)",
+    "loading": "Loading mistakes…",
+    "loadFailed": "Couldn't load mistakes",
+    "retry": "Retry",
+    "empty": "No mistakes yet",
+    "emptyHint": "Questions you get wrong in any question set land here, and leave once you've mastered them.",
+    "noMatches": "No matching mistakes",
+    "loadMore": "Load more",
+    "untitledExam": "Untitled question set",
+    "wrongTimes": "Missed: {{count}}",
+    "myAnswer": "Your answer",
+    "correctAnswer": "Correct answer",
+    "explanation": "Explanation",
+    "noAnswer": "(no answer recorded)",
+    "redo": "Redo in question set"
   }
 }

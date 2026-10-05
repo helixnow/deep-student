@@ -300,6 +300,42 @@ pub struct QuestionListResult {
     pub has_more: bool,
 }
 
+/// 跨题目集错题本筛选（错题 = status 'review'，与题目集内「错题本」同口径）
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MistakeListFilters {
+    pub exam_id: Option<String>,
+    /// 题干 / 答案 / 解析 / 标签 模糊匹配
+    pub search: Option<String>,
+    /// recent（默认，最近做错在前）| errors（错得多的在前）
+    pub sort: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MistakeQuestion {
+    #[serde(flatten)]
+    pub question: Question,
+    pub exam_name: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MistakeExamCount {
+    pub exam_id: String,
+    pub exam_name: Option<String>,
+    pub count: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MistakeListResult {
+    pub items: Vec<MistakeQuestion>,
+    /// 筛选后的总数（分页依据）
+    pub total: i64,
+    pub page: u32,
+    pub page_size: u32,
+    pub has_more: bool,
+    /// 各题目集错题数（不受题目集 / 搜索筛选影响），多的在前
+    pub exams: Vec<MistakeExamCount>,
+}
+
 // ============================================================================
 // FTS5 全文搜索相关类型
 // ============================================================================
@@ -1263,6 +1299,119 @@ impl VfsQuestionRepo {
             page,
             page_size,
             has_more,
+        })
+    }
+
+    /// 跨题目集列出错题（分页），只含未删除题目集里的未删除题目
+    pub fn list_mistakes(
+        db: &VfsDatabase,
+        filters: &MistakeListFilters,
+        page: u32,
+        page_size: u32,
+    ) -> VfsResult<MistakeListResult> {
+        let conn = db.get_conn_safe()?;
+        Self::list_mistakes_with_conn(&conn, filters, page, page_size)
+    }
+
+    pub fn list_mistakes_with_conn(
+        conn: &Connection,
+        filters: &MistakeListFilters,
+        page: u32,
+        page_size: u32,
+    ) -> VfsResult<MistakeListResult> {
+        let page = page.max(1);
+        let page_size = page_size.clamp(1, 200);
+        let offset = (page.saturating_sub(1)) * page_size;
+        const BASE: &str = "FROM questions q
+             INNER JOIN exam_sheets e ON e.id = q.exam_id AND e.deleted_at IS NULL
+             WHERE q.deleted_at IS NULL AND q.status = 'review'";
+
+        let mut exams_stmt = conn.prepare(&format!(
+            "SELECT q.exam_id, e.exam_name, COUNT(*) AS n {BASE}
+             GROUP BY q.exam_id ORDER BY n DESC, e.exam_name COLLATE NOCASE ASC"
+        ))?;
+        let exams = exams_stmt
+            .query_map([], |row| {
+                Ok(MistakeExamCount {
+                    exam_id: row.get(0)?,
+                    exam_name: row.get(1)?,
+                    count: row.get(2)?,
+                })
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+
+        let mut conditions: Vec<String> = Vec::new();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+        if let Some(exam_id) = filters.exam_id.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            params_vec.push(Box::new(exam_id.to_string()));
+            conditions.push(format!("q.exam_id = ?{}", params_vec.len()));
+        }
+        if let Some(search) = filters.search.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            params_vec.push(Box::new(format!(
+                "%{}%",
+                crate::vfs::repos::escape_like_pattern(search)
+            )));
+            let idx = params_vec.len();
+            conditions.push(format!(
+                r"(q.content LIKE ?{idx} ESCAPE '\' OR q.answer LIKE ?{idx} ESCAPE '\' OR q.explanation LIKE ?{idx} ESCAPE '\' OR q.tags LIKE ?{idx} ESCAPE '\')"
+            ));
+        }
+        let extra = conditions
+            .iter()
+            .map(|condition| format!(" AND {condition}"))
+            .collect::<String>();
+
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let total: i64 = conn.query_row(
+            &format!("SELECT COUNT(*) {BASE}{extra}"),
+            params_refs.as_slice(),
+            |row| row.get(0),
+        )?;
+
+        let order_by = match filters.sort.as_deref().map(str::trim) {
+            Some("errors") => {
+                "(q.attempt_count - q.correct_count) DESC, COALESCE(q.last_attempt_at, q.updated_at) DESC, q.id ASC"
+            }
+            _ => "COALESCE(q.last_attempt_at, q.updated_at) DESC, q.id ASC",
+        };
+        params_vec.push(Box::new(page_size));
+        params_vec.push(Box::new(offset));
+        let limit_idx = params_vec.len() - 1;
+        let query_sql = format!(
+            r#"
+            SELECT q.id, q.exam_id, q.card_id, q.question_label, q.content, q.options_json,
+                   q.answer, q.explanation, q.question_type, q.difficulty, q.tags,
+                   q.status, q.user_answer, q.is_correct, q.attempt_count, q.correct_count,
+                   q.last_attempt_at, q.user_note, q.is_favorite, q.is_bookmarked,
+                   q.source_type, q.source_ref, q.images_json, q.parent_id, q.created_at, q.updated_at,
+                   q.ai_feedback, q.ai_score, q.ai_graded_at, q.structured_data,
+                   e.exam_name
+            {BASE}{extra}
+            ORDER BY {order_by}
+            LIMIT ?{limit_idx} OFFSET ?{}
+            "#,
+            limit_idx + 1
+        );
+        let params_refs: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&query_sql)?;
+        let items: Vec<MistakeQuestion> = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok(MistakeQuestion {
+                    question: Self::row_to_question(row)?,
+                    exam_name: row.get(30)?,
+                })
+            })?
+            .filter_map(log_and_skip_err)
+            .collect();
+        let has_more = (offset as i64 + page_size as i64) < total;
+
+        Ok(MistakeListResult {
+            items,
+            total,
+            page,
+            page_size,
+            has_more,
+            exams,
         })
     }
 
@@ -2834,6 +2983,113 @@ mod tests {
         VfsQuestionRepo::get_question_with_conn(&conn, &question.id)
             .expect("load question")
             .expect("question should exist")
+    }
+
+    #[test]
+    fn list_mistakes_spans_live_exams_with_names_counts_and_sorting() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            for (id, name, deleted) in [
+                ("exam-a", "高数", None),
+                ("exam-b", "英语", None),
+                ("exam-gone", "已删", Some("2026-10-02T00:00:00Z")),
+            ] {
+                conn.execute(
+                    "INSERT INTO exam_sheets (
+                        id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at, deleted_at
+                     ) VALUES (?1, ?2, 'completed', ?3, '{}', '{}', ?4, ?4, ?5)",
+                    params![id, name, format!("temp-{id}"), "2026-10-01T00:00:00Z", deleted],
+                )
+                .expect("insert exam");
+            }
+        }
+        let make = |exam_id: &str, content: &str, status: &str, attempts: i32, correct: i32, last: &str| {
+            let question = VfsQuestionRepo::create_question(
+                &db,
+                &CreateQuestionParams {
+                    exam_id: exam_id.to_string(),
+                    card_id: None,
+                    question_label: None,
+                    content: content.to_string(),
+                    options: None,
+                    answer: None,
+                    explanation: None,
+                    structured_data: None,
+                    question_type: None,
+                    difficulty: None,
+                    tags: None,
+                    source_type: None,
+                    source_ref: None,
+                    images: None,
+                    parent_id: None,
+                },
+            )
+            .expect("create question");
+            db.get_conn_safe()
+                .expect("open conn")
+                .execute(
+                    "UPDATE questions SET status = ?1, attempt_count = ?2, correct_count = ?3, last_attempt_at = ?4
+                     WHERE id = ?5",
+                    params![status, attempts, correct, last, question.id],
+                )
+                .expect("set progress");
+            question.id
+        };
+        let qa1 = make("exam-a", "极限定义", "review", 3, 0, "2026-10-03T00:00:00Z");
+        let qa2 = make("exam-a", "导数", "review", 5, 1, "2026-10-01T00:00:00Z");
+        make("exam-a", "已掌握", "mastered", 2, 1, "2026-10-04T00:00:00Z");
+        let qa_deleted = make("exam-a", "删掉的错题", "review", 1, 0, "2026-10-04T00:00:00Z");
+        let qb1 = make("exam-b", "完形填空", "review", 1, 0, "2026-10-04T00:00:00Z");
+        make("exam-gone", "题目集已删", "review", 1, 0, "2026-10-04T00:00:00Z");
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            conn.execute(
+                "UPDATE questions SET deleted_at = '2026-10-04T00:00:00Z' WHERE id = ?1",
+                params![qa_deleted],
+            )
+            .expect("delete question");
+            conn.execute(
+                "UPDATE questions SET tags = '[\"链式法则\"]' WHERE id = ?1",
+                params![qa2],
+            )
+            .expect("tag question");
+        }
+
+        let ids = |result: &MistakeListResult| -> Vec<String> {
+            result.items.iter().map(|item| item.question.id.clone()).collect()
+        };
+        let list = |filters: MistakeListFilters, page: u32, page_size: u32| {
+            VfsQuestionRepo::list_mistakes(&db, &filters, page, page_size).expect("list mistakes")
+        };
+
+        let recent = list(MistakeListFilters::default(), 1, 50);
+        assert_eq!(ids(&recent), vec![qb1.clone(), qa1.clone(), qa2.clone()]);
+        assert_eq!(recent.total, 3);
+        assert_eq!(recent.items[0].exam_name.as_deref(), Some("英语"));
+        assert_eq!(
+            recent.exams,
+            vec![
+                MistakeExamCount { exam_id: "exam-a".into(), exam_name: Some("高数".into()), count: 2 },
+                MistakeExamCount { exam_id: "exam-b".into(), exam_name: Some("英语".into()), count: 1 },
+            ]
+        );
+
+        let by_errors = list(MistakeListFilters { sort: Some("errors".into()), ..Default::default() }, 1, 50);
+        assert_eq!(ids(&by_errors), vec![qa2.clone(), qa1.clone(), qb1.clone()]);
+
+        let only_a = list(MistakeListFilters { exam_id: Some("exam-a".into()), ..Default::default() }, 1, 50);
+        assert_eq!(ids(&only_a), vec![qa1.clone(), qa2.clone()]);
+        assert_eq!(only_a.exams.len(), 2, "exam counts ignore the exam filter");
+
+        let by_tag = list(MistakeListFilters { search: Some("链式".into()), ..Default::default() }, 1, 50);
+        assert_eq!(ids(&by_tag), vec![qa2.clone()]);
+
+        let first = list(MistakeListFilters::default(), 1, 2);
+        assert!(first.has_more);
+        let second = list(MistakeListFilters::default(), 2, 2);
+        assert_eq!(ids(&second), vec![qa2]);
+        assert!(!second.has_more);
     }
 
     #[test]

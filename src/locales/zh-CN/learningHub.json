@@ -1614,5 +1614,38 @@
     "projects": "项目",
     "studyLog": "学习日志",
     "system": "__system__"
+  },
+  "mistakeBook": {
+    "tabs": {
+      "label": "题目集视图",
+      "all": "全部题目集",
+      "mistakes": "错题本"
+    },
+    "summary": "{{count}} 道错题 · 来自 {{exams}} 个题目集",
+    "summaryFiltered": "筛选出 {{count}} 道 · 共 {{all}} 道错题",
+    "reviewDue": "复习到期错题",
+    "refresh": "刷新错题本",
+    "examFilter": "按题目集筛选",
+    "allExams": "全部题目集",
+    "sortLabel": "错题排序",
+    "sort": {
+      "recent": "最近做错",
+      "errors": "错得最多"
+    },
+    "searchPlaceholder": "搜索错题（题干 / 答案 / 知识点）",
+    "loading": "正在加载错题…",
+    "loadFailed": "错题加载失败",
+    "retry": "重试",
+    "empty": "还没有错题",
+    "emptyHint": "在题目集里做题，答错的题会自动收进这里；之后答对掌握了就会移出。",
+    "noMatches": "没有匹配的错题",
+    "loadMore": "加载更多",
+    "untitledExam": "未命名题目集",
+    "wrongTimes": "错 {{count}} 次",
+    "myAnswer": "我的答案",
+    "correctAnswer": "正确答案",
+    "explanation": "解析",
+    "noAnswer": "（没有记录到作答）",
+    "redo": "去题目集重做"
   }
 }
