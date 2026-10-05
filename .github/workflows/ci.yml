@@ -122,7 +122,8 @@ jobs:
 
   backend:
     name: Backend
-    needs: [build-config, frontend, frontend-tests]
+    needs: [build-config, changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
@@ -153,6 +154,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       provider-contract: ${{ steps.filter.outputs.provider-contract }}
+      code: ${{ steps.classify.outputs.code }}
     steps:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d
         if: github.event_name == 'pull_request'
@@ -171,10 +173,34 @@ jobs:
               - 'scripts/ci/**'
               - '.github/actions/**'
               - '.github/workflows/ci.yml'
+            all:
+              - '**'
+            docs:
+              - '*.md'
+              - 'docs/**'
+            # src-tauri/tests/sync_r10_protocol_locks.rs reads the user guide.
+            docs-read-by-rust:
+              - 'docs/user-guide/**'
+      # Docs-only PRs skip the Rust jobs. Pushes, mixed changes and a missing
+      # answer all leave code != 'false', so the Rust jobs run.
+      - name: Classify docs-only pull requests
+        if: github.event_name == 'pull_request'
+        id: classify
+        env:
+          ALL: ${{ steps.filter.outputs.all_count }}
+          DOCS: ${{ steps.filter.outputs.docs_count }}
+          RUST_READS: ${{ steps.filter.outputs.docs-read-by-rust }}
+        run: |
+          if [ "${ALL:-0}" -gt 0 ] && [ "$ALL" = "$DOCS" ] && [ "$RUST_READS" != true ]; then
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          fi
 
   rust-test-build:
     name: Rust Tests · Build Archive
-    needs: [build-config, frontend, frontend-tests]
+    needs: [build-config, changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
     runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 90
     env:
@@ -299,7 +325,8 @@ jobs:
 
   windows-shell-sandbox:
     name: Windows Shell Sandbox
-    needs: [build-config, frontend, frontend-tests]
+    needs: [build-config, changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
     runs-on: windows-2025
     timeout-minutes: 75
     steps:
@@ -327,7 +354,8 @@ jobs:
 
   migration-gate:
     name: Migration Gate (static + production tests + fixtures)
-    needs: [build-config, frontend, frontend-tests]
+    needs: [build-config, changes]
+    if: github.event_name != 'pull_request' || needs.changes.outputs.code != 'false'
     runs-on: ${{ vars.LINUX_BUILD_RUNNER || 'ubuntu-22.04' }}
     timeout-minutes: 60
     env:
@@ -399,9 +427,17 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
-      - name: Assert required results (only path-filtered provider tests may skip)
+      - name: Assert required results (only path-filtered jobs may skip)
         env:
           RESULTS: ${{ toJSON(needs) }}
           PROVIDER_REQUIRED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true' }}
+          RUST_REQUIRED: ${{ github.event_name != 'pull_request' || needs.changes.outputs.code != 'false' }}
         run: |
-          node -e 'const n=JSON.parse(process.env.RESULTS); for(const [k,v] of Object.entries(n)){if(k==="provider-contract" && process.env.PROVIDER_REQUIRED!=="true" && v.result==="skipped")continue; if(v.result!=="success")throw Error(`${k}: ${v.result}`)}'
+          node -e '
+            const n = JSON.parse(process.env.RESULTS);
+            const rustJobs = ["backend", "rust-tests", "provider-contract", "windows-shell-sandbox", "migration-gate"];
+            for (const [k, v] of Object.entries(n)) {
+              if (v.result === "skipped" && k === "provider-contract" && process.env.PROVIDER_REQUIRED !== "true") continue;
+              if (v.result === "skipped" && rustJobs.includes(k) && process.env.RUST_REQUIRED !== "true") continue;
+              if (v.result !== "success") throw Error(`${k}: ${v.result}`);
+            }'
