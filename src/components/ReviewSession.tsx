@@ -169,11 +169,11 @@ const ReviewOptionList: React.FC<{
                 : isWrongPick
                   ? 'border-destructive/40 bg-destructive/5'
                   : isSelected
-                    ? 'border-primary/50 bg-primary/5'
+                    ? 'border-primary bg-primary/10'
                     : 'border-border/60',
             )}
           >
-            <span className="shrink-0 font-medium tabular-nums text-muted-foreground">{option.key}.</span>
+            <span className={cn('shrink-0 font-medium tabular-nums', isSelected && !revealed ? 'text-primary' : 'text-muted-foreground')}>{option.key}.</span>
             <div className="min-w-0 flex-1 prose prose-sm dark:prose-invert max-w-none">
               <MarkdownRenderer content={option.content} />
             </div>
