@@ -69,6 +69,8 @@ const artwork: Record<string, React.FC> = {
   files: () => <IllustratedTile typeId="files" />,
   essay: () => <IllustratedTile typeId="essay" />,
   mindmap: () => <IllustratedTile typeId="mindmap" />,
+  media: () => <IllustratedTile typeId="media" />,
+  aiDashboard: () => <IllustratedTile typeId="aiDashboard" />,
 };
 
 export function hasWorkbenchAppIcon(typeId: string): boolean {
