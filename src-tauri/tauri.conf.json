@@ -67,8 +67,8 @@
       "resources/pdfium/licenses/": "licenses/pdfium/"
     },
     "copyright": "",
-    "shortDescription": "AI驱动的智能学习助手",
-    "longDescription": "Deep Student 是一款专为学生设计的AI驱动的智能学习助手。它利用先进的人工智能技术，帮助用户进行错题分析、知识点梳理和个性化学习，从而实现深度理解和高效学习。",
+    "shortDescription": "开源、本地优先的 AI 学习工作台",
+    "longDescription": "只专注学习本身就够了，剩下的都交给我。DeepStudent 是开源、本地优先的 AI 学习工作台。它的学习 Agent，可直接操作学习桌面上的每一个应用：说一句话，它去写笔记、建思维导图、出题、制卡、排复习、建待办、做调研。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
