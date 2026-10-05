@@ -60,4 +60,30 @@ describe('detectModelKindSignal', () => {
     expect(detectModelKindSignal('deepseek-v4-pro')).toBeNull();
     expect(detectModelKindSignal('')).toBeNull();
   });
+
+  it('detects ASR models, including suffix-style names and relay prefixes', () => {
+    for (const id of [
+      'Qwen/Qwen3-ASR-1.7B',
+      'qwen3-asr-flash',
+      'relay-gw_qwen3-asr-flash-2026-02-10',
+      'XingChenAGI/XingChenASR-V3.2',
+      'XingChenAGI/XingChenASR-Diarize-V3.0',
+      'TeleAI/TeleSpeechASR',
+      'FunAudioLLM/SenseVoiceSmall',
+      'whisper-large-v3-turbo',
+      'gpt-4o-mini-transcribe',
+      'paraformer-v2',
+      'elevenlabs/scribe_v1',
+    ]) {
+      expect(detectModelKindSignal(id), id).toBe('asr');
+    }
+  });
+
+  it('keeps TTS, omni and gateway-slug false positives out of ASR', () => {
+    expect(detectModelKindSignal('FunAudioLLM/CosyVoice2-0.5B')).toBeNull();
+    expect(detectModelKindSignal('qwen3-tts-flash')).toBeNull();
+    expect(detectModelKindSignal('Qwen/Qwen3-Omni-30B-A3B-Captioner')).toBeNull();
+    expect(detectModelKindSignal('image-describe-v1')).toBeNull();
+    expect(detectModelKindSignal('asr-gateway_gpt-5.6')).toBeNull();
+  });
 });

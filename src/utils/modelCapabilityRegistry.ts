@@ -6,10 +6,12 @@ export type RegistryModelStatus = 'confirmed' | 'inferred' | 'deprecated' | 'unk
 /**
  * 记录的模型种类。缺省视为 'chat'（历史记录未标注）。
  * 匹配时先判定输入的类型信号，再只对同 kind 记录计分——
- * 嵌入/重排模型不允许命中聊天记录（反之亦然），
+ * 嵌入/重排/ASR 模型不允许命中聊天记录（反之亦然），
  * 否则包含兜底会把 embed-gateway_qwen3* 之类误配到 qwen3 聊天记录上。
+ * 因此非 chat 记录的 model_id 必须自带对应类型信号（见 modelIdPrefix.ts），
+ * 否则任何输入都到不了这条记录。
  */
-export type RegistryModelKind = 'chat' | 'embedding' | 'rerank';
+export type RegistryModelKind = 'chat' | 'embedding' | 'rerank' | 'asr';
 
 export interface RegistryCapabilityFlags {
   text: boolean;

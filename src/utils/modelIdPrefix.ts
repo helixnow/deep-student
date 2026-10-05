@@ -18,7 +18,19 @@ export const EMBEDDING_SIGNAL_REGEX =
 /** 重排模型信号。含 `retrieval`（部分重排产品以此命名）。 */
 export const RERANK_SIGNAL_REGEX = /(?:rerank|re-rank|re-ranker|re-ranking|retrieval|retriever)/i;
 
-export type ModelKindSignal = 'embedding' | 'rerank';
+/**
+ * 语音识别（ASR）模型信号。
+ * `asr` 只要求后面是分隔符 / 版本号 / 结尾，前面可以紧贴字母——
+ * 覆盖 `XingChenASR-V3.2`、`TeleSpeechASR` 这类词尾 ASR 命名；
+ * `stt` 必须是独立的段，避免误吃普通单词。
+ */
+export const ASR_SIGNAL_REGEX =
+  /asr(?=$|[\s/_.:-]|v?\d)|(?:^|[\s/_.:-])stt(?=$|[\s/_.:-]|v?\d)|transcrib(?:e|er|ing|ption)|whisper|sensevoice|paraformer|speech[-_/]to[-_/]text|(?:^|[\s/_.:-])scribe(?:[-_]v?\d+)?(?=$|[\s/_.:-])/i;
+
+/** 语音合成（TTS）不是 ASR：命名里同时带 speech 一类字样时以此排除。 */
+export const ASR_EXCLUDED_REGEX = /tts|text-to-speech|speech[-_/](?:synthesis|generation)/i;
+
+export type ModelKindSignal = 'embedding' | 'rerank' | 'asr';
 
 /**
  * 剥离「网关 slug_」前缀，返回型号名本体。
@@ -52,7 +64,7 @@ export function stripGatewayPrefix(modelId: string): string {
 }
 
 /**
- * 判定模型 ID 的嵌入/重排类型信号。
+ * 判定模型 ID 的嵌入/重排/语音识别类型信号。
  *
  * 只对**剥离网关前缀后的型号名**做正则判定（前缀描述网关，不代表模型能力，
  * 例如 embed-gateway_ 下的聊天模型）。返回 null 表示无类型信号（视为普通模型）。
@@ -60,11 +72,13 @@ export function stripGatewayPrefix(modelId: string): string {
  * 重排优先于嵌入：一个模型不会同时是嵌入与重排（接口形态互斥：
  * /embeddings vs /rerank），而网关 slug 可能自带 `embed` 字样
  * （如 embed-gateway_qwen3.7-text-rerank 是重排而非嵌入）。
+ * ASR 排在两者之后（/audio/transcriptions 与前两者同样互斥）。
  */
 export function detectModelKindSignal(modelId: string): ModelKindSignal | null {
   const name = stripGatewayPrefix(modelId);
   if (!name) return null;
   if (RERANK_SIGNAL_REGEX.test(name)) return 'rerank';
   if (EMBEDDING_SIGNAL_REGEX.test(name)) return 'embedding';
+  if (ASR_SIGNAL_REGEX.test(name) && !ASR_EXCLUDED_REGEX.test(name)) return 'asr';
   return null;
 }

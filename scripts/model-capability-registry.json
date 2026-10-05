@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-10-03",
-  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-12 核验：DeepSeek V4.1 Flash（deepseek-flash）原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 路由到该模型。官方已撤回 V4 Pro 的 9 月 14 日下线计划，继续提供服务。Responses API 内置工具（含 web_search）被静默忽略。",
+  "updated_at": "2026-10-05",
+  "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现。2026-08-23 增补：新增 claude-haiku-4-5、gemini-3.1-flash-lite、gemini-3.5-flash-lite、MiniMax-M2（均核验官方文档并附 source_url/verified_at）；2026-08-24 补齐官方 claude-opus-5。claude-haiku-5 因官方未发布对应模型 ID 暂不收录。2026-09-12 核验：DeepSeek V4.1 Flash（deepseek-flash）原生多模态；旧名 deepseek-v4-flash / deepseek-v4-flash-vision-exp 路由到该模型。官方已撤回 V4 Pro 的 9 月 14 日下线计划，继续提供服务。Responses API 内置工具（含 web_search）被静默忽略。2026-10-05 增补：model_kind 新增 asr，收录百炼 qwen3-asr-flash 系列（OpenAI 兼容 chat input_audio；filetrans / realtime 标注接口形态不可用）、开源 Qwen3-ASR、硅基流动语音识别（Qwen3-ASR-1.7B / XingChenASR / SenseVoiceSmall；TeleSpeechASR 已下架标 deprecated）与 OpenAI 转写模型。",
   "records": [
     {
       "vendor": "OpenAI",
@@ -7303,6 +7303,602 @@
           "quirks": [
             "代码检索专用向量。"
           ]
+        }
+      ]
+    },
+    {
+      "vendor": "阿里云百炼",
+      "series": "语音识别 Qwen3-ASR-Flash（DashScope）",
+      "models": [
+        {
+          "model_id": "qwen3-asr-flash",
+          "release_date": "2025-09-08",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://www.alibabacloud.com/help/en/model-studio/qwen-asr-api-reference",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_input_audio",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "asr_options.language",
+              "asr_options.enable_itn",
+              "stream"
+            ],
+            "notes": "OpenAI 兼容 /chat/completions：user content 为 input_audio（公网 URL 或 data:<mime>;base64,…），返回 choices[0].message.content；不提供 /audio/transcriptions。"
+          },
+          "quirks": [
+            "单次音频 ≤5 分钟 / 10MB；应用内媒体转写按 ≤15 s 分段，不受影响。",
+            "asr_options 不是 OpenAI 标准字段，放在请求体顶层（OpenAI SDK 走 extra_body）。"
+          ]
+        },
+        {
+          "model_id": "qwen3-asr-flash-2026-02-10",
+          "release_date": "2026-02-10",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "alias_of": "qwen3-asr-flash",
+          "source_url": "https://platform.qianwenai.com/docs/developer-guides/speech/speech-to-text-models",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_input_audio",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "asr_options.language",
+              "asr_options.enable_itn",
+              "stream"
+            ],
+            "notes": "OpenAI 兼容 /chat/completions：user content 为 input_audio（公网 URL 或 data:<mime>;base64,…），返回 choices[0].message.content；不提供 /audio/transcriptions。"
+          },
+          "quirks": [
+            "qwen3-asr-flash 的快照版本。",
+            "单次音频 ≤5 分钟 / 10MB；应用内媒体转写按 ≤15 s 分段，不受影响。",
+            "asr_options 不是 OpenAI 标准字段，放在请求体顶层（OpenAI SDK 走 extra_body）。"
+          ]
+        },
+        {
+          "model_id": "qwen3-asr-flash-2025-09-08",
+          "release_date": "2025-09-08",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "alias_of": "qwen3-asr-flash",
+          "source_url": "https://platform.qianwenai.com/docs/developer-guides/speech/speech-to-text-models",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_chat_input_audio",
+            "required_fields": [
+              "model",
+              "messages"
+            ],
+            "optional_fields": [
+              "asr_options.language",
+              "asr_options.enable_itn",
+              "stream"
+            ],
+            "notes": "OpenAI 兼容 /chat/completions：user content 为 input_audio（公网 URL 或 data:<mime>;base64,…），返回 choices[0].message.content；不提供 /audio/transcriptions。"
+          },
+          "quirks": [
+            "qwen3-asr-flash 的快照版本。",
+            "单次音频 ≤5 分钟 / 10MB；应用内媒体转写按 ≤15 s 分段，不受影响。",
+            "asr_options 不是 OpenAI 标准字段，放在请求体顶层（OpenAI SDK 走 extra_body）。"
+          ]
+        },
+        {
+          "model_id": "qwen3-asr-flash-filetrans",
+          "release_date": "2025-11-17",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://platform.qianwenai.com/docs/developer-guides/speech/speech-to-text-models",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "dashscope_async_filetrans",
+            "required_fields": [
+              "model",
+              "input.file_url"
+            ],
+            "optional_fields": [
+              "parameters.language",
+              "parameters.enable_itn"
+            ],
+            "notes": "仅 DashScope 异步任务（提交公网 URL → 轮询结果），无 OpenAI 兼容接口。"
+          },
+          "quirks": [
+            "单文件 ≤12 小时 / 2GB，但需要公网可访问的音频 URL；应用内转写不支持该接口形态。"
+          ]
+        },
+        {
+          "model_id": "qwen3-asr-flash-realtime",
+          "release_date": "2025-10-27",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://platform.qianwenai.com/docs/developer-guides/speech/speech-to-text-models",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "dashscope_realtime_websocket",
+            "required_fields": [
+              "model"
+            ],
+            "optional_fields": [],
+            "notes": "仅 WebSocket 实时流（wss://dashscope.aliyuncs.com/api-ws/v1/realtime）。"
+          },
+          "quirks": [
+            "只有实时流式接口；应用内转写走 HTTP 请求，不支持。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "Qwen",
+      "series": "Qwen3-ASR（开源，SiliconFlow / vLLM 等托管）",
+      "models": [
+        {
+          "model_id": "qwen3-asr-1.7b",
+          "release_date": "2026-01-29",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-ASR-1.7B",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt"
+            ],
+            "notes": "OpenAI 兼容 /audio/transcriptions（multipart）；硅基流动托管 ID 为 Qwen/Qwen3-ASR-1.7B。"
+          },
+          "quirks": [
+            "2026-10 硅基流动账号 /models 已列出 Qwen/Qwen3-ASR-1.7B（官方 API 文档的 enum 尚未更新）。",
+            "vLLM 部署时原始输出可能带 `language Chinese<asr_text>` 前缀，解析时需剥掉。",
+            "不支持 verbose_json 句级时间戳。"
+          ]
+        },
+        {
+          "model_id": "qwen3-asr-0.6b",
+          "release_date": "2026-01-29",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://huggingface.co/Qwen/Qwen3-ASR-0.6B",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt"
+            ],
+            "notes": "OpenAI 兼容 /audio/transcriptions（multipart），常见于 vLLM / 中转站。"
+          },
+          "quirks": [
+            "vLLM 部署时原始输出可能带 `language Chinese<asr_text>` 前缀，解析时需剥掉。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "SiliconFlow",
+      "series": "语音识别（托管）",
+      "models": [
+        {
+          "model_id": "sensevoicesmall",
+          "release_date": "2024-07",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://docs.siliconflow.cn/cn/api-reference/audio/create-audio-transcriptions",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [],
+            "notes": "硅基流动托管 ID 为 FunAudioLLM/SenseVoiceSmall；音频 ≤1 小时 / 50MB。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "xingchenasr-v3.2",
+          "release_date": "2026",
+          "status": "inferred",
+          "model_kind": "asr",
+          "source_url": "https://docs.siliconflow.cn/cn/api-reference/audio/create-audio-transcriptions",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [],
+            "notes": "硅基流动托管 ID 为 XingChenAGI/XingChenASR-V3.2。"
+          },
+          "quirks": [
+            "2026-10 硅基流动账号 /models 已列出；接口形态按硅基流动 /audio/transcriptions 推断，返回格式未核验。"
+          ]
+        },
+        {
+          "model_id": "xingchenasr-v3.2-ultra",
+          "release_date": "2026",
+          "status": "inferred",
+          "model_kind": "asr",
+          "source_url": "https://docs.siliconflow.cn/cn/api-reference/audio/create-audio-transcriptions",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [],
+            "notes": "硅基流动托管 ID 为 XingChenAGI/XingChenASR-V3.2-Ultra。"
+          },
+          "quirks": [
+            "2026-10 硅基流动账号 /models 已列出；接口形态按硅基流动 /audio/transcriptions 推断，返回格式未核验。"
+          ]
+        },
+        {
+          "model_id": "xingchenasr-diarize-v3.0",
+          "release_date": "2026",
+          "status": "inferred",
+          "model_kind": "asr",
+          "source_url": "https://docs.siliconflow.cn/cn/api-reference/audio/create-audio-transcriptions",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [],
+            "notes": "硅基流动托管 ID 为 XingChenAGI/XingChenASR-Diarize-V3.0（说话人分离版）。"
+          },
+          "quirks": [
+            "2026-10 硅基流动账号 /models 已列出；说话人信息的返回格式未核验，应用内只取 text。"
+          ]
+        },
+        {
+          "model_id": "telespeechasr",
+          "release_date": "2024",
+          "status": "deprecated",
+          "model_kind": "asr",
+          "source_url": "https://docs.siliconflow.cn/cn/api-reference/audio/create-audio-transcriptions",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [],
+            "notes": "硅基流动托管 ID 为 TeleAI/TeleSpeechASR。"
+          },
+          "quirks": [
+            "2026-10 已不在硅基流动账号 /models 列表；应用默认转写模型已改为 Qwen/Qwen3-ASR-1.7B。"
+          ]
+        }
+      ]
+    },
+    {
+      "vendor": "OpenAI",
+      "series": "语音转文字（Audio Transcriptions）",
+      "models": [
+        {
+          "model_id": "whisper-1",
+          "release_date": "2023-03",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://platform.openai.com/docs/api-reference/audio/createTranscription",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt",
+              "response_format",
+              "temperature",
+              "timestamp_granularities"
+            ],
+            "notes": "response_format=verbose_json 返回句级时间戳。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "gpt-4o-transcribe",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://platform.openai.com/docs/models/gpt-4o-transcribe",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt",
+              "response_format"
+            ],
+            "notes": "response_format 只支持 json / text。"
+          },
+          "quirks": [
+            "不支持 verbose_json 句级时间戳。"
+          ]
+        },
+        {
+          "model_id": "gpt-4o-mini-transcribe",
+          "release_date": "2025-03",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://platform.openai.com/docs/models/gpt-4o-mini-transcribe",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt",
+              "response_format"
+            ],
+            "notes": "response_format 只支持 json / text。"
+          },
+          "quirks": [
+            "不支持 verbose_json 句级时间戳。"
+          ]
+        },
+        {
+          "model_id": "whisper-large-v3",
+          "release_date": "2023-11",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://huggingface.co/openai/whisper-large-v3",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt",
+              "response_format",
+              "temperature"
+            ],
+            "notes": "开源权重，常见于 Groq / 中转站的 /audio/transcriptions。"
+          },
+          "quirks": []
+        },
+        {
+          "model_id": "whisper-large-v3-turbo",
+          "release_date": "2024-10",
+          "status": "confirmed",
+          "model_kind": "asr",
+          "source_url": "https://huggingface.co/openai/whisper-large-v3-turbo",
+          "verified_at": "2026-10-05",
+          "capabilities": {
+            "text": true,
+            "vision": false,
+            "audio": true,
+            "video": false,
+            "function_calling": false,
+            "reasoning": false,
+            "coding_agent": false,
+            "max_context_tokens": null,
+            "max_output_tokens": null
+          },
+          "param_format": {
+            "family": "openai_audio_transcriptions",
+            "required_fields": [
+              "model",
+              "file"
+            ],
+            "optional_fields": [
+              "language",
+              "prompt",
+              "response_format",
+              "temperature"
+            ],
+            "notes": "开源权重，常见于 Groq / 中转站的 /audio/transcriptions。"
+          },
+          "quirks": []
         }
       ]
     }

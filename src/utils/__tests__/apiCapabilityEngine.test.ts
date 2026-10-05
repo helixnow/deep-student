@@ -504,3 +504,54 @@ describe('gateway-prefixed model IDs (embed-gateway_ slug)', () => {
     expect(chatRecord?.model_kind ?? 'chat').toBe('chat');
   });
 });
+
+describe('ASR models (registry kind asr)', () => {
+  it('matches direct, hosted and relay ASR ids to ASR records', () => {
+    const cases: Array<[string, string]> = [
+      ['qwen3-asr-flash', 'qwen3-asr-flash'],
+      ['qwen3-asr-flash-2026-02-10', 'qwen3-asr-flash-2026-02-10'],
+      ['relay-gw_qwen3-asr-flash', 'qwen3-asr-flash'],
+      ['aliyun/qwen3-asr-flash-realtime-2026-02-10', 'qwen3-asr-flash-realtime'],
+      ['Qwen/Qwen3-ASR-1.7B', 'qwen3-asr-1.7b'],
+      ['Qwen/Qwen3-ASR-1.7B-hf', 'qwen3-asr-1.7b'],
+      ['XingChenAGI/XingChenASR-V3.2', 'xingchenasr-v3.2'],
+      ['XingChenAGI/XingChenASR-V3.2-Ultra', 'xingchenasr-v3.2-ultra'],
+      ['FunAudioLLM/SenseVoiceSmall', 'sensevoicesmall'],
+      ['gpt-4o-mini-transcribe', 'gpt-4o-mini-transcribe'],
+    ];
+    for (const [id, expected] of cases) {
+      const record = findModelRecordById(id);
+      expect(record?.model_id, id).toBe(expected);
+      expect(record?.model_kind, id).toBe('asr');
+    }
+    expect(findModelRecordById('TeleAI/TeleSpeechASR')?.status).toBe('deprecated');
+  });
+
+  it('never lets ASR ids inherit chat-model capabilities', () => {
+    for (const id of [
+      'Qwen/Qwen3-ASR-1.7B',
+      'qwen3-asr-flash',
+      'relay-gw_qwen3-asr-flash',
+      'XingChenAGI/XingChenASR-V3.2-Ultra',
+      'gpt-4o-transcribe',
+      'my-relay_qwen3-asr-9b',
+    ]) {
+      const caps = inferApiCapabilities({ id, name: id, providerScope: 'custom' });
+      expect(caps.audioTranscription, id).toBe(true);
+      expect(caps.embedding, id).toBe(false);
+      expect(caps.reasoning, id).toBe(false);
+      expect(caps.vision, id).toBe(false);
+      expect(caps.functionCalling, id).toBe(false);
+      expect(caps.webSearch, id).toBe(false);
+      expect(caps.supportsThinkingTokens, id).toBe(false);
+      expect(caps.supportsReasoningEffort, id).toBe(false);
+    }
+  });
+
+  it('keeps chat, omni and TTS models out of ASR', () => {
+    for (const id of ['qwen3.8-max', 'Qwen/Qwen3-Omni-30B-A3B-Instruct', 'FunAudioLLM/CosyVoice2-0.5B']) {
+      expect(inferApiCapabilities({ id }).audioTranscription, id).toBe(false);
+      expect(findModelRecordById(id)?.model_kind ?? 'chat', id).not.toBe('asr');
+    }
+  });
+});

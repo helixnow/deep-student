@@ -59,11 +59,8 @@ const getOverride = (descriptor: ApiModelDescriptor, type: ApiCapabilityType): b
   return !!hit.isUserSelected;
 };
 
-// 嵌入/重排信号正则统一收口到 modelIdPrefix.ts（与注册表 kind 匹配共用同一份，
+// 嵌入/重排/ASR 信号正则统一收口到 modelIdPrefix.ts（与注册表 kind 匹配共用同一份，
 // 对剥离网关前缀后的型号名判定；本引擎经 detectModelKindSignal 使用）。
-const AUDIO_TRANSCRIPTION_REGEX =
-  /(?:^|[/_-])(?:asr|stt)(?:$|[/_-])|transcrib(?:e|er|ing|ption)|whisper|sensevoice|telespeechasr|speech(?:[-_/]to[-_/]text|[-_/]?asr)|gpt-4o(?:-mini)?-transcribe|qwen3-asr|scribe(?:[-_/]v?\d+)?/i;
-const AUDIO_TRANSCRIPTION_EXCLUDED_REGEX = /tts|text-to-speech|speech(?:[-_/]synthesis|[-_/]generation)/i;
 
 const IMAGE_MODEL_REGEX = /flux|diffusion|stabilityai|sd-|dall|cogview|janus|midjourney|mj-|image|gpt-image/i;
 const MIMO_CHAT_REGEX = /^mimo-v2(?:\.5)?(?:-(?:pro|flash))?$|^mimo-v2-omni$/i;
@@ -519,14 +516,12 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const audioTranscription =
     audioTranscriptionOverride !== undefined
       ? audioTranscriptionOverride
-      : !embedding &&
-        !rerank &&
-        !AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(id) &&
-        !(name ? AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(name) : false) &&
-        (AUDIO_TRANSCRIPTION_REGEX.test(id) || (name ? AUDIO_TRANSCRIPTION_REGEX.test(name) : false));
+      : !embedding && !rerank && (idSignal === 'asr' || (idSignal === null && nameSignal === 'asr'));
 
   const imageModelById = IMAGE_MODEL_ID_SET.has(id);
   const imageModel = imageModelById || IMAGE_MODEL_REGEX.test(id) || (name ? IMAGE_MODEL_REGEX.test(name) : false);
+  // 非对话模型不继承对话类启发式（如 Qwen/Qwen3-ASR-1.7B 会被 qwen3 思考 / 工具规则命中）
+  const nonChatModel = embedding || rerank || imageModel || audioTranscription;
 
   const reasoningOverride = getOverride(descriptor, 'reasoning');
   let reasoning = false;
@@ -534,7 +529,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     reasoning = reasoningOverride;
   } else if (modelCapabilities) {
     reasoning = modelCapabilities.reasoning;
-  } else if (!embedding && !rerank && !imageModel) {
+  } else if (!nonChatModel) {
     reasoning = REASONING_REGEX.test(id) || MIMO_CHAT_REGEX.test(id) || (name ? REASONING_REGEX.test(name) || MIMO_CHAT_REGEX.test(name) : false);
   }
 
@@ -544,7 +539,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     vision = visionOverride;
   } else if (modelCapabilities) {
     vision = modelCapabilities.vision;
-  } else {
+  } else if (!audioTranscription) {
     // 不因嵌入/重排而跳过视觉判定：多模态嵌入/重排（qwen3-vl-*、*vision* 等）
     // 需要标 vision 才能绑定多模态知识库维度；VISION 模式为窄子串，
     // 纯文本嵌入（text-embedding-3-large、bge-m3 等）不含这些模式，不受影响。
@@ -559,7 +554,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     functionCalling = functionOverride;
   } else if (modelCapabilities) {
     functionCalling = modelCapabilities.function_calling;
-  } else if (!embedding && !rerank && !imageModel) {
+  } else if (!nonChatModel) {
     const excluded = matchesRegexList(id, FUNCTION_CALLING_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, FUNCTION_CALLING_EXCLUDED_REGEXES) : false);
     const allowed = FUNCTION_CALLING_WHITELIST_REGEX.test(id) || (name ? FUNCTION_CALLING_WHITELIST_REGEX.test(name) : false);
     functionCalling = allowed && !excluded;
@@ -569,7 +564,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   let webSearch = false;
   if (webOverride !== undefined) {
     webSearch = webOverride;
-  } else if (!embedding && !rerank && !imageModel) {
+  } else if (!nonChatModel) {
     webSearch = WEB_SEARCH_WHITELIST_REGEXES.some(regex => regex.test(id) || (name ? regex.test(name) : false));
   }
 
@@ -619,7 +614,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     ));
   const isRegistryHybridReasoning = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode'));
 
-  const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
+  const supportsReasoningEffort = !nonChatModel && (
     isOpenaiReasoningBudget ||
     isGrokReasoningBudget ||
     isPerplexityReasoningBudget ||
@@ -690,9 +685,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const isPerplexityReasoning = PERPLEXITY_REASONING_REGEX.test(id);
 
   const supportsThinkingTokens =
-    !embedding &&
-    !rerank &&
-    !imageModel &&
+    !nonChatModel &&
     (isGeminiThinking ||
       isGemini3Thinking ||
       isQwenTokenModel ||
@@ -710,9 +703,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const isMimoHybridReasoning = MIMO_CHAT_REGEX.test(id) || (name ? MIMO_CHAT_REGEX.test(name) : false);
 
   const supportsHybridReasoning =
-    !embedding &&
-    !rerank &&
-    !imageModel &&
+    !nonChatModel &&
     (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isMimoHybridReasoning || isRegistryHybridReasoning);
 
   // 上下文窗口推断：注册表确认值 > 规则命中 > 默认兜底。
