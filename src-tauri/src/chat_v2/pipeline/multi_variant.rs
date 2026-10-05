@@ -1658,9 +1658,14 @@ impl ChatV2Pipeline {
                 tool_results.len()
             );
 
-            // P1-8：本轮环内新加载的技能批次（tool_call_id → 消息），
-            // 在工具结果消息 push 完成后插到对应 tool result 之后
-            let mut pending_round_skill_batches: Vec<(String, Vec<LegacyChatMessage>)> = Vec::new();
+            // P1-8：本轮环内新加载的技能批次（锚点 tool_call_id, 本轮末尾
+            // tool_call_id, 消息），在工具结果消息 push 完成后插到本轮
+            // 最后一个 tool result 之后（轮中插入会劈开并行工具调用组）
+            let mut pending_round_skill_batches: Vec<(
+                String,
+                Option<String>,
+                Vec<LegacyChatMessage>,
+            )> = Vec::new();
 
             // 🔧 渐进披露：load_skills 执行后动态追加工具
             for tool_result in &tool_results {
@@ -1794,8 +1799,14 @@ impl ChatV2Pipeline {
                                         batch.audit.estimated_tokens;
                                     cumulative_skill_audit.skill_state_version =
                                         variant_skill_state.version;
-                                    pending_round_skill_batches
-                                        .push((anchor_call_id, batch.messages));
+                                    pending_round_skill_batches.push((
+                                        anchor_call_id,
+                                        tool_results
+                                            .last()
+                                            .and_then(|r| r.tool_call_id.clone())
+                                            .filter(|id| !id.is_empty()),
+                                        batch.messages,
+                                    ));
                                 }
                             }
                         }
@@ -1876,10 +1887,16 @@ impl ChatV2Pipeline {
                 ctx.add_tool_result(result.clone());
             }
 
-            // P1-8：环内新加载的技能插到对应 load_skills tool result 之后，
+            // P1-8：环内新加载的技能插到本轮最后一个 tool result 之后
+            // （轮中插入会劈开并行工具调用组，丢 reasoning_content），
             // 当前 user 之前的内存前缀保持逐字节不变
-            for (anchor_call_id, batch) in pending_round_skill_batches {
-                insert_skill_messages_after_tool_result(&mut messages, &anchor_call_id, batch);
+            for (anchor_call_id, round_last_call_id, batch) in pending_round_skill_batches {
+                insert_skill_messages_after_tool_result(
+                    &mut messages,
+                    &anchor_call_id,
+                    round_last_call_id.as_deref(),
+                    batch,
+                );
             }
 
             let task_completed = tool_results.iter().any(|r| {
