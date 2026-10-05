@@ -6,10 +6,10 @@
 
 use crate::commands::AppState;
 use crate::fsrs_review_service::{
-    FsrsBuryResult, FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard, FsrsMemoryOverview,
-    FsrsOptimizeResult, FsrsPreviewResult, FsrsRateResult, FsrsResetResult, FsrsReviewService,
-    FsrsReviewStatistics, FsrsSchedulerConfig, FsrsSchedulerConfigUpdate, FsrsStats,
-    FsrsSuspendResult, FsrsUndoResult,
+    FsrsBuryResult, FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard,
+    FsrsMemoryOverview, FsrsOptimizeResult, FsrsPreviewResult, FsrsRateResult, FsrsResetResult,
+    FsrsReviewService, FsrsReviewStatistics, FsrsSchedulerConfig, FsrsSchedulerConfigUpdate,
+    FsrsStats, FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
@@ -637,7 +637,14 @@ pub async fn fsrs_optimize_parameters(
     })
     .await
     .map_err(|e| AppError::internal(format!("FSRS 参数优化任务异常: {}", e)))??;
-    emit_fsrs_changed(&app, result.recomputed_cards > 0, "user", "optimize", &[], &[]);
+    emit_fsrs_changed(
+        &app,
+        result.recomputed_cards > 0,
+        "user",
+        "optimize",
+        &[],
+        &[],
+    );
     Ok(result)
 }
 
