@@ -29,6 +29,7 @@ import {
 import { useCountUp } from '../hooks/useCountUp';
 import { FsrsParamsPanel } from '../components/FsrsParamsPanel';
 import { MemoryCurvePanel } from '../components/MemoryCurvePanel';
+import { RetentionInsightsPanel } from '../components/RetentionInsightsPanel';
 import { ReviewHeatmap } from '../components/ReviewHeatmap';
 import { SchedulerSettingsSection } from '../components/SchedulerSettingsSection';
 import type { FsrsRating } from '../store/fsrsReviewStore';
@@ -498,6 +499,7 @@ export const StatisticsScreen: React.FC = () => {
               </div>
             </section>
 
+            <RetentionInsightsPanel />
             <FsrsParamsPanel />
           </div>
 
