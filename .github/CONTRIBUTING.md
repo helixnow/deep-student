@@ -55,6 +55,8 @@ npm run lint
 | Migration Gate | 迁移静态门禁、迁移工具自测、生产迁移测试（强制非零用例数）、代表性 fixture 升级 |
 | Security Audit | `cargo audit`（非阻塞，忽略清单见 `src-tauri/.cargo/audit.toml`） |
 
+Rust 相关 job（Backend、Rust Tests、Cloud Provider Contract Gate、Windows Shell Sandbox、Migration Gate）只等 Build Configuration Contracts 与改动检测，与前端 job 并行。PR 只改根目录 `*.md` 或 `docs/**` 时跳过这些 Rust job，CI Required 放行；`docs/user-guide/**` 不算纯文档（有 Rust 测试读取用户指南）。push 到 main 始终全量运行。
+
 另有 **CLA 签署检查**（`.github/workflows/cla.yml`）— 首次贡献需签署 CLA。
 
 以上为摘要，**一律以 `.github/workflows/ci.yml` 为准**；本文档与该文件冲突时请以 workflow 定义为准。
