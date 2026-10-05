@@ -27,6 +27,7 @@ import {
   CircleNotch,
   ArrowClockwise,
   ArrowSquareOut,
+  Target,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -67,6 +68,14 @@ import {
 } from './transcriptExcerpt';
 import { makeMediaCards } from './mediaCards';
 import {
+  checkpointState,
+  findCrossedCheckpoint,
+  useMediaCheckpoints,
+  type MediaCheckpoint,
+} from './mediaCheckpoints';
+import { CHECKPOINT_REWATCH_LEAD_SECONDS, MediaCheckpointCard } from './MediaCheckpointCard';
+import type { MediaScrubberMarker, MediaScrubberRange } from './MediaScrubber';
+import {
   MEDIA_STUDY_TRANSCRIPT_TAB,
   useMediaStudyCompanion,
   type MediaStudyCompanionRenderContext,
@@ -75,6 +84,27 @@ import { openMediaStudio } from '@/features/media-studio/mediaStudioNavigation';
 
 /** 字幕面板放到右侧所需的最小容器宽度 */
 export const SIDE_LAYOUT_MIN_WIDTH = 720;
+
+/** 「到点暂停作答」偏好（默认只标记不打断） */
+const PAUSE_AT_CHECKPOINTS_KEY = 'media-study.pauseAtCheckpoints';
+/** 答错的检查点在进度条上标出的回看区间：锚点前 15 秒到后 30 秒 */
+const WEAK_RANGE_AFTER_SECONDS = 30;
+
+function readPauseAtCheckpoints(): boolean {
+  try {
+    return window.localStorage.getItem(PAUSE_AT_CHECKPOINTS_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function writePauseAtCheckpoints(value: boolean): void {
+  try {
+    window.localStorage.setItem(PAUSE_AT_CHECKPOINTS_KEY, value ? '1' : '0');
+  } catch {
+    // 存储不可用时只在本次会话生效
+  }
+}
 
 const toolbarButtonClass =
   'h-8 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-w-11';
@@ -178,12 +208,41 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     setActiveSegmentIdx((prev) => (prev === idx ? prev : idx));
   }, []);
 
+  // ---------------------------------------------------------------- 课中检查点（仅音视频学习页）
+  const { checkpoints, recordResult: recordCheckpointResult } = useMediaCheckpoints(resourceId, Boolean(companion));
+  const checkpointsRef = useRef(checkpoints);
+  checkpointsRef.current = checkpoints;
+  const promptedCheckpointsRef = useRef(new Set<string>());
+  const [activeCheckpoint, setActiveCheckpoint] = useState<MediaCheckpoint | null>(null);
+  const [pauseAtCheckpoints, setPauseAtCheckpointsState] = useState(readPauseAtCheckpoints);
+  const pauseAtCheckpointsRef = useRef(pauseAtCheckpoints);
+  pauseAtCheckpointsRef.current = pauseAtCheckpoints;
+  const setPauseAtCheckpoints = useCallback((value: boolean) => {
+    setPauseAtCheckpointsState(value);
+    writePauseAtCheckpoints(value);
+  }, []);
+  useEffect(() => {
+    promptedCheckpointsRef.current = new Set();
+    setActiveCheckpoint(null);
+  }, [resourceId]);
+
   const handleStatusChange = useCallback(
     (s: MediaPlayerStatus) => {
+      const previousTime = lastTimeRef.current;
       lastTimeRef.current = s.currentTime;
       setIsReady((prev) => (prev === s.isReady ? prev : s.isReady));
       recomputeActive(s.currentTime);
       onProgressStatus(s);
+      if (s.isPlaying && checkpointsRef.current.length > 0) {
+        // 答对过的不再打断；答错的回看后再播到会再问一次
+        const open = checkpointsRef.current.filter((cp) => checkpointState(cp) !== 'correct');
+        const crossed = findCrossedCheckpoint(open, previousTime, s.currentTime, promptedCheckpointsRef.current);
+        if (crossed) {
+          promptedCheckpointsRef.current.add(crossed.questionId);
+          setActiveCheckpoint(crossed);
+          if (pauseAtCheckpointsRef.current) handleRef.current?.pause();
+        }
+      }
     },
     [recomputeActive, onProgressStatus],
   );
@@ -431,6 +490,39 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     () => handleRef.current?.getElement()?.currentTime ?? lastTimeRef.current,
     [],
   );
+
+  // 检查点：进度条按作答状态标点，答错的标出回看区间
+  const scrubberMarkers = useMemo<MediaScrubberMarker[]>(
+    () => checkpoints.map((cp) => ({ at: cp.seconds, kind: 'checkpoint', state: checkpointState(cp) })),
+    [checkpoints],
+  );
+  const scrubberHighlights = useMemo<MediaScrubberRange[]>(
+    () => checkpoints
+      .filter((cp) => checkpointState(cp) === 'wrong')
+      .map((cp) => ({
+        from: Math.max(0, cp.seconds - CHECKPOINT_REWATCH_LEAD_SECONDS),
+        to: cp.seconds + WEAK_RANGE_AFTER_SECONDS,
+      })),
+    [checkpoints],
+  );
+  const checkpointsDone = useMemo(
+    () => checkpoints.filter((cp) => checkpointState(cp) === 'correct').length,
+    [checkpoints],
+  );
+  const openNextCheckpoint = useCallback(() => {
+    const next = checkpoints.find((cp) => checkpointState(cp) !== 'correct') ?? checkpoints[0];
+    if (next) setActiveCheckpoint(next);
+  }, [checkpoints]);
+  const rewatchCheckpoint = useCallback((seconds: number) => {
+    // 回看后再播到锚点时重新提问
+    if (activeCheckpoint) promptedCheckpointsRef.current.delete(activeCheckpoint.questionId);
+    setActiveCheckpoint(null);
+    seekToSeconds(seconds);
+  }, [activeCheckpoint, seekToSeconds]);
+  const resumeAfterCheckpoint = useCallback(() => {
+    setActiveCheckpoint(null);
+    handleRef.current?.play();
+  }, []);
   const doneSegments = useMemo(() => segments.filter((s) => s.status === 'done').length, [segments]);
   const companionRenderContext = useMemo<MediaStudyCompanionRenderContext>(
     () => ({
@@ -498,6 +590,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       onStatusChange={handleStatusChange}
       crossOrigin="anonymous"
       extraControls={captionsButton}
+      scrubberMarkers={scrubberMarkers}
+      scrubberHighlights={scrubberHighlights}
       trackSlot={
         trackSrc ? (
           <track
@@ -521,6 +615,8 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
       compact={panelOpen && !sideLayout}
+      scrubberMarkers={scrubberMarkers}
+      scrubberHighlights={scrubberHighlights}
     />
   );
 
@@ -586,6 +682,20 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         )}
 
         <div className="flex-1" />
+
+        {companion && checkpoints.length > 0 && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={openNextCheckpoint}
+            title={t('learningHub:mediaCheckpoint.toolbarTitle', { total: checkpoints.length })}
+            data-media-checkpoint-toolbar=""
+            className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs tabular-nums')}
+          >
+            <Target size={14} aria-hidden="true" />
+            {t('learningHub:mediaCheckpoint.toolbar', { done: checkpointsDone, total: checkpoints.length })}
+          </DsButton>
+        )}
 
         {/* 讲义：字幕 → 抽帧/帧说明 → 大纲 → 分节 → 落为笔记（docs/dev/media-learning §3） */}
         {!companion && (
@@ -730,6 +840,18 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                 : 'min-h-0 flex-1 border-t border-border',
             )}
           >
+            {activeCheckpoint && (
+              <MediaCheckpointCard
+                key={activeCheckpoint.questionId}
+                checkpoint={activeCheckpoint}
+                pauseAtCheckpoints={pauseAtCheckpoints}
+                onPauseAtCheckpointsChange={setPauseAtCheckpoints}
+                onSeek={rewatchCheckpoint}
+                onResume={resumeAfterCheckpoint}
+                onClose={() => setActiveCheckpoint(null)}
+                onAnswered={recordCheckpointResult}
+              />
+            )}
             <div className="shrink-0 px-3 pb-1 pt-2">
               <SegmentedControl<string>
                 ariaLabel={companion.ariaLabel}

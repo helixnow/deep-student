@@ -14,6 +14,7 @@ import {
   ListChecks,
   Notebook,
   Sparkle,
+  Target,
   X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -387,6 +388,22 @@ export const MediaPracticeTab: React.FC<{ ctx: MediaStudyCompanionRenderContext;
           <span className="flex min-w-0 flex-1 flex-col">
             <span className="text-sm text-foreground">{t('mediaStudio:practice.questions')}</span>
             <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:practice.questionsHint')}</span>
+          </span>
+        </DsButton>
+        <DsButton
+          variant="ghost"
+          size="sm"
+          onClick={() => void start('checkpoints', t('mediaStudio:practice.prompt.checkpoints', { name, id: ctx.resourceId }))}
+          disabled={busy || !ctx.hasTranscript}
+          data-media-practice="checkpoints"
+          className={cn(actionButtonClass, 'study-shell-secondary-card !h-auto !py-2.5 text-left')}
+        >
+          {starting === 'checkpoints'
+            ? <CircleNotch size={16} className="shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+            : <Target size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />}
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="text-sm text-foreground">{t('mediaStudio:practice.checkpoints')}</span>
+            <span className="whitespace-normal text-xs text-muted-foreground">{t('mediaStudio:practice.checkpointsHint')}</span>
           </span>
         </DsButton>
         <DsButton

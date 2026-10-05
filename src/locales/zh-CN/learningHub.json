@@ -1632,5 +1632,26 @@
     "projects": "项目",
     "studyLog": "学习日志",
     "system": "__system__"
+  },
+  "mediaCheckpoint": {
+    "title": "检查点 · {{time}}",
+    "pauseAt": "到点暂停",
+    "later": "稍后再做",
+    "submit": "提交",
+    "showAnswer": "显示参考答案",
+    "referenceAnswer": "参考答案：{{answer}}",
+    "selfCorrect": "我答对了",
+    "selfWrong": "我答错了",
+    "correct": "答对了",
+    "wrong": "答错了",
+    "correctAnswer": "正确答案：{{answer}}",
+    "manualGrading": "已提交，请对照参考答案自评",
+    "rewatch": "回看这一段",
+    "resume": "继续播放",
+    "submitFailed": "提交答案失败",
+    "true": "对",
+    "false": "错",
+    "toolbar": "检查点 {{done}}/{{total}}",
+    "toolbarTitle": "这节课有 {{total}} 道锚定到时刻的检查题，播到时会提示作答；点这里做下一道"
   }
 }

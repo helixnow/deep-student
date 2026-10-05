@@ -1816,6 +1816,7 @@ pub fn run() {
             crate::media::library::media_library_list,
             crate::media::library::media_related_notes,
             crate::media::ledger::media_study_ledger,
+            crate::media::ledger::media_checkpoints,
             crate::secret_prompt::secret_prompt_submit,
             crate::secret_prompt::secret_prompt_status,
             crate::secret_prompt::secret_prompt_discard,

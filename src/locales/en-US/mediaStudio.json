@@ -122,10 +122,13 @@
     "questionsHint": "Questions go to Question sets for practice and review",
     "prompt": {
       "cards": "Make flashcards from the transcript of the lecture “{{name}}”: cover the core concepts, definitions and common mistakes, about 10 cards, each citing its timestamp as the source.",
-      "questions": "Create a question set from the transcript of the lecture “{{name}}”: mostly multiple choice, fill-in and short answer, 5-10 questions, each with the answer, an explanation and its timestamp citation."
+      "questions": "Create a question set from the transcript of the lecture “{{name}}”: mostly multiple choice, fill-in and short answer, 5-10 questions, each with the answer, an explanation and its timestamp citation.",
+      "checkpoints": "Create in-lecture checkpoints for “{{name}}” as a new question set named “{{name}} · Checkpoints”: about one question every 5 minutes in teaching order, mostly single choice and true/false. Two thirds should make me think (why, what if, how it connects to an earlier idea) and one third should check recall of what was just taught. End each explanation with a new line citing the source as [媒体@{{id}}:mm:ss], using the moment the tested content is taught. Do not make up timestamps."
     },
     "needTranscript": "Transcribe or import subtitles first.",
-    "cardsInChat": "Make cards in chat (add your own requirements)"
+    "cardsInChat": "Make cards in chat (add your own requirements)",
+    "checkpoints": "Create in-lecture checkpoints",
+    "checkpointsHint": "About one question every 5 minutes, anchored to the moment. They pop up as you watch and show on the progress bar"
   },
   "progress": {
     "title": "Progress",

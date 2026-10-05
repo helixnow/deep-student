@@ -27,7 +27,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
-import { MediaScrubber } from './MediaScrubber';
+import { MediaScrubber, type MediaScrubberMarker, type MediaScrubberRange } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
@@ -55,6 +55,9 @@ export interface VideoPlayerProps {
   crossOrigin?: 'anonymous';
   /** 悬浮控制条上的附加按钮（字幕开关等），插在倍速按钮之前 */
   extraControls?: React.ReactNode;
+  /** 进度条上的时间标记（检查点 / 章节）与需回看区间 */
+  scrubberMarkers?: readonly MediaScrubberMarker[];
+  scrubberHighlights?: readonly MediaScrubberRange[];
 }
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
@@ -72,6 +75,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   trackSlot,
   crossOrigin,
   extraControls,
+  scrubberMarkers,
+  scrubberHighlights,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -411,6 +416,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           appearance="overlay"
           ariaLabel={t('learningHub:mediaPreview.progress')}
           onSeek={seekTo}
+          markers={scrubberMarkers}
+          highlightRanges={scrubberHighlights}
         />
 
         <div className="mt-1.5 flex items-center gap-1">

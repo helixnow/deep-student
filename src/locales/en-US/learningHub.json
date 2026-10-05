@@ -1632,5 +1632,26 @@
     "projects": "Projects",
     "studyLog": "Study log",
     "system": "System"
+  },
+  "mediaCheckpoint": {
+    "title": "Checkpoint · {{time}}",
+    "pauseAt": "Pause here",
+    "later": "Later",
+    "submit": "Submit",
+    "showAnswer": "Show reference answer",
+    "referenceAnswer": "Reference answer: {{answer}}",
+    "selfCorrect": "I got it",
+    "selfWrong": "I missed it",
+    "correct": "Correct",
+    "wrong": "Not quite",
+    "correctAnswer": "Answer: {{answer}}",
+    "manualGrading": "Submitted. Compare with the reference answer",
+    "rewatch": "Rewatch this part",
+    "resume": "Keep watching",
+    "submitFailed": "Couldn't submit the answer",
+    "true": "True",
+    "false": "False",
+    "toolbar": "Checkpoints {{done}}/{{total}}",
+    "toolbarTitle": "{{total}} questions are anchored to moments in this lecture and pop up as you watch. Click to do the next one"
   }
 }

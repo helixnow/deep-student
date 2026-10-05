@@ -6,10 +6,25 @@
  * - hover/拖拽时轨道增高 + 显示 thumb（IINA 式安静默认态）
  * - overlay 外观（视频黑底悬浮控制条上使用白色系）
  * - 键盘 ←/→ ±5s、Home/End
+ * - 时间标记（课中检查点 / 章节起点）与区间高亮（薄弱片段），只做展示不拦截拖动
  */
 
 import React, { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
+
+export interface MediaScrubberMarker {
+  /** 秒 */
+  at: number;
+  /** checkpoint=课中检查点（按作答状态着色）；chapter=章节起点 */
+  kind: 'checkpoint' | 'chapter';
+  state?: 'pending' | 'correct' | 'wrong';
+}
+
+export interface MediaScrubberRange {
+  /** 秒 */
+  from: number;
+  to: number;
+}
 
 export interface MediaScrubberProps {
   currentTime: number;
@@ -22,7 +37,16 @@ export interface MediaScrubberProps {
   ariaLabel: string;
   onSeek: (time: number) => void;
   className?: string;
+  markers?: readonly MediaScrubberMarker[];
+  /** 需要回看的区间（答错的检查点附近） */
+  highlightRanges?: readonly MediaScrubberRange[];
 }
+
+const MARKER_TONE: Record<NonNullable<MediaScrubberMarker['state']>, string> = {
+  pending: 'bg-amber-400',
+  correct: 'bg-emerald-500',
+  wrong: 'bg-destructive',
+};
 
 export const MediaScrubber: React.FC<MediaScrubberProps> = ({
   currentTime,
@@ -33,6 +57,8 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
   ariaLabel,
   onSeek,
   className,
+  markers,
+  highlightRanges,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -162,6 +188,20 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
           )}
           style={{ width: `${bufferedPct}%` }}
         />
+        {/* 需回看区间 */}
+        {duration > 0 && highlightRanges?.map((range) => {
+          const left = Math.max(0, Math.min(100, (range.from / duration) * 100));
+          const right = Math.max(left, Math.min(100, (range.to / duration) * 100));
+          return (
+            <div
+              key={`${range.from}-${range.to}`}
+              aria-hidden="true"
+              data-scrubber-range=""
+              className="absolute inset-y-0 bg-destructive/45"
+              style={{ left: `${left}%`, width: `${right - left}%` }}
+            />
+          );
+        })}
         {/* 已播放层 */}
         <div
           className={cn(
@@ -171,6 +211,22 @@ export const MediaScrubber: React.FC<MediaScrubberProps> = ({
           style={{ width: `${playedPct}%` }}
         />
       </div>
+      {/* 时间标记：检查点为圆点（按作答状态着色），章节为细竖线 */}
+      {duration > 0 && markers?.map((marker, index) => (
+        <span
+          key={`${marker.kind}-${marker.at}-${index}`}
+          aria-hidden="true"
+          data-scrubber-marker={marker.kind}
+          data-state={marker.state}
+          className={cn(
+            'pointer-events-none absolute top-1/2 -translate-x-1/2 -translate-y-1/2',
+            marker.kind === 'checkpoint'
+              ? cn('h-2 w-2 rounded-full ring-1', overlay ? 'ring-black/40' : 'ring-background', MARKER_TONE[marker.state ?? 'pending'])
+              : cn('h-2.5 w-0.5 rounded-full', overlay ? 'bg-white/70' : 'bg-foreground/40'),
+          )}
+          style={{ left: `${Math.max(0, Math.min(100, (marker.at / duration) * 100))}%` }}
+        />
+      ))}
       {/* Thumb：默认隐藏，hover/拖拽/聚焦时淡入；触屏无 hover → 常显作为可拖提示 */}
       <div
         className={cn(

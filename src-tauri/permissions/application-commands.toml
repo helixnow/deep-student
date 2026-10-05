@@ -483,6 +483,7 @@ commands.allow = [
   "mcp_stdio_close",
   "mcp_stdio_send",
   "mcp_stdio_start",
+  "media_checkpoints",
   "media_library_list",
   "media_progress_get",
   "media_progress_set",
