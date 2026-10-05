@@ -1,7 +1,6 @@
 {
   "title": "音视频",
   "tagline": "把网课、讲座、录音变成可检索、可提问、可复习的学习材料",
-  "count": "{{count}} 个",
   "searchPlaceholder": "搜索音视频…",
   "listLabel": "音视频列表",
   "loadFailed": "音视频列表加载失败",
@@ -51,11 +50,14 @@
     "dropHint": "松开导入音视频",
     "progress": "正在导入 {{index}}/{{total}}：{{name}}",
     "preparing": "正在准备导入…",
-    "success": "已导入 {{count}} 个音视频",
     "partial": "已导入 {{imported}} 个，{{failed}} 个失败",
     "failed": "导入失败",
-    "skipped": "已跳过 {{count}} 个非音视频文件",
-    "notMedia": "所选的 {{count}} 个文件都不是音视频"
+    "success_one": "已导入 {{count}} 个音视频",
+    "success_other": "已导入 {{count}} 个音视频",
+    "skipped_one": "已跳过 {{count}} 个非音视频文件",
+    "skipped_other": "已跳过 {{count}} 个非音视频文件",
+    "notMedia_one": "所选的 {{count}} 个文件都不是音视频",
+    "notMedia_other": "所选的 {{count}} 个文件都不是音视频"
   },
   "empty": {
     "title": "导入第一节课",
@@ -119,11 +121,14 @@
   "progress": {
     "title": "学习进度",
     "watched": "已观看",
-    "minutes": "{{count}} 分钟",
     "notStarted": "还没开始",
     "position": "看到",
     "finished": "已看完",
     "transcript": "字幕",
-    "segments": "{{done}}/{{total}} 段"
-  }
+    "segments": "{{done}}/{{total}} 段",
+    "minutes_one": "{{count}} 分钟",
+    "minutes_other": "{{count}} 分钟"
+  },
+  "count_one": "{{count}} 个",
+  "count_other": "{{count}} 个"
 }
