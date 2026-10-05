@@ -8,6 +8,7 @@
     "questions": "做题：{{count}} 道，正确率 {{rate}}%",
     "cards": "卡片复习：{{count}} 次，其中忘记 {{again}} 次",
     "focus": "番茄专注：{{duration}}（完成 {{count}} 个番茄）",
+    "study_time": "学习时长：{{duration}}（应用在前台且在操作的时间）",
     "minutes": "{{count}} 分钟",
     "hours": "{{count}} 小时",
     "delta_new": "（上周无记录）",

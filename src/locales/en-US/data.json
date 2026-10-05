@@ -8,6 +8,7 @@
     "questions": "Questions: {{count}}, {{rate}}% correct",
     "cards": "Card reviews: {{count}}, forgot {{again}}",
     "focus": "Pomodoro focus: {{duration}} ({{count}} pomodoros completed)",
+    "study_time": "Study time: {{duration}} (app in front and in use)",
     "minutes": "{{count}} min",
     "hours": "{{count}} h",
     "delta_new": " (nothing last week)",

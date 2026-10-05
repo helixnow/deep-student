@@ -4,6 +4,7 @@
  * - 做题：qbank_get_activity_heatmap（answer_submissions 口径）
  * - 卡片复习：fsrs_get_review_statistics.dailyReviews
  * - 番茄专注：pomodoro_stats_overview.daily
+ * - 学习时长：study_time_range（应用可见且在操作的计时，不开番茄也有）
  * - 薄弱知识点：mastery_get_overview.weakest
  * - 待复习：loadTodayLearning（与首页「今日学习」同口径）
  *
@@ -20,6 +21,7 @@ export interface DayTotals {
   cardAgain: number;
   focusSeconds: number;
   pomodoros: number;
+  studySeconds: number;
 }
 
 export interface WeeklyReportData {
@@ -36,7 +38,9 @@ export interface WeeklyReportData {
 
 export type Translate = (key: string, options?: Record<string, unknown>) => string;
 
-const emptyTotals = (): DayTotals => ({ questions: 0, correct: 0, cardReviews: 0, cardAgain: 0, focusSeconds: 0, pomodoros: 0 });
+const emptyTotals = (): DayTotals => ({
+  questions: 0, correct: 0, cardReviews: 0, cardAgain: 0, focusSeconds: 0, pomodoros: 0, studySeconds: 0,
+});
 
 function shiftDate(date: Date, days: number): Date {
   const next = new Date(date);
@@ -73,7 +77,7 @@ export function bucketByWeek(
 
 export async function loadWeeklyReportData(now = new Date()): Promise<WeeklyReportData> {
   const years = Array.from(new Set([now.getFullYear(), shiftDate(now, -13).getFullYear()]));
-  const [heatmaps, fsrs, pomodoro, mastery, due] = await Promise.all([
+  const [heatmaps, fsrs, pomodoro, studyTime, mastery, due] = await Promise.all([
     Promise.all(years.map((year) =>
       invoke<Array<{ date: string; count: number; correct_count: number }>>('qbank_get_activity_heatmap', {
         request: { exam_id: null, year },
@@ -83,6 +87,10 @@ export async function loadWeeklyReportData(now = new Date()): Promise<WeeklyRepo
       .catch(() => null),
     invoke<{ daily?: Array<{ date: string; focusSeconds: number; completedCount: number }> }>('pomodoro_stats_overview', { days: 14 })
       .catch(() => null),
+    invoke<Array<{ date: string; seconds: number }>>('study_time_range', {
+      from: localCalendarDate(shiftDate(now, -13)),
+      to: localCalendarDate(now),
+    }).catch(() => []),
     invoke<{ weakest?: Array<{ conceptKey: string; score: number }> }>('mastery_get_overview', { limit: 5 })
       .catch(() => null),
     loadTodayLearning(now).catch(() => ({ cards: 0, mistakes: 0, notes: 0, dueNotes: [] })),
@@ -92,6 +100,7 @@ export async function loadWeeklyReportData(now = new Date()): Promise<WeeklyRepo
     ...heatmaps.flat().map((p) => ({ date: p.date, questions: p.count, correct: p.correct_count })),
     ...(fsrs?.dailyReviews ?? []).map((d) => ({ date: d.date, cardReviews: d.total, cardAgain: d.again })),
     ...(pomodoro?.daily ?? []).map((d) => ({ date: d.date, focusSeconds: d.focusSeconds, pomodoros: d.completedCount })),
+    ...(studyTime ?? []).map((d) => ({ date: d.date, studySeconds: d.seconds })),
   ];
 
   return {
@@ -140,6 +149,10 @@ export function buildWeeklyReportMarkdown(data: WeeklyReportData, t: Translate):
   sum(`- ${t('weekly_report.active_days', { count: data.activeDays, defaultValue: '学习天数：{{count}} / 7' })}`);
   sum(`- ${t('weekly_report.questions', { count: w.questions, rate: pct(w.correct, w.questions), defaultValue: '做题：{{count}} 道，正确率 {{rate}}%' })}${delta(w.questions, l.questions, t)}`);
   sum(`- ${t('weekly_report.cards', { count: w.cardReviews, again: w.cardAgain, defaultValue: '卡片复习：{{count}} 次，其中忘记 {{again}} 次' })}${delta(w.cardReviews, l.cardReviews, t)}`);
+  // 不开番茄的人番茄专注恒为 0：在场计时单列，两种口径都给
+  if (w.studySeconds > 0 || l.studySeconds > 0) {
+    sum(`- ${t('weekly_report.study_time', { duration: formatDuration(w.studySeconds, t), defaultValue: '学习时长：{{duration}}（应用在前台且在操作的时间）' })}${delta(w.studySeconds, l.studySeconds, t)}`);
+  }
   sum(`- ${t('weekly_report.focus', { duration: formatDuration(w.focusSeconds, t), count: w.pomodoros, defaultValue: '番茄专注：{{duration}}（完成 {{count}} 个番茄）' })}${delta(w.focusSeconds, l.focusSeconds, t)}`);
   sum('');
 

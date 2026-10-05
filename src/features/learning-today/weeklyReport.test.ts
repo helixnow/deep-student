@@ -46,5 +46,21 @@ describe('weekly report', () => {
     expect(md).toContain('学习天数偏少');
     // 同输入同输出
     expect(buildWeeklyReportMarkdown(data, t)).toBe(md);
+    // 没有在场计时记录的周不出现这一行
+    expect(md).not.toContain('学习时长');
+  });
+
+  it('reports presence-based study time for learners who never start a pomodoro', () => {
+    const rows = [
+      { date: '2026-10-01', studySeconds: 2700 },
+      { date: '2026-09-28', studySeconds: 1800 },
+      { date: '2026-09-21', studySeconds: 1500 },
+    ];
+    const bucketed = bucketByWeek(NOW, rows);
+    expect(bucketed.thisWeek.studySeconds).toBe(4500);
+    expect(bucketed.activeDays).toBe(2);
+    const md = buildWeeklyReportMarkdown({ ...bucketed, weakest: [], due: { cards: 0, mistakes: 0, notes: 0 } }, t);
+    expect(md).toContain('学习时长：1.3 小时（应用在前台且在操作的时间）（比上周 +200%）');
+    expect(md).toContain('番茄专注：0 分钟');
   });
 });
