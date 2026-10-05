@@ -17,6 +17,7 @@ import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
+import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
 import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
@@ -1482,6 +1483,10 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       // 如果正在输入框中，不处理快捷键
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+      // 盖在做题页上的模态层（如跨题目集错题复习）里的按键归模态层，背后不选项 / 不提交
+      if (isKeyEventFromOtherModal(e)) {
         return;
       }
       

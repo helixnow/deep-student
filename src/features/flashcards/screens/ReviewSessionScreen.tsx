@@ -34,6 +34,7 @@ import { cn } from '@/utils/cn';
 import { hasValidCloze } from '../cloze';
 import { useSwipeRating } from '../hooks/useSwipeRating';
 import { isEditableTarget } from '../isEditableTarget';
+import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
@@ -328,6 +329,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
     const event = rawEvent as KeyboardEvent;
     if (event.isComposing || event.keyCode === 229 || event.repeat) return;
     if (isEditableTarget(event.target)) return;
+    // 盖在闪卡上的模态层（如跨题目集错题复习）里的空格 / 数字键归模态层，背后不翻面不评分
+    if (isKeyEventFromOtherModal(event)) return;
     if (ratingBusy || editing) return;
 
     // 撤销：Z 与 Ctrl/Cmd+Z 都支持（完成态也可用）
