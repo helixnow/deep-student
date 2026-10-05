@@ -145,6 +145,7 @@ const NULL_PAGE_CODE = [
   "export const TodoPage = NullPage;",
   "export const ImageViewer = NullPage;",
   "export const SkillsManagementPage = NullPage;",
+  "export const MediaStudioApp = NullPage;",
 ].join("\n");
 
 const DEMO_PAGE_STUBS: Array<{ test: RegExp; label: string }> = [
@@ -160,6 +161,8 @@ const DEMO_PAGE_STUBS: Array<{ test: RegExp; label: string }> = [
   { label: "PdfReader", test: /features[\/]pdf[\/]components[\/]PdfReader(\.tsx?)?$/ },
   { label: "TodoPage", test: /features[\/]todo[\/]components[\/]TodoPage(\.tsx?)?$/ },
   { label: "ImageViewer", test: /components[\/]ImageViewer(\.tsx?)?$/ },
+  // 音视频子应用页（演示只保留聊天页；只匹配页面入口，学习视图的轻量导航模块不受影响）
+  { label: "MediaStudioApp", test: /features[\/]media-studio[\/]MediaStudioApp(\.tsx?)?$/ },
 ];
 
 for (const stub of DEMO_PAGE_STUBS) {

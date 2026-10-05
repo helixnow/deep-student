@@ -1,0 +1,119 @@
+import { describe, expect, it } from 'vitest';
+import { normalizeLibraryItem, normalizeRelatedNote, toMillis, type MediaLibraryItem } from '../api';
+import {
+  countByFilter,
+  formatDuration,
+  isWatching,
+  matchesFilter,
+  selectLibraryItems,
+  sortByRecent,
+  transcriptChip,
+  watchRatio,
+} from '../libraryModel';
+
+const T0 = 1_760_000_000_000;
+
+function item(over: Partial<MediaLibraryItem> & { id: string }): MediaLibraryItem {
+  return {
+    name: `${over.id}.mp4`,
+    kind: 'video',
+    mimeType: 'video/mp4',
+    size: 1,
+    folderId: null,
+    folderName: null,
+    createdAt: T0,
+    updatedAt: T0,
+    durationMs: 600_000,
+    transcript: { status: 'none', completedSegments: 0, totalSegments: 0, failedSegments: 0, source: null },
+    progress: { lastPositionMs: 0, watchedMs: 0, finished: false },
+    lastWatchedAt: null,
+    handoutCount: 0,
+    ...over,
+  };
+}
+
+describe('api normalization (media_library_list shape)', () => {
+  it('maps the backend camelCase item and folds error/cancelled into the transcript vocabulary', () => {
+    const raw = {
+      id: 'file_a', resourceId: 'res_a', name: 'L1.mp4', folderId: 'fld_1', folderName: '高数', folderPath: ['高数'],
+      size: 10, mimeType: 'video/mp4', kind: 'video', createdAt: T0, updatedAt: T0 + 1,
+      durationMs: 1000, transcript: { status: 'error', completedSegments: 1, totalSegments: 3, failedSegments: 2, source: 'asr' },
+      progress: { lastPositionMs: 0, watchedMs: 0, finished: false }, lastWatchedAt: null, handoutCount: 2, lastActivityAt: T0 + 1,
+    };
+    const parsed = normalizeLibraryItem(raw)!;
+    expect(parsed).toMatchObject({ id: 'file_a', kind: 'video', folderName: '高数', durationMs: 1000, handoutCount: 2 });
+    expect(parsed.transcript.status).toBe('failed');
+    expect(normalizeLibraryItem({ ...raw, transcript: { status: 'cancelled' } })!.transcript.status).toBe('partial');
+  });
+
+  it('infers kind from mime / extension and tolerates snake_case and second timestamps', () => {
+    const parsed = normalizeLibraryItem({ id: 'file_b', name: 'talk.m4a', mime_type: '', updated_at: 1_760_000_000 })!;
+    expect(parsed.kind).toBe('audio');
+    expect(parsed.updatedAt).toBe(1_760_000_000_000);
+    expect(parsed.progress).toBeNull();
+    expect(normalizeLibraryItem({ name: 'no id' })).toBeNull();
+    expect(toMillis('2026-10-01T00:00:00Z')).toBe(Date.parse('2026-10-01T00:00:00Z'));
+  });
+
+  it('maps related notes', () => {
+    expect(normalizeRelatedNote({ id: 'note_1', title: '讲义', updatedAt: T0 })).toEqual({
+      id: 'note_1', title: '讲义', createdAt: 0, updatedAt: T0,
+    });
+  });
+});
+
+describe('library filtering and sorting', () => {
+  const fresh = item({ id: 'fresh' });
+  const watching = item({ id: 'watching', progress: { lastPositionMs: 30_000, watchedMs: 30_000, finished: false }, lastWatchedAt: T0 + 50 });
+  const finished = item({ id: 'finished', progress: { lastPositionMs: 600_000, watchedMs: 600_000, finished: true }, lastWatchedAt: T0 + 10 });
+  const done = item({ id: 'done', transcript: { status: 'completed', completedSegments: 9, totalSegments: 9, failedSegments: 0, source: 'asr' }, updatedAt: T0 + 100 });
+  const partial = item({ id: 'partial', transcript: { status: 'partial', completedSegments: 3, totalSegments: 9, failedSegments: 6, source: 'asr' } });
+  const all = [fresh, watching, finished, done, partial];
+
+  it('classifies watching (played, not finished) and transcribed (completed or partial with lines)', () => {
+    expect(isWatching(watching)).toBe(true);
+    expect(isWatching(finished)).toBe(false);
+    expect(isWatching(fresh)).toBe(false);
+    expect(matchesFilter(done, 'transcribed')).toBe(true);
+    expect(matchesFilter(partial, 'transcribed')).toBe(true);
+    expect(matchesFilter(fresh, 'untranscribed')).toBe(true);
+    expect(countByFilter(all)).toEqual({ all: 5, watching: 1, untranscribed: 3, transcribed: 2 });
+  });
+
+  it('sorts by most recent activity (watched or modified) and searches by name', () => {
+    expect(sortByRecent(all).map((i) => i.id).slice(0, 3)).toEqual(['done', 'watching', 'finished']);
+    expect(selectLibraryItems(all, 'all', 'WATCH').map((i) => i.id)).toEqual(['watching']);
+    expect(selectLibraryItems(all, 'untranscribed', '').map((i) => i.id)).toEqual(['watching', 'finished', 'fresh']);
+  });
+
+  it('draws progress only once playback started, full when finished', () => {
+    expect(watchRatio(fresh)).toBeNull();
+    expect(watchRatio(watching)).toBeCloseTo(0.05);
+    expect(watchRatio(finished)).toBe(1);
+    expect(watchRatio(item({ id: 'x', durationMs: null, progress: { lastPositionMs: 5, watchedMs: 5, finished: false } }))).toBeNull();
+  });
+
+  it('formats durations', () => {
+    expect(formatDuration(65_000)).toBe('1:05');
+    expect(formatDuration(3_725_000)).toBe('1:02:05');
+    expect(formatDuration(null)).toBeNull();
+  });
+});
+
+describe('transcript status chips', () => {
+  it.each([
+    [{ status: 'none' }, { key: 'none', tone: 'neutral' }],
+    [{ status: 'queued' }, { key: 'queued', tone: 'primary', busy: true }],
+    [{ status: 'running', completedSegments: 2, totalSegments: 5 }, { key: 'running', completed: 2, total: 5, busy: true }],
+    [{ status: 'completed', source: 'asr' }, { key: 'completed', tone: 'success' }],
+    [{ status: 'completed', source: 'import' }, { key: 'imported', tone: 'success' }],
+    [{ status: 'partial', completedSegments: 3, totalSegments: 9 }, { key: 'partial', tone: 'warning' }],
+    [{ status: 'failed' }, { key: 'failed', tone: 'danger' }],
+  ] as const)('%o → %o', (transcript, expected) => {
+    const chip = transcriptChip(item({
+      id: 'c',
+      transcript: { status: 'none', completedSegments: 0, totalSegments: 0, failedSegments: 0, source: null, ...transcript },
+    }));
+    expect(chip).toMatchObject(expected);
+  });
+});
