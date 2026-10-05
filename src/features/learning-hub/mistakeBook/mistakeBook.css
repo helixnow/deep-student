@@ -133,6 +133,12 @@
   word-break: break-word;
 }
 
+/* KaTeX 默认 1.21em 会把行撑高，压回接近正文字号（同闪卡列表） */
+.mb-row-stem .katex,
+.mb-detail .katex {
+  font-size: 1.05em;
+}
+
 .mb-row-meta {
   overflow: hidden;
   color: hsl(var(--muted-foreground));

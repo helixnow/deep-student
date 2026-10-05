@@ -13,6 +13,7 @@ import { QuestionFollowUpBar } from '@/components/practice/QuestionFollowUpBar';
 import { getReviewQuestionTypeMeta } from '@/components/review/reviewQuestionTypeMeta';
 import { ERROR_CAUSE_STYLE, getErrorCauses } from '@/components/review/errorCauses';
 import { openDueMistakesReview } from '@/features/learning-today/dueMistakesReview';
+import { CardMathText } from '@/features/flashcards/cardMathPreview';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
@@ -60,7 +61,9 @@ const MistakeRow: React.FC<{
         onClick={onToggle}
       >
         <span className="mb-row-body">
-          <span className="mb-row-stem">{question.content || t('review:questions.noContent')}</span>
+          <span className="mb-row-stem">
+            {question.content ? <CardMathText text={question.content} inline /> : t('review:questions.noContent')}
+          </span>
           <span className="mb-row-meta">{meta}</span>
         </span>
         {causes[0] ? (
@@ -71,30 +74,36 @@ const MistakeRow: React.FC<{
       </DsButton>
       {expanded ? (
         <div id={detailId} className="mb-detail">
-          <p className="mb-detail-stem">{question.content}</p>
+          <p className="mb-detail-stem"><CardMathText text={question.content} /></p>
           {question.options?.length ? (
             <ul className="mb-detail-options">
               {question.options.map((option) => (
-                <li key={option.key}><span className="mb-option-key">{option.key}.</span> {option.content}</li>
+                <li key={option.key}>
+                  <span className="mb-option-key">{option.key}.</span> <CardMathText text={option.content} />
+                </li>
               ))}
             </ul>
           ) : null}
           <dl className="mb-answers">
             <div data-tone="mine">
               <dt>{t('learningHub:mistakeBook.myAnswer')}</dt>
-              <dd>{question.userAnswer?.trim() || t('learningHub:mistakeBook.noAnswer')}</dd>
+              <dd>
+                {question.userAnswer?.trim()
+                  ? <CardMathText text={question.userAnswer} />
+                  : t('learningHub:mistakeBook.noAnswer')}
+              </dd>
             </div>
             {question.answer?.trim() ? (
               <div data-tone="correct">
                 <dt>{t('learningHub:mistakeBook.correctAnswer')}</dt>
-                <dd>{question.answer}</dd>
+                <dd><CardMathText text={question.answer} /></dd>
               </div>
             ) : null}
           </dl>
           {question.explanation?.trim() ? (
             <p className="mb-explanation">
               <span className="mb-explanation-label">{t('learningHub:mistakeBook.explanation')}</span>
-              {question.explanation}
+              <CardMathText text={question.explanation} />
             </p>
           ) : null}
           <div className="mb-detail-actions">
