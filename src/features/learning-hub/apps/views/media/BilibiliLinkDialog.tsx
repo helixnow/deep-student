@@ -380,10 +380,12 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
           <div className="space-y-3" data-bilibili-probe={probe.bvid}>
             <div className="flex items-start gap-3">
               {probe.cover ? (
+                // referrerPolicy 必须写在 src 前：React 按书写顺序设属性，WebKit 一拿到 src
+                // 就带着本地 Referer 发请求，B 站图床防盗链回 403
                 <img
+                  referrerPolicy="no-referrer"
                   src={probe.cover}
                   alt=""
-                  referrerPolicy="no-referrer"
                   className="h-[54px] w-24 shrink-0 rounded-md bg-muted object-cover"
                 />
               ) : (
