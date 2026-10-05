@@ -26,6 +26,7 @@ import { hasValidCloze } from '../cloze';
 import { CardMathText } from '../cardMathPreview';
 import { dispatchOpenMediaRef } from '@/features/learning-hub/apps/views/media/mediaRefEvents';
 import { cardMediaSourceTexts, findCardMediaSource } from './cardMediaSource';
+import { jumpToChatSession, openCardSourceRef } from '../cardSource';
 import {
   getReviewCardEditValues,
   isClozeReviewCard,
@@ -64,32 +65,6 @@ const RATING_LABEL_KEY: Record<number, string> = {
 };
 
 const RESET_DISARM_MS = 4000;
-
-/**
- * 打开制卡来源：笔记走 DSTU_OPEN_NOTE（source 非 Notes 自有 → Chat 侧契约：Workbench 下开进
- * Chat 画布；经典壳下卡片库不是聊天页，由 App 路由到学习资源页以标签打开，见
- * resolveClassicShellOpenNoteTarget），资料走 openResource（+ 跳页）
- */
-function openCardSource(ref: { kind?: string; id?: string; title?: string; page?: number }): void {
-  if (!ref.id) return;
-  if (ref.kind === 'note') {
-    window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', { detail: { noteId: ref.id, source: 'flashcards-library' } }));
-    return;
-  }
-  void import('@/features/notes/noteOrigin').then(({ navigateToNoteOrigin }) =>
-    navigateToNoteOrigin({ kind: 'resource', resourceId: ref.id!, page: ref.page, title: ref.title }));
-}
-
-/** 懒加载 workbench chat 入口，避免把整条聊天依赖链拉进库视图。 */
-function jumpToChatSession(sessionId: string): void {
-  void import('@/features/workbench/apps/chat/newSession')
-    .then(({ openChatSession }) => {
-      openChatSession(sessionId);
-    })
-    .catch(() => {
-      // 跳转失败静默降级：来源信息本身仍在展开区展示
-    });
-}
 
 /** 来源类型 → 展示文案 key；未知来源不展示。 */
 function sourceLabelKey(sourceType: string | null | undefined): string | null {
@@ -603,7 +578,7 @@ export const LibraryCardRow: React.FC<LibraryCardRowProps> = ({
                           <button
                             type="button"
                             className="inline-flex items-center gap-0.5 text-primary hover:underline [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3 [@media(pointer:coarse)]:-mx-3"
-                            onClick={() => openCardSource(sourceRef)}
+                            onClick={() => openCardSourceRef(sourceRef)}
                           >
                             <ArrowSquareOut size={11} aria-hidden="true" />
                             {translate('library.viewSource')}

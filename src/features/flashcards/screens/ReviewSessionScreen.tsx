@@ -10,6 +10,8 @@ import {
   ArrowCounterClockwise,
   ArrowLeft,
   ArrowClockwise,
+  ArrowSquareOut,
+  ChatCircleText,
   DotsThree,
   FloppyDisk,
   Hourglass,
@@ -48,6 +50,9 @@ import { ReviewCardSurface } from '../review/ReviewCardSurface';
 import { SessionSummary } from '../review/SessionSummary';
 import { UndoNudge } from '../review/UndoNudge';
 import { formatDuration, useCardAnswerClock, useNow } from '../review/useSessionClock';
+import { openReviewCardSource } from '../review/openReviewCardSource';
+import { askAiAboutCard } from '../review/askAiAboutCard';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useFlashcardsMobileChrome } from '../useFlashcardsMobileChrome';
 
 /** 翻面后短时间内忽略指针评分，防止翻面双击误评（键盘不受限） */
@@ -129,6 +134,15 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
   const remainingDueAfterSession = useFsrsReviewStore((state) => state.remainingDueAfterSession);
   const ratingPreviews = useFsrsReviewStore((state) => state.ratingPreviews);
   const current = queue[queueIndex];
+  const openSource = React.useCallback(() => {
+    if (!current) return;
+    void openReviewCardSource(current).then((opened) => {
+      if (!opened) showGlobalNotification('info', t('session.noSource'));
+    });
+  }, [current, t]);
+  const askAi = React.useCallback(() => {
+    if (current) askAiAboutCard(current, t);
+  }, [current, t]);
   const { template, loading: templateLoading } = useAnkiTemplateLoader(current?.templateId);
   const flip = useFsrsReviewStore((state) => state.flip);
   const rate = useFsrsReviewStore((state) => state.rate);
@@ -418,6 +432,8 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuTrigger>
         <AppMenuContent align="end" width={200}>
           {current && <>
+            <AppMenuItem icon={<ArrowSquareOut size={18} />} onClick={openSource}>{t('session.viewSource')}</AppMenuItem>
+            <AppMenuItem icon={<ChatCircleText size={18} />} onClick={askAi}>{t('session.askAi')}</AppMenuItem>
             <AppMenuItem icon={<PencilSimple size={18} />} disabled={ratingBusy || templateLoading || !current.ankiCardId} onClick={beginEdit}>{t('session.edit')}</AppMenuItem>
             <AppMenuItem icon={<SkipForward size={18} />} disabled={ratingBusy} onClick={skipCurrent}>{t('review.skip')}</AppMenuItem>
             <AppMenuItem icon={<Pause size={18} />} disabled={ratingBusy} onClick={() => void suspendCurrent()}>{t('session.suspend')}</AppMenuItem>
@@ -426,7 +442,7 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
         </AppMenuContent>
       </AppMenu>}
     </>,
-  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended]);
+  }, [t, editing, current, sessionDone, sessionRatedCount, remainingCount, handleMobileBack, ratingBusy, draftIsValid, saveEdit, lastReview, undoLastReview, lastSuspended, templateLoading, beginEdit, skipCurrent, suspendCurrent, resumeLastSuspended, openSource, askAi]);
 
   const errorBanner = error ? (
     <div role="alert" className="wb-fc-session-error flex items-start justify-between gap-3">
@@ -687,6 +703,32 @@ export const ReviewSessionScreen: React.FC<ReviewSessionScreenProps> = ({
             <Play size={16} />
           </DsButton>
         ) : null}
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={openSource}
+          aria-label={t('session.viewSource')}
+          title={t('session.viewSource')}
+          data-testid="fc-review-view-source"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        >
+          <ArrowSquareOut size={16} />
+        </DsButton>
+        <DsButton
+          type="button"
+          variant="ghost"
+          size="sm"
+          iconOnly
+          onClick={askAi}
+          aria-label={t('session.askAi')}
+          title={t('session.askAi')}
+          data-testid="fc-review-ask-ai"
+          className="[@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11"
+        >
+          <ChatCircleText size={16} />
+        </DsButton>
         <DsButton
           type="button"
           variant="ghost"

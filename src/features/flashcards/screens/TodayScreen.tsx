@@ -70,6 +70,9 @@ function parseFsrsStats(raw: unknown): FsrsStats | null {
   };
 }
 
+/** 「今天多学几张」一次额外引入的新卡数（不改每日上限，只是这一批） */
+const EXTRA_NEW_BATCH = 10;
+
 const CountValue: React.FC<{ value: number | null }> = ({ value }) => {
   const display = useCountUp(value ?? 0);
   return <>{value == null ? '—' : display}</>;
@@ -84,9 +87,11 @@ export const TodayScreen: React.FC = () => {
   const error = useFsrsReviewStore((s) => s.error);
   const loadDue = useFsrsReviewStore((s) => s.loadDue);
   const startDueSession = useFsrsReviewStore((s) => s.startDueSession);
+  const startBatchSession = useFsrsReviewStore((s) => s.startBatchSession);
   const setScreen = useFsrsReviewStore((s) => s.setScreen);
 
   const [stats, setStats] = useState<FsrsStats | null>(null);
+  const [extraBusy, setExtraBusy] = useState(false);
   const statsRequestRef = useRef(0);
   const activity = useReviewActivity();
 
@@ -100,6 +105,39 @@ export const TodayScreen: React.FC = () => {
   const backlogReview = hasBacklogSplit ? stats!.backlogReview! : backlog;
   const backlogNew = hasBacklogSplit ? stats!.backlogNew! : 0;
   const learningWaiting = stats?.learningWaiting ?? 0;
+  const extraNewCount = Math.min(backlogNew, EXTRA_NEW_BATCH);
+
+  // 考前想多学：按创建顺序取一批待学新卡做一次集中复习（评分计入正式记录），每日上限不变
+  const learnExtraNew = useCallback(async () => {
+    if (extraBusy || extraNewCount <= 0) return;
+    setExtraBusy(true);
+    const [{ listAnkiLibraryCards }, { showGlobalNotification }] = await Promise.all([
+      import('@/utils/chatApi'),
+      import('@/components/UnifiedNotification'),
+    ]);
+    try {
+      const response = await listAnkiLibraryCards({ status: 'new', page: 1, page_size: extraNewCount, sort: 'created' });
+      const cards = response.items ?? [];
+      if (cards.length === 0) {
+        showGlobalNotification('info', t('today.learnMoreEmpty'));
+        return;
+      }
+      await startBatchSession(
+        cards.map((card) => card.id),
+        cards.map((card) => ({
+          id: card.stateId || card.id,
+          ankiCardId: card.id,
+          front: card.front || card.fields?.Front || '',
+          back: card.back || card.fields?.Back || card.text || '',
+          tags: card.tags,
+        })),
+      );
+    } catch {
+      showGlobalNotification('error', t('today.learnMoreFailed'));
+    } finally {
+      setExtraBusy(false);
+    }
+  }, [extraBusy, extraNewCount, startBatchSession, t]);
 
   const loadStats = useCallback(async () => {
     const requestId = ++statsRequestRef.current;
@@ -334,6 +372,17 @@ export const TodayScreen: React.FC = () => {
                     learningWaiting > 0 ? t('today.learningWaitingHint', { count: learningWaiting }) : null,
                   ].filter(Boolean).join(' · ')}
                 </p>
+              ) : null}
+              {!loading && extraNewCount > 0 ? (
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid="fc-today-learn-more">
+                  <DsButton type="button" variant="default" size="sm" disabled={extraBusy} onClick={() => void learnExtraNew()}>
+                    <Play size={13} weight="fill" aria-hidden="true" />
+                    {t('today.learnMore', { count: extraNewCount })}
+                  </DsButton>
+                  <DsButton type="button" variant="ghost" size="sm" onClick={() => setScreen('settings')}>
+                    {t('today.adjustDailyLimit')}
+                  </DsButton>
+                </div>
               ) : null}
             </div>
           </section>
