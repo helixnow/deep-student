@@ -56,6 +56,18 @@ vi.mock('@tauri-apps/api/window', () => ({
   }),
 }));
 
+const { todaySnapshot, openTodayReviewTargetMock } = vi.hoisted(() => ({
+  todaySnapshot: { cards: 0, mistakes: 0, notes: 0, dueNotes: [] as unknown[] },
+  openTodayReviewTargetMock: vi.fn(),
+}));
+vi.mock('@/features/learning-today/todayLearningStore', () => ({
+  getTodayLearningSnapshot: () => todaySnapshot,
+  subscribeTodayLearning: () => () => {},
+}));
+vi.mock('@/features/learning-today/openTodayReview', () => ({
+  openTodayReviewTarget: openTodayReviewTargetMock,
+}));
+
 const FLASHCARDS_DUE_PAYLOAD = { screen: 'session', mode: 'due' } as const;
 const FLASHCARDS_DUE_ACTIVATE = {
   typeId: 'flashcards',
@@ -120,6 +132,24 @@ describe('formatStatusBarTime', () => {
     expect(formatStatusBarTime(754)).toBe('12:34');
     expect(formatStatusBarTime(5)).toBe('0:05');
     expect(formatStatusBarTime(0)).toBe('0:00');
+  });
+});
+
+describe('StatusBar 今日节律 · 错题 / 笔记两条复习线', () => {
+  afterEach(() => {
+    Object.assign(todaySnapshot, { mistakes: 0, notes: 0 });
+    openTodayReviewTargetMock.mockReset();
+  });
+
+  it('只在有到期时列出，点击进入对应复习并收起 flyout', () => {
+    Object.assign(todaySnapshot, { mistakes: 3, notes: 0 });
+    render(<StatusBar />);
+    fireEvent.click(screen.getByTestId('wb-menubar-center'));
+    const row = screen.getByTestId('wb-menubar-module-mistakes');
+    expect(row.textContent).toContain('3 道待复习');
+    expect(screen.queryByTestId('wb-menubar-module-notes')).toBeNull();
+    fireEvent.click(row);
+    expect(openTodayReviewTargetMock).toHaveBeenCalledWith('mistakes');
   });
 });
 

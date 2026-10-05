@@ -47,6 +47,13 @@ vi.mock('../../apps/system/todoAgendaSource', () => ({
   subscribeTodoAgenda: () => () => {},
 }));
 
+const todayState = { cards: 3, mistakes: 0, notes: 0, dueNotes: [] as unknown[] };
+
+vi.mock('@/features/learning-today/todayLearningStore', () => ({
+  getTodayLearningSnapshot: () => todayState,
+  subscribeTodayLearning: () => () => {},
+}));
+
 import { DesktopAiBriefingWidget } from '../DesktopAiBriefingWidget';
 
 function expectChartOrTable(scope: HTMLElement) {
@@ -59,6 +66,7 @@ describe('DesktopAiBriefingWidget', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     flashcardsDueState.count = 3;
+    Object.assign(todayState, { cards: 3, mistakes: 0, notes: 0 });
     todoAgendaSnapshot.items = [{ id: '1', dueDate: '2000-01-01', status: 'pending' as const }];
   });
 
@@ -69,5 +77,14 @@ describe('DesktopAiBriefingWidget', () => {
     expect(screen.getAllByText('到期闪卡').length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText('3').length).toBeGreaterThanOrEqual(1);
     expectChartOrTable(widget);
+  });
+
+  it('counts due mistakes and notes, so a day with no cards no longer looks empty', () => {
+    flashcardsDueState.count = 0;
+    Object.assign(todayState, { cards: 0, mistakes: 4, notes: 1 });
+    render(<DesktopAiBriefingWidget />);
+    const widget = screen.getByTestId('wb-ai-briefing-widget');
+    expect(widget.textContent).toContain('5');
+    expect(widget.textContent).toContain('generativeUi:workbench.dashboard.due_mistakes_title');
   });
 });

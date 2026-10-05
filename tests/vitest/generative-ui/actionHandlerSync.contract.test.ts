@@ -65,6 +65,24 @@ describe('generativeUI actionHandlerSync contract', () => {
     expectActionIdsRegistered(intent, workbenchLearningHandlers, 'buildAiDashboardIntent');
   });
 
+  it('ai dashboard review actions for mistakes and notes exist in workbenchLearningHandlers', () => {
+    const intent = buildAiDashboardIntent(
+      { dueFlashcards: 0, dueMistakes: 2, dueNotes: 1 },
+      {
+        ...briefingLabels,
+        ankiTasksTitle: 'Tasks',
+        ankiTasksTrendActive: 'Running',
+        openTaskDashboard: 'Tasks panel',
+        dueMistakesTitle: 'Mistakes',
+        dueNotesTitle: 'Notes',
+        reviewMistakes: 'Review mistakes',
+        reviewNotes: 'Review notes',
+      },
+    );
+    expect(collectActionBarIds(intent)).toEqual(expect.arrayContaining(['review-mistakes', 'review-notes']));
+    expectActionIdsRegistered(intent, workbenchLearningHandlers, 'buildAiDashboardIntent+review');
+  });
+
   it('LEARNING_DASHBOARD_EXAMPLE action ids exist in workbenchLearningHandlers', () => {
     expectActionIdsRegistered(LEARNING_DASHBOARD_EXAMPLE, workbenchLearningHandlers, 'LEARNING_DASHBOARD_EXAMPLE');
   });

@@ -5,6 +5,9 @@ export interface LearningBriefingInput {
   dueFlashcards?: number;
   pendingTodos?: number;
   overdueTodos?: number;
+  /** 传入错题 / 笔记任一条后，首卡改为三条复习线合计的「今日待复习」（需配 dueReviewTitle） */
+  dueMistakes?: number;
+  dueNotes?: number;
 }
 
 export interface LearningBriefingLabels {
@@ -20,6 +23,11 @@ export interface LearningBriefingLabels {
   pendingLabel: string;
   startReview: string;
   openQbank: string;
+  dueMistakesTitle?: string;
+  dueNotesTitle?: string;
+  dueReviewTitle?: string;
+  /** 合计卡的分项说明，占位符 {{cards}} {{mistakes}} {{notes}} */
+  dueBreakdown?: string;
 }
 
 function categoryFromCountLabel(template: string, fallback: string): string {
@@ -32,7 +40,34 @@ export function buildLearningBriefingIntent(
   labels: LearningBriefingLabels,
 ): GenerativeUIIntent {
   const { dueFlashcards = 0, pendingTodos = 0, overdueTodos = 0 } = input;
-  const hasWorkload = dueFlashcards > 0 || pendingTodos > 0 || overdueTodos > 0;
+  const combined = Boolean(labels.dueReviewTitle) && (input.dueMistakes !== undefined || input.dueNotes !== undefined);
+  const dueMistakes = combined ? input.dueMistakes ?? 0 : 0;
+  const dueNotes = combined ? input.dueNotes ?? 0 : 0;
+  const totalDue = dueFlashcards + dueMistakes + dueNotes;
+  const reviewRows = [
+    { metric: labels.dueFlashcardsTitle, count: dueFlashcards },
+    ...(combined && labels.dueMistakesTitle ? [{ metric: labels.dueMistakesTitle, count: dueMistakes }] : []),
+    ...(combined && labels.dueNotesTitle ? [{ metric: labels.dueNotesTitle, count: dueNotes }] : []),
+  ];
+  const reviewCard = combined
+    ? {
+        title: labels.dueReviewTitle as string,
+        value: totalDue,
+        trend: totalDue > 0 ? ('up' as const) : ('neutral' as const),
+        trendLabel: totalDue > 0 && labels.dueBreakdown
+          ? labels.dueBreakdown
+            .replace('{{cards}}', String(dueFlashcards))
+            .replace('{{mistakes}}', String(dueMistakes))
+            .replace('{{notes}}', String(dueNotes))
+          : totalDue > 0 ? labels.dueTrendDue : labels.dueTrendNone,
+      }
+    : {
+        title: labels.dueFlashcardsTitle,
+        value: dueFlashcards,
+        trend: dueFlashcards > 0 ? ('up' as const) : ('neutral' as const),
+        trendLabel: dueFlashcards > 0 ? labels.dueTrendDue : labels.dueTrendNone,
+      };
+  const hasWorkload = totalDue > 0 || pendingTodos > 0 || overdueTodos > 0;
   const workloadTable = hasWorkload
     ? buildTableIntent({
         title: labels.progressTitle,
@@ -41,7 +76,7 @@ export function buildLearningBriefingIntent(
           { key: 'count', label: labels.dueTrendDue.slice(0, 80), align: 'right' },
         ],
         rows: [
-          { metric: labels.dueFlashcardsTitle, count: dueFlashcards },
+          ...reviewRows,
           {
             metric: categoryFromCountLabel(labels.pendingLabel, labels.progressTitle),
             count: pendingTodos,
@@ -60,12 +95,7 @@ export function buildLearningBriefingIntent(
     blocks: [
       {
         type: 'stat-card',
-        props: {
-          title: labels.dueFlashcardsTitle,
-          value: dueFlashcards,
-          trend: dueFlashcards > 0 ? 'up' : 'neutral',
-          trendLabel: dueFlashcards > 0 ? labels.dueTrendDue : labels.dueTrendNone,
-        },
+        props: reviewCard,
       },
       // 待办只有未完成清单、没有完成数：此前画成「(待办 − 逾期) / 待办」的进度条，
       // 1 项待办、0 逾期显示满格 100%，读起来像「全部完成」。改为统计卡：待办数 + 逾期提示。

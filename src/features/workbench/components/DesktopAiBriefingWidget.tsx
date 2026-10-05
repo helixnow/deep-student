@@ -13,6 +13,10 @@ import {
   getTodoAgendaSnapshot,
   subscribeTodoAgenda,
 } from '../apps/system/todoAgendaSource';
+import {
+  getTodayLearningSnapshot,
+  subscribeTodayLearning,
+} from '@/features/learning-today/todayLearningStore';
 import { useWindowStore } from '../core/windowStore';
 import { formatLocalDateKey } from './DesktopAgendaWidget';
 import './DesktopAiBriefingWidget.css';
@@ -22,6 +26,7 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
   const widgetRef = useRef<HTMLElement | null>(null);
   const dueCount = useSyncExternalStore(subscribeFlashcardsDueCount, getFlashcardsDueCount, () => 0);
   const agenda = useSyncExternalStore(subscribeTodoAgenda, getTodoAgendaSnapshot, getTodoAgendaSnapshot);
+  const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
 
   const hasVisibleWindows = useWindowStore((s) => {
     for (const win of Object.values(s.windows)) {
@@ -44,10 +49,16 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
       buildLearningBriefingIntent(
         {
           dueFlashcards: dueCount,
+          dueMistakes: today.mistakes,
+          dueNotes: today.notes,
           pendingTodos,
           overdueTodos,
         },
         {
+          dueReviewTitle: t('generativeUi:workbench.briefing.due_review_title'),
+          dueBreakdown: t('generativeUi:workbench.briefing.due_breakdown'),
+          dueMistakesTitle: t('generativeUi:workbench.dashboard.due_mistakes_title'),
+          dueNotesTitle: t('generativeUi:workbench.dashboard.due_notes_title'),
           dueFlashcardsTitle: t('generativeUi:workbench.briefing.due_flashcards_title'),
           dueTrendDue: t('generativeUi:workbench.briefing.due_trend_due'),
           dueTrendNone: t('generativeUi:workbench.briefing.due_trend_none'),
@@ -60,7 +71,7 @@ export const DesktopAiBriefingWidget: React.FC = React.memo(() => {
           openQbank: t('generativeUi:workbench.briefing.open_qbank'),
         },
       ),
-    [dueCount, overdueTodos, pendingTodos, t],
+    [dueCount, overdueTodos, pendingTodos, today.mistakes, today.notes, t],
   );
 
   const actionHandlers = useMemo(

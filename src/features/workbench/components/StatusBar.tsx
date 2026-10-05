@@ -20,9 +20,11 @@ import {
   GearSix,
   Lightning,
   MagnifyingGlass,
+  Notebook,
   Robot,
   SquaresFour,
   Timer,
+  WarningDiamond,
 } from '@phosphor-icons/react';
 import { DeepStudentMark } from '@/components/ui/DeepStudentLogo';
 import { WindowControls } from '@/components/WindowControls';
@@ -51,6 +53,11 @@ import {
   subscribeAnkiTaskCount,
 } from '../apps/system/ankiTaskSource';
 import { workbenchBus } from '../core/workbenchBus';
+import {
+  getTodayLearningSnapshot,
+  subscribeTodayLearning,
+} from '@/features/learning-today/todayLearningStore';
+import { openTodayReviewTarget } from '@/features/learning-today/openTodayReview';
 import { useWorkbenchOverlay } from '../core/shortcuts';
 import { useFocusReturn } from '../hooks/useWorkbenchA11y';
 import { useLiquidGlassLens, WallpaperReplica } from '../core/liquidGlassLens';
@@ -82,6 +89,54 @@ const PomodoroFlyoutDetail: React.FC = () => {
       {phase}
       {paused}
       {label ? ` · ${label}` : ''}
+    </>
+  );
+};
+
+/**
+ * Flyout 内错题 / 笔记两条复习线（与对话首页「今日待复习」同口径）。
+ * 只在 flyout 打开时订阅，避免常驻顶栏为笔记复习日期持续列目录；为 0 时不占行。
+ */
+const RhythmReviewRows: React.FC<{ onPick: (fn: () => void) => () => void }> = ({ onPick }) => {
+  const { t } = useTranslation('workbench');
+  const today = useSyncExternalStore(subscribeTodayLearning, getTodayLearningSnapshot, getTodayLearningSnapshot);
+  const rows = [
+    {
+      key: 'mistakes',
+      count: today.mistakes,
+      icon: <WarningDiamond size={18} weight="duotone" />,
+      label: t('menubar.rhythmMistakes'),
+      detail: t('menubar.rhythmMistakesDetail', { count: today.mistakes }),
+      open: () => openTodayReviewTarget('mistakes'),
+    },
+    {
+      key: 'notes',
+      count: today.notes,
+      icon: <Notebook size={18} weight="duotone" />,
+      label: t('menubar.rhythmNotes'),
+      detail: t('menubar.rhythmNotesDetail', { count: today.notes }),
+      open: () => openTodayReviewTarget('notes'),
+    },
+  ].filter((row) => row.count > 0);
+  return (
+    <>
+      {rows.map((row) => (
+        <button
+          key={row.key}
+          type="button"
+          className="wb-menubar-rhythm-row"
+          data-testid={`wb-menubar-module-${row.key}`}
+          data-primary="true"
+          aria-label={`${row.label}: ${row.detail}`}
+          onClick={onPick(row.open)}
+        >
+          <span className="wb-menubar-rhythm-icon" aria-hidden="true">{row.icon}</span>
+          <span className="wb-menubar-rhythm-text" aria-hidden="true">
+            <span className="wb-menubar-rhythm-label">{row.label}</span>
+            <span className="wb-menubar-rhythm-detail">{row.detail}</span>
+          </span>
+        </button>
+      ))}
     </>
   );
 };
@@ -629,6 +684,8 @@ const StatusBarComponent: React.FC = () => {
                     </span>
                   </span>
                 </button>
+
+                <RhythmReviewRows onPick={runAndClose} />
 
                 <button
                   type="button"

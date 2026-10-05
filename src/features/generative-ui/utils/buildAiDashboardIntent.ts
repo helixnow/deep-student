@@ -41,6 +41,7 @@ export interface AiDashboardLabels extends LearningBriefingLabels {
   dueMistakesTitle?: string;
   dueNotesTitle?: string;
   reviewNotes?: string;
+  reviewMistakes?: string;
 }
 
 /** Workbench AI 仪表盘：学习简报 + 制卡任务 stat-card + 复习日历/空态 */
@@ -172,6 +173,14 @@ export function buildAiDashboardIntent(
       const actions: ActionBarProps['actions'] = Array.isArray(existingActions)
         ? [...existingActions]
         : [];
+      if (dueMistakes > 0 && labels.dueMistakesTitle && labels.reviewMistakes) {
+        actions.push({
+          id: 'review-mistakes',
+          label: labels.reviewMistakes,
+          variant: 'default',
+          riskLevel: 'low',
+        });
+      }
       if (dueNotes > 0 && labels.dueNotesTitle && labels.reviewNotes) {
         actions.push({
           id: 'review-notes',

@@ -30,6 +30,13 @@ describe('buildAiDashboardIntent — unified today learning', () => {
     expect(JSON.stringify(bar)).toContain('review-notes');
   });
 
+  it('offers mistake review only when mistakes are due and the label is provided', () => {
+    const withMistakes = buildAiDashboardIntent({ dueMistakes: 2 }, { ...LABELS, reviewMistakes: 'Review mistakes' });
+    expect(JSON.stringify(withMistakes.blocks.find((b) => b.type === 'action-bar'))).toContain('review-mistakes');
+    const none = buildAiDashboardIntent({ dueMistakes: 0 }, { ...LABELS, reviewMistakes: 'Review mistakes' });
+    expect(JSON.stringify(none.blocks.find((b) => b.type === 'action-bar'))).not.toContain('review-mistakes');
+  });
+
   it('is not idle when only mistakes are due', () => {
     const intent = buildAiDashboardIntent({ dueMistakes: 4 }, LABELS);
     expect(intent.blocks.some((b) => b.type === 'alert')).toBe(false);

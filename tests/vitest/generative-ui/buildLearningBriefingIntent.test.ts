@@ -30,6 +30,32 @@ describe('buildLearningBriefingIntent', () => {
     expect(intent.meta?.title).toBeUndefined();
   });
 
+  it('merges cards, mistakes and notes into one "due today" card when the caller passes all three lines', () => {
+    const intent = buildLearningBriefingIntent(
+      { dueFlashcards: 0, dueMistakes: 4, dueNotes: 1, pendingTodos: 0, overdueTodos: 0 },
+      {
+        ...LABELS,
+        dueReviewTitle: 'Due today',
+        dueBreakdown: 'Cards {{cards}} · Mistakes {{mistakes}} · Notes {{notes}}',
+        dueMistakesTitle: 'Mistakes',
+        dueNotesTitle: 'Notes',
+      },
+    );
+    const first = intent.blocks[0].props as { title: string; value: number; trendLabel: string };
+    expect(first).toMatchObject({ title: 'Due today', value: 5, trendLabel: 'Cards 0 · Mistakes 4 · Notes 1' });
+    const table = JSON.stringify(intent.blocks.find((b) => b.type === 'table'));
+    expect(table).toContain('Mistakes');
+    expect(table).toContain('Notes');
+  });
+
+  it('keeps the flashcards-only card for callers that do not pass mistakes or notes', () => {
+    const intent = buildLearningBriefingIntent(
+      { dueFlashcards: 2 },
+      { ...LABELS, dueReviewTitle: 'Due today' },
+    );
+    expect(intent.blocks[0].props).toMatchObject({ title: 'Due', value: 2 });
+  });
+
   it('omits table when there is no workload data', () => {
     const intent = buildLearningBriefingIntent(
       { dueFlashcards: 0, pendingTodos: 0, overdueTodos: 0 },

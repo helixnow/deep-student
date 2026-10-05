@@ -92,6 +92,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
           dueMistakesTitle: t('generativeUi:workbench.dashboard.due_mistakes_title'),
           dueNotesTitle: t('generativeUi:workbench.dashboard.due_notes_title'),
           reviewNotes: t('generativeUi:workbench.dashboard.review_notes'),
+          reviewMistakes: t('generativeUi:workbench.dashboard.review_mistakes'),
         },
       ),
     [activeTasks, dueCount, overdueTodos, pendingTodos, today.mistakes, today.notes, t],
@@ -105,6 +106,7 @@ const AiDashboardAppWindow: React.FC<AppWindowProps> = ({ onTitleChange }) => {
         exportPlan: t('generativeUi:research.actions.export_plan'),
         openTaskDashboard: t('generativeUi:workbench.dashboard.open_task_dashboard'),
         reviewNotes: t('generativeUi:workbench.dashboard.review_notes'),
+        reviewMistakes: t('generativeUi:workbench.dashboard.review_mistakes'),
       }),
     [t],
   );
