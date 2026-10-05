@@ -22,7 +22,11 @@ import { MemoryFolderBanner } from './components/MemoryFolderBanner';
 import { MemoryTreePreview } from './components/MemoryTreePreview';
 import { UnifiedDragDropZone, FILE_TYPES } from '@/components/shared/UnifiedDragDropZone';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
-import { ATTACHMENT_CODE_TEXT_EXTENSIONS } from '@/features/chat/core/constants';
+import {
+  ATTACHMENT_AUDIO_EXTENSIONS,
+  ATTACHMENT_CODE_TEXT_EXTENSIONS,
+  ATTACHMENT_VIDEO_EXTENSIONS,
+} from '@/features/chat/core/constants';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {
@@ -68,6 +72,12 @@ const DOCUMENT_EXTENSIONS = new Set([
 /** 图片类扩展名集合 */
 const IMAGE_EXTENSIONS = new Set([
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'heic', 'heif',
+]);
+
+/** 音视频扩展名集合（作为附件导入，打开即进入音视频学习：转写、字幕、讲义） */
+const MEDIA_EXTENSIONS = new Set<string>([
+  ...ATTACHMENT_AUDIO_EXTENSIONS,
+  ...ATTACHMENT_VIDEO_EXTENSIONS,
 ]);
 
 /**
@@ -1152,24 +1162,33 @@ export function LearningHubSidebar({
   const handleNewTextbook = async () => {
     if (!ensureCreatableView()) return;
     if (importProgress.isImporting) return; // 防止重复点击
-    
-    let unlisten: UnlistenFn | null = null;
-    
+
     try {
-      // 打开文件选择对话框
+      // 打开文件选择对话框。选中的文件与拖拽走同一条导入链路（importPaths）：
+      // 文档按资料导入，Markdown 导入为笔记，图片 / 音视频作为附件导入
       const selected = await dialogOpen({
         multiple: true,
         filters: [
           {
-            name: t('textbook.allDocuments'),
-      // 注：doc（旧版办公文档格式）不支持，无纯 Rust 解析库
+            name: t('textbook.allSupported'),
+            // 注：doc（旧版办公文档格式）不支持，无纯 Rust 解析库
             extensions: [
-              'pdf', 'docx', 'txt', 'md', 'html', 'htm',
-              'xlsx', 'xls', 'xlsb', 'ods',
-              'pptx', 'epub', 'rtf',
-              'csv', 'json', 'xml',
-              ...ATTACHMENT_CODE_TEXT_EXTENSIONS,
+              ...DOCUMENT_EXTENSIONS,
+              ...IMAGE_EXTENSIONS,
+              ...MEDIA_EXTENSIONS,
             ],
+          },
+          {
+            name: t('textbook.allDocuments'),
+            extensions: [...DOCUMENT_EXTENSIONS],
+          },
+          {
+            name: t('textbook.mediaFiles'),
+            extensions: [...MEDIA_EXTENSIONS],
+          },
+          {
+            name: t('textbook.imageFiles'),
+            extensions: [...IMAGE_EXTENSIONS],
           },
           {
             name: t('textbook.pdfDocuments'),
@@ -1203,113 +1222,10 @@ export function LearningHubSidebar({
         return; // 用户取消选择
       }
 
-      const selectedPaths = Array.isArray(selected) ? selected : [selected];
-      // Markdown 导入为笔记（用笔记应用打开、可编辑），其余走资料导入
-      const { markdownItems: markdownPaths, otherItems: filePaths } = partitionMarkdownNoteImports(
-        selectedPaths,
-        (filePath) => extractDisplayFileName(filePath),
-        true,
-      );
-      if (markdownPaths.length > 0) {
-        const markdownResult = await importMarkdownPathNotes(markdownPaths, currentCreatableFolderId);
-        if (!isMountedRef.current) return;
-        const imported = markdownResult.importedNodes.length;
-        if (imported > 0) {
-          showGlobalNotification('success', t('finder.markdownImport.success', { count: imported }));
-          handleRefresh();
-          if (filePaths.length === 0) openImportedMarkdownNote(markdownResult.importedNodes[0]);
-        }
-        if (markdownResult.failedCount > 0) {
-          showGlobalNotification('error', markdownResult.firstError ?? t('finder.dragDrop.importFailed'));
-        }
-        if (filePaths.length === 0) return;
-      }
-      const firstFileName = filePaths[0] ? extractDisplayFileName(filePaths[0]) : 'textbook.pdf';
-      
-      // 显示导入进度模态框
-      setImportProgress({
-        isImporting: true,
-        fileName: firstFileName,
-        stage: 'hashing',
-        progress: 0,
-      });
-
-      // 🆕 监听后端进度事件，实时更新模态框
-      debugLog.log('[LearningHub] 🎧 开始监听 textbook-import-progress 事件');
-      unlisten = await listen<TextbookImportProgress>('textbook-import-progress', (event) => {
-        const { file_name, stage, current_page, total_pages, progress, error } = event.payload;
-        
-        debugLog.log('[LearningHub] 📥 收到进度事件:', { file_name, stage, current_page, total_pages, progress, error });
-        
-        // 更新模态框状态
-        setImportProgress(prev => ({
-          ...prev,
-          fileName: file_name,
-          stage: stage as ImportStage,
-          currentPage: current_page,
-          totalPages: total_pages,
-          progress,
-          error,
-        }));
-      });
-
-      // ★ M-fix: 传递当前文件夹ID，使文件导入到当前浏览的文件夹中
-      const targetFolderId = currentCreatableFolderId;
-      const result = await textbookDstuAdapter.addTextbooks(filePaths, targetFolderId);
-
-      // ★ MEDIUM-005: 检查组件是否已卸载
-      if (!isMountedRef.current) return;
-
-      // 取消事件监听
-      if (unlisten) {
-        debugLog.log('[LearningHub] 🔇 停止监听 textbook-import-progress 事件');
-        unlisten();
-        unlisten = null;
-      }
-
-      if (result.ok && result.value.length > 0) {
-        // 显示完成状态
-        setImportProgress(prev => ({
-          ...prev,
-          stage: 'done',
-          progress: 100,
-        }));
-        
-        // 延迟关闭模态框，让用户看到完成状态
-        setTimeout(() => {
-          if (isMountedRef.current) {
-            setImportProgress(prev => ({ ...prev, isImporting: false }));
-            handleRefresh();
-            // 打开第一个导入的教材
-            if (onOpenApp && result.value[0]) {
-              onOpenApp(dstuNodeToResourceListItem(result.value[0], 'textbook'));
-            }
-          }
-        }, 800);
-      } else if (result.ok && result.value.length === 0) {
-        // ★ Android 修复：优先使用后端通过 progress 事件发送的具体错误信息
-        // 避免通用的"没有成功导入任何教材"覆盖更有诊断价值的具体原因
-        setImportProgress(prev => ({
-          ...prev,
-          stage: 'error',
-          error: prev.error || t('textbook.importEmpty'),
-        }));
-      } else if (!result.ok) {
-        setImportProgress(prev => ({
-          ...prev,
-          stage: 'error',
-          error: result.error.toUserMessage(),
-        }));
-      }
+      await importPaths(Array.isArray(selected) ? selected : [selected]);
     } catch (err) {
-      // 清理
-      if (unlisten) unlisten();
       debugLog.error('[LearningHubSidebar] handleNewTextbook error:', err);
-      setImportProgress(prev => ({
-        ...prev,
-        stage: 'error',
-        error: t('textbook.importError'),
-      }));
+      showGlobalNotification('error', t('textbook.importError'));
     }
   };
 
@@ -1386,21 +1302,14 @@ export function LearningHubSidebar({
   };
 
   /**
-   * 处理 Tauri 原生文件路径拖拽（优先路径，性能更好）
+   * 按文件路径导入（拖拽与「导入资料…」对话框共用）
    * 按扩展名分类后分发到对应适配器
    */
-  const handlePathsDrop = useCallback(async (paths: string[]) => {
+  const importPaths = useCallback(async (paths: string[]) => {
     if (paths.length === 0) return;
-    // 回收站/特殊视图不允许拖入
-    if (isDragDropBlockedView(currentPath)) {
-      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
-      return;
-    }
-    // 统一导入主链路：本次拖拽已走路径分支，后续 files 回调直接跳过。
-    pathsDropHandledRef.current = true;
     if (importProgress.isImporting) return;
 
-    debugLog.log('[LearningHub] 拖拽导入文件:', paths.length, '个文件');
+    debugLog.log('[LearningHub] 导入文件:', paths.length, '个文件');
 
     // Markdown 本身就是笔记：任何位置拖入都导入为笔记（用笔记应用打开、可编辑），
     // 不再只在「笔记」视图才这样——在「全部文件」拖入会变成只读预览的资料
@@ -1586,7 +1495,7 @@ export function LearningHubSidebar({
                   // ★ 携带后端结构化拒绝原因（如"不支持的文件类型 .xyz"）
                   return { ok: false as const, name, reason: result.error.toUserMessage() };
                 }
-                return { ok: true as const, name };
+                return { ok: true as const, name, node: result.value, isMedia: MEDIA_EXTENSIONS.has(ext) };
               } catch (e) {
                 debugLog.error('[LearningHub] 附件导入失败:', name, e);
                 return {
@@ -1612,6 +1521,10 @@ export function LearningHubSidebar({
             totalFailed++;
             failedDetails.push({ name: r.name, reason: r.reason });
           }
+        }
+        // 没有文档时打开第一个导入的音视频：直接进入转写 / 字幕界面
+        if (!firstImportedNode) {
+          firstImportedNode = attachResults.find((r) => r.ok && 'isMedia' in r && r.isMedia)?.node ?? null;
         }
       }
 
@@ -1656,18 +1569,36 @@ export function LearningHubSidebar({
           if (firstImportedNode.type === 'note') {
             openImportedMarkdownNote(firstImportedNode);
           } else if (onOpenApp) {
-            onOpenApp(dstuNodeToResourceListItem(firstImportedNode, 'textbook'));
+            onOpenApp(dstuNodeToResourceListItem(
+              firstImportedNode,
+              firstImportedNode.type === 'file' ? 'file' : 'textbook',
+            ));
           }
         }
       }
     } catch (error) {
       if (unlisten) unlisten();
-      debugLog.error('[LearningHub] 拖拽导入异常:', error);
+      debugLog.error('[LearningHub] 导入异常:', error);
       setImportProgress(prev => ({ ...prev, isImporting: false }));
       setAttachImportProgress(null);
       showGlobalNotification('error', t('finder.dragDrop.importFailed'));
     }
-  }, [currentCreatableFolderId, currentPath, currentQuickAccessType, importMarkdownPathNotes, importProgress.isImporting, openImportedMarkdownNote, t, handleRefresh, onOpenApp]);
+  }, [currentCreatableFolderId, importMarkdownPathNotes, importProgress.isImporting, openImportedMarkdownNote, t, handleRefresh, onOpenApp]);
+
+  /**
+   * 处理 Tauri 原生文件路径拖拽（优先路径，性能更好）
+   */
+  const handlePathsDrop = useCallback(async (paths: string[]) => {
+    if (paths.length === 0) return;
+    // 回收站/特殊视图不允许拖入
+    if (isDragDropBlockedView(currentPath)) {
+      showGlobalNotification('warning', t('finder.dragDrop.notAllowedHere'));
+      return;
+    }
+    // 统一导入主链路：本次拖拽已走路径分支，后续 files 回调直接跳过。
+    pathsDropHandledRef.current = true;
+    await importPaths(paths);
+  }, [currentPath, importPaths, t]);
 
   /**
    * 处理浏览器 File 对象拖拽（非 Tauri 环境兜底）
