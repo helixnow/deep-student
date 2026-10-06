@@ -96,6 +96,14 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
     multimodal: null,
   });
   const [settingDefault, setSettingDefault] = useState(false);
+  /**
+   * 是否已从后端读到默认维度。
+   *
+   * 新建维度时「该模态尚无默认维度」是自动设为默认的前提条件；若在默认维度
+   * 尚未加载完成时就用初始 state（null）判断，会把用户已有的默认维度误判为
+   * 不存在并覆盖掉，所以加载成功前不做这个判断。
+   */
+  const [defaultsLoaded, setDefaultsLoaded] = useState(false);
 
   const stats = useMemo(() => ({
     totalDimensions: dimensions.length,
@@ -103,6 +111,22 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
     textDimensions: dimensions.filter(d => d.modality === 'text').length,
     multimodalDimensions: dimensions.filter(d => d.modality === 'multimodal').length,
   }), [dimensions]);
+
+  /**
+   * 已存在某个模态的维度、且已绑定模型，但该模态还没有默认维度。
+   *
+   * 后端只从「默认维度」读取嵌入模型配置（`embedding.default_multimodal_model_config_id`），
+   * 未设默认时多模态索引会对每个资源统一报「未配置多模态嵌入模型」——而
+   * 「设为默认」原本只在鼠标悬停操作列时显示一个小星号，很难被发现。
+   * 这里把这种状态显式暴露出来，并给出带文字的「设为默认」按钮。
+   */
+  const unsetDefaultDimensions = useMemo(
+    () => dimensions.filter((dim) => {
+      const modality = dim.isMultimodal ? 'multimodal' : 'text';
+      return defaultDimensions[modality] === null && Boolean(dim.modelConfigId);
+    }),
+    [dimensions, defaultDimensions],
+  );
 
   // 过滤出嵌入模型：优先使用传入的 getEmbeddingApis 函数，否则 fallback
   // 用于更换模型对话框（需要包含当前已选模型）
@@ -143,6 +167,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         text: textDefault?.dimension ?? null,
         multimodal: multimodalDefault?.dimension ?? null,
       });
+      setDefaultsLoaded(true);
     } catch (error: unknown) {
       console.error('Failed to load default embedding dimensions:', error);
     }
@@ -294,7 +319,31 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
         selectedModel?.id,
         selectedModel?.model
       );
-      showGlobalNotification('success', t('settings:dimension_management.create_success'));
+
+      // ★ 该模态还没有默认维度时，刚建的这个就是唯一候选：直接设为默认。
+      // 不这么做的话，用户"配好了模型"在后端眼里仍等于未配置——多模态索引
+      // 只读默认维度绑定的模型，而设默认的入口藏在 hover 才出现的星号里。
+      // 仅在默认维度已加载且确实为空时自动设置，绝不覆盖用户已有的默认选择。
+      const modality = newModality === 'multimodal' ? 'multimodal' : 'text';
+      const autoSetDefault =
+        defaultsLoaded && Boolean(selectedModel) && defaultDimensions[modality] === null;
+      let autoDefaultApplied = false;
+      if (autoSetDefault) {
+        try {
+          autoDefaultApplied = await vfsUnifiedIndexApi.setDefaultEmbeddingDimension(dim, modality);
+        } catch (error: unknown) {
+          console.warn('[DimensionManagement] Auto set default dimension failed:', error);
+        }
+      }
+
+      showGlobalNotification('success', autoDefaultApplied
+        ? t('settings:dimension_management.create_and_set_default_success', {
+          dimension: dim,
+          type: modality === 'multimodal'
+            ? t('settings:dimension_management.type_multimodal')
+            : t('settings:dimension_management.type_text'),
+        })
+        : t('settings:dimension_management.create_success'));
       setIsAddingNew(false);
       loadDimensions();
     } catch (error: unknown) {
@@ -503,6 +552,38 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5 transition-colors hover:bg-muted/30 hover:border-muted-foreground/10">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_multimodal')}</span>
               <span className="font-medium text-sm text-purple-500/80">{stats.multimodalDimensions}</span>
+            </div>
+          </div>
+        )}
+
+        {!loading && unsetDefaultDimensions.length > 0 && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-md border border-[hsl(var(--warning)/0.3)] bg-[hsl(var(--warning)/0.08)] px-3 py-2.5 mb-4"
+          >
+            <Warning size={16} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
+            <div className="min-w-0 flex-1 space-y-2">
+              {unsetDefaultDimensions.map((dim) => (
+                <div key={`${dim.dimension}-${dim.modality}`} className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs leading-relaxed text-muted-foreground">
+                    {t('settings:dimension_management.default_missing_body', {
+                      dimension: dim.dimension,
+                      type: dim.isMultimodal
+                        ? t('settings:dimension_management.type_multimodal')
+                        : t('settings:dimension_management.type_text'),
+                    })}
+                  </p>
+                  <DsButton
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleSetAsDefault(dim)}
+                    disabled={settingDefault}
+                    className="shrink-0"
+                  >
+                    {t('settings:dimension_management.set_as_default')}
+                  </DsButton>
+                </div>
+              ))}
             </div>
           </div>
         )}

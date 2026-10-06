@@ -1718,7 +1718,9 @@
     "bind_model_first": "Please assign a model to this dimension first",
     "preset_dimensions": "Presets",
     "preset_dimension_success": "Default embedding dimension {{dimension}} is created and active",
-    "preset_dimension_failed": "Failed to configure embedding dimension {{dimension}}. Please create it and set it as default in Embedding Dimension Management."
+    "preset_dimension_failed": "Failed to configure embedding dimension {{dimension}}. Please create it and set it as default in Embedding Dimension Management.",
+    "default_missing_body": "Dimension {{dimension}} ({{type}}) has a model bound but is not set as the default. Multimodal indexing only uses the model bound to the default dimension; without a default, indexing reports \"multimodal embedding model not configured\".",
+    "create_and_set_default_success": "Dimension {{dimension}} created and set as the default {{type}} embedding dimension"
   },
   "mcp": {
     "title": "MCP Tool Protocol",

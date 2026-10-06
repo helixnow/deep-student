@@ -1718,7 +1718,9 @@
     "bind_model_first": "请先为此维度分配模型",
     "preset_dimensions": "常用维度",
     "preset_dimension_success": "默认嵌入维度 {{dimension}} 已创建并生效",
-    "preset_dimension_failed": "嵌入维度 {{dimension}} 配置失败，请在「嵌入维度管理」中手动创建并设为默认"
+    "preset_dimension_failed": "嵌入维度 {{dimension}} 配置失败，请在「嵌入维度管理」中手动创建并设为默认",
+    "default_missing_body": "{{dimension}} 维（{{type}}）已绑定模型，但尚未设为默认。多模态索引只使用默认维度绑定的模型，未设默认时索引会报「未配置多模态嵌入模型」。",
+    "create_and_set_default_success": "维度 {{dimension}} 已创建，并设为默认{{type}}嵌入维度"
   },
   "mcp": {
     "title": "MCP工具协议",
