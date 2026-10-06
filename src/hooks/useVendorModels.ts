@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TauriAPI } from '../utils/tauriApi';
 import type { VendorConfig, ModelProfile, ApiConfig, ModelAssignments } from '../types';
 import { getErrorMessage } from '../utils/errorUtils';
+import { inferApiCapabilities } from '../utils/apiCapabilityEngine';
 import { vendorHasUsableCredentials } from '../utils/vendorAuth';
 import { useEventRegistry } from './useEventRegistry';
 
@@ -86,6 +87,22 @@ export const buildResolvedConfigs = (
       }
       const hasCredentials = vendorHasUsableCredentials(vendor, openAICodexAuthenticated);
       const profileEnabled = Boolean(profile.enabled) && profile.status !== 'disabled' && hasCredentials;
+
+      // ★ 多模态嵌入模型的能力标记必须与后端运行期一致。
+      // 后端 get_api_configs() 对「嵌入模型 + 非重排 + 名称含 VL/vision/clip 等信号」
+      // 的配置会强制 is_multimodal = true（llm_manager::looks_like_multimodal_embedding），
+      // 这里的 resolvedApiConfigs 若只回显落库值，就会出现同一模型在「模型服务」页
+      // 与「模型分配」页给出不同能力答案（后者走后端推断）。仅对嵌入模型补齐推断，
+      // 与导入/编辑路径（inferCapabilities → caps.isMultimodal）保持同一套规则。
+      const inferredMultimodalEmbedding =
+        !profile.isMultimodal
+        && Boolean(profile.isEmbedding)
+        && !profile.isReranker
+        && inferApiCapabilities({
+          id: profile.model,
+          name: profile.label,
+          providerScope: vendor.providerType,
+        }).vision;
       
       return {
         id: profile.id,
@@ -98,7 +115,7 @@ export const buildResolvedConfigs = (
         baseUrl: vendor.baseUrl,
         model: profile.model,
         // 确保布尔值正确转换（后端可能返回 0/1 或其他类型）
-        isMultimodal: Boolean(profile.isMultimodal),
+        isMultimodal: Boolean(profile.isMultimodal) || inferredMultimodalEmbedding,
         isReasoning: Boolean(profile.isReasoning),
         isEmbedding: Boolean(profile.isEmbedding),
         isReranker: Boolean(profile.isReranker),
