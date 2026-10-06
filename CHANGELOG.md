@@ -10,6 +10,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.3](https://github.com/helixnow/deep-student/compare/v0.10.2...v0.10.3) (2026-10-06)
+
+
+### Features
+
+* **media-studio:** grouping and selection helpers for the library ([497b99c](https://github.com/helixnow/deep-student/commit/497b99ca9147389504a4db4054efffd0c64719ed))
+* **media-studio:** select, select all and group the media library ([b0d6d0d](https://github.com/helixnow/deep-student/commit/b0d6d0d4a415865f648fa70f5533b15110656eb8))
+* **media:** play Bilibili links in the app and sign in to Bilibili by QR ([24ddb80](https://github.com/helixnow/deep-student/commit/24ddb8082e6090dff66edef81395a8def54d20d7))
+
+
+### Bug Fixes
+
+* **chat:** library-referenced PDFs carry their real processing status ([#449](https://github.com/helixnow/deep-student/issues/449)) ([952d0b2](https://github.com/helixnow/deep-student/commit/952d0b27c865ffa7418eff96725d0b99e72e51a6))
+* **kb:** binding a multimodal dimension enables multimodal indexing ([f920307](https://github.com/helixnow/deep-student/commit/f920307c3617c789904c33ddabfe79b46afd2787))
+* **media-studio:** don't repeat the folder name on rows in the grouped view ([b992173](https://github.com/helixnow/deep-student/commit/b9921736d4d4c8566279fde287669dcdd9e3b975))
+* **settings:** probe ASR models on /audio/transcriptions in the connection test ([#444](https://github.com/helixnow/deep-student/issues/444)) ([819e997](https://github.com/helixnow/deep-student/commit/819e99704164dd8636d6ed7490a2e7588558e998))
+* **sync-lease:** say so when the held lease belongs to this device ([#447](https://github.com/helixnow/deep-student/issues/447)) ([f64eae2](https://github.com/helixnow/deep-student/commit/f64eae27bf93694ebb35a6965805733eecb1339e))
+* **sync-ui:** explain a sync lease left behind by this device ([#447](https://github.com/helixnow/deep-student/issues/447)) ([f57c0cb](https://github.com/helixnow/deep-student/commit/f57c0cb35dfe0524cfe6a439193c3686f093930e))
+* **sync-ui:** keep cloud sync progress and cancel visible across settings tab switches ([#447](https://github.com/helixnow/deep-student/issues/447)) ([6e86cc3](https://github.com/helixnow/deep-student/commit/6e86cc39a1b92c0b7834d998b963983722c7a1b5))
+* **sync:** read trigger events from the SQL header so the pin trigger counts as update ([db82e88](https://github.com/helixnow/deep-student/commit/db82e88f3c987cecd7254a01ab476c21613f3090))
+
 ## [0.10.2](https://github.com/helixnow/deep-student/compare/v0.10.1...v0.10.2) (2026-10-05)
 
 
