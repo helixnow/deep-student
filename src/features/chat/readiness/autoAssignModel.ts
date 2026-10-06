@@ -125,7 +125,15 @@ const SLOTS: AssignmentSlot[] = [
   { field: 'reranker_model_config_id', filter: isRerankerModel },
   { field: 'vl_reranker_model_config_id', filter: isRerankerModel },
   { field: 'embedding_model_config_id', filter: isEmbeddingModel },
-  { field: 'vl_embedding_model_config_id', filter: isEmbeddingModel },
+  // ★ 多模态嵌入槽位（vl_embedding_model_config_id）不参与自动分配。
+  // 该槽位已不再由模型分配页暴露（多模态嵌入模型统一在「嵌入维度管理」设为
+  // 默认维度），此前它与文本嵌入槽位共用 isEmbeddingModel——不要求多模态，
+  // 于是首个可用嵌入模型（常是 bge-m3 这类纯文本模型）会被写进 VL 槽；
+  // 后端 get_vl_embedding_model_config 明确拒绝这种绑定（要求 is_multimodal），
+  // 结果是把「未设置默认多模态维度」替换成更难定位的「找不到多模态嵌入模型配置」，
+  // 多模态索引在任何供应商/模型配置下都恒报未配置。
+  // 多模态索引按页调用付费接口，保留既有策略：必须由用户显式开启
+  // （与后端 rag_extension.rs 中 get_vl_embedding_model_config 的注释一致）。
   { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel },
 ];
 
