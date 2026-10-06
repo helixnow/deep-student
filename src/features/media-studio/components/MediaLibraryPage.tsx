@@ -4,18 +4,33 @@
  * 版式对齐技能管理页（study-shell 工具条 + 搜索 + 分段筛选 + 卡片列表 + 空态）；
  * 经典壳桌面把标题行与导入按钮放进顶栏（DesktopShellHeaderPortal），学习桌面窗口 /
  * 手机则在页内。手机导入按钮固定在底部（单手可达），筛选条可横向滚动。
+ *
+ * 多选：「选择」进入（触屏长按某行也会进入并勾选该行），操作条显示已选数 · 全选（只作用于
+ * 筛选 + 搜索后可见的条目）· 移动到分组 · 删除 · 完成；Esc 退出。手机操作条替换底部导入条。
+ * 分组：分组即媒体所在的 VFS 文件夹（与资源库一致），「按分组」视图把列表折成可收起的分区，
+ * 根目录文件归「未分组」放最后；视图与收起状态记在 localStorage。
  */
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
+  CaretRight,
   ChatCircleText,
+  Check,
+  CheckSquare,
   CircleNotch,
   FilmStrip,
+  FolderSimple,
+  FolderSimpleMinus,
+  FolderSimplePlus,
+  Folders,
+  ListBullets,
   MagnifyingGlass,
+  Minus,
   Notebook,
   Subtitles,
   Television,
+  Trash,
   UploadSimple,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
@@ -24,6 +39,14 @@ import { DsAlertDialog } from '@/components/ui/DsDialog';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuItem,
+  AppMenuLabel,
+  AppMenuSeparator,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu';
 import { FILE_TYPES, UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -31,7 +54,8 @@ import {
   TITLEBAR_META_CLASS,
   TITLEBAR_TITLE_CLASS,
 } from '@/app/shell/titlebarUiTokens';
-import { dstu } from '@/dstu';
+import { dstu, folderApi } from '@/dstu';
+import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { mediaTranscriptApi } from '@/features/learning-hub/apps/views/media/mediaTranscriptApi';
@@ -47,10 +71,18 @@ import {
 } from '@/features/learning-hub/apps/views/media/bilibiliLinkApi';
 import type { MediaLibraryItem } from '../api';
 import {
+  commonTitlePrefix,
   countByFilter,
+  groupLibraryItems,
+  listMediaFolders,
   MEDIA_LIBRARY_FILTERS,
+  selectAllState,
+  selectedVisibleItems,
   selectLibraryItems,
+  toggleSelectAll,
   type MediaLibraryFilter,
+  type MediaLibraryGroup,
+  type SelectAllState,
 } from '../libraryModel';
 import { mediaFileAccept } from '../importMedia';
 import type { MediaLibraryState } from '../useMediaLibrary';
@@ -59,6 +91,59 @@ import { MediaLibraryRow, type MediaRowAction } from './MediaLibraryRow';
 
 /** 媒体文件大：拖放上限与导入上限（4 GB，见设计契约 §4）一致 */
 const MAX_MEDIA_FILE_SIZE = 4 * 1024 * 1024 * 1024;
+
+export type MediaLibraryViewMode = 'list' | 'grouped';
+
+export const MEDIA_LIBRARY_VIEW_KEY = 'mediaStudio.library.view';
+export const MEDIA_LIBRARY_COLLAPSED_KEY = 'mediaStudio.library.collapsedGroups';
+/** 「未分组」分区的收起状态键（文件夹 id 以 fld_ 开头，不会撞） */
+const UNGROUPED_KEY = '__ungrouped__';
+
+const groupKey = (group: MediaLibraryGroup) => group.folderId ?? UNGROUPED_KEY;
+
+function readViewMode(): MediaLibraryViewMode {
+  try {
+    return window.localStorage.getItem(MEDIA_LIBRARY_VIEW_KEY) === 'grouped' ? 'grouped' : 'list';
+  } catch {
+    return 'list';
+  }
+}
+
+function readCollapsed(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(MEDIA_LIBRARY_COLLAPSED_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === 'string') : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    /* 隐私模式 / 存储被禁：只是不记住 */
+  }
+}
+
+/** 勾选框外观（分组头整块是按钮，不能嵌套 Radix Checkbox 按钮） */
+const SelectMark: React.FC<{ state: SelectAllState }> = ({ state }) => (
+  <span
+    aria-hidden="true"
+    className={cn(
+      'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border transition-colors',
+      state === 'none' ? 'border-border bg-transparent' : 'border-primary bg-primary text-primary-foreground',
+    )}
+  >
+    {state === 'all' ? <Check size={12} weight="bold" /> : state === 'some' ? <Minus size={12} weight="bold" /> : null}
+  </span>
+);
+
+interface BatchOutcome {
+  done: string[];
+  failed: Array<{ id: string; error: string }>;
+}
 
 export interface MediaLibraryPageProps {
   library: MediaLibraryState;
@@ -86,10 +171,22 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
   const [deleting, setDeleting] = useState<MediaLibraryItem | null>(null);
   const [busy, setBusy] = useState(false);
   const [bilibiliMode, setBilibiliMode] = useState<BilibiliLinkDialogMode | null>(null);
+  const [viewMode, setViewModeState] = useState<MediaLibraryViewMode>(readViewMode);
+  const [collapsed, setCollapsed] = useState<Set<string>>(readCollapsed);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(() => new Set());
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [newGroup, setNewGroup] = useState<{ name: string } | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
   const { items, loaded, error, refresh, removeLocal } = library;
 
   const counts = useMemo(() => countByFilter(items), [items]);
   const visible = useMemo(() => selectLibraryItems(items, filter, query), [items, filter, query]);
+  const groups = useMemo(() => (viewMode === 'grouped' ? groupLibraryItems(visible) : []), [viewMode, visible]);
+  const folders = useMemo(() => listMediaFolders(items), [items]);
+  // 批量操作只作用于「选中且可见」的条目：筛选 / 搜索隐藏的已选项不会被误删或误移
+  const selectedItems = useMemo(() => selectedVisibleItems(visible, selected), [visible, selected]);
+  const allState = selectAllState(visible, selected);
   // 相对时间以渲染时刻为基准；列表随事件刷新时一起更新
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => Date.now(), [items]);
@@ -195,6 +292,170 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
     setDeleting(null);
   }, [deleting, removeLocal, t]);
 
+  // ---------------------------------------------------------------- 视图 / 分组
+  const setViewMode = useCallback((mode: MediaLibraryViewMode) => {
+    setViewModeState(mode);
+    writeStored(MEDIA_LIBRARY_VIEW_KEY, mode);
+  }, []);
+
+  const toggleCollapsed = useCallback((key: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      writeStored(MEDIA_LIBRARY_COLLAPSED_KEY, JSON.stringify([...next].sort()));
+      return next;
+    });
+  }, []);
+
+  // ---------------------------------------------------------------- 多选
+  const exitSelect = useCallback(() => {
+    setSelectMode(false);
+    setSelected(new Set());
+  }, []);
+
+  const toggleItem = useCallback((item: MediaLibraryItem) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+  }, []);
+
+  const enterSelectWith = useCallback((item: MediaLibraryItem) => {
+    setSelectMode(true);
+    setSelected((prev) => new Set(prev).add(item.id));
+  }, []);
+
+  const toggleAll = useCallback(() => {
+    setSelected((prev) => toggleSelectAll(visible, prev));
+  }, [visible]);
+
+  const toggleGroupSelection = useCallback((group: MediaLibraryGroup) => {
+    setSelected((prev) => toggleSelectAll(group.items, prev));
+  }, []);
+
+  const dialogOpen = renaming !== null || deleting !== null || bilibiliMode !== null || batchDeleting || newGroup !== null;
+
+  useEffect(() => {
+    if (!selectMode || dialogOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.isComposing) return;
+      if (event.key === 'Escape') {
+        // 打开着的菜单（移动到分组 / 行菜单）先吃掉这次 Esc
+        if (document.querySelector('[role="menu"]')) return;
+        event.preventDefault();
+        exitSelect();
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const typing = target?.closest('input, textarea, [contenteditable="true"]');
+      if (!typing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        setSelected((prev) => {
+          const next = new Set(prev);
+          for (const item of visible) next.add(item.id);
+          return next;
+        });
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectMode, dialogOpen, exitSelect, visible]);
+
+  /** 批量结束：全部成功退出多选；有失败只留下失败的条目继续选中 */
+  const finishBatch = useCallback((outcome: BatchOutcome) => {
+    if (outcome.failed.length === 0) {
+      exitSelect();
+    } else {
+      setSelected(new Set(outcome.failed.map((f) => f.id)));
+    }
+  }, [exitSelect]);
+
+  const confirmBatchDelete = useCallback(async () => {
+    const targets = selectedItems;
+    if (targets.length === 0) return;
+    setBatchBusy(true);
+    const outcome: BatchOutcome = { done: [], failed: [] };
+    // 逐个删除：与单行删除同一条 dstu 软删路径，失败不影响其余条目
+    for (const item of targets) {
+      const result = await dstu.delete(`/${item.id}`);
+      if (result.ok) {
+        outcome.done.push(item.id);
+        removeLocal(item.id);
+      } else {
+        outcome.failed.push({ id: item.id, error: result.error.toUserMessage() });
+      }
+    }
+    setBatchBusy(false);
+    setBatchDeleting(false);
+    if (outcome.failed.length === 0) {
+      showGlobalNotification('success', t('mediaStudio:select.deleted', { count: outcome.done.length }));
+    } else {
+      showGlobalNotification(
+        outcome.done.length > 0 ? 'warning' : 'error',
+        outcome.failed[0].error,
+        t('mediaStudio:select.deletePartial', { done: outcome.done.length, failed: outcome.failed.length }),
+      );
+    }
+    finishBatch(outcome);
+  }, [finishBatch, removeLocal, selectedItems, t]);
+
+  const moveSelected = useCallback(async (folderId: string | null, folderName: string) => {
+    // 已在目标分组里的条目跳过
+    const targets = selectedItems.filter((item) => (item.folderId ?? null) !== folderId);
+    if (targets.length === 0) {
+      exitSelect();
+      return;
+    }
+    setBatchBusy(true);
+    const outcome: BatchOutcome = { done: [], failed: [] };
+    for (const item of targets) {
+      // 与资源库批量移动同一接口；目标文件夹的路径缓存在最后统一刷新
+      const result = await folderApi.moveItem('file', item.id, folderId ?? undefined, { skipCacheRefresh: true });
+      if (result.ok) outcome.done.push(item.id);
+      else outcome.failed.push({ id: item.id, error: result.error.toUserMessage() });
+    }
+    if (folderId && outcome.done.length > 0) await updatePathCacheV2(folderId);
+    setBatchBusy(false);
+    if (outcome.failed.length === 0) {
+      showGlobalNotification(
+        'success',
+        folderId
+          ? t('mediaStudio:select.moved', { count: outcome.done.length, name: folderName })
+          : t('mediaStudio:select.movedOut', { count: outcome.done.length }),
+      );
+    } else {
+      showGlobalNotification(
+        outcome.done.length > 0 ? 'warning' : 'error',
+        outcome.failed[0].error,
+        t('mediaStudio:select.movePartial', { done: outcome.done.length, failed: outcome.failed.length }),
+      );
+    }
+    finishBatch(outcome);
+    void refresh();
+  }, [exitSelect, finishBatch, refresh, selectedItems, t]);
+
+  const openNewGroup = useCallback(() => {
+    const names = selectedItems.map((item) => (item.isLink ? stripBilibiliExtension(item.name) : item.name));
+    setNewGroup({ name: commonTitlePrefix(names) });
+  }, [selectedItems]);
+
+  const confirmNewGroup = useCallback(async () => {
+    const name = newGroup?.name.trim();
+    if (!name || batchBusy) return;
+    setBatchBusy(true);
+    const created = await folderApi.createFolder(name);
+    setBatchBusy(false);
+    if (!created.ok) {
+      showGlobalNotification('error', created.error.toUserMessage(), t('mediaStudio:group.createFailed'));
+      return;
+    }
+    setNewGroup(null);
+    await moveSelected(created.value.id, created.value.title || name);
+  }, [batchBusy, moveSelected, newGroup, t]);
+
   const handleBilibiliDone = useCallback((result: BilibiliLinkDialogResult) => {
     const mode = bilibiliMode;
     void refresh();
@@ -259,6 +520,26 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
     </DsButton>
   );
 
+  const selectToggle = (variant: 'titlebar' | 'page' | 'phone') => (
+    <DsButton
+      variant={variant === 'titlebar' ? 'shell' : 'ghost'}
+      size={variant === 'phone' ? 'md' : 'sm'}
+      iconOnly={variant === 'phone'}
+      onClick={() => (selectMode ? exitSelect() : setSelectMode(true))}
+      aria-pressed={selectMode}
+      aria-label={variant === 'phone' ? t('mediaStudio:select.toggle') : undefined}
+      title={t('mediaStudio:select.toggle')}
+      data-media-select-toggle=""
+      className={cn(
+        variant === 'titlebar' ? TITLEBAR_CONTROL_CLASS : variant === 'page' ? 'gap-1.5' : 'shrink-0',
+        selectMode && 'bg-primary/10 text-primary hover:bg-primary/15',
+      )}
+    >
+      <CheckSquare size={variant === 'phone' ? 18 : 14} aria-hidden="true" />
+      {variant === 'phone' ? null : t('mediaStudio:select.toggle')}
+    </DsButton>
+  );
+
   const headerRow = (inTitlebar: boolean) => (
     <div className={cn('flex min-w-0 items-center justify-between gap-3', inTitlebar && 'pointer-events-auto h-full flex-1')}>
       <div className="flex min-w-0 items-center gap-2">
@@ -276,6 +557,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       </div>
       {!isSmallScreen ? (
         <div className="flex shrink-0 items-center gap-1.5">
+          {items.length > 0 ? selectToggle(inTitlebar ? 'titlebar' : 'page') : null}
           {bilibiliButton(inTitlebar)}
           {importButton(inTitlebar)}
         </div>
@@ -294,6 +576,188 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       </>
     ),
   }));
+
+  const viewOptions = ([
+    ['list', ListBullets],
+    ['grouped', Folders],
+  ] as const).map(([value, Icon]) => ({
+    value,
+    ariaLabel: t(`mediaStudio:view.${value}`),
+    title: t(`mediaStudio:view.${value}`),
+    label: <Icon size={isSmallScreen ? 18 : 15} aria-hidden="true" />,
+  }));
+
+  const viewToggle = (
+    <SegmentedControl<MediaLibraryViewMode>
+      ariaLabel={t('mediaStudio:view.aria')}
+      value={viewMode}
+      onValueChange={setViewMode}
+      options={viewOptions}
+      size="compact"
+      className="shrink-0 [&_.study-shell-segmented-thumb]:border-transparent"
+      itemClassName={isSmallScreen ? '!h-auto !min-h-11 !min-w-11 !px-3' : '!h-auto !px-2 !py-1'}
+    />
+  );
+
+  const selectedCount = selectedItems.length;
+  const canMoveOut = selectedItems.some((item) => item.folderId);
+
+  const moveMenu = (phone: boolean) => (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <DsButton
+          variant="ghost"
+          size={phone ? 'md' : 'sm'}
+          disabled={selectedCount === 0 || batchBusy}
+          data-media-select-move=""
+          className={cn('gap-1.5', phone && 'flex-1')}
+        >
+          <FolderSimple size={phone ? 16 : 14} aria-hidden="true" />
+          {t('mediaStudio:select.move')}
+        </DsButton>
+      </AppMenuTrigger>
+      <AppMenuContent align={phone ? 'start' : 'end'} width={240} aria-label={t('mediaStudio:group.pickerLabel')}>
+        {folders.length > 0 ? (
+          <>
+            <AppMenuLabel>{t('mediaStudio:group.existing')}</AppMenuLabel>
+            {folders.map((folder) => (
+              <AppMenuItem
+                key={folder.id}
+                icon={<FolderSimple size={15} aria-hidden="true" />}
+                onClick={() => void moveSelected(folder.id, folder.label)}
+                data-media-move-target={folder.id}
+              >
+                <span className="truncate">{folder.label}</span>
+              </AppMenuItem>
+            ))}
+            <AppMenuSeparator />
+          </>
+        ) : null}
+        <AppMenuItem icon={<FolderSimplePlus size={15} aria-hidden="true" />} onClick={openNewGroup}>
+          {t('mediaStudio:group.new')}
+        </AppMenuItem>
+        <AppMenuItem
+          icon={<FolderSimpleMinus size={15} aria-hidden="true" />}
+          disabled={!canMoveOut}
+          onClick={() => void moveSelected(null, '')}
+        >
+          {t('mediaStudio:group.moveOut')}
+        </AppMenuItem>
+      </AppMenuContent>
+    </AppMenu>
+  );
+
+  const selectCount = (
+    <span className="min-w-0 truncate text-xs font-medium text-foreground tabular-nums" aria-live="polite" data-media-select-count="">
+      {t('mediaStudio:select.count', { count: selectedCount })}
+    </span>
+  );
+
+  const selectAllButton = (phone: boolean) => (
+    <DsButton
+      variant="ghost"
+      size={phone ? 'md' : 'sm'}
+      onClick={toggleAll}
+      disabled={visible.length === 0}
+      data-media-select-all={allState}
+      className="shrink-0"
+    >
+      {allState === 'all' ? t('mediaStudio:select.deselectAll') : t('mediaStudio:select.selectAll')}
+    </DsButton>
+  );
+
+  const deleteSelectedButton = (phone: boolean) => (
+    <DsButton
+      variant="ghost"
+      size={phone ? 'md' : 'sm'}
+      disabled={selectedCount === 0 || batchBusy}
+      onClick={() => setBatchDeleting(true)}
+      data-media-select-delete=""
+      className={cn('gap-1.5 text-danger hover:text-danger', phone && 'flex-1')}
+    >
+      <Trash size={phone ? 16 : 14} aria-hidden="true" />
+      {t('mediaStudio:select.delete')}
+    </DsButton>
+  );
+
+  const doneButton = (phone: boolean) => (
+    <DsButton variant="primary" size={phone ? 'md' : 'sm'} onClick={exitSelect} data-media-select-done="" className="shrink-0">
+      {t('mediaStudio:select.done')}
+    </DsButton>
+  );
+
+  const renderRow = (item: MediaLibraryItem) => (
+    <MediaLibraryRow
+      key={item.id}
+      item={item}
+      now={now}
+      onOpen={onOpen}
+      onAction={handleAction}
+      selectMode={selectMode}
+      selected={selected.has(item.id)}
+      onToggleSelect={toggleItem}
+      onLongPressSelect={selectMode ? undefined : enterSelectWith}
+    />
+  );
+
+  const groupedList = (
+    <div className="flex flex-col gap-4" data-media-groups="">
+      {groups.map((group) => {
+        const key = groupKey(group);
+        const name = group.folderId ? group.label : t('mediaStudio:group.ungrouped');
+        const isCollapsed = collapsed.has(key);
+        const groupState = selectAllState(group.items, selected);
+        const listId = `media-group-${key}`;
+        return (
+          <section key={key} data-media-group={key} aria-label={name}>
+            <div className="mb-2 flex min-w-0 items-center gap-1">
+              {selectMode ? (
+                <DsButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  role="checkbox"
+                  aria-checked={groupState === 'all' ? true : groupState === 'some' ? 'mixed' : false}
+                  aria-label={t('mediaStudio:select.group', { name })}
+                  onClick={() => toggleGroupSelection(group)}
+                  className="!h-8 !w-8 shrink-0"
+                >
+                  <SelectMark state={groupState} />
+                </DsButton>
+              ) : null}
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleCollapsed(key)}
+                aria-expanded={!isCollapsed}
+                aria-controls={listId}
+                aria-label={t('mediaStudio:group.toggle', { name })}
+                data-media-group-toggle={key}
+                className="!h-auto min-h-8 min-w-0 flex-1 !justify-start gap-1.5 !px-1.5 text-left"
+              >
+                <CaretRight
+                  size={12}
+                  weight="bold"
+                  aria-hidden="true"
+                  className={cn('shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none', !isCollapsed && 'rotate-90')}
+                />
+                {group.folderId
+                  ? <FolderSimple size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+                  : null}
+                <span className="min-w-0 truncate text-xs font-semibold text-foreground">{name}</span>
+                <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">{group.items.length}</span>
+              </DsButton>
+            </div>
+            {isCollapsed ? null : (
+              <ul id={listId} className="flex flex-col gap-2" aria-label={name}>
+                {group.items.map(renderRow)}
+              </ul>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
 
   const progress = importer.progress;
   const importRow = importer.importing ? (
@@ -390,19 +854,23 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
           <p className="text-xs leading-relaxed text-muted-foreground">{t('mediaStudio:tagline')}</p>
           {hasItems ? (
             <div className={cn('flex items-center gap-3', isSmallScreen && 'flex-col items-stretch gap-2')}>
-              <div className={cn('relative flex-1', !isSmallScreen && 'max-w-xs')}>
-                <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
-                <Input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder={t('mediaStudio:searchPlaceholder')}
-                  aria-label={t('mediaStudio:searchPlaceholder')}
-                  className={cn(
-                    'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
-                    isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
-                  )}
-                />
+              <div className={cn('flex min-w-0 flex-1 items-center gap-2', !isSmallScreen && 'max-w-xs')}>
+                <div className="relative min-w-0 flex-1">
+                  <MagnifyingGlass size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder={t('mediaStudio:searchPlaceholder')}
+                    aria-label={t('mediaStudio:searchPlaceholder')}
+                    className={cn(
+                      'border-transparent bg-[color:var(--surface-muted)] pl-8 pr-3',
+                      isSmallScreen ? 'h-11 text-sm' : 'h-8 text-xs',
+                    )}
+                  />
+                </div>
+                {isSmallScreen ? viewToggle : null}
+                {isSmallScreen ? selectToggle('phone') : null}
               </div>
               <SegmentedControl<MediaLibraryFilter>
                 ariaLabel={t('mediaStudio:filter.aria')}
@@ -418,6 +886,24 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
                   ? '!h-auto !px-3 !py-2 text-sm font-medium whitespace-nowrap'
                   : '!h-auto !px-2.5 !py-1 text-xs font-medium whitespace-nowrap'}
               />
+              {isSmallScreen ? null : <div className="ml-auto">{viewToggle}</div>}
+            </div>
+          ) : null}
+          {selectMode && !isSmallScreen && hasItems ? (
+            <div
+              role="toolbar"
+              aria-label={t('mediaStudio:select.barLabel')}
+              className="study-shell-secondary-card flex items-center gap-2 px-3 py-1.5"
+              data-media-select-bar=""
+            >
+              {selectCount}
+              {selectAllButton(false)}
+              <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                {batchBusy ? <CircleNotch size={14} className="animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" /> : null}
+                {moveMenu(false)}
+                {deleteSelectedButton(false)}
+                {doneButton(false)}
+              </div>
             </div>
           ) : null}
         </div>
@@ -447,17 +933,36 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
                 {query.trim() ? t('mediaStudio:noMatch') : t(`mediaStudio:filterEmpty.${filter}`)}
               </p>
             ) : (
-              <ul className="flex flex-col gap-2" aria-label={t('mediaStudio:listLabel')}>
-                {visible.map((item) => (
-                  <MediaLibraryRow key={item.id} item={item} now={now} onOpen={onOpen} onAction={handleAction} />
-                ))}
-              </ul>
+              viewMode === 'grouped' ? groupedList : (
+                <ul className="flex flex-col gap-2" aria-label={t('mediaStudio:listLabel')}>
+                  {visible.map(renderRow)}
+                </ul>
+              )
             )}
           </div>
         </CustomScrollArea>
       </UnifiedDragDropZone>
 
-      {isSmallScreen ? (
+      {isSmallScreen && selectMode && hasItems ? (
+        // 手机多选：操作条替换底部导入条（单手可达）
+        <div
+          role="toolbar"
+          aria-label={t('mediaStudio:select.barLabel')}
+          className="study-shell-toolbar shrink-0 space-y-1.5 border-t px-3 pt-2"
+          style={{ paddingBottom: 'calc(0.5rem + var(--mobile-safe-area-bottom, 0px))' }}
+          data-media-select-bar=""
+        >
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">{selectCount}</div>
+            {selectAllButton(true)}
+            {doneButton(true)}
+          </div>
+          <div className="flex items-center gap-2">
+            {moveMenu(true)}
+            {deleteSelectedButton(true)}
+          </div>
+        </div>
+      ) : isSmallScreen ? (
         // 手机：导入固定在底部，单手可达
         <div
           className="study-shell-toolbar shrink-0 border-t px-3 pt-2"
@@ -528,6 +1033,42 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
         onConfirm={() => void confirmDelete()}
         loading={busy}
       />
+
+      <DsAlertDialog
+        open={batchDeleting}
+        onOpenChange={(open) => { if (!open && !batchBusy) setBatchDeleting(false); }}
+        title={t('mediaStudio:select.deleteTitle', { count: selectedCount })}
+        description={t('mediaStudio:row.deleteDesc')}
+        confirmText={t('mediaStudio:row.delete')}
+        onConfirm={() => void confirmBatchDelete()}
+        loading={batchBusy}
+        disabled={selectedCount === 0}
+      />
+
+      <DsAlertDialog
+        open={newGroup !== null}
+        onOpenChange={(open) => { if (!open && !batchBusy) setNewGroup(null); }}
+        title={t('mediaStudio:group.newTitle')}
+        description={t('mediaStudio:group.newHint', { count: selectedCount })}
+        confirmText={t('mediaStudio:group.create')}
+        confirmVariant="primary"
+        onConfirm={() => void confirmNewGroup()}
+        loading={batchBusy}
+        disabled={!newGroup?.name.trim()}
+      >
+        <Input
+          autoFocus
+          value={newGroup?.name ?? ''}
+          onChange={(event) => setNewGroup((prev) => (prev ? { ...prev, name: event.target.value } : prev))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) void confirmNewGroup();
+          }}
+          placeholder={t('mediaStudio:group.namePlaceholder')}
+          aria-label={t('mediaStudio:group.namePlaceholder')}
+          className="h-9 text-sm"
+          data-media-new-group-name=""
+        />
+      </DsAlertDialog>
     </div>
   );
 };

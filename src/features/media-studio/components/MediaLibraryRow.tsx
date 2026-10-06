@@ -1,11 +1,13 @@
 /**
  * 音视频库列表行：16:9 缩略图（B 站封面 / 类型图标，底边是观看进度）· 名称 · 时长 / 最近观看 ·
  * 转写状态徽章 · ⋯ 菜单。进度条画在缩略图里，各行高度一致。
- * 触屏：整行 ≥ 64px、⋯ 按钮 44px；长按与 ⋯ 打开同一个 AppMenu（本仓无底部动作表基元）。
+ * 触屏：整行 ≥ 64px、⋯ 按钮 44px；长按进入多选并勾选该行（页面未接多选时退回打开 ⋯ 菜单）。
+ * 多选模式：行首显示勾选框，点整行切换勾选（不进入学习页），隐藏 ⋯ 菜单。
  */
 import React, { memo, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
+  Check,
   CheckCircle,
   CircleNotch,
   DotsThree,
@@ -142,15 +144,47 @@ export interface MediaLibraryRowProps {
   now: number;
   onOpen: (item: MediaLibraryItem) => void;
   onAction: (item: MediaLibraryItem, action: MediaRowAction) => void;
+  /** 多选模式：点行切换勾选 */
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (item: MediaLibraryItem) => void;
+  /** 长按进入多选（并勾选该行）；不传时长按打开 ⋯ 菜单 */
+  onLongPressSelect?: (item: MediaLibraryItem) => void;
 }
 
-export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen, onAction }: MediaLibraryRowProps) {
+/** 勾选框外观（整行是 role=checkbox 的按钮，不能再嵌套一个按钮） */
+const SelectMark: React.FC<{ checked: boolean }> = ({ checked }) => (
+  <span
+    aria-hidden="true"
+    data-media-row-check={checked ? 'checked' : 'unchecked'}
+    className={cn(
+      'flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[4px] border transition-colors',
+      checked ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-transparent',
+    )}
+  >
+    {checked ? <Check size={12} weight="bold" /> : null}
+  </span>
+);
+
+export const MediaLibraryRow = memo(function MediaLibraryRow({
+  item,
+  now,
+  onOpen,
+  onAction,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+  onLongPressSelect,
+}: MediaLibraryRowProps) {
   const { t, i18n } = useTranslation(['mediaStudio', 'learningHub', 'common']);
   const [menuOpen, setMenuOpen] = useState(false);
   // 状态徽章只渲染一处：手机与元信息同行，桌面在行尾（不能靠 sm:hidden——
   // study-shell-badge 自带 display 会盖掉 hidden，导致两处同时出现）
   const { isSmallScreen } = useBreakpoint();
-  const longPress = useLongPress({ onLongPress: () => setMenuOpen(true) });
+  const longPress = useLongPress({
+    onLongPress: () => (onLongPressSelect ? onLongPressSelect(item) : setMenuOpen(true)),
+    disabled: selectMode,
+  });
 
   const duration = formatDuration(item.durationMs);
   const ratio = watchRatio(item);
@@ -175,16 +209,20 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
         className={cn(
           'study-shell-secondary-card flex items-center gap-3 px-3 py-2.5',
           'min-h-16',
+          selectMode && selected && 'ring-1 ring-inset ring-primary/45 bg-primary/[0.06]',
         )}
       >
-        {/* 主体：整块可点进入学习页 */}
+        {/* 主体：整块可点进入学习页；多选模式下切换勾选 */}
         <DsButton
           variant="ghost"
-          onClick={() => onOpen(item)}
+          onClick={() => (selectMode ? onToggleSelect?.(item) : onOpen(item))}
           {...longPress.bind}
-          aria-label={t('mediaStudio:row.open', { name: displayName })}
+          {...(selectMode
+            ? { role: 'checkbox', 'aria-checked': selected, 'aria-label': t('mediaStudio:select.row', { name: displayName }) }
+            : { 'aria-label': t('mediaStudio:row.open', { name: displayName }) })}
           className="!h-auto min-w-0 flex-1 !justify-start gap-3 !p-0 text-left hover:!bg-transparent"
         >
+          {selectMode ? <SelectMark checked={selected} /> : null}
           <MediaThumb item={item} icon={<Icon size={20} weight="duotone" />} ratio={finished ? null : ratio} />
           <span className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="flex min-w-0 items-center gap-2">
@@ -203,39 +241,40 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
 
         {isSmallScreen ? null : <MediaStatusChip item={item} />}
 
-        <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
-          <AppMenuTrigger asChild>
-            <DsButton
-              variant="ghost"
-              size="icon"
-              iconOnly
-              aria-label={t('mediaStudio:row.more', { name: displayName })}
-              title={t('common:more')}
-              className="!h-8 !w-8 shrink-0 text-muted-foreground"
-            >
-              <DotsThree size={18} weight="bold" aria-hidden="true" />
-            </DsButton>
-          </AppMenuTrigger>
-          <AppMenuContent align="end" width={220}>
-            <AppMenuItem icon={<FileArrowUp size={15} aria-hidden="true" />} onClick={() => act({ type: 'importSubtitle' })}>
-              {t('learningHub:mediaTranscript.import')}
-            </AppMenuItem>
-            <AppMenuItem icon={<Television size={15} aria-hidden="true" />} onClick={() => act({ type: 'bilibiliSubtitle' })}>
-              {item.isLink ? t('learningHub:mediaBilibili.refetch') : t('learningHub:mediaBilibili.fromLink')}
-            </AppMenuItem>
-            {(['srt', 'vtt', 'txt'] as const).map((format) => (
-              <AppMenuItem
-                key={format}
-                icon={<FileArrowDown size={15} aria-hidden="true" />}
-                disabled={!hasTranscript}
-                onClick={() => act({ type: 'exportSubtitle', format })}
+        {selectMode ? null : (
+          <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
+            <AppMenuTrigger asChild>
+              <DsButton
+                variant="ghost"
+                size="icon"
+                iconOnly
+                aria-label={t('mediaStudio:row.more', { name: displayName })}
+                title={t('common:more')}
+                className="!h-8 !w-8 shrink-0 text-muted-foreground"
               >
-                {t(
-                  format === 'srt'
-                    ? 'learningHub:mediaTranscript.exportSrt'
-                    : format === 'vtt'
-                      ? 'learningHub:mediaTranscript.exportVtt'
-                      : 'learningHub:mediaTranscript.exportTxt',
+                <DotsThree size={18} weight="bold" aria-hidden="true" />
+              </DsButton>
+            </AppMenuTrigger>
+            <AppMenuContent align="end" width={220}>
+              <AppMenuItem icon={<FileArrowUp size={15} aria-hidden="true" />} onClick={() => act({ type: 'importSubtitle' })}>
+                {t('learningHub:mediaTranscript.import')}
+              </AppMenuItem>
+              <AppMenuItem icon={<Television size={15} aria-hidden="true" />} onClick={() => act({ type: 'bilibiliSubtitle' })}>
+                {item.isLink ? t('learningHub:mediaBilibili.refetch') : t('learningHub:mediaBilibili.fromLink')}
+              </AppMenuItem>
+              {(['srt', 'vtt', 'txt'] as const).map((format) => (
+                <AppMenuItem
+                  key={format}
+                  icon={<FileArrowDown size={15} aria-hidden="true" />}
+                  disabled={!hasTranscript}
+                  onClick={() => act({ type: 'exportSubtitle', format })}
+                >
+                  {t(
+                    format === 'srt'
+                      ? 'learningHub:mediaTranscript.exportSrt'
+                      : format === 'vtt'
+                        ? 'learningHub:mediaTranscript.exportVtt'
+                        : 'learningHub:mediaTranscript.exportTxt',
                 )}
               </AppMenuItem>
             ))}
@@ -252,6 +291,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({ item, now, onOpen
             </AppMenuItem>
           </AppMenuContent>
         </AppMenu>
+        )}
       </div>
     </li>
   );

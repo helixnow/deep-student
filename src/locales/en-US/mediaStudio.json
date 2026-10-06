@@ -132,5 +132,48 @@
     "finished": "Finished",
     "transcript": "Transcript",
     "segments": "{{done}}/{{total}} segments"
+  },
+  "select": {
+    "toggle": "Select",
+    "done": "Done",
+    "barLabel": "Bulk actions",
+    "count_one": "{{count}} selected",
+    "count_other": "{{count}} selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "row": "Select “{{name}}”",
+    "group": "Select everything in “{{name}}”",
+    "move": "Move to group…",
+    "delete": "Delete",
+    "deleteTitle_one": "Delete {{count}} selected item?",
+    "deleteTitle_other": "Delete {{count}} selected items?",
+    "deleted_one": "Deleted {{count}} item",
+    "deleted_other": "Deleted {{count}} items",
+    "deletePartial": "Deleted {{done}}, {{failed}} failed",
+    "moved_one": "Moved {{count}} item to “{{name}}”",
+    "moved_other": "Moved {{count}} items to “{{name}}”",
+    "movedOut_one": "Removed {{count}} item from its group",
+    "movedOut_other": "Removed {{count}} items from their groups",
+    "movePartial": "Moved {{done}}, {{failed}} failed",
+    "moveFailed": "Move failed"
+  },
+  "view": {
+    "aria": "List layout",
+    "list": "List",
+    "grouped": "By group"
+  },
+  "group": {
+    "ungrouped": "Ungrouped",
+    "toggle": "Expand or collapse “{{name}}”",
+    "pickerLabel": "Move to group",
+    "existing": "Groups",
+    "new": "New group…",
+    "moveOut": "Remove from group",
+    "newTitle": "New group",
+    "newHint_one": "Creates a folder at the top of the library and moves the {{count}} selected item into it.",
+    "newHint_other": "Creates a folder at the top of the library and moves the {{count}} selected items into it.",
+    "namePlaceholder": "Group name",
+    "create": "Create and move",
+    "createFailed": "Couldn't create the group"
   }
 }
