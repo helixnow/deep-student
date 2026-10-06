@@ -8,6 +8,7 @@ import examSheet from '@app/locales/zh-CN/exam_sheet.json';
 import flashcards from '@app/locales/zh-CN/flashcards.json';
 import generativeUi from '@app/locales/zh-CN/generativeUi.json';
 import learningHub from '@app/locales/zh-CN/learningHub.json';
+import mediaStudio from '@app/locales/zh-CN/mediaStudio.json';
 import mindmap from '@app/locales/zh-CN/mindmap.json';
 import practice from '@app/locales/zh-CN/practice.json';
 import settings from '@app/locales/zh-CN/settings.json';
@@ -28,6 +29,7 @@ const NS = {
   flashcards,
   generativeUi,
   learningHub,
+  mediaStudio,
   mindmap,
   practice,
   settings,
@@ -542,6 +544,68 @@ export const S = {
     original: tr('essay_grading', 'sections.original'),
     polished: tr('essay_grading', 'sections.polished'),
     copy: tr('common', 'copy'),
+  },
+  media: {
+    app: tr('workbench', 'apps.media'),
+    title: tr('mediaStudio', 'title'),
+    tagline: tr('mediaStudio', 'tagline'),
+    count: (n: number) => tr('mediaStudio', 'count', { count: n }),
+    search: tr('mediaStudio', 'searchPlaceholder'),
+    filter: {
+      all: tr('mediaStudio', 'filter.all'),
+      watching: tr('mediaStudio', 'filter.watching'),
+      untranscribed: tr('mediaStudio', 'filter.untranscribed'),
+      transcribed: tr('mediaStudio', 'filter.transcribed'),
+    },
+    status: {
+      none: tr('mediaStudio', 'status.none'),
+      completed: tr('mediaStudio', 'status.completed'),
+      imported: tr('mediaStudio', 'status.imported'),
+    },
+    lastWatched: (time: string) => tr('mediaStudio', 'row.lastWatched', { time }),
+    notStarted: tr('mediaStudio', 'row.notStarted'),
+    biliBadge: tr('mediaStudio', 'row.bilibiliBadge'),
+    select: tr('mediaStudio', 'select.toggle'),
+    importBtn: tr('mediaStudio', 'import.button'),
+    bilibili: tr('mediaStudio', 'import.bilibili'),
+    tabs: {
+      transcript: tr('learningHub', 'mediaTranscript.panelTitle'),
+      handout: tr('mediaStudio', 'study.tab.handout'),
+      ask: tr('mediaStudio', 'study.tab.ask'),
+      practice: tr('mediaStudio', 'study.tab.practice'),
+    },
+    segments: (n: number) => tr('learningHub', 'mediaTranscript.segmentCount', { count: n }),
+    transcriptSearch: tr('learningHub', 'mediaTranscript.searchPlaceholder'),
+    openOnBili: tr('learningHub', 'mediaBilibili.openOnBilibili'),
+    useEmbed: tr('learningHub', 'mediaBilibili.playback.useEmbed'),
+    capture: tr('learningHub', 'mediaTranscript.captureFrameShort'),
+    dlg: {
+      title: tr('learningHub', 'mediaBilibili.dialogTitleCreate'),
+      desc: tr('learningHub', 'mediaBilibili.dialogDescCreate'),
+      account: tr('learningHub', 'mediaBilibili.account.hint'),
+      login: tr('learningHub', 'mediaBilibili.account.login'),
+      placeholder: tr('learningHub', 'mediaBilibili.linkPlaceholder'),
+      parse: tr('learningHub', 'mediaBilibili.parse'),
+      parsing: tr('learningHub', 'mediaBilibili.parsing'),
+      pageCount: (n: number) => tr('learningHub', 'mediaBilibili.pageCount', { count: n }),
+      pages: (selected: number, total: number) => tr('learningHub', 'mediaBilibili.pagesLabel', { selected, total }),
+      selectAll: tr('learningHub', 'mediaBilibili.selectAll'),
+      selectNone: tr('learningHub', 'mediaBilibili.selectNone'),
+      track: tr('learningHub', 'mediaBilibili.trackLabel'),
+      batchHint: tr('learningHub', 'mediaBilibili.batchTrackHint'),
+      confirm: (n: number) => tr('learningHub', 'mediaBilibili.confirmBatch', { count: n }),
+      progress: (index: number, total: number, page: number, part: string) => tr('learningHub', 'mediaBilibili.batchProgress', { index, total, page, part }),
+      stop: tr('learningHub', 'mediaBilibili.stop'),
+      cancel: tr('common', 'cancel'),
+    },
+  },
+  appsPanel: {
+    title: tr('workbench', 'appsPanel.title'),
+    sectionApps: tr('workbench', 'appsPanel.sectionApps'),
+    select: tr('workbench', 'appsPanel.hintSelect'),
+    open: tr('workbench', 'appsPanel.hintOpen'),
+    close: tr('workbench', 'appsPanel.hintClose'),
+    app: (id: string) => tr('workbench', `apps.${id}`),
   },
   trans: {
     title: tr('workbench', 'apps.translation'),

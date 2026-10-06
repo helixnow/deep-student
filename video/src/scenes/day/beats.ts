@@ -1,5 +1,5 @@
 /**
- * 第二幕「第二天」：白天的学习桌面（亮色工作台）。单位为脚本秒（成片 0:46–1:48）。
+ * 第二幕「第二天」：白天的学习桌面（亮色工作台）。单位为脚本秒（成片 0:46–1:58；1:32–1:42 是 0.10.2 加的音视频段）。
  * 起点 23.0 = 夜里复习那段的 WK.out1，两边在这一帧的桌面完全一致。
  * 打开应用的路径都是产品里真实存在的：日程小组件的「待办 →」、桌面快捷方式双击、Dock 图标、
  * 双击桌面空白处「显示桌面」（showDesktop.ts：可见窗口一起最小化）。
@@ -50,30 +50,46 @@ export const DAY = {
   translateDone: 44.95, // 流完自动保存：引导条消失、「已保存」
   showDesk2: 45.45, // 再次「显示桌面」，收起 07 的窗口
   writingOut: 45.85,
+  // 08a 音视频（0.10.2 新应用；v6 插入的 5 脚本秒，之后各节拍整体后移 5）：Dock「全部应用」→ 搜「音视频」→ 打开
+  // → 「B 站链接」导入多 P 课程 → 打开 P4 播放、字幕随播放高亮 → 点一句字幕跳到那一刻 → 黄灯收进 Dock
+  mediaApps: 46.04, // 点 Dock「全部应用」：面板（网格）浮现
+  mediaType: 46.16, // 输入「音视频」：进入分区搜索，只剩一个应用结果
+  mediaEnter: 46.4, // Enter：面板退场
+  mediaOpen: 46.42, // 音视频窗口开（级联 4 号槽），库页
+  mediaBili: 46.66, // 点标题行「B 站链接」→ 弹窗
+  mediaPaste: 46.84, // 点进链接框 ⌘V
+  mediaParse: 46.98, // 点「解析」
+  mediaProbe: 47.14, // 解析完成：封面 / 标题 / 5 个分 P / 字幕轨
+  mediaImport: 47.42, // 点「导入 5 个分 P」→ 逐 P 导入
+  mediaImported: 47.84, // 导入完成：弹窗关、5 行落进列表
+  mediaRow: 48.04, // 点 P4 → 学习页
+  mediaPlay: 48.2, // 点播放：字幕高亮随播放逐句前进
+  mediaSeek: 49.16, // 点右侧字幕「n 阶矩阵 A 可对角化，」→ 画面跳到定理页
+  mediaMin: 50.3, // 点黄灯：音视频窗口 genie 进 Dock（运行区）
   // 08 调研（对话窗口停在「新对话」空态）
-  researchOpen: 46.0, // 点 Dock「对话」：最小化着的对话窗口还原
-  researchType: 46.3, // 点进输入框打「/res」→ 弹出技能命令补全
-  researchTab: 46.46, // Tab 补全成「/research-mode 」，接着打问题
-  researchSend: 46.95, // 发出（令牌被剥掉、激活调研模式；侧栏顶部出现「未命名会话」）
-  researchAsk: 47.28, // ask_user 卡顶替输入框：这次调研希望做到多深？
-  researchPick: 47.52, // 点「中等深度」
-  researchSubmit: 47.7, // 点「提交」
-  researchSteps: 47.84, // 任务面板出现，6 步逐条打勾
-  researchDone: 49.12, // 6/6：产物 / 变更 / 任务完成（面板不会自动收起）
-  researchCollapse: 49.32, // 点 ^ 收起面板，露出回答
-  researchTitle: 49.46, // 首轮结束自动起名：侧栏与窗口标题一起变
-  noteType: 49.56, // 点进输入框打「打开这篇笔记，把主要发现改精炼些」
-  noteSend: 49.88, // 发出 → 加载技能组（canvas-note + workbench-tools）→ 打开 / 观察 / 读取 / 替换笔记
-  noteOpen: 50.1, // workbench_open_app：笔记窗从中心弹入（笔记不在 Dock 固定区），级联 1 号槽
-  noteEdit: 50.4, // note_replace：笔记窗 clean → 前端直写；AgentStrip、改动段落蓝色渐隐、「AI 刚修改了这篇笔记」撤销条
-  chatBack: 51.26, // 点对话窗露出来的那截输入框：对话窗回到最前、输入框聚焦
-  paperType: 51.32, // 打追问
-  paperSend: 51.66, // 发出追问 → arXiv 结果
-  paperSave: 52.12, // 论文下载卡：解析地址 → 下载中 → 去重 / 存储 / 文本提取 / 建立索引
-  paperSaved: 52.54, // 已保存 1/1 篇完成
-  hubIndex: 52.94, // 点 Dock「资源库」：打开「全部文件」
-  hubKb: 53.4, // 点侧栏「知识库索引」
-  end: 54.0,
+  researchOpen: 51.0, // 点 Dock「对话」：最小化着的对话窗口还原
+  researchType: 51.3, // 点进输入框打「/res」→ 弹出技能命令补全
+  researchTab: 51.46, // Tab 补全成「/research-mode 」，接着打问题
+  researchSend: 51.95, // 发出（令牌被剥掉、激活调研模式；侧栏顶部出现「未命名会话」）
+  researchAsk: 52.28, // ask_user 卡顶替输入框：这次调研希望做到多深？
+  researchPick: 52.52, // 点「中等深度」
+  researchSubmit: 52.7, // 点「提交」
+  researchSteps: 52.84, // 任务面板出现，6 步逐条打勾
+  researchDone: 54.12, // 6/6：产物 / 变更 / 任务完成（面板不会自动收起）
+  researchCollapse: 54.32, // 点 ^ 收起面板，露出回答
+  researchTitle: 54.46, // 首轮结束自动起名：侧栏与窗口标题一起变
+  noteType: 54.56, // 点进输入框打「打开这篇笔记，把主要发现改精炼些」
+  noteSend: 54.88, // 发出 → 加载技能组（canvas-note + workbench-tools）→ 打开 / 观察 / 读取 / 替换笔记
+  noteOpen: 55.1, // workbench_open_app：笔记窗从中心弹入（笔记不在 Dock 固定区），级联 1 号槽
+  noteEdit: 55.4, // note_replace：笔记窗 clean → 前端直写；AgentStrip、改动段落蓝色渐隐、「AI 刚修改了这篇笔记」撤销条
+  chatBack: 56.26, // 点对话窗露出来的那截输入框：对话窗回到最前、输入框聚焦
+  paperType: 56.32, // 打追问
+  paperSend: 56.66, // 发出追问 → arXiv 结果
+  paperSave: 57.12, // 论文下载卡：解析地址 → 下载中 → 去重 / 存储 / 文本提取 / 建立索引
+  paperSaved: 57.54, // 已保存 1/1 篇完成
+  hubIndex: 57.94, // 点 Dock「资源库」：打开「全部文件」
+  hubKb: 58.4, // 点侧栏「知识库索引」
+  end: 59.0,
 } as const;
 
 /** 08 任务面板每步时长：第 6 步在 researchDone 前 0.06 打勾（一步 = 开始 0.02 后执行、0.88 处完成）。 */

@@ -51,18 +51,21 @@ export const SUPERS: Super[] = [
   { s: 38.4, e: 41.1, text: '作文按考试标准逐项评分。', sub: '分项成绩、雷达图与逐条评语一并给出。', kind: 'feature' },
   { s: 41.25, e: 42.95, text: '逐句润色，改动之处清晰标注。', kind: 'feature' },
   { s: 43.1, e: 45.5, text: '整篇翻译，原文译文逐段对照。', kind: 'feature' },
-  { s: 46.3, e: 49.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
+  // 0.10.2 音视频：B 站链接导入（不下载视频、应用内播放，见 BilibiliLinkDialog 文案）→ 点字幕跳转
+  { s: 46.15, e: 48.3, text: '网课和讲座，它陪你一起学。', sub: '粘贴 B 站链接即导入字幕，不下载视频，直接在应用内播放。', kind: 'feature' },
+  { s: 49.0, e: 50.75, text: '点一句字幕，回到那一刻。', sub: '字幕随播放逐句高亮，它回答里的时间引用同样可以点开跳转。', kind: 'feature' },
+  { s: 51.3, e: 54.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
   // 笔记窗 clean 时 AI 直接改、改动处渐隐高亮，顶部留「撤销本次修改」
-  { s: 49.5, e: 51.25, text: '它直接修改笔记，每处改动均可撤销。', kind: 'feature' },
-  { s: 51.4, e: 53.85, text: '论文由它下载入库。', sub: '导入即建立索引，可在后续提问中引用。', kind: 'feature' },
+  { s: 54.5, e: 56.25, text: '它直接修改笔记，每处改动均可撤销。', kind: 'feature' },
+  { s: 56.4, e: 58.85, text: '论文由它下载入库。', sub: '导入即建立索引，可在后续提问中引用。', kind: 'feature' },
   // 第三幕：越用越懂你
-  { s: 54.1, e: 55.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
-  { s: 56.1, e: 57.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
+  { s: 59.1, e: 60.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
+  { s: 61.1, e: 62.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
   // 与同一时刻画面里技能窗的「全部 56 · 内置 56」对得上
-  { s: 58.0, e: 60.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
-  { s: 60.4, e: 62.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
+  { s: 63.0, e: 65.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
+  { s: 65.4, e: 67.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
   // 收尾
-  { s: 62.3, e: 69.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },
+  { s: 67.3, e: 74.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },
 ];
 
 /** 逐字从一道看不见的基线下升起（遮罩揭示），收尾时整行轻轻下沉淡出。 */

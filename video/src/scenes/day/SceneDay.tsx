@@ -12,15 +12,17 @@ import { NOTES_H, NOTES_W, NotesTitlebar, NotesView, type NotesState } from '../
 import { CHAT_H, CHAT_PT, CHAT_W, ChatTitlebar, HUB_H, HUB_PT, HUB_W, HubTitlebar, HubWindow, ResearchChat, SESSION_TITLE, type ResearchTL } from '../../ui/research';
 import { POMO_RECT, PomodoroWindowBody, pomoTitle, TODO_H, TODO_ITEMS, TODO_W, TodoApp, todoPlayCenter, todoRowCenter, TodoToolbar, type TodoState } from '../../ui/todo';
 import { ResourceTitlebar, SIDEBAR_COLLAPSE_S } from '../../ui/resource';
+import { AppsPanel, BiliDialog, contentToWin, COURSE, DLG_PT, LIB_PT, MEDIA_H, MEDIA_W, MediaLibrary, MediaStudy, pageName, SEEK_SEG, SEGMENTS, STUDY_PAGE, STUDY_PT, type AppsPanelState, type DialogStage, type DialogState, type LibraryState, type StudyState } from '../../ui/media';
 import { TRANS_H, TRANS_LEN, TRANS_PT, TRANS_W, TranslateView, type TransStage, type TransState, type TransTarget } from '../../ui/translate';
-import { APP_NAMES, Dock, dockBounceAt, dockIconCenter, type DockBadge, GENIE_S, IND_S, MenuBar, menuClock, TIP_DELAY_S, TIP_FADE_S, Wallpaper, WbWindow, winLife, type Rect } from '../../ui/workbench';
+import { APP_NAMES, Dock, dockBounceAt, dockIconCenter, type DockBadge, GENIE_S, IND_S, MenuBar, menuClock, TIP_DELAY_S, TIP_FADE_S, trafficCenter, Wallpaper, WbWindow, winLife, type Rect } from '../../ui/workbench';
 import { nightDock, nightMenubar } from '../review/SceneReview';
 import { DAY, DBL, RESEARCH_STEP, wallDrift } from './beats';
 
 /**
  * 第二幕「第二天」：夜里复习完的学习桌面迎来清晨，之后按产品里真实的路径打开应用：
  * 日程小组件「待办 →」→ 待办「今日」→ 开始专注 → 双击桌面「显示桌面」→ 双击桌面快捷方式打开题目集 / 作文批改 / 翻译
- * → 再次「显示桌面」→ Dock 还原对话（调研 + 追问论文）→ Dock 打开资源库 → 知识库索引。
+ * → 再次「显示桌面」→ Dock「全部应用」打开音视频（B 站链接导入、边看边跟字幕、点字幕跳转）→ 黄灯收起
+ * → Dock 还原对话（调研 + 追问论文）→ Dock 打开资源库 → 知识库索引。
  * 桌面（壁纸 / 快捷方式 / 小组件 / 菜单栏 / Dock）全程常驻，窗口在其上开合；镜头是 2D 推拉。
  */
 export const TODO_RECT: Rect = { x: 48, y: 88, w: TODO_W, h: TODO_H };
@@ -36,8 +38,15 @@ const essayPt = (p: { x: number; y: number }) => ({ x: ESSAY_RECT.x + p.x, y: ES
 const transPt = (p: { x: number; y: number }) => ({ x: TRANS_RECT.x + p.x, y: TRANS_RECT.y + p.y });
 /** 对话窗口昨晚就开着（最小化），位置不在级联槽上；默认尺寸 1080×720（chat/register.ts defaultFrame）。 */
 export const CHAT_RECT: Rect = { x: 560, y: 110, w: CHAT_W, h: CHAT_H };
-/** 资源库 980×660 级联落 4 号槽（0–3 号槽被待办 / 作文 / 题目集 / 翻译占着，最小化的也占槽）。 */
-export const HUB_RECT: Rect = { x: 144, y: 184, w: HUB_W, h: HUB_H };
+/** 音视频 1100×700（system/register.tsx defaultFrame）级联落 4 号槽（0–3 号槽被待办 / 作文 / 题目集 / 翻译占着，最小化的也占槽）。 */
+export const MEDIA_RECT: Rect = { x: 144, y: 184, w: MEDIA_W, h: MEDIA_H };
+/** 资源库 980×660 级联落 5 号槽（4 号槽被最小化的音视频占着）。 */
+export const HUB_RECT: Rect = { x: 168, y: 208, w: HUB_W, h: HUB_H };
+/** 音视频窗口内容坐标 → 桌面坐标 */
+const mediaPt = (p: { x: number; y: number }) => {
+  const w = contentToWin(p);
+  return { x: MEDIA_RECT.x + w.x, y: MEDIA_RECT.y + w.y };
+};
 /** 08 AI 打开的笔记窗 1240×760（notes/register.ts defaultFrame），取证落在级联 1 号槽；盖住对话窗左大半，输入框右段还露着。 */
 export const NOTES_RECT: Rect = { x: 72, y: 112, w: NOTES_W, h: NOTES_H };
 const chatPt = (p: { x: number; y: number }) => ({ x: CHAT_RECT.x + p.x, y: CHAT_RECT.y + p.y });
@@ -52,6 +61,9 @@ const SHOW_MIN = DAY.showDesk + DBL + 0.02;
 const SHOW_MIN2 = DAY.showDesk2 + DBL + 0.02;
 /** Dock 图标点按时刻（还原对话 / 打开资源库）。 */
 const CHAT_CLICK = DAY.researchOpen - 0.02;
+const APPS_CLICK = DAY.mediaApps;
+/** 音视频窗口：Enter 后面板退场 100ms，窗口才开（不在 Dock 上 → 从窗口中心放大）；点黄灯后 genie 进 Dock */
+const MEDIA_MIN = DAY.mediaMin + 0.01;
 const HUB_CLICK = DAY.hubIndex - 0.02;
 
 // ── 桌面状态 ─────────────────────────────────────────
@@ -63,6 +75,7 @@ const runningAt = (t: number): string[] => {
   if (t >= DAY.examOpen) r.push('exam');
   if (t >= DAY.essayOpen) r.push('essay');
   if (t >= DAY.translateOpen) r.push('translation');
+  if (t >= DAY.mediaOpen) r.push('media');
   if (t >= DAY.noteOpen) r.push('notes');
   if (t >= DAY.hubIndex) r.push('files');
   return r;
@@ -73,6 +86,7 @@ const FIRST_OPEN: Record<string, number> = {
   exam: DAY.examOpen,
   essay: DAY.essayOpen,
   translation: DAY.translateOpen,
+  media: DAY.mediaOpen,
   notes: DAY.noteOpen,
   files: DAY.hubIndex,
 };
@@ -103,7 +117,9 @@ const dayMenubar = (t: number) => {
               ? APP_NAMES.essay
               : t < SHOW_MIN2
                 ? APP_NAMES.translation
-                : t < DAY.researchOpen
+                : t >= DAY.mediaOpen && t < MEDIA_MIN
+                  ? APP_NAMES.media
+                  : t < DAY.researchOpen
                   ? S.desk.appName
                   : t < DAY.noteOpen
                     ? APP_NAMES.chat
@@ -112,7 +128,7 @@ const dayMenubar = (t: number) => {
                       : t < DAY.hubIndex
                         ? APP_NAMES.chat
                         : APP_NAMES.files;
-  const clock = t < DAY.essayOpen ? menuClock(3, 7, 30) : t < DAY.translateOpen ? menuClock(3, 14, 10) : t < DAY.researchOpen ? menuClock(3, 15, 40) : menuClock(3, 20, 5);
+  const clock = t < DAY.essayOpen ? menuClock(3, 7, 30) : t < DAY.translateOpen ? menuClock(3, 14, 10) : t < DAY.mediaApps ? menuClock(3, 15, 40) : t < DAY.researchOpen ? menuClock(3, 16, 50) : menuClock(3, 20, 5);
   const pomo = t >= DAY.todayFocus && t < DAY.essayOpen ? focusLeft(t) : null;
   return { app, clock, due: dueAt(t), pomo };
 };
@@ -121,7 +137,7 @@ const dayMenubar = (t: number) => {
 const dimAt = (t: number) => {
   const on = (a: number) => prog(t, a, a + 0.14, ease.wbOut);
   const off = (a: number) => prog(t, a, a + 0.14, ease.wbOut);
-  return Math.max(on(DAY.todayOpen) * (1 - off(SHOW_MIN + GENIE_S)), on(DAY.examOpen) * (1 - off(SHOW_MIN2 + GENIE_S)), on(DAY.researchOpen));
+  return Math.max(on(DAY.todayOpen) * (1 - off(SHOW_MIN + GENIE_S)), on(DAY.examOpen) * (1 - off(SHOW_MIN2 + GENIE_S)), on(DAY.mediaOpen) * (1 - off(MEDIA_MIN + GENIE_S)), on(DAY.researchOpen));
 };
 
 const night = (t: number) => 1 - prog(t, DAY.dawn0, DAY.dawn1, ease.inOutCubic);
@@ -200,6 +216,68 @@ const transState = (t: number): TransState => {
     clock: t * PACE,
   };
 };
+
+// 08a：音视频
+/** 字幕播放倍速：成片里一句一句地往下走（真实 1× 时一句要 3–5 秒，镜头里来不及看） */
+const PLAY_RATE = 3;
+const typed = (t: number) => {
+  const q = '音视频';
+  const n = t < DAY.mediaType ? 0 : Math.min(q.length, 1 + Math.floor((t - DAY.mediaType) / 0.06));
+  return q.slice(0, n);
+};
+const appsPanelState = (t: number): AppsPanelState => ({
+  k: prog(t, APPS_CLICK + 0.01, APPS_CLICK + 0.11, ease.brand) * (1 - prog(t, DAY.mediaEnter, DAY.mediaEnter + 0.1, ease.inCubic)),
+  query: typed(t),
+  searchK: prog(t, DAY.mediaType, DAY.mediaType + 0.1),
+  press: pressAt(t, DAY.mediaEnter, 0.04),
+});
+const libraryState = (t: number): LibraryState => ({
+  imported: prog(t, DAY.mediaImported + 0.02, DAY.mediaImported + 0.2),
+  biliHover: t >= DAY.mediaBili - 0.09 && t < DAY.mediaBili + 0.05 ? 1 : 0,
+  biliPress: pressAt(t, DAY.mediaBili),
+  rowHover: t >= DAY.mediaRow - 0.1 && t < DAY.mediaRow + 0.04 ? STUDY_PAGE : null,
+  rowPress: pressAt(t, DAY.mediaRow),
+});
+const DLG_STAGES: Array<[DialogStage, number]> = [
+  ['input', DAY.mediaBili],
+  ['parsing', DAY.mediaParse + 0.01],
+  ['probe', DAY.mediaProbe],
+  ['batch', DAY.mediaImport + 0.01],
+];
+const BATCH_T: [number, number] = [DAY.mediaImport + 0.02, DAY.mediaImported - 0.04];
+const dialogState = (t: number): DialogState => {
+  let i = 0;
+  DLG_STAGES.forEach(([, at], k) => {
+    if (t >= at) i = k;
+  });
+  const [stage, since] = DLG_STAGES[i];
+  return {
+    k: prog(t, DAY.mediaBili + 0.02, DAY.mediaBili + 0.12, ease.brand) * (1 - prog(t, DAY.mediaImported, DAY.mediaImported + 0.07, ease.inCubic)),
+    stage,
+    from: DLG_STAGES[Math.max(0, i - 1)][0],
+    grow: i === 0 ? 1 : prog(t, since, since + (stage === 'probe' ? 0.12 : 0.06)),
+    pasted: t >= DAY.mediaPaste + 0.03,
+    batch: COURSE.pages.length * prog(t, ...BATCH_T),
+    hover: t >= DAY.mediaParse - 0.09 && t < DAY.mediaParse + 0.05 ? 'parse' : t >= DAY.mediaImport - 0.09 && t < DAY.mediaImport + 0.05 ? 'confirm' : null,
+    press: Math.max(pressAt(t, DAY.mediaParse), pressAt(t, DAY.mediaImport)),
+    t: t * PACE,
+  };
+};
+const mediaPos = (t: number) =>
+  t < DAY.mediaPlay + 0.01 ? 0 : t < DAY.mediaSeek + 0.01 ? (t - DAY.mediaPlay - 0.01) * PACE * PLAY_RATE : SEGMENTS[SEEK_SEG][0] + (t - DAY.mediaSeek - 0.01) * PACE * PLAY_RATE;
+const studyState = (t: number): StudyState => ({
+  enter: prog(t, DAY.mediaRow + 0.02, DAY.mediaRow + 0.08),
+  pos: mediaPos(t),
+  playing: t >= DAY.mediaPlay + 0.01,
+  // 指针移到播放器上控制条出现，点完播放移去右侧字幕后 150ms 淡出
+  controls: prog(t, DAY.mediaPlay - 0.12, DAY.mediaPlay - 0.08) * (1 - prog(t, DAY.mediaPlay + 0.3, DAY.mediaPlay + 0.38)),
+  playHover: t >= DAY.mediaPlay - 0.09 ? 1 : 0,
+  playPress: pressAt(t, DAY.mediaPlay),
+  segHover: t >= DAY.mediaSeek - 0.12 && t < DAY.mediaSeek + 0.3 ? SEEK_SEG : null,
+  segPress: pressAt(t, DAY.mediaSeek),
+  seekFlash: prog(t, DAY.mediaSeek + 0.005, DAY.mediaSeek + 0.07),
+  t: t * PACE,
+});
 
 // 08：对话里的时间轴（打字、ask_user、任务面板、追问、论文下载）
 const RESEARCH_TL: ResearchTL = {
@@ -379,6 +457,23 @@ const DAY_CAM: CamKey[] = [
   [DAY.translateRun + 0.3, { x: 700, y: 520, zoom: 1.5 }, ease.inOutCubic],
   [DAY.showDesk2 - 0.45, { x: 720, y: 500, zoom: 1.55 }, ease.linear],
   [DAY.showDesk2 - 0.1, FULL, ease.inOutCubic],
+  // 08a：全部应用面板 → 库页标题行 → 弹窗（链接 / 解析，随后拉开看分 P 列表）→ 新导入的列表 → 学习页（右侧字幕在画内，底边让给字幕条）
+  [APPS_CLICK + 0.02, FULL, ease.linear],
+  [APPS_CLICK + 0.2, { x: 960, y: 540, zoom: 1.22 }, ease.inOutCubic],
+  [DAY.mediaEnter, { x: 960, y: 540, zoom: 1.24 }, ease.linear],
+  [DAY.mediaOpen + 0.18, { x: 820, y: 470, zoom: 1.32 }, ease.inOutCubic],
+  [DAY.mediaBili - 0.02, { x: 830, y: 470, zoom: 1.33 }, ease.linear],
+  [DAY.mediaBili + 0.18, { x: 900, y: 530, zoom: 1.5 }, ease.inOutCubic],
+  [DAY.mediaProbe, { x: 900, y: 530, zoom: 1.5 }, ease.linear],
+  [DAY.mediaProbe + 0.16, { x: 880, y: 540, zoom: 1.3 }, ease.inOutCubic],
+  [DAY.mediaImported - 0.02, { x: 880, y: 540, zoom: 1.3 }, ease.linear],
+  [DAY.mediaImported + 0.16, { x: 760, y: 500, zoom: 1.3 }, ease.inOutCubic],
+  [DAY.mediaRow - 0.02, { x: 760, y: 500, zoom: 1.3 }, ease.linear],
+  [DAY.mediaRow + 0.2, { x: 700, y: 590, zoom: 1.25 }, ease.inOutCubic],
+  [DAY.mediaPlay + 0.3, { x: 700, y: 590, zoom: 1.25 }, ease.linear],
+  [DAY.mediaSeek - 0.15, { x: 760, y: 570, zoom: 1.32 }, ease.inOutCubic],
+  [DAY.mediaMin - 0.25, { x: 765, y: 570, zoom: 1.33 }, ease.linear],
+  [DAY.mediaMin + 0.2, FULL, ease.inOutCubic],
   [DAY.researchOpen + 0.1, FULL, ease.linear],
   // 08：空态输入框（技能命令补全）→ 消息与 ask_user 卡 → 任务面板 → 收起后整窗（侧栏 / 标题起名）→ 追问与论文下载卡
   // → 退全景点 Dock → 资源库「全部文件」→ 知识库索引。主列在右、底边留给左下角字幕
@@ -403,11 +498,11 @@ const DAY_CAM: CamKey[] = [
   [DAY.paperSaved + 0.02, { x: 1236, y: 470, zoom: 1.45 }, ease.inOutCubic],
   [DAY.hubIndex - 0.06, FULL, ease.inOutCubic],
   [DAY.hubIndex + 0.1, FULL, ease.linear],
-  [DAY.hubIndex + 0.36, { x: 640, y: 540, zoom: 1.2 }, ease.inOutCubic],
-  [DAY.hubKb + 0.04, { x: 640, y: 540, zoom: 1.2 }, ease.linear],
-  [DAY.hubKb + 0.28, { x: 720, y: 560, zoom: 1.3 }, ease.inOutCubic],
-  [DAY.end - 0.2, { x: 735, y: 560, zoom: 1.33 }, ease.linear],
-  [DAY.end + 0.4, { x: 735, y: 560, zoom: 1.25 }, ease.inOutCubic],
+  [DAY.hubIndex + 0.36, { x: 664, y: 564, zoom: 1.2 }, ease.inOutCubic],
+  [DAY.hubKb + 0.04, { x: 664, y: 564, zoom: 1.2 }, ease.linear],
+  [DAY.hubKb + 0.28, { x: 744, y: 584, zoom: 1.3 }, ease.inOutCubic],
+  [DAY.end - 0.2, { x: 759, y: 584, zoom: 1.33 }, ease.linear],
+  [DAY.end + 0.4, { x: 759, y: 584, zoom: 1.25 }, ease.inOutCubic],
 ];
 
 // ── 瞳点 ──────────────────────────────────────────────
@@ -431,6 +526,9 @@ const PUPIL_PATH: Array<[number, number, number]> = (() => {
   const raise = chatPt(CHAT_RAISE);
   const chatIcon = dockIconCenter('chat', runningAt(CHAT_CLICK));
   const filesIcon = dockIconCenter('files', runningAt(HUB_CLICK));
+  const appsIcon = dockIconCenter('__apps__', runningAt(APPS_CLICK));
+  const md = { bili: mediaPt(LIB_PT.bili), row: mediaPt(LIB_PT.row(STUDY_PAGE)), play: mediaPt(STUDY_PT.play), seg: mediaPt(STUDY_PT.seg(SEEK_SEG)), seg3: mediaPt(STUDY_PT.seg(3)) };
+  const yellow = { x: MEDIA_RECT.x + trafficCenter(1).x, y: MEDIA_RECT.y + trafficCenter(1).y };
   return [
     // 今日：日程小组件「待办 →」→ 第 2 行 → ▷ 开始专注 → 双击桌面空白 → 双击「题目集」
     [25.45, AGENDA_BTN.x + 140, AGENDA_BTN.y + 170],
@@ -496,6 +594,28 @@ const PUPIL_PATH: Array<[number, number, number]> = (() => {
     [DAY.showDesk2 - 0.3, DESK_SPOT2.x + 160, DESK_SPOT2.y - 90],
     [DAY.showDesk2 - 0.04, DESK_SPOT2.x, DESK_SPOT2.y],
     [DAY.showDesk2 + DBL + 0.05, DESK_SPOT2.x, DESK_SPOT2.y],
+    // 08a：Dock「全部应用」→（打字时指针停着）→ 标题行「B 站链接」→ 链接框 → 解析 → 导入 → P4 → 播放 → 移到字幕 → 点那一句 → 黄灯
+    [APPS_CLICK - 0.06, appsIcon.x, appsIcon.y],
+    [APPS_CLICK + 0.12, appsIcon.x, appsIcon.y],
+    [DAY.mediaEnter + 0.04, appsIcon.x - 60, appsIcon.y - 180],
+    [DAY.mediaBili - 0.07, md.bili.x, md.bili.y],
+    [DAY.mediaBili + 0.06, md.bili.x, md.bili.y],
+    [DAY.mediaPaste - 0.07, DLG_PT.input.x, DLG_PT.input.y],
+    [DAY.mediaPaste + 0.04, DLG_PT.input.x, DLG_PT.input.y],
+    [DAY.mediaParse - 0.07, DLG_PT.parse.x, DLG_PT.parse.y],
+    [DAY.mediaParse + 0.06, DLG_PT.parse.x, DLG_PT.parse.y],
+    [DAY.mediaImport - 0.07, DLG_PT.confirm.x, DLG_PT.confirm.y],
+    [DAY.mediaImport + 0.06, DLG_PT.confirm.x, DLG_PT.confirm.y],
+    [DAY.mediaRow - 0.07, md.row.x, md.row.y],
+    [DAY.mediaRow + 0.05, md.row.x, md.row.y],
+    [DAY.mediaPlay - 0.07, md.play.x, md.play.y],
+    [DAY.mediaPlay + 0.05, md.play.x, md.play.y],
+    [DAY.mediaPlay + 0.36, md.seg3.x + 40, md.seg3.y + 6],
+    [DAY.mediaSeek - 0.07, md.seg.x, md.seg.y],
+    [DAY.mediaSeek + 0.06, md.seg.x, md.seg.y],
+    [DAY.mediaSeek + 0.4, md.seg.x + 30, md.seg.y + 40],
+    [DAY.mediaMin - 0.07, yellow.x, yellow.y],
+    [DAY.mediaMin + 0.06, yellow.x, yellow.y],
     [CHAT_CLICK - 0.06, chatIcon.x, chatIcon.y],
     [CHAT_CLICK + 0.12, chatIcon.x, chatIcon.y],
     // 08：点进输入框（打字时指针停着）→ 发送 →「中等深度」→「提交」→（任务进行中隐去）→ 面板 ^ → 输入框 → 发送（改笔记）→
@@ -549,6 +669,15 @@ const CLICKS = [
   DAY.translatePaste,
   DAY.translateRun,
   ...dbl(DAY.showDesk2),
+  APPS_CLICK,
+  DAY.mediaBili,
+  DAY.mediaPaste,
+  DAY.mediaParse,
+  DAY.mediaImport,
+  DAY.mediaRow,
+  DAY.mediaPlay,
+  DAY.mediaSeek,
+  DAY.mediaMin,
   CHAT_CLICK,
   RESEARCH_TL.focus,
   DAY.researchSend,
@@ -593,6 +722,7 @@ const shortcutState = (t: number) => {
 
 const dockTipAt = (t: number) => {
   for (const [id, at] of [
+    ['__apps__', APPS_CLICK],
     ['chat', CHAT_CLICK],
     ['files', HUB_CLICK],
   ] as Array<[string, number]>) {
@@ -635,9 +765,9 @@ const Chrome = ({ t, running }: { t: number; running: string[] }) => {
   if (bar.due > 0) badges.flashcards = { kind: 'count', value: bar.due };
   if (bar.pomo) badges.pomodoro = { kind: 'dot' };
   const indicator = Object.fromEntries(Object.entries(FIRST_OPEN).map(([id, at]) => [id, (t - at) / IND_S]));
-  const bounce = { todo: dockBounceAt(t, DAY.todayOpen), files: dockBounceAt(t, DAY.hubIndex) };
+  const bounce = { todo: dockBounceAt(t, DAY.todayOpen), media: dockBounceAt(t, DAY.mediaOpen), files: dockBounceAt(t, DAY.hubIndex) };
   const tip = dockTipAt(t);
-  const press = { chat: pressAt(t, CHAT_CLICK, 0.07), files: pressAt(t, HUB_CLICK, 0.07) };
+  const press = { __apps__: pressAt(t, APPS_CLICK, 0.07), chat: pressAt(t, CHAT_CLICK, 0.07), files: pressAt(t, HUB_CLICK, 0.07) };
   const layer = (tk: Tokens, opacity: number, children: ReactNode) => (opacity > 0.001 ? <div style={{ position: 'absolute', inset: 0, opacity }}>{children}</div> : null);
   const both = (tk: Tokens) => (
     <>
@@ -664,6 +794,7 @@ export const SceneDay = ({ t }: { t: number }) => {
   const exam = winLife(t, EXAM_RECT, { openAt: DAY.examOpen, minimizeAt: SHOW_MIN2, minimizeTo: icon('exam', SHOW_MIN2) });
   const essay = winLife(t, ESSAY_RECT, { openAt: DAY.essayOpen, minimizeAt: SHOW_MIN2, minimizeTo: icon('essay', SHOW_MIN2) });
   const trans = winLife(t, TRANS_RECT, { openAt: DAY.translateOpen, minimizeAt: SHOW_MIN2, minimizeTo: icon('translation', SHOW_MIN2) });
+  const media = winLife(t, MEDIA_RECT, { openAt: DAY.mediaOpen, openFrom: null, minimizeAt: MEDIA_MIN, minimizeTo: icon('media', MEDIA_MIN) });
   const chat = winLife(t, CHAT_RECT, { restoreAt: DAY.researchOpen, restoreFrom: icon('chat', DAY.researchOpen) });
   const notes = winLife(t, NOTES_RECT, { openAt: DAY.noteOpen, openFrom: null });
   const hub = winLife(t, HUB_RECT, { openAt: DAY.hubIndex, openFrom: icon('files', DAY.hubIndex) });
@@ -711,6 +842,13 @@ export const SceneDay = ({ t }: { t: number }) => {
               <TranslateView tk={tk} s={transState(t)} />
             </WbWindow>
           ) : null}
+          {media.visible ? (
+            <WbWindow tk={tk} rect={MEDIA_RECT} title={t < DAY.mediaRow + 0.02 ? APP_NAMES.media : `${APP_NAMES.media} · ${pageName(STUDY_PAGE)}`} style={media.style}>
+              {t < DAY.mediaRow + 0.08 ? <MediaLibrary tk={tk} s={libraryState(t)} /> : null}
+              {t >= DAY.mediaRow + 0.02 ? <MediaStudy tk={tk} s={studyState(t)} /> : null}
+            </WbWindow>
+          ) : null}
+          <AppsPanel tk={tk} s={appsPanelState(t)} />
           {t >= DAY.chatBack ? notesEl : null}
           {chat.visible ? (
             <WbWindow
@@ -735,6 +873,7 @@ export const SceneDay = ({ t }: { t: number }) => {
             </div>
           ) : null}
           <Chrome t={t} running={running} />
+          {t >= DAY.mediaBili && t < DAY.mediaImported + 0.1 ? <BiliDialog tk={tk} s={dialogState(t)} /> : null}
           <ExamToast tk={tk} life={t - TOAST_AT} dur={TOAST_DUR} />
         </div>
       </CameraView>

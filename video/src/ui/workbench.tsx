@@ -5,6 +5,7 @@ import essayIcon from '@app/features/workbench/icons/app-icons/essay.svg';
 import examIcon from '@app/features/workbench/icons/app-icons/exam.svg';
 import filesIcon from '@app/features/workbench/icons/app-icons/files.svg';
 import flashcardsIcon from '@app/features/workbench/icons/app-icons/flashcards.svg';
+import mediaIcon from '@app/features/workbench/icons/app-icons/media.svg';
 import mindmapIcon from '@app/features/workbench/icons/app-icons/mindmap.svg';
 import notesIcon from '@app/features/workbench/icons/app-icons/notes.svg';
 import pomodoroIcon from '@app/features/workbench/icons/app-icons/pomodoro.svg';
@@ -227,6 +228,7 @@ export const APP_ICONS: Record<string, string> = {
   mindmap: mindmapIcon,
   textbook: textbookIcon,
   skills: skillsIcon,
+  media: mediaIcon,
 };
 
 export const APP_NAMES: Record<string, string> = {
@@ -241,6 +243,7 @@ export const APP_NAMES: Record<string, string> = {
   translation: S.apps.translation,
   notes: S.apps.note,
   textbook: S.apps.textbook,
+  media: S.media.app,
   __apps__: S.desk.dockApps,
   __agent__: S.desk.agentDock,
 };

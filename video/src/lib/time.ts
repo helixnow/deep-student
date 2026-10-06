@@ -3,11 +3,11 @@ import { Easing, spring, useCurrentFrame, useVideoConfig } from 'remotion';
 export const FPS = 60;
 /**
  * 成片节奏：1 秒脚本时间 = PACE 秒成片时间。
- * 场景/相机/字幕里写的秒数都是「脚本时间」（30s 剧本），成片按 PACE 放慢到 60s。
+ * 场景/相机/字幕里写的秒数都是「脚本时间」（30s 剧本），成片按 PACE 放慢（2:40）。
  * 产品弹簧（springAt）按真实时间求值，保持与应用一致的手感。
  */
 export const PACE = 2;
-export const SCRIPT_S = 75;
+export const SCRIPT_S = 80;
 export const DURATION_S = SCRIPT_S * PACE;
 export const WIDTH = 1920;
 export const HEIGHT = 1080;
