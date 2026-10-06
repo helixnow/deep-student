@@ -150,6 +150,8 @@ export interface MediaLibraryRowProps {
   onToggleSelect?: (item: MediaLibraryItem) => void;
   /** 长按进入多选（并勾选该行）；不传时长按打开 ⋯ 菜单 */
   onLongPressSelect?: (item: MediaLibraryItem) => void;
+  /** 分组视图：所在分组已在分组标题里，元信息不再重复文件夹名 */
+  hideFolder?: boolean;
 }
 
 /** 勾选框外观（整行是 role=checkbox 的按钮，不能再嵌套一个按钮） */
@@ -175,6 +177,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({
   selected = false,
   onToggleSelect,
   onLongPressSelect,
+  hideFolder = false,
 }: MediaLibraryRowProps) {
   const { t, i18n } = useTranslation(['mediaStudio', 'learningHub', 'common']);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -196,7 +199,7 @@ export const MediaLibraryRow = memo(function MediaLibraryRow({
     item.lastWatchedAt
       ? t('mediaStudio:row.lastWatched', { time: formatRelativeTime(item.lastWatchedAt, now, locale) })
       : t('mediaStudio:row.notStarted'),
-    item.folderName,
+    hideFolder ? null : item.folderName,
   ].filter(Boolean).join(' · ');
 
   const Icon = item.isLink ? Television : item.kind === 'audio' ? MusicNotes : FilmStrip;

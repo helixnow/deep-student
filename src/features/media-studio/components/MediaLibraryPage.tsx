@@ -696,6 +696,7 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       selected={selected.has(item.id)}
       onToggleSelect={toggleItem}
       onLongPressSelect={selectMode ? undefined : enterSelectWith}
+      hideFolder={viewMode === 'grouped'}
     />
   );
 
