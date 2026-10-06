@@ -29,6 +29,12 @@ use crate::models::AppError;
 pub const SYNC_TARGET_LEASE_PREFIX: &str = "data_governance/locks/sync-target";
 /// 自动同步识别“租约被占”的稳定错误码。
 pub const SYNC_LEASE_HELD_ERROR_CODE: &str = "E_SYNC_LEASE_HELD";
+/// 租约持有者就是本机设备 ID 时的细分错误码（#447）。
+///
+/// 以 [`SYNC_LEASE_HELD_ERROR_CODE`] 为前缀，现有按 `E_SYNC_LEASE_HELD` 子串识别
+/// 的处理（自动同步跳过、前端分类）保持生效；前端可据此给出“本机上次同步未
+/// 正常结束”的专门提示，而不是让用户去等一台不存在的“其他设备”。
+pub const SYNC_LEASE_HELD_BY_SELF_ERROR_CODE: &str = "E_SYNC_LEASE_HELD_SELF";
 /// 默认 TTL：长同步由后台心跳续租；崩溃后最迟十分钟可自动恢复。
 pub const DEFAULT_SYNC_LEASE_TTL: Duration = Duration::from_secs(10 * 60);
 /// 租约格式版本。
@@ -122,9 +128,40 @@ impl ActiveLease {
             .unwrap_or(self.fallback_expires_at)
             .to_rfc3339()
     }
+
+    fn held_by_device(&self, device_id: &str) -> bool {
+        let device_id = device_id.trim();
+        !device_id.is_empty()
+            && self
+                .lease
+                .as_ref()
+                .is_some_and(|lease| lease.holder_device_id.trim() == device_id)
+    }
 }
 
-fn lease_held_error(active: &ActiveLease) -> AppError {
+/// 构造“租约被占”错误。
+///
+/// 持有者与本机设备 ID 相同时（#447）：典型是本机上一次同步进行中应用被关闭/
+/// 重启（或崩溃），心跳停止后租约要等 TTL 到期才回收。此时如实告知是本机遗留
+/// 租约及其到期时间，而不是引导用户去等“另一台设备”。
+///
+/// 这里**不**立即回收本机遗留租约：设备 ID 相同不能证明持有者已退出——同一
+/// 设备 ID 可能同时出现在另一个仍在运行的进程中（例如开发版与正式版不同
+/// bundle identifier 各自持有单实例锁、却从全局旧路径迁移到同一设备 ID；或
+/// 整个数据目录被拷到另一台机器）。云端存储没有 CAS，无法区分“已死的上一次
+/// 运行”与“仍在心跳的同 ID 进程”，抢占会让两个写者同时持锁。TTL（默认 10
+/// 分钟，心跳停止后最迟到期）是唯一可证明安全的回收路径。
+fn lease_held_error(active: &ActiveLease, local_device_id: &str) -> AppError {
+    if active.held_by_device(local_device_id) {
+        return AppError::conflict(format!(
+            "[{SYNC_LEASE_HELD_BY_SELF_ERROR_CODE}] 本机（{}）上一次同步没有正常结束\
+             （例如同步进行中关闭或重启了应用），云端遗留的同步租约尚未过期（预计 {} 到期）。\
+             租约到期后会自动回收，届时重试即可；这不是其他设备在同步。\
+             若本机另有一个应用实例正在同步，请等待它完成。不要手工覆盖云端同步文件。",
+            active.holder_label(),
+            active.expires_label()
+        ));
+    }
     AppError::conflict(format!(
         "[{SYNC_LEASE_HELD_ERROR_CODE}] 同步目标租约被其他设备持有：{}（预计 {} 到期）。\
          请等待另一台设备完成同步，或等待租约过期后重试；不要手工覆盖云端同步文件。",
@@ -387,7 +424,7 @@ pub async fn acquire_sync_target_lease_with_ttl(
     let now = Utc::now();
     let mut active = scan_active_leases(storage.as_ref(), ttl, now).await?;
     if let Some(existing) = active.first() {
-        return Err(lease_held_error(existing));
+        return Err(lease_held_error(existing, holder_device_id));
     }
 
     let mut lease = SyncTargetLease::new(holder_device_id, ttl, now)?;
@@ -406,7 +443,7 @@ pub async fn acquire_sync_target_lease_with_ttl(
         .as_ref()
         .is_some_and(|candidate| candidate.operation_id == lease.operation_id);
     if !winner_is_self {
-        let held = lease_held_error(winner);
+        let held = lease_held_error(winner, holder_device_id);
         let _ = release_owned_candidate(storage.as_ref(), &key, &lease.operation_id).await;
         return Err(held);
     }
@@ -421,11 +458,14 @@ pub async fn acquire_sync_target_lease_with_ttl(
         })
     });
     if !committed_is_self {
-        let held = active.first().map(lease_held_error).unwrap_or_else(|| {
-            AppError::conflict(format!(
-                "[{SYNC_LEASE_HELD_ERROR_CODE}] 同步租约提交后所有权无法确认，请稍后重试。"
-            ))
-        });
+        let held = active
+            .first()
+            .map(|winner| lease_held_error(winner, holder_device_id))
+            .unwrap_or_else(|| {
+                AppError::conflict(format!(
+                    "[{SYNC_LEASE_HELD_ERROR_CODE}] 同步租约提交后所有权无法确认，请稍后重试。"
+                ))
+            });
         let _ = release_owned_candidate(storage.as_ref(), &key, &lease.operation_id).await;
         return Err(held);
     }
@@ -466,4 +506,72 @@ pub async fn acquire_sync_target_lease_with_ttl(
         heartbeat: Some(heartbeat),
         released: false,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn active_lease_for(holder: &str) -> ActiveLease {
+        let now = DateTime::parse_from_rfc3339("2026-10-06T06:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let lease = SyncTargetLease::new(holder, DEFAULT_SYNC_LEASE_TTL, now).unwrap();
+        ActiveLease {
+            key: lease.key(),
+            lease: Some(lease),
+            fallback_expires_at: now,
+        }
+    }
+
+    #[test]
+    fn lease_held_by_this_device_reports_unfinished_previous_sync() {
+        let active = active_lease_for("LAPTOP-NLLQ1V2J-24357239");
+        let message = lease_held_error(&active, " LAPTOP-NLLQ1V2J-24357239 ").to_string();
+
+        assert!(
+            message.contains(SYNC_LEASE_HELD_BY_SELF_ERROR_CODE),
+            "{message}"
+        );
+        // 仍属同一错误码家族：按 E_SYNC_LEASE_HELD 子串识别的处理继续生效
+        assert!(message.contains(SYNC_LEASE_HELD_ERROR_CODE), "{message}");
+        assert!(message.contains("上一次同步没有正常结束"), "{message}");
+        assert!(message.contains("2026-10-06T06:10:00+00:00"), "{message}");
+        assert!(!message.contains("其他设备持有"), "{message}");
+        assert!(!message.contains("请等待另一台设备"), "{message}");
+    }
+
+    #[test]
+    fn lease_held_by_another_device_keeps_existing_message() {
+        let active = active_lease_for("device-other");
+        let message = lease_held_error(&active, "device-local").to_string();
+
+        assert!(message.contains("[E_SYNC_LEASE_HELD]"), "{message}");
+        assert!(
+            !message.contains(SYNC_LEASE_HELD_BY_SELF_ERROR_CODE),
+            "{message}"
+        );
+        assert!(
+            message.contains("被其他设备持有：device-other"),
+            "{message}"
+        );
+    }
+
+    #[test]
+    fn corrupt_or_unknown_holder_is_never_treated_as_self() {
+        let mut active = active_lease_for("device-local");
+        active.lease = None;
+        let message = lease_held_error(&active, "device-local").to_string();
+        assert!(
+            !message.contains(SYNC_LEASE_HELD_BY_SELF_ERROR_CODE),
+            "{message}"
+        );
+
+        let active = active_lease_for("device-local");
+        let message = lease_held_error(&active, "  ").to_string();
+        assert!(
+            !message.contains(SYNC_LEASE_HELD_BY_SELF_ERROR_CODE),
+            "{message}"
+        );
+    }
 }

@@ -245,6 +245,30 @@ async fn live_lease_returns_stable_code_and_retry_guidance() {
     holder.release().await.unwrap();
 }
 
+/// #447：本机上一次同步被关闭/重启打断后遗留的租约，不能被说成“其他设备”。
+/// 仍属 E_SYNC_LEASE_HELD 家族，且不提前抢占（同一设备 ID 无法证明持有者已退出）。
+#[tokio::test]
+async fn lease_left_by_this_device_reports_self_and_is_not_preempted() {
+    let storage = Arc::new(MemoryStorage::new());
+    let leftover =
+        acquire_sync_target_lease_with_ttl(cloud(&storage), "device-a", Duration::from_secs(60))
+            .await
+            .unwrap();
+
+    let error =
+        acquire_sync_target_lease_with_ttl(cloud(&storage), "device-a", Duration::from_secs(60))
+            .await
+            .expect_err("同设备 ID 的活跃租约同样必须拒绝")
+            .to_string();
+    assert!(error.contains("E_SYNC_LEASE_HELD_SELF"), "{error}");
+    assert!(error.contains(SYNC_LEASE_HELD_ERROR_CODE), "{error}");
+    assert!(error.contains("上一次同步没有正常结束"), "{error}");
+    assert!(!error.contains("其他设备持有"), "{error}");
+    assert_eq!(storage.lease_keys().len(), 1, "被拒方不得留下 contender");
+
+    leftover.release().await.unwrap();
+}
+
 #[tokio::test]
 async fn expired_committed_lease_is_reclaimed_before_acquire() {
     let storage = Arc::new(MemoryStorage::new());
