@@ -333,7 +333,7 @@ impl LLMManager {
                     .find(|config| config.id == id)
                     .ok_or_else(|| AppError::configuration("找不到多模态嵌入模型配置")),
                 Err(_) => Err(AppError::configuration(
-                    "未配置默认多模态嵌入维度。请在「模型分配 > 嵌入维度管理」中设置默认多模态维度。",
+                    "还没有启用多模态索引：请在「设置 → 模型 → 模型分配 → 嵌入维度管理」中新建一个多模态维度并绑定多模态嵌入模型（已有多个多模态维度时，把要用的那个设为默认）。",
                 )),
             };
         };
@@ -359,6 +359,83 @@ impl LLMManager {
             ));
         }
         Ok(config)
+    }
+
+    /// 还没有默认多模态维度时，把用户刚创建 / 绑定模型的多模态维度设为默认。
+    ///
+    /// 「建了多模态维度并绑定模型」本身就是显式开启多模态索引；此前默认只能靠维度管理里
+    /// 悬停才出现的「设为默认」写入，没点它时索引对每个资源都报「未配置多模态嵌入模型」。
+    /// 已有默认时不覆盖；模型配置不是可用的多模态嵌入模型时不写。返回是否写入了默认。
+    pub async fn adopt_default_multimodal_embedding(
+        &self,
+        dimension: i32,
+        model_config_id: &str,
+    ) -> Result<bool> {
+        let has_default = self
+            .db
+            .get_setting("embedding.default_multimodal_model_config_id")
+            .map_err(|e| AppError::configuration(format!("读取多模态嵌入设置失败: {}", e)))?
+            .is_some_and(|id| !id.trim().is_empty());
+        if has_default {
+            return Ok(false);
+        }
+        let configs = self.get_api_configs().await?;
+        let usable = configs.iter().any(|config| {
+            config.id == model_config_id
+                && config.enabled
+                && config.is_embedding
+                && config.is_multimodal
+                && !config.is_reranker
+        });
+        if !usable {
+            return Ok(false);
+        }
+        self.db
+            .save_setting(
+                "embedding.default_multimodal_dimension",
+                &dimension.to_string(),
+            )
+            .map_err(|e| AppError::configuration(format!("保存默认多模态维度失败: {}", e)))?;
+        self.db
+            .save_setting(
+                "embedding.default_multimodal_model_config_id",
+                model_config_id,
+            )
+            .map_err(|e| AppError::configuration(format!("保存默认多模态模型失败: {}", e)))?;
+        info!(
+            "[RAG] Adopted multimodal dimension {} (model {}) as the default",
+            dimension, model_config_id
+        );
+        Ok(true)
+    }
+
+    /// 被动补救（索引前 / 查询状态时）：没有默认多模态维度、但恰好只有一个绑定了可用
+    /// 多模态嵌入模型的多模态维度时采用它。有多个时不替用户选（返回 false）。
+    /// `candidates`：所有已绑定模型的多模态维度 `(dimension, model_config_id)`。
+    pub async fn heal_default_multimodal_embedding(&self, candidates: &[(i32, String)]) -> bool {
+        let configs = match self.get_api_configs().await {
+            Ok(configs) => configs,
+            Err(_) => return false,
+        };
+        let usable: Vec<&(i32, String)> = candidates
+            .iter()
+            .filter(|(_, id)| {
+                configs.iter().any(|config| {
+                    &config.id == id
+                        && config.enabled
+                        && config.is_embedding
+                        && config.is_multimodal
+                        && !config.is_reranker
+                })
+            })
+            .collect();
+        match usable.as_slice() {
+            [(dimension, id)] => self
+                .adopt_default_multimodal_embedding(*dimension, id)
+                .await
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// 多模态嵌入默认模型回退：settings 键悬空时尝试 assignments 的 VL 槽位。

@@ -1324,7 +1324,8 @@
       "autoOcrCompleted": "OCR 已完成",
       "autoOcrPage": "正在 OCR 第 {{current}}/{{total}} 页...",
       "autoOcrStarting": "正在开始 OCR，共 {{pages}} 页...",
-      "mmRetrySuccess": "多模态索引完成，已索引 {{pages}} 页"
+      "mmRetrySuccess": "多模态索引完成，已索引 {{pages}} 页",
+      "mmNotEnabledTitle": "多模态索引还没启用，已跳过（文本索引不受影响）"
     },
     "mmProgress": {
       "preparing": "{{prefix}}准备中... ({{pages}} 页)",

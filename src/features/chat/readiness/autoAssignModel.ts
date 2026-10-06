@@ -125,7 +125,9 @@ const SLOTS: AssignmentSlot[] = [
   { field: 'reranker_model_config_id', filter: isRerankerModel },
   { field: 'vl_reranker_model_config_id', filter: isRerankerModel },
   { field: 'embedding_model_config_id', filter: isEmbeddingModel },
-  { field: 'vl_embedding_model_config_id', filter: isEmbeddingModel },
+  // 多模态嵌入槽位（vl_embedding_model_config_id）不自动分配：多模态索引按页调用付费接口，
+  // 只能由用户在「嵌入维度管理」里建多模态维度并绑定模型来开启；而且这里的 isEmbeddingModel
+  // 不要求多模态，曾把纯文本嵌入模型写进该槽位，后端随即拒绝。
   { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel },
 ];
 

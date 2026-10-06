@@ -1324,7 +1324,8 @@
       "autoOcrCompleted": "Auto Ocr Completed",
       "autoOcrPage": "Auto Ocr Page {{current}} {{total}}",
       "autoOcrStarting": "Auto Ocr Starting {{pages}}",
-      "mmRetrySuccess": "Multimodal indexing finished: {{pages}} page(s) indexed"
+      "mmRetrySuccess": "Multimodal indexing finished: {{pages}} page(s) indexed",
+      "mmNotEnabledTitle": "Multimodal indexing isn't enabled yet, so it was skipped (text indexing is unaffected)"
     },
     "mmProgress": {
       "preparing": "{{prefix}}Preparing... ({{pages}} pages)",

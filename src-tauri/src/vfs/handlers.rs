@@ -3530,6 +3530,16 @@ pub async fn vfs_assign_dimension_model(
         }
     }
 
+    // 给多模态维度绑定了模型、且还没有默认多模态维度：设为默认（已有默认时不动）
+    if modality == "multimodal" {
+        if let Err(error) = llm_manager
+            .adopt_default_multimodal_embedding(dimension, &model_config_id)
+            .await
+        {
+            log::warn!("[VFS::handlers] adopt multimodal default failed: {}", error);
+        }
+    }
+
     Ok(true)
 }
 
@@ -3576,24 +3586,39 @@ pub async fn vfs_create_dimension(
         None
     };
 
-    let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
-    match resolved_model {
-        Some((config, fingerprint)) => {
-            crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
-                &conn,
-                dimension,
-                &modality,
-                Some(&config.id),
-                Some(&config.model),
-                Some(&fingerprint),
+    let bound_model_id = resolved_model.as_ref().map(|(config, _)| config.id.clone());
+    let created = {
+        let conn = vfs_db.get_conn().map_err(|e| e.to_string())?;
+        match resolved_model {
+            Some((config, fingerprint)) => {
+                crate::vfs::repos::embedding_dim_repo::register_with_model_fingerprint(
+                    &conn,
+                    dimension,
+                    &modality,
+                    Some(&config.id),
+                    Some(&config.model),
+                    Some(&fingerprint),
+                )
+                .map_err(|error| error.to_string())?
+            }
+            None => crate::vfs::repos::embedding_dim_repo::create_dimension(
+                &conn, dimension, &modality, None, None,
             )
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?,
         }
-        None => crate::vfs::repos::embedding_dim_repo::create_dimension(
-            &conn, dimension, &modality, None, None,
-        )
-        .map_err(|error| error.to_string()),
+    };
+    // 新建并绑定了多模态模型、且还没有默认多模态维度：这就是用户要用的那个，直接设为默认
+    if modality == "multimodal" {
+        if let Some(model_config_id) = bound_model_id.as_deref() {
+            if let Err(error) = llm_manager
+                .adopt_default_multimodal_embedding(dimension, model_config_id)
+                .await
+            {
+                log::warn!("[VFS::handlers] adopt multimodal default failed: {}", error);
+            }
+        }
     }
+    Ok(created)
 }
 
 #[derive(Debug, Clone, serde::Serialize)]

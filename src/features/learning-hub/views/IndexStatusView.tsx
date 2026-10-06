@@ -302,6 +302,11 @@ const IndexStatusSkeleton: React.FC = () => (
 // 组件
 // ============================================================================
 
+/** 后端「多模态索引没启用」的报错（新旧两种文案） */
+export function isMultimodalNotEnabledError(message: string): boolean {
+  return message.includes('还没有启用多模态索引') || message.includes('未配置多模态嵌入模型');
+}
+
 export const IndexStatusView: React.FC = () => {
   const { t } = useTranslation(['learningHub', 'common']);
   const isMobile = useIsMobile();
@@ -975,6 +980,9 @@ export const IndexStatusView: React.FC = () => {
       let successCount = 0;
       let failCount = 0;
       let skippedCount = 0;
+      // 多模态索引没启用（没有可用的默认多模态维度）时，每个资源都会以同一个原因失败：
+      // 第一次遇到就停下整条多模态轨道、只提示一次，不再逐个资源弹错
+      let notEnabled = false;
       const total = mmResources.length;
       // ★ 修复：pLimit(3) 并发下的进度改为聚合口径（完成资源数 + 进行中资源百分比）
       mmBatchRef.current = { active: true, total, finished: 0, current: new Map() };
@@ -992,6 +1000,11 @@ export const IndexStatusView: React.FC = () => {
           const sourceType: MMSourceType = resource.resourceType === 'image' ? 'image' : resource.resourceType as MMSourceType;
           const sourceId = resource.sourceId || resource.resourceId;
 
+          if (notEnabled) {
+            skippedCount++;
+            settleOne();
+            return;
+          }
           if (!sourceId) {
             debugLog.warn('[IndexStatusView] 资源缺少 sourceId，跳过索引:', resource.resourceId);
             skippedCount++;
@@ -1004,8 +1017,16 @@ export const IndexStatusView: React.FC = () => {
             successCount++;
           } catch (err: unknown) {
             const errMsg = err instanceof Error ? err.message : String(err);
-            showGlobalNotification('error', t('indexStatus.notification.indexFailed'), `${resource.name || sourceId}: ${errMsg}`);
-            failCount++;
+            if (isMultimodalNotEnabledError(errMsg)) {
+              if (!notEnabled) {
+                notEnabled = true;
+                showGlobalNotification('warning', t('indexStatus.notification.mmNotEnabledTitle'), errMsg);
+              }
+              skippedCount++;
+            } else {
+              showGlobalNotification('error', t('indexStatus.notification.indexFailed'), `${resource.name || sourceId}: ${errMsg}`);
+              failCount++;
+            }
           }
           mmBatchRef.current?.current.delete(sourceId);
           settleOne();

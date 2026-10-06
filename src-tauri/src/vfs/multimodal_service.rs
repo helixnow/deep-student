@@ -178,6 +178,22 @@ impl VfsMultimodalService {
 
     /// 检查多模态嵌入模型是否已配置
     pub async fn is_configured(&self) -> bool {
+        // 已经建了多模态维度却没设默认的用户（此前唯一入口是维度管理里悬停才出现的星号）：
+        // 只有一个绑定了可用模型的多模态维度时直接采用，不再逐资源报「未配置」
+        if let Ok(conn) = self.vfs_db.get_conn() {
+            let candidates: Vec<(i32, String)> =
+                crate::vfs::repos::embedding_dim_repo::list_by_modality(&conn, "multimodal")
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter_map(|dim| dim.model_config_id.map(|id| (dim.dimension, id)))
+                    .collect();
+            drop(conn);
+            if !candidates.is_empty() {
+                self.llm_manager
+                    .heal_default_multimodal_embedding(&candidates)
+                    .await;
+            }
+        }
         self.embedding_service.is_configured().await
     }
 
@@ -280,7 +296,7 @@ impl VfsMultimodalService {
         // 1. 检查模型配置。OCR/TM 不参与该路径，页面始终直接交给 ME。
         if !self.is_configured().await {
             return Err(VfsError::Other(
-                "未配置多模态嵌入模型，请在设置中配置 VL Embedding 模型".to_string(),
+                "还没有启用多模态索引：请在「设置 → 模型 → 模型分配 → 嵌入维度管理」中新建一个多模态维度并绑定多模态嵌入模型（已有多个时把要用的设为默认）".to_string(),
             ));
         }
 

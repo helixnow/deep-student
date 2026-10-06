@@ -1609,6 +1609,87 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn binding_a_multimodal_dimension_adopts_it_as_default_only_when_none_is_set() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-a", true),
+                vl_emb_test_profile("vl-b", true),
+                emb_test_profile("emb-text", true),
+            ],
+        );
+        // 文本嵌入模型不能成为多模态默认
+        assert!(!manager
+            .adopt_default_multimodal_embedding(1024, "emb-text")
+            .await
+            .unwrap());
+        assert!(saved_vl_embedding_default(&manager).is_none());
+
+        assert!(manager
+            .adopt_default_multimodal_embedding(4096, "vl-a")
+            .await
+            .unwrap());
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-a")
+        );
+        assert_eq!(
+            manager
+                .db
+                .get_setting("embedding.default_multimodal_dimension")
+                .unwrap()
+                .as_deref(),
+            Some("4096")
+        );
+        assert_eq!(
+            manager.get_vl_embedding_model_config().await.unwrap().id,
+            "vl-a"
+        );
+
+        // 已有默认时不覆盖
+        assert!(!manager
+            .adopt_default_multimodal_embedding(2048, "vl-b")
+            .await
+            .unwrap());
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-a")
+        );
+    }
+
+    #[tokio::test]
+    async fn heal_adopts_the_only_bound_multimodal_dimension_but_never_guesses_between_two() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-a", true),
+                vl_emb_test_profile("vl-b", true),
+                emb_test_profile("emb-text", true),
+            ],
+        );
+        // 两个可用候选：不替用户选
+        let two = vec![(4096, "vl-a".to_string()), (2048, "vl-b".to_string())];
+        assert!(!manager.heal_default_multimodal_embedding(&two).await);
+        assert!(manager.get_vl_embedding_model_config().await.is_err());
+
+        // 只有一个可用（另一个绑的是文本模型 / 已删除的配置）：采用它
+        let one = vec![
+            (4096, "vl-a".to_string()),
+            (1024, "emb-text".to_string()),
+            (768, "deleted".to_string()),
+        ];
+        assert!(manager.heal_default_multimodal_embedding(&one).await);
+        assert_eq!(
+            manager.get_vl_embedding_model_config().await.unwrap().id,
+            "vl-a"
+        );
+    }
+
+    #[tokio::test]
     async fn dangling_vl_embedding_default_falls_back_to_assignments_and_writes_back() {
         let temp_dir = TempDir::new().expect("temp dir");
         let manager = create_test_llm_manager(&temp_dir);
@@ -1725,7 +1806,7 @@ mod tests {
             .expect_err("absent key must keep the explicit-enable semantics");
         let message = err.to_string();
         assert!(
-            message.contains("未配置默认多模态嵌入维度"),
+            message.contains("还没有启用多模态索引") && message.contains("嵌入维度管理"),
             "unexpected error message: {}",
             message
         );
