@@ -23,6 +23,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
 import { getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
+import { needsProcessingStatusHydration } from './libraryAttachmentProcessing';
 import type { InputBarUIProps } from './types';
 import { vfsRefApi, type UploadAttachmentResult } from '../../context/vfsRefApi';
 import { shouldUseStagedUpload, stageBlobUpload } from '@/utils/stagedUpload';
@@ -1896,6 +1897,19 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       });
     };
   }, []);
+
+  // ★ #449 兜底：资源库引用进来的 PDF 若没有任何处理状态（ready + 空 readyModes，
+  // 如修复前加入的草稿附件），转入 processing 交给下方轮询按 sourceId 补查真实状态；
+  // 否则它既被发送门闩拦死、又因不是 processing 而永远不会被轮询。
+  useEffect(() => {
+    attachments.forEach(att => {
+      if (!needsProcessingStatusHydration(att)) return;
+      onUpdateAttachment(att.id, {
+        status: 'processing',
+        processingStatus: { stage: 'pending', percent: 0, readyModes: [], mediaType: 'pdf' },
+      });
+    });
+  }, [attachments, onUpdateAttachment]);
 
   // ★ P2 优化：跟踪已同步的状态，避免重复更新
   const syncedStatusRef = useRef<Map<string, { stage: string; percent: number; readyModes: string }>>(new Map());

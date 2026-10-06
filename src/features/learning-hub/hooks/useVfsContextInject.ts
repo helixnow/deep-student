@@ -27,6 +27,7 @@ import {
   buildDefaultInjectModes,
 } from '@/features/chat/components/input-bar/injectModeUtils';
 import { isCurrentChatModelMultimodal } from '@/features/chat/hooks/useAvailableModels';
+import { fetchLibraryAttachmentProcessing } from '@/features/chat/components/input-bar/libraryAttachmentProcessing';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -222,7 +223,12 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
         // ★ P0 契约：PDF/图片引用创建时显式写入 UI 默认注入模式，
         // 后端「缺省 text+image 双开」兜底逻辑不再触发
         // ★ P1（2026-09-07）：默认模式由当前会话模型能力驱动
-        const isMultimodal = await isCurrentChatModelMultimodal();
+        // ★ #449：引用路径（vfs_create_or_reuse）不带处理状态，按 VFS 文件 ID 补查真实
+        // processingStatus/readyModes；否则已处理完的 PDF 以空 readyModes 入列被拦发送
+        const [isMultimodal, processingPatch] = await Promise.all([
+          isCurrentChatModelMultimodal(),
+          fetchLibraryAttachmentProcessing({ mimeType: realMimeType, name, sourceId }),
+        ]);
         const injectModes = buildDefaultInjectModes(mediaType, { multimodal: isMultimodal });
         const previewUrl = typeof metadata?.previewUrl === 'string' ? metadata.previewUrl : undefined;
 
@@ -247,6 +253,7 @@ export function useVfsContextInject(): UseVfsContextInjectReturn {
           sourceId,
           ...(previewUrl ? { previewUrl } : {}),
           ...(injectModes ? { injectModes } : {}),
+          ...(processingPatch ?? {}),
         };
         store.getState().addAttachment(attachmentMeta);
 
