@@ -410,7 +410,28 @@
     "batchSkipped": "{{pages}} had no subtitles and were skipped",
     "batchFailed": "{{pages}} failed ({{message}})",
     "batchStopped_one": "{{count}} part was not imported",
-    "batchStopped_other": "{{count}} parts were not imported"
+    "batchStopped_other": "{{count}} parts were not imported",
+    "account": {
+      "hint": "Sign in to Bilibili for more subtitles and higher quality (optional)",
+      "expired": "Your Bilibili sign-in expired. Scan again to sign in",
+      "login": "Sign in with QR",
+      "loggedIn": "Signed in to Bilibili: {{name}}",
+      "vip": "Premium",
+      "offline": "(not verified offline)",
+      "logout": "Sign out",
+      "qrAlt": "Bilibili sign-in QR code",
+      "scanPrompt": "Scan with the Bilibili app to sign in",
+      "scanned": "Scanned. Confirm the sign-in on your phone",
+      "qrExpired": "QR code expired",
+      "refresh": "Refresh",
+      "privacy": "Your sign-in is stored encrypted on this device only and is used only to request subtitles and video from Bilibili.",
+      "cancel": "Cancel"
+    },
+    "playback": {
+      "fallback": "This video can't play in the app directly, so the Bilibili player is used instead.",
+      "retry": "Try in-app playback again",
+      "useEmbed": "Use the Bilibili player"
+    }
   },
   "mediaRef": {
     "badgeLabel": "Jump to {{time}} in “{{name}}”",

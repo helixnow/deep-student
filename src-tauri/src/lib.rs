@@ -1820,6 +1820,10 @@ pub fn run() {
             crate::media::bilibili::media_bilibili_create,
             crate::media::bilibili::media_bilibili_import_subtitle,
             crate::media::bilibili::media_bilibili_link_get,
+            crate::media::bilibili_auth::media_bilibili_auth_status,
+            crate::media::bilibili_auth::media_bilibili_login_qr_start,
+            crate::media::bilibili_auth::media_bilibili_login_qr_poll,
+            crate::media::bilibili_auth::media_bilibili_logout,
             crate::secret_prompt::secret_prompt_submit,
             crate::secret_prompt::secret_prompt_status,
             crate::secret_prompt::secret_prompt_discard,
@@ -2990,6 +2994,13 @@ pub fn run() {
                         })
                 }
             }
+        })
+        // bilistream://{fileId}：B 站链接条目在应用内播放（后端取地址并转发 CDN 的 Range 请求）
+        .register_asynchronous_uri_scheme_protocol("bilistream", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            tauri::async_runtime::spawn(async move {
+                responder.respond(crate::media::bilibili_stream::handle(&app, request).await);
+            });
         })
         // 注册 filestream:// 自定义协议，用于媒体（音频/视频/图片）与通用 blob 流式加载
         .register_uri_scheme_protocol("filestream", |ctx, request| {

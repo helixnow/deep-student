@@ -7,19 +7,30 @@
  * - 无 context（资源库 / 聊天面板）保持原布局，并多一个「在音视频中学习」。
  */
 import React from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const transcriptState = vi.hoisted(() => ({
   transcript: null as null | { status: string; segments: unknown[]; progress: null },
 }));
 const openMediaStudio = vi.hoisted(() => vi.fn());
+const lastVideo = vi.hoisted(() => ({ current: null as null | { src: string; onError: () => void } }));
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
   useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'zh-CN' } }),
 }));
-vi.mock('../VideoPlayer', () => ({ VideoPlayer: () => <div data-testid="video-player" /> }));
+vi.mock('../VideoPlayer', () => ({
+  VideoPlayer: (props: { src: string; onError: () => void }) => {
+    lastVideo.current = props;
+    return <div data-testid="video-player" data-src={props.src} />;
+  },
+}));
+vi.mock('../BilibiliEmbedPlayer', () => ({ BilibiliEmbedPlayer: () => <div data-testid="bilibili-embed" /> }));
+vi.mock('@tauri-apps/api/core', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@tauri-apps/api/core')>()),
+  convertFileSrc: (path: string, protocol: string) => `${protocol}://localhost/${path}`,
+}));
 vi.mock('../AudioPlayer', () => ({ AudioPlayer: () => <div data-testid="audio-player" /> }));
 vi.mock('../useMediaTranscript', () => ({
   useMediaTranscript: () => ({
@@ -148,4 +159,40 @@ describe('MediaStudyView companion panel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'learningHub:mediaTranscript.openInStudio' }));
     expect(openMediaStudio).toHaveBeenCalledWith('file_lecture');
   });
+
+describe('MediaStudyView · Bilibili link items', () => {
+  beforeEach(() => {
+    vi.stubGlobal('ResizeObserver', FakeResizeObserver);
+    transcriptState.transcript = null;
+    lastVideo.current = null;
+  });
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  const LINK = {
+    kind: 'bilibili', version: 1, bvid: 'BV1xx411c7mD', aid: 1, cid: 2, page: 1, pageCount: 1,
+    title: '线代', part: '', owner: null, cover: null, durationMs: 60_000, url: 'https://www.bilibili.com/video/BV1xx411c7mD',
+  };
+
+  it('plays the link in the app player and falls back to the Bilibili player on error', () => {
+    observedWidth = 1200;
+    render(
+      <MediaStudyView kind="video" src="" bilibili={LINK as never} resourceId="file_link" fileName="线代.bilibili" onError={vi.fn()} />,
+    );
+    expect(screen.getByTestId('video-player').dataset.src).toBe('bilistream://localhost/file_link');
+    expect(screen.queryByTestId('bilibili-embed')).toBeNull();
+    // 画面可用：截帧按钮在
+    expect(screen.getByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeTruthy();
+
+    act(() => lastVideo.current?.onError());
+    expect(screen.getByTestId('bilibili-embed')).toBeTruthy();
+    expect(document.querySelector('[data-bilibili-fallback]')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeNull();
+
+    fireEvent.click(screen.getByText('learningHub:mediaBilibili.playback.retry'));
+    expect(screen.getByTestId('video-player')).toBeTruthy();
+  });
+});
 });

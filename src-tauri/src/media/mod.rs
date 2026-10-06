@@ -15,6 +15,8 @@
 
 pub mod asr;
 pub mod bilibili;
+pub mod bilibili_auth;
+pub mod bilibili_stream;
 pub mod commands;
 pub mod decoder;
 pub mod library;

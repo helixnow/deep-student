@@ -1,6 +1,6 @@
 //! B 站链接 → 字幕：新建链接条目（不下载音视频），或给已有媒体挂上 B 站字幕
 //!
-//! 只走匿名网页接口，不带 Cookie / 登录态：
+//! 走网页接口；用户扫码登录过（[`super::bilibili_auth`]）时带上会话 Cookie，否则匿名：
 //! - `x/web-interface/view`：BV / av → 标题、UP 主、封面、分 P（cid、时长）
 //! - `x/v2/dm/view?type=1&oid={cid}&pid={aid}`：字幕轨（UP 主字幕与 AI 字幕）。播放器接口
 //!   `x/player/wbi/v2` 匿名时返回 `need_login_subtitle=true` 和空列表，所以不用它
@@ -16,18 +16,20 @@
 //! | `media_bilibili_create(input, page?, lan?)` | 新建（或复用）链接条目并导入字幕 |
 //! | `media_bilibili_import_subtitle(resourceId, input, page?, lan?)` | 给已有媒体导入 B 站字幕 |
 //! | `media_bilibili_link_get(resourceId)` | 读链接条目的描述（内嵌播放器用） |
+//!
+//! 播放走 [`super::bilibili_stream`]（`bilistream://` 本地转发），登录见 [`super::bilibili_auth`]。
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, LOCATION, REFERER};
+use reqwest::header::{HeaderMap, HeaderValue, COOKIE, LOCATION, REFERER};
 use reqwest::Url;
 use rusqlite::params;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use tauri::{State, Window};
+use tauri::{AppHandle, State, Window};
 
 use super::commands::{import_subtitle_bytes, load, TranscriptView};
 use super::pipeline::{load_media_file, resolve_media_source, MediaFileInfo};
@@ -360,6 +362,8 @@ pub struct BiliClient {
     api_base: String,
     /// 字幕地址只认 B 站域名并升级为 https（测试指向本地 mock 时关闭）
     strict_hosts: bool,
+    /// 扫码登录后的会话 Cookie；只随 B 站接口请求发送（字幕 CDN 与视频 CDN 不带）
+    cookie: Option<String>,
 }
 
 impl BiliClient {
@@ -367,8 +371,14 @@ impl BiliClient {
         Self::build(API_BASE, true, false)
     }
 
+    /// 带上登录会话（未登录传 None，保持匿名）
+    pub fn with_cookie(mut self, cookie: Option<String>) -> Self {
+        self.cookie = cookie.filter(|c| !c.trim().is_empty());
+        self
+    }
+
     #[cfg(test)]
-    fn for_test(api_base: &str) -> Self {
+    pub(crate) fn for_test(api_base: &str) -> Self {
         Self::build(api_base, false, true).expect("test client")
     }
 
@@ -398,6 +408,7 @@ impl BiliClient {
             no_redirect: make(false)?,
             api_base: api_base.trim_end_matches('/').to_string(),
             strict_hosts,
+            cookie: None,
         })
     }
 
@@ -438,19 +449,17 @@ impl BiliClient {
             })
     }
 
-    async fn get_api<T: DeserializeOwned>(
+    pub(crate) async fn get_api<T: DeserializeOwned>(
         &self,
         path: &str,
         query: &[(&str, String)],
     ) -> Result<Option<T>, MediaError> {
         let url = format!("{}{}", self.api_base, path);
-        let resp = self
-            .http
-            .get(&url)
-            .query(query)
-            .send()
-            .await
-            .map_err(request_failed)?;
+        let mut request = self.http.get(&url).query(query);
+        if let Some(cookie) = &self.cookie {
+            request = request.header(COOKIE, cookie);
+        }
+        let resp = request.send().await.map_err(request_failed)?;
         let status = resp.status();
         if status.as_u16() == 412 {
             return Err(blocked_error());
@@ -883,11 +892,14 @@ where
 
 #[tauri::command]
 pub async fn media_bilibili_probe(
+    app: AppHandle,
     input: String,
     page: Option<u32>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> CmdResult<BiliProbeView> {
-    let client = BiliClient::new().map_err(err)?;
+    let client = BiliClient::new()
+        .map_err(err)?
+        .with_cookie(super::bilibili_auth::load_cookie(&app));
     let lookup = client.lookup(&input, page).await.map_err(err)?;
     let existing_id = {
         let db = Arc::clone(vfs_db.inner());
@@ -915,6 +927,7 @@ pub async fn media_bilibili_probe(
 
 #[tauri::command]
 pub async fn media_bilibili_create(
+    app: AppHandle,
     window: Window,
     input: String,
     page: Option<u32>,
@@ -924,7 +937,9 @@ pub async fn media_bilibili_create(
 ) -> CmdResult<BiliCreateResult> {
     let db = Arc::clone(vfs_db.inner());
     let service = Arc::clone(pdf_processing_service.inner());
-    let client = BiliClient::new().map_err(err)?;
+    let client = BiliClient::new()
+        .map_err(err)?
+        .with_cookie(super::bilibili_auth::load_cookie(&app));
     let lookup = client.lookup(&input, page).await.map_err(err)?;
     let (track, bytes) = client
         .subtitle_bytes(&lookup, lan.as_deref())
@@ -976,6 +991,7 @@ pub async fn media_bilibili_create(
 
 #[tauri::command]
 pub async fn media_bilibili_import_subtitle(
+    app: AppHandle,
     resource_id: String,
     input: String,
     page: Option<u32>,
@@ -986,7 +1002,9 @@ pub async fn media_bilibili_import_subtitle(
     let db = Arc::clone(vfs_db.inner());
     let service = Arc::clone(pdf_processing_service.inner());
     let info = load(&db, &resource_id).await.map_err(err)?;
-    let client = BiliClient::new().map_err(err)?;
+    let client = BiliClient::new()
+        .map_err(err)?
+        .with_cookie(super::bilibili_auth::load_cookie(&app));
     let lookup = client.lookup(&input, page).await.map_err(err)?;
     if info.is_link_item() {
         let own = {

@@ -410,7 +410,28 @@
     "batchSkipped": "{{pages}} 没有字幕，已跳过",
     "batchFailed": "{{pages}} 导入失败（{{message}}）",
     "batchStopped_one": "还有 {{count}} 个分 P 没有导入",
-    "batchStopped_other": "还有 {{count}} 个分 P 没有导入"
+    "batchStopped_other": "还有 {{count}} 个分 P 没有导入",
+    "account": {
+      "hint": "登录 B 站后字幕更全、清晰度更高（可选）",
+      "expired": "B 站登录已失效，可重新扫码登录",
+      "login": "扫码登录",
+      "loggedIn": "已登录 B 站：{{name}}",
+      "vip": "大会员",
+      "offline": "（未联网校验）",
+      "logout": "退出",
+      "qrAlt": "B 站登录二维码",
+      "scanPrompt": "用 B 站 App 扫码登录",
+      "scanned": "已扫码，请在手机上确认登录",
+      "qrExpired": "二维码已过期",
+      "refresh": "刷新",
+      "privacy": "登录信息只加密保存在本机，只用于向 B 站请求字幕和视频。",
+      "cancel": "取消"
+    },
+    "playback": {
+      "fallback": "无法在应用内直接播放这个视频，已改用 B 站播放器。",
+      "retry": "重试应用内播放",
+      "useEmbed": "改用 B 站播放器"
+    }
   },
   "mediaRef": {
     "badgeLabel": "跳转到「{{name}}」的 {{time}}",

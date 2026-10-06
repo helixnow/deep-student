@@ -7,7 +7,7 @@
 
 mod client;
 mod guard;
-mod qr;
+pub(crate) mod qr;
 
 use async_trait::async_trait;
 use serde_json::{json, Value};

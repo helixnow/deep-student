@@ -25,6 +25,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { formatMediaRefTimestamp } from './mediaRefTime';
 import { MediaCommandError } from './mediaTranscriptApi';
 import { bilibiliLinkApi, type BilibiliProbe } from './bilibiliLinkApi';
+import { BilibiliAccountPanel } from './BilibiliAccountPanel';
 
 export type BilibiliLinkDialogMode =
   | { kind: 'create' }
@@ -344,6 +345,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
         <DsDialogDescription>{description}</DsDialogDescription>
       </DsDialogHeader>
       <DsDialogBody className="space-y-4 py-4" data-bilibili-dialog={mode.kind}>
+        <BilibiliAccountPanel />
         <form
           className="flex items-center gap-2"
           onSubmit={(event) => {

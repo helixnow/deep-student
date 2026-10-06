@@ -12,8 +12,10 @@
  * 字幕面板变为「字幕 / 讲义 / 问答 / 练习」分段面板（始终可见），讲义入口移入讲义分区；
  * 资源库与聊天右侧面板无 context，工具栏多一个「在音视频中学习」跳转。
  *
- * B 站链接条目（`bilibili` 非空）：播放走内嵌播放器，没有本地音视频——不能转写、截帧、
- * 挂字幕轨、记播放进度；讲义只基于字幕（不抽帧）；字幕从 B 站重新获取。
+ * B 站链接条目（`bilibili` 非空）：默认在应用自己的播放器里播放 `bilistream://`（后端取 B 站
+ * MP4 地址并转发 Range 请求），截帧 / 字幕轨 / 播放进度与本地视频一样可用；直接播放出错时
+ * 退回 B 站外链播放器（iframe，不能截帧、不记进度）。没有本地音频文件，所以不能转写，
+ * 字幕从 B 站重新获取。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -55,6 +57,7 @@ import { VideoPlayer } from './VideoPlayer';
 import { BilibiliEmbedPlayer } from './BilibiliEmbedPlayer';
 import { BilibiliLinkDialog, type BilibiliLinkDialogMode } from './BilibiliLinkDialog';
 import { buildBilibiliPageUrl, type BilibiliLinkDescriptor } from './bilibiliLinkApi';
+import { buildBilibiliStreamUrl } from './bilibiliAccount';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 import type { TranscriptExportFormat, TranscriptSegment } from './mediaTranscriptApi';
 import { useMediaTranscript } from './useMediaTranscript';
@@ -135,8 +138,16 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const sideLayout = containerWidth >= SIDE_LAYOUT_MIN_WIDTH;
   const isVideo = kind === 'video';
   const isLink = bilibili !== null;
-  /** 讲义 / 伴随分区按此取帧：链接条目没有可抽帧的画面 */
-  const contentKind = isLink ? 'audio' : kind;
+  /** 链接条目直接播放出错后退回 B 站外链播放器（换条目时重置） */
+  const [linkEmbed, setLinkEmbed] = useState(false);
+  useEffect(() => {
+    setLinkEmbed(false);
+  }, [resourceId]);
+  /** 外链 iframe 播放：拿不到画面与进度 */
+  const embedPlayback = isLink && linkEmbed;
+  const playerSrc = useMemo(() => (isLink ? buildBilibiliStreamUrl(resourceId) : src), [isLink, resourceId, src]);
+  /** 讲义 / 伴随分区按此取帧：外链播放器没有可抽帧的画面 */
+  const contentKind = embedPlayback ? 'audio' : kind;
   const companion = useMediaStudyCompanion();
 
   // ---------------------------------------------------------------- 转写
@@ -159,7 +170,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     : (panelPref ?? true) && (hasTranscript || running);
 
   // ---------------------------------------------------------------- 字幕轨（视频）
-  const { trackSrc, trackRef, captionsOn, toggleCaptions } = useTranscriptTrack(segments, isVideo && !isLink);
+  const { trackSrc, trackRef, captionsOn, toggleCaptions } = useTranscriptTrack(segments, isVideo && !embedPlayback);
 
   // ---------------------------------------------------------------- 播放状态 / 跟随高亮
   const [isReady, setIsReady] = useState(false);
@@ -171,7 +182,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const externalSeekRef = useRef(false);
   const { onStatus: onProgressStatus, resumedFromRef } = useMediaProgressSync({
     resourceId,
-    enabled: !isLink,
+    enabled: !embedPlayback,
     handleRef,
     hasExternalSeek: () => externalSeekRef.current,
   });
@@ -423,7 +434,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     () => ({
       resourceId,
       kind: contentKind,
-      src,
+      src: playerSrc,
       fileName,
       transcriptStatus: status,
       hasTranscript: hasDoneSegments && !running,
@@ -431,7 +442,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       totalSegments: transcript?.progress?.totalSegments || segments.length,
       seekTo: seekToSeconds,
     }),
-    [resourceId, contentKind, src, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
+    [resourceId, contentKind, playerSrc, fileName, status, hasDoneSegments, running, doneSegments, transcript, segments.length, seekToSeconds],
   );
 
   // ---------------------------------------------------------------- 渲染
@@ -471,7 +482,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       </DsButton>
     ) : null;
 
-  const player = bilibili ? (
+  const handleLinkStreamError = useCallback(() => {
+    setLinkEmbed(true);
+  }, []);
+
+  const player = bilibili && linkEmbed ? (
     <BilibiliEmbedPlayer
       link={bilibili}
       isActive={isActive}
@@ -480,12 +495,12 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     />
   ) : isVideo ? (
     <VideoPlayer
-      key={src}
-      src={src}
+      key={playerSrc}
+      src={playerSrc}
       fileName={fileName}
       compatibilityHint={compatibilityHint}
       isActive={isActive}
-      onError={onError}
+      onError={isLink ? handleLinkStreamError : onError}
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
       crossOrigin="anonymous"
@@ -605,7 +620,19 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           </DsButton>
         )}
 
-        {isVideo && !isLink && (
+        {isLink && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setLinkEmbed((prev) => !prev)}
+            className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs')}
+            data-bilibili-playback={linkEmbed ? 'embed' : 'stream'}
+          >
+            <span>{linkEmbed ? t('learningHub:mediaBilibili.playback.retry') : t('learningHub:mediaBilibili.playback.useEmbed')}</span>
+          </DsButton>
+        )}
+
+        {isVideo && !embedPlayback && (
           <DsButton
             variant="ghost"
             size="sm"
@@ -718,7 +745,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       <div className={cn('flex min-h-0 flex-1', sideLayout ? 'flex-row' : 'flex-col')}>
         <div
           className={cn(
-            'min-h-0 min-w-0',
+            'relative min-h-0 min-w-0',
             !panelOpen || sideLayout
               ? 'flex-1'
               : companion
@@ -731,6 +758,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   : 'h-[300px] shrink-0',
           )}
         >
+          {embedPlayback && (
+            <p className="absolute inset-x-0 top-0 z-10 bg-black/60 px-3 py-1 text-[11px] text-white" role="status" data-bilibili-fallback="">
+              {t('learningHub:mediaBilibili.playback.fallback')}
+            </p>
+          )}
           {player}
         </div>
         {panelOpen && companion && (
