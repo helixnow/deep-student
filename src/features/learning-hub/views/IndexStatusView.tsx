@@ -1,5 +1,6 @@
 import { DsButton } from '@/components/ui/DsButton';
 import { EmbeddingReadinessBanner } from '../components/EmbeddingReadinessBanner';
+import { MultimodalReadinessBanner } from '../components/MultimodalReadinessBanner';
 import { pLimit } from '@/utils/concurrency';
 import { Input } from '@/components/ui/shad/Input';
 import IndexDiagnosticPanel from './IndexDiagnosticPanel';
@@ -84,7 +85,7 @@ import {
   resetAllIndexState,
   type VfsSearchResult,
 } from '@/api/vfsRagApi';
-import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_SUPPORTED } from '@/services/multimodalRagService';
+import multimodalRagService, { type SourceType as MMSourceType, MULTIMODAL_INDEX_SUPPORTED, getCapabilityStatusCached } from '@/services/multimodalRagService';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -942,6 +943,20 @@ export const IndexStatusView: React.FC = () => {
 
     // 然后执行原生多模态索引。
     if (mmPendingTotal > 0) {
+      // ★ 先探测多模态嵌入能力：未就绪时整条轨道跳过。
+      // 此前会对每个待索引资源调用一次 vfs_multimodal_index_resource，每个都以
+      // 「未配置多模态嵌入模型」失败并各弹一条通知——一次「一键索引」能弹出几十条
+      // 错误，且该文案把用户引向供应商/模型配置，而真正缺的是「嵌入维度管理」里
+      // 的默认多模态维度。文本轨已完成的部分不受影响。
+      const multimodalCapability = await getCapabilityStatusCached();
+      if (!multimodalCapability.available) {
+        showGlobalNotification(
+          'warning',
+          t('indexStatus.notification.mmNotConfiguredTitle'),
+          t('indexStatus.notification.mmNotConfiguredBody', { count: mmPendingTotal }),
+        );
+        return;
+      }
       setMmIndexing(true);
       setMmProgress(0);
       setMmMessage(t('indexStatus.notification.mmIndexStarting', { count: mmPendingTotal }));
@@ -2011,6 +2026,7 @@ export const IndexStatusView: React.FC = () => {
         </div>
       </div>
       <EmbeddingReadinessBanner />
+      <MultimodalReadinessBanner />
       {/* 顶部概览区 */}
       {useCompactHeader ? (
         /* ============ 紧凑布局（移动端 / 窄容器桌面窗口） ============ */

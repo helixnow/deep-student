@@ -1290,6 +1290,8 @@
       "noResults": "No results found",
       "recallTestFailed": "Recall test failed",
       "mmIndexFailed": "Native multimodal indexing failed",
+      "mmNotConfiguredTitle": "Multimodal indexing skipped",
+      "mmNotConfiguredBody": "No multimodal embedding model is configured, so {{count}} pending resource(s) were skipped. Set the multimodal dimension as default in Settings → Models → Model Assignment → Embedding Dimension Management.",
       "skippedNoSourceId": "{{count}} resource(s) skipped due to missing sourceId",
       "checkEmbeddingModel": "Please check that the embedding model is configured correctly (Settings → AI Models)",
       "checkNetwork": "Please check your network connection and try again",
@@ -1631,6 +1633,11 @@
     "title": "Knowledge base is off: no usable embedding model",
     "body": "You can upload and read materials, but they can’t be vectorized or retrieved in chat. Once an embedding model is configured, failed and pending items are re-indexed automatically.",
     "action": "Configure embeddings"
+  },
+  "multimodalReadiness": {
+    "title": "Multimodal indexing is not enabled yet",
+    "body": "Materials can be uploaded and read, but page-image multimodal indexing will not run. Set the multimodal dimension as default in Settings → Models → Model Assignment → Embedding Dimension Management.",
+    "action": "Configure multimodal embedding"
   },
   "vectorIndexUnavailable": {
     "title": "This version searches by keyword",

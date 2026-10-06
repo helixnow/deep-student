@@ -1290,6 +1290,8 @@
       "noResults": "未找到相关结果",
       "recallTestFailed": "召回测试失败",
       "mmIndexFailed": "原生多模态索引失败",
+      "mmNotConfiguredTitle": "已跳过多模态索引",
+      "mmNotConfiguredBody": "尚未配置多模态嵌入模型，{{count}} 项待索引资料未处理。请在「设置 → 模型 → 模型分配 → 嵌入维度管理」中把多模态维度设为默认。",
       "skippedNoSourceId": "{{count}} 个资源因缺少 sourceId 被跳过索引",
       "checkEmbeddingModel": "请检查嵌入模型是否已正确配置（设置 → AI 模型）",
       "checkNetwork": "请检查网络连接后重试",
@@ -1631,6 +1633,11 @@
     "title": "知识库尚未启用：没有可用的嵌入模型",
     "body": "资料可以上传和阅读，但无法被向量化，对话时检索不到。配置嵌入模型后，失败和待处理的资料会自动重新索引。",
     "action": "配置嵌入模型"
+  },
+  "multimodalReadiness": {
+    "title": "多模态索引尚未启用",
+    "body": "资料可以上传和阅读，但不会建立按页图像的多模态索引。请在「设置 → 模型 → 模型分配 → 嵌入维度管理」中把多模态维度设为默认。",
+    "action": "去配置多模态嵌入"
   },
   "vectorIndexUnavailable": {
     "title": "此版本使用关键词检索",
