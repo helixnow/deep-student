@@ -180,6 +180,34 @@ fn ensure_download_apply_is_durable(apply_agg: &ApplyToDbsResult) -> Result<(), 
     ))
 }
 
+/// 触发器 SQL 头部的事件（insert / update / delete）：`CREATE TRIGGER … {BEFORE|AFTER|INSTEAD OF}
+/// {INSERT|UPDATE [OF cols]|DELETE} ON …`。按空白切词，只看 `BEGIN` 之前，不受换行 / 缩进
+/// 影响，也不会把触发器体里的 `INSERT INTO __change_log` 当成事件。
+fn trigger_event(sql: &str) -> Option<&'static str> {
+    let mut tokens = sql.split_whitespace().map(|t| t.to_ascii_uppercase());
+    while let Some(token) = tokens.next() {
+        let event = match token.as_str() {
+            "BEGIN" => return None,
+            "BEFORE" | "AFTER" => tokens.next(),
+            "INSTEAD" => {
+                let of = tokens.next();
+                if of.as_deref() != Some("OF") {
+                    continue;
+                }
+                tokens.next()
+            }
+            _ => continue,
+        };
+        return match event.as_deref() {
+            Some("INSERT") => Some("insert"),
+            Some("UPDATE") => Some("update"),
+            Some("DELETE") => Some("delete"),
+            _ => None,
+        };
+    }
+    None
+}
+
 fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
     let registry = classification::sync_classification_registry();
     let mut issues = Vec::new();
@@ -250,30 +278,14 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
                 continue;
             }
 
-            let upper_sql = sql.to_ascii_uppercase();
+            // 按触发器头部的词判定事件（不依赖空白 / 缩进：生产迁移里触发器名后直接换行，
+            // `AFTER` 前面是换行而不是空格）；头部判不出时才看名字后缀兜底。
             let lower_name = name.to_ascii_lowercase();
-            // 匹配 " AFTER UPDATE " 与 " AFTER UPDATE OF <col> "（列限定触发器，
-            // 如 trg__change_log_note_document_revisions_pin），BEFORE 同理。
-            let is_update = upper_sql.contains(" AFTER UPDATE ")
-                || upper_sql.contains(" BEFORE UPDATE ")
-                || upper_sql.contains(" AFTER UPDATE OF ")
-                || upper_sql.contains(" BEFORE UPDATE OF ")
-                || lower_name.ends_with("_update");
-            let op = if upper_sql.contains(" AFTER INSERT ")
-                || upper_sql.contains(" BEFORE INSERT ")
-                || lower_name.ends_with("_insert")
-            {
-                Some("insert")
-            } else if is_update {
-                Some("update")
-            } else if upper_sql.contains(" AFTER DELETE ")
-                || upper_sql.contains(" BEFORE DELETE ")
-                || lower_name.ends_with("_delete")
-            {
-                Some("delete")
-            } else {
-                None
-            };
+            let op = trigger_event(&sql).or_else(|| {
+                ["insert", "update", "delete"]
+                    .into_iter()
+                    .find(|op| lower_name.ends_with(&format!("_{}", op)))
+            });
 
             if let Some(op) = op {
                 trigger_ops.entry(table).or_default().insert(op.to_string());
@@ -6315,6 +6327,77 @@ mod tests {
 
         let err = validate_sync_registry_drift(temp.path()).unwrap_err();
         assert!(err.contains("vfs.review_history 存在 __change_log 触发器"));
+    }
+
+    #[test]
+    fn trigger_event_reads_the_header_regardless_of_whitespace() {
+        // 生产写法：触发器名后直接换行，AFTER 顶格
+        let pin = "CREATE TRIGGER IF NOT EXISTS trg__change_log_note_document_revisions_pin\nAFTER UPDATE OF pinned ON note_document_revisions WHEN OLD.pinned != NEW.pinned BEGIN\n    INSERT INTO __change_log(table_name) VALUES ('x');\nEND";
+        assert_eq!(trigger_event(pin), Some("update"));
+        assert_eq!(
+            trigger_event("CREATE TRIGGER t\tafter\tinsert ON x BEGIN SELECT 1; END"),
+            Some("insert")
+        );
+        assert_eq!(
+            trigger_event("CREATE TRIGGER t INSTEAD OF DELETE ON v BEGIN SELECT 1; END"),
+            Some("delete")
+        );
+        // 触发器体里的 INSERT 不算事件
+        assert_eq!(
+            trigger_event("CREATE TRIGGER t BEGIN INSERT INTO __change_log VALUES (1); END"),
+            None
+        );
+    }
+
+    /// 回归：同步预检用生产迁移里 pin 触发器的原文（名字后换行、AFTER 顶格），
+    /// 此前空格敏感的子串匹配判不出 update，所有同步被拒（issue 446 / PR 448 报告）。
+    #[test]
+    fn registry_drift_preflight_accepts_the_production_pin_trigger_text() {
+        let migration = include_str!("../../migrations/vfs/V20260924__note_editor_leases.sql");
+        let start = migration
+            .find("CREATE TRIGGER IF NOT EXISTS trg__change_log_note_document_revisions_pin")
+            .expect("pin trigger in migration");
+        let end = start + migration[start..].find("END;").expect("pin trigger end") + "END;".len();
+        let pin_trigger = &migration[start..end];
+        assert!(pin_trigger.contains("_pin\nAFTER UPDATE OF pinned"));
+
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT,
+                sync_version INTEGER
+            );
+            CREATE TABLE note_document_revisions (
+                id TEXT PRIMARY KEY,
+                note_id TEXT,
+                pinned INTEGER DEFAULT 0
+            );
+            CREATE TRIGGER trg__change_log_note_document_revisions_insert
+            AFTER INSERT ON note_document_revisions
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES ('note_document_revisions', NEW.id, 'INSERT');
+            END;
+            "#,
+        )
+        .unwrap();
+        conn.execute_batch(pin_trigger).unwrap();
+        drop(conn);
+
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "生产迁移的 pin 触发器应识别为 update，实际: {:?}",
+            result.err()
+        );
     }
 
     /// 豁免表（note_document_revisions）设计上没有 delete 触发器（剪枝不回放
