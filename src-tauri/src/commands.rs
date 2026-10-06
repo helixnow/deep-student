@@ -1946,6 +1946,7 @@ enum TestModelKind {
     Embedding,
     Reranker,
     ImageGeneration,
+    Asr,
 }
 
 /// 类型判定：配置能力标志优先，模型名启发式兜底（草稿配置可能尚未设置标志）。
@@ -1969,7 +1970,103 @@ fn resolve_test_model_kind(config: &ApiConfig) -> TestModelKind {
     if crate::llm_manager::looks_like_image_generation_model_id(&config.model) {
         return TestModelKind::ImageGeneration;
     }
+    if looks_like_asr_model_id(&config.model) {
+        return TestModelKind::Asr;
+    }
     TestModelKind::Chat
+}
+
+/// ASR 型号名启发式（与前端 `modelIdPrefix.ts` 的 ASR_SIGNAL/ASR_EXCLUDED 正则同语义；
+/// regex crate 不支持 lookahead，按同一组信号词手写实现）。
+/// 覆盖 `XingChenASR-V3.2`、`TeleSpeechASR`、`Qwen3-ASR-1.7B`、`whisper-*`、
+/// `SenseVoiceSmall`、`paraformer`、`stt`/`scribe` 独立段；TTS/语音合成排除。
+fn looks_like_asr_model_id(model: &str) -> bool {
+    let lower = model.to_ascii_lowercase();
+    for excluded in [
+        "tts",
+        "text-to-speech",
+        "text_to_speech",
+        "speech-synthesis",
+        "speech_synthesis",
+        "speech-generation",
+        "speech_generation",
+    ] {
+        if lower.contains(excluded) {
+            return false;
+        }
+    }
+    let is_sep = |c: char| matches!(c, ' ' | '\t' | '/' | '_' | '.' | ':' | '-');
+    let chars: Vec<char> = lower.chars().collect();
+    // token 结尾：串尾、分隔符、数字，或 `v`+数字（asr-v3 / asrv3 同前端 `v?\d` 尾观）
+    let ends_token = |pos: usize| -> bool {
+        match chars.get(pos) {
+            None => true,
+            Some(&'v') => matches!(chars.get(pos + 1), Some(c) if c.is_ascii_digit()),
+            Some(&c) => is_sep(c) || c.is_ascii_digit(),
+        }
+    };
+    for (idx, w) in chars.windows(3).enumerate() {
+        if w == ['a', 's', 'r'] && ends_token(idx + 3) {
+            return true;
+        }
+    }
+    for (idx, w) in chars.windows(3).enumerate() {
+        if w == ['s', 't', 't'] {
+            let prev_ok = idx == 0 || is_sep(chars[idx - 1]);
+            if prev_ok && ends_token(idx + 3) {
+                return true;
+            }
+        }
+    }
+    for signal in [
+        "transcrib",
+        "whisper",
+        "sensevoice",
+        "paraformer",
+        "speech-to-text",
+        "speech_to_text",
+        "speech/to/text",
+    ] {
+        if lower.contains(signal) {
+            return true;
+        }
+    }
+    // `scribe` 独立段（允许 -v2 / _v3 版本后缀）
+    for (idx, w) in chars.windows(6).enumerate() {
+        if w != ['s', 'c', 'r', 'i', 'b', 'e'] {
+            continue;
+        }
+        if !(idx == 0 || is_sep(chars[idx - 1])) {
+            continue;
+        }
+        let mut cursor = idx + 6;
+        if matches!(chars.get(cursor), Some('-') | Some('_')) {
+            cursor += 1;
+            if chars.get(cursor) == Some(&'v') {
+                cursor += 1;
+            }
+            let digits_start = cursor;
+            while matches!(chars.get(cursor), Some(c) if c.is_ascii_digit()) {
+                cursor += 1;
+            }
+            if cursor == digits_start {
+                continue; // 分隔符后没有数字不算版本后缀
+            }
+        }
+        if ends_token(cursor) {
+            return true;
+        }
+    }
+    false
+}
+
+/// 探活用 1 秒 16 kHz 单声道 WAV：确定性低幅音（纯静音可能被个别端点拒收），
+/// 约 32 KB，转写计费可忽略。
+fn build_asr_probe_wav() -> Vec<u8> {
+    let samples: Vec<i16> = (0..16_000)
+        .map(|i| (((i % 160) as i16 - 80) * 10) as i16)
+        .collect();
+    crate::media::wav::encode_wav_mono_16k(&samples)
 }
 
 /// 构造聊天探测请求体：与生产流式路径相同的构造顺序
@@ -2285,6 +2382,66 @@ async fn run_json_probe(
     }
 }
 
+/// ASR 模型的端点探测：`POST {base}/audio/transcriptions`（multipart WAV），
+/// 与生产转写（`voice_input`）同端点。此前 ASR 模型落入 Chat 分支用
+/// `/chat/completions` 探活，而 ASR 模型不在该端点的模型清单里，必然
+/// 400 "Model does not exist"——测试失败但真实转写正常，报错误导排障。
+async fn run_asr_probe(
+    client: &reqwest::Client,
+    config: &ApiConfig,
+    timeout: Duration,
+) -> std::result::Result<Option<String>, (&'static str, String)> {
+    let url = format!(
+        "{}/audio/transcriptions",
+        config.base_url.trim_end_matches('/')
+    );
+    let probe = async {
+        let form = reqwest::multipart::Form::new()
+            .part(
+                "file",
+                reqwest::multipart::Part::bytes(build_asr_probe_wav())
+                    .file_name("probe.wav")
+                    .mime_str("audio/wav")
+                    .map_err(|error| ("config", error.to_string()))?,
+            )
+            .text("model", config.model.clone());
+        let mut builder = client.post(&url).header("Accept", "application/json");
+        if !config.api_key.trim().is_empty() {
+            builder = builder.header("Authorization", format!("Bearer {}", config.api_key.trim()));
+        }
+        let response = builder
+            .multipart(form)
+            .send()
+            .await
+            .map_err(|error| classify_probe_transport_error(error))?;
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(classify_probe_http_failure(status, &text));
+        }
+        // 个别网关以 200 包错误响应：body 带 error 字段时按失败处理
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+            if value
+                .get("error")
+                .filter(|error| !error.is_null())
+                .is_some()
+            {
+                return Err((
+                    "provider_error",
+                    format!("供应商返回错误：{}", truncate_provider_error_detail(text)),
+                ));
+            }
+        }
+        Ok(None)
+    };
+    match tokio::time::timeout(timeout, probe).await {
+        Ok(result) => result,
+        Err(_) => Err((
+            "timeout",
+            format!("等待供应商响应超过 {} 秒", timeout.as_secs()),
+        )),
+    }
+}
 /// 图像生成模型的目录探测（不真生成，避免探测产生计费）：GET /models 验证
 /// 端点与密钥，模型未在清单中仅软接受并警告（很多端点的清单不完整）。
 async fn run_catalog_probe(
@@ -3167,6 +3324,11 @@ pub async fn test_api_connection(
             let timeout =
                 Duration::from_millis(vendor_timeout.unwrap_or(10_000).clamp(5_000, 60_000));
             run_catalog_probe(&client, &config, timeout).await
+        }
+        TestModelKind::Asr => {
+            let timeout =
+                Duration::from_millis(vendor_timeout.unwrap_or(30_000).clamp(5_000, 120_000));
+            run_asr_probe(&client, &config, timeout).await
         }
     };
 
@@ -4875,9 +5037,10 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_chat_probe_body, build_provider_adapter, classify_probe_http_failure,
-        compare_template_version, decide_builtin_import_action, extract_template_field_refs,
-        inspect_probe_buffer, is_openai_codex_oauth_test, probe_u32_field, resolve_test_model_kind,
+        build_asr_probe_wav, build_chat_probe_body, build_provider_adapter,
+        classify_probe_http_failure, compare_template_version, decide_builtin_import_action,
+        extract_template_field_refs, inspect_probe_buffer, is_openai_codex_oauth_test,
+        looks_like_asr_model_id, probe_u32_field, resolve_test_model_kind,
         should_update_builtin_template, validate_template_request, vendor_models_endpoint,
         BuiltinImportAction, ProbeVerdict, TestModelKind, PROBE_CONTEXT_WINDOW_KEYS,
         PROBE_MAX_OUTPUT_KEYS,
@@ -5418,6 +5581,78 @@ mod tests {
             ..ApiConfig::default()
         };
         assert_eq!(resolve_test_model_kind(&config), TestModelKind::Chat);
+    }
+
+    #[test]
+    fn asr_models_route_to_asr_probe() {
+        for model in [
+            "XingChenAGI/XingChenASR-V3.2-Ultra",
+            "XingChenAGI/XingChenASR-V3.2",
+            "TeleAI/TeleSpeechASR",
+            "Qwen/Qwen3-ASR-1.7B",
+            "openai/whisper-large-v3",
+            "FunAudioLLM/SenseVoiceSmall",
+            "qwen3-stt",
+            "asr-v3",
+        ] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                ..ApiConfig::default()
+            };
+            assert_eq!(
+                resolve_test_model_kind(&config),
+                TestModelKind::Asr,
+                "model={model}"
+            );
+        }
+    }
+
+    #[test]
+    fn chat_models_do_not_route_to_asr_probe() {
+        for model in [
+            "deepseek-v4.1-flash",
+            "gpt-4o",
+            "kimi-k2.5",
+            "qwen3.8-max",
+            "text-embedding-3-large",
+            "bge-reranker-v2-m3",
+        ] {
+            let config = ApiConfig {
+                model: model.to_string(),
+                ..ApiConfig::default()
+            };
+            assert_ne!(
+                resolve_test_model_kind(&config),
+                TestModelKind::Asr,
+                "model={model}"
+            );
+        }
+    }
+
+    #[test]
+    fn asr_heuristic_excludes_tts_and_speech_synthesis() {
+        for model in [
+            "openai/tts-1",
+            "FunAudioLLM/SpeechSynthesis-large",
+            "vendor/speech-generation-x",
+            "text-to-speech-model",
+        ] {
+            assert!(
+                !looks_like_asr_model_id(model),
+                "model={model} 不应判为 ASR"
+            );
+        }
+    }
+
+    #[test]
+    fn build_asr_probe_wav_is_valid_mono_16k() {
+        let wav = build_asr_probe_wav();
+        assert_eq!(&wav[..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+        assert_eq!(&wav[36..40], b"data");
+        let data_len = u32::from_le_bytes(wav[40..44].try_into().unwrap()) as usize;
+        assert_eq!(data_len, 32_000, "1 秒 16 kHz 单声道 16bit");
+        assert_eq!(wav.len(), 44 + data_len);
     }
 
     #[test]
