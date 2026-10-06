@@ -10,7 +10,7 @@
  * 分组：分组即媒体所在的 VFS 文件夹（与资源库一致），「按分组」视图把列表折成可收起的分区，
  * 根目录文件归「未分组」放最后；视图与收起状态记在 localStorage。
  */
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
@@ -55,6 +55,7 @@ import {
   TITLEBAR_TITLE_CLASS,
 } from '@/app/shell/titlebarUiTokens';
 import { dstu, folderApi } from '@/dstu';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { fileManager } from '@/utils/fileManager';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -338,31 +339,29 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
 
   const dialogOpen = renaming !== null || deleting !== null || bilibiliMode !== null || batchDeleting || newGroup !== null;
 
-  useEffect(() => {
-    if (!selectMode || dialogOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.isComposing) return;
-      if (event.key === 'Escape') {
-        // 打开着的菜单（移动到分组 / 行菜单）先吃掉这次 Esc
-        if (document.querySelector('[role="menu"]')) return;
-        event.preventDefault();
-        exitSelect();
-        return;
-      }
-      const target = event.target as HTMLElement | null;
-      const typing = target?.closest('input, textarea, [contenteditable="true"]');
-      if (!typing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
-        event.preventDefault();
-        setSelected((prev) => {
-          const next = new Set(prev);
-          for (const item of visible) next.add(item.id);
-          return next;
-        });
-      }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+  const handleSelectKeys = useCallback((event: Event) => {
+    if (!selectMode || dialogOpen || !(event instanceof KeyboardEvent)) return;
+    if (event.defaultPrevented || event.isComposing) return;
+    if (event.key === 'Escape') {
+      // 打开着的菜单（移动到分组 / 行菜单）先吃掉这次 Esc
+      if (document.querySelector('[role="menu"]')) return;
+      event.preventDefault();
+      exitSelect();
+      return;
+    }
+    const typing = event.target instanceof Element && event.target.closest('input, textarea, [contenteditable="true"]');
+    if (!typing && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'a') {
+      event.preventDefault();
+      setSelected((prev) => {
+        const next = new Set(prev);
+        for (const item of visible) next.add(item.id);
+        return next;
+      });
+    }
   }, [selectMode, dialogOpen, exitSelect, visible]);
+  useEventRegistry([
+    { target: 'window', type: 'keydown', listener: handleSelectKeys },
+  ], [handleSelectKeys]);
 
   /** 批量结束：全部成功退出多选；有失败只留下失败的条目继续选中 */
   const finishBatch = useCallback((outcome: BatchOutcome) => {
