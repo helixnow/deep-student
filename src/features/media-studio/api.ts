@@ -38,6 +38,8 @@ export interface MediaLibraryItem {
   size: number;
   folderId: string | null;
   folderName: string | null;
+  /** 根 → 所在文件夹的标题链（根级为空数组） */
+  folderPath: string[];
   /** 毫秒时间戳 */
   createdAt: number;
   updatedAt: number;
@@ -81,6 +83,10 @@ function str(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function strList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
+}
+
 const AUDIO_EXT = /\.(mp3|wav|ogg|oga|m4a|flac|aac|wma|opus)$/i;
 
 export function inferMediaKind(kind: unknown, mimeType: string, name: string): MediaKind {
@@ -114,6 +120,7 @@ export function normalizeLibraryItem(raw: unknown): MediaLibraryItem | null {
     size: num(r.size) ?? 0,
     folderId: str(pick(r, 'folderId', 'folder_id')),
     folderName: str(pick(r, 'folderName', 'folder_name')),
+    folderPath: strList(pick(r, 'folderPath', 'folder_path')),
     createdAt: toMillis(pick(r, 'createdAt', 'created_at')) ?? 0,
     updatedAt: toMillis(pick(r, 'updatedAt', 'updated_at')) ?? 0,
     durationMs: num(pick(r, 'durationMs', 'duration_ms')),

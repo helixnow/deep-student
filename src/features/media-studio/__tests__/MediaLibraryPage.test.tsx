@@ -40,6 +40,7 @@ function item(id: string, over: Partial<MediaLibraryItem> = {}): MediaLibraryIte
     size: 1,
     folderId: null,
     folderName: null,
+    folderPath: [],
     createdAt: T0,
     updatedAt: T0,
     durationMs: 600_000,

@@ -146,3 +146,131 @@ export function formatRelativeTime(at: number, now: number, locale: string): str
   }
   return new Date(at).toLocaleDateString(locale);
 }
+
+// ---------------------------------------------------------------------------
+// 多选与分组
+// ---------------------------------------------------------------------------
+
+/** 分组 = 媒体所在的 VFS 文件夹（与资源库一致）；根级文件归入「未分组」（folderId 为 null） */
+export interface MediaLibraryGroup {
+  /** 文件夹 id；null = 未分组 */
+  folderId: string | null;
+  /** 显示名：多级文件夹用「父 / 子」；未分组为空串（由界面翻译） */
+  label: string;
+  items: MediaLibraryItem[];
+}
+
+export interface MediaFolderOption {
+  id: string;
+  label: string;
+}
+
+/** 文件夹显示名：优先完整路径（区分不同父目录下的同名文件夹），退回文件夹名 */
+export function folderLabel(item: MediaLibraryItem): string {
+  if (item.folderPath.length > 0) return item.folderPath.join(' / ');
+  return item.folderName ?? '';
+}
+
+const compareLabel = (a: string, b: string) =>
+  a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
+/**
+ * 按文件夹分组：组内保持输入顺序（已按最近活动排好），组按名称排序（数字自然序，
+ * 「第 2 章」在「第 10 章」前），未分组固定在最后。
+ */
+export function groupLibraryItems(items: readonly MediaLibraryItem[]): MediaLibraryGroup[] {
+  const groups = new Map<string, MediaLibraryGroup>();
+  const loose: MediaLibraryItem[] = [];
+  for (const item of items) {
+    if (!item.folderId) {
+      loose.push(item);
+      continue;
+    }
+    let group = groups.get(item.folderId);
+    if (!group) {
+      group = { folderId: item.folderId, label: folderLabel(item), items: [] };
+      groups.set(item.folderId, group);
+    }
+    group.items.push(item);
+  }
+  const sorted = [...groups.values()].sort((a, b) => compareLabel(a.label, b.label));
+  if (loose.length > 0) sorted.push({ folderId: null, label: '', items: loose });
+  return sorted;
+}
+
+/** 「移动到分组」可选目标：含有音视频的文件夹（按名称排序） */
+export function listMediaFolders(items: readonly MediaLibraryItem[]): MediaFolderOption[] {
+  const seen = new Map<string, string>();
+  for (const item of items) {
+    if (item.folderId && !seen.has(item.folderId)) seen.set(item.folderId, folderLabel(item));
+  }
+  return [...seen.entries()]
+    .map(([id, label]) => ({ id, label }))
+    .sort((a, b) => compareLabel(a.label, b.label));
+}
+
+export type SelectAllState = 'none' | 'some' | 'all';
+
+/** 可见条目的勾选状态（全选按钮文案 / 分组头三态的依据） */
+export function selectAllState(
+  visible: readonly MediaLibraryItem[],
+  selected: ReadonlySet<string>,
+): SelectAllState {
+  let count = 0;
+  for (const item of visible) if (selected.has(item.id)) count += 1;
+  if (count === 0) return 'none';
+  return count === visible.length ? 'all' : 'some';
+}
+
+/**
+ * 全选 / 取消全选只作用于给定的可见条目（筛选 + 搜索之后）：可见的已全选 → 取消这些；
+ * 否则把可见的全部加入。被筛选隐藏的已选条目保持不变。
+ */
+export function toggleSelectAll(
+  visible: readonly MediaLibraryItem[],
+  selected: ReadonlySet<string>,
+): Set<string> {
+  const next = new Set(selected);
+  if (selectAllState(visible, selected) === 'all') {
+    for (const item of visible) next.delete(item.id);
+  } else {
+    for (const item of visible) next.add(item.id);
+  }
+  return next;
+}
+
+/** 选中且当前可见的条目：批量操作只作用于它们，避免误删被筛掉的条目 */
+export function selectedVisibleItems(
+  visible: readonly MediaLibraryItem[],
+  selected: ReadonlySet<string>,
+): MediaLibraryItem[] {
+  return visible.filter((item) => selected.has(item.id));
+}
+
+/** 去扩展名（`.bilibili` 链接条目与普通音视频扩展名） */
+function stripExtension(name: string): string {
+  return name.replace(/\.[A-Za-z0-9]{1,10}$/, '');
+}
+
+/** 公共前缀末尾的分 P / 集数残片与分隔符：「线性代数 P」「课程 第」「Lecture 1」 */
+const PREFIX_TAIL = /(?:[\s_\-–—·:：|/\\,，、.(（[【]|\b[Pp]\d*|第\d*|\d+)+$/u;
+
+/**
+ * 多个条目名称的公共标题前缀（「新建分组」预填名）：
+ * 「线性代数 P2 矩阵」「线性代数 P3 向量」→「线性代数」。少于 2 个或前缀过短时返回空串。
+ */
+export function commonTitlePrefix(names: readonly string[]): string {
+  if (names.length < 2) return '';
+  const titles = names.map((name) => stripExtension(name.trim()));
+  let prefix = titles[0];
+  for (const title of titles.slice(1)) {
+    let i = 0;
+    while (i < prefix.length && i < title.length && prefix[i] === title[i]) i += 1;
+    prefix = prefix.slice(0, i);
+    if (!prefix) return '';
+  }
+  // 截在代理对中间时丢掉半个字符
+  if (/[\uD800-\uDBFF]$/.test(prefix)) prefix = prefix.slice(0, -1);
+  const trimmed = prefix.replace(PREFIX_TAIL, '').trim();
+  return [...trimmed].length >= 2 ? trimmed : '';
+}
