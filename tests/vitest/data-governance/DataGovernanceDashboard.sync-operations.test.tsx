@@ -120,6 +120,23 @@ vi.mock('@/utils/tauriApi', () => ({
 
 import { DataGovernanceDashboard } from '@/features/settings';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import type { SyncProgress } from '@/types/dataGovernance';
+
+/** 模拟后端进度事件：进度由应用级监听写入全局 store（#447） */
+function emitSyncProgress(progress: SyncProgress) {
+  useGlobalSyncStore.getState().applyProgress(progress);
+}
+
+beforeEach(() => {
+  // 全局 store 跨用例共享：失败进度会保留展示，逐用例复位
+  useGlobalSyncStore.setState({
+    isSyncing: false,
+    source: null,
+    progress: null,
+    cancelRequested: false,
+  });
+});
 
 // ============================================================================
 // 默认 mock 数据
@@ -369,15 +386,15 @@ describe('DataGovernanceDashboard SyncTab sync progress display', () => {
     // 使用 deferred 模式：onProgress 后保持 promise 挂起，以便验证进度 UI
     let resolveSyncFn: ((value: unknown) => void) | undefined;
 
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockImplementation(
+    mockDataGovernanceApi.runSyncWithProgress.mockImplementation(
       (
         _direction: string,
         _cloudConfig: unknown,
-        options: { onProgress?: (progress: unknown) => void },
+        _strategy: unknown,
       ) => {
         // 发送进度事件
-        if (options.onProgress) {
-          options.onProgress({
+        {
+          emitSyncProgress({
             phase: 'uploading',
             percent: 45,
             current: 5,
@@ -729,7 +746,7 @@ describe('DataGovernanceDashboard SyncTab sync operation mutual exclusion', () =
   it('disables sync buttons while sync is running', async () => {
     // 创建一个永不 resolve 的 promise 来模拟长时间运行的同步
     let resolveSync: ((value: unknown) => void) | undefined;
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockImplementation(
+    mockDataGovernanceApi.runSyncWithProgress.mockImplementation(
       () =>
         new Promise((resolve) => {
           resolveSync = resolve;
@@ -800,8 +817,8 @@ describe('DataGovernanceDashboard SyncTab sync failure handling', () => {
     useSystemStatusStore.getState().exitMaintenanceMode();
   });
 
-  it('recovers button state when runSyncWithProgressTracking rejects', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockRejectedValue(
+  it('recovers button state when runSyncWithProgress rejects', async () => {
+    mockDataGovernanceApi.runSyncWithProgress.mockRejectedValue(
       new Error('Network error: connection refused'),
     );
 
@@ -819,7 +836,7 @@ describe('DataGovernanceDashboard SyncTab sync failure handling', () => {
 
     // 等待 API 调用
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
     // 按钮应恢复为可用状态（finally 块）
@@ -829,7 +846,7 @@ describe('DataGovernanceDashboard SyncTab sync failure handling', () => {
   });
 
   it('handles sync result with success=false and shows error', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+    mockDataGovernanceApi.runSyncWithProgress.mockResolvedValue({
       success: false,
       direction: 'bidirectional',
       changes_uploaded: 0,
@@ -851,7 +868,7 @@ describe('DataGovernanceDashboard SyncTab sync failure handling', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
     // 按钮应恢复为可用状态
@@ -878,7 +895,7 @@ describe('DataGovernanceDashboard SyncTab sync complete notification', () => {
   });
 
   it('refreshes sync status after successful sync completion', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+    mockDataGovernanceApi.runSyncWithProgress.mockResolvedValue({
       success: true,
       direction: 'bidirectional',
       changes_uploaded: 8,
@@ -902,7 +919,7 @@ describe('DataGovernanceDashboard SyncTab sync complete notification', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
     // 同步完成后应刷新同步状态
@@ -921,7 +938,7 @@ describe('DataGovernanceDashboard SyncTab sync complete notification', () => {
   it('clears conflicts state after successful sync', async () => {
     // 先设置有冲突
     mockDataGovernanceApi.detectConflicts.mockResolvedValue(sampleConflictDetection);
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+    mockDataGovernanceApi.runSyncWithProgress.mockResolvedValue({
       success: true,
       direction: 'bidirectional',
       changes_uploaded: 5,
@@ -958,7 +975,7 @@ describe('DataGovernanceDashboard SyncTab sync complete notification', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
     // 同步成功后冲突信息应被清除
@@ -987,15 +1004,15 @@ describe('DataGovernanceDashboard SyncTab sync abort', () => {
   });
 
   it('recovers state when sync promise rejects mid-operation', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockImplementation(
+    mockDataGovernanceApi.runSyncWithProgress.mockImplementation(
       async (
         _direction: string,
         _cloudConfig: unknown,
-        options: { onProgress?: (progress: unknown) => void },
+        _strategy: unknown,
       ) => {
         // 模拟进度事件
-        if (options.onProgress) {
-          options.onProgress({
+        {
+          emitSyncProgress({
             phase: 'uploading',
             percent: 30,
             current: 3,
@@ -1022,7 +1039,7 @@ describe('DataGovernanceDashboard SyncTab sync abort', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
     // 按钮应恢复为可用状态
@@ -1052,7 +1069,7 @@ describe('DataGovernanceDashboard SyncTab maintenance mode', () => {
   });
 
   it('enters maintenance mode when sync starts and exits when done', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+    mockDataGovernanceApi.runSyncWithProgress.mockResolvedValue({
       success: true,
       direction: 'bidirectional',
       changes_uploaded: 3,
@@ -1205,8 +1222,8 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
     ).toBeInTheDocument();
   });
 
-  it('calls runSyncWithProgressTracking with upload direction when upload button is clicked', async () => {
-    mockDataGovernanceApi.runSyncWithProgressTracking.mockResolvedValue({
+  it('calls runSyncWithProgress with upload direction when upload button is clicked', async () => {
+    mockDataGovernanceApi.runSyncWithProgress.mockResolvedValue({
       success: true,
       direction: 'upload',
       changes_uploaded: 15,
@@ -1228,10 +1245,106 @@ describe('DataGovernanceDashboard SyncTab database sync status list', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runSyncWithProgressTracking).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
     });
 
-    const call = mockDataGovernanceApi.runSyncWithProgressTracking.mock.calls[0];
+    const call = mockDataGovernanceApi.runSyncWithProgress.mock.calls[0];
     expect(call[0]).toBe('upload');
+  });
+});
+
+// ============================================================================
+// #447：切换设置栏目（卸载/重挂载）后同步进度不丢失
+// ============================================================================
+
+describe('DataGovernanceDashboard sync progress survives remount (#447)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    capturedListenerCallbacks = {};
+    setupDefaultMocks({ cloudConfigured: true });
+    useSystemStatusStore.getState().exitMaintenanceMode();
+  });
+
+  afterEach(() => {
+    useSystemStatusStore.getState().exitMaintenanceMode();
+  });
+
+  it('shows in-progress state, latest progress and cancel after unmount + remount', async () => {
+    let resolveSyncFn: ((value: unknown) => void) | undefined;
+    mockDataGovernanceApi.runSyncWithProgress.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSyncFn = resolve;
+        }),
+    );
+
+    const first = render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: /双向同步|data:governance\.sync_bidirectional/i,
+        }),
+      );
+    });
+    await waitFor(() => {
+      expect(mockDataGovernanceApi.runSyncWithProgress).toHaveBeenCalled();
+    });
+
+    // 用户切到其他设置栏目：面板被卸载
+    first.unmount();
+
+    // 卸载期间后端继续推送进度（应用级监听仍在接收）
+    act(() => {
+      emitSyncProgress({
+        phase: 'uploading',
+        percent: 62,
+        current: 7,
+        total: 12,
+        current_item: 'vfs.db',
+        speed_bytes_per_sec: 2048,
+        eta_seconds: 40,
+        error: null,
+      });
+    });
+
+    // 切回来：新实例立即显示「同步进行中」+ 当前进度 + 取消入口
+    render(<DataGovernanceDashboard embedded />);
+    await navigateToSyncTab();
+
+    expect(
+      await screen.findByText(/同步进行中|data:governance\.sync_in_progress/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText('62%')).toBeInTheDocument();
+    expect(screen.getByText(/7 \/ 12/)).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /data:sync_settings\.cancel_sync/ }),
+    ).toBeEnabled();
+    expect(
+      screen.getByRole('button', {
+        name: /双向同步|data:governance\.sync_bidirectional/i,
+      }),
+    ).toBeDisabled();
+
+    // 原实例的命令结束后释放全局占用并清空进度
+    await act(async () => {
+      resolveSyncFn?.({
+        success: true,
+        direction: 'bidirectional',
+        changes_uploaded: 7,
+        changes_downloaded: 0,
+        conflicts_detected: 0,
+        duration_ms: 1000,
+        device_id: 'device-abc12345',
+        error_message: null,
+      });
+    });
+    await waitFor(() => {
+      expect(useGlobalSyncStore.getState().isSyncing).toBe(false);
+    });
+    expect(useGlobalSyncStore.getState().progress).toBeNull();
+    expect(
+      screen.queryByText(/同步进行中|data:governance\.sync_in_progress/i),
+    ).not.toBeInTheDocument();
   });
 });

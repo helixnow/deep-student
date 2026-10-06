@@ -180,7 +180,9 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(cloudStorageSection).toContain("DataGovernanceApi.cancelBackup(jobId)");
     expect(backupJobListener).toContain("event.result?.success === true");
     expect(syncSettingsSection).toContain("DataGovernanceApi.detectPruneGap(cloudConfig)");
-    expect(syncSettingsSection).toContain("let unlisten: (() => void) | null = null");
+    // #447：进度由应用级监听写入全局 store，不在会被卸载的组件内注册监听
+    expect(syncSettingsSection).toContain("useGlobalSyncStore((s) => s.progress)");
+    expect(syncSettingsSection).not.toContain("listenSyncProgress(");
     expect(dashboard).not.toContain("detectPruneGap 检查失败（继续同步）");
     expect(dashboard).not.toContain("window.confirm(warnMsg)");
   });

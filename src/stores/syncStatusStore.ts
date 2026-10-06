@@ -15,32 +15,151 @@ import {
   type StorageValue,
 } from 'zustand/middleware';
 
+import {
+  SYNC_PROGRESS_EVENT,
+  type SyncProgress,
+} from '@/types/dataGovernance';
+
 interface GlobalSyncState {
   /** 是否有同步正在进行（任意入口触发的都算） */
   isSyncing: boolean;
   /** 触发当前同步的入口标识（用于调试与提示） */
   source: string | null;
   /**
-   * 尝试开始一次同步。
+   * 当前（或最近一次失败）同步的进度（#447）。
+   *
+   * 进度与 isSyncing 同在全局 store：设置页各栏目是 lazy + 条件渲染，切换
+   * 栏目会卸载同步面板；进度若放在组件局部 state，切回来时按钮仍灰（全局
+   * isSyncing 为 true）而进度区一片空白，用户误以为卡死并重启 App。
+   * 由应用级进度事件监听（ensureSyncProgressListener）持续写入，与哪个
+   * 页面组件挂载无关。
+   */
+  progress: SyncProgress | null;
+  /** 已发出取消请求、等待后端协作式停止（新同步开始时复位） */
+  cancelRequested: boolean;
+  /**
+   * 尝试开始一次同步。成功占用时把进度置为「准备中」并复位取消标记。
    * @returns true 表示成功占用；false 表示已有同步在进行，调用方应放弃本次触发
    */
   beginSync: (source: string) => boolean;
-  /** 同步结束（无论成功失败）时调用，释放占用 */
-  endSync: () => void;
+  /**
+   * 同步结束（无论成功失败）时调用，释放占用。
+   * @param finalProgress 结束后保留展示的进度（如失败时带 error 的进度，供
+   *   面板继续显示错误结论）；省略或 null 则清空进度。
+   */
+  endSync: (finalProgress?: SyncProgress | null) => void;
+  /**
+   * 写入一条进度（进度事件或入口自身的阶段更新）。未在同步时忽略，避免
+   * 结束后迟到的事件把面板重新点亮。
+   */
+  applyProgress: (progress: SyncProgress) => void;
+  /** 请求取消当前同步（协作式：后端在下一检查点停止） */
+  requestCancel: () => Promise<void>;
+}
+
+/** 同步开始时的初始进度 */
+export function createPreparingSyncProgress(): SyncProgress {
+  return {
+    phase: 'preparing',
+    percent: 0,
+    current: 0,
+    total: 0,
+    current_item: null,
+    speed_bytes_per_sec: null,
+    eta_seconds: null,
+    error: null,
+  };
+}
+
+/** 以 prev 为底（无则以空进度为底）构造带错误的失败进度 */
+export function createFailedSyncProgress(
+  prev: SyncProgress | null,
+  error: string,
+): SyncProgress {
+  return {
+    ...(prev ?? createPreparingSyncProgress()),
+    phase: 'failed',
+    error,
+  };
 }
 
 export const useGlobalSyncStore = create<GlobalSyncState>((set, get) => ({
   isSyncing: false,
   source: null,
+  progress: null,
+  cancelRequested: false,
   beginSync: (source) => {
     if (get().isSyncing) {
       return false;
     }
-    set({ isSyncing: true, source });
+    set({
+      isSyncing: true,
+      source,
+      progress: createPreparingSyncProgress(),
+      cancelRequested: false,
+    });
+    // 兜底：应用级监听通常已在 App 启动时注册；幂等
+    ensureSyncProgressListener();
     return true;
   },
-  endSync: () => set({ isSyncing: false, source: null }),
+  endSync: (finalProgress = null) =>
+    set({
+      isSyncing: false,
+      source: null,
+      progress: finalProgress,
+      cancelRequested: false,
+    }),
+  applyProgress: (progress) => {
+    if (!get().isSyncing) return;
+    set({ progress });
+  },
+  requestCancel: async () => {
+    if (!get().isSyncing || get().cancelRequested) return;
+    set({ cancelRequested: true });
+    try {
+      const { cancelSync } = await import('@/api/dataGovernance');
+      const accepted = await cancelSync();
+      if (!accepted) {
+        // 后端无进行中同步（可能刚好结束）——复位让 UI 回到真实状态
+        set({ cancelRequested: false });
+      }
+    } catch (error) {
+      console.error('[SyncStatus] cancel sync failed:', error);
+      set({ cancelRequested: false });
+    }
+  },
 }));
+
+// ==================== 应用级同步进度监听（#447） ====================
+
+let progressListenerPromise: Promise<void> | null = null;
+
+/**
+ * 注册应用级同步进度事件监听（幂等，进程生命周期内只注册一次）。
+ *
+ * 主注册点在 App.tsx 启动时；beginSync 也会兜底调用。监听不绑定任何页面
+ * 组件实例，因此同步面板被卸载/重挂载都不影响进度接收。注册失败（非
+ * Tauri 环境等）时复位，下次调用可重试。
+ */
+export function ensureSyncProgressListener(): Promise<void> {
+  if (!progressListenerPromise) {
+    progressListenerPromise = (async () => {
+      const { listen } = await import('@tauri-apps/api/event');
+      await listen<SyncProgress>(SYNC_PROGRESS_EVENT, (event) => {
+        useGlobalSyncStore.getState().applyProgress(event.payload);
+      });
+    })().catch((error: unknown) => {
+      progressListenerPromise = null;
+      console.warn('[SyncStatus] failed to listen for sync progress:', error);
+    });
+  }
+  return progressListenerPromise;
+}
+
+/** 仅供测试：复位监听注册状态 */
+export function __resetSyncProgressListenerForTests(): void {
+  progressListenerPromise = null;
+}
 
 // ==================== 自动同步（R07-autosync / R11-autosync2） ====================
 //

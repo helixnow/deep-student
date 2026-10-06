@@ -40,7 +40,6 @@ import { useConflictResolution } from '@/hooks/useConflictResolution';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
-  SyncProgress,
   SyncPhase,
   formatSpeed,
   formatEta,
@@ -56,8 +55,6 @@ import {
 } from '@/stores/syncStatusStore';
 import {
   DataGovernanceApi,
-  cancelSync,
-  listenSyncProgress,
   runSyncWithProgress,
 } from '@/api/dataGovernance';
 
@@ -105,11 +102,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   const [showConflictDialog, setShowConflictDialog] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 同步进度状态
-  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-  // 取消请求已发出（等待后端协作式停止）；新同步开始时复位
-  const [cancelRequested, setCancelRequested] = useState(false);
-  // 全局同步状态：与数据治理面板等其他入口共享，任一入口同步时本入口按钮禁用
+  // 同步进度 / 取消 / 正在同步：全部来自全局 store（#447）。进度由应用级
+  // 事件监听写入，本组件被设置页切栏目卸载后重挂载仍能立即显示；与数据
+  // 治理面板等其他入口共享，任一入口同步时本入口按钮禁用。
+  const syncProgress = useGlobalSyncStore((s) => s.progress);
+  const cancelRequested = useGlobalSyncStore((s) => s.cancelRequested);
   const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
   // 自动同步开关（默认关闭；调度与安全防线在 syncStatusStore 内实现）
   const autoSyncEnabled = useAutoSyncStore((s) => s.enabled);
@@ -239,17 +236,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // 请求取消当前同步（协作式：等待/退避立即中断，文件传输在下一检查点停止）
   const handleCancelSync = useCallback(async () => {
-    setCancelRequested(true);
-    try {
-      const accepted = await cancelSync();
-      if (!accepted) {
-        // 后端无进行中同步（可能刚好结束）——复位让 UI 回到真实状态
-        setCancelRequested(false);
-      }
-    } catch (error) {
-      console.error('[SyncSettings] cancel sync failed:', error);
-      setCancelRequested(false);
-    }
+    await useGlobalSyncStore.getState().requestCancel();
   }, []);
 
   // 执行同步（带进度跟踪）
@@ -273,20 +260,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         return;
       }
 
-      let unlisten: (() => void) | null = null;
+      // beginSync 已把全局进度置为「准备中」并复位取消标记；后续进度由
+      // 应用级监听写入，不在本组件注册（避免绑定到会被卸载的实例）
       try {
-        setCancelRequested(false);
-        setSyncProgress({
-          phase: 'preparing',
-          percent: 0,
-          current: 0,
-          total: 0,
-          current_item: null,
-          speed_bytes_per_sec: null,
-          eta_seconds: null,
-          error: null,
-        });
-
         if (direction !== 'upload') {
           const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
           if (gap.has_gap) {
@@ -297,12 +273,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           }
         }
 
-        unlisten = await listenSyncProgress({
-          onProgress: (progress) => setSyncProgress(progress),
-        });
-
         const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
-        setSyncProgress(null);
 
         if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0) {
           showGlobalNotification(
@@ -328,14 +299,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           );
         }
       } catch (err: unknown) {
-        setSyncProgress(null);
         showGlobalNotification(
           'error',
           `${t('data:sync_settings.sync_failed')}: ${getErrorMessage(err)}`
         );
       } finally {
         useGlobalSyncStore.getState().endSync();
-        unlisten?.();
       }
     },
     [getSyncStatus, syncStrategy, t]

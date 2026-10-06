@@ -126,6 +126,10 @@ export interface SyncTabProps {
   cloudSyncSummary: { provider: StorageProvider; root?: string } | null;
   syncRunning: boolean;
   syncProgress: SyncProgress | null;
+  /** 已发出取消请求、等待后端停止 */
+  syncCancelRequested?: boolean;
+  /** 请求取消当前同步；未提供时不显示取消按钮 */
+  onCancelSync?: () => void;
   syncStrategy: MergeStrategy;
   onSyncStrategyChange: (strategy: MergeStrategy) => void;
   showCloudSettingsEditor: boolean;
@@ -151,6 +155,8 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   cloudSyncSummary,
   syncRunning,
   syncProgress,
+  syncCancelRequested = false,
+  onCancelSync,
   syncStrategy,
   onSyncStrategyChange,
   showCloudSettingsEditor,
@@ -585,6 +591,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                       </span>
                     )}
                   </div>
+                  {syncRunning && onCancelSync && (
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 px-2 text-xs [@media(pointer:coarse)]:!min-h-8"
+                      disabled={syncCancelRequested}
+                      onClick={onCancelSync}
+                    >
+                      {syncCancelRequested
+                        ? t("data:sync_settings.cancelling")
+                        : t("data:sync_settings.cancel_sync")}
+                    </DsButton>
+                  )}
                 </div>
 
                 <div className="space-y-1">

@@ -52,7 +52,7 @@ import { MediaCacheSection } from './MediaCacheSection';
 import { LanceOptimizationPanel } from './IndexMaintenanceSection';
 import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
-import { useGlobalSyncStore } from '@/stores/syncStatusStore';
+import { createFailedSyncProgress, useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { useBackupJobListener } from '@/hooks/useBackupJobListener';
 import type {
   DashboardTab,
@@ -72,7 +72,6 @@ import type {
 import {
   INCREMENTAL_BACKUP_REMOVED_MESSAGE,
   INCREMENTAL_RESTORE_NOT_SUPPORTED_MESSAGE,
-  isSyncPhaseTerminal,
 } from '@/types/dataGovernance';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -727,11 +726,16 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   const auditFilterRef = useRef<{ operationType?: AuditOperationType; status?: AuditStatus }>({});
   const auditRequestGeneration = useRef(0);
 
-  // 云端同步状态（进度事件）
-  const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
+  // 云端同步状态：进度与「正在同步」都在全局 store（#447）——本面板是 lazy
+  // 渲染的设置栏目，切栏目会被卸载；进度由应用级事件监听写入，重挂载后
+  // 立即恢复显示。其他入口（设置页同步区块、自动同步）同步时本面板同样可见。
+  const syncProgress = useGlobalSyncStore((s) => s.progress);
   const [isSyncRunning, setIsSyncRunning] = useState(false);
-  // 全局同步状态：其他入口（如设置页同步区块）正在同步时，本面板按钮也禁用
   const globalSyncing = useGlobalSyncStore((s) => s.isSyncing);
+  const syncCancelRequested = useGlobalSyncStore((s) => s.cancelRequested);
+  const handleCancelSync = useCallback(() => {
+    void useGlobalSyncStore.getState().requestCancel();
+  }, []);
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
   // 记录最近一次同步请求快照（用于重试）
   const lastSyncRequestRef = useRef<{
@@ -1457,22 +1461,19 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     lastSyncRequestRef.current = { direction, strategy };
     startTabLoading('sync');
     setIsSyncRunning(true);
-    setSyncProgress({
-      phase: 'preparing',
-      percent: 0,
-      current: 0,
-      total: 0,
-      current_item: null,
-      speed_bytes_per_sec: null,
-      eta_seconds: null,
-      error: null,
-    });
+    // 结束时保留展示的进度：失败时带 error，供面板继续显示错误结论
+    let finalProgress: SyncProgress | null = null;
+    const failWith = (errorMessage: string) => {
+      finalProgress = createFailedSyncProgress(
+        useGlobalSyncStore.getState().progress,
+        errorMessage,
+      );
+    };
 
     try {
       const cloudConfig = await loadCloudSyncConfig();
       if (!cloudConfig) {
         setCloudSyncConfigured(false);
-        setSyncProgress(null);
         showGlobalNotification(
           'warning',
           t('data:governance.cloud_sync_not_configured'),
@@ -1498,17 +1499,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
 
       enterMaintenanceMode(t('data:governance.maintenance_sync'));
 
-      const result = await DataGovernanceApi.runSyncWithProgressTracking(
+      // 进度由应用级监听写入全局 store（不绑定本组件实例）；成功与否以命令
+      // 返回结果为准
+      const result = await DataGovernanceApi.runSyncWithProgress(
         direction,
         cloudConfig,
-        {
-          onProgress: (progress) => {
-            setSyncProgress(progress);
-            if (isSyncPhaseTerminal(progress.phase)) {
-              // 终态由最终结果兜底处理
-            }
-          },
-        },
         strategy
       );
 
@@ -1525,20 +1520,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         setConflicts(null);
       } else {
         const errorMessage = result.error_message ?? t('data:governance.sync_failed');
-        setSyncProgress((prev) => prev ? {
-          ...prev,
-          phase: 'failed',
-          error: errorMessage,
-        } : {
-          phase: 'failed',
-          percent: 0,
-          current: 0,
-          total: 0,
-          current_item: null,
-          speed_bytes_per_sec: null,
-          eta_seconds: null,
-          error: errorMessage,
-        });
+        failWith(errorMessage);
         showGlobalNotification('error', errorMessage);
       }
 
@@ -1546,26 +1528,13 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     } catch (error: unknown) {
       console.error('云端同步失败:', error);
       const errorMessage = getErrorMessage(error);
-      setSyncProgress((prev) => prev ? {
-        ...prev,
-        phase: 'failed',
-        error: errorMessage,
-      } : {
-        phase: 'failed',
-        percent: 0,
-        current: 0,
-        total: 0,
-        current_item: null,
-        speed_bytes_per_sec: null,
-        eta_seconds: null,
-        error: errorMessage,
-      });
+      failWith(errorMessage);
       showGlobalNotification('error', errorMessage);
     } finally {
       stopTabLoading('sync');
       setIsSyncRunning(false);
       syncInFlightRef.current = false;
-      useGlobalSyncStore.getState().endSync();
+      useGlobalSyncStore.getState().endSync(finalProgress);
       exitMaintenanceMode();
     }
   }, [
@@ -1994,6 +1963,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           cloudSyncSummary={cloudSyncSummary}
           syncRunning={isSyncRunning || globalSyncing}
           syncProgress={syncProgress}
+          syncCancelRequested={syncCancelRequested}
+          onCancelSync={handleCancelSync}
           syncStrategy={syncStrategy}
           onSyncStrategyChange={setSyncStrategy}
           showCloudSettingsEditor={showCloudSettingsEditor}
