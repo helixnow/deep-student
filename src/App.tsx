@@ -845,7 +845,7 @@ function App() {
   // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
   useEffect(() => initReminderScheduler(), []);
 
-  // ☁️ 云同步进度（应用级监听，#447）：进度写入全局 useGlobalSyncStore，
+  // ☁️ 云同步进度（应用级监听，issue 447）：进度写入全局 useGlobalSyncStore，
   //   同步面板被设置页切栏目卸载/重挂载后仍能立即显示当前进度与取消入口。
   useEffect(() => {
     void ensureSyncProgressListener();
