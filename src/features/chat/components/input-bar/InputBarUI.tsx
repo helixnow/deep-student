@@ -1899,8 +1899,38 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
 
   // ★ P2 优化：跟踪已同步的状态，避免重复更新
   const syncedStatusRef = useRef<Map<string, { stage: string; percent: number; readyModes: string }>>(new Map());
+
+  /**
+   * 附件是否需要补查后端处理状态。
+   *
+   * 除了「处理中」，还要覆盖「已就绪、但就绪模式仍未知」的附件：从资源库 / 引用
+   * 加入的 PDF（`vfs_create_or_reuse` 路径）不会带回 `processingStatus`，此时模式
+   * 门闩会按「没有任何就绪模式」把发送拦死（附件行显示「未就绪: 文本/图片」且模式
+   * chip 被禁用）。旧实现只在 `status === 'processing'` 时补查，于是这类附件永远
+   * 填不上状态 —— 补查范围对齐到「媒体类型已知但就绪模式未知」即可修好。
+   */
+  const needsStatusLookup = (att: {
+    sourceId?: string | null;
+    status: string;
+    mimeType?: string | null;
+    name?: string | null;
+    processingStatus?: { readyModes?: string[] } | null;
+  }): boolean => {
+    if (!att.sourceId) return false;
+    const mediaType = getMediaTypeForAttachment({
+      mimeType: att.mimeType ?? '',
+      name: att.name ?? '',
+    });
+    if (!mediaType) return false;
+    if (att.status === 'uploading' || att.status === 'pending' || att.status === 'error') return false;
+    if (att.status === 'processing') return true;
+    const stored = usePdfProcessingStore.getState().statusMap.get(att.sourceId);
+    const modes = stored?.readyModes ?? att.processingStatus?.readyModes;
+    return !modes || modes.length === 0;
+  };
+
   const processingAttachmentKey = JSON.stringify(attachments
-    .filter(att => att.status === 'processing' && att.sourceId && getMediaTypeForAttachment(att))
+    .filter(att => needsStatusLookup(att))
     .map(att => [att.id, att.sourceId]));
 
   // ★ 超时保护：跟踪每个附件的累计轮询次数，防止无限轮询
@@ -1915,7 +1945,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
     let stopped = false;
     let pollingInFlight = false;
     const currentSourceIds = new Set(attachmentsRef.current
-      .filter(att => att.status === 'processing')
+      .filter(att => needsStatusLookup(att))
       .map(att => att.sourceId));
     for (const sourceId of pollingCountRef.current.keys()) {
       if (!currentSourceIds.has(sourceId)) pollingCountRef.current.delete(sourceId);
@@ -1933,9 +1963,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
       if (stopped) return;
       if (pollingInFlight) return;
       const currentAttachments = attachmentsRef.current;
-      const processingAttachments = currentAttachments
-        .filter(att => att.status === 'processing' && !!att.sourceId)
-        .filter(att => getMediaTypeForAttachment(att) !== null);
+      const processingAttachments = currentAttachments.filter(att => needsStatusLookup(att));
       const fileIds = processingAttachments.map(att => att.sourceId as string);
 
       // ★ 修复：没有 processing 附件时完全停止轮询，不再空转
@@ -1953,7 +1981,14 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
         pollingCountRef.current.set(sourceId, count);
 
         if (count > MAX_POLL_COUNT) {
-          timedOutAttachments.push(att);
+          // 只有真正「处理中」的附件才沿用既有的超时语义（标记为 error）；
+          // 其余是「补查状态」的已就绪附件：只停止补查，不动它的状态，
+          // 避免把一次状态补查变成用户可见的失败。
+          if (att.status === 'processing') {
+            timedOutAttachments.push(att);
+          } else {
+            pollingCountRef.current.delete(sourceId);
+          }
         } else {
           activeFileIds.push(sourceId);
         }
