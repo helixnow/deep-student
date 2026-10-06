@@ -90,6 +90,8 @@ const syncErrorHumanKeys = {
   legacy_plaintext: "sync:errors.legacyPlaintextRejected",
   missing_password: "sync:errors.encryptionPasswordMissing",
   wrong_password: "sync:errors.wrongEncryptionPassword",
+  lease_held_self: "sync:errors.leaseHeldSelf",
+  lease_held: "sync:errors.leaseHeld",
 } as const;
 
 export type SyncErrorKind = keyof typeof syncErrorHumanKeys;
@@ -107,12 +109,27 @@ export type SyncErrorKind = keyof typeof syncErrorHumanKeys;
  * 3. 密码错误/数据损坏（「密码错误或数据损坏」「请检查加密密码」及兜底「无法解密」）。
  */
 export function classifySyncError(raw: string): SyncErrorKind | null {
+  // #447：租约持有者就是本机（上次同步被关闭/重启打断）。需带到期时间才能
+  // 给出“何时可重试”，取不到时退回通用租约提示。
+  if (raw.includes("E_SYNC_LEASE_HELD_SELF") && extractSyncLeaseExpiry(raw)) {
+    return "lease_held_self";
+  }
+  if (raw.includes("E_SYNC_LEASE_HELD")) return "lease_held";
   if (/缺少\s*DSBK\s*加密头/.test(raw)) return "legacy_plaintext";
   if (/未配置加密密码/.test(raw)) return "missing_password";
   if (/密码错误或数据损坏|请检查加密密码|无法解密/.test(raw)) {
     return "wrong_password";
   }
   return null;
+}
+
+/** 从租约被占错误（“预计 <RFC3339> 到期”）中取出到期时间 */
+export function extractSyncLeaseExpiry(raw: string): Date | null {
+  const match = /预计\s*(\S+?)\s*到期/.exec(raw);
+  if (!match) return null;
+  // Rust 的 RFC3339 可能带纳秒（9 位小数），截到毫秒以保证 Date 可解析
+  const expiry = new Date(match[1].replace(/(\.\d{3})\d+/, "$1"));
+  return Number.isNaN(expiry.getTime()) ? null : expiry;
 }
 
 export interface SyncTabProps {
@@ -634,7 +651,12 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                         <XCircle size={12} className="mt-0.5 shrink-0" />
                         <span>
                           {syncErrorKind
-                            ? t(syncErrorHumanKeys[syncErrorKind])
+                            ? t(syncErrorHumanKeys[syncErrorKind], {
+                                expiresAt:
+                                  extractSyncLeaseExpiry(
+                                    syncProgress.error,
+                                  )?.toLocaleString() ?? "",
+                              })
                             : syncErrorE2eeKind
                               ? t(SYNC_E2EE_ERROR_I18N_KEYS[syncErrorE2eeKind])
                               : syncProgress.error}

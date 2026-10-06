@@ -104,6 +104,7 @@ vi.mock('@/components/ui/DsDialog', () => ({
 import {
   SyncTab,
   classifySyncError,
+  extractSyncLeaseExpiry,
   type SyncTabProps,
 } from '@/features/settings/components/data-governance/SyncTab';
 import type {
@@ -127,6 +128,11 @@ const WRONG_PASSWORD_ERROR =
 const MANIFEST_PASSWORD_ERROR =
   '设备清单无法解密，已停止同步（请检查加密密码）: device-1 (aead::Error)';
 const UNKNOWN_ERROR = '网络连接超时 (connection reset by peer)';
+// #447：后端 lease_held_error 的两种文案（持有者为本机 / 其他设备）
+const LEASE_HELD_SELF_ERROR =
+  '[E_SYNC_LEASE_HELD_SELF] 本机（LAPTOP-NLLQ1V2J-24357239）上一次同步没有正常结束（例如同步进行中关闭或重启了应用），云端遗留的同步租约尚未过期（预计 2026-10-06T06:03:01.021440800+00:00 到期）。租约到期后会自动回收，届时重试即可；这不是其他设备在同步。';
+const LEASE_HELD_OTHER_ERROR =
+  '[E_SYNC_LEASE_HELD] 同步目标租约被其他设备持有：device-b（预计 2026-10-06T06:03:01+00:00 到期）。请等待另一台设备完成同步，或等待租约过期后重试；不要手工覆盖云端同步文件。';
 
 function makeProgress(error: string | null): SyncProgress {
   return {
@@ -315,6 +321,16 @@ describe('classifySyncError', () => {
     ).toBe('wrong_password');
   });
 
+  it('租约被占：持有者为本机 → lease_held_self，其他设备 → lease_held (#447)', () => {
+    expect(classifySyncError(LEASE_HELD_SELF_ERROR)).toBe('lease_held_self');
+    expect(classifySyncError(LEASE_HELD_OTHER_ERROR)).toBe('lease_held');
+    // 取不到到期时间时退回通用租约提示
+    expect(classifySyncError('[E_SYNC_LEASE_HELD_SELF] 本机遗留租约')).toBe('lease_held');
+    expect(extractSyncLeaseExpiry(LEASE_HELD_SELF_ERROR)?.toISOString()).toBe(
+      '2026-10-06T06:03:01.021Z',
+    );
+  });
+
   it('未知错误返回 null（原样透出，不误分类）', () => {
     expect(classifySyncError(UNKNOWN_ERROR)).toBeNull();
     expect(classifySyncError('')).toBeNull();
@@ -368,6 +384,58 @@ describe('SyncTab 错误面板人话展示', () => {
     expect(onRetrySync).toHaveBeenCalledTimes(1);
   });
 
+  it('本机遗留租约显示专门人话并带上到期时间，原文保留为技术详情 (#447)', () => {
+    render(
+      <SyncTab
+        {...makeProps({
+          ...configured,
+          syncProgress: makeProgress(LEASE_HELD_SELF_ERROR),
+        })}
+      />,
+    );
+
+    expect(screen.getByText('sync:errors.leaseHeldSelf')).toBeInTheDocument();
+    expect(mockTranslate).toHaveBeenCalledWith('sync:errors.leaseHeldSelf', {
+      expiresAt: new Date('2026-10-06T06:03:01.021Z').toLocaleString(),
+    });
+    expect(
+      screen.getByText((text) => text.includes('LAPTOP-NLLQ1V2J-24357239')),
+    ).toBeInTheDocument();
+  });
+
+  it('同步进行中显示取消按钮，已请求取消时禁用 (#447)', () => {
+    const onCancelSync = vi.fn();
+    const { rerender } = render(
+      <SyncTab
+        {...makeProps({
+          ...configured,
+          syncRunning: true,
+          syncProgress: makeProgress(null),
+          onCancelSync,
+        })}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'data:sync_settings.cancel_sync' }),
+    );
+    expect(onCancelSync).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <SyncTab
+        {...makeProps({
+          ...configured,
+          syncRunning: true,
+          syncProgress: makeProgress(null),
+          syncCancelRequested: true,
+          onCancelSync,
+        })}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'data:sync_settings.cancelling' }),
+    ).toBeDisabled();
+  });
+
   it('未知错误原样透出，不显示技术详情行', () => {
     render(
       <SyncTab
@@ -390,6 +458,7 @@ describe('SyncTab 错误面板人话展示', () => {
       expect(String(locale.errors.encryptionPasswordMissing).length).toBeGreaterThan(0);
       expect(String(locale.errors.wrongEncryptionPassword).length).toBeGreaterThan(0);
       expect(String(locale.errors.technicalDetail).length).toBeGreaterThan(0);
+      expect(String(locale.errors.leaseHeldSelf)).toContain('{{expiresAt}}');
       // 人话不得再暴露 DSBK 内部术语
       expect(String(locale.errors.legacyPlaintextRejected)).not.toContain('DSBK');
       expect(String(locale.errors.wrongEncryptionPassword)).not.toContain('DSBK');
