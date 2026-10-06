@@ -252,24 +252,30 @@ fn validate_sync_registry_drift(active_dir: &Path) -> Result<(), String> {
 
             let upper_sql = sql.to_ascii_uppercase();
             let lower_name = name.to_ascii_lowercase();
+            // 迁移文件里的触发器可以写成「触发器名换行 + AFTER UPDATE OF <col>」这种
+            // 没有缩进的形式（见 migrations/vfs/V20260924__note_editor_leases.sql），
+            // 此时 sqlite_master.sql 里 AFTER 前面是换行而不是空格。若直接做子串匹配，
+            // 生产写法会被误判成「缺少 update 触发器」，稳态启动时 fail-close 整个同步
+            // （上传/下载/双向全部拒绝）。因此先归一化空白再匹配。
+            let normalized_sql = upper_sql.split_whitespace().collect::<Vec<_>>().join(" ");
             // 匹配 " AFTER UPDATE " 与 " AFTER UPDATE OF <col> "（列限定触发器，
             // 如 trg__change_log_note_document_revisions_pin），BEFORE 同理。
-            let is_update = upper_sql.contains(" AFTER UPDATE ")
-                || upper_sql.contains(" BEFORE UPDATE ")
-                || upper_sql.contains(" AFTER UPDATE OF ")
-                || upper_sql.contains(" BEFORE UPDATE OF ")
+            let is_insert = normalized_sql.contains(" AFTER INSERT ")
+                || normalized_sql.contains(" BEFORE INSERT ")
+                || lower_name.ends_with("_insert");
+            let is_update = normalized_sql.contains(" AFTER UPDATE ")
+                || normalized_sql.contains(" BEFORE UPDATE ")
+                || normalized_sql.contains(" AFTER UPDATE OF ")
+                || normalized_sql.contains(" BEFORE UPDATE OF ")
                 || lower_name.ends_with("_update");
-            let op = if upper_sql.contains(" AFTER INSERT ")
-                || upper_sql.contains(" BEFORE INSERT ")
-                || lower_name.ends_with("_insert")
-            {
+            let is_delete = normalized_sql.contains(" AFTER DELETE ")
+                || normalized_sql.contains(" BEFORE DELETE ")
+                || lower_name.ends_with("_delete");
+            let op = if is_insert {
                 Some("insert")
             } else if is_update {
                 Some("update")
-            } else if upper_sql.contains(" AFTER DELETE ")
-                || upper_sql.contains(" BEFORE DELETE ")
-                || lower_name.ends_with("_delete")
-            {
+            } else if is_delete {
                 Some("delete")
             } else {
                 None
@@ -6412,6 +6418,65 @@ mod tests {
         assert!(
             result.is_ok(),
             "UPDATE OF 触发器应被识别为 update，不应误报缺 update，实际: {:?}",
+            result.err()
+        );
+    }
+
+    /// 防漂移：**直接用生产迁移文件原文**建库并跑预检。
+    ///
+    /// `migrations/vfs/V20260924__note_editor_leases.sql` 把触发器写成
+    /// 「触发器名换行 + AFTER ...」（列首无缩进），`sqlite_master.sql` 里 AFTER 前面
+    /// 因此是换行而不是空格。旧的预检用空格敏感的子串匹配（如 " AFTER UPDATE OF "），
+    /// 于是判不出 update（触发器名以 `_pin` 结尾，也躲过了 `_update` 名字兜底），
+    /// 稳态启动时整库 fail-close，用户看到:
+    /// `同步预检失败：检测到 registry/触发器漂移。vfs.note_document_revisions 缺少 __change_log update 触发器`
+    ///
+    /// 本用例**不手写 fixture**：手写 fixture 一旦被格式化出缩进，就与生产线不同形，
+    /// 会再次掩盖同一类问题（这正是它此前漏过的原因）。这里 `include_str!` 两个真迁移
+    /// 文本（V20260923 给 note_document_revisions 的 insert、V20260924 给 pin/update），
+    /// 迁移写法再变也会被挡住；归一化逻辑同时覆盖 insert/update/delete 三种判定。
+    #[test]
+    fn registry_drift_preflight_accepts_real_production_migration_text() {
+        let temp = tempfile::tempdir().unwrap();
+        let db_dir = temp.path().join("databases");
+        std::fs::create_dir_all(&db_dir).unwrap();
+        let conn = rusqlite::Connection::open(db_dir.join("vfs.db")).unwrap();
+        // 真迁移引用的最小前置表（列取迁移文件实际用到的最小集合）。
+        conn.execute_batch(
+            r#"
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                sync_version INTEGER
+            );
+            CREATE TABLE note_document_revisions (
+                id TEXT PRIMARY KEY,
+                version_id TEXT,
+                pinned INTEGER DEFAULT 0
+            );
+            CREATE TABLE note_document_formats (note_id TEXT PRIMARY KEY);
+            CREATE TABLE note_learning_relations (id TEXT PRIMARY KEY);
+            CREATE TABLE notes (id TEXT PRIMARY KEY);
+            CREATE TABLE resources (id TEXT PRIMARY KEY, data TEXT, deleted_at TEXT);
+            "#,
+        )
+        .unwrap();
+        conn.execute_batch(include_str!(
+            "../../migrations/vfs/V20260923__note_history_integration.sql"
+        ))
+        .unwrap();
+        conn.execute_batch(include_str!(
+            "../../migrations/vfs/V20260924__note_editor_leases.sql"
+        ))
+        .unwrap();
+        drop(conn);
+
+        let result = validate_sync_registry_drift(temp.path());
+        assert!(
+            result.is_ok(),
+            "生产迁移原文（触发器名换行 + AFTER 无缩进）应通过同步预检，实际: {:?}",
             result.err()
         );
     }
