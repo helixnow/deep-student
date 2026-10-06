@@ -30,6 +30,7 @@ import {
   StudyCardsIcon,
   StudyChatIcon,
   StudyMagicWandIcon,
+  StudyMediaIcon,
   StudySettingsIcon,
   StudyTodoIcon,
 } from '@app/components/icons/StudySidebarIcons';
@@ -69,6 +70,7 @@ const SidebarFrameIcon = ({ color }: { color: string }) => (
 const NAV: Array<{ label: string; Icon: (p: { className?: string }) => JSX.Element }> = [
   { label: S.nav.newChat, Icon: StudyChatIcon },
   { label: S.nav.learningHub, Icon: StudyBooksIcon },
+  { label: S.nav.media, Icon: StudyMediaIcon },
   { label: S.nav.todo, Icon: StudyTodoIcon },
   { label: S.nav.skills, Icon: StudyMagicWandIcon },
   { label: S.nav.flashcards, Icon: StudyCardsIcon },
@@ -83,6 +85,9 @@ export const OLD_SESSIONS: SidebarRow[] = [
   { title: '机器学习系统 · 第 3 章', time: '6天前' },
 ];
 
+/** 5 项导航时的几何（probe-cla-0 起量）之下，每多一项导航，分区与会话列表下移一行。 */
+const NAV_SHIFT = 33.75 * (NAV.length - 5);
+
 const SB_SECTION = 'rgba(101, 105, 114, 0.72)';
 const SB_SEL = 'rgba(42, 45, 50, 0.1)';
 const sb = (x: number, y: number): CSSProperties => ({ position: 'absolute', left: x, top: y });
@@ -94,7 +99,8 @@ const SbIcon = ({ x, y, children }: { x: number; y: number; children: ReactNode 
 );
 
 /** 几何取自真机经典壳（probe-cla-0，左栏 320 宽，坐标即窗口坐标）。
- * 2026-10-04 起闪卡合并 Anki 制卡 / 模板管理（51e8d7260），导航剩 5 项，下方分区整体上移两行（67.5）。 */
+ * 2026-10-04 起闪卡合并 Anki 制卡 / 模板管理（51e8d7260），导航剩 5 项；0.10.2 在资源库与待办之间加「音视频」，
+ * 导航 6 项（config/navigation.ts createNavItems），下方分区整体下移一行（33.75）。 */
 export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]; t: number }) => (
   <div style={{ position: 'absolute', left: 0, top: 0, width: CW.nav, height: CW.h, background: tk.nav, fontFamily: font.ui, color: 'rgb(42, 45, 50)' }}>
     <span style={{ ...sb(14, 60.8), ...sbText(18, 18, 'rgb(42, 45, 50)', 600), fontFamily: font.display }}>DeepStudent</span>
@@ -108,12 +114,12 @@ export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]
         <span style={{ ...sb(39.5, 101.5 + 33.75 * i), ...sbText(14, 14, 'rgb(42, 45, 50)') }}>{label}</span>
       </div>
     ))}
-    <span style={{ ...sb(18.5, 290.3), ...sbText(13, 18, SB_SECTION) }}>{S.nav.topics}</span>
-    <CaretDown size={12.3} color={tk.mutedFg} style={sb(264.9, 293.1)} />
-    <FolderPlus size={12.3} color={tk.mutedFg} style={sb(289.4, 293.1)} />
-    <span style={{ ...sb(18.5, 329.5), ...sbText(13, 18, SB_SECTION) }}>{S.nav.conversations}</span>
+    <span style={{ ...sb(18.5, NAV_SHIFT + 290.3), ...sbText(13, 18, SB_SECTION) }}>{S.nav.topics}</span>
+    <CaretDown size={12.3} color={tk.mutedFg} style={sb(264.9, NAV_SHIFT + 293.1)} />
+    <FolderPlus size={12.3} color={tk.mutedFg} style={sb(289.4, NAV_SHIFT + 293.1)} />
+    <span style={{ ...sb(18.5, NAV_SHIFT + 329.5), ...sbText(13, 18, SB_SECTION) }}>{S.nav.conversations}</span>
     {rows.slice(0, 5).map((r, i) => {
-      const y = 352.0 + 33.75 * i;
+      const y = NAV_SHIFT + 352.0 + 33.75 * i;
       return (
         <div key={`${r.title}-${i}`} style={{ position: 'absolute', inset: 0, opacity: r.enter ?? 1, transform: `translateY(${(1 - (r.enter ?? 1)) * 4}px)` }}>
           {r.active ? <span style={{ ...sb(7, y), width: 306, height: 32, borderRadius: 14, background: SB_SEL }} /> : null}
@@ -126,7 +132,7 @@ export const ClassicSidebar = ({ tk, rows, t }: { tk: Tokens; rows: SidebarRow[]
         </div>
       );
     })}
-    {rows.length > 5 ? <span style={{ ...sb(38.5, 524.3), ...sbText(12, 12, tk.mutedFg) }}>{S.nav.showMore}</span> : null}
+    {rows.length > 5 ? <span style={{ ...sb(38.5, NAV_SHIFT + 524.3), ...sbText(12, 12, tk.mutedFg) }}>{S.nav.showMore}</span> : null}
     <SbIcon x={14.8} y={CW.h - 35.5}>
       <StudySettingsIcon className="ds-icon" />
     </SbIcon>

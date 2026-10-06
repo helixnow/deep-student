@@ -253,6 +253,7 @@ export const S = {
   nav: {
     newChat: tr('sidebar', 'navigation.chat_v2'),
     learningHub: tr('sidebar', 'navigation.learning_hub'),
+    media: tr('sidebar', 'navigation.media'),
     todo: tr('common', 'navigation.todo'),
     skills: tr('sidebar', 'navigation.skills_management'),
     anki: tr('sidebar', 'navigation.anki_generation'),
