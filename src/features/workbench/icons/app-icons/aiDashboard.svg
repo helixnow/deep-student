@@ -1,16 +1,25 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 150">
-  <linearGradient id="chat_warm" x1="101" x2="101" y1="16" y2="74" gradientUnits="userSpaceOnUse">
-    <stop stop-color="#F9AC33" offset="0"/>
-    <stop stop-color="#F0603C" offset="1"/>
+  <linearGradient id="aid_panel" x1="75" x2="75" y1="22" y2="132" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F8FDFC" offset="0"/>
+    <stop stop-color="#D3E8E6" offset="1"/>
   </linearGradient>
-  <path d="M82 16h38a16 16 0 0 1 16 16v14a16 16 0 0 1-16 16h-2l6 14-20-14H82a16 16 0 0 1-16-16V32a16 16 0 0 1 16-16z" fill="url(#chat_warm)"/>
-  <linearGradient id="chat_cool" x1="66" x2="66" y1="38" y2="134" gradientUnits="userSpaceOnUse">
+  <rect x="16" y="26" width="112" height="106" rx="14" fill="url(#aid_panel)" stroke="#A6C4CB" stroke-width="3"/>
+  <circle cx="54" cy="72" r="20" fill="none" stroke="#D3E8E6" stroke-width="10"/>
+  <linearGradient id="aid_ring" x1="34" x2="74" y1="52" y2="92" gradientUnits="userSpaceOnUse">
     <stop stop-color="#2BB3A3" offset="0"/>
     <stop stop-color="#1D3F6E" offset="1"/>
   </linearGradient>
-  <path d="M34 38h64a20 20 0 0 1 20 20v34a20 20 0 0 1-20 20H56l-26 20 8-20h-4a20 20 0 0 1-20-20V58a20 20 0 0 1 20-20z" fill="url(#chat_cool)"/>
-  <path d="M34 44h64a14 14 0 0 1 14 14v4a14 14 0 0 0-14-14H34a14 14 0 0 0-14 14v-4a14 14 0 0 1 14-14z" fill="#fff" opacity=".25"/>
-  <circle cx="45" cy="76" r="7" fill="#fff"/>
-  <circle cx="66" cy="76" r="7" fill="#fff"/>
-  <circle cx="87" cy="76" r="7" fill="#fff" opacity=".75"/>
+  <path d="M54 52a20 20 0 1 1-19.02 26.18" fill="none" stroke="url(#aid_ring)" stroke-width="10" stroke-linecap="round"/>
+  <rect x="86" y="58" width="30" height="8" rx="4" fill="#1D3F6E"/>
+  <rect x="86" y="74" width="20" height="8" rx="4" fill="#5FD0CB"/>
+  <linearGradient id="aid_line" x1="30" x2="116" y1="112" y2="112" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#14A5A0" offset="0"/>
+    <stop stop-color="#127487" offset="1"/>
+  </linearGradient>
+  <path d="m30 116 18-10 16 6 20-14 16 8 16-10" stroke="url(#aid_line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <linearGradient id="aid_spark" x1="118" x2="118" y1="8" y2="48" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#F9AC33" offset="0"/>
+    <stop stop-color="#F0603C" offset="1"/>
+  </linearGradient>
+  <path d="M118 8c2.4 10.8 6.2 14.6 17 17-10.8 2.4-14.6 6.2-17 17-2.4-10.8-6.2-14.6-17-17 10.8-2.4 14.6-6.2 17-17z" fill="url(#aid_spark)" stroke="#fff" stroke-width="3" stroke-linejoin="round"/>
 </svg>
