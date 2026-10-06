@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   Camera,
   CaretDown,
+  CheckCircle,
   CheckSquare,
   CircleNotch,
   ClosedCaptioning,
@@ -24,11 +25,13 @@ import {
   UserCircle,
 } from '@phosphor-icons/react';
 import aiDashboardIcon from '@app/features/workbench/icons/app-icons/aiDashboard.svg';
+import chatIcon from '@app/features/workbench/icons/app-icons/chat.svg';
 import essayIcon from '@app/features/workbench/icons/app-icons/essay.svg';
 import examIcon from '@app/features/workbench/icons/app-icons/exam.svg';
 import filesIcon from '@app/features/workbench/icons/app-icons/files.svg';
 import flashcardsIcon from '@app/features/workbench/icons/app-icons/flashcards.svg';
 import mediaIcon from '@app/features/workbench/icons/app-icons/media.svg';
+import mindmapIcon from '@app/features/workbench/icons/app-icons/mindmap.svg';
 import notesIcon from '@app/features/workbench/icons/app-icons/notes.svg';
 import pomodoroIcon from '@app/features/workbench/icons/app-icons/pomodoro.svg';
 import settingsIcon from '@app/features/workbench/icons/app-icons/settings.svg';
@@ -89,7 +92,7 @@ export const pageName = (i: number) => `${COURSE.title} P${i + 1} ${COURSE.pages
 /** P4 的字幕（UP 主上传的字幕轨）：[秒, 文本] */
 export const SEGMENTS: Array<[number, string]> = [
   [0, '好，我们开始这一讲。'],
-  [2, '上一讲会求了特征值和特征向量，'],
+  [2, '上一讲我们学会了求特征值和特征向量，'],
   [5, '今天回答一个问题：'],
   [8, '什么样的矩阵可以相似于对角矩阵？'],
   [13, '先回顾一下定义。'],
@@ -176,7 +179,7 @@ export const Cover = ({ w, h }: { w: number; h: number }) => {
   const u = h / 42;
   return (
     <span style={{ position: 'absolute', inset: 0, width: w, height: h, overflow: 'hidden', background: 'linear-gradient(135deg, hsl(212 52% 22%) 0%, hsl(205 56% 32%) 100%)' }}>
-      <span style={{ position: 'absolute', right: -6 * u, top: -10 * u, width: 40 * u, height: 40 * u, borderRadius: '50%', background: 'hsl(38 90% 60% / 0.85)' }} />
+      <span style={{ position: 'absolute', right: -9 * u, top: -13 * u, width: 30 * u, height: 30 * u, borderRadius: '50%', background: 'hsl(38 90% 60% / 0.85)' }} />
       <span style={{ position: 'absolute', left: 7 * u, top: 20 * u, fontSize: 9.5 * u, lineHeight: 1, fontWeight: 700, color: '#fff', letterSpacing: '0.02em', fontFamily: font.ui, whiteSpace: 'nowrap' }}>线性代数</span>
       <span style={{ position: 'absolute', left: 7 * u, top: 31.5 * u, fontSize: 6 * u, lineHeight: 1, fontWeight: 500, color: 'hsl(0 0% 100% / 0.78)', fontFamily: font.ui, whiteSpace: 'nowrap' }}>第五讲 · 特征值与对角化</span>
     </span>
@@ -184,24 +187,33 @@ export const Cover = ({ w, h }: { w: number; h: number }) => {
 };
 
 // ── 全部应用面板 ──────────────────────────────────────────────
+/**
+ * 启动器可见的 16 个应用（appRegistry 里 showInLauncher !== false；浏览器只在可用时出现，这里不算），
+ * 按名称 localeCompare 排序（AppsPanel.filterApps；中文系统下是拼音序，拉丁字母开头的排最后）。
+ */
 const GRID_APPS: Array<[string, string]> = [
-  ['exam', examIcon],
-  ['translation', translationIcon],
-  ['essay', essayIcon],
   ['note', notesIcon],
-  ['files', filesIcon],
   ['todo', todoIcon],
+  ['chat', chatIcon],
+  ['pomodoro', pomodoroIcon],
+  ['translation', translationIcon],
   ['skills', skillsIcon],
   ['templates', templatesIcon],
-  ['taskDashboard', taskDashboardIcon],
   ['flashcards', flashcardsIcon],
-  ['media', mediaIcon],
   ['settings', settingsIcon],
-  ['pomodoro', pomodoroIcon],
+  ['mindmap', mindmapIcon],
+  ['exam', examIcon],
+  ['media', mediaIcon],
+  ['files', filesIcon],
+  ['essay', essayIcon],
   ['aiDashboard', aiDashboardIcon],
+  ['taskDashboard', taskDashboardIcon],
 ];
+/** .wb-apps-grid：repeat(auto-fill, minmax(96px, 1fr))，面板内容宽 694 → 6 列 */
+const GRID_COLS = 6;
 const AP_W = 720;
-const AP_H_GRID = 364;
+/** 标题 48 + 搜索 50 + 3 行网格（106 × 3 + 间距 12）+ 内边距 20 + 底栏 37 + 边框 2 */
+const AP_H_GRID = 487;
 const AP_H_SEARCH = 226;
 const AP_CY = 520;
 
@@ -209,22 +221,28 @@ const Kbd = ({ children }: { children: ReactNode }) => (
   <span style={{ padding: '1px 5px', borderRadius: 4, border: '1px solid hsl(0 0% 88% / 0.7)', background: 'hsl(220 6% 42% / 0.08)', fontSize: 10, lineHeight: 1.4 }}>{children}</span>
 );
 
+/** WorkbenchAppIcon 的 IllustratedTile：64 视框里 62 见方的白→#eef1f5 渐变底（rx 14.3、0.5 描边）+ 居中 46 见方的插画 */
 const TileIcon = ({ src, size }: { src: string; size: number }) => (
   <span
     style={{
+      position: 'relative',
       width: size,
       height: size,
       flex: '0 0 auto',
-      boxSizing: 'border-box',
-      borderRadius: size * 0.2,
-      overflow: 'hidden',
-      border: '1px solid hsl(0 0% 88% / 0.52)',
-      background: 'hsl(0 0% 100%)',
-      boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72), 0 2px 5px rgba(33,43,54,0.09)',
       display: 'inline-flex',
+      filter: 'drop-shadow(0 2px 3px rgba(33,43,54,0.12))',
     }}
   >
-    <img src={src} style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }} />
+    <span
+      style={{
+        position: 'absolute',
+        inset: size / 64,
+        borderRadius: (size * 14.3) / 64,
+        background: 'linear-gradient(180deg, #ffffff, #eef1f5)',
+        boxShadow: 'inset 0 0 0 0.5px rgba(31, 41, 55, 0.14)',
+      }}
+    />
+    <img src={src} style={{ position: 'absolute', left: (size * 9) / 64, top: (size * 9) / 64, width: (size * 46) / 64, height: (size * 46) / 64, objectFit: 'contain' }} />
   </span>
 );
 
@@ -307,11 +325,23 @@ export const AppsPanel = ({ tk, s }: { tk: Tokens; s: AppsPanelState }) => {
       </div>
       <div style={{ flex: 1, minHeight: 0, padding: '4px 12px 16px', overflow: 'hidden' }}>
         {!searching ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 6 }}>
-            {GRID_APPS.map(([id, src]) => (
-              <div key={id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '14px 8px 12px', borderRadius: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${GRID_COLS}, 1fr)`, gap: 6 }}>
+            {GRID_APPS.map(([id, src], i) => (
+              <div
+                key={id}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 8,
+                  padding: '14px 8px 12px',
+                  borderRadius: 12,
+                  // 打开时 activeIndex = 0：第一项是键盘选中态（底色 + 内缘 1px primary/32 光圈）
+                  ...(i === 0 ? { background: 'hsl(220 6% 42% / 0.14)', boxShadow: `inset 0 0 0 1px ${PRI.replace(')', ' / 0.32)')}` } : null),
+                }}
+              >
                 <TileIcon src={src} size={56} />
-                <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.35, whiteSpace: 'nowrap' }}>{S.appsPanel.app(id)}</span>
+                <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.35, whiteSpace: 'nowrap' }}>{id === 'chat' ? S.apps.chat : S.appsPanel.app(id)}</span>
               </div>
             ))}
           </div>
@@ -371,11 +401,13 @@ type LibRow = {
   kind: 'audio' | 'video' | 'link';
   chip: 'completed' | 'imported' | 'none';
   ratio?: number;
+  /** 看完：名称后 CheckCircle，缩略图不画进度 */
+  finished?: boolean;
 };
 const OLD_ROWS: LibRow[] = [
-  { name: '概率论 第 7 讲 课堂录音', meta: '1:32:10 · 2天前看过', kind: 'audio', chip: 'completed', ratio: 0.42 },
+  { name: '概率论 第 7 讲 课堂录音', meta: '1:32:10 · 前天看过', kind: 'audio', chip: 'completed', ratio: 0.42 },
   { name: '有机化学 亲核取代反应演示', meta: '18:24 · 未开始', kind: 'video', chip: 'none' },
-  { name: '英语听力 Unit 5 精讲', meta: '46:05 · 5天前看过', kind: 'audio', chip: 'completed', ratio: 1 },
+  { name: '英语听力 Unit 5 精讲', meta: '46:05 · 5天前看过', kind: 'audio', chip: 'completed', finished: true },
 ];
 const NEW_ROWS: LibRow[] = COURSE.pages.map((p, i) => ({ name: pageName(i), meta: `${p.dur} · ${S.media.notStarted}`, kind: 'link', chip: 'imported' }));
 
@@ -439,14 +471,17 @@ const Row = ({ tk, r, y, hover = 0, press = 0, opacity = 1 }: { tk: Tokens; r: L
         {r.kind === 'link' ? (
           <span style={{ position: 'absolute', left: 3.5, top: 3.5, padding: '0 3.5px', borderRadius: 3.5, fontSize: 10, fontWeight: 500, lineHeight: '14px', color: '#fff', background: 'rgb(0 0 0 / 0.55)' }}>{S.media.biliBadge}</span>
         ) : null}
-        {r.ratio !== undefined && r.ratio < 1 ? (
+        {r.ratio !== undefined && !r.finished ? (
           <span style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, background: 'rgb(0 0 0 / 0.25)' }}>
             <span style={{ display: 'block', width: `${r.ratio * 100}%`, height: '100%', background: tk.primary }} />
           </span>
         ) : null}
       </span>
       <span style={{ display: 'flex', flexDirection: 'column', gap: 3.5, minWidth: 0, flex: 1 }}>
-        <span style={{ fontSize: 12, fontWeight: 500, color: tk.foreground, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
+          <span style={{ fontSize: 12, fontWeight: 500, color: tk.foreground, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.name}</span>
+          {r.finished ? <CheckCircle size={14} weight="fill" color={SUCCESS} style={{ flex: '0 0 auto' }} /> : null}
+        </span>
         <span style={{ fontSize: 11, color: tk.mutedFg, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{r.meta}</span>
       </span>
       <Chip tk={tk} kind={r.chip} />
@@ -654,7 +689,7 @@ export const BiliDialog = ({ tk, s }: { tk: Tokens; s: DialogState }) => {
             </div>
           ) : null}
           {probe ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10.5, opacity: s.stage === 'probe' ? clamp(s.grow * 2) : 1 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10.5, opacity: s.stage === 'probe' ? clamp((s.grow - 0.55) / 0.45) : 1 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10.5, height: 54 }}>
                 <span style={{ position: 'relative', width: 96, height: 54, borderRadius: 7, overflow: 'hidden', flex: '0 0 auto' }}>
                   <Cover w={96} h={54} />
@@ -701,7 +736,7 @@ export const BiliDialog = ({ tk, s }: { tk: Tokens; s: DialogState }) => {
                 {S.media.dlg.progress(idx, COURSE.pages.length, idx, COURSE.pages[idx - 1].part)}
               </span>
               <span style={{ height: 3.5, borderRadius: 999, background: tk.muted, overflow: 'hidden' }}>
-                <span style={{ display: 'block', height: '100%', width: `${(Math.min(s.batch, COURSE.pages.length) / COURSE.pages.length) * 100}%`, background: tk.primary, borderRadius: 999 }} />
+                <span style={{ display: 'block', height: '100%', width: `${((idx - 1) / COURSE.pages.length) * 100}%`, background: tk.primary, borderRadius: 999 }} />
               </span>
             </div>
           ) : null}
@@ -787,7 +822,7 @@ const Slide = ({ pos }: { pos: number }) => {
           <div style={{ position: 'absolute', left: 50, top: 138, fontSize: 36, fontWeight: 700, fontFamily: font.serif, letterSpacing: '0.04em' }}>第五讲　特征值与对角化</div>
           <div style={{ position: 'absolute', left: 52, top: 200, width: 220, height: 3, background: 'hsl(38 90% 55%)' }} />
           <div style={{ position: 'absolute', left: 52, top: 222, fontSize: 18, color: 'hsl(215 25% 35%)' }}>5.4　对角化的条件</div>
-          <div style={{ position: 'absolute', right: 56, top: 96, fontSize: 64, color: 'hsl(212 40% 85%)', fontFamily: 'KaTeX_Math, serif', fontStyle: 'italic' }}>Ax=λx</div>
+          <div style={{ position: 'absolute', right: 44, top: 34, fontSize: 48, color: 'hsl(212 40% 87%)', fontFamily: 'KaTeX_Math, serif', fontStyle: 'italic' }}>Ax=λx</div>
         </>
       )}
     </div>

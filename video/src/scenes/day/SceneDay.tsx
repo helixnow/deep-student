@@ -219,7 +219,9 @@ const transState = (t: number): TransState => {
 
 // 08a：音视频
 /** 字幕播放倍速：成片里一句一句地往下走（真实 1× 时一句要 3–5 秒，镜头里来不及看） */
-const PLAY_RATE = 3;
+const PLAY_RATE = 4;
+/** 跳转之后放慢：被点的那一句多停一会儿，镜头收起前才走到下一句 */
+const PLAY_RATE_AFTER = 2;
 const typed = (t: number) => {
   const q = '音视频';
   const n = t < DAY.mediaType ? 0 : Math.min(q.length, 1 + Math.floor((t - DAY.mediaType) / 0.06));
@@ -264,7 +266,7 @@ const dialogState = (t: number): DialogState => {
   };
 };
 const mediaPos = (t: number) =>
-  t < DAY.mediaPlay + 0.01 ? 0 : t < DAY.mediaSeek + 0.01 ? (t - DAY.mediaPlay - 0.01) * PACE * PLAY_RATE : SEGMENTS[SEEK_SEG][0] + (t - DAY.mediaSeek - 0.01) * PACE * PLAY_RATE;
+  t < DAY.mediaPlay + 0.01 ? 0 : t < DAY.mediaSeek + 0.01 ? (t - DAY.mediaPlay - 0.01) * PACE * PLAY_RATE : SEGMENTS[SEEK_SEG][0] + (t - DAY.mediaSeek - 0.01) * PACE * PLAY_RATE_AFTER;
 const studyState = (t: number): StudyState => ({
   enter: prog(t, DAY.mediaRow + 0.02, DAY.mediaRow + 0.08),
   pos: mediaPos(t),
@@ -463,10 +465,10 @@ const DAY_CAM: CamKey[] = [
   [DAY.mediaEnter, { x: 960, y: 540, zoom: 1.24 }, ease.linear],
   [DAY.mediaOpen + 0.18, { x: 820, y: 470, zoom: 1.32 }, ease.inOutCubic],
   [DAY.mediaBili - 0.02, { x: 830, y: 470, zoom: 1.33 }, ease.linear],
-  [DAY.mediaBili + 0.18, { x: 900, y: 530, zoom: 1.5 }, ease.inOutCubic],
-  [DAY.mediaProbe, { x: 900, y: 530, zoom: 1.5 }, ease.linear],
-  [DAY.mediaProbe + 0.16, { x: 880, y: 540, zoom: 1.3 }, ease.inOutCubic],
-  [DAY.mediaImported - 0.02, { x: 880, y: 540, zoom: 1.3 }, ease.linear],
+  [DAY.mediaBili + 0.18, { x: 870, y: 530, zoom: 1.5 }, ease.inOutCubic],
+  [DAY.mediaProbe, { x: 870, y: 530, zoom: 1.5 }, ease.linear],
+  [DAY.mediaProbe + 0.16, { x: 850, y: 540, zoom: 1.3 }, ease.inOutCubic],
+  [DAY.mediaImported - 0.02, { x: 850, y: 540, zoom: 1.3 }, ease.linear],
   [DAY.mediaImported + 0.16, { x: 760, y: 500, zoom: 1.3 }, ease.inOutCubic],
   [DAY.mediaRow - 0.02, { x: 760, y: 500, zoom: 1.3 }, ease.linear],
   [DAY.mediaRow + 0.2, { x: 700, y: 590, zoom: 1.25 }, ease.inOutCubic],

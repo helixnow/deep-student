@@ -52,20 +52,20 @@ export const DAY = {
   writingOut: 45.85,
   // 08a 音视频（0.10.2 新应用；v6 插入的 5 脚本秒，之后各节拍整体后移 5）：Dock「全部应用」→ 搜「音视频」→ 打开
   // → 「B 站链接」导入多 P 课程 → 打开 P4 播放、字幕随播放高亮 → 点一句字幕跳到那一刻 → 黄灯收进 Dock
-  mediaApps: 46.04, // 点 Dock「全部应用」：面板（网格）浮现
-  mediaType: 46.16, // 输入「音视频」：进入分区搜索，只剩一个应用结果
-  mediaEnter: 46.4, // Enter：面板退场
-  mediaOpen: 46.42, // 音视频窗口开（级联 4 号槽），库页
-  mediaBili: 46.66, // 点标题行「B 站链接」→ 弹窗
-  mediaPaste: 46.84, // 点进链接框 ⌘V
-  mediaParse: 46.98, // 点「解析」
-  mediaProbe: 47.14, // 解析完成：封面 / 标题 / 5 个分 P / 字幕轨
-  mediaImport: 47.42, // 点「导入 5 个分 P」→ 逐 P 导入
-  mediaImported: 47.84, // 导入完成：弹窗关、5 行落进列表
-  mediaRow: 48.04, // 点 P4 → 学习页
-  mediaPlay: 48.2, // 点播放：字幕高亮随播放逐句前进
-  mediaSeek: 49.16, // 点右侧字幕「n 阶矩阵 A 可对角化，」→ 画面跳到定理页
-  mediaMin: 50.3, // 点黄灯：音视频窗口 genie 进 Dock（运行区）
+  mediaApps: 46.0, // 点 Dock「全部应用」：面板（网格）浮现
+  mediaType: 46.26, // 输入「音视频」：进入分区搜索，只剩一个应用结果
+  mediaEnter: 46.52, // Enter：面板退场
+  mediaOpen: 46.54, // 音视频窗口开（级联 4 号槽），库页
+  mediaBili: 46.76, // 点标题行「B 站链接」→ 弹窗
+  mediaPaste: 46.94, // 点进链接框 ⌘V
+  mediaParse: 47.08, // 点「解析」
+  mediaProbe: 47.24, // 解析完成：封面 / 标题 / 5 个分 P / 字幕轨
+  mediaImport: 47.52, // 点「导入 5 个分 P」→ 逐 P 导入
+  mediaImported: 47.94, // 导入完成：弹窗关、5 行落进列表
+  mediaRow: 48.3, // 点 P4 → 学习页
+  mediaPlay: 48.46, // 点播放：字幕高亮随播放逐句前进
+  mediaSeek: 49.3, // 点右侧字幕「n 阶矩阵 A 可对角化，」→ 画面跳到定理页
+  mediaMin: 50.4, // 点黄灯：音视频窗口 genie 进 Dock（运行区）
   // 08 调研（对话窗口停在「新对话」空态）
   researchOpen: 51.0, // 点 Dock「对话」：最小化着的对话窗口还原
   researchType: 51.3, // 点进输入框打「/res」→ 弹出技能命令补全
