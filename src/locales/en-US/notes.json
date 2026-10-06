@@ -305,6 +305,18 @@
     "mastery_unset": "Mastery status not set",
     "overdue": "Overdue",
     "today": "Today",
+    "review_done": {
+      "label": "Reviewed",
+      "menu": "When to review this note next",
+      "d1": "Tomorrow",
+      "d3": "In 3 days",
+      "d7": "In a week",
+      "d30": "In a month",
+      "mastered": "Mastered, stop reminding",
+      "scheduled": "Next review: {{date}}",
+      "cleared": "Marked as mastered and removed from reviews",
+      "failed": "Couldn't update the review date: {{error}}"
+    },
     "presets": {
       "title": "Fill property presets from a personal template",
       "loading": "Loading templates…",

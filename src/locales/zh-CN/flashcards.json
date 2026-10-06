@@ -47,6 +47,27 @@
     "libraryEmpty": "卡片库还是空的",
     "libraryEmptyHint": "先在聊天中根据学习材料生成卡片，复习队列才会开始积累。",
     "goStats": "查看统计",
+    "learnMore": "今天多学 {{count}} 张",
+    "learnMoreEmpty": "没有待学的新卡了",
+    "learnMoreFailed": "没能取到待学新卡，请重试",
+    "adjustDailyLimit": "调整每日新卡上限",
+    "decks": {
+      "title": "按牌组复习",
+      "hint": "只复习一个牌组（含子牌组），评分照常记录",
+      "ungrouped": "未分组",
+      "due": "到期 {{count}}",
+      "new": "新卡 {{count}}",
+      "nothingDue": "今天没有到期",
+      "review": "复习 {{count}}",
+      "reviewAria": "复习「{{name}}」的 {{count}} 张到期卡",
+      "learnNew": "学 {{count}} 张新卡",
+      "learnNewAria": "学「{{name}}」的 {{count}} 张新卡",
+      "openLibrary": "在卡片库查看「{{name}}」",
+      "expand": "展开「{{name}}」的子牌组",
+      "collapse": "收起「{{name}}」的子牌组",
+      "empty": "这个牌组暂时没有可复习的卡",
+      "failed": "没能取到这个牌组的卡，请重试"
+    },
     "upNext": "接下来",
     "upNextCount": "{{count}} 张",
     "upNextCount_one": "{{count}} 张"
@@ -110,6 +131,11 @@
       "asc": "升序",
       "desc": "降序",
       "reset": "恢复默认排序"
+    },
+    "deck": {
+      "label": "牌组",
+      "all": "全部牌组",
+      "ungrouped": "未分组"
     },
     "filteredCount": "本页命中 {{shown}} / {{total}} 张",
     "noMatches": "没有符合当前搜索或筛选的卡片",
@@ -264,6 +290,10 @@
     "resumeFailed": "恢复失败",
     "cancelEdit": "取消",
     "saveEdit": "保存",
+    "viewSource": "查看出处",
+    "noSource": "这张卡没有记录出处（导入或手动新建的卡片没有来源）",
+    "askAi": "问 AI 这张卡",
+    "askAiPrompt": "我复习闪卡时没记住这张卡，请帮我讲明白：先说清楚它考的是什么、为什么是这个答案，再给一个好记的办法，最后出 1 道小题检验我。\n\n{{card}}",
     "again": "重来",
     "hard": "困难",
     "good": "良好",
@@ -271,7 +301,9 @@
     "againHint": "没回忆出正确答案",
     "hardHint": "回忆正确，但很费力",
     "goodHint": "正常回忆正确",
-    "easyHint": "迅速、轻松地想起"
+    "easyHint": "迅速、轻松地想起",
+    "bury": "埋藏到明天",
+    "unbury": "取消埋藏"
   },
   "review": {
     "showAnswer": "显示答案",
@@ -310,7 +342,7 @@
     "demoNote": "复习服务不可用时会显示错误详情和重试入口，不会用示例卡片替代真实数据。",
     "scheduler": {
       "title": "调度设置",
-      "subtitle": "每日限额与目标保持率（默认牌组）",
+      "subtitle": "每日限额、保持率、学习步与日切（默认牌组）",
       "loading": "正在读取调度配置…",
       "unavailable": "调度配置暂不可用",
       "newPerDay": "每日新卡上限",
@@ -323,7 +355,49 @@
       "saved": "已保存",
       "saveFailed": "保存调度配置失败",
       "invalidLimit": "每日上限需为 0–{{max}} 的整数",
-      "invalidRetention": "目标保持率需在 {{min}} 与 {{max}} 之间"
+      "invalidRetention": "目标保持率需在 {{min}} 与 {{max}} 之间",
+      "learningSteps": "学习步",
+      "relearningSteps": "重学步",
+      "dayRolloverHour": "下一天开始于（点）",
+      "maximumInterval": "最大间隔（天）",
+      "enableFuzz": "间隔随机抖动（打散同一天学的卡）",
+      "stepsHint": "学习步用空格分隔，单位 s / m / h / d，如「1m 10m」；留空表示交给 FSRS 决定短期间隔。",
+      "rolloverHint": "凌晨在这个时间之前复习仍算前一天，适合晚睡的学习习惯（Anki 默认 4 点）。",
+      "longStepWarning": "FSRS 建议学习步都在当天完成（短于 1 天），过长的步长会让「困难」比「良好」间隔还长。",
+      "invalidSteps": "学习步格式不正确：每项为正数加单位（s / m / h / d），最多 16 项、单步不超过 365 天",
+      "invalidRollover": "日切时间需为 0–23 的整数",
+      "invalidMaximumInterval": "最大间隔需为 1–{{max}} 的整数天",
+      "reviewOrder": "复习卡顺序",
+      "reviewOrders": {
+        "due": "按到期先后",
+        "retrievability": "最可能忘的先",
+        "random": "随机"
+      },
+      "newReviewOrder": "新卡位置",
+      "newReviewOrders": {
+        "after": "复习之后",
+        "before": "复习之前",
+        "mix": "穿插在复习中"
+      },
+      "maxAnswerSeconds": "作答计时上限（秒）",
+      "buryNewSiblings": "埋藏同笔记的新卡到明天",
+      "buryReviewSiblings": "埋藏同笔记的复习卡到明天",
+      "invalidMaxAnswerSeconds": "作答计时上限需为 1–3600 的整数秒",
+      "orderHint": "积压较多时选「最可能忘的先」能少忘一些；同笔记的正反卡、填空兄弟卡被埋藏后不会背靠背出现。"
+    },
+    "optimizer": {
+      "title": "参数个性化（FSRS 优化器）",
+      "usingDefaults": "当前使用 FSRS-6 默认参数（适合大多数人的平均记忆规律）。",
+      "personalized": "当前使用你的个性化参数。",
+      "personalizedSince": "当前使用你的个性化参数（{{date}} 基于 {{count}} 次复习优化）。",
+      "optimize": "用我的复习记录优化",
+      "running": "正在优化…",
+      "resetDefaults": "恢复默认参数",
+      "optimized": "已更新参数：log loss {{before}} → {{after}}（越低越准），训练用了 {{reviews}} 次复习，并按新参数重算了 {{cards}} 张卡的记忆状态。",
+      "alreadyOptimal": "当前参数已经是最优的（log loss {{logLoss}}），新参数没有更准，保持不变。",
+      "notEnoughData": "可用于训练的复习还太少（{{items}} 个样本）。坚持复习一段时间再来，几百次复习之后效果会明显。",
+      "failed": "参数优化失败",
+      "hint": "优化只使用本机的复习记录，不会上传；不需要频繁优化，每月一次足够。"
     }
   },
   "statistics": {
@@ -469,6 +543,25 @@
       "sampleCapped": "到期队列超过 {{limit}} 张，仅统计队列前 {{limit}} 张",
       "title": "记忆状态分布（到期样本）",
       "subtitle": "到期样本的 S / D 分布，非模型权重；样本受额度与队列策略影响"
+    },
+    "insights": {
+      "title": "保留率与记忆分布",
+      "studyTime": "今日作答 {{today}} · 近 7 天日均 {{average}}",
+      "period": "时段",
+      "young": "年轻卡",
+      "mature": "成熟卡",
+      "total": "合计",
+      "periods": {
+        "today": "今天",
+        "yesterday": "昨天",
+        "week": "近 7 天",
+        "month": "近 30 天",
+        "year": "近一年"
+      },
+      "retrievability": "此刻可提取率（%）",
+      "stability": "稳定度",
+      "difficulty": "难度",
+      "hint": "真实保留率：每张卡每天只计第一次复习，非「重来」即记住；成熟卡指复习前稳定度 ≥ 21 天。长期低于目标保持率时，可在下方调度设置里优化参数。"
     }
   }
 }

@@ -78,7 +78,7 @@
     "assignment_disabled_title": "The assigned ASR model is disabled",
     "assignment_disabled_message": "Enable the assigned model or pick another ASR model in Settings > Models before using voice input.",
     "assignment_provider_unavailable_title": "The assigned provider is not usable yet",
-    "assignment_provider_unavailable_message": "This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.",
+    "assignment_provider_unavailable_message": "This model has no usable recognition endpoint. Transcription needs an OpenAI-compatible request/response ASR API; Anthropic or Gemini native APIs and realtime- or file-job-only models (such as qwen3-asr-flash-realtime / -filetrans) cannot be used. Pick another ASR model.",
     "open_model_settings": "Open Model Assignments",
     "open_api_settings": "Open API Settings",
     "open_usage_statistics": "Open Usage Statistics",
@@ -102,7 +102,7 @@
     },
     "labels": {
       "coming_soon": "Coming soon",
-      "provider_unavailable_reason": "Visible in the ASR catalog, but the current runtime can only transcribe with SiliconFlow.",
+      "provider_unavailable_reason": "This model only offers realtime streaming or asynchronous file jobs, or its provider has no OpenAI-compatible recognition API, so it cannot transcribe yet.",
       "disabled_model_reason": "Enable this ASR model before assigning it to voice input."
     },
     "status": {

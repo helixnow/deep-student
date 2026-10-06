@@ -249,6 +249,10 @@
     "rhythmAutomationDetail": "{{running}} running · {{failed}} failed · {{enabled}} enabled",
     "rhythmTasks": "Tasks",
     "rhythmTasksDetail": "{{count}} card tasks",
+    "rhythmMistakes": "Mistakes due today",
+    "rhythmMistakesDetail": "{{count}} to review",
+    "rhythmNotes": "Notes to review",
+    "rhythmNotesDetail": "{{count}} notes",
     "startReview": "Start review",
     "openTasks": "Open",
     "openPomodoro": "Open Pomodoro",
@@ -297,6 +301,7 @@
     "templates": "Templates",
     "taskDashboard": "Anki Cards",
     "flashcards": "Flashcards",
+    "media": "Media",
     "settings": "Settings",
     "sandbox": "Sandbox",
     "pomodoro": "Pomodoro",
@@ -752,7 +757,15 @@
     },
     "desktopWidgets": {
       "title": "Show desktop widgets",
-      "desc": "Show the calendar and today's agenda widget on the desktop. Turning it off frees horizontal space on narrow windows and small screens (also toggleable from the desktop context menu)."
+      "desc": "Show the agenda and the AI learning briefing on the right of the desktop. Each can be turned off on its own or collapsed from its title. Turning them off frees horizontal space on narrow windows and small screens (also toggleable from the desktop context menu).",
+      "agenda": {
+        "title": "Agenda",
+        "desc": "Calendar and today's todos."
+      },
+      "briefing": {
+        "title": "AI learning briefing",
+        "desc": "Cards, mistakes, notes and todos due today; each opens where it belongs."
+      }
     },
     "shortcuts": {
       "title": "Keyboard shortcuts",
@@ -1269,5 +1282,9 @@
   },
   "bridge": {
     "knowledgeLocateFailed": "Could not locate this knowledge source"
+  },
+  "desktopWidgets": {
+    "collapse": "Collapse",
+    "expand": "Expand"
   }
 }

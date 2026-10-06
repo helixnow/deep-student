@@ -87,18 +87,21 @@
   "card": {
     "question": "Question",
     "answer": "Answer",
-    "explanation": "Explanation"
+    "explanation": "Explanation",
+    "correctOption": "Correct option"
   },
 
   "action": {
     "skip": "Skip",
-    "showAnswer": "Show Answer"
+    "showAnswer": "Show Answer",
+    "checkAnswer": "Check answer"
   },
 
   "keyboard": {
     "space": "Space",
     "ratingHint": "Press 1-4 to rate",
-    "spaceGood": "Space = Good"
+    "spaceGood": "Space = Good",
+    "spaceSuggested": "Space = suggested rating"
   },
 
   "questionType": {
@@ -207,6 +210,7 @@
     "emptyTitle": "Great! No Wrong Answers",
     "emptyDesc": "You've mastered all questions, keep it up!<br/>Try challenging harder questions.",
     "masteryTip": "Auto-marked as mastered after <highlight>2 correct</highlight> answers in a row",
+    "allMistakes": "Mistakes from all sets",
     "myAnswer": "My Answer",
     "correctAnswer": "Correct Answer",
     "noAnswerRecorded": "No answer recorded",
@@ -291,5 +295,21 @@
       "conditions": "The outer factor is proportional to the inner derivative"
     },
     "submit": "Save insight"
+  },
+  "answerFirst": {
+    "yourAnswer": "Your answer",
+    "placeholder": "Write your answer before revealing (optional, saved to the review log)",
+    "correct": "Correct — suggested: {{rating}}",
+    "wrong": "You picked {{picked}}, the answer is {{answer}} — suggested: {{rating}}"
+  },
+  "dueAll": {
+    "title": "Mistake review",
+    "subtitle": "Mistakes due today across all question sets",
+    "loading": "Preparing due mistakes…",
+    "empty": "No mistakes due today",
+    "emptyHint": "Questions you get wrong join the review plan automatically and show up here when due.",
+    "loadFailed": "Couldn't load due mistakes",
+    "skipped": "Deleted questions skipped: {{count}}",
+    "openMistakeBook": "See all mistakes"
   }
 }

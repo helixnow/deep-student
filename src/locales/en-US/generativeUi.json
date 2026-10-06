@@ -279,13 +279,22 @@
       "overdue_label": "{{count}} overdue",
       "pending_label": "{{count}} pending",
       "start_review": "Start review",
-      "open_qbank": "Open exam set"
+      "open_qbank": "Open exam set",
+      "due_review_title": "Due today",
+      "due_breakdown": "Cards {{cards}} · Mistakes {{mistakes}} · Notes {{notes}}",
+      "tile_cards": "Cards",
+      "tile_mistakes": "Mistakes",
+      "tile_notes": "Notes",
+      "overdue_short": "{{count}} late",
+      "due_total": "{{count}} due today",
+      "all_clear": "Nothing due today"
     },
     "dashboard": {
       "title": "AI learning dashboard",
       "due_mistakes_title": "Mistakes due",
       "due_notes_title": "Notes due for review",
       "review_notes": "Review notes",
+      "review_mistakes": "Review mistakes",
       "anki_tasks_title": "Active card generation",
       "anki_tasks_trend_active": "Running in background",
       "anki_tasks_trend_idle": "No active tasks",

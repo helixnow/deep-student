@@ -1,0 +1,179 @@
+{
+  "title": "音视频",
+  "tagline": "把网课、讲座、录音变成可检索、可提问、可复习的学习材料",
+  "searchPlaceholder": "搜索音视频…",
+  "listLabel": "音视频列表",
+  "loadFailed": "音视频列表加载失败",
+  "noMatch": "没有名称匹配的音视频",
+  "filter": {
+    "aria": "按状态筛选",
+    "all": "全部",
+    "watching": "在看",
+    "untranscribed": "未转写",
+    "transcribed": "已转写"
+  },
+  "filterEmpty": {
+    "all": "还没有音视频",
+    "watching": "没有看到一半的课程",
+    "untranscribed": "全部都已转写",
+    "transcribed": "还没有已转写的音视频"
+  },
+  "status": {
+    "none": "未转写",
+    "queued": "排队中",
+    "running": "转写中",
+    "runningCount": "转写中 {{completed}}/{{total}}",
+    "completed": "已转写",
+    "imported": "已导入字幕",
+    "partial": "部分完成",
+    "failed": "转写失败"
+  },
+  "row": {
+    "open": "学习「{{name}}」",
+    "more": "「{{name}}」的更多操作",
+    "lastWatched": "{{time}}看过",
+    "notStarted": "未开始",
+    "finished": "已看完",
+    "progress": "观看进度",
+    "rename": "重命名",
+    "bilibiliBadge": "B 站",
+    "renameFailed": "重命名失败",
+    "reveal": "在资源库中显示",
+    "delete": "删除",
+    "deleteTitle": "删除「{{name}}」？",
+    "deleteDesc": "将移到资源库回收站，字幕与观看进度随之移走；可在回收站恢复。",
+    "deleteFailed": "删除失败",
+    "deleted": "已删除「{{name}}」"
+  },
+  "import": {
+    "button": "导入音视频",
+    "bilibili": "B 站链接",
+    "filterName": "音频 / 视频",
+    "dropHint": "松开导入音视频",
+    "progress": "正在导入 {{index}}/{{total}}：{{name}}",
+    "preparing": "正在准备导入…",
+    "partial": "已导入 {{imported}} 个，{{failed}} 个失败",
+    "failed": "导入失败",
+    "success_one": "已导入 {{count}} 个音视频",
+    "success_other": "已导入 {{count}} 个音视频",
+    "skipped_one": "已跳过 {{count}} 个非音视频文件",
+    "skipped_other": "已跳过 {{count}} 个非音视频文件",
+    "notMedia_one": "所选的 {{count}} 个文件都不是音视频",
+    "notMedia_other": "所选的 {{count}} 个文件都不是音视频"
+  },
+  "empty": {
+    "title": "导入第一节课",
+    "transcribe": "转写与字幕：一键把讲课转成带时间的字幕，边看边搜、点字幕跳到那一刻。",
+    "ask": "边看边问：就这门课提问，回答带 [媒体@时间] 引用，点一下回到原处。",
+    "review": "讲义与练习：生成图文讲义笔记，按讲到的时刻制作闪卡、出练习题。",
+    "subtitleNote": "已有字幕文件（.srt / .vtt / B 站字幕 .json）？导入音视频后在行菜单选「导入字幕文件」，免去转写费用。"
+  },
+  "drawer": {
+    "recent": "最近在看",
+    "empty": "还没有看过的音视频"
+  },
+  "study": {
+    "back": "返回音视频列表",
+    "notFound": "找不到这个音视频，可能已被删除",
+    "loadFailed": "无法打开这个音视频",
+    "tabsAria": "学习面板",
+    "tab": {
+      "handout": "讲义",
+      "ask": "问答",
+      "practice": "练习"
+    }
+  },
+  "handout": {
+    "intro": "讲义把字幕整理成分节笔记，配关键画面，每节带可跳回视频的时间锚点。",
+    "listTitle": "本课讲义",
+    "empty": "还没有讲义",
+    "untitled": "未命名讲义",
+    "wordHint": "在笔记里可导出为 Word。"
+  },
+  "ask": {
+    "intro": "新开一个对话，自动附上这节课并启用「课程学习」技能：回答基于字幕，带可跳转的时间引用。",
+    "start": "就这门课提问",
+    "needTranscript": "还没有字幕：先转写或导入字幕，回答会更准确。",
+    "quickTitle": "常用问题",
+    "quick": {
+      "summary": "总结这节课",
+      "keyPoints": "列出重点和难点",
+      "explain": "解释我没听懂的地方"
+    },
+    "prompt": {
+      "summary": "请总结《{{name}}》这节课的主要内容，按讲解顺序分点列出，每点附上对应的时间引用。",
+      "keyPoints": "请列出《{{name}}》这节课的重点和难点，并说明每个难点为什么容易出错，附上对应的时间引用。",
+      "explain": "《{{name}}》这节课里我有一段没听懂（在下面补充时间点或内容）：\n"
+    },
+    "citationHint": "回答里的时间引用可点击，播放器会跳到那一刻。",
+    "failed": "无法开始对话"
+  },
+  "practice": {
+    "intro": "按讲到的时刻出卡、出题：新开对话并预填指令，你确认后发送。",
+    "cards": "制作闪卡",
+    "cardsHint": "卡片进入「闪卡」复习，来源可跳回视频",
+    "questions": "生成练习题",
+    "questionsHint": "题目进入「题目集」，可做题与错题复盘",
+    "prompt": {
+      "cards": "请根据《{{name}}》这节课的字幕制作闪卡：覆盖核心概念、定义和易错点，约 10 张；每张卡在来源中注明对应的时间引用。",
+      "questions": "请根据《{{name}}》这节课的字幕出一组练习题并创建题目集：单选、填空、简答为主，共 5-10 题，每题附答案、解析和对应的时间引用。"
+    },
+    "needTranscript": "需要先转写或导入字幕。"
+  },
+  "progress": {
+    "title": "学习进度",
+    "watched": "已观看",
+    "notStarted": "还没开始",
+    "position": "看到",
+    "finished": "已看完",
+    "transcript": "字幕",
+    "segments": "{{done}}/{{total}} 段",
+    "minutes_one": "{{count}} 分钟",
+    "minutes_other": "{{count}} 分钟"
+  },
+  "count_one": "{{count}} 个",
+  "count_other": "{{count}} 个",
+  "select": {
+    "toggle": "选择",
+    "done": "完成",
+    "barLabel": "批量操作",
+    "count_one": "已选 {{count}} 项",
+    "count_other": "已选 {{count}} 项",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "row": "选择「{{name}}」",
+    "group": "选择「{{name}}」中的全部",
+    "move": "移动到分组…",
+    "delete": "删除",
+    "deleteTitle_one": "删除所选的 {{count}} 项？",
+    "deleteTitle_other": "删除所选的 {{count}} 项？",
+    "deleted_one": "已删除 {{count}} 项",
+    "deleted_other": "已删除 {{count}} 项",
+    "deletePartial": "已删除 {{done}} 项，{{failed}} 项失败",
+    "moved_one": "已将 {{count}} 项移到「{{name}}」",
+    "moved_other": "已将 {{count}} 项移到「{{name}}」",
+    "movedOut_one": "已将 {{count}} 项移出分组",
+    "movedOut_other": "已将 {{count}} 项移出分组",
+    "movePartial": "已移动 {{done}} 项，{{failed}} 项失败",
+    "moveFailed": "移动失败"
+  },
+  "view": {
+    "aria": "列表显示方式",
+    "list": "列表",
+    "grouped": "按分组"
+  },
+  "group": {
+    "ungrouped": "未分组",
+    "toggle": "展开或收起「{{name}}」",
+    "pickerLabel": "移动到分组",
+    "existing": "已有分组",
+    "new": "新建分组…",
+    "moveOut": "移出分组",
+    "newTitle": "新建分组",
+    "newHint_one": "在资源库根目录新建文件夹，并把所选的 {{count}} 项移进去。",
+    "newHint_other": "在资源库根目录新建文件夹，并把所选的 {{count}} 项移进去。",
+    "namePlaceholder": "分组名称",
+    "create": "新建并移动",
+    "createFailed": "新建分组失败"
+  }
+}

@@ -279,13 +279,22 @@
       "overdue_label": "{{count}} 项逾期",
       "pending_label": "{{count}} 项待办",
       "start_review": "开始复习",
-      "open_qbank": "打开题目集"
+      "open_qbank": "打开题目集",
+      "due_review_title": "今日待复习",
+      "due_breakdown": "卡片 {{cards}} · 错题 {{mistakes}} · 笔记 {{notes}}",
+      "tile_cards": "卡片",
+      "tile_mistakes": "错题",
+      "tile_notes": "笔记",
+      "overdue_short": "逾期 {{count}}",
+      "due_total": "今日待复习 {{count}}",
+      "all_clear": "今天没有到期复习"
     },
     "dashboard": {
       "title": "AI 学习仪表盘",
       "due_mistakes_title": "今日错题复习",
       "due_notes_title": "待复习笔记",
       "review_notes": "复习笔记",
+      "review_mistakes": "复习错题",
       "anki_tasks_title": "进行中制卡",
       "anki_tasks_trend_active": "后台运行",
       "anki_tasks_trend_idle": "暂无任务",

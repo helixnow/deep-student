@@ -305,6 +305,18 @@
     "mastery_unset": "未设置掌握状态",
     "overdue": "已逾期",
     "today": "今天",
+    "review_done": {
+      "label": "复习完成",
+      "menu": "复习完成后下次什么时候再看",
+      "d1": "明天再看",
+      "d3": "3 天后",
+      "d7": "1 周后",
+      "d30": "1 个月后",
+      "mastered": "已掌握，不再提醒",
+      "scheduled": "下次复习：{{date}}",
+      "cleared": "已标记为掌握，移出复习",
+      "failed": "没能更新复习日期：{{error}}"
+    },
     "presets": {
       "title": "从个人模板填入属性预设",
       "loading": "正在读取模板…",

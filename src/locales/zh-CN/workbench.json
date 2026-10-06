@@ -249,6 +249,10 @@
     "rhythmAutomationDetail": "运行 {{running}} · 失败 {{failed}} · 启用 {{enabled}}",
     "rhythmTasks": "任务入口",
     "rhythmTasksDetail": "{{count}} 个制卡任务",
+    "rhythmMistakes": "今日到期错题",
+    "rhythmMistakesDetail": "{{count}} 道待复习",
+    "rhythmNotes": "待复习笔记",
+    "rhythmNotesDetail": "{{count}} 篇",
     "startReview": "开始复习",
     "openTasks": "打开",
     "openPomodoro": "打开番茄钟",
@@ -297,6 +301,7 @@
     "templates": "模板管理",
     "taskDashboard": "Anki制卡",
     "flashcards": "闪卡",
+    "media": "音视频",
     "settings": "设置",
     "sandbox": "沙箱工作台",
     "pomodoro": "番茄钟",
@@ -752,7 +757,15 @@
     },
     "desktopWidgets": {
       "title": "显示桌面组件",
-      "desc": "在桌面上显示日历与今日日程组件。关闭后窄窗口/小屏幕可用宽度更大（桌面右键菜单也可切换）。"
+      "desc": "在桌面右侧显示日程与 AI 学习简报，可分别关闭，也可在组件标题处折叠。关闭后窄窗口/小屏幕可用宽度更大（桌面右键菜单也可切换）。",
+      "agenda": {
+        "title": "日程",
+        "desc": "日历与今日待办。"
+      },
+      "briefing": {
+        "title": "AI 学习简报",
+        "desc": "今天到期的卡片、错题、笔记与待办，点哪项进哪项。"
+      }
     },
     "shortcuts": {
       "title": "键盘快捷键",
@@ -1269,5 +1282,9 @@
   },
   "bridge": {
     "knowledgeLocateFailed": "无法定位该知识来源"
+  },
+  "desktopWidgets": {
+    "collapse": "折叠",
+    "expand": "展开"
   }
 }

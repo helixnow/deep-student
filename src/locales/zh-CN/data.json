@@ -8,6 +8,7 @@
     "questions": "做题：{{count}} 道，正确率 {{rate}}%",
     "cards": "卡片复习：{{count}} 次，其中忘记 {{again}} 次",
     "focus": "番茄专注：{{duration}}（完成 {{count}} 个番茄）",
+    "study_time": "学习时长：{{duration}}（应用在前台且在操作的时间）",
     "minutes": "{{count}} 分钟",
     "hours": "{{count}} 小时",
     "delta_new": "（上周无记录）",
@@ -33,7 +34,7 @@
   "today_center": {
     "weak_title": "薄弱知识点",
     "weak_hint": "在对话中讲解并练习",
-    "weak_prompt": "帮我针对薄弱知识点「{{concept}}」复习：先用三句话讲清核心概念，再出 3 道由浅入深的练习题，最后告诉我最容易错在哪里。",
+    "weak_prompt": "帮我针对薄弱知识点「{{concept}}」复习：先用三句话讲清核心概念；再出 3 道由浅入深的练习题，用题库工具写进题目集「薄弱点练习」，每道题的第一个知识点标签写「{{concept}}」，我会在题目集里作答，这样掌握度才会更新；最后告诉我最容易错在哪里。",
     "cards_due": "到期卡片",
     "mistakes_due": "错题复习",
     "notes_due": "待复习笔记",
@@ -43,7 +44,11 @@
     "todo_due": "今日待办",
     "active_jobs": "运行中任务",
     "go": "前往",
-    "hint_title": "今日待复习"
+    "hint_title": "今日待复习",
+    "starter_title": "第一次用？三步走通",
+    "starter_steps": "导入资料 → 在资料菜单里选「用这份资料制卡」→ 每天回这里复习",
+    "starter_action": "打开资源库",
+    "starter_dismiss": "不再显示"
   },
   "export_title": "数据导出",
   "export_description": "导出您的所有错题数据，包括图片和聊天记录，以及系统设置。",

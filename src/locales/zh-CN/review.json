@@ -87,18 +87,21 @@
   "card": {
     "question": "题目",
     "answer": "答案",
-    "explanation": "解析"
+    "explanation": "解析",
+    "correctOption": "正确选项"
   },
 
   "action": {
     "skip": "跳过",
-    "showAnswer": "显示答案"
+    "showAnswer": "显示答案",
+    "checkAnswer": "核对答案"
   },
 
   "keyboard": {
     "space": "空格",
     "ratingHint": "按 1-4 快速评分",
-    "spaceGood": "空格 = 良好"
+    "spaceGood": "空格 = 良好",
+    "spaceSuggested": "空格 = 建议评分"
   },
 
   "questionType": {
@@ -207,6 +210,7 @@
     "emptyTitle": "太棒了！没有错题",
     "emptyDesc": "你已经掌握了所有题目，继续保持！<br/>可以尝试挑战更难的题目。",
     "masteryTip": "连续答对 <highlight>2 次</highlight> 自动标记为已掌握",
+    "allMistakes": "所有题目集的错题",
     "myAnswer": "我的答案",
     "correctAnswer": "正确答案",
     "noAnswerRecorded": "未作答",
@@ -291,5 +295,21 @@
       "conditions": "内层导数与外因子成比例"
     },
     "submit": "确认入库"
+  },
+  "answerFirst": {
+    "yourAnswer": "你的答案",
+    "placeholder": "先写下你的答案再看（可选，会记进复习记录）",
+    "correct": "答对了，建议「{{rating}}」",
+    "wrong": "你选了 {{picked}}，正确是 {{answer}}，建议「{{rating}}」"
+  },
+  "dueAll": {
+    "title": "错题复习",
+    "subtitle": "所有题目集里今天到期的错题",
+    "loading": "正在准备到期错题…",
+    "empty": "今天没有到期的错题",
+    "emptyHint": "做题答错的题会自动加入复习计划，到期后出现在这里。",
+    "loadFailed": "加载到期错题失败",
+    "skipped": "已跳过 {{count}} 道已删除的题",
+    "openMistakeBook": "查看全部错题"
   }
 }

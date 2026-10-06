@@ -47,6 +47,27 @@
     "libraryEmpty": "Your card library is empty",
     "libraryEmptyHint": "Generate cards from learning material in chat first — the review queue builds up from there.",
     "goStats": "View statistics",
+    "learnMore": "Learn {{count}} more today",
+    "learnMoreEmpty": "No new cards left to learn",
+    "learnMoreFailed": "Couldn't load new cards, please try again",
+    "adjustDailyLimit": "Adjust daily new-card limit",
+    "decks": {
+      "title": "Review by deck",
+      "hint": "Review a single deck (subdecks included); ratings count as usual",
+      "ungrouped": "No deck",
+      "due": "{{count}} due",
+      "new": "{{count}} new",
+      "nothingDue": "Nothing due today",
+      "review": "Review {{count}}",
+      "reviewAria": "Review {{count}} due cards in {{name}}",
+      "learnNew": "Learn {{count}} new",
+      "learnNewAria": "Learn {{count}} new cards in {{name}}",
+      "openLibrary": "Show {{name}} in the library",
+      "expand": "Expand subdecks of {{name}}",
+      "collapse": "Collapse subdecks of {{name}}",
+      "empty": "Nothing to review in this deck right now",
+      "failed": "Couldn't load this deck's cards, please try again"
+    },
     "upNext": "Up next",
     "upNextCount": "{{count}} cards",
     "upNextCount_one": "{{count}} card"
@@ -110,6 +131,11 @@
       "asc": "Ascending",
       "desc": "Descending",
       "reset": "Reset to default order"
+    },
+    "deck": {
+      "label": "Deck",
+      "all": "All decks",
+      "ungrouped": "No deck"
     },
     "filteredCount": "{{shown}} of {{total}} on this page",
     "noMatches": "No cards match the current search or filter",
@@ -264,6 +290,10 @@
     "resumeFailed": "Failed to resume card",
     "cancelEdit": "Cancel",
     "saveEdit": "Save",
+    "viewSource": "View source",
+    "noSource": "No source recorded for this card (imported or hand-made cards have none)",
+    "askAi": "Ask AI about this card",
+    "askAiPrompt": "I couldn't recall this flashcard during review. Please explain it: what it is testing and why this is the answer, then give me a way to remember it, and finally one short question to check me.\n\n{{card}}",
     "again": "Again",
     "hard": "Hard",
     "good": "Good",
@@ -271,7 +301,9 @@
     "againHint": "Did not recall the answer",
     "hardHint": "Recalled, but with effort",
     "goodHint": "Recalled normally",
-    "easyHint": "Recalled quickly and easily"
+    "easyHint": "Recalled quickly and easily",
+    "bury": "Bury until tomorrow",
+    "unbury": "Unbury"
   },
   "review": {
     "showAnswer": "Show answer",
@@ -310,7 +342,7 @@
     "demoNote": "If the review service is unavailable, the app shows error details and a retry action instead of substituting sample cards.",
     "scheduler": {
       "title": "Scheduling",
-      "subtitle": "Daily limits and desired retention (default deck)",
+      "subtitle": "Daily limits, retention, learning steps and day boundary (default deck)",
       "loading": "Loading scheduler configuration…",
       "unavailable": "Scheduler configuration is unavailable",
       "newPerDay": "New cards per day",
@@ -323,7 +355,49 @@
       "saved": "Saved",
       "saveFailed": "Failed to save scheduler configuration",
       "invalidLimit": "Daily limits must be integers between 0 and {{max}}",
-      "invalidRetention": "Desired retention must be between {{min}} and {{max}}"
+      "invalidRetention": "Desired retention must be between {{min}} and {{max}}",
+      "learningSteps": "Learning steps",
+      "relearningSteps": "Relearning steps",
+      "dayRolloverHour": "Next day starts at (hour)",
+      "maximumInterval": "Maximum interval (days)",
+      "enableFuzz": "Interval fuzz (spread cards learned on the same day)",
+      "stepsHint": "Separate steps with spaces using s / m / h / d units, e.g. \"1m 10m\"; leave empty to let FSRS choose short-term intervals.",
+      "rolloverHint": "Reviews before this hour still count toward the previous day, which suits late-night study (Anki defaults to 4).",
+      "longStepWarning": "FSRS works best when every step finishes the same day (under 1 day); long steps can make Hard longer than Good.",
+      "invalidSteps": "Invalid steps: use positive numbers with s / m / h / d units, at most 16 steps of up to 365 days each",
+      "invalidRollover": "The day boundary must be an integer between 0 and 23",
+      "invalidMaximumInterval": "Maximum interval must be an integer between 1 and {{max}} days",
+      "reviewOrder": "Review order",
+      "reviewOrders": {
+        "due": "Due date",
+        "retrievability": "Most likely forgotten first",
+        "random": "Random"
+      },
+      "newReviewOrder": "New cards",
+      "newReviewOrders": {
+        "after": "After reviews",
+        "before": "Before reviews",
+        "mix": "Mixed with reviews"
+      },
+      "maxAnswerSeconds": "Maximum answer time (seconds)",
+      "buryNewSiblings": "Bury new siblings until tomorrow",
+      "buryReviewSiblings": "Bury review siblings until tomorrow",
+      "invalidMaxAnswerSeconds": "Maximum answer time must be an integer between 1 and 3600 seconds",
+      "orderHint": "With a large backlog, \"most likely forgotten first\" loses fewer cards; buried siblings (reverse cards, other cloze deletions of the same note) never appear back to back."
+    },
+    "optimizer": {
+      "title": "Personalized parameters (FSRS optimizer)",
+      "usingDefaults": "Using the FSRS-6 default parameters (fit to the average learner).",
+      "personalized": "Using your personalized parameters.",
+      "personalizedSince": "Using your personalized parameters (optimized on {{date}} from {{count}} reviews).",
+      "optimize": "Optimize from my reviews",
+      "running": "Optimizing…",
+      "resetDefaults": "Restore defaults",
+      "optimized": "Parameters updated: log loss {{before}} → {{after}} (lower is better), trained on {{reviews}} reviews; memory states of {{cards}} cards were recomputed.",
+      "alreadyOptimal": "Your current parameters are already optimal (log loss {{logLoss}}); nothing changed.",
+      "notEnoughData": "Not enough review history to train yet ({{items}} samples). Keep reviewing — results improve noticeably after a few hundred reviews.",
+      "failed": "Parameter optimization failed",
+      "hint": "Optimization only uses review history on this device and never uploads it; once a month is plenty."
     }
   },
   "statistics": {
@@ -469,6 +543,25 @@
       "sampleCapped": "The due queue has more than {{limit}} cards; only the first {{limit}} are counted",
       "title": "Memory state distribution (due sample)",
       "subtitle": "S / D distribution of due cards, not model weights; the sample depends on limits and queue policy"
+    },
+    "insights": {
+      "title": "Retention and memory",
+      "studyTime": "Answered today {{today}} · 7-day average {{average}}",
+      "period": "Period",
+      "young": "Young",
+      "mature": "Mature",
+      "total": "Total",
+      "periods": {
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "week": "Last 7 days",
+        "month": "Last 30 days",
+        "year": "Last year"
+      },
+      "retrievability": "Current retrievability (%)",
+      "stability": "Stability",
+      "difficulty": "Difficulty",
+      "hint": "True retention counts only the first review of each card per day; anything but Again counts as recalled. Mature cards had stability of 21 days or more. If it stays below your desired retention, optimize the parameters in the scheduler settings below."
     }
   }
 }

@@ -1,0 +1,179 @@
+{
+  "title": "Media",
+  "tagline": "Turn lectures, courses and recordings into material you can search, ask about and review",
+  "count_one": "{{count}} item",
+  "count_other": "{{count}} items",
+  "searchPlaceholder": "Search media…",
+  "listLabel": "Media list",
+  "loadFailed": "Couldn't load your media",
+  "noMatch": "No media matches that name",
+  "filter": {
+    "aria": "Filter by status",
+    "all": "All",
+    "watching": "In progress",
+    "untranscribed": "No transcript",
+    "transcribed": "Transcribed"
+  },
+  "filterEmpty": {
+    "all": "No media yet",
+    "watching": "Nothing in progress",
+    "untranscribed": "Everything is transcribed",
+    "transcribed": "Nothing transcribed yet"
+  },
+  "status": {
+    "none": "No transcript",
+    "queued": "Queued",
+    "running": "Transcribing",
+    "runningCount": "Transcribing {{completed}}/{{total}}",
+    "completed": "Transcribed",
+    "imported": "Subtitles imported",
+    "partial": "Partly done",
+    "failed": "Failed"
+  },
+  "row": {
+    "open": "Study “{{name}}”",
+    "more": "More actions for “{{name}}”",
+    "lastWatched": "Watched {{time}}",
+    "notStarted": "Not started",
+    "finished": "Finished",
+    "progress": "Watch progress",
+    "rename": "Rename",
+    "bilibiliBadge": "Bilibili",
+    "renameFailed": "Couldn't rename",
+    "reveal": "Show in Library",
+    "delete": "Delete",
+    "deleteTitle": "Delete “{{name}}”?",
+    "deleteDesc": "It moves to the Library trash together with its transcript and watch progress. You can restore it from the trash.",
+    "deleteFailed": "Couldn't delete",
+    "deleted": "Deleted “{{name}}”"
+  },
+  "import": {
+    "button": "Import media",
+    "bilibili": "Bilibili link",
+    "filterName": "Audio / video",
+    "dropHint": "Drop to import audio or video",
+    "progress": "Importing {{index}}/{{total}}: {{name}}",
+    "preparing": "Preparing import…",
+    "success_one": "Imported {{count}} file",
+    "success_other": "Imported {{count}} files",
+    "partial": "Imported {{imported}}, {{failed}} failed",
+    "failed": "Import failed",
+    "skipped_one": "Skipped {{count}} file that isn't audio or video",
+    "skipped_other": "Skipped {{count}} files that aren't audio or video",
+    "notMedia_one": "The selected file isn't audio or video",
+    "notMedia_other": "None of the {{count}} selected files are audio or video"
+  },
+  "empty": {
+    "title": "Import your first lecture",
+    "transcribe": "Transcripts: turn a lecture into timed subtitles, search while you watch and tap a line to jump there.",
+    "ask": "Ask as you watch: ask about this course and get answers with [Media@time] citations that jump back.",
+    "review": "Handouts and practice: build an illustrated handout note, then make flashcards and questions from what was taught.",
+    "subtitleNote": "Already have subtitles (.srt / .vtt / Bilibili .json)? Import the media, then pick “Import subtitle file” in its row menu and skip the transcription cost."
+  },
+  "drawer": {
+    "recent": "Recently watched",
+    "empty": "Nothing watched yet"
+  },
+  "study": {
+    "back": "Back to media",
+    "notFound": "This media file can't be found. It may have been deleted.",
+    "loadFailed": "Couldn't open this media file",
+    "tabsAria": "Study panel",
+    "tab": {
+      "handout": "Handout",
+      "ask": "Ask",
+      "practice": "Practice"
+    }
+  },
+  "handout": {
+    "intro": "A handout turns the transcript into a sectioned note with key frames, and each section links back to its moment in the video.",
+    "listTitle": "Handouts for this lecture",
+    "empty": "No handouts yet",
+    "untitled": "Untitled handout",
+    "wordHint": "You can export a note to Word from the note editor."
+  },
+  "ask": {
+    "intro": "Opens a new chat with this lecture attached and the Course study skill on. Answers come from the transcript with citations you can jump to.",
+    "start": "Ask about this lecture",
+    "needTranscript": "No transcript yet. Transcribe or import subtitles first for better answers.",
+    "quickTitle": "Quick questions",
+    "quick": {
+      "summary": "Summarize this lecture",
+      "keyPoints": "List key points and hard parts",
+      "explain": "Explain a part I didn't get"
+    },
+    "prompt": {
+      "summary": "Summarize the lecture “{{name}}” in the order it was taught, as bullet points, each with its timestamp citation.",
+      "keyPoints": "List the key points and difficult parts of the lecture “{{name}}”, explain why each difficult part is easy to get wrong, and add timestamp citations.",
+      "explain": "There's a part of the lecture “{{name}}” I didn't understand (add the time or what was said below):\n"
+    },
+    "citationHint": "Timestamps in answers are clickable and jump the player to that moment.",
+    "failed": "Couldn't start the chat"
+  },
+  "practice": {
+    "intro": "Make cards and questions from what was taught. A new chat opens with the instruction filled in, and you send it when ready.",
+    "cards": "Make flashcards",
+    "cardsHint": "Cards go to Flashcards for review, and their source jumps back to the video",
+    "questions": "Generate practice questions",
+    "questionsHint": "Questions go to Question sets for practice and review",
+    "prompt": {
+      "cards": "Make flashcards from the transcript of the lecture “{{name}}”: cover the core concepts, definitions and common mistakes, about 10 cards, each citing its timestamp as the source.",
+      "questions": "Create a question set from the transcript of the lecture “{{name}}”: mostly multiple choice, fill-in and short answer, 5-10 questions, each with the answer, an explanation and its timestamp citation."
+    },
+    "needTranscript": "Transcribe or import subtitles first."
+  },
+  "progress": {
+    "title": "Progress",
+    "watched": "Watched",
+    "minutes_one": "{{count}} min",
+    "minutes_other": "{{count}} min",
+    "notStarted": "Not started",
+    "position": "Stopped at",
+    "finished": "Finished",
+    "transcript": "Transcript",
+    "segments": "{{done}}/{{total}} segments"
+  },
+  "select": {
+    "toggle": "Select",
+    "done": "Done",
+    "barLabel": "Bulk actions",
+    "count_one": "{{count}} selected",
+    "count_other": "{{count}} selected",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "row": "Select “{{name}}”",
+    "group": "Select everything in “{{name}}”",
+    "move": "Move to group…",
+    "delete": "Delete",
+    "deleteTitle_one": "Delete {{count}} selected item?",
+    "deleteTitle_other": "Delete {{count}} selected items?",
+    "deleted_one": "Deleted {{count}} item",
+    "deleted_other": "Deleted {{count}} items",
+    "deletePartial": "Deleted {{done}}, {{failed}} failed",
+    "moved_one": "Moved {{count}} item to “{{name}}”",
+    "moved_other": "Moved {{count}} items to “{{name}}”",
+    "movedOut_one": "Removed {{count}} item from its group",
+    "movedOut_other": "Removed {{count}} items from their groups",
+    "movePartial": "Moved {{done}}, {{failed}} failed",
+    "moveFailed": "Move failed"
+  },
+  "view": {
+    "aria": "List layout",
+    "list": "List",
+    "grouped": "By group"
+  },
+  "group": {
+    "ungrouped": "Ungrouped",
+    "toggle": "Expand or collapse “{{name}}”",
+    "pickerLabel": "Move to group",
+    "existing": "Groups",
+    "new": "New group…",
+    "moveOut": "Remove from group",
+    "newTitle": "New group",
+    "newHint_one": "Creates a folder at the top of the library and moves the {{count}} selected item into it.",
+    "newHint_other": "Creates a folder at the top of the library and moves the {{count}} selected items into it.",
+    "namePlaceholder": "Group name",
+    "create": "Create and move",
+    "createFailed": "Couldn't create the group"
+  }
+}

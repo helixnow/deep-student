@@ -103,7 +103,18 @@
     "outline_nav_failed": "无法跳转到该章节",
     "highlight_rotation_disabled": "旋转视图下暂不支持划词高亮，请恢复原始方向后再试",
     "pageJumpInvalid": "请输入有效页码",
-    "pageJumpOutOfRange": "页码超出范围（1–{{max}}）"
+    "pageJumpOutOfRange": "页码超出范围（1–{{max}}）",
+    "capture_ask": "框选提问"
+  },
+  "capture": {
+    "hint": "拖动鼠标框出要问的区域（公式、图表都行）",
+    "hint_touch": "用手指拖出要问的区域（公式、图表都行）",
+    "working": "正在截取…",
+    "not_rendered": "这一页还没显示完整，稍等一下再框",
+    "failed": "没能截下这块区域，换个位置再试",
+    "file_name": "{{name}}-第{{page}}页-截图",
+    "source": "《{{name}}》第 {{page}} 页截图",
+    "untitled": "PDF"
   },
   "bookmark": {
     "addBookmark": "添加书签",

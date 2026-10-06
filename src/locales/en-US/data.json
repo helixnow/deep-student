@@ -8,6 +8,7 @@
     "questions": "Questions: {{count}}, {{rate}}% correct",
     "cards": "Card reviews: {{count}}, forgot {{again}}",
     "focus": "Pomodoro focus: {{duration}} ({{count}} pomodoros completed)",
+    "study_time": "Study time: {{duration}} (app in front and in use)",
     "minutes": "{{count}} min",
     "hours": "{{count}} h",
     "delta_new": " (nothing last week)",
@@ -33,7 +34,7 @@
   "today_center": {
     "weak_title": "Weak spots",
     "weak_hint": "Explain and practice in chat",
-    "weak_prompt": "Help me review my weak spot “{{concept}}”: explain the core idea in three sentences, give me 3 practice questions from easy to hard, then tell me where people most often go wrong.",
+    "weak_prompt": "Help me review my weak spot “{{concept}}”: explain the core idea in three sentences; then write 3 practice questions from easy to hard into the question set “Weak-spot practice” with the question bank tools, using “{{concept}}” as the first knowledge tag of each question — I'll answer them there so my mastery updates; finally tell me where people most often go wrong.",
     "cards_due": "Cards due",
     "mistakes_due": "Mistakes to review",
     "notes_due": "Notes to review",
@@ -43,7 +44,11 @@
     "todo_due": "Todos today",
     "active_jobs": "Active jobs",
     "go": "Open",
-    "hint_title": "Due today"
+    "hint_title": "Due today",
+    "starter_title": "New here? Three steps",
+    "starter_steps": "Import material → choose “Make Flashcards from This” in its menu → come back here daily to review",
+    "starter_action": "Open library",
+    "starter_dismiss": "Don't show again"
   },
   "export_title": "Data Export",
   "export_description": "Export all your mistake data, including images and chat history, as well as system settings.",

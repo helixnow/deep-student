@@ -849,5 +849,23 @@
     "nav_aborted": "Todo navigation aborted",
     "run_not_found": "Todo run does not exist or has already finished",
     "run_ended": "Run already finished"
+  },
+  "links": {
+    "title": "Linked materials",
+    "add": "Add",
+    "empty": "Attach the notes, textbooks or question sets you need, then open them in one click when you start.",
+    "loading": "Loading…",
+    "missing": "This material was deleted or can't be found",
+    "open": "Open {{name}}",
+    "remove": "Unlink {{name}}",
+    "searchPlaceholder": "Search notes, textbooks, question sets…",
+    "recent": "Recently opened",
+    "searchResults": "Search results",
+    "searching": "Searching…",
+    "noResults": "No matching materials",
+    "noRecent": "Nothing opened recently; type to search",
+    "linked": "Linked",
+    "count": "Linked materials: {{count}}",
+    "openFromRow": "Open linked materials ({{count}})"
   }
 }

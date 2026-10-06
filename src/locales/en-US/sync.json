@@ -159,6 +159,7 @@
     "encryptionPasswordMissing": "The cloud data is end-to-end encrypted, but no encryption password is set on this device. Enter the password that was used when encryption was first enabled in the cloud sync settings, then try again.",
     "wrongEncryptionPassword": "The cloud data could not be decrypted: the encryption password is incorrect (or the cloud data is corrupted). Update the password in the cloud sync settings to match your other devices and try again; every device connected to the same cloud directory must use the same encryption password.",
     "leaseHeld": "Another device is syncing to the same cloud directory. This run stopped safely to prevent concurrent writes from corrupting sync state. Wait for that device to finish, then retry. If it crashed, the lease will be reclaimed automatically after its timeout; retry later and do not overwrite cloud sync files manually.",
+    "leaseHeldSelf": "The previous sync on this device did not finish normally (for example, the app was closed or restarted during sync), so its lease in the cloud is only released automatically at {{expiresAt}}. No other device is syncing: retry after that time and do not overwrite cloud sync files manually. If another instance of the app on this device is syncing, wait for it to finish.",
     "technicalDetail": "Technical detail:"
   },
   "unsynced": {
