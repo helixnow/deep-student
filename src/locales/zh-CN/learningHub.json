@@ -372,7 +372,7 @@
     "dialogTitleCreate": "从 B 站链接导入",
     "dialogTitleAttach": "从 B 站链接获取字幕",
     "dialogTitleRefetch": "重新获取 B 站字幕",
-    "dialogDescCreate": "粘贴视频链接或分享短链，拉取 UP 主上传的字幕或 B 站自动生成的 AI 字幕。不下载视频，在应用里用 B 站播放器观看。",
+    "dialogDescCreate": "粘贴视频链接或分享短链，拉取 UP 主上传的字幕或 B 站自动生成的 AI 字幕。不下载视频，直接在应用里播放。",
     "dialogDescAttach": "把同一视频在 B 站上的字幕导入到「{{name}}」，替换现有字幕，免去转写费用。",
     "dialogDescRefetch": "换一条字幕，或拉取 B 站上更新后的字幕，替换现有字幕。",
     "linkLabel": "B 站视频链接",
