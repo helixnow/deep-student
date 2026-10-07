@@ -7,6 +7,7 @@
  */
 import { mockIPC, mockWindows } from '@tauri-apps/api/mocks';
 import type { DemoAppPack, DemoArgs } from './types';
+import { handleAnkiTemplates } from './shared';
 
 const LOG = '[demo-app-ipc]';
 
@@ -45,6 +46,7 @@ const SILENT_COMMANDS = new Set([
   'plugin:event|unlisten',
   'track_event',
   'log_frontend_event',
+  'report_frontend_log',
 ]);
 
 export function installDemoAppMocks(pack: DemoAppPack): void {
@@ -77,6 +79,8 @@ export function installDemoAppMocks(pack: DemoAppPack): void {
         default:
           break;
       }
+      const templates = handleAnkiTemplates(cmd, args);
+      if (templates !== undefined) return templates;
       if (EMPTY_LIST_COMMANDS.has(cmd)) return [];
       if (SILENT_COMMANDS.has(cmd)) return null;
       if (!unmocked.has(cmd)) {

@@ -4,12 +4,11 @@
  */
 import type { DemoAppPack } from '../types';
 import { handleDemoFlashcards } from '../../flashcards';
-import { chain, handleAnkiTemplates } from '../shared';
 
 const pack: DemoAppPack = {
   title: '闪卡',
   load: () => import('@/features/workbench/apps/system/FlashcardsAppWindow').then((m) => m.default),
-  handle: chain(handleAnkiTemplates, handleDemoFlashcards),
+  handle: handleDemoFlashcards,
 };
 
 export default pack;

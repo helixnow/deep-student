@@ -149,12 +149,22 @@ function withLatency<T>(value: T, ms = 120): Promise<T> {
 // ============================================================================
 
 export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
+  mockWindows('main');
+  mockIPC(createDemoIpcHandler(options), { shouldMockEvents: true });
+  console.info(
+    `${LOG} mocks installed: ${DEMO_SESSIONS.length} scripted sessions, events bridged in-memory.`,
+  );
+}
+
+/**
+ * 对话演示的 IPC 处理（剧本会话、模型、模板、导图、题目、闪卡、附件）。
+ * installDemoIpcMocks 装它；单应用演示里对话类的章节（src/demo/app/packs）也直接用它。
+ */
+export function createDemoIpcHandler(options: DemoIpcOptions = {}): (cmd: string, payload?: unknown) => unknown {
   for (const [key, value] of Object.entries(seedSettings(options))) settingsKV.set(key, value);
   if (options.desktop) seedDesktopScene();
-  mockWindows('main');
 
-  mockIPC(
-    (cmd, payload) => {
+  return (cmd, payload) => {
       const args = (payload ?? {}) as Record<string, unknown>;
 
       switch (cmd) {
@@ -683,11 +693,5 @@ export function installDemoIpcMocks(options: DemoIpcOptions = {}): void {
           return null;
         }
       }
-    },
-    { shouldMockEvents: true },
-  );
-
-  console.info(
-    `${LOG} mocks installed: ${DEMO_SESSIONS.length} scripted sessions, events bridged in-memory.`,
-  );
+  };
 }
