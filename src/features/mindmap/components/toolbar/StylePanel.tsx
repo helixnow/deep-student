@@ -116,6 +116,7 @@ export const StyleSettings: React.FC<{
   const triggerRef = useRef<HTMLDivElement>(null);
   // 视口钳位：面板锚定触发按钮时的水平修正量（px）
   const [clampOffset, setClampOffset] = useState(0);
+  const [maxPanelHeight, setMaxPanelHeight] = useState<number | null>(null);
   const clampOffsetRef = useRef(0);
 
   // 受控/非受控模式
@@ -240,6 +241,9 @@ export const StyleSettings: React.FC<{
         clampOffsetRef.current = next;
         setClampOffset(next);
       }
+      // 纵向：面板从工具栏下方展开，高度不超过到视口底边的剩余空间
+      const available = Math.max(160, Math.floor(window.innerHeight - rect.top - margin));
+      setMaxPanelHeight((prev) => (prev === available ? prev : available));
     };
     measure();
     window.addEventListener('resize', measure);
@@ -430,7 +434,10 @@ export const StyleSettings: React.FC<{
             'ui-zoom-fade-in'
           )}
           viewportClassName="mm-settings-popover-viewport p-2"
-          style={clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : undefined}
+          style={{
+            ...(clampOffset !== 0 ? { translate: `${clampOffset}px 0` } : {}),
+            ...(maxPanelHeight ? { maxHeight: `min(680px, ${maxPanelHeight}px)` } : {}),
+          }}
           role="dialog"
           aria-label={t('style.globalTheme')}
           fullHeight={false}
