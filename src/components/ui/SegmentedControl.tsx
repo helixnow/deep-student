@@ -55,6 +55,30 @@ function getNextEnabledIndex<T extends string>(
   return -1;
 }
 
+type RectLike = { left: number; top: number; width: number; height: number };
+
+/**
+ * 滑块相对根元素的几何（未变换的布局坐标）。
+ *
+ * getBoundingClientRect 量的是变换后的屏幕坐标：学习桌面窗口平铺 / 最大化动画期间
+ * 祖先带 scale，量出来的宽度和位移都被缩放；动画结束后没有尺寸变化触发重测，滑块就停在
+ * 错误位置（曾盖住导图工具栏的撤销 / 重做）。用根元素的布局尺寸把缩放换算回去。
+ */
+export function segmentedThumbGeometry(
+  rootRect: RectLike,
+  targetRect: RectLike,
+  rootLayoutSize: { width: number; height: number },
+): { x: number; y: number; width: number; height: number } {
+  const sx = rootLayoutSize.width > 0 && rootRect.width > 0 ? rootRect.width / rootLayoutSize.width : 1;
+  const sy = rootLayoutSize.height > 0 && rootRect.height > 0 ? rootRect.height / rootLayoutSize.height : 1;
+  return {
+    x: (targetRect.left - rootRect.left) / sx,
+    y: (targetRect.top - rootRect.top) / sy,
+    width: targetRect.width / sx,
+    height: targetRect.height / sy,
+  };
+}
+
 export function SegmentedControl<T extends string>({
   ariaLabel,
   value,
@@ -99,10 +123,10 @@ export function SegmentedControl<T extends string>({
     }
     const rootRect = root.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const x = targetRect.left - rootRect.left;
-    const y = targetRect.top - rootRect.top;
-    const width = targetRect.width;
-    const height = targetRect.height;
+    const { x, y, width, height } = segmentedThumbGeometry(rootRect, targetRect, {
+      width: root.offsetWidth,
+      height: root.offsetHeight,
+    });
     setThumbStyle((prev) => {
       if (prev.ready && prev.x === x && prev.y === y && prev.width === width && prev.height === height) return prev;
       return { x, y, width, height, ready: true };
