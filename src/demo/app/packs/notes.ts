@@ -42,6 +42,7 @@ const pack: DemoAppPack = {
   localStorage: {
     'workbench.notesWorkspace.state.v1': JSON.stringify(WORKSPACE_STATE),
   },
+  namespaces: ['common', 'notes', 'workbench', 'mindmap', 'vfs', 'dstu', 'backend_errors', 'graph_conflict', 'app_menu', 'translation'],
   prepare: patchSettingsStrings,
 };
 
