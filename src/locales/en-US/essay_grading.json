@@ -416,8 +416,6 @@
     "no_polish_desc": "No polish suggestions were generated in this round",
     "no_model_essay": "No model essay (please provide essay topic)",
     "no_model_essay_desc": "Provide an essay topic to generate a model essay",
-    "polish_desc": "The following sentences can be polished for better fluency and precision",
-    "model_essay_desc": "AI-generated model essay based on the topic, for reference",
     "original": "Original",
     "polished": "Polished",
     "copied": "Copied",

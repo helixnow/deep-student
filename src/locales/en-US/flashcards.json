@@ -325,7 +325,6 @@
     "shortcutFlip": "flip",
     "shortcutRate": "rate",
     "shortcutUndo": "undo",
-    "doneHint": "Nice work — here is your session recap",
     "emptyHint": "Add or enqueue some cards from the library",
     "statRated": "Rated",
     "statTime": "Time",
