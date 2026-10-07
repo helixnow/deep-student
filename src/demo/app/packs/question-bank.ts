@@ -5,12 +5,15 @@
 import type { DemoAppPack } from '../types';
 import { handleQuestionBank } from './question-bank/backend';
 import { QB_MAIN_ID } from './question-bank/data';
+import { patchPracticeStrings } from '../data/practice/i18nPatch';
 
 const pack: DemoAppPack = {
   title: '题目集与练习',
   load: () => import('./question-bank/QuestionBankDemo').then((m) => m.default),
   instanceKey: QB_MAIN_ID,
   handle: handleQuestionBank,
+  namespaces: ['exam_sheet', 'learningHub', 'review', 'practice', 'workbench', 'dstu', 'stats', 'app_menu'],
+  prepare: patchPracticeStrings,
 };
 
 export default pack;
