@@ -4,6 +4,11 @@ import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import {
+  subscribeWorkbenchGestureFrames,
+  type WorkbenchGestureFrameSignal,
+} from '@/features/workbench/core/workbenchGestureFollowers';
+import './ComposerPanelOverlay.css';
 
 const VIEWPORT_PADDING_PX = 8;
 const DEFAULT_PANEL_GAP_PX = 8;
@@ -148,11 +153,48 @@ export function ComposerPanelOverlay({
     });
 
     const handleViewportChange = () => updatePosition();
+    // Workbench drag frames arrive after WindowShell has written its transform.
+    // Compose the delta immediately to avoid a one-frame follower rAF race.
+    // On release, suppress transform transitions while the new anchor commits.
+    const clearGestureFollow = (reposition: boolean) => {
+      const el = panelRef.current;
+      if (!el) return;
+      const wasFollowing = el.dataset.wbGestureFollow === 'drag';
+      if (!wasFollowing) {
+        if (reposition) updatePosition();
+        return;
+      }
+      delete el.dataset.wbGestureFollow;
+      el.style.removeProperty('--wb-follow-x');
+      el.style.removeProperty('--wb-follow-y');
+      el.dataset.wbGestureRelease = 'true';
+      // Flush the no-transition state before React commits the new left/top.
+      void el.offsetWidth;
+      if (reposition) updatePosition();
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (el.isConnected) delete el.dataset.wbGestureRelease;
+        });
+      });
+    };
+    const handleGestureFrame = (signal: WorkbenchGestureFrameSignal) => {
+      const el = panelRef.current;
+      if (!el) return;
+      if (signal.phase === 'drag') {
+        el.dataset.wbGestureFollow = 'drag';
+        el.style.setProperty('--wb-follow-x', `${signal.x ?? 0}px`);
+        el.style.setProperty('--wb-follow-y', `${signal.y ?? 0}px`);
+        return;
+      }
+      clearGestureFollow(true);
+    };
+
     window.addEventListener('resize', handleViewportChange, { passive: true });
     window.addEventListener('scroll', handleViewportChange, { capture: true, passive: true });
     // I-2: 软键盘弹出/收起只反映在 visualViewport 上
     window.visualViewport?.addEventListener('resize', handleViewportChange, { passive: true });
     window.visualViewport?.addEventListener('scroll', handleViewportChange, { passive: true });
+    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame);
 
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(handleViewportChange)
@@ -171,6 +213,7 @@ export function ComposerPanelOverlay({
       window.removeEventListener('scroll', handleViewportChange, true);
       window.visualViewport?.removeEventListener('resize', handleViewportChange);
       window.visualViewport?.removeEventListener('scroll', handleViewportChange);
+      unsubscribeGestureFrames();
       resizeObserver?.disconnect();
     };
   }, [anchorRef, updatePosition]);

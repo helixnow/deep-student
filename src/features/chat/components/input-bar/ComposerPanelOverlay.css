@@ -1,0 +1,9 @@
+/* Workbench drag-follow is additive to composer panel enter/exit motion. */
+[data-composer-panel-overlay][data-wb-gesture-follow='drag'] {
+  transform: translate(var(--wb-follow-x, 0px), var(--wb-follow-y, 0px)) !important;
+  transition: none !important;
+}
+
+[data-composer-panel-overlay][data-wb-gesture-release='true'] {
+  transition: none !important;
+}

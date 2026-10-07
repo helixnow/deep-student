@@ -23,6 +23,10 @@ import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { readCssDurationMs, useMotionPresence } from '@/hooks/useMotionPresence';
 import { addVisualViewportChangeListener, getVisualViewportSize } from '../visualViewport';
+import {
+  subscribeWorkbenchGestureFrames,
+  type WorkbenchGestureFrameSignal,
+} from '@/features/workbench/core/workbenchGestureFollowers';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import './AppMenu.css';
 
@@ -436,6 +440,43 @@ export function AppMenuContent({
       ));
     };
 
+    // Workbench drag frames are emitted after WindowShell writes its transform.
+    // Apply the same delta immediately; a follower rAF would lag by one frame.
+    // On release, suppress the dropdown transition while the anchor commits,
+    // otherwise the menu animates from the old unanchored position.
+    const clearGestureFollow = (reposition: boolean) => {
+      const el = contentRef.current;
+      if (!el) return;
+      const wasFollowing = el.dataset.wbGestureFollow === 'drag';
+      if (!wasFollowing) {
+        if (reposition) updatePosition();
+        return;
+      }
+      delete el.dataset.wbGestureFollow;
+      el.style.removeProperty('--wb-follow-x');
+      el.style.removeProperty('--wb-follow-y');
+      el.dataset.wbGestureRelease = 'true';
+      // Flush the no-transition state before React commits the new left/top.
+      void el.offsetWidth;
+      if (reposition) updatePosition();
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          if (el.isConnected) delete el.dataset.wbGestureRelease;
+        });
+      });
+    };
+    const handleGestureFrame = (signal: WorkbenchGestureFrameSignal) => {
+      const el = contentRef.current;
+      if (!el) return;
+      if (signal.phase === 'drag') {
+        el.dataset.wbGestureFollow = 'drag';
+        el.style.setProperty('--wb-follow-x', `${signal.x ?? 0}px`);
+        el.style.setProperty('--wb-follow-y', `${signal.y ?? 0}px`);
+        return;
+      }
+      clearGestureFollow(true);
+    };
+
     const resizeObserver = typeof ResizeObserver === 'undefined'
       ? null
       : new ResizeObserver(() => updatePosition());
@@ -454,12 +495,14 @@ export function AppMenuContent({
     // 软键盘弹出/收起只反映在 visualViewport 上（对照 ComposerPanelOverlay）；
     // window 监听保留作兜底，桌面无 visualViewport 变化时行为等价。
     const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
+    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
       resizeObserver?.disconnect();
       removeVisualViewportListener();
+      unsubscribeGestureFrames();
     };
   }, [align, contentRef, contextPositionX, contextPositionY, menuMode, shouldRender, triggerRef]);
 
