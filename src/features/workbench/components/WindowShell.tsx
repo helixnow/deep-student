@@ -41,6 +41,7 @@ import {
   zoneToDisplayMode,
 } from '../core/tiling';
 import { prefersReducedMotion } from '../core/pointerEngine';
+import { notifyWorkbenchGestureFrame } from '../core/workbenchGestureFollowers';
 import {
   beginInteraction,
   endInteraction,
@@ -604,6 +605,10 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     // 结论：维持拖拽全程不切阴影档；如需抬升观感，应由视觉分区在静态
     // focused 档上整体调深，而非 settle 瞬间切档。
     writeLayoutFrame(el, frameRef.current);
+    const releaseAnchor = dragAnchorRef.current;
+    const releaseDx = releaseAnchor ? frameRef.current.x - releaseAnchor.x : 0;
+    const releaseDy = releaseAnchor ? frameRef.current.y - releaseAnchor.y : 0;
+    notifyWorkbenchGestureFrame({ phase: 'release', x: releaseDx, y: releaseDy });
     dragAnchorRef.current = null;
     el.classList.remove('wb-shell-dragging', 'wb-shell-resizing');
     if (contentRef.current) {
@@ -650,6 +655,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       dragAnchorRef.current = { ...f };
     }
     writeLayoutFrame(el, f);
+    notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0 });
   }, [writeLayoutFrame]);
 
   /** 取消进行中的 restore FLIP（再次抓取 / 新 settle 前） */
@@ -872,6 +878,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         dragAnchorRef.current = { ...f };
         writeLayoutFrame(el, f);
         syncNativeSurface(windowId);
+        notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0 });
         return;
       }
       const dx = f.x - anchor.x;
@@ -881,6 +888,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       // DOM slot into native bounds. The consumer coalesces these events to rAF.
       syncNativeSurface(windowId);
       markInteraction('firstMove');
+      notifyWorkbenchGestureFrame({ phase: 'drag', x: dx, y: dy });
       return;
     }
 
@@ -889,6 +897,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     if (gestureRef.current?.kind === 'resize') {
       markInteraction('firstMove');
     }
+    notifyWorkbenchGestureFrame({ phase: 'drag', x: 0, y: 0 });
   }, [windowId, writeLayoutFrame]);
 
   const handleSnapZoneChange = useCallback(
