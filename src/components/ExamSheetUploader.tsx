@@ -1,11 +1,14 @@
 /**
- * ExamSheetUploader - 统一的题目导入组件
- * 
- * 支持两种导入模式：
- * 1. 图片上传 → OCR 识别题目
- * 2. 文档上传 → 文本解析 + LLM 识别题目
- * 
- * 根据文件类型自动选择处理模式，提供一致的用户体验
+ * ExamSheetUploader - 题目集「识别导入」
+ *
+ * 图片（试卷照片）与文档（PDF / Word / Excel / 文本）统一走后端
+ * `import_question_bank_stream`：后端按格式选择 VLM 直提或文本 + LLM 结构化，
+ * 通过 `question_import_progress` 事件流式回报进度与逐题结果。
+ *
+ * 界面按「一屏只表达一次同一信息」组织（2026-10 精简）：
+ * - 选择：拖放区 → 选中后收成一行「添加 / 更换」条，下方是已选文件 + 解析模型 + 操作；
+ * - 解析中：一行状态（文字 + 进度条 + 取消）+ 实时题目列表；
+ * - 完成：一行结果标题 + 题型分布 + 可勾选的「本次新增」题目列表 + 操作。
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -15,18 +18,12 @@ import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
   CircleNotch,
   X,
-  Image,
   FileText,
   WarningCircle,
   CheckCircle,
-  File,
   Info,
-  Robot,
-  Upload,
-  Check,
-  CheckSquare,
-  Square,
-  Funnel,
+  UploadSimple,
+  Plus,
   Camera,
   ArrowClockwise,
 } from '@phosphor-icons/react';
@@ -34,8 +31,8 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { CustomScrollArea } from './custom-scroll-area';
+import { LatexText } from './LatexText';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
-import { useExamSheetProgress } from '@/hooks/useExamSheetProgress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { emitImportDebug } from '@/debug-panel/plugins/QuestionImportDebugPlugin';
 import { UnifiedModelSelector, type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
@@ -103,22 +100,40 @@ const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf'];
 const MAX_UPLOAD_FILE_SIZE = DEFAULT_MAX_UPLOAD_FILE_SIZE;
 
 // 处理步骤
-type ProcessStep = 'select' | 'preview' | 'processing' | 'summary';
+type ProcessStep = 'select' | 'processing' | 'summary';
 
-// 导入结果摘要
-interface ImportSummary {
-  totalQuestions: number;
-  pageCount: number;
+type ExamSheetCard = NonNullable<ExamSheetSessionDetail['preview']['pages'][number]['cards']>[number];
+
+/** 导入结果摘要（只统计本次导入新增的题目） */
+export interface ImportSummary {
+  /** 本次新增的题目（追加到已有题目集时不含原有题目） */
+  cards: ExamSheetCard[];
   questionTypes: Record<string, number>;
   emptyQuestions: number;
-  warnings: string[];
 }
 
-interface PdfTextInspection {
-  valid_char_count: number;
-  total_char_count: number;
-  preview_text: string;
-  recommendation: 'auto_ocr' | 'manual_decision' | 'use_text' | string;
+/**
+ * 从导入后的会话详情中挑出「本次新增」的题目并统计。
+ *
+ * 追加导入时会话里还有原有题目：摘要与筛选列表若混入它们，用户「取消勾选」
+ * 会把原有题目一并删掉（2026-10 修复）。baseline 为导入前的题目 ID 集合；
+ * 为 null（导入前快照失败）时退回统计全部题目。
+ */
+export function buildImportSummary(
+  detail: ExamSheetSessionDetail,
+  baseline: ReadonlySet<string> | null,
+): ImportSummary {
+  const pages = detail.preview?.pages || [];
+  const allCards = pages.flatMap(p => p.cards || []);
+  const cards = baseline ? allCards.filter(card => !baseline.has(card.card_id)) : allCards;
+  const questionTypes: Record<string, number> = {};
+  let emptyQuestions = 0;
+  for (const card of cards) {
+    const qType = card.question_type || 'other';
+    questionTypes[qType] = (questionTypes[qType] || 0) + 1;
+    if (!card.ocr_text?.trim()) emptyQuestions++;
+  }
+  return { cards, questionTypes, emptyQuestions };
 }
 
 interface ImportAttempt {
@@ -134,10 +149,12 @@ interface ImportAttempt {
   createdSessionId?: string;
 }
 
-/** 智能解析内部阶段（用于处理步骤内的迷你阶段条） */
-type ProcessPhase = 'preparing' | 'recognizing' | 'parsing' | 'done';
-
-const PROCESS_PHASE_KEYS: ProcessPhase[] = ['preparing', 'recognizing', 'parsing', 'done'];
+interface ParsedQuestionPreview {
+  content: string;
+  question_type?: string;
+  answer?: string;
+  options?: Array<{ key: string; content: string }>;
+}
 
 const createQuestionImportId = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -146,79 +163,23 @@ const createQuestionImportId = (): string => {
   return `question-import-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 };
 
-const UPLOAD_STEP_KEYS = ['select', 'processing', 'summary'] as const;
-
-/** 导入步骤指示器：选择文件 → 智能解析 → 确认录入 */
-const UploadStepIndicator: React.FC<{ step: ProcessStep }> = ({ step }) => {
-  const { t } = useTranslation(['exam_sheet']);
-  const currentIndex = step === 'summary' ? 2 : step === 'processing' ? 1 : 0;
-  return (
-    <ol className="flex items-center justify-center">
-      {UPLOAD_STEP_KEYS.map((key, index) => {
-        const isDone = index < currentIndex;
-        const isCurrent = index === currentIndex;
-        return (
-          <li key={key} className="flex items-center">
-            {index > 0 && (
-              <div className={cn('mx-2 h-px w-8 sm:w-12', index <= currentIndex ? 'bg-primary/50' : 'bg-border')} />
-            )}
-            <div className="flex items-center gap-1.5">
-              <span
-                className={cn(
-                  'flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-medium',
-                  isCurrent && 'bg-primary text-primary-foreground',
-                  isDone && 'bg-primary/15 text-primary',
-                  !isDone && !isCurrent && 'bg-muted text-muted-foreground'
-                )}
-              >
-                {isDone ? <Check size={11} /> : index + 1}
-              </span>
-              <span className={cn('text-xs', isCurrent ? 'font-medium text-foreground' : 'text-muted-foreground')}>
-                {t(`exam_sheet:uploader.steps.${key}`)}
-              </span>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
+const errorMessageOf = (err: unknown): string => {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'object' && err !== null && 'message' in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
 };
 
-/** 智能解析内部阶段条：准备 → 识别 → 解析 → 完成 */
-const ProcessPhaseBar: React.FC<{ phase: ProcessPhase }> = ({ phase }) => {
-  const { t } = useTranslation(['exam_sheet']);
-  const currentIndex = PROCESS_PHASE_KEYS.indexOf(phase);
-  return (
-    <ol className="flex flex-wrap items-center justify-center gap-y-1 text-[11px]">
-      {PROCESS_PHASE_KEYS.map((key, index) => {
-        const isDone = index < currentIndex || (index === currentIndex && key === 'done');
-        const isCurrent = index === currentIndex;
-        return (
-          <li key={key} className="flex items-center">
-            {index > 0 && (
-              <span className={cn('mx-1.5 h-px w-4 sm:w-6', index <= currentIndex ? 'bg-primary/50' : 'bg-border')} />
-            )}
-            <span
-              className={cn(
-                'flex items-center gap-1 rounded-full px-2 py-0.5 ui-state-colors',
-                isCurrent && key !== 'done' && 'bg-primary/10 font-medium text-primary',
-                isDone && 'text-success',
-                !isDone && !isCurrent && 'text-muted-foreground/60'
-              )}
-            >
-              {isDone ? (
-                <Check size={10} weight="bold" className="ui-zoom-fade-in" />
-              ) : isCurrent ? (
-                <CircleNotch size={10} className="animate-spin" />
-              ) : null}
-              {t(`exam_sheet:uploader.phases.${key}`)}
-            </span>
-          </li>
-        );
-      })}
-    </ol>
-  );
-};
+const readFileAsBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const dataUrl = reader.result as string;
+    resolve(dataUrl.split(',')[1] || dataUrl);
+  };
+  reader.onerror = () => reject(new Error('File read failed'));
+  reader.readAsDataURL(file);
+});
 
 export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   sessionId,
@@ -243,24 +204,23 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const importGenerationRef = useRef(0);
   const activeImportAttemptRef = useRef<ImportAttempt | null>(null);
   const mountedRef = useRef(true);
-  
+  // 导入前已有题目 ID：摘要只展示本次新增题目（见 buildImportSummary）
+  const baselineCardIdsRef = useRef<Set<string> | null>(null);
+
   // 文件状态
   const [selectedFiles, setSelectedFiles] = useState<FileInfo[]>([]);
   // 拖拽悬停高亮（来自 UnifiedDragDropZone 的拖拽状态回调）
   const [isDragActive, setIsDragActive] = useState(false);
-  
-  // 文档导入状态
+
   const [step, setStep] = useState<ProcessStep>('select');
   const [qbankName, setQbankName] = useState('');
   const [isLLMProcessing, setIsLLMProcessing] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   // 取消导入的内联二次确认（不使用模态框）
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
-  const [llmProgress, setLlmProgress] = useState({ percent: 0, message: '', parsedCount: 0 });
-  // 智能解析内部阶段（准备 → 识别 → 解析 → 完成）
-  const [processPhase, setProcessPhase] = useState<ProcessPhase>('preparing');
-  // 逐页识别状态（image_index → 是否完成）；length 为 0 时不渲染逐页视图
-  const [ocrPageDone, setOcrPageDone] = useState<boolean[]>([]);
+  const [llmProgress, setLlmProgress] = useState({ percent: 0, message: '' });
+  // 后端 Completed 事件标记的「可能缺题」（VLM 中途失败 / 部分写库失败），在完成页提示
+  const [importIncomplete, setImportIncomplete] = useState(false);
   // 断点续导：流式导入失败但已有 checkpoint 时提供"从断点恢复"入口
   const [resumableSession, setResumableSession] = useState<{ sessionId: string; parsedCount: number } | null>(null);
   const [isResumeRun, setIsResumeRun] = useState(false);
@@ -268,36 +228,23 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const parsedCountRef = useRef(0);
   // 流式题目列表容器：新题到达时自动滚动到底部
   const parsedListRef = useRef<HTMLDivElement>(null);
-  
+
   // 实时解析的题目列表（流式显示）
-  const [parsedQuestions, setParsedQuestions] = useState<Array<{
-    content: string;
-    question_type?: string;
-    answer?: string;
-    options?: Array<{ key: string; content: string }>;
-  }>>([]);
-  
+  const [parsedQuestions, setParsedQuestions] = useState<ParsedQuestionPreview[]>([]);
+
   // 模型选择
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<UnifiedModelInfo[]>([]);
-  
-  // 错误和成功
+
   const [error, setError] = useState<string | null>(null);
-  
+
   // 导入结果摘要
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [pendingDetail, setPendingDetail] = useState<ExamSheetSessionDetail | null>(null);
-  
-  // 题目筛选状态：summary 步骤中用户可取消勾选不需要录入的题目
+
+  // 完成页：用户取消勾选不需要录入的题目
   const [excludedCardIds, setExcludedCardIds] = useState<Set<string>>(new Set());
-  const [showQuestionFilter, setShowQuestionFilter] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
-  // Visual-First: PDF 不再需要文本质量检测，保留变量避免下游引用报错
-  const [pendingPdfImport, setPendingPdfImport] = useState<{
-    base64Content: string;
-    format: string;
-    inspection: PdfTextInspection;
-  } | null>(null);
 
   const isCurrentImportAttempt = useCallback((attempt: ImportAttempt): boolean => {
     const activeAttempt = activeImportAttemptRef.current;
@@ -318,15 +265,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setIsLLMProcessing(true);
     setIsCancelling(false);
     setShowCancelConfirm(false);
-    setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document'), parsedCount: 0 });
-    setProcessPhase('preparing');
-    setOcrPageDone([]);
+    setLlmProgress({ percent: 0, message: t('exam_sheet:uploader.reading_document') });
+    setImportIncomplete(false);
     setResumableSession(null);
     setIsResumeRun(false);
     parsedCountRef.current = 0;
     setParsedQuestions([]);
     setError(null);
-    setPendingPdfImport(null);
     return attempt;
   }, [t]);
 
@@ -388,7 +333,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   useEffect(() => {
     let unlisten: UnlistenFn | null = null;
     let disposed = false;
-    
+
     const setupListener = async () => {
       const nextUnlisten = await listen<{
         type: string;
@@ -403,6 +348,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         questions_in_chunk?: number;
         total_questions?: number;
         partial?: boolean;
+        failed_count?: number;
         total_images?: number;
         total_chars?: number;
         image_index?: number;
@@ -434,133 +380,72 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         if (sessionIdRef.current && payload.session_id && payload.session_id !== sessionIdRef.current) {
           return;
         }
-        
+
+        // 进度只增不减：Math.max 防乱序 / 迟到事件把进度条打回去
+        const advance = (percent: number, message: string) => {
+          setLlmProgress(prev => ({ percent: Math.max(prev.percent, percent), message }));
+        };
+
         switch (payload.type) {
-          case 'Preprocessing': {
-            const pct = payload.percent || 0;
-            const msg = payload.message || t('exam_sheet:uploader.preprocessing', {  });
-            setProcessPhase(prev => (prev === 'preparing' ? prev : 'preparing'));
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, pct),
-              message: msg,
-            }));
+          case 'Preprocessing':
+            advance(payload.percent || 0, payload.message || t('exam_sheet:uploader.preprocessing'));
             break;
-          }
           case 'RenderingPages': {
             const done = payload.current || 0;
             const total = payload.total || 1;
-            const pct = total > 0 ? Math.min(Math.round((done / total) * 15) + 2, 17) : 2;
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, pct),
-              message: t('exam_sheet:uploader.rendering_pages', {
-                current: done,
-                total,
-              }),
-            }));
+            advance(
+              Math.min(Math.round((done / total) * 15) + 2, 17),
+              t('exam_sheet:uploader.rendering_pages', { current: done, total }),
+            );
             break;
           }
           case 'OcrImageCompleted': {
             // OCR/VLM 阶段占进度条 20~40%（DOCX 预处理已占到 20%）
-            const doneIndex = payload.image_index || 0;
-            const done = doneIndex + 1;
+            const done = (payload.image_index || 0) + 1;
             const total = payload.total_images || 1;
-            const ocrPct = Math.min(20 + Math.round((done / total) * 20), 40);
-            setProcessPhase('recognizing');
-            // 逐页识别状态：乱序事件安全（按 index 置位，不依赖到达顺序）
-            setOcrPageDone(prev => {
-              const next = prev.length >= total ? [...prev] : [
-                ...prev,
-                ...Array.from({ length: total - prev.length }, () => false),
-              ];
-              if (doneIndex >= 0 && doneIndex < next.length) next[doneIndex] = true;
-              return next;
-            });
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, ocrPct),
-              message: t('exam_sheet:uploader.ocr_image_progress', {
-                current: done,
-                total,
-              }),
-            }));
+            advance(
+              Math.min(20 + Math.round((done / total) * 20), 40),
+              t('exam_sheet:uploader.ocr_image_progress', { current: done, total }),
+            );
             break;
           }
           case 'OcrPhaseCompleted':
-            setProcessPhase('parsing');
-            setOcrPageDone(prev => prev.map(() => true));
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, 40),
-              message: t('exam_sheet:uploader.ocr_phase_done', {
-                total: payload.total_images,
-                chars: payload.total_chars,
-              }),
-            }));
+            advance(40, t('exam_sheet:uploader.ocr_phase_done', { total: payload.total_images }));
             break;
           case 'ExtractingFigures': {
             const done = payload.current || 0;
             const total = payload.total || 1;
-            const pct = total > 0 ? Math.min(40 + Math.round((done / total) * 5), 45) : 42;
-            setProcessPhase('parsing');
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, pct),
-              message: t('exam_sheet:uploader.extracting_figures', {
-                current: done,
-                total,
-              }),
-            }));
+            advance(
+              Math.min(40 + Math.round((done / total) * 5), 45),
+              t('exam_sheet:uploader.extracting_figures', { current: done, total }),
+            );
             break;
           }
-          case 'StructuringQuestion': {
-            const done = payload.current || 0;
-            const total = payload.total || 1;
-            setProcessPhase('parsing');
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, 45),
-              message: t('exam_sheet:uploader.structuring_questions', {
-                current: done,
-                total,
-              }),
+          case 'StructuringQuestion':
+            advance(45, t('exam_sheet:uploader.structuring_questions', {
+              current: payload.current || 0,
+              total: payload.total || 1,
             }));
             break;
-          }
           case 'SessionCreated':
             // 回填本次导入创建的 session，失败时用于断点续导
             if (payload.session_id) {
               activeAttempt.createdSessionId = payload.session_id;
             }
-            setProcessPhase('parsing');
-            setLlmProgress(prev => ({
-              ...prev,
-              percent: Math.max(prev.percent, 42),
-              message: t('exam_sheet:uploader.parsing_started', { chunks: payload.total_chunks }),
-            }));
+            advance(42, t('exam_sheet:uploader.parsing_started'));
             break;
           case 'ChunkStart':
-            setProcessPhase('parsing');
-            setLlmProgress(prev => ({
-              ...prev,
-              // LLM 解析阶段占 42~90%（Math.max 防乱序事件把进度打回去）
-              percent: Math.max(
-                prev.percent,
-                Math.min(42 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 48, 90)
-              ),
-              message: t('exam_sheet:uploader.parsing_chunk', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks }),
-            }));
+            // LLM 解析阶段占 42~90%
+            advance(
+              Math.min(42 + ((payload.chunk_index || 0) / (payload.total_chunks || 1)) * 48, 90),
+              parsedCountRef.current > 0
+                ? t('exam_sheet:uploader.parsed_count', { count: parsedCountRef.current })
+                : t('exam_sheet:uploader.parsing_started'),
+            );
             break;
           case 'QuestionParsed':
-            // 存储已解析的题目用于实时显示
             if (payload.question) {
-              const q = payload.question as {
-                content?: string;
-                question_type?: string;
-                answer?: string;
-                options?: Array<{ key: string; content: string }>;
-              };
+              const q = payload.question as Partial<ParsedQuestionPreview>;
               setParsedQuestions(prev => [...prev, {
                 content: q.content || '',
                 question_type: q.question_type,
@@ -569,46 +454,30 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               }]);
             }
             parsedCountRef.current = payload.total_parsed || 0;
-            setProcessPhase('parsing');
             setLlmProgress(prev => ({
               ...prev,
-              parsedCount: payload.total_parsed || 0,
               message: t('exam_sheet:uploader.parsed_count', { count: payload.total_parsed }),
             }));
             break;
           case 'ChunkCompleted':
             parsedCountRef.current = payload.total_parsed || 0;
-            setLlmProgress(prev => ({
-              ...prev,
-              // Math.max：防迟到的 ChunkCompleted 让进度条回退
-              percent: Math.max(
-                prev.percent,
-                Math.min(42 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 48, 90)
-              ),
-              parsedCount: payload.total_parsed || 0,
-              message: t('exam_sheet:uploader.chunk_completed', { current: (payload.chunk_index || 0) + 1, total: payload.total_chunks, count: payload.total_parsed }),
-            }));
+            advance(
+              Math.min(42 + (((payload.chunk_index || 0) + 1) / (payload.total_chunks || 1)) * 48, 90),
+              t('exam_sheet:uploader.parsed_count', { count: payload.total_parsed || 0 }),
+            );
             break;
           case 'Completed':
-            // ★ #6(round2): VLM 中途失败但已存部分题时 partial=true，显式提示"可能缺题"（非阻塞，不触发失败态）
+            // ★ #6(round2): VLM 中途失败但已存部分题时 partial=true；写库失败 failed_count>0。
+            // 两者都意味着「可能缺题」，在完成页提示（非阻塞，不触发失败态）
             parsedCountRef.current = payload.total_questions || 0;
-            setProcessPhase('done');
+            setImportIncomplete(Boolean(payload.partial) || (payload.failed_count || 0) > 0);
             setLlmProgress({
               percent: 100,
-              message: payload.partial
-                ? t('exam_sheet:uploader.import_done_partial', { count: payload.total_questions })
-                : t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
-              parsedCount: payload.total_questions || 0,
+              message: t('exam_sheet:uploader.import_done', { count: payload.total_questions }),
             });
             break;
           case 'Failed': {
             setError(t('exam_sheet:uploader.import_failed_prefix', { error: payload.error }));
-            if ((payload.total_parsed || 0) > 0) {
-              setLlmProgress(prev => ({
-                ...prev,
-                message: t('exam_sheet:uploader.import_interrupted', { count: payload.total_parsed }),
-              }));
-            }
             // 已解析部分题目且后端留有 checkpoint → 提供断点续导入口
             const failedSessionId = payload.session_id || activeAttempt.createdSessionId;
             if (failedSessionId && (payload.total_parsed || 0) > 0) {
@@ -633,9 +502,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       }
       unlisten = nextUnlisten;
     };
-    
+
     setupListener();
-    
+
     return () => {
       disposed = true;
       if (unlisten) {
@@ -653,133 +522,96 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
   }, [parsedQuestions.length, step]);
 
-  // 使用统一的 OCR 进度 Hook（仅用于图片处理）
-  const {
-    isProcessing: isOCRProcessing,
-    stage: ocrStage,
-    progress: ocrProgress,
-    ocrProgress: ocrPhaseProgress,
-    parseProgress: parsePhaseProgress,
-    pageStatuses: ocrHookPageStatuses,
-    error: ocrError,
-    reset: resetOCRProgress,
-  } = useExamSheetProgress({
-    sessionId: sessionId ?? null,
-    onSessionUpdate: async (detail) => {
-      // 生成摘要并显示
-      const summary = generateImportSummary(detail);
-      setImportSummary(summary);
-      setPendingDetail(detail);
-      setExcludedCardIds(new Set());
-      setShowQuestionFilter(false);
-      setStep('summary');
-    },
-  });
+  const showSummary = useCallback((detail: ExamSheetSessionDetail) => {
+    setImportSummary(buildImportSummary(detail, baselineCardIdsRef.current));
+    setPendingDetail(detail);
+    setExcludedCardIds(new Set());
+    setStep('summary');
+  }, []);
 
-  // 生成导入结果摘要
-  const generateImportSummary = useCallback((detail: ExamSheetSessionDetail): ImportSummary => {
-    const pages = detail.preview?.pages || [];
-    const allCards = pages.flatMap(p => p.cards || []);
-    
-    // 统计题型
-    const questionTypes: Record<string, number> = {};
-    let emptyQuestions = 0;
-    const warnings: string[] = [];
-    
-    for (const card of allCards) {
-      const qType = card.question_type || 'other';
-      questionTypes[qType] = (questionTypes[qType] || 0) + 1;
-      
-      // 检查空题目
-      if (!card.ocr_text?.trim()) {
-        emptyQuestions++;
-      }
+  // 导入前快照已有题目 ID（追加导入时用于区分本次新增）；失败返回 null（退回统计全部）
+  const snapshotBaselineCardIds = useCallback(async (): Promise<Set<string> | null> => {
+    if (!sessionId) return new Set();
+    try {
+      const detail = await TauriAPI.getExamSheetSessionDetail(sessionId);
+      return new Set(
+        (detail.preview?.pages || []).flatMap(p => p.cards || []).map(card => card.card_id),
+      );
+    } catch (err: unknown) {
+      debugLog.warn('[ExamSheetUploader] 导入前题目快照失败，完成页将统计全部题目:', err);
+      return null;
     }
-    
-    // 生成警告
-    if (emptyQuestions > 0) {
-      warnings.push(t('exam_sheet:uploader.empty_warning', { count: emptyQuestions }));
-    }
-    if (allCards.length === 0) {
-      warnings.push(t('exam_sheet:uploader.no_questions_warning'));
-    }
-    
-    return {
-      totalQuestions: allCards.length,
-      pageCount: pages.length,
-      questionTypes,
-      emptyQuestions,
-      warnings,
-    };
-  }, [t]);
+  }, [sessionId]);
 
-  const executeDocumentImport = useCallback(async (
-    base64Content: string,
+  /** 发起一次流式导入（图片：content 为 base64 JSON 数组，format='image'） */
+  const runStreamImport = useCallback(async (
+    attempt: ImportAttempt,
+    content: string,
     format: string,
-    pdfPreferOcr?: boolean,
-    existingAttempt?: ImportAttempt,
+    name: string,
   ) => {
-    const attempt = existingAttempt ?? beginImportAttempt();
-    const file = selectedFiles[0]?.file;
-    if (!file) {
-      if (isCurrentImportAttempt(attempt)) {
-        setError(t('exam_sheet:uploader.select_first_error'));
-        setStep('select');
-        setIsLLMProcessing(false);
-        activeImportAttemptRef.current = null;
-      }
+    emitImportDebug('info', 'frontend:invoke-start',
+      `发起导入: format=${format} name=${name} size=${(content.length / 1024).toFixed(0)}KB`,
+      { detail: { format, name, contentSizeKB: Math.round(content.length / 1024), modelId: selectedModelId || 'default' } },
+    );
+    const invokeStartAt = Date.now();
+    attempt.backendStarted = true;
+    const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
+      request: {
+        content,
+        format,
+        name,
+        folder_id: undefined,
+        session_id: sessionId || undefined,
+        model_config_id: selectedModelId || undefined,
+        import_id: attempt.id,
+      },
+    });
+    emitImportDebug('success', 'frontend:invoke-end',
+      `导入 invoke 返回成功 | 耗时 ${Date.now() - invokeStartAt}ms`,
+      { durationMs: Date.now() - invokeStartAt, sessionId: response?.summary?.id },
+    );
+    return response;
+  }, [sessionId, selectedModelId]);
+
+  // 开始处理：图片与文档统一走流式导入，差别只在 content / format / 默认名称
+  const handleStartProcess = useCallback(async () => {
+    if (selectedFiles.length === 0) {
+      setError(t('exam_sheet:uploader.select_first_error'));
       return;
     }
-
-    if (!isCurrentImportAttempt(attempt)) return;
+    const category = selectedFiles[0].category;
+    const attempt = beginImportAttempt();
 
     try {
-      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
-
-      const importName = qbankName || file.name.replace(/\.[^/.]+$/, '');
-      emitImportDebug('info', 'frontend:invoke-start',
-        `发起导入: format=${format} name=${importName} size=${(base64Content.length / 1024).toFixed(0)}KB`,
-        { detail: { format, name: importName, contentSizeKB: Math.round(base64Content.length / 1024), modelId: selectedModelId || 'default' } },
-      );
-
-      const invokeStartAt = Date.now();
-      attempt.backendStarted = true;
-      const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
-        request: {
-          content: base64Content,
-          format,
-          name: importName,
-          folder_id: undefined,
-          session_id: sessionId || undefined,
-          model_config_id: selectedModelId || undefined,
-          pdf_prefer_ocr: pdfPreferOcr,
-          import_id: attempt.id,
-        },
-      });
-
+      baselineCardIdsRef.current = await snapshotBaselineCardIds();
       if (!isCurrentImportAttempt(attempt)) return;
 
-      emitImportDebug('success', 'frontend:invoke-end',
-        `导入 invoke 返回成功 | 耗时 ${Date.now() - invokeStartAt}ms`,
-        { durationMs: Date.now() - invokeStartAt, sessionId: response?.summary?.id },
-      );
+      let content: string;
+      let format: string;
+      let name: string;
+      if (category === 'image') {
+        content = JSON.stringify(await Promise.all(selectedFiles.map(f => readFileAsBase64(f.file))));
+        format = 'image';
+        name = resolvedSessionName
+          || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '')
+          || t('exam_sheet:uploader.image_import_name');
+      } else {
+        const file = selectedFiles[0].file;
+        content = await readFileAsBase64(file);
+        format = file.name.split('.').pop()?.toLowerCase() || 'txt';
+        name = qbankName || file.name.replace(/\.[^/.]+$/, '');
+      }
+      if (!isCurrentImportAttempt(attempt)) return;
 
-      const summary = generateImportSummary(response);
-      setImportSummary(summary);
-      setPendingDetail(response);
-      setExcludedCardIds(new Set());
-      setShowQuestionFilter(false);
-      setStep('summary');
+      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document') });
+      const response = await runStreamImport(attempt, content, format, name);
+      if (!isCurrentImportAttempt(attempt)) return;
+      showSummary(response);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error
-        ? err.message
-        : (typeof err === 'object' && err !== null && 'message' in err)
-          ? (err as { message: string }).message
-          : String(err);
-      emitImportDebug('error', 'frontend:invoke-end',
-        `导入 invoke 失败: ${errorMessage}`,
-        { detail: { error: errorMessage } },
-      );
+      const errorMessage = errorMessageOf(err);
+      debugLog.error('[ExamSheetUploader] 导入失败:', err);
+      emitImportDebug('error', 'frontend:invoke-end', `导入 invoke 失败: ${errorMessage}`, { detail: { error: errorMessage } });
       if (!isCurrentImportAttempt(attempt)) return;
       setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
       // invoke reject 可能先于 Failed 事件到达（或事件缺失）：同样提供断点续导入口
@@ -797,23 +629,20 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         setIsCancelling(false);
       }
     }
-  }, [selectedFiles, qbankName, sessionId, selectedModelId, generateImportSummary, t, beginImportAttempt, isCurrentImportAttempt]);
+  }, [selectedFiles, qbankName, resolvedSessionName, t, beginImportAttempt, isCurrentImportAttempt, snapshotBaselineCardIds, runStreamImport, showSummary]);
 
-  // 确认导入摘要（删除被排除的题目后再确认）
+  // 完成：删除被取消勾选的题目后交给父组件
   const handleConfirmSummary = useCallback(async () => {
     if (!pendingDetail || isConfirming) return;
     setIsConfirming(true);
 
     try {
-      // 如果有排除的题目，先通过 API 删除
       if (excludedCardIds.size > 0) {
         try {
           const updatedDetail = await TauriAPI.updateExamSheetCards({
             session_id: pendingDetail.summary.id,
             delete_card_ids: Array.from(excludedCardIds),
           });
-          const keptCount = Math.max(0, (importSummary?.totalQuestions || 0) - excludedCardIds.size);
-          showGlobalNotification('success', t('exam_sheet:uploader.import_success_notification', { count: keptCount }));
           onUploadSuccess?.(updatedDetail);
         } catch (err: unknown) {
           debugLog.error('[ExamSheetUploader] Failed to delete excluded cards:', err);
@@ -822,15 +651,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           onUploadSuccess?.(pendingDetail);
         }
       } else {
-        showGlobalNotification('success', t('exam_sheet:uploader.import_success_notification', { count: importSummary?.totalQuestions || 0 }));
         onUploadSuccess?.(pendingDetail);
       }
       setExcludedCardIds(new Set());
-      setShowQuestionFilter(false);
     } finally {
       setIsConfirming(false);
     }
-  }, [pendingDetail, importSummary, onUploadSuccess, excludedCardIds, isConfirming, t]);
+  }, [pendingDetail, onUploadSuccess, excludedCardIds, isConfirming, t]);
 
   // 判断文件类型
   const categorizeFile = useCallback((file: File): FileCategory | null => {
@@ -850,7 +677,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 处理文件选择（入参已完成 HEIC→JPEG 预处理）
   const applySelectedFiles = useCallback((fileArray: File[]) => {
     const validFiles: FileInfo[] = [];
-    
+
     for (const file of fileArray) {
       const category = categorizeFile(file);
       if (!category) {
@@ -861,17 +688,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       // ★ 大小校验兜底（点击选择/浏览器拖拽路径不走 UnifiedDragDropZone 的原生路径校验）
       if (file.size > MAX_UPLOAD_FILE_SIZE) {
         const sizeMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(0);
-        setError(t('drag_drop:errors.file_too_large', { size: sizeMB,}));
+        setError(t('drag_drop:errors.file_too_large', { size: sizeMB }));
         debugLog.warn(`文件过大被拒绝: ${file.name} (${file.size} bytes)`);
         return;
       }
-      
-      // 如果已经有文件，只接受同类型的
-      if (currentCategory && category !== currentCategory) {
-        setError(t('exam_sheet:uploader.select_same_type_error', { type: currentCategory === 'image' ? t('exam_sheet:uploader.file_type_image') : t('exam_sheet:uploader.file_type_document') }));
+
+      // 已选图片时只接受图片；已选文档时新文档直接替换（文档只导入一个）
+      if (currentCategory === 'image' && category !== 'image') {
+        setError(t('exam_sheet:uploader.select_same_type_error', { type: t('exam_sheet:uploader.file_type_image') }));
         return;
       }
-      
+
       const fileInfo: FileInfo = { file, category };
       if (category === 'image') {
         fileInfo.previewUrl = URL.createObjectURL(file);
@@ -885,14 +712,19 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
 
     setError(null);
-    setPendingPdfImport(null);
-    
+
     // 文档只接受一个文件
     if (validFiles[0].category === 'document') {
-      setSelectedFiles([validFiles[0]]);
+      validFiles.slice(1).forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+      setSelectedFiles(prev => {
+        prev.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
+        return [validFiles[0]];
+      });
       setQbankName(validFiles[0].file.name.replace(/\.[^/.]+$/, ''));
     } else {
-      setSelectedFiles(prev => [...prev, ...validFiles]);
+      // 一次拖入图片 + 文档混合时只取图片；已选文档时改选图片 = 替换
+      const images = validFiles.filter(f => f.category === 'image');
+      setSelectedFiles(prev => (prev[0]?.category === 'document' ? images : [...prev, ...images]));
     }
   }, [categorizeFile, currentCategory, t]);
 
@@ -931,15 +763,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const handleRemoveFile = useCallback((index: number) => {
     setSelectedFiles(prev => {
       const file = prev[index];
-      if (file.previewUrl) {
+      if (file?.previewUrl) {
         URL.revokeObjectURL(file.previewUrl);
       }
-      const newFiles = prev.filter((_, i) => i !== index);
-      setPendingPdfImport(null);
-      if (newFiles.length === 0) {
-        setStep('select');
-      }
-      return newFiles;
+      return prev.filter((_, i) => i !== index);
     });
   }, []);
 
@@ -957,135 +784,6 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     };
   }, []);
 
-  // 图片 OCR 处理（★ 统一走 import_question_bank_stream：OCR→文本→LLM解析）
-  const handleImageOCR = useCallback(async () => {
-    const attempt = beginImportAttempt();
-
-    try {
-      // 将所有图片转为 base64 数组
-      const base64Images = await Promise.all(
-        selectedFiles.map(f => new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const dataUrl = reader.result as string;
-            const base64 = dataUrl.split(',')[1] || dataUrl;
-            resolve(base64);
-          };
-          reader.onerror = () => reject(new Error('File read failed'));
-          reader.readAsDataURL(f.file);
-        }))
-      );
-
-      if (!isCurrentImportAttempt(attempt)) return;
-
-      debugLog.info('[ExamSheetUploader] 开始图片导入:', base64Images.length, '张图片');
-      setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document'), parsedCount: 0 });
-
-      // ★ 统一调用 import_question_bank_stream，format='image'，content 为 JSON 数组
-      attempt.backendStarted = true;
-      const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
-        request: {
-          content: JSON.stringify(base64Images),
-          format: 'image',
-          name: resolvedSessionName || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '') || t('exam_sheet:uploader.image_import_name'),
-          folder_id: undefined,
-          session_id: sessionId || undefined,
-          model_config_id: selectedModelId || undefined,
-          import_id: attempt.id,
-        },
-      });
-
-      if (!isCurrentImportAttempt(attempt)) return;
-
-      const summary = generateImportSummary(response);
-      setImportSummary(summary);
-      setPendingDetail(response);
-      setExcludedCardIds(new Set());
-      setShowQuestionFilter(false);
-      setStep('summary');
-      showGlobalNotification('success', t('exam_sheet:recognition_complete_notification', {  }));
-    } catch (err: unknown) {
-      debugLog.error('[ExamSheetUploader] 图片导入失败:', err);
-      const errorMessage = err instanceof Error
-        ? err.message
-        : (typeof err === 'object' && err !== null && 'message' in err)
-          ? (err as { message: string }).message
-          : String(err);
-      if (!isCurrentImportAttempt(attempt)) return;
-      setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
-      setStep('select');
-      showGlobalNotification('error', errorMessage);
-    } finally {
-      if (isCurrentImportAttempt(attempt)) {
-        activeImportAttemptRef.current = null;
-        setIsLLMProcessing(false);
-        setIsCancelling(false);
-      }
-    }
-  }, [selectedFiles, sessionId, resolvedSessionName, selectedModelId, generateImportSummary, t, beginImportAttempt, isCurrentImportAttempt]);
-
-  // 文档直接导入（使用流式版本，支持实时进度）
-  const handleDocumentImport = useCallback(async () => {
-    const file = selectedFiles[0].file;
-    const attempt = beginImportAttempt();
-
-    try {
-      const base64Content = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const dataUrl = reader.result as string;
-          const base64 = dataUrl.split(',')[1] || dataUrl;
-          resolve(base64);
-        };
-        reader.onerror = () => reject(new Error('File read failed'));
-        reader.readAsDataURL(file);
-      });
-
-      if (!isCurrentImportAttempt(attempt)) return;
-
-      const format = file.name.split('.').pop()?.toLowerCase() || 'txt';
-
-      // Visual-First: 所有格式统一走 VLM 管线，不再做 PDF 文本质量检测
-      await executeDocumentImport(base64Content, format, undefined, attempt);
-
-    } catch (err: unknown) {
-      const errorMessage = err instanceof Error 
-        ? err.message 
-        : (typeof err === 'object' && err !== null && 'message' in err)
-          ? (err as { message: string }).message
-          : String(err);
-      if (!isCurrentImportAttempt(attempt)) return;
-      setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
-      setStep('select');
-      activeImportAttemptRef.current = null;
-      setIsLLMProcessing(false);
-      setIsCancelling(false);
-    }
-  }, [selectedFiles, executeDocumentImport, t, beginImportAttempt, isCurrentImportAttempt]);
-
-  // 开始处理 - 根据文件类型分流
-  const handleStartProcess = useCallback(async () => {
-    if (selectedFiles.length === 0) {
-      setError(t('exam_sheet:uploader.select_first_error'));
-      return;
-    }
-
-    const category = selectedFiles[0].category;
-    
-    if (category === 'image') {
-      // 图片 → OCR 处理
-      await handleImageOCR();
-    } else {
-      // 文档 → 直接调用后端导入（后端处理解析+LLM）
-      await handleDocumentImport();
-    }
-  }, [selectedFiles, handleImageOCR, handleDocumentImport, t]);
-
-  // 处理 UnifiedDragDropZone 的文件拖拽
-  const handleFilesDropped = useCallback((files: File[]) => {
-    handleFileSelect(files);
-  }, [handleFileSelect]);
-
   const handleClick = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
@@ -1094,9 +792,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     if (e.target.files) {
       handleFileSelect(e.target.files);
     }
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+    e.target.value = '';
   }, [handleFileSelect]);
 
   // 重置状态
@@ -1115,22 +811,19 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setQbankName('');
     setError(null);
     setParsedQuestions([]);
-    setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
-    setProcessPhase('preparing');
-    setOcrPageDone([]);
+    setLlmProgress({ percent: 0, message: '' });
+    setImportIncomplete(false);
     setResumableSession(null);
     setIsResumeRun(false);
     parsedCountRef.current = 0;
+    baselineCardIdsRef.current = null;
     setImportSummary(null);
     setPendingDetail(null);
     setExcludedCardIds(new Set());
-    setShowQuestionFilter(false);
-    setPendingPdfImport(null);
     setIsLLMProcessing(false);
     setIsCancelling(false);
     setShowCancelConfirm(false);
-    resetOCRProgress();
-  }, [selectedFiles, resetOCRProgress]);
+  }, [selectedFiles]);
 
   const handleCancelImport = useCallback(async () => {
     const attempt = activeImportAttemptRef.current;
@@ -1144,29 +837,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
       if (!isCurrentImportAttempt(attempt)) return;
 
-      if (!accepted) {
-        if (!attempt.backendStarted) {
-          activeImportAttemptRef.current = null;
-          setIsLLMProcessing(false);
-          setIsCancelling(false);
-          setShowCancelConfirm(false);
-          setStep('select');
-          setParsedQuestions([]);
-          setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
-          setError(null);
-          showGlobalNotification(
-            'info',
-            t('exam_sheet:uploader.import_cancelled'),
-          );
-          return;
-        }
-
+      if (!accepted && attempt.backendStarted) {
         setIsCancelling(false);
         setShowCancelConfirm(false);
-        showGlobalNotification(
-          'warning',
-          t('exam_sheet:uploader.cancel_unavailable'),
-        );
+        showGlobalNotification('warning', t('exam_sheet:uploader.cancel_unavailable'));
         return;
       }
 
@@ -1178,20 +852,14 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       setShowCancelConfirm(false);
       setStep('select');
       setParsedQuestions([]);
-      setLlmProgress({ percent: 0, message: '', parsedCount: 0 });
+      setLlmProgress({ percent: 0, message: '' });
       setError(null);
-      showGlobalNotification(
-        'info',
-        t('exam_sheet:uploader.import_cancelled'),
-      );
+      showGlobalNotification('info', t('exam_sheet:uploader.import_cancelled'));
     } catch (error: unknown) {
       if (!isCurrentImportAttempt(attempt)) return;
       debugLog.error('[ExamSheetUploader] 请求取消导入失败:', error);
       setIsCancelling(false);
-      showGlobalNotification(
-        'error',
-        t('exam_sheet:uploader.cancel_failed'),
-      );
+      showGlobalNotification('error', t('exam_sheet:uploader.cancel_failed'));
     }
   }, [isCancelling, isCurrentImportAttempt, t]);
 
@@ -1207,12 +875,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     attempt.backendStarted = true;
     setIsResumeRun(true);
     parsedCountRef.current = resume.parsedCount;
-    setLlmProgress({
-      percent: 42,
-      message: t('exam_sheet:uploader.resuming'),
-      parsedCount: resume.parsedCount,
-    });
-    setProcessPhase('parsing');
+    setLlmProgress({ percent: 42, message: t('exam_sheet:uploader.resuming') });
 
     try {
       const response = await invoke<ExamSheetSessionDetail>('resume_question_import', {
@@ -1220,23 +883,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       });
 
       if (!isCurrentImportAttempt(attempt)) return;
-
-      const summary = generateImportSummary(response);
-      setImportSummary(summary);
-      setPendingDetail(response);
-      setExcludedCardIds(new Set());
-      setShowQuestionFilter(false);
-      setStep('summary');
-      showGlobalNotification('success', t('exam_sheet:uploader.resume_success'));
+      showSummary(response);
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error
-        ? err.message
-        : (typeof err === 'object' && err !== null && 'message' in err)
-          ? (err as { message: string }).message
-          : String(err);
       debugLog.error('[ExamSheetUploader] 断点续导失败:', err);
       if (!isCurrentImportAttempt(attempt)) return;
-      setError(t('exam_sheet:uploader.resume_failed', { error: errorMessage }));
+      setError(t('exam_sheet:uploader.resume_failed', { error: errorMessageOf(err) }));
       // 失败后保留续导入口，允许再次尝试
       setResumableSession(resume);
       setStep('select');
@@ -1248,115 +899,103 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         setIsResumeRun(false);
       }
     }
-  }, [resumableSession, isLLMProcessing, beginImportAttempt, isCurrentImportAttempt, generateImportSummary, t]);
+  }, [resumableSession, isLLMProcessing, beginImportAttempt, isCurrentImportAttempt, showSummary, t]);
 
-  // 是否正在处理
-  const isProcessing = isOCRProcessing || isLLMProcessing;
+  const hasFiles = selectedFiles.length > 0;
+  const fileInputs = (
+    <>
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple={currentCategory !== 'document'}
+        // MIME 在前 + 显式 text/markdown：wry Android 会丢弃 MimeTypeMap 不认识的扩展名（如旧系统的 .md）
+        accept="image/*,application/pdf,text/plain,text/markdown,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
+        onChange={handleInputChange}
+        className="hidden"
+        data-testid="exam-uploader-file-input"
+      />
+      {/* 移动端拍照上传（capture 调起后置相机） */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        multiple={false}
+        onChange={handleInputChange}
+        className="hidden"
+      />
+    </>
+  );
 
-  // OCR 进度（两阶段合并进度）
-  const ocrProgressPercent = ocrProgress.total > 0 
-    ? Math.round((ocrProgress.current / ocrProgress.total) * 100) 
-    : 0;
+  // 自定义可点行（非 DsButton）在触屏上也要 ≥44px 命中
+  const touchRow = '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]';
 
-  const ocrStageText = (() => {
-    switch (ocrStage) {
-      case 'ocr':
-        return ocrPhaseProgress.total > 0
-          ? t('exam_sheet:uploader.ocr_phase', {
-              current: ocrPhaseProgress.current,
-              total: ocrPhaseProgress.total
-            })
-          : t('exam_sheet:uploader.ocr_encoding');
-      case 'parsing':
-        return parsePhaseProgress.total > 0
-          ? t('exam_sheet:uploader.parse_phase', {
-              current: parsePhaseProgress.current,
-              total: parsePhaseProgress.total
-            })
-          : t('exam_sheet:uploader.ocr_recognizing', { current: 0, total: 0 });
-      case 'completed':
-        return t('exam_sheet:uploader.ocr_completed');
-      default:
-        return t('exam_sheet:uploader.ocr_idle');
-    }
-  })();
+  const renderQuestionMeta = (q: { question_type?: string | null; answer?: string | null; optionCount?: number }) => (
+    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-2xs text-muted-foreground">
+      {q.question_type && <span>{t(`exam_sheet:questionTypes.${q.question_type}`, q.question_type)}</span>}
+      {!!q.optionCount && <span>{t('exam_sheet:uploader.options_count', { count: q.optionCount })}</span>}
+      {q.answer && <span className="min-w-0 truncate text-success">{t('exam_sheet:uploader.answer_prefix', { answer: q.answer })}</span>}
+    </div>
+  );
 
   return (
     <div className={cn('flex flex-col h-full bg-background', className)}>
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
         {/* min-h-full 列：内容矮时撑满高度让 dropzone 弹性扩展；内容高时自然向下滚动 */}
-        <div className="w-full max-w-2xl mx-auto flex min-h-full flex-col gap-6">
-          
-          {/* 头部：标题 + 步骤指示 */}
-          <div className="flex-shrink-0 space-y-4 pt-2">
-            <div className="space-y-1.5 text-center">
-              <h2 className="text-lg font-semibold">{t('exam_sheet:uploader.header_title')}</h2>
-              <p className="text-sm text-muted-foreground">{t('exam_sheet:uploader.header_desc')}</p>
-            </div>
-            <UploadStepIndicator step={step} />
-          </div>
-          
-          {/* 文件选择步骤：dropzone flex-1 弹性填充，高窗撑开 / 矮窗压缩（min-h 保底） */}
+        <div className="w-full max-w-2xl mx-auto flex min-h-full flex-col gap-4">
+          <h2 className="flex-shrink-0 pt-2 text-center text-lg font-semibold">
+            {t('exam_sheet:uploader.header_title')}
+          </h2>
+
           {step === 'select' && (
-            <div className="flex flex-1 min-h-0 flex-col gap-4 ui-rise-in">
-              {/* 拖放区域 - 使用统一的 UnifiedDragDropZone */}
+            <div className={cn('flex flex-col gap-4 ui-rise-in', !hasFiles && 'flex-1')}>
+              {/* 拖放区：未选文件时弹性撑满；选中后收成一行「添加 / 更换」条 */}
               <UnifiedDragDropZone
                 zoneId="exam-sheet-uploader"
-                onFilesDropped={handleFilesDropped}
+                onFilesDropped={handleFileSelect}
                 onDragStateChange={setIsDragActive}
                 acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
                 maxFiles={currentCategory === 'document' ? 1 : 20}
-                maxFileSize={50 * 1024 * 1024}
+                maxFileSize={MAX_UPLOAD_FILE_SIZE}
                 showOverlay={true}
-                enabled={!isProcessing}
-                className={cn(
-                  'flex min-h-[160px] flex-1 flex-col rounded-md',
-                  isProcessing && 'pointer-events-none opacity-60'
-                )}
+                className={cn('flex flex-col rounded-md', hasFiles ? 'flex-shrink-0' : 'min-h-[180px] flex-1')}
               >
-                <div
-                  onClick={!isProcessing ? handleClick : undefined}
-                  className={cn(
-                    'relative flex flex-1 flex-col items-center justify-center rounded-md border-2 border-dashed px-6 py-8 transition-all',
-                    !isProcessing && 'cursor-pointer hover:border-primary/50 hover:bg-primary/5',
-                    isDragActive
-                      ? 'border-primary bg-primary/10 ring-2 ring-primary/20'
-                      : 'border-border/60 bg-card/30'
-                  )}
-                >
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple={currentCategory !== 'document'}
-                    // MIME 在前 + 显式 text/markdown：wry Android 会丢弃 MimeTypeMap 不认识的扩展名（如旧系统的 .md）
-                    accept="image/*,application/pdf,text/plain,text/markdown,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
-                    onChange={handleInputChange}
-                    className="hidden"
-                    disabled={isProcessing}
-/>
-                  {/* 移动端拍照上传（capture 调起后置相机） */}
-                  <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    multiple={false}
-                    onChange={handleInputChange}
-                    className="hidden"
-                    disabled={isProcessing}
-/>
-
-                  <div className="flex flex-col items-center gap-4 text-center">
-                    <div className="flex items-center gap-3">
-                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg transition-colors', isDragActive ? 'bg-primary/15' : 'bg-muted')}>
-                        <Image size={22} className={cn('transition-colors', isDragActive ? 'text-primary' : 'text-muted-foreground')} />
-                      </div>
-                      <div className="text-lg font-light text-muted-foreground/30">/</div>
-                      <div className={cn('flex h-12 w-12 items-center justify-center rounded-lg transition-colors', isDragActive ? 'bg-primary/15' : 'bg-muted')}>
-                        <FileText size={22} className={cn('transition-colors', isDragActive ? 'text-primary' : 'text-muted-foreground')} />
-                      </div>
-                    </div>
-                    
+                {fileInputs}
+                {hasFiles ? (
+                  <DsButton
+                    variant="ghost"
+                    onClick={handleClick}
+                    data-testid="exam-uploader-add-more"
+                    className={cn(
+                      'w-full gap-1.5 border border-dashed text-muted-foreground',
+                      'hover:border-primary/50 hover:bg-primary/5 hover:text-foreground',
+                      isDragActive ? 'border-primary bg-primary/10 text-primary' : 'border-border/60',
+                    )}
+                  >
+                    <Plus size={14} />
+                    {currentCategory === 'image'
+                      ? t('exam_sheet:uploader.add_more_images')
+                      : t('exam_sheet:uploader.replace_file')}
+                  </DsButton>
+                ) : (
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={handleClick}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleClick();
+                      }
+                    }}
+                    data-testid="exam-uploader-dropzone"
+                    className={cn(
+                      'flex flex-1 cursor-pointer flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed px-6 py-8 text-center transition-colors',
+                      'hover:border-primary/50 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                      isDragActive ? 'border-primary bg-primary/10' : 'border-border/60',
+                    )}
+                  >
+                    <UploadSimple size={28} className={cn('transition-colors', isDragActive ? 'text-primary' : 'text-muted-foreground')} />
                     <div className="space-y-1">
                       <p className={cn('text-base font-medium transition-colors', isDragActive && 'text-primary')}>
                         {isDragActive
@@ -1367,13 +1006,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         {t('exam_sheet:uploader.supported_formats_all')}
                       </p>
                     </div>
-
                     {/* 移动端：拍照导入入口 */}
                     <DsButton
                       variant="secondary"
                       size="sm"
-                      className="md:hidden gap-1.5 [@media(pointer:coarse)]:!min-h-11"
-                      disabled={isProcessing}
+                      className="md:hidden gap-1.5"
                       onClick={(e) => {
                         e.stopPropagation();
                         cameraInputRef.current?.click();
@@ -1383,24 +1020,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       {t('exam_sheet:uploader.take_photo')}
                     </DsButton>
                   </div>
-                </div>
+                )}
               </UnifiedDragDropZone>
 
-              {/* 识别方式说明（未选文件时显示，选了文件就让位给文件列表） */}
-              {selectedFiles.length === 0 && !isProcessing && (
-                <p className="flex-shrink-0 text-center text-xs text-muted-foreground">
-                  {t('exam_sheet:uploader.tips_combined')}
-                </p>
-              )}
-
-              {/* 已选图片列表 */}
-              {currentCategory === 'image' && selectedFiles.length > 0 && !isProcessing && (
-                <div className="space-y-2">
+              {/* 已选图片 */}
+              {currentCategory === 'image' && (
+                <div className="space-y-2" data-testid="exam-uploader-selected-images">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">
                       {t('exam_sheet:uploader.selected_images', { count: selectedFiles.length })}
                     </span>
-                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground [@media(pointer:coarse)]:!min-h-11">
+                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="text-muted-foreground">
                       {t('exam_sheet:uploader.clear')}
                     </DsButton>
                   </div>
@@ -1410,12 +1040,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         key={`${fileInfo.file.name}-${index}`}
                         className="relative aspect-square rounded-lg overflow-hidden bg-muted group"
                       >
+                        {/* 试卷照片多为竖版：顶端对齐，缩略图露出题目开头而不是纸面中部空白 */}
                         <img
                           src={fileInfo.previewUrl || ''}
                           alt={fileInfo.file.name}
-                          className="w-full h-full object-cover"
-/>
-                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
+                          className="w-full h-full object-cover object-top"
+                        />
+                        <DsButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 [@media(pointer:coarse)]:!w-11 [@media(pointer:coarse)]:!h-11 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100" aria-label={t('common:remove', { defaultValue: 'Remove' })}>
                           <X size={12} />
                         </DsButton>
                       </div>
@@ -1424,191 +1055,82 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 </div>
               )}
 
-              {pendingPdfImport && currentCategory === 'document' && selectedFiles.length > 0 && (
-                <div className="space-y-3 rounded-lg border border-warning/30 bg-warning/10 p-3">
-                  <div className="text-sm font-medium text-warning">
-                    {t('exam_sheet:uploader.pdf_quality_title', { count: pendingPdfImport.inspection.valid_char_count })}
+              {/* 已选文档 */}
+              {currentCategory === 'document' && (
+                <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5" data-testid="exam-uploader-selected-document">
+                  <FileText size={20} className="flex-shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-medium">{selectedFiles[0].file.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {(selectedFiles[0].file.size / 1024).toFixed(1)} KB
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {t('exam_sheet:uploader.pdf_quality_description')}
-                  </div>
-                  <CustomScrollArea
-                    className="max-h-40 rounded border border-border/40 bg-background/70"
-                    viewportClassName="whitespace-pre-wrap p-2 text-xs"
-                    fullHeight={false}
+                  <DsButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    onClick={handleReset}
+                                        aria-label={t('exam_sheet:uploader.remove')}
+                    title={t('exam_sheet:uploader.remove')}
                   >
-                    {pendingPdfImport.inspection.preview_text || t('exam_sheet:uploader.pdf_quality_empty_preview')}
-                  </CustomScrollArea>
-                  <div className="flex gap-2">
-                    <DsButton
-                      variant="ghost"
-                      className="flex-1 [@media(pointer:coarse)]:!min-h-11"
-                      disabled={selectedFiles.length === 0 || isProcessing}
-                      onClick={() => {
-                        void executeDocumentImport(
-                          pendingPdfImport.base64Content,
-                          pendingPdfImport.format,
-                          false,
-                        );
-                      }}
-                    >
-                        {t('exam_sheet:uploader.pdf_use_extracted_text')}
-                    </DsButton>
-                    <DsButton
-                      className="flex-1 [@media(pointer:coarse)]:!min-h-11"
-                      disabled={selectedFiles.length === 0 || isProcessing}
-                      onClick={() => {
-                        void executeDocumentImport(
-                          pendingPdfImport.base64Content,
-                          pendingPdfImport.format,
-                          true,
-                        );
-                      }}
-                    >
-                        {t('exam_sheet:uploader.pdf_enable_ocr')}
-                    </DsButton>
-                  </div>
+                    <X size={16} />
+                  </DsButton>
                 </div>
               )}
 
-              {/* 已选文档信息 */}
-              {currentCategory === 'document' && selectedFiles.length > 0 && !isProcessing && (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <File size={20} className="text-muted-foreground" />
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{selectedFiles[0].file.name}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {(selectedFiles[0].file.size / 1024).toFixed(1)} KB
-                      </div>
-                    </div>
-                    <DsButton variant="ghost" size="sm" onClick={handleReset} className="[@media(pointer:coarse)]:!min-h-11">
-                      <X size={16} className="mr-1" />
-                      {t('exam_sheet:uploader.remove')}
-                    </DsButton>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30">
-                    <Robot size={16} className="text-muted-foreground flex-shrink-0" />
-                    <span className="text-sm text-muted-foreground flex-shrink-0">{t('exam_sheet:uploader.parse_model')}</span>
-                    <UnifiedModelSelector
-                      models={availableModels}
-                      value={selectedModelId}
-                      onChange={setSelectedModelId}
-                      variant="compact"
-                      allowEmpty
-                      emptyLabel={t('settings:placeholders.use_default_model')}
-                      placeholder={t('settings:placeholders.use_default_model')}
-                      className="flex-1"
-/>
-                  </div>
+              {/* 解析模型：图片与文档都经同一条模型管线；没有可选模型时不展示空下拉 */}
+              {hasFiles && availableModels.length > 0 && (
+                <div className="flex items-center gap-2 text-sm" data-testid="exam-uploader-model">
+                  <span className="flex-shrink-0 text-muted-foreground">{t('exam_sheet:uploader.parse_model')}</span>
+                  <UnifiedModelSelector
+                    models={availableModels}
+                    value={selectedModelId}
+                    onChange={setSelectedModelId}
+                    variant="compact"
+                    allowEmpty
+                    emptyLabel={t('settings:placeholders.use_default_model')}
+                    placeholder={t('settings:placeholders.use_default_model')}
+                    className="flex-1"
+                  />
                 </div>
               )}
-
-              {/* OCR 进度 */}
-              {isOCRProcessing && (
-                <div className="space-y-4 rounded-md border border-border/50 bg-card p-4 ui-rise-in">
-                  <div className="flex items-center gap-3">
-                    {ocrStage === 'completed' ? (
-                      <CheckCircle size={20} className="text-success ui-zoom-fade-in" />
-                    ) : (
-                      <CircleNotch size={20} className="animate-spin text-primary" />
-                    )}
-                    <span className="text-sm font-medium">{ocrStageText}</span>
-                  </div>
-                  {ocrProgress.total > 0 && (
-                    <div className="space-y-2">
-                      <Progress value={ocrProgressPercent} className="h-2" />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>
-                          {ocrStage === 'parsing'
-                            ? `${parsePhaseProgress.current} / ${parsePhaseProgress.total}`
-                            : `${ocrPhaseProgress.current} / ${ocrPhaseProgress.total}`}
-                        </span>
-                        <span>{ocrProgressPercent}%</span>
-                      </div>
-                    </div>
-                  )}
-                  {/* 逐页识别状态 */}
-                  {ocrHookPageStatuses.length > 1 && (
-                    <div className="space-y-1.5">
-                      <div className="text-xs text-muted-foreground">{t('exam_sheet:uploader.page_status_label')}</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {ocrHookPageStatuses.map((status, idx) => (
-                          <span
-                            key={idx}
-                            title={t('exam_sheet:uploader.page_n', { page: idx + 1 })}
-                            className={cn(
-                              'flex h-6 min-w-6 items-center justify-center rounded px-1 text-[10px] font-medium ui-state-colors',
-                              status === 'parsed' && 'bg-success/15 text-success',
-                              status === 'ocr_done' && 'bg-primary/15 text-primary',
-                              status === 'pending' && 'bg-muted text-muted-foreground/60'
-                            )}
-                          >
-                            {status === 'parsed' ? <Check size={11} /> : idx + 1}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 提取中提示已移除：后端统一处理，无需单独的前端提取步骤 */}
             </div>
           )}
 
-          {/* 文档预览步骤已移除：后端统一处理文档解析，无需前端预览 */}
-
-          {/* LLM 处理步骤 - 实时显示已解析题目 */}
           {step === 'processing' && (
             <div className="flex flex-col flex-1 min-h-0 gap-3 ui-slide-fade-in [--ui-enter-x:24px]">
-              {/* 阶段步骤条：准备 → 识别 → 解析 → 完成 */}
-              <div className="flex-shrink-0">
-                <ProcessPhaseBar phase={processPhase} />
-              </div>
-
-              {/* 进度头部 */}
-              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 flex-shrink-0">
-                {llmProgress.percent === 100 ? (
-                  <CheckCircle size={20} className="text-success flex-shrink-0 ui-zoom-fade-in" />
-                ) : (
-                  <CircleNotch size={20} className="text-primary animate-spin flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{llmProgress.message}</div>
-                  <Progress value={llmProgress.percent} className="h-1.5 mt-1" />
+              {/* 唯一的进度表达：一行状态文字 + 一条进度条 + 取消 */}
+              <div className="flex-shrink-0 space-y-2 rounded-lg bg-muted/30 p-3" data-testid="exam-uploader-progress">
+                <div className="flex items-center gap-2">
+                  <CircleNotch size={16} className="flex-shrink-0 animate-spin text-primary" />
+                  <span className="min-w-0 flex-1 text-sm font-medium" aria-live="polite">{llmProgress.message}</span>
+                  {isLLMProcessing && !isResumeRun && !showCancelConfirm && (
+                    <DsButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowCancelConfirm(true)}
+                      disabled={isCancelling}
+                      className="shrink-0"
+                    >
+                      {isCancelling
+                        ? t('exam_sheet:uploader.cancelling_import')
+                        : t('exam_sheet:uploader.cancel_import')}
+                    </DsButton>
+                  )}
                 </div>
-                <div className="text-sm font-bold text-primary">
-                  {parsedQuestions.length || llmProgress.parsedCount || 0}
-                </div>
-                {isLLMProcessing && !isResumeRun && !showCancelConfirm && (
-                  <DsButton
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCancelConfirm(true)}
-                    disabled={isCancelling}
-                    className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
-                  >
-                    <X size={14} className="mr-1" />
-                    {isCancelling
-                      ? t('exam_sheet:uploader.cancelling_import')
-                      : t('exam_sheet:uploader.cancel_import')}
-                  </DsButton>
-                )}
+                <Progress value={llmProgress.percent} className="h-1.5" />
               </div>
 
               {/* 取消导入的内联确认条 */}
               {showCancelConfirm && isLLMProcessing && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 flex-shrink-0 ui-drop-in">
-                  <WarningCircle size={16} className="text-warning flex-shrink-0" />
                   <span className="flex-1 min-w-[12rem] text-xs text-warning">
                     {t('exam_sheet:uploader.cancel_confirm_hint')}
                   </span>
                   <DsButton
                     variant="ghost"
                     size="sm"
-                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="!h-7 text-xs"
                     onClick={() => setShowCancelConfirm(false)}
                     disabled={isCancelling}
                   >
@@ -1617,7 +1139,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   <DsButton
                     variant="danger"
                     size="sm"
-                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="!h-7 text-xs"
                     onClick={() => void handleCancelImport()}
                     disabled={isCancelling}
                   >
@@ -1629,307 +1151,153 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 </div>
               )}
 
-              {/* 逐页识别状态（图片/页面级 OCR 进度） */}
-              {ocrPageDone.length > 1 && (
-                <div className="space-y-1.5 rounded-md border border-border/40 bg-card/50 px-3 py-2 flex-shrink-0">
-                  <div className="text-xs text-muted-foreground">{t('exam_sheet:uploader.page_status_label')}</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {ocrPageDone.map((done, idx) => (
-                      <span
-                        key={idx}
-                        title={t('exam_sheet:uploader.page_n', { page: idx + 1 })}
-                        className={cn(
-                          'flex h-6 min-w-6 items-center justify-center rounded px-1 text-[10px] font-medium ui-state-colors',
-                          done ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground/60'
-                        )}
-                      >
-                        {done ? <Check size={11} /> : idx + 1}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 实时解析的题目列表 */}
+              {/* 实时解析的题目 */}
               {parsedQuestions.length > 0 && (
-                <div className="flex flex-col flex-1 min-h-0">
-                  <div className="text-xs text-muted-foreground px-1 mb-2 flex-shrink-0">{t('exam_sheet:uploader.parsed_questions_label')}</div>
-                  <CustomScrollArea
-                    className="min-h-0 flex-1"
-                    viewportClassName="space-y-2"
-                    viewportRef={parsedListRef}
-                  >
-                    {parsedQuestions.map((q, idx) => (
-                      <div
-                        key={idx}
-                        className="p-3 rounded-lg bg-card border border-border/50 ui-rise-in [content-visibility:auto] [contain-intrinsic-size:auto_84px]"
-                      >
-                        <div className="flex items-start gap-2">
-                          <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
-                            {idx + 1}
-                          </span>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <div className="text-sm line-clamp-2">{q.content || t('exam_sheet:uploader.no_content')}</div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {q.question_type && (
-                                <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/10 text-primary">
-                                  {t(`exam_sheet:questionTypes.${q.question_type}`, q.question_type)}
-                                </span>
-                              )}
-                              {q.options && q.options.length > 0 && (
-                                <span className="text-[10px] text-muted-foreground">
-                                  {t('exam_sheet:uploader.options_count', { count: q.options.length })}
-                                </span>
-                              )}
-                              {q.answer && (
-                                <span className="text-[10px] text-success">
-                                  {t('exam_sheet:uploader.answer_prefix', { answer: q.answer })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
+                <CustomScrollArea
+                  className="min-h-0 flex-1"
+                  viewportClassName="divide-y divide-border/40"
+                  viewportRef={parsedListRef}
+                >
+                  {parsedQuestions.map((q, idx) => (
+                    <div
+                      key={idx}
+                      data-testid="exam-uploader-parsed-question"
+                      className="flex gap-2 px-1 py-2 ui-rise-in [content-visibility:auto] [contain-intrinsic-size:auto_56px]"
+                    >
+                      <span className="w-5 flex-shrink-0 pt-px text-right text-xs tabular-nums text-muted-foreground">{idx + 1}</span>
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-sm">
+                          {q.content ? <LatexText content={q.content} /> : t('exam_sheet:uploader.no_content')}
                         </div>
+                        {renderQuestionMeta({ question_type: q.question_type, answer: q.answer, optionCount: q.options?.length })}
                       </div>
-                    ))}
-                  </CustomScrollArea>
-                </div>
-              )}
-
-              {/* 空状态 */}
-              {parsedQuestions.length === 0 && llmProgress.percent > 5 && (
-                <div className="text-center py-8 text-muted-foreground text-sm">
-                  <CircleNotch size={32} className="mx-auto mb-2 opacity-50 animate-spin" />
-                  {t('exam_sheet:uploader.waiting_ai')}
-                </div>
+                    </div>
+                  ))}
+                </CustomScrollArea>
               )}
             </div>
           )}
 
-          {/* 导入结果摘要 */}
           {step === 'summary' && importSummary && (() => {
-            const allCards = pendingDetail?.preview?.pages?.flatMap(p => p.cards || []) || [];
-            const keptCount = Math.max(0, importSummary.totalQuestions - excludedCardIds.size);
+            const cards = importSummary.cards;
+            const total = cards.length;
+            const keptCount = Math.max(0, total - excludedCardIds.size);
+            const allExcluded = total > 0 && excludedCardIds.size >= total;
+            const notes: string[] = [];
+            if (total === 0) notes.push(t('exam_sheet:uploader.no_questions_warning'));
+            if (importSummary.emptyQuestions > 0) notes.push(t('exam_sheet:uploader.empty_warning', { count: importSummary.emptyQuestions }));
+            if (importIncomplete) notes.push(t('exam_sheet:uploader.incomplete_warning'));
             return (
-              <div className="space-y-3 ui-slide-fade-in [--ui-enter-x:24px]">
-              <div className="space-y-2 text-center">
-                <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-md bg-success/10 ui-zoom-fade-in">
-                  <CheckCircle size={20} weight="fill" className="text-success" />
-                </div>
-                <h3 className="text-base font-semibold">{t('exam_sheet:uploader.import_complete_title')}</h3>
-              </div>
-              
-              {/* 统计数据 */}
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-md bg-muted/50 p-3 text-center">
-                  <div className="text-lg font-semibold text-primary">
-                    {excludedCardIds.size > 0 ? (
-                      <>{keptCount}<span className="text-base font-normal text-muted-foreground"> / {importSummary.totalQuestions}</span></>
-                    ) : importSummary.totalQuestions}
-                  </div>
-                  <div className="text-sm text-muted-foreground">{t('exam_sheet:uploader.total_questions')}</div>
-                </div>
-                <div className="rounded-md bg-muted/50 p-3 text-center">
-                  <div className="text-lg font-semibold">{importSummary.pageCount}</div>
-                  <div className="text-sm text-muted-foreground">{t('exam_sheet:uploader.page_count')}</div>
-                </div>
-              </div>
-              
-              {/* 题型分布 */}
-              {Object.keys(importSummary.questionTypes).length > 0 && (
-                <div className="space-y-2 rounded-md bg-muted/30 p-3">
-                  <div className="text-sm font-medium">{t('exam_sheet:uploader.question_type_dist')}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(importSummary.questionTypes).map(([type, count]) => (
-                      <span key={type} className="px-2 py-1 text-xs rounded-full bg-primary/10 text-primary">
-                        {t(`exam_sheet:questionTypes.${type}`, type)} {count}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 题目筛选区域 */}
-              {allCards.length > 0 && (
-                <div className="overflow-hidden rounded-md border border-border/50">
-                  {/* 筛选头部 */}
-                  <div
-                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:min-h-11"
-                    onClick={() => setShowQuestionFilter(prev => !prev)}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Funnel size={16} className="text-muted-foreground" />
-                      <span className="text-sm font-medium">
-                        {t('exam_sheet:uploader.filter_questions')}
-                      </span>
-                      {excludedCardIds.size > 0 && (
-                        <span className="rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] text-warning">
-                          {t('exam_sheet:uploader.filter_excluded_count', { count: excludedCardIds.size })}
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {showQuestionFilter ? '▲' : '▼'}
-                    </span>
-                  </div>
-
-                  {/* 筛选提示 */}
-                  {!showQuestionFilter && excludedCardIds.size === 0 && (
-                    <div className="px-4 py-2 text-xs text-muted-foreground bg-muted/10">
-                      {t('exam_sheet:uploader.filter_hint')}
-                    </div>
+              <div className="flex flex-1 min-h-0 flex-col gap-3 ui-slide-fade-in [--ui-enter-x:24px]" data-testid="exam-uploader-summary">
+                <div className="flex-shrink-0 space-y-1 text-center">
+                  <h3 className="flex items-center justify-center gap-1.5 text-base font-semibold">
+                    <CheckCircle size={18} weight="fill" className="text-success ui-zoom-fade-in" />
+                    {t('exam_sheet:uploader.import_done', { count: total })}
+                  </h3>
+                  {total > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      {Object.entries(importSummary.questionTypes)
+                        .map(([type, count]) => `${t(`exam_sheet:questionTypes.${type}`, type)} ${count}`)
+                        .join(' · ')}
+                    </p>
                   )}
+                </div>
 
-                  {/* 题目列表 */}
-                  {showQuestionFilter && (
-                    <div className="border-t border-border/30">
-                      {/* 全选/取消全选 */}
-                      <div className="flex items-center justify-between px-4 py-2 bg-muted/15 border-b border-border/20">
-                        <DsButton
-                          variant="ghost"
-                          size="sm"
-                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
-                          onClick={() => setExcludedCardIds(new Set())}
-                        >
-                          <CheckSquare size={14} className="mr-1" />
-                          {t('common:select_all')}
-                        </DsButton>
-                        <DsButton
-                          variant="ghost"
-                          size="sm"
-                          className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
-                          onClick={() => setExcludedCardIds(new Set(allCards.map(c => c.card_id)))}
-                        >
-                          <Square size={14} className="mr-1" />
-                          {t('common:deselect_all')}
-                        </DsButton>
-                      </div>
-                      {/* 滚动列表 */}
-                      <CustomScrollArea
-                        className="max-h-[280px]"
-                        viewportClassName="divide-y divide-border/20"
-                        fullHeight={false}
+                {notes.length > 0 && (
+                  <div className="flex flex-shrink-0 items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
+                    <Info size={16} className="mt-0.5 flex-shrink-0" />
+                    <ul className="space-y-0.5">
+                      {notes.map((note) => <li key={note}>{note}</li>)}
+                    </ul>
+                  </div>
+                )}
+
+                {/* 本次新增的题目：默认全部保留，取消勾选即不录入 */}
+                {total > 0 && (
+                  <div className="flex min-h-0 flex-col overflow-hidden rounded-md border border-border/50">
+                    <div className="flex flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 px-3 py-1.5">
+                      <span className="text-xs text-muted-foreground">{t('exam_sheet:uploader.filter_hint')}</span>
+                      <DsButton
+                        variant="ghost"
+                        size="sm"
+                        className="!h-7 shrink-0 text-xs"
+                        onClick={() => setExcludedCardIds(allExcluded ? new Set() : new Set(cards.map(c => c.card_id)))}
                       >
-                        {allCards.map((card, idx) => {
-                          const isExcluded = excludedCardIds.has(card.card_id);
-                          return (
-                            <div
-                              key={card.card_id}
-                              className={cn(
-                                'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors [@media(pointer:coarse)]:min-h-11',
-                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-[var(--interactive-hover)]'
-                              )}
-                              onClick={() => {
+                        {allExcluded ? t('common:select_all') : t('common:deselect_all')}
+                      </DsButton>
+                    </div>
+                    <CustomScrollArea className="min-h-[120px] flex-1" viewportClassName="divide-y divide-border/30">
+                      {cards.map((card) => {
+                        const isExcluded = excludedCardIds.has(card.card_id);
+                        const text = card.ocr_text?.trim() || card.question_label || '';
+                        return (
+                          <label
+                            key={card.card_id}
+                            data-testid="exam-uploader-summary-question"
+                            className={cn(
+                              'flex cursor-pointer items-start gap-2.5 px-3 py-2 transition-colors',
+                              isExcluded ? 'opacity-50' : 'hover:bg-[var(--interactive-hover)]',
+                              touchRow,
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              className="mt-1 h-4 w-4 flex-shrink-0 accent-primary"
+                              checked={!isExcluded}
+                              onChange={() => {
                                 setExcludedCardIds(prev => {
                                   const next = new Set(prev);
-                                  if (next.has(card.card_id)) {
-                                    next.delete(card.card_id);
-                                  } else {
-                                    next.add(card.card_id);
-                                  }
+                                  if (next.has(card.card_id)) next.delete(card.card_id);
+                                  else next.add(card.card_id);
                                   return next;
                                 });
                               }}
-                            >
-                              {/* 勾选框 */}
-                              <div className="flex-shrink-0 mt-0.5">
-                                {isExcluded ? (
-                                  <Square size={16} className="text-muted-foreground" />
-                                ) : (
-                                  <CheckSquare size={16} className="text-primary" />
-                                )}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className={cn('line-clamp-2 text-sm', isExcluded && 'line-through')}>
+                                {text ? <LatexText content={text} /> : t('exam_sheet:uploader.no_content')}
                               </div>
-                              {/* 序号 */}
-                              <span className="w-5 h-5 flex-shrink-0 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
-                                {idx + 1}
-                              </span>
-                              {/* 内容 */}
-                              <div className="flex-1 min-w-0 space-y-0.5">
-                                <div className={cn('text-sm line-clamp-2', isExcluded && 'line-through')}>
-                                  {card.ocr_text?.trim() || card.question_label || t('exam_sheet:uploader.no_content')}
-                                </div>
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  {card.question_type && (
-                                    <span className="px-1.5 py-0.5 text-[10px] rounded bg-primary/10 text-primary">
-                                      {t(`exam_sheet:questionTypes.${card.question_type}`, card.question_type)}
-                                    </span>
-                                  )}
-                                  {card.answer && (
-                                    <span className="text-[10px] text-success">
-                                      {t('exam_sheet:uploader.answer_prefix', { answer: card.answer })}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+                              {renderQuestionMeta({ question_type: card.question_type, answer: card.answer })}
                             </div>
-                          );
-                        })}
-                      </CustomScrollArea>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {/* 警告信息 */}
-              {importSummary.warnings.length > 0 && (
-                <div className="space-y-2 rounded-md bg-warning/10 p-3">
-                  <div className="flex items-center gap-2 text-warning">
-                    <Info size={16} />
-                    <span className="text-sm font-medium">{t('exam_sheet:uploader.notes_title')}</span>
+                          </label>
+                        );
+                      })}
+                    </CustomScrollArea>
                   </div>
-                  <ul className="space-y-1 text-sm text-warning/80">
-                    {importSummary.warnings.map((warning, idx) => (
-                      <li key={idx}>• {warning}</li>
-                    ))}
-                  </ul>
+                )}
+
+                <div className="flex flex-shrink-0 gap-3 pt-1">
+                  <DsButton variant="ghost" onClick={handleReset} className="flex-1">
+                    {t('exam_sheet:uploader.import_another')}
+                  </DsButton>
+                  <DsButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={(total > 0 && keptCount === 0) || isConfirming}>
+                    {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
+                    {excludedCardIds.size > 0
+                      ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
+                      : t('exam_sheet:uploader.view_questions')}
+                  </DsButton>
                 </div>
-              )}
-              
-              {/* 操作按钮 */}
-              <div className="flex gap-3 pt-2">
-                <DsButton variant="ghost" onClick={handleReset} className="flex-1 [@media(pointer:coarse)]:!min-h-11">
-                  {t('exam_sheet:uploader.continue_import')}
-                </DsButton>
-                <DsButton onClick={() => void handleConfirmSummary()} className="flex-1 [@media(pointer:coarse)]:!min-h-11" disabled={keptCount === 0 || isConfirming}>
-                  {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
-                  {excludedCardIds.size > 0
-                    ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
-                    : t('exam_sheet:uploader.view_questions')
-                  }
-                </DsButton>
               </div>
-            </div>
             );
           })()}
 
-          {/* 错误显示 */}
-          {(error || ocrError) && (
-            <div className="space-y-2 ui-drop-in">
-              <div className="flex items-start gap-3 rounded-md bg-destructive/10 p-3 text-destructive">
-                <WarningCircle size={20} className="flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0 text-sm">{error || ocrError}</div>
-                {step === 'select' && selectedFiles.length > 0 && !isProcessing && (
-                  <DsButton
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void handleStartProcess()}
-                    className="shrink-0 [@media(pointer:coarse)]:!min-h-11"
-                  >
-                    <ArrowClockwise size={16} className="mr-1" />
-                    {t('common:retry')}
-                  </DsButton>
-                )}
+          {/* 错误：重试即下方主按钮，不再在错误条里重复一个「重试」 */}
+          {error && (
+            <div className="flex-shrink-0 space-y-2 ui-drop-in" role="alert">
+              <div className="flex items-start gap-2 rounded-md bg-destructive/10 px-3 py-2.5 text-sm text-destructive">
+                <WarningCircle size={18} className="mt-0.5 flex-shrink-0" />
+                <div className="min-w-0 flex-1 break-words">{error}</div>
               </div>
               {/* 断点续导：失败前已解析部分题目时，可跳过已完成分块继续导入 */}
-              {resumableSession && step === 'select' && !isProcessing && (
+              {resumableSession && step === 'select' && !isLLMProcessing && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
-                  <Info size={16} className="text-warning flex-shrink-0" />
                   <span className="flex-1 min-w-[12rem] text-xs text-warning">
                     {t('exam_sheet:uploader.import_interrupted', { count: resumableSession.parsedCount })}
                   </span>
                   <DsButton
                     variant="warning"
                     size="sm"
-                    className="!h-7 text-xs [@media(pointer:coarse)]:!min-h-11"
+                    className="!h-7 text-xs"
                     onClick={() => void handleResumeImport()}
                   >
                     <ArrowClockwise size={14} className="mr-1" />
@@ -1940,64 +1308,38 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             </div>
           )}
 
-          {/* 操作按钮：选了文件（或处理中）才出现，避免空态下的 disabled 主按钮 */}
-          {step === 'select' && (selectedFiles.length > 0 || isProcessing) && (
-            <div className="flex gap-3">
+          {/* 操作按钮：选了文件才出现，避免空态下的 disabled 主按钮 */}
+          {step === 'select' && hasFiles && (
+            <div className="flex flex-shrink-0 gap-3">
               {onBack && (
-                <DsButton variant="ghost" onClick={onBack} disabled={isProcessing} className="flex-1 [@media(pointer:coarse)]:!min-h-11">
+                <DsButton variant="ghost" onClick={onBack} className="flex-1">
                   {t('common:actions.back')}
                 </DsButton>
               )}
               <DsButton
-                onClick={handleStartProcess}
-                disabled={selectedFiles.length === 0 || isProcessing}
-                className="flex-1 gap-2 [@media(pointer:coarse)]:!min-h-11"
+                onClick={() => void handleStartProcess()}
+                className="flex-1 gap-2"
+                data-testid="exam-uploader-start"
               >
-                {isProcessing ? (
-                  <>
-                    <CircleNotch size={16} className="animate-spin" />
-                    {t('exam_sheet:uploader.processing')}
-                  </>
-                ) : currentCategory === 'image' ? (
-                  <>
-                    <Upload size={16} />
-                    {t('exam_sheet:uploader.start_recognize')}
-                  </>
-                ) : (
-                  <>
-                    <FileText size={16} />
-                    {t('exam_sheet:uploader.parse_document')}
-                  </>
-                )}
+                {error ? <ArrowClockwise size={16} /> : <UploadSimple size={16} />}
+                {error ? t('common:retry') : t('exam_sheet:uploader.start_recognize')}
               </DsButton>
             </div>
           )}
 
-          {/* preview 步骤已移除：后端统一处理文档解析和 LLM，无需前端预览 */}
-
-          {/* 没有文件可导入？回启动台手动新建（优先走专用回调，直接打开创建编辑器） */}
-          {step === 'select' && !isProcessing && (onManualCreate || onBack) && (
-            <div className="text-center">
+          {/* 没有文件可导入？回启动台手动新建（优先走专用回调，直接打开创建编辑器）；选了文件后让位 */}
+          {step === 'select' && !hasFiles && (onManualCreate || onBack) && (
+            <div className="flex-shrink-0 text-center">
               <DsButton
                 variant="ghost"
                 size="sm"
                 onClick={onManualCreate ?? onBack}
-                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline [@media(pointer:coarse)]:!min-h-11"
+                className="!h-auto !px-2 !py-1 text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
               >
                 {t('exam_sheet:uploader.manual_create_link')}
               </DsButton>
             </div>
           )}
-
-          {step === 'processing' && !isLLMProcessing && (
-            <div className="flex justify-center">
-              <DsButton variant="ghost" onClick={onBack} className="[@media(pointer:coarse)]:!min-h-11">
-                {t('exam_sheet:uploader.done')}
-              </DsButton>
-            </div>
-          )}
-
-          {/* 提示信息已合并到拖放区下方（tips_combined），未选文件时显示 */}
         </div>
       </CustomScrollArea>
     </div>

@@ -83,9 +83,9 @@ test('识别导入在小窗口下 dropzone 与提示完整可见', async ({ moun
   await expectWithinViewport(component.getByText('识别导入').first(), SMALL, '页面标题');
   await expectWithinViewport(component.getByText('点击或拖放文件到这里'), SMALL, 'dropzone 文案');
   await expectWithinViewport(
-    component.getByText(/图片将通过 OCR 识别/),
+    component.getByText(/试卷照片，或 PDF/),
     SMALL,
-    '合并提示行'
+    '支持格式说明'
   );
   await expectWithinViewport(
     component.getByText(/没有文件/),
