@@ -1,7 +1,33 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { NotesWorkspaceTreeMenuItem } from './types';
+
+const VIEWPORT_MARGIN = 8;
+
+/**
+ * 把菜单限制在视口内：底部放不下时向上翻到指针上方，仍放不下则贴边；右侧同理。
+ * 之前直接用指针坐标定位，文件树靠下的行右键时菜单下半截（新建 / 删除）被窗口底边裁掉。
+ */
+export function clampMenuPosition(
+  x: number,
+  y: number,
+  menu: { width: number; height: number },
+  viewport: { width: number; height: number },
+): { left: number; top: number } {
+  let left = x;
+  if (left + menu.width > viewport.width - VIEWPORT_MARGIN) {
+    left = Math.max(VIEWPORT_MARGIN, viewport.width - VIEWPORT_MARGIN - menu.width);
+  }
+  let top = y;
+  if (top + menu.height > viewport.height - VIEWPORT_MARGIN) {
+    const flipped = y - menu.height;
+    top = flipped >= VIEWPORT_MARGIN
+      ? flipped
+      : Math.max(VIEWPORT_MARGIN, viewport.height - VIEWPORT_MARGIN - menu.height);
+  }
+  return { left, top };
+}
 
 interface TreeContextMenuProps {
   x: number;
@@ -12,6 +38,19 @@ interface TreeContextMenuProps {
 
 export function TreeContextMenu({ x, y, items, onClose }: TreeContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPosition(clampMenuPosition(
+      x,
+      y,
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
+  }, [x, y, items]);
 
   const onOutsidePointerDown = useCallback((event: Event) => {
     if (menuRef.current?.contains(event.target as Node)) return;
@@ -60,7 +99,7 @@ export function TreeContextMenu({ x, y, items, onClose }: TreeContextMenuProps) 
       ref={menuRef}
       className="nwt-context-menu"
       role="menu"
-      style={{ left: x, top: y }}
+      style={{ left: position.left, top: position.top }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={handleMenuKeyDown}
     >
