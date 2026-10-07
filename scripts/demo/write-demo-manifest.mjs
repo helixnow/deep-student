@@ -50,7 +50,7 @@ const apps = [...registry.slice(0, shellStart).matchAll(/\{\s*id:\s*'([^']+)',\s
   for (const candidate of [`${id}.ts`, `${id}.tsx`, `${id}/index.ts`, `${id}/index.tsx`]) {
     const file = path.join(repoRoot, 'src/demo/app/packs', candidate);
     if (!fs.existsSync(file)) continue;
-    title = fs.readFileSync(file, 'utf8').match(/title:\s*'([^']+)'/)?.[1] ?? id;
+    title = fs.readFileSync(file, 'utf8').match(/^  title:\s*'([^']+)'/m)?.[1] ?? id;
     break;
   }
   const posters = ['light', 'dark'].filter((theme) => files.some((f) => f.path === `posters/${id}-${theme}.webp`));
