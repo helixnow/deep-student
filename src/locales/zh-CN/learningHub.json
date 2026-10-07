@@ -908,7 +908,7 @@
       "itemCount": "{{count}} 个项目",
       "itemCount_one": "{{count}} 个项目",
       "selectedCount": "已选择 {{count}} 项",
-      "selectedOfTotal": "{{total}} 项 / 选中 {{selected}} 项"
+      "selectedOfTotal": "已选 {{selected}}/{{total}}"
     },
     "viewMode": {
       "grid": "网格视图",
