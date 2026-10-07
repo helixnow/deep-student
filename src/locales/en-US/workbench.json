@@ -1064,7 +1064,14 @@
       "pinned": "Pinned",
       "showAll": "Show all open files",
       "openInRightSplit": "Open {{title}} in right split",
-      "closeRightSplit": "Close {{title}} from right split"
+      "closeRightSplit": "Close {{title}} from right split",
+      "menu": {
+        "pin": "Pin",
+        "unpin": "Unpin",
+        "openInRightSplit": "Open in right split",
+        "closeRightSplit": "Close right split",
+        "close": "Close"
+      }
     },
     "panes": {
       "main": "Main editor",

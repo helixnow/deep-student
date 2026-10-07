@@ -966,13 +966,31 @@
 }
 
 .notes-tab-context-menu {
-  width: 184px;
+  width: auto;
+  min-width: 168px;
+  max-width: min(260px, calc(100vw - 16px));
 }
 
 .notes-tab-context-menu button {
   display: flex;
   align-items: center;
   gap: 7px;
+  white-space: nowrap;
+}
+
+.notes-tab-context-menu button > svg {
+  flex-shrink: 0;
+}
+
+/* 无图标的菜单项与带图标项文字对齐：留出 14px 图标位 + 7px 间距 */
+.notes-tab-context-menu button:not(:has(svg)) {
+  padding-left: 29px;
+}
+
+.notes-context-menu-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .notes-context-menu-separator {
