@@ -10,6 +10,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.4](https://github.com/helixnow/deep-student/compare/v0.10.3...v0.10.4) (2026-10-07)
+
+
+### Features
+
+* **demo:** Anki 制卡演示——六个制卡任务（进行中逐张出卡、暂停、失败分段重试）与可编辑的模板库 ([3b3d783](https://github.com/helixnow/deep-student/commit/3b3d783f4c202a13e6d3eb0b054e1a32a475c561))
+* **demo:** 作文批改演示：错误点入错题本写入内存题目集，生成卡片/新批改提示去桌面版 ([9882fd4](https://github.com/helixnow/deep-student/commit/9882fd4a6b86cf20a77585dfe4c4d4bfbb2d5105))
+* **demo:** 作文批改演示：高考议论文（45/60）与雅思大作文（6.5）两篇已批改会话，批注/评分/润色/范文齐全，新批改提示去桌面版 ([e3b8b69](https://github.com/helixnow/deep-student/commit/e3b8b6935bdb603b954bf0e7c0617acf8a0b943f))
+* **demo:** 单应用演示入口 demo-app.html?app=&lt;章节&gt;，官网用户指南每章嵌一个只含该功能的演示 ([7f4e906](https://github.com/helixnow/deep-student/commit/7f4e9068d5da157b5a475e359e98338060a36508))
+* **demo:** 单应用演示目录列齐官网 16 章，未写剧本的章先占位 ([6db5d9c](https://github.com/helixnow/deep-student/commit/6db5d9c56ba51c102af162165f0aa40951df738c))
+* **demo:** 单应用演示第 02 章对话——PDF 精读会话首答完成态，引用徽章、导图、挖空卡与追问续答 ([f600b3a](https://github.com/helixnow/deep-student/commit/f600b3ae424391e96eb9c9a6df09617aea7ff973))
+* **demo:** 单应用演示第 03 章深度调研与智能记忆——调研模式完成态：用户记忆、任务清单、三路检索、报告写入笔记，追问可演示写入记忆 ([16222ca](https://github.com/helixnow/deep-student/commit/16222cae9ac42c3721de1b191863b04bac2feb97))
+* **demo:** 单应用演示第 06 章论文搜索——arXiv + OpenAlex 两路检索完成态与论文来源卡片，追问可下载入库、按 GB/T 7714 / BibTeX / APA 排引用 ([5621bc0](https://github.com/helixnow/deep-student/commit/5621bc0771e559dc888e253157920a32c2c2f600))
+* **demo:** 学习桌面、移动端两章也进演示目录：烟测、海报与 manifest 覆盖整壳演示 ([7705717](https://github.com/helixnow/deep-student/commit/77057176cf2bf5ade89fd896e170e6daada5c5f6))
+* **demo:** 对话演示点 PDF 页码徽章与附件在右侧打开原文并跳页，模型选择器补两家可切换 ([cf4d91e](https://github.com/helixnow/deep-student/commit/cf4d91e81ade42b42f5de7df360f57790468edbe))
+* **demo:** 思维导图章演示——线性代数第 5 章导图（平衡布局、公式、预置挖空），导图内存后端含版本与背诵制卡 ([5acb274](https://github.com/helixnow/deep-student/commit/5acb274bcc157c344d8c6a28549d2f3db37c5283))
+* **demo:** 技能与 MCP 扩展演示——全局技能（已信任/未信任）、社区技能市场搜索与安装、新建与信任技能的内存后端；补 26 个内置技能的中英文描述 ([f0ff8a3](https://github.com/helixnow/deep-student/commit/f0ff8a3f9f9d50ace7e0e60f9cb174b9b5c82f52))
+* **demo:** 效率工具演示：待办内存后端 + 考研/期末一周剧本，番茄钟统计与定时任务 ([29dcfbb](https://github.com/helixnow/deep-student/commit/29dcfbb095a74036af1688953c04fb11e9ab3c85))
+* **demo:** 效率工具演示手机宽度改用移动端待办页（与 App 壳同一套移动布局） ([43a956e](https://github.com/helixnow/deep-student/commit/43a956e61b1f40e0d3b111d0e94b7bf0f100a20f))
+* **demo:** 效率工具演示补 settings 借用文案、今日视图就绪判断 ([fc81aae](https://github.com/helixnow/deep-student/commit/fc81aae9303bcc86cee6e90bbfa5233bbe8341b9))
+* **demo:** 数据管理与云同步演示——本地备份列表、自动备份策略、WebDAV 已配置的同步页、健康检查与审计日志；设置类演示挂上全局通知宿主 ([fc92286](https://github.com/helixnow/deep-student/commit/fc922863ec426083ef862592707d1442b42549bd))
+* **demo:** 文档阅读章节演示——教材阅读器打开 60 页 PDF，预置四色高亮与书签，划词翻译/解释给出预置结果 ([10341c5](https://github.com/helixnow/deep-student/commit/10341c588d1e41b1fc5d64a61680a19d4eb3859c))
+* **demo:** 模型与供应商配置演示——13 家预置供应商、掩码密钥、模型分配、嵌入维度与 OCR 引擎内存后端；补 memory_decision_saved 缺失文案 ([bdc82d1](https://github.com/helixnow/deep-student/commit/bdc82d1cb1f58fd8eea7e18df50b64c919818283))
+* **demo:** 演示文案按语言整包打进构建，英文界面用 ?lang=en；未发布的两处在演示里不露出 ([59a51d8](https://github.com/helixnow/deep-student/commit/59a51d8c68297c739143ceb2a63ff31f12c4fe1c))
+* **demo:** 笔记 / 导图章只下用到的文案命名空间（零星单条文案就地补），导图窗口加通知宿主，手机宽度下导图先开大纲、笔记不展开链接面板 ([1e38c27](https://github.com/helixnow/deep-student/commit/1e38c27caee01fafa3619b7a6085f9a4088cedb8))
+* **demo:** 笔记章演示——两门课的笔记库（公式、双链、标签、学习属性、历史版本），工作区标签页、链接面板、图谱、由笔记生成导图都在内存里可用 ([5fab67c](https://github.com/helixnow/deep-student/commit/5fab67cf3e6decabdb007a7a2e81eaa4a4a478fb))
+* **demo:** 设置类演示改走生产的直达分区入口（手机宽度直接进内容页），数据管理开场滚到备份列表 ([5233cc4](https://github.com/helixnow/deep-student/commit/5233cc4883f3186c92901ebf4b8b7e092315c054))
+* **demo:** 调研演示的报告笔记、记忆条目与知识库来源可在右侧只读打开；「记住：……」按原话写入记忆；检索块补工具名与检索词 ([4734585](https://github.com/helixnow/deep-student/commit/4734585044b3ce45a3f7b4fbf3b7d8d6d1d81099))
+* **demo:** 资源库/阅读演示只下用到的文案命名空间，零散键就地补齐；阅读演示接住引用会话查询 ([e43d31f](https://github.com/helixnow/deep-student/commit/e43d31fdc3fe6a3979882a793d8b4fd95a5d7d0d))
+* **demo:** 资源库/阅读演示补通知宿主、划词添加到聊天/存笔记/制卡/框选提问的 mock ([1e78688](https://github.com/helixnow/deep-student/commit/1e78688c43c76df948429054608813aabd5c1093))
+* **demo:** 资源库演示的零散文案补丁 ([5af1f46](https://github.com/helixnow/deep-student/commit/5af1f4654da2631fc42c44ebaa8edad582ad0baf))
+* **demo:** 资源库演示补删除前的引用计数查询 ([7ba11db](https://github.com/helixnow/deep-student/commit/7ba11dbbf4a79469001ba174e043c1ac4545355c))
+* **demo:** 资源库章节演示——按课程分文件夹的一学期资料与内存资源库后端（列表/文件夹/回收站/知识库索引） ([9eca744](https://github.com/helixnow/deep-student/commit/9eca74404febb17073a38256ca0ec9899bf2d3bf))
+* **demo:** 音视频章节演示——线性代数分 P 课 + 本地录音/实验视频，内存后端支撑转写、字幕跳转、B 站导入、讲义与问答 ([ec056c7](https://github.com/helixnow/deep-student/commit/ec056c7487bdd1d2908538a52f126f57d2f29f6f))
+* **demo:** 题目集演示——三个题目集的内存后端（判分、复习计划、练习模式、AI 解析流式） ([e6cba84](https://github.com/helixnow/deep-student/commit/e6cba8411ecd27cd83408edbe3bd8548aad9eef2))
+* **demo:** 题目集演示——错题本、到期错题复习、新建题目与历史记录，桌面专属功能给出提示 ([22da0c7](https://github.com/helixnow/deep-student/commit/22da0c783f5fd3ba3509e8478c8f9a96b264b588))
+* **demo:** 题目集演示只下需要的文案命名空间，补几条跨命名空间文案 ([45e9bd1](https://github.com/helixnow/deep-student/commit/45e9bd175e49b50a1f8364a58cfa56f1ecbb2a4d))
+
+
+### Bug Fixes
+
+* **anki-tasks:** 导出时在保存对话框点取消不再提示「导出失败」 ([309f759](https://github.com/helixnow/deep-student/commit/309f759e12c7951e82ed240071308fa13dea708b))
+* **chat:** 活动时间线里 OpenAlex 学术搜索块不再一律显示成「arXiv 搜索」，按块上的实际工具名显示 ([a9fe41d](https://github.com/helixnow/deep-student/commit/a9fe41dba062208f2ec85c21923a3803fd7869a4))
+* **demo:** Anki 演示的额外模板按 unknown 转型，tsc 不再报类型不重叠 ([5eeafc4](https://github.com/helixnow/deep-student/commit/5eeafc42198829027da9f5175a58ea4ea1962839))
+* **demo:** manifest 只取剧本包顶层的 title（笔记包里示例笔记的 title 被当成了章节名） ([f51491a](https://github.com/helixnow/deep-student/commit/f51491a930f3fe746c6be530c818e804efa9ef4e))
+* **demo:** 今日待复习、知识库检索范围已随 v0.10.x 发布，演示里不再藏 ([c81f725](https://github.com/helixnow/deep-student/commit/c81f72568e9b91c493e34a1c1d35adb88e725074))
+* **demo:** 作文批改演示就绪判断改为条形视图 + 等总分动画走完，海报不再拍到中间值 ([53124c1](https://github.com/helixnow/deep-student/commit/53124c1716055089a9e5f0b2c51161d1768d2688))
+* **demo:** 单应用演示的通用 mock 补 chat_v2_list_runtime_roots（生产构建里笔记、技能页会查） ([c839615](https://github.com/helixnow/deep-student/commit/c83961541679f66abd11081ce6924e2b5be8b2ff))
+* **demo:** 输入框「＋」→ 知识库里的「检索范围」也还没进正式版，演示里一并藏掉 ([8df5770](https://github.com/helixnow/deep-student/commit/8df5770f782c39d70e4b9c26ef48289164e12ade))
+* **demo:** 音视频演示——时间引用改派发到 document、讲义配图对齐幻灯片、片头帧不入讲义 ([7d5d707](https://github.com/helixnow/deep-student/commit/7d5d70756c124eb2b59838aaec71319c1ce18eee))
+* **i18n:** 来源面板「学术论文」分组补文案（原先显示原始键 academic_search） ([35f4239](https://github.com/helixnow/deep-student/commit/35f4239a42c771fbd4903e74e3c1f57bc267a6dc))
+* **settings:** 供应商侧栏给 gemini 类型显示「Google Gemini」，不再露出原始键名 ([36cda8f](https://github.com/helixnow/deep-student/commit/36cda8fd55e68fcb0ffd5d8445fe87baa4016e0b))
+* **todo:** 窄屏下待办统计行（待完成·预计番茄）截断，不再压住右侧工具按钮 ([ccd998a](https://github.com/helixnow/deep-student/commit/ccd998a7640710eab4fc0683b8bd0ca6190de5aa))
+* **workbench:** give AI 仪表盘 its own icon instead of a copy of 对话's ([839b65a](https://github.com/helixnow/deep-student/commit/839b65ad2ee2bee2cebcdfcf763ba67ee4cf4ae9))
+
+
+### Performance Improvements
+
+* **build:** tslib 归入 vendor-micro——之前被 Rollup 放进 vendor-pptx，带下拉框的页面都会顺带下载 1.3MB 的 PPTX 预览与 echarts ([c003045](https://github.com/helixnow/deep-student/commit/c0030455b552f90817d8ce76e4659373a854d611))
+
 ## [0.10.3](https://github.com/helixnow/deep-student/compare/v0.10.2...v0.10.3) (2026-10-06)
 
 
