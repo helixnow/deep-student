@@ -194,6 +194,8 @@ export const SessionRow: React.FC<{
         cards: normalizedCards,
         deckName: session.documentName || 'Export',
       });
+      // 在保存对话框里点了取消：不是失败，不提示
+      if (result.cancelled) return;
       if (!result.success) throw new Error(t('chatV2.exportFailed'));
       const missingMedia = result.missingMedia ?? [];
       if (missingMedia.length > 0) {
