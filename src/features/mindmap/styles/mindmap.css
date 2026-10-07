@@ -66,6 +66,12 @@
   position: relative;
 }
 
+/* 借 .mindmap-container 取变量的 portal 浮层（选区气泡、右键菜单）要保持 fixed，
+   不能被上面的 position: relative 覆盖（同特异性下本规则在后） */
+.mindmap-container.fixed {
+  position: fixed;
+}
+
 /* ============================================
    大纲视图核心样式 (Outline View Core)
    ============================================ */
