@@ -152,53 +152,69 @@ const ENGLISH_TARGET = `过去十年里，选择出国留学的学生人数稳�
 
 const DAY = 86_400_000;
 
-/** 第 45、47 页的示范高亮（0–1 相对坐标，与 60 页 PDF 的排版对齐） */
-function lineRect(line: number, startChar: number, chars: number): { x: number; y: number; width: number; height: number } {
+/** 第 45、47 页的示范高亮（pageIndex 为页码；0–1 相对坐标，与 60 页 PDF 的排版对齐；颜色同阅读器色板） */
+/** Helvetica 字宽（AFM，1/1000 em，ASCII 32–126）；浏览器用同度量的 Arial 渲染 */
+const HELVETICA_WIDTHS = [
+  278, 278, 355, 556, 556, 889, 667, 222, 333, 333, 389, 584, 278, 333, 278, 278,
+  556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278, 584, 584, 584, 556,
+  1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778,
+  667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556,
+  222, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, 556, 556,
+  556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+
+function textWidthPt(text: string): number {
+  let units = 0;
+  for (const ch of text) units += HELVETICA_WIDTHS[ch.charCodeAt(0) - 32] ?? 556;
+  return (units / 1000) * 11;
+}
+
+/** 第 line 行（0 起）里从 prefix 之后开始、长为 text 的一段高亮矩形 */
+function lineRect(line: number, text: string, prefix = ''): { x: number; y: number; width: number; height: number } {
   // 生成的 PDF：595×842pt，正文 11pt Helvetica，首行基线 y=792，行距 17pt，左边距 56pt
   const baselineFromTop = 842 - 792 + 17 * line;
-  const charW = 5.35;
   return {
-    x: (56 + startChar * charW) / 595,
-    y: (baselineFromTop - 9.5) / 842,
-    width: (chars * charW) / 595,
-    height: 13 / 842,
+    x: (56 + textWidthPt(prefix)) / 595,
+    y: (baselineFromTop - 10) / 842,
+    width: textWidthPt(text) / 595,
+    height: 13.5 / 842,
   };
 }
 
 export const LIBRARY_PDF_HIGHLIGHTS = [
   {
     id: 'hl_demo_1',
-    pageIndex: 44,
+    pageIndex: 45,
     text: 'Data parallelism splits each mini-batch across K workers.',
-    color: 'yellow',
-    rects: [lineRect(2, 0, 57)],
+    color: '#fef08a',
+    rects: [lineRect(2, 'Data parallelism splits each mini-batch across K workers.')],
     createdAt: Date.now() - 2 * DAY,
     coordVersion: 2,
   },
   {
     id: 'hl_demo_2',
-    pageIndex: 44,
+    pageIndex: 45,
     text: 'The server aggregates (mean) the K gradient tensors and broadcasts the updated parameters back to all workers',
-    color: 'green',
-    rects: [lineRect(6, 0, 52), lineRect(7, 0, 57)],
+    color: '#bbf7d0',
+    rects: [lineRect(6, 'The server aggregates (mean) the K gradient tensors and'), lineRect(7, 'broadcasts the updated parameters back to all workers')],
     createdAt: Date.now() - 2 * DAY + 60_000,
     coordVersion: 2,
   },
   {
     id: 'hl_demo_3',
-    pageIndex: 46,
+    pageIndex: 47,
     text: 'This is the straggler effect',
-    color: 'red',
-    rects: [lineRect(3, 0, 28)],
+    color: '#fecaca',
+    rects: [lineRect(3, 'This is the straggler effect', 'one. ')],
     createdAt: Date.now() - DAY,
     coordVersion: 2,
   },
   {
     id: 'hl_demo_4',
-    pageIndex: 46,
+    pageIndex: 47,
     text: 'speedup deviates from linear scaling',
-    color: 'blue',
-    rects: [lineRect(7, 0, 36)],
+    color: '#bfdbfe',
+    rects: [lineRect(7, 'speedup deviates from linear scaling.', 'worker shrinks, so ')],
     createdAt: Date.now() - DAY + 120_000,
     coordVersion: 2,
   },
