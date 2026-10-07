@@ -1179,7 +1179,8 @@ export const ExamView = ({ tk, s }: { tk: Tokens; s: ExamState }) => {
  * 「已加入今日复习」提示（修正版，UnifiedNotification success 样式）：屏幕顶部居中 top 12px，
  * 28px 高胶囊、成功色 6% 底 + 68% 描边、13px 状态图标、12px/500 文案，底部 1px 倒计时线；入场 220ms、退场 180ms。
  */
-export const ExamToast = ({ tk, life, dur }: { tk: Tokens; life: number; dur: number }) => {
+/** 全局通知（UnifiedNotification success）：默认是题目集判错后的「已加入今日复习」；text / action 可换成别的通知 */
+export const ExamToast = ({ tk, life, dur, text = REVIEW_TOAST, action }: { tk: Tokens; life: number; dur: number; text?: string; action?: string }) => {
   if (life < 0 || life > dur) return null;
   const inK = ease.wbOut(clamp(life / 0.11));
   const outK = clamp((life - (dur - 0.09)) / 0.09);
@@ -1210,7 +1211,8 @@ export const ExamToast = ({ tk, life, dur }: { tk: Tokens; life: number; dur: nu
       <span style={{ width: 14, height: 14, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: stroke, opacity: 0.82 }}>
         <CheckCircle size={13} />
       </span>
-      <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.35, color: tk.foreground }}>{REVIEW_TOAST}</span>
+      <span style={{ fontSize: 12, fontWeight: 500, lineHeight: 1.35, color: tk.foreground }}>{text}</span>
+      {action ? <span style={{ marginLeft: 4, height: 24, padding: '0 8px', borderRadius: 8, display: 'inline-flex', alignItems: 'center', fontSize: 12, fontWeight: 500, color: tk.foreground }}>{action}</span> : null}
       <span
         style={{
           position: 'absolute',

@@ -7,19 +7,19 @@ import { MCP_TITLE, McpChat, mcpTL, MEM_TITLE, MemoryChat, memoryTL, MODELS_TITL
 import { WbWindow } from '../../ui/workbench';
 
 /**
- * 第三幕「越用，越懂你」（成片 1:58–2:14）：纸面上一条横向铺开的面板带，
+ * 第三幕「越用，越懂你」（成片 2:04–2:20）：纸面上一条横向铺开的面板带，
  * 镜头在四块面板之间快速平移——记忆 → 技能 → MCP → 多模型。全片节奏最快的一段。
  */
 export const YOU = {
-  start: 59.0,
-  in0: 60.7, // 第一块面板浮现
-  memory: 60.85,
-  answer: 61.9,
-  skills: 63.1,
-  mcp: 64.35,
-  models: 65.5,
-  out0: 66.45,
-  out1: 66.9,
+  start: 62.0,
+  in0: 63.7, // 第一块面板浮现
+  memory: 63.85,
+  answer: 64.9,
+  skills: 66.1,
+  mcp: 67.35,
+  models: 68.5,
+  out0: 69.45,
+  out1: 69.9,
 } as const;
 
 type Rect = { x: number; y: number; w: number; h: number };

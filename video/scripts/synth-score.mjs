@@ -159,18 +159,20 @@ const reverb = (inL, inR, { room = 0.86, damp = 0.32, width = 1 } = {}) => {
 };
 
 // ── 配乐 ─────────────────────────────────────────────
-// 2:40 三幕编排（成片秒）：
+// 2:46 三幕编排（成片秒）：
 //   0–46   第一幕：读懂 → 看清（22 起鼓）→ 整理 → 练习（30 入夜转小调）→ 记住（夜里放慢）
 //   46–52  过场：清晨，垫音打开、微光，全片唯一的喘息
-//   52–118 第二幕：今日（半拍脉冲）→ 检验（十六分琶音 + 鼓）→ 写作与精读（收）→ 音视频（92–102，半拍底鼓）
+//   52–124 第二幕：今日（半拍脉冲）→ 检验（十六分琶音 + 鼓）→ 写作与精读（收）→ 音视频（92–108，半拍底鼓）
 //          → 调研（鼓回来，上扬进第三幕）
-//   118–134 第三幕：118 标题处抽空，121.2 全编制进入，全片最快
-//   134–150 收尾：登顶，微光；150–160 片尾落定
-// 下面的曲线按 v5（2:30）时间轴写成，再经 warp() 在成片 92 秒处插入 10 秒音视频段（0.10.2，v6）：
-// 插入段之后的一切按 t − 10 取值；插入段内沿用第二幕的和弦循环，自动化曲线停在插入点的取值。
+//   124–140 第三幕：124 标题处抽空，127.2 全编制进入，全片最快
+//   140–156 收尾：登顶，微光；156–166 片尾落定
+// 下面的曲线按 v5（2:30）时间轴写成，再经 warp() 在成片 92 秒处插入 16 秒音视频段（v6 插入 10 秒 = 5 小节，
+// v7 加上问答 / 讲义 / 练习再补 3 小节，共 8 小节，落在小节线上）：
+// 插入段之后的一切按 t − 16 取值；插入段内沿用第二幕的和弦循环（G – A – D – Bm 正好一轮，108 回到原 92 的 G），
+// 自动化曲线停在插入点的取值。
 const INS0 = 92;
-const INS = 10;
-const DUR = 160;
+const INS = 16;
+const DUR = 166;
 const BEAT = 0.5;
 const dry = new Stereo(DUR + 4);
 const send = new Stereo(DUR + 4);
@@ -204,7 +206,7 @@ const chordAtV5 = (t) => {
   return 'D';
 };
 
-// 插入段：和弦沿第二幕循环（G – A – D，102 回到原 92 的 G）
+// 插入段：和弦沿第二幕循环（G – A – D – Bm，108 回到原 92 的 G）
 const chordAt = warp(chordAtV5, (t) => CYCLE[Math.floor((t - 52) / 4) % 4]);
 const padGain = warp(auto([[0, 0], [2.5, 0.75], [30, 0.8], [32.7, 0.95], [38, 0.85], [44, 0.8], [46, 0.9], [48.5, 1.05], [52, 0.85], [76, 0.85], [80, 0.95], [92, 0.85], [108, 1.0], [111.2, 0.9], [124, 1.05], [140, 1.0], [147, 0.6], [150, 0]]));
 const padCut = warp(auto([[0, 600], [5, 1300], [11, 1700], [22, 2200], [32.4, 2200], [33.4, 760], [38, 1000], [44, 900], [46, 800], [49, 2600], [52, 1800], [76, 1800], [80, 1500], [92, 2000], [107.8, 2600], [108.2, 1200], [111.2, 3000], [124, 3400], [140, 2600], [150, 1800]]));
@@ -281,7 +283,7 @@ const renderArp = () => {
   const tmpL = new Float32Array(dry.n);
   const tmpR = new Float32Array(dry.n);
   let step = 0;
-  for (let t = 5; t < 156; ) {
+  for (let t = 5; t < 162; ) {
     const fast = arpFast(t);
     const len = fast ? BEAT / 4 : BEAT / 2;
     const tones = CHORDS[chordAt(t + 0.01)].map((m) => m + 12);
@@ -403,15 +405,15 @@ renderArp();
 renderBass();
 renderDrums();
 renderShimmer();
-renderRiser(115.8, 118.05);
-renderRiser(131.8, 134.05);
+renderRiser(121.8, 124.05);
+renderRiser(137.8, 140.05);
 
 const [wl, wr] = reverb(send.L, send.R, { room: 0.88, damp: 0.35 });
 const L = new Float32Array(Math.floor(DUR * SR));
 const R = new Float32Array(L.length);
 for (let i = 0; i < L.length; i++) {
   const t = i / SR;
-  const fade = smooth(0, 0.4, t) * (1 - smooth(157.4, DUR, t));
+  const fade = smooth(0, 0.4, t) * (1 - smooth(163.4, DUR, t));
   const l = (dry.L[i] + wl[i] * 0.55) * fade;
   const r = (dry.R[i] + wr[i] * 0.55) * fade;
   L[i] = Math.tanh(l * 1.6) / 1.6;

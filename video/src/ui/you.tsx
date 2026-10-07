@@ -255,7 +255,7 @@ export const McpChat = ({ t, at: a0 }: { t: number; at: number }) => {
     <div style={{ position: 'absolute', inset: 0, background: '#fff', fontFamily: font.ui, color: FG }}>
       <ChatSidebar rows={youSidebar('mcp', { title: t >= tl.title ? MCP_TITLE : '未命名会话', time: '刚刚', active: true, streaming })} t={t} />
       <UserBubble y={60} text={MCP_Q} time={YOU_CLOCK.mcp} />
-      {t >= tl.tool ? <ToolRow y={172.4} label="zotero · Zotero Search Items" w={205.8} icon={MagnifyingGlass} done={t >= tl.toolDone} ms="909ms" /> : null}
+      {t >= tl.tool ? <ToolRow y={172.4} label="zotero · Zotero Search Items" w={228} icon={MagnifyingGlass} done={t >= tl.toolDone} ms="909ms" /> : null}
       {lines.map((row, j) => (
         <T key={j} x={368} y={208.9 + j * LH} size={16} lh={LH}>
           {row}

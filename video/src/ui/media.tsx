@@ -2,7 +2,9 @@ import {
   ArrowLeft,
   ArrowUpRight,
   Camera,
+  CardsThree,
   CaretDown,
+  ChatCircleText,
   CheckCircle,
   CheckSquare,
   CircleNotch,
@@ -15,14 +17,18 @@ import {
   GridFour,
   List,
   ListBullets,
+  ListChecks,
   MagnifyingGlass,
   MusicNotes,
+  Notebook,
   Play,
   QrCode,
+  Sparkle,
   Subtitles,
   Television,
   UploadSimple,
   UserCircle,
+  X,
 } from '@phosphor-icons/react';
 import aiDashboardIcon from '@app/features/workbench/icons/app-icons/aiDashboard.svg';
 import chatIcon from '@app/features/workbench/icons/app-icons/chat.svg';
@@ -55,7 +61,9 @@ import { glassOf, WB } from './workbench';
  * - 「从 B 站链接导入」弹窗（BilibiliLinkDialog，DsDialog max-w-lg，全屏 black/30 遮罩）：账号行 → 链接 + 解析 →
  *   封面 / 标题 / 共 n P → 分 P 勾选列表 → 字幕轨 → 「导入 n 个分 P」→ 逐 P 进度；
  * - 学习页（MediaStudyPage → MediaStudyView）：返回 / 标题行、工具栏、播放器（16:9 contain）+ 右侧 380 宽伴随分区
- *   （字幕 / 讲义 / 问答 / 练习；字幕分区 = TranscriptPanel：段数、定位 / 复制、搜索、逐段时间 + 文本，当前段 primary/10 底）。
+ *   （字幕 / 讲义 / 问答 / 练习；字幕分区 = TranscriptPanel：段数、定位 / 复制、搜索、逐段时间 + 文本，当前段 primary/10 底；
+ *   讲义 / 问答 / 练习 = MediaStudyTabs 的 MediaHandoutTab / MediaAskTab / MediaPracticeTab。问答与练习在桌面版会新开对话，
+ *   片中按网页演示 src/demo/app/packs/media/companion.ts 的做法在分区里就地展示对话层，剧本与演示同文）。
  * 根字号 14px：Tailwind 0.25rem = 3.5px；text-xs 11 / text-sm 12 / text-ui 13 / text-base 14。
  * 画面里的课程与 UP 主均为虚构；视频画面是 CSS 画的讲义幻灯片，不是真实视频。
  */
@@ -89,7 +97,7 @@ export const COURSE = {
 export const STUDY_PAGE = 3;
 export const pageName = (i: number) => `${COURSE.title} P${i + 1} ${COURSE.pages[i].part}`;
 
-/** P4 的字幕（UP 主上传的字幕轨）：[秒, 文本] */
+/** P4 的字幕（UP 主上传的字幕轨）：[秒, 文本]；与网页演示 src/demo/app/packs/media/data.ts 的 P4_LINES 同一份 */
 export const SEGMENTS: Array<[number, string]> = [
   [0, '好，我们开始这一讲。'],
   [2, '上一讲我们学会了求特征值和特征向量，'],
@@ -104,14 +112,78 @@ export const SEGMENTS: Array<[number, string]> = [
   [41, '当且仅当 A 有 n 个线性无关的特征向量。'],
   [48, '这时 P 的列就是这 n 个特征向量，'],
   [54, 'Λ 的对角线上依次是对应的特征值。'],
-  [61, '特别地，特征值互不相同时，'],
-  [66, 'A 一定可以对角化。'],
-  [70, '有重特征值时要逐个检查：'],
-  [75, '几何重数是否等于代数重数。'],
-  [82, '我们来看一个例子。'],
+  [61, '为什么？把 AP = PΛ 按列拆开来看，'],
+  [68, '第 i 列就是 Aξᵢ = λᵢξᵢ。'],
+  [75, '所以对角化，本质上就是找够 n 个线性无关的特征向量。'],
+  [84, 'P 可逆，正好要求这些列线性无关。'],
+  [95, '注意顺序：P 的第几列，对应 Λ 的第几个对角元。'],
+  [108, '列的顺序换了，Λ 的对角元跟着换，结论仍然成立。'],
+  [122, '很多同学在这里丢分，写 P 和 Λ 时顺序对不上。'],
+  [140, '再强调一点：特征向量不唯一，'],
+  [150, '乘一个非零常数仍然是特征向量，所以 P 也不唯一。'],
+  [170, '但 Λ 在不计顺序的意义下是唯一的。'],
+  [195, '证明的思路我们简单过一下。'],
+  [205, '必要性：P⁻¹AP = Λ，则 AP = PΛ，P 的 n 列就是特征向量。'],
+  [225, '充分性：有 n 个线性无关的特征向量，就把它们排成 P。'],
+  [245, 'P 的列线性无关，所以 P 可逆，于是 P⁻¹AP = Λ。'],
+  [270, '这个定理给出了判别方法，但直接用并不方便。'],
+  [300, '下面看一个很常用的推论。'],
+  [306, '如果 A 有 n 个互不相同的特征值，'],
+  [312, '那么 A 一定可以对角化。'],
+  [320, '依据是：属于不同特征值的特征向量线性无关。'],
+  [340, '每个特征值至少取一个特征向量，凑够 n 个，就满足定理。'],
+  [365, '但要注意，这只是充分条件，不是必要条件。'],
+  [382, '举个最简单的反例：单位矩阵 E。'],
+  [392, '它只有一个特征值 1，是 n 重的，'],
+  [402, '可它本身就是对角阵，当然可以对角化。'],
+  [430, '所以特征值有重复时，不能直接下结论，'],
+  [445, '需要进一步检查。'],
+  [470, '考试里常见的说法是「A 有 n 个不同的特征值」，'],
+  [482, '看到这个条件，直接就能说 A 可对角化。'],
+  [492, '那反过来，看到重特征值，我们该怎么判断呢？'],
+  [510, '这就要引入两个概念：代数重数和几何重数。'],
+  [540, '先放一下，我们把推论的证明补完。'],
+  [570, '好，现在来看有重特征值的情形。'],
+  [578, '设 λ 是 A 的一个特征值。'],
+  [584, '它作为特征多项式根的重数，叫代数重数；'],
+  [595, '它的特征子空间的维数，叫几何重数。'],
+  [606, '几何重数等于 n 减去 λE − A 的秩。'],
+  [620, '一个基本事实：几何重数总是小于等于代数重数，'],
+  [640, '而且至少是 1。'],
+  [660, '于是有下面这个定理：'],
+  [668, 'A 可对角化，当且仅当每个特征值的几何重数都等于代数重数。'],
+  [690, '直观地说，每个特征值都要「交够」自己那一份特征向量。'],
+  [720, '只要有一个特征值交不够，总数就凑不满 n 个。'],
+  [750, '实际计算时，单根一定没问题，'],
+  [760, '只需检查重根：看 r(λE − A) 是否等于 n 减重数。'],
+  [800, '比如二重根，就要求 r(λE − A) = n − 2。'],
+  [840, '这是判断可对角化最常用的方法，大家一定记住。'],
+  [880, '下面我们做一道例题。'],
+  [900, '例 5.9，A 是这个三阶矩阵，对角线是 4，其余元素都是 1。'],
+  [915, '问能否对角化，能的话求出 P。'],
+  [930, '第一步，求特征多项式。'],
+  [945, '把各列加到第一列，提出公因子，'],
+  [960, '得到 |λE − A| = (λ − 6)(λ − 3)²。'],
+  [985, '所以特征值是 3（二重）和 6。'],
+  [1005, '第二步，检查二重根 λ = 3。'],
+  [1020, '3E − A 的每个元素都是 −1，'],
+  [1030, '秩等于 1，几何重数 3 − 1 = 2，'],
+  [1045, '等于代数重数 2，所以 A 可以对角化。'],
+  [1080, '其实 A 是实对称矩阵，下一讲会看到，实对称矩阵一定可以对角化。'],
+  [1140, '第三步，求特征向量。'],
+  [1150, 'λ = 3 时，解 x₁ + x₂ + x₃ = 0，'],
+  [1162, '取 ξ₁ = (−1, 1, 0)ᵀ，ξ₂ = (−1, 0, 1)ᵀ。'],
+  [1180, 'λ = 6 时，解得 ξ₃ = (1, 1, 1)ᵀ。'],
+  [1200, '令 P = (ξ₁, ξ₂, ξ₃)，'],
+  [1210, '就有 P⁻¹AP = diag(3, 3, 6)。'],
+  [1240, '再强调一遍顺序：P 的列和对角元一一对应。'],
+  [1270, '最后总结一下这一讲的判断流程：'],
+  [1280, '先求特征值，单根不用管，'],
+  [1290, '重根逐个检查几何重数，'],
+  [1300, '都满足，就把特征向量按顺序排成 P。'],
+  [1325, '下一讲我们讲实对称矩阵的对角化。'],
+  [1340, '好，这一讲就到这里。'],
 ];
-/** 片中点的那一句（「n 阶矩阵 A 可对角化，」） */
-export const SEEK_SEG = 9;
 export const segAt = (sec: number) => {
   let i = -1;
   SEGMENTS.forEach(([s], k) => {
@@ -770,11 +842,77 @@ const VIDEO_H = (PLAYER_W * 9) / 16;
 const VIDEO_Y = BODY_Y + (BODY_H - VIDEO_H) / 2;
 const SEG_Y0 = BODY_Y + 112;
 const SEG_PITCH = 29.75;
+/** 伴随分区（MediaStudyView：SegmentedControl compact stretch，px-3 pt-2 pb-1）：字幕 / 讲义 / 问答 / 练习 */
+export type StudyTab = 'transcript' | 'handout' | 'ask' | 'practice';
+const TABS: StudyTab[] = ['transcript', 'handout', 'ask', 'practice'];
+const TAB_W = (PANEL_W - 21 - 6) / 4;
+const tabX = (i: number) => 10.5 + i * (TAB_W + 2);
+/** 分区内容区顶（分段控件之下） */
+const TAB_TOP = 38.5;
+const PAD = 10.5;
+/** 对话层（网页演示 companion.ts 的 panelFor）：头部 border-b px-3 py-2，正文 px-3 py-3 gap-3，底部输入行 border-t px-3 py-2 */
+const LAYER_HEAD = 35;
+const LAYER_BODY = TAB_TOP + LAYER_HEAD;
+const COMPOSER_H = 43;
+/** 问答首屏：说明 2 行 → 「就这门课提问」 */
+const ASK_START = { x: PAD, y: 91.75, w: 112, h: 28 };
+/** 讲义：说明 2 行 →「生成讲义」/ 生成中状态条；「本课讲义」列表第一项 */
+const HO_GEN = { x: PAD, y: 91.75, w: 92, h: 28 };
+const HO_ITEM = { x: PAD, y: 172, w: PANEL_W - 2 * PAD, h: 50 };
+/** 练习：说明 2 行 → 两个动作卡（制作闪卡 / 生成练习题） */
+const PR_CARD = (i: number) => ({ x: PAD, y: 91.75 + i * 61.5, w: PANEL_W - 2 * PAD, h: 54.5 });
+const SEND_W = 43;
 /** 学习页点击目标（内容坐标） */
 export const STUDY_PT = {
   play: { x: PLAYER_W / 2, y: VIDEO_Y + VIDEO_H / 2 },
   seg: (i: number) => ({ x: PLAYER_W + 150, y: SEG_Y0 + i * SEG_PITCH + 14 }),
+  tab: (id: StudyTab) => ({ x: PLAYER_W + tabX(TABS.indexOf(id)) + TAB_W / 2, y: BODY_Y + 7 + 14 }),
+  askStart: { x: PLAYER_W + ASK_START.x + ASK_START.w / 2, y: BODY_Y + ASK_START.y + ASK_START.h / 2 },
+  composer: { x: PLAYER_W + PAD + 120, y: BODY_Y + BODY_H - COMPOSER_H / 2 },
+  send: { x: PLAYER_W + PANEL_W - PAD - SEND_W / 2, y: BODY_Y + BODY_H - COMPOSER_H / 2 },
+  handoutGen: { x: PLAYER_W + HO_GEN.x + HO_GEN.w / 2, y: BODY_Y + HO_GEN.y + HO_GEN.h / 2 },
+  handoutItem: { x: PLAYER_W + HO_ITEM.x + 120, y: BODY_Y + HO_ITEM.y + HO_ITEM.h / 2 },
+  practiceCards: { x: PLAYER_W + PR_CARD(0).x + 120, y: BODY_Y + PR_CARD(0).y + PR_CARD(0).h / 2 },
 };
+
+// ── 问答剧本（P4；回答基于字幕，时间引用对应 SEGMENTS 里的原句） ─────────────
+export const ASK_QUESTION = '为什么特征值互不相同就能对角化？';
+/** 回答片段：文字 / 时间引用（05:20「依据是：属于不同特征值的特征向量线性无关。」、06:22「举个最简单的反例：单位矩阵 E。」） */
+const ANSWER: Array<string | { t: number }> = [
+  '属于不同特征值的特征向量线性无关。n 个特征值互不相同时，每个各取一个特征向量，正好凑够 n 个线性无关的特征向量，由定理 5.6 即可对角化',
+  { t: 320 },
+  '。\n\n注意这只是充分条件：单位矩阵 E 只有特征值 1，却本身就是对角阵',
+  { t: 382 },
+  '。',
+];
+/** 回答总长（引用算 1 个字符，整块出现） */
+export const ANSWER_LEN = ANSWER.reduce<number>((n, p) => n + (typeof p === 'string' ? [...p].length : 1), 0);
+/** 片中点的那个引用（第一个，05:20） */
+export const ASK_SEEK_TO = 320;
+/** 回答里第一个引用的位置（内容坐标）：按 1 倍渲染的整帧取证定位（回答流完后「▶ 05:20」的中心） */
+export const ASK_CHIP_PT = { x: PLAYER_W + 198, y: BODY_Y + 256 };
+
+/** 练习：制作闪卡（与网页演示 companion.ts 的 P4_CARDS 同文） */
+const CARDS: Array<{ front: string; back: string; t: number }> = [
+  { front: 'n 阶矩阵 A 可相似对角化的充要条件？', back: 'A 有 n 个线性无关的特征向量（定理 5.6）', t: 37 },
+  { front: '对角化时 P 与 Λ 的对应关系？', back: 'P 的第 i 列是属于 Λ 第 i 个对角元 λᵢ 的特征向量，顺序必须一致', t: 95 },
+  { front: '「n 个特征值互不相同」与可对角化的关系？', back: '充分不必要：互不相同 ⇒ 可对角化；反例：单位矩阵 E', t: 365 },
+  { front: '特征值 λ 的几何重数怎么算？', back: 'dim V_λ = n − r(λE − A)，且 1 ≤ 几何重数 ≤ 代数重数', t: 606 },
+];
+export const CARD_COUNT = CARDS.length;
+
+/** 讲义生成的阶段（learningHub.mediaHandout.phase），撰写章节按 4 节计数 */
+export const HANDOUT_PHASES: Array<[label: string, at: number]> = [
+  ['transcript', 0],
+  ['frames', 0.14],
+  ['outline', 0.3],
+  ['writing:1', 0.44],
+  ['writing:2', 0.56],
+  ['writing:3', 0.68],
+  ['writing:4', 0.8],
+  ['saving', 0.92],
+];
+export const HANDOUT_TITLE = '对角化的条件 · 讲义';
 
 export type StudyState = {
   /** 进入学习页的淡入 0–1 */
@@ -786,27 +924,63 @@ export type StudyState = {
   controls: number;
   playHover: number;
   playPress: number;
-  segHover: number | null;
-  segPress: number;
   /** 跳转后画面切换 0–1 */
   seekFlash: number;
   t: number;
+  tab: StudyTab;
+  tabHover: StudyTab | null;
+  tabPress: number;
+  /** 问答：对话层入场 0–1（0 = 分区首屏） */
+  askLayer: number;
+  askStartHover: number;
+  askStartPress: number;
+  /** 输入框里已打的字；focus = 输入框聚焦 */
+  typed: string;
+  composerFocus: boolean;
+  sendPress: number;
+  /** 已发出：用户气泡 0–1 */
+  sent: number;
+  thinking: boolean;
+  /** 回答已流出的字符数（0 = 未开始） */
+  answer: number;
+  chipHover: number;
+  chipPress: number;
+  /** 讲义：生成阶段（null = 未开始 / 已完成）；done = 列表里有新讲义（入场 0–1） */
+  phase: string | null;
+  genHover: number;
+  genPress: number;
+  handoutK: number;
+  itemHover: number;
+  itemPress: number;
+  /** 练习：动作卡悬停 / 按下；对话层入场；卡片逐张入场（已出现张数，可带小数） */
+  pcHover: number;
+  pcPress: number;
+  practiceLayer: number;
+  cards: number;
+  /** 学习进度（练习分区底部）：已观看分钟 */
+  watchedMin: number;
 };
 
-/** 讲义幻灯片：标题页（00:00–00:33）/ 定理页（之后） */
-const Slide = ({ pos }: { pos: number }) => {
+/** 讲义幻灯片（视频画面）：标题页（00:00–00:33）/ 定理 5.6（00:33–05:00）/ 推论 5.7（05:00 起），以 0,0 为原点画 PLAYER_W × VIDEO_H */
+export const LectureSlide = ({ pos }: { pos: number }) => {
   const W = PLAYER_W;
   const H = VIDEO_H;
-  const theorem = pos >= 33;
+  const page = pos >= 300 ? 'corollary' : pos >= 33 ? 'theorem' : 'title';
+  const head = (
+    <>
+      <div style={{ position: 'absolute', left: 42, top: 34, fontSize: 22, fontWeight: 700 }}>5.4　对角化的条件</div>
+      <div style={{ position: 'absolute', left: 42, top: 74, width: 160, height: 3, background: 'hsl(38 90% 55%)' }} />
+    </>
+  );
+  const boxStyle: CSSProperties = { position: 'absolute', left: 42, top: 100, right: 42, padding: '16px 20px', borderRadius: 8, background: 'hsl(212 60% 94%)', borderLeft: '5px solid hsl(212 52% 32%)' };
   return (
-    <div style={{ position: 'absolute', left: 0, top: VIDEO_Y, width: W, height: H, overflow: 'hidden', background: 'hsl(40 30% 97%)', fontFamily: font.ui, color: 'hsl(215 40% 18%)' }}>
+    <div style={{ position: 'absolute', left: 0, top: 0, width: W, height: H, overflow: 'hidden', background: 'hsl(40 30% 97%)', fontFamily: font.ui, color: 'hsl(215 40% 18%)' }}>
       <div style={{ position: 'absolute', left: 0, top: 0, right: 0, height: 6, background: 'linear-gradient(90deg, hsl(212 52% 26%), hsl(205 56% 38%))' }} />
       <div style={{ position: 'absolute', right: 26, bottom: 18, fontSize: 11, color: 'hsl(215 20% 50%)', letterSpacing: '0.04em' }}>线性代数 · 第五讲</div>
-      {theorem ? (
+      {page === 'theorem' ? (
         <>
-          <div style={{ position: 'absolute', left: 42, top: 34, fontSize: 22, fontWeight: 700 }}>5.4　对角化的条件</div>
-          <div style={{ position: 'absolute', left: 42, top: 74, width: 160, height: 3, background: 'hsl(38 90% 55%)' }} />
-          <div style={{ position: 'absolute', left: 42, top: 100, right: 42, padding: '16px 20px', borderRadius: 8, background: 'hsl(212 60% 94%)', borderLeft: '5px solid hsl(212 52% 32%)' }}>
+          {head}
+          <div style={boxStyle}>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'hsl(212 52% 30%)' }}>定理 5.6</div>
             <div style={{ marginTop: 8, fontSize: 17, lineHeight: 1.6, fontFamily: font.serif }}>
               <Tex tex="n" /> 阶矩阵 <Tex tex="A" /> 可对角化 <Tex tex="\iff" /> <Tex tex="A" /> 有 <Tex tex="n" /> 个线性无关的特征向量
@@ -814,6 +988,22 @@ const Slide = ({ pos }: { pos: number }) => {
           </div>
           <div style={{ position: 'absolute', left: 0, right: 0, top: 196, textAlign: 'center', fontSize: 16 }}>
             <Tex tex="P^{-1}AP=\Lambda=\begin{pmatrix}\lambda_1&&\\&\ddots&\\&&\lambda_n\end{pmatrix}" display />
+          </div>
+        </>
+      ) : page === 'corollary' ? (
+        <>
+          {head}
+          <div style={boxStyle}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'hsl(212 52% 30%)' }}>推论 5.7</div>
+            <div style={{ marginTop: 8, fontSize: 17, lineHeight: 1.6, fontFamily: font.serif }}>
+              <Tex tex="n" /> 阶矩阵 <Tex tex="A" /> 有 <Tex tex="n" /> 个互不相同的特征值 <Tex tex="\Rightarrow" /> <Tex tex="A" /> 可对角化
+            </div>
+          </div>
+          <div style={{ position: 'absolute', left: 48, top: 214, fontSize: 15, lineHeight: 1.9, fontFamily: font.serif, color: 'hsl(215 30% 26%)' }}>
+            <div>依据：属于不同特征值的特征向量线性无关</div>
+            <div>
+              注：只是充分条件——反例 <Tex tex="E" />，只有特征值 <Tex tex="1" />，本身就是对角阵
+            </div>
           </div>
         </>
       ) : (
@@ -828,6 +1018,279 @@ const Slide = ({ pos }: { pos: number }) => {
     </div>
   );
 };
+export const SLIDE_W = PLAYER_W;
+export const SLIDE_H = VIDEO_H;
+
+/** 媒体时间引用（网页演示 citationChip：rounded-full bg-primary/10 px-1.5 text-[11px] tabular-nums） */
+const Cite = ({ tk, sec, hover = 0, press = 0 }: { tk: Tokens; sec: number; hover?: number; press?: number }) => (
+  <span
+    style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      height: 17.5,
+      margin: '0 1.75px',
+      padding: '0 5.25px',
+      borderRadius: 999,
+      verticalAlign: 1,
+      fontSize: 11,
+      fontWeight: 500,
+      lineHeight: 1,
+      fontVariantNumeric: 'tabular-nums',
+      color: tk.primary,
+      background: mix(tk.primary, 10 + 10 * hover + 6 * press),
+      transform: `scale(${1 - 0.04 * press})`,
+      whiteSpace: 'nowrap',
+    }}
+  >
+    ▶ {clockOf(sec)}
+  </span>
+);
+
+/** study-shell-secondary-card：surface-panel-strong 底、工作区描边、shell-panel 圆角、柔阴影；悬停换导航描边 */
+const secondaryCard = (tk: Tokens, hover = 0, press = 0): CSSProperties => ({
+  position: 'absolute',
+  boxSizing: 'border-box',
+  borderRadius: 12,
+  border: `1px solid ${hover > 0 ? 'hsl(0 0% 84%)' : CARD_BORDER}`,
+  background: hover > 0 ? `color-mix(in srgb, ${tk.foreground} ${2.5 * hover + 2 * press}%, ${tk.background})` : tk.background,
+  boxShadow: '0 1px 2px hsl(220 20% 10% / 0.04)',
+  transform: `scale(${1 - 0.008 * press})`,
+});
+
+const xsMuted = (tk: Tokens, extra?: CSSProperties): CSSProperties => ({ fontSize: 11, lineHeight: '17.9px', color: tk.mutedFg, ...extra });
+const sectionTitle = (tk: Tokens, y: number, text: string) => <div style={{ position: 'absolute', left: PAD, top: y, fontSize: 11, fontWeight: 500, lineHeight: '16.5px', color: tk.mutedFg }}>{text}</div>;
+
+/** 分区里的对话层头部（← 返回 + 标题） */
+const LayerHead = ({ tk, title }: { tk: Tokens; title: string }) => (
+  <div style={{ position: 'absolute', left: 0, right: 0, top: TAB_TOP, height: LAYER_HEAD, boxSizing: 'border-box', borderBottom: `1px solid ${tk.border}`, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10.5px' }}>
+    <span style={{ padding: '1.75px 5.25px', borderRadius: 4, fontSize: 11, color: tk.mutedFg }}>{S.media.layer.back}</span>
+    <span style={{ fontSize: 11, fontWeight: 500, color: tk.foreground, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+  </div>
+);
+
+const AskTab = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
+  const layer = s.askLayer;
+  // 回答按字符流出（引用整块出现）
+  let left = s.answer;
+  const pieces: ReactNode[] = [];
+  ANSWER.forEach((p, i) => {
+    if (left <= 0) return;
+    if (typeof p === 'string') {
+      const chars = [...p];
+      pieces.push(<span key={i}>{chars.slice(0, Math.min(chars.length, Math.floor(left))).join('')}</span>);
+      left -= chars.length;
+    } else {
+      pieces.push(<Cite key={i} tk={tk} sec={p.t} hover={p.t === ASK_SEEK_TO ? s.chipHover : 0} press={p.t === ASK_SEEK_TO ? s.chipPress : 0} />);
+      left -= 1;
+    }
+  });
+  const bubbleText: CSSProperties = { fontSize: 13, lineHeight: '21.1px', whiteSpace: 'pre-wrap' };
+  return (
+    <>
+      {layer < 1 ? (
+        <div style={{ position: 'absolute', inset: 0, opacity: 1 - layer }}>
+          <div style={{ position: 'absolute', left: PAD, top: 49, width: PANEL_W - 2 * PAD, ...xsMuted(tk) }}>{S.media.ask.intro}</div>
+          <span
+            style={{
+              ...primaryBtn(tk, s.askStartHover, s.askStartPress),
+              position: 'absolute',
+              left: ASK_START.x,
+              top: ASK_START.y,
+              width: ASK_START.w,
+              height: ASK_START.h,
+              transform: `scale(${1 - 0.03 * s.askStartPress})`,
+            }}
+          >
+            <ChatCircleText size={14} />
+            {S.media.ask.start}
+          </span>
+          {sectionTitle(tk, 140.75, S.media.ask.quickTitle)}
+          {S.media.ask.quick.map((q, i) => (
+            <div key={q} style={{ ...secondaryCard(tk), left: PAD, top: 164.25 + i * 40.5, width: PANEL_W - 2 * PAD, height: 33.5, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10.5px', fontSize: 12, color: tk.foreground }}>
+              <Sparkle size={14} color={tk.mutedFg} />
+              {q}
+            </div>
+          ))}
+          <div style={{ position: 'absolute', left: PAD, top: 290, width: PANEL_W - 2 * PAD, ...xsMuted(tk, { color: mix(tk.mutedFg, 80) }) }}>{S.media.ask.citationHint}</div>
+        </div>
+      ) : null}
+      {layer > 0 ? (
+        <div style={{ position: 'absolute', inset: 0, opacity: layer }}>
+          <LayerHead tk={tk} title={S.media.layer.askTitle} />
+          <div style={{ position: 'absolute', left: PAD, right: PAD, top: LAYER_BODY + PAD, display: 'flex', flexDirection: 'column', gap: 10.5 }}>
+            <div style={{ ...bubbleText, color: tk.foreground }}>{S.media.layer.askHello(pageName(STUDY_PAGE))}</div>
+            {s.sent > 0 ? (
+              <div
+                style={{
+                  ...bubbleText,
+                  alignSelf: 'flex-end',
+                  maxWidth: '88%',
+                  padding: '7px 10.5px',
+                  borderRadius: '16px 16px 6px 16px',
+                  background: tk.primary,
+                  color: tk.primaryFg,
+                  opacity: s.sent,
+                  transform: `translateY(${(1 - s.sent) * 6}px)`,
+                }}
+              >
+                {ASK_QUESTION}
+              </div>
+            ) : null}
+            {s.thinking ? <div style={xsMuted(tk)}>{S.media.layer.thinking}</div> : null}
+            {s.answer > 0 ? <div style={{ ...bubbleText, color: tk.foreground }}>{pieces}</div> : null}
+          </div>
+          {/* 输入行 */}
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: COMPOSER_H, boxSizing: 'border-box', borderTop: `1px solid ${tk.border}`, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10.5px' }}>
+            <span
+              style={{
+                flex: 1,
+                height: 28,
+                boxSizing: 'border-box',
+                borderRadius: 6,
+                border: `1px solid ${s.composerFocus ? tk.primary : tk.border}`,
+                background: tk.background,
+                display: 'flex',
+                alignItems: 'center',
+                padding: '0 8.75px',
+                fontSize: 13,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                color: s.typed ? tk.foreground : mix(tk.mutedFg, 80),
+              }}
+            >
+              {s.typed || S.media.layer.placeholder}
+              {s.composerFocus && s.typed ? <span style={{ display: 'inline-block', width: 1.5, height: 15, marginLeft: 1, background: tk.foreground }} /> : null}
+            </span>
+            <span style={{ width: SEND_W, height: 28, borderRadius: 6, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 500, background: tk.primary, color: tk.primaryFg, transform: `scale(${1 - 0.05 * s.sendPress})`, filter: s.sendPress > 0 ? `brightness(${1 - 0.12 * s.sendPress})` : undefined }}>
+              {S.media.layer.send}
+            </span>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+};
+
+const phaseLabel = (phase: string) => {
+  const [key, n] = phase.split(':');
+  return `${S.media.handout.phase(key)}${n ? ` ${n}/4` : ''}`;
+};
+
+const HandoutTab = ({ tk, s }: { tk: Tokens; s: StudyState }) => (
+  <>
+    <div style={{ position: 'absolute', left: PAD, top: 49, width: PANEL_W - 2 * PAD, ...xsMuted(tk) }}>{S.media.handout.intro}</div>
+    {s.phase ? (
+      <div style={{ ...secondaryCard(tk), left: PAD, top: HO_GEN.y - 3.5, width: PANEL_W - 2 * PAD, height: 35, display: 'flex', alignItems: 'center', gap: 7, padding: '0 3.5px 0 10.5px', fontSize: 11, color: tk.mutedFg }}>
+        <Spin size={14} color={tk.primary} t={s.t} />
+        <span style={{ flex: 1, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{phaseLabel(s.phase)}</span>
+        <span style={{ width: 24.5, height: 24.5, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+          <X size={13} />
+        </span>
+      </div>
+    ) : (
+      <span
+        style={{
+          ...primaryBtn(tk, s.genHover, s.genPress),
+          position: 'absolute',
+          left: HO_GEN.x,
+          top: HO_GEN.y,
+          width: HO_GEN.w,
+          height: HO_GEN.h,
+          transform: `scale(${1 - 0.03 * s.genPress})`,
+        }}
+      >
+        <Notebook size={14} />
+        {S.media.handout.generate}
+      </span>
+    )}
+    {sectionTitle(tk, 141, S.media.handout.listTitle)}
+    {s.handoutK > 0 ? (
+      <div
+        style={{
+          ...secondaryCard(tk, s.itemHover, s.itemPress),
+          left: HO_ITEM.x,
+          top: HO_ITEM.y,
+          width: HO_ITEM.w,
+          height: HO_ITEM.h,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8.75,
+          padding: '0 10.5px',
+          opacity: s.handoutK,
+        }}
+      >
+        <Notebook size={16} color={tk.mutedFg} />
+        <span style={{ display: 'flex', flexDirection: 'column' }}>
+          <span style={{ fontSize: 12, lineHeight: '17.5px', color: tk.foreground }}>{HANDOUT_TITLE}</span>
+          <span style={{ fontSize: 11, lineHeight: '16.5px', color: tk.mutedFg }}>{S.media.handout.justNow}</span>
+        </span>
+      </div>
+    ) : (
+      <div style={{ position: 'absolute', left: PAD, top: 164.5, ...xsMuted(tk) }}>{S.media.handout.empty}</div>
+    )}
+    <div style={{ position: 'absolute', left: PAD, top: s.handoutK > 0 ? 229 : 192.5, ...xsMuted(tk, { color: mix(tk.mutedFg, 80) }) }}>{S.media.handout.wordHint}</div>
+  </>
+);
+
+const PracticeTab = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
+  const layer = s.practiceLayer;
+  const actions = [
+    { Icon: CardsThree, label: S.media.practice.cards, hint: S.media.practice.cardsHint },
+    { Icon: ListChecks, label: S.media.practice.questions, hint: S.media.practice.questionsHint },
+  ];
+  const posSec = Math.floor(s.pos);
+  return (
+    <>
+      {layer < 1 ? (
+        <div style={{ position: 'absolute', inset: 0, opacity: 1 - layer }}>
+          <div style={{ position: 'absolute', left: PAD, top: 49, width: PANEL_W - 2 * PAD, ...xsMuted(tk) }}>{S.media.practice.intro}</div>
+          {actions.map(({ Icon, label, hint }, i) => {
+            const r = PR_CARD(i);
+            return (
+              <div key={label} style={{ ...secondaryCard(tk, i === 0 ? s.pcHover : 0, i === 0 ? s.pcPress : 0), left: r.x, top: r.y, width: r.w, height: r.h, display: 'flex', alignItems: 'center', gap: 7, padding: '0 10.5px' }}>
+                <Icon size={16} color={tk.mutedFg} />
+                <span style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ fontSize: 12, lineHeight: '18px', color: tk.foreground }}>{label}</span>
+                  <span style={{ fontSize: 11, lineHeight: '17px', color: tk.mutedFg }}>{hint}</span>
+                </span>
+              </div>
+            );
+          })}
+          {sectionTitle(tk, 237, S.media.progress.title)}
+          <div style={{ position: 'absolute', left: PAD, top: 260.5, width: PANEL_W - 2 * PAD, boxSizing: 'border-box', borderRadius: 9, background: tk.muted, padding: '8.75px 10.5px', display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 14, rowGap: 5.25, fontSize: 11, lineHeight: '16.5px' }}>
+            <span style={{ color: tk.mutedFg }}>{S.media.progress.watched}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{S.media.progress.minutes(s.watchedMin)}</span>
+            <span style={{ color: tk.mutedFg }}>{S.media.progress.position}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{`${clockOf(posSec)} / ${COURSE.pages[STUDY_PAGE].dur}`}</span>
+            <span style={{ color: tk.mutedFg }}>{S.media.progress.transcript}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{S.media.progress.segments(SEGMENTS.length, SEGMENTS.length)}</span>
+          </div>
+        </div>
+      ) : null}
+      {layer > 0 ? (
+        <div style={{ position: 'absolute', inset: 0, opacity: layer }}>
+          <LayerHead tk={tk} title={S.media.layer.practiceTitle} />
+          <div style={{ position: 'absolute', left: PAD, right: PAD, top: LAYER_BODY + PAD, display: 'flex', flexDirection: 'column', gap: 10.5 }}>
+            <div style={xsMuted(tk)}>{S.media.layer.cardsIntro(CARDS.length)}</div>
+            {CARDS.map((c, i) => {
+              const k = clamp(s.cards - i);
+              return (
+                <div key={c.front} style={{ ...secondaryCard(tk), position: 'relative', padding: '8.75px 10.5px', display: 'flex', flexDirection: 'column', gap: 5.25, opacity: k }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: tk.foreground }}>{c.front}</div>
+                  <div style={{ fontSize: 11, lineHeight: '17.9px', color: tk.mutedFg }}>{c.back}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 3.5, fontSize: 11, color: tk.mutedFg }}>
+                    {S.media.layer.source}
+                    <Cite tk={tk} sec={c.t} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+};
 
 export const MediaStudy = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
   const active = segAt(s.pos);
@@ -839,6 +1302,8 @@ export const MediaStudy = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
     </span>
   );
   const ratio = s.pos / (22 * 60 + 48);
+  // 字幕列表跟随当前句（TranscriptPanel 自动滚动：当前句保持在可视区）
+  const segScroll = Math.max(0, active - 9) * SEG_PITCH;
   return (
     <div style={{ position: 'absolute', inset: 0, background: tk.background, fontFamily: font.ui, color: tk.foreground, overflow: 'hidden', opacity: s.enter }}>
       {/* 标题行 */}
@@ -862,8 +1327,8 @@ export const MediaStudy = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
       </Box>
       {/* 播放器 */}
       <Box x={0} y={BODY_Y} w={PLAYER_W} h={BODY_H} style={{ background: '#000' }} />
-      <div style={{ position: 'absolute', inset: 0, opacity: 1 - 0.85 * Math.sin(Math.PI * clamp(s.seekFlash)) }}>
-        <Slide pos={s.pos} />
+      <div style={{ position: 'absolute', left: 0, top: VIDEO_Y, width: PLAYER_W, height: VIDEO_H, opacity: 1 - 0.85 * Math.sin(Math.PI * clamp(s.seekFlash)) }}>
+        <LectureSlide pos={s.pos} />
       </div>
       {cue ? (
         <Box x={0} y={VIDEO_Y + VIDEO_H - 50 - 30 * s.controls} w={PLAYER_W} style={{ display: 'flex', justifyContent: 'center' }}>
@@ -892,7 +1357,7 @@ export const MediaStudy = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
           </span>
           <span style={{ marginLeft: 5, fontSize: 11, fontVariantNumeric: 'tabular-nums', color: 'rgb(255 255 255 / 0.9)' }}>
             {clockOf(s.pos)}
-            <span style={{ color: 'rgb(255 255 255 / 0.5)' }}> / 22:48</span>
+            <span style={{ color: 'rgb(255 255 255 / 0.5)' }}> / {COURSE.pages[STUDY_PAGE].dur}</span>
           </span>
           <span style={{ flex: 1 }} />
           <span style={{ fontSize: 11, padding: '0 7px' }}>1.0x</span>
@@ -905,69 +1370,81 @@ export const MediaStudy = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
         </Box>
       ) : null}
       {/* 伴随分区 */}
-      <Box x={PLAYER_W} y={BODY_Y} w={PANEL_W} h={BODY_H} style={{ borderLeft: `1px solid ${tk.border}`, background: tk.background }}>
+      <Box x={PLAYER_W} y={BODY_Y} w={PANEL_W} h={BODY_H} style={{ borderLeft: `1px solid ${tk.border}`, background: tk.background, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: 10.5, right: 10.5, top: 7, height: 28, display: 'flex', gap: 2 }}>
-          {([S.media.tabs.transcript, S.media.tabs.handout, S.media.tabs.ask, S.media.tabs.practice] as const).map((l, i) => (
-            <span
-              key={l}
-              style={{
-                flex: 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                borderRadius: 10,
-                fontSize: 11,
-                fontWeight: 500,
-                color: i === 0 ? tk.foreground : tk.mutedFg,
-                background: i === 0 ? tk.background : 'transparent',
-                boxShadow: i === 0 ? '0 0 0 1px hsl(0 0% 88%)' : undefined,
-              }}
-            >
-              {l}
-            </span>
-          ))}
+          {TABS.map((id) => {
+            const on = s.tab === id;
+            const hov = s.tabHover === id;
+            return (
+              <span
+                key={id}
+                style={{
+                  flex: 1,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 10,
+                  fontSize: 11,
+                  fontWeight: 500,
+                  color: on || hov ? tk.foreground : tk.mutedFg,
+                  background: on ? tk.background : hov ? mix(tk.foreground, 4 + 3 * s.tabPress) : 'transparent',
+                  boxShadow: on ? '0 0 0 1px hsl(0 0% 88%)' : undefined,
+                }}
+              >
+                {S.media.tabs[id]}
+              </span>
+            );
+          })}
         </div>
-        <div style={{ position: 'absolute', left: 10.5, right: 10.5, top: 38.5, height: 35, display: 'flex', alignItems: 'center', gap: 3.5 }}>
-          <span style={{ fontSize: 11, color: tk.mutedFg, flex: 1 }}>{S.media.segments(SEGMENTS.length)}</span>
-          <span style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
-            <Crosshair size={15} />
-          </span>
-          <span style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
-            <Copy size={15} />
-          </span>
-        </div>
-        <div style={{ position: 'absolute', left: 10.5, right: 10.5, top: 73.5, height: 28, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${tk.border}`, display: 'flex', alignItems: 'center', gap: 7, paddingLeft: 9, fontSize: 12, color: tk.mutedFg }}>
-          <MagnifyingGlass size={14} />
-          {S.media.transcriptSearch}
-        </div>
-        {SEGMENTS.map(([sec, text], i) => {
-          const y = SEG_Y0 - BODY_Y + i * SEG_PITCH;
-          if (y > BODY_H) return null;
-          const on = i === active;
-          const hov = s.segHover === i;
-          return (
-            <div
-              key={sec}
-              style={{
-                position: 'absolute',
-                left: 5.25,
-                right: 5.25,
-                top: y,
-                height: 28,
-                boxSizing: 'border-box',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8.75,
-                padding: '0 21px 0 8.75px',
-                borderRadius: 9,
-                background: on ? mix(tk.primary, 10) : hov ? mix(tk.foreground, 5 + 3 * s.segPress) : 'transparent',
-              }}
-            >
-              <span style={{ fontFamily: font.mono, fontSize: 11, fontVariantNumeric: 'tabular-nums', color: on ? tk.primary : tk.mutedFg }}>{clockOf(sec)}</span>
-              <span style={{ fontSize: 12, lineHeight: '17.5px', whiteSpace: 'nowrap', color: on ? tk.foreground : mix(tk.foreground, 85) }}>{text}</span>
+        {s.tab === 'transcript' ? (
+          <>
+            <div style={{ position: 'absolute', left: 10.5, right: 10.5, top: 38.5, height: 35, display: 'flex', alignItems: 'center', gap: 3.5 }}>
+              <span style={{ fontSize: 11, color: tk.mutedFg, flex: 1 }}>{S.media.segments(SEGMENTS.length)}</span>
+              <span style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
+                <Crosshair size={15} />
+              </span>
+              <span style={{ width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
+                <Copy size={15} />
+              </span>
             </div>
-          );
-        })}
+            <div style={{ position: 'absolute', left: 10.5, right: 10.5, top: 73.5, height: 28, boxSizing: 'border-box', borderRadius: 7, border: `1px solid ${tk.border}`, display: 'flex', alignItems: 'center', gap: 7, paddingLeft: 9, fontSize: 12, color: tk.mutedFg }}>
+              <MagnifyingGlass size={14} />
+              {S.media.transcriptSearch}
+            </div>
+            <div style={{ position: 'absolute', left: 0, right: 0, top: SEG_Y0 - BODY_Y - 7, bottom: 0, overflow: 'hidden' }}>
+              {SEGMENTS.map(([sec, text], i) => {
+                const y = 7 + i * SEG_PITCH - segScroll;
+                if (y < -SEG_PITCH || y > BODY_H) return null;
+                const on = i === active;
+                return (
+                  <div
+                    key={sec}
+                    style={{
+                      position: 'absolute',
+                      left: 5.25,
+                      right: 5.25,
+                      top: y,
+                      height: 28,
+                      boxSizing: 'border-box',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8.75,
+                      padding: '0 21px 0 8.75px',
+                      borderRadius: 9,
+                      background: on ? mix(tk.primary, 10) : 'transparent',
+                    }}
+                  >
+                    <span style={{ fontFamily: font.mono, fontSize: 11, fontVariantNumeric: 'tabular-nums', color: on ? tk.primary : tk.mutedFg }}>{clockOf(sec)}</span>
+                    <span style={{ fontSize: 12, lineHeight: '17.5px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: on ? tk.foreground : mix(tk.foreground, 85) }}>{text}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : null}
+        {s.tab === 'ask' ? <AskTab tk={tk} s={s} /> : null}
+        {s.tab === 'handout' ? <HandoutTab tk={tk} s={s} /> : null}
+        {s.tab === 'practice' ? <PracticeTab tk={tk} s={s} /> : null}
       </Box>
     </div>
   );

@@ -2,6 +2,7 @@ import { ArrowCounterClockwise, ArrowLeft, ArrowRight, BookOpen, CaretDown, Care
 import { Easing } from 'remotion';
 import type { CSSProperties, ReactNode } from 'react';
 import { font } from '../theme';
+import { HANDOUT_TITLE, LectureSlide, SLIDE_H, SLIDE_W } from './media';
 import { FG, LINE, MUTED, NOTE_TITLE, PRI, T as WinT } from './research';
 
 /** resource 的 at / research 的 T 吃窗口坐标（内部扣 (1, 39)）；本文件写标题栏坐标与内容坐标，不再扣 */
@@ -38,11 +39,11 @@ const SUCCESS = 'rgb(37, 147, 95)';
 const flashEase = Easing.bezier(0, 0, 0.58, 1);
 export const NOTE_FLASH_S = 1.1;
 
-export const NotesTitlebar = ({ saving }: { saving: boolean }) => (
+export const NotesTitlebar = ({ saving, title = NOTE_TITLE }: { saving: boolean; title?: string }) => (
   <>
     <span style={{ ...at(272, 0), width: 200, height: 37, background: '#fff' }}>
       <FileText size={13} color={MUTED} style={at(10, 12)} />
-      <span style={{ ...at(26.2, 12), width: 141.8, fontSize: 13, fontWeight: 500, lineHeight: '13px', color: FG, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{NOTE_TITLE}</span>
+      <span style={{ ...at(26.2, 12), width: 141.8, fontSize: 13, fontWeight: 500, lineHeight: '13px', color: FG, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
       <X size={12} color={MUTED} style={at(177, 12.5)} />
     </span>
     <List size={16} color={MUTED} style={at(962, 11)} />
@@ -59,14 +60,13 @@ export const NotesTitlebar = ({ saving }: { saving: boolean }) => (
 );
 
 // ── 左栏：文件树 ──────────────────────────────────────
-const TREE: Array<{ name: string; y: number; mindmap?: boolean; selected?: boolean }> = [
-  { name: '中值定理证明套路', y: 206.7 },
-  { name: NOTE_TITLE, y: 236.7, selected: true },
-  { name: '微分中值定理', y: 266.7, mindmap: true },
-  { name: '高数错题本（8 月）', y: 296.7 },
-];
+type TreeNode = { name: string; mindmap?: boolean; selected?: boolean };
+/** 资料库根目录（新建的笔记排在第 2 位）：音视频那段只多了讲义，调研那段再多出调研报告 */
+export const TREE_HANDOUT: TreeNode[] = [{ name: '中值定理证明套路' }, { name: HANDOUT_TITLE, selected: true }, { name: '微分中值定理', mindmap: true }, { name: '高数错题本（8 月）' }];
+const TREE_RESEARCH: TreeNode[] = [{ name: '中值定理证明套路' }, { name: NOTE_TITLE, selected: true }, { name: HANDOUT_TITLE }, { name: '微分中值定理', mindmap: true }, { name: '高数错题本（8 月）' }];
+const treeY = (i: number) => 206.7 + 30 * i;
 
-const Explorer = () => (
+const Explorer = ({ tree }: { tree: TreeNode[] }) => (
   <div style={{ ...at(0, 0), width: 271, height: 720, background: EXPLORER_BG, borderRight: `1px solid ${LINE}` }}>
     <T x={12} y={10.6} size={12} weight={600} lh={16.8} color={MUTED}>
       文件
@@ -127,11 +127,11 @@ const Explorer = () => (
         资料库根目录
       </T>
     </div>
-    {TREE.map((n) => (
+    {tree.map((n, i) => (
       <div key={n.name}>
-        {n.selected ? <span style={{ ...at(0, n.y - 5.9), width: 271, height: 30, borderRadius: 6, background: SEL }} /> : null}
-        {n.mindmap ? <TreeStructure size={15} color={MUTED} style={at(57, n.y + 1.6)} /> : <FileText size={15} color={MUTED} style={at(57, n.y + 1.6)} />}
-        <span style={{ ...at(78, n.y), width: n.mindmap ? 166 : 139, fontSize: 13, fontWeight: n.selected ? 500 : 400, lineHeight: '18.2px', color: FG, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</span>
+        {n.selected ? <span style={{ ...at(0, treeY(i) - 5.9), width: 271, height: 30, borderRadius: 6, background: SEL }} /> : null}
+        {n.mindmap ? <TreeStructure size={15} color={MUTED} style={at(57, treeY(i) + 1.6)} /> : <FileText size={15} color={MUTED} style={at(57, treeY(i) + 1.6)} />}
+        <span style={{ ...at(78, treeY(i)), width: n.mindmap ? 166 : 139, fontSize: 13, fontWeight: n.selected ? 500 : 400, lineHeight: '18.2px', color: FG, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{n.name}</span>
       </div>
     ))}
   </div>
@@ -280,10 +280,60 @@ export type NotesState = {
   bar: number;
 };
 
+/** 音视频「生成讲义」存成的笔记（handoutToMarkdown：标题 / 摘要 / 分节标题 + [媒体@…] 锚点 / 正文 / 配图 + 图注），scroll 为正文滚动量 */
+const HandoutDoc = ({ scroll }: { scroll: number }) => {
+  const figW = 708;
+  const figH = (figW * SLIDE_H) / SLIDE_W;
+  return (
+    <div style={{ position: 'absolute', left: 0, top: -scroll, width: NOTES_W, height: 1400 }}>
+      <T x={401} y={105} size={40} weight={700} lh={48}>
+        {HANDOUT_TITLE}
+      </T>
+      <Para y={170}>本节回答「什么样的矩阵能相似对角化」：从定理 5.6 的特征向量判据出发，给出特征值互异的充分条件，再用几何重数与代数重数处理重特征值，最后以例 5.9 走完整个判断与求 P 的流程。</Para>
+      <H2 y={262}>一、相似对角化与判定定理</H2>
+      {/* crepe mediaRef 插件：[媒体@id:mm:ss] 原文保留，primary 色 + primary/8 底 */}
+      <Para y={305}>
+        <span style={{ color: PRI, background: pri(0.08), borderRadius: 4, padding: '0 2px', fontVariantNumeric: 'tabular-nums' }}>[媒体@file_la5p4k7W:00:00]</span>
+      </Para>
+      <Para y={341}>矩阵 A 能相似对角化，等价于能找到 n 个线性无关的特征向量；把它们排成 P，P⁻¹AP 就是以对应特征值为对角元的 Λ。</Para>
+      <H3 y={405}>定理 5.6</H3>
+      <Para y={441}>n 阶矩阵 A 可对角化，当且仅当 A 有 n 个线性无关的特征向量。把 AP = PΛ 按列拆开，第 i 列正是 Aξᵢ = λᵢξᵢ；P 可逆恰好要求这些列线性无关。</Para>
+      <div style={{ ...at(401, 513), width: figW, height: figH, borderRadius: 8, overflow: 'hidden', boxShadow: `0 0 0 1px ${LINE}` }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, width: SLIDE_W, height: SLIDE_H, transform: `scale(${figW / SLIDE_W})`, transformOrigin: '0 0' }}>
+          <LectureSlide pos={50} />
+        </div>
+      </div>
+      <Para y={513 + figH + 8}>
+        <i>图 1 定理 5.6 与 P、Λ 的构成</i>
+      </Para>
+      <span style={{ ...at(411, 513 + figH + 64 + 13.5), width: 5.5, height: 5.5, borderRadius: '50%', background: FG }} />
+      <Para x={435} y={513 + figH + 64}>
+        P 的第 i 列与 Λ 的第 i 个对角元一一对应，顺序要一致
+      </Para>
+    </div>
+  );
+};
+
+export const HandoutNotesView = ({ scroll }: { scroll: number }) => (
+  <div style={{ position: 'absolute', inset: 0, fontFamily: font.sys, background: '#fff', overflow: 'hidden' }}>
+    <Explorer tree={TREE_HANDOUT} />
+    <div style={{ ...at(272, 0), width: 966, height: 698, overflow: 'hidden' }}>
+      <div style={{ position: 'absolute', left: -272, top: 0, width: NOTES_W, height: NOTES_H }}>
+        <HandoutDoc scroll={scroll} />
+      </div>
+    </div>
+    <div style={{ ...at(272, 698), width: 966, height: 22, boxSizing: 'border-box', borderTop: `1px solid ${LINE}`, background: 'rgba(240, 240, 240, 0.26)' }}>
+      <T x={9} y={2.8} size={11} lh={15.4} color={MUTED}>
+        {TREE_HANDOUT.length} 个文件
+      </T>
+    </div>
+  </div>
+);
+
 export const NotesView = ({ s }: { s: NotesState }) => (
   <div style={{ position: 'absolute', inset: 0, fontFamily: font.sys, background: '#fff', overflow: 'hidden' }}>
     <div style={{ position: 'absolute', left: 0, top: STRIP_H * s.strip, width: NOTES_W - 2, height: NOTES_H - 40 }}>
-      <Explorer />
+      <Explorer tree={TREE_RESEARCH} />
       <div style={{ ...at(272, 0), width: 966, height: 698, overflow: 'hidden' }}>
         <div style={{ position: 'absolute', left: -272, top: s.bar > 0 ? BAR_DY : 0, width: NOTES_W, height: NOTES_H }}>
           <Document applied={s.applied} flashS={s.flashS} />
@@ -292,7 +342,7 @@ export const NotesView = ({ s }: { s: NotesState }) => (
       </div>
       <div style={{ ...at(272, 698), width: 966, height: 22, boxSizing: 'border-box', borderTop: `1px solid ${LINE}`, background: 'rgba(240, 240, 240, 0.26)' }}>
         <T x={9} y={2.8} size={11} lh={15.4} color={MUTED}>
-          4 个文件
+          {TREE_RESEARCH.length} 个文件
         </T>
       </div>
     </div>

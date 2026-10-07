@@ -8,11 +8,11 @@ import { Pupil, pathAt } from '../../ui/brand';
 import { agendaOpenCenter, AgendaWidget, BriefingWidget, DesktopShortcuts, shortcutCenter, type ShortcutId } from '../../ui/desk';
 import { ESSAY_H, ESSAY_PT, ESSAY_SCROLL, ESSAY_STREAM, ESSAY_W, EssayView, type EssayStage, type EssayState, type EssayTarget } from '../../ui/essay';
 import { EXAM_DROP_RIGHT, EXAM_H, EXAM_PT, EXAM_SCROLL, EXAM_W, ExamToast, ExamView, FileChip, type ExamStage, type ExamState, type ExamTarget } from '../../ui/exam';
-import { NOTES_H, NOTES_W, NotesTitlebar, NotesView, type NotesState } from '../../ui/notes';
+import { HandoutNotesView, NOTES_H, NOTES_W, NotesTitlebar, NotesView, type NotesState } from '../../ui/notes';
 import { CHAT_H, CHAT_PT, CHAT_W, ChatTitlebar, HUB_H, HUB_PT, HUB_W, HubTitlebar, HubWindow, ResearchChat, SESSION_TITLE, type ResearchTL } from '../../ui/research';
-import { POMO_RECT, PomodoroWindowBody, pomoTitle, TODO_H, TODO_ITEMS, TODO_W, TodoApp, todoPlayCenter, todoRowCenter, TodoToolbar, type TodoState } from '../../ui/todo';
+import { MORNING_DUE, POMO_RECT, PomodoroWindowBody, pomoTitle, TODO_H, TODO_ITEMS, TODO_W, TodoApp, todoPlayCenter, todoRowCenter, TodoToolbar, type TodoState } from '../../ui/todo';
 import { ResourceTitlebar, SIDEBAR_COLLAPSE_S } from '../../ui/resource';
-import { AppsPanel, BiliDialog, contentToWin, COURSE, DLG_PT, LIB_PT, MEDIA_H, MEDIA_W, MediaLibrary, MediaStudy, pageName, SEEK_SEG, SEGMENTS, STUDY_PAGE, STUDY_PT, type AppsPanelState, type DialogStage, type DialogState, type LibraryState, type StudyState } from '../../ui/media';
+import { ANSWER_LEN, ASK_CHIP_PT, ASK_QUESTION, ASK_SEEK_TO, AppsPanel, BiliDialog, contentToWin, COURSE, DLG_PT, HANDOUT_PHASES, HANDOUT_TITLE, LIB_PT, MEDIA_H, MEDIA_W, MediaLibrary, MediaStudy, pageName, STUDY_PAGE, STUDY_PT, type AppsPanelState, type DialogStage, type DialogState, type LibraryState, type StudyState, type StudyTab } from '../../ui/media';
 import { TRANS_H, TRANS_LEN, TRANS_PT, TRANS_W, TranslateView, type TransStage, type TransState, type TransTarget } from '../../ui/translate';
 import { APP_NAMES, Dock, dockBounceAt, dockIconCenter, type DockBadge, GENIE_S, IND_S, MenuBar, menuClock, TIP_DELAY_S, TIP_FADE_S, trafficCenter, Wallpaper, WbWindow, winLife, type Rect } from '../../ui/workbench';
 import { nightDock, nightMenubar } from '../review/SceneReview';
@@ -42,6 +42,12 @@ export const CHAT_RECT: Rect = { x: 560, y: 110, w: CHAT_W, h: CHAT_H };
 export const MEDIA_RECT: Rect = { x: 144, y: 184, w: MEDIA_W, h: MEDIA_H };
 /** 资源库 980×660 级联落 5 号槽（4 号槽被最小化的音视频占着）。 */
 export const HUB_RECT: Rect = { x: 168, y: 208, w: HUB_W, h: HUB_H };
+/** 08a「生成讲义」存成的笔记从音视频「本课讲义」打开（DSTU_OPEN_NOTE）：笔记窗 1240×760 落级联 5 号槽，看完点红灯关掉（之后资源库仍落 5 号槽）。 */
+export const HANDOUT_RECT: Rect = { x: 168, y: 208, w: NOTES_W, h: NOTES_H };
+/** 讲义笔记窗开合时刻 */
+const HO_OPEN = DAY.handoutOpen + 0.02;
+const HO_CLOSE = DAY.handoutClose + 0.01;
+const handoutOn = (t: number) => t >= HO_OPEN && t < HO_CLOSE;
 /** 音视频窗口内容坐标 → 桌面坐标 */
 const mediaPt = (p: { x: number; y: number }) => {
   const w = contentToWin(p);
@@ -76,7 +82,7 @@ const runningAt = (t: number): string[] => {
   if (t >= DAY.essayOpen) r.push('essay');
   if (t >= DAY.translateOpen) r.push('translation');
   if (t >= DAY.mediaOpen) r.push('media');
-  if (t >= DAY.noteOpen) r.push('notes');
+  if ((t >= HO_OPEN && t < HO_CLOSE + 0.06) || t >= DAY.noteOpen) r.push('notes');
   if (t >= DAY.hubIndex) r.push('files');
   return r;
 };
@@ -91,8 +97,8 @@ const FIRST_OPEN: Record<string, number> = {
   files: DAY.hubIndex,
 };
 
-/** 闪卡到期数：清晨 12 张；07 的时间跳转之后「复习到期卡片」已完成。 */
-const dueAt = (t: number) => (t < DAY.clock ? nightMenubar(t).due : t < DAY.essayOpen ? 12 : 0);
+/** 闪卡到期数：清晨 MORNING_DUE（见 todo.tsx）；07 的时间跳转之后「复习到期卡片」已完成。 */
+const dueAt = (t: number) => (t < DAY.clock ? nightMenubar(t).due : t < DAY.essayOpen ? MORNING_DUE : 0);
 /** 今日待办完成数（简报的「已完成 n/4」与日程列表随章节推进）。 */
 const doneAt = (t: number) => (t < DAY.essayOpen ? 0 : t < DAY.researchOpen ? 2 : 3);
 
@@ -118,7 +124,9 @@ const dayMenubar = (t: number) => {
               : t < SHOW_MIN2
                 ? APP_NAMES.translation
                 : t >= DAY.mediaOpen && t < MEDIA_MIN
-                  ? APP_NAMES.media
+                  ? handoutOn(t)
+                    ? APP_NAMES.notes
+                    : APP_NAMES.media
                   : t < DAY.researchOpen
                   ? S.desk.appName
                   : t < DAY.noteOpen
@@ -220,7 +228,7 @@ const transState = (t: number): TransState => {
 // 08a：音视频
 /** 字幕播放倍速：成片里一句一句地往下走（真实 1× 时一句要 3–5 秒，镜头里来不及看） */
 const PLAY_RATE = 4;
-/** 跳转之后放慢：被点的那一句多停一会儿，镜头收起前才走到下一句 */
+/** 跳转之后放慢：被点的那一句多停一会儿 */
 const PLAY_RATE_AFTER = 2;
 const typed = (t: number) => {
   const q = '音视频';
@@ -266,20 +274,65 @@ const dialogState = (t: number): DialogState => {
   };
 };
 const mediaPos = (t: number) =>
-  t < DAY.mediaPlay + 0.01 ? 0 : t < DAY.mediaSeek + 0.01 ? (t - DAY.mediaPlay - 0.01) * PACE * PLAY_RATE : SEGMENTS[SEEK_SEG][0] + (t - DAY.mediaSeek - 0.01) * PACE * PLAY_RATE_AFTER;
-const studyState = (t: number): StudyState => ({
-  enter: prog(t, DAY.mediaRow + 0.02, DAY.mediaRow + 0.08),
-  pos: mediaPos(t),
-  playing: t >= DAY.mediaPlay + 0.01,
-  // 指针移到播放器上控制条出现，点完播放移去右侧字幕后 150ms 淡出
-  controls: prog(t, DAY.mediaPlay - 0.12, DAY.mediaPlay - 0.08) * (1 - prog(t, DAY.mediaPlay + 0.3, DAY.mediaPlay + 0.38)),
-  playHover: t >= DAY.mediaPlay - 0.09 ? 1 : 0,
-  playPress: pressAt(t, DAY.mediaPlay),
-  segHover: t >= DAY.mediaSeek - 0.12 && t < DAY.mediaSeek + 0.3 ? SEEK_SEG : null,
-  segPress: pressAt(t, DAY.mediaSeek),
-  seekFlash: prog(t, DAY.mediaSeek + 0.005, DAY.mediaSeek + 0.07),
-  t: t * PACE,
-});
+  t < DAY.mediaPlay + 0.01 ? 0 : t < DAY.askSeek + 0.01 ? (t - DAY.mediaPlay - 0.01) * PACE * PLAY_RATE : ASK_SEEK_TO + (t - DAY.askSeek - 0.01) * PACE * PLAY_RATE_AFTER;
+/** 分区切换：点下即换（SegmentedControl） */
+const TAB_CLICKS: Array<[StudyTab, number]> = [
+  ['ask', DAY.askTab],
+  ['handout', DAY.handoutTab],
+  ['practice', DAY.practiceTab],
+];
+const hoverAt = (t: number, at: number, pre = 0.09, post = 0.03) => (t >= at - pre && t < at + post ? 1 : 0);
+const typedQ = (t: number) => {
+  const chars = [...ASK_QUESTION];
+  const k = prog(t, DAY.askType, DAY.askSend - 0.05);
+  return t < DAY.askSend + 0.01 ? chars.slice(0, Math.floor(chars.length * k)).join('') : '';
+};
+const handoutPhase = (t: number) => {
+  if (t < DAY.handoutGen + 0.01 || t >= DAY.handoutDone) return null;
+  const k = (t - DAY.handoutGen - 0.01) / (DAY.handoutDone - DAY.handoutGen - 0.01);
+  return HANDOUT_PHASES.reduce((cur, [p, at]) => (k >= at ? p : cur), HANDOUT_PHASES[0][0]);
+};
+const studyState = (t: number): StudyState => {
+  const tabHit = TAB_CLICKS.find(([, c]) => t >= c - 0.09 && t < c + 0.03);
+  return {
+    enter: prog(t, DAY.mediaRow + 0.02, DAY.mediaRow + 0.08),
+    pos: mediaPos(t),
+    playing: t >= DAY.mediaPlay + 0.01,
+    // 指针移到播放器上控制条出现，点完播放移去右侧分区后 150ms 淡出
+    controls: prog(t, DAY.mediaPlay - 0.12, DAY.mediaPlay - 0.08) * (1 - prog(t, DAY.mediaPlay + 0.24, DAY.mediaPlay + 0.32)),
+    playHover: t >= DAY.mediaPlay - 0.09 ? 1 : 0,
+    playPress: pressAt(t, DAY.mediaPlay),
+    seekFlash: prog(t, DAY.askSeek + 0.005, DAY.askSeek + 0.07),
+    t: t * PACE,
+    tab: TAB_CLICKS.reduce<StudyTab>((cur, [id, c]) => (t >= c + 0.01 ? id : cur), 'transcript'),
+    tabHover: tabHit ? tabHit[0] : null,
+    tabPress: tabHit ? pressAt(t, tabHit[1]) : 0,
+    askLayer: prog(t, DAY.askStart + 0.01, DAY.askStart + 0.06),
+    askStartHover: hoverAt(t, DAY.askStart),
+    askStartPress: pressAt(t, DAY.askStart),
+    typed: typedQ(t),
+    composerFocus: t >= DAY.askStart + 0.02,
+    sendPress: pressAt(t, DAY.askSend),
+    sent: prog(t, DAY.askSend + 0.01, DAY.askSend + 0.05),
+    thinking: t >= DAY.askSend + 0.04 && t < DAY.askAnswer,
+    answer: ANSWER_LEN * prog(t, DAY.askAnswer, DAY.askAnswer + 0.58),
+    chipHover: t >= DAY.askSeek - 0.1 && t < DAY.askSeek + 0.2 ? 1 : 0,
+    chipPress: pressAt(t, DAY.askSeek),
+    phase: handoutPhase(t),
+    genHover: hoverAt(t, DAY.handoutGen),
+    genPress: pressAt(t, DAY.handoutGen),
+    handoutK: prog(t, DAY.handoutDone, DAY.handoutDone + 0.06),
+    itemHover: hoverAt(t, DAY.handoutOpen, 0.1, 0.05),
+    itemPress: pressAt(t, DAY.handoutOpen),
+    pcHover: hoverAt(t, DAY.practiceCards),
+    pcPress: pressAt(t, DAY.practiceCards),
+    practiceLayer: prog(t, DAY.practiceCards + 0.01, DAY.practiceCards + 0.06),
+    cards: Math.max(0, (t - DAY.practiceCards - 0.06) / 0.11),
+    watchedMin: 1,
+  };
+};
+/** 讲义笔记：打开后停在开头，再往下滚到配图 */
+const handoutScroll = (t: number) => 300 * ease.inOutCubic(prog(t, DAY.handoutScroll, DAY.handoutScroll + 0.3));
 
 // 08：对话里的时间轴（打字、ask_user、任务面板、追问、论文下载）
 const RESEARCH_TL: ResearchTL = {
@@ -287,7 +340,8 @@ const RESEARCH_TL: ResearchTL = {
   type0: DAY.researchType,
   tab: DAY.researchTab,
   q0: DAY.researchTab + 0.04,
-  q1: DAY.researchSend - 0.08,
+  // 打完字停一拍再按发送（指针按下时问题已经打全）
+  q1: DAY.researchSend - 0.16,
   send: DAY.researchSend,
   ask: DAY.researchAsk,
   pick: DAY.researchPick,
@@ -472,9 +526,18 @@ const DAY_CAM: CamKey[] = [
   [DAY.mediaImported + 0.16, { x: 760, y: 500, zoom: 1.3 }, ease.inOutCubic],
   [DAY.mediaRow - 0.02, { x: 760, y: 500, zoom: 1.3 }, ease.linear],
   [DAY.mediaRow + 0.2, { x: 700, y: 590, zoom: 1.25 }, ease.inOutCubic],
-  [DAY.mediaPlay + 0.3, { x: 700, y: 590, zoom: 1.25 }, ease.linear],
-  [DAY.mediaSeek - 0.15, { x: 760, y: 570, zoom: 1.32 }, ease.inOutCubic],
-  [DAY.mediaMin - 0.25, { x: 765, y: 570, zoom: 1.33 }, ease.linear],
+  [DAY.mediaPlay + 0.2, { x: 700, y: 590, zoom: 1.25 }, ease.linear],
+  // 问答：播放器（跳转后换页）+ 右侧分区同在画内，左下角字幕落在播放器下方的黑边上
+  [DAY.askTab + 0.05, { x: 770, y: 560, zoom: 1.4 }, ease.inOutCubic],
+  [DAY.askSeek + 0.28, { x: 772, y: 560, zoom: 1.41 }, ease.linear],
+  // 讲义：推近分区 → 笔记窗弹开后转向讲义正文（左缘留给字幕）
+  [DAY.handoutTab + 0.12, { x: 1000, y: 520, zoom: 1.5 }, ease.inOutCubic],
+  [DAY.handoutOpen, { x: 1000, y: 522, zoom: 1.5 }, ease.linear],
+  [DAY.handoutOpen + 0.26, { x: 690, y: 600, zoom: 1.35 }, ease.inOutCubic],
+  [DAY.handoutClose - 0.1, { x: 692, y: 602, zoom: 1.36 }, ease.linear],
+  // 练习：回到分区，卡片在画内往下长
+  [DAY.handoutClose + 0.24, { x: 1000, y: 560, zoom: 1.45 }, ease.inOutCubic],
+  [DAY.mediaMin - 0.25, { x: 1000, y: 562, zoom: 1.46 }, ease.linear],
   [DAY.mediaMin + 0.2, FULL, ease.inOutCubic],
   [DAY.researchOpen + 0.1, FULL, ease.linear],
   // 08：空态输入框（技能命令补全）→ 消息与 ask_user 卡 → 任务面板 → 收起后整窗（侧栏 / 标题起名）→ 追问与论文下载卡
@@ -529,7 +592,22 @@ const PUPIL_PATH: Array<[number, number, number]> = (() => {
   const chatIcon = dockIconCenter('chat', runningAt(CHAT_CLICK));
   const filesIcon = dockIconCenter('files', runningAt(HUB_CLICK));
   const appsIcon = dockIconCenter('__apps__', runningAt(APPS_CLICK));
-  const md = { bili: mediaPt(LIB_PT.bili), row: mediaPt(LIB_PT.row(STUDY_PAGE)), play: mediaPt(STUDY_PT.play), seg: mediaPt(STUDY_PT.seg(SEEK_SEG)), seg3: mediaPt(STUDY_PT.seg(3)) };
+  const md = {
+    bili: mediaPt(LIB_PT.bili),
+    row: mediaPt(LIB_PT.row(STUDY_PAGE)),
+    play: mediaPt(STUDY_PT.play),
+    tabAsk: mediaPt(STUDY_PT.tab('ask')),
+    tabHandout: mediaPt(STUDY_PT.tab('handout')),
+    tabPractice: mediaPt(STUDY_PT.tab('practice')),
+    askStart: mediaPt(STUDY_PT.askStart),
+    send: mediaPt(STUDY_PT.send),
+    chip: mediaPt(ASK_CHIP_PT),
+    gen: mediaPt(STUDY_PT.handoutGen),
+    item: mediaPt(STUDY_PT.handoutItem),
+    cards: mediaPt(STUDY_PT.practiceCards),
+  };
+  const hoRed = { x: HANDOUT_RECT.x + trafficCenter(0).x, y: HANDOUT_RECT.y + trafficCenter(0).y };
+  const hoWheel = { x: HANDOUT_RECT.x + 900, y: HANDOUT_RECT.y + 560 };
   const yellow = { x: MEDIA_RECT.x + trafficCenter(1).x, y: MEDIA_RECT.y + trafficCenter(1).y };
   return [
     // 今日：日程小组件「待办 →」→ 第 2 行 → ▷ 开始专注 → 双击桌面空白 → 双击「题目集」
@@ -612,10 +690,30 @@ const PUPIL_PATH: Array<[number, number, number]> = (() => {
     [DAY.mediaRow + 0.05, md.row.x, md.row.y],
     [DAY.mediaPlay - 0.07, md.play.x, md.play.y],
     [DAY.mediaPlay + 0.05, md.play.x, md.play.y],
-    [DAY.mediaPlay + 0.36, md.seg3.x + 40, md.seg3.y + 6],
-    [DAY.mediaSeek - 0.07, md.seg.x, md.seg.y],
-    [DAY.mediaSeek + 0.06, md.seg.x, md.seg.y],
-    [DAY.mediaSeek + 0.4, md.seg.x + 30, md.seg.y + 40],
+    [DAY.askTab - 0.07, md.tabAsk.x, md.tabAsk.y],
+    [DAY.askTab + 0.05, md.tabAsk.x, md.tabAsk.y],
+    [DAY.askStart - 0.07, md.askStart.x, md.askStart.y],
+    [DAY.askStart + 0.05, md.askStart.x, md.askStart.y],
+    [DAY.askSend - 0.07, md.send.x, md.send.y],
+    [DAY.askSend + 0.05, md.send.x, md.send.y],
+    [DAY.askAnswer + 0.3, md.send.x - 40, md.send.y - 90],
+    [DAY.askSeek - 0.07, md.chip.x, md.chip.y],
+    [DAY.askSeek + 0.06, md.chip.x, md.chip.y],
+    [DAY.handoutTab - 0.07, md.tabHandout.x, md.tabHandout.y],
+    [DAY.handoutTab + 0.05, md.tabHandout.x, md.tabHandout.y],
+    [DAY.handoutGen - 0.07, md.gen.x, md.gen.y],
+    [DAY.handoutGen + 0.05, md.gen.x, md.gen.y],
+    [DAY.handoutOpen - 0.08, md.item.x, md.item.y],
+    [DAY.handoutOpen + 0.05, md.item.x, md.item.y],
+    [DAY.handoutScroll - 0.04, hoWheel.x, hoWheel.y],
+    [DAY.handoutScroll + 0.34, hoWheel.x + 6, hoWheel.y + 4],
+    [DAY.handoutClose - 0.08, hoRed.x, hoRed.y],
+    [DAY.handoutClose + 0.05, hoRed.x, hoRed.y],
+    [DAY.practiceTab - 0.07, md.tabPractice.x, md.tabPractice.y],
+    [DAY.practiceTab + 0.05, md.tabPractice.x, md.tabPractice.y],
+    [DAY.practiceCards - 0.07, md.cards.x, md.cards.y],
+    [DAY.practiceCards + 0.05, md.cards.x, md.cards.y],
+    [DAY.practiceCards + 0.4, md.cards.x + 60, md.cards.y + 180],
     [DAY.mediaMin - 0.07, yellow.x, yellow.y],
     [DAY.mediaMin + 0.06, yellow.x, yellow.y],
     [CHAT_CLICK - 0.06, chatIcon.x, chatIcon.y],
@@ -678,7 +776,16 @@ const CLICKS = [
   DAY.mediaImport,
   DAY.mediaRow,
   DAY.mediaPlay,
-  DAY.mediaSeek,
+  DAY.askTab,
+  DAY.askStart,
+  DAY.askSend,
+  DAY.askSeek,
+  DAY.handoutTab,
+  DAY.handoutGen,
+  DAY.handoutOpen,
+  DAY.handoutClose,
+  DAY.practiceTab,
+  DAY.practiceCards,
   DAY.mediaMin,
   CHAT_CLICK,
   RESEARCH_TL.focus,
@@ -767,6 +874,8 @@ const Chrome = ({ t, running }: { t: number; running: string[] }) => {
   if (bar.due > 0) badges.flashcards = { kind: 'count', value: bar.due };
   if (bar.pomo) badges.pomodoro = { kind: 'dot' };
   const indicator = Object.fromEntries(Object.entries(FIRST_OPEN).map(([id, at]) => [id, (t - at) / IND_S]));
+  // 笔记先在 08a 为讲义开过一次（随后关掉），08 再开时指示点重新入场
+  if (t < DAY.noteOpen) indicator.notes = (t - HO_OPEN) / IND_S;
   const bounce = { todo: dockBounceAt(t, DAY.todayOpen), media: dockBounceAt(t, DAY.mediaOpen), files: dockBounceAt(t, DAY.hubIndex) };
   const tip = dockTipAt(t);
   const press = { __apps__: pressAt(t, APPS_CLICK, 0.07), chat: pressAt(t, CHAT_CLICK, 0.07), files: pressAt(t, HUB_CLICK, 0.07) };
@@ -799,6 +908,7 @@ export const SceneDay = ({ t }: { t: number }) => {
   const media = winLife(t, MEDIA_RECT, { openAt: DAY.mediaOpen, openFrom: null, minimizeAt: MEDIA_MIN, minimizeTo: icon('media', MEDIA_MIN) });
   const chat = winLife(t, CHAT_RECT, { restoreAt: DAY.researchOpen, restoreFrom: icon('chat', DAY.researchOpen) });
   const notes = winLife(t, NOTES_RECT, { openAt: DAY.noteOpen, openFrom: null });
+  const handout = winLife(t, HANDOUT_RECT, { openAt: HO_OPEN, openFrom: null, closeAt: HO_CLOSE });
   const hub = winLife(t, HUB_RECT, { openAt: DAY.hubIndex, openFrom: icon('files', DAY.hubIndex) });
   // 笔记窗在点回对话窗之前压在对话窗上面，之后退到下面
   const notesEl = notes.visible ? (
@@ -845,9 +955,14 @@ export const SceneDay = ({ t }: { t: number }) => {
             </WbWindow>
           ) : null}
           {media.visible ? (
-            <WbWindow tk={tk} rect={MEDIA_RECT} title={t < DAY.mediaRow + 0.02 ? APP_NAMES.media : `${APP_NAMES.media} · ${pageName(STUDY_PAGE)}`} style={media.style}>
+            <WbWindow tk={tk} rect={MEDIA_RECT} focused={!handoutOn(t)} title={t < DAY.mediaRow + 0.02 ? APP_NAMES.media : `${APP_NAMES.media} · ${pageName(STUDY_PAGE)}`} style={media.style}>
               {t < DAY.mediaRow + 0.08 ? <MediaLibrary tk={tk} s={libraryState(t)} /> : null}
               {t >= DAY.mediaRow + 0.02 ? <MediaStudy tk={tk} s={studyState(t)} /> : null}
+            </WbWindow>
+          ) : null}
+          {handout.visible ? (
+            <WbWindow tk={tk} rect={HANDOUT_RECT} toolbar={<NotesTitlebar saving={false} title={HANDOUT_TITLE} />} style={handout.style}>
+              <HandoutNotesView scroll={handoutScroll(t)} />
             </WbWindow>
           ) : null}
           <AppsPanel tk={tk} s={appsPanelState(t)} />
@@ -877,6 +992,7 @@ export const SceneDay = ({ t }: { t: number }) => {
           <Chrome t={t} running={running} />
           {t >= DAY.mediaBili && t < DAY.mediaImported + 0.1 ? <BiliDialog tk={tk} s={dialogState(t)} /> : null}
           <ExamToast tk={tk} life={t - TOAST_AT} dur={TOAST_DUR} />
+          <ExamToast tk={tk} life={t - DAY.handoutDone - 0.02} dur={DAY.handoutOpen - DAY.handoutDone + 0.3} text={S.media.handout.saved(HANDOUT_TITLE)} action={S.media.handout.openNote} />
         </div>
       </CameraView>
       <Pupil x={ps.x} y={ps.y} t={t} opacity={pOpacity} clicks={CLICKS} />

@@ -79,7 +79,7 @@ export const EndCard = ({ t }: { t: number }) => {
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 16, fontSize: 20, color: brand.ink3 }}>
           <span style={{ fontFamily: font.mono, color: brand.ink2 }}>deepstudent.cn</span>
           <span style={{ width: 5, height: 5, borderRadius: '50%', background: brand.accent }} />
-          <span>开源（AGPL-3.0）</span>
+          <span>开源</span>
           <span style={{ width: 5, height: 5, borderRadius: '50%', background: brand.accent }} />
           <span>本地优先</span>
         </span>

@@ -1,4 +1,5 @@
 // 用法：node scripts/stills.mjs 1.0 2.4 3.8 …（单位：脚本秒，与场景代码里的时间一致）→ out/stills/t-XX.XX.png
+// STILL_DIR=out/xxx 换输出目录；STILL_SCALE=1 出整幅（默认 0.5）。
 const PACE = 2; // 与 src/lib/time.ts 的 PACE 保持一致
 import { bundle } from '@remotion/bundler';
 import { renderStill, selectComposition } from '@remotion/renderer';
@@ -14,7 +15,7 @@ if (times.length === 0) {
   process.exit(1);
 }
 const scale = Number(process.env.STILL_SCALE ?? 0.5);
-const outDir = path.join(root, 'out', 'stills');
+const outDir = process.env.STILL_DIR ? path.resolve(process.env.STILL_DIR) : path.join(root, 'out', 'stills');
 fs.mkdirSync(outDir, { recursive: true });
 
 const serveUrl = await bundle({

@@ -29,43 +29,52 @@ export type Super = {
 const CENTER = { left: 0, right: 0, top: 380 } as const;
 
 export const SUPERS: Super[] = [
-  // 开场立题，片尾口号「只专注学习本身就够了」回收
-  { s: 0.45, e: 2.15, text: '学习本身，\n已经够难了。', kind: 'title', pos: { left: 150, top: 380 } },
-  { s: 3.3, e: 5.6, text: '选中原文，即可提问。', sub: '选中的段落自动作为上下文。', kind: 'feature' },
+  // 立题：前一句说难处，后一句把其余的事交出去；片尾口号「只专注学习本身就够了，剩下的都交给我」回收（Agent 最后才以「我」开口）
+  { s: 0.4, e: 1.4, text: '学习本身，\n已经够难了。', kind: 'title', pos: { left: 150, top: 380 } },
+  // 镜头 2.1 才推进书页，左侧留白到 2.3 为止
+  { s: 1.5, e: 2.3, text: '其余的事，\n交给它。', kind: 'title', pos: { left: 150, top: 380 } },
+  // 第一幕：读懂 → 记住
+  { s: 2.45, e: 3.4, text: '读不懂，就问它。', kind: 'feature' },
+  { s: 3.5, e: 5.6, text: '选中原文，即可提问。', kind: 'feature' },
   // 命中纸片含学习记忆（retrieval/beats.ts 的 HITS）
   { s: 6.0, e: 8.7, text: '它先翻遍你的资料，再作答。', sub: '检索范围覆盖教材、笔记、错题与学习记忆。', kind: 'feature' },
   { s: 8.9, e: 10.9, text: '每一处引用，都可回溯原文。', kind: 'feature' },
-  { s: 11.4, e: 13.95, text: '思维导图，由它直接画好。', sub: '生成后可随时切换导图结构。', kind: 'feature' },
-  { s: 14.0, e: 15.35, text: '导图一键挖空，转为背诵材料。', kind: 'feature' },
-  // 与 practice/beats.ts 的 ANKI_CARDS 张数一致
-  { s: 15.5, e: 16.9, text: '讲解之余，它已做好 12 张卡片。', kind: 'feature' },
+  { s: 11.4, e: 13.95, text: '思维导图，由它直接画好。', kind: 'feature' },
+  { s: 14.0, e: 15.3, text: '导图一键挖空，转为背诵材料。', kind: 'feature' },
+  // 张数画面里的卡片块已经写了 4 遍，字幕不再重复；16.5 前收掉——之后窗口缩进 Dock、夜色桌面露出来，浅色柔光底会压成一块白斑
+  { s: 15.4, e: 16.5, text: '卡片，它也一并做好了。', kind: 'feature' },
   { s: 17.0, e: 19.2, text: '卡片自动入队，FSRS 安排每一次复习。', kind: 'feature', tone: 'dark' },
-  { s: 19.6, e: 22.3, text: '薄弱之处，优先复习。', sub: '掌握越不牢固的内容，再次出现得越早。', kind: 'feature', tone: 'dark' },
-  // 第二幕：第二天，白天的学习桌面
+  { s: 19.6, e: 22.3, text: '薄弱之处，优先复习。', kind: 'feature', tone: 'dark' },
+  // 第一幕收束：一句话交代它接走了什么
+  { s: 22.4, e: 23.85, text: '背什么、何时复习，它来安排。', kind: 'feature', tone: 'dark' },
+  // 第二幕：第二天，白天的学习桌面——练习与输出
   { s: 24.0, e: 25.9, text: '今天的安排，它已经列好。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
-  { s: 26.0, e: 28.9, text: '复习与待办，汇总在同一张清单。', sub: '可从清单直接开启番茄钟。', kind: 'feature' },
-  { s: 30.4, e: 33.1, text: '整份试卷，自动拆分为题目。', sub: '拖入 PDF，自动识别题干与选项。', kind: 'feature' },
-  // 答错时后端自动建复习计划、下次复习日 = 今天（题目进复习，不是「知识点」）
-  { s: 34.35, e: 36.0, text: '错题自动加入今日复习。', kind: 'feature' },
-  { s: 36.05, e: 37.85, text: '它逐步讲清错因。', kind: 'feature' },
-  { s: 38.4, e: 41.1, text: '作文按考试标准逐项评分。', sub: '分项成绩、雷达图与逐条评语一并给出。', kind: 'feature' },
+  { s: 26.0, e: 28.9, text: '复习与待办，汇总在同一张清单。', kind: 'feature' },
+  { s: 30.4, e: 33.1, text: '整份试卷，自动拆分为题目。', kind: 'feature' },
+  // 判错时画面顶部的通知已经写着「第 7 题已加入今日复习」，字幕不再复述，留给 AI 解析
+  { s: 35.0, e: 37.85, text: '它逐步讲清错因。', kind: 'feature' },
+  { s: 38.4, e: 41.1, text: '作文按考试标准逐项评分。', kind: 'feature' },
   { s: 41.25, e: 42.95, text: '逐句润色，改动之处清晰标注。', kind: 'feature' },
   { s: 43.1, e: 45.5, text: '整篇翻译，原文译文逐段对照。', kind: 'feature' },
-  // 0.10.2 音视频：B 站链接导入（不下载视频、应用内播放，见 BilibiliLinkDialog 文案）→ 点字幕跳转
-  { s: 46.2, e: 48.28, text: '网课和讲座，它陪你一起学。', sub: '粘贴 B 站链接即导入字幕，视频无需下载，在应用内播放。', kind: 'feature' },
-  { s: 49.2, e: 50.8, text: '点一句字幕，回到那一刻。', sub: '字幕随播放逐句高亮；它回答中引用的时刻同样可点击跳转。', kind: 'feature' },
-  { s: 51.3, e: 54.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
+  // 音视频：B 站链接导入（不下载视频、应用内播放，见 BilibiliLinkDialog 文案）→ 问答（时间引用可跳转）→ 讲义 → 练习
+  { s: 46.15, e: 47.95, text: '网课和讲座，它陪你一起学。', sub: '粘贴 B 站链接即导入字幕，视频无需下载，在应用内播放。', kind: 'feature' },
+  { s: 48.6, e: 50.45, text: '看不懂的那一段，直接问。', sub: '回答引用到具体时刻，点开即跳回。', kind: 'feature' },
+  { s: 50.62, e: 52.3, text: '一节课，整理成一份图文讲义。', kind: 'feature' },
+  { s: 52.52, e: 53.95, text: '再从字幕出题、做卡片。', kind: 'feature' },
+  { s: 54.3, e: 57.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
   // 笔记窗 clean 时 AI 直接改、改动处渐隐高亮，顶部留「撤销本次修改」
-  { s: 54.5, e: 56.25, text: '它直接修改笔记，每处改动均可撤销。', kind: 'feature' },
-  { s: 56.4, e: 58.85, text: '论文由它下载入库。', sub: '导入即建立索引，可在后续提问中引用。', kind: 'feature' },
+  { s: 57.5, e: 59.25, text: '它直接修改笔记，每处改动均可撤销。', kind: 'feature' },
+  { s: 59.45, e: 60.4, text: '论文由它下载入库。', kind: 'feature' },
+  // 第二幕收束
+  { s: 60.5, e: 62.08, text: '批改、讲解、翻译、查资料，它都接下了。', kind: 'feature' },
   // 第三幕：越用越懂你
-  { s: 59.1, e: 60.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
-  { s: 61.1, e: 62.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
+  { s: 62.2, e: 63.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
+  { s: 64.1, e: 65.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
   // 与同一时刻画面里技能窗的「全部 56 · 内置 56」对得上
-  { s: 63.0, e: 65.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
-  { s: 65.4, e: 67.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
+  { s: 66.0, e: 68.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
+  { s: 68.4, e: 70.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },
   // 收尾
-  { s: 67.3, e: 74.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },
+  { s: 70.3, e: 77.55, text: '从一页纸，到一整座知识库。', kind: 'title', pos: { left: 0, right: 0, top: 112 }, align: 'center' },
 ];
 
 /** 逐字从一道看不见的基线下升起（遮罩揭示），收尾时整行轻轻下沉淡出。 */
@@ -164,10 +173,11 @@ const SuperView = ({ sp, t }: { sp: Super; t: number }) => {
   const k = prog(t, sp.s - 0.05, sp.s + 0.3, ease.brand);
   const out = prog(t, sp.e - 0.3, sp.e, ease.inCubic);
   const subK = prog(t, sp.s + 0.15, sp.s + 0.45, ease.brand);
-  const w = Math.max(1000, sp.text.length * 44 + 560, (sp.sub?.length ?? 0) * 26 + 560);
+  // 柔光底按字数放宽，实心段覆盖到句末（长句不再让背后的正文透出来）
+  const w = Math.max(1040, sp.text.length * 50 + 640, (sp.sub?.length ?? 0) * 28 + 640);
   return (
     <>
-      <Scrim at="bl" w={w} h={sp.sub ? 370 : 310} color={ground} edge={groundEdge} solid={sp.sub ? 0.42 : 0.3} opacity={k * (1 - out)} />
+      <Scrim at="bl" w={w} h={sp.sub ? 380 : 320} color={ground} edge={groundEdge} solid={sp.sub ? 0.46 : 0.38} opacity={k * (1 - out)} />
       <div style={{ position: 'absolute', left: 96, bottom: 92, fontFamily: font.ui, color: ink }}>
         <div style={{ fontSize: 40, fontWeight: 600, letterSpacing: '0.03em' }}>
           <MaskIn text={sp.text} t={t} s={sp.s + 0.03} e={sp.e} stagger={0.022} />

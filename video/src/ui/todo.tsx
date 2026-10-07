@@ -53,6 +53,9 @@ export const LIST_COLOR = { inbox: '#06b6d4', math: 'rgb(14, 165, 233)', english
 
 export type TodoItem = { title: string; prio: Prio; time: string; list: keyof typeof LIST_COLOR; listName: string; pomos?: [number, number] };
 
+/** 第二天清晨的到期闪卡：昨晚 12 张新卡评了 3 张（重来 1 分钟、良好 10 分钟、简单 15 天）→ 9 张没复习的 + 2 张学习步 = 11 */
+export const MORNING_DUE = 11;
+
 export const TODO_ITEMS: TodoItem[] = [
   { title: '复习到期卡片', prio: 'medium', time: '07:30', list: 'inbox', listName: S.todo.views.inbox },
   { title: '完成高数期中模拟卷', prio: 'high', time: '09:00', list: 'math', listName: '高等数学', pomos: [0, 2] },
@@ -463,8 +466,8 @@ export const TodoApp = ({ tk, s }: { tk: Tokens; s: TodoState }) => {
           <span style={{ position: 'absolute', left: 16.5, top: 18.8, display: 'inline-flex' }}>
             <Brain size={16} color={tk.info} />
           </span>
-          <span style={{ position: 'absolute', left: 49, top: 8.8, fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: tk.foreground, whiteSpace: 'nowrap' }}>{S.todo.reviewTitle(12)}</span>
-          <span style={{ position: 'absolute', left: 49, top: 28.3, fontSize: 11, lineHeight: '16.5px', color: tk.mutedFg }}>{S.todo.reviewCards(12)}</span>
+          <span style={{ position: 'absolute', left: 49, top: 8.8, fontSize: 13, fontWeight: 500, lineHeight: '19.5px', color: tk.foreground, whiteSpace: 'nowrap' }}>{S.todo.reviewTitle(MORNING_DUE)}</span>
+          <span style={{ position: 'absolute', left: 49, top: 28.3, fontSize: 11, lineHeight: '16.5px', color: tk.mutedFg }}>{S.todo.reviewCards(MORNING_DUE)}</span>
           <span style={{ position: 'absolute', left: 171.6, top: 18.5, display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 11, lineHeight: '16.5px', color: tk.mutedFg }}>
             {S.todo.reviewAction}
             <ArrowRight size={12} />

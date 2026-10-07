@@ -138,7 +138,7 @@ const CUES: Cue[] = [
   [DAY.showDesk2 + DBL, 'click', 0.26],
   [DAY.showDesk2 + DBL + 0.03, 'whoosh-down', 0.2],
   // 08a 音视频：Dock「全部应用」→ 打「音视频」→ Enter 开窗 →「B 站链接」→ 粘贴 → 解析 → 导入 5 个分 P（逐 P 一声）→
-  // 点 P4 → 播放 → 点字幕跳转 → 黄灯收进 Dock
+  // 点 P4 → 播放 → 问答 / 讲义 / 练习 → 黄灯收进 Dock
   [DAY.mediaApps, 'click', 0.28],
   [DAY.mediaApps + 0.02, 'pop', 0.18],
   ...Array.from({ length: 3 }, (_, i): Cue => [DAY.mediaType + i * 0.06, 'tick', 0.12]),
@@ -156,8 +156,28 @@ const CUES: Cue[] = [
   [DAY.mediaRow, 'click', 0.3],
   [DAY.mediaRow + 0.03, 'whoosh-up', 0.16],
   [DAY.mediaPlay, 'click', 0.3],
-  [DAY.mediaSeek, 'click', 0.33],
-  [DAY.mediaSeek + 0.02, 'flip', 0.2],
+  // 问答：分区 → 就这门课提问 → 打字 → 发送 → 回答流出 → 点时间引用跳转
+  [DAY.askTab, 'click', 0.26],
+  [DAY.askStart, 'click', 0.3],
+  [DAY.askStart + 0.03, 'pop', 0.16],
+  ...Array.from({ length: 6 }, (_, i): Cue => [DAY.askType + 0.02 + i * 0.05, 'tick', 0.1]),
+  [DAY.askSend, 'click', 0.3],
+  [DAY.askSend + 0.02, 'whoosh-up', 0.14],
+  [DAY.askAnswer, 'note-mid', 0.18],
+  [DAY.askSeek, 'click', 0.33],
+  [DAY.askSeek + 0.02, 'flip', 0.2],
+  // 讲义：分区 → 生成讲义（阶段逐个推进）→ 完成 → 打开笔记 → 滚动 → 红灯关窗
+  [DAY.handoutTab, 'click', 0.26],
+  [DAY.handoutGen, 'click', 0.3],
+  ...[0.3, 0.44, 0.56, 0.68, 0.8].map((k): Cue => [DAY.handoutGen + 0.01 + (DAY.handoutDone - DAY.handoutGen - 0.01) * k, 'tick', 0.1]),
+  [DAY.handoutDone, 'note-high', 0.22],
+  [DAY.handoutOpen, 'click', 0.3],
+  [DAY.handoutOpen + 0.03, 'pop', 0.24],
+  [DAY.handoutClose, 'click', 0.26],
+  // 练习：分区 → 制作闪卡 → 卡片逐张出现
+  [DAY.practiceTab, 'click', 0.26],
+  [DAY.practiceCards, 'click', 0.3],
+  ...Array.from({ length: 4 }, (_, i): Cue => [DAY.practiceCards + 0.06 + (i + 0.5) * 0.11, 'tick', 0.12]),
   [DAY.mediaMin, 'click', 0.28],
   [DAY.mediaMin + 0.03, 'whoosh-down', 0.18],
   // 08 调研：Dock 还原对话 → 点进输入框打 /res → 发出 → 选深度、提交 → 6 步逐条打勾 → 任务完成 → 收起面板 →

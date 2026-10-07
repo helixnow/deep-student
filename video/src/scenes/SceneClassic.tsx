@@ -191,7 +191,8 @@ const REVIEW_BTN = (() => {
 
 export const CLASSIC_CAM: CamKey[] = [
   [0, { x: 1085, y: 560, zoom: 0.9 }],
-  [2.0, { x: 1160, y: 530, zoom: 1.02 }, ease.inOutCubic],
+  // 2.1 才推进：左侧留白给开场第二句「其余的事，交给它。」
+  [2.1, { x: 1160, y: 530, zoom: 1.02 }, ease.inOutCubic],
   [2.5, { x: SEL.x + SEL.w / 2, y: SEL.y + 90, zoom: 1.85 }, ease.inOutCubic],
   [3.0, { x: SEL.x + SEL.w / 2 + 10, y: SEL.y + 104, zoom: 1.8 }, ease.linear],
   [3.6, { x: CW.w / 2, y: CW.h / 2, zoom: 1.0 }, ease.outCubic],
