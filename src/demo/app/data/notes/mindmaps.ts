@@ -41,7 +41,8 @@ function n(
   return node;
 }
 
-const EIGEN_ROOT = n('root', '特征值与特征向量', [
+// 中心主题即导图标题（打开后窗口 / 标签页标题跟随中心主题）
+const EIGEN_ROOT = n('root', '第 5 章 · 特征值与特征向量', [
   n('def', '基本概念', [
     n('def-1', '定义：$A\\boldsymbol{x}=\\lambda\\boldsymbol{x}$（$\\boldsymbol{x}$ 为非零向量）'),
     n('def-2', '特征方程 $\\lvert\\lambda E-A\\rvert=0$'),
@@ -72,7 +73,7 @@ const EIGEN_ROOT = n('root', '特征值与特征向量', [
   ]),
 ]);
 
-const DP_ROOT = n('root', '数据并行训练', [
+const DP_ROOT = n('root', '第 3 章 · 数据并行训练', [
   n('n1', '基本范式', [
     n('n1-1', 'mini-batch 切分到 K 个 worker'),
     n('n1-2', '参数服务器 / AllReduce 聚合梯度', [], { blanks: ['AllReduce'] }),
@@ -152,6 +153,12 @@ export function createDemoMindmap(title: string, content?: string): DemoMindmapR
   };
   mindmaps.set(id, item);
   return item.meta;
+}
+
+/** 窄屏（手机宽度）先开大纲视图：画布缩到一屏时字太小 */
+export function setDemoMindmapDefaultView(id: string, view: 'mindmap' | 'outline'): void {
+  const item = mindmaps.get(id);
+  if (item) item.meta = { ...item.meta, defaultView: view };
 }
 
 export function renameDemoMindmap(id: string, title: string): boolean {

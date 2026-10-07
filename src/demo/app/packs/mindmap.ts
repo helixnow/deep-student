@@ -7,16 +7,25 @@
  * 的独立导图窗口，省掉笔记编辑器（Milkdown）的下载。
  */
 import type { DemoAppPack } from '../types';
-import { MM_EIGEN_ID, handleDemoMindmaps } from '../data/notes/mindmaps';
+import { MM_EIGEN_ID, handleDemoMindmaps, setDemoMindmapDefaultView } from '../data/notes/mindmaps';
 import { patchSettingsStrings } from '../data/notes/i18nPatch';
 
 const pack: DemoAppPack = {
   title: '思维导图',
-  load: () => import('@/features/workbench/apps/mindmap/MindmapAppWindow').then((m) => m.default),
+  load: async () => {
+    const [{ default: MindmapAppWindow }, { withNotifications }] = await Promise.all([
+      import('@/features/workbench/apps/mindmap/MindmapAppWindow'),
+      import('./notes/withNotifications'),
+    ]);
+    return withNotifications(MindmapAppWindow);
+  },
   instanceKey: MM_EIGEN_ID,
   handle: handleDemoMindmaps,
   namespaces: ['common', 'mindmap', 'workbench', 'app_menu'],
-  prepare: patchSettingsStrings,
+  prepare: async () => {
+    if (window.innerWidth < 600) setDemoMindmapDefaultView(MM_EIGEN_ID, 'outline');
+    await patchSettingsStrings();
+  },
 };
 
 export default pack;
