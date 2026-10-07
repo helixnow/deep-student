@@ -58,11 +58,22 @@ jobs:
           if [ -z "$LABEL" ]; then
             if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then LABEL="$REF"; else LABEL="${REF//\//-}-${SHA:0:9}"; fi
           fi
-          CURRENT=$(curl -fsS "$DEMO_BASE_URL/latest.json?t=$(date +%s)" 2>/dev/null | jq -r '.version // empty' || true)
+          LIVE=$(curl -fsS "$DEMO_BASE_URL/latest.json?t=$(date +%s)" 2>/dev/null || echo '{}')
+          CURRENT=$(jq -r '.version // empty' <<<"$LIVE")
+          LIVE_SHA=$(jq -r '.commit // empty' <<<"$LIVE")
           if [ "$CURRENT" = "$LABEL" ] && [ "$FORCE" != "true" ]; then
             echo "Demo $LABEL is already live."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          # 自动触发（没指定 ref）时，线上演示若是从已经包含这个正式版的更新提交手动发布的，就不倒退回去
+          if [ -z "$INPUT_REF" ] && [ -n "$LIVE_SHA" ] && [ "$FORCE" != "true" ]; then
+            RELATION=$(gh api "repos/$GH_REPO/compare/$SHA...$LIVE_SHA" --jq .status 2>/dev/null || true)
+            if [ "$RELATION" = "ahead" ] || [ "$RELATION" = "identical" ]; then
+              echo "Live demo $CURRENT ($LIVE_SHA) already contains $REF; nothing to publish."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
           fi
           echo "Publishing demo $LABEL from $REF ($SHA); live: ${CURRENT:-none}"
           { echo "skip=false"; echo "ref=$SHA"; echo "label=$LABEL"; } >> "$GITHUB_OUTPUT"
