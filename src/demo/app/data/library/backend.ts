@@ -857,6 +857,9 @@ export function createLibraryBackend(): LibraryBackend {
           ? { successCount: pending.length, failCount: 0, total: pending.length }
           : { successCount: pending.length, failCount: 0, totalProcessed: pending.length, errors: [] };
       }
+      // 删除前提示「被 N 个对话引用」：演示资料没有被对话引用
+      case 'vfs_get_resource_ref_count':
+        return 0;
       case 'memory_get_config':
         return {
           memoryRootFolderId: null,
