@@ -16,6 +16,23 @@ function handleTodayLearning(cmd: string, _args: DemoArgs): unknown {
   return handleProductivity(cmd, _args);
 }
 
+const en = demoLang === 'en-US';
+const SETTINGS_STRINGS = {
+  mcp_server_list: { builtinServerName: tr('内置工具', 'Built-in Tools') },
+  automation: {
+    action_type: { notify: tr('通知 + 待办', 'Notification + todo'), agent_turn: tr('Agent 任务', 'Agent task') },
+    create: { capacity_full: tr('已达上限（{{max}} 个），请先删除或停用现有任务', 'Capacity reached ({{max}}). Delete or disable an existing automation first.') },
+    delete: { heartbeat_blocked: tr('系统心跳任务不可删除，可停用', 'The system heartbeat automation cannot be deleted; you can disable it instead.') },
+    errors: {
+      desktop_only: tr('自动化管理需要 Deep Student 桌面应用。', 'Automation management requires the Deep Student desktop app.'),
+      invalid_response: tr('自动化列表返回了无效数据。', 'The automation list returned invalid data.'),
+    },
+    weekdays: Object.fromEntries(
+      (en ? ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] : ['日', '一', '二', '三', '四', '五', '六']).map((d, i) => [String(i), d]),
+    ),
+  },
+};
+
 let todoStore: typeof import('@/features/todo/stores/useTodoStore').useTodoStore | null = null;
 
 const pack: DemoAppPack = {
@@ -27,9 +44,9 @@ const pack: DemoAppPack = {
     'pomodoro-storage': pomodoroStorageSeed(),
   },
   async prepare() {
-    // 待办窗口间接读到 MCP 内置服务器的显示名：只补这一条，免得为它下整个 settings 文案包
+    // 待办窗口借用了 settings 命名空间里的几条文案：只补这几条，免得为它下整个 settings 文案包（150KB）
     const { default: i18n } = await import('@/i18n');
-    i18n.addResource(demoLang, 'settings', 'mcp_server_list.builtinServerName', tr('内置工具', 'Built-in Tools'));
+    i18n.addResourceBundle(demoLang, 'settings', SETTINGS_STRINGS, true, false);
     const { useTodoStore } = await import('@/features/todo/stores/useTodoStore');
     useTodoStore.getState().setViewFilter('today');
     todoStore = useTodoStore;
