@@ -993,7 +993,8 @@ pub async fn rename_exam_sheet_session(
         .update_exam_sheet_cards(UpdateExamSheetCardsRequest {
             session_id: request.session_id.clone(),
             cards: None,
-            exam_name: request.exam_name.clone(),
+            // 重命名请求里 exam_name 为空 = 清空名称；用空串显式表达（None 表示不改名）
+            exam_name: Some(request.exam_name.clone().unwrap_or_default()),
             create_cards: None,
             delete_card_ids: None,
         })

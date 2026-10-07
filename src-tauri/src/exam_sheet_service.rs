@@ -686,18 +686,12 @@ impl ExamSheetService {
             }
         }
 
-        // 新名称处理
-        let sanitized_exam_name = exam_name.and_then(|name| Self::trim_owned(&name));
-
-        if let Some(ref name) = sanitized_exam_name {
-            if detail.summary.exam_name.as_ref() != Some(name) {
-                detail.summary.exam_name = Some(name.clone());
-                detail.preview.exam_name = Some(name.clone());
-                any_card_modified = true;
-            }
-        } else if detail.summary.exam_name.is_some() {
-            detail.summary.exam_name = None;
-            detail.preview.exam_name = None;
+        // 新名称处理：只有请求里带了 exam_name 才动名称（空白串 = 清空名称）
+        if apply_exam_name_update(
+            &mut detail.summary.exam_name,
+            &mut detail.preview.exam_name,
+            exam_name,
+        ) {
             any_card_modified = true;
         }
 
@@ -1702,5 +1696,77 @@ impl ExamSheetService {
             .map_err(|e| AppError::validation(format!("解析 LLM 响应失败: {}", e)))?;
 
         Ok(questions)
+    }
+}
+
+/// 按请求更新题目集名称，返回是否有变化。
+///
+/// `requested` 为 None 表示调用方没打算改名（只删题 / 改题），名称保持不变；
+/// 为空白串表示清空名称。之前把「没传」也当成清空：识别导入完成页取消勾选
+/// 题目（只删题）后，题目集名称被抹掉，资源库里只剩 `exam_xxx` 这种 ID。
+fn apply_exam_name_update(
+    summary_name: &mut Option<String>,
+    preview_name: &mut Option<String>,
+    requested: Option<String>,
+) -> bool {
+    let Some(raw_name) = requested else {
+        return false;
+    };
+    match ExamSheetService::trim_owned(&raw_name) {
+        Some(name) => {
+            if summary_name.as_ref() == Some(&name) {
+                return false;
+            }
+            *summary_name = Some(name.clone());
+            *preview_name = Some(name);
+            true
+        }
+        None => {
+            if summary_name.is_none() {
+                return false;
+            }
+            *summary_name = None;
+            *preview_name = None;
+            true
+        }
+    }
+}
+
+#[cfg(test)]
+mod exam_name_update_tests {
+    use super::apply_exam_name_update;
+
+    #[test]
+    fn card_only_updates_keep_the_existing_name() {
+        let mut summary = Some("高数期中".to_string());
+        let mut preview = Some("高数期中".to_string());
+        assert!(!apply_exam_name_update(&mut summary, &mut preview, None));
+        assert_eq!(summary.as_deref(), Some("高数期中"));
+        assert_eq!(preview.as_deref(), Some("高数期中"));
+    }
+
+    #[test]
+    fn explicit_names_rename_and_blank_names_clear() {
+        let mut summary = Some("旧名".to_string());
+        let mut preview = Some("旧名".to_string());
+        assert!(apply_exam_name_update(
+            &mut summary,
+            &mut preview,
+            Some(" 新名 ".to_string())
+        ));
+        assert_eq!(summary.as_deref(), Some("新名"));
+        assert_eq!(preview.as_deref(), Some("新名"));
+        assert!(!apply_exam_name_update(
+            &mut summary,
+            &mut preview,
+            Some("新名".to_string())
+        ));
+        assert!(apply_exam_name_update(
+            &mut summary,
+            &mut preview,
+            Some("  ".to_string())
+        ));
+        assert_eq!(summary, None);
+        assert_eq!(preview, None);
     }
 }
