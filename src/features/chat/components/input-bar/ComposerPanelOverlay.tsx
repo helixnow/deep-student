@@ -194,7 +194,7 @@ export function ComposerPanelOverlay({
     // I-2: 软键盘弹出/收起只反映在 visualViewport 上
     window.visualViewport?.addEventListener('resize', handleViewportChange, { passive: true });
     window.visualViewport?.addEventListener('scroll', handleViewportChange, { passive: true });
-    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame);
+    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame, () => anchorRef.current);
 
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(handleViewportChange)

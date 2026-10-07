@@ -495,7 +495,7 @@ export function AppMenuContent({
     // 软键盘弹出/收起只反映在 visualViewport 上（对照 ComposerPanelOverlay）；
     // window 监听保留作兜底，桌面无 visualViewport 变化时行为等价。
     const removeVisualViewportListener = addVisualViewportChangeListener(updatePosition);
-    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame);
+    const unsubscribeGestureFrames = subscribeWorkbenchGestureFrames(handleGestureFrame, () => triggerRef?.current);
     return () => {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updatePosition);

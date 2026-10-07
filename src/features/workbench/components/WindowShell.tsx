@@ -608,7 +608,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     const releaseAnchor = dragAnchorRef.current;
     const releaseDx = releaseAnchor ? frameRef.current.x - releaseAnchor.x : 0;
     const releaseDy = releaseAnchor ? frameRef.current.y - releaseAnchor.y : 0;
-    notifyWorkbenchGestureFrame({ phase: 'release', x: releaseDx, y: releaseDy });
+    notifyWorkbenchGestureFrame({ phase: 'release', x: releaseDx, y: releaseDy, windowId });
     dragAnchorRef.current = null;
     el.classList.remove('wb-shell-dragging', 'wb-shell-resizing');
     if (contentRef.current) {
@@ -655,8 +655,8 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       dragAnchorRef.current = { ...f };
     }
     writeLayoutFrame(el, f);
-    notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0 });
-  }, [writeLayoutFrame]);
+    notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0, windowId });
+  }, [windowId, writeLayoutFrame]);
 
   /** 取消进行中的 restore FLIP（再次抓取 / 新 settle 前） */
   const cancelRestoreSettle = useCallback(() => {
@@ -878,7 +878,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
         dragAnchorRef.current = { ...f };
         writeLayoutFrame(el, f);
         syncNativeSurface(windowId);
-        notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0 });
+        notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0, windowId });
         return;
       }
       const dx = f.x - anchor.x;
@@ -888,7 +888,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
       // DOM slot into native bounds. The consumer coalesces these events to rAF.
       syncNativeSurface(windowId);
       markInteraction('firstMove');
-      notifyWorkbenchGestureFrame({ phase: 'drag', x: dx, y: dy });
+      notifyWorkbenchGestureFrame({ phase: 'drag', x: dx, y: dy, windowId });
       return;
     }
 
@@ -897,7 +897,7 @@ const WindowShellImpl: React.FC<WindowShellProps> = ({
     if (gestureRef.current?.kind === 'resize') {
       markInteraction('firstMove');
     }
-    notifyWorkbenchGestureFrame({ phase: 'drag', x: 0, y: 0 });
+    notifyWorkbenchGestureFrame({ phase: 'drag', x: 0, y: 0, windowId });
   }, [windowId, writeLayoutFrame]);
 
   const handleSnapZoneChange = useCallback(

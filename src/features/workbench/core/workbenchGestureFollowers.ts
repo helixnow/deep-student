@@ -8,11 +8,16 @@ export interface WorkbenchGestureFrameSignal {
   /** Drag offset from the shell anchor; zero for release/resize. */
   x?: number;
   y?: number;
+  /** 发出信号的窗口；带上它时，drag / release 只送给挂在这个窗口里的浮层 */
+  windowId?: string;
 }
+
+/** 浮层的锚点（触发器、输入栏）：用它所在的窗口判断这次拖拽是不是自己的 */
+export type WorkbenchGestureFollowerScope = () => Element | null | undefined;
 
 export type WorkbenchGestureFollower = (signal: WorkbenchGestureFrameSignal) => void;
 
-const followers = new Set<WorkbenchGestureFollower>();
+const followers = new Map<WorkbenchGestureFollower, WorkbenchGestureFollowerScope | undefined>();
 let settleFrameId: number | ReturnType<typeof setTimeout> | null = null;
 let settleTrailingFrames = 0;
 
@@ -33,8 +38,23 @@ function cancelSettleFrame(handle: number | ReturnType<typeof setTimeout> | null
   else if (typeof clearTimeout === 'function') clearTimeout(handle as ReturnType<typeof setTimeout>);
 }
 
+/**
+ * 拖窗口 A 时，窗口 B 里开着的菜单不能跟着动：标题栏的 pointer 处理会吞掉 mousedown，
+ * 别的窗口里的菜单不会因为这次按下而关闭。带 windowId 的信号只送给锚点在该窗口里的浮层；
+ * 没给锚点的订阅者、settle 信号照旧全量送达。
+ */
+function followsWindow(scope: WorkbenchGestureFollowerScope | undefined, windowId: string): boolean {
+  if (!scope) return true;
+  const anchor = scope();
+  if (!anchor) return false;
+  return anchor.closest('[data-wb-window-id]')?.getAttribute('data-wb-window-id') === windowId;
+}
+
 function notifyFollowers(signal: WorkbenchGestureFrameSignal): void {
-  for (const follower of followers) follower(signal);
+  for (const [follower, scope] of followers) {
+    if (signal.windowId && signal.phase !== 'settle' && !followsWindow(scope, signal.windowId)) continue;
+    follower(signal);
+  }
 }
 
 function runSettleFrame(): void {
@@ -102,8 +122,11 @@ export function notifyWorkbenchGestureFrame(signal: WorkbenchGestureFrameSignal)
   notifyFollowers(signal);
 }
 
-export function subscribeWorkbenchGestureFrames(callback: WorkbenchGestureFollower): () => void {
-  followers.add(callback);
+export function subscribeWorkbenchGestureFrames(
+  callback: WorkbenchGestureFollower,
+  scope?: WorkbenchGestureFollowerScope,
+): () => void {
+  followers.set(callback, scope);
   startSettleRootObserver();
   if (isWorkbenchSettleActive()) {
     settleTrailingFrames = Math.max(settleTrailingFrames, 1);

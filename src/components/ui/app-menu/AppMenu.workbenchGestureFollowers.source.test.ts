@@ -28,22 +28,22 @@ describe('portal overlay workbench drag follower contract', () => {
 
   it('WindowShell notifies after each shell DOM write', () => {
     expect(shellSource).toContain(
-      "notifyWorkbenchGestureFrame({ phase: 'drag', x: dx, y: dy });",
+      "notifyWorkbenchGestureFrame({ phase: 'drag', x: dx, y: dy, windowId });",
     );
     expect(shellSource).toContain(
-      "notifyWorkbenchGestureFrame({ phase: 'release', x: releaseDx, y: releaseDy });",
+      "notifyWorkbenchGestureFrame({ phase: 'release', x: releaseDx, y: releaseDy, windowId });",
     );
     expect(shellSource).toContain(
-      "notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0 });",
+      "notifyWorkbenchGestureFrame({ phase: 'release', x: 0, y: 0, windowId });",
     );
   });
 
   it('portal overlays consume the same-frame delta and re-anchor on release', () => {
-    expect(appMenuSource).toContain('subscribeWorkbenchGestureFrames(handleGestureFrame)');
+    expect(appMenuSource).toContain('subscribeWorkbenchGestureFrames(handleGestureFrame, () => triggerRef?.current)');
     expect(appMenuSource).toContain("--wb-follow-x'");
     expect(appMenuSource).toContain('updatePosition()');
 
-    expect(composerSource).toContain('subscribeWorkbenchGestureFrames(handleGestureFrame)');
+    expect(composerSource).toContain('subscribeWorkbenchGestureFrames(handleGestureFrame, () => anchorRef.current)');
     expect(composerSource).toContain("--wb-follow-x'");
     expect(composerSource).toContain('updatePosition()');
 
