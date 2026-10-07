@@ -24,7 +24,16 @@ Its study agent works directly in every app on your Study Desktop.
 </div>
 
 <p align="center">
+  <img src="./docs/assets/readme/en/classic.webp" width="70%" alt="Classic layout: sidebar navigation and conversations, with an answer that cites the lecture notes" />
+  <img src="./docs/assets/readme/en/mobile.webp" width="20.3%" alt="Android: the same kind of conversation in the phone layout" />
+  <br />
+  <sub>Classic layout (sidebar + single page) · Android</sub>
+</p>
+
+<p align="center">
   <img src="./docs/assets/readme/en/hero.webp" width="92%" alt="The DeepStudent Study Desktop: a mind map the agent generated in chat, next to the exam set it imported and the flashcards due today" />
+  <br />
+  <sub>Study Desktop (the default on desktop)</sub>
 </p>
 
 ---
