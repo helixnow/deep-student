@@ -7,6 +7,7 @@
 import type { DemoAppPack } from '../types';
 import { chain } from '../shared';
 import { createLibraryBackend } from '../data/library/backend';
+import { patchLibraryI18n } from '../data/library/i18nPatch';
 import { LIBRARY_PDF_ID } from '../data/library/seed';
 import { handleReadingAi } from './reading-translation/ai';
 
@@ -36,6 +37,8 @@ const pack: DemoAppPack = {
   },
   instanceKey: LIBRARY_PDF_ID,
   handle: chain(backend.handle, handleReadingAi),
+  prepare: patchLibraryI18n,
+  namespaces: ['pdf', 'textbook', 'learningHub', 'workbench', 'translation', 'chatV2', 'dstu', 'app_menu'],
   async afterMount(root) {
     // 侧栏切到「批注」：四条高亮按页分组，点击可跳回原文
     const { default: i18n } = await import('@/i18n');

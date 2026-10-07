@@ -7,6 +7,7 @@
  */
 import type { DemoAppPack } from '../types';
 import { createLibraryBackend } from '../data/library/backend';
+import { patchLibraryI18n } from '../data/library/i18nPatch';
 
 const backend = createLibraryBackend();
 
@@ -25,6 +26,8 @@ const pack: DemoAppPack = {
     return withNotifications(FilesAppWindow);
   },
   handle: backend.handle,
+  prepare: patchLibraryI18n,
+  namespaces: ['learningHub', 'workbench', 'dstu', 'app_menu'],
   // 海报用列表视图：名称 / 修改日期 / 类型一眼看全（访客切回网格后本次访问内保持）
   localStorage: Object.fromEntries(
     ['learning-hub-finder', 'learning-hub-finder:files'].map((key) => [key, LIST_VIEW]),

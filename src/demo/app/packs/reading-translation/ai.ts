@@ -139,6 +139,9 @@ async function streamWorkbench(sessionId: string, text: string) {
 /** 「添加到聊天」落的选区资源（vfs_create_or_reuse 内存表，按内容去重） */
 const selectionResources = new Map<string, { id: string; hash: string; type: string; sourceId?: string; data: string; metadata?: Record<string, unknown>; refCount: number; createdAt: number }>();
 
+/** 接住引用的空会话 */
+const readerSessions = new Map<string, Record<string, unknown>>();
+
 export function handleReadingAi(cmd: string, args: DemoArgs): unknown {
   switch (cmd) {
     case 'stream_chat_translation_plain':
@@ -188,9 +191,11 @@ export function handleReadingAi(cmd: string, args: DemoArgs): unknown {
       const id = String(args.resourceId ?? '');
       return selectionResources.has(id) ? true : undefined;
     }
+    case 'chat_v2_get_session':
+      return readerSessions.get(String(args.sessionId ?? '')) ?? null;
     case 'chat_v2_create_session': {
       const now = new Date().toISOString();
-      return {
+      const session = {
         id: `demo-reader-${Date.now().toString(36)}`,
         mode: String(args.mode ?? 'chat'),
         persistStatus: 'active',
@@ -199,6 +204,8 @@ export function handleReadingAi(cmd: string, args: DemoArgs): unknown {
         groupId: (args.groupId as string | null | undefined) ?? null,
         metadata: (args.metadata as Record<string, unknown> | undefined) ?? undefined,
       };
+      readerSessions.set(session.id, session);
+      return session;
     }
     case 'call_llm_for_boundary':
       return sleep(700).then(() => ({
