@@ -11,7 +11,7 @@ import { handleDemoSettingsShell } from '../data/settings/common';
 
 const pack: DemoAppPack = {
   title: '模型与供应商配置',
-  load: () => import('@/features/workbench/apps/system/SettingsAppWindow').then((m) => m.default),
+  load: () => import('../data/settings/SettingsWindow').then((m) => m.default),
   handle: chain(handleDemoModelSettings, handleDemoSettingsShell),
   settings: DEMO_MODEL_SETTINGS,
   namespaces: ['settings', 'workbench', 'forms', 'data', 'chat_host'],
