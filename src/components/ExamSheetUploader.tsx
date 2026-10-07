@@ -1002,7 +1002,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           ? t('exam_sheet:uploader.drop_active')
                           : t('exam_sheet:uploader.drop_or_click')}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="text-balance text-sm text-muted-foreground">
                         {t('exam_sheet:uploader.supported_formats_all')}
                       </p>
                     </div>
