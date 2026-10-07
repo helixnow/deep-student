@@ -1374,12 +1374,7 @@ const MindMapContentViewInner: React.FC<MindMapContentViewInnerProps> = ({
                 <AppMenuItem icon={<FilePdf size={16} />} onClick={() => handleExport('pdf')}>{t('mindmap:export.exportPdf')}</AppMenuItem>
               </AppMenuGroup>
               <AppMenuSeparator />
-              <AppMenuCheckboxItem
-                checked={hideCompleted}
-                onCheckedChange={setHideCompleted}
-              >
-                {t('mindmap:toolbar.hideCompleted')}
-              </AppMenuCheckboxItem>
+              {/* 「隐藏已完成」只放在工具栏「学习」组（同为 md 以上可见），菜单不再重复 */}
               <AppMenuCheckboxItem
                 checked={mindMapPreferences.keymap === 'classic'}
                 onCheckedChange={(checked) => setMindMapPreferences({ keymap: checked ? 'classic' : 'deep-student' })}

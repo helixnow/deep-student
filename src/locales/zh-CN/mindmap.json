@@ -244,8 +244,7 @@
     "logic": "逻辑图",
     "orgchart": "组织结构图",
     "selectorLabel": "结构选择器",
-    "current": "当前:",
-    "hint": "选择不同结构可改变导图的布局方式"
+    "current": "当前:"
   },
   "presets": {
     "mindmapTreeRight": "思维导图(向右)",
@@ -480,8 +479,6 @@
     "blankOutlineHint": "保留中心主题和一级分支作提示，下面各层整段遮住；点一下揭示，可撤销",
     "manualBlank": "手动挖空",
     "progress": "{{revealed}}/{{total}} 已揭示",
-    "remaining_one": "剩余 {{count}}",
-    "remaining_other": "剩余 {{count}}",
     "blankBranch": "挖空整个分支",
     "blankBranchDone_one": "已挖空 {{count}} 个节点",
     "blankBranchDone_other": "已挖空 {{count}} 个节点",

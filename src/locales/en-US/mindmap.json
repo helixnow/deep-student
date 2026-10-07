@@ -247,8 +247,7 @@
     "logic": "Logic Diagram",
     "orgchart": "Org Chart",
     "selectorLabel": "Structure Selector",
-    "current": "Current:",
-    "hint": "Select a different structure to change the layout"
+    "current": "Current:"
   },
   "presets": {
     "mindmapTreeRight": "Mind Map (Right)",
@@ -483,8 +482,6 @@
     "blankOutlineHint": "Keep the central topic and main branches as cues and hide every level below; click to reveal. Undoable.",
     "manualBlank": "Blank manually",
     "progress": "{{revealed}}/{{total}} revealed",
-    "remaining_one": "{{count}} left",
-    "remaining_other": "{{count}} left",
     "blankBranch": "Blank entire branch",
     "blankBranchDone_one": "Blanked {{count}} node",
     "blankBranchDone_other": "Blanked {{count}} nodes",
