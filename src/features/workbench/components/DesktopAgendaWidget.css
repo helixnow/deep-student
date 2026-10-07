@@ -95,8 +95,10 @@
 }
 
 .wb-agenda-month-copy small {
-  color: var(--text-muted, hsl(var(--muted-foreground)));
-  font-size: 10px;
+  /* 跟随标题色再降透明度：--text-muted 的灰在浅色壁纸的玻璃底上几乎看不清 */
+  color: inherit;
+  opacity: 0.72;
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
