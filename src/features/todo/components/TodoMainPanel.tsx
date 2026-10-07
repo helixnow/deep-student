@@ -874,7 +874,7 @@ export const TodoMainPanel: React.FC<TodoMainPanelProps> = ({ onOpenPomodoroSubV
                 {viewTitle}
               </h2>
             )}
-            <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground/40">
+            <span className="min-w-0 truncate text-xs tabular-nums text-muted-foreground/40">
               {pendingCount}&nbsp;{t('todo:stats.pending')}
               {completedCount > 0 && (
                 <>
