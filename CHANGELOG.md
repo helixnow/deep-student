@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.5](https://github.com/helixnow/deep-student/compare/v0.10.4...v0.10.5) (2026-10-07)
+
+
+### Features
+
+* **media:** B 站应用内播放器支持切换清晰度 ([fd3fd87](https://github.com/helixnow/deep-student/commit/fd3fd8795c3bb75f1eddd6dcb58b6ed322834f7c))
+
+
+### Bug Fixes
+
+* **app-menu:** 长下拉菜单上下都放不下时不再盖住自己的触发按钮 ([6ad8937](https://github.com/helixnow/deep-student/commit/6ad8937b1b99e73d6bfa6803f82d3d9f8998b1cd))
+* **chat:** 手机宽度下「回到底部」按钮不再压住回答末行 ([2ddddda](https://github.com/helixnow/deep-student/commit/2ddddda6a0f87f5e19ecddbf904ba33137499011))
+* **finder:** 窄资源列表多选底栏不再把选中数截掉、把全选图标裁成半个 ([44fd1f8](https://github.com/helixnow/deep-student/commit/44fd1f8eb3195c32452665b6a6a6ad2c44c9bfa7))
+* **media:** 媒体库为空时导入按钮只出现一次——顶栏（标题行）不再重复空态里的「导入音视频」「B 站链接」 ([0a8dd5d](https://github.com/helixnow/deep-student/commit/0a8dd5dbe611e4abbf021cc4570bbde5c1a39a68))
+* **mindmap:** 「样式」面板不再向上溢出、被窗口标题栏压住 ([20eb037](https://github.com/helixnow/deep-student/commit/20eb03769c9f071c85ebfc08686ccd8620a39bd7))
+* **mindmap:** 背诵模式选中文字后「挖空」气泡不再跑到视口外 ([754dfa1](https://github.com/helixnow/deep-student/commit/754dfa102ada8c9e2b21099df985e4cd9c8e7f89))
+* **notes-tree:** 文件树靠下的行右键，菜单不再被窗口底边裁掉 ([b34d38d](https://github.com/helixnow/deep-student/commit/b34d38d89c34d26ec0ca9bd0b46381dd143e5321))
+* **notes:** 标签页右键菜单只写动作、出现在标签下方、单行对齐 ([f5c9893](https://github.com/helixnow/deep-student/commit/f5c989376b46e9a1d320b3aba0aff12be08dec98))
+* **notes:** 讲义笔记里的视频时间锚点显示为「▶ 00:05」徽章，不再露出原始标记与资源 id ([db5e3a6](https://github.com/helixnow/deep-student/commit/db5e3a64bcd0d8c7c04c99d6cd3e00cf69277aa6))
+* **qbank-import:** 一道题都没识别出来时把首个失败原因带给用户 ([6817dd3](https://github.com/helixnow/deep-student/commit/6817dd317b201f36d648496eee051251692d41e7))
+* **qbank:** 只删题 / 改题时不再把题目集名称清空 ([e247450](https://github.com/helixnow/deep-student/commit/e247450d4c31cc525a4254414c361f866314ea82))
+* **qbank:** 题目列表工具栏去掉与顶栏「添加题目 → 新建题目」重复的「+」按钮 ([c570e4a](https://github.com/helixnow/deep-student/commit/c570e4a064045227d64b7fa3a338d1a55391a6b7))
+* **ui:** 分段控件滑块不再在学习桌面窗口平铺 / 最大化后错位盖住旁边按钮 ([648eed2](https://github.com/helixnow/deep-student/commit/648eed26a5b00f2195a2b25d1b57e572310083c5))
+* **workbench:** portal overlays follow drag and settle release in same frame ([#456](https://github.com/helixnow/deep-student/issues/456)) ([d99aad0](https://github.com/helixnow/deep-student/commit/d99aad01c5b4a83de1300e7a4ce33cb998420904))
+* **workbench:** 拖窗口时只让该窗口里的浮层跟随，别的窗口里开着的菜单不再被带着走 ([8616002](https://github.com/helixnow/deep-student/commit/8616002d02fd6884fe5a183b526da36a065e44bc))
+
 ## [0.10.4](https://github.com/helixnow/deep-student/compare/v0.10.3...v0.10.4) (2026-10-07)
 
 
