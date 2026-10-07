@@ -39,6 +39,17 @@ type TrackOffset = {
   right?: number | string;
 };
 
+/**
+ * 根节点默认 `relative`（滚动条轨道按它定位）。调用方显式给了定位类（absolute / fixed /
+ * sticky）时不再追加：项目的 cn 只做拼接、不合并冲突类，而 Tailwind 里 `.relative`
+ * 排在 `.absolute` 之后，会把调用方的 absolute 覆盖掉——导图「样式」面板因此退回文档流，
+ * 被工具栏垂直居中后向上溢出、顶部压到窗口标题栏下面。
+ */
+export function scrollAreaRootBase(className?: string): string {
+  const hasPosition = /(^|\s)(absolute|fixed|sticky|static)(?=\s|$)/.test(className ?? '');
+  return hasPosition ? 'min-h-0 min-w-0' : 'relative min-h-0 min-w-0';
+}
+
 export interface ScrollAreaProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
   children?: React.ReactNode;
@@ -291,7 +302,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
           data-slot={dataSlot}
           data-orientation={orientation}
           data-native-scrollbars="true"
-          className={cn("relative min-h-0 min-w-0", className)}
+          className={cn(scrollAreaRootBase(className), className)}
           style={offsetStyle}
           {...restProps}
         >
@@ -328,7 +339,7 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         data-scroll-track-bottom={trackOffset?.bottom !== undefined ? "" : undefined}
         data-scroll-track-left={trackOffset?.left !== undefined ? "" : undefined}
         data-scroll-track-right={trackOffset?.right !== undefined ? "" : undefined}
-        className={cn("relative min-h-0 min-w-0", className, overlayViewportClasses.padding)}
+        className={cn(scrollAreaRootBase(className), className, overlayViewportClasses.padding)}
         style={offsetStyle}
         {...restProps}
       >
