@@ -25,7 +25,16 @@
 </div>
 
 <p align="center">
+  <img src="./docs/assets/readme/zh/classic.webp" width="70%" alt="经典界面：左侧导航与会话列表，右侧是带公式和讲义出处的回答" />
+  <img src="./docs/assets/readme/zh/mobile.webp" width="20.3%" alt="Android 手机端：同一段对话，抽屉导航、移动端输入栏" />
+  <br />
+  <sub>经典界面（左侧导航 + 单页）· Android 手机端</sub>
+</p>
+
+<p align="center">
   <img src="./docs/assets/readme/zh/hero.webp" width="92%" alt="DeepStudent 学习桌面：左侧对话里是 Agent 生成的思维导图，右侧是它导入的题目集和待复习的闪卡" />
+  <br />
+  <sub>学习桌面（桌面端默认界面）</sub>
 </p>
 
 ---
