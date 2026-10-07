@@ -16,8 +16,9 @@ const pack: DemoAppPack = {
   settings: DEMO_MODEL_SETTINGS,
   namespaces: ['settings', 'workbench', 'forms', 'data', 'chat_host'],
   async prepare() {
-    const { useSettingsShellStore } = await import('@/stores/settingsShellStore');
-    useSettingsShellStore.getState().setActiveTab('apis');
+    // 走生产里「直达某分区」的入口：桌面布局切到该页，窄窗口（手机宽度）跳过分区列表直接进内容
+    const { setPendingSettingsRoute } = await import('@/utils/pendingSettingsTab');
+    setPendingSettingsRoute({ tab: 'apis' });
   },
 };
 

@@ -19,16 +19,24 @@ const pack: DemoAppPack = {
   handle: chain(handleDemoGovernance, handleDemoModelSettings, handleDemoSettingsShell),
   namespaces: ['settings', 'workbench', 'forms', 'data', 'cloudStorage', 'sync', 'chat_host', 'app_menu'],
   async prepare() {
-    const { useSettingsShellStore } = await import('@/stores/settingsShellStore');
-    useSettingsShellStore.getState().applySettingsRoute({ tab: 'data-governance', dataGovernanceTab: 'backup' });
+    // 走生产里「直达某分区」的入口：桌面布局切到该页，窄窗口（手机宽度）跳过分区列表直接进内容
+    const { setPendingSettingsRoute } = await import('@/utils/pendingSettingsTab');
+    setPendingSettingsRoute({ tab: 'data-governance', dataGovernanceTab: 'backup' });
   },
   async afterMount(root) {
     for (let i = 0; i < 50 && !backupList(root); i++) await new Promise((r) => setTimeout(r, 100));
+    const heading = backupList(root);
+    if (!heading) return;
+    if (root.clientWidth < 600) {
+      // 手机宽度：列表标题置顶
+      heading.scrollIntoView({ block: 'start' });
+      return;
+    }
     // 备份列表在页面下半部：滚到让列表落在视口底部，上面还能看到自动备份策略
-    const section = backupList(root)?.closest('section, [data-settings-section]') ?? backupList(root)?.parentElement?.parentElement;
+    const section = heading.closest('section, [data-settings-section]') ?? heading.parentElement?.parentElement;
     section?.scrollIntoView({ block: 'end' });
   },
-  isReady: (root) => Boolean(backupList(root)) && root.querySelectorAll('button[aria-label="验证"], button[aria-label="Verify"]').length > 0,
+  isReady: (root) => Boolean(backupList(root)) && /\d+(\.\d+)? MB/.test(root.textContent ?? ''),
 };
 
 export default pack;
