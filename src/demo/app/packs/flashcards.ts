@@ -9,6 +9,7 @@ const pack: DemoAppPack = {
   title: '闪卡',
   load: () => import('@/features/workbench/apps/system/FlashcardsAppWindow').then((m) => m.default),
   handle: handleDemoFlashcards,
+  namespaces: ['flashcards', 'workbench', 'app_menu', 'sidebar'],
 };
 
 export default pack;

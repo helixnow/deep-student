@@ -31,6 +31,11 @@ export async function loadDemoAppLocale(i18n: I18n, namespaces?: string[]): Prom
     i18n.addResourceBundle(demoLang, ns, resources, true, true);
   }
 
+  // MCP 内置服务器名在模块初始化时就被求值（几乎所有窗口都会间接引到），为它下载整个 settings（150KB）不值得
+  if (!i18n.exists('settings:mcp_server_list.builtinServerName')) {
+    i18n.addResource(demoLang, 'settings', 'mcp_server_list.builtinServerName', demoLang === 'en-US' ? 'Built-in Tools' : '内置工具');
+  }
+
   // 漏声明的命名空间会露出原始键名：记下来给烟测看
   const missing = new Set<string>();
   window.__DEMO_MISSING_I18N__ = [];

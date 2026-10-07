@@ -468,6 +468,9 @@ export default defineConfig(({ command, mode }) => ({
             id.includes('node_modules/tippy.js/') ||
             id.includes('node_modules/react-redux/') ||
             id.includes('node_modules/reselect/') ||
+            // tslib：echarts 与 react-remove-scroll（Select / Dialog）共用；不归组时 Rollup 把它放进 vendor-pptx，
+            // 任何带下拉框的页面都会顺带下载 1.3MB 的 PPTX 预览与 echarts
+            id.includes('node_modules/tslib/') ||
             id.includes('node_modules/redux/') ||
             id.includes('@floating-ui/')
           ) {
