@@ -181,7 +181,7 @@ describe('MediaStudyView · Bilibili link items', () => {
     render(
       <MediaStudyView kind="video" src="" bilibili={LINK as never} resourceId="file_link" fileName="线代.bilibili" onError={vi.fn()} />,
     );
-    expect(screen.getByTestId('video-player').dataset.src).toBe('bilistream://localhost/file_link');
+    expect(screen.getByTestId('video-player').dataset.src).toBe('bilistream://localhost/file_link?qn=80');
     expect(screen.queryByTestId('bilibili-embed')).toBeNull();
     // 画面可用：截帧按钮在
     expect(screen.getByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeTruthy();

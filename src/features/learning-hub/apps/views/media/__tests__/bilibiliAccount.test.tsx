@@ -127,5 +127,7 @@ describe('BilibiliAccountPanel', () => {
 describe('buildBilibiliStreamUrl', () => {
   it('points the in-app player at the bilistream protocol for the link item', () => {
     expect(buildBilibiliStreamUrl('file_abc')).toBe('bilistream://localhost/file_abc');
+    expect(buildBilibiliStreamUrl('file_abc', 64)).toBe('bilistream://localhost/file_abc?qn=64');
+    expect(buildBilibiliStreamUrl('file_abc', 80, 2)).toBe('bilistream://localhost/file_abc?qn=80&e=2');
   });
 });
