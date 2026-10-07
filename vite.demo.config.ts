@@ -270,6 +270,8 @@ export default defineConfig((env) => {
           demo: fileURLToPath(new URL("./demo.html", import.meta.url)),
           // Hero 落地页（纯静态 HTML，内嵌 demo.html iframe，无 JS bundle）
           hero: fileURLToPath(new URL("./hero.html", import.meta.url)),
+          // 单应用演示（官网用户指南每章一个，demo-app.html?app=<章节 slug>）
+          "demo-app": fileURLToPath(new URL("./demo-app.html", import.meta.url)),
         },
         output: {
           ...(typeof base.build?.rollupOptions?.output === "object" &&

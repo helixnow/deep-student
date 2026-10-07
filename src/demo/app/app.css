@@ -1,0 +1,35 @@
+/* 单应用演示：应用窗口铺满 iframe，外框（圆角、阴影）由官网的嵌入组件画 */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.demo-app-frame {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  /* 窗口内组件按学习桌面窗口写的：没有经典壳的顶栏 */
+  --shell-titlebar-height: 0px;
+  --shell-layout-gap: 0px;
+}
+
+.demo-app-message {
+  display: flex;
+  height: 100%;
+  margin: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  font: 14px/1.6 system-ui, sans-serif;
+  color: hsl(var(--muted-foreground));
+  text-align: center;
+}
