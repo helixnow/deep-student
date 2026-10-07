@@ -63,13 +63,13 @@ export const SUPERS: Super[] = [
   { s: 52.52, e: 53.95, text: '再从字幕出题、做卡片。', kind: 'feature' },
   { s: 54.3, e: 57.3, text: '调研，交给它。', sub: '检索资料、阅读文献、撰写笔记，全程自主推进。', kind: 'feature' },
   // 笔记窗 clean 时 AI 直接改、改动处渐隐高亮，顶部留「撤销本次修改」；句子收短，不压到右侧正文
-  { s: 57.5, e: 59.25, text: '它直接改笔记，每处都可撤销。', kind: 'feature' },
-  { s: 59.45, e: 60.4, text: '论文由它下载入库。', kind: 'feature' },
-  // 第二幕收束
-  { s: 60.5, e: 62.08, text: '批改、讲解、翻译、查资料，它都接下了。', kind: 'feature' },
+  { s: 57.5, e: 59.2, text: '它直接改笔记，每处都可撤销。', kind: 'feature' },
+  { s: 59.3, e: 60.4, text: '论文由它下载入库。', kind: 'feature' },
+  // 第二幕收束：逐字升起 + 收尾下沉都算进读速，给足 1.95 秒（成片 3.9 秒）
+  { s: 60.5, e: 62.45, text: '批改、讲解、翻译、查资料，它都接下了。', kind: 'feature' },
   // 第三幕：越用越懂你
-  { s: 62.2, e: 63.9, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
-  { s: 64.1, e: 65.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
+  { s: 62.6, e: 64.05, text: '越用，越懂你。', kind: 'title', pos: CENTER, align: 'center', scrim: false },
+  { s: 64.15, e: 65.95, text: '它记得你的薄弱点与学习习惯。', kind: 'feature' },
   // 与同一时刻画面里技能窗的「全部 56 · 内置 56」对得上
   { s: 66.0, e: 68.3, text: '56 个技能，按需加载。', sub: '支持 MCP，可接入外部工具与服务。', kind: 'feature' },
   { s: 68.4, e: 70.0, text: '同一问题，多个模型同时作答。', kind: 'feature' },

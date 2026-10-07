@@ -316,7 +316,8 @@ const studyState = (t: number): StudyState => {
     sendPress: pressAt(t, DAY.askSend),
     sent: prog(t, DAY.askSend + 0.01, DAY.askSend + 0.05),
     thinking: t >= DAY.askSend + 0.04 && t < DAY.askAnswer,
-    answer: ANSWER_LEN * prog(t, DAY.askAnswer, DAY.askAnswer + 0.58),
+    // 流速让「▶ 05:20」在被点之前已在画面里停留 1 秒以上（成片）
+    answer: ANSWER_LEN * prog(t, DAY.askAnswer, DAY.askAnswer + 0.46),
     chipHover: t >= DAY.askSeek - 0.1 && t < DAY.askSeek + 0.2 ? 1 : 0,
     chipPress: pressAt(t, DAY.askSeek),
     phase: handoutPhase(t),
@@ -560,9 +561,10 @@ const DAY_CAM: CamKey[] = [
   // 镜头贴左边界（clampCam：x ≥ 960 / zoom）、略推近：正文起点落在左下字幕右侧，文件树让给字幕
   [DAY.noteOpen + 0.26, { x: 620, y: 471, zoom: 1.55 }, ease.inOutCubic],
   [DAY.chatBack - 0.3, { x: 620, y: 474, zoom: 1.55 }, ease.linear],
-  [DAY.chatBack - 0.04, { x: 1236, y: 480, zoom: 1.4 }, ease.inOutCubic],
-  [DAY.paperSend + 0.08, { x: 1236, y: 480, zoom: 1.4 }, ease.linear],
-  [DAY.paperSaved + 0.02, { x: 1236, y: 470, zoom: 1.45 }, ease.inOutCubic],
+  // 对话窗回到最前后，笔记窗（底边 872）还在它下面、比对话窗（底边 830）长出一截：取景下缘压在 830 以内，不露出底下那条正文
+  [DAY.chatBack - 0.04, { x: 1236, y: 444, zoom: 1.4 }, ease.inOutCubic],
+  [DAY.paperSend + 0.08, { x: 1236, y: 444, zoom: 1.4 }, ease.linear],
+  [DAY.paperSaved + 0.02, { x: 1236, y: 455, zoom: 1.45 }, ease.inOutCubic],
   [DAY.hubIndex - 0.06, FULL, ease.inOutCubic],
   [DAY.hubIndex + 0.1, FULL, ease.linear],
   [DAY.hubIndex + 0.36, { x: 664, y: 564, zoom: 1.2 }, ease.inOutCubic],
