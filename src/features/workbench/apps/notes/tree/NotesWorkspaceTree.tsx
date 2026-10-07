@@ -66,14 +66,6 @@ const restrictToVerticalAxis: Modifier = ({ transform }) => {
   return { ...transform, x: 0 };
 };
 
-function clampMenuPosition(x: number, y: number): { x: number; y: number } {
-  if (typeof window === 'undefined') return { x, y };
-  return {
-    x: Math.max(8, Math.min(x, window.innerWidth - 176)),
-    y: Math.max(8, Math.min(y, window.innerHeight - 160)),
-  };
-}
-
 function collectExpandableFolderIds(
   items: readonly NotesWorkspaceTreeItem[],
 ): string[] {
@@ -508,8 +500,8 @@ export function NotesWorkspaceTree({
       beginRename: () => beginRename(item.id),
     });
     if (!menuItems.length) return;
-    const pos = clampMenuPosition(event.clientX, event.clientY);
-    setContextMenu({ item, x: pos.x, y: pos.y });
+    // 视口限制交给 TreeContextMenu 按实测尺寸处理（此处原先按固定 160px 估高，菜单项一多下半截就被裁掉）
+    setContextMenu({ item, x: event.clientX, y: event.clientY });
   }, [beginRename, getMenuItems, onContextMenuOpen]);
 
   const closeMenu = useCallback(() => {
