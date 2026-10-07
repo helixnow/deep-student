@@ -8,15 +8,20 @@
 //!    [`STREAM_CHUNK_BYTES`]，播放器按 `Content-Range` 继续请求后续区间；
 //! 3. CDN 返回 403 / 404 / 410（地址过期）时丢弃缓存重新取一次地址。
 //!
-//! URL 形如 `bilistream://localhost/{fileId}`（Windows / Android 为 `http://bilistream.localhost/...`），
+//! URL 形如 `bilistream://localhost/{fileId}?qn=64&e=0`（Windows / Android 为 `http://bilistream.localhost/...`），
 //! `fileId` 必须是 VFS 里的 B 站链接条目；转发目标只来自 B 站接口，不接受请求方给的地址。
+//!
+//! 清晰度：`qn` 是请求的清晰度（缺省 [`DEFAULT_QN`]），B 站会降到不高于它的可用档位；
+//! 可选档位来自 playurl 的 `accept_quality`（html5 平台只列单文件 MP4 能给的档位，
+//! 登录 / 大会员影响列表），再按 [`MP4_QUALITIES`] 白名单过滤掉需要 DASH 的高档位。
+//! [`media_bilibili_stream_quality`] 把列表与实际清晰度交给前端；缓存按 `(条目, qn, 账号代次)` 区分。
 
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use reqwest::header::{HeaderMap, HeaderValue, CONTENT_RANGE, CONTENT_TYPE, RANGE, REFERER};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::http::{Request, Response};
 use tauri::{AppHandle, Manager};
 
@@ -39,9 +44,33 @@ const CDN_HOST_SUFFIXES: &[&str] = &[
     ".hdslb.com",
 ];
 
+/// 不带 `qn` 时请求的清晰度（1080P；拿不到时 B 站自动降档）
+pub const DEFAULT_QN: u32 = 80;
+/// fnval=1 单文件 MP4 能给到的清晰度：240P / 360P / 480P / 720P / 1080P。
+/// 720P60（74）、1080P+（112）及以上只有 DASH 分轨，`<video>` 直接放不了，不列出。
+pub const MP4_QUALITIES: &[u32] = &[6, 16, 32, 64, 80];
+
+/// 一档清晰度（`qn` + B 站给的名称，如「高清 720P」）
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct QualityOption {
+    pub qn: u32,
+    pub label: String,
+}
+
+/// 一次 playurl 解析的结果
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PlayInfo {
+    url: String,
+    /// B 站实际给的清晰度（可能低于请求的 qn）
+    quality: u32,
+    /// 本条目可选的清晰度（高 → 低）
+    options: Vec<QualityOption>,
+}
+
 #[derive(Debug, Clone)]
 struct PlaySource {
-    url: String,
+    info: PlayInfo,
     resolved_at: Instant,
 }
 
@@ -76,6 +105,81 @@ fn parse_stream_path(path: &str) -> Option<String> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
     valid.then_some(decoded)
+}
+
+/// 地址查询串里的一个数字参数
+fn query_u32(query: Option<&str>, name: &str) -> Option<u32> {
+    query
+        .unwrap_or("")
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(k, _)| *k == name)
+        .and_then(|(_, v)| v.parse::<u32>().ok())
+}
+
+/// 请求的清晰度；缺省 / 不在 MP4 白名单时用 [`DEFAULT_QN`]
+fn normalize_qn(qn: Option<u32>) -> u32 {
+    qn.filter(|q| MP4_QUALITIES.contains(q))
+        .unwrap_or(DEFAULT_QN)
+}
+
+/// 播放地址的 `(qn, 账号代次)`：`?qn=64&e=1`。
+/// 账号代次由前端在登录 / 退出后递增：同一个媒体地址始终对应同一个 CDN 文件（换文件会让
+/// 播放中的 Range 请求读到另一份字节），登录后能拿到的清晰度变了，就换一个新地址重新取。
+fn parse_stream_query(query: Option<&str>) -> (u32, u32) {
+    (
+        normalize_qn(query_u32(query, "qn")),
+        query_u32(query, "e").unwrap_or(0),
+    )
+}
+
+/// 播放地址缓存键：同一条目不同清晰度 / 不同账号代次的地址不同
+fn cache_key(file_id: &str, qn: u32, epoch: u32) -> String {
+    format!("{}@{}@{}", file_id, qn, epoch)
+}
+
+/// B 站没给名称时的兜底文案
+fn fallback_quality_label(qn: u32) -> String {
+    match qn {
+        6 => "240P".into(),
+        16 => "360P".into(),
+        32 => "480P".into(),
+        64 => "720P".into(),
+        80 => "1080P".into(),
+        other => format!("qn {}", other),
+    }
+}
+
+/// `accept_quality` / `accept_description` → MP4 能播的清晰度（高 → 低，去重）；
+/// 实际返回的 `quality` 总在列表里
+fn mp4_quality_options(data: &PlayUrlData) -> Vec<QualityOption> {
+    let mut options: Vec<QualityOption> = data
+        .accept_quality
+        .iter()
+        .enumerate()
+        .map(|(i, &qn)| (qn, data.accept_description.get(i)))
+        .chain(data.quality.map(|q| (q, None)))
+        .filter(|(qn, _)| MP4_QUALITIES.contains(qn))
+        .map(|(qn, label)| QualityOption {
+            qn,
+            label: label
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| fallback_quality_label(qn)),
+        })
+        .collect();
+    options.sort_by(|a, b| b.qn.cmp(&a.qn));
+    options.dedup_by_key(|o| o.qn);
+    options
+}
+
+fn parse_play_info(data: &PlayUrlData, requested_qn: u32) -> Result<PlayInfo, MediaError> {
+    let url = pick_play_url(data)?;
+    Ok(PlayInfo {
+        url,
+        quality: data.quality.unwrap_or(requested_qn),
+        options: mp4_quality_options(data),
+    })
 }
 
 /// `Range` 头 → 要向 CDN 请求的 `(start, end)`（含端点），每次最多 [`STREAM_CHUNK_BYTES`]。
@@ -115,6 +219,12 @@ fn is_cdn_url(raw: &str) -> bool {
 struct PlayUrlData {
     #[serde(default)]
     durl: Vec<PlayUrlSegment>,
+    #[serde(default)]
+    quality: Option<u32>,
+    #[serde(default)]
+    accept_quality: Vec<u32>,
+    #[serde(default)]
+    accept_description: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -150,17 +260,18 @@ fn pick_play_url(data: &PlayUrlData) -> Result<String, MediaError> {
 // 取地址
 // ============================================================================
 
-pub(crate) async fn resolve_play_url(
+pub(crate) async fn resolve_play_info(
     client: &BiliClient,
     descriptor: &BiliLinkDescriptor,
-) -> Result<String, MediaError> {
+    qn: u32,
+) -> Result<PlayInfo, MediaError> {
     let data: PlayUrlData = client
         .get_api(
             "/x/player/playurl",
             &[
                 ("bvid", descriptor.bvid.clone()),
                 ("cid", descriptor.cid.to_string()),
-                ("qn", "80".into()),
+                ("qn", qn.to_string()),
                 ("fnval", "1".into()),
                 ("fnver", "0".into()),
                 ("fourk", "0".into()),
@@ -170,43 +281,50 @@ pub(crate) async fn resolve_play_url(
         )
         .await?
         .ok_or_else(|| MediaError::InvalidInput("B 站没有返回播放地址".into()))?;
-    pick_play_url(&data)
+    parse_play_info(&data, qn)
 }
 
-fn cached_source(file_id: &str) -> Option<String> {
+fn cached_source(key: &str) -> Option<PlayInfo> {
     let cache = PLAY_CACHE.lock().ok()?;
     cache
-        .get(file_id)
+        .get(key)
         .filter(|s| s.resolved_at.elapsed() < PLAY_SOURCE_TTL)
-        .map(|s| s.url.clone())
+        .map(|s| s.info.clone())
 }
 
-fn remember_source(file_id: &str, url: &str) {
+fn remember_source(key: &str, info: &PlayInfo) {
     if let Ok(mut cache) = PLAY_CACHE.lock() {
         cache.retain(|_, s| s.resolved_at.elapsed() < PLAY_SOURCE_TTL);
         if cache.len() >= PLAY_CACHE_MAX_ENTRIES {
             cache.clear();
         }
         cache.insert(
-            file_id.to_string(),
+            key.to_string(),
             PlaySource {
-                url: url.to_string(),
+                info: info.clone(),
                 resolved_at: Instant::now(),
             },
         );
     }
 }
 
-fn forget_source(file_id: &str) {
+fn forget_source(key: &str) {
     if let Ok(mut cache) = PLAY_CACHE.lock() {
-        cache.remove(file_id);
+        cache.remove(key);
     }
 }
 
-async fn play_url_for(app: &AppHandle, file_id: &str, fresh: bool) -> Result<String, MediaError> {
+async fn play_info_for(
+    app: &AppHandle,
+    file_id: &str,
+    qn: u32,
+    epoch: u32,
+    fresh: bool,
+) -> Result<PlayInfo, MediaError> {
+    let key = cache_key(file_id, qn, epoch);
     if !fresh {
-        if let Some(url) = cached_source(file_id) {
-            return Ok(url);
+        if let Some(info) = cached_source(&key) {
+            return Ok(info);
         }
     }
     let db: Arc<VfsDatabase> = Arc::clone(app.state::<Arc<VfsDatabase>>().inner());
@@ -215,9 +333,42 @@ async fn play_url_for(app: &AppHandle, file_id: &str, fresh: bool) -> Result<Str
         .await
         .map_err(|e| MediaError::Io(e.to_string()))??;
     let client = BiliClient::new()?.with_cookie(super::bilibili_auth::load_cookie(app));
-    let url = resolve_play_url(&client, &descriptor).await?;
-    remember_source(file_id, &url);
-    Ok(url)
+    let info = resolve_play_info(&client, &descriptor, qn).await?;
+    remember_source(&key, &info);
+    Ok(info)
+}
+
+/// 前端清晰度菜单需要的信息
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StreamQualityView {
+    /// 请求的清晰度（与 `bilistream://` 地址里的 qn 一致）
+    pub requested: u32,
+    /// B 站实际给的清晰度（降档时低于 requested）
+    pub current: u32,
+    /// 可选清晰度（高 → 低）
+    pub options: Vec<QualityOption>,
+}
+
+/// 链接条目在应用内播放时的可选清晰度与实际清晰度。
+/// 与 `bilistream://` 共用按 `(条目, qn, 账号代次)` 的地址缓存，播放器随后的请求不会再取一次地址。
+#[tauri::command]
+pub async fn media_bilibili_stream_quality(
+    app: AppHandle,
+    file_id: String,
+    qn: Option<u32>,
+    epoch: Option<u32>,
+) -> Result<StreamQualityView, String> {
+    let file_id = parse_stream_path(&file_id).ok_or_else(|| "无效的 B 站链接条目".to_string())?;
+    let requested = normalize_qn(qn);
+    let info = play_info_for(&app, &file_id, requested, epoch.unwrap_or(0), false)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(StreamQualityView {
+        requested,
+        current: info.quality,
+        options: info.options,
+    })
 }
 
 // ============================================================================
@@ -338,6 +489,7 @@ pub async fn handle(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<
     let Some(file_id) = parse_stream_path(request.uri().path()) else {
         return text_error(&request, 400, "无效的 B 站播放地址");
     };
+    let (qn, epoch) = parse_stream_query(request.uri().query());
     let range_header = request
         .headers()
         .get("range")
@@ -351,8 +503,8 @@ pub async fn handle(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<
 
     let mut fresh = false;
     for _ in 0..2 {
-        let url = match play_url_for(app, &file_id, fresh).await {
-            Ok(url) => url,
+        let url = match play_info_for(app, &file_id, qn, epoch, fresh).await {
+            Ok(info) => info.url,
             Err(e) => {
                 log::warn!("[media::bilibili_stream] {} resolve failed: {}", file_id, e);
                 return text_error(&request, 502, &e.to_string());
@@ -387,7 +539,7 @@ pub async fn handle(app: &AppHandle, request: Request<Vec<u8>>) -> Response<Vec<
                     file_id,
                     status
                 );
-                forget_source(&file_id);
+                forget_source(&cache_key(&file_id, qn, epoch));
                 fresh = true;
             }
             Upstream::Stale(status) => {
@@ -504,7 +656,164 @@ mod tests {
             "page": 1, "pageCount": 1, "title": "t", "durationMs": 1000, "url": "https://www.bilibili.com/video/BV1Ss4y1W7KB"
         }))
         .unwrap();
-        let url = resolve_play_url(&client, &descriptor).await.unwrap();
-        assert_eq!(url, "https://cn-bj.bilivideo.com/v.mp4?e=1");
+        let info = resolve_play_info(&client, &descriptor, DEFAULT_QN)
+            .await
+            .unwrap();
+        assert_eq!(info.url, "https://cn-bj.bilivideo.com/v.mp4?e=1");
+        // 老响应没有清晰度字段：按请求的 qn 记
+        assert_eq!(info.quality, DEFAULT_QN);
+    }
+
+    fn descriptor() -> BiliLinkDescriptor {
+        serde_json::from_value(serde_json::json!({
+            "kind": "bilibili", "version": 1, "bvid": "BV1Ss4y1W7KB", "aid": 1, "cid": 995381097u64,
+            "page": 1, "pageCount": 1, "title": "t", "durationMs": 1000, "url": "https://www.bilibili.com/video/BV1Ss4y1W7KB"
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn stream_qn_comes_from_query_and_falls_back_to_default() {
+        assert_eq!(parse_stream_query(None), (DEFAULT_QN, 0));
+        assert_eq!(parse_stream_query(Some("")), (DEFAULT_QN, 0));
+        assert_eq!(parse_stream_query(Some("qn=64")), (64, 0));
+        assert_eq!(parse_stream_query(Some("t=1&qn=16&e=3")), (16, 3));
+        // DASH 才有的档位、非法值都回到默认
+        assert_eq!(parse_stream_query(Some("qn=112")).0, DEFAULT_QN);
+        assert_eq!(parse_stream_query(Some("qn=120")).0, DEFAULT_QN);
+        assert_eq!(parse_stream_query(Some("qn=abc&e=x")), (DEFAULT_QN, 0));
+        assert_eq!(parse_stream_query(Some("xqn=64")).0, DEFAULT_QN);
+        assert_eq!(normalize_qn(Some(32)), 32);
+        assert_eq!(normalize_qn(Some(116)), DEFAULT_QN);
+        assert_eq!(normalize_qn(None), DEFAULT_QN);
+    }
+
+    #[test]
+    fn cache_key_separates_qualities() {
+        assert_ne!(cache_key("file_a", 80, 0), cache_key("file_a", 64, 0));
+        assert_ne!(cache_key("file_a", 64, 0), cache_key("file_b", 64, 0));
+        // 登录 / 退出后（账号代次 +1）不复用游客取到的地址
+        assert_ne!(cache_key("file_a", 80, 0), cache_key("file_a", 80, 1));
+        let info = PlayInfo {
+            url: "https://a.bilivideo.com/720.mp4".into(),
+            quality: 64,
+            options: vec![],
+        };
+        remember_source(&cache_key("file_cache_test", 64, 0), &info);
+        assert_eq!(
+            cached_source(&cache_key("file_cache_test", 64, 0)),
+            Some(info)
+        );
+        assert_eq!(cached_source(&cache_key("file_cache_test", 80, 0)), None);
+        forget_source(&cache_key("file_cache_test", 64, 0));
+        assert_eq!(cached_source(&cache_key("file_cache_test", 64, 0)), None);
+    }
+
+    #[test]
+    fn quality_options_keep_only_mp4_levels_from_accept_quality() {
+        // 登录大会员：accept_quality 带 4K / 1080P+ / 720P60，单文件 MP4 给不了，过滤掉
+        let data: PlayUrlData = serde_json::from_str(
+            r#"{"quality":80,"accept_quality":[120,116,112,80,74,64,32,16],
+                "accept_description":["超清 4K","高清 1080P60","高清 1080P+","高清 1080P","高清 720P60","高清 720P","清晰 480P","流畅 360P"],
+                "durl":[{"url":"https://a.bilivideo.com/1080.mp4"}]}"#,
+        )
+        .unwrap();
+        let info = parse_play_info(&data, 80).unwrap();
+        assert_eq!(info.quality, 80);
+        assert_eq!(
+            info.options,
+            vec![
+                QualityOption {
+                    qn: 80,
+                    label: "高清 1080P".into()
+                },
+                QualityOption {
+                    qn: 64,
+                    label: "高清 720P".into()
+                },
+                QualityOption {
+                    qn: 32,
+                    label: "清晰 480P".into()
+                },
+                QualityOption {
+                    qn: 16,
+                    label: "流畅 360P".into()
+                },
+            ]
+        );
+
+        // 游客（实测 html5 平台的形状）：只有 720P / 360P
+        let guest: PlayUrlData = serde_json::from_str(
+            r#"{"quality":64,"format":"mp4720","accept_quality":[64,16],"accept_description":["高清 720P","流畅 360P"],
+                "durl":[{"url":"https://a.bilivideo.com/720.mp4"}]}"#,
+        )
+        .unwrap();
+        let qns: Vec<u32> = mp4_quality_options(&guest).iter().map(|o| o.qn).collect();
+        assert_eq!(qns, vec![64, 16]);
+
+        // 描述缺失 / 长度对不上时用兜底名称；实际返回的清晰度总在列表里
+        let sparse: PlayUrlData = serde_json::from_str(
+            r#"{"quality":32,"accept_quality":[64,16],"accept_description":["高清 720P"],"durl":[]}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            mp4_quality_options(&sparse),
+            vec![
+                QualityOption {
+                    qn: 64,
+                    label: "高清 720P".into()
+                },
+                QualityOption {
+                    qn: 32,
+                    label: "480P".into()
+                },
+                QualityOption {
+                    qn: 16,
+                    label: "360P".into()
+                },
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn requests_selected_qn_and_reports_downgraded_quality() {
+        let mut server = mockito::Server::new_async().await;
+        // 请求 1080P，但游客只能拿到 720P：B 站降档，quality 给实际值
+        let _m = server
+            .mock("GET", "/x/player/playurl")
+            .match_query(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::UrlEncoded("qn".into(), "80".into()),
+                mockito::Matcher::UrlEncoded("fnval".into(), "1".into()),
+            ]))
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"code":0,"message":"0","data":{"quality":64,"format":"mp4720","accept_quality":[64,16],
+                    "accept_description":["高清 720P","流畅 360P"],
+                    "durl":[{"url":"https://cn-bj.bilivideo.com/720.mp4?e=1"}]}}"#,
+            )
+            .create_async()
+            .await;
+        let _low = server
+            .mock("GET", "/x/player/playurl")
+            .match_query(mockito::Matcher::UrlEncoded("qn".into(), "16".into()))
+            .with_header("content-type", "application/json")
+            .with_body(
+                r#"{"code":0,"message":"0","data":{"quality":16,"format":"mp4","accept_quality":[64,16],
+                    "accept_description":["高清 720P","流畅 360P"],
+                    "durl":[{"url":"https://cn-bj.bilivideo.com/360.mp4?e=1"}]}}"#,
+            )
+            .create_async()
+            .await;
+        let client = BiliClient::for_test(&server.url());
+        let high = resolve_play_info(&client, &descriptor(), 80).await.unwrap();
+        assert_eq!(high.quality, 64);
+        assert_eq!(high.url, "https://cn-bj.bilivideo.com/720.mp4?e=1");
+        assert_eq!(
+            high.options.iter().map(|o| o.qn).collect::<Vec<_>>(),
+            vec![64, 16]
+        );
+        let low = resolve_play_info(&client, &descriptor(), 16).await.unwrap();
+        assert_eq!(low.quality, 16);
+        assert_eq!(low.url, "https://cn-bj.bilivideo.com/360.mp4?e=1");
     }
 }

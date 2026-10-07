@@ -15,7 +15,8 @@
  * B 站链接条目（`bilibili` 非空）：默认在应用自己的播放器里播放 `bilistream://`（后端取 B 站
  * MP4 地址并转发 Range 请求），截帧 / 字幕轨 / 播放进度与本地视频一样可用；直接播放出错时
  * 退回 B 站外链播放器（iframe，不能截帧、不记进度）。没有本地音频文件，所以不能转写，
- * 字幕从 B 站重新获取。
+ * 字幕从 B 站重新获取。应用内播放可切换清晰度（后端按登录身份取可用档位，控制条上的菜单），
+ * 切换时保持播放位置与播放 / 暂停；外链播放器拿不到应用里的登录，始终按游客播放。
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -57,7 +58,8 @@ import { VideoPlayer } from './VideoPlayer';
 import { BilibiliEmbedPlayer } from './BilibiliEmbedPlayer';
 import { BilibiliLinkDialog, type BilibiliLinkDialogMode } from './BilibiliLinkDialog';
 import { buildBilibiliPageUrl, type BilibiliLinkDescriptor } from './bilibiliLinkApi';
-import { buildBilibiliStreamUrl } from './bilibiliAccount';
+import { shortQualityLabel } from './bilibiliAccount';
+import { useBilibiliQuality } from './useBilibiliQuality';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 import type { TranscriptExportFormat, TranscriptSegment } from './mediaTranscriptApi';
 import { useMediaTranscript } from './useMediaTranscript';
@@ -140,12 +142,16 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const isLink = bilibili !== null;
   /** 链接条目直接播放出错后退回 B 站外链播放器（换条目时重置） */
   const [linkEmbed, setLinkEmbed] = useState(false);
+  /** 外链播放器是播放出错自动退回的（提示语不同） */
+  const [embedFallback, setEmbedFallback] = useState(false);
   useEffect(() => {
     setLinkEmbed(false);
+    setEmbedFallback(false);
   }, [resourceId]);
   /** 外链 iframe 播放：拿不到画面与进度 */
   const embedPlayback = isLink && linkEmbed;
-  const playerSrc = useMemo(() => (isLink ? buildBilibiliStreamUrl(resourceId) : src), [isLink, resourceId, src]);
+  const bilibiliQuality = useBilibiliQuality(isLink ? resourceId : null);
+  const playerSrc = isLink ? (bilibiliQuality.streamUrl ?? src) : src;
   /** 讲义 / 伴随分区按此取帧：外链播放器没有可抽帧的画面 */
   const contentKind = embedPlayback ? 'audio' : kind;
   const companion = useMediaStudyCompanion();
@@ -178,6 +184,19 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const segmentsForActiveRef = useRef(displaySegments);
   segmentsForActiveRef.current = displaySegments;
   const lastTimeRef = useRef(0);
+  const lastPlayingRef = useRef(false);
+
+  // 同一条目换播放地址（切清晰度 / 登录换代）：播放器按新地址重建，记下位置与播放状态，
+  // 新播放器就绪后恢复。必须在渲染期记录——新播放器挂载时会先回报 0 秒覆盖 lastTimeRef。
+  const pendingRestoreRef = useRef<{ time: number; play: boolean; armed: boolean } | null>(null);
+  const prevPlayerRef = useRef({ resourceId, src: playerSrc });
+  if (prevPlayerRef.current.src !== playerSrc) {
+    pendingRestoreRef.current =
+      prevPlayerRef.current.resourceId === resourceId && lastTimeRef.current > 0
+        ? { time: lastTimeRef.current, play: lastPlayingRef.current, armed: false }
+        : null;
+    prevPlayerRef.current = { resourceId, src: playerSrc };
+  }
 
   const externalSeekRef = useRef(false);
   const { onStatus: onProgressStatus, resumedFromRef } = useMediaProgressSync({
@@ -198,7 +217,30 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   const handleStatusChange = useCallback(
     (s: MediaPlayerStatus) => {
+      const restore = pendingRestoreRef.current;
+      if (restore) {
+        // 旧播放器卸载前可能还会回报一次就绪状态：等新播放器先回报「未就绪」再恢复
+        if (!s.isReady) restore.armed = true;
+        else if (restore.armed) {
+          pendingRestoreRef.current = null;
+          const handle = handleRef.current;
+          if (handle) {
+            handle.seekTo(restore.time);
+            if (restore.play) handle.play();
+          }
+          lastTimeRef.current = restore.time;
+          lastPlayingRef.current = restore.play;
+          setIsReady(true);
+          return;
+        }
+        // 恢复前不让新播放器的 0 秒覆盖进度与跟随高亮
+        if (!s.isReady) {
+          setIsReady(false);
+          return;
+        }
+      }
       lastTimeRef.current = s.currentTime;
+      lastPlayingRef.current = s.isPlaying;
       setIsReady((prev) => (prev === s.isReady ? prev : s.isReady));
       recomputeActive(s.currentTime);
       onProgressStatus(s);
@@ -484,7 +526,45 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   const handleLinkStreamError = useCallback(() => {
     setLinkEmbed(true);
+    setEmbedFallback(true);
   }, []);
+
+  // ---------------------------------------------------------------- 清晰度（应用内播放）
+  const { info: qualityInfo, select: selectQuality } = bilibiliQuality;
+  /** 用户刚选的档位：B 站降档时提示一次实际清晰度 */
+  const chosenQnRef = useRef<number | null>(null);
+  const handleQualityChange = useCallback(
+    (qn: number) => {
+      chosenQnRef.current = qn;
+      selectQuality(qn);
+    },
+    [selectQuality],
+  );
+  useEffect(() => {
+    const chosen = chosenQnRef.current;
+    if (chosen === null || !qualityInfo || qualityInfo.requested !== chosen) return;
+    chosenQnRef.current = null;
+    if (qualityInfo.current < chosen) {
+      const actual = qualityInfo.options.find((o) => o.qn === qualityInfo.current);
+      showGlobalNotification(
+        'info',
+        t('learningHub:mediaBilibili.playback.qualityDowngraded', {
+          quality: actual ? shortQualityLabel(actual) : String(qualityInfo.current),
+        }),
+      );
+    }
+  }, [qualityInfo, t]);
+  const videoQuality = useMemo(
+    () =>
+      isLink && qualityInfo && qualityInfo.options.length > 0
+        ? {
+            options: qualityInfo.options.map((o) => ({ value: o.qn, label: shortQualityLabel(o) })),
+            value: qualityInfo.current,
+            onChange: handleQualityChange,
+          }
+        : null,
+    [isLink, qualityInfo, handleQualityChange],
+  );
 
   const player = bilibili && linkEmbed ? (
     <BilibiliEmbedPlayer
@@ -505,6 +585,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       onStatusChange={handleStatusChange}
       crossOrigin="anonymous"
       extraControls={captionsButton}
+      quality={videoQuality}
       trackSlot={
         trackSrc ? (
           <track
@@ -624,7 +705,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
           <DsButton
             variant="ghost"
             size="sm"
-            onClick={() => setLinkEmbed((prev) => !prev)}
+            onClick={() => {
+              setEmbedFallback(false);
+              setLinkEmbed((prev) => !prev);
+            }}
             className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs')}
             data-bilibili-playback={linkEmbed ? 'embed' : 'stream'}
           >
@@ -760,7 +844,9 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
         >
           {embedPlayback && (
             <p className="absolute inset-x-0 top-0 z-10 bg-black/60 px-3 py-1 text-[11px] text-white" role="status" data-bilibili-fallback="">
-              {t('learningHub:mediaBilibili.playback.fallback')}
+              {embedFallback
+                ? `${t('learningHub:mediaBilibili.playback.fallback')} ${t('learningHub:mediaBilibili.playback.embedGuest')}`
+                : t('learningHub:mediaBilibili.playback.embedGuest')}
             </p>
           )}
           {player}

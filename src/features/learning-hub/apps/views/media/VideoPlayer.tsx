@@ -29,6 +29,7 @@ import { formatMediaTime } from '../previewUtils';
 import { useMediaPlayback } from './useMediaPlayback';
 import { MediaScrubber } from './MediaScrubber';
 import { PlaybackRateMenu } from './PlaybackRateMenu';
+import { QualityMenu, type QualityMenuOption } from './QualityMenu';
 import { hasShortcutModifier, isInteractiveShortcutTarget, SKIP_SECONDS } from './mediaShortcuts';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
@@ -55,6 +56,12 @@ export interface VideoPlayerProps {
   crossOrigin?: 'anonymous';
   /** 悬浮控制条上的附加按钮（字幕开关等），插在倍速按钮之前 */
   extraControls?: React.ReactNode;
+  /** 清晰度菜单（B 站链接条目）；不传或没有选项时不显示 */
+  quality?: {
+    options: QualityMenuOption[];
+    value: number;
+    onChange: (value: number) => void;
+  } | null;
 }
 
 /** 视频悬浮控制条上的图标按钮统一样式（白色系 overlay；触屏 ≥44px 触控目标） */
@@ -72,14 +79,17 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   trackSlot,
   crossOrigin,
   extraControls,
+  quality = null,
 }) => {
   const { t } = useTranslation(['learningHub']);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const [showControls, setShowControls] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // 倍速菜单打开期间控制条不自动隐藏（否则菜单会随控制条一起消失）
+  // 倍速 / 清晰度菜单打开期间控制条不自动隐藏（否则菜单会随控制条一起消失）
   const [rateMenuOpen, setRateMenuOpen] = useState(false);
+  const [qualityMenuOpen, setQualityMenuOpen] = useState(false);
+  const menuOpen = rateMenuOpen || qualityMenuOpen;
 
   const {
     mediaRef,
@@ -136,29 +146,29 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   // 暂停 / 倍速菜单打开时控制条常驻；播放中依赖 mousemove 重新调度隐藏
   useEffect(() => {
-    if (!isPlaying || rateMenuOpen) {
+    if (!isPlaying || menuOpen) {
       clearHideTimer();
       setShowControls(true);
       return;
     }
     scheduleHideControls();
     return clearHideTimer;
-  }, [isPlaying, rateMenuOpen, scheduleHideControls, clearHideTimer]);
+  }, [isPlaying, menuOpen, scheduleHideControls, clearHideTimer]);
 
   useEffect(() => clearHideTimer, [clearHideTimer]);
 
   const handleMouseMove = useCallback(() => {
-    if (isPlaying && !rateMenuOpen) {
+    if (isPlaying && !menuOpen) {
       scheduleHideControls();
     }
-  }, [isPlaying, rateMenuOpen, scheduleHideControls]);
+  }, [isPlaying, menuOpen, scheduleHideControls]);
 
   const handleMouseLeave = useCallback(() => {
-    if (isPlaying && !rateMenuOpen) {
+    if (isPlaying && !menuOpen) {
       clearHideTimer();
       setShowControls(false);
     }
-  }, [isPlaying, rateMenuOpen, clearHideTimer]);
+  }, [isPlaying, menuOpen, clearHideTimer]);
 
   // 触屏轻触语义与鼠标点击不同：控制条隐藏时首次轻触只唤出控制条，
   // 可见时轻触才切换播放；双击全屏仅保留给鼠标（触屏双击易误触）。
@@ -510,6 +520,15 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           )}
 
           {extraControls}
+
+          {quality && quality.options.length > 0 && (
+            <QualityMenu
+              options={quality.options}
+              value={quality.value}
+              onChange={quality.onChange}
+              onOpenChange={setQualityMenuOpen}
+            />
+          )}
 
           <PlaybackRateMenu
             rate={rate}
