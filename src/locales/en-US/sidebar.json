@@ -47,8 +47,8 @@
     "ui_lab": "UI Lab",
     "command_palette": "Search & Commands",
     "workbench_mode": "Study Desktop",
-    "show_workbench_mode": "Show Learning Desktop",
-    "hide_workbench_mode": "Hide Learning Desktop",
+    "show_workbench_mode": "Show Study Desktop",
+    "hide_workbench_mode": "Hide Study Desktop",
     "cards_hub": {
       "aria": "Flashcards sections",
       "review": "Review",
