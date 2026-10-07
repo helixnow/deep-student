@@ -42,6 +42,8 @@ export interface ChatSceneOptions {
   /** 首答播完后、海报前调整滚动位置等 */
   arrange?(root: HTMLElement): Promise<void> | void;
   namespaces?: string[];
+  /** 点 PDF 页码徽章 / 附件时在右侧打开原文（见 ./ChatWithSourcePane） */
+  sourcePane?: boolean;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -79,6 +81,16 @@ function passUnknownThrough(handler: (cmd: string, payload?: unknown) => unknown
     }
   };
 }
+
+const apiConfig = (id: string, name: string, vendorId: string, vendorName: string, model: string, extra: Record<string, unknown>) => ({
+  id, name, vendorId, vendorName, providerType: 'openai', apiKey: 'demo-key-not-real', baseUrl: '', model,
+  isMultimodal: false, isReasoning: false, isEmbedding: false, isReranker: false, enabled: true, modelAdapter: 'openai', ...extra,
+});
+
+const EXTRA_API_CONFIGS = [
+  apiConfig('demo-config-kimi', 'Kimi', 'moonshot', 'Moonshot', 'kimi-k3', { isReasoning: true }),
+  apiConfig('demo-config-qwen-vl', 'Qwen VL', 'qwen', '通义千问', 'qwen3-vl-plus', { isMultimodal: true }),
+];
 
 function withLatency<T>(value: T, ms = 120): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(value), ms));
@@ -123,6 +135,8 @@ export function createChatScenePack(options: ChatSceneOptions): DemoAppPack {
     // 设置表交给通用 mock（对话演示后端的设置表是经典布局那套）
     if (cmd === 'get_setting' || cmd === 'save_setting') return undefined;
     // 空会话页的「薄弱知识点」：演示里没有作答记录
+    // 原文窗格里的 PDF 阅读进度：演示不落盘
+    if (cmd === 'dstu_set_metadata') return null;
     if (cmd === 'mastery_get_overview') return { conceptCount: 0, weakCount: 0, avgScore: 0, weakest: [] };
     const target = String(args.sessionId ?? (args.request as { sessionId?: string } | undefined)?.sessionId ?? '');
 
@@ -141,13 +155,19 @@ export function createChatScenePack(options: ChatSceneOptions): DemoAppPack {
       }
     }
     backend ??= passUnknownThrough(createDemoIpcHandler());
-    return backend(cmd, args);
+    const result = backend(cmd, args);
+    // 模型选择器：对话演示只配了一家，这里再补两家，让「模型」子菜单有得选
+    if (cmd === 'get_api_configurations' && Array.isArray(result)) return [...result, ...EXTRA_API_CONFIGS];
+    return result;
   };
 
   return {
     title: options.title,
     instanceKey: sessionId,
-    load: () => import('@/features/workbench/apps/chat/ChatSessionWindowFrame').then((m) => m.default),
+    load: () =>
+      options.sourcePane
+        ? import('./ChatWithSourcePane').then((m) => m.default)
+        : import('@/features/workbench/apps/chat/ChatSessionWindowFrame').then((m) => m.default),
     handle,
     namespaces: options.namespaces,
     async prepare() {

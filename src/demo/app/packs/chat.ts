@@ -9,6 +9,7 @@ export default createChatScenePack({
   title: 'AI 对话',
   sessionId: 'demo-pdf-deepread',
   namespaces: CHAT_NAMESPACES,
+  sourcePane: true,
   replies: [
     {
       keywords: ['参数服务器', 'allreduce', '聚合'],
