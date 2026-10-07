@@ -265,7 +265,10 @@ describe('unified scroll primitive contract', () => {
   });
 
   it('keeps wrapper props and flex height constraints aligned', () => {
-    expect(scrollAreaSource).toContain('"relative min-h-0 min-w-0"');
+    // 根节点默认 relative + 可收缩；调用方自带定位类（absolute / fixed …）时只保留 min-h/min-w
+    expect(scrollAreaSource).toContain("'relative min-h-0 min-w-0'");
+    expect(scrollAreaSource).toContain("hasPosition ? 'min-h-0 min-w-0'");
+    expect(scrollAreaSource).toContain('cn(scrollAreaRootBase(className), className');
     expect(customScrollAreaSource).toContain(
       '"h-full max-h-[inherit] min-h-0 w-full min-w-0"',
     );
