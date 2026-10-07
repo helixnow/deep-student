@@ -37,6 +37,8 @@ const EMPTY_LIST_COMMANDS = new Set([
   'skill_list_directories',
   'list_mcp_servers',
   'get_recent_items',
+  // 技能加载器在生产构建里查运行时根目录（dev 下走另一条路径不查）
+  'chat_v2_list_runtime_roots',
 ]);
 
 const SILENT_COMMANDS = new Set([
