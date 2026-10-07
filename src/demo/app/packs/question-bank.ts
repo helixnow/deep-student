@@ -8,7 +8,7 @@ import { QB_MAIN_ID } from './question-bank/data';
 
 const pack: DemoAppPack = {
   title: '题目集与练习',
-  load: () => import('@/features/workbench/apps/content/ContentAppWindow').then((m) => m.createContentWindowComponent('exam')),
+  load: () => import('./question-bank/QuestionBankDemo').then((m) => m.default),
   instanceKey: QB_MAIN_ID,
   handle: handleQuestionBank,
 };

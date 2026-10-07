@@ -6,7 +6,7 @@ import type { Question, QuestionBankStats, QuestionListResult, SubmitAnswerResul
 import type { DemoArgs } from '../../types';
 import { emit } from '@tauri-apps/api/event';
 import { tr } from '../../../lang';
-import { DEMO_EXAM_SETS, buildSeedQuestions, daysAgo } from './data';
+import { DEMO_EXAM_SETS, buildSeedQuestions } from './data';
 
 const questions = new Map<string, Question>(buildSeedQuestions().map((q) => [q.id, q]));
 const submissions = new Map<string, { questionId: string; correct: boolean | null }>();
@@ -83,7 +83,9 @@ function knowledge(examId: string) {
 }
 
 function dateKey(daysBack: number): string {
-  return daysAgo(daysBack).slice(0, 10);
+  const d = new Date();
+  d.setDate(d.getDate() - daysBack);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 /** 近 N 天的做题量：固定伪随机形状，周末多一些 */
@@ -130,11 +132,13 @@ interface Plan {
   created_at: string; updated_at: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+const localDate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const today = () => localDate(new Date());
 function addDays(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return localDate(d);
 }
 
 const plans = new Map<string, Plan>();
@@ -556,6 +560,45 @@ export function handleQuestionBank(cmd: string, args: DemoArgs): unknown {
       return null;
     case 'qbank_get_source_images':
       return [];
+    case 'qbank_create_question': {
+      const p = a.params ?? {};
+      const now = new Date().toISOString();
+      const examQs = inExam(p.exam_id);
+      const q = {
+        ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== null)),
+        id: `q_new_${++seq}`, exam_id: p.exam_id, content: p.content ?? '', question_type: p.question_type ?? 'other',
+        question_label: String(examQs.length + 1), tags: p.tags ?? [], images: p.images ?? [], source_type: 'manual',
+        status: 'new', attempt_count: 0, correct_count: 0, is_favorite: false, created_at: now, updated_at: now,
+      } as Question;
+      questions.set(q.id, q);
+      return q;
+    }
+    case 'qbank_reset_progress':
+      for (const q of inExam(a.examId)) {
+        questions.set(q.id, { ...q, status: 'new', attempt_count: 0, correct_count: 0, user_answer: undefined, is_correct: undefined });
+      }
+      return stats(a.examId);
+    case 'qbank_get_history': {
+      const q = questions.get(a.questionId);
+      if (!q) return [];
+      const out = [{ id: `h_${q.id}_0`, question_id: q.id, field_name: 'created', change_type: 'create', created_at: q.created_at }];
+      if (q.last_attempt_at) {
+        out.unshift({ id: `h_${q.id}_1`, question_id: q.id, field_name: 'user_answer', new_value: q.user_answer,
+          change_type: 'answer', created_at: q.last_attempt_at } as typeof out[number]);
+      }
+      return out;
+    }
+    // AI 出题面板的模型下拉：留空即跟随设置
+    case 'get_api_configurations':
+      return [];
+    case 'qbank_list_generation_tasks':
+      return [];
+    case 'qbank_get_generation_task':
+    case 'qbank_cancel_generation_task':
+      return null;
+    case 'qbank_ai_generate_questions':
+    case 'qbank_crop_source_image':
+      throw desktopOnly();
     case 'qbank_list_mistakes':
       return listMistakes(a.request?.filters, a.request?.page, a.request?.page_size);
     case 'get_csv_preview':
