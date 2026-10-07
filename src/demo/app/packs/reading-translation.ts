@@ -27,7 +27,13 @@ function waitFor<T>(probe: () => T | null | undefined, timeoutMs = 8000): Promis
 
 const pack: DemoAppPack = {
   title: '文档阅读与翻译',
-  load: () => import('@/features/workbench/apps/content/ContentAppWindow').then((m) => m.createContentWindowComponent('textbook')),
+  load: async () => {
+    const [{ createContentWindowComponent }, { withNotifications }] = await Promise.all([
+      import('@/features/workbench/apps/content/ContentAppWindow'),
+      import('../data/library/withNotifications'),
+    ]);
+    return withNotifications(createContentWindowComponent('textbook'));
+  },
   instanceKey: LIBRARY_PDF_ID,
   handle: chain(backend.handle, handleReadingAi),
   async afterMount(root) {

@@ -17,7 +17,13 @@ const LIST_VIEW = JSON.stringify({
 
 const pack: DemoAppPack = {
   title: '资源库',
-  load: () => import('@/features/workbench/apps/files/FilesAppWindow').then((m) => m.default),
+  load: async () => {
+    const [{ default: FilesAppWindow }, { withNotifications }] = await Promise.all([
+      import('@/features/workbench/apps/files/FilesAppWindow'),
+      import('../data/library/withNotifications'),
+    ]);
+    return withNotifications(FilesAppWindow);
+  },
   handle: backend.handle,
   // 海报用列表视图：名称 / 修改日期 / 类型一眼看全（访客切回网格后本次访问内保持）
   localStorage: Object.fromEntries(

@@ -136,6 +136,9 @@ async function streamWorkbench(sessionId: string, text: string) {
   await emit(eventName, { type: 'complete', translated_text: text, detected_lang: 'en' });
 }
 
+/** 「添加到聊天」落的选区资源（vfs_create_or_reuse 内存表，按内容去重） */
+const selectionResources = new Map<string, { id: string; hash: string; type: string; sourceId?: string; data: string; metadata?: Record<string, unknown>; refCount: number; createdAt: number }>();
+
 export function handleReadingAi(cmd: string, args: DemoArgs): unknown {
   switch (cmd) {
     case 'stream_chat_translation_plain':
@@ -157,6 +160,46 @@ export function handleReadingAi(cmd: string, args: DemoArgs): unknown {
     }
     case 'cancel_stream':
       return null;
+    // 划词「制卡」：后台制卡任务要用到桌面版的模型与 Anki 管线
+    case 'start_enhanced_document_processing':
+      throw new Error(tr('划词制卡请在桌面版中使用：后台会用你配置的模型生成卡片，放进「划词制卡」牌组。', 'Making cards from a selection is available in the desktop app: it generates cards with your configured model in the background.'));
+    // 划词翻译浮层的模型下拉：演示只用默认翻译模型
+    case 'get_api_configurations':
+      return [];
+    // 「添加到聊天」「框选提问」把引用放进对话输入框：演示页没有对话窗口，
+    // 先建一个空会话接住引用（与对话演示同形）
+    case 'vfs_create_or_reuse': {
+      const params = (args.params ?? {}) as { type?: string; data?: string; sourceId?: string; metadata?: Record<string, unknown> };
+      const data = String(params.data ?? '');
+      let h = 5381;
+      for (let i = 0; i < data.length; i++) h = ((h << 5) + h + data.charCodeAt(i)) | 0;
+      const hash = `demo_${(h >>> 0).toString(16)}`;
+      const existing = [...selectionResources.values()].find((r) => r.hash === hash);
+      if (existing) return { resourceId: existing.id, hash, isNew: false };
+      const id = `res_demo_sel_${selectionResources.size + 1}`;
+      selectionResources.set(id, { id, hash, type: params.type ?? 'retrieval', sourceId: params.sourceId, data, metadata: params.metadata, refCount: 0, createdAt: Date.now() });
+      return { resourceId: id, hash, isNew: true };
+    }
+    case 'vfs_get_resource': {
+      const found = selectionResources.get(String(args.resourceId ?? ''));
+      return found ?? undefined;
+    }
+    case 'vfs_resource_exists': {
+      const id = String(args.resourceId ?? '');
+      return selectionResources.has(id) ? true : undefined;
+    }
+    case 'chat_v2_create_session': {
+      const now = new Date().toISOString();
+      return {
+        id: `demo-reader-${Date.now().toString(36)}`,
+        mode: String(args.mode ?? 'chat'),
+        persistStatus: 'active',
+        createdAt: now,
+        updatedAt: now,
+        groupId: (args.groupId as string | null | undefined) ?? null,
+        metadata: (args.metadata as Record<string, unknown> | undefined) ?? undefined,
+      };
+    }
     case 'call_llm_for_boundary':
       return sleep(700).then(() => ({
         assistant_message: explainDemoText(String(args.prompt ?? '')),

@@ -870,6 +870,15 @@ export function createLibraryBackend(): LibraryBackend {
           autoExtractFrequency: 'balanced',
         };
 
+      // 阅读器书签（教材走 textbooks 表）
+      case 'textbooks_update_bookmarks': {
+        const r = resources.get(String(args.id ?? ''));
+        if (!r) throw new Error(tr('资源不存在', 'Resource not found'));
+        r.metadata = { ...r.metadata, bookmarks: Array.isArray(args.bookmarks) ? args.bookmarks : [] };
+        r.revision += 1;
+        return null;
+      }
+
       // ---------- 教材字节（无本地文件 → base64 整文件加载） ----------
       case 'vfs_get_file_blob_path':
         return null;
