@@ -743,6 +743,8 @@ impl QuestionImportService {
             let mut all_questions: Vec<Value> = Vec::new();
             // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
             let mut total_save_failed: usize = 0;
+            // 首个分块的失败原因：一道题都没提取到时透出给用户（如「对话模型未配置」）
+            let mut first_failure: Option<String> = None;
 
             for (chunk_idx, chunk) in chunks.iter().enumerate() {
                 if chunk_idx < chunks_start {
@@ -802,6 +804,7 @@ impl QuestionImportService {
                     }
                     Err(e) => {
                         log::warn!("[QuestionImport] 块 {} 解析失败: {}", chunk_idx + 1, e);
+                        first_failure.get_or_insert_with(|| e.to_string());
                     }
                 }
 
@@ -827,7 +830,10 @@ impl QuestionImportService {
                         total_save_failed
                     )));
                 }
-                return Err(AppError::validation("未能提取到题目"));
+                return Err(AppError::validation(no_questions_error(
+                    "未能提取到题目",
+                    first_failure.as_deref(),
+                )));
             }
 
             rebuild_preview_from_questions(vfs_db, session_id);
@@ -909,6 +915,8 @@ impl QuestionImportService {
         // 连续前缀，断点续传语义不变（中断时未落盘的在途页会重做）。
         use futures::StreamExt;
         let vlm_service = &vlm_service;
+        // 首个失败页的原因：一页都没识别出题目时透出给用户（如「未找到可用的 VLM 模型」）
+        let mut first_failure: Option<String> = None;
         let mut page_results = futures::stream::iter(vlm_start_page..pages.len())
             .map(|idx| async move {
                 (
@@ -938,6 +946,7 @@ impl QuestionImportService {
                 }
                 Err(e) => {
                     log::warn!("[QuestionImport] VLM 页面 {} 失败: {}", idx + 1, e);
+                    first_failure.get_or_insert_with(|| e.to_string());
                     while page_analyses.len() <= idx {
                         page_analyses.push(None);
                     }
@@ -987,15 +996,16 @@ impl QuestionImportService {
         let merged = cross_page_merger::merge_pages(&page_analyses);
 
         if merged.is_empty() {
+            let error_msg = no_questions_error("未能识别出题目", first_failure.as_deref());
             if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
                     session_id: Some(session_id.to_string()),
-                    error: "VLM 分析未能提取到题目".to_string(),
+                    error: error_msg.clone(),
                     total_parsed: 0,
                 });
             }
             let _ = VfsExamRepo::update_status(vfs_db, session_id, "completed");
-            return Err(AppError::validation("VLM 分析未能提取到题目"));
+            return Err(AppError::validation(error_msg));
         }
 
         // ===== Stage 4: 配图裁切与关联 =====
@@ -1859,6 +1869,8 @@ impl QuestionImportService {
         let mut chunk_char_offset: usize = chunks.iter().take(chunks_start).map(|c| c.len()).sum();
         // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
         let mut total_save_failed: usize = 0;
+        // 首个分块的失败原因：一道题都没提取到时透出给用户（如「对话模型未配置」）
+        let mut first_failure: Option<String> = None;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if chunk_idx < chunks_start {
@@ -1952,6 +1964,7 @@ impl QuestionImportService {
 
             if let Err(e) = chunk_questions {
                 log::warn!("[QuestionImport] DOCX 块 {} 解析失败: {}", chunk_idx + 1, e);
+                first_failure.get_or_insert_with(|| e.to_string());
             }
 
             chunk_char_offset += chunk.len();
@@ -1988,7 +2001,7 @@ impl QuestionImportService {
             let error_msg = if total_save_failed > 0 {
                 format!("解析到 {} 道题目但全部写入失败", total_save_failed)
             } else {
-                "未能提取到题目".to_string()
+                no_questions_error("未能提取到题目", first_failure.as_deref())
             };
             if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
@@ -2270,6 +2283,8 @@ impl QuestionImportService {
         let mut total_parsed = 0;
         // P1 修复：写库失败的题目不再计入 total_parsed，单独统计并在完成事件透出
         let mut total_save_failed: usize = 0;
+        // 首个分块的失败原因：一道题都没提取到时透出给用户（如「对话模型未配置」）
+        let mut first_failure: Option<String> = None;
 
         for (chunk_idx, chunk) in chunks.iter().enumerate() {
             if let Some(tx) = progress_tx {
@@ -2325,6 +2340,7 @@ impl QuestionImportService {
                 }
                 Err(e) => {
                     log::warn!("[QuestionImport] 块 {} 解析失败: {}", chunk_idx + 1, e);
+                    first_failure.get_or_insert_with(|| e.to_string());
                 }
             }
 
@@ -2347,7 +2363,7 @@ impl QuestionImportService {
             let error_msg = if total_save_failed > 0 {
                 format!("解析到 {} 道题目但全部写入失败", total_save_failed)
             } else {
-                "未能提取到题目".to_string()
+                no_questions_error("未能提取到题目", first_failure.as_deref())
             };
             if let Some(tx) = progress_tx {
                 let _ = tx.send(QuestionImportProgress::Failed {
@@ -2972,6 +2988,15 @@ fn question_to_card(q: &Value, index: usize) -> ExamCardPreview {
         status: QuestionStatus::New,
         source_type: SourceType::ImportFile,
         ..Default::default()
+    }
+}
+
+/// 一道题都没提取到时给用户的错误：带上首个分块 / 页面的失败原因（如「对话模型未配置」
+/// 「未找到可用的 VLM 模型」），否则用户只看到笼统的「未能提取到题目」无从下手。
+fn no_questions_error(prefix: &str, first_failure: Option<&str>) -> String {
+    match first_failure.map(str::trim) {
+        Some(reason) if !reason.is_empty() => format!("{}：{}", prefix, reason),
+        _ => prefix.to_string(),
     }
 }
 
@@ -4635,6 +4660,31 @@ mod csv_import_tests {
         assert!(
             !completed_first.request_cancel(),
             "a completed import must not accept a late cancellation"
+        );
+    }
+}
+
+#[cfg(test)]
+mod no_questions_error_tests {
+    use super::no_questions_error;
+
+    #[test]
+    fn surfaces_the_first_failure_reason_when_nothing_was_extracted() {
+        assert_eq!(
+            no_questions_error(
+                "未能识别出题目",
+                Some(" 未找到可用的 VLM 模型，请在设置中配置 ")
+            ),
+            "未能识别出题目：未找到可用的 VLM 模型，请在设置中配置"
+        );
+    }
+
+    #[test]
+    fn keeps_the_plain_message_without_a_reason() {
+        assert_eq!(no_questions_error("未能提取到题目", None), "未能提取到题目");
+        assert_eq!(
+            no_questions_error("未能提取到题目", Some("  ")),
+            "未能提取到题目"
         );
     }
 }
