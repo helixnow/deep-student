@@ -127,7 +127,7 @@ function videoOf(root: HTMLElement): HTMLMediaElement | null {
 }
 
 function seek(resourceId: string, seconds: number) {
-  window.dispatchEvent(new CustomEvent('media-ref:focus', {
+  document.dispatchEvent(new CustomEvent('media-ref:focus', {
     detail: { resourceId, seconds, targetScopeId: 'media-studio', play: true },
   }));
 }

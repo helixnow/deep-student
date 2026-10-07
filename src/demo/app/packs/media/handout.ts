@@ -153,7 +153,7 @@ export function presetHandoutMarkdown(): string {
           break;
         }
         case 'figure': {
-          const ts = figureAt[Number(b.pick)] ?? 50;
+          const ts = figureAt[Number(b.pick) - 1] ?? 50;
           fig += 1;
           parts.push(`![图 ${fig} ${String(b.caption)}](demo-frame:${P4_ID}:${ts})`);
           parts.push(`*图 ${fig} ${String(b.caption)}*`);

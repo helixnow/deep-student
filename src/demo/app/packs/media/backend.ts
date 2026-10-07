@@ -404,6 +404,8 @@ async function vlmCaption(args: DemoArgs): Promise<string> {
   captionCounters.set(key, n + 1);
   const m = resourceOfRun(args.requestId);
   const slide = m?.slides?.[n];
+  // 片头标题页不算教学画面（生产流水线据此丢弃该帧）
+  if (slide && slide.at === 0) return 'TYPE: NONE';
   return `TYPE: TEACHING\n${slide ? slide.caption : tr('课程幻灯片：本节标题与要点', 'Lecture slide: section title and key points')}`;
 }
 
