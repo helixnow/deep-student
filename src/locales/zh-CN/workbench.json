@@ -1064,7 +1064,14 @@
       "pinned": "已固定",
       "showAll": "显示全部打开的文件",
       "openInRightSplit": "在右侧分屏打开 {{title}}",
-      "closeRightSplit": "从右侧分屏关闭 {{title}}"
+      "closeRightSplit": "从右侧分屏关闭 {{title}}",
+      "menu": {
+        "pin": "固定",
+        "unpin": "取消固定",
+        "openInRightSplit": "在右侧分屏打开",
+        "closeRightSplit": "从右侧分屏关闭",
+        "close": "关闭"
+      }
     },
     "panes": {
       "main": "主编辑器",

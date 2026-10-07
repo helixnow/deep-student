@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { clampMenuPosition } from './tree/TreeContextMenu';
 import { createPortal } from 'react-dom';
 import i18next from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -794,12 +795,7 @@ const WorkspaceTabs: React.FC<WorkspaceTabsProps> = ({
     } else if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
       event.preventDefault();
       const bounds = event.currentTarget.getBoundingClientRect();
-      onOpenContextMenu(
-        key,
-        Math.max(8, Math.min(bounds.left, window.innerWidth - 184)),
-        Math.max(8, Math.min(bounds.bottom, window.innerHeight - 148)),
-        event.currentTarget,
-      );
+      onOpenContextMenu(key, bounds.left, bounds.bottom, event.currentTarget);
     }
   };
 
@@ -2416,15 +2412,29 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
     return items;
   }, [createResource, favorites, openResource, openTabInRightSplit, requestDeleteTreeItem, resolveCreateFolderId, t]);
 
-  const openTabContextMenu = useCallback((key: string, x: number, y: number, trigger: HTMLElement) => {
+  const openTabContextMenu = useCallback((key: string, x: number, _y: number, trigger: HTMLElement) => {
     restoreTabContextFocusRef.current = false;
     tabContextTriggerRef.current = trigger;
-    setTabContextMenu({
-      key,
-      x: Math.max(8, Math.min(x, window.innerWidth - 184)),
-      y: Math.max(8, Math.min(y, window.innerHeight - 148)),
-    });
+    // 菜单出现在标签下方（横向跟随指针），不盖住标签本身；视口限制在挂载后按实测尺寸做
+    const tabBounds = trigger.getBoundingClientRect();
+    setTabContextMenu({ key, x, y: tabBounds.bottom + 4 });
   }, []);
+
+  // 按实测尺寸把标签页菜单限制在视口内（原先按固定 148px 估高，且直接覆盖在指针处）
+  useLayoutEffect(() => {
+    const menu = contextMenuRef.current;
+    if (!tabContextMenu || !menu) return;
+    const rect = menu.getBoundingClientRect();
+    const next = clampMenuPosition(
+      tabContextMenu.x,
+      tabContextMenu.y,
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    );
+    if (next.left !== tabContextMenu.x || next.top !== tabContextMenu.y) {
+      setTabContextMenu((current) => (current ? { ...current, x: next.left, y: next.top } : current));
+    }
+  }, [tabContextMenu]);
 
   const handleWorkspaceKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (navHistory.handleKeyDown(event, activateHistoryEntry)) return;
@@ -3043,7 +3053,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
         onImported={() => loadResources({ blocking: false })}
       />
       {tabContextMenu && tabContextTarget && (
-        <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
+        <div ref={contextMenuRef} id="notes-tab-context-menu" className="notes-context-menu notes-tab-context-menu" role="menu" aria-label={tabContextTarget.title} style={{ left: tabContextMenu.x, top: tabContextMenu.y }} onPointerDown={(event) => event.stopPropagation()}>
           <button
             type="button"
             role="menuitemcheckbox"
@@ -3055,9 +3065,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             }}
           >
             {tabContextTarget.pinned ? <PushPinSlash size={14} aria-hidden /> : <PushPin size={14} aria-hidden />}
-            {tabContextTarget.pinned
-              ? t('notesWorkspace.tabs.unpin', { defaultValue: 'Unpin {{title}}', title: tabContextTarget.title })
-              : t('notesWorkspace.tabs.pin', { defaultValue: 'Pin {{title}}', title: tabContextTarget.title })}
+            <span className="notes-context-menu-label">
+              {tabContextTarget.pinned
+                ? t('notesWorkspace.tabs.menu.unpin', 'Unpin')
+                : t('notesWorkspace.tabs.menu.pin', 'Pin')}
+            </span>
           </button>
           <button
             type="button"
@@ -3071,9 +3083,11 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
             }}
           >
             <SidebarSimple size={14} aria-hidden />
-            {tabContextTarget.key === splitTab?.key
-              ? t('notesWorkspace.tabs.closeRightSplit', { defaultValue: 'Close {{title}} from right split', title: tabContextTarget.title })
-              : t('notesWorkspace.tabs.openInRightSplit', { defaultValue: 'Open {{title}} in right split', title: tabContextTarget.title })}
+            <span className="notes-context-menu-label">
+              {tabContextTarget.key === splitTab?.key
+                ? t('notesWorkspace.tabs.menu.closeRightSplit', 'Close right split')
+                : t('notesWorkspace.tabs.menu.openInRightSplit', 'Open in right split')}
+            </span>
           </button>
           <div role="separator" className="notes-context-menu-separator" />
           <button
@@ -3086,7 +3100,7 @@ export const NotesWorkspaceApp: React.FC<AppWindowProps> = ({
               setTabContextMenu(null);
             }}
           >
-            {t('notesWorkspace.tabs.close', { defaultValue: 'Close {{title}}', title: tabContextTarget.title })}
+            <span className="notes-context-menu-label">{t('notesWorkspace.tabs.menu.close', 'Close')}</span>
           </button>
           <button
             type="button"
