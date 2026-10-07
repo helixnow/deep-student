@@ -99,3 +99,23 @@ describe('SegmentedControl', () => {
     expect(radios[1]).toHaveAttribute('tabindex', '-1');
   });
 });
+
+describe('segmentedThumbGeometry', () => {
+  it('measures in untransformed layout coordinates even while an ancestor is scaled', async () => {
+    const { segmentedThumbGeometry } = await import('@/components/ui/SegmentedControl');
+    // 根元素布局宽 120、高 28；窗口动画中整体缩放 0.5
+    const root = { left: 100, top: 50, width: 60, height: 14 };
+    const target = { left: 128, top: 51, width: 30, height: 12 };
+    expect(segmentedThumbGeometry(root, target, { width: 120, height: 28 }))
+      .toEqual({ x: 56, y: 2, width: 60, height: 24 });
+  });
+
+  it('is identity when nothing is transformed', async () => {
+    const { segmentedThumbGeometry } = await import('@/components/ui/SegmentedControl');
+    expect(segmentedThumbGeometry(
+      { left: 0, top: 0, width: 120, height: 28 },
+      { left: 62, top: 2, width: 56, height: 24 },
+      { width: 120, height: 28 },
+    )).toEqual({ x: 62, y: 2, width: 56, height: 24 });
+  });
+});
