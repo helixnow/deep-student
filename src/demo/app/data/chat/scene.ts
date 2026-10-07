@@ -258,6 +258,22 @@ export function scrollToConversationTop(root: HTMLElement): void {
   if (scroller) scroller.scrollTop = 0;
 }
 
+/** 消息区滚到最底 */
+export function scrollToConversationEnd(root: HTMLElement): void {
+  const scroller = findMessageScroller(root);
+  if (scroller) scroller.scrollTop = scroller.scrollHeight;
+}
+
+/** 展开回答下方的来源卡片（「N 个结果」） */
+export async function expandSources(root: HTMLElement): Promise<void> {
+  const toggle = [...root.querySelectorAll<HTMLButtonElement>('button')].find((b) =>
+    /^\d+\s*(个结果|results?)$/i.test((b.textContent ?? '').trim()),
+  );
+  if (!toggle) return;
+  toggle.click();
+  await sleep(300);
+}
+
 /** 对话窗口用到的文案命名空间（输入栏、块渲染、设置里的模型与 MCP 名称、空态的今日待复习） */
 export const CHAT_NAMESPACES = ['chatV2', 'workbench', 'learningHub', 'anki', 'mindmap', 'skills', 'sandbox', 'settings', 'analysis', 'app_menu', 'data', 'mcp'];
 
