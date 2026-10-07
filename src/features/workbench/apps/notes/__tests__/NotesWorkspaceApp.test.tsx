@@ -455,7 +455,9 @@ describe('NotesWorkspaceApp', () => {
 
     fireEvent.contextMenu(secondTab);
     const pinAction = within(screen.getByRole('menu')).getByRole('menuitemcheckbox', { name: /固定|Pin/ });
-    expect(pinAction).toHaveTextContent('第二笔记');
+    // 菜单项只写动作；资料名放在菜单的无障碍名上（长标题拼进菜单项会折行压住图标）
+    expect(pinAction).not.toHaveTextContent('第二笔记');
+    expect(screen.getByRole('menu')).toHaveAttribute('aria-label', '第二笔记');
     fireEvent.click(pinAction);
     expect(secondTab.parentElement).toHaveAttribute('data-pinned', 'true');
     expect(secondTab.getAttribute('aria-description')).toMatch(/已固定|Pinned/);
