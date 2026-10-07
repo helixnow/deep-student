@@ -148,21 +148,12 @@ const NULL_PAGE_CODE = [
   "export const MediaStudioApp = NullPage;",
 ].join("\n");
 
+// 单应用演示（demo-app.html）要用到设置、待办、资源库、PDF、模板 / 技能管理、音视频等页面，
+// 这些不再 stub：它们只经动态导入引用，对话演示与学习桌面演示的首屏不会下载
 const DEMO_PAGE_STUBS: Array<{ test: RegExp; label: string }> = [
-  { label: "Settings", test: /features[\/]settings[\/]components[\/]Settings(\.tsx?)?$/ },
   { label: "SOTADashboardLite", test: /components[\/]SOTADashboardLite(\.tsx?)?$/ },
-  { label: "DataImportExport", test: /components[\/]DataImportExport(\.tsx?)?$/ },
-  { label: "ImportConversationDialog", test: /components[\/]ImportConversationDialog(\.tsx?)?$/ },
-  { label: "SkillsManagementPage", test: /skills-management[\/][^\/]*Page(\.tsx?)?$/ },
-  { label: "TemplateManagementApp", test: /template-management[\/]Template[^\/]*App(\.tsx?)?$/ },
   { label: "StyleDebugPage", test: /style-lab[\/]StyleDebugPage(\.tsx?)?$/ },
-  { label: "LearningHubPage", test: /features[\/]learning-hub[\/]LearningHubPage(\.tsx?)?$/ },
   { label: "SandboxWorkbenchPage", test: /features[\/]sandbox[\/]pages[\/][^\/]*WorkbenchPage(\.tsx?)?$/ },
-  { label: "PdfReader", test: /features[\/]pdf[\/]components[\/]PdfReader(\.tsx?)?$/ },
-  { label: "TodoPage", test: /features[\/]todo[\/]components[\/]TodoPage(\.tsx?)?$/ },
-  { label: "ImageViewer", test: /components[\/]ImageViewer(\.tsx?)?$/ },
-  // 音视频子应用页（演示只保留聊天页；只匹配页面入口，学习视图的轻量导航模块不受影响）
-  { label: "MediaStudioApp", test: /features[\/]media-studio[\/]MediaStudioApp(\.tsx?)?$/ },
 ];
 
 for (const stub of DEMO_PAGE_STUBS) {
