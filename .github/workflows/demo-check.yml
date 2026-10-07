@@ -1,0 +1,52 @@
+# 网页演示烟测：构建演示并逐章打开用户指南的单应用演示（scripts/demo/check-demo-apps.mjs）。
+# 发版时 Demo Publish 也会跑同一套检查、不过就不上线；这里提前发现应用代码改动让演示跟不上的情况
+# （新命令没 mock、文案命名空间变了、组件对演示数据崩溃）。
+name: Demo Check
+on:
+  pull_request:
+    paths:
+      - 'src/demo/**'
+      - 'demo-app.html'
+      - 'demo.html'
+      - 'vite.demo.config.ts'
+      - 'scripts/demo/**'
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+concurrency:
+  group: demo-check-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22'
+          cache: npm
+      - run: |
+          npm ci --legacy-peer-deps
+          node scripts/generate-version.mjs
+          npx playwright install --with-deps chromium
+      - name: Build web demo
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run build:demo
+      - name: Smoke-test every chapter demo
+        run: |
+          npx vite preview --config vite.demo.config.ts --port 4173 --strictPort > preview.log 2>&1 &
+          for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:4173/demo-app.html && break; sleep 1; done
+          node scripts/demo/check-demo-apps.mjs --base http://127.0.0.1:4173 --shots posters --json demo-check.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: demo-check
+          path: |
+            demo-check.json
+            posters/
+            preview.log
+          if-no-files-found: ignore

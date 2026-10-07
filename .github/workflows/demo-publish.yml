@@ -1,0 +1,126 @@
+# 官网演示发布：每次正式版发布后，用该版本的代码构建网页演示（对话演示 + 学习桌面 + 用户指南
+# 每章的单应用演示），烟测通过后传到 R2 的 demo/<版本>/，再把 demo/latest.json 指过去。
+# 官网（ds-web）定时读 latest.json，有新版就同步镜像并重新部署——演示始终和最新正式版的代码一致。
+#
+# 触发：
+#   - Release 工作流结束后（每次 main 上 CI 通过都会跑一次 Release；没有新的正式版时这里直接跳过）
+#   - 手动：可指定任意 ref（如 main）与版本标签，用于正式版之间更新演示
+name: Demo Publish
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: '构建的代码（分支 / tag / SHA）；留空 = 最新正式版的 tag'
+        required: false
+        default: ''
+      label:
+        description: '演示版本标签（R2 路径 demo/<标签>/）；留空 = tag 名，或 <ref>-<短 SHA>'
+        required: false
+        default: ''
+      force:
+        description: '即使 latest.json 已指向同一版本也重新发布'
+        type: boolean
+        default: false
+concurrency:
+  group: demo-publish-${{ github.repository }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+env:
+  R2_BUCKET: deepstudent
+  DEMO_BASE_URL: https://download.deepstudent.cn/demo
+jobs:
+  publish:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Resolve what to publish
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_LABEL: ${{ inputs.label }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -euo pipefail
+          REF="$INPUT_REF"
+          LABEL="$INPUT_LABEL"
+          if [ -z "$REF" ]; then
+            REF=$(gh release view --json tagName,isDraft --jq 'select(.isDraft == false) | .tagName')
+            [ -n "$REF" ] || { echo 'No published release.'; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0; }
+          fi
+          SHA=$(gh api "repos/$GH_REPO/commits/$REF" --jq .sha)
+          if [ -z "$LABEL" ]; then
+            if [[ "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then LABEL="$REF"; else LABEL="${REF//\//-}-${SHA:0:9}"; fi
+          fi
+          CURRENT=$(curl -fsS "$DEMO_BASE_URL/latest.json?t=$(date +%s)" 2>/dev/null | jq -r '.version // empty' || true)
+          if [ "$CURRENT" = "$LABEL" ] && [ "$FORCE" != "true" ]; then
+            echo "Demo $LABEL is already live."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "Publishing demo $LABEL from $REF ($SHA); live: ${CURRENT:-none}"
+          { echo "skip=false"; echo "ref=$SHA"; echo "label=$LABEL"; } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        if: steps.target.outputs.skip == 'false'
+        with:
+          ref: ${{ steps.target.outputs.ref }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        if: steps.target.outputs.skip == 'false'
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        if: steps.target.outputs.skip == 'false'
+        run: |
+          npm ci --legacy-peer-deps
+          node scripts/generate-version.mjs
+          npx playwright install --with-deps chromium
+      - name: Build web demo
+        if: steps.target.outputs.skip == 'false'
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: npm run build:demo
+      - name: Smoke-test every chapter demo and take posters
+        if: steps.target.outputs.skip == 'false'
+        run: |
+          npx vite preview --config vite.demo.config.ts --port 4173 --strictPort > preview.log 2>&1 &
+          for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:4173/demo-app.html && break; sleep 1; done
+          node scripts/demo/check-demo-apps.mjs --base http://127.0.0.1:4173 --shots dist-demo/posters --json demo-check.json
+      - name: Write manifest
+        if: steps.target.outputs.skip == 'false'
+        run: node scripts/demo/write-demo-manifest.mjs --version '${{ steps.target.outputs.label }}' --commit '${{ steps.target.outputs.ref }}'
+      - name: Upload to R2
+        if: steps.target.outputs.skip == 'false'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          LABEL: ${{ steps.target.outputs.label }}
+          SHA: ${{ steps.target.outputs.ref }}
+        run: |
+          set -euo pipefail
+          bash scripts/ci/r2-sync-dir.sh dist-demo "$R2_BUCKET/demo/$LABEL"
+          # 先确认新版本能从 CDN 读到，再切 latest.json
+          curl -fsS "$DEMO_BASE_URL/$LABEL/manifest.json" | jq -e '.files | length > 0' > /dev/null
+          jq -n --arg version "$LABEL" --arg commit "$SHA" --arg base "$DEMO_BASE_URL/$LABEL" \
+            '{version: $version, commit: $commit, base: $base, publishedAt: (now | todate)}' > latest.json
+          cat latest.json
+          bash scripts/ci/r2-put.sh "$R2_BUCKET/demo/latest.json" latest.json 'application/json; charset=utf-8' 'public, max-age=60'
+          echo "$DEMO_BASE_URL/latest.json" > purge-urls.txt
+          bash scripts/ci/purge-cdn.sh purge-urls.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always() && steps.target.outputs.skip == 'false'
+        with:
+          name: demo-check
+          path: |
+            demo-check.json
+            dist-demo/posters/
+            preview.log
+          if-no-files-found: ignore
