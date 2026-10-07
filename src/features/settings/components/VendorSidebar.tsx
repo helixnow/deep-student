@@ -91,6 +91,8 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
     openai_codex: 'OpenAI Codex',
     anthropic: 'Anthropic',
     google: 'Google',
+    // 预置的 Gemini 供应商 providerType 是 gemini（后端与 google 同义）
+    gemini: 'Google Gemini',
     siliconflow: 'SiliconFlow',
     deepseek: 'DeepSeek',
     ollama: 'Ollama',

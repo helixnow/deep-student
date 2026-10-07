@@ -581,6 +581,7 @@
       "openai_codex": "OpenAI Codex",
       "anthropic": "Anthropic",
       "google": "Google",
+      "gemini": "Google Gemini",
       "general": "通用适配器",
       "siliconflow": "硅基流动",
       "deepseek": "DeepSeek",
