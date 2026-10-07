@@ -228,7 +228,7 @@ export const MediaAskTab: React.FC<{ ctx: MediaStudyCompanionRenderContext; meta
             <span className="min-w-0 flex-1 whitespace-normal text-sm text-foreground">{t(`mediaStudio:ask.quick.${key}`)}</span>
           </DsButton>
         ))}
-        <p className="text-xs text-muted-foreground/80">{t('mediaStudio:ask.citationHint')}</p>
+        {/* 「时间引用可点击跳转」已在顶部 ask.intro 说明，这里不再重复一遍 */}
       </div>
     </TabScroll>
   );

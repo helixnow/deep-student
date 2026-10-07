@@ -155,10 +155,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
   return (
     <div className={cn('space-y-4', className)}>
       <div className="flex items-center gap-2 px-1">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground/60 min-w-0">
-          <Sparkle size={14} className="shrink-0" />
-          <span className="truncate">{t('essay_grading:sections.polish_desc')}</span>
-        </div>
+        {/* 标签页名「润色提升」已说明用途，不再常驻一句复述说明 + 装饰图标 */}
         <div className="flex-1" />
         <DsButton
           variant="ghost"

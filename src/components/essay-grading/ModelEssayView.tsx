@@ -63,12 +63,8 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
 
   return (
     <div className={cn('space-y-4', className)}>
-      {/* 工具行：说明 + 字数 + 衬线切换 + 复制 */}
+      {/* 工具行：字数 + 衬线切换 + 复制（标签页名「参考范文」已说明用途，不再常驻复述说明） */}
       <div className="flex items-center gap-2 px-1 flex-wrap">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground/60 min-w-0">
-          <BookOpen size={14} className="shrink-0" />
-          <span className="truncate">{t('essay_grading:sections.model_essay_desc')}</span>
-        </div>
         <div className="flex-1" />
         <span className="text-xs text-muted-foreground/50 tabular-nums shrink-0">
           {t('essay_grading:sections.model_essay_word_count', { total: wordCount })}

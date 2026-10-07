@@ -107,7 +107,6 @@
       "keyPoints": "List the key points and difficult parts of the lecture “{{name}}”, explain why each difficult part is easy to get wrong, and add timestamp citations.",
       "explain": "There's a part of the lecture “{{name}}” I didn't understand (add the time or what was said below):\n"
     },
-    "citationHint": "Timestamps in answers are clickable and jump the player to that moment.",
     "failed": "Couldn't start the chat"
   },
   "practice": {
