@@ -128,17 +128,10 @@ export const ReciteStatusBar: React.FC = () => {
               style={{ width: `${(progress.revealed / progress.total) * 100}%` }}
             />
           </div>
-          {/* 统计增强：已揭示数 + 百分比 + 剩余数，一眼判断背诵进度 */}
+          {/* 进度只说一次：进度条 + 已揭示/总数（百分比、剩余数与之同义，已去掉） */}
           <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap tabular-nums">
             {progress.revealed}/{progress.total}
-            {' · '}
-            {Math.round((progress.revealed / progress.total) * 100)}%
           </span>
-          {progress.revealed < progress.total && (
-            <span className="text-xs text-[var(--mm-text-muted)] whitespace-nowrap tabular-nums opacity-80">
-              {t('recite.remaining', { count: progress.total - progress.revealed })}
-            </span>
-          )}
         </div>
       ) : (
         // 还没有挖空：一键遮住要点（刚由笔记 / 大纲生成的导图直接能背），或退出手动挖空

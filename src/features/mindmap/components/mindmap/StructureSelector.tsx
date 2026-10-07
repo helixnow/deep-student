@@ -377,12 +377,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
         ))}
       </div>
 
-      {/* 底部提示 */}
-      <div className="mm-panel-hint">
-        <p>
-          {t('structure.hint')}
-        </p>
-      </div>
+      {/* 底部「选择不同结构可改变导图的布局方式」只是复述标题，已去掉 */}
     </>
   );
 
