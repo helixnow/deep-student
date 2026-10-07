@@ -9,6 +9,19 @@
   transition: background-color 0.15s ease;
 }
 
+/* 徽章态：原文 [媒体@file_xxx:mm:ss] 隐藏（仍在文档里，光标进入时切回原文可编辑），
+   由前置 widget 显示「▶ mm:ss」，不把资源 id 露给读者 */
+.crepe-media-ref-raw {
+  display: none;
+}
+
+.crepe-media-ref--badge {
+  padding: 0 4px;
+  font-size: 0.875em;
+  white-space: nowrap;
+  user-select: none;
+}
+
 .crepe-media-ref:hover {
   background-color: hsl(var(--primary) / 0.16);
 }
