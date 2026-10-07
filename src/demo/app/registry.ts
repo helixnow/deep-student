@@ -25,3 +25,12 @@ export const DEMO_APPS: DemoAppEntry[] = [
   { id: 'skills-mcp', height: 640, pack: () => import('./packs/skills-mcp') },
   { id: 'data-sync', height: 660, pack: () => import('./packs/data-sync') },
 ];
+
+/**
+ * 演示整个壳的两章：官网嵌 demo.html（对话演示的入口）。烟测与海报也覆盖它们；
+ * width 给了就按这个宽度拍海报、官网用手机尺寸的框。
+ */
+export const SHELL_DEMOS: Array<{ id: string; title: string; height: number; width?: number; entry: string }> = [
+  { id: 'workbench', title: '学习桌面', height: 700, entry: 'demo.html?desktop=1' },
+  { id: 'mobile', title: '移动端', height: 780, width: 390, entry: 'demo.html' },
+];

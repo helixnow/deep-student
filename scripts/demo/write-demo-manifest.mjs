@@ -44,7 +44,8 @@ const files = walk(root)
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 const registry = fs.readFileSync(path.join(repoRoot, 'src/demo/app/registry.ts'), 'utf8');
-const apps = [...registry.matchAll(/\{\s*id:\s*'([^']+)',\s*height:\s*(\d+)/g)].map(([, id, height]) => {
+const shellStart = registry.indexOf('SHELL_DEMOS');
+const apps = [...registry.slice(0, shellStart).matchAll(/\{\s*id:\s*'([^']+)',\s*height:\s*(\d+)/g)].map(([, id, height]) => {
   let title = id;
   for (const candidate of [`${id}.ts`, `${id}.tsx`, `${id}/index.ts`, `${id}/index.tsx`]) {
     const file = path.join(repoRoot, 'src/demo/app/packs', candidate);
@@ -55,6 +56,14 @@ const apps = [...registry.matchAll(/\{\s*id:\s*'([^']+)',\s*height:\s*(\d+)/g)].
   const posters = ['light', 'dark'].filter((theme) => files.some((f) => f.path === `posters/${id}-${theme}.webp`));
   return { id, title, height: Number(height), posters };
 });
+// 演示整个壳的章节（学习桌面、移动端）：官网嵌 entry，width 给了就用手机尺寸的框
+for (const m of registry.slice(shellStart).matchAll(
+  /\{\s*id:\s*'([^']+)',\s*title:\s*'([^']+)',\s*height:\s*(\d+)(?:,\s*width:\s*(\d+))?,\s*entry:\s*'([^']+)'/g,
+)) {
+  const [, id, title, height, width, entry] = m;
+  const posters = ['light', 'dark'].filter((theme) => files.some((f) => f.path === `posters/${id}-${theme}.webp`));
+  apps.push({ id, title, height: Number(height), ...(width ? { width: Number(width) } : {}), entry, posters });
+}
 
 const manifest = {
   version,

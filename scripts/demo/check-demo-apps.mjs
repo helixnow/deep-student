@@ -32,12 +32,19 @@ const lenient = flag('lenient');
 const width = Number(opt('width', 1120));
 const height = Number(opt('height', 700));
 
-function registryIds() {
+function readRegistry() {
   const src = fs.readFileSync(new URL('../../src/demo/app/registry.ts', import.meta.url), 'utf8');
-  return [...src.matchAll(/\{\s*id:\s*'([^']+)'/g)].map((m) => m[1]);
+  const shellStart = src.indexOf('SHELL_DEMOS');
+  const apps = [...src.slice(0, shellStart).matchAll(/\{\s*id:\s*'([^']+)'/g)].map((m) => ({ id: m[1], kind: 'app' }));
+  const shells = [...src.slice(shellStart).matchAll(/\{\s*id:\s*'([^']+)'[^}]*?(?:width:\s*(\d+)[^}]*?)?entry:\s*'([^']+)'/g)].map(
+    (m) => ({ id: m[1], kind: 'shell', width: m[2] ? Number(m[2]) : undefined, entry: m[3] }),
+  );
+  return [...apps, ...shells];
 }
 
-const ids = opt('apps') ? opt('apps').split(',') : registryIds();
+const registry = readRegistry();
+const wanted = opt('apps') ? new Set(opt('apps').split(',')) : null;
+const demos = registry.filter((d) => !wanted || wanted.has(d.id));
 const themes = shotsDir ? ['light', 'dark'] : ['light'];
 
 const browser = await chromium.launch(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {});
@@ -48,23 +55,40 @@ if (shotsDir) {
   sharp = (await import('sharp')).default;
 }
 
-for (const id of ids) {
+for (const demo of demos) {
+  const { id } = demo;
   for (const theme of themes) {
-    const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: shotsDir ? 2 : 1 });
+    const viewport = demo.width ? { width: demo.width, height: Math.round(demo.width * 2) } : { width, height };
+    const page = await browser.newPage({ viewport, deviceScaleFactor: shotsDir ? 2 : 1 });
     const errors = [];
     page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
     page.on('console', (m) => {
       if (m.type() === 'error') errors.push(`console: ${m.text().slice(0, 300)}`);
     });
-    const q = new URLSearchParams({ app: id });
+    const q = demo.kind === 'app' ? new URLSearchParams({ app: id }) : new URLSearchParams(demo.entry.split('?')[1] ?? '');
     if (theme === 'dark') q.set('theme', 'dark');
     if (lang) q.set('lang', lang);
-    const url = `${base}/demo-app.html?${q}`;
+    const url = demo.kind === 'app' ? `${base}/demo-app.html?${q}` : `${base}/${demo.entry.split('?')[0]}?${q}`;
     const started = Date.now();
     let ready = false;
     try {
       await page.goto(url, { waitUntil: 'load', timeout: 60_000 });
-      await page.waitForFunction(() => window.__DEMO_READY__ === true, null, { timeout: 30_000 });
+      if (demo.kind === 'app') {
+        await page.waitForFunction(() => window.__DEMO_READY__ === true, null, { timeout: 30_000 });
+      } else {
+        // 整壳演示没有就绪标记：等自动播放的首答落定（界面文字连续 2.5s 不变），最多 60s
+        await page.waitForFunction(
+          () => {
+            const w = window;
+            const len = document.body.innerText.length;
+            const now = Date.now();
+            if (w.__shotLen !== len) { w.__shotLen = len; w.__shotSince = now; }
+            return len > 200 && now - w.__shotSince > 2500;
+          },
+          null,
+          { timeout: 60_000, polling: 250 },
+        );
+      }
       ready = true;
     } catch (e) {
       errors.push(`not ready: ${e.message.split('\n')[0]}`);
@@ -73,9 +97,9 @@ for (const id of ids) {
       unmocked: window.__DEMO_UNMOCKED__ ?? [],
       missingI18n: window.__DEMO_MISSING_I18N__ ?? [],
       errorPage: Boolean(document.querySelector('[data-demo-error], .demo-app-message')),
-      text: (document.querySelector('[data-demo-app-frame]')?.textContent ?? '').trim().length,
+      text: (document.querySelector('[data-demo-app-frame]') ?? document.getElementById('root'))?.textContent?.trim().length ?? 0,
     })).catch(() => ({ unmocked: [], missingI18n: [], errorPage: true, text: 0 }));
-    const r = { id, theme, ms: Date.now() - started, ready, ...state, errors };
+    const r = { id, kind: demo.kind, theme, ms: Date.now() - started, ready, ...state, errors };
     if (shotsDir && ready) {
       // 就绪后再给动画半秒
       await page.waitForTimeout(500);
@@ -93,7 +117,7 @@ await browser.close();
 let failed = 0;
 for (const r of results) {
   const hard = !r.ready || r.errorPage || r.text === 0 || r.errors.some((e) => e.startsWith('pageerror'));
-  const soft = r.errors.length > 0 || r.unmocked.length > 0 || r.missingI18n.length > 0;
+  const soft = r.kind === 'app' && (r.errors.length > 0 || r.unmocked.length > 0 || r.missingI18n.length > 0);
   const bad = hard || (!lenient && soft);
   if (bad) failed++;
   console.log(`${bad ? '✗' : '✓'} ${r.id} [${r.theme}] ${r.ms}ms${r.shot ? ` → ${r.shot}` : ''}`);
