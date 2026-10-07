@@ -2248,7 +2248,8 @@
         "tool": "工具引用",
         "graph": "个人图谱",
         "multimodal": "多模态知识库",
-        "insight": "灵感卡"
+        "insight": "灵感卡",
+        "academic_search": "学术论文"
       },
       "locateGraph": "在图谱中定位",
       "locateKb": "在知识库中打开",

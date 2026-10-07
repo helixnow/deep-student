@@ -2177,7 +2177,8 @@
         "tool": "Tool",
         "graph": "Personal Graph",
         "multimodal": "Multimodal Knowledge Base",
-        "insight": "Insight Cards"
+        "insight": "Insight Cards",
+        "academic_search": "Academic Papers"
       },
       "locateGraph": "Locate in graph",
       "locateKb": "Open in Knowledge Base",
