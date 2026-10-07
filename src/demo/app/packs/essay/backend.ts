@@ -49,6 +49,7 @@ const iso = (daysAgo: number, hh: number, mm: number) => {
 let sessions: Session[] = [];
 let rounds: Round[] = [];
 let seq = 0;
+const exams: { id: string; path: string; name: string; type: string; sourceId: string; createdAt: number; updatedAt: number; metadata: Record<string, unknown> }[] = [];
 let ready = false;
 
 function gradedRound(sessionId: string, essay: string, ann: Annotation[], score: ScoreSpec, polish: { original: string; polished: string }[], model: string, at: string): Round {
@@ -145,16 +146,35 @@ export function handleEssay(cmd: string, args: DemoArgs): unknown {
     // —— 资源库节点 ——
     case 'dstu_list': {
       const options = (args.options ?? {}) as Record<string, unknown>;
+      if (options.typeFilter === 'exam') {
+        const q = String(options.search ?? '');
+        return exams.filter((e) => !q || e.name.includes(q));
+      }
       if (options.typeFilter && options.typeFilter !== 'essay') return [];
       return [...live()].sort((a, b) => b.updated_at.localeCompare(a.updated_at)).map(node);
     }
     case 'dstu_get': {
-      const s = live().find((x) => x.id === idFromPath(args.path));
-      return s ? node(s) : null;
+      const id = idFromPath(args.path);
+      const s = live().find((x) => x.id === id);
+      return s ? node(s) : exams.find((e) => e.id === id) ?? null;
     }
     case 'dstu_create': {
-      const s = createSession(tr('新作文', 'New essay'), '', '', null);
-      return node(s);
+      const options = (args.options ?? {}) as Record<string, unknown>;
+      const name = typeof options.name === 'string' && options.name ? options.name : undefined;
+      if (options.type === 'exam') {
+        // 「错误点入错题本」建的「作文错题」题目集
+        const at = Date.now();
+        const exam = { id: `exam_demo_${at.toString(36)}`, path: '', name: name ?? tr('作文错题', 'Essay mistakes'), type: 'exam', sourceId: '', createdAt: at, updatedAt: at, metadata: {} };
+        exam.path = `/${exam.id}`;
+        exam.sourceId = exam.id;
+        exams.push(exam);
+        return exam;
+      }
+      return node(createSession(name ?? tr('新作文', 'New essay'), '', '', null));
+    }
+    case 'qbank_batch_create_questions': {
+      const list = (Array.isArray(args.paramsList) ? args.paramsList : []) as Record<string, unknown>[];
+      return list.map((q, i) => ({ id: `q_demo_${Date.now().toString(36)}_${i}`, ...q }));
     }
     case 'dstu_delete': {
       const s = live().find((x) => x.id === idFromPath(args.path));
@@ -242,9 +262,12 @@ export function handleEssay(cmd: string, args: DemoArgs): unknown {
     // —— 批改（要模型） ——
     case 'essay_grading_stream':
       throw new Error(tr(
-        '演示里不能发起新的批改——批改要调用你配置的模型，请在桌面版中使用。上面是这篇作文已有的批改结果。',
-        'The demo cannot start a new grading run — grading calls your configured model, so it is available in the desktop app. The result shown is this essay’s existing grading.',
+        '演示里不能发起新的批改：批改要调用你配置的模型，请在桌面版中使用。切到另一篇作文再切回来，可以重新查看已有的批改结果。',
+        'The demo cannot start a new grading run: grading calls your configured model, so it is available in the desktop app. Switch to another essay and back to see the existing result again.',
       ));
+    case 'start_enhanced_document_processing':
+      // 「生成卡片」：制卡同样调用模型
+      throw new Error(tr('生成卡片要调用你配置的模型，请在桌面版中使用。', 'Card generation calls your configured model — available in the desktop app.'));
     case 'cancel_stream':
       return null;
     default:

@@ -56,7 +56,7 @@ const pack: DemoAppPack = {
   },
   isReady: (root) =>
     Boolean(root.querySelector('del, ins, [data-marker-type], .text-destructive')) &&
-    [...root.querySelectorAll('button[aria-pressed="true"]')].some((b) => /bars|条形/i.test(b.getAttribute('aria-label') ?? '')) || root.clientWidth < 700,
+    [...root.querySelectorAll('button[aria-pressed="true"]')].some((b) => /bar|条形/i.test(b.getAttribute('aria-label') ?? '')) || root.clientWidth < 700,
 };
 
 export default pack;
