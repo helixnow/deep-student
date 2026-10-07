@@ -370,7 +370,12 @@ function blocksToTimelineNodes(
       }
     } else if (RETRIEVAL_BLOCK_TYPES.includes(block.type as typeof RETRIEVAL_BLOCK_TYPES[number])) {
       // 🔧 检索类型统一作为工具节点显示
-      const toolName = RETRIEVAL_TOOL_NAMES[block.type] || block.toolName || block.type;
+      // 学术搜索块有 arxiv_search / scholar_search 两个工具：按块上的实际工具名显示（否则 OpenAlex 检索也显示成「arXiv 搜索」）
+      const academicTool = block.type === 'academic_search'
+        ? block.toolName?.replace(/^builtin[-:]/, '')
+        : undefined;
+      const toolName = (academicTool === 'arxiv_search' || academicTool === 'scholar_search' ? `builtin-${academicTool}` : undefined)
+        || RETRIEVAL_TOOL_NAMES[block.type] || block.toolName || block.type;
       nodes.push({
         id: block.id,
         type: 'tool',
