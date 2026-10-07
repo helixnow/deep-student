@@ -524,6 +524,13 @@
   font-size: var(--menu-shell-font-size);
 }
 
+/* 下拉菜单上下两侧都放不下时限高到较宽裕的一侧并内部滚动（不盖住触发按钮） */
+.app-menu-content.app-menu-constrained {
+  max-height: var(--app-menu-available-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 /* ============ Shortcut 快捷键 ============ */
 
 .app-menu-shortcut {
