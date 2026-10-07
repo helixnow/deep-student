@@ -1971,6 +1971,7 @@
     "voice_input_asr_saved": "Speech recognition (ASR) model configuration saved",
     "image_generation_saved": "Image generation model configuration saved",
     "compaction_model_saved": "Context compaction model configuration saved",
+    "memory_decision_saved": "Memory decision model configuration saved",
     "qbank_ai_grading_saved": "Question bank AI grading model configuration saved",
     "translation_save_failed": "Failed to save translation model configuration: {{error}}",
     "learning_mode_saved": "Learning mode preference updated",
