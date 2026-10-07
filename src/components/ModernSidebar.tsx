@@ -1425,8 +1425,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                   onClick={handleWorkbenchModeAction}
                 >
                   {workbenchModeEnabled
-                    ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Learning Desktop' })
-                    : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Learning Desktop' })}
+                    ? t('sidebar:navigation.hide_workbench_mode', { defaultValue: 'Hide Study Desktop' })
+                    : t('sidebar:navigation.show_workbench_mode', { defaultValue: 'Show Study Desktop' })}
                 </AppMenuItem>
               </AppMenuGroup>
             </AppMenuContent>
