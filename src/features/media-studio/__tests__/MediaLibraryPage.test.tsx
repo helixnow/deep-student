@@ -85,6 +85,28 @@ describe('MediaLibraryPage', () => {
     expect(document.querySelector('[data-media-import-bar]')).toBeNull();
   });
 
+  it('empty library offers import only once: the classic titlebar keeps just the title', () => {
+    const titlebar = document.createElement('div');
+    document.body.appendChild(titlebar);
+    render(<MediaLibraryPage library={library([])} importer={importer(false)} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={titlebar} />);
+    expect(within(titlebar).getByText('mediaStudio:title')).toBeTruthy();
+    expect(within(titlebar).queryByRole('button', { name: /mediaStudio:import.button/ })).toBeNull();
+    expect(screen.getAllByRole('button', { name: /mediaStudio:import.button/ })).toHaveLength(1);
+    titlebar.remove();
+  });
+
+  it('titlebar keeps import when the list has items or failed to load', () => {
+    const titlebar = document.createElement('div');
+    document.body.appendChild(titlebar);
+    const failed = { ...library([]), error: 'boom' };
+    const { unmount } = render(<MediaLibraryPage library={failed} importer={importer(false)} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={titlebar} />);
+    expect(within(titlebar).getByRole('button', { name: /mediaStudio:import.button/ })).toBeTruthy();
+    unmount();
+    render(<MediaLibraryPage library={library([item('a')])} importer={importer(false)} onOpen={vi.fn()} isSmallScreen={false} titlebarTarget={titlebar} />);
+    expect(within(titlebar).getByRole('button', { name: /mediaStudio:import.button/ })).toBeTruthy();
+    titlebar.remove();
+  });
+
   it('lists rows by recent activity with status chips, progress and filter counts', () => {
     const onOpen = vi.fn();
     const items = [

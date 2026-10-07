@@ -557,8 +557,13 @@ export const MediaLibraryPage: React.FC<MediaLibraryPageProps> = ({
       {!isSmallScreen ? (
         <div className="flex shrink-0 items-center gap-1.5">
           {items.length > 0 ? selectToggle(inTitlebar ? 'titlebar' : 'page') : null}
-          {bilibiliButton(inTitlebar)}
-          {importButton(inTitlebar)}
+          {/* 库为空时空态里已经有这两个按钮（更醒目），标题行不再重复；加载失败时空态不出现，仍放在这里 */}
+          {items.length > 0 || error ? (
+            <>
+              {bilibiliButton(inTitlebar)}
+              {importButton(inTitlebar)}
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>
