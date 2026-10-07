@@ -6,6 +6,7 @@
  * 记忆、网络与学术来源直接取对话演示会话③（间隔重复综述）的同一批块，两边口径一致。
  */
 import type { DemoBlockDef, DemoBlocks } from '../../../fixtures';
+import type { DemoPaneNote } from '../../data/chat/ChatWithSourcePane';
 import { DEMO_SESSIONS } from '../../../fixtures';
 
 const survey = DEMO_SESSIONS.find((s) => s.meta.id === 'demo-spaced-repetition')?.followUp ?? [];
@@ -105,14 +106,14 @@ export const RESEARCH_REPLY: DemoBlocks = [
           url: '/笔记/九月复习记录.md',
           snippet: '……近四周平均每天复习 82 分钟；新卡超过 30 张的三天，第二天到期卡积压到 140 张以上……',
           score: 0.88,
-          metadata: { resourceId: 'note_demo_review_log', resourceType: 'note' },
+          metadata: { sourceId: 'note_demo_review_log', resourceId: 'note_demo_review_log', resourceType: 'note' },
         },
         {
           title: '考研复习计划（下半年）.md',
           url: '/笔记/考研复习计划（下半年）.md',
           snippet: '……每天固定 90 分钟复习时段，高数错题与英语单词卡交替进行……',
           score: 0.81,
-          metadata: { resourceId: 'note_demo_plan', resourceType: 'note' },
+          metadata: { sourceId: 'note_demo_plan', resourceId: 'note_demo_plan', resourceType: 'note' },
         },
       ],
     },
@@ -150,21 +151,44 @@ export const RESEARCH_REPLY: DemoBlocks = [
 /** 访客追问 */
 export const RESEARCH_FOLLOW_UPS: Array<{ keywords: string[]; reply: DemoBlocks }> = [
   {
-    keywords: ['记住', '记忆', '偏好', '目标'],
+    keywords: ['记住', '记一下', 'remember'],
+    reply: (content) => {
+      const fact = content.replace(/^\s*(请)?(帮我)?(记住|记一下|remember)[:：,，\s]*/i, '').trim() || content.trim();
+      return [
+        {
+          type: 'tool_call',
+          status: 'success',
+          toolName: 'builtin-memory_write_smart',
+          dwellMs: 500,
+          toolInput: { content: fact, category: 'preference' },
+          toolOutput: { success: true, action: 'create', note_id: 'note_demo_memory_new', title: fact.slice(0, 24) },
+        },
+        {
+          type: 'content',
+          status: 'success',
+          streaming: true,
+          content: `好的，已记下：「${fact}」。之后的对话会自动检索到这条记忆，相关的回答上方会出现「用户记忆」块。\n\n在桌面版里，所有记忆都以笔记形式存放在资源库的「AI 记忆」中，可以查看、编辑、删除或导出；不想被记住的内容，也可以在「设置 → 记忆」里关掉自动提取。`,
+        },
+      ];
+    },
+  },
+  {
+    keywords: ['记忆', '偏好', '画像'],
     reply: [
       {
-        type: 'tool_call',
+        type: 'memory',
         status: 'success',
-        toolName: 'builtin-memory_write_smart',
-        dwellMs: 500,
-        toolInput: { content: '每天复习按「到期卡 60 + 新卡 20 + 错题 10 分钟」分配', category: 'preference' },
-        toolOutput: { success: true, action: 'create', note_id: 'note_demo_memory_plan', title: '复习时间分配' },
+        dwellMs: 400,
+        toolOutput: { sources: [
+          { title: '学习档案', snippet: '每天计划安排 90 分钟复习。', metadata: { note_id: 'note_demo_profile' } },
+          { title: '复习偏好', snippet: '喜欢先合上材料写出答案，再核对原文和推导过程。', metadata: { note_id: 'note_demo_preference' } },
+        ] },
       },
       {
         type: 'content',
         status: 'success',
         streaming: true,
-        content: '好的，已记下：复习按「到期卡 60 + 新卡 20 + 错题 10 分钟」分配。之后的对话会自动检索到这条记忆，回答上方会出现「用户记忆」块。\n\n在桌面版里，所有记忆都存放在资源库的「AI 记忆」文件夹，可以查看、编辑、删除或导出。',
+        content: '目前关于你的记忆有两条：每天安排 90 分钟复习 [记忆-1]，以及习惯先默写、再核对原文 [记忆-2]。点上面「记忆搜索」展开，可以打开对应的记忆条目。\n\n想补充新的信息，直接说「记住：……」即可。',
       },
     ],
   },
@@ -190,3 +214,28 @@ export const RESEARCH_FALLBACK: DemoBlocks = [
       '这段演示里的调研结果来自预设材料：可以展开上面的搜索块核对来源、看任务清单的进度，或者试试「记住：我每天复习 90 分钟」，看 AI 怎样写入记忆。\n\n在 Deep Student 桌面版里配置搜索引擎和模型后，输入 `/research-mode` 加上你的主题，就能让 AI 真正联网完成调研。',
   },
 ];
+
+/** 右侧窗格能打开的笔记：调研报告、两条用户记忆、知识库里的复习记录与计划、追问时写入的记忆 */
+export const RESEARCH_NOTES: Record<string, DemoPaneNote> = {
+  note_demo_srs_report: { title: '调研报告 · 间隔重复：从记忆模型到复习安排', folder: '笔记 / 调研', content: REPORT },
+  note_demo_profile: {
+    title: '学习档案',
+    folder: 'AI 记忆 / 通用',
+    content: '- 考研备考中，目标院校计算机专业\n- 每天计划安排 **90 分钟**复习，固定在晚上\n- 薄弱科目：高等数学（积分换元、中值定理）',
+  },
+  note_demo_preference: {
+    title: '复习偏好',
+    folder: 'AI 记忆 / 偏好',
+    content: '- 喜欢先合上材料写出答案，再核对原文和推导过程\n- 卡片背面要保留推导要点，不只写结论',
+  },
+  note_demo_review_log: {
+    title: '九月复习记录',
+    folder: '笔记 / 学习记录',
+    content: '| 周次 | 日均复习 | 新卡 | 到期卡峰值 |\n|---|---|---|---|\n| 第 1 周 | 78 分钟 | 22 | 96 |\n| 第 2 周 | 85 分钟 | 31 | 142 |\n| 第 3 周 | 80 分钟 | 18 | 88 |\n| 第 4 周 | 84 分钟 | 33 | 151 |\n\n新卡超过 30 张的那几天，第二天到期卡明显积压。',
+  },
+  note_demo_plan: {
+    title: '考研复习计划（下半年）',
+    folder: '笔记 / 计划',
+    content: '- 每天固定 90 分钟复习时段\n- 高数错题与英语单词卡交替进行\n- 每周日晚回顾一周的错题本',
+  },
+};

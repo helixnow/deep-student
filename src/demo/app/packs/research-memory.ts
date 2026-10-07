@@ -7,6 +7,7 @@ import { CHAT_NAMESPACES, createChatScenePack, scrollToConversationTop } from '.
 import {
   RESEARCH_FALLBACK,
   RESEARCH_FOLLOW_UPS,
+  RESEARCH_NOTES,
   RESEARCH_PROMPT,
   RESEARCH_REPLY,
   RESEARCH_SESSION_ID,
@@ -25,6 +26,8 @@ export default createChatScenePack({
   replies: RESEARCH_FOLLOW_UPS,
   fallback: RESEARCH_FALLBACK,
   namespaces: CHAT_NAMESPACES,
+  // 报告笔记、记忆条目、知识库来源点开后在右侧只读打开
+  notes: RESEARCH_NOTES,
   // 海报：展开「已调用 N 个工具」（网络 / 学术 / 知识库三个检索块）和完成的任务清单
   async arrange(root) {
     const buttons = () => [...root.querySelectorAll<HTMLElement>('button, [role="button"]')];

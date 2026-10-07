@@ -12,6 +12,7 @@
 import type { SessionInfo } from '@/features/chat/adapters/types';
 import type { ContextRef } from '@/features/chat/context/types';
 import type { DemoAppPack, DemoArgs } from '../../types';
+import type { DemoPaneNote } from './ChatWithSourcePane';
 import { createDemoIpcHandler } from '../../../mockIpc';
 import { DEMO_SESSIONS, type DemoBlocks } from '../../../fixtures';
 import { playNextReplyInstantly, playReplyScript } from '../../../scriptPlayer';
@@ -20,7 +21,8 @@ import { getPlayedHistory } from '../../../playedHistory';
 /** 访客追问：prompt 命中任一关键词即播这段剧本 */
 export interface ChatSceneReply {
   keywords: string[];
-  reply: DemoBlocks;
+  /** 固定剧本，或按访客原话生成（比如把「记住：……」的内容写进回复） */
+  reply: DemoBlocks | ((content: string) => DemoBlocks);
 }
 
 export interface ChatSceneOptions {
@@ -44,6 +46,8 @@ export interface ChatSceneOptions {
   namespaces?: string[];
   /** 点 PDF 页码徽章 / 附件时在右侧打开原文（见 ./ChatWithSourcePane） */
   sourcePane?: boolean;
+  /** 右侧窗格可打开的笔记（报告、记忆条目、知识库来源），id → 内容；给了就自动启用 sourcePane */
+  notes?: Record<string, DemoPaneNote>;
 }
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -128,7 +132,8 @@ export function createChatScenePack(options: ChatSceneOptions): DemoAppPack {
     if (continuation) return continuation.reply;
     const text = content.toLowerCase();
     const hit = options.replies?.find((r) => r.keywords.some((k) => text.includes(k.toLowerCase())));
-    return hit?.reply ?? options.fallback;
+    if (!hit) return options.fallback;
+    return typeof hit.reply === 'function' ? hit.reply(content) : hit.reply;
   };
 
   const handle = (cmd: string, args: DemoArgs): unknown => {
@@ -165,8 +170,11 @@ export function createChatScenePack(options: ChatSceneOptions): DemoAppPack {
     title: options.title,
     instanceKey: sessionId,
     load: () =>
-      options.sourcePane
-        ? import('./ChatWithSourcePane').then((m) => m.default)
+      options.sourcePane || options.notes
+        ? import('./ChatWithSourcePane').then((m) => {
+            m.setDemoPaneNotes(options.notes ?? {});
+            return m.default;
+          })
         : import('@/features/workbench/apps/chat/ChatSessionWindowFrame').then((m) => m.default),
     handle,
     namespaces: options.namespaces,
@@ -204,6 +212,22 @@ export function createChatScenePack(options: ChatSceneOptions): DemoAppPack {
           return status === 'success' || status === 'error';
         });
       }, 9000);
+      // 检索类事件（rag / web_search / academic_search）的 start 不带工具名与入参，实时播放后块上没有；
+      // 从历史加载的块有（后端落库时写入）。首屏按「打开一条已有会话」的样子补上，
+      // 学术搜索块才会显示检索词、时间线才分得清 arXiv 与学术搜索。
+      const state = store.getState();
+      const lastId = state.messageOrder[state.messageOrder.length - 1];
+      const answer = lastId ? state.messageMap.get(lastId) : undefined;
+      for (const blockId of answer?.blockIds ?? []) {
+        const index = Number(/-sb(\d+)$/.exec(blockId)?.[1] ?? NaN);
+        const def = firstReply[index];
+        const block = state.blocks.get(blockId);
+        if (!def || !block || block.type !== def.type || block.toolName || !def.toolName) continue;
+        state.updateBlock(blockId, {
+          toolName: def.toolName.startsWith('builtin-') ? def.toolName : `builtin-${def.toolName}`,
+          ...(def.toolInput ? { toolInput: def.toolInput } : {}),
+        });
+      }
       // 让列表把最后几个块排完版
       await sleep(250);
       await options.arrange?.(root);
