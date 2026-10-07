@@ -18,10 +18,8 @@ import {
   File as FileIcon,
   FilePdf,
   FileText,
-  Funnel,
   GearSix,
   GridNine,
-  Image as ImageIcon,
   Lightbulb,
   List,
   ListChecks,
@@ -31,7 +29,6 @@ import {
   Pause,
   Play,
   Plus,
-  Robot,
   Rows,
   Scan,
   Sparkle,
@@ -40,6 +37,7 @@ import {
   Tag,
   Target,
   TrendUp,
+  UploadSimple,
   X,
 } from '@phosphor-icons/react';
 import type { CSSProperties, ReactElement, ReactNode } from 'react';
@@ -434,45 +432,13 @@ const DropOverlay = ({ tk, k }: { tk: Tokens; k: number }) => (
   </span>
 );
 
-// ── 识别导入 ──────────────────────────────────────────
-const StepBar = ({ tk, step }: { tk: Tokens; step: 0 | 1 | 2 }) => {
-  const xs = [280.6, 405.9, 531.1];
-  return (
-    <>
-      {xs.map((x, i) => {
-        const done = i < step;
-        const active = i === step;
-        return (
-          <span key={i}>
-            <Btn
-              style={{
-                ...at(x, 160.8),
-                width: 20,
-                height: 20,
-                borderRadius: 9999,
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 500,
-                color: active ? tk.primaryFg : done ? tk.primary : tk.mutedFg,
-                background: active ? tk.primary : done ? mix(tk.primary, 15) : tk.muted,
-              }}
-            >
-              {done ? <Check size={11} weight="bold" /> : i + 1}
-            </Btn>
-            <span style={{ ...at(x + 25.3, 163.1), fontSize: 11, fontWeight: active ? 500 : 400, lineHeight: '15.4px', color: active ? tk.foreground : tk.mutedFg }}>{S.exam.up.steps[i]}</span>
-            {i < 2 ? <span style={{ ...at(x + 76.3, 170.3), width: 42, height: 1, background: done ? mix(tk.primary, 50) : tk.border }} /> : null}
-          </span>
-        );
-      })}
-    </>
-  );
-};
+// ── 识别导入（ExamSheetUploader，cf7b58cf0 精简版：每种状态只表达一次） ─────────────
+/** 栏内纵向布局（窗口坐标）：p-4 + 标题 pt-2 + gap-4 */
+const Y_TITLE = 104.8;
+const Y_BODY = 139.8;
 
 const Header = ({ tk }: { tk: Tokens }) => (
-  <>
-    <span style={{ ...at(COL_X, 104.8), width: COL_W, textAlign: 'center', fontSize: 16, fontWeight: 600, lineHeight: '20px', color: tk.foreground }}>{S.exam.up.title}</span>
-    <span style={{ ...at(COL_X, 130), width: COL_W, textAlign: 'center', fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>{S.exam.up.desc}</span>
-  </>
+  <span style={{ ...at(COL_X, Y_TITLE), width: COL_W, textAlign: 'center', fontSize: 16, fontWeight: 600, lineHeight: '20px', color: tk.foreground }}>{S.exam.up.title}</span>
 );
 
 const ghostBtn = (tk: Tokens, hovered: boolean, press: number): CSSProperties => ({
@@ -486,272 +452,180 @@ const ghostBtn = (tk: Tokens, hovered: boolean, press: number): CSSProperties =>
   transform: `scale(${1 - 0.02 * (hovered ? press : 0)})`,
 });
 
+/** 选中文件后：拖放区收成一行「更换文件」虚线条 → 文档卡 → 解析模型 → 返回 / 开始识别（手动新建链接让位） */
+const Y_FILE = Y_BODY + 31.5 + 14;
+const Y_MODEL = Y_FILE + 49 + 14;
+const Y_ACTIONS = Y_MODEL + 24.5 + 14;
 const UploadPane = ({ tk, s }: { tk: Tokens; s: ExamState }) => (
   <>
     <Header tk={tk} />
-    <StepBar tk={tk} step={0} />
-    <span style={{ ...at(COL_X, 201.8), width: COL_W, height: 226.9, boxSizing: 'border-box', borderRadius: 5, background: 'rgba(252,252,252,0.3)', border: '2px dashed rgba(224,224,224,0.6)' }} />
-    {[385.8, 453.2].map((x, i) => (
-      <span key={x} style={{ ...at(x, 267.3), width: 42, height: 42, borderRadius: 7, background: tk.muted, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
-        {i === 0 ? <ImageIcon size={22} /> : <FileText size={22} />}
-      </span>
-    ))}
-    <span style={{ ...at(438.3, 277.1), fontSize: 16, fontWeight: 300, lineHeight: '22.4px', color: mix(tk.mutedFg, 30) }}>/</span>
-    <span style={{ ...at(COL_X, 323.3), width: COL_W, textAlign: 'center', fontSize: 14, fontWeight: 500, lineHeight: '19.6px', color: tk.foreground }}>{S.exam.up.drop}</span>
-    <span style={{ ...at(COL_X, 346.4), width: COL_W, textAlign: 'center', fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>{S.exam.up.formats}</span>
-    <span style={{ ...at(COL_X, 442.7), width: COL_W, height: 54.6, borderRadius: 7, background: 'rgba(240,240,240,0.5)' }} />
-    <FileIcon size={20} color={tk.mutedFg} style={{ ...at(157, 460) }} />
-    <span style={{ ...at(187.5, 453.2), fontSize: 13, fontWeight: 500, lineHeight: '18.2px', color: tk.foreground }}>{PAPER_NAME}</span>
-    <span style={{ ...at(187.5, 471.4), fontSize: 11, lineHeight: '15.4px', color: tk.mutedFg }}>2150.4 KB</span>
-    <Btn style={{ ...at(652.5, 456.8), width: 71.5, height: 26.3, padding: '0 0 0 11.5px', gap: 7, fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>
+    <Btn style={{ ...at(COL_X, Y_BODY), width: COL_W, height: 31.5, borderRadius: 9, border: '1px dashed rgba(224,224,224,0.6)', justifyContent: 'center', gap: 5.25, fontSize: 13, fontWeight: 500, color: tk.mutedFg }}>
+      <Plus size={14} />
+      {S.exam.up.replace}
+    </Btn>
+    <span style={{ ...at(COL_X, Y_FILE), width: COL_W, height: 49, borderRadius: 10.5, background: mix(tk.muted, 50) }} />
+    <FileText size={20} color={tk.mutedFg} style={{ ...at(COL_X + 10.5, Y_FILE + 14.5) }} />
+    <span style={{ ...at(COL_X + 41, Y_FILE + 8.75), fontSize: 12, fontWeight: 500, lineHeight: '17px', color: tk.foreground }}>{PAPER_NAME}</span>
+    <span style={{ ...at(COL_X + 41, Y_FILE + 25.75), fontSize: 11, lineHeight: '14.5px', color: tk.mutedFg }}>2150.4 KB</span>
+    <span style={{ ...at(COL_X + COL_W - 10.5 - 28, Y_FILE + 10.5), width: 28, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: tk.mutedFg }}>
       <X size={16} />
-      {S.exam.up.remove}
-    </Btn>
-    <span style={{ ...at(COL_X, 507.8), width: COL_W, height: 47.3, borderRadius: 7, background: 'rgba(240,240,240,0.3)' }} />
-    <Robot size={16} color={tk.mutedFg} style={{ ...at(157, 523.4) }} />
-    <span style={{ ...at(180, 523), fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>{S.exam.up.parseModel}</span>
-    <Btn style={{ ...at(247, 518.3), width: 110, height: 26.3, padding: '0 0 0 11.5px', gap: 7, fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>
+    </span>
+    <span style={{ ...at(COL_X, Y_MODEL + 3.85), fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>{S.exam.up.parseModel}</span>
+    <Btn style={{ ...at(COL_X + 59, Y_MODEL), height: 24.5, padding: '0 7px', gap: 7, fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>
       {S.exam.up.defaultModel}
-      <CaretDown size={14} />
+      <CaretDown size={12} />
     </Btn>
-    <Btn style={{ ...at(COL_X, 576), width: 288.8, height: 28, ...ghostBtn(tk, false, 0) }}>{S.exam.up.back}</Btn>
-    <Btn style={{ ...at(445.8, 576), width: 288.8, height: 28, ...ghostBtn(tk, s.hover === 'parse', s.press) }}>
-      <FileText size={16} />
-      {S.exam.up.parse}
+    <Btn style={{ ...at(COL_X, Y_ACTIONS), width: 288.8, height: 28, ...ghostBtn(tk, false, 0) }}>{S.exam.up.back}</Btn>
+    <Btn style={{ ...at(445.8, Y_ACTIONS), width: 288.8, height: 28, ...ghostBtn(tk, s.hover === 'parse', s.press) }}>
+      <UploadSimple size={16} />
+      {S.exam.up.start}
     </Btn>
-    <span style={{ ...at(COL_X, 625), width: COL_W, textAlign: 'center', fontSize: 11, fontWeight: 500, lineHeight: '20px', color: tk.mutedFg }}>{S.exam.up.manual}</span>
   </>
 );
 
-/** 解析进度 k（0–1）→ 子步骤 / 逐页状态 / 已解析题数 / 进度条 / 文案。阶段按单调推进画（产品的阶段会来回跳，见优化文档）。 */
-const P_PREP = 0.12;
-const P_OCR = 0.46;
+/**
+ * 解析进度 k（0–1）→ 进度条百分比 / 状态文字 / 已解析题数（ExamSheetUploader 的 qbank 事件处理：只增不减）。
+ * PDF：解析文档 5% → 渲染页面 2–17% → 逐页识别 20–40% → 识别完成 40% → 开始解析题目 42% → 逐题入库 42–90% → 完成 100%。
+ */
+const P_RENDER = 0.06;
+const P_OCR0 = 0.18;
+const P_OCR = 0.42;
+const P_SESSION = 0.5;
 const P_PARSE = 0.56;
 const P_PARSED = 0.97;
-const PAGE_AT = [0.18, 0.26, 0.34, 0.42];
-const PCT_KEYS: Array<[number, number]> = [
-  [0, 2],
-  [P_PREP, 17],
-  [PAGE_AT[0], 25],
-  [PAGE_AT[1], 30],
-  [PAGE_AT[2], 35],
-  [PAGE_AT[3], 40],
-  [P_OCR, 40],
-  [P_PARSE, 45],
-  [1, 45],
-];
+const PAGE_AT = [0.24, 0.3, 0.36, 0.42];
 const parseAt = (k: number) => {
-  const pages = PAGE_AT.filter((a) => k >= a).length;
+  const up = S.exam.up;
   const parsedF = clamp((k - P_PARSE) / (P_PARSED - P_PARSE)) * QUESTIONS.length;
   const parsed = Math.floor(parsedF + 1e-6);
-  let pct = 45;
-  for (let i = 1; i < PCT_KEYS.length; i++) {
-    const [k0, v0] = PCT_KEYS[i - 1];
-    const [k1, v1] = PCT_KEYS[i];
-    if (k <= k1) {
-      pct = v0 + (v1 - v0) * clamp((k - k0) / Math.max(1e-6, k1 - k0));
-      break;
-    }
+  const pages = PAGE_AT.filter((a) => k >= a).length;
+  if (k < P_RENDER) return { parsedF, pct: 5, msg: up.parsingDoc };
+  if (k < P_OCR0) {
+    const done = Math.min(4, 1 + Math.floor(((k - P_RENDER) / (P_OCR0 - P_RENDER)) * 4));
+    return { parsedF, pct: Math.min(Math.round((done / 4) * 15) + 2, 17), msg: up.rendering(done, 4) };
   }
-  const up = S.exam.up;
-  let phase: 0 | 1 | 2 = 2;
-  let msg: string;
-  if (k < P_PREP) {
-    phase = 0;
-    msg = up.rendering(Math.min(4, 1 + Math.floor((k / P_PREP) * 4)), 4);
-  } else if (k < P_OCR) {
-    phase = 1;
-    msg = pages === 0 ? up.parsingStarted(4) : up.ocrPage(pages, 4);
-  } else if (k < P_PARSE) {
-    msg = k < (P_OCR + P_PARSE) / 2 ? up.ocrDone(4) : up.structuring(0, QUESTIONS.length);
-  } else {
-    msg = parsed === 0 ? up.structuring(0, QUESTIONS.length) : up.parsedCount(parsed);
-  }
-  return { phase, pages, parsed, parsedF, pct, msg, pageCard: k >= P_PREP };
+  if (k < P_OCR) return { parsedF, pct: pages === 0 ? 17 : 20 + Math.round((pages / 4) * 20), msg: pages === 0 ? up.rendering(4, 4) : up.ocrPage(pages, 4) };
+  if (k < P_SESSION) return { parsedF, pct: 40, msg: up.ocrDone(4) };
+  if (k < P_PARSE || parsed === 0) return { parsedF, pct: 42, msg: up.parsingStarted };
+  if (k >= P_PARSED) return { parsedF, pct: 100, msg: up.done(QUESTIONS.length) };
+  return { parsedF, pct: 42 + 48 * clamp((k - P_PARSE) / (P_PARSED - P_PARSE)), msg: up.parsedCount(parsed) };
 };
 
-const PhasePills = ({ tk, phase }: { tk: Tokens; phase: 0 | 1 | 2 }) => (
-  <span style={{ ...at(COL_X, 201.8), width: COL_W, height: 16.7, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 5.25 }}>
-    {S.exam.up.phases.map((label, i) => {
-      const done = i < phase;
-      const active = i === phase;
-      return (
-        <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5.25 }}>
-          {i > 0 ? <span style={{ width: 21, height: 1, background: i <= phase ? mix(tk.primary, 50) : tk.border }} /> : null}
-          <Btn
-            style={{
-              height: 16.7,
-              padding: '0 7px',
-              borderRadius: 9999,
-              gap: 3.5,
-              fontSize: 11,
-              fontWeight: active ? 500 : 400,
-              lineHeight: '16.7px',
-              color: done ? tk.success : active ? tk.primary : mix(tk.mutedFg, 60),
-              background: active ? mix(tk.primary, 10) : 'transparent',
-            }}
-          >
-            {done ? <Check size={10} weight="bold" /> : active ? <CircleNotch size={10} /> : null}
-            {label}
-          </Btn>
-        </span>
-      );
-    })}
+/** 实时解析列表 / 完成列表的一行：divide-y、py-2、序号或勾选框 + 题干（text-sm，line-clamp-2）+ 元信息（2xs：题型 · n 个选项 · 答案） */
+const ROW_LH = 18;
+const META_H = 15;
+const rowH = (q: Q) => 7 + (q.lines ?? 1) * ROW_LH + 1.75 + META_H + 7 + 1;
+const ROW_TOP = QUESTIONS.reduce<number[]>((acc, _q, i) => [...acc, i === 0 ? 0 : acc[i - 1] + rowH(QUESTIONS[i - 1])], []);
+
+const QMeta = ({ tk, q }: { tk: Tokens; q: Q }) => (
+  <span style={{ display: 'flex', alignItems: 'center', columnGap: 7, marginTop: 1.75, fontSize: 10, lineHeight: `${META_H}px`, color: tk.mutedFg, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+    <span>{S.exam.type[q.type]}</span>
+    {q.options ? <span>{S.exam.up.options(q.options)}</span> : null}
+    <span style={{ color: tk.success, overflow: 'hidden', textOverflow: 'ellipsis' }}>{S.exam.up.answer(q.answer)}</span>
   </span>
 );
 
-const CARD_H = 58.8;
-const STEM_LH = 16.8;
-const CARD_GAP = 7;
-const LIST_TOP = 379.3;
-const LIST_BOTTOM = 645;
-const cardH = (q: Q) => CARD_H + ((q.lines ?? 1) - 1) * STEM_LH;
-/** 第 i 张解析卡片的顶边（列表内坐标） */
-const CARD_TOP = QUESTIONS.reduce<number[]>((acc, q, i) => [...acc, i === 0 ? 0 : acc[i - 1] + cardH(QUESTIONS[i - 1]) + CARD_GAP], []);
+const QText = ({ tk, q }: { tk: Tokens; q: Q }) => (
+  <span style={{ display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: 2, overflow: 'hidden', fontSize: 12, lineHeight: `${ROW_LH}px`, color: tk.foreground }}>{q.content}</span>
+);
 
-const ParsedCard = ({ tk, q, i }: { tk: Tokens; q: Q; i: number }) => (
-  <span style={{ display: 'block', position: 'relative', height: cardH(q), boxSizing: 'border-box', borderRadius: 7, background: tk.card, border: '1px solid rgba(224,224,224,0.5)' }}>
-    <Btn style={{ position: 'absolute', left: 10.5, top: 10.5, width: 24, height: 24, borderRadius: 9999, justifyContent: 'center', background: mix(tk.primary, 10), color: tk.primary, fontSize: 11, fontWeight: 700 }}>{i + 1}</Btn>
-    <span
-      style={{
-        position: 'absolute',
-        left: 41.5,
-        right: 10.5,
-        top: 10.5,
-        fontSize: 12,
-        lineHeight: `${STEM_LH}px`,
-        color: tk.foreground,
-        display: '-webkit-box',
-        WebkitBoxOrient: 'vertical',
-        WebkitLineClamp: 2,
-        overflow: 'hidden',
-      }}
-    >
-      {q.content}
-    </span>
-    <span style={{ position: 'absolute', left: 41.5, right: 10.5, top: 30.8 + ((q.lines ?? 1) - 1) * STEM_LH, display: 'flex', alignItems: 'center', gap: 7, fontSize: 10, lineHeight: '12px', whiteSpace: 'nowrap', overflow: 'hidden' }}>
-      <span style={{ padding: '1.75px 5.25px', borderRadius: 3.5, background: mix(tk.primary, 10), color: tk.primary }}>{S.exam.type[q.type]}</span>
-      {q.options ? <span style={{ color: tk.mutedFg }}>{S.exam.up.options(q.options)}</span> : null}
-      <span style={{ color: tk.success, overflow: 'hidden', textOverflow: 'ellipsis' }}>{S.exam.up.answer(q.answer)}</span>
+const ParsedRow = ({ tk, q, i }: { tk: Tokens; q: Q; i: number }) => (
+  <span style={{ display: 'flex', gap: 7, padding: '7px 3.5px', boxSizing: 'border-box', height: rowH(q), borderBottom: '1px solid rgba(224,224,224,0.4)' }}>
+    <span style={{ width: 17.5, flex: '0 0 auto', paddingTop: 1, textAlign: 'right', fontSize: 11, lineHeight: '17px', color: tk.mutedFg, fontVariantNumeric: 'tabular-nums' }}>{i + 1}</span>
+    <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <QText tk={tk} q={q} />
+      <QMeta tk={tk} q={q} />
     </span>
   </span>
 );
+
+/** 进度块：bg-muted/30 p-3、一行（转圈 + 状态 + 取消导入）+ h-1.5 进度条 */
+const PROG_H = 10.5 + 28 + 7 + 5.25 + 10.5;
+const LIST_TOP = Y_BODY + PROG_H + 10.5;
+const LIST_BOTTOM = EXAM_H - 1 - 14;
 
 const ParsingPane = ({ tk, s }: { tk: Tokens; s: ExamState }) => {
   const p = parseAt(s.parse);
   const listH = LIST_BOTTOM - LIST_TOP;
   const last = Math.max(0, Math.ceil(p.parsedF) - 1);
-  const contentH = CARD_TOP[last] + cardH(QUESTIONS[last]) * clamp(p.parsedF - last);
+  const contentH = ROW_TOP[last] + rowH(QUESTIONS[last]) * clamp(p.parsedF - last);
+  // 列表随新题自动滚到底
   const scroll = Math.max(0, contentH - listH);
-  const waitTop = p.pageCard ? 356.9 : 288.8;
   return (
     <>
       <Header tk={tk} />
-      <StepBar tk={tk} step={1} />
-      <PhasePills tk={tk} phase={p.phase} />
-      <span style={{ ...at(COL_X, 229), width: COL_W, height: 49.3, borderRadius: 7, background: 'rgba(240,240,240,0.3)' }} />
-      <CircleNotch size={27.3} color={tk.primary} style={{ ...at(153.3, 240), transform: `rotate(${s.parse * 1100}deg)` }} />
-      <span style={{ ...at(187.5, 239.5), width: 409.6, fontSize: 12, fontWeight: 500, lineHeight: '16.8px', color: tk.foreground, whiteSpace: 'nowrap' }}>{p.msg}</span>
-      <span style={{ ...at(187.5, 259.8), width: 409.6, height: 8, borderRadius: 9999, background: 'rgba(240,240,240,0.5)', overflow: 'hidden' }}>
-        <span style={{ display: 'block', width: `${p.pct}%`, height: '100%', background: tk.primary }} />
-      </span>
-      <span style={{ ...at(594, 245.2), width: 28, textAlign: 'right', fontSize: 12, fontWeight: 700, lineHeight: '16.8px', color: tk.primary, fontVariantNumeric: 'tabular-nums' }}>{p.parsed}</span>
-      <Btn style={{ ...at(632.5, 240.5), width: 91.5, height: 26.3, padding: '0 0 0 11.5px', gap: 7, fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>
-        <X size={14} />
-        {S.exam.up.cancel}
-      </Btn>
-      {p.pageCard ? (
-        <>
-          <span style={{ ...at(COL_X, 288.8), width: COL_W, height: 57.6, boxSizing: 'border-box', borderRadius: 5, background: 'rgba(252,252,252,0.5)', border: '1px solid rgba(224,224,224,0.4)' }} />
-          <span style={{ ...at(158, 296.8), fontSize: 11, lineHeight: '15.4px', color: tk.mutedFg }}>{S.exam.up.pageStatus}</span>
-          {[0, 1, 2, 3].map((i) => {
-            const done = i < p.pages;
-            return (
-              <Btn
-                key={i}
-                style={{
-                  ...at(158 + i * 26.25, 317.4),
-                  width: 21,
-                  height: 21,
-                  borderRadius: 3.5,
-                  justifyContent: 'center',
-                  fontSize: 10,
-                  fontWeight: 500,
-                  background: done ? mix(tk.success, 15) : tk.muted,
-                  color: done ? tk.success : mix(tk.mutedFg, 60),
-                }}
-              >
-                {done ? <Check size={11} /> : i + 1}
-              </Btn>
-            );
-          })}
-        </>
+      <span style={{ ...at(COL_X, Y_BODY), width: COL_W, height: PROG_H, borderRadius: 10.5, background: mix(tk.muted, 30) }} />
+      <CircleNotch size={16} color={tk.primary} style={{ ...at(COL_X + 10.5, Y_BODY + 10.5 + 6), transform: `rotate(${s.parse * 1100}deg)` }} />
+      <span style={{ ...at(COL_X + 33.5, Y_BODY + 10.5 + 5.6), fontSize: 12, fontWeight: 500, lineHeight: '16.8px', color: tk.foreground, whiteSpace: 'nowrap' }}>{p.msg}</span>
+      {s.parse < P_PARSED ? (
+        <Btn style={{ ...at(COL_X + COL_W - 10.5 - 66, Y_BODY + 10.5), width: 66, height: 28, borderRadius: 9, justifyContent: 'center', fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>{S.exam.up.cancel}</Btn>
       ) : null}
-      {p.parsedF <= 0 ? (
-        <span style={{ ...at(COL_X, waitTop), width: COL_W, paddingTop: 28, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>
-          <CircleNotch size={32} style={{ opacity: 0.5, transform: `rotate(${s.parse * 1100}deg)` }} />
-          {S.exam.up.waiting}
-        </span>
-      ) : (
-        <>
-          <span style={{ ...at(COL_X, 356.9), fontSize: 11, lineHeight: '15.4px', color: tk.mutedFg }}>{S.exam.up.parsedLabel}</span>
-          <span style={{ ...at(COL_X, LIST_TOP), width: COL_W, height: listH, overflow: 'hidden' }}>
-            <span style={{ position: 'absolute', left: 0, right: 0, top: -scroll }}>
-              {QUESTIONS.slice(0, Math.ceil(p.parsedF)).map((q, i) => {
-                const k = ease.outCubic(clamp(p.parsedF - i));
-                return (
-                  <span key={i} style={{ position: 'absolute', left: 0, right: 0, top: CARD_TOP[i], opacity: k, transform: `translateY(${(1 - k) * 8}px)` }}>
-                    <ParsedCard tk={tk} q={q} i={i} />
-                  </span>
-                );
-              })}
-            </span>
+      <span style={{ ...at(COL_X + 10.5, Y_BODY + 10.5 + 28 + 7), width: COL_W - 21, height: 5.25, borderRadius: 9999, background: tk.muted, overflow: 'hidden' }}>
+        <span style={{ display: 'block', width: `${p.pct}%`, height: '100%', borderRadius: 9999, background: tk.primary }} />
+      </span>
+      {p.parsedF > 0 ? (
+        <span style={{ ...at(COL_X, LIST_TOP), width: COL_W, height: listH, overflow: 'hidden' }}>
+          <span style={{ position: 'absolute', left: 0, right: 0, top: -scroll }}>
+            {QUESTIONS.slice(0, Math.ceil(p.parsedF)).map((q, i) => {
+              const k = ease.outCubic(clamp(p.parsedF - i));
+              return (
+                <span key={i} style={{ position: 'absolute', left: 0, right: 0, top: ROW_TOP[i], opacity: k, transform: `translateY(${(1 - k) * 6}px)` }}>
+                  <ParsedRow tk={tk} q={q} i={i} />
+                </span>
+              );
+            })}
           </span>
-        </>
-      )}
+        </span>
+      ) : null}
     </>
   );
 };
 
-const SummaryPane = ({ tk, s }: { tk: Tokens; s: ExamState }) => (
-  <>
-    <Header tk={tk} />
-    <StepBar tk={tk} step={2} />
-    <span style={{ ...at(424.8, 201.8), width: 31.5, height: 31.5, borderRadius: 5, background: mix(tk.success, 10), display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-      <CheckCircle size={20} weight="fill" color={tk.success} />
-    </span>
-    <span style={{ ...at(COL_X, 240.3), width: COL_W, textAlign: 'center', fontSize: 14, fontWeight: 600, lineHeight: '17.5px', color: tk.foreground }}>{S.exam.up.complete}</span>
-    {(
-      [
-        [COL_X, String(QUESTIONS.length), S.exam.up.total, tk.primary],
-        [COL_X + 297.5, '4', S.exam.up.pages, tk.foreground],
-      ] as Array<[number, string, string, string]>
-    ).map(([x, v, label, c]) => (
-      <span key={label} style={{ ...at(x, 268.3), width: 290.5, height: 60.2, borderRadius: 5, background: 'rgba(240,240,240,0.5)', textAlign: 'center' }}>
-        <span style={{ display: 'block', marginTop: 10.5, fontSize: 16, fontWeight: 600, lineHeight: '22.4px', color: c }}>{v}</span>
-        <span style={{ display: 'block', fontSize: 12, lineHeight: '16.8px', color: tk.mutedFg }}>{label}</span>
-      </span>
-    ))}
-    <span style={{ ...at(COL_X, 339), width: COL_W, height: 67.2, borderRadius: 5, background: 'rgba(240,240,240,0.3)' }} />
-    <span style={{ ...at(157, 349.5), fontSize: 12, fontWeight: 500, lineHeight: '16.8px', color: tk.foreground }}>{S.exam.up.typeDist}</span>
-    <span style={{ ...at(157, 373.3), display: 'flex', gap: 7 }}>
-      {TYPE_DIST.map(([type, n]) => (
-        <Btn key={type} style={{ height: 22.4, padding: '0 10.5px', borderRadius: 9999, gap: 3, fontSize: 11, background: mix(tk.primary, 10), color: tk.primary }}>
-          {S.exam.type[type]} {n}
-        </Btn>
-      ))}
-    </span>
-    <span style={{ ...at(COL_X, 416.7), width: COL_W, height: 65.7, boxSizing: 'border-box', borderRadius: 5, border: '1px solid rgba(224,224,224,0.5)', overflow: 'hidden' }}>
-      <span style={{ position: 'absolute', left: 0, top: 0, right: 0, height: 34.3, background: 'rgba(240,240,240,0.3)' }} />
-      <Funnel size={16} color={tk.mutedFg} style={{ position: 'absolute', left: 14, top: 9.1 }} />
-      <span style={{ position: 'absolute', left: 37, top: 8.7, fontSize: 12, fontWeight: 500, lineHeight: '16.8px', color: tk.foreground }}>{S.exam.up.filter}</span>
-      <span style={{ position: 'absolute', right: 13, top: 9.4, fontSize: 11, lineHeight: '15.4px', color: tk.mutedFg }}>▼</span>
-      <span style={{ position: 'absolute', left: 14, top: 39.6, fontSize: 11, lineHeight: '15.4px', color: tk.mutedFg }}>{S.exam.up.filterHint}</span>
-    </span>
-    <Btn style={{ ...at(COL_X, 499.9), width: 288.8, height: 28, ...ghostBtn(tk, false, 0) }}>{S.exam.up.again}</Btn>
-    <Btn style={{ ...at(445.8, 499.9), width: 288.8, height: 28, ...ghostBtn(tk, s.hover === 'view', s.press) }}>{S.exam.up.view}</Btn>
-  </>
+/** 完成页：「✓ 已导入 N 道题目」+ 题型一行 + 常驻可勾选列表（本次新增）+ 再导入一份 / 查看题目 */
+const Y_LIST = Y_BODY + 21 + 3.5 + 16.5 + 10.5;
+const Y_DONE_ACTIONS = EXAM_H - 1 - 14 - 31.5;
+const SUM_HEAD = 35;
+const Check16 = ({ tk }: { tk: Tokens }) => (
+  <span style={{ width: 14, height: 14, flex: '0 0 auto', marginTop: 2, borderRadius: 3, background: tk.primary, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Check size={10} weight="bold" color={tk.primaryFg} />
+  </span>
 );
+const SummaryPane = ({ tk, s }: { tk: Tokens; s: ExamState }) => {
+  const boxH = Y_DONE_ACTIONS - 3.5 - 10.5 - Y_LIST;
+  return (
+    <>
+      <Header tk={tk} />
+      <span style={{ ...at(COL_X, Y_BODY), width: COL_W, height: 21, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5.25, fontSize: 14, fontWeight: 600, lineHeight: '21px', color: tk.foreground }}>
+        <CheckCircle size={18} weight="fill" color={tk.success} />
+        {S.exam.up.done(QUESTIONS.length)}
+      </span>
+      <span style={{ ...at(COL_X, Y_BODY + 24.5), width: COL_W, textAlign: 'center', fontSize: 11, lineHeight: '16.5px', color: tk.mutedFg }}>
+        {TYPE_DIST.map(([type, n]) => `${S.exam.type[type]} ${n}`).join(' · ')}
+      </span>
+      <span style={{ ...at(COL_X, Y_LIST), width: COL_W, height: boxH, boxSizing: 'border-box', borderRadius: 7, border: '1px solid rgba(224,224,224,0.5)', overflow: 'hidden' }}>
+        <span style={{ position: 'absolute', left: 0, right: 0, top: 0, height: SUM_HEAD, boxSizing: 'border-box', borderBottom: '1px solid rgba(224,224,224,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 3.5px 0 10.5px' }}>
+          <span style={{ fontSize: 11, color: tk.mutedFg }}>{S.exam.up.filterHint}</span>
+          <Btn style={{ height: 24.5, padding: '0 7px', fontSize: 11, fontWeight: 500, color: tk.foreground }}>{S.exam.up.deselectAll}</Btn>
+        </span>
+        {QUESTIONS.map((q, i) => {
+          const top = SUM_HEAD + ROW_TOP[i];
+          if (top > boxH) return null;
+          return (
+            <span key={i} style={{ position: 'absolute', left: 0, right: 0, top, height: rowH(q), boxSizing: 'border-box', display: 'flex', alignItems: 'flex-start', gap: 8.75, padding: '7px 10.5px', borderBottom: '1px solid rgba(224,224,224,0.3)' }}>
+              <Check16 tk={tk} />
+              <span style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column' }}>
+                <QText tk={tk} q={q} />
+                <QMeta tk={tk} q={q} />
+              </span>
+            </span>
+          );
+        })}
+      </span>
+      <Btn style={{ ...at(COL_X, Y_DONE_ACTIONS), width: 288.8, height: 31.5, ...ghostBtn(tk, false, 0) }}>{S.exam.up.again}</Btn>
+      <Btn style={{ ...at(445.8, Y_DONE_ACTIONS), width: 288.8, height: 31.5, ...ghostBtn(tk, s.hover === 'view', s.press) }}>{S.exam.up.view}</Btn>
+    </>
+  );
+};
 
 // ── 题库 ──────────────────────────────────────────────
 /** 全宽后网格 3 列（278.3 宽）；同一行任一题干折成两行时整行 122.9，否则 103.4（probe-kze；第 5、6 行在视口下方） */
@@ -786,19 +660,19 @@ const GridPane = ({ tk, s }: { tk: Tokens; s: ExamState }) => {
         {b.start}
       </Btn>
       <span style={{ ...at(MAIN_X, 146), width: MAIN_W, height: 1, background: mix(tk.border, 40) }} />
-      <Btn style={{ ...at(16, 158.3), width: 657, height: 31.5, borderRadius: 12, background: 'rgba(240,240,240,0.3)', padding: '0 0 0 10.5px', gap: 8, fontSize: 12, color: mix(tk.mutedFg, 60) }}>
+      <Btn style={{ ...at(16, 158.3), width: 688.5, height: 31.5, borderRadius: 12, background: 'rgba(240,240,240,0.3)', padding: '0 0 0 10.5px', gap: 8, fontSize: 12, color: mix(tk.mutedFg, 60) }}>
         <MagnifyingGlass size={16} />
         {b.search}
       </Btn>
-      <span style={{ ...at(680, 159.1), width: 52.5, height: 29.8, borderRadius: 5, background: 'rgba(240,240,240,0.3)' }} />
-      <Btn style={{ ...at(681.8, 160.9), width: 24.5, height: 26.3, borderRadius: 9, justifyContent: 'center', background: tk.background, boxShadow: '0 1px 2px rgba(0,0,0,0.08)', color: tk.mutedFg }}>
+      <span style={{ ...at(711.5, 159.1), width: 52.5, height: 29.8, borderRadius: 5, background: 'rgba(240,240,240,0.3)' }} />
+      <Btn style={{ ...at(713.3, 160.9), width: 24.5, height: 26.3, borderRadius: 9, justifyContent: 'center', background: tk.background, boxShadow: '0 1px 2px rgba(0,0,0,0.08)', color: tk.mutedFg }}>
         <GridNine size={14} />
       </Btn>
-      <Btn style={{ ...at(706.3, 160.9), width: 24.5, height: 26.3, justifyContent: 'center', color: tk.mutedFg }}>
+      <Btn style={{ ...at(737.8, 160.9), width: 24.5, height: 26.3, justifyContent: 'center', color: tk.mutedFg }}>
         <List size={14} />
       </Btn>
-      <Star size={16} color={tk.mutedFg} style={{ ...at(743.8, 166) }} />
-      <Plus size={16} color={tk.mutedFg} style={{ ...at(775.3, 166) }} />
+      {/* c570e4a06：列表工具栏不再有与顶栏「添加题目」重复的「+」，搜索框随之加宽 */}
+      <Star size={16} color={tk.mutedFg} style={{ ...at(775.3, 166) }} />
       <Btn style={{ ...at(802.5, 161.8), width: 62.5, height: 24.5, padding: '0 0 0 8px', gap: 10.5, fontSize: 11, fontWeight: 500, color: tk.mutedFg }}>
         <ListChecks size={14} />
         {b.manage}
@@ -1261,8 +1135,8 @@ export const FileChip = ({ tk, lift = 0 }: { tk: Tokens; lift?: number }) => (
 export const EXAM_PT = {
   newExam: { x: 576, y: 397.6 },
   drop: { x: 454, y: 392 },
-  parse: { x: 590.2, y: 590 },
-  view: { x: 590.2, y: 513.9 },
+  parse: { x: 590.2, y: Y_ACTIONS + 14 },
+  view: { x: 590.2, y: Y_DONE_ACTIONS + 15.75 },
   /** 3 列网格里第 7 题在第 3 行第 1 列 */
   q7: { x: 150, y: 540 },
   optA: { x: 352.5, y: 366.3 },
