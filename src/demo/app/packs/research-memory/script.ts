@@ -7,6 +7,7 @@
  */
 import type { DemoBlockDef, DemoBlocks } from '../../../fixtures';
 import type { DemoPaneNote } from '../../data/chat/ChatWithSourcePane';
+import type { ChatSceneReply } from '../../data/chat/scene';
 import { DEMO_SESSIONS } from '../../../fixtures';
 
 const survey = DEMO_SESSIONS.find((s) => s.meta.id === 'demo-spaced-repetition')?.followUp ?? [];
@@ -149,10 +150,10 @@ export const RESEARCH_REPLY: DemoBlocks = [
 ];
 
 /** 访客追问 */
-export const RESEARCH_FOLLOW_UPS: Array<{ keywords: string[]; reply: DemoBlocks }> = [
+export const RESEARCH_FOLLOW_UPS: ChatSceneReply[] = [
   {
     keywords: ['记住', '记一下', 'remember'],
-    reply: (content) => {
+    reply: (content: string): DemoBlocks => {
       const fact = content.replace(/^\s*(请)?(帮我)?(记住|记一下|remember)[:：,，\s]*/i, '').trim() || content.trim();
       return [
         {

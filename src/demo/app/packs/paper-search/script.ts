@@ -4,6 +4,7 @@
  * 追问：「把第 1、3 篇下载保存」→ paper_save 进度块；「按 GB/T 7714 / BibTeX / APA 排参考文献」→ cite_format。
  */
 import type { DemoBlocks } from '../../../fixtures';
+import type { ChatSceneReply } from '../../data/chat/scene';
 import {
   ALL_PAPERS,
   ARXIV_PAPERS,
@@ -192,7 +193,7 @@ export function citeReply(content: string): DemoBlocks {
   ];
 }
 
-export const PAPER_FOLLOW_UPS = [
+export const PAPER_FOLLOW_UPS: ChatSceneReply[] = [
   { keywords: ['下载', '保存', '存', 'save', 'download', 'doi'], reply: saveReply },
   { keywords: ['引用', '参考文献', 'bibtex', 'bib', 'gb/t', 'gbt', '7714', 'apa', 'cite'], reply: citeReply },
 ];
