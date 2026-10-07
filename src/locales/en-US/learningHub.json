@@ -908,7 +908,7 @@
       "itemCount": "{{count}} items",
       "itemCount_one": "{{count}} item",
       "selectedCount": "{{count}} selected",
-      "selectedOfTotal": "{{total}} items / {{selected}} selected"
+      "selectedOfTotal": "{{selected}}/{{total}} selected"
     },
     "viewMode": {
       "grid": "Grid view",

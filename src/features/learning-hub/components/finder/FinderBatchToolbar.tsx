@@ -217,9 +217,9 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
         )}
       </div>
 
-      {/* 选择信息（有选中项时显示）- 允许文本被截断 */}
+      {/* 全选开关（有选中项时显示）：不可收缩，窄栏里被裁掉一半会只剩一道「[」 */}
       {hasSelection && (
-        <div className="flex items-center gap-1 text-accent-foreground min-w-0 ml-2 overflow-hidden">
+        <div className="flex items-center gap-1 text-accent-foreground shrink-0 ml-1">
           <DsButton variant="ghost" size="icon" iconOnly onClick={allSelected ? onClearSelection : onSelectAll} className={cn(smallIconBtnClass, 'shrink-0')} title={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')} aria-label={allSelected ? t('finder.batch.deselectAll') : t('finder.batch.selectAll')}>
             {allSelected ? (
               <CheckSquare size={16} />
