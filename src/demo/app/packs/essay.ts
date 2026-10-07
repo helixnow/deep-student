@@ -19,6 +19,8 @@ const BORROWED_STRINGS: Record<string, Record<string, unknown>> = {
   chat_host: { model_panel: { search_placeholder: tr('搜索名称或模型 ID…', 'Search by name or model ID...') } },
 };
 
+let barsSince: number | null = null;
+
 const pack: DemoAppPack = {
   title: '作文批改',
   load: async () => {
@@ -54,9 +56,13 @@ const pack: DemoAppPack = {
       await new Promise((r) => setTimeout(r, 100));
     }
   },
-  isReady: (root) =>
-    Boolean(root.querySelector('del, ins, [data-marker-type], .text-destructive')) &&
-    [...root.querySelectorAll('button[aria-pressed="true"]')].some((b) => /bar|条形/i.test(b.getAttribute('aria-label') ?? '')) || root.clientWidth < 700,
+  // 就绪 = 已切到条形视图，再等总分的数字滚动动画走完（约 1s），海报才不会拍到中间值
+  isReady: (root) => {
+    const bars = [...root.querySelectorAll('button[aria-pressed="true"]')].some((b) => /bar|条形/i.test(b.getAttribute('aria-label') ?? ''));
+    if (!bars) return false;
+    barsSince ??= Date.now();
+    return Date.now() - barsSince > 1400;
+  },
 };
 
 export default pack;
