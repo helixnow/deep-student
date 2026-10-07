@@ -71,6 +71,8 @@ jobs:
         if: steps.target.outputs.skip == 'false'
         with:
           ref: ${{ steps.target.outputs.ref }}
+          # generate-version.mjs 按提交数算构建号，要完整历史
+          fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         if: steps.target.outputs.skip == 'false'
         with:
