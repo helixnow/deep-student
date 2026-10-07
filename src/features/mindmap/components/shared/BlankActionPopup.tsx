@@ -112,6 +112,10 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
       role="toolbar"
       className="mindmap-container fixed flex items-center gap-0.5 rounded-[var(--mm-radius-popup,8px)] border border-[var(--mm-border)] shadow-[var(--mm-popover-shadow)] ui-zoom-fade-in bg-[var(--mm-bg-elevated)] p-1"
       style={{
+        // 必须内联：类名里的 .mindmap-container（借它取导图 CSS 变量）在 mindmap.css 中带
+        // position: relative，且晚于 Tailwind 的 .fixed，会把浮层打回 body 文档流末尾
+        // ——气泡跑到视口外，背诵模式里选中文字后「挖空」按钮看不见、点不到。
+        position: 'fixed',
         left: `${position?.left ?? -9999}px`,
         top: `${position?.top ?? -9999}px`,
         visibility: position ? 'visible' : 'hidden',
