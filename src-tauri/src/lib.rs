@@ -1824,6 +1824,7 @@ pub fn run() {
             crate::media::bilibili_auth::media_bilibili_login_qr_start,
             crate::media::bilibili_auth::media_bilibili_login_qr_poll,
             crate::media::bilibili_auth::media_bilibili_logout,
+            crate::media::bilibili_stream::media_bilibili_stream_quality,
             crate::secret_prompt::secret_prompt_submit,
             crate::secret_prompt::secret_prompt_status,
             crate::secret_prompt::secret_prompt_discard,

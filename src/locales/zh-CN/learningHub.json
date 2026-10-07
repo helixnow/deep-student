@@ -430,7 +430,10 @@
     "playback": {
       "fallback": "无法在应用内直接播放这个视频，已改用 B 站播放器。",
       "retry": "重试应用内播放",
-      "useEmbed": "改用 B 站播放器"
+      "useEmbed": "改用 B 站播放器",
+      "quality": "清晰度",
+      "qualityDowngraded": "B 站没有给出所选清晰度，当前为 {{quality}}。",
+      "embedGuest": "B 站播放器以游客身份播放，清晰度以 B 站限制为准；应用内播放器可用你的登录切换清晰度。"
     }
   },
   "mediaRef": {

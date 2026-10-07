@@ -430,7 +430,10 @@
     "playback": {
       "fallback": "This video can't play in the app directly, so the Bilibili player is used instead.",
       "retry": "Try in-app playback again",
-      "useEmbed": "Use the Bilibili player"
+      "useEmbed": "Use the Bilibili player",
+      "quality": "Quality",
+      "qualityDowngraded": "Bilibili didn't provide the selected quality; playing {{quality}}.",
+      "embedGuest": "The Bilibili player plays as a guest, so its quality options are limited by Bilibili; the in-app player can use your login to switch quality."
     }
   },
   "mediaRef": {

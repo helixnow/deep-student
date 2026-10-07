@@ -493,6 +493,7 @@ commands.allow = [
   "media_bilibili_login_qr_start",
   "media_bilibili_login_qr_poll",
   "media_bilibili_logout",
+  "media_bilibili_stream_quality",
   "media_bilibili_probe",
   "media_library_list",
   "media_progress_get",
