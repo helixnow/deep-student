@@ -191,7 +191,7 @@ export const EXTRA_TEMPLATES: CustomAnkiTemplate[] = [
       Example: { field_type: 'text', is_required: false, description: '一句真题风格的例句' },
     },
     preview_data_json: JSON.stringify({ Word: 'feasible', Phonetic: '/ˈfiːzəbl/', Meaning: 'adj. 可行的', Example: 'The plan is technically feasible.' }),
-  } as CustomAnkiTemplate,
+  } as unknown as CustomAnkiTemplate,
   {
     ...TEMPLATE_BASE,
     id: 'tpl_demo_formula',
@@ -213,7 +213,7 @@ export const EXTRA_TEMPLATES: CustomAnkiTemplate[] = [
       Note: { field_type: 'text', is_required: false, description: '适用条件或易错点' },
     },
     preview_data_json: JSON.stringify({ Name: '等价无穷小（x→0）', Formula: 'sin x ~ x，ln(1+x) ~ x', Note: '只能在乘除中替换' }),
-  } as CustomAnkiTemplate,
+  } as unknown as CustomAnkiTemplate,
   {
     ...TEMPLATE_BASE,
     id: 'tpl_demo_choice',
@@ -235,5 +235,5 @@ export const EXTRA_TEMPLATES: CustomAnkiTemplate[] = [
       Explanation: { field_type: 'text', is_required: false, description: '解析' },
     },
     preview_data_json: JSON.stringify({ Question: '数据并行训练中各卡同步的是', Options: 'A. 输入数据\nB. 梯度\nC. 激活值\nD. 学习率', Answer: 'B', Explanation: '反向传播后 AllReduce 聚合梯度。' }),
-  } as CustomAnkiTemplate,
+  } as unknown as CustomAnkiTemplate,
 ];
