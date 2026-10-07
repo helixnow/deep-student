@@ -416,8 +416,6 @@
     "no_polish_desc": "本轮批改未生成润色建议",
     "no_model_essay": "暂无参考范文（请提供作文题目）",
     "no_model_essay_desc": "提供作文题目后可生成参考范文",
-    "polish_desc": "以下句子可以进一步润色提升，提高表达的流畅度和精准度",
-    "model_essay_desc": "根据题目要求生成的参考范文，供学习参考",
     "original": "原句",
     "polished": "润色后",
     "copied": "已复制",

@@ -394,6 +394,8 @@ export const PdfBadge = ({ page, tk, press = 0 }: { page: number; tk: Tokens; pr
 const TL_MUTED = 'rgb(101, 105, 114)';
 /** 时间线行间距（probe-clr-pdf：思考行文字顶 262.8 → 工具行 299.5）。 */
 export const TL_PITCH = 36.7;
+/** 思考 / 工具步骤行与紧随正文之间的空隙比旧版多出的量（--chat-activity-content-gap 0.75rem → 1.125rem，efa10dfd9） */
+export const ACTIVITY_GAP_EXTRA = 5.25;
 
 /** 思考摘要行：思考中「正在思考 N 秒…」（扫光），结束后收起为「已用时 N 秒」。 */
 export const ThinkLine = ({ tk, label, shimmer, t }: { tk: Tokens; label: string; shimmer: boolean; t: number }) => (

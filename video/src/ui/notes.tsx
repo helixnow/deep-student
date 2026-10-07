@@ -291,9 +291,10 @@ const HandoutDoc = ({ scroll }: { scroll: number }) => {
       </T>
       <Para y={170}>本节回答「什么样的矩阵能相似对角化」：从定理 5.6 的特征向量判据出发，给出特征值互异的充分条件，再用几何重数与代数重数处理重特征值，最后以例 5.9 走完整个判断与求 P 的流程。</Para>
       <H2 y={262}>一、相似对角化与判定定理</H2>
-      {/* crepe mediaRef 插件：[媒体@id:mm:ss] 原文保留，primary 色 + primary/8 底 */}
+      {/* crepe mediaRef 插件（6f9d50e31）：原文 [媒体@id:mm:ss] 隐藏，前置「▶ mm:ss」徽章——
+          .crepe-media-ref--badge：primary 色、primary/8 底、圆角 4、padding 0 4px、0.875em、tabular-nums、不换行 */}
       <Para y={305}>
-        <span style={{ color: PRI, background: pri(0.08), borderRadius: 4, padding: '0 2px', fontVariantNumeric: 'tabular-nums' }}>[媒体@file_la5p4k7W:00:00]</span>
+        <span style={{ color: PRI, background: pri(0.08), borderRadius: 4, padding: '0 4px', fontSize: '0.875em', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>▶ 00:00</span>
       </Para>
       <Para y={341}>矩阵 A 能相似对角化，等价于能找到 n 个线性无关的特征向量；把它们排成 P，P⁻¹AP 就是以对应特征值为对角元的 Λ。</Para>
       <H3 y={405}>定理 5.6</H3>

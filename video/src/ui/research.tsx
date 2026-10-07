@@ -53,6 +53,7 @@ import {
   type Icon,
 } from '@phosphor-icons/react';
 import deepseekIcon from '@app-public/icons/providers/deepseek.svg';
+import { ACTIVITY_GAP_EXTRA } from './chat';
 import { StudyChatIcon } from '@app/components/icons/StudySidebarIcons';
 import essayIcon from '@app/features/workbench/icons/app-icons/essay.svg';
 import examIcon from '@app/features/workbench/icons/app-icons/exam.svg';
@@ -865,7 +866,7 @@ export const ResearchChat = ({ tk, t, tl }: { tk: Tokens; t: number; tl: Researc
   };
   const text1 = typed('好的，我先加载调研要用的工具，再和你确认这次调研的深度。', t, tl.send + 0.1, tl.send + 0.19);
   add(tl.send + 0.02, 112.4, (y) => <UserBubble y={y} text={RESEARCH_Q} />);
-  add(tl.send + 0.06, 38.2, (y) => <ThinkRow y={y} />);
+  add(tl.send + 0.06, 38.2 + ACTIVITY_GAP_EXTRA, (y) => <ThinkRow y={y} />);
   add(tl.send + 0.1, 45.7, (y) => <P y={y} text={text1} />);
   add(tl.send + 0.2, 36.5, (y) => <ToolRow y={y} label="加载技能组" w={80} icon={Wrench} done={t >= tl.send + 0.27} ms="264ms" />);
   add(tl.submit + 0.03, 81.2, (y) => <AskResult y={y} />);
@@ -901,7 +902,7 @@ export const ResearchChat = ({ tk, t, tl }: { tk: Tokens; t: number; tl: Researc
     if (tool) add(toolAt(i), 43.2, (y) => <ToolRow y={y - 1.5} label={tool.label} w={tool.w} icon={tool.icon} group={tool.group} done={t >= toolDone(i)} />);
     if (i === 4) add(toolAt(i), 39.9, (y) => <ThinkRow y={y - 1.5} />);
     if (i === 5) add(toolAt(i), 45.6, (y) => <NoteToolCard y={y} />);
-    add(stepDone(i), i === 5 ? 28.7 : 39.1, (y) => <TodoRow y={y} text={`✓ ${name}`} color={GREEN} open={false} />);
+    add(stepDone(i), i === 5 ? 28.7 + ACTIVITY_GAP_EXTRA : 39.1, (y) => <TodoRow y={y} text={`✓ ${name}`} color={GREEN} open={false} />);
   });
   const ansAt = stepDone(5) + 0.005;
   if (t >= ansAt) {
@@ -951,7 +952,7 @@ export const ResearchChat = ({ tk, t, tl }: { tk: Tokens; t: number; tl: Researc
   add(tl.send3 + 0.02, 127.4, (y) => <UserBubble y={y + 15} text={NOTE_Q} time="20:06" />);
   add(tl.send3 + 0.06, 39.7, (y) => <ThinkRow y={y} />);
   add(tl.send3 + 0.1, 36.5, (y) => <ToolRow y={y - 1.5} label="加载技能组" w={80} icon={Wrench} done={t >= tl.send3 + 0.16} ms="186ms" />);
-  add(tl.send3 + 0.19, 36.5, (y) => <ToolRow y={y - 1.5} label="已调用 4 个工具" w={113.7} icon={SquaresFour} group done={t >= tl.edit + 0.02} />);
+  add(tl.send3 + 0.19, 36.5 + ACTIVITY_GAP_EXTRA, (y) => <ToolRow y={y - 1.5} label="已调用 4 个工具" w={113.7} icon={SquaresFour} group done={t >= tl.edit + 0.02} />);
   const noteAt = tl.edit + 0.06;
   const note1 = '已把「主要发现」改成三条短句，笔记已经自动保存。';
   const note2 = '不满意可以点笔记顶部的「撤销本次修改」恢复原文。';
@@ -967,7 +968,7 @@ export const ResearchChat = ({ tk, t, tl }: { tk: Tokens; t: number; tl: Researc
   add(tl.send2 + 0.02, 127.4, (y) => <UserBubble y={y + 15} text={PAPER_Q} time="20:07" />);
   add(tl.send2 + 0.05, 39.7, (y) => <ThinkRow y={y} />);
   const toolsDone = tl.send2 + 0.26;
-  add(tl.send2 + 0.08, 36.5, (y) => <ToolRow y={y - 1.5} label="已调用 2 个工具" w={113.7} icon={SquaresFour} group done={t >= toolsDone} />);
+  add(tl.send2 + 0.08, 36.5 + ACTIVITY_GAP_EXTRA, (y) => <ToolRow y={y - 1.5} label="已调用 2 个工具" w={113.7} icon={SquaresFour} group done={t >= toolsDone} />);
   const L0 = toolsDone + 0.01;
   const intro = typed('在 arXiv 上找到 3 篇 2026 年的相关论文：', t, L0, L0 + 0.04);
   add(L0, 49.4, (y) => <P y={y} text={intro} />);

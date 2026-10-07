@@ -642,8 +642,7 @@ const INS: CSSProperties = { color: EMERALD_600, textDecoration: 'underline', te
 /** 第一张润色卡（原句一行 / 润色后一行，728 宽卡片 152.1 高，取证 probe-eyp）。 */
 const PolishPane = ({ tk }: { tk: Tokens }) => (
   <>
-    <Sparkle size={14} color={mix(tk.mutedFg, 60)} style={{ ...at(80, 144.7) }} />
-    <span style={{ ...at(101, 144), fontSize: 11, lineHeight: '15.4px', color: mix(tk.mutedFg, 60) }}>{S.essay.polishDesc}</span>
+    {/* ca22ff014：标签页名「润色提升」已说明用途，首行说明 + 装饰图标去掉 */}
     <Btn style={{ ...at(693, 138.6), width: 108, height: 26.3, borderRadius: 9, padding: '0 0 0 11.5px', gap: 7, fontSize: 11, fontWeight: 500, color: tk.primary }}>
       <Eye size={12} />
       {S.essay.hideDiff}

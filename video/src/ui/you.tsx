@@ -19,6 +19,7 @@ import { lobeIconData } from '@app/utils/lobeIconData';
 import type { CSSProperties, ReactNode } from 'react';
 import { clamp, PACE } from '../lib/time';
 import { font } from '../theme';
+import { ACTIVITY_GAP_EXTRA } from './chat';
 import { AssistantFooter, ChatSidebar, DockComposer, FG, LINE_SOFT, MUTED, PRI, SourcesRow, T, ToolRow, UserBubble, type SidebarRow } from './research';
 import { at } from './resource';
 
@@ -83,7 +84,7 @@ export const MemoryChat = ({ t, at: a0 }: { t: number; at: number }) => {
   const streaming = t >= tl.tool && t < tl.done;
   const l1 = streamLines(MEM_P1, clamp((t - tl.p1) / (tl.p2 - tl.p1 - 0.02)));
   const l2 = streamLines(MEM_P2, clamp((t - tl.p2) / (tl.done - tl.p2)));
-  const yP1 = 208.9;
+  const yP1 = 208.9 + ACTIVITY_GAP_EXTRA;
   const yP2 = yP1 + l1.length * LH + 18.9;
   const ySrc = (l2.length ? yP2 + l2.length * LH : yP1 + l1.length * LH) + 29.8;
   return (
@@ -257,11 +258,11 @@ export const McpChat = ({ t, at: a0 }: { t: number; at: number }) => {
       <UserBubble y={60} text={MCP_Q} time={YOU_CLOCK.mcp} />
       {t >= tl.tool ? <ToolRow y={172.4} label="zotero · Zotero Search Items" w={228} icon={MagnifyingGlass} done={t >= tl.toolDone} ms="909ms" /> : null}
       {lines.map((row, j) => (
-        <T key={j} x={368} y={208.9 + j * LH} size={16} lh={LH}>
+        <T key={j} x={368} y={208.9 + ACTIVITY_GAP_EXTRA + j * LH} size={16} lh={LH}>
           {row}
         </T>
       ))}
-      {t >= tl.done ? <AssistantFooter y={208.9 + MCP_P.length * LH + 23.1} time={YOU_CLOCK.mcp} /> : null}
+      {t >= tl.done ? <AssistantFooter y={208.9 + ACTIVITY_GAP_EXTRA + MCP_P.length * LH + 23.1} time={YOU_CLOCK.mcp} /> : null}
       <DockComposer text="" caret={false} mode={streaming ? 'stop' : 'idle'} press={0} />
     </div>
   );

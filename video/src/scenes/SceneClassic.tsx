@@ -17,6 +17,7 @@ import {
   CP,
   PdfBadge,
   RefChip,
+  ACTIVITY_GAP_EXTRA,
   ThinkLine,
   TL_PITCH,
   ToolLine,
@@ -84,7 +85,7 @@ const SHIFT = CLASSIC_ASSISTANT_TOP - 150;
 const LH = 27.52;
 const PGAP = 18.88;
 const FORMULA_H = 28;
-const ANSWER_TOP = CLASSIC_ASSISTANT_TOP + 122;
+const ANSWER_TOP = CLASSIC_ASSISTANT_TOP + 122 + ACTIVITY_GAP_EXTRA;
 const ANSWER_LINES = {
   l1: ANSWER_TOP,
   l2: ANSWER_TOP + LH,

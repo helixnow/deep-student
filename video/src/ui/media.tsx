@@ -1111,7 +1111,6 @@ const AskTab = ({ tk, s }: { tk: Tokens; s: StudyState }) => {
               {q}
             </div>
           ))}
-          <div style={{ position: 'absolute', left: PAD, top: 290, width: PANEL_W - 2 * PAD, ...xsMuted(tk, { color: mix(tk.mutedFg, 80) }) }}>{S.media.ask.citationHint}</div>
         </div>
       ) : null}
       {layer > 0 ? (

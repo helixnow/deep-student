@@ -133,11 +133,10 @@ const WARN = 'rgb(195, 136, 34)';
 
 /**
  * 背诵模式行（ReciteStatusBar，probe-clw-book / clx-mask）：未遮盖时两行（一键遮住要点 / 手动挖空 | 难点优先 | 全部揭示 / 重新遮盖 + 第二行退出，后三项禁用）；
- * 遮盖后一行（进度条 + n/总 · % + 剩余 | 难点优先 | 全部揭示 / 重新遮盖 / 退出）。
+ * 遮盖后一行（进度条 + n/总 | 难点优先 | 全部揭示 / 重新遮盖 / 退出；80472a30d 起去掉同义的百分比与「剩余 N」）。
  */
 export const MmReciteRow = ({ masked, revealed, total, fill, maskPress = 0, revealAllHover = 0, revealAllPress = 0 }: { masked: boolean; revealed: number; total: number; fill: number; maskPress?: number; revealAllHover?: number; revealAllPress?: number }) => {
   const h = masked ? MP.reciteShort : MP.reciteTall;
-  const pct = Math.round((revealed / total) * 100);
   return (
     <div style={{ position: 'absolute', left: 0, right: 0, top: 0, height: h, background: SURFACE, borderBottom: `1px solid ${LINE}`, fontFamily: font.ui }}>
       <BookOpen size={16} color={WARN} style={at(10.5, 11.3)} />
@@ -151,9 +150,8 @@ export const MmReciteRow = ({ masked, revealed, total, fill, maskPress = 0, reve
             <span style={{ ...at(392.5, 5.3), width: 99.5, height: 28, borderRadius: 9, background: 'rgb(240, 240, 240)', opacity: revealAllHover, transform: `scale(${1 - revealAllPress * 0.06})` }} />
           ) : null}
           <span style={{ ...at(179.5, 11), fontSize: 11, lineHeight: '16.5px', color: MUTED, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
-            {revealed}/{total}·{pct}%
+            {revealed}/{total}
           </span>
-          {revealed < total ? <span style={{ ...at(230.8, 11), fontSize: 11, lineHeight: '16.5px', color: MUTED, whiteSpace: 'nowrap' }}>{S.mm.remaining(total - revealed)}</span> : null}
           <span style={{ ...at(270, 12.3), width: 1, height: 14, background: LINE }} />
           <RowBtn x={278} w={99.5} icon={<Fire size={14} />} label={S.mm.reviewStart} />
           <span style={{ ...at(384.5, 12.3), width: 1, height: 14, background: LINE }} />
@@ -188,7 +186,8 @@ const STRUCT_ROWS: Array<{ label: string; icon: ReactNode; cells: StructCell[] }
   { label: S.mm.structLogic, icon: <GitBranch size={16} />, cells: ['logicRight', 'logicLeft', 'logicBoth', 'logicRight2'] },
   { label: S.mm.structOrg, icon: <Users size={16} />, cells: ['orgDown', 'orgUp', 'orgRight', 'orgLeft'] },
 ];
-export const STRUCT_POP = { x: 245.5, y: 79, w: 288, h: 271.5 } as const;
+/** 80472a30d 去掉复述标题的底部提示（分隔线 + 一行字，25.5px） */
+export const STRUCT_POP = { x: 245.5, y: 79, w: 288, h: 246 } as const;
 const CELL_X = [8, 76.5, 145, 213.5];
 const ROW_Y = [60, 130, 200];
 /** 某格按钮中心（弹层坐标）。 */
@@ -245,7 +244,7 @@ const Glyph = ({ cell, color }: { cell: StructCell; color: string }) => {
   );
 };
 
-/** 选择结构弹层：标题 + 右上「当前: 预设名」（预设名主色加粗）、三类结构格、底部提示；点选即关闭（StructureSelector handlePresetSelect）。 */
+/** 选择结构弹层：标题 + 右上「当前: 预设名」（预设名主色加粗）、三类结构格；点选即关闭（StructureSelector handlePresetSelect）。 */
 export const StructureGrid = ({ current, currentName, hot, press = 0, style }: { current: StructCell; currentName: string; hot?: StructCell; press?: number; style?: CSSProperties }) => (
   <div style={{ position: 'absolute', width: STRUCT_POP.w, height: STRUCT_POP.h, boxSizing: 'border-box', borderRadius: 12, background: SURFACE, border: `1px solid ${LINE}`, boxShadow: '0 12px 32px rgba(0, 0, 0, 0.12)', fontFamily: font.ui, ...style }}>
     <span style={{ ...at(11, 7.3), fontSize: 15, fontWeight: 600, lineHeight: '22.5px', color: FG }}>{S.mm.selectStructure}</span>
@@ -281,8 +280,6 @@ export const StructureGrid = ({ current, currentName, hot, press = 0, style }: {
         })}
       </div>
     ))}
-    <span style={{ ...at(8, 238), width: 272, height: 1, background: LINE }} />
-    <span style={{ ...at(11, 246), fontSize: 11, lineHeight: '16.5px', color: MUTED }}>{S.mm.structHint}</span>
   </div>
 );
 
