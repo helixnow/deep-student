@@ -57,7 +57,8 @@ describe('buildMediaRefDecorations', () => {
       schema.node('paragraph', null, [schema.text('看 [媒体@file_1:00:30] 这里')]),
       schema.node('code_block', null, [schema.text('[媒体@file_1:00:40]')]),
     ]);
-    const set = buildMediaRefDecorations(doc);
+    // 光标在标记内（编辑态）：一条 inline 装饰；代码块里的不处理
+    const set = buildMediaRefDecorations(doc, { from: 5, to: 5 });
     const decos = set.find();
     expect(decos).toHaveLength(1);
     expect((decos[0] as any).type.attrs[MEDIA_REF_ANCHOR_ATTR]).toBe('file_1');
@@ -107,5 +108,35 @@ describe('handleMediaRefClick', () => {
     expect(handleMediaRefClick(makeView(root), click(other))).toBe(false);
     expect(received).toHaveLength(1);
     expect(received[0].detail).toEqual({ resourceId: 'file_8', seconds: 5 });
+  });
+});
+
+describe('buildMediaRefDecorations badge mode', () => {
+  const schema = new Schema({
+    nodes: {
+      doc: { content: 'block+' },
+      paragraph: { group: 'block', content: 'text*' },
+      text: {},
+    },
+  });
+  const doc = schema.node('doc', null, [
+    schema.node('paragraph', null, [schema.text('看 [媒体@file_1:01:20] 这里')]),
+  ]);
+
+  it('hides the raw marker and shows a time badge without the resource id when the cursor is elsewhere', () => {
+    const decos = buildMediaRefDecorations(doc, { from: 1, to: 1 }).find() as any[];
+    const raw = decos.find((d) => d.type.attrs?.class === 'crepe-media-ref-raw');
+    expect(raw).toBeTruthy();
+    const widget = decos.find((d) => typeof d.type.toDOM === 'function');
+    const badge = widget.type.toDOM() as HTMLElement;
+    expect(badge.textContent).toBe('▶ 01:20');
+    expect(badge.getAttribute('data-media-ref-id')).toBe('file_1');
+    expect(badge.getAttribute('data-media-ref-seconds')).toBe('80');
+  });
+
+  it('shows the raw marker for editing while the cursor is inside it', () => {
+    const decos = buildMediaRefDecorations(doc, { from: 6, to: 6 }).find() as any[];
+    expect(decos).toHaveLength(1);
+    expect(decos[0].type.attrs.class).toBe('crepe-media-ref');
   });
 });
