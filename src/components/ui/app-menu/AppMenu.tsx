@@ -317,6 +317,8 @@ export function AppMenuContent({
     left: number;
     origin: 'top' | 'bottom';
     availableHeight: number;
+    /** 下拉菜单上下都放不下时被限高（内部滚动） */
+    constrained?: boolean;
   }>({ top: 0, left: 0, origin: 'top', availableHeight: 0 });
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -388,6 +390,7 @@ export function AppMenuContent({
       let top: number;
       let left: number;
       let origin: 'top' | 'bottom' = 'top';
+      let constrainedHeight: number | null = null;
 
       if (menuMode === 'context') {
         // 默认以点击点为左上角向下展开；下方空间不足时，改用同一点击点
@@ -402,16 +405,26 @@ export function AppMenuContent({
         if (!triggerEl) return;
         const triggerRect = triggerEl.getBoundingClientRect();
 
-        top = triggerRect.bottom + gap;
-        if (top + contentRect.height > viewport.height - 8) {
-          top = triggerRect.top - gap - contentRect.height;
+        // 下方放得下就向下；否则上方放得下就向上；两边都放不下时选空间大的一侧，
+        // 并把菜单高度限制在该侧（内部滚动）。之前两边都放不下时整体贴到视口底部，
+        // 菜单会盖住自己的触发按钮和顶部状态栏（导图「更多操作」这类长菜单）。
+        const naturalHeight = Math.max(contentRect.height, contentEl.scrollHeight);
+        const spaceBelow = viewport.height - 8 - (triggerRect.bottom + gap);
+        const spaceAbove = triggerRect.top - gap - 8;
+        if (naturalHeight <= spaceBelow) {
+          top = triggerRect.bottom + gap;
+        } else if (naturalHeight <= spaceAbove) {
+          top = triggerRect.top - gap - naturalHeight;
           origin = 'bottom';
-          if (top < 8) {
-            top = Math.max(8, viewport.height - contentRect.height - 8);
-          }
+        } else if (spaceBelow >= spaceAbove) {
+          top = triggerRect.bottom + gap;
+          constrainedHeight = Math.max(0, Math.floor(spaceBelow));
         } else {
-          top = Math.min(top, viewport.height - contentRect.height - 8);
+          constrainedHeight = Math.max(0, Math.floor(spaceAbove));
+          top = triggerRect.top - gap - constrainedHeight;
+          origin = 'bottom';
         }
+        if (constrainedHeight !== null) contentRect.height = constrainedHeight;
 
         if (align === 'start') {
           left = triggerRect.left;
@@ -428,15 +441,17 @@ export function AppMenuContent({
       
       const maxTop = viewport.height - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
-      const availableHeight = Math.max(0, viewport.height - 16);
+      const availableHeight = constrainedHeight ?? Math.max(0, viewport.height - 16);
+      const constrained = constrainedHeight !== null;
 
       setPosition((prev) => (
         prev.top === top
         && prev.left === left
         && prev.origin === origin
         && prev.availableHeight === availableHeight
+        && prev.constrained === constrained
           ? prev
-          : { top, left, origin, availableHeight }
+          : { top, left, origin, availableHeight, constrained }
       ));
     };
 
@@ -625,6 +640,7 @@ export function AppMenuContent({
       className={cn(
         'app-menu-content',
         position.origin === 'bottom' ? 'app-menu-origin-bottom' : 'app-menu-origin-top',
+        position.constrained && 'app-menu-constrained',
         isOpen && presence.shown && 'app-menu-open',
         isClosing && 'app-menu-closing',
         className
