@@ -1143,7 +1143,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       >
         <CustomScrollArea
           className="min-h-0 flex-1"
-          viewportClassName="px-4 pb-6 pt-3 overscroll-contain md:px-8 md:pb-8 md:pt-4"
+          viewportClassName="px-4 pb-16 pt-3 overscroll-contain md:px-8 md:pb-8 md:pt-4"
           hideTrackWhenIdle
         >
           <ThreadEmptyStateShell
