@@ -33,10 +33,9 @@ describe('QuestionBankListView toolbar button accessibility', () => {
     );
   });
 
-  it('labels the add-question button via the existing exam.tab.addQuestion key', () => {
-    expect(source).toContain(
-      "aria-label={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })}"
-    );
+  it('does not repeat the header add-question entry as a toolbar "+" button', () => {
+    // 新建入口只在 ExamContentView 顶栏「添加题目」菜单里出现一次
+    expect(source).not.toContain("aria-label={t('learningHub:exam.tab.addQuestion'");
   });
 
   it('labels batch manage with the same key as its visible text (WCAG 2.5.3)', () => {

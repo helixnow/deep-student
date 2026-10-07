@@ -1332,12 +1332,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </DsButton>
 
-          {/* 手动添加题目按钮 */}
-          {examId && onCreateQuestion && (
-            <DsButton variant="ghost" size="icon" iconOnly onClick={() => requestInlineEditorTarget(expandedEditId === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!w-11 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })} title={t('learningHub:exam.tab.addQuestion', { defaultValue: '添加题目' })}>
-              <Plus size={16} />
-            </DsButton>
-          )}
+          {/* 新建题目入口统一在题目集顶栏「添加题目」菜单（ExamContentView），工具栏不再重复一个「+」 */}
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
