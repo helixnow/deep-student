@@ -191,3 +191,10 @@ describe('activity timeline thinking summary source', () => {
     expect(activityTimelineCssSource).toContain('.activity-timeline + .block-renderer .markdown-content > p:first-child');
   });
 });
+
+describe('activity timeline → answer body spacing', () => {
+  it('separates the thinking / tool row from the answer like other block gaps', () => {
+    const chatCss = readFileSync(resolve(process.cwd(), 'src/features/chat/styles/chat.css'), 'utf8');
+    expect(chatCss).toContain('--chat-activity-content-gap: 1.125rem;');
+  });
+});

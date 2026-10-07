@@ -144,7 +144,9 @@
   --chat-activity-status-font-size: var(--font-size-sm);
   --chat-activity-status-line-height: 1.5rem;
   --chat-activity-node-gap: 0.75rem;
-  --chat-activity-content-gap: 0.75rem;
+  /* 思考 / 工具步骤行与紧随的正文之间：与正文段落→标题的间距（约 1.2em）一致。
+     0.75rem 时「已用时 N 秒」下一行的标题 / 段落看起来直接贴着，正文首块的上边距又被清零 */
+  --chat-activity-content-gap: 1.125rem;
 
   /* 思考中（中间态）思维链预览窗高度：固定窗口 + 上下渐隐，不把消息撑长 */
   --chat-thinking-peek-height: 8.5rem;
