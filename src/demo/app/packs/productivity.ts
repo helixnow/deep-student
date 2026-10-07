@@ -37,9 +37,26 @@ let todoStore: typeof import('@/features/todo/stores/useTodoStore').useTodoStore
 
 const pack: DemoAppPack = {
   title: '待办与番茄钟',
-  load: () => import('@/features/workbench/apps/system/TodoAppWindow').then((m) => m.default),
+  load: async () => {
+    // 手机宽度：待办窗口在窄窗下只有图标栏 + 挤压的行（行尾动作按钮占位），手机上的真实形态是
+    // 经典壳里的待办页（移动端三屏布局 + 统一顶栏），这里按 App 壳同样的 Provider 套起来
+    if (window.innerWidth < 768) {
+      const [{ createElement: h }, { TodoContentView }, layout] = await Promise.all([
+        import('react'),
+        import('@/features/todo/components/TodoContentView'),
+        import('@/components/layout'),
+      ]);
+      const MobileTodo = () =>
+        h(layout.MobileLayoutProvider, null,
+          h(layout.MobileHeaderProvider, null,
+            h(layout.MobileHeaderActiveViewSync, { activeView: 'todo' }),
+            h(TodoContentView, { className: 'h-full w-full' })));
+      return MobileTodo;
+    }
+    return import('@/features/workbench/apps/system/TodoAppWindow').then((m) => m.default);
+  },
   handle: handleTodayLearning,
-  namespaces: ['todo', 'common', 'workbench', 'app_menu'],
+  namespaces: ['todo', 'common', 'workbench', 'app_menu', 'sidebar'],
   localStorage: {
     'pomodoro-storage': pomodoroStorageSeed(),
   },
