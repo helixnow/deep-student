@@ -83,9 +83,8 @@ export const SessionSummary: React.FC<SessionSummaryProps> = ({
       </div>
       <div className="space-y-1">
         <p className="text-sm font-medium text-foreground">{headline}</p>
-        <p className="text-xs text-muted-foreground">
-          {empty ? t('review.emptyHint') : t('review.doneHint')}
-        </p>
+        {/* 完成态的「干得漂亮，本轮小结如下」只是复述标题，下方小结本身就是内容；空态保留指引 */}
+        {empty && <p className="text-xs text-muted-foreground">{t('review.emptyHint')}</p>}
       </div>
 
       {showSummary ? (
