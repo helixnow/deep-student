@@ -557,9 +557,9 @@ const DAY_CAM: CamKey[] = [
   // 改笔记：推近对话看发出与工具行 → 笔记窗弹入后转向笔记（标题栏下的条、撤销条、主要发现都在画内）→ 回对话点露出来的输入框
   [DAY.noteSend + 0.06, { x: 1236, y: 480, zoom: 1.35 }, ease.inOutCubic],
   [DAY.noteOpen - 0.02, { x: 1236, y: 480, zoom: 1.35 }, ease.linear],
-  // 正文起点落在左下字幕右侧（文件树让给字幕），字幕不再压在正文上
-  [DAY.noteOpen + 0.26, { x: 580, y: 471, zoom: 1.5 }, ease.inOutCubic],
-  [DAY.chatBack - 0.3, { x: 580, y: 474, zoom: 1.52 }, ease.linear],
+  // 镜头贴左边界（clampCam：x ≥ 960 / zoom）、略推近：正文起点落在左下字幕右侧，文件树让给字幕
+  [DAY.noteOpen + 0.26, { x: 620, y: 471, zoom: 1.55 }, ease.inOutCubic],
+  [DAY.chatBack - 0.3, { x: 620, y: 474, zoom: 1.55 }, ease.linear],
   [DAY.chatBack - 0.04, { x: 1236, y: 480, zoom: 1.4 }, ease.inOutCubic],
   [DAY.paperSend + 0.08, { x: 1236, y: 480, zoom: 1.4 }, ease.linear],
   [DAY.paperSaved + 0.02, { x: 1236, y: 470, zoom: 1.45 }, ease.inOutCubic],
