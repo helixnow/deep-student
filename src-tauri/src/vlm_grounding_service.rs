@@ -1133,7 +1133,14 @@ impl VlmGroundingService {
 - `question_type`: single_choice / multiple_choice / fill_blank / short_answer / calculation / proof / essay
 - `options`: 仅选择题需要，其他题型留空数组 `[]`
 - `image_indices`: 属于该题的图片编号数组（对应上方【图片N】），无图则 `[]`
-- `difficulty`: easy / medium / hard（无法判断则留 "medium"）
+- `difficulty`: easy / medium / hard / very_hard（无法判断则留 "medium"）
+
+**difficulty 判定标准**（逐题独立判断，禁止全部输出同一档）：
+- "easy"：直接记忆/套公式即可作答。特征：概念定义、名词解释、单一公式代入、课本原句改编。
+- "medium"：需要 1-2 步推理或知识点组合，无跨章综合。特征：常规单选/多选、简单计算、对概念的理解辨析。
+- "hard"：需要多步推理、跨知识点综合、或包含易混淆的干扰项。特征：综合计算、机理分析、病例/情境分析、多个知识点的关联应用。
+- "very_hard"：需要复杂推导、创造性综合或冷门细节。特征：压轴题、多过程计算、高度综合的论述、竞赛级难度。
+- 参考信号（按优先级）：计算复杂度 > 干扰项迷惑性 > 是否跨章节 > 知识点冷门程度；文档中靠后的大题通常不低于 "hard"。
 
 **重要规则**：
 1. 所有数学/化学/物理公式必须用 LaTeX 格式
