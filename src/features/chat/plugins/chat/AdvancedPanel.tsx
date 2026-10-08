@@ -167,6 +167,9 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         }
       })
       .catch((err) => { console.warn('[AdvancedPanel] ensureModelsCacheLoaded failed:', err); });
+    return () => {
+      disposed = true;
+    };
   }, [effectivePanelModelId]);
 
   const modelInfo = useMemo(
