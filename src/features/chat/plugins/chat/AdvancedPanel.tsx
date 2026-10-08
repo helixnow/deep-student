@@ -112,6 +112,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
   const chatParams = useStore(store, useShallow((s) => ({
     modelId: s.chatParams.modelId,
+    model2OverrideId: s.chatParams.model2OverrideId,
     temperature: s.chatParams.temperature,
     topP: s.chatParams.topP,
     frequencyPenalty: s.chatParams.frequencyPenalty,
@@ -138,20 +139,6 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const contextLimitId = useId();
   const [modelMetaVersion, setModelMetaVersion] = useState(0);
 
-  useEffect(() => {
-    let disposed = false;
-    void ensureModelsCacheLoaded()
-      .then(() => {
-        if (!disposed) {
-          setModelMetaVersion((prev) => prev + 1);
-        }
-      })
-      .catch((err) => { console.warn('[AdvancedPanel] ensureModelsCacheLoaded failed:', err); });
-    return () => {
-      disposed = true;
-    };
-  }, [chatParams.modelId]);
-
   // 更新参数
   const updateParam = useCallback(
     (key: keyof typeof chatParams, value: any) => {
@@ -166,19 +153,35 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const presencePenalty = chatParams.presencePenalty ?? PENALTY_DEFAULT;
   const maxTokens = chatParams.maxTokens ?? MAX_TOKENS_DEFAULT;
   const enableThinking = chatParams.enableThinking ?? true;
+  // 面板选模型写的是 model2OverrideId（ModelPanel.handleSelectModel），未固定会话的
+  // modelId 恒为空——只读 modelId 会让滑条/采样锁永远解析不到模型，掉进 512k 兜底。
+  // 与发送侧 resolveInputContextLimit 的 `model2OverrideId || modelId` 口径一致。
+  const effectivePanelModelId = chatParams.model2OverrideId || chatParams.modelId;
+
+  useEffect(() => {
+    let disposed = false;
+    void ensureModelsCacheLoaded()
+      .then(() => {
+        if (!disposed) {
+          setModelMetaVersion((prev) => prev + 1);
+        }
+      })
+      .catch((err) => { console.warn('[AdvancedPanel] ensureModelsCacheLoaded failed:', err); });
+  }, [effectivePanelModelId]);
+
   const modelInfo = useMemo(
-    () => getModelInfoByConfigId(chatParams.modelId),
-    [chatParams.modelId, modelMetaVersion]
+    () => getModelInfoByConfigId(effectivePanelModelId),
+    [effectivePanelModelId, modelMetaVersion]
   );
   const samplingControlInput = useMemo(
     () => ({
-        model: modelInfo?.model ?? chatParams.modelId,
+        model: modelInfo?.model ?? effectivePanelModelId,
         providerType: modelInfo?.providerType,
         providerScope: modelInfo?.providerScope,
         baseUrl: modelInfo?.baseUrl,
         enableThinking,
       }),
-    [modelInfo?.model, modelInfo?.providerType, modelInfo?.providerScope, modelInfo?.baseUrl, chatParams.modelId, enableThinking]
+    [modelInfo?.model, modelInfo?.providerType, modelInfo?.providerScope, modelInfo?.baseUrl, effectivePanelModelId, enableThinking]
   );
   const officialDeepSeekV4 = isOfficialDeepSeekV4Model(samplingControlInput);
   const deepSeekV4SamplingLocked = shouldLockDeepSeekV4SamplingControls(samplingControlInput);
@@ -196,9 +199,9 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         return modelInfo.contextWindow;
       }
       // fallback：实时推断（兼容旧配置无 contextWindow 字段的情况）
-      return inferModelContextWindow(modelInfo?.model ?? chatParams.modelId, maxTokens);
+      return inferModelContextWindow(modelInfo?.model ?? effectivePanelModelId, maxTokens);
     },
-    [modelInfo?.model, modelInfo?.contextWindow, chatParams.modelId, maxTokens]
+    [modelInfo?.model, modelInfo?.contextWindow, effectivePanelModelId, maxTokens]
   );
   const autoContextLimit = useMemo(
     () =>
