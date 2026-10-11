@@ -514,6 +514,13 @@ impl ChatV2Pipeline {
         // 插入位置取轮尾：详见 insert_skill_messages_after_tool_result 的轮中劈开问题。
         let mut in_loop_skill_batches: Vec<(String, Option<String>, Vec<LegacyChatMessage>)> =
             Vec::new();
+        // issue #464：检索命中页图（仅 VL 模型）。(本轮最后一个 tool_call_id, 页图消息)，
+        // 在产出该检索结果的工具轮构建一次后冻结，后续轮次逐字节复用（轮内前缀稳定）；
+        // 只活在本次请求的 messages 里，不落库、不改已冻结历史。
+        let mut retrieval_page_image_batches: Vec<(String, LegacyChatMessage)> = Vec::new();
+        let mut retrieval_page_image_budget: Option<
+            super::context_compiler::RetrievalPageImageBudget,
+        > = None;
         let mut cumulative_skill_audit = SkillInjectionAudit::default();
         let mut previous_empty_required_tools: std::collections::HashSet<String> =
             std::collections::HashSet::new();
@@ -806,6 +813,14 @@ impl ChatV2Pipeline {
                         anchor_call_id,
                         round_last_call_id.as_deref(),
                         batch.clone(),
+                    );
+                }
+                // issue #464：检索页图插在技能之后、同一轮尾（不劈开并行工具调用组）
+                for (round_last_call_id, page_message) in &retrieval_page_image_batches {
+                    super::context_compiler::insert_retrieval_page_image_message(
+                        &mut messages,
+                        round_last_call_id,
+                        page_message.clone(),
                     );
                 }
 
@@ -2176,6 +2191,46 @@ impl ChatV2Pipeline {
                     {
                         ctx.round_text_by_tool_call_id
                             .insert(first_tool_call_id, round_content.clone());
+                    }
+                }
+                // issue #464：本轮知识库检索命中带页图且生成模型为 VL 时，构建页图注入消息。
+                // 预算在首次需要时按「冻结计划总预算 − 请求中已有图片」初始化，跨轮累计。
+                if let Some(snapshot) = ctx
+                    .execution_snapshot
+                    .as_ref()
+                    .filter(|snapshot| snapshot.resolved_model_is_multimodal)
+                {
+                    let round_last_call_id = tool_results_with_reasoning
+                        .last()
+                        .and_then(|r| r.tool_call_id.clone())
+                        .filter(|id| !id.is_empty());
+                    if let Some(round_last_call_id) = round_last_call_id {
+                        let image_budget = snapshot.generation_plan.image_budget;
+                        let budget = retrieval_page_image_budget.get_or_insert_with(|| {
+                            let mut images_in_request =
+                                super::context_compiler::count_request_images(&ctx.chat_history);
+                            if ctx.options.is_continue != Some(true) {
+                                if let Some(current) = ctx.compiled_current_user_message.as_ref() {
+                                    images_in_request +=
+                                        super::context_compiler::count_request_images(
+                                            std::slice::from_ref(current),
+                                        );
+                                }
+                            }
+                            super::context_compiler::RetrievalPageImageBudget::new(
+                                image_budget,
+                                images_in_request,
+                                super::context_compiler::canonical_image_blob_hashes(
+                                    &ctx.canonical_content,
+                                ),
+                            )
+                        });
+                        if let Some(page_message) = self.build_retrieval_page_image_injection(
+                            &tool_results_with_reasoning,
+                            budget,
+                        ) {
+                            retrieval_page_image_batches.push((round_last_call_id, page_message));
+                        }
                     }
                 }
                 ctx.add_tool_results(tool_results_with_reasoning);

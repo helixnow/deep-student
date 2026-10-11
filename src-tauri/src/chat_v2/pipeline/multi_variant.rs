@@ -1204,6 +1204,19 @@ impl ChatV2Pipeline {
 
         ctx.start_streaming();
 
+        // issue #464：VL 变体在工具环内注入检索命中页图（与单变体路径同一实现）
+        let retrieval_page_image_seed = compile_ctx
+            .execution_snapshot
+            .as_ref()
+            .filter(|snapshot| snapshot.resolved_model_is_multimodal)
+            .map(|snapshot| {
+                (
+                    snapshot.generation_plan.image_budget,
+                    super::context_compiler::canonical_image_blob_hashes(
+                        &compile_ctx.canonical_content,
+                    ),
+                )
+            });
         let system_prompt = prompt_parts.stable_system;
         let turn_volatile = prompt_parts.turn_volatile;
         let chat_history = compile_ctx.chat_history;
@@ -1230,6 +1243,14 @@ impl ChatV2Pipeline {
         let base_history_len = chat_history.len();
         let mut messages = chat_history;
         messages.push(current_user_message);
+        let mut retrieval_page_image_budget =
+            retrieval_page_image_seed.map(|(image_budget, referenced_blobs)| {
+                super::context_compiler::RetrievalPageImageBudget::new(
+                    image_budget,
+                    super::context_compiler::count_request_images(&messages),
+                    referenced_blobs,
+                )
+            });
 
         let wrap_token_policy = self
             .resolve_api_config_by_id(options.model_id.as_deref())
@@ -1897,6 +1918,26 @@ impl ChatV2Pipeline {
                     round_last_call_id.as_deref(),
                     batch,
                 );
+            }
+
+            // issue #464：检索命中页图插在本轮尾（技能之后）；messages 逐轮追加，
+            // 插入一次即在后续轮次保持逐字节不变
+            if let Some(budget) = retrieval_page_image_budget.as_mut() {
+                if let Some(round_last_call_id) = tool_results
+                    .last()
+                    .and_then(|r| r.tool_call_id.clone())
+                    .filter(|id| !id.is_empty())
+                {
+                    if let Some(page_message) =
+                        self.build_retrieval_page_image_injection(&tool_results, budget)
+                    {
+                        super::context_compiler::insert_retrieval_page_image_message(
+                            &mut messages,
+                            &round_last_call_id,
+                            page_message,
+                        );
+                    }
+                }
             }
 
             let task_completed = tool_results.iter().any(|r| {

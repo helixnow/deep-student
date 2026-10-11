@@ -7,6 +7,7 @@
 //! - [`model_selection`]: generation-model classification, strict/persona resolution, overrides
 //! - [`preprocess`]: stage deadlines, compile-strategy decision, cancellable stage runner
 //! - [`images`]: image budgeting, runtime-image collection, artifact reuse, payload rewrites
+//! - [`retrieval_images`]: retrieval-hit page images injected into the tool loop for MM models
 //!
 //! This file keeps the `ChatV2Pipeline` orchestration: freezing the execution snapshot and
 //! compiling the frozen context for the resolved route.
@@ -27,10 +28,15 @@ use crate::vfs::retrieval_planner::{
 mod images;
 mod model_selection;
 mod preprocess;
+mod retrieval_images;
 
 pub(crate) use images::{
     select_images_with_budget, ImageBudgetCandidate, DEFAULT_HISTORY_IMAGE_BUDGET,
     DEFAULT_IMAGE_BUDGET,
+};
+pub(crate) use retrieval_images::{
+    canonical_image_blob_hashes, count_request_images, insert_retrieval_page_image_message,
+    RetrievalPageImageBudget, RETRIEVAL_PAGE_IMAGES_TAG,
 };
 
 use images::{

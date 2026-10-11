@@ -117,6 +117,8 @@ fn is_pinned_request_message(message: &Value) -> bool {
     text.contains("<compacted_context>")
         || text.contains("<skill_instructions")
         || text.contains("<request_context>")
+        // issue #464：工具环内瞬态注入的检索页图消息不是用户轮次边界
+        || text.contains(crate::chat_v2::pipeline::context_compiler::RETRIEVAL_PAGE_IMAGES_TAG)
 }
 
 /// P1-8：合并规则恒定 —— 技能/锚点瞬态 user 消息永不与邻接 user 合并，
@@ -1192,6 +1194,27 @@ mod tests {
     use std::convert::Infallible;
     use std::sync::Arc;
     use tempfile::TempDir;
+
+    #[test]
+    fn retrieval_page_image_message_is_not_a_removable_turn_start() {
+        // issue #464：工具环内的检索页图瞬态 user 消息不能被当成一轮用户提问头删
+        let messages = vec![
+            json!({"role": "user", "content": "q1"}),
+            json!({"role": "assistant", "content": "a1"}),
+            json!({"role": "user", "content": "q2"}),
+            json!({"role": "assistant", "content": "", "tool_calls": []}),
+            json!({"role": "tool", "content": "{}"}),
+            json!({"role": "user", "content": [
+                {"type": "text", "text": "<retrieval_page_images>pages</retrieval_page_images>"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}
+            ]}),
+        ];
+        let starts: Vec<usize> = removable_request_turns(&messages)
+            .into_iter()
+            .map(|(start, _)| start)
+            .collect();
+        assert_eq!(starts, vec![0, 2]);
+    }
 
     #[test]
     fn input_limit_never_zero_when_output_reserve_fills_window() {
