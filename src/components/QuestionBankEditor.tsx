@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { QuestionFollowUpBar } from './practice/QuestionFollowUpBar';
 import { useTranslation } from 'react-i18next';
-import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../lib/utils';
 import { CustomScrollArea } from './custom-scroll-area';
 import { DsButton } from '@/components/ui/DsButton';
@@ -21,6 +20,7 @@ import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
 import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
+import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import {
@@ -307,6 +307,37 @@ const QuestionContentBlock = React.memo<{ content: string }>(({ content }) => (
 QuestionContentBlock.displayName = 'QuestionContentBlock';
 
 /** 自动关联的原始图片折叠气泡 — 默认展开 */
+/** 题目图片占位：已加载显示图片，失败显示错误占位，其余显示加载动画 */
+const QuestionImageSlot: React.FC<{
+  url: string | undefined;
+  alt: string;
+  collapsedClassName: string;
+  placeholderClassName: string;
+  iconSize: number;
+}> = ({ url, alt, collapsedClassName, placeholderClassName, iconSize }) => {
+  const { t } = useTranslation('exam_sheet');
+  if (url && url !== QUESTION_IMAGE_LOAD_ERROR) {
+    return <InlineZoomImage src={url} alt={alt} collapsedClassName={collapsedClassName} />;
+  }
+  if (url === QUESTION_IMAGE_LOAD_ERROR) {
+    return (
+      <div
+        role="img"
+        aria-label={t('image.load_failed')}
+        className={cn('w-full flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground', placeholderClassName)}
+      >
+        <WarningCircle size={iconSize} />
+        <span>{t('image.load_failed')}</span>
+      </div>
+    );
+  }
+  return (
+    <div className={cn('w-full flex items-center justify-center text-muted-foreground', placeholderClassName)}>
+      <CircleNotch size={iconSize} className="animate-spin" />
+    </div>
+  );
+};
+
 const SourceImagesBubble: React.FC<{
   images: QuestionImage[];
   imageUrls: Record<string, string>;
@@ -336,17 +367,13 @@ const SourceImagesBubble: React.FC<{
         )}>
           {images.map((img) => (
             <div key={img.id} className="rounded-lg overflow-hidden border border-border/30 bg-muted/20">
-              {imageUrls[img.id] ? (
-                <InlineZoomImage
-                  src={imageUrls[img.id]}
-                  alt={img.name}
-                  collapsedClassName="max-h-64"
-/>
-              ) : (
-                <div className="w-full h-24 flex items-center justify-center text-muted-foreground">
-                  <CircleNotch size={16} className="animate-spin" />
-                </div>
-              )}
+              <QuestionImageSlot
+                url={imageUrls[img.id]}
+                alt={img.name}
+                collapsedClassName="max-h-64"
+                placeholderClassName="h-24"
+                iconSize={16}
+              />
             </div>
           ))}
         </div>
@@ -1027,32 +1054,18 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
       const loadImages = async () => {
         const cachedSnapshot = questionImageUrlsRef.current;
         const imagesToLoad = currentQuestion.images!.filter(
-          img => !cachedSnapshot[img.id] || cachedSnapshot[img.id] === 'error'
+          img => !cachedSnapshot[img.id] || cachedSnapshot[img.id] === QUESTION_IMAGE_LOAD_ERROR
         );
         const cachedUrls: Record<string, string> = {};
         currentQuestion.images!.forEach(img => {
-          if (cachedSnapshot[img.id] && cachedSnapshot[img.id] !== 'error') {
+          if (cachedSnapshot[img.id] && cachedSnapshot[img.id] !== QUESTION_IMAGE_LOAD_ERROR) {
             cachedUrls[img.id] = cachedSnapshot[img.id];
           }
         });
-        const results = await Promise.allSettled(
-          imagesToLoad.map(async (img) => {
-            const result = await invoke<{ content: string | null; found: boolean }>('vfs_get_attachment_content', {
-              attachmentId: img.id,
-            });
-            if (result.found && result.content) {
-              return { id: img.id, url: `data:${img.mime};base64,${result.content}` };
-            }
-            return null;
-          })
-        );
+        // 失败也写入 'error' 哨兵，占位显示加载失败而不是无限转圈（#465）
+        const loadedUrls = await loadQuestionImageUrls(imagesToLoad);
         if (cancelled) return;
-        const urls: Record<string, string> = { ...cachedUrls };
-        results.forEach(r => {
-          if (r.status === 'fulfilled' && r.value) {
-            urls[r.value.id] = r.value.url;
-          }
-        });
+        const urls: Record<string, string> = { ...cachedUrls, ...loadedUrls };
         setQuestionImageUrls(prev => {
           const merged = { ...prev, ...urls };
           const keys = Object.keys(merged);
@@ -2615,17 +2628,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             )}>
                               {confirmedImages.map((img) => (
                                 <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                                  {questionImageUrls[img.id] ? (
-                                    <InlineZoomImage
-                                      src={questionImageUrls[img.id]}
-                                      alt={img.name}
-                                      collapsedClassName="max-h-48"
-/>
-                                  ) : (
-                                    <div className="w-full h-24 flex items-center justify-center text-muted-foreground">
-                                      <CircleNotch size={16} className="animate-spin" />
-                                    </div>
-                                  )}
+                                  <QuestionImageSlot
+                                    url={questionImageUrls[img.id]}
+                                    alt={img.name}
+                                    collapsedClassName="max-h-48"
+                                    placeholderClassName="h-24"
+                                    iconSize={16}
+                                  />
                                 </div>
                               ))}
                             </div>
@@ -2974,17 +2983,13 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       )}>
                         {confirmedImgs.map((img) => (
                           <div key={img.id} className="rounded-lg overflow-hidden border border-border/40 bg-muted/20">
-                            {questionImageUrls[img.id] ? (
-                              <InlineZoomImage
-                                src={questionImageUrls[img.id]}
-                                alt={img.name}
-                                collapsedClassName="max-h-64"
-/>
-                            ) : (
-                              <div className="w-full h-32 flex items-center justify-center text-muted-foreground">
-                                <CircleNotch size={20} className="animate-spin" />
-                              </div>
-                            )}
+                            <QuestionImageSlot
+                              url={questionImageUrls[img.id]}
+                              alt={img.name}
+                              collapsedClassName="max-h-64"
+                              placeholderClassName="h-32"
+                              iconSize={20}
+                            />
                           </div>
                         ))}
                       </div>
