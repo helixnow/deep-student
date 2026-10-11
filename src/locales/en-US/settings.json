@@ -1332,7 +1332,7 @@
     },
     "topbar_top_margin": {
       "title": "Topbar Top Margin Height",
-      "desc": "Adjust the top margin height of content-header virtual-titlebar. Commonly used on Android to reserve space for the status bar. Unit is px, set to 0 for no margin."
+      "desc": "Extra top spacing added on top of the automatic status bar / display cutout inset, in px. Android avoids the status bar automatically, so 0 is usually fine."
     },
     "show_raw_request": {
       "title": "Show Message Request Body",
@@ -3012,6 +3012,10 @@
     "edit": "Edit",
     "delete": "Delete",
     "save": "Save"
+  },
+  "immersive_mode": {
+    "title": "Immersive full screen",
+    "description": "Hide the status bar and navigation bar; swipe from the screen edge to reveal them temporarily. Useful on tablets where the status bar or system handle covers the top buttons."
   },
   "quick_assistant": {
     "title": "Quick Study",

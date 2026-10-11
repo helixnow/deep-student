@@ -1,5 +1,6 @@
 package com.deepstudent.app
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -8,7 +9,9 @@ import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
 import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import java.io.File
 import java.util.concurrent.Executors
 
@@ -35,6 +38,8 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+    // #472: 沉浸式全屏偏好持久化在原生侧，冷启动时先于前端生效，避免系统栏闪现。
+    applyImmersiveMode()
 
     // A-5: 系统返回键接管。TauriActivity 关闭了默认返回处理（handleBackNavigation=false），
     // 若不注册回调，返回键会直接 finish Activity 导致应用退出。
@@ -60,6 +65,9 @@ class MainActivity : TauriActivity() {
     // 下不可靠，前端 platform.ts 只能用固定猜测值兜底（top 24 / bottom 15）。
     // 这里监听真实 WindowInsets（含旋转、手势/三键导航切换、刘海/打孔屏），
     // 换算成 CSS px 后注入前端，由 platform.ts 的 __DEEP_STUDENT_SET_SAFE_AREA__ 应用。
+    // #472: systemBars() 已含 statusBars / navigationBars / captionBar（自由窗口标题栏）；
+    // getInsets 只返回当前可见的系统栏，沉浸式隐藏后 top 归 0、仅保留刘海避让，
+    // 前端（含平板宽屏桌面壳的顶栏）随之收起留白。
     ViewCompat.setOnApplyWindowInsetsListener(window.decorView) { _, insets ->
       val bars = insets.getInsets(
         WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
@@ -93,9 +101,41 @@ class MainActivity : TauriActivity() {
 
   override fun onResume() {
     super.onResume()
+    applyImmersiveMode()
     // 页面若发生过重载，JS 端会退回 fallback 值；恢复前台时重新注入真实值。
     applySafeAreaToWebView()
     requestSafPermissionPersist()
+  }
+
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    // 部分 ROM 在弹窗 / 输入法 / 多任务切回后会恢复系统栏，重新获得焦点时补一次。
+    if (hasFocus) {
+      applyImmersiveMode()
+    }
+  }
+
+  /** #472: 由 [SystemBarsPlugin] 调用；持久化后立即在 UI 线程应用。 */
+  internal fun setImmersiveMode(enabled: Boolean) {
+    getSharedPreferences(SYSTEM_BARS_PREFS, Context.MODE_PRIVATE)
+      .edit()
+      .putBoolean(KEY_IMMERSIVE_MODE, enabled)
+      .apply()
+    runOnUiThread { applyImmersiveMode() }
+  }
+
+  private fun applyImmersiveMode() {
+    val enabled = getSharedPreferences(SYSTEM_BARS_PREFS, Context.MODE_PRIVATE)
+      .getBoolean(KEY_IMMERSIVE_MODE, false)
+    val controller = WindowCompat.getInsetsController(window, window.decorView)
+    if (enabled) {
+      // 从屏幕边缘滑动临时呼出系统栏，数秒后自动再次隐藏（不打断应用内手势）。
+      controller.systemBarsBehavior =
+        WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      controller.hide(WindowInsetsCompat.Type.systemBars())
+    } else {
+      controller.show(WindowInsetsCompat.Type.systemBars())
+    }
   }
 
   override fun onDestroy() {
@@ -196,5 +236,7 @@ class MainActivity : TauriActivity() {
     private const val TAG = "DeepStudentSaf"
     private const val PENDING_SAF_PERSIST_FILE = "pending_saf_persist.uri"
     private const val PENDING_SAF_PERSIST_DIR = "pending_saf_persist"
+    private const val SYSTEM_BARS_PREFS = "deep_student_system_bars"
+    private const val KEY_IMMERSIVE_MODE = "immersive_mode"
   }
 }

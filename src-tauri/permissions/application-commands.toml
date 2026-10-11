@@ -771,6 +771,7 @@ commands.allow = [
   "secret_prompt_status",
   "secret_prompt_submit",
   "seed_test_database",
+  "set_android_immersive_mode",
   "set_backup_config",
   "set_backend_sentry_enabled",
   "set_default_template",

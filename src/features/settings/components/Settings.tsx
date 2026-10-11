@@ -38,7 +38,7 @@ import { useVendorModels } from '@/hooks/useVendorModels';
 import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { openUrl } from '@/utils/urlOpener';
 import { getProviderWebsiteUrl } from './VendorDetailPanel';
-import { isAndroid, isMobilePlatform } from '@/utils/platform';
+import { isMobilePlatform } from '@/utils/platform';
 import '@/command-palette/styles/shortcut-settings.css';
 import { AppMenuDemo } from '@/components/ui/app-menu';
 import type { AutomationListen } from './automationSettingsApi';
@@ -408,14 +408,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
         if (value) {
           setTopbarTopMargin(value);
         } else {
-          // 如果设置不存在，显示平台默认值（但不保存，让App.tsx使用默认值）
-          const defaultValue = isAndroid() ? '30' : '0';
-          setTopbarTopMargin(defaultValue);
+          // 未设置时显示 0（与 App.tsx 实际生效值一致）。Android 状态栏避让由
+          // 原生安全区自动处理（#472），这里只是额外留白。
+          setTopbarTopMargin('0');
         }
       } catch {
-        // 出错时显示平台默认值
-        const defaultValue = isAndroid() ? '30' : '0';
-        setTopbarTopMargin(defaultValue);
+        setTopbarTopMargin('0');
       } finally {
         setTopbarTopMarginLoaded(true);
       }

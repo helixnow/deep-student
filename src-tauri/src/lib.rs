@@ -127,6 +127,7 @@ pub mod startup_gate;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
 pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
+pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
 pub mod system_notification;
 pub mod system_permissions;
 #[allow(dead_code)]
@@ -637,7 +638,9 @@ pub fn run() {
         .plugin(crate::apk_installer::init())
         .plugin(crate::unified_file_manager::saf_permission_plugin())
         // HEIC/HEIF → JPEG：Android WebView 无法解码 HEIC，走平台 ImageDecoder。
-        .plugin(crate::heic_decoder::init());
+        .plugin(crate::heic_decoder::init())
+        // 沉浸式全屏：隐藏状态栏 / 导航栏（#472）。
+        .plugin(crate::system_bars::init());
 
     // Android 专用：用其他应用打开 / 分享文件（opener 的 open_path 与
     // reveal_item_in_dir 在 Android 均不可用，移动端统一走此插件）。
@@ -1749,6 +1752,7 @@ pub fn run() {
             crate::commands::get_app_version,
             crate::commands::updater_install_supported,
             crate::commands::install_apk,
+            crate::system_bars::set_android_immersive_mode,
             crate::heic_decoder::convert_heic_to_jpeg,
             crate::commands::get_app_data_dir,
             crate::external_file_opener::open_file_externally,

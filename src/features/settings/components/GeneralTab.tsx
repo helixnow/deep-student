@@ -45,6 +45,11 @@ import {
   revealDiagnostics,
 } from '@/logging/exportDiagnostics';
 import { canRevealInFolder } from '@/utils/systemFileOpener';
+import {
+  isAndroidImmersiveModeSupported,
+  loadAndroidImmersiveMode,
+  setAndroidImmersiveMode,
+} from '@/utils/androidImmersiveMode';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 
@@ -87,6 +92,32 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const [quickAssistantConfig, setQuickAssistantConfig] = useState<QuickAssistantConfig | null>(null);
   // P1-11：快速助手（系统快捷小窗）仅桌面端 Rust 实现，移动平台隐藏整块假入口
   const quickAssistantSupported = !isMobilePlatform();
+  // #472: 沉浸式全屏（隐藏状态栏 / 导航栏）仅 Android 原生实现
+  const immersiveModeSupported = isAndroidImmersiveModeSupported();
+  const [immersiveMode, setImmersiveMode] = useState<boolean | null>(null);
+  const [immersiveModeSaving, setImmersiveModeSaving] = useState(false);
+
+  useEffect(() => {
+    if (!immersiveModeSupported) return;
+    void loadAndroidImmersiveMode()
+      .then(setImmersiveMode)
+      .catch(() => setImmersiveMode(false));
+  }, [immersiveModeSupported]);
+
+  const updateImmersiveMode = async (value: boolean) => {
+    if (immersiveMode === null || immersiveModeSaving) return;
+    const previous = immersiveMode;
+    setImmersiveMode(value);
+    setImmersiveModeSaving(true);
+    try {
+      await setAndroidImmersiveMode(value);
+    } catch (error: unknown) {
+      setImmersiveMode(previous);
+      showGlobalNotification('error', getErrorMessage(error));
+    } finally {
+      setImmersiveModeSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (!quickAssistantSupported) return;
@@ -253,6 +284,20 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 }))}
               />
             </SettingRow>
+
+            {immersiveModeSupported && (
+              <SwitchRow
+                title={t('settings:immersive_mode.title', '沉浸式全屏')}
+                description={t(
+                  'settings:immersive_mode.description',
+                  '隐藏状态栏和导航栏，从屏幕边缘滑动可临时呼出。适合状态栏遮挡顶部按钮的平板。',
+                )}
+                checked={immersiveMode ?? false}
+                loading={immersiveMode === null}
+                disabled={immersiveModeSaving}
+                onCheckedChange={(value) => void updateImmersiveMode(value)}
+              />
+            )}
 
             <SettingRow
               title={t('chatV2:queue.settings.modeTitle')}
@@ -428,9 +473,8 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                   if (!invoke) return;
                   try {
                     const numValue = parseInt(topbarTopMargin, 10);
-                    const platformDefault = isAndroid() ? 30 : 0;
                     if (isNaN(numValue) || numValue < 0) {
-                      setTopbarTopMargin(String(platformDefault));
+                      setTopbarTopMargin('0');
                       return;
                     }
                     await saveSetting('topbar.top_margin', String(numValue));
@@ -445,7 +489,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                     showGlobalNotification('error', getErrorMessage(error));
                   }
                 }}
-                placeholder={isAndroid() ? '30' : '0'}
+                placeholder="0"
                 className="!w-20 h-8 [@media(pointer:coarse)]:!w-24"
                 min="0"
               />

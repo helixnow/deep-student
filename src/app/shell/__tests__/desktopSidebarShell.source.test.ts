@@ -34,7 +34,9 @@ describe('desktop sidebar shell wiring', () => {
   });
 
   it('keeps macOS custom chrome in the native titlebar row', () => {
-    expect(appSource).toContain('isSmallScreen || isMacOS() ? 0 : topbarTopMargin');
+    // macOS 归零逻辑在 resolveShellTitlebarTopInset（单测见 desktopShell.titlebarInset.test.ts）
+    expect(appSource).toContain('const shellTitlebarTopInset = resolveShellTitlebarTopInset({');
+    expect(appSource).toContain('isMacOS: isMacOS(),');
     expect(appSource).toContain('top: `${shellTitlebarTopInset}px`');
     expect(appSource).toContain('height: `${shellTitlebarOccupiedHeight}px`');
     expect(shellCssSource).toContain('min-height: var(--shell-titlebar-content-height, 40px);');

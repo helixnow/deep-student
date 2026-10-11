@@ -1332,7 +1332,7 @@
     },
     "topbar_top_margin": {
       "title": "顶部栏顶部边距高度",
-      "desc": "调整 content-header virtual-titlebar 的顶部边距高度。常用于安卓环境下为状态栏预留空间。单位为 px，设置为 0 表示无边距。"
+      "desc": "在系统状态栏 / 刘海避让之外额外增加的顶部留白，单位 px。Android 会自动避让状态栏，通常保持 0 即可。"
     },
     "show_raw_request": {
       "title": "显示消息请求体",
@@ -3012,6 +3012,10 @@
     "edit": "编辑",
     "delete": "删除",
     "save": "保存"
+  },
+  "immersive_mode": {
+    "title": "沉浸式全屏",
+    "description": "隐藏状态栏和导航栏，从屏幕边缘滑动可临时呼出。适合状态栏或系统小横条遮挡顶部按钮的平板。"
   },
   "quick_assistant": {
     "title": "快速学习",

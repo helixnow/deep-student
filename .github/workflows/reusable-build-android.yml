@@ -302,6 +302,15 @@ jobs:
           cmp -s "$SRC" "$DST" || { echo "::error::HeicDecoderPlugin.kt sync verification failed"; exit 1; }
           echo "✅ HeicDecoderPlugin.kt synced from managed copy"
 
+          # 沉浸式全屏（#472）：插件只转发到 MainActivity.setImmersiveMode。缺失时
+          # set_android_immersive_mode 在 register_android_plugin 阶段即启动失败，fail-closed。
+          SRC="src-tauri/mobile/android/SystemBarsPlugin.kt"
+          DST="src-tauri/gen/android/app/src/main/java/com/deepstudent/app/SystemBarsPlugin.kt"
+          test -f "$SRC" || { echo "::error::managed SystemBarsPlugin.kt missing at $SRC"; exit 1; }
+          cp "$SRC" "$DST"
+          cmp -s "$SRC" "$DST" || { echo "::error::SystemBarsPlugin.kt sync verification failed"; exit 1; }
+          echo "✅ SystemBarsPlugin.kt synced from managed copy"
+
           # 应用内 APK 安装器：插件类 + FileProvider 路径配置 + manifest provider。
           # 缺失时 install_apk 命令在运行期才报错（用户点了"下载并安装"才发现装不了），
           # 因此这里 fail-closed。与 build_android.sh 的 sync_apk_installer_files /

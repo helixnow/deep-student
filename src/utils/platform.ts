@@ -118,12 +118,66 @@ declare global {
  * 3. 若原生注入先于本模块执行（值暂存在 __DEEP_STUDENT_PENDING_SAFE_AREA__），
  *    初始化时直接消费暂存值,跳过 fallback。
  */
+export interface AndroidSafeAreaInsets {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+  /** true = MainActivity 注入的真实 WindowInsets；false = 原生值到达前的固定猜测 */
+  native: boolean;
+}
+
+let androidSafeAreaInsets: AndroidSafeAreaInsets | null = null;
+const androidSafeAreaListeners = new Set<() => void>();
+
+/**
+ * #472: 当前 Android 安全区（CSS px）。非 Android 或尚未初始化时为 null。
+ * 返回值引用在 inset 变化前保持稳定，可直接作为 useSyncExternalStore 快照。
+ */
+export const getAndroidSafeAreaInsets = (): AndroidSafeAreaInsets | null => androidSafeAreaInsets;
+
+/** 订阅 Android 安全区变化（旋转、系统栏显隐/沉浸式切换、导航模式切换） */
+export const subscribeAndroidSafeArea = (listener: () => void): (() => void) => {
+  androidSafeAreaListeners.add(listener);
+  return () => {
+    androidSafeAreaListeners.delete(listener);
+  };
+};
+
 export const initAndroidSafeArea = (): void => {
   if (typeof document === 'undefined') return;
 
   const root = document.documentElement;
 
-  const applySafeArea = (top: number, bottom: number, left: number, right: number): void => {
+  const publish = (next: AndroidSafeAreaInsets): void => {
+    const prev = androidSafeAreaInsets;
+    if (
+      prev &&
+      prev.top === next.top &&
+      prev.bottom === next.bottom &&
+      prev.left === next.left &&
+      prev.right === next.right &&
+      prev.native === next.native
+    ) {
+      return;
+    }
+    androidSafeAreaInsets = next;
+    androidSafeAreaListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (error: unknown) {
+        console.error('[Platform] safe area listener failed:', error);
+      }
+    });
+  };
+
+  const applySafeArea = (
+    top: number,
+    bottom: number,
+    left: number,
+    right: number,
+    native = true,
+  ): void => {
     // 防御异常注入值：限制在 [0, 200] CSS px
     const clamp = (v: number): number =>
       Number.isFinite(v) ? Math.min(200, Math.max(0, Math.round(v))) : 0;
@@ -142,11 +196,14 @@ export const initAndroidSafeArea = (): void => {
     root.style.setProperty('--safe-area-inset-top-fallback', `${t}px`);
     root.style.setProperty('--safe-area-inset-bottom-fallback', `${b}px`);
 
-    console.log('[Platform] Android safe area applied:', { top: t, bottom: b, left: l, right: r });
+    console.log('[Platform] Android safe area applied:', { top: t, bottom: b, left: l, right: r, native });
+    publish({ top: t, bottom: b, left: l, right: r, native });
   };
 
   // 安装原生注入入口（后续 inset 变化由 MainActivity 持续调用）
-  window.__DEEP_STUDENT_SET_SAFE_AREA__ = applySafeArea;
+  // 原生入口只收 4 个参数，native 恒为 true
+  window.__DEEP_STUDENT_SET_SAFE_AREA__ = (top, bottom, left, right) =>
+    applySafeArea(top, bottom, left, right, true);
 
   const pending = window.__DEEP_STUDENT_PENDING_SAFE_AREA__;
   if (Array.isArray(pending) && pending.length === 4) {
@@ -158,7 +215,7 @@ export const initAndroidSafeArea = (): void => {
   // 原生值未到达前的固定 fallback：
   // - 三键导航：48dp;手势导航（小横条）：20-24dp;全面屏手势：约 34dp
   // 使用 15px 作为安全值，平衡视觉效果和系统栏遮挡;状态栏取 24px
-  applySafeArea(24, 15, 0, 0);
+  applySafeArea(24, 15, 0, 0, false);
 };
 
 // 统一的移动端检测（供前端功能降级使用）

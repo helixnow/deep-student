@@ -94,6 +94,8 @@ import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
+import { useAndroidSafeArea } from './hooks/useAndroidSafeArea';
+import { syncAndroidImmersiveModeFromSettings } from './utils/androidImmersiveMode';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { shouldBlockMobileNavigation, ensureKeyboardTracking } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
@@ -141,6 +143,7 @@ import {
   getShellSidebarMaxWidth,
   getShellSidebarWidth,
   resolveShellSidebarResize,
+  resolveShellTitlebarTopInset,
 } from './app/shell/desktopShell';
 import { DesktopSidebarResizeHandle } from './app/shell/DesktopSidebarResizeHandle';
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
@@ -684,6 +687,11 @@ function App() {
   const contentBodyRef = useRef<HTMLDivElement>(null);
   usePreventScroll(contentBodyRef);
 
+  // #472: Android 沉浸式全屏偏好在启动时下发一次（设置库为权威，原生侧仅作冷启动缓存）
+  useEffect(() => {
+    void syncAndroidImmersiveModeFromSettings();
+  }, []);
+
   // 顶部栏顶部边距高度设置
   // 桌面端读取用户设置；移动端统一改由 mobile shell safe-area contract 提供。
   const [topbarTopMargin, setTopbarTopMargin] = useState<number>(0);
@@ -1056,7 +1064,14 @@ function App() {
   // macOS traffic lights share the native titlebar with the custom shell
   // controls. The horizontal spacer reserves their hit area; adding a second
   // vertical inset would render a duplicate toolbar below the native chrome.
-  const shellTitlebarTopInset = isSmallScreen || isMacOS() ? 0 : topbarTopMargin;
+  // #472: Android 平板走桌面壳时还要避让状态栏 / 刘海 / 厂商顶部手柄条（原生注入）。
+  const androidSafeArea = useAndroidSafeArea();
+  const shellTitlebarTopInset = resolveShellTitlebarTopInset({
+    isSmallScreen,
+    isMacOS: isMacOS(),
+    manualTopMargin: topbarTopMargin,
+    androidSafeAreaTop: androidSafeArea?.top ?? null,
+  });
   // 工作台模式：顶栏只留原生/自绘窗口控制，不占内容高度
   const shellTitlebarOccupiedHeight = workbenchActive
     ? 0
@@ -1082,7 +1097,7 @@ function App() {
     desktopSidebarPresentationWidth,
     desktopSidebarTranslateX,
     shellTitlebarOccupiedHeight,
-    topbarTopMargin,
+    shellTitlebarTopInset,
     workbenchActive,
   ]);
   useEffect(() => {
