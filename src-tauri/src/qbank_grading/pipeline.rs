@@ -534,6 +534,7 @@ fn persist_grading_result(
 /// 条件写在 UPDATE 的 WHERE 里而不是先读后写：流式生成耗时较长，期间用户可能
 /// 已在编辑器里手写了解析，以写入时刻的库内值为准，避免覆盖。
 /// 写入同时记一条 question_history（operator=ai），可在历史里回看/还原。
+/// SQLite 的 TRIM 默认只去空格，换行/制表符要显式列出才算"全空白"。
 fn fill_explanation_if_empty(
     conn: &rusqlite::Connection,
     question_id: &str,
@@ -546,7 +547,8 @@ fn fill_explanation_if_empty(
         .execute(
             r#"UPDATE questions SET explanation = ?1
                WHERE id = ?2 AND deleted_at IS NULL
-                 AND (explanation IS NULL OR TRIM(explanation) = '')"#,
+                 AND (explanation IS NULL
+                      OR TRIM(explanation, ' ' || char(9) || char(10) || char(13)) = '')"#,
             params![explanation, question_id],
         )
         .map_err(|e| AppError::database(format!("写入解析失败: {}", e)))?;
