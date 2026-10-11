@@ -1873,6 +1873,76 @@ impl VfsAttachmentRepo {
         Ok(attachment)
     }
 
+    /// 把附件类 ID 归一为 files 表主键（附件 ID 空间的唯一解析入口）
+    ///
+    /// 同一个文件在系统里有多重 ID：files 主键（`att_*`/`file_*`/`tb_*`）、
+    /// 上传资源（`res_*`，files.resource_id 指向它）、引用资源（`res_*`，
+    /// inline data=refs JSON，source_id 指向 files 主键或上传资源）。
+    /// AI 从 context_snapshot / 检索结果拿到的常是 `res_*`，凡是"按附件 ID
+    /// 读内容"的入口都应先经此归一，而不是各自维护前缀白名单（#465 / #468）。
+    ///
+    /// - 非 `res_*`：原样返回，由调用方按 files 主键处理（含同步别名回退）；
+    /// - `res_*`：① files.resource_id = res（上传资源）
+    ///   ② resources.source_id 是 files 主键（引用资源直指文件）
+    ///   ③ resources.source_id 是另一资源，再经 files.resource_id 反查
+    /// - 解析不到返回 `Ok(None)`（例如笔记/题目集等非文件资源）。
+    pub fn resolve_file_id_with_conn(conn: &Connection, raw_id: &str) -> VfsResult<Option<String>> {
+        let id = raw_id.trim();
+        if !id.starts_with("res_") {
+            return Ok(Some(id.to_string()));
+        }
+
+        let file_by_resource = |resource_id: &str| -> VfsResult<Option<String>> {
+            Ok(conn
+                .query_row(
+                    "SELECT id FROM files WHERE resource_id = ?1 ORDER BY deleted_at IS NULL DESC LIMIT 1",
+                    params![resource_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?)
+        };
+
+        // ① 上传资源
+        if let Some(file_id) = file_by_resource(id)? {
+            return Ok(Some(file_id));
+        }
+
+        // ②③ 引用资源：沿 source_id 走一跳
+        let source_id: Option<String> = conn
+            .query_row(
+                "SELECT source_id FROM resources WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty() && s != id);
+        let Some(source_id) = source_id else {
+            return Ok(None);
+        };
+
+        let direct: Option<String> = conn
+            .query_row(
+                "SELECT id FROM files WHERE id = ?1",
+                params![source_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        if direct.is_some() {
+            return Ok(direct);
+        }
+        if let Some(file_id) = file_by_resource(&source_id)? {
+            return Ok(Some(file_id));
+        }
+        // source_id 形如 files 主键但本地无此行：可能是同步去重后的远端 ID，
+        // 交给下游 get_content_source_with_conn 的别名回退处理
+        let file_like = ["att_", "file_", "tb_"]
+            .iter()
+            .any(|prefix| source_id.starts_with(prefix));
+        Ok(file_like.then_some(source_id))
+    }
+
     /// 列出附件
     ///
     /// # 参数
@@ -3499,5 +3569,55 @@ mod tests {
         );
 
         std::fs::remove_dir_all(slot_root).ok();
+    }
+
+    // ★ #465/#468 回归：res_* 资源 ID 统一归一到 files 主键，再按文件取内容
+    #[test]
+    fn resolve_file_id_maps_resource_ids_to_files() {
+        let (_tmp, db) = crate::vfs::database::setup_migrated_test_db();
+        let conn = db.get_conn().expect("conn");
+        let png: &[u8] = b"\x89PNG\r\n\x1a\nquestion-figure";
+        let blob =
+            VfsBlobRepo::store_blob_with_conn(&conn, db.blobs_dir(), png, Some("image/png"), None)
+                .expect("store blob");
+        let now = chrono::Utc::now().timestamp_millis();
+        let ts = "2026-10-11T00:00:00Z";
+        conn.execute(
+            r#"INSERT INTO resources (id, hash, type, storage_mode, source_id, ref_count, created_at, updated_at)
+               VALUES ('res_upload', 'h-upload', 'image', 'external', 'att_fig', 1, ?1, ?1)"#,
+            params![now],
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO files (id, resource_id, blob_hash, sha256, file_name, mime_type, type, size, created_at, updated_at)
+               VALUES ('att_fig', 'res_upload', ?1, 'sha-fig', 'fig.png', 'image/png', 'image', ?2, ?3, ?3)"#,
+            params![blob.hash, png.len() as i64, ts],
+        )
+        .unwrap();
+        // 引用资源直指 files 主键 / 经另一资源间接指向 / 非文件资源（笔记）
+        conn.execute(
+            r#"INSERT INTO resources (id, hash, type, storage_mode, data, source_id, ref_count, created_at, updated_at)
+               VALUES ('res_ref', 'h-ref', 'image', 'inline', '{"refs":[]}', 'att_fig', 1, ?1, ?1),
+                      ('res_ref_indirect', 'h-ref2', 'image', 'inline', '{"refs":[]}', 'res_upload', 1, ?1, ?1),
+                      ('res_note', 'h-note', 'note', 'inline', '# note', 'note_1', 1, ?1, ?1)"#,
+            params![now],
+        )
+        .unwrap();
+
+        let resolve = |id: &str| VfsAttachmentRepo::resolve_file_id_with_conn(&conn, id).unwrap();
+        assert_eq!(resolve("att_fig").as_deref(), Some("att_fig"));
+        assert_eq!(resolve("file_other").as_deref(), Some("file_other"));
+        assert_eq!(resolve("res_upload").as_deref(), Some("att_fig"));
+        assert_eq!(resolve("res_ref").as_deref(), Some("att_fig"));
+        assert_eq!(resolve("res_ref_indirect").as_deref(), Some("att_fig"));
+        assert_eq!(resolve("res_note"), None);
+        assert_eq!(resolve("res_missing"), None);
+
+        // 解析后的 files 主键能直接取到 blob 原始字节（vfs_get_attachment_content 同路径）
+        let file_id = resolve("res_ref").unwrap();
+        let content = VfsAttachmentRepo::get_content_with_conn(&conn, db.blobs_dir(), &file_id)
+            .unwrap()
+            .expect("blob content");
+        assert_eq!(STANDARD.decode(content).unwrap(), png);
     }
 }

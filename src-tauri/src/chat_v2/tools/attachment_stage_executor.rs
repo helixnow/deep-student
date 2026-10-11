@@ -1385,8 +1385,18 @@ impl AttachmentStageExecutor {
         }
 
         let vfs_db = vfs_db.ok_or("VFS database not available for attachment staging")?;
-        if let Some(resolved) = Self::resolve_vfs_attachment(vfs_db, &context_ref.resource_id)? {
-            let name = if resolved.name == context_ref.resource_id {
+        // ★ #468：res_*（上传资源 / 引用资源）先归一到 files 主键，否则 files 表查不到
+        let file_id = {
+            let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+            VfsAttachmentRepo::resolve_file_id_with_conn(&conn, &context_ref.resource_id)
+                .map_err(|e| e.to_string())?
+        };
+        let resolved = match file_id.as_deref() {
+            Some(file_id) => Self::resolve_vfs_attachment(vfs_db, file_id)?,
+            None => None,
+        };
+        if let Some(resolved) = resolved {
+            let name = if Some(resolved.name.as_str()) == file_id.as_deref() {
                 context_ref
                     .display_name
                     .clone()

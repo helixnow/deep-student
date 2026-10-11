@@ -27,7 +27,6 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use rusqlite::OptionalExtension;
 use serde_json::{json, Value};
 
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
@@ -35,7 +34,7 @@ use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::pdf_processing_service::ProcessingStage;
-use crate::vfs::repos::VfsFileRepo;
+use crate::vfs::repos::{VfsAttachmentRepo, VfsFileRepo};
 use crate::vfs::types::VfsFile;
 
 pub struct DocumentProcessingExecutor;
@@ -84,53 +83,14 @@ impl DocumentProcessingExecutor {
         }
 
         if id.starts_with("res_") {
-            let conn = vfs_db
-                .get_conn_safe()
-                .map_err(|e| format!("获取数据库连接失败: {}", e))?;
-
-            // ① 上传资源：files.resource_id 直接映射
-            if let Ok(Some(file_id)) = conn
-                .query_row(
-                    "SELECT id FROM files WHERE resource_id = ?1 LIMIT 1",
-                    rusqlite::params![id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-            {
-                drop(conn);
-                return VfsFileRepo::get_file(vfs_db, &file_id)
-                    .map_err(|e| format!("查询文件失败: {}", e))?
-                    .ok_or_else(|| format!("文件不存在: {}", file_id));
-            }
-
-            // ②③ 引用资源：resources.source_id 指向 att_*/file_*（files 主键），
-            // 或指向另一 resources 行（再经 files.resource_id 反查）。
-            let source_id: Option<String> = conn
-                .query_row(
-                    "SELECT COALESCE(source_id, '') FROM resources WHERE id = ?1",
-                    rusqlite::params![id],
-                    |row| row.get::<_, String>(0),
-                )
-                .optional()
-                .ok()
-                .flatten()
-                .filter(|s: &String| !s.is_empty());
-
-            let file_id: Option<String> = match source_id {
-                Some(sid) if sid.starts_with("att_") || sid.starts_with("file_") => Some(sid),
-                Some(sid) => conn
-                    .query_row(
-                        "SELECT id FROM files WHERE resource_id = ?1 LIMIT 1",
-                        rusqlite::params![sid],
-                        |row| row.get::<_, String>(0),
-                    )
-                    .optional()
-                    .ok()
-                    .flatten(),
-                None => None,
+            // 与 attachment_read / vfs_get_attachment_content 共用同一解析入口
+            let file_id = {
+                let conn = vfs_db
+                    .get_conn_safe()
+                    .map_err(|e| format!("获取数据库连接失败: {}", e))?;
+                VfsAttachmentRepo::resolve_file_id_with_conn(&conn, &id)
+                    .map_err(|e| format!("解析资源失败: {}", e))?
             };
-            drop(conn);
-
             if let Some(file_id) = file_id {
                 return VfsFileRepo::get_file(vfs_db, &file_id)
                     .map_err(|e| format!("查询文件失败: {}", e))?
