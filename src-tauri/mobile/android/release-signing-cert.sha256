@@ -1,0 +1,8 @@
+# Android 正式版 APK 签名证书 SHA-256 指纹（公开信息，非密钥）。
+# reusable-build-android.yml 的 Sign APK 步骤对签好的 APK 校验该指纹，不一致即拒绝发布：
+# 签名证书一旦变化，所有已安装用户都无法覆盖升级（系统提示"与现有软件包存在冲突"）。
+#
+# 历史：v0.9.44 及更早使用 CN=Deep Student(Beijing) 证书 75f8bc66…；
+# v0.9.61 起换为 CN=DeepStudent(Hangzhou) 证书（2026-09-12 生成），即下方指纹 (#471)。
+# 除非有意轮换密钥（且已评估存量用户须卸载重装的代价），不要修改此文件。
+3acac9413cf2abace04f98e39921822625dbd7ef4b87e3d34bdb1fbd0270e769

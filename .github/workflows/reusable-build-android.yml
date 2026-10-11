@@ -499,7 +499,32 @@ jobs:
             --in /tmp/aligned.apk \
             --out /tmp/signed.apk
 
-          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk
+          "${BUILD_TOOLS}/apksigner" verify --print-certs /tmp/signed.apk | tee /tmp/apk-certs.txt
+
+          # 发布守卫（#471）：签名证书必须与受控指纹一致。v0.9.61 曾随 keystore secret
+          # 更换静默换了签名证书，存量用户覆盖安装一律报"与现有软件包存在冲突"，只能
+          # 卸载重装。这里 fail-closed，防止 secret 被误替换后再次发出不可升级的 APK。
+          EXPECTED_CERT=$(grep -v '^#' src-tauri/mobile/android/release-signing-cert.sha256 | tr -d '[:space:]' | tr 'A-F' 'a-f')
+          ACTUAL_CERT=$(awk -F': ' '/Signer #1 certificate SHA-256 digest/ {print $2; exit}' /tmp/apk-certs.txt | tr -d '[:space:]' | tr 'A-F' 'a-f')
+          echo "APK signing cert SHA-256: ${ACTUAL_CERT:-unknown} (expected: ${EXPECTED_CERT})"
+          if [ -z "$EXPECTED_CERT" ] || [ "$ACTUAL_CERT" != "$EXPECTED_CERT" ]; then
+            echo "::error::APK signing certificate does not match src-tauri/mobile/android/release-signing-cert.sha256."
+            echo "::error::Existing installs could not upgrade (INSTALL_FAILED_UPDATE_INCOMPATIBLE). Check the ANDROID_KEYSTORE_* secrets."
+            rm -f /tmp/release.keystore
+            exit 1
+          fi
+
+          # 发布守卫（#471）：versionCode 必须等于生成器的稳定值且高于已发布基线，
+          # 否则覆盖安装会被系统当作降级拒绝。
+          EXPECTED_VERSION_CODE=$(node scripts/generate-version.mjs --print-android-version-code)
+          PUBLISHED_VERSION_CODE=$(node --input-type=module -e "import('./scripts/generate-version.mjs').then((m) => console.log(m.PUBLISHED_ANDROID_VERSION_CODE))")
+          ACTUAL_VERSION_CODE=$("${BUILD_TOOLS}/aapt" dump badging /tmp/signed.apk | sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" | head -1)
+          echo "APK versionCode: ${ACTUAL_VERSION_CODE:-unknown} (expected: ${EXPECTED_VERSION_CODE}, published floor: ${PUBLISHED_VERSION_CODE})"
+          if [ -z "$ACTUAL_VERSION_CODE" ] || [ "$ACTUAL_VERSION_CODE" != "$EXPECTED_VERSION_CODE" ] || [ "$ACTUAL_VERSION_CODE" -le "$PUBLISHED_VERSION_CODE" ]; then
+            echo "::error::APK versionCode ${ACTUAL_VERSION_CODE:-missing} is not the expected monotonic value ${EXPECTED_VERSION_CODE} (> ${PUBLISHED_VERSION_CODE})."
+            rm -f /tmp/release.keystore
+            exit 1
+          fi
 
           # Android 8+ requires this declaration for the in-app APK installer.
           # Check the packaged manifest, not only the generated source manifest.
