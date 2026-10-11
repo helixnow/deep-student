@@ -13,6 +13,8 @@ interface ShadowDomPreviewProps {
   fidelity?: 'default' | 'anki';
   minHeight?: number;
   onFrameClick?: () => void;
+  /** 应用自有样式（如卡面 KaTeX 样式 + data: 字体），不经模板 CSS 净化 */
+  trustedCss?: string;
 }
 
 export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
@@ -23,6 +25,7 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
   fidelity = 'default',
   minHeight,
   onFrameClick,
+  trustedCss,
 }) => {
   const props: HtmlSandboxPreviewProps = {
     mode: 'template-safe',
@@ -34,6 +37,7 @@ export const ShadowDomPreview: React.FC<ShadowDomPreviewProps> = ({
     title: 'card-preview',
     minHeight,
     onFrameClick,
+    trustedCss,
   };
 
   return <HtmlSandboxPreview {...props} />;

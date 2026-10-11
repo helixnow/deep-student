@@ -22,6 +22,8 @@ export interface HtmlSandboxPreviewProps {
   style?: React.CSSProperties;
   /** iframe 内点击非交互区域时回调（卡面辅助脚本发出 `sdp-click`） */
   onFrameClick?: () => void;
+  /** 应用自有样式（不经 CSS 净化），见 buildHtmlSandboxDocument 的 trustedCss */
+  trustedCss?: string;
 }
 
 /** srcDoc 的轻量指纹（djb2），仅用作 React key */
@@ -43,6 +45,7 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   className,
   style,
   onFrameClick,
+  trustedCss,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [iframeHeight, setIframeHeight] = useState<number>(typeof height === 'number' ? height : 200);
@@ -57,8 +60,9 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
       compact,
       height,
       fidelity,
+      trustedCss,
     });
-  }, [compact, cssContent, fidelity, height, htmlContent, mode]);
+  }, [compact, cssContent, fidelity, height, htmlContent, mode, trustedCss]);
 
   useEffect(() => {
     if (typeof height === 'number') {

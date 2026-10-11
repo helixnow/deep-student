@@ -9,6 +9,12 @@ interface BuildHtmlSandboxDocumentOptions {
   compact?: boolean;
   height?: number | string;
   fidelity?: 'default' | 'anki';
+  /**
+   * 应用自有样式（如卡面 KaTeX 样式 + data: 字体），不经 sanitizeCssForPreview——
+   * 后者会删 @font-face 与非图片 url()。仅限应用打包内容，禁止传入用户/模板 CSS。
+   * 置于基础样式与模板 CSS 之前，模板仍可覆盖。
+   */
+  trustedCss?: string;
 }
 
 // 自动高度测量：基础样式把 html/body 钉在 height/min-height:100%，此时
@@ -130,6 +136,7 @@ export function buildHtmlSandboxDocument({
   mode,
   compact = false,
   fidelity = 'default',
+  trustedCss = '',
 }: BuildHtmlSandboxDocumentOptions): string {
   const isAnkiFidelity = fidelity === 'anki';
   const bodyContent =
@@ -146,7 +153,7 @@ export function buildHtmlSandboxDocument({
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
-<style>
+${trustedCss ? `<style>${trustedCss.replace(/<\s*\/\s*style/gi, '<\\/style')}</style>\n` : ''}<style>
   :root {
     --preview-scrollbar-thumb: color-mix(in srgb, CanvasText 28%, transparent);
     --preview-scrollbar-track: transparent;

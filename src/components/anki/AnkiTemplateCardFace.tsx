@@ -8,7 +8,8 @@ import {
 } from '@/services/templateRenderService';
 import { applyClozeMarkup, extractClozeOrdinals, type TemplateRenderIssue } from '@/services/ankiTemplateEngine';
 import { buildCardFaceCss, useCardFaceSurfaceColor, useDocumentDarkMode } from './utils/cardFaceStyles';
-import { renderCardFaceLatexHtml, renderCardTemplateMath } from './utils/cardFaceLatex';
+import { cardHtmlNeedsKatex, renderCardFaceLatexHtml, renderCardTemplateMath } from './utils/cardFaceLatex';
+import { useKatexSandboxCss } from './utils/katexSandboxCss';
 import {
   CARD_FACE_HELPER_SCRIPT,
   injectCardMedia,
@@ -130,7 +131,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   const issues = faceResult?.issues ?? [];
   const plainText = fallbackText ?? defaultFaceText(card, side);
   const frontHtml = rendered?.front?.html ?? (template ? '' : defaultFaceText(card, 'front'));
-  const previewHtml = useMemo(() => {
+  const faceHtml = useMemo(() => {
     let html = '';
     if (htmlContent) {
       html = htmlContent;
@@ -143,8 +144,15 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
     if (!html) return '';
     // 背面不自动重放正面的音频（同 Anki：{{FrontSide}} 里的音频不自动播放）
     const noAutoplay = side === 'back' ? soundNames(frontHtml) : undefined;
-    return renderCardTemplateMath(injectCardMedia(html, media, { noAutoplay }));
+    return injectCardMedia(html, media, { noAutoplay });
   }, [htmlContent, template, plainText, card, side, media, frontHtml]);
+  // 卡面公式与聊天侧一致由 KaTeX 自带字体排版（htmlAndMathml + iframe 内 data: 字体），
+  // 不依赖设备数学字体（#461）。样式首次下载期间先出纯 MathML，就绪后切换。
+  const katexCss = useKatexSandboxCss(cardHtmlNeedsKatex(faceHtml));
+  const previewHtml = useMemo(
+    () => (faceHtml ? renderCardTemplateMath(faceHtml, katexCss ? 'htmlAndMathml' : 'mathml') : ''),
+    [faceHtml, katexCss],
+  );
   const frameInteractive = interactiveFrame && isInteractiveCardHtml(previewHtml);
   const frameHtml = frameInteractive ? `${previewHtml}${CARD_FACE_HELPER_SCRIPT}` : previewHtml;
 
@@ -184,6 +192,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
           fidelity="anki"
           minHeight={stageMode ? stageHeight : undefined}
           onFrameClick={frameInteractive ? onFrameClick : undefined}
+          trustedCss={katexCss ?? undefined}
         />
       ) : (
         <div className="flex min-w-0 flex-col items-center gap-2">

@@ -5,7 +5,9 @@
  * - \( ... \)（inline）与 \[ ... \]（display）
  * - $$...$$（display）与 $...$（inline，命中规则见 LATEX_SEGMENT_REGEX 注释）
  *
- * 模板卡面输出原生 MathML，无需在隔离 iframe 中加载外部字体或脚本。
+ * 模板卡面（隔离 iframe）同样输出 htmlAndMathml，KaTeX 样式与 data: 字体由
+ * katexSandboxCss.ts 注入卡面文档；样式未就绪时才临时退回纯 MathML。
+ * 不能长期只出 MathML：字形取自设备数学字体，部分 Android WebView 上标识符整段消失（#461）。
  */
 import katex from 'katex';
 import 'katex/contrib/mhchem';
@@ -41,7 +43,9 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
-function renderSegment(latex: string, displayMode: boolean, output: 'htmlAndMathml' | 'mathml'): string {
+export type CardFaceMathOutput = 'htmlAndMathml' | 'mathml';
+
+function renderSegment(latex: string, displayMode: boolean, output: CardFaceMathOutput): string {
   try {
     return katex.renderToString(latex, { ...KATEX_OPTIONS, displayMode, output });
   } catch {
@@ -49,12 +53,7 @@ function renderSegment(latex: string, displayMode: boolean, output: 'htmlAndMath
   }
 }
 
-/**
- * 将含 LaTeX 的纯文本渲染为 HTML（非公式部分做 HTML 转义）。
- * 文本不含任何 LaTeX 定界符时返回 null（调用方直接用纯文本，零成本）。
- * 返回非 null 时已自动触发 KaTeX 样式懒加载。
- */
-export function renderCardFaceLatexHtml(text: string, output: 'htmlAndMathml' | 'mathml' = 'htmlAndMathml'): string | null {
+function renderLatexText(text: string, output: CardFaceMathOutput): string | null {
   if (!text) return null;
   const regex = new RegExp(LATEX_SEGMENT_REGEX.source, LATEX_SEGMENT_REGEX.flags);
 
@@ -86,12 +85,36 @@ export function renderCardFaceLatexHtml(text: string, output: 'htmlAndMathml' | 
   if (lastIndex < text.length) {
     result += escapeHtml(text.slice(lastIndex));
   }
-  if (output === 'htmlAndMathml') ensureKatexStyles();
   return result;
 }
 
-/** Render text nodes only: attributes, code samples and existing math stay intact. */
-export function renderCardTemplateMath(html: string): string {
+/**
+ * 将含 LaTeX 的纯文本渲染为 HTML（非公式部分做 HTML 转义）。
+ * 文本不含任何 LaTeX 定界符时返回 null（调用方直接用纯文本，零成本）。
+ * 返回非 null 且输出含 HTML 时已自动触发宿主文档的 KaTeX 样式懒加载。
+ */
+export function renderCardFaceLatexHtml(text: string, output: CardFaceMathOutput = 'htmlAndMathml'): string | null {
+  const result = renderLatexText(text, output);
+  if (result != null && output === 'htmlAndMathml') ensureKatexStyles();
+  return result;
+}
+
+/**
+ * 卡面 HTML 是否需要 KaTeX 样式：含公式定界符，或模板/字段里已有 KaTeX 产物。
+ * 粗判即可（属性里的 $x$ 也算），误判只多注入一份样式。
+ */
+export function cardHtmlNeedsKatex(html: string): boolean {
+  if (!html) return false;
+  if (/class=["'][^"']*\bkatex\b/.test(html)) return true;
+  return new RegExp(LATEX_SEGMENT_REGEX.source).test(html);
+}
+
+/**
+ * Render text nodes only: attributes, code samples and existing math stay intact.
+ * 结果放进卡面 iframe，宿主样式在那里不可见，故不触发宿主的 ensureKatexStyles；
+ * htmlAndMathml 输出须配合 KATEX_SANDBOX_CSS（katexSandboxCss.ts）一起注入卡面文档。
+ */
+export function renderCardTemplateMath(html: string, output: CardFaceMathOutput = 'htmlAndMathml'): string {
   const template = document.createElement('template');
   template.innerHTML = html;
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
@@ -99,7 +122,7 @@ export function renderCardTemplateMath(html: string): string {
   let node: Node | null;
   while ((node = walker.nextNode())) {
     if (node.parentElement?.closest('script, style, pre, code, textarea, math, .katex')) continue;
-    const rendered = renderCardFaceLatexHtml(node.textContent ?? '', 'mathml');
+    const rendered = renderLatexText(node.textContent ?? '', output);
     if (rendered) replacements.push({ node, html: rendered });
   }
   for (const replacement of replacements) {

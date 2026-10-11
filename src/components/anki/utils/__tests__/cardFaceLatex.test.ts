@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { renderCardFaceLatexHtml, renderCardTemplateMath } from '../cardFaceLatex';
+import { cardHtmlNeedsKatex, renderCardFaceLatexHtml, renderCardTemplateMath } from '../cardFaceLatex';
 import { TemplateRenderService } from '@/services/templateRenderService';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 
@@ -71,6 +71,33 @@ describe('renderCardTemplateMath：模板 HTML', () => {
     expect(html).toContain('title="$x$"');
     expect(html).toContain('<code>$y$</code>');
     expect(html).toContain('style="font-size:0.9rem; color:#dbeafe;"');
+  });
+
+  it('默认输出 htmlAndMathml：标识符由 KaTeX 字体排版，不只靠设备 MathML（#461）', () => {
+    const html = renderCardTemplateMath('<p>$V=\\dfrac{q}{4\\pi\\varepsilon_0 R}$</p>');
+    expect(html).toContain('class="katex-html"');
+    expect(html).toMatch(/class="mord mathnormal"[^>]*>V</);
+    expect(html).toMatch(/class="mord mathnormal"[^>]*>π</);
+    expect(countMath(html)).toBe(1);
+  });
+
+  it('样式未就绪时可显式退回纯 MathML', () => {
+    const html = renderCardTemplateMath('<p>$x$</p>', 'mathml');
+    expect(html).not.toContain('katex-html');
+    expect(countMath(html)).toBe(1);
+  });
+});
+
+describe('cardHtmlNeedsKatex', () => {
+  it.each([
+    ['<p>$x$</p>', true],
+    ['<p>\\(a\\)</p>', true],
+    ['<span class="katex">…</span>', true],
+    ['<p>售价 $5 和 $10</p>', false],
+    ['<p>纯文本</p>', false],
+    ['', false],
+  ])('%s → %s', (html, expected) => {
+    expect(cardHtmlNeedsKatex(html)).toBe(expected);
   });
 });
 
