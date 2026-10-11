@@ -4,6 +4,11 @@
  */
 
 /** Session load / history backfill knobs (behavior-preserving constants). */
+/**
+ * 首屏尾窗条数上限。后端还会按载荷体量（LOAD_SESSION_TAIL_BYTE_BUDGET）进一步
+ * 截短尾窗（#469）：「消息不多但每条都很重」的会话同样只回最近一段，
+ * totalMessageCount > 已加载条数时由下方回填机制补齐。
+ */
 export const LOAD_SESSION_TAIL_LIMIT = 80;
 export const FULL_HISTORY_IDLE_TIMEOUT_MS = 1_000;
 export const FULL_HISTORY_MAX_RETRIES = 2;

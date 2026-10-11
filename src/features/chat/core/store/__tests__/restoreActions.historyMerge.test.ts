@@ -36,10 +36,11 @@ function response(
 function restoreLegacyToolName(
   toolName: string,
   runtime?: NonNullable<NonNullable<LoadSessionResponseType['messages'][number]['_meta']>['skillRuntimeAfter']>,
+  slot: 'skillRuntimeAfter' | 'skillRuntimeBefore' = 'skillRuntimeAfter',
 ): string | undefined {
   const restoredMessage = backendMessage('m1', 100, ['b1']);
   if (runtime) {
-    restoredMessage._meta = { skillRuntimeAfter: runtime };
+    restoredMessage._meta = { [slot]: runtime };
   }
   let state = {
     sessionId: 'sess_test',
@@ -96,6 +97,16 @@ describe('mergeHistoryMessageOrder', () => {
         'knowledge-retrieval': [{ name: 'mcp_web_search' }],
       },
     })).toBe('builtin-web_search');
+  });
+
+  it('#469：after 被折叠（只剩 before）时仍按 before 快照判定来源', () => {
+    expect(restoreLegacyToolName('mcp_web_search', {
+      mcpToolSchemas: [{ name: 'web_search' }],
+    }, 'skillRuntimeBefore')).toBe('builtin-web_search');
+
+    expect(restoreLegacyToolName('mcp_web_search', {
+      mcpToolSchemas: [{ name: 'web_search', serverId: 'external-search' }],
+    }, 'skillRuntimeBefore')).toBe('mcp_web_search');
   });
 
   it('uses timestamps inside backend anchors instead of prepending every missing message', () => {

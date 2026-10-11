@@ -160,6 +160,12 @@ const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
 /// 变体 JSON 尺寸硬上限（256KB）：超过则从最旧的变体开始截断，避免单条 SQLite 行膨胀。
 const VARIANTS_JSON_LIMIT_BYTES: usize = 256 * 1024;
 
+/// 首屏尾窗的载荷预算（#469）：按数据库原文字节估算，超出即不再向前多取消息，
+/// 其余历史由前端空闲期分页回填。普通文本会话 80 条远低于此值，行为不变。
+pub(crate) const LOAD_SESSION_TAIL_BYTE_BUDGET: u64 = 2 * 1024 * 1024;
+/// 体量预算触发时尾窗至少保留的消息条数（最近一问一答）。
+pub(crate) const LOAD_SESSION_TAIL_MIN_MESSAGES: u32 = 2;
+
 /// `row_to_message` 中 JSON 字段解析失败的累计计数（跨会话，诊断用）。
 ///
 /// 解析失败保持「降级为空、不 panic」的容错行为，但通过计数 + warn 日志
@@ -1269,7 +1275,7 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
+            .map(|v| serde_json::to_string(&v.normalized_for_storage()))
             .transpose()?;
         let attachments_json = message
             .attachments
@@ -1278,10 +1284,8 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let mut sanitized: Vec<Variant> = v
-                    .iter()
-                    .map(Variant::without_skill_runtime_contents)
-                    .collect();
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::normalized_for_storage).collect();
                 let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
@@ -1581,7 +1585,7 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
+            .map(|v| serde_json::to_string(&v.normalized_for_storage()))
             .transpose()?;
         let attachments_json = message
             .attachments
@@ -1590,10 +1594,8 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let mut sanitized: Vec<Variant> = v
-                    .iter()
-                    .map(Variant::without_skill_runtime_contents)
-                    .collect();
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::normalized_for_storage).collect();
                 let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
@@ -1696,7 +1698,7 @@ impl ChatV2Repo {
                     e
                 })
                 .ok()
-                .map(|meta: MessageMeta| meta.without_skill_runtime_contents())
+                .map(|meta: MessageMeta| meta.normalized_for_storage())
         });
 
         let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
@@ -1718,7 +1720,7 @@ impl ChatV2Repo {
                 .map(|variants: Vec<Variant>| {
                     variants
                         .into_iter()
-                        .map(|variant| variant.without_skill_runtime_contents())
+                        .map(|variant| variant.normalized_for_storage())
                         .collect()
                 })
         });
@@ -2471,12 +2473,79 @@ impl ChatV2Repo {
 
     /// 加载会话尾部数据（最近 tail_limit 条消息及其块）
     ///
-    /// 用于首屏快速展示：长会话只回最近 N 条，前端在首帧后再全量补齐历史。
-    /// 消息总数不超过 tail_limit 时等价于全量加载。
+    /// 用于首屏快速展示：长会话只回最近 N 条，前端在首帧后再分页补齐历史。
+    /// 尾窗同时受条数（tail_limit）与载荷体量（[`LOAD_SESSION_TAIL_BYTE_BUDGET`]）
+    /// 双重约束；两者都未触发时等价于全量加载（total_message_count 为 None）。
     pub fn load_session_tail_with_conn(
         conn: &Connection,
         session_id: &str,
         tail_limit: u32,
+    ) -> ChatV2Result<LoadSessionResponse> {
+        Self::load_session_tail_with_budget(
+            conn,
+            session_id,
+            tail_limit,
+            LOAD_SESSION_TAIL_BYTE_BUDGET,
+        )
+    }
+
+    /// 计算体量预算下的尾窗条数（#469）。
+    ///
+    /// 只按条数截尾时，「消息不多但每条都很重」（Agent 模式：工具输出 + 技能
+    /// 快照）的会话一律落进全量路径，首屏 IPC 仍与会话总体量线性相关。这里
+    /// 从最新消息向前累加行内 JSON 列 + 所属块的持久化字节，超出预算即截断，
+    /// 但至少保留 [`LOAD_SESSION_TAIL_MIN_MESSAGES`] 条，保证最近一轮可见。
+    /// 字节数取自数据库原文（旧库重复行回读后还会再瘦身），只会偏保守。
+    fn tail_window_len_within_budget(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+        byte_budget: u64,
+    ) -> ChatV2Result<u32> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT
+                COALESCE(LENGTH(m.meta_json), 0)
+                + COALESCE(LENGTH(m.variants_json), 0)
+                + COALESCE(LENGTH(m.attachments_json), 0)
+                + COALESCE(LENGTH(m.shared_context_json), 0)
+                + COALESCE((
+                    SELECT SUM(
+                        COALESCE(LENGTH(b.content), 0)
+                        + COALESCE(LENGTH(b.tool_input_json), 0)
+                        + COALESCE(LENGTH(b.tool_output_json), 0)
+                        + COALESCE(LENGTH(b.citations_json), 0)
+                    )
+                    FROM chat_v2_blocks b
+                    WHERE b.message_id = m.id
+                ), 0)
+            FROM chat_v2_messages m
+            WHERE m.session_id = ?1
+            ORDER BY m.timestamp DESC, m.rowid DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let sizes = stmt.query_map(params![session_id, tail_limit], |row| row.get::<_, i64>(0))?;
+
+        let mut taken: u32 = 0;
+        let mut used: u64 = 0;
+        for size in sizes {
+            let size = size?.max(0) as u64;
+            if taken >= LOAD_SESSION_TAIL_MIN_MESSAGES && used.saturating_add(size) > byte_budget {
+                break;
+            }
+            used = used.saturating_add(size);
+            taken += 1;
+        }
+        Ok(taken)
+    }
+
+    /// [`Self::load_session_tail_with_conn`] 的可注入预算版本（测试用小预算覆盖截断路径）。
+    pub(crate) fn load_session_tail_with_budget(
+        conn: &Connection,
+        session_id: &str,
+        tail_limit: u32,
+        byte_budget: u64,
     ) -> ChatV2Result<LoadSessionResponse> {
         let t0 = Instant::now();
 
@@ -2488,6 +2557,9 @@ impl ChatV2Repo {
             params![session_id],
             |row| row.get(0),
         )?;
+
+        let tail_limit =
+            Self::tail_window_len_within_budget(conn, session_id, tail_limit, byte_budget)?;
 
         if total_count <= tail_limit {
             // 无需分块，走全量路径（total_message_count 留空表示全量）
@@ -3652,7 +3724,7 @@ impl ChatV2Repo {
             message_id, meta.model_id
         );
 
-        let meta_json = serde_json::to_string(&meta.without_skill_runtime_contents())?;
+        let meta_json = serde_json::to_string(&meta.normalized_for_storage())?;
 
         let rows_affected = conn.execute(
             "UPDATE chat_v2_messages SET meta_json = ?2 WHERE id = ?1",
@@ -6159,6 +6231,293 @@ mod tests {
         assert_eq!(empty_total, 5);
         assert!(empty_messages.is_empty());
         assert!(empty_blocks.is_empty());
+    }
+
+    // ------------------------------------------------------------------
+    // #469：meta_json 去重 / 旧行回读 / 体量预算尾窗
+    // ------------------------------------------------------------------
+
+    fn issue469_runtime_snapshot() -> crate::chat_v2::types::ReplaySkillPayloadSnapshot {
+        use crate::chat_v2::types::{McpToolSchema, ReplaySkillPayloadSnapshot};
+        let schema = |name: &str| McpToolSchema {
+            name: name.to_string(),
+            server_id: None,
+            description: Some(format!("{name} 的说明")),
+            input_schema: Some(serde_json::json!({"type": "object"})),
+        };
+        ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["skill-a".to_string()],
+            // 多键 HashMap：两份独立构造的快照迭代序可能不同，必须按结构比较
+            skill_dependencies: (0..8)
+                .map(|i| (format!("skill-{i}"), vec![format!("dep-{i}")]))
+                .collect(),
+            skill_embedded_tools: (0..8)
+                .map(|i| (format!("skill-{i}"), vec![schema(&format!("tool_{i}"))]))
+                .collect(),
+            mcp_tool_schemas: vec![schema("builtin-rag_search")],
+            ..Default::default()
+        }
+    }
+
+    fn issue469_tool_result(block_id: Option<&str>) -> ToolResultInfo {
+        ToolResultInfo {
+            tool_call_id: Some("call_469".to_string()),
+            block_id: block_id.map(str::to_string),
+            tool_name: "builtin-rag_search".to_string(),
+            input: serde_json::json!({"query": "资料"}),
+            output: serde_json::json!({"sources": ["x".repeat(4096)]}),
+            success: true,
+            error: None,
+            duration_ms: Some(12),
+            reasoning_content: Some("先检索".to_string()),
+            thought_signature: Some("sig-469".to_string()),
+        }
+    }
+
+    fn issue469_raw_meta_json(conn: &Connection, message_id: &str) -> Value {
+        let raw: String = conn
+            .query_row(
+                "SELECT meta_json FROM chat_v2_messages WHERE id = ?1",
+                params![message_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        serde_json::from_str(&raw).unwrap()
+    }
+
+    #[test]
+    fn test_issue469_meta_write_collapses_duplicate_runtime_and_slims_tool_results() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_write";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_issue469_write".to_string();
+        message.meta = Some(MessageMeta {
+            // 两份独立构造（HashMap 迭代序各自随机），结构相等
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(issue469_runtime_snapshot()),
+            tool_results: Some(vec![
+                issue469_tool_result(Some("blk_issue469_tool")),
+                issue469_tool_result(None),
+            ]),
+            ..Default::default()
+        });
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        let raw = issue469_raw_meta_json(&conn, &message.id);
+        assert!(raw.get("skillRuntimeBefore").is_some());
+        assert!(
+            raw.get("skillRuntimeAfter").is_none(),
+            "与 before 相同的 after 不应再落库: {raw}"
+        );
+        let results = raw["toolResults"].as_array().unwrap();
+        // 有块承载的条目：input/output 清空，重放字段保留
+        assert!(results[0]["output"].is_null());
+        assert!(results[0]["input"].is_null());
+        assert_eq!(results[0]["thoughtSignature"], "sig-469");
+        assert_eq!(results[0]["reasoningContent"], "先检索");
+        assert_eq!(results[0]["blockId"], "blk_issue469_tool");
+        // 无 block_id 的条目没有别处可取，原样保留
+        assert!(results[1]["output"]["sources"].is_array());
+
+        // 回读：after 取有效值仍等于原快照
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        let meta = loaded.meta.unwrap();
+        assert_eq!(
+            meta.effective_skill_runtime_after(),
+            Some(&issue469_runtime_snapshot())
+        );
+
+        // before/after 真不同（本轮 load_skills 改了技能面）时两份都保留
+        let mut changed_after = issue469_runtime_snapshot();
+        changed_after.active_skill_ids.push("skill-b".to_string());
+        message.meta = Some(MessageMeta {
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(changed_after.clone()),
+            ..Default::default()
+        });
+        ChatV2Repo::update_message_with_conn(&conn, &message).unwrap();
+        let raw = issue469_raw_meta_json(&conn, &message.id);
+        assert!(raw.get("skillRuntimeBefore").is_some());
+        assert!(raw.get("skillRuntimeAfter").is_some());
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            loaded.meta.unwrap().effective_skill_runtime_after(),
+            Some(&changed_after)
+        );
+    }
+
+    #[test]
+    fn test_issue469_legacy_duplicated_meta_row_reads_back_slim_and_replayable() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_legacy";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+
+        let mut message = ChatMessage::new_assistant(session_id.to_string());
+        message.id = "msg_issue469_legacy".to_string();
+        ChatV2Repo::create_message_with_conn(&conn, &message).unwrap();
+
+        // 模拟旧版本落库的行：before/after 重复 + toolResults 携带完整输出，
+        // 直接写原始 JSON，绕过新写入路径的规范化
+        let legacy_meta = serde_json::json!({
+            "skillRuntimeBefore": issue469_runtime_snapshot(),
+            "skillRuntimeAfter": issue469_runtime_snapshot(),
+            "toolResults": [issue469_tool_result(Some("blk_issue469_legacy_tool"))],
+        });
+        let mut legacy_variant = Variant::new("model-a".to_string());
+        legacy_variant.meta = Some(crate::chat_v2::types::VariantMeta {
+            skill_runtime_before: Some(issue469_runtime_snapshot()),
+            skill_runtime_after: Some(issue469_runtime_snapshot()),
+            ..Default::default()
+        });
+        let legacy_variants = serde_json::to_string(&vec![legacy_variant]).unwrap();
+        conn.execute(
+            "UPDATE chat_v2_messages SET meta_json = ?2, variants_json = ?3 WHERE id = ?1",
+            params![message.id, legacy_meta.to_string(), legacy_variants],
+        )
+        .unwrap();
+
+        let loaded = ChatV2Repo::get_message_with_conn(&conn, &message.id)
+            .unwrap()
+            .unwrap();
+        let meta = loaded.meta.as_ref().unwrap();
+        assert!(meta.skill_runtime_after.is_none(), "旧重复行回读即去重");
+        assert_eq!(
+            meta.effective_skill_runtime_after(),
+            Some(&issue469_runtime_snapshot())
+        );
+        let tool_result = &meta.tool_results.as_ref().unwrap()[0];
+        assert!(tool_result.output.is_null());
+        assert_eq!(tool_result.thought_signature.as_deref(), Some("sig-469"));
+        assert_eq!(tool_result.reasoning_content.as_deref(), Some("先检索"));
+
+        let variant_meta = loaded.variants.as_ref().unwrap()[0].meta.as_ref().unwrap();
+        assert!(variant_meta.skill_runtime_after.is_none());
+        assert_eq!(
+            variant_meta.skill_runtime_before,
+            Some(issue469_runtime_snapshot())
+        );
+
+        // 回读后的形状经 IPC 序列化同样不再带 after
+        let wire = serde_json::to_value(&loaded).unwrap();
+        assert!(wire["_meta"].get("skillRuntimeBefore").is_some());
+        assert!(wire["_meta"].get("skillRuntimeAfter").is_none());
+    }
+
+    fn issue469_seed_messages(conn: &Connection, session_id: &str, count: i64, payload: usize) {
+        ChatV2Repo::create_session_with_conn(
+            conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        for index in 0..count {
+            let mut message = if index % 2 == 0 {
+                ChatMessage::new_user(session_id.to_string(), Vec::new())
+            } else {
+                ChatMessage::new_assistant(session_id.to_string())
+            };
+            message.id = format!("{session_id}_msg_{index:02}");
+            message.timestamp = 1_000 + index;
+            let block_id = format!("{session_id}_blk_{index:02}");
+            message.block_ids = vec![block_id.clone()];
+            ChatV2Repo::create_message_with_conn(conn, &message).unwrap();
+
+            let mut block = MessageBlock::new_content(message.id.clone(), 0);
+            block.id = block_id;
+            block.content = Some("x".repeat(payload));
+            block.set_success();
+            ChatV2Repo::create_block_with_conn(conn, &block).unwrap();
+        }
+    }
+
+    #[test]
+    fn test_issue469_tail_window_is_capped_by_payload_budget() {
+        let conn = setup_test_db();
+        let session_id = "sess_issue469_heavy";
+        // 26 条消息 < tail_limit 80，但每条约 10KB：只按条数会整会话全量返回
+        issue469_seed_messages(&conn, session_id, 26, 10_000);
+
+        let response =
+            ChatV2Repo::load_session_tail_with_budget(&conn, session_id, 80, 35_000).unwrap();
+        assert_eq!(
+            response.total_message_count,
+            Some(26),
+            "体量预算截断时必须报告总数，前端据此分页回填"
+        );
+        let ids: Vec<&str> = response.messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec![
+                "sess_issue469_heavy_msg_23",
+                "sess_issue469_heavy_msg_24",
+                "sess_issue469_heavy_msg_25",
+            ]
+        );
+        assert_eq!(response.blocks.len(), 3);
+        assert!(response
+            .blocks
+            .iter()
+            .all(|b| ids.contains(&b.message_id.as_str())));
+
+        // 回填页与尾窗口径一致：offset = total - loaded 往前一页正好接上，不留空洞
+        let window_start = 26 - response.messages.len() as u64;
+        let (page, _, total) = ChatV2Repo::load_session_messages_window_with_conn(
+            &conn,
+            session_id,
+            window_start - 3,
+            3,
+            None,
+        )
+        .unwrap();
+        assert_eq!(total, 26);
+        assert_eq!(
+            page.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "sess_issue469_heavy_msg_20",
+                "sess_issue469_heavy_msg_21",
+                "sess_issue469_heavy_msg_22",
+            ]
+        );
+
+        // 单条就超预算时仍至少保留最近一问一答
+        let response = ChatV2Repo::load_session_tail_with_budget(&conn, session_id, 80, 1).unwrap();
+        assert_eq!(
+            response.messages.len(),
+            LOAD_SESSION_TAIL_MIN_MESSAGES as usize
+        );
+        assert_eq!(response.total_message_count, Some(26));
+    }
+
+    #[test]
+    fn test_issue469_light_session_tail_unchanged() {
+        let conn = setup_test_db();
+        // 轻量会话：条数与体量都在预算内 → 等价全量（total 为 None）
+        issue469_seed_messages(&conn, "sess_issue469_light", 26, 200);
+        let response =
+            ChatV2Repo::load_session_tail_with_conn(&conn, "sess_issue469_light", 80).unwrap();
+        assert_eq!(response.messages.len(), 26);
+        assert_eq!(response.total_message_count, None);
+
+        // 条数超出 tail_limit 时仍按条数截尾
+        issue469_seed_messages(&conn, "sess_issue469_long", 30, 200);
+        let response =
+            ChatV2Repo::load_session_tail_with_conn(&conn, "sess_issue469_long", 10).unwrap();
+        assert_eq!(response.messages.len(), 10);
+        assert_eq!(response.total_message_count, Some(30));
+        assert_eq!(response.messages[0].id, "sess_issue469_long_msg_20");
     }
 
     #[test]

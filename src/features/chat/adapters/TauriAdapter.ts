@@ -3974,8 +3974,8 @@ export class ChatV2TauriAdapter {
   /**
    * 加载会话（尾部分块）
    *
-   * 第一阶段只取最近 LOAD_SESSION_TAIL_LIMIT 条消息，首屏 IPC/渲染成本与会话
-   * 总长度解耦；若后端报告还有缺失历史，首帧空闲后全量拉取并按锚点合并
+   * 第一阶段只取最近 LOAD_SESSION_TAIL_LIMIT 条消息（后端另按载荷体量截短，
+   * #469），首屏 IPC/渲染成本与会话总长度/总体量解耦；若后端报告还有缺失历史，首帧空闲后全量拉取并按锚点合并
    * （store.prependHistoryFromBackend，滚动锚定由 MessageList 补偿）。
    */
   async loadSession(): Promise<void> {

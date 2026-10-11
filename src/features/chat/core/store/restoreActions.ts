@@ -80,6 +80,8 @@ function getReplayRuntimeSnapshots(
   message?: LoadSessionResponseType['messages'][number],
 ): ReplaySkillPayloadSnapshot[] {
   if (!message) return [];
+  // #469：后端已把与 before 相同的 after 折叠掉（after 缺省 = 同 before），
+  // 这里按现有字段收集即可，不再重复扫描同一份快照
   const snapshots = [
     message._meta?.skillRuntimeBefore,
     message._meta?.skillRuntimeAfter,
@@ -89,6 +91,53 @@ function getReplayRuntimeSnapshots(
     ]),
   ];
   return snapshots.filter((snapshot): snapshot is ReplaySkillPayloadSnapshot => !!snapshot);
+}
+
+interface LegacyToolEvidence {
+  hasExternalSource: boolean;
+  hasTrustedLocalSchema: boolean;
+  hasBuiltinSkillEvidence: boolean;
+}
+
+/**
+ * 每条消息只把回放快照扫一遍，建「归一化工具名 → 来源证据」索引（#469）。
+ * 旧实现对每个 mcp_ 块都遍历全部快照的 schema 与技能工具数组，
+ * 复杂度 O(块数 × 快照数 × schema 数)，200+ 工具块的会话加载明显卡顿。
+ */
+const legacyToolEvidenceCache = new WeakMap<object, Map<string, LegacyToolEvidence>>();
+
+function getLegacyToolEvidence(
+  message: LoadSessionResponseType['messages'][number] | undefined,
+  shortName: string,
+): LegacyToolEvidence | undefined {
+  if (!message) return undefined;
+  let index = legacyToolEvidenceCache.get(message);
+  if (!index) {
+    index = new Map();
+    const evidenceFor = (name: string): LegacyToolEvidence => {
+      let entry = index!.get(name);
+      if (!entry) {
+        entry = { hasExternalSource: false, hasTrustedLocalSchema: false, hasBuiltinSkillEvidence: false };
+        index!.set(name, entry);
+      }
+      return entry;
+    };
+    for (const snapshot of getReplayRuntimeSnapshots(message)) {
+      for (const schema of snapshot.mcpToolSchemas ?? []) {
+        const entry = evidenceFor(normalizeHistoricalToolName(schema.name));
+        if (schema.serverId !== undefined) entry.hasExternalSource = true;
+        else entry.hasTrustedLocalSchema = true;
+      }
+      for (const [skillId, tools] of Object.entries(snapshot.skillEmbeddedTools ?? {})) {
+        if (!CURRENT_BUILTIN_SKILL_IDS.has(skillId)) continue;
+        for (const tool of tools) {
+          evidenceFor(normalizeHistoricalToolName(tool.name)).hasBuiltinSkillEvidence = true;
+        }
+      }
+    }
+    legacyToolEvidenceCache.set(message, index);
+  }
+  return index.get(shortName);
 }
 
 /**
@@ -106,29 +155,10 @@ function remapLegacyBuiltinToolName(
   const shortName = normalizeHistoricalToolName(toolName);
   if (!CURRENT_BUILTIN_TOOL_NAMES.has(shortName)) return toolName;
 
-  const snapshots = getReplayRuntimeSnapshots(message);
-  const hasExternalSource = snapshots.some((snapshot) =>
-    (snapshot.mcpToolSchemas ?? []).some((schema) =>
-      normalizeHistoricalToolName(schema.name) === shortName
-      && schema.serverId !== undefined,
-    ),
-  );
-  if (hasExternalSource) return toolName;
+  const evidence = getLegacyToolEvidence(message, shortName);
+  if (!evidence || evidence.hasExternalSource) return toolName;
 
-  const hasTrustedLocalSchema = snapshots.some((snapshot) =>
-    (snapshot.mcpToolSchemas ?? []).some((schema) =>
-      normalizeHistoricalToolName(schema.name) === shortName
-      && schema.serverId === undefined,
-    ),
-  );
-  const hasBuiltinSkillEvidence = snapshots.some((snapshot) =>
-    Object.entries(snapshot.skillEmbeddedTools ?? {}).some(([skillId, tools]) =>
-      CURRENT_BUILTIN_SKILL_IDS.has(skillId)
-      && tools.some((tool) => normalizeHistoricalToolName(tool.name) === shortName),
-    ),
-  );
-
-  return hasTrustedLocalSchema || hasBuiltinSkillEvidence
+  return evidence.hasTrustedLocalSchema || evidence.hasBuiltinSkillEvidence
     ? `builtin-${shortName}`
     : toolName;
 }

@@ -1507,6 +1507,35 @@ impl VariantMeta {
             .map(ReplaySkillPayloadSnapshot::without_skill_contents);
         next
     }
+
+    /// 落库 / 回读规范化（#469）：剥离技能正文 + 折叠与 before 相同的 after。
+    /// 语义见 [`collapse_redundant_skill_runtime_after`]。
+    pub fn normalized_for_storage(&self) -> Self {
+        let mut next = self.without_skill_runtime_contents();
+        collapse_redundant_skill_runtime_after(
+            &next.skill_runtime_before,
+            &mut next.skill_runtime_after,
+        );
+        next
+    }
+}
+
+/// #469：`skill_runtime_after` 与 `skill_runtime_before` 结构相等时置 None，只留 before 一份。
+///
+/// 一轮里没有 load_skills 改动技能面时两份快照完全相同（实测 23/23 条逐字节一致，
+/// 单份可达数百 KB），每条助手消息存两遍纯属冗余。约定「after 缺省 = 与 before 相同」：
+/// 历史上所有写入方都是 before/after 同时写，旧数据不存在「仅 before」的形态，
+/// 因此该约定无歧义；读取方一律走 `after.or(before)`（见
+/// [`MessageMeta::effective_skill_runtime_after`]）。
+///
+/// 比较用派生的 `PartialEq`（HashMap 比较与迭代序无关），禁止序列化后比字节。
+fn collapse_redundant_skill_runtime_after(
+    before: &Option<ReplaySkillPayloadSnapshot>,
+    after: &mut Option<ReplaySkillPayloadSnapshot>,
+) {
+    if before.is_some() && before == after {
+        *after = None;
+    }
 }
 
 impl Variant {
@@ -1516,6 +1545,13 @@ impl Variant {
             .meta
             .as_ref()
             .map(VariantMeta::without_skill_runtime_contents);
+        next
+    }
+
+    /// 落库 / 回读规范化（#469），见 [`VariantMeta::normalized_for_storage`]。
+    pub fn normalized_for_storage(&self) -> Self {
+        let mut next = self.clone();
+        next.meta = next.meta.as_ref().map(VariantMeta::normalized_for_storage);
         next
     }
 }
@@ -1947,6 +1983,35 @@ impl MessageMeta {
             .map(ReplaySkillPayloadSnapshot::without_skill_contents);
         next
     }
+
+    /// 落库 / 回读规范化（#469），写入 `meta_json` 与从行解析时统一走这里：
+    /// - 剥离技能正文（同 [`Self::without_skill_runtime_contents`]）；
+    /// - after 与 before 相同则只留 before（读取用 [`Self::effective_skill_runtime_after`]）；
+    /// - `tool_results` 中已有对应块的条目去掉 input/output——这两项已原样存在
+    ///   `chat_v2_blocks.tool_input_json / tool_output_json`，meta 侧的读取方只用
+    ///   thought_signature / reasoning_content / 匹配键（history 重放、压缩分段）。
+    ///
+    /// 回读时同样执行，旧库里的重复行无需迁移即按瘦身形态进入内存与前端 IPC。
+    pub fn normalized_for_storage(&self) -> Self {
+        let mut next = self.without_skill_runtime_contents();
+        collapse_redundant_skill_runtime_after(
+            &next.skill_runtime_before,
+            &mut next.skill_runtime_after,
+        );
+        if let Some(results) = next.tool_results.as_mut() {
+            for result in results.iter_mut() {
+                result.strip_payload_backed_by_block();
+            }
+        }
+        next
+    }
+
+    /// 本轮结束时的技能运行时快照：after 缺省表示与 before 相同（#469 去重约定）。
+    pub fn effective_skill_runtime_after(&self) -> Option<&ReplaySkillPayloadSnapshot> {
+        self.skill_runtime_after
+            .as_ref()
+            .or(self.skill_runtime_before.as_ref())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -2051,6 +2116,15 @@ pub struct ToolResultInfo {
 }
 
 impl ToolResultInfo {
+    /// #469：有对应工具块时清空 input/output（块表已存同一份数据），只保留
+    /// 重放所需的轻量字段。无 block_id 的条目没有别处可取，原样保留。
+    pub fn strip_payload_backed_by_block(&mut self) {
+        if self.block_id.as_deref().is_some_and(|id| !id.is_empty()) {
+            self.input = Value::Null;
+            self.output = Value::Null;
+        }
+    }
+
     /// 创建成功结果
     pub fn success(
         tool_call_id: Option<String>,
