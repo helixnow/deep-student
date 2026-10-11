@@ -225,9 +225,11 @@ const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
       aria-label={preview.name}
       onClick={onClick}
     >
+      {/* 64px 格子只解码缩略图；原图（previewUrl）留给全屏查看器 */}
       <img
-        src={preview.previewUrl}
+        src={preview.thumbnailUrl || preview.previewUrl}
         alt={preview.name}
+        decoding="async"
         className="w-full h-full object-cover"
       />
       {/* Hover 遮罩（触屏无 hover：放大入口半透明常显，与 AttachmentPreview/ImagePreview 同理） */}

@@ -16,7 +16,7 @@ vi.mock('../../components/InlineImageViewer', () => ({
 }));
 vi.mock('../../components/InlineDocumentViewer', () => ({ InlineDocumentViewer: () => null }));
 
-import { useImagePreviewsFromRefs } from '../useImagePreviewsFromRefs';
+import { useImagePreviewsFromRefs, __resetImagePreviewCacheForTests } from '../useImagePreviewsFromRefs';
 import { ContextRefsDisplay, CONTEXT_REFS_VISIBLE_COUNT } from '../../components/ContextRefsDisplay';
 
 const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6lDkAAAAASUVORK5CYII=';
@@ -41,6 +41,7 @@ function AttachmentRow({ context }: { context: ContextSnapshot }) {
 }
 
 beforeEach(() => {
+  __resetImagePreviewCacheForTests();
   getResource.mockReset().mockImplementation(async (sourceId: string) => ({
     data: JSON.stringify({ refs: [{ type: 'image', sourceId }] }),
   }));
@@ -140,5 +141,61 @@ describe('visible image preview loading', () => {
     }] }));
     expect(result.current.imagePreviews.map((preview) => preview.id)).toEqual(['new-0']);
     expect(result.current.isLoading).toBe(false);
+  });
+});
+
+describe('shared preview cache (#470)', () => {
+  it('shares one resolve across messages that reference the same images and across remounts', async () => {
+    const context = snapshot(3);
+    const first = renderHook(() => useImagePreviewsFromRefs(context, 8));
+    const otherMessage = snapshot(3);
+    const second = renderHook(() => useImagePreviewsFromRefs(otherMessage, 8));
+    await waitFor(() => expect(first.result.current.imagePreviews).toHaveLength(3));
+    await waitFor(() => expect(second.result.current.imagePreviews).toHaveLength(3));
+    expect(getResource).toHaveBeenCalledTimes(3);
+    expect(resolveRefs).toHaveBeenCalledTimes(1);
+    expect(second.result.current.imagePreviews[0].previewUrl)
+      .toBe(first.result.current.imagePreviews[0].previewUrl);
+
+    // 虚拟滚动卸载后重新挂载：不再走 IPC
+    first.unmount();
+    second.unmount();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+    const remountedMessage = snapshot(3);
+    const remounted = renderHook(() => useImagePreviewsFromRefs(remountedMessage, 8));
+    await waitFor(() => expect(remounted.result.current.imagePreviews).toHaveLength(3));
+    expect(getResource).toHaveBeenCalledTimes(3);
+    expect(resolveRefs).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries refs that failed once nobody holds them anymore', async () => {
+    getResource.mockResolvedValueOnce(null);
+    const firstMessage = snapshot(1);
+    const first = renderHook(() => useImagePreviewsFromRefs(firstMessage, 8));
+    await waitFor(() => expect(first.result.current.isLoading).toBe(false));
+    expect(first.result.current.imagePreviews).toHaveLength(0);
+    first.unmount();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+
+    const secondMessage = snapshot(1);
+    const second = renderHook(() => useImagePreviewsFromRefs(secondMessage, 8));
+    await waitFor(() => expect(second.result.current.imagePreviews).toHaveLength(1));
+    expect(getResource).toHaveBeenCalledTimes(2);
+  });
+
+  it('renders the 64px tile from the thumbnail URL, not the full image', () => {
+    const ref = { resourceId: 'res-1', hash: 'h1', typeId: 'image' };
+    render(<ContextRefsDisplay
+      contextSnapshot={{ userRefs: [ref] } as unknown as ContextSnapshot}
+      imagePreviews={[{
+        id: 'res-1',
+        name: 'photo',
+        mimeType: 'image/jpeg',
+        previewUrl: 'blob:full',
+        thumbnailUrl: 'blob:thumb',
+        ref: ref as unknown as ContextSnapshot['userRefs'][number],
+      }]}
+    />);
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'blob:thumb');
   });
 });
