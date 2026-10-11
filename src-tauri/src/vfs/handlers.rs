@@ -1810,11 +1810,12 @@ pub async fn vfs_get_attachment_content(
         attachment_id
     );
 
-    // 验证附件 ID 格式（支持 att_、file_、tb_ 和 img_ 前缀）
+    // 验证附件 ID 格式（支持 att_、file_、tb_、img_ 与 res_ 前缀）
     if !attachment_id.starts_with("att_")
         && !attachment_id.starts_with("file_")
         && !attachment_id.starts_with("tb_")
         && !attachment_id.starts_with("img_")
+        && !attachment_id.starts_with("res_")
     {
         log::error!(
             "[VFS::handlers] Invalid attachment ID format: {}",
@@ -1822,6 +1823,36 @@ pub async fn vfs_get_attachment_content(
         );
         return Err(format!("Invalid attachment ID format: {}", attachment_id));
     }
+
+    // ★ #465：res_ 前缀（AI 工具写入题目 images_json 的资源 ID 等）先归一为 files 主键
+    let attachment_id = if attachment_id.starts_with("res_") {
+        let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
+        match VfsAttachmentRepo::resolve_file_id_with_conn(&conn, &attachment_id)
+            .map_err(|e| e.to_string())?
+        {
+            Some(file_id) => {
+                log::info!(
+                    "[VFS::handlers] vfs_get_attachment_content: resolved {} -> {}",
+                    attachment_id,
+                    file_id
+                );
+                file_id
+            }
+            None => {
+                log::warn!(
+                    "[VFS::handlers] vfs_get_attachment_content: resource not linked to a file: {}",
+                    attachment_id
+                );
+                return Ok(VfsAttachmentContentResult {
+                    content: None,
+                    found: false,
+                    error: None,
+                });
+            }
+        }
+    } else {
+        attachment_id
+    };
 
     // ★ img_ 前缀：DOCX VLM 直提路径产生的图片 ID，blob hash 存在 questions.images_json 中
     if attachment_id.starts_with("img_") {
