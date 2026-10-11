@@ -39,6 +39,7 @@ import { ThreadContentShell } from './ui/ThreadContentShell';
 import { MessageSearchBar } from './MessageSearchBar';
 import { useMessageSearch } from '../hooks/useMessageSearch';
 import { useStreamPreferences } from './renderers/StreamPreferencesContext';
+import { BlockRenderSkipContext } from './renderers/blockRenderSkip';
 import { useDesktopShellChatHeaderPortal } from '@/app/shell/DesktopShellHeaderPortal';
 import { useViewStore } from '@/stores/viewStore';
 
@@ -1325,6 +1326,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
             position: 'relative',
           }}
         >
+          {/* #470：虚拟行内关闭块级 content-visibility——行高由虚拟器实测定位，
+              离屏块的占位高度会让同一行反复被测成不同高度（上滚回弹） */}
+          <BlockRenderSkipContext.Provider value={false}>
           {virtualItems.map((virtualRow) => {
             const messageId = messageOrder[virtualRow.index];
             if (!messageId) return null;
@@ -1391,6 +1395,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
               </div>
             );
           })}
+          </BlockRenderSkipContext.Provider>
         </div>
       )}
     </CustomScrollArea>

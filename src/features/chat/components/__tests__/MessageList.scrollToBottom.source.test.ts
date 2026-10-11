@@ -144,6 +144,17 @@ describe('MessageList scroll-to-bottom source contract', () => {
     expect(source).toContain("instance.scrollDirection !== 'backward'");
   });
 
+  it('turns off block-level content-visibility only inside virtualized rows (#470)', () => {
+    const virtualBranch = source.slice(source.indexOf('// 虚拟滚动模式'));
+    const directBranch = source.slice(0, source.indexOf('// 虚拟滚动模式'));
+    // 虚拟行由虚拟器实测定位，行内离屏块的占位高度会污染测量
+    expect(virtualBranch).toContain('<BlockRenderSkipContext.Provider value={false}>');
+    expect(virtualBranch.indexOf('<BlockRenderSkipContext.Provider value={false}>'))
+      .toBeLessThan(virtualBranch.indexOf('ref={virtualizer.measureElement}'));
+    // 直渲模式保留默认开启（长消息离屏块跳过 layout/paint）
+    expect(directBranch).not.toContain('BlockRenderSkipContext.Provider');
+  });
+
   it('uses transitions-dev panel reveal semantics for fade-out', () => {
     expect(source).toContain('className="t-panel-slide ml-auto w-fit"');
     expect(source).toContain('aria-hidden={!showScrollToBottom}');

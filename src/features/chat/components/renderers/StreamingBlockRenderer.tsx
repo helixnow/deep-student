@@ -1,4 +1,4 @@
-import React, { useMemo, memo, useRef, useEffect } from 'react';
+import React, { useMemo, memo, useRef, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Brain } from '@phosphor-icons/react';
 import { MarkdownRenderer } from './MarkdownRenderer';
@@ -6,6 +6,7 @@ import { shallowEqualSpans, makeUncertaintyHighlightPlugin, parseChainOfThought 
 import { useSuspendedStreamContent } from './StreamPreferencesContext';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { createMarkdownBlockSplitter, type MarkdownBlock } from './splitMarkdownBlocks';
+import { BlockRenderSkipContext, installContentVisibilityRefresh } from './blockRenderSkip';
 import './streamingBlocks.css';
 
 // 模块级空数组：保持引用稳定，避免流式期间每个 token 都生成新数组
@@ -49,36 +50,14 @@ interface MemoizedBlockProps {
  * 流式冲刷的强制排版只覆盖可视区附近几个块（流式中的活动块不启用，
  * 必须真实参与吸底 layout）。contain-intrinsic-size 的 auto 前缀让浏览器
  * 记住上次渲染尺寸，未渲染过时按 96px 回落。
+ * 虚拟滚动行内不启用（BlockRenderSkipContext=false）：占位高度会污染虚拟器的行高测量（#470）。
  */
 const COMPLETED_BLOCK_STYLE: React.CSSProperties = {
   contentVisibility: 'auto',
   containIntrinsicSize: 'auto 96px',
 };
 
-/**
- * WebKit（macOS WKWebView）里，窗口不在前台 / 被切走期间挂载的 content-visibility:auto
- * 块，回到前台后可能一直被判为「视口外」而不绘制——视口里的消息只剩一个空灰框
- * （实测：发送后切去别的应用，回来用户气泡是空的）。窗口重新可见或获得焦点时
- * 让这些块重新判定一次：先 visible 再下一帧恢复 auto。只在可见性变化时触发。
- */
-let contentVisibilityRefreshInstalled = false;
-function installContentVisibilityRefresh(): void {
-  if (contentVisibilityRefreshInstalled || typeof document === 'undefined') return;
-  contentVisibilityRefreshInstalled = true;
-  const refresh = () => {
-    if (document.visibilityState !== 'visible') return;
-    const blocks = Array.from(
-      document.querySelectorAll<HTMLElement>('.stream-block[style*="content-visibility"]'),
-    );
-    if (blocks.length === 0) return;
-    blocks.forEach((el) => { el.style.contentVisibility = 'visible'; });
-    requestAnimationFrame(() => {
-      blocks.forEach((el) => { el.style.contentVisibility = 'auto'; });
-    });
-  };
-  document.addEventListener('visibilitychange', refresh);
-  window.addEventListener('focus', refresh);
-}
+// WebKit 前台恢复兜底（仅 WebKit、仅视口内块，见 blockRenderSkip.ts）
 installContentVisibilityRefresh();
 
 /**
@@ -99,6 +78,7 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   // 流式和完成态保持同一渲染管线，避免闭合时重建 DOM、补播整段动画，
   // 并保留引用、图片解析与额外 remark 插件。
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
+  const renderSkipEnabled = useContext(BlockRenderSkipContext);
 
   return (
     <div
@@ -109,7 +89,7 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
       data-block-type={block.type}
       data-flowtoken="false"
       data-motion-layer={motionLayer}
-      style={block.isComplete ? COMPLETED_BLOCK_STYLE : undefined}
+      style={block.isComplete && renderSkipEnabled ? COMPLETED_BLOCK_STYLE : undefined}
     >
       <MarkdownRenderer
         content={block.raw}

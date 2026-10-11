@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useState, useRef, Component } from 'react';
+import React, { useContext, useEffect, useLayoutEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import {
   Copy,
@@ -15,6 +15,7 @@ import {
   ImageSquare,
   Warning,
 } from '@phosphor-icons/react';
+import { BlockRenderSkipContext } from './blockRenderSkip';
 import { DsButton } from '@/components/ui/DsButton';
 import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -284,6 +285,7 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
  * 直渲染模式下流式冲刷的强制 layout 只覆盖可视区。contain-intrinsic-size
  * 的 auto 前缀让浏览器记住上次渲染尺寸，未渲染时回落 220px。
  * 流式中的消息不启用：活动内容必须真实参与吸底跟随的 layout。
+ * 虚拟滚动行内不启用（BlockRenderSkipContext=false，#470）：占位高度污染行高测量。
  */
 const IDLE_CODE_SHELL_STYLE: React.CSSProperties = {
   contentVisibility: 'auto',
@@ -325,6 +327,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   rendererCapabilities = DEFAULT_RENDERER_CAPABILITIES,
 }) => {
   const { t } = useTranslation('chatV2');
+  const renderSkipEnabled = useContext(BlockRenderSkipContext);
   const [copied, setCopied] = useState(false);
   const [running, setRunning] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
@@ -1102,7 +1105,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
       header={hasLivePreview ? liveHeader : legacyHeader}
       stickyHeader
       bodyClassName="code-block-body-shell"
-      style={isStreaming ? undefined : IDLE_CODE_SHELL_STYLE}
+      style={isStreaming || !renderSkipEnabled ? undefined : IDLE_CODE_SHELL_STYLE}
     >
       {body}
     </CodeBlockShell>
