@@ -6259,8 +6259,8 @@ mod tests {
         }
     }
 
-    fn issue469_tool_result(block_id: Option<&str>) -> ToolResultInfo {
-        ToolResultInfo {
+    fn issue469_tool_result(block_id: Option<&str>) -> crate::chat_v2::types::ToolResultInfo {
+        crate::chat_v2::types::ToolResultInfo {
             tool_call_id: Some("call_469".to_string()),
             block_id: block_id.map(str::to_string),
             tool_name: "builtin-rag_search".to_string(),
