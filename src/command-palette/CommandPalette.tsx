@@ -38,6 +38,7 @@ import { useCommandPalette } from './CommandPaletteProvider';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { Command, CommandCategory, CommandView, DependencyResolver } from './registry/types';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
 
 // 扩展分类类型，包含特殊分组
 type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
@@ -478,6 +479,18 @@ export function CommandPalette() {
     handleExecuteCommand(command);
   }, [handleExecuteCommand]);
 
+  // 搜索框受控值走 IME 组字保护：组字中不派发、不回写 DOM（#455）
+  const queryInputProps = useImeSafeControlledValue<HTMLInputElement>({
+    value: query,
+    onChange: (e) => {
+      setQuery(e.target.value);
+      setSelectedIndex(0);
+      if (e.target.value) {
+        setViewMode('search');
+      }
+    },
+  });
+
   const presence = useMotionPresence(isOpen, {
     exitMs: readCssDurationMs('--dropdown-close-dur', 150),
     enter: 'animation',
@@ -528,14 +541,7 @@ export function CommandPalette() {
               placeholder={sessionSearchOnly
                 ? t('command_palette:session_search_placeholder', 'Search sessions...')
                 : t('command_palette:search_placeholder')}
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setSelectedIndex(0);
-                if (e.target.value) {
-                  setViewMode('search');
-                }
-              }}
+              {...queryInputProps}
               aria-label={sessionSearchOnly
                 ? t('command_palette:session_search_placeholder', 'Search sessions...')
                 : t('command_palette:search_placeholder')}

@@ -23,6 +23,7 @@ import {
   SquaresFour,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { useImeSafeControlledValue } from '@/components/ui/shad/useImeSafeControlledValue';
 import {
   classifyWbSysWidth,
   type WbSysSizeClass,
@@ -469,6 +470,12 @@ export const FinderToolbar = React.memo(function FinderToolbar({
     </>
   );
 
+  // 搜索框受控值走 IME 组字保护：组字中不派发、不回写 DOM（#455）
+  const searchInputProps = useImeSafeControlledValue<HTMLInputElement>({
+    value: searchQuery,
+    onChange: (event) => onSearchChange?.(event.target.value),
+  });
+
   const searchField = onSearchChange ? (
     <div
       className={cn(
@@ -479,8 +486,7 @@ export const FinderToolbar = React.memo(function FinderToolbar({
       <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-foreground/45" size={14} />
       <input
         type="search"
-        value={searchQuery}
-        onChange={(event) => onSearchChange(event.target.value)}
+        {...searchInputProps}
         disabled={searchDisabled}
         placeholder={resolvedSearchPlaceholder}
         aria-label={resolvedSearchPlaceholder}
