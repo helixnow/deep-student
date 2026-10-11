@@ -24,8 +24,12 @@ pub enum QbankGradingMode {
 pub struct QbankGradingRequest {
     /// 题目 ID
     pub question_id: String,
-    /// 关联的 answer_submission ID
-    pub submission_id: String,
+    /// 关联的 answer_submission ID。
+    ///
+    /// Grade 模式必填；Analyze 模式可省略——省略时按题干/选项/参考答案生成
+    /// 与作答无关的通用解析（#467：未作答的题也能补解析，且不必为此伪造作答记录）。
+    #[serde(default)]
+    pub submission_id: Option<String>,
     /// 流式事件会话 ID（前端生成的唯一标识）
     pub stream_session_id: String,
     /// 评判模式
@@ -37,14 +41,17 @@ pub struct QbankGradingRequest {
 /// AI 评判响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QbankGradingResponse {
-    /// 关联的 submission ID
-    pub submission_id: String,
+    /// 关联的 submission ID（通用解析无作答记录时为 None）
+    pub submission_id: Option<String>,
     /// 判定结论（仅 Grade 模式）
     pub verdict: Option<Verdict>,
     /// AI 评分 0-100（仅 Grade 模式）
     pub score: Option<i32>,
     /// AI 完整反馈文本
     pub feedback: String,
+    /// 本次是否把解析写入了题目的「解析」字段（仅通用解析且原解析为空时为 true）
+    #[serde(default)]
+    pub explanation_written: bool,
 }
 
 /// 正误判定
@@ -91,10 +98,11 @@ pub struct QbankGradingStreamData {
 pub struct QbankGradingStreamComplete {
     #[serde(rename = "type")]
     pub event_type: String, // "complete"
-    pub submission_id: String,
+    pub submission_id: Option<String>,
     pub verdict: Option<String>,
     pub score: Option<i32>,
     pub feedback: String,
+    pub explanation_written: bool,
 }
 
 /// SSE 事件 - 错误
@@ -151,5 +159,19 @@ pub const ANALYZE_SYSTEM_PROMPT: &str = r#"你是一位善于启发学生的教�
 
 若学生以手写图片作答：请先简要说明你从图片中识别出的作答内容，再展开分析。
 
+公式格式遵循统一的 LaTeX 公式契约（见 prompt 末尾）。
+请不要输出 <verdict> 或 <score> 标签。"#;
+
+/// 通用解析模式的系统提示词（无作答记录：为题目本身撰写解析，可直接作为题目的「解析」）
+pub const EXPLANATION_SYSTEM_PROMPT: &str = r#"你是一位善于讲解的教师。请为下面这道题撰写一份解析，它会作为题目自带的「解析」长期保存，供所有做这道题的学生参考。
+
+## 撰写要求
+请用 Markdown 格式，包含以下几部分：
+1. **答案**：给出正确答案（有参考答案时以参考答案为准，不要另起炉灶）
+2. **解题思路**：清晰的推理或计算过程
+3. **知识点**：涉及的核心概念和公式
+4. **易错点**：常见的错误和注意事项
+
+不要假设或评价任何学生的作答，也不要写"你的答案"之类针对个人的话。
 公式格式遵循统一的 LaTeX 公式契约（见 prompt 末尾）。
 请不要输出 <verdict> 或 <score> 标签。"#;

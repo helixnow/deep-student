@@ -364,10 +364,18 @@ function streamGrading(req: any): null {
     void emit(channel, { type: 'data', chunk: accumulated.slice(-6), accumulated });
     if (pos < text.length) setTimeout(tick, 28);
     else {
+      const now = new Date().toISOString();
+      // 与后端同口径：无作答的通用解析在原解析为空时回填 explanation，绝不覆盖已有解析
+      const fillExplanation = req.mode === 'analyze' && !req.submission_id && !q.explanation?.trim();
       if (req.mode === 'grade') {
-        questions.set(q.id, { ...q, ai_feedback: text, ai_score: score, ai_graded_at: new Date().toISOString() });
+        questions.set(q.id, { ...q, ai_feedback: text, ai_score: score, ai_graded_at: now });
+      } else {
+        questions.set(q.id, { ...q, ai_feedback: text, ai_graded_at: now, ...(fillExplanation ? { explanation: text } : {}) });
       }
-      setTimeout(() => void emit(channel, { type: 'complete', submission_id: req.submission_id, verdict, score, feedback: text }), 60);
+      setTimeout(() => void emit(channel, {
+        type: 'complete', submission_id: req.submission_id ?? null, verdict, score, feedback: text,
+        explanation_written: fillExplanation,
+      }), 60);
     }
   };
   setTimeout(tick, 350);

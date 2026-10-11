@@ -1202,6 +1202,28 @@ fn parse_qbank_grading_mode(args: &Value) -> Result<QbankGradingMode, String> {
     }
 }
 
+/// AI 评判的 submission_id：grade 必填；analyze 可省略（#467：省略时生成与作答无关的
+/// 通用解析，题目原解析为空时回填 explanation，不必为补解析伪造作答记录）。
+fn parse_ai_grade_submission_id(
+    args: &Value,
+    mode: &QbankGradingMode,
+) -> Result<Option<String>, String> {
+    let submission_id = args
+        .get("submission_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if submission_id.is_none() && *mode == QbankGradingMode::Grade {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            "grade 模式缺少 submission_id",
+            "先调用 qbank_submit_answer 并传入其返回的 submission_id；只想生成解析请用 mode=analyze",
+        ));
+    }
+    Ok(submission_id)
+}
+
 /// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：题库写操作成功后通知前端刷新。
 fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
     // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai" 兼容旧持久化事件）
@@ -2992,20 +3014,8 @@ impl QBankExecutor {
             .ok_or("LLM manager not available")?
             .clone();
 
-        let submission_id = call
-            .arguments
-            .get("submission_id")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| {
-                qbank_error(
-                    "INVALID_ARGS",
-                    "缺少 submission_id",
-                    "先调用 qbank_submit_answer，并传入其返回的 submission_id",
-                )
-            })?
-            .to_string();
+        let mode = parse_qbank_grading_mode(&call.arguments)?;
+        let submission_id = parse_ai_grade_submission_id(&call.arguments, &mode)?;
 
         let question_id = if let Some(question_id) = call
             .arguments
@@ -3057,7 +3067,6 @@ impl QBankExecutor {
             question.id
         };
 
-        let mode = parse_qbank_grading_mode(&call.arguments)?;
         let stream_session_id = format!("agent-{}-{}", ctx.session_id, call.id);
         let stream_event = format!("qbank_grading_stream_{stream_session_id}");
         let request = QbankGradingRequest {
@@ -3097,7 +3106,17 @@ impl QBankExecutor {
         match response {
             Some(response) => {
                 emit_qbank_changed(ctx, "ai_grade", &[question_id]);
-                serde_json::to_value(response).map_err(|error| error.to_string())
+                let standalone_kept_existing =
+                    response.submission_id.is_none() && !response.explanation_written;
+                let mut value =
+                    serde_json::to_value(response).map_err(|error| error.to_string())?;
+                if standalone_kept_existing {
+                    // 已有解析不被静默覆盖：告诉模型如何显式替换
+                    value["explanation_hint"] = json!(
+                        "题目已有解析，本次结果只存为 AI 解析（ai_feedback）；如需替换题目解析，用 qbank_update_question 写 explanation"
+                    );
+                }
+                Ok(value)
             }
             None => Ok(json!({
                 "cancelled": true,
@@ -5420,6 +5439,33 @@ mod occ_contract_tests {
         assert_eq!(
             QBankExecutor::new().sensitivity_level("builtin-qbank_ai_grade"),
             ToolSensitivity::Medium
+        );
+    }
+
+    #[test]
+    fn ai_grade_submission_is_required_only_for_grade_mode() {
+        let missing: Value = serde_json::from_str(
+            &parse_ai_grade_submission_id(&json!({}), &QbankGradingMode::Grade).unwrap_err(),
+        )
+        .expect("structured missing submission");
+        assert_eq!(missing["code"], "INVALID_ARGS");
+        assert!(parse_ai_grade_submission_id(
+            &json!({"submission_id": "  "}),
+            &QbankGradingMode::Grade
+        )
+        .is_err());
+        assert_eq!(
+            parse_ai_grade_submission_id(&json!({}), &QbankGradingMode::Analyze).unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_ai_grade_submission_id(
+                &json!({"submission_id": " sub-1 "}),
+                &QbankGradingMode::Analyze
+            )
+            .unwrap()
+            .as_deref(),
+            Some("sub-1")
         );
     }
 

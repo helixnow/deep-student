@@ -34,10 +34,11 @@ impl QbankGradingEmitter {
     pub fn emit_complete(
         &self,
         stream_session_id: &str,
-        submission_id: String,
+        submission_id: Option<String>,
         verdict: Option<String>,
         score: Option<i32>,
         feedback: String,
+        explanation_written: bool,
     ) {
         let event_name = format!("qbank_grading_stream_{}", stream_session_id);
         let payload = QbankGradingStreamComplete {
@@ -46,6 +47,7 @@ impl QbankGradingEmitter {
             verdict,
             score,
             feedback,
+            explanation_written,
         };
 
         if let Err(e) = self.window.emit(&event_name, payload) {

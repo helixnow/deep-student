@@ -38,7 +38,7 @@ use super::image_answer::{
 };
 use super::types::{
     QbankGradingMode, QbankGradingRequest, QbankGradingResponse, Verdict, ANALYZE_SYSTEM_PROMPT,
-    GRADE_SYSTEM_PROMPT,
+    EXPLANATION_SYSTEM_PROMPT, GRADE_SYSTEM_PROMPT,
 };
 
 /// 建连/响应头超时：send() 在收到响应头后即完成，不限制流式 body 时长
@@ -83,32 +83,55 @@ pub async fn run_qbank_grading(
             )))
         })?;
 
-    // 2. 校验 submission 归属并获取当前答案（必须绑定到本次 submission）
-    let current_submission = match get_submission_by_id(&deps.vfs_db, &request.submission_id) {
-        Ok(Some(sub)) => sub,
-        Ok(None) => {
-            return Err(emit_and_return(AppError::not_found(format!(
-                "作答记录不存在: {}",
-                request.submission_id
-            ))));
-        }
-        Err(e) => return Err(emit_and_return(e)),
-    };
-    if current_submission.question_id != request.question_id {
-        return Err(emit_and_return(AppError::validation(format!(
-            "作答记录 {} 不属于题目 {}",
-            request.submission_id, request.question_id
-        ))));
+    // 2. 校验 submission 归属并获取当前答案（必须绑定到本次 submission）。
+    //    #467：Analyze 允许不带 submission（通用解析：未作答的题也能补解析）；
+    //    Grade 必须有作答才能判分。
+    let submission_id = request
+        .submission_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty());
+    if submission_id.is_none() && request.mode == QbankGradingMode::Grade {
+        return Err(emit_and_return(AppError::validation(
+            "AI 评判需要作答记录：请先提交答案".to_string(),
+        )));
     }
+    let current_submission = match submission_id {
+        Some(submission_id) => match get_submission_by_id(&deps.vfs_db, submission_id) {
+            Ok(Some(sub)) => {
+                if sub.question_id != request.question_id {
+                    return Err(emit_and_return(AppError::validation(format!(
+                        "作答记录 {} 不属于题目 {}",
+                        submission_id, request.question_id
+                    ))));
+                }
+                Some(sub)
+            }
+            Ok(None) => {
+                return Err(emit_and_return(AppError::not_found(format!(
+                    "作答记录不存在: {}",
+                    submission_id
+                ))));
+            }
+            Err(e) => return Err(emit_and_return(e)),
+        },
+        None => None,
+    };
 
-    // 3. 获取作答历史（最近 5 条）
-    let submissions = VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
-        .map_err(|e| emit_and_return(AppError::database(e.to_string())))?;
+    // 3. 获取作答历史（最近 5 条）；通用解析与作答无关，不带历史
+    let submissions = if current_submission.is_some() {
+        VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
+            .map_err(|e| emit_and_return(AppError::database(e.to_string())))?
+    } else {
+        Vec::new()
+    };
 
     // 4. 图片作答信封探测（主观题/填空题手写拍照作答）：
     //    submission.user_answer 是信封时取回图片走多模态评判，否则原文本路径。
     //    取图失败（附件被删/未同步）与超限一样显式报错——图片判分丢图等于判空白卷。
-    let image_answer = parse_image_answer_envelope(&current_submission.user_answer);
+    let image_answer = current_submission
+        .as_ref()
+        .and_then(|sub| parse_image_answer_envelope(&sub.user_answer));
     let answer_images: Vec<String> = match &image_answer {
         Some(payload) => {
             fetch_image_answer_contents(&deps.vfs_db, payload).map_err(&emit_and_return)?
@@ -119,7 +142,7 @@ pub async fn run_qbank_grading(
     // 5. 构造 Prompt
     let (system_prompt, user_prompt) = build_prompts(
         &question,
-        &current_submission,
+        current_submission.as_ref(),
         &submissions,
         &request.mode,
         image_answer.as_ref(),
@@ -252,15 +275,19 @@ pub async fn run_qbank_grading(
         return Err(err);
     }
 
+    // 通用解析（无作答）只在流完整结束时才回填空解析：半截文本可以留在 AI 缓存里
+    // 供查看，但不能落进题目自带的「解析」。
+    let fill_empty_explanation = current_submission.is_none() && !stream_incomplete;
     let persist_result = persist_grading_result(
         &conn,
         &deps.vfs_db,
         &question,
         &request.mode,
-        &request.submission_id,
+        submission_id,
         &accumulated,
         verdict.as_ref(),
         score,
+        fill_empty_explanation,
     )
     .and_then(|outcome| {
         conn.execute("RELEASE qbank_grading_persist", [])
@@ -268,7 +295,7 @@ pub async fn run_qbank_grading(
         Ok(outcome)
     });
 
-    let verdict_outcome = match persist_result {
+    let (verdict_outcome, explanation_written) = match persist_result {
         Ok(outcome) => outcome,
         Err(e) => {
             let _ = conn.execute("ROLLBACK TO qbank_grading_persist", []);
@@ -321,19 +348,22 @@ pub async fn run_qbank_grading(
     });
 
     // 9. 发送完成事件
+    let submission_id = submission_id.map(str::to_string);
     deps.emitter.emit_complete(
         &request.stream_session_id,
-        request.submission_id.clone(),
+        submission_id.clone(),
         verdict_str.clone(),
         score,
         accumulated.clone(),
+        explanation_written,
     );
 
     Ok(Some(QbankGradingResponse {
-        submission_id: request.submission_id,
+        submission_id,
         verdict,
         score,
         feedback: accumulated,
+        explanation_written,
     }))
 }
 
@@ -345,7 +375,10 @@ pub async fn run_qbank_grading(
 ///   content hash、mastery 事件、统计刷新）统一复用
 ///   `QuestionBankService::apply_submission_verdict_in_tx`，与人工改判同口径；
 ///   mastery 事件由原语写入（幂等键），本函数不重复插；
-/// - Analyze 模式只写 ai_feedback，自行补 S-030 同步标记 + content hash。
+/// - Analyze 模式写 ai_feedback，自行补 S-030 同步标记 + content hash；
+///   `fill_empty_explanation`（#467，仅无作答的通用解析）时把同一份解析回填进
+///   题目的 explanation——只在原解析为空时写，绝不覆盖用户已有解析
+///   （覆盖须走显式的「写入解析」/ qbank_update_question）。
 ///
 /// 返回 Grade 模式下原语给出的 `VerdictApplyOutcome`（Analyze 为 None），
 /// 供调用方在事务外接 SM-2 复习计划与 learner_profile 回流。
@@ -411,11 +444,18 @@ fn persist_grading_result(
     vfs_db: &Arc<VfsDatabase>,
     question: &Question,
     mode: &QbankGradingMode,
-    submission_id: &str,
+    submission_id: Option<&str>,
     feedback: &str,
     verdict: Option<&Verdict>,
     score: Option<i32>,
-) -> Result<Option<crate::question_bank_service::VerdictApplyOutcome>, AppError> {
+    fill_empty_explanation: bool,
+) -> Result<
+    (
+        Option<crate::question_bank_service::VerdictApplyOutcome>,
+        bool,
+    ),
+    AppError,
+> {
     let now = chrono::Utc::now().to_rfc3339();
 
     // ① 更新 AI 缓存
@@ -442,7 +482,12 @@ fn persist_grading_result(
     }
 
     if *mode != QbankGradingMode::Grade {
-        // Analyze 只改了 ai_feedback：S-030 口径需标记同步并重算 content hash，
+        let explanation_written = if fill_empty_explanation {
+            fill_explanation_if_empty(conn, &question.id, feedback)?
+        } else {
+            false
+        };
+        // Analyze 只改了 ai_feedback（及可能回填的 explanation）：S-030 口径需标记同步并重算 content hash，
         // 否则云同步会用远端旧值覆盖本次解析结果。
         // （Grade 模式下这两步由判分原语在同一事务内完成，不重复调用。）
         crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
@@ -455,10 +500,12 @@ fn persist_grading_result(
             &question.id,
         )
         .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
-        return Ok(None);
+        return Ok((None, explanation_written));
     }
 
     let v = verdict.ok_or_else(|| AppError::llm("缺少评判 verdict".to_string()))?;
+    let submission_id = submission_id
+        .ok_or_else(|| AppError::validation("AI 评判需要作答记录：请先提交答案".to_string()))?;
 
     // 事务内重读 submission，以其"旧 is_correct"为差值基准（r1-06 §2）：
     // 流式评判耗时较长，期间用户可能已自评/再提交；沿用评判开始前的旧快照
@@ -479,7 +526,44 @@ fn persist_grading_result(
     // 保证 AI 判分与人工改判计数完全一致。
     let outcome = crate::question_bank_service::QuestionBankService::new(Arc::clone(vfs_db))
         .apply_submission_verdict_in_tx(conn, question, &submission, v.is_correct(), "ai", &now)?;
-    Ok(Some(outcome))
+    Ok((Some(outcome), false))
+}
+
+/// 题目解析为空（NULL 或全空白）时写入 AI 解析，返回是否写入。
+///
+/// 条件写在 UPDATE 的 WHERE 里而不是先读后写：流式生成耗时较长，期间用户可能
+/// 已在编辑器里手写了解析，以写入时刻的库内值为准，避免覆盖。
+/// 写入同时记一条 question_history（operator=ai），可在历史里回看/还原。
+fn fill_explanation_if_empty(
+    conn: &rusqlite::Connection,
+    question_id: &str,
+    explanation: &str,
+) -> Result<bool, AppError> {
+    if explanation.trim().is_empty() {
+        return Ok(false);
+    }
+    let updated = conn
+        .execute(
+            r#"UPDATE questions SET explanation = ?1
+               WHERE id = ?2 AND deleted_at IS NULL
+                 AND (explanation IS NULL OR TRIM(explanation) = '')"#,
+            params![explanation, question_id],
+        )
+        .map_err(|e| AppError::database(format!("写入解析失败: {}", e)))?;
+    if updated == 0 {
+        return Ok(false);
+    }
+    VfsQuestionRepo::record_history_with_conn(
+        conn,
+        question_id,
+        "explanation",
+        None,
+        Some(explanation),
+        "ai",
+        Some("AI 解析填充空解析"),
+    )
+    .map_err(|e| AppError::database(format!("记录解析历史失败: {}", e)))?;
+    Ok(true)
 }
 
 /// 解析评判使用的模型配置
@@ -574,16 +658,18 @@ const QBANK_RESPONSE_LANGUAGE_RULE: &str = "Language: write your feedback in the
 
 fn build_prompts(
     question: &Question,
-    current_submission: &AnswerSubmission,
+    current_submission: Option<&AnswerSubmission>,
     submissions: &[AnswerSubmission],
     mode: &QbankGradingMode,
     image_answer: Option<&ImageAnswerPayload>,
 ) -> Result<(String, String), AppError> {
     let system_prompt = format!(
         "{}\n\n{}\n\n{}",
-        match mode {
-            QbankGradingMode::Grade => GRADE_SYSTEM_PROMPT,
-            QbankGradingMode::Analyze => ANALYZE_SYSTEM_PROMPT,
+        match (mode, current_submission) {
+            (QbankGradingMode::Grade, _) => GRADE_SYSTEM_PROMPT,
+            (QbankGradingMode::Analyze, Some(_)) => ANALYZE_SYSTEM_PROMPT,
+            // #467：无作答的通用解析——不提学生答案，产出可直接作为题目解析的文本
+            (QbankGradingMode::Analyze, None) => EXPLANATION_SYSTEM_PROMPT,
         },
         crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
         QBANK_RESPONSE_LANGUAGE_RULE
@@ -634,6 +720,11 @@ fn build_prompts(
         user_prompt.push_str(explanation);
         user_prompt.push_str("\n\n");
     }
+
+    // 通用解析：没有作答，题目信息即全部输入
+    let Some(current_submission) = current_submission else {
+        return Ok((system_prompt, user_prompt));
+    };
 
     // 当前答案（严格使用本次 submission 的答案，避免读取到 questions.user_answer 的竞态值）
     let label = match mode {
@@ -1157,7 +1248,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
-            &submission,
+            Some(&submission),
             &[],
             &QbankGradingMode::Grade,
             Some(&payload),
@@ -1176,8 +1267,14 @@ mod tests {
         let question = test_question_for_prompt();
         let submission = envelope_submission("物体所受合力等于质量与加速度的乘积");
 
-        let (_, user_prompt) =
-            build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+        let (_, user_prompt) = build_prompts(
+            &question,
+            Some(&submission),
+            &[],
+            &QbankGradingMode::Grade,
+            None,
+        )
+        .unwrap();
 
         assert!(user_prompt.contains("物体所受合力等于质量与加速度的乘积"));
     }
@@ -1193,8 +1290,14 @@ mod tests {
         }));
         let submission = envelope_submission("牛顿定律");
 
-        let (_, user_prompt) =
-            build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+        let (_, user_prompt) = build_prompts(
+            &question,
+            Some(&submission),
+            &[],
+            &QbankGradingMode::Grade,
+            None,
+        )
+        .unwrap();
 
         // 填空空位定义进 prompt：模型能看到可接受答案列表
         assert!(user_prompt.contains("## 结构化作答要求"));
@@ -1213,8 +1316,14 @@ mod tests {
             question.structured_data = structured;
             let submission = envelope_submission("文字作答");
 
-            let (_, user_prompt) =
-                build_prompts(&question, &submission, &[], &QbankGradingMode::Grade, None).unwrap();
+            let (_, user_prompt) = build_prompts(
+                &question,
+                Some(&submission),
+                &[],
+                &QbankGradingMode::Grade,
+                None,
+            )
+            .unwrap();
 
             assert!(!user_prompt.contains("## 结构化作答要求"));
         }
@@ -1234,7 +1343,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
-            &current,
+            Some(&current),
             &[history_envelope, history_text],
             &QbankGradingMode::Grade,
             None,
@@ -1436,12 +1545,14 @@ mod tests {
             &db,
             &question,
             &QbankGradingMode::Grade,
-            &submission_id,
+            Some(&submission_id),
             "解析…<verdict>correct</verdict><score value=\"90\"/>",
             Some(&Verdict::Correct),
             Some(90),
+            false,
         )
         .expect("persist should succeed")
+        .0
         .expect("grade mode returns outcome");
 
         let (correct_count, is_correct, status, _) = question_counters(&conn, &question.id);
@@ -1466,10 +1577,11 @@ mod tests {
             &db,
             &question,
             &QbankGradingMode::Grade,
-            &submission_id,
+            Some(&submission_id),
             "重评…<verdict>correct</verdict><score value=\"92\"/>",
             Some(&Verdict::Correct),
             Some(92),
+            false,
         )
         .expect("re-run persist");
         let (correct_count, _, _, _) = question_counters(&conn, &question.id);
@@ -1492,12 +1604,14 @@ mod tests {
             &db,
             &question,
             &QbankGradingMode::Grade,
-            &submission_id,
+            Some(&submission_id),
             "其实答对了…<verdict>correct</verdict><score value=\"85\"/>",
             Some(&Verdict::Correct),
             Some(85),
+            false,
         )
         .expect("persist should succeed")
+        .0
         .expect("grade mode returns outcome");
 
         let (correct_count, is_correct, status, attempt_count) =
@@ -1542,12 +1656,14 @@ mod tests {
             &db,
             &question,
             &QbankGradingMode::Grade,
-            &submission_id,
+            Some(&submission_id),
             "其实答错了…<verdict>incorrect</verdict><score value=\"20\"/>",
             Some(&Verdict::Incorrect),
             Some(20),
+            false,
         )
         .expect("persist should succeed")
+        .0
         .expect("grade mode returns outcome");
 
         let (correct_count, is_correct, status, attempt_count) =
@@ -1634,5 +1750,214 @@ mod tests {
         let mut ghost = question.clone();
         ghost.id = "question_ghost".to_string();
         assert!(persist_draft_feedback(&db, &ghost, "draft").is_err());
+    }
+
+    // ========================================================================
+    // #467：无作答的通用解析 + 空解析回填
+    // ========================================================================
+
+    fn question_explanation_fields(
+        conn: &rusqlite::Connection,
+        question_id: &str,
+    ) -> (Option<String>, Option<String>) {
+        conn.query_row(
+            "SELECT explanation, ai_feedback FROM questions WHERE id = ?1",
+            params![question_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .expect("query explanation fields")
+    }
+
+    fn explanation_history_count(conn: &rusqlite::Connection, question_id: &str) -> i64 {
+        conn.query_row(
+            "SELECT COUNT(*) FROM question_history
+             WHERE question_id = ?1 AND field_name = 'explanation' AND operator = 'ai'",
+            params![question_id],
+            |r| r.get(0),
+        )
+        .expect("count explanation history")
+    }
+
+    #[test]
+    fn build_prompts_without_submission_uses_explanation_prompt() {
+        let question = test_question_for_prompt();
+        let history = envelope_submission("旧的文字作答");
+
+        let (system_prompt, user_prompt) = build_prompts(
+            &question,
+            None,
+            &[history],
+            &QbankGradingMode::Analyze,
+            None,
+        )
+        .unwrap();
+
+        assert!(system_prompt.starts_with(EXPLANATION_SYSTEM_PROMPT));
+        assert!(user_prompt.contains("简述牛顿第二定律"));
+        assert!(user_prompt.contains("## 参考答案\nF = ma"));
+        // 没有作答：不出现学生答案段与历次作答
+        assert!(!user_prompt.contains("学生答案"));
+        assert!(!user_prompt.contains("历次作答"));
+        assert!(!user_prompt.contains("旧的文字作答"));
+    }
+
+    #[test]
+    fn build_prompts_analyze_with_submission_keeps_student_prompt() {
+        let question = test_question_for_prompt();
+        let submission = AnswerSubmission {
+            is_correct: Some(false),
+            ..envelope_submission("F = mv")
+        };
+
+        let (system_prompt, user_prompt) = build_prompts(
+            &question,
+            Some(&submission),
+            &[],
+            &QbankGradingMode::Analyze,
+            None,
+        )
+        .unwrap();
+
+        assert!(system_prompt.starts_with(ANALYZE_SYSTEM_PROMPT));
+        assert!(user_prompt.contains("## 学生答案（错误）\nF = mv"));
+    }
+
+    #[test]
+    fn persist_standalone_analyze_fills_empty_explanation() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _submission_id) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().expect("conn");
+        let before = question_counters(&conn, &question.id);
+
+        let (outcome, written) = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Analyze,
+            None,
+            "**解题思路**：F = ma",
+            None,
+            None,
+            true,
+        )
+        .expect("persist standalone analyze");
+
+        assert!(outcome.is_none());
+        assert!(written, "原解析为空时应写入");
+        let (explanation, ai_feedback) = question_explanation_fields(&conn, &question.id);
+        assert_eq!(explanation.as_deref(), Some("**解题思路**：F = ma"));
+        assert_eq!(ai_feedback.as_deref(), Some("**解题思路**：F = ma"));
+        assert_eq!(explanation_history_count(&conn, &question.id), 1);
+        // 通用解析不碰作答统计
+        assert_eq!(question_counters(&conn, &question.id), before);
+    }
+
+    #[test]
+    fn persist_standalone_analyze_never_overwrites_existing_explanation() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _submission_id) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().expect("conn");
+        conn.execute(
+            "UPDATE questions SET explanation = '老师手写的解析' WHERE id = ?1",
+            params![question.id],
+        )
+        .expect("seed explanation");
+
+        let (_, written) = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Analyze,
+            None,
+            "AI 新解析",
+            None,
+            None,
+            true,
+        )
+        .expect("persist standalone analyze");
+
+        assert!(!written);
+        let (explanation, ai_feedback) = question_explanation_fields(&conn, &question.id);
+        assert_eq!(explanation.as_deref(), Some("老师手写的解析"));
+        assert_eq!(
+            ai_feedback.as_deref(),
+            Some("AI 新解析"),
+            "AI 解析仍进 AI 缓存"
+        );
+        assert_eq!(explanation_history_count(&conn, &question.id), 0);
+    }
+
+    #[test]
+    fn persist_standalone_analyze_treats_blank_explanation_as_empty() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _submission_id) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().expect("conn");
+        conn.execute(
+            "UPDATE questions SET explanation = '  \n ' WHERE id = ?1",
+            params![question.id],
+        )
+        .expect("seed blank explanation");
+
+        let (_, written) = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Analyze,
+            None,
+            "AI 解析",
+            None,
+            None,
+            true,
+        )
+        .expect("persist");
+
+        assert!(written);
+        let (explanation, _) = question_explanation_fields(&conn, &question.id);
+        assert_eq!(explanation.as_deref(), Some("AI 解析"));
+    }
+
+    #[test]
+    fn persist_analyze_without_fill_flag_leaves_explanation_alone() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, Some(false));
+        let conn = db.get_conn_safe().expect("conn");
+
+        let (_, written) = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Analyze,
+            Some(&submission_id),
+            "针对这次作答的分析",
+            None,
+            None,
+            false,
+        )
+        .expect("persist analyze with submission");
+
+        assert!(!written, "针对作答的分析不回填题目解析");
+        let (explanation, ai_feedback) = question_explanation_fields(&conn, &question.id);
+        assert_eq!(explanation, None);
+        assert_eq!(ai_feedback.as_deref(), Some("针对这次作答的分析"));
+    }
+
+    #[test]
+    fn persist_grade_without_submission_is_rejected() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _submission_id) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().expect("conn");
+
+        let result = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Grade,
+            None,
+            "<verdict>correct</verdict>",
+            Some(&Verdict::Correct),
+            Some(100),
+            false,
+        );
+        assert!(result.is_err());
     }
 }

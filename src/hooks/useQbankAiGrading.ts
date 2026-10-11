@@ -31,6 +31,8 @@ export interface QbankGradingState {
   verdict?: QbankVerdict;
   /** AI 评分 0-100（仅 grade 模式） */
   score?: number;
+  /** 本次结果是否已写入题目的「解析」字段 */
+  explanationWritten?: boolean;
   /** 错误信息 */
   error?: string;
   /** 当前流 session ID */
@@ -43,10 +45,12 @@ interface QbankGradingStreamEvent {
   chunk?: string;
   accumulated?: string;
   // complete
-  submission_id?: string;
+  submission_id?: string | null;
   verdict?: string;
   score?: number;
   feedback?: string;
+  /** 通用解析（无作答）且原解析为空时，后端已把结果写入题目的 explanation */
+  explanation_written?: boolean;
   // error
   message?: string;
 }
@@ -57,6 +61,14 @@ const INITIAL_STATE: QbankGradingState = {
 };
 
 const TIMEOUT_MS = 120_000; // 120 秒超时
+
+/** 完成回调：explanationWritten 表示后端已把解析回填进题目的空 explanation（#467） */
+export type QbankGradingCompleteHandler = (
+  verdict?: QbankVerdict,
+  score?: number,
+  feedback?: string,
+  explanationWritten?: boolean,
+) => void;
 
 /** 从反馈正文解析 <score value="N"/>；无则按 verdict 兜底 0–100。 */
 function resolveGradeScore(
@@ -104,10 +116,10 @@ export function useQbankAiGrading() {
   const accumulatedFeedbackRef = useRef('');
   const lastRequestRef = useRef<{
     questionId: string;
-    submissionId: string;
+    submissionId: string | null;
     mode: QbankGradingMode;
     modelConfigId?: string;
-    onComplete?: (verdict?: QbankVerdict, score?: number, feedback?: string) => void;
+    onComplete?: QbankGradingCompleteHandler;
   } | null>(null);
 
   // 清理函数
@@ -154,16 +166,17 @@ export function useQbankAiGrading() {
   /**
    * 启动 AI 评判
    *
+   * @param submissionId 作答记录；analyze 模式可传 null，生成与作答无关的通用解析（#467）
    * @param onComplete 评判完成时的回调（在事件 handler 中直接调用，避免闭包过时值问题）
    * @returns Promise<'completed' | 'cancelled'>
    */
   const startGrading = useCallback(
     (
       questionId: string,
-      submissionId: string,
+      submissionId: string | null,
       mode: QbankGradingMode,
       modelConfigId?: string,
-      onComplete?: (verdict?: QbankVerdict, score?: number, feedback?: string) => void,
+      onComplete?: QbankGradingCompleteHandler,
     ): Promise<'completed' | 'cancelled'> => {
       // async executor 在此安全：主体被 try/catch 包裹、早退为同步 reject，错误不会被吞；
       // 且 R2-2 已让超时/取消/重置/卸载路径都能结束本 Promise（settleRef/failRef）。
@@ -249,17 +262,19 @@ export function useQbankAiGrading() {
               const finalFeedback = payload.feedback || accumulatedFeedbackRef.current;
               // 优先契约字段 score；缺省时从反馈 XML / verdict 兜底，保证 UI 总能展示 0–100
               const finalScore = resolveGradeScore(payload.score, finalVerdict, finalFeedback);
+              const explanationWritten = payload.explanation_written === true;
               setState((prev) => ({
                 ...prev,
                 isGrading: false,
                 feedback: finalFeedback || prev.feedback,
                 verdict: finalVerdict,
                 score: finalScore,
+                explanationWritten,
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
               // 直接回调，避免闭包过时值问题
-              onComplete?.(finalVerdict, finalScore, finalFeedback);
+              onComplete?.(finalVerdict, finalScore, finalFeedback, explanationWritten);
               settle('completed');
             }
 

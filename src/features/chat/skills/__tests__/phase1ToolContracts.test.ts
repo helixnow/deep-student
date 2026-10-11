@@ -18,11 +18,14 @@ function getTool(skill: SkillDefinition, name: string): ToolSchema {
 }
 
 describe('phase 1 declared tool contracts', () => {
-  it('requires a submission before qbank AI grading and describes real grading', () => {
+  it('requires a submission for qbank AI grading but not for standalone analysis', () => {
     const grade = getTool(qbankToolsSkill, 'builtin-qbank_ai_grade');
 
     expect(qbankToolsSkill.allowedTools).toContain(grade.name);
-    expect(grade.inputSchema.required).toContain('submission_id');
+    // #467：analyze 可不带 submission_id（未作答的题也能生成解析）；grade 的必填由后端按 mode 校验
+    expect(grade.inputSchema.required ?? []).not.toContain('submission_id');
+    expect(grade.description).toContain('qbank_submit_answer');
+    expect(grade.description).toContain('不会被覆盖');
     expect(grade.inputSchema.properties.submission_id).toMatchObject({
       type: 'string',
       minLength: 1,
