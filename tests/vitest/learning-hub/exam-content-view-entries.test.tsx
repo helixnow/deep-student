@@ -135,12 +135,17 @@ vi.mock('@/debug-panel/plugins/ExamSheetProcessingDebugPlugin', () => ({
 }));
 
 vi.mock('@/components/QuestionBankEditor', () => ({
-  default: ({ onDraftDirtyChange, onModeChange, settingsPanelOpen }: {
+  default: ({ onDraftDirtyChange, onModeChange, settingsPanelOpen, browseMode, onPracticeQuestion }: {
     onDraftDirtyChange?: (dirty: boolean) => void;
     onModeChange?: (mode: 'timed' | 'random') => void;
     settingsPanelOpen?: boolean;
+    browseMode?: boolean;
+    onPracticeQuestion?: (questionId: string) => void;
   }) => (
-    <div data-testid="question-bank-editor" data-settings-open={String(settingsPanelOpen)}>
+    <div data-testid="question-bank-editor" data-settings-open={String(settingsPanelOpen)} data-browse={String(Boolean(browseMode))}>
+      {onPracticeQuestion && (
+        <button type="button" onClick={() => onPracticeQuestion('q_1')}>practice this question</button>
+      )}
       <button type="button" onClick={() => onModeChange?.('timed')}>configure timed practice</button>
       <button type="button" onClick={() => onModeChange?.('random')}>switch to random practice</button>
       <button type="button" onClick={() => onDraftDirtyChange?.(true)}>
@@ -154,7 +159,11 @@ vi.mock('@/components/QuestionBankEditor', () => ({
 }));
 
 vi.mock('@/components/QuestionBankListView', () => ({
-  default: () => <div data-testid="question-bank-list-view" />,
+  default: ({ onViewAnswer }: { onViewAnswer?: (index: number) => void }) => (
+    <div data-testid="question-bank-list-view">
+      <button type="button" onClick={() => onViewAnswer?.(0)}>view answer of first question</button>
+    </div>
+  ),
 }));
 
 vi.mock('@/components/ReviewQuestionsView', () => ({
@@ -298,6 +307,36 @@ describe('ExamContentView secondary entry points', () => {
     await waitFor(() => {
       expect(screen.getByTestId('question-bank-export-dialog')).toBeInTheDocument();
     }, { timeout: 5000 });
+  });
+
+  it('opens a read-only answer view from the list without touching practice progress (#466)', async () => {
+    render(
+      <ExamContentView
+        node={{
+          id: 'exam_1',
+          name: 'Exam 1',
+          type: 'exam',
+          path: '/exam_1',
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        } as any}
+      />,
+    );
+
+    await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
+
+    fireEvent.click(await screen.findByRole('button', { name: /view answer of first question/i }));
+    const editor = await screen.findByTestId('question-bank-editor');
+    expect(editor).toHaveAttribute('data-browse', 'true');
+    // 浏览不挪动做题位置
+    expect(hookState.navigate).not.toHaveBeenCalled();
+
+    // 从浏览进入做这道题
+    fireEvent.click(screen.getByRole('button', { name: /practice this question/i }));
+    await waitFor(() => {
+      expect(screen.getByTestId('question-bank-editor')).toHaveAttribute('data-browse', 'false');
+    });
+    expect(hookState.navigate).toHaveBeenCalledWith(0);
   });
 
   it('confirms before a dirty practice draft can leave the editor', async () => {

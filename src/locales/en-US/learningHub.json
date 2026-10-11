@@ -1595,7 +1595,8 @@
       "renameTagMergeHint": "A tag with this name already exists; confirming will merge them",
       "renameTagSuccess": "Tag renamed",
       "renameTagFailed": "Failed to rename tag",
-      "viewQuestion": "View question"
+      "viewQuestion": "View question",
+      "viewAnswer": "View answer"
     }
   },
   "diagnostic": {

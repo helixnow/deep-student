@@ -1595,7 +1595,8 @@
       "renameTagMergeHint": "已存在同名标签，确认后两个标签将合并",
       "renameTagSuccess": "标签已重命名",
       "renameTagFailed": "标签重命名失败",
-      "viewQuestion": "查看题目"
+      "viewQuestion": "查看题目",
+      "viewAnswer": "查看答案"
     }
   },
   "diagnostic": {

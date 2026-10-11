@@ -530,7 +530,13 @@
       "matchingNeedsItems": "Both columns need at least one non-empty item",
       "matchingNeedsPairs": "Set at least one answer pair",
       "orderingNeedsItems": "Ordering needs at least two non-empty items"
-    }
+    },
+    "writeToExplanation": "Save as explanation",
+    "replaceExplanationConfirm": "Replace current explanation?",
+    "explanationSaved": "Saved to explanation",
+    "explanationSaveFailed": "Could not save explanation",
+    "aiRegenerate": "Regenerate",
+    "practiceThisQuestion": "Practice this"
   },
   "answerSheet": {
     "answered": "Answered",

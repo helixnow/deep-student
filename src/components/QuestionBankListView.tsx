@@ -30,6 +30,7 @@ import {
   SelectionInverse,
   ListChecks,
   PencilSimple,
+  Eye,
   Warning,
   Image as ImageIcon,
   Plus,
@@ -63,6 +64,8 @@ export interface QuestionBankListViewProps {
   questions: Question[];
   stats?: QuestionBankStats;
   onQuestionClick?: (index: number) => void;
+  /** 只读查看答案/解析（行 hover 快捷操作，index 为全量题目下标） */
+  onViewAnswer?: (index: number) => void;
   /** 后端筛选回调（如果提供，则使用后端筛选而不是本地过滤） */
   onFilterChange?: (filters: QuestionListFilters) => void;
   /** 是否正在加载（后端筛选时使用） */
@@ -269,18 +272,19 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
   );
 };
 
-/** 行 hover 浮现的快捷操作（收藏 / 编辑 / 删除二段式确认），桌面 hover 显示、触屏常显 */
+/** 行 hover 浮现的快捷操作（收藏 / 查看答案 / 编辑 / 删除二段式确认），桌面 hover 显示、触屏常显 */
 const RowHoverActions: React.FC<{
   question: Question;
   /** true = 网格卡片（更小的按钮尺寸） */
   dense?: boolean;
+  onViewAnswer?: () => void;
   onEdit?: () => void;
   onToggleFavorite?: () => void;
   favoriteLoading?: boolean;
   onDeleteAction?: () => void;
   deleteArmed?: boolean;
   deleteLoading?: boolean;
-}> = ({ question, dense, onEdit, onToggleFavorite, favoriteLoading, onDeleteAction, deleteArmed, deleteLoading }) => {
+}> = ({ question, dense, onViewAnswer, onEdit, onToggleFavorite, favoriteLoading, onDeleteAction, deleteArmed, deleteLoading }) => {
   const { t } = useTranslation(['practice', 'exam_sheet', 'learningHub', 'common']);
   const iconSize = dense ? 12 : 14;
   // 触屏命中区放大到 40px，负 margin 抵消占位保持布局紧凑
@@ -304,6 +308,17 @@ const RowHoverActions: React.FC<{
           {favoriteLoading
             ? <CircleNotch size={iconSize} className="animate-spin" />
             : <Star size={iconSize} weight={question.isFavorite ? 'fill' : 'regular'} className={question.isFavorite ? 'text-warning' : undefined} />}
+        </DsButton>
+      )}
+      {onViewAnswer && (
+        <DsButton
+          variant="ghost" size="icon" iconOnly
+          onClick={(e) => { e.stopPropagation(); onViewAnswer(); }}
+          className={buttonClass}
+          title={t('learningHub:exam.library.viewAnswer')}
+          aria-label={t('learningHub:exam.library.viewAnswer')}
+        >
+          <Eye size={iconSize} />
         </DsButton>
       )}
       {onEdit && (
@@ -347,6 +362,7 @@ const RowHoverActions: React.FC<{
 };
 
 interface RowActionProps {
+  onViewAnswer?: () => void;
   onEdit?: () => void;
   onToggleFavorite?: () => void;
   favoriteLoading?: boolean;
@@ -577,6 +593,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   questions,
   stats,
   onQuestionClick,
+  onViewAnswer,
   onFilterChange,
   isLoading = false,
   onDelete,
@@ -1540,6 +1557,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   listIndex={idx}
                   highlight={debouncedSearch}
                   onClick={() => handleQuestionClick(idx)}
+                  onViewAnswer={onViewAnswer ? () => onViewAnswer(questionIndexMap.get(q.id) ?? idx) : undefined}
                   onEdit={onUpdateQuestion ? () => handleEditQuestion(q) : undefined}
                   onToggleFavorite={onToggleFavorite ? () => void handleRowToggleFavorite(q.id) : undefined}
                   favoriteLoading={rowActionLoading === `favorite:${q.id}`}
@@ -1573,6 +1591,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   listIndex={idx}
                   highlight={debouncedSearch}
                   onClick={() => handleQuestionClick(idx)}
+                  onViewAnswer={onViewAnswer ? () => onViewAnswer(questionIndexMap.get(q.id) ?? idx) : undefined}
                   onEdit={onUpdateQuestion ? () => handleEditQuestion(q) : undefined}
                   onToggleFavorite={onToggleFavorite ? () => void handleRowToggleFavorite(q.id) : undefined}
                   favoriteLoading={rowActionLoading === `favorite:${q.id}`}

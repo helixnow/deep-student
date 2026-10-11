@@ -530,7 +530,13 @@
       "matchingNeedsItems": "左右两列至少各需一个有内容的条目",
       "matchingNeedsPairs": "请至少设置一组标准配对",
       "orderingNeedsItems": "排序题至少需要两个有内容的条目"
-    }
+    },
+    "writeToExplanation": "写入解析",
+    "replaceExplanationConfirm": "替换现有解析？",
+    "explanationSaved": "已写入解析",
+    "explanationSaveFailed": "写入解析失败",
+    "aiRegenerate": "重新生成",
+    "practiceThisQuestion": "做这道题"
   },
   "answerSheet": {
     "answered": "已答",

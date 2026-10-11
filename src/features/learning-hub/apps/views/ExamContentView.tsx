@@ -67,7 +67,7 @@ const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLaunch
 const CsvImportPanel = lazy(() => import('@/components/CsvImportDialog').then((module) => ({ default: module.CsvImportPanel })));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport';
+type ViewMode = 'list' | 'browse' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport';
 type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
 type DraftSource = 'practice' | 'inlineEditor';
 
@@ -387,6 +387,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
   const [sessionDetailError, setSessionDetailError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  // 只读浏览（#466）的当前题：按 id 记忆，独立于做题进度（currentIndex），看答案不挪动练习位置
+  const [browseQuestionId, setBrowseQuestionId] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string>('');
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
@@ -1266,9 +1268,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setShowHistoryDialog(true);
   }, []);
 
+  // 只读查看答案/解析（#466）：不进练习、不计时、不记作答
+  const handleViewAnswer = useCallback((index: number) => {
+    const target = questions[index];
+    if (!target) return;
+    requestViewMode('browse', () => setBrowseQuestionId(target.id));
+  }, [questions, requestViewMode]);
+
+  // 管理视图的「查看详情」= 只读查看，而不是开始做题
   const handleViewQuestionDetail = useCallback((question: Question) => {
-    handleOpenQuestion(question.id);
-  }, [handleOpenQuestion]);
+    const index = questions.findIndex((candidate) => candidate.id === question.id);
+    if (index >= 0) {
+      handleViewAnswer(index);
+      return;
+    }
+    showGlobalNotification('warning', t('learningHub:exam.controlHints.questionNotFound'));
+  }, [handleViewAnswer, questions, t]);
 
   const handleHistoryOpenChange = useCallback((open: boolean) => {
     setShowHistoryDialog(open);
@@ -1406,6 +1421,22 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const requestPracticeNavigate = useCallback((index: number) => {
     requestQuestionNavigation(() => handlePracticeNavigate(index));
   }, [handlePracticeNavigate, requestQuestionNavigation]);
+
+  // 浏览模式按全量题目顺序翻看；记忆的题被删后回到第一题
+  const browseIndex = useMemo(() => {
+    const idx = browseQuestionId ? questions.findIndex((q) => q.id === browseQuestionId) : -1;
+    return idx >= 0 ? idx : 0;
+  }, [browseQuestionId, questions]);
+
+  const handleBrowseNavigate = useCallback((index: number) => {
+    const target = questions[index];
+    if (target) setBrowseQuestionId(target.id);
+  }, [questions]);
+
+  const handlePracticeFromBrowse = useCallback((questionId: string) => {
+    const index = questions.findIndex((q) => q.id === questionId);
+    if (index >= 0) handleQuestionClick(index);
+  }, [handleQuestionClick, questions]);
 
   // Workbench activations must mutate this resource's local session. The
   // global question-bank store is only mirrored after this handler confirms it.
@@ -1925,7 +1956,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   // 顶部三个一级入口的激活归属：题库 / 做题(含启动台) / 更多(二级视图)
   const activeTopTab: 'list' | 'practice' | 'more' | null =
-    viewMode === 'list' ? 'list'
+    (viewMode === 'list' || viewMode === 'browse') ? 'list'
       : (viewMode === 'practice' || viewMode === 'launcher') ? 'practice'
         : activeSecondaryTab ? 'more'
           : null;
@@ -2660,7 +2691,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           ) : viewMode === 'favorites' && hasQuestions ? (
             <QuestionFavoritesView
               examId={sessionId}
-              onSelectQuestion={handleViewQuestionDetail}
+              onSelectQuestion={(question) => handleOpenQuestion(question.id)}
               onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onViewHistory={handleOpenHistory}
               onBrowseQuestions={() => switchViewMode('list')}
@@ -2705,6 +2736,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onBack={handleUploaderBack}
               onManualCreate={handleCreateQuestionEntry}
             />
+          ) : viewMode === 'browse' && hasQuestions && practiceSessionOwner ? (
+            /* 只读浏览：答案 / 解析 / AI 解析（#466 / #467） */
+            <QuestionBankEditor
+              sessionId={sessionId}
+              practiceSessionOwner={practiceSessionOwner}
+              questions={questions}
+              currentIndex={browseIndex}
+              browseMode
+              showTimer={false}
+              isActive={isActive}
+              onNavigate={handleBrowseNavigate}
+              onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
+              onPracticeQuestion={handlePracticeFromBrowse}
+              onBack={() => requestViewMode('list')}
+            />
           ) : viewMode === 'practice' && hasQuestions && practiceSessionOwner ? (
             <QuestionBankEditor
               sessionId={sessionId}
@@ -2745,6 +2791,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               stats={stats}
               examId={sessionId}
               onQuestionClick={handleQuestionClick}
+              onViewAnswer={handleViewAnswer}
               onDelete={readOnly ? undefined : handleDeleteQuestions}
               onResetProgress={readOnly ? undefined : handleResetProgress}
               onToggleFavorite={readOnly ? undefined : toggleFavoriteInSession}
