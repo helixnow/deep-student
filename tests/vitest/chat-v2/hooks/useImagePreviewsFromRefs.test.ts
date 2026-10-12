@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ContextSnapshot } from '@/features/chat/context/types';
-import { useImagePreviewsFromRefs } from '@/features/chat/hooks/useImagePreviewsFromRefs';
+import { useImagePreviewsFromRefs, __resetImagePreviewCacheForTests } from '@/features/chat/hooks/useImagePreviewsFromRefs';
 
 vi.mock('@/features/chat/resources', () => ({
   resourceStoreApi: {
@@ -33,6 +33,8 @@ const contextSnapshot: ContextSnapshot = {
 describe('useImagePreviewsFromRefs', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // 预览按 (resourceId, hash) 做模块级缓存，用例之间必须清空
+    __resetImagePreviewCacheForTests();
   });
 
   afterEach(() => {

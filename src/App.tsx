@@ -687,7 +687,7 @@ function App() {
   const contentBodyRef = useRef<HTMLDivElement>(null);
   usePreventScroll(contentBodyRef);
 
-  // #472: Android 沉浸式全屏偏好在启动时下发一次（设置库为权威，原生侧仅作冷启动缓存）
+  // issue 472：Android 沉浸式全屏偏好在启动时下发一次（设置库为权威，原生侧仅作冷启动缓存）
   useEffect(() => {
     void syncAndroidImmersiveModeFromSettings();
   }, []);
@@ -1064,7 +1064,7 @@ function App() {
   // macOS traffic lights share the native titlebar with the custom shell
   // controls. The horizontal spacer reserves their hit area; adding a second
   // vertical inset would render a duplicate toolbar below the native chrome.
-  // #472: Android 平板走桌面壳时还要避让状态栏 / 刘海 / 厂商顶部手柄条（原生注入）。
+  // issue 472：Android 平板走桌面壳时还要避让状态栏 / 刘海 / 厂商顶部手柄条（原生注入）。
   const androidSafeArea = useAndroidSafeArea();
   const shellTitlebarTopInset = resolveShellTitlebarTopInset({
     isSmallScreen,

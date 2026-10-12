@@ -89,9 +89,8 @@ export const qbankToolsSkill: SkillDefinition = {
 
 ## 补解析
 
-给题目补解析用 \`builtin-qbank_ai_grade\`（\`mode: "analyze"\`，不传 \`submission_id\`），
-不要为此伪造作答。回执 \`explanation_written=true\` 表示已写入题目解析；为 false 表示题目
-已有解析、结果只存为 AI 解析，用户要求替换时再用 \`builtin-qbank_update_question\` 写 explanation。
+给题目补解析用 \`builtin-qbank_ai_grade\`（\`mode: "analyze"\`，不传 \`submission_id\`），不要伪造作答。
+\`explanation_written=false\` 表示已有解析未覆盖，用户要求替换时再用 \`builtin-qbank_update_question\`。
 
 ## 引用格式
 
@@ -504,7 +503,7 @@ export const qbankToolsSkill: SkillDefinition = {
     },
     {
       name: 'builtin-qbank_ai_grade',
-      description: '真实 AI 评判或解析。grade：对已提交答案判定正误并评分（持久化 verdict/score、更新统计），必须先 qbank_submit_answer 取得 submission_id。analyze：带 submission_id 时针对该次作答分析；不带时为题目生成通用解析（未作答的题也可用，不产生作答记录），题目原解析为空时同时写入 explanation，已有解析不会被覆盖（需替换请用 qbank_update_question）。',
+      description: '真实 AI 评判（grade，持久化评分，需先 qbank_submit_answer 取得 submission_id）或解析（analyze；不传 submission_id 时生成通用解析，原解析为空则写入 explanation，已有解析不会被覆盖）。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -516,7 +515,7 @@ export const qbankToolsSkill: SkillDefinition = {
           question_id: { type: 'string', description: 'questions 表题目 ID' },
           session_id: { type: 'string', description: '题目集 ID' },
           card_id: { type: 'string', description: '题目卡片 ID' },
-          submission_id: { type: 'string', minLength: 1, description: 'qbank_submit_answer 返回的提交记录 ID；grade 必填，analyze 省略则生成通用解析' },
+          submission_id: { type: 'string', minLength: 1, description: 'qbank_submit_answer 返回的提交记录 ID；grade 必填' },
           mode: {
             type: 'string',
             enum: ['grade', 'analyze'],
