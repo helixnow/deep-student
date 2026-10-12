@@ -87,11 +87,6 @@ export const qbankToolsSkill: SkillDefinition = {
 \`builtin-qbank_ai_grade\`。评判工具会真实调用模型并持久化 grade 结果；没有工具回执时
 不得自行宣称已完成 AI 批改。
 
-## 补解析
-
-给题目补解析用 \`builtin-qbank_ai_grade\`（\`mode: "analyze"\`，不传 \`submission_id\`），不要伪造作答。
-\`explanation_written=false\` 表示已有解析未覆盖，用户要求替换时再用 \`builtin-qbank_update_question\`。
-
 ## 引用格式
 
 创建或导入题目集后，**必须**在回复中使用引用让用户可以直接点击打开：
