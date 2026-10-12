@@ -178,10 +178,6 @@ export function normalizeRelatedNote(raw: unknown): MediaRelatedNote | null {
   };
 }
 
-function strList(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.length > 0) : [];
-}
-
 export function normalizeStudyLedger(raw: unknown): MediaStudyLedger | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Raw;
