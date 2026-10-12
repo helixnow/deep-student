@@ -365,12 +365,15 @@ impl LlmStructurer {
 3. 题型: single_choice=单选, multiple_choice=多选, fill_blank=填空, short_answer=简答
 4. 公式格式：{latex_brief}
 5. 没有答案/解析的字段输出 null
-6. difficulty 默认 "medium"
-7. 输出数组长度必须等于输入题目数量 ({})"#,
+6. difficulty 按下方判定标准逐题判断
+7. 输出数组长度必须等于输入题目数量 ({})
+
+{difficulty_rubric}"#,
             batch.len(),
             questions_text,
             batch.len(),
-            latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+            latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
+            difficulty_rubric = crate::prompt_contracts::DIFFICULTY_RUBRIC
         )
     }
 

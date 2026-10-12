@@ -3031,10 +3031,13 @@ fn build_text_parse_prompt(chunk: &str) -> String {
 1. 选择题必须将选项拆分到 options 数组，content 只保留题干
 2. 题型: single_choice=单选, multiple_choice=多选, fill_blank=填空, short_answer=简答
 3. 公式格式：{latex_brief}
-4. difficulty 默认 "medium"
-5. tags 根据知识点自动生成"#,
+4. difficulty 按下方判定标准逐题判断
+5. tags 根据知识点自动生成
+
+{difficulty_rubric}"#,
         chunk,
-        latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+        latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
+        difficulty_rubric = crate::prompt_contracts::DIFFICULTY_RUBRIC
     )
 }
 
@@ -3078,12 +3081,15 @@ fn build_text_parse_prompt_with_images(chunk: &str) -> String {
 1. 选择题必须将选项拆分到 options 数组，content 只保留题干
 2. 题型: single_choice=单选, multiple_choice=多选, fill_blank=填空, short_answer=简答
 3. 公式格式：{latex_brief}
-4. difficulty 默认 "medium"
+4. difficulty 按下方判定标准逐题判断
 5. tags 根据知识点自动生成
 6. **<<IMG:N:...>> 标记必须原样保留**，不要删除、修改或翻译
-7. 利用图片描述理解题意，但不要将图片描述当作文字题干"#,
+7. 利用图片描述理解题意，但不要将图片描述当作文字题干
+
+{difficulty_rubric}"#,
         chunk,
-        latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+        latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
+        difficulty_rubric = crate::prompt_contracts::DIFFICULTY_RUBRIC
     )
 }
 

@@ -49,9 +49,22 @@ pub const LATEX_OUTPUT_BRIEF: &str = "数学/化学公式必须用 LaTeX 书写�
 /// 同 [`LATEX_OUTPUT_BRIEF`] 的英文版（用于面向英文模型的 OCR 抽取提示）。
 pub const LATEX_OUTPUT_BRIEF_EN: &str = "Write every math/chemistry formula in LaTeX wrapped in $...$ (inline) or $$...$$ (block) with paired delimiters; never output bare LaTeX (e.g. 10^5, \\frac), never use \\(...\\) or \\[...\\], and never wrap formulas in code fences.";
 
+/// 题目识别/导入链路的难度判定标准（单一来源）。
+///
+/// 只给枚举和「默认 medium」时，模型对拿不准的题一律输出 medium（实测整卷
+/// 57/57 全为 medium），难度字段失去意义。这里给出逐档的行为特征与参考信号，
+/// 各导入 prompt 按名引用，避免各写一份后漂移。
+pub const DIFFICULTY_RUBRIC: &str = r#"**difficulty 判定标准**（逐题按题目本身的特征判断）：
+- "easy"：直接记忆或套用单一公式即可作答。特征：概念定义、名词解释、单一公式代入、课本原句改编。
+- "medium"：需要 1-2 步推理或知识点组合，无跨章综合。特征：常规选择题、简单计算、概念理解辨析。
+- "hard"：需要多步推理、跨知识点综合，或含易混淆的干扰项。特征：综合计算、机理/情境分析、多个知识点的关联应用。
+- "very_hard"：需要复杂推导、创造性综合或冷门细节。特征：压轴题、多过程计算、高度综合的论述、竞赛级难度。
+- 参考信号（按优先级）：计算复杂度 > 干扰项迷惑性 > 是否跨章节 > 知识点冷门程度；题目标注的分值或来源（如高考真题、竞赛题）可作佐证。
+- 不要因为拿不准就一律给 "medium"；只有题目信息确实不足以判断时才用 "medium"。"#;
+
 #[cfg(test)]
 mod tests {
-    use super::{LATEX_OUTPUT_BRIEF, LATEX_OUTPUT_BRIEF_EN, LATEX_RULES};
+    use super::{DIFFICULTY_RUBRIC, LATEX_OUTPUT_BRIEF, LATEX_OUTPUT_BRIEF_EN, LATEX_RULES};
 
     /// 契约的核心约束必须在场，防止未来编辑误删关键规则。
     #[test]
@@ -69,5 +82,14 @@ mod tests {
         assert!(LATEX_OUTPUT_BRIEF.contains("禁止裸写"));
         assert!(LATEX_OUTPUT_BRIEF_EN.contains("$...$"));
         assert!(LATEX_OUTPUT_BRIEF_EN.contains("bare LaTeX"));
+    }
+
+    /// 难度标准必须覆盖全部四档，且不得退化成「默认 medium」。
+    #[test]
+    fn difficulty_rubric_covers_all_levels() {
+        for level in ["\"easy\"", "\"medium\"", "\"hard\"", "\"very_hard\""] {
+            assert!(DIFFICULTY_RUBRIC.contains(level), "缺少 {level}");
+        }
+        assert!(DIFFICULTY_RUBRIC.contains("不要因为拿不准就一律给"));
     }
 }

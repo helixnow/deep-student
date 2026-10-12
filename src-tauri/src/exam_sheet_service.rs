@@ -1666,10 +1666,13 @@ impl ExamSheetService {
 1. 识别所有题目，包括选择题、填空题、简答题、计算题等
 2. 选择题的选项应包含在 content 中
 3. 根据题目特征自动判断 question_type
-4. difficulty 默认为 "medium"
+4. difficulty 按下方判定标准逐题判断
 5. 如无法确定某字段可省略
-6. tags 根据题目知识点自动生成"#,
-            chunk_content
+6. tags 根据题目知识点自动生成
+
+{difficulty_rubric}"#,
+            chunk_content,
+            difficulty_rubric = crate::prompt_contracts::DIFFICULTY_RUBRIC
         );
 
         // 调用 LLM

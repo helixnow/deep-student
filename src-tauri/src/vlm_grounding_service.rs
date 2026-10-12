@@ -1137,7 +1137,9 @@ impl VlmGroundingService {
 - `question_type`: single_choice / multiple_choice / fill_blank / short_answer / calculation / proof / essay
 - `options`: 仅选择题需要，其他题型留空数组 `[]`
 - `image_indices`: 属于该题的图片编号数组（对应上方【图片N】），无图则 `[]`
-- `difficulty`: easy / medium / hard（无法判断则留 "medium"）
+- `difficulty`: easy / medium / hard / very_hard，按下方判定标准逐题判断
+
+{difficulty_rubric}
 
 **重要规则**：
 1. 公式格式：{latex_brief}
@@ -1155,6 +1157,7 @@ impl VlmGroundingService {
             last = image_count.saturating_sub(1),
             text = text_section,
             latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
+            difficulty_rubric = crate::prompt_contracts::DIFFICULTY_RUBRIC,
         )
     }
 
