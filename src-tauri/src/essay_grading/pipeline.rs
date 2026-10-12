@@ -1041,6 +1041,9 @@ fn build_grading_prompts(
     // 1. 批阅模式的系统提示词
     system_prompt.push_str(&mode.system_prompt);
     system_prompt.push_str("\n\n");
+    // 1.5 公式契约（共享常量）：作文中出现的公式统一按 LaTeX 输出
+    system_prompt.push_str(crate::prompt_contracts::LATEX_OUTPUT_BRIEF);
+    system_prompt.push_str("\n\n");
 
     // 2. 添加标记符使用说明
     system_prompt.push_str(MARKER_INSTRUCTIONS);

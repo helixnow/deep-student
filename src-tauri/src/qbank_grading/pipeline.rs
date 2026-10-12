@@ -580,11 +580,12 @@ fn build_prompts(
     image_answer: Option<&ImageAnswerPayload>,
 ) -> Result<(String, String), AppError> {
     let system_prompt = format!(
-        "{}\n\n{}",
+        "{}\n\n{}\n\n{}",
         match mode {
             QbankGradingMode::Grade => GRADE_SYSTEM_PROMPT,
             QbankGradingMode::Analyze => ANALYZE_SYSTEM_PROMPT,
         },
+        crate::prompt_contracts::LATEX_OUTPUT_BRIEF,
         QBANK_RESPONSE_LANGUAGE_RULE
     );
 

@@ -173,7 +173,7 @@ JSON 字符串内部的换行必须使用标准 JSON 转义 \n（一个反斜杠
 5. matching / ordering / numeric：请避免生成（结构复杂，MVP 不支持）
 
 ## 质量要求
-1. 题干表述清晰无歧义，公式用 $...$（行内）或 $$...$$（块级）LaTeX 语法
+1. 题干表述清晰无歧义；公式一律遵循统一的 LaTeX 公式契约（见 prompt 末尾）
 2. 每题必须给出 answer 与 explanation；解析要说明解题思路与关键步骤
 3. difficulty 取值只能是 easy / medium / hard / very_hard
 4. tags 给出 1-3 个核心知识点

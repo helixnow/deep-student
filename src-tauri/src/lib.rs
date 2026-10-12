@@ -104,6 +104,7 @@ pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
+pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod providers;
 pub mod qbank_generation;
 pub mod qbank_grading;

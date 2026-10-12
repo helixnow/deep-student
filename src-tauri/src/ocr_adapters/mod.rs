@@ -177,20 +177,25 @@ impl OcrAdapter for Glm4vOcrAdapter {
     fn build_prompt(&self, mode: OcrMode) -> String {
         match mode {
             OcrMode::FreeOcr => {
-                "请将图片中的所有文本内容转换为 Markdown 格式，保持原有排版结构。数学公式用 LaTeX 格式（行内 $...$，独立 $$...$$）。".to_string()
+                format!(
+                    "请将图片中的所有文本内容转换为 Markdown 格式，保持原有排版结构。{}",
+                    crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+                )
             }
             OcrMode::Grounding => {
-                "请识别图片中的所有文本区域，输出每个区域的文本内容和位置坐标 bbox_2d [x1,y1,x2,y2]。数学公式用 LaTeX 格式。".to_string()
+                format!(
+                    "请识别图片中的所有文本区域，输出每个区域的文本内容和位置坐标 bbox_2d [x1,y1,x2,y2]。{}",
+                    crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+                )
             }
             OcrMode::Formula => {
-                "请提取图片中的所有数学公式，转换为 LaTeX 格式输出。".to_string()
+                format!(
+                    "请提取图片中的所有数学公式，转换为 LaTeX 格式输出。{}",
+                    crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+                )
             }
-            OcrMode::Table => {
-                "请提取图片中的表格，转换为 Markdown 表格格式输出。".to_string()
-            }
-            OcrMode::Chart => {
-                "请分析图片中的图表，详细描述其内容、数据和趋势。".to_string()
-            }
+            OcrMode::Table => "请提取图片中的表格，转换为 Markdown 表格格式输出。".to_string(),
+            OcrMode::Chart => "请分析图片中的图表，详细描述其内容、数据和趋势。".to_string(),
         }
     }
 
@@ -261,11 +266,16 @@ impl OcrAdapter for GenericVlmAdapter {
         match mode {
             OcrMode::FreeOcr | OcrMode::Grounding => {
                 // Grounding 模式降级为纯文本
-                "Convert the document to markdown. Preserve the structure and formatting as much as possible.".to_string()
+                format!(
+                    "Convert the document to markdown. Preserve the structure and formatting as much as possible. {}",
+                    crate::prompt_contracts::LATEX_OUTPUT_BRIEF_EN
+                )
             }
             OcrMode::Formula => {
-                "Extract and convert all mathematical formulas in the image to LaTeX format."
-                    .to_string()
+                format!(
+                    "Extract and convert all mathematical formulas in the image to LaTeX format. {}",
+                    crate::prompt_contracts::LATEX_OUTPUT_BRIEF_EN
+                )
             }
             OcrMode::Table => {
                 "Extract the table from the image and convert it to markdown table format."

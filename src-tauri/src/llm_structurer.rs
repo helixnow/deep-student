@@ -363,13 +363,14 @@ impl LlmStructurer {
 1. `_source_label` 必须填写原始题号标签（括号中 label= 的值），用于对齐
 2. 选择题必须将选项拆分到 options 数组，content 只保留题干
 3. 题型: single_choice=单选, multiple_choice=多选, fill_blank=填空, short_answer=简答
-4. 所有数学公式用 LaTeX: 行内 $...$, 独立 $$...$$
+4. 公式格式：{latex_brief}
 5. 没有答案/解析的字段输出 null
 6. difficulty 默认 "medium"
 7. 输出数组长度必须等于输入题目数量 ({})"#,
             batch.len(),
             questions_text,
-            batch.len()
+            batch.len(),
+            latex_brief = crate::prompt_contracts::LATEX_OUTPUT_BRIEF
         )
     }
 

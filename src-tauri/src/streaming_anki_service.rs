@@ -5,6 +5,7 @@ use crate::models::{
     AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType,
     StreamedCardPayload, TaskStatus, TemplateDescription,
 };
+use crate::prompt_contracts::LATEX_RULES;
 use crate::providers::ProviderAdapter;
 use chrono::Utc;
 use futures_util::StreamExt;
@@ -1064,6 +1065,13 @@ impl StreamingAnkiService {
                 ));
             }
         }
+
+        // 数学公式契约：与聊天侧共用同一份常量（`prompt_contracts::LATEX_RULES`），
+        // 否则制卡模型会裸写公式（如 `Avo ≥ 10^5`），复习界面显示为纯文本（issue #462）。
+        // 位置在用户强制要求之后、base prompt 之前：既是高优先级约束，又不被模板
+        // 字段说明覆盖。放后端机制层，默认 prompt 与前端 CardAgent prompt 两条子路径
+        // 都自动受约束。
+        system_sections.push(LATEX_RULES.to_string());
 
         system_sections.push(base_prompt);
 
@@ -4830,6 +4838,36 @@ mod tests {
             "模板生成说明必须附加"
         );
         assert!(system.contains("模板生成说明"));
+    }
+
+    #[test]
+    fn build_prompt_injects_latex_rules_before_base_prompt() {
+        // issue #462：制卡路径此前完全没有公式契约，模型会裸写公式。
+        // 契约必须注入 system，且位于 base prompt（默认质量基线）之前。
+        let (svc, _dir) = make_test_service();
+        let mut options = minimal_options();
+        options.custom_anki_prompt = Some("模板字段说明".to_string());
+        let payload = svc
+            .build_prompt(
+                "内容",
+                &options,
+                crate::anki_protocol::OutputProtocol::Delimiter,
+            )
+            .expect("prompt");
+        let system = payload.system.expect("system message");
+        assert!(
+            system.contains("禁止裸露 LaTeX"),
+            "system 必须携带公式契约，否则模型会裸写公式"
+        );
+        assert!(system.contains("<latex_rules"));
+        let rules_pos = system.find("<latex_rules").expect("latex_rules");
+        let base_pos = system
+            .find("专业的 Anki 学习卡片制作助手")
+            .expect("默认质量基线");
+        assert!(
+            rules_pos < base_pos,
+            "公式契约应作为高优先级约束排在 base prompt 之前"
+        );
     }
 
     #[test]

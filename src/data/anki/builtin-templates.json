@@ -65,7 +65,7 @@
     "preview_back": "B.F. 斯金纳",
     "preview_data_json": "{\"Subject\":\"心理学导论\",\"Text\":\"操作性条件反射理论主要由 {{c1::B.F. 斯金纳}} 于 1938 年提出。\",\"Extra\":\"行为主义心理学代表人物\"}",
     "field_extraction_rules_json": "{\"Subject\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"学科/主题（≤16字）\",\"max_length\":16},\"Text\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）\",\"max_length\":250},\"Extra\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"补充说明：1–2 句（≤120字）\",\"max_length\":120}}",
-    "generation_prompt": "适用：定义、术语、关键数据/结论的填空（通用填空首选）。不适用：证明、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Subject 学科（≤16字）；Text 1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）；Extra 简短补充（≤120字）。"
+    "generation_prompt": "适用：定义、术语、关键数据/结论的填空（通用填空首选）。不适用：证明、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Subject 学科（≤16字）；Text 1–3 句完整陈述，含 {{c1::...}} 挖空，只挖关键词（≤250字）；Extra 简短补充（≤120字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
   },
   {
     "id": "design-swiss",
@@ -116,7 +116,7 @@
     "preview_back": "F = ma",
     "preview_data_json": "{\"ID\":\"问题索引_01\",\"Question\":\"牛顿第二定律\",\"Formula\":\"F = ma\",\"Expl\":\"物体所受的合外力等于其质量与加速度的乘积。\"}",
     "field_extraction_rules_json": "{\"ID\":{\"field_type\":\"Text\",\"is_required\":false,\"description\":\"索引/编号（≤12字符）\",\"max_length\":12},\"Question\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"定理/公式名或一句短问（≤30字）\",\"max_length\":30},\"Formula\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"仅一条公式或短表达式，不写文字/证明/多条公式（≤60字符）\",\"max_length\":60},\"Expl\":{\"field_type\":\"Text\",\"is_required\":true,\"description\":\"一句话说明含义或符号（≤60字）\",\"max_length\":60}}",
-    "generation_prompt": "适用：一条公式/定律的「名称 ↔ 公式」对应（如 牛顿第二定律 ↔ F = ma）。不适用：证明、推导过程、定理条件与结论的长陈述、多句解释（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph；推导步骤改用 design-seminar）。字段：ID 可选编号（≤12字符）；Question 定理/公式名或一句短问（≤30字）；Formula 仅一条公式或短表达式，等宽大字显示，不写文字说明/证明/多条公式（≤60字符）；Expl 一句话说明含义或符号（≤60字）。"
+    "generation_prompt": "适用：一条公式/定律的「名称 ↔ 公式」对应（如 牛顿第二定律 ↔ F = ma）。不适用：证明、推导过程、定理条件与结论的长陈述、多句解释（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph；推导步骤改用 design-seminar）。字段：ID 可选编号（≤12字符）；Question 定理/公式名或一句短问（≤30字）；Formula 仅一条公式或短表达式，等宽大字显示，不写文字说明/证明/多条公式（≤60字符）；Expl 一句话说明含义或符号（≤60字）。Formula 里的公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
   },
   {
     "id": "design-lexicon",
@@ -269,6 +269,6 @@
     "preview_back": "能量守恒：ΔU = Q + W",
     "preview_data_json": "{\"Section\": \"热力学 · 期末试卷\", \"Text\": \"热力学第一定律：{{c1::能量}}既不能被创造也不能被消灭，只能从一种形式{{c2::转化}}为另一种形式；系统内能的增量等于吸收的热量与外界对系统做功之和。\", \"Extra\": \"ΔU = Q + W（注意功的符号约定）\"}",
     "field_extraction_rules_json": "{\"Text\": {\"field_type\": \"Text\", \"is_required\": true, \"description\": \"包含 {{c1::...}} 填空标记的完整陈述（≤250字）\", \"max_length\": 250}, \"Section\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"科目/试卷标题（≤24字）\", \"max_length\": 24}, \"Extra\": {\"field_type\": \"Text\", \"is_required\": false, \"description\": \"评注或一条补充公式（≤80字）\", \"max_length\": 80}}",
-    "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。"
+    "generation_prompt": "适用：考试式填空——在定理/定律/定义的完整陈述中挖关键项。不适用：证明过程、多步推导、需要整段解释的问答（通用问答（多句答案/证明/推导/解释）改用 design-footnote 或 design-monograph）。字段：Text 包含 {{c1::...}} 的完整陈述（≤250字）；Section 科目/试卷标题（≤24字）；Extra 评注或一条补充公式（≤80字）。数学公式必须用 $...$ 包裹（如 $F=ma$），禁止裸写。"
   }
 ]

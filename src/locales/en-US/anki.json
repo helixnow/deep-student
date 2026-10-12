@@ -1176,6 +1176,7 @@
       "duplicate_in_document": "An identical card already exists in this document",
       "near_duplicate": "Highly similar to an existing card in this document ({{percent}}% similarity), likely a near duplicate",
       "mixed_language": "Back heavily mixes CJK and Latin scripts (CJK {{cjk}}% / Latin {{latin}}%), please double-check",
+      "bare_latex": "Contains {{n}} formula(e) not wrapped in $...$ (bare LaTeX); they render as plain text",
       "mcq_too_few_options": "Multiple-choice card has only {{n}} non-empty option(s) (at least 2 required)",
       "mcq_answer_not_in_options": "The answer's option is missing or does not match",
       "mcq_missing_answer": "Multiple-choice card is missing its answer",

@@ -9348,10 +9348,16 @@ impl LLMManager {
     fn get_fallback_prompt(&self, task_type: &str) -> String {
         match task_type {
             "ocr" | "classification" => {
-                "你是一个题目分析专家。请识别图片中的题目文字内容，并分析题目类型和相关知识点标签。\n\n【重要】OCR文本提取要求：\n1. 提取纯文本内容，不要使用LaTeX格式\n2. 数学公式用普通文字描述\n3. 保持文本简洁易读\n4. 避免使用特殊LaTeX命令\n\n请以JSON格式返回结果：{{\"ocr_text\": \"题目文字\", \"tags\": [\"标签1\", \"标签2\"], \"mistake_type\": \"题目类型\"}}".to_string()
+                // OCR 抽取：公式必须输出 LaTeX（与 ocr_adapters 等链路一致）。
+                // 此前这里要求「不要使用 LaTeX / 公式用普通文字描述」，与其它 OCR 链路冲突。
+                "你是一个题目分析专家。请识别图片中的题目文字内容，并分析题目类型和相关知识点标签。\n\n【重要】OCR文本提取要求：\n1. 提取题目文字内容，保持文本简洁易读\n2. 公式按下方的 LaTeX 公式契约输出\n\n请以JSON格式返回结果：{{\"ocr_text\": \"题目文字\", \"tags\": [\"标签1\", \"标签2\"], \"mistake_type\": \"题目类型\"}}".to_string()
+                    + "\n\n"
+                    + crate::prompt_contracts::LATEX_OUTPUT_BRIEF
             }
             "model2" | "analysis" => {
-                "你是一个教学专家。请仔细分析这道错题，提供详细的解题思路和知识点讲解。\n\n【重要】公式格式要求（KaTeX 兼容）:\n1. 行内公式使用 $...$；块级公式使用 $$...$$，分隔符必须成对闭合。\n2. 分数一律使用 \\frac{{分子}}{{分母}}；禁止使用 \\over/\\atop/\\choose。\n3. 根号必须写成 \\sqrt{{...}}，不要省略花括号。\n4. 上下标多字符需加花括号。\n5. 中文/非 ASCII 文本置于 \\text{{...}}。\n6. 仅使用 KaTeX 支持的命令。".to_string()
+                "你是一个教学专家。请仔细分析这道错题，提供详细的解题思路和知识点讲解。".to_string()
+                    + "\n\n"
+                    + crate::prompt_contracts::LATEX_OUTPUT_BRIEF
             }
             "review" => {
                 "你是一个学习分析专家。请分析这些错题的共同问题和改进建议。".to_string()
@@ -9360,10 +9366,14 @@ impl LLMManager {
                 "你是一个学习分析专家。请对提供的错题进行综合复习分析，包括知识点总结、常见错误模式识别和学习建议。".to_string()
             }
             "chat" => {
-                "基于这道题目，请回答学生的问题。\n\n【重要】公式格式要求（KaTeX 兼容）:\n1. 行内 $...$、块级 $$...$$；确保成对闭合。\n2. 分数用 \\frac{{分子}}{{分母}}；禁止 \\over/\\atop/\\choose。\n3. \\sqrt{{...}} 不得省略花括号。\n4. 中文文本放 \\text{{...}}。\n5. 仅用 KaTeX 支持指令。".to_string()
+                "基于这道题目，请回答学生的问题。".to_string()
+                    + "\n\n"
+                    + crate::prompt_contracts::LATEX_OUTPUT_BRIEF
             }
             "anki_generation" => {
                 "请根据以下学习内容，生成适合制作Anki卡片的问题和答案对。每张卡片应测试一个单一的概念。卡片内容（front/back/tags）的语言必须与学习材料一致：英文材料生成英文卡片，中文材料生成中文卡片，不要翻译。请以JSON数组格式返回结果，每个对象必须包含 \"front\" (字符串), \"back\" (字符串), \"tags\" (字符串数组) 三个字段。".to_string()
+                    + "\n\n"
+                    + crate::prompt_contracts::LATEX_OUTPUT_BRIEF
             }
             _ => {
                 "请根据提供的题目信息，详细解答问题。".to_string()

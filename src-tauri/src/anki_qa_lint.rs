@@ -33,6 +33,7 @@
 //! | 10 | 字段 min/max/allowed/regex | `field_rule_*` | Warn |
 //! | 11 | 选择题缺选项/答案不在选项中 | `mcq_*` | Error/Warn |
 //! | 12 | 语言混杂（低置信启发式） | `mixed_language` | Info（永不拒绝） |
+//! | 13 | 裸 LaTeX（公式未用 $...$ 包裹） | `bare_latex` | Warn（永不拒绝） |
 //!
 //! ## 生成管线接入点
 //!
@@ -106,6 +107,8 @@ pub mod codes {
     pub const DUPLICATE_IN_DOCUMENT: &str = "duplicate_in_document";
     pub const NEAR_DUPLICATE: &str = "near_duplicate";
     pub const MIXED_LANGUAGE: &str = "mixed_language";
+    /// 裸 LaTeX：公式未被 $...$ / $$...$$ 包裹（issue #462）。
+    pub const BARE_LATEX: &str = "bare_latex";
     pub const MCQ_TOO_FEW_OPTIONS: &str = "mcq_too_few_options";
     pub const MCQ_ANSWER_NOT_IN_OPTIONS: &str = "mcq_answer_not_in_options";
     pub const MCQ_MISSING_ANSWER: &str = "mcq_missing_answer";
@@ -135,6 +138,7 @@ pub mod codes {
         DUPLICATE_IN_DOCUMENT,
         NEAR_DUPLICATE,
         MIXED_LANGUAGE,
+        BARE_LATEX,
         MCQ_TOO_FEW_OPTIONS,
         MCQ_ANSWER_NOT_IN_OPTIONS,
         MCQ_MISSING_ANSWER,
@@ -242,6 +246,8 @@ pub struct LintConfig {
     pub check_mcq: bool,
     /// 语言混杂启发式（低置信）：默认开启但仅产出 Info，永不拒绝。
     pub check_mixed_language: bool,
+    /// 裸 LaTeX 检测：公式未被 $...$ / $$...$$ 包裹（默认开启，仅 Warn）。
+    pub check_bare_latex: bool,
 }
 
 impl Default for LintConfig {
@@ -261,6 +267,7 @@ impl Default for LintConfig {
             check_tags_empty: true,
             check_mcq: true,
             check_mixed_language: true,
+            check_bare_latex: true,
         }
     }
 }
@@ -321,6 +328,9 @@ pub fn lint_card(input: &CardLintInput, cfg: &LintConfig) -> Vec<LintIssue> {
     }
     if cfg.check_mixed_language {
         check_mixed_language(input, cfg, &mut issues);
+    }
+    if cfg.check_bare_latex {
+        check_bare_latex(input, &mut issues);
     }
 
     issues
@@ -1202,6 +1212,231 @@ fn check_mixed_language(input: &CardLintInput, cfg: &LintConfig, issues: &mut Ve
             LintSeverity::Info,
         ));
     }
+}
+
+/// 规则 13：裸 LaTeX（公式未被 `$...$` / `$$...$$` / `\(...\)` / `\[...\]` 包裹）。
+///
+/// 生成侧契约（`crate::prompt_contracts::LATEX_RULES`）从源头减少裸公式，
+/// 但历史卡片与未走契约的路径仍可能产出（issue #462 的 A 批卡）。
+/// 本规则在质检阶段把它们标出来，仅 `Warn`、永不拒绝——公式内容本身可能正确，
+/// 只是缺分隔符，渲染时会显示为纯文本。
+///
+/// 检测流程：`strip_html` → 去围栏/行内代码 → 移除已包裹的数学区 →
+/// 在剩余文本中命中反斜杠命令或裸上下标即 flag。
+fn check_bare_latex(input: &CardLintInput, issues: &mut Vec<LintIssue>) {
+    let mut fields: Vec<(&str, &str)> = vec![("front", input.front), ("back", input.back)];
+    if let Some(text) = input.text {
+        fields.push(("text", text));
+    }
+    for (name, value) in input.extra_fields {
+        fields.push((name.as_str(), value.as_str()));
+    }
+
+    for (field, raw) in fields {
+        if raw.trim().is_empty() {
+            continue;
+        }
+        let stripped = strip_wrapped_math_regions(raw);
+        let count = count_bare_latex(&stripped);
+        if count > 0 {
+            issues.push(LintIssue::new(
+                "bare_latex",
+                field,
+                format!(
+                    "含 {} 处未被 $...$ 包裹的公式（疑似裸 LaTeX），渲染时会显示为纯文本",
+                    count
+                ),
+                LintSeverity::Warn,
+            ));
+        }
+    }
+}
+
+/// 裸写时几乎必为公式的 LaTeX 命令名（与前端
+/// `MarkdownRenderer::BARE_LATEX_MATH_RE` 的词表同向）。
+const BARE_LATEX_COMMANDS: &[&str] = &[
+    "frac",
+    "sqrt",
+    "sum",
+    "int",
+    "prod",
+    "lim",
+    "infty",
+    "partial",
+    "nabla",
+    "cdot",
+    "times",
+    "approx",
+    "equiv",
+    "vec",
+    "hat",
+    "bar",
+    "tilde",
+    "overline",
+    "mathrm",
+    "mathbb",
+    "text",
+    "binom",
+    "pm",
+    "mp",
+    "div",
+    "sim",
+    "propto",
+    "ce",
+    "alpha",
+    "beta",
+    "gamma",
+    "delta",
+    "epsilon",
+    "varepsilon",
+    "theta",
+    "lambda",
+    "mu",
+    "nu",
+    "rho",
+    "sigma",
+    "tau",
+    "phi",
+    "varphi",
+    "psi",
+    "chi",
+    "eta",
+    "zeta",
+    "kappa",
+    "xi",
+    "omega",
+    "Gamma",
+    "Delta",
+    "Theta",
+    "Lambda",
+    "Sigma",
+    "Phi",
+    "Psi",
+    "Omega",
+    "hbar",
+    "ell",
+    "leq",
+    "geq",
+    "neq",
+    "le",
+    "ge",
+];
+
+/// 移除代码块/行内代码与已包裹的数学区，返回可能含裸公式的剩余文本。
+///
+/// 未闭合的定界符（如单个 `$`）不消费后续文本，避免把真正的裸公式一起吞掉。
+fn strip_wrapped_math_regions(s: &str) -> String {
+    let text = strip_html(s);
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+    while i < n {
+        // 围栏代码块 ```...```
+        if chars[i] == '`' && i + 2 < n && chars[i + 1] == '`' && chars[i + 2] == '`' {
+            i += 3;
+            while i < n {
+                if chars[i] == '`' && i + 2 < n && chars[i + 1] == '`' && chars[i + 2] == '`' {
+                    i += 3;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        // 行内代码 `...`
+        if chars[i] == '`' {
+            i += 1;
+            while i < n && chars[i] != '`' {
+                i += 1;
+            }
+            if i < n {
+                i += 1;
+            }
+            continue;
+        }
+        // \[ ... \] 与 \( ... \)
+        if chars[i] == '\\' && i + 1 < n && (chars[i + 1] == '[' || chars[i + 1] == '(') {
+            let close = if chars[i + 1] == '[' { ']' } else { ')' };
+            i += 2;
+            while i < n {
+                if chars[i] == '\\' && i + 1 < n && chars[i + 1] == close {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        // $$ ... $$
+        if chars[i] == '$' && i + 1 < n && chars[i + 1] == '$' {
+            i += 2;
+            while i < n {
+                if chars[i] == '$' && i + 1 < n && chars[i + 1] == '$' {
+                    i += 2;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+        // $ ... $（未闭合则保留 $ 本身，不吞后续文本）
+        if chars[i] == '$' {
+            let mut j = i + 1;
+            while j < n && chars[j] != '$' && chars[j] != '\n' {
+                j += 1;
+            }
+            if j < n && chars[j] == '$' {
+                i = j + 1;
+                continue;
+            }
+            out.push('$');
+            i += 1;
+            continue;
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// 统计剩余文本中的裸公式信号数：反斜杠命令、上标 `^`、下标 `_{`。
+fn count_bare_latex(text: &str) -> usize {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+    let mut count = 0;
+    let mut i = 0;
+    while i < n {
+        if chars[i] == '\\' {
+            let start = i + 1;
+            let mut j = start;
+            while j < n && chars[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            if j > start {
+                let name: String = chars[start..j].iter().collect();
+                if BARE_LATEX_COMMANDS.contains(&name.as_str()) {
+                    count += 1;
+                }
+                i = j;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if chars[i] == '^' {
+            count += 1;
+            i += 1;
+            continue;
+        }
+        if chars[i] == '_' && i + 1 < n && chars[i + 1] == '{' {
+            count += 1;
+            i += 1;
+            continue;
+        }
+        i += 1;
+    }
+    count
 }
 
 // ============================================================================
@@ -2235,5 +2470,93 @@ mod tests {
             .collect();
         let listed: HashSet<String> = codes::ALL.iter().map(|s| s.to_string()).collect();
         assert_eq!(declared, listed, "codes 模块声明的常量与 ALL 清单不一致");
+    }
+
+    // -------- 规则 13：bare_latex --------
+
+    #[test]
+    fn bare_latex_flags_bare_superscript() {
+        // issue #462 的 A 批卡原样：`Avo ≥ 10^5` 无 $ 包裹
+        let extras = empty_extras();
+        let t = tags(&["电子技术"]);
+        let input = basic_input(
+            "开环电压增益 Avo 很高，通常 Avo ≥ 10^5",
+            "10^5",
+            &t,
+            &extras,
+        );
+        let issues = lint_card(&input, &LintConfig::default());
+        let hit = issues
+            .iter()
+            .find(|i| i.code == "bare_latex")
+            .expect("裸上标必须命中");
+        assert_eq!(
+            hit.severity,
+            LintSeverity::Warn,
+            "bare_latex 仅 Warn，永不拒绝"
+        );
+        assert_eq!(hit.field, "front");
+    }
+
+    #[test]
+    fn bare_latex_flags_backslash_command_and_braced_subscript() {
+        let extras = empty_extras();
+        let t = tags(&["数学"]);
+        let input = basic_input("求导", "结果是 \\frac{1}{2}，下标 v_{O}", &t, &extras);
+        let issues = lint_card(&input, &LintConfig::default());
+        assert!(
+            codes(&issues).contains(&"bare_latex"),
+            "{:?}",
+            codes(&issues)
+        );
+    }
+
+    #[test]
+    fn bare_latex_scans_extra_fields() {
+        // Formula 字段位于 extra_fields，必须被扫描
+        let mut extras = empty_extras();
+        extras.insert("Formula".to_string(), "Avo \\geq 10^5".to_string());
+        let t = tags(&["电子"]);
+        let input = basic_input("增益", "见公式字段", &t, &extras);
+        let issues = lint_card(&input, &LintConfig::default());
+        assert!(
+            issues
+                .iter()
+                .any(|i| i.code == "bare_latex" && i.field == "Formula"),
+            "{:?}",
+            codes(&issues)
+        );
+    }
+
+    #[test]
+    fn wrapped_math_and_currency_and_code_are_not_flagged() {
+        let extras = empty_extras();
+        let t = tags(&["物理"]);
+        // 已用 $...$ / \(...\) 包裹 → 不算裸；货币 $5 到 $10 与行内代码 a^b → 不算裸
+        let input = basic_input(
+            "电容定义为 $C=$ 与 \\(E=\\dfrac{\\sigma}{\\varepsilon_0}\\)",
+            "价格 $5 到 $10，代码 `a^b`",
+            &t,
+            &extras,
+        );
+        let issues = lint_card(&input, &LintConfig::default());
+        assert!(
+            !codes(&issues).contains(&"bare_latex"),
+            "已包裹公式/货币/代码不得误报：{:?}",
+            codes(&issues)
+        );
+    }
+
+    #[test]
+    fn bare_latex_can_be_disabled() {
+        let extras = empty_extras();
+        let t = tags(&["数学"]);
+        let input = basic_input("10^5", "10^5", &t, &extras);
+        let cfg = LintConfig {
+            check_bare_latex: false,
+            ..LintConfig::default()
+        };
+        let issues = lint_card(&input, &cfg);
+        assert!(!codes(&issues).contains(&"bare_latex"));
     }
 }

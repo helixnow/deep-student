@@ -91,6 +91,7 @@ pub const LINT_CONTRACT_CODES: &[&str] = &[
     "duplicate_in_document",
     "near_duplicate",
     "mixed_language",
+    "bare_latex",
     "mcq_too_few_options",
     "mcq_answer_not_in_options",
     "mcq_missing_answer",

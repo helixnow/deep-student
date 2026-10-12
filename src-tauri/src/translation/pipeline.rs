@@ -746,6 +746,10 @@ pub(crate) fn build_system_prompt(request: &TranslationRequest) -> String {
         domain_system_prompt(request.domain.as_deref().unwrap_or("general")).to_string()
     };
 
+    // 公式契约（共享常量）：译文中的公式保持 LaTeX 形态、不得裸写
+    system_prompt.push_str("\n\n");
+    system_prompt.push_str(crate::prompt_contracts::LATEX_OUTPUT_BRIEF_EN);
+
     // 注入风格控制（当领域已是 casual 时跳过，避免重复指令）
     let domain_str = request.domain.as_deref().unwrap_or("general");
     if domain_str != "casual" && domain_str != "conversation" {

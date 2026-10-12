@@ -1176,6 +1176,7 @@
       "duplicate_in_document": "同文档内已存在内容相同的卡片",
       "near_duplicate": "与同文档已有卡片高度相似（相似度 {{percent}}%），疑似近重复",
       "mixed_language": "背面中日韩文字与拉丁字母大量混杂（CJK {{cjk}}% / Latin {{latin}}%），请人工确认",
+      "bare_latex": "含 {{n}} 处未被 $...$ 包裹的公式（疑似裸 LaTeX），渲染时会显示为纯文本",
       "mcq_too_few_options": "选择题仅 {{n}} 个非空选项（至少需要 2 个）",
       "mcq_answer_not_in_options": "答案对应的选项缺失或不匹配",
       "mcq_missing_answer": "选择题缺少答案",

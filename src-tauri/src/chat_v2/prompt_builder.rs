@@ -34,6 +34,7 @@
 
 use super::types::{MessageSources, SendOptions, SharedContext, SourceInfo};
 use super::vfs_resolver::escape_xml_content;
+use crate::prompt_contracts::LATEX_RULES;
 use serde::Deserialize;
 
 // ============================================================================
@@ -85,34 +86,8 @@ const CITATION_GUIDE: &str = r#"<citation_rules>
 </examples>
 </citation_rules>"#;
 
-/// LaTeX 输出规则（XML 格式）
-const LATEX_RULES: &str = r#"<latex_rules version="1" priority="highest">
-<description>数学公式输出规范，必须严格遵守</description>
-<rules>
-1. 任何数学表达式必须使用 $...$ (行内) 或 $$...$$ (块级) 包裹，分隔符必须成对闭合。
-2. 禁止裸露 LaTeX：不得出现未被 $ 或 $$ 包裹的 \frac、\sqrt、\int、\sum、\lim、上下标 ^/_ 等。
-3. 严禁用任何形式的 Markdown 代码块（三反引号）包裹数学内容，包括 ```math、```latex 等，全部改用 $/$$ 直接输出。
-4. 禁止使用 \(...\) 与 \[...\] 作为分隔符。
-5. 多行/展示型公式须使用 $$ 并独立成段，起止各占一行；行内使用单 $ 且不跨段落。
-6. 仅使用 KaTeX 支持的命令；多字符上下标需加花括号；中文/非 ASCII 请置于 \text{...}；矩阵使用 bmatrix 环境。
-7. \boxed{} 命令必须用 $...$ 包裹：正确格式为 $\boxed{C}$，禁止使用 [\boxed{C}] 等未包裹格式。
-</rules>
-<examples type="correct">
-- 行内：$\lim_{x\to 0}\frac{\sin(ax)-\sin(bx)}{x}=a-b$
-- 块级：
-$$
-\int_0^1 x^2\,\mathrm{d}x = \tfrac{1}{3}
-$$
-</examples>
-<examples type="incorrect">
-- \lim_{x\to 0} \frac{\sin x}{x} （未包裹）
-- \( \int_a^b f(x)\,\mathrm{d}x \) （错误分隔符）
-- ```math ... ``` （代码块包裹，禁止！）
-</examples>
-<self_check>
-发送前自检：若检测到数学符号未在 $ 或 $$ 内，请重写并补齐分隔符后再发送。
-</self_check>
-</latex_rules>"#;
+/// LaTeX 输出规则（XML 格式）——定义已上移到 `crate::prompt_contracts::LATEX_RULES`
+/// 作为跨链路单一来源（制卡/出题/批改等共用），此处仅按名引用。
 
 /// 化学表达与结构式输出规则。
 ///

@@ -70,8 +70,12 @@ pub async fn run_qbank_generation(
         .await
         .map_err(|e| AppError::database(e.to_string()))?;
 
-    // 4. 构造 Prompt
-    let system_prompt = GENERATION_SYSTEM_PROMPT.to_string();
+    // 4. 构造 Prompt（公式契约来自共享常量，避免各链路措辞漂移）
+    let system_prompt = format!(
+        "{}\n\n{}",
+        GENERATION_SYSTEM_PROMPT,
+        crate::prompt_contracts::LATEX_OUTPUT_BRIEF
+    );
     let user_prompt = build_generation_user_prompt(
         &exam_name,
         &existing_samples,
