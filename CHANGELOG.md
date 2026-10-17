@@ -10,6 +10,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.6](https://github.com/helixnow/deep-student/compare/v0.10.5...v0.10.6) (2026-10-17)
+
+
+### Features
+
+* **anki:** 统一公式契约并新增 bare_latex 质检，修复制卡裸写公式 ([#463](https://github.com/helixnow/deep-student/issues/463)) ([e9b2fa6](https://github.com/helixnow/deep-student/commit/e9b2fa60be9602b49f2b4d809f513a261e485fb2))
+* **chat:** 检索命中的知识库页图进入多模态模型上下文 ([0352a08](https://github.com/helixnow/deep-student/commit/0352a083e00548393608d924638cd77fd565a7b5)), closes [#464](https://github.com/helixnow/deep-student/issues/464)
+* **media:** ask about this moment, quote or card selected transcript lines, frame refs carry their transcript ([4538ebb](https://github.com/helixnow/deep-student/commit/4538ebb03558ed2f111bfd8a47b9261c22097591))
+* **media:** handout sections become lecture chapters ([5eb8782](https://github.com/helixnow/deep-student/commit/5eb878278cd7c10522a1009fd2f2ec9720ba27db))
+* **media:** in-lecture checkpoints anchored to moments, with rewatch on wrong answers ([3d0f4e6](https://github.com/helixnow/deep-student/commit/3d0f4e695bc66c18e315bdfc7f061460b78e0450))
+* **media:** jump back to the lecture moment from flashcard review and question follow-up ([7e2fa25](https://github.com/helixnow/deep-student/commit/7e2fa25b3aa45467a45b8cd962336398a424290b))
+* **media:** learning overview tells the AI which lecture you're on and which moments you got wrong ([9a227b0](https://github.com/helixnow/deep-student/commit/9a227b03ef57159927c2b1d7125210db63e18e5a))
+* **media:** per-lecture study ledger and in-page card making ([454de2d](https://github.com/helixnow/deep-student/commit/454de2d22d2898c9a6c205563d70e35558914fff))
+* **media:** player polish — double-tap seek, screen stays awake, more speeds, transcript text size ([e8cde45](https://github.com/helixnow/deep-student/commit/e8cde45dac5430ee1a28e650038053dc5240e07a))
+* **qbank-import:** 识别导入的难度判定加入明确评判标准 ([c13d8bf](https://github.com/helixnow/deep-student/commit/c13d8bfcd03d82bfe078defd4d6a8c1e1a158eba))
+* **qbank:** AI 解析不再要求先作答，题目解析为空时自动回填 ([942e195](https://github.com/helixnow/deep-student/commit/942e1954d4d944da5fdb988dad6e8adde5dae982)), closes [#467](https://github.com/helixnow/deep-student/issues/467)
+* **qbank:** 题库新增只读「查看答案」浏览模式，AI 解析可写入题目解析 ([61b49e8](https://github.com/helixnow/deep-student/commit/61b49e8eccfddbfd48c342f6b139b574c5e70fef)), closes [#466](https://github.com/helixnow/deep-student/issues/466) [#467](https://github.com/helixnow/deep-student/issues/467)
+
+
+### Bug Fixes
+
+* **android:** 平板宽屏顶栏避让状态栏，新增沉浸式全屏开关 ([b00c2a3](https://github.com/helixnow/deep-student/commit/b00c2a300d19451143469e814ba9c7d2ba574a52)), closes [#472](https://github.com/helixnow/deep-student/issues/472)
+* **chat:** attachment_read 支持 VFS 引用型附件 res_*，收敛附件 ID 解析入口 ([c50ddd7](https://github.com/helixnow/deep-student/commit/c50ddd793f6c9885c5efb6f0101d86cd7f29770e)), closes [#468](https://github.com/helixnow/deep-student/issues/468)
+* **chat:** 会话加载 meta_json 去重瘦身，尾窗按载荷体量截断 ([bbefbf2](https://github.com/helixnow/deep-student/commit/bbefbf2b077de63c6e0a4a07b3100c70c150cb4d)), closes [#469](https://github.com/helixnow/deep-student/issues/469)
+* **chat:** 恢复 AdvancedPanel useEffect 的 disposed 清理函数 ([0617907](https://github.com/helixnow/deep-student/commit/0617907c2a16d60af05cc030a8cd78d46fa50812))
+* **chat:** 消息图片缩略图不再用原图 base64 渲染，预览跨消息共享缓存 ([f0ca00c](https://github.com/helixnow/deep-student/commit/f0ca00c8f3124db354b067b520ee3313db655cd8)), closes [#470](https://github.com/helixnow/deep-student/issues/470)
+* **chat:** 虚拟行内不再用 content-visibility，前台恢复兜底只在 WebKit 处理视口内的块 ([ee22f99](https://github.com/helixnow/deep-student/commit/ee22f99188124ec141f1e44e25b0b36c3eef2280)), closes [#470](https://github.com/helixnow/deep-student/issues/470)
+* **chat:** 高级设置的上下文滑条跟随面板选中的模型 ([990d34d](https://github.com/helixnow/deep-student/commit/990d34d4769e39b96e8d4f104ee45531fb8f0ea6))
+* **ci:** Android 发布校验签名证书指纹与 versionCode 单调 ([7072ff0](https://github.com/helixnow/deep-student/commit/7072ff0e8f2978e916470be10c144c04c52601b7)), closes [#471](https://github.com/helixnow/deep-student/issues/471)
+* **flashcards:** 修复 WebKit 复习长卡滚动及生产 CSP 阻断 ([#478](https://github.com/helixnow/deep-student/issues/478)) ([3916e7a](https://github.com/helixnow/deep-student/commit/3916e7a8592fd949d0b84ee4285c8377e266eaf0))
+* **flashcards:** 模板卡面公式改用 KaTeX HTML 输出并在卡面 iframe 内自带字体 ([1fb75dc](https://github.com/helixnow/deep-student/commit/1fb75dc70e12213e933677a5d9ccb9f51efb713c)), closes [#461](https://github.com/helixnow/deep-student/issues/461)
+* **input:** 受控输入框在输入法组字期间不回写、不派发，修复安卓搜狗英文/日文搜索框无法输入 ([676f3bd](https://github.com/helixnow/deep-student/commit/676f3bd60428df690eca781d11bd1005bd75990b)), closes [#455](https://github.com/helixnow/deep-student/issues/455)
+* **linux:** AppImage 去除捆绑的 libwayland-*，修复 Mesa 下 EGL_BAD_PARAMETER 白屏 ([#481](https://github.com/helixnow/deep-student/issues/481)) ([1ddd2f4](https://github.com/helixnow/deep-student/commit/1ddd2f4fa04a34997fc9fd305a609fc5278ebbbb))
+* **linux:** AppImage 重打包加签名 base64 校验与最终产物门禁 ([#481](https://github.com/helixnow/deep-student/issues/481)) ([a6b820d](https://github.com/helixnow/deep-student/commit/a6b820d4b7ca3bd050971c736ce1e4bb97c839dc))
+* **media:** 变基后去掉与 main 重复的 strList 定义 ([7e4964b](https://github.com/helixnow/deep-student/commit/7e4964be949129adc7f721043d3acde42bb51543))
+* **pdfium:** Linux 按 productName 目录扫描 libpdfium.so，修复 deb 下 PDF 图片/OCR 不可用 ([#480](https://github.com/helixnow/deep-student/issues/480)) ([405949b](https://github.com/helixnow/deep-student/commit/405949ba5da89c2eba4f25e5e17c7bc0821139e9))
+* **qbank:** 空解析判定把换行/制表符也算作空白 ([eaecd9e](https://github.com/helixnow/deep-student/commit/eaecd9e023abf6db8e024e08c3872a66f6f1ddba)), closes [#467](https://github.com/helixnow/deep-student/issues/467)
+* **qbank:** 题目图片加载失败时显示错误占位，不再无限转圈 ([5559f71](https://github.com/helixnow/deep-student/commit/5559f7104f8668923a439fc0fd586deb7dda0052)), closes [#465](https://github.com/helixnow/deep-student/issues/465)
+* **qbank:** 题目图片支持 res_* 资源 ID，AI 写入时归一为文件 ID ([9e415ff](https://github.com/helixnow/deep-student/commit/9e415fff3e2f132860f7f3bbebfab6ba6ea5883f)), closes [#465](https://github.com/helixnow/deep-student/issues/465)
+
 ## [0.10.5](https://github.com/helixnow/deep-student/compare/v0.10.4...v0.10.5) (2026-10-07)
 
 
