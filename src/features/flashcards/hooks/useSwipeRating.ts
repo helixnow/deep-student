@@ -112,6 +112,8 @@ export function useSwipeRating({
   const onPointerDown = React.useCallback<React.PointerEventHandler<HTMLElement>>((event) => {
     if (!enabled) return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
+    // 滚动条自己管理指针捕获；冒泡到舞台的拖动不能被当成滑动评分。
+    if (event.target instanceof Element && event.target.closest('.os-scrollbar')) return;
     const gesture = gestureRef.current;
     if (gesture.pointerId !== null) return;
     gesture.pointerId = event.pointerId;

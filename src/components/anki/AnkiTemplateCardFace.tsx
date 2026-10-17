@@ -44,6 +44,11 @@ export interface AnkiTemplateCardFaceProps {
    */
   interactiveFrame?: boolean;
   onFrameClick?: () => void;
+  /**
+   * 交互式卡面的 iframe 会吃掉指针事件，文档自身滚不动时由辅助脚本转发滚轮；
+   * 复习舞台用它驱动外层统一 viewport 滚动（WebKit 不会自动把滚轮链回宿主）。
+   */
+  onFrameWheel?: (deltaY: number, deltaMode: number) => void;
 }
 
 function defaultFaceText(card: AnkiCard, side: AnkiCardFace): string {
@@ -112,6 +117,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
   stageHeight,
   interactiveFrame = false,
   onFrameClick,
+  onFrameWheel,
 }) => {
   const darkMode = useDocumentDarkMode();
   const surfaceColor = useCardFaceSurfaceColor();
@@ -192,6 +198,7 @@ export const AnkiTemplateCardFace: React.FC<AnkiTemplateCardFaceProps> = ({
           fidelity="anki"
           minHeight={stageMode ? stageHeight : undefined}
           onFrameClick={frameInteractive ? onFrameClick : undefined}
+          onFrameWheel={frameInteractive ? onFrameWheel : undefined}
           trustedCss={katexCss ?? undefined}
         />
       ) : (

@@ -22,6 +22,12 @@ export interface HtmlSandboxPreviewProps {
   style?: React.CSSProperties;
   /** iframe 内点击非交互区域时回调（卡面辅助脚本发出 `sdp-click`） */
   onFrameClick?: () => void;
+  /**
+   * iframe 文档自身滚不动时回调（卡面辅助脚本发出 `sdp-wheel`）。
+   * 复习舞台把 iframe 高度设成内容高度，WebKit 不会把 iframe 里的滚轮链回宿主，
+   * 宿主需要据此自行滚动统一 viewport。
+   */
+  onFrameWheel?: (deltaY: number, deltaMode: number) => void;
   /** 应用自有样式（不经 CSS 净化），见 buildHtmlSandboxDocument 的 trustedCss */
   trustedCss?: string;
 }
@@ -45,6 +51,7 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   className,
   style,
   onFrameClick,
+  onFrameWheel,
   trustedCss,
 }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -91,14 +98,20 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
   }, [height, mode]);
 
   useEffect(() => {
-    if (!onFrameClick || mode !== 'template-safe') return undefined;
-    const handleClick = (event: MessageEvent) => {
+    if ((!onFrameClick && !onFrameWheel) || mode !== 'template-safe') return undefined;
+    const handleMessage = (event: MessageEvent) => {
       if (event.source !== iframeRef.current?.contentWindow) return;
-      if (event.data?.type === 'sdp-click') onFrameClick();
+      const data = event.data as { type?: string; deltaY?: number; deltaMode?: number } | null;
+      if (!data) return;
+      if (data.type === 'sdp-click') {
+        onFrameClick?.();
+      } else if (data.type === 'sdp-wheel') {
+        onFrameWheel?.(Number(data.deltaY) || 0, Number(data.deltaMode) || 0);
+      }
     };
-    window.addEventListener('message', handleClick);
-    return () => window.removeEventListener('message', handleClick);
-  }, [mode, onFrameClick]);
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [mode, onFrameClick, onFrameWheel]);
 
   return (
     <iframe
@@ -114,6 +127,11 @@ export const HtmlSandboxPreview: React.FC<HtmlSandboxPreviewProps> = ({
         width: '100%',
         maxWidth: '100%',
         height: height !== undefined ? height : Math.max(iframeHeight, minHeight ?? 0),
+        // 高度即内容高度，宿主容器负责滚动（复习卡面靠外层 .wb-fc-card 的 viewport 滚）。
+        // 宿主若是高度受限的 flex 容器，WebKit 会把 iframe 当可压缩 flex item 压回容器高度
+        // （Chromium 不压），内容于是被挤进 iframe 自身文档且滚不动，宿主也就没有可滚内容、
+        // 滚动条被判为无用而不显示——长模板卡在 WebKit 上因此完全无法滚动。
+        flexShrink: 0,
         border: 'none',
         overflow: 'auto',
         background: 'hsl(var(--background))',

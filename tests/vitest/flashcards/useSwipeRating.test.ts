@@ -49,6 +49,44 @@ describe('useSwipeRating', () => {
     expect(result.current.state.flyout).toBe('right');
   });
 
+  it.each(['os-scrollbar', 'os-scrollbar-handle', 'os-scrollbar-track'])(
+    'does not capture scrollbar pointers or rate a card when dragging %s',
+    (className) => {
+      const onRate = vi.fn();
+      const { result } = renderHook(() =>
+        useSwipeRating({ enabled: true, resetKey: 'card:1', onRate }),
+      );
+      const stage = document.createElement('div');
+      const scrollbar = document.createElement('div');
+      scrollbar.className = 'os-scrollbar os-scrollbar-vertical';
+      const target = document.createElement('div');
+      target.className = className;
+      scrollbar.appendChild(target);
+      stage.appendChild(scrollbar);
+      const capture = vi.spyOn(stage, 'setPointerCapture');
+      const event = (clientY: number) => pointerEvent({
+        pointerType: 'mouse', target, currentTarget: stage, clientY,
+      });
+
+      act(() => {
+        result.current.handlers.onPointerDown(event(0));
+        result.current.handlers.onPointerMove(event(120));
+        result.current.handlers.onPointerUp(event(120));
+      });
+
+      expect(capture).not.toHaveBeenCalled();
+      expect(onRate).not.toHaveBeenCalled();
+      expect(result.current.state.dragging).toBe(false);
+      expect(result.current.state.flyout).toBeNull();
+      const click = { preventDefault: vi.fn(), stopPropagation: vi.fn() } as unknown as React.MouseEvent<HTMLElement>;
+      act(() => result.current.handlers.onClickCapture(click));
+      expect(click.preventDefault).not.toHaveBeenCalled();
+
+      swipeRight(result.current.handlers);
+      expect(onRate).toHaveBeenCalledWith(SWIPE_RATING_MAP.right);
+    },
+  );
+
   it('resets flyout when the attempt identity (resetKey) changes', () => {
     const onRate = vi.fn();
     const { result, rerender } = renderHook(

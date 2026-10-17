@@ -155,21 +155,24 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
   // 卡面内容是否可滚动：不可滚动时四方向手势全交给指针（touch-action:none）；
   // 可滚动时纵向让位给内容滚动（pan-y），上/下滑评分退化为鼠标/触控板专属，按钮兜底。
   const [scrollElement, setScrollElement] = React.useState<HTMLDivElement | null>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
   const [contentFits, setContentFits] = React.useState(true);
+  const hasSwipe = Boolean(swipe);
   React.useEffect(() => {
-    if (!swipe) return;
-    if (!scrollElement) return;
+    if (!hasSwipe || !scrollElement) return;
     const measure = () => {
       setContentFits(scrollElement.scrollHeight <= scrollElement.clientHeight + 1);
     };
     const frame = requestAnimationFrame(measure);
     const observer = new ResizeObserver(measure);
     observer.observe(scrollElement);
+    // iframe 异步增高只改变 scrollHeight，固定高度的 viewport 不会触发 resize。
+    if (contentRef.current) observer.observe(contentRef.current);
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [swipe, cardKey, side, template, templateLoading, scrollElement]);
+  }, [hasSwipe, cardKey, side, template, templateLoading, scrollElement]);
 
   // 舞台高度：模板的 .card 背景铺满整个舞台（与 Anki 复习窗口一致，不再另套卡片框）
   const [stageHeight, setStageHeight] = React.useState(0);
@@ -182,6 +185,15 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
     return () => observer.disconnect();
   }, [scrollElement]);
   const templateMode = Boolean(template);
+
+  // 交互式卡面（含提示折叠 / 音频 / 链接 / 脚本）的 iframe 会吃掉指针事件，
+  // 文档自身滚不动时由卡面辅助脚本把滚轮转发出来：落到统一 viewport 上。
+  // WebKit 不会把 iframe 里的滚轮链回宿主，不转发就只能拖滚动条。
+  const handleFrameWheel = React.useCallback((deltaY: number, deltaMode: number) => {
+    if (!scrollElement || !deltaY) return;
+    const factor = deltaMode === 1 ? 16 : deltaMode === 2 ? scrollElement.clientHeight : 1;
+    scrollElement.scrollBy(0, deltaY * factor);
+  }, [scrollElement]);
 
   const swipeState = swipe?.state ?? null;
   const band = swipeState && swipeState.dragging && swipeState.direction
@@ -228,6 +240,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
           )}
         >
           <div
+            ref={contentRef}
             className={cn('wb-fc-card-content flex min-h-full flex-col', !templateMode && 'px-5 py-6')}
             data-template-mode={templateMode ? 'true' : undefined}
           >
@@ -253,6 +266,7 @@ export const ReviewCardSurface: React.FC<ReviewCardSurfaceProps> = ({
                 stageHeight={templateMode ? stageHeight : undefined}
                 interactiveFrame
                 onFrameClick={disabled ? undefined : onFlip}
+                onFrameWheel={handleFrameWheel}
                 className={cn('flex min-h-0 flex-1', templateMode ? 'flex-col' : 'items-center justify-center')}
               />
             </div>

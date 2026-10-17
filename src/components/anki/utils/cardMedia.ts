@@ -130,7 +130,9 @@ export function looksLikeHtml(text: string): boolean {
  * 卡面辅助脚本（沙箱内执行，无同源权限）：
  * - 依次自动播放 data-autoplay="1" 的音频（被浏览器拦截时静默）；
  * - 收到 `sdp-replay-audio` 消息时从头重播；
- * - 点击非交互区域时通知宿主 `sdp-click`（宿主据此翻面）。
+ * - 点击非交互区域时通知宿主 `sdp-click`（宿主据此翻面）；
+ * - 文档自身滚不动时把滚轮转发给宿主 `sdp-wheel`（见下）。
+ * 脚本内容的 SHA-256 须与宿主 CSP 白名单同步；cspContract 测试按实际渲染文本校验。
  */
 export const CARD_FACE_HELPER_SCRIPT = `<script>(function(){
   var audios = Array.prototype.slice.call(document.querySelectorAll('audio.anki-audio'));
@@ -151,6 +153,21 @@ export const CARD_FACE_HELPER_SCRIPT = `<script>(function(){
     if (target && target.closest && target.closest('a,button,summary,details,audio,video,input,select,textarea,label,[onclick]')) return;
     try { parent.postMessage({ type: 'sdp-click' }, '*'); } catch (e) {}
   });
+  function canScroll(el, dy){
+    if (!el) return false;
+    var max = el.scrollHeight - el.clientHeight;
+    if (max <= 1) return false;
+    return dy > 0 ? el.scrollTop < max - 1 : el.scrollTop > 1;
+  }
+  window.addEventListener('wheel', function(event){
+    var dy = event.deltaY || 0;
+    if (!dy) return;
+    // 复习舞台把 iframe 高度设成内容高度，文档自身滚不动，而 WebKit 不会把 iframe
+    // 里的滚轮链回宿主卡片的统一 viewport（宿主因此收不到滚轮，长卡面只能拖滚动条）。
+    // 这里把「文档自己滚不动」的滚轮转发给宿主；文档还能滚时保持原生滚动，避免双滚。
+    if (canScroll(document.body, dy) || canScroll(document.documentElement, dy)) return;
+    try { parent.postMessage({ type: 'sdp-wheel', deltaY: dy, deltaMode: event.deltaMode || 0 }, '*'); } catch (e) {}
+  }, { passive: true });
 })();</script>`;
 
 /** 向当前页面里的卡面 iframe 广播「重播音频」。 */

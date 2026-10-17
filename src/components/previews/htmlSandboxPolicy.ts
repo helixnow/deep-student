@@ -21,6 +21,7 @@ interface BuildHtmlSandboxDocumentOptions {
 // body.scrollHeight 恒 ≥ iframe 视口高度，只涨不缩（棘轮）——瞬时窄宽渲染
 // （如等比缩放预览首帧）产生的虚高会被永久锁定。测量时临时解除钉高取真实
 // 内容高度，测完同步恢复，不影响渲染结果。
+// 脚本内容的 SHA-256 须与宿主 CSP 白名单同步；cspContract 测试按实际渲染文本校验。
 const TEMPLATE_RESIZE_SCRIPT = `<script>
   function sdpMeasure() {
     var b = document.body;
