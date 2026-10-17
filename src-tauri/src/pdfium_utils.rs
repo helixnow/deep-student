@@ -242,7 +242,7 @@ pub fn test_pdfium_status() -> Result<std::collections::HashMap<String, String>,
 /// 搜索顺序（因平台而异）：
 /// - macOS: exe 同目录 → ../Resources/ → ../Frameworks/
 /// - Windows: exe 同目录 → ../Resources/
-/// - Linux: exe 同目录 → lib/ → ../Resources/
+/// - Linux: exe 同目录 → 扫描 ../lib/<productName>/ → ../Resources/ → AppImage $APPDIR
 /// - Android: exe 同目录 → /proc/self/maps 推断 native lib 目录
 /// - iOS: 空（由系统加载）
 fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
@@ -276,12 +276,28 @@ fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
     {
         // 1. 可执行文件同目录（dev: target/debug/libpdfium.so）
         paths.push(exe_dir.join("libpdfium.so"));
-        // 2. Tauri 资源目录（deb/rpm: /usr/lib/deep-student/，AppImage: $APPDIR/usr/lib/deep-student/）
-        paths.push(exe_dir.join("../lib/deep-student/libpdfium.so"));
+
+        // 2. Tauri 资源目录：deb/rpm 安装在 /usr/lib/<productName>/ 下。
+        //    productName 实际是 "Deep Student"（含空格与大写），早期实现
+        //    硬编码了小写连字符目录（/usr/lib/deep-student/），导致 deb 安装
+        //    后永远找不到 libpdfium.so（#480）。改为扫描 lib 根目录的一级
+        //    子目录，productName 再变也不需要同步改这里。
+        if let Some(lib_root) = exe_dir.parent().map(|p| p.join("lib")) {
+            push_existing_pdfium_in_child_dirs(&mut paths, &lib_root);
+        }
+        // 兼容旧布局：资源文件直接放在可执行文件旁的 Resources 目录
         paths.push(exe_dir.join("../Resources/libpdfium.so"));
-        // AppImage 下 APPDIR 环境变量指向解包目录
+
+        // 3. AppImage：APPDIR 指向解包目录，资源同样位于
+        //    $APPDIR/usr/lib/<productName>/ 下。
         if let Ok(appdir) = std::env::var("APPDIR") {
-            paths.push(std::path::PathBuf::from(appdir).join("usr/lib/deep-student/libpdfium.so"));
+            let appdir = std::path::PathBuf::from(appdir);
+            push_existing_pdfium_in_child_dirs(&mut paths, &appdir.join("usr/lib"));
+            // 旧版打包路径，保持兼容
+            let legacy = appdir.join("usr/lib/deep-student/libpdfium.so");
+            if !paths.contains(&legacy) {
+                paths.push(legacy);
+            }
         }
     }
 
@@ -313,4 +329,55 @@ fn get_pdfium_candidate_paths() -> Vec<std::path::PathBuf> {
     // iOS: 由系统加载，不添加候选路径
 
     paths
+}
+
+/// 扫描 `root` 的一级子目录，把其中存在的 `libpdfium.so` 追加到候选列表。
+///
+/// Tauri 的 Linux 资源目录名取自 `productName`（本项目为 `Deep Student`，
+/// 含空格与大写），且可能随品牌文案变化。扫描目录而不是硬编码目录名，
+/// 避免打包路径与查找路径再次漂移（#480）。
+#[cfg(target_os = "linux")]
+fn push_existing_pdfium_in_child_dirs(paths: &mut Vec<std::path::PathBuf>, root: &Path) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let candidate = entry.path().join("libpdfium.so");
+        if candidate.is_file() && !paths.contains(&candidate) {
+            paths.push(candidate);
+        }
+    }
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linux_candidate_scan_finds_product_name_dir_with_spaces() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let lib_root = tmp.path().join("lib");
+        // Tauri deb/rpm 资源目录：/usr/lib/Deep Student/
+        let product_dir = lib_root.join("Deep Student");
+        std::fs::create_dir_all(&product_dir).unwrap();
+        let expected = product_dir.join("libpdfium.so");
+        std::fs::write(&expected, b"stub").unwrap();
+        // 干扰项：没有 libpdfium.so 的子目录、根下同名文件都不应进候选
+        std::fs::create_dir_all(lib_root.join("empty-dir")).unwrap();
+        std::fs::write(lib_root.join("libpdfium.so"), b"stub").unwrap();
+
+        let mut paths = Vec::new();
+        push_existing_pdfium_in_child_dirs(&mut paths, &lib_root);
+        // 重复调用不应追加重复候选
+        push_existing_pdfium_in_child_dirs(&mut paths, &lib_root);
+
+        assert_eq!(paths, vec![expected]);
+    }
+
+    #[test]
+    fn linux_candidate_scan_skips_missing_root() {
+        let mut paths = vec![std::path::PathBuf::from("/nonexistent/libpdfium.so")];
+        push_existing_pdfium_in_child_dirs(&mut paths, Path::new("/nonexistent-dsw-480"));
+        assert_eq!(paths.len(), 1);
+    }
 }
