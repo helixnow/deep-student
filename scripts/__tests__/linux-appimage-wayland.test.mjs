@@ -3,14 +3,11 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const script = readFileSync(
-  fileURLToPath(new URL('../ci/patch-appimage-wayland.sh', import.meta.url)),
-  'utf8',
-);
-const workflow = readFileSync(
-  fileURLToPath(new URL('../../.github/workflows/reusable-build-linux.yml', import.meta.url)),
-  'utf8',
-);
+const read = (relative) => readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8');
+
+const script = read('../ci/patch-appimage-wayland.sh');
+const installDeps = read('../ci/install-linux-deps.sh');
+const workflow = read('../../.github/workflows/reusable-build-linux.yml');
 
 test('AppImage patch unbundles every libwayland-* and verifies the repack', () => {
   // Both the removal pass and the post-repack check must run over the whole
@@ -38,6 +35,9 @@ test('AppImage patch keeps the original runtime and squashfs shape', () => {
   assert.match(script, /mkfs-time 0/);
   assert.match(script, /-comp "\$comp" -b "\$block"/);
   assert.match(script, /--appimage-extract/);
+  // squashfs-tools is the only new build dependency; declare it in the shared
+  // Linux dependency manifest so hotfix/rebuild builds get it too.
+  assert.match(installDeps, /squashfs-tools/);
 });
 
 test('release workflow patches the AppImage after bundling and re-signs it', () => {
@@ -56,12 +56,21 @@ test('release workflow patches the AppImage after bundling and re-signs it', () 
   // Signing needs the updater key, which is injected as step env.
   const stepStart = workflow.lastIndexOf('- name: Unbundle bundled wayland libraries', patch);
   assert.ok(stepStart >= 0, 'AppImage patch step is missing');
-  assert.match(workflow.slice(stepStart, sign), /TAURI_SIGNING_PRIVATE_KEY/);
+  const stepEnd = workflow.indexOf('- name: Show sccache stats', stepStart);
+  assert.ok(stepEnd > stepStart, 'patch step boundary not found');
+  assert.match(workflow.slice(stepStart, stepEnd), /TAURI_SIGNING_PRIVATE_KEY/);
+  // publish only length-checks the signature; catch corrupt base64 here.
+  assert.match(workflow.slice(stepStart, stepEnd), /base64 -d/);
 });
 
-test('squashfs-tools is installed before the repack', () => {
-  const install = workflow.indexOf('squashfs-tools');
-  const patch = workflow.indexOf('patch-appimage-wayland.sh');
-  assert.ok(install >= 0, 'squashfs-tools install step is missing');
-  assert.ok(install < patch, 'squashfs-tools must be installed before patching');
+test('final uploaded AppImage is independently gated against bundled wayland libs', () => {
+  // The patch script verifies the intermediate bundler output; the upload gate
+  // must re-extract the renamed artifact that actually ships.
+  const gate = workflow.indexOf('Verify final AppImage keeps wayland libraries unbundled');
+  assert.ok(gate >= 0, 'final AppImage gate is missing');
+  const rename = workflow.indexOf('Rename updater artifacts with arch suffix');
+  assert.ok(rename >= 0 && gate > rename, 'final gate must run on renamed artifacts');
+  assert.match(workflow.slice(gate), /libwayland-\*\.so\*/);
+  // A v1Compatible updater archive would bypass the patched raw AppImage.
+  assert.match(workflow.slice(gate), /v1Compatible/);
 });

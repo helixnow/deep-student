@@ -274,14 +274,7 @@ jobs:
       # those libraries, then re-sign because repacking changes the bytes.
       # 与 macOS/Windows 不同，Linux 的 updater 产物就是 AppImage 本体，签名
       # 必须对应最终字节，因此先删旧 .sig 再签。
-      - name: Install AppImage repack tools
-        run: |
-          if command -v mksquashfs >/dev/null && command -v unsquashfs >/dev/null; then
-            exit 0
-          fi
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends squashfs-tools
-
+      # squashfs-tools（mksquashfs/unsquashfs）由 install-linux-deps.sh 统一安装。
       - name: Unbundle bundled wayland libraries from AppImage
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -300,6 +293,12 @@ jobs:
             rm -f "$image.sig"
             npx --no-install tauri signer sign "$image"
             test -s "$image.sig" || { echo "::error::Missing updater signature for $image"; exit 1; }
+            # publish 只检查 .sig 存在/长度；这里先挡掉损坏的 base64，
+            # 避免坏签名随 release 发出去才被发现。
+            tr -d '\r\n' < "$image.sig" | base64 -d >/dev/null 2>&1 || {
+              echo "::error::Updater signature for $image is not valid base64"
+              exit 1
+            }
           done
 
       # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
@@ -351,6 +350,43 @@ jobs:
           done
           echo "📦 Linux bundle artifacts:"
           ls -la src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/
+
+      # issue #481 的独立防线：publish 只检查 .sig 存在/base64/长度，不校验
+      # 内容；这里在重命名后的最终上传产物上再解包一次，确认包内确实没有
+      # libwayland-*（patch 脚本内部校验的是中间产物，这里校验真正上传的文件）。
+      - name: Verify final AppImage keeps wayland libraries unbundled
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          images=("$BUNDLE_DIR"/*_x86_64.AppImage)
+          if (( ${#images[@]} != 1 )); then
+            echo "::error::Expected exactly one final AppImage, got ${#images[@]}"
+            ls -la "$BUNDLE_DIR"
+            exit 1
+          fi
+          # v1Compatible 的 updater 产物是 AppImage.tar.gz；当前 createUpdaterArtifacts
+          # 走 Tauri v2（AppImage 本体），若将来切回 v1，归档里的 AppImage 同样
+          # 需要打补丁，否则会静默发布带旧 libwayland 的包 —— 此处 fail-closed。
+          archives=("$BUNDLE_DIR"/*_x86_64.AppImage.tar.gz)
+          if (( ${#archives[@]} > 0 )); then
+            echo "::error::v1Compatible AppImage updater archive is not wayland-patched; handle it before enabling"
+            printf '  %s\n' "${archives[@]}"
+            exit 1
+          fi
+          image="$(readlink -f "${images[0]}")"
+          work="$(mktemp -d)"
+          trap 'rm -rf "$work"' EXIT
+          (cd "$work" && "$image" --appimage-extract >/dev/null)
+          appdir="$work/squashfs-root"
+          test -x "$appdir/AppRun" || { echo "::error::AppRun missing from final AppImage"; exit 1; }
+          survivors="$(find "$appdir" \( -type f -o -type l \) -name 'libwayland-*.so*' -print -quit)"
+          if [ -n "$survivors" ]; then
+            echo "::error::Bundled wayland libraries survived into the final AppImage:"
+            find "$appdir" \( -type f -o -type l \) -name 'libwayland-*.so*'
+            exit 1
+          fi
+          echo "✅ Final AppImage has no bundled libwayland-*"
 
       # ── 更新器签名产物存在性校验（publish 前置防线）──
       - name: Verify updater artifact and signature exist
