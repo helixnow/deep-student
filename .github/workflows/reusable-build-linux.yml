@@ -266,6 +266,42 @@ jobs:
           FRONTEND_DIST_ARTIFACT: ${{ inputs.frontend_dist_artifact }}
         run: node .release-tooling/scripts/ci/native-build.mjs bundle x86_64-unknown-linux-gnu deb,rpm,appimage
 
+      # issue #481: linuxdeploy bundles Ubuntu 22.04's libwayland-*, and the
+      # generated AppRun puts $APPDIR/usr/lib on LD_LIBRARY_PATH, so the HOST's
+      # Mesa resolves libEGL_mesa against the stale bundled wayland and dies on
+      # "undefined symbol: wl_fixes_interface". WebKitWebProcess then aborts with
+      # EGL_BAD_PARAMETER and the window stays blank. Repack the AppImage without
+      # those libraries, then re-sign because repacking changes the bytes.
+      # 与 macOS/Windows 不同，Linux 的 updater 产物就是 AppImage 本体，签名
+      # 必须对应最终字节，因此先删旧 .sig 再签。
+      - name: Install AppImage repack tools
+        run: |
+          if command -v mksquashfs >/dev/null && command -v unsquashfs >/dev/null; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends squashfs-tools
+
+      - name: Unbundle bundled wayland libraries from AppImage
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          BUNDLE_DIR="src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage"
+          images=("$BUNDLE_DIR"/*.AppImage)
+          if (( ${#images[@]} == 0 )); then
+            echo "::error::No AppImage produced under $BUNDLE_DIR"
+            exit 1
+          fi
+          for image in "${images[@]}"; do
+            bash .release-tooling/scripts/ci/patch-appimage-wayland.sh "$image"
+            rm -f "$image.sig"
+            npx --no-install tauri signer sign "$image"
+            test -s "$image.sig" || { echo "::error::Missing updater signature for $image"; exit 1; }
+          done
+
       # 与 ci.yml 各 Rust job 的 sccache 摘要模式对齐：if: always() 保证编译
       # 失败时也能拿到命中率（恰是最需要缓存诊断的场景），结果同时写入
       # 日志与 job summary。macOS/Windows 的 reusable-build-* 同结构。
