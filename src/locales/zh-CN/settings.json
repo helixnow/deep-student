@@ -1596,7 +1596,8 @@
       "brave": "Brave",
       "searxng": "SearXNG",
       "zhipu": "智谱 AI（国产）",
-      "bocha": "博查 AI（国产）"
+      "bocha": "博查 AI（国产）",
+      "deepseek": "DeepSeek 官方搜索"
     },
     "bing_rss_name": "Bing RSS（免费）",
     "zhipu_name": "智谱 AI 搜索",
@@ -1608,7 +1609,12 @@
     "bocha_key_label": "博查 API Key",
     "bocha_key_desc": "博查 AI 开放平台 API 密钥",
     "bocha_desc": "博查 AI 是专为 AI 应用设计的搜索引擎，被腾讯元器、字节扣子、钉钉 AI 助理等广泛使用。提供高质量的中文搜索结果和语义排序。",
-    "bocha_apply": "申请博查 API 密钥"
+    "bocha_apply": "申请博查 API 密钥",
+    "deepseek_name": "DeepSeek 官方搜索",
+    "deepseek_key_label": "DeepSeek API Key",
+    "deepseek_key_desc": "与 DeepSeek 对话共用同一把 API Key；搜索按成功请求计费（约 ¥0.005/次），无结果不计费",
+    "deepseek_desc": "DeepSeek 自研搜索引擎，返回带相关性评分与权威性分级的结构化结果，原生支持 site:/lang:/after:/before: 精确语法。",
+    "deepseek_apply": "申请 DeepSeek API Key"
   },
   "model_presets": {
     "title": "模型分配预设",
@@ -2056,6 +2062,7 @@
     "searxng_desc": "免费开源、聚合多个搜索源的元搜索引擎。",
     "zhipu_desc": "智谱提供的国产化互联网搜索聚合服务。",
     "bocha_desc": "专注于中文资料索引的轻量级检索服务。",
+    "deepseek_desc": "DeepSeek 官方自研搜索引擎，支持时间与站点精确过滤，结果自带相关性/权威性评分。",
     "qbank_ai_generation_desc": "用于题目集的 AI 出题。若未配置，将回退「题库AI批改模型」→「对话模型」。支持读图的模型可直接参考扫描件页面出题。"
   },
   "common_labels": {

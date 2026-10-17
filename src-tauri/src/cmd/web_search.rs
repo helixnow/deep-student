@@ -109,6 +109,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
         ("searxng", "SearXNG"),
         ("zhipu", "智谱 AI"),
         ("bocha", "博查 AI"),
+        ("deepseek", "DeepSeek 官方搜索"),
     ];
 
     let mut results = HashMap::new();
@@ -127,6 +128,7 @@ pub async fn test_all_search_engines(state: State<'_, AppState>) -> Result<serde
             "searxng" => cfg.keys.searxng_endpoint.is_some(),
             "zhipu" => cfg.keys.zhipu.is_some(),
             "bocha" => cfg.keys.bocha.is_some(),
+            "deepseek" => cfg.keys.deepseek.is_some(),
             _ => false,
         };
 

@@ -330,7 +330,7 @@ export function useSettingsNavigation() {
           { tab: 'plugins', label: t('settings:plugins.scan_qr'), keywords: ['qr', '扫码', '绑定'] },
         ]
       : []),
-    { tab: 'search', label: t('settings:search_engine.title'), keywords: ['search engine', 'google', 'bing', 'tavily', 'searxng'] },
+    { tab: 'search', label: t('settings:search_engine.title'), keywords: ['search engine', 'google', 'bing', 'tavily', 'searxng', 'deepseek'] },
     { tab: 'search', label: 'SearXNG', keywords: ['searxng', 'search'] },
     { tab: 'search', label: 'Tavily', keywords: ['tavily', 'search', 'api'] },
     { tab: 'search', label: 'Exa', keywords: ['exa', 'search'] },

@@ -38,6 +38,7 @@ export interface WebSearchConfig {
   webSearchSearxngKey?: string;
   webSearchZhipuKey?: string;
   webSearchBochaKey?: string;
+  webSearchDeepseekKey?: string;
   webSearchTimeoutMs?: number;
 }
 
@@ -305,7 +306,7 @@ export const EngineSettingsSection: React.FC<{
             </div>
             
             <div className="flex flex-col gap-1 mt-4 rounded-2xl bg-muted p-1.5">
-              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha'].map((id) => {
+              {['bing_rss', 'google_cse', 'serpapi', 'tavily', 'brave', 'searxng', 'zhipu', 'bocha', 'deepseek'].map((id) => {
                 const labelMap: Record<string, string> = {
                   bing_rss: t('settings:external_search.bing_rss_name'),
                   google_cse: 'Google CSE',
@@ -314,7 +315,8 @@ export const EngineSettingsSection: React.FC<{
                   brave: 'Brave',
                   searxng: 'SearXNG',
                   zhipu: t('settings:external_search.zhipu_name'),
-                  bocha: t('settings:external_search.bocha_name')
+                  bocha: t('settings:external_search.bocha_name'),
+                  deepseek: t('settings:external_search.deepseek_name')
                 };
                 const isConfiguredMap: Record<string, boolean> = {
                   bing_rss: true,
@@ -324,7 +326,8 @@ export const EngineSettingsSection: React.FC<{
                   brave: !!config.webSearchBraveKey,
                   searxng: !!config.webSearchSearxngEndpoint,
                   zhipu: !!config.webSearchZhipuKey,
-                  bocha: !!config.webSearchBochaKey
+                  bocha: !!config.webSearchBochaKey,
+                  deepseek: !!config.webSearchDeepseekKey
                 };
                 const isActive = activeEngine === id;
                 const isConfigured = isConfiguredMap[id];
@@ -591,6 +594,34 @@ export const EngineSettingsSection: React.FC<{
             </div>
           )}
 
+          {activeEngine === 'deepseek' && (
+            <div className="w-full ui-rise-in">
+              <div className="flex flex-col gap-2 mb-6">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="text-base font-semibold text-foreground truncate">{t('settings:external_search.deepseek_name')}</h3>
+                    <DsButton size="sm" variant="ghost" iconOnly className="opacity-60 hover:opacity-100 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!min-w-11" onClick={() => void openUrl("https://platform.deepseek.com/api_keys")} title={t('settings:external_search.deepseek_apply')}>
+                      <ArrowSquareOut size={14} />
+                    </DsButton>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  {t('settings:descriptions.deepseek_desc')}
+                </p>
+              </div>
+              <div className="rounded-2xl bg-muted p-3 sm:p-4">
+              <div className="flex flex-col gap-6 text-xs md:grid md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.deepseek_key_label')}</div>
+                          <SecurePasswordInput value={config.webSearchDeepseekKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekKey: v }))} placeholder="DEEPSEEK_API_KEY" isSensitive />
+                  <p className="text-xs text-muted-foreground/70">{t('settings:external_search.deepseek_key_desc')}</p>
+                </div>
+              </div>
+              {renderEngineFooter('deepseek', !!config.webSearchDeepseekKey)}
+              </div>
+            </div>
+          )}
+
         </div>
       </div>
 
@@ -624,6 +655,7 @@ export const EngineSettingsSection: React.FC<{
                   { value: 'searxng', label: t('settings:external_search.engine_options.searxng'), disabled: !config.webSearchSearxngEndpoint },
                   { value: 'zhipu', label: t('settings:external_search.engine_options.zhipu'), disabled: !config.webSearchZhipuKey },
                   { value: 'bocha', label: t('settings:external_search.engine_options.bocha'), disabled: !config.webSearchBochaKey },
+                  { value: 'deepseek', label: t('settings:external_search.engine_options.deepseek'), disabled: !config.webSearchDeepseekKey },
                 ]}
                 variant="outline"
                 className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors [@media(pointer:coarse)]:!h-11"

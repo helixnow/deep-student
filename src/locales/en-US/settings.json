@@ -1596,7 +1596,8 @@
       "brave": "Brave",
       "searxng": "SearXNG",
       "zhipu": "Zhipu AI (China)",
-      "bocha": "Bocha AI (China)"
+      "bocha": "Bocha AI (China)",
+      "deepseek": "DeepSeek Official Search"
     },
     "bing_rss_name": "Bing RSS (Free)",
     "zhipu_name": "Zhipu AI Search",
@@ -1608,7 +1609,12 @@
     "bocha_key_label": "Bocha API Key",
     "bocha_key_desc": "Bocha AI Open Platform API key",
     "bocha_desc": "Bocha AI is a search engine designed for AI applications, used by Tencent Yuanqi, ByteDance Coze, DingTalk AI Assistant, and more. Provides high-quality Chinese search results with semantic ranking.",
-    "bocha_apply": "Get Bocha API Key"
+    "bocha_apply": "Get Bocha API Key",
+    "deepseek_name": "DeepSeek Official Search",
+    "deepseek_key_label": "DeepSeek API Key",
+    "deepseek_key_desc": "Reuses the same API key as DeepSeek chat; billed per successful search request (~$0.00075), empty results are free",
+    "deepseek_desc": "DeepSeek's in-house search engine returns structured results with relevance and authority scores, and natively supports site:/lang:/after:/before: operators.",
+    "deepseek_apply": "Get DeepSeek API Key"
   },
   "model_presets": {
     "title": "Model Assignment Presets",
@@ -2056,6 +2062,7 @@
     "searxng_desc": "An open-source metasearch engine that aggregates multiple sources.",
     "zhipu_desc": "A China-based internet search aggregation service from Zhipu.",
     "bocha_desc": "A lightweight retrieval service focused on Chinese-language indexes.",
+    "deepseek_desc": "DeepSeek in-house search with precise date/site filters and built-in relevance and authority scores.",
     "qbank_ai_generation_desc": "Used for AI question generation in question banks. If not configured, it falls back to the AI grading model, then the second model. Vision-capable models can generate questions directly from scanned page images."
   },
   "common_labels": {

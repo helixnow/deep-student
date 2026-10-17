@@ -403,10 +403,11 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
           TauriAPI.getSetting('web_search.searxng.endpoint'),
           TauriAPI.getSetting('web_search.api_key.zhipu'),
           TauriAPI.getSetting('web_search.api_key.bocha'),
+          TauriAPI.getSetting('web_search.api_key.deepseek'),
         ]);
         
         // 提取设置值，失败的设置返回null
-        const [bing, gkey, gcx, serp, tav, brave, sxEndpoint, zhipu, bocha] = settingsResults.map(result => 
+        const [bing, gkey, gcx, serp, tav, brave, sxEndpoint, zhipu, bocha, deepseek] = settingsResults.map(result => 
           result.status === 'fulfilled' ? result.value : null
         );
         const engines: SearchEngine[] = [
@@ -419,6 +420,7 @@ export const DialogControlProvider: React.FC<{ children: React.ReactNode }> = ({
         if ((sxEndpoint || '').trim()) engines.push({ id: 'searxng', label: 'SearXNG' });
         if ((zhipu || '').trim()) engines.push({ id: 'zhipu', label: i18n.t('common:search_engines.zhipu', 'Zhipu AI Search') });
         if ((bocha || '').trim()) engines.push({ id: 'bocha', label: i18n.t('common:search_engines.bocha', 'Bocha AI Search') });
+        if ((deepseek || '').trim()) engines.push({ id: 'deepseek', label: i18n.t('common:search_engines.deepseek', 'DeepSeek Search') });
         setAvailableSearchEngines(engines);
         // 🔧 同步更新搜索引擎缓存，让 TauriAdapter 能获取可用引擎列表
         updateSearchEngineCache(engines.map(e => e.id));
