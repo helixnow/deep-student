@@ -61,6 +61,21 @@ describe('WorkbenchEventBridge note routing', () => {
     }));
   });
 
+  it('routes flashcard view-source note events into the Notes workspace, not chat (#482)', async () => {
+    render(<WorkbenchEventBridge />);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent('DSTU_OPEN_NOTE', {
+        detail: { noteId: 'note_from_card', source: 'flashcards-review' },
+      }));
+    });
+
+    await waitFor(() => expect(requestWorkspaceResource).toHaveBeenCalledWith({
+      type: 'note',
+      id: 'note_from_card',
+    }));
+  });
+
   it('retains a wikilink heading until the target editor mounts', async () => {
     render(<WorkbenchEventBridge />);
 

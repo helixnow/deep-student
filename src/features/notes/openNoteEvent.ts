@@ -1,8 +1,10 @@
 /**
  * DSTU_OPEN_NOTE 事件所有权三分规则（跨 Chat / Workbench 防双开核心契约）
  *
- * 1. Notes 自有 source（notes-editor / wikilink / mention）→ Workbench 处理
+ * 1. Notes 工作区自有的 source（notes-editor / wikilink / mention），以及
+ *    卡片库 / 复习里「查看出处」的 flashcards-* → Workbench / 经典壳直接开笔记原文
  * 2. 显式其它 source（如 note_tool_preview、agent_task_panel）→ Chat 处理
+ *    （聊天画布内联预览；卡片出处要的是 markdown 原文，不能走这条，见 #482）
  * 3. 无 source 的遗留事件 → Workbench 处理
  *
  * 行为由 __tests__/openNoteEvent.test.ts 锁定；消费方为
@@ -17,6 +19,11 @@ export const NOTES_OWNED_OPEN_NOTE_SOURCES = [
   'notes-editor',
   'wikilink',
   'mention',
+  // 卡片库 / 复习会话「查看出处」：目标是笔记 markdown 原文（#482）。
+  // 归 Chat 时会在 Workbench 下被 openCanvasWithNote 开进聊天画布，用户看到的是
+  // 对话界面而不是笔记，因此这两个来源必须由 Notes 侧接管。
+  'flashcards-library',
+  'flashcards-review',
 ] as const;
 
 /** Notes 工作区自有的 open-note 事件来源 */
