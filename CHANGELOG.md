@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.7](https://github.com/helixnow/deep-student/compare/v0.10.6...v0.10.7) (2026-10-18)
+
+
+### Features
+
+* **chat:** 用户消息密钥/令牌默认脱敏，可按需显示原文（借鉴 DSH 0.2.1） ([f459bae](https://github.com/helixnow/deep-student/commit/f459bae81614ba6ecba8f0eb131a857157544e2e))
+* **search/fetch:** DeepSeek Search 正文注入与 Fetch API 可选后端（借鉴 DSH 0.2.1） ([21f7853](https://github.com/helixnow/deep-student/commit/21f78536112a91a8eeb5b125e743cdc484fec69a))
+* **search:** 新增 DeepSeek 官方搜索渠道 ([#484](https://github.com/helixnow/deep-student/issues/484)) ([d4e47a9](https://github.com/helixnow/deep-student/commit/d4e47a980f20ed4a5fdf192749141e9b2539ac60))
+* **settings:** DeepSeek 搜索 need_content 与 Fetch 后端开关 ([598acab](https://github.com/helixnow/deep-student/commit/598acab5fdf8bdf866a690babe224f823e024772))
+
+
+### Bug Fixes
+
+* **tests:** 伪造密钥样本改为运行时拼接，避免 secret scanning 误报 ([c62ccbc](https://github.com/helixnow/deep-student/commit/c62ccbc6136a9148bbdc9643a716a16ae8908239))
+
 ## [0.10.6](https://github.com/helixnow/deep-student/compare/v0.10.5...v0.10.6) (2026-10-17)
 
 
