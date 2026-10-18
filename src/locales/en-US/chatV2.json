@@ -269,6 +269,11 @@
       "expand": "Show more",
       "collapse": "Collapse"
     },
+    "secretMask": {
+      "detected": "{{count}} possible secret(s) hidden",
+      "show": "Show original",
+      "hide": "Hide original"
+    },
     "rawRequest": {
       "title": "API Request Body",
       "titleWithModel": "API Request Body — {{model}}",

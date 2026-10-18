@@ -269,6 +269,11 @@
       "expand": "展开全文",
       "collapse": "收起"
     },
+    "secretMask": {
+      "detected": "已隐藏 {{count}} 处疑似密钥/令牌",
+      "show": "显示原文",
+      "hide": "隐藏原文"
+    },
     "rawRequest": {
       "title": "API 请求体",
       "titleWithModel": "API 请求体 — {{model}}",
