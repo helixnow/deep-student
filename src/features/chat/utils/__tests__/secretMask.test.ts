@@ -23,14 +23,14 @@ const OPENAI_KEY = `sk-${'Ab0_-'.repeat(6)}`;
 const BEARER_TOKEN = 'eyJhbGciOiJIUzI1NiJ9';
 /** GitHub classic PAT：ghp_ + 36 位 */
 const GHP_TOKEN = `ghp_${'a'.repeat(36)}`;
-/** GitHub fine-grained PAT：github_pat_ + 25 位 */
-const GITHUB_FINE_PAT = 'github_pat_A1b2C3d4E5f6G7h8I9j0K';
-/** AWS access key id：AKIA + 16 位大写字母/数字 */
-const AWS_KEY = 'AKIAIOSFODNN7EXAMPLE';
-/** Slack bot token */
-const SLACK_TOKEN = 'xoxb-1234567890-abcdefghij';
-/** Google API key：AIza + 35 位 */
-const GOOGLE_KEY = 'AIzaSyA1234567890abcdefghijklmnopqrstuv';
+/** GitHub fine-grained PAT：github_pat_ + 25 位（运行时拼接，避免静态 secret scanning 误报） */
+const GITHUB_FINE_PAT = 'github_pat_' + 'A1b2C3d4E5f6G7h8I9j0K';
+/** AWS access key id：AKIA + 16 位大写字母/数字（拼接，避免静态误报） */
+const AWS_KEY = 'AKIA' + 'IOSFODNN7EXAMPLE';
+/** Slack bot token（拼接，避免静态误报） */
+const SLACK_TOKEN = 'xoxb-' + '1234567890-abcdefghij';
+/** Google API key：AIza + 35 位（拼接，避免静态误报；提交里不得出现完整字面量） */
+const GOOGLE_KEY = 'AIza' + 'SyA' + '1'.repeat(32);
 /** Hugging Face token：hf_ + 24 位 */
 const HF_TOKEN = `hf_${'a'.repeat(24)}`;
 

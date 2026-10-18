@@ -32,7 +32,7 @@ vi.mock('@/features/chat/hooks/useChatStore', () => ({
 
 import { ContentBlock } from '../content';
 
-const SECRET_TEXT = '我的 key 是 sk-abcdefghijklmnopqrstuv 请勿外传';
+const SECRET_TEXT = '我的 key 是 ' + 'sk-' + 'abcdefghijklmnopqrstuv' + ' 请勿外传';
 const MASKED_TEXT = '我的 key 是 sk-ab•••• 请勿外传';
 
 function createStore(): StoreApi<ChatStore> {
@@ -105,7 +105,7 @@ describe('content 正文块 - 用户消息展示级脱敏', () => {
     fireEvent.click(screen.getByRole('button', { name: '显示原文' }));
     expect(renderedText()).toBe(SECRET_TEXT);
 
-    const nextText = '新的 key 是 sk-zyxwvutsrqponmlkjihg 已更换';
+    const nextText = '新的 key 是 ' + 'sk-' + 'zyxwvutsrqponmlkjihg' + ' 已更换';
     rerender(<ContentBlock block={createBlock(nextText)} store={store} />);
 
     expect(renderedText()).toBe('新的 key 是 sk-zy•••• 已更换');
