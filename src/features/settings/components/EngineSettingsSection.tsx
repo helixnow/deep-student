@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
+import { Switch } from '@/components/ui/shad/Switch';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -39,6 +40,10 @@ export interface WebSearchConfig {
   webSearchZhipuKey?: string;
   webSearchBochaKey?: string;
   webSearchDeepseekKey?: string;
+  /** DeepSeek 搜索是否回传网页正文（官方 need_content）；后端设置键 web_search.deepseek.need_content */
+  webSearchDeepseekNeedContent?: boolean;
+  /** Web Fetch 是否优先使用 DeepSeek Fetch API；后端设置键 web_search.deepseek.fetch_enabled */
+  webSearchDeepseekFetchEnabled?: boolean;
   webSearchTimeoutMs?: number;
 }
 
@@ -615,6 +620,30 @@ export const EngineSettingsSection: React.FC<{
                           <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:external_search.deepseek_key_label')}</div>
                           <SecurePasswordInput value={config.webSearchDeepseekKey} onChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekKey: v }))} placeholder="DEEPSEEK_API_KEY" isSensitive />
                   <p className="text-xs text-muted-foreground/70">{t('settings:external_search.deepseek_key_desc')}</p>
+                </div>
+                <div className="space-y-3 md:col-span-2">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-foreground/90">{t('settings:external_search.deepseek_need_content_label')}</div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/70">{t('settings:external_search.deepseek_need_content_desc')}</p>
+                    </div>
+                    <Switch
+                      checked={Boolean(config.webSearchDeepseekNeedContent)}
+                      onCheckedChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekNeedContent: v }))}
+                      aria-label={t('settings:external_search.deepseek_need_content_label')}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="min-w-0">
+                      <div className="text-xs font-medium text-foreground/90">{t('settings:external_search.deepseek_fetch_label')}</div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground/70">{t('settings:external_search.deepseek_fetch_desc')}</p>
+                    </div>
+                    <Switch
+                      checked={Boolean(config.webSearchDeepseekFetchEnabled)}
+                      onCheckedChange={(v) => setConfig((prev: WebSearchConfig) => ({ ...prev, webSearchDeepseekFetchEnabled: v }))}
+                      aria-label={t('settings:external_search.deepseek_fetch_label')}
+                    />
+                  </div>
                 </div>
               </div>
               {renderEngineFooter('deepseek', !!config.webSearchDeepseekKey)}

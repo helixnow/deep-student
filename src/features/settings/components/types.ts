@@ -65,6 +65,10 @@ export interface SystemConfig {
   webSearchZhipuKey: string;
   webSearchBochaKey: string;
   webSearchDeepseekKey: string;
+  /** DeepSeek 搜索是否要回传网页正文（官方 need_content，计费不变） */
+  webSearchDeepseekNeedContent: boolean;
+  /** Web Fetch 工具是否优先走 DeepSeek Fetch API（按成功请求计费） */
+  webSearchDeepseekFetchEnabled: boolean;
   webSearchWhitelist: string;
   webSearchBlacklist: string;
   webSearchInjectSnippetMax?: number;

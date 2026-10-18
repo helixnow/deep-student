@@ -1614,7 +1614,11 @@
     "deepseek_key_label": "DeepSeek API Key",
     "deepseek_key_desc": "Reuses the same API key as DeepSeek chat; billed per successful search request (~$0.00075), empty results are free",
     "deepseek_desc": "DeepSeek's in-house search engine returns structured results with relevance and authority scores, and natively supports site:/lang:/after:/before: operators.",
-    "deepseek_apply": "Get DeepSeek API Key"
+    "deepseek_apply": "Get DeepSeek API Key",
+    "deepseek_need_content_label": "Return page content with search results",
+    "deepseek_need_content_desc": "Official need_content: results include the page body (Markdown) so the model can read more with one request; billed per successful search, no extra charge",
+    "deepseek_fetch_label": "Use DeepSeek Fetch for web pages",
+    "deepseek_fetch_desc": "Fetch pages through DeepSeek's official Fetch API first (clean Markdown, ~$0.00075 per successful request, 5 QPS); automatically falls back to the local fetch pipeline on failure"
   },
   "model_presets": {
     "title": "Model Assignment Presets",

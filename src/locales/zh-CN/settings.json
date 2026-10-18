@@ -1614,7 +1614,11 @@
     "deepseek_key_label": "DeepSeek API Key",
     "deepseek_key_desc": "与 DeepSeek 对话共用同一把 API Key；搜索按成功请求计费（约 ¥0.005/次），无结果不计费",
     "deepseek_desc": "DeepSeek 自研搜索引擎，返回带相关性评分与权威性分级的结构化结果，原生支持 site:/lang:/after:/before: 精确语法。",
-    "deepseek_apply": "申请 DeepSeek API Key"
+    "deepseek_apply": "申请 DeepSeek API Key",
+    "deepseek_need_content_label": "搜索时返回网页正文",
+    "deepseek_need_content_desc": "官方 need_content：结果附带网页正文（Markdown），减少二次抓取；计费仍按成功搜索请求，不额外收费",
+    "deepseek_fetch_label": "网页抓取使用 DeepSeek Fetch",
+    "deepseek_fetch_desc": "抓取网页时优先调用 DeepSeek 官方 Fetch API（返回干净 Markdown，约 ¥0.005/次成功请求，5 QPS）；失败时自动回退本地抓取"
   },
   "model_presets": {
     "title": "模型分配预设",

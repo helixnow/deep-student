@@ -280,6 +280,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     webSearchZhipuKey: '',
     webSearchBochaKey: '',
     webSearchDeepseekKey: '',
+    webSearchDeepseekNeedContent: false,
+    webSearchDeepseekFetchEnabled: false,
     webSearchWhitelist: '',
     webSearchBlacklist: '',
     webSearchInjectSnippetMax: 180,
@@ -1164,6 +1166,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     config.webSearchGoogleKey, config.webSearchSerpApiKey, config.webSearchTavilyKey,
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
     config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
+    config.webSearchDeepseekNeedContent, config.webSearchDeepseekFetchEnabled,
   ]);
 
   if (loading && !isSmallScreen) {
