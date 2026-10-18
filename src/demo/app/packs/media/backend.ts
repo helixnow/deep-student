@@ -474,6 +474,27 @@ export function handleDemoMedia(cmd: string, args: DemoArgs): unknown {
       m.lastWatchedAt = Date.now();
       return null;
     }
+    // ---------- 学习闭环（#476 新增命令；演示包给示例数据，避免烟测报 unmocked）
+    case 'media_study_ledger': {
+      const ids = Array.isArray(args.resourceIds) ? args.resourceIds.map(String) : [];
+      return {
+        items: ids.map((resourceId) => ({
+          resourceId,
+          cardCount: 3,
+          cardsDue: 1,
+          cardsNew: 2,
+          cardIds: [],
+          questionCount: 2,
+          questionsAttempted: 1,
+          attemptTotal: 2,
+          correctTotal: 1,
+          questionsWrong: 1,
+          examIds: [],
+        })),
+      };
+    }
+    case 'media_checkpoints':
+      return [];
 
     // ---------- B 站
     case 'media_bilibili_auth_status':
