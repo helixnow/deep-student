@@ -61,6 +61,12 @@ const DEFAULT_USER_AGENT: &str =
     "DeepStudent/1.0 (Autonomous; +https://github.com/modelcontextprotocol/servers)";
 /// 最大重定向跳数（SSRF 安全跟随）
 const MAX_REDIRECTS: usize = 10;
+/// DeepSeek 官方 Fetch 开关设置键（默认关闭；字符串 "true" 视为开启）
+const DEEPSEEK_FETCH_ENABLED_SETTING: &str = "web_search.deepseek.fetch_enabled";
+/// DeepSeek API Key 设置键（与 DeepSeek 搜索渠道共用同一个 Key）
+const DEEPSEEK_API_KEY_SETTING: &str = "web_search.api_key.deepseek";
+/// DeepSeek 官方 Fetch 端点
+const DEEPSEEK_FETCH_ENDPOINT: &str = "https://api.deepseek.com/v1/tools/fetch";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct BinaryKind {
@@ -486,6 +492,69 @@ fn try_extract_main_content(html: &str) -> Option<String> {
 }
 
 // ============================================================================
+// DeepSeek 官方 Fetch（可选能力，默认关闭）
+//
+// 端点：POST https://api.deepseek.com/v1/tools/fetch
+// 请求：{"url": "..."}；返回：{"title": "...", "content": "<Markdown 正文>"}
+// 计费 5 元/千次成功请求，限速 5 QPS；404=抓不到内容，402=余额不足，
+// 408/429/5xx 可重试（本路径单次调用，失败后静默回退本地抓取，不自动重试）。
+// ============================================================================
+
+/// 开关语义：仅字符串 `true`（忽略大小写与首尾空白）视为开启，默认关闭。
+fn deepseek_fetch_setting_enabled(value: Option<&str>) -> bool {
+    value.is_some_and(|value| value.trim().eq_ignore_ascii_case("true"))
+}
+
+/// 是否尝试 DeepSeek Fetch：开关开启 + 密钥非空 + URL 为 http(s)。
+fn should_use_deepseek_fetch(enabled: bool, api_key: Option<&str>, url: &str) -> bool {
+    if !enabled || !api_key.is_some_and(|key| !key.trim().is_empty()) {
+        return false;
+    }
+    reqwest::Url::parse(url)
+        .ok()
+        .is_some_and(|parsed| matches!(parsed.scheme(), "http" | "https"))
+}
+
+/// 解析 DeepSeek Fetch 响应 `{"title": "...", "content": "<Markdown 正文>"}`。
+///
+/// 返回 `(title, content)`；`content` 缺失/空白视为失败（调用方回退本地抓取）。
+fn parse_deepseek_fetch_response(body: &Value) -> Result<(Option<String>, String), String> {
+    let content = body
+        .get("content")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|content| !content.is_empty())
+        .ok_or_else(|| "DeepSeek Fetch returned empty content".to_string())?;
+    let title = body
+        .get("title")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|title| !title.is_empty())
+        .map(str::to_string);
+    Ok((title, content.to_string()))
+}
+
+/// DeepSeek Fetch 非 2xx 错误描述（仅用于日志；失败会回退本地抓取且不重试）。
+fn describe_deepseek_fetch_failure(status: u16, body_excerpt: &str) -> String {
+    let summary = match status {
+        402 => "DeepSeek Fetch 余额不足（HTTP 402），请充值后再试".to_string(),
+        404 => "DeepSeek Fetch 未能抓取该网页内容（HTTP 404）".to_string(),
+        408 => "DeepSeek Fetch 请求超时（HTTP 408，可重试）".to_string(),
+        429 => "DeepSeek Fetch 请求频率超限（HTTP 429，可重试）".to_string(),
+        400 => "DeepSeek Fetch 请求参数错误（HTTP 400）".to_string(),
+        401 | 403 => format!("DeepSeek Fetch 鉴权失败（HTTP {status}，请检查 DeepSeek API Key）"),
+        500..=599 => format!("DeepSeek Fetch 服务端错误（HTTP {status}，可重试）"),
+        _ => format!("DeepSeek Fetch 失败（HTTP {status}）"),
+    };
+    let excerpt = body_excerpt.trim();
+    if excerpt.is_empty() {
+        summary
+    } else {
+        format!("{summary}: {excerpt}")
+    }
+}
+
+// ============================================================================
 // 内置 Fetch 工具执行器
 // ============================================================================
 
@@ -495,6 +564,11 @@ fn try_extract_main_content(html: &str) -> Option<String> {
 pub struct FetchExecutor {
     /// HTTP 客户端
     client: reqwest::Client,
+    /// DeepSeek 官方 Fetch 客户端。
+    ///
+    /// 与本地抓取客户端不同，它是云端 API：按需求**不加 `no_proxy`**，
+    /// 走系统默认代理环境，否则企业代理 / 系统代理场景下不可达。
+    deepseek_client: reqwest::Client,
 }
 
 impl FetchExecutor {
@@ -563,7 +637,16 @@ impl FetchExecutor {
             .build()
             .expect("Failed to create HTTP client with security settings - this is a fatal error");
 
-        Self { client }
+        // DeepSeek Fetch 走默认代理环境（勿加 no_proxy），超时对齐本地抓取（30s）。
+        let deepseek_client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .expect("Failed to create DeepSeek fetch HTTP client - this is a fatal error");
+
+        Self {
+            client,
+            deepseek_client,
+        }
     }
 
     /// 下载 HTTPS URL 的原始字节（SSRF 防护 + 大小上限），供 skill_install 等工具复用。
@@ -870,6 +953,64 @@ impl FetchExecutor {
 
         let start_time = Instant::now();
 
+        // 可选：DeepSeek 官方 Fetch。URL 已完成 http(s)/SSRF 校验后才尝试；
+        // 任意失败（网络 / 非 2xx / 解析失败 / 空正文）都静默回退本地抓取，取消除外。
+        let deepseek_fetch_enabled = deepseek_fetch_setting_enabled(
+            ctx.main_db
+                .as_ref()
+                .and_then(|db| {
+                    db.get_setting(DEEPSEEK_FETCH_ENABLED_SETTING)
+                        .ok()
+                        .flatten()
+                })
+                .as_deref(),
+        );
+        let deepseek_api_key = if deepseek_fetch_enabled {
+            ctx.main_db.as_ref().and_then(|db| {
+                db.get_secret(DEEPSEEK_API_KEY_SETTING)
+                    .ok()
+                    .flatten()
+                    .map(|key| key.trim().to_string())
+                    .filter(|key| !key.is_empty())
+            })
+        } else {
+            None
+        };
+        if should_use_deepseek_fetch(deepseek_fetch_enabled, deepseek_api_key.as_deref(), url) {
+            if let Some(api_key) = deepseek_api_key.as_deref() {
+                match self.deepseek_fetch_markdown(ctx, url, api_key).await {
+                    Ok(content) => {
+                        let duration_ms = start_time.elapsed().as_millis() as u64;
+                        log::debug!(
+                            "[FetchExecutor] DeepSeek fetch succeeded: url={}, content_len={}, {}ms",
+                            url,
+                            content.chars().count(),
+                            duration_ms
+                        );
+                        return Ok(self.deepseek_fetch_success_result(
+                            url,
+                            parsed_url.host_str(),
+                            &content,
+                            start_index,
+                            max_length,
+                            duration_ms,
+                        ));
+                    }
+                    Err(_) if ctx.is_cancelled() => {
+                        // 取消不降级：否则用户已取消后还会继续发起本地抓取。
+                        return Err("Fetch cancelled during DeepSeek fetch".to_string());
+                    }
+                    Err(error) => {
+                        log::warn!(
+                            "[FetchExecutor] DeepSeek fetch failed for URL {}: {} — falling back to local fetch",
+                            url,
+                            error
+                        );
+                    }
+                }
+            }
+        }
+
         // SSRF 防护：使用解析后的 IP 发送请求，防止 DNS 重绑定攻击
         // DNS 重绑定：攻击者控制的 DNS 第一次返回公网 IP（通过检查），
         // 第二次返回内网 IP（reqwest 重新解析时），从而绕过 SSRF 防护
@@ -1134,6 +1275,100 @@ impl FetchExecutor {
             "nextStartIndex": next_start,
             "durationMs": duration_ms,
         }))
+    }
+
+    /// DeepSeek Fetch 成功结果：与本地抓取成功路径**完全同形状**，分页复用
+    /// `paginate_content`；DeepSeek 返回的已是 Markdown 正文，`raw` 参数下同样返回它。
+    fn deepseek_fetch_success_result(
+        &self,
+        url: &str,
+        host: Option<&str>,
+        content: &str,
+        start_index: usize,
+        max_length: usize,
+        duration_ms: u64,
+    ) -> Value {
+        let total_length = content.chars().count();
+        let (paginated_content, has_more, _truncation_notice) =
+            self.paginate_content(content, start_index, max_length);
+        let returned_length = paginated_content.chars().count();
+        let next_start = if has_more {
+            Some(start_index.saturating_add(max_length))
+        } else {
+            None
+        };
+        // 官方 Fetch 只返回正文，不暴露跳转后的最终 URL：finalUrl 复用请求 URL，
+        // 因此 redirected 恒为 false（与本地路径 `finalUrl == url` 的分支一致）。
+        json!({
+            "success": true,
+            "url": url,
+            "finalUrl": url,
+            "redirected": false,
+            "finalDomain": host,
+            "content": paginated_content,
+            "contentType": "text/markdown; deepseek-fetch",
+            "totalLength": total_length,
+            "startIndex": start_index,
+            "returnedLength": returned_length,
+            "hasMore": has_more,
+            "nextStartIndex": next_start,
+            "durationMs": duration_ms,
+        })
+    }
+
+    /// 单次调用 DeepSeek Fetch 端点，返回 Markdown 正文（失败返回可读错误）。
+    async fn deepseek_fetch_request(&self, url: &str, api_key: &str) -> Result<String, String> {
+        let response = self
+            .deepseek_client
+            .post(DEEPSEEK_FETCH_ENDPOINT)
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&json!({ "url": url }))
+            .send()
+            .await
+            .map_err(|error| format!("DeepSeek Fetch request failed: {error}"))?;
+        let status = response.status();
+        let body_text = response
+            .text()
+            .await
+            .map_err(|error| format!("DeepSeek Fetch response read failed: {error}"))?;
+        if !status.is_success() {
+            let excerpt: String = body_text.chars().take(300).collect();
+            return Err(describe_deepseek_fetch_failure(status.as_u16(), &excerpt));
+        }
+        let body: Value = serde_json::from_str(&body_text)
+            .map_err(|error| format!("DeepSeek Fetch response parse failed: {error}"))?;
+        let (title, content) = parse_deepseek_fetch_response(&body)?;
+        log::debug!(
+            "[FetchExecutor] DeepSeek fetch ok: url={}, title={:?}, content_len={}",
+            url,
+            title,
+            content.chars().count()
+        );
+        Ok(content)
+    }
+
+    /// 带取消支持地调用 DeepSeek Fetch（send + 读响应体整体包在 tokio::select! 里）。
+    async fn deepseek_fetch_markdown(
+        &self,
+        ctx: &ExecutionContext,
+        url: &str,
+        api_key: &str,
+    ) -> Result<String, String> {
+        if ctx.is_cancelled() {
+            return Err("Fetch cancelled before DeepSeek fetch".to_string());
+        }
+        if let Some(cancel_token) = ctx.cancellation_token() {
+            tokio::select! {
+                result = self.deepseek_fetch_request(url, api_key) => result,
+                _ = cancel_token.cancelled() => {
+                    log::info!("[FetchExecutor] DeepSeek fetch cancelled for URL: {}", url);
+                    Err("Fetch cancelled during DeepSeek fetch".to_string())
+                }
+            }
+        } else {
+            self.deepseek_fetch_request(url, api_key).await
+        }
     }
 
     /// HTML 转纯文本
@@ -1765,5 +2000,143 @@ mod tests {
         let input = "Line 1\n\n\n\n\nLine 2\n\n\nLine 3";
         let result = executor.clean_markdown(input);
         assert_eq!(result, "Line 1\n\nLine 2\n\nLine 3");
+    }
+
+    // ========================================================================
+    // DeepSeek 官方 Fetch（可选能力）
+    // ========================================================================
+
+    #[test]
+    fn deepseek_fetch_setting_enabled_only_accepts_true() {
+        assert!(deepseek_fetch_setting_enabled(Some("true")));
+        assert!(deepseek_fetch_setting_enabled(Some(" TRUE ")));
+        assert!(!deepseek_fetch_setting_enabled(Some("false")));
+        assert!(!deepseek_fetch_setting_enabled(Some("1")));
+        assert!(!deepseek_fetch_setting_enabled(Some("")));
+        assert!(!deepseek_fetch_setting_enabled(None));
+    }
+
+    #[test]
+    fn deepseek_fetch_should_use_requires_enabled_key_and_http_url() {
+        assert!(should_use_deepseek_fetch(
+            true,
+            Some("sk-test"),
+            "https://example.com/a"
+        ));
+        assert!(should_use_deepseek_fetch(
+            true,
+            Some("sk-test"),
+            "http://example.com/a"
+        ));
+        // 开关关闭 / 无密钥 / 空白密钥均不走 DeepSeek
+        assert!(!should_use_deepseek_fetch(
+            false,
+            Some("sk-test"),
+            "https://example.com/a"
+        ));
+        assert!(!should_use_deepseek_fetch(
+            true,
+            None,
+            "https://example.com/a"
+        ));
+        assert!(!should_use_deepseek_fetch(
+            true,
+            Some("   "),
+            "https://example.com/a"
+        ));
+        // 仅 http(s)
+        assert!(!should_use_deepseek_fetch(
+            true,
+            Some("sk-test"),
+            "file:///etc/passwd"
+        ));
+        assert!(!should_use_deepseek_fetch(
+            true,
+            Some("sk-test"),
+            "not a url"
+        ));
+    }
+
+    #[test]
+    fn deepseek_fetch_response_parses_markdown_body() {
+        let body = json!({"title": "Rust", "content": "\n# Heading\n\n正文内容\n"});
+        let (title, content) = parse_deepseek_fetch_response(&body).expect("valid body");
+        assert_eq!(title.as_deref(), Some("Rust"));
+        assert_eq!(content, "# Heading\n\n正文内容");
+
+        // title 可选
+        let (title, _) =
+            parse_deepseek_fetch_response(&json!({"content": "ok"})).expect("title optional");
+        assert_eq!(title, None);
+
+        // content 缺失或全空白 → 失败（调用方回退本地抓取）
+        assert!(parse_deepseek_fetch_response(&json!({"content": "   \n "})).is_err());
+        assert!(parse_deepseek_fetch_response(&json!({"title": "only title"})).is_err());
+    }
+
+    #[test]
+    fn deepseek_fetch_failure_messages_are_actionable() {
+        let balance = describe_deepseek_fetch_failure(402, "");
+        assert!(balance.contains("余额不足"), "{balance}");
+        assert!(!balance.contains("可重试"), "402 不应标记可重试: {balance}");
+
+        assert!(describe_deepseek_fetch_failure(429, "").contains("可重试"));
+        assert!(describe_deepseek_fetch_failure(500, "").contains("可重试"));
+        assert!(describe_deepseek_fetch_failure(503, "").contains("可重试"));
+        assert!(describe_deepseek_fetch_failure(404, "").contains("404"));
+        assert!(describe_deepseek_fetch_failure(401, "").contains("API Key"));
+
+        let with_body = describe_deepseek_fetch_failure(500, "upstream exploded");
+        assert!(with_body.contains("upstream exploded"));
+    }
+
+    #[test]
+    fn deepseek_fetch_success_result_matches_local_fetch_shape() {
+        let executor = FetchExecutor::new();
+        let content = "Hello, DeepSeek Fetch! 这是 Markdown 正文。";
+        let result = executor.deepseek_fetch_success_result(
+            "https://example.com/page",
+            Some("example.com"),
+            content,
+            0,
+            10,
+            42,
+        );
+        for key in [
+            "success",
+            "url",
+            "finalUrl",
+            "redirected",
+            "finalDomain",
+            "content",
+            "contentType",
+            "totalLength",
+            "startIndex",
+            "returnedLength",
+            "hasMore",
+            "nextStartIndex",
+            "durationMs",
+        ] {
+            assert!(result.get(key).is_some(), "missing key {key}");
+        }
+        assert_eq!(result["success"], json!(true));
+        assert_eq!(result["url"], json!("https://example.com/page"));
+        assert_eq!(result["finalUrl"], json!("https://example.com/page"));
+        assert_eq!(result["redirected"], json!(false));
+        assert_eq!(result["finalDomain"], json!("example.com"));
+        assert_eq!(
+            result["contentType"],
+            json!("text/markdown; deepseek-fetch")
+        );
+        assert_eq!(result["totalLength"], json!(content.chars().count()));
+        assert_eq!(result["startIndex"], json!(0));
+        assert_eq!(result["hasMore"], json!(true));
+        assert_eq!(result["nextStartIndex"], json!(10));
+        assert_eq!(result["durationMs"], json!(42));
+        // 分页行为与本地路径一致（含截断提示；returnedLength 含提示文本，与本地路径同口径）
+        let paginated = result["content"].as_str().expect("content string");
+        assert!(paginated.starts_with("Hello, Dee"));
+        assert!(paginated.contains("<truncated>"));
+        assert_eq!(result["returnedLength"], json!(paginated.chars().count()));
     }
 }

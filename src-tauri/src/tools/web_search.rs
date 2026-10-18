@@ -32,7 +32,7 @@
 //! async-trait = "0.1"
 //! ```
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -1583,6 +1583,46 @@ fn build_cache_key(
 // Fallback inject_text builder
 // =============================
 
+/// 从原始响应里取出 DeepSeek 的 `results` 数组。
+///
+/// 支持两种形态：
+/// - 单引擎直连路径：`raw = {"results": [...]}`（`provider == "deepseek"`）；
+/// - 重排重建路径（`src/tools/mod.rs`）：`raw = {"raw": {"results": [...]}, "provider": "deepseek"}`。
+fn deepseek_results_array(raw: &serde_json::Value) -> Option<&Vec<serde_json::Value>> {
+    raw.get("results")
+        .and_then(|value| value.as_array())
+        .or_else(|| {
+            raw.get("raw")
+                .and_then(|inner| inner.get("results"))
+                .and_then(|value| value.as_array())
+        })
+}
+
+/// DeepSeek 官方搜索在 `need_content=true` 时，每条结果会附带网页正文（Markdown）。
+/// 构造「规范化 URL -> 正文」映射，供注入文本优先使用；来源卡片仍用 `SearchItem.snippet`。
+fn deepseek_content_by_url(raw: &serde_json::Value) -> HashMap<String, String> {
+    let mut content_by_url = HashMap::new();
+    let Some(results) = deepseek_results_array(raw) else {
+        return content_by_url;
+    };
+    for result in results {
+        let Some(url) = result.get("url").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let Some(content) = result.get("content").and_then(|value| value.as_str()) else {
+            continue;
+        };
+        let content = content.trim();
+        if url.trim().is_empty() || content.is_empty() {
+            continue;
+        }
+        content_by_url
+            .entry(normalize_url(url))
+            .or_insert_with(|| content.to_string());
+    }
+    content_by_url
+}
+
 pub fn build_inject_text(cfg: &ToolConfig, resp: &ProviderResponse) -> String {
     // 🔧 修复 #20: 空结果时返回空字符串，避免注入噪声 token
     if resp.items.is_empty() {
@@ -1590,6 +1630,20 @@ pub fn build_inject_text(cfg: &ToolConfig, resp: &ProviderResponse) -> String {
     }
     let snippet_max = cfg.inject_snippet_max_chars.unwrap_or(180);
     let limit_chars = cfg.inject_total_max_chars.unwrap_or(1900);
+    // DeepSeek 官方搜索（need_content=true）会返回网页正文；有正文时优先注入正文，
+    // 没有正文（或非 DeepSeek provider）退回现有 snippet/summary 路径。
+    // 注意：不把 content 写进 SearchItem.snippet，也不改 SearchItem 结构（来源卡片 UI 依赖 snippet）。
+    let is_deepseek_response = resp.provider == "deepseek"
+        || resp
+            .raw
+            .get("provider")
+            .and_then(|value| value.as_str())
+            .is_some_and(|provider| provider == "deepseek");
+    let deepseek_content = if is_deepseek_response {
+        deepseek_content_by_url(&resp.raw)
+    } else {
+        HashMap::new()
+    };
     let header = "【外部搜索结果】\n";
     let mut buf = String::with_capacity(limit_chars + 256);
     buf.push_str(header);
@@ -1597,8 +1651,18 @@ pub fn build_inject_text(cfg: &ToolConfig, resp: &ProviderResponse) -> String {
     let mut char_count = header.chars().count();
     for (i, it) in resp.items.iter().enumerate() {
         let title = it.title.trim();
-        let snippet = strip_html(&it.snippet);
-        let (snip, _) = truncate(&snippet, snippet_max);
+        // 正文已是 Markdown，直接截断；snippet 保持原有 strip_html + 截断逻辑。
+        let (snip, _) = match deepseek_content
+            .get(&normalize_url(&it.url))
+            .map(|content| content.trim())
+            .filter(|content| !content.is_empty())
+        {
+            Some(content) => truncate(content, snippet_max),
+            None => {
+                let snippet = strip_html(&it.snippet);
+                truncate(&snippet, snippet_max)
+            }
+        };
         let line = format!("[{}] {} — {}\nURL: {}\n\n", i + 1, title, snip, it.url);
         char_count += line.chars().count();
         buf.push_str(&line);
@@ -3065,6 +3129,39 @@ impl Provider for DeepSeekProvider {
 // Orchestration
 // =============================
 
+/// 只重试可恢复错误：配置缺失/4xx 客户端错误重试纯属浪费（之前无条件重试所有错误）。
+/// Provider 错误字符串里的状态码统一为 "{provider} http {status}: ..." 格式。
+///
+/// 402（余额不足）按官方要求「充值后再试」，不做自动重试；408/429/5xx 保持可重试语义。
+fn is_retryable(error: &ToolError) -> bool {
+    match error {
+        ToolError::Config(_) => false,
+        ToolError::Http(err) => {
+            // 网络层错误（连接/超时）可重试；带状态码的看是否 429/5xx
+            match err.status() {
+                Some(status) => status.as_u16() == 429 || status.is_server_error(),
+                None => true,
+            }
+        }
+        ToolError::Provider(msg) | ToolError::Unknown(msg) => {
+            let lower = msg.to_lowercase();
+            // 鉴权/参数/计费类错误不重试（402 余额不足：充值后再试；429 限流仍重试）
+            if lower.contains("api key")
+                || lower.contains("unauthorized")
+                || lower.contains("invalid key")
+                || lower.contains("http 400")
+                || lower.contains("http 401")
+                || lower.contains("http 402")
+                || lower.contains("http 403")
+                || lower.contains("http 404")
+            {
+                return false;
+            }
+            true
+        }
+    }
+}
+
 pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
     if input.top_k == 0 {
         return ToolResult {
@@ -3233,35 +3330,6 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
         .with_min_delay(Duration::from_millis(retry_cfg.initial_delay_ms))
         .with_max_times(retry_cfg.max_attempts.saturating_sub(1) as usize);
     let t0 = Instant::now();
-    // 🔧 只重试可恢复错误：配置缺失/4xx 客户端错误重试纯属浪费（之前无条件重试所有错误）。
-    // Provider 错误字符串里的状态码统一为 "{provider} http {status}: ..." 格式。
-    let is_retryable = |e: &ToolError| -> bool {
-        match e {
-            ToolError::Config(_) => false,
-            ToolError::Http(err) => {
-                // 网络层错误（连接/超时）可重试；带状态码的看是否 429/5xx
-                match err.status() {
-                    Some(status) => status.as_u16() == 429 || status.is_server_error(),
-                    None => true,
-                }
-            }
-            ToolError::Provider(msg) | ToolError::Unknown(msg) => {
-                let lower = msg.to_lowercase();
-                // 鉴权/参数类错误不重试（429 限流仍重试）
-                if lower.contains("api key")
-                    || lower.contains("unauthorized")
-                    || lower.contains("invalid key")
-                    || lower.contains("http 400")
-                    || lower.contains("http 401")
-                    || lower.contains("http 403")
-                    || lower.contains("http 404")
-                {
-                    return false;
-                }
-                true
-            }
-        }
-    };
     let res = (|| async { provider.search(&effective_cfg, &input).await })
         .retry(&backoff)
         .when(is_retryable)
@@ -3561,5 +3629,183 @@ mod tests {
             .get_strategy("deepseek");
         assert_eq!(strategy.rate_limit_per_minute, Some(60));
         assert_eq!(strategy.timeout_ms, Some(10000));
+    }
+
+    /// DeepSeek `need_content=true`：模型注入文本优先使用网页正文（Markdown），
+    /// 且正文 URL 需先规范化再与 standardize() 后的 item.url 对齐；
+    /// 没有正文的结果仍回退 snippet。
+    #[test]
+    fn t_deepseek_content_preferred_in_inject_text() {
+        let mut cfg = ToolConfig::default();
+        cfg.inject_snippet_max_chars = Some(180);
+        let raw = json!({
+            "results": [
+                {
+                    "title": "A",
+                    "url": "https://example.com/page?utm_source=feed",
+                    "snippet": "SHORT SNIPPET FOR CARD",
+                    "content": "FULL PAGE MARKDOWN BODY"
+                },
+                {
+                    "title": "B",
+                    "url": "https://example.org/no-content",
+                    "snippet": "FALLBACK SNIPPET",
+                    "summary": "FALLBACK SUMMARY"
+                }
+            ]
+        });
+        let resp = ProviderResponse {
+            items: vec![
+                SearchItem {
+                    title: "A".into(),
+                    url: normalize_url("https://example.com/page?utm_source=feed"),
+                    snippet: "SHORT SNIPPET FOR CARD".into(),
+                    rank: 1,
+                    score_hint: None,
+                },
+                SearchItem {
+                    title: "B".into(),
+                    url: normalize_url("https://example.org/no-content"),
+                    snippet: "FALLBACK SNIPPET".into(),
+                    rank: 2,
+                    score_hint: None,
+                },
+            ],
+            raw,
+            provider: "deepseek".into(),
+        };
+        let text = build_inject_text(&cfg, &resp);
+        // 有 content 的结果注入正文，不注入 snippet
+        assert!(text.contains("FULL PAGE MARKDOWN BODY"));
+        assert!(!text.contains("SHORT SNIPPET FOR CARD"));
+        // 无 content 的结果回退 snippet
+        assert!(text.contains("FALLBACK SNIPPET"));
+        // 格式与单条预算保持不变
+        assert!(text.contains("[1] A — FULL PAGE MARKDOWN BODY"));
+        assert!(text.contains("URL: https://example.com/page"));
+    }
+
+    /// 正文同样受 inject_snippet_max_chars 单条预算约束。
+    #[test]
+    fn t_deepseek_content_respects_snippet_budget() {
+        let mut cfg = ToolConfig::default();
+        cfg.inject_snippet_max_chars = Some(10);
+        let resp = ProviderResponse {
+            items: vec![SearchItem {
+                title: "A".into(),
+                url: "https://example.com/page".into(),
+                snippet: "snippet".into(),
+                rank: 1,
+                score_hint: None,
+            }],
+            raw: json!({
+                "results": [{
+                    "url": "https://example.com/page",
+                    "snippet": "snippet",
+                    "content": "0123456789ABCDEF"
+                }]
+            }),
+            provider: "deepseek".into(),
+        };
+        let text = build_inject_text(&cfg, &resp);
+        assert!(text.contains("0123456789"));
+        assert!(!text.contains("ABCDEF"));
+        assert!(!text.contains("— snippet"));
+    }
+
+    /// 非 DeepSeek provider 即使 raw 里带 content 也不改变注入路径（防越权行为）。
+    #[test]
+    fn t_non_deepseek_provider_ignores_content_field() {
+        let cfg = ToolConfig::default();
+        let resp = ProviderResponse {
+            items: vec![SearchItem {
+                title: "A".into(),
+                url: "https://example.com/page".into(),
+                snippet: "provider snippet".into(),
+                rank: 1,
+                score_hint: None,
+            }],
+            raw: json!({
+                "results": [{
+                    "url": "https://example.com/page",
+                    "snippet": "provider snippet",
+                    "content": "SHOULD NOT BE INJECTED"
+                }]
+            }),
+            provider: "tavily".into(),
+        };
+        let text = build_inject_text(&cfg, &resp);
+        assert!(text.contains("provider snippet"));
+        assert!(!text.contains("SHOULD NOT BE INJECTED"));
+    }
+
+    /// 重排重建路径（src/tools/mod.rs）下 raw 被包装成 {"raw": {...}, "provider": "deepseek"}，
+    /// 仍应优先注入正文。
+    #[test]
+    fn t_deepseek_content_survives_reranker_raw_wrapping() {
+        let cfg = ToolConfig::default();
+        let resp = ProviderResponse {
+            items: vec![SearchItem {
+                title: "A".into(),
+                url: "https://example.com/page".into(),
+                snippet: "wrapped snippet".into(),
+                rank: 1,
+                score_hint: None,
+            }],
+            raw: json!({
+                "raw": {
+                    "results": [{
+                        "url": "https://example.com/page",
+                        "snippet": "wrapped snippet",
+                        "content": "WRAPPED CONTENT"
+                    }]
+                },
+                "provider": "deepseek"
+            }),
+            provider: "single".into(),
+        };
+        let text = build_inject_text(&cfg, &resp);
+        assert!(text.contains("WRAPPED CONTENT"));
+        assert!(!text.contains("wrapped snippet"));
+    }
+
+    /// 402（余额不足）不可重试；408/429/5xx 与网络错误保持可重试。
+    #[test]
+    fn t_provider_402_is_not_retryable() {
+        let balance = ToolError::Provider(
+            "deepseek http 402: 账户余额不足，搜索按成功请求计费: no balance".into(),
+        );
+        assert!(!is_retryable(&balance));
+        assert!(!is_retryable(&map_deepseek_error(
+            reqwest::StatusCode::PAYMENT_REQUIRED,
+            "{\"error\":{\"message\":\"no balance\"}}".into(),
+        )));
+        // 其它不可重试的客户端错误保持不重试
+        assert!(!is_retryable(&ToolError::Provider(
+            "deepseek http 400: bad request".into()
+        )));
+        assert!(!is_retryable(&ToolError::Provider(
+            "deepseek http 401: 鉴权失败".into()
+        )));
+        assert!(!is_retryable(&ToolError::Provider(
+            "deepseek http 403: forbidden".into()
+        )));
+        assert!(!is_retryable(&ToolError::Provider(
+            "deepseek http 404: not found".into()
+        )));
+        assert!(!is_retryable(&ToolError::Config("missing key".into())));
+        // 可恢复错误仍可重试
+        assert!(is_retryable(&ToolError::Provider(
+            "deepseek http 408: 请求超时".into()
+        )));
+        assert!(is_retryable(&ToolError::Provider(
+            "deepseek http 429: 搜索限速（账号级 5 QPS）".into()
+        )));
+        assert!(is_retryable(&ToolError::Provider(
+            "deepseek http 500: internal error".into()
+        )));
+        assert!(is_retryable(&ToolError::Provider(
+            "connection reset by peer".into()
+        )));
     }
 }
