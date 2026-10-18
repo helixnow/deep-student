@@ -3,7 +3,7 @@
 #![allow(clippy::large_enum_variant)]
 //! Single-file implementation of `web_search` tool.
 //! - Standardized citations output + optional `inject_text` fallback.
-//! - Multi-provider adapters: bing_rss, google_cse, serpapi, tavily, brave, searxng, zhipu, bocha.
+//! - Multi-provider adapters: bing_rss, google_cse, serpapi, tavily, brave, searxng, zhipu, bocha, deepseek.
 //! - CLI: read `SearchInput` JSON from stdin -> print `ToolResult` JSON to stdout.
 //! - Optional HTTP server: set `HTTP_MODE=1` (requires axum in Cargo.toml).
 //!
@@ -41,6 +41,7 @@ use std::time::{Duration, Instant};
 use anyhow::Result;
 use async_trait::async_trait;
 use backon::{ExponentialBuilder, Retryable};
+use chrono::{Duration as ChronoDuration, Utc};
 use dashmap::DashMap;
 use lru::LruCache;
 use quick_xml::events::Event as XmlEvent;
@@ -433,6 +434,7 @@ pub struct ProviderStrategies {
     pub searxng: Option<ProviderStrategy>,    // SearXNG策略
     pub zhipu: Option<ProviderStrategy>,      // 智谱AI策略
     pub bocha: Option<ProviderStrategy>,      // 博查AI策略
+    pub deepseek: Option<ProviderStrategy>,   // DeepSeek 官方搜索策略
 }
 
 impl Default for ProviderStrategies {
@@ -496,6 +498,13 @@ impl Default for ProviderStrategies {
                 rate_limit_per_minute: Some(60),
                 ..Default::default()
             }),
+            // DeepSeek 搜索账号级限速 5 QPS，这里留足余量给多引擎聚合
+            deepseek: Some(ProviderStrategy {
+                timeout_ms: Some(10000),
+                max_retries: Some(2),
+                rate_limit_per_minute: Some(60),
+                ..Default::default()
+            }),
         }
     }
 }
@@ -512,6 +521,7 @@ impl ProviderStrategies {
             "searxng" => self.searxng.as_ref().unwrap_or(&self.default),
             "zhipu" => self.zhipu.as_ref().unwrap_or(&self.default),
             "bocha" => self.bocha.as_ref().unwrap_or(&self.default),
+            "deepseek" => self.deepseek.as_ref().unwrap_or(&self.default),
             _ => &self.default,
         }
     }
@@ -836,6 +846,8 @@ pub struct ProviderKeys {
     pub zhipu: Option<String>,
     #[serde(rename = "web_search.api_key.bocha")]
     pub bocha: Option<String>,
+    #[serde(rename = "web_search.api_key.deepseek")]
+    pub deepseek: Option<String>,
 }
 
 impl ProviderKeys {
@@ -856,6 +868,7 @@ impl ProviderKeys {
                 .is_some_and(|k| !k.is_empty()),
             "zhipu" => self.zhipu.as_ref().is_some_and(|k| !k.is_empty()),
             "bocha" => self.bocha.as_ref().is_some_and(|k| !k.is_empty()),
+            "deepseek" => self.deepseek.as_ref().is_some_and(|k| !k.is_empty()),
             _ => false,
         }
     }
@@ -893,6 +906,9 @@ pub struct ToolConfig {
     pub provider_strategies_overridden: bool,
     #[serde(rename = "web_search.tavily.search_depth")]
     pub tavily_search_depth: Option<String>,
+    /// 是否让 DeepSeek 搜索结果附带网页正文（官方 `need_content`，默认关闭）
+    #[serde(rename = "web_search.deepseek.need_content")]
+    pub deepseek_need_content: Option<bool>,
     #[serde(flatten)]
     pub keys: ProviderKeys,
 }
@@ -1002,6 +1018,7 @@ impl Default for ToolConfig {
             provider_strategies: Some(ProviderStrategies::default()),
             provider_strategies_overridden: false,
             tavily_search_depth: Some("basic".into()),
+            deepseek_need_content: None,
             keys: ProviderKeys::default(),
         }
     }
@@ -1075,6 +1092,14 @@ impl ToolConfig {
             if !v.is_empty() {
                 self.keys.bocha = Some(v);
             }
+        }
+        if let Some(v) = get_secret("web_search.api_key.deepseek") {
+            if !v.is_empty() {
+                self.keys.deepseek = Some(v);
+            }
+        }
+        if let Some(v) = get_s("web_search.deepseek.need_content") {
+            self.deepseek_need_content = Some(v.trim().eq_ignore_ascii_case("true"));
         }
 
         // ── 站点过滤 ──
@@ -1299,6 +1324,10 @@ impl ToolConfig {
         }
         if tool.keys.bocha.is_none() {
             tool.keys.bocha = std::env::var("BOCHA_API_KEY").ok();
+        }
+        if tool.keys.deepseek.is_none() {
+            // 与模型供应商的 DEEPSEEK_API_KEY 分离，避免搜索误用/覆盖对话密钥
+            tool.keys.deepseek = std::env::var("DEEPSEEK_SEARCH_API_KEY").ok();
         }
         Ok(tool)
     }
@@ -1605,6 +1634,7 @@ pub fn build_provider(_cfg: &ToolConfig, engine: &str) -> Result<Box<dyn Provide
         "searxng" => Ok(Box::new(SearxngProvider)),
         "zhipu" => Ok(Box::new(ZhipuProvider)),
         "bocha" => Ok(Box::new(BochaProvider)),
+        "deepseek" => Ok(Box::new(DeepSeekProvider)),
         _ => Err(ToolError::Config(format!("unknown engine: {}", engine))),
     }
 }
@@ -2824,6 +2854,214 @@ impl Provider for BochaProvider {
 }
 
 // =============================
+// DeepSeek 官方搜索 Provider
+// API 文档: https://api-docs.deepseek.com/zh-cn/guides/search
+// 端点: POST https://api.deepseek.com/v1/tools/search
+// 计费: 每 1000 次成功请求 $0.75（仅返回非空 results 时计费）
+// 限速: 账号级 5 QPS
+// =============================
+
+#[derive(Default)]
+pub struct DeepSeekProvider;
+
+/// 站点过滤：多个站点按 DeepSeek 语法用 `OR` 连接
+fn deepseek_site_clause(site: &str) -> String {
+    site.split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("site:{}", s))
+        .collect::<Vec<_>>()
+        .join(" OR ")
+}
+
+/// 把工具层的 time_range 映射成 DeepSeek 的 `after:` / `before:` 语法
+fn deepseek_time_clause(range: Option<&str>) -> Vec<String> {
+    let Some(raw) = range else {
+        return Vec::new();
+    };
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+    let today = Utc::now().date_naive();
+    let days_ago = |d: i64| {
+        (today - ChronoDuration::days(d))
+            .format("%Y-%m-%d")
+            .to_string()
+    };
+    match trimmed.to_lowercase().as_str() {
+        "1d" | "24h" => vec![format!("after:{}", days_ago(1))],
+        "7d" => vec![format!("after:{}", days_ago(7))],
+        "30d" => vec![format!("after:{}", days_ago(30))],
+        "365d" | "1y" | "12m" => vec![format!("after:{}", days_ago(365))],
+        _ => match normalize_custom_date_range(trimmed) {
+            Some(custom) => custom
+                .split_once("to")
+                .map(|(start, end)| vec![format!("after:{}", start), format!("before:{}", end)])
+                .unwrap_or_default(),
+            None => Vec::new(),
+        },
+    }
+}
+
+/// 拼装最终 query：原查询 + 站点过滤 + 时间范围（运算符原样透传给 DeepSeek）
+fn build_deepseek_query(input: &SearchInput) -> String {
+    let mut parts = vec![input.query.trim().to_string()];
+    if let Some(site) = input.site.as_deref() {
+        let clause = deepseek_site_clause(site);
+        if !clause.is_empty() {
+            parts.push(clause);
+        }
+    }
+    parts.extend(deepseek_time_clause(input.time_range.as_deref()));
+    parts.join(" ").trim().to_string()
+}
+
+fn map_deepseek_error(status: reqwest::StatusCode, body: String) -> ToolError {
+    let msg = serde_json::from_str::<serde_json::Value>(&body)
+        .ok()
+        .and_then(|v| {
+            v.pointer("/error/message")
+                .and_then(|m| m.as_str())
+                .map(str::to_string)
+        })
+        .unwrap_or_else(|| body.chars().take(300).collect());
+    match status.as_u16() {
+        401 => ToolError::Config(
+            "DeepSeek API Key 无效或已失效（请检查 web_search.api_key.deepseek）".into(),
+        ),
+        402 => ToolError::Provider(format!(
+            "deepseek http 402: 账户余额不足，搜索按成功请求计费: {}",
+            msg
+        )),
+        403 => ToolError::Provider(format!("deepseek http 403: 请求被安全策略拒绝: {}", msg)),
+        429 => ToolError::Provider(format!(
+            "deepseek http 429: 搜索限速（账号级 5 QPS）: {}",
+            msg
+        )),
+        _ => ToolError::Provider(format!("deepseek http {}: {}", status, msg)),
+    }
+}
+
+/// 解析 `/v1/tools/search` 响应；`snippet` 优先，缺失时回退 `summary`
+fn parse_deepseek_results(raw: &serde_json::Value) -> Vec<SearchItem> {
+    raw.get("results")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .enumerate()
+                .filter_map(|(idx, it)| {
+                    let url = it.get("url").and_then(|v| v.as_str())?.trim().to_string();
+                    if url.is_empty() {
+                        return None;
+                    }
+                    let snippet = it
+                        .get("snippet")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.trim().is_empty())
+                        .or_else(|| it.get("summary").and_then(|v| v.as_str()))
+                        .unwrap_or("")
+                        .to_string();
+                    let score_hint = it
+                        .get("rerank_score")
+                        .and_then(|v| v.as_f64())
+                        .map(|s| (s / 3.0).clamp(0.0, 1.0) as f32);
+                    Some(SearchItem {
+                        title: it
+                            .get("title")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        url,
+                        snippet,
+                        rank: idx + 1,
+                        score_hint,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+#[async_trait]
+impl Provider for DeepSeekProvider {
+    fn name(&self) -> &'static str {
+        "deepseek"
+    }
+
+    async fn search(
+        &self,
+        cfg: &ToolConfig,
+        input: &SearchInput,
+    ) -> Result<(ProviderResponse, Usage), ToolError> {
+        let requested_top_k = input.top_k.max(1);
+        let capped_top_k = if requested_top_k > 50 {
+            log::warn!(
+                "[web_search][deepseek] top_k {} exceeds API limit, capping to 50",
+                requested_top_k
+            );
+            50
+        } else {
+            requested_top_k
+        };
+
+        let api_key = cfg.keys.deepseek.clone().ok_or_else(|| {
+            ToolError::Config("missing DEEPSEEK_SEARCH_API_KEY (DeepSeek 搜索密钥未配置)".into())
+        })?;
+
+        let client = Client::builder()
+            .user_agent("deep-student/1.0")
+            .timeout(cfg.timeout())
+            .build()?;
+
+        let query = build_deepseek_query(input);
+        // 官方约束：query 为 1~128 个 Unicode 字符
+        let query: String = if query.chars().count() > 128 {
+            query.chars().take(128).collect()
+        } else {
+            query
+        };
+        let mut body = json!({
+            "query": query,
+            "count": capped_top_k,
+        });
+        if cfg.deepseek_need_content.unwrap_or(false) {
+            body["need_content"] = json!(true);
+        }
+
+        let t0 = Instant::now();
+        let resp = client
+            .post("https://api.deepseek.com/v1/tools/search")
+            .header("Authorization", format!("Bearer {}", api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await?;
+        let status = resp.status();
+        if !status.is_success() {
+            let body_text = resp.text().await.unwrap_or_default();
+            return Err(map_deepseek_error(status, body_text));
+        }
+        let latency = t0.elapsed().as_millis();
+        let raw: serde_json::Value = resp.json().await?;
+        let items = parse_deepseek_results(&raw);
+
+        let out = ProviderResponse {
+            items,
+            raw,
+            provider: "deepseek".into(),
+        };
+        let usage = Usage {
+            elapsed_ms: latency,
+            retries: None,
+            provider_latency_ms: Some(latency),
+            provider: Some("deepseek".into()),
+        };
+        Ok((out, usage))
+    }
+}
+
+// =============================
 // Orchestration
 // =============================
 
@@ -2867,11 +3105,12 @@ pub async fn do_search(cfg: &ToolConfig, mut input: SearchInput) -> ToolResult {
         .as_ref()
         .and_then(|r| normalize_custom_date_range(r))
     {
-        if engine != "brave" {
+        if engine != "brave" && engine != "deepseek" {
             return ToolResult::err_from_tool_error(
                 Some(input),
                 ToolError::Config(
-                    "custom time_range only supported by brave; use 1d|7d|30d|365d|1y|12m".into(),
+                    "custom time_range only supported by brave/deepseek; use 1d|7d|30d|365d|1y|12m"
+                        .into(),
                 ),
                 0,
             );
@@ -3247,5 +3486,80 @@ mod tests {
         }
         assert!(host_allowed(&cfg, "https://www.example.com/page"));
         assert!(!host_allowed(&cfg, "https://othersite.org/page"));
+    }
+
+    #[test]
+    fn t_deepseek_query_operators() {
+        let mut input = SearchInput {
+            query: "DeepSeek V4".into(),
+            top_k: 5,
+            engine: None,
+            site: Some("github.com, huggingface.co".into()),
+            time_range: Some("7d".into()),
+            start: None,
+            force_engine: None,
+        };
+        let q = build_deepseek_query(&input);
+        assert!(q.starts_with("DeepSeek V4 "));
+        assert!(q.contains("site:github.com OR site:huggingface.co"));
+        assert!(q.contains("after:"));
+
+        input.site = None;
+        input.time_range = Some("2026-01-01 to 2026-06-01".into());
+        let q = build_deepseek_query(&input);
+        assert!(q.contains("after:2026-01-01"));
+        assert!(q.contains("before:2026-06-01"));
+    }
+
+    #[test]
+    fn t_deepseek_parse_results() {
+        let raw = json!({
+            "results": [
+                {"rerank_score": 2.4, "title": "A", "url": "https://a.com/1", "snippet": "", "summary": "long summary"},
+                {"rerank_score": 6.0, "title": "B", "url": "https://b.com/2", "snippet": "short", "summary": "unused"},
+                {"title": "no url", "url": "", "snippet": "skip me"}
+            ]
+        });
+        let items = parse_deepseek_results(&raw);
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].snippet, "long summary");
+        assert!((items[0].score_hint.unwrap() - 0.8).abs() < 1e-6);
+        assert_eq!(items[1].snippet, "short");
+        assert!((items[1].score_hint.unwrap() - 1.0).abs() < 1e-6);
+        assert_eq!(items[1].rank, 2);
+    }
+
+    #[test]
+    fn t_deepseek_error_mapping() {
+        assert!(matches!(
+            map_deepseek_error(reqwest::StatusCode::UNAUTHORIZED, String::new()),
+            ToolError::Config(_)
+        ));
+        let balance = map_deepseek_error(
+            reqwest::StatusCode::PAYMENT_REQUIRED,
+            "{\"error\":{\"message\":\"no balance\"}}".into(),
+        );
+        assert!(matches!(balance, ToolError::Provider(_)));
+        assert!(balance.to_string().contains("no balance"));
+        assert_eq!(
+            map_deepseek_error(reqwest::StatusCode::TOO_MANY_REQUESTS, String::new()).to_string(),
+            "provider error: deepseek http 429: 搜索限速（账号级 5 QPS）: "
+        );
+    }
+
+    #[test]
+    fn t_deepseek_keys_and_strategy() {
+        let mut cfg = ToolConfig::default();
+        assert!(!cfg.keys.has_valid_keys("deepseek"));
+        cfg.keys.deepseek = Some("sk-test".into());
+        assert!(cfg.keys.has_valid_keys("deepseek"));
+        assert_eq!(build_provider(&cfg, "deepseek").unwrap().name(), "deepseek");
+        let strategy = cfg
+            .provider_strategies
+            .as_ref()
+            .unwrap()
+            .get_strategy("deepseek");
+        assert_eq!(strategy.rate_limit_per_minute, Some(60));
+        assert_eq!(strategy.timeout_ms, Some(10000));
     }
 }

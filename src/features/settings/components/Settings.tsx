@@ -279,6 +279,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     webSearchSearxngKey: '',
     webSearchZhipuKey: '',
     webSearchBochaKey: '',
+    webSearchDeepseekKey: '',
     webSearchWhitelist: '',
     webSearchBlacklist: '',
     webSearchInjectSnippetMax: 180,
@@ -1162,7 +1163,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
     // 🔧 修复：搜索引擎 API key 变更也需触发自动保存，避免用户配置后未保存即离开
     config.webSearchGoogleKey, config.webSearchSerpApiKey, config.webSearchTavilyKey,
     config.webSearchBraveKey, config.webSearchSearxngKey, config.webSearchZhipuKey,
-    config.webSearchBochaKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
+    config.webSearchBochaKey, config.webSearchDeepseekKey, config.webSearchSearxngEndpoint, config.webSearchGoogleCx,
   ]);
 
   if (loading && !isSmallScreen) {

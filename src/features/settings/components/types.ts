@@ -64,6 +64,7 @@ export interface SystemConfig {
   webSearchSearxngKey: string;
   webSearchZhipuKey: string;
   webSearchBochaKey: string;
+  webSearchDeepseekKey: string;
   webSearchWhitelist: string;
   webSearchBlacklist: string;
   webSearchInjectSnippetMax?: number;
