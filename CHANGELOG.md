@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.8](https://github.com/helixnow/deep-student/compare/v0.10.7...v0.10.8) (2026-10-24)
+
+
+### Bug Fixes
+
+* **chat:** 完成上下文压缩反馈与 DeepSeek 兼容修复，整合本地最新修复 ([#496](https://github.com/helixnow/deep-student/issues/496)) ([18c4f5c](https://github.com/helixnow/deep-student/commit/18c4f5c831fb152b39d7528e61b94ab6380fdbc6))
+* **demo:** media 演示包补 media_study_ledger/media_checkpoints mock，修复 demo 烟测与官网同步 ([6352165](https://github.com/helixnow/deep-student/commit/635216503c0b34bdf812e17942e0f09f51872e6f))
+* **media:** 完整修复 B 站导入、安卓播放与浏览器桥配对 ([#495](https://github.com/helixnow/deep-student/issues/495)) ([c8336a4](https://github.com/helixnow/deep-student/commit/c8336a492feac3a8d9b552ffb26ee078eefea90c))
+* **qbank:** 完整来源导入、共享材料题组与 DeepSeek 兼容修复 ([#493](https://github.com/helixnow/deep-student/issues/493)) ([359c08b](https://github.com/helixnow/deep-student/commit/359c08b9cd98a65f2615dda0aea31b417d9f706d))
+
 ## [0.10.7](https://github.com/helixnow/deep-student/compare/v0.10.6...v0.10.7) (2026-10-18)
 
 
