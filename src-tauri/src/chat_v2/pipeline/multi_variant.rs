@@ -1625,6 +1625,25 @@ impl ChatV2Pipeline {
             let web_search_enabled = options.web_search_enabled.unwrap_or(true);
             let execution_allowed_tools = options.execution_allowed_tools.clone();
             let round_id = format!("variant-tool-round-{}", tool_round);
+            // Bind tools to the actual model resolved for this variant/attempt,
+            // including runtime output overrides. This is re-read immediately
+            // before dispatch so retries/model changes cannot inherit a stale id.
+            let question_authoring_config = self
+                .resolve_api_config_by_id(
+                    options
+                        .model2_override_id
+                        .as_deref()
+                        .or(options.model_id.as_deref()),
+                )
+                .await
+                .map(|mut config| {
+                    crate::llm_manager::routing::ParamOverrides {
+                        max_output_tokens: options.max_tokens,
+                        ..Default::default()
+                    }
+                    .apply(&mut config);
+                    Arc::new(config)
+                });
 
             // 2026-09：工具循环完全不设限，doom loop 拦截机制移除——
             // 所有调用直接执行，无合成失败结果。
@@ -1660,6 +1679,7 @@ impl ChatV2Pipeline {
                     memory_enabled,
                     rag_enabled,
                     web_search_enabled,
+                    question_authoring_config,
                     &variant_tool_name_mapping,
                 )
                 .await?

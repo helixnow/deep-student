@@ -425,6 +425,8 @@ impl VfsExamRepo {
                     folder_id: folder_id.map(|s| s.to_string()),
                 },
             )?;
+            let entity_map = copy_authoring_entities(conn, src_exam_id, &new_exam.id)?;
+            let mut question_map = std::collections::HashMap::new();
 
             // 复制题目（保留内容/答案/解析/图片引用，重置个人学习状态）
             let now = chrono::Utc::now()
@@ -470,7 +472,7 @@ impl VfsExamRepo {
 
                 let count = rows.len();
                 for (
-                    _old_id,
+                    old_id,
                     card_id,
                     question_label,
                     content,
@@ -483,13 +485,14 @@ impl VfsExamRepo {
                     images_json,
                 ) in rows
                 {
+                    let new_id = format!("q_{}", nanoid::nanoid!(16));
                     conn.execute(
                         r#"INSERT INTO questions (id, exam_id, card_id, question_label, content,
                                                   options_json, answer, explanation, question_type,
                                                   difficulty, tags, images_json, created_at, updated_at)
                            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, COALESCE(?11, '[]'), COALESCE(?12, '[]'), ?13, ?13)"#,
                         params![
-                            format!("q_{}", nanoid::nanoid!(10)),
+                            new_id,
                             new_exam.id,
                             card_id,
                             question_label,
@@ -504,9 +507,59 @@ impl VfsExamRepo {
                             now,
                         ],
                     )?;
+                    conn.execute("UPDATE questions SET card_id=id,structured_data=(SELECT structured_data FROM questions WHERE id=?1),source_type=(SELECT source_type FROM questions WHERE id=?1),source_ref=(SELECT source_ref FROM questions WHERE id=?1),provenance_json=(SELECT provenance_json FROM questions WHERE id=?1),answer_origin=(SELECT answer_origin FROM questions WHERE id=?1),group_position=(SELECT group_position FROM questions WHERE id=?1) WHERE id=?2",params![old_id,new_id])?;
+                    let old_group: Option<String> = conn.query_row(
+                        "SELECT group_id FROM questions WHERE id=?1",
+                        params![old_id],
+                        |r| r.get(0),
+                    )?;
+                    if let Some(group) = old_group {
+                        let new_group = entity_map
+                            .get(&group)
+                            .ok_or_else(|| VfsError::Other("复制时题组依赖缺失".into()))?;
+                        conn.execute(
+                            "UPDATE questions SET group_id=?1 WHERE id=?2",
+                            params![new_group, new_id],
+                        )?;
+                    }
+                    for column in ["source_ref", "provenance_json"] {
+                        let raw: Option<String> = conn.query_row(
+                            &format!("SELECT {column} FROM questions WHERE id=?1"),
+                            params![new_id],
+                            |r| r.get(0),
+                        )?;
+                        if let Some(raw) = raw {
+                            if let Ok(mut value) = serde_json::from_str::<Value>(&raw) {
+                                remap_entity_references(&mut value, &entity_map);
+                                conn.execute(
+                                    &format!("UPDATE questions SET {column}=?1 WHERE id=?2"),
+                                    params![value.to_string(), new_id],
+                                )?;
+                            }
+                        }
+                    }
+                    question_map.insert(old_id, new_id);
                 }
                 count
             };
+            for (old, new) in &question_map {
+                let parent: Option<String> = conn.query_row(
+                    "SELECT parent_id FROM questions WHERE id=?1",
+                    params![old],
+                    |r| r.get(0),
+                )?;
+                if let Some(parent) = parent {
+                    if let Some(parent) = question_map.get(&parent) {
+                        conn.execute(
+                            "UPDATE questions SET parent_id=?1 WHERE id=?2",
+                            params![parent, new],
+                        )?;
+                    }
+                }
+            }
+            crate::qbank_authoring_service::refresh_canonical_preview_with_conn(conn, &new_exam.id)
+                .map_err(|e| VfsError::Other(e.to_string()))?;
+            super::question_repo::VfsQuestionRepo::refresh_stats_with_conn(conn, &new_exam.id)?;
 
             info!(
                 "[VFS::ExamRepo] Copied exam {} -> {} ({} questions, {} shared blobs ref+1)",
@@ -814,14 +867,18 @@ impl VfsExamRepo {
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
 
-        let updated = conn.execute(
-            "UPDATE exam_sheets SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
-            params![now, exam_id],
+        let batch = format!("exam_delete_{}", nanoid::nanoid!(16));
+        conn.execute_batch("SAVEPOINT qbank_delete_exam")?;
+        let result = (|| -> VfsResult<()> {
+            let tx = conn;
+            let updated = tx.execute(
+            "UPDATE exam_sheets SET deleted_at = ?1, updated_at = ?1, deletion_batch=?3 WHERE id = ?2 AND deleted_at IS NULL",
+            params![now, exam_id,batch],
         )?;
 
-        if updated == 0 {
-            // ★ P0 修复：幂等处理 - 检查是否已被软删除
-            let already_deleted: bool = conn
+            if updated == 0 {
+                // ★ P0 修复：幂等处理 - 检查是否已被软删除
+                let already_deleted: bool = tx
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM exam_sheets WHERE id = ?1 AND deleted_at IS NOT NULL)",
                     params![exam_id],
@@ -829,16 +886,37 @@ impl VfsExamRepo {
                 )
                 .unwrap_or(false);
 
-            if already_deleted {
-                info!(
-                    "[VFS::ExamRepo] Exam already deleted (idempotent): {}",
-                    exam_id
-                );
-            } else {
-                return Err(VfsError::NotFound {
-                    resource_type: "ExamSheet".to_string(),
-                    id: exam_id.to_string(),
-                });
+                if already_deleted {
+                    info!(
+                        "[VFS::ExamRepo] Exam already deleted (idempotent): {}",
+                        exam_id
+                    );
+                } else {
+                    return Err(VfsError::NotFound {
+                        resource_type: "ExamSheet".to_string(),
+                        id: exam_id.to_string(),
+                    });
+                }
+            }
+            if updated > 0 {
+                for table in [
+                    "questions",
+                    "qbank_materials",
+                    "qbank_groups",
+                    "qbank_group_materials",
+                ] {
+                    tx.execute(&format!("UPDATE {table} SET deleted_at=?1,updated_at=?1,deletion_batch=?3 WHERE exam_id=?2 AND deleted_at IS NULL"),params![now,exam_id,batch])?;
+                }
+                tx.execute("UPDATE folder_items SET deleted_at=?1,updated_at=?1 WHERE item_type='exam' AND item_id=?2 AND deleted_at IS NULL",params![chrono::Utc::now().timestamp_millis(),exam_id])?;
+            }
+            Ok(())
+        })();
+        match result {
+            Ok(()) => conn.execute_batch("RELEASE qbank_delete_exam")?,
+            Err(error) => {
+                let _ =
+                    conn.execute_batch("ROLLBACK TO qbank_delete_exam; RELEASE qbank_delete_exam");
+                return Err(error);
             }
         }
 
@@ -918,6 +996,23 @@ impl VfsExamRepo {
                         }
                     }
                 }
+            }
+        }
+        let mut stmt = conn.prepare("SELECT images_json FROM qbank_materials WHERE exam_id=?1")?;
+        for raw in stmt.query_map(params![exam_id], |r| r.get::<_, String>(0))? {
+            let value: Value = serde_json::from_str(&raw?)?;
+            for image in value.as_array().into_iter().flatten() {
+                if let Some(hash) = image["hash"].as_str() {
+                    hashes.push(hash.to_string());
+                }
+            }
+        }
+        let mut stmt =
+            conn.prepare("SELECT descriptor_json FROM qbank_sources WHERE exam_id=?1")?;
+        for raw in stmt.query_map(params![exam_id], |r| r.get::<_, String>(0))? {
+            let value: Value = serde_json::from_str(&raw?)?;
+            if let Some(hash) = value["blob_hash"].as_str() {
+                hashes.push(hash.to_string());
             }
         }
 
@@ -1114,9 +1209,14 @@ impl VfsExamRepo {
         conn.execute(&format!("SAVEPOINT {}", savepoint_name), [])?;
 
         let result = (|| -> VfsResult<(usize, usize)> {
+            let (batch, deleted_at): (Option<String>, Option<String>) = conn.query_row(
+                "SELECT deletion_batch,deleted_at FROM exam_sheets WHERE id=?1",
+                params![exam_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
             // 1. 恢复题目集识别
             let updated = conn.execute(
-                "UPDATE exam_sheets SET deleted_at = NULL, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NOT NULL",
+                "UPDATE exam_sheets SET deleted_at = NULL, deletion_batch=NULL, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NOT NULL",
                 params![now, exam_id],
             )?;
 
@@ -1135,9 +1235,12 @@ impl VfsExamRepo {
 
             // 3. ★ 2026-02: 恢复关联的题目
             let questions_restored = conn.execute(
-                "UPDATE questions SET deleted_at = NULL, updated_at = ?1 WHERE exam_id = ?2 AND deleted_at IS NOT NULL",
-                params![now, exam_id],
+                "UPDATE questions SET deleted_at = NULL, deletion_batch=NULL, updated_at = ?1 WHERE exam_id = ?2 AND deleted_at IS NOT NULL AND ((?3 IS NOT NULL AND deletion_batch=?3) OR (?3 IS NULL AND deleted_at=?4))",
+                params![now, exam_id,batch,deleted_at],
             )?;
+            for table in ["qbank_materials", "qbank_groups", "qbank_group_materials"] {
+                conn.execute(&format!("UPDATE {table} SET deleted_at=NULL,deletion_batch=NULL,updated_at=?1 WHERE exam_id=?2 AND deletion_batch=?3"),params![now,exam_id,batch])?;
+            }
 
             Ok((folder_items_restored, questions_restored))
         })();
@@ -1975,6 +2078,89 @@ impl VfsExamRepo {
         );
         Ok(())
     }
+}
+
+fn remap_entity_references(value: &mut Value, ids: &std::collections::HashMap<String, String>) {
+    match value {
+        Value::Object(object) => {
+            for (key, value) in object {
+                if matches!(key.as_str(), "source_id" | "group_id" | "material_id") {
+                    if let Some(id) = value.as_str().and_then(|id| ids.get(id)) {
+                        *value = Value::String(id.clone());
+                    }
+                } else {
+                    remap_entity_references(value, ids);
+                }
+            }
+        }
+        Value::Array(values) => {
+            for value in values {
+                remap_entity_references(value, ids);
+            }
+        }
+        _ => {}
+    }
+}
+fn copy_authoring_entities(
+    conn: &Connection,
+    src: &str,
+    target: &str,
+) -> VfsResult<std::collections::HashMap<String, String>> {
+    let mut ids = std::collections::HashMap::new();
+    let now = chrono::Utc::now().to_rfc3339();
+    for table in ["qbank_sources", "qbank_materials", "qbank_groups"] {
+        let mut stmt = conn.prepare(&format!(
+            "SELECT id FROM {table} WHERE exam_id=?1 AND deleted_at IS NULL"
+        ))?;
+        let rows = stmt
+            .query_map(params![src], |r| r.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        let prefix = match table {
+            "qbank_sources" => "qsource",
+            "qbank_materials" => "qmat",
+            _ => "qgroup",
+        };
+        for old in rows {
+            ids.insert(old, format!("{prefix}_{}", nanoid::nanoid!(16)));
+        }
+    }
+    for (old, new) in &ids {
+        conn.execute("INSERT INTO qbank_sources(id,exam_id,source_key,descriptor_json,created_at,updated_at) SELECT ?1,?2,source_key,descriptor_json,?3,?3 FROM qbank_sources WHERE id=?4",params![new,target,now,old])?;
+        conn.execute("INSERT INTO qbank_materials(id,exam_id,content,images_json,source_refs_json,created_at,updated_at) SELECT ?1,?2,content,images_json,source_refs_json,?3,?3 FROM qbank_materials WHERE id=?4",params![new,target,now,old])?;
+        conn.execute("INSERT INTO qbank_groups(id,exam_id,label,position,created_at,updated_at) SELECT ?1,?2,label,position,?3,?3 FROM qbank_groups WHERE id=?4",params![new,target,now,old])?;
+        let refs: Option<String> = conn
+            .query_row(
+                "SELECT source_refs_json FROM qbank_materials WHERE id=?1",
+                params![new],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(refs) = refs {
+            let mut refs: Value = serde_json::from_str(&refs)?;
+            remap_entity_references(&mut refs, &ids);
+            conn.execute(
+                "UPDATE qbank_materials SET source_refs_json=?1 WHERE id=?2",
+                params![refs.to_string(), new],
+            )?;
+        }
+    }
+    let mut stmt=conn.prepare("SELECT group_id,material_id,position FROM qbank_group_materials WHERE exam_id=?1 AND deleted_at IS NULL")?;
+    let rows = stmt
+        .query_map(params![src], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (group, material, position) in rows {
+        if let (Some(group), Some(material)) = (ids.get(&group), ids.get(&material)) {
+            conn.execute("INSERT INTO qbank_group_materials(id,exam_id,group_id,material_id,position,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?6)",params![format!("qgm_{}",nanoid::nanoid!(16)),target,group,material,position,now])?;
+        }
+    }
+    Ok(ids)
 }
 
 #[cfg(test)]

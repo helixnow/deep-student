@@ -43,4 +43,16 @@ describe('qbank ACR 3.0 write contract', () => {
     );
     expect(get?.description).toContain('updated_at');
   });
+
+  it('makes coverage and source identities explicit and provides a saved-draft confirmation path', () => {
+    const tools=qbankToolsSkill.embeddedTools!;
+    const batch=tools.find(tool=>tool.name==='builtin-qbank_batch_import')!;
+    expect(batch.inputSchema.properties.coverage.items?.required).toEqual(['source_id','page','status']);
+    expect(batch.inputSchema.properties.materials.items?.properties?.source_refs.items?.required).toContain('source_id');
+    const commit=tools.find(tool=>tool.name==='builtin-qbank_commit_authoring_draft')!;
+    expect(commit.inputSchema.required).toEqual(['job_id','expected_version','selected_local_ids']);
+    expect(commit.inputSchema.properties.acknowledge_review.default).toBe(false);
+    expect(tools.some(tool=>tool.name==='builtin-qbank_review_authoring_draft')).toBe(true);
+    expect(tools.some(tool=>tool.name==='builtin-qbank_list_authoring_drafts')).toBe(true);
+  });
 });

@@ -60,6 +60,12 @@ pub enum ChatV2Error {
     #[error("LLM error: {0}")]
     Llm(String),
 
+    #[error("{message}")]
+    ContextWindowExceeded {
+        message: String,
+        details: serde_json::Value,
+    },
+
     /// 工具调用错误
     #[error("Tool error: {0}")]
     Tool(String),
@@ -138,6 +144,7 @@ impl ChatV2Error {
             ChatV2Error::LimitExceeded(_) => "LIMIT_EXCEEDED",
             ChatV2Error::Database(_) => "DATABASE_ERROR",
             ChatV2Error::Llm(_) => "LLM_ERROR",
+            ChatV2Error::ContextWindowExceeded { .. } => "CONTEXT_WINDOW_EXCEEDED",
             ChatV2Error::Tool(_) => "TOOL_ERROR",
             ChatV2Error::Cancelled => "CANCELLED",
             ChatV2Error::Serialization(_) => "SERIALIZATION_ERROR",

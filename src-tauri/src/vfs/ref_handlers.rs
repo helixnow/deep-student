@@ -892,10 +892,17 @@ fn resolve_single_ref_with_conn(
                 (None, None)
             }
         }
+        VfsResourceType::Exam => {
+            match crate::qbank_read::context_with_conn(conn, &r.source_id)
+                .map_err(|e| crate::vfs::error::VfsError::Database(e))?
+            {
+                Some(document) => (Some(document.to_string()), None),
+                None => (raw_content, None),
+            }
+        }
         VfsResourceType::Note
         | VfsResourceType::Translation
         | VfsResourceType::Essay
-        | VfsResourceType::Exam
         | VfsResourceType::InsightCard
         | VfsResourceType::Retrieval => {
             // Note/Translation/Essay/Exam/Retrieval/InsightCard：直接使用 resources.data 内容
@@ -1585,6 +1592,28 @@ fn get_exam_multimodal_blocks_with_conn(
     use crate::vfs::repos::VfsBlobRepo;
     use base64::Engine;
 
+    if let Ok(Some(document)) = crate::qbank_read::context_with_conn(conn, exam_id) {
+        let mut blocks = vec![MultimodalContentBlock::text(document.to_string())];
+        for image in crate::qbank_read::image_refs(&document) {
+            let hash = image["hash"].as_str().unwrap_or("");
+            let bytes = VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, hash)
+                .ok()
+                .flatten()
+                .and_then(|path| std::fs::read(path).ok());
+            match bytes {
+                Some(bytes) => blocks.push(MultimodalContentBlock::image(
+                    image["mime"].as_str().unwrap_or("image/png").to_string(),
+                    base64::engine::general_purpose::STANDARD.encode(bytes),
+                )),
+                None => blocks.push(MultimodalContentBlock::text(format!(
+                    "[REQUIRED_QUESTION_IMAGE_UNAVAILABLE: {}]",
+                    image["id"]
+                ))),
+            }
+        }
+        return Some(blocks);
+    }
+
     // 获取 preview_json
     let sql = "SELECT preview_json FROM exam_sheets WHERE id = ?1";
     let preview_json: Option<String> = conn
@@ -1609,7 +1638,11 @@ fn get_exam_multimodal_blocks_with_conn(
     if let Some(pages) = preview.get("pages").and_then(|p| p.as_array()) {
         for page in pages {
             // 获取页面图片
-            if let Some(blob_hash) = page.get("blobHash").and_then(|h| h.as_str()) {
+            if let Some(blob_hash) = page
+                .get("blob_hash")
+                .or_else(|| page.get("blobHash"))
+                .and_then(|h| h.as_str())
+            {
                 // 从 blobs 获取图片文件路径
                 if let Ok(Some(blob_path)) =
                     VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, blob_hash)
@@ -1632,8 +1665,16 @@ fn get_exam_multimodal_blocks_with_conn(
             if let Some(cards) = page.get("cards").and_then(|c| c.as_array()) {
                 let mut page_text = String::new();
                 for card in cards {
-                    if let Some(label) = card.get("questionLabel").and_then(|l| l.as_str()) {
-                        if let Some(ocr) = card.get("ocrText").and_then(|o| o.as_str()) {
+                    if let Some(label) = card
+                        .get("question_label")
+                        .or_else(|| card.get("questionLabel"))
+                        .and_then(|l| l.as_str())
+                    {
+                        if let Some(ocr) = card
+                            .get("ocr_text")
+                            .or_else(|| card.get("ocrText"))
+                            .and_then(|o| o.as_str())
+                        {
                             page_text.push_str(&format!(
                                 "<question label=\"{}\">{}</question>\n",
                                 escape_xml_attr(label),

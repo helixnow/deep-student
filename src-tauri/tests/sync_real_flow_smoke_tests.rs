@@ -1163,6 +1163,10 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
          INSERT INTO qbank_generation_tasks
              (id, exam_id, request_json, stream_event, created_at, updated_at)
              VALUES ('qgen_non_row', 'exam_all', '{}', 'qgen_non_row', 1714000000000, 1714000000000);
+         INSERT INTO qbank_import_jobs
+             (id, exam_id, status, document_json, idempotency_key, created_at, updated_at)
+             VALUES ('qimport_non_row', 'exam_all', 'needs_review', '{}', 'qimport_non_row',
+                     '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');
          INSERT INTO vfs_index_profiles
              (id, model_fingerprint, dimension, modality, embedding_protocol,
               lance_table_name, created_at, updated_at)
@@ -1357,6 +1361,7 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
         "mastery_states",
         "automation_todo_deliveries",
         "qbank_generation_tasks",
+        "qbank_import_jobs",
         "vfs_index_profiles",
         "path_cache",
         "question_bank_stats",

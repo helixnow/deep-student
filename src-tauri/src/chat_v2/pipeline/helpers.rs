@@ -1536,7 +1536,7 @@ pub(crate) fn trim_history_by_token_budget(
 /// 🆕 历史超预算时的处理决策（DESIGN：FIFO 头删触发前强制 compaction）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HistoryOverflowAction {
-    /// 预算内（或没有可移除单元），FIFO 不会丢消息，无需处理
+    /// 历史实际处于预算内
     WithinBudget,
     /// 超预算且本轮尚未强制过 compaction：先跑 compaction 回收预算
     CompactionFirst,
@@ -1544,11 +1544,7 @@ pub(crate) enum HistoryOverflowAction {
     FifoTrim,
 }
 
-/// 决策纯函数：`trim_history_by_token_budget` 是否会真的头删；会的话，
-/// compaction 是否必须先行。
-///
-/// 「会头删」的判定与 trim 的循环条件严格一致：
-/// `总 token > 预算` 且 `非 pinned 可移除单元 > 2`。
+/// 超预算时先尝试压缩，即使只剩两轮、FIFO 无法回收。
 /// 头删会改写历史前缀（打破 prompt cache 前缀，且抢在正确的 tail 锚定压缩
 /// 之前把任务锚点清零），因此只允许在 compaction 无法回收足够预算时兜底。
 pub(crate) fn plan_history_overflow_action(
@@ -1558,8 +1554,7 @@ pub(crate) fn plan_history_overflow_action(
 ) -> HistoryOverflowAction {
     let units = group_history_units(history);
     let total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
-    let removable_units = units.iter().filter(|u| !u.is_pinned).count();
-    if total_tokens <= max_tokens || removable_units <= 2 {
+    if total_tokens <= max_tokens {
         return HistoryOverflowAction::WithinBudget;
     }
     if compaction_already_attempted {
@@ -2287,7 +2282,7 @@ mod tests {
             HistoryOverflowAction::FifoTrim
         );
 
-        // 可移除单元 ≤ 2 时 FIFO 本来就不会丢消息 → 无需强制 compaction
+        // Even two turns may exceed the budget and require summarization.
         let tiny = vec![
             make_empty_message("user", "big ".repeat(500)),
             make_empty_message("assistant", "reply".to_string()),
@@ -2295,7 +2290,7 @@ mod tests {
         ];
         assert_eq!(
             plan_history_overflow_action(&tiny, 10, false),
-            HistoryOverflowAction::WithinBudget
+            HistoryOverflowAction::CompactionFirst
         );
     }
 

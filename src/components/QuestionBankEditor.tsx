@@ -25,6 +25,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import { AiExplanationWriteButton } from './practice/AiExplanationWriteButton';
 import { resolveAiExplanationWrite } from './practice/aiExplanation';
+import { QuestionMaterialView } from './QuestionMaterialView';
 import {
   CaretLeft,
   CaretRight,
@@ -81,6 +82,7 @@ import {
   parseImageAnswerEnvelope,
   IMAGE_ANSWER_MAX_IMAGES,
   IMAGE_ANSWER_MIME_TYPES,
+  isSourceQuestionImage,
 } from '@/api/questionBankApi';
 import {
   getPracticeSessionKey,
@@ -2751,6 +2753,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* issue 491：共享材料在题目之前独立展示（单题练习同样可见） */}
+                    <QuestionMaterialView
+                      materials={currentQuestion.materials ?? []}
+                      mode={browseMode ? 'view' : 'edit'}
+                      onUpdated={async () => {
+                        if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
+                      }}
+                    />
                     <div className="prose prose-sm dark:prose-invert max-w-none text-base leading-relaxed">
                       <QuestionContentBlock
                         content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
@@ -2759,8 +2769,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                     {/* 题目图片 */}
                     {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
-                      const confirmedImages = currentQuestion.images!.filter(img => img.name.startsWith('crop_'));
-                      const sourceImages = currentQuestion.images!.filter(img => !img.name.startsWith('crop_'));
+                      // 新数据用 role 区分题干/材料/选项图与来源截图；旧数据回退 crop_ 命名
+                      const confirmedImages = currentQuestion.images!.filter(img => !isSourceQuestionImage(img));
+                      const sourceImages = currentQuestion.images!.filter(img => isSourceQuestionImage(img));
                       return (
                         <>
                           {/* 用户确认的图片（裁剪/上传）正常显示 */}
@@ -3115,6 +3126,14 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             </CardHeader>
 
             <CardContent className="space-y-6">
+              {/* issue 491：桌面练习路径同样在题目之前展示共享材料 */}
+              <QuestionMaterialView
+                materials={currentQuestion.materials ?? []}
+                mode={browseMode ? 'view' : 'edit'}
+                onUpdated={async () => {
+                  if (onRefreshQuestion) await onRefreshQuestion(currentQuestion.id);
+                }}
+              />
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <QuestionContentBlock
                   content={currentQuestion.content || currentQuestion.ocrText || t('editor.noContent')}
@@ -3123,8 +3142,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
               {/* 题目图片 */}
               {currentQuestion.images && currentQuestion.images.length > 0 && (() => {
-                const confirmedImgs = currentQuestion.images!.filter(img => img.name.startsWith('crop_'));
-                const sourceImgs = currentQuestion.images!.filter(img => !img.name.startsWith('crop_'));
+                const confirmedImgs = currentQuestion.images!.filter(img => !isSourceQuestionImage(img));
+                const sourceImgs = currentQuestion.images!.filter(img => isSourceQuestionImage(img));
                 return (
                   <>
                     {confirmedImgs.length > 0 && (

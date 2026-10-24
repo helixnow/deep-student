@@ -93,16 +93,28 @@ struct LoadedToolOutput {
     skill_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct LoadSkillsOutput {
     /// 状态
     status: String,
+    /// 本次模型请求的技能 ID（原样保留，便于审计“模型猜了什么”）
+    requested_skill_ids: Vec<String>,
     /// 后端权威的会话级已加载 Skills
     loaded_skill_ids: Vec<String>,
+    /// 本次请求中新加载的 Skills
+    newly_loaded_skill_ids: Vec<String>,
+    /// 本次请求中此前已经加载的 Skills
+    already_loaded_skill_ids: Vec<String>,
+    /// 本次请求中不存在于可信运行时目录的 IDs
+    missing_skill_ids: Vec<String>,
+    /// 当前可信运行时目录中确实可加载的精确 IDs（不包含被拒绝项）
+    available_skill_ids: Vec<String>,
     /// 本次加载后可用的工具名称
     loaded_tool_names: Vec<String>,
     /// 保留工具与技能来源关系的结构化列表
     loaded_tools: Vec<LoadedToolOutput>,
+    /// 本次因运行时准入被拒绝的技能 ID（原因见 rejected_skills）
+    rejected_skill_ids: Vec<String>,
     /// 本次因运行时准入被拒绝的技能及原因
     rejected_skills: HashMap<String, String>,
     /// Skill 状态版本
@@ -134,6 +146,188 @@ fn classify_requested_skills(
     }
 
     (loaded, not_found, rejected)
+}
+
+/// 返回当前可信运行时目录中可加载的精确 Skill IDs。
+///
+/// `skill_contents` 是前端按运行时准入（信任/启用/requires/依赖）过滤后
+/// 传来的可信目录；`skill_admission_errors` 中的 ID 永远不能出现在可加载
+/// 列表里。这里只做集合整理，不猜测、不补齐、不做别名/模糊匹配。
+fn collect_available_runtime_skill_ids(
+    skill_contents: Option<&HashMap<String, String>>,
+    admission_errors: Option<&HashMap<String, String>>,
+) -> Vec<String> {
+    let mut ids: Vec<String> = skill_contents
+        .map(|contents| {
+            contents
+                .keys()
+                .filter(|id| !id.trim().is_empty())
+                .filter(|id| !admission_errors.is_some_and(|errors| errors.contains_key(*id)))
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn format_available_skill_ids_hint(available: &[String]) -> String {
+    if available.is_empty() {
+        "The trusted runtime catalog currently contains no loadable skill IDs.".to_string()
+    } else {
+        format!(
+            "Available skill IDs (trusted runtime, exact): {}",
+            available.join(", ")
+        )
+    }
+}
+
+fn build_load_skills_message(
+    loaded: &[String],
+    already_loaded: &[String],
+    missing: &[String],
+    rejected: &HashMap<String, String>,
+    available: &[String],
+    has_untrusted_rejection: bool,
+    include_available_hint: bool,
+) -> String {
+    let mut parts = Vec::new();
+    let has_problem = !missing.is_empty() || !rejected.is_empty();
+
+    if loaded.is_empty() && has_problem {
+        parts.push("No skills loaded.".to_string());
+    } else if loaded.is_empty() {
+        parts.push("No skills were requested.".to_string());
+    } else if already_loaded.len() == loaded.len() {
+        parts.push("Skills already loaded.".to_string());
+    } else {
+        parts.push("Skills loaded. Instructions will be provided in the next message.".to_string());
+    }
+
+    if !already_loaded.is_empty() {
+        parts.push(format!("Already loaded: {}", already_loaded.join(", ")));
+    }
+    if !missing.is_empty() {
+        parts.push(format!("Missing: {}", missing.join(", ")));
+    }
+    if !rejected.is_empty() {
+        let mut entries: Vec<String> = rejected
+            .iter()
+            .map(|(id, reason)| format!("{} ({})", id, reason))
+            .collect();
+        entries.sort();
+        parts.push(format!("Rejected: {}", entries.join(", ")));
+    }
+
+    // 关键：失败工具结果回喂模型时只发送 `Error: {message}`，结构化
+    // `output` 不会进入 tool message（见 pipeline/history.rs）。因此精确
+    // ID 必须出现在 message 本身，否则模型在失败后拿不到任何可恢复线索。
+    if include_available_hint {
+        parts.push(format_available_skill_ids_hint(available));
+        parts.push(
+            "Retry load_skills only with exact IDs copied from that list or from <available_skills>; do not guess, translate, shorten, or invent IDs."
+                .to_string(),
+        );
+    }
+
+    if has_untrusted_rejection {
+        parts.push(
+            "If trust was granted earlier in this same tool loop, this is the immutable pre-grant runtime catalog snapshot, not a failed grant. Do not retry load_skills in this request; the trusted package becomes loadable on the next user turn."
+                .to_string(),
+        );
+    }
+
+    parts.join(" ")
+}
+
+struct LoadSkillsOutcome<'a> {
+    requested_skill_ids: &'a [String],
+    loaded_skill_ids: &'a [String],
+    already_loaded_skill_ids: Vec<String>,
+    missing_skill_ids: &'a [String],
+    rejected_skills: HashMap<String, String>,
+    available_skill_ids: Vec<String>,
+    session_loaded_skill_ids: Vec<String>,
+    loaded_tools: Vec<LoadedToolOutput>,
+    skill_state_version: u64,
+    has_untrusted_rejection: bool,
+    include_available_hint: bool,
+}
+
+fn build_load_skills_output(outcome: LoadSkillsOutcome<'_>) -> LoadSkillsOutput {
+    let LoadSkillsOutcome {
+        requested_skill_ids,
+        loaded_skill_ids,
+        already_loaded_skill_ids,
+        missing_skill_ids,
+        rejected_skills,
+        available_skill_ids,
+        session_loaded_skill_ids,
+        loaded_tools,
+        skill_state_version,
+        has_untrusted_rejection,
+        include_available_hint,
+    } = outcome;
+
+    let newly_loaded_skill_ids: Vec<String> = loaded_skill_ids
+        .iter()
+        .filter(|id| !already_loaded_skill_ids.iter().any(|loaded| loaded == *id))
+        .cloned()
+        .collect();
+    let mut rejected_skill_ids: Vec<String> = rejected_skills.keys().cloned().collect();
+    rejected_skill_ids.sort();
+
+    let mut loaded_tool_names: Vec<String> =
+        loaded_tools.iter().map(|tool| tool.name.clone()).collect();
+    loaded_tool_names.sort();
+    loaded_tool_names.dedup();
+
+    let message = build_load_skills_message(
+        loaded_skill_ids,
+        &already_loaded_skill_ids,
+        missing_skill_ids,
+        &rejected_skills,
+        &available_skill_ids,
+        has_untrusted_rejection,
+        include_available_hint,
+    );
+
+    let all_failed = loaded_skill_ids.is_empty()
+        && (!missing_skill_ids.is_empty() || !rejected_skills.is_empty());
+    let empty_request = requested_skill_ids.is_empty() && loaded_skill_ids.is_empty();
+
+    LoadSkillsOutput {
+        status: if all_failed || empty_request {
+            "error".to_string()
+        } else {
+            "success".to_string()
+        },
+        requested_skill_ids: requested_skill_ids.to_vec(),
+        loaded_skill_ids: session_loaded_skill_ids,
+        newly_loaded_skill_ids,
+        already_loaded_skill_ids,
+        missing_skill_ids: missing_skill_ids.to_vec(),
+        available_skill_ids,
+        loaded_tool_names,
+        loaded_tools,
+        rejected_skill_ids,
+        rejected_skills,
+        skill_state_version,
+        message,
+    }
+}
+
+fn current_session_loaded_skill_ids(ctx: &ExecutionContext) -> Vec<String> {
+    ctx.chat_v2_db
+        .as_ref()
+        .and_then(|db| {
+            ChatV2Repo::load_session_state_v2(db, &ctx.session_id)
+                .ok()
+                .flatten()
+        })
+        .map(|state| state.resolved_skill_state().resolved_loaded_skill_ids())
+        .unwrap_or_default()
 }
 
 impl SkillsExecutor {
@@ -205,12 +399,21 @@ impl ToolExecutor for SkillsExecutor {
 
         match stripped_name {
             "load_skills" => {
+                let available_skill_ids = collect_available_runtime_skill_ids(
+                    ctx.skill_contents.as_ref(),
+                    ctx.skill_admission_errors.as_ref(),
+                );
+
                 // 解析输入参数
                 let parsed_input: LoadSkillsInput =
                     match serde_json::from_value(call.arguments.clone()) {
                         Ok(v) => v,
                         Err(e) => {
-                            let error_msg = format!("参数解析失败: {}", e);
+                            let error_msg = format!(
+                                "参数解析失败: {}. {}",
+                                e,
+                                format_available_skill_ids_hint(&available_skill_ids)
+                            );
                             let duration_ms = start_time.elapsed().as_millis() as u64;
                             ctx.emit_tool_call_error(&error_msg);
                             return Ok(ToolResultInfo::failure(
@@ -225,14 +428,32 @@ impl ToolExecutor for SkillsExecutor {
                     };
 
                 if parsed_input.skills.is_empty() {
-                    let error_msg = "请指定至少一个技能 ID".to_string();
+                    let output = build_load_skills_output(LoadSkillsOutcome {
+                        requested_skill_ids: &[],
+                        loaded_skill_ids: &[],
+                        already_loaded_skill_ids: Vec::new(),
+                        missing_skill_ids: &[],
+                        rejected_skills: HashMap::new(),
+                        available_skill_ids,
+                        session_loaded_skill_ids: current_session_loaded_skill_ids(ctx),
+                        loaded_tools: Vec::new(),
+                        skill_state_version: 0,
+                        has_untrusted_rejection: false,
+                        include_available_hint: true,
+                    });
+                    let error_msg = output.message.clone();
                     let duration_ms = start_time.elapsed().as_millis() as u64;
                     ctx.emit_tool_call_error(&error_msg);
-                    return Ok(ToolResultInfo::failure(
+                    let result_json = json!({
+                        "result": output,
+                        "durationMs": duration_ms,
+                    });
+                    return Ok(ToolResultInfo::failure_with_output(
                         Some(call.id.clone()),
                         Some(ctx.block_id.clone()),
                         call.name.clone(),
                         call.arguments.clone(),
+                        result_json,
                         error_msg,
                         duration_ms,
                     ));
@@ -245,6 +466,7 @@ impl ToolExecutor for SkillsExecutor {
                 );
 
                 let mut session_loaded_skill_ids = loaded_skills.clone();
+                let mut already_loaded_skill_ids: Vec<String> = Vec::new();
                 let mut skill_state_version = 0_u64;
                 let mut loaded_tools: Vec<LoadedToolOutput> = loaded_skills
                     .iter()
@@ -266,10 +488,6 @@ impl ToolExecutor for SkillsExecutor {
                         .then_with(|| left.name.cmp(&right.name))
                 });
                 loaded_tools.dedup();
-                let mut loaded_tool_names: Vec<String> =
-                    loaded_tools.iter().map(|tool| tool.name.clone()).collect();
-                loaded_tool_names.sort();
-                loaded_tool_names.dedup();
 
                 if let Some(ref chat_v2_db) = ctx.chat_v2_db {
                     match ChatV2Repo::load_session_state_v2(chat_v2_db, &ctx.session_id) {
@@ -290,6 +508,15 @@ impl ToolExecutor for SkillsExecutor {
                                 }
                             });
                             let previous_skill_state = existing_state.resolved_skill_state();
+                            let previous_loaded_skill_ids =
+                                previous_skill_state.resolved_loaded_skill_ids();
+                            already_loaded_skill_ids = loaded_skills
+                                .iter()
+                                .filter(|id| {
+                                    previous_loaded_skill_ids.iter().any(|loaded| loaded == *id)
+                                })
+                                .cloned()
+                                .collect();
                             let previous_snapshot = previous_skill_state.snapshot();
                             let next_skill_state = if ctx.variant_id.is_some() {
                                 previous_skill_state.with_added_branch_local_skills(&loaded_skills)
@@ -417,67 +644,27 @@ impl ToolExecutor for SkillsExecutor {
                 let has_untrusted_rejection = rejected_skills
                     .values()
                     .any(|reason| reason.to_ascii_lowercase().contains("untrusted"));
-                let rejected_message = if rejected_skills.is_empty() {
-                    None
-                } else {
-                    let mut entries: Vec<String> = rejected_skills
-                        .iter()
-                        .map(|(id, reason)| format!("{} ({})", id, reason))
-                        .collect();
-                    entries.sort();
-                    Some(format!("Rejected: {}", entries.join(", ")))
-                };
-                let mut message = if loaded_skills.is_empty() {
-                    if not_found_skills.is_empty() && rejected_message.is_none() {
-                        "No new skills were loaded.".to_string()
-                    } else {
-                        let mut parts = Vec::new();
-                        if !not_found_skills.is_empty() {
-                            parts.push(format!("Missing: {}", not_found_skills.join(", ")));
-                        }
-                        if let Some(rejected) = rejected_message {
-                            parts.push(rejected);
-                        }
-                        format!("No skills loaded. {}", parts.join(". "))
-                    }
-                } else if not_found_skills.is_empty() && rejected_message.is_none() {
-                    "Skills loaded. Instructions will be provided in the next message.".to_string()
-                } else {
-                    let mut parts = Vec::new();
-                    if !not_found_skills.is_empty() {
-                        parts.push(format!("Missing: {}", not_found_skills.join(", ")));
-                    }
-                    if let Some(rejected) = rejected_message {
-                        parts.push(rejected);
-                    }
-                    format!(
-                        "Skills loaded. Instructions will be provided in the next message. {}",
-                        parts.join(". ")
-                    )
-                };
-                if has_untrusted_rejection {
-                    message.push_str(
-                        " If trust was granted earlier in this same tool loop, this is the immutable pre-grant runtime catalog snapshot, not a failed grant. Do not retry load_skills in this request; the trusted package becomes loadable on the next user turn.",
-                    );
-                }
+                let include_available_hint =
+                    !not_found_skills.is_empty() || !rejected_skills.is_empty();
 
-                let all_failed = loaded_skills.is_empty()
-                    && (!not_found_skills.is_empty() || !rejected_skills.is_empty());
-
-                // 构建输出结构
-                let output = LoadSkillsOutput {
-                    status: if all_failed {
-                        "error".to_string()
-                    } else {
-                        "success".to_string()
-                    },
-                    loaded_skill_ids: session_loaded_skill_ids,
-                    loaded_tool_names,
-                    loaded_tools,
+                // 构建输出结构。注意：失败时 pipeline 只把 `message` 作为
+                // `Error: ...` 回喂模型；结构化字段仅用于 UI/审计。因此精确
+                // 可加载 ID 必须写进 message，不能只放在 available_skill_ids。
+                let output = build_load_skills_output(LoadSkillsOutcome {
+                    requested_skill_ids: &parsed_input.skills,
+                    loaded_skill_ids: &loaded_skills,
+                    already_loaded_skill_ids,
+                    missing_skill_ids: &not_found_skills,
                     rejected_skills,
+                    available_skill_ids,
+                    session_loaded_skill_ids,
+                    loaded_tools,
                     skill_state_version,
-                    message: message.clone(),
-                };
+                    has_untrusted_rejection,
+                    include_available_hint,
+                });
+                let message = output.message.clone();
+                let all_failed = output.status == "error";
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
                 let result_json = json!({
@@ -590,5 +777,139 @@ mod tests {
         assert_eq!(loaded, vec!["ok-skill"]);
         assert!(missing.is_empty());
         assert!(rejected["disabled-skill"].starts_with("disabled:"));
+    }
+
+    #[test]
+    fn available_runtime_ids_are_exact_sorted_and_exclude_rejections() {
+        let contents = HashMap::from([
+            ("qbank-tools".to_string(), "qbank".to_string()),
+            ("dstu-tools".to_string(), "dstu".to_string()),
+            (
+                "rejected-skill".to_string(),
+                "must not be advertised".to_string(),
+            ),
+            ("".to_string(), "empty id".to_string()),
+        ]);
+        let admission_errors = HashMap::from([(
+            "rejected-skill".to_string(),
+            "untrusted: Skill \"rejected-skill\" is untrusted".to_string(),
+        )]);
+
+        let available =
+            collect_available_runtime_skill_ids(Some(&contents), Some(&admission_errors));
+
+        assert_eq!(available, vec!["dstu-tools", "qbank-tools"]);
+    }
+
+    #[test]
+    fn missing_skill_message_returns_exact_loadable_ids_and_never_autoloads() {
+        let requested = vec!["question_bank".to_string(), "题库".to_string()];
+        let missing = requested.clone();
+        let available = vec!["dstu-tools".to_string(), "qbank-tools".to_string()];
+        let output = build_load_skills_output(LoadSkillsOutcome {
+            requested_skill_ids: &requested,
+            loaded_skill_ids: &[],
+            already_loaded_skill_ids: Vec::new(),
+            missing_skill_ids: &missing,
+            rejected_skills: HashMap::new(),
+            available_skill_ids: available.clone(),
+            session_loaded_skill_ids: Vec::new(),
+            loaded_tools: Vec::new(),
+            skill_state_version: 0,
+            has_untrusted_rejection: false,
+            include_available_hint: true,
+        });
+
+        assert_eq!(output.status, "error");
+        assert!(output.loaded_skill_ids.is_empty());
+        assert!(output.newly_loaded_skill_ids.is_empty());
+        assert_eq!(output.requested_skill_ids, requested);
+        assert_eq!(output.missing_skill_ids, missing);
+        assert_eq!(output.available_skill_ids, available);
+        assert!(output.message.contains("qbank-tools"));
+        assert!(output.message.contains("dstu-tools"));
+        assert!(output.message.contains("do not guess"));
+        assert!(!output.message.contains("Skills loaded."));
+    }
+
+    #[test]
+    fn rejected_skills_are_reported_separately_from_available_ids() {
+        let requested = vec!["untrusted-skill".to_string()];
+        let rejected = HashMap::from([(
+            "untrusted-skill".to_string(),
+            "untrusted: Skill \"untrusted-skill\" is untrusted and cannot be loaded".to_string(),
+        )]);
+        let available = vec!["qbank-tools".to_string()];
+        let output = build_load_skills_output(LoadSkillsOutcome {
+            requested_skill_ids: &requested,
+            loaded_skill_ids: &[],
+            already_loaded_skill_ids: Vec::new(),
+            missing_skill_ids: &[],
+            rejected_skills: rejected,
+            available_skill_ids: available.clone(),
+            session_loaded_skill_ids: Vec::new(),
+            loaded_tools: Vec::new(),
+            skill_state_version: 7,
+            has_untrusted_rejection: true,
+            include_available_hint: true,
+        });
+
+        assert_eq!(output.status, "error");
+        assert_eq!(output.available_skill_ids, available);
+        assert_eq!(output.rejected_skill_ids, vec!["untrusted-skill"]);
+        assert!(output
+            .message
+            .contains("Rejected: untrusted-skill (untrusted:"));
+        assert!(output.message.contains("Available skill IDs"));
+        assert!(output
+            .message
+            .contains("Do not retry load_skills in this request"));
+        assert!(!output.message.contains("Skills loaded."));
+    }
+
+    #[test]
+    fn empty_request_reports_available_ids_without_loading_anything() {
+        let output = build_load_skills_output(LoadSkillsOutcome {
+            requested_skill_ids: &[],
+            loaded_skill_ids: &[],
+            already_loaded_skill_ids: Vec::new(),
+            missing_skill_ids: &[],
+            rejected_skills: HashMap::new(),
+            available_skill_ids: vec!["qbank-tools".to_string()],
+            session_loaded_skill_ids: vec!["already-loaded-tool".to_string()],
+            loaded_tools: Vec::new(),
+            skill_state_version: 3,
+            has_untrusted_rejection: false,
+            include_available_hint: true,
+        });
+
+        assert_eq!(output.status, "error");
+        assert!(output.newly_loaded_skill_ids.is_empty());
+        assert_eq!(output.loaded_skill_ids, vec!["already-loaded-tool"]);
+        assert!(output.message.contains("No skills were requested"));
+        assert!(output.message.contains("qbank-tools"));
+    }
+
+    #[test]
+    fn already_loaded_ids_do_not_claim_a_new_load() {
+        let requested = vec!["qbank-tools".to_string()];
+        let output = build_load_skills_output(LoadSkillsOutcome {
+            requested_skill_ids: &requested,
+            loaded_skill_ids: &requested,
+            already_loaded_skill_ids: requested.clone(),
+            missing_skill_ids: &[],
+            rejected_skills: HashMap::new(),
+            available_skill_ids: requested.clone(),
+            session_loaded_skill_ids: requested.clone(),
+            loaded_tools: Vec::new(),
+            skill_state_version: 2,
+            has_untrusted_rejection: false,
+            include_available_hint: false,
+        });
+
+        assert_eq!(output.status, "success");
+        assert!(output.newly_loaded_skill_ids.is_empty());
+        assert_eq!(output.already_loaded_skill_ids, requested);
+        assert!(output.message.contains("Skills already loaded."));
     }
 }

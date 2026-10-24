@@ -54,3 +54,31 @@ describe('citationRemarkPlugin mindmap citations', () => {
     expect(children[children.length - 1]).toMatchObject({ type: 'text', value: ' 末尾' });
   });
 });
+
+describe('citationRemarkPlugin qbank citations', () => {
+  it('keeps legacy exam citations byte-for-byte compatible', () => {
+    const children = runPlugin('[题目集:exam_1]');
+    const htmlNode = children.find((node: any) => node.type === 'html');
+
+    expect(htmlNode?.value).toBe(
+      '<span data-qbank-citation="true" data-qbank-session-id="exam_1" class="qbank-citation-placeholder">[题目集]</span>',
+    );
+  });
+
+  it('carries a stable question/group target id and title', () => {
+    const children = runPlugin('见 [题目集:exam_1#q_abc123:期中卷第 3 题] 末尾');
+    const htmlNode = children.find((node: any) => node.type === 'html');
+
+    expect(htmlNode?.value).toContain('data-qbank-session-id="exam_1"');
+    expect(htmlNode?.value).toContain('data-qbank-target-id="q_abc123"');
+    expect(htmlNode?.value).toContain(`data-qbank-title="${encodeURIComponent('期中卷第 3 题')}"`);
+    expect(children[children.length - 1]).toMatchObject({ type: 'text', value: ' 末尾' });
+  });
+
+  it('accepts group targets', () => {
+    const children = runPlugin('[题目集:exam_1#qgroup_9:阅读理解一]');
+    const htmlNode = children.find((node: any) => node.type === 'html');
+
+    expect(htmlNode?.value).toContain('data-qbank-target-id="qgroup_9"');
+  });
+});

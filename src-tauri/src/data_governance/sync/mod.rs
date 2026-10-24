@@ -5675,7 +5675,80 @@ impl SyncManager {
                 );
             }
         }
+        // 跨设备 files 去重会生成 file id 别名；题目/材料把附件 file id 嵌在
+        // JSON 文本列里（images_json / descriptor_json），普通外键列重映射覆盖
+        // 不到，必须在这里同步改写，否则对端打开材料图会指向已 alias 的旧 file。
+        if table_name == "qbank_materials" {
+            Self::remap_json_embedded_ids(aliases, obj, "images_json", &["id"])?;
+        }
+        if table_name == "qbank_sources" {
+            Self::remap_json_embedded_ids(
+                aliases,
+                obj,
+                "descriptor_json",
+                &["file_id", "vfs_file_id"],
+            )?;
+        }
         Ok(())
+    }
+
+    /// 递归改写 JSON 文本列中指定 key 的 file id（values 走 files 别名表）。
+    ///
+    /// 无法解析或没有别名的值保持原样，不让一次格式漂移破坏整条同步变更。
+    fn remap_json_embedded_ids(
+        aliases: &IdAliasMap,
+        obj: &mut serde_json::Map<String, serde_json::Value>,
+        column: &str,
+        keys: &[&str],
+    ) -> Result<(), SyncError> {
+        let Some(serde_json::Value::String(raw)) = obj.get(column) else {
+            return Ok(());
+        };
+        let Ok(mut value) = serde_json::from_str::<serde_json::Value>(raw) else {
+            return Ok(());
+        };
+        if !Self::remap_ids_in_json_value(&mut value, keys, aliases)? {
+            return Ok(());
+        }
+        let serialized = serde_json::to_string(&value)
+            .map_err(|e| SyncError::Database(format!("序列化 {} 失败: {}", column, e)))?;
+        obj.insert(column.to_string(), serde_json::Value::String(serialized));
+        Ok(())
+    }
+
+    fn remap_ids_in_json_value(
+        value: &mut serde_json::Value,
+        keys: &[&str],
+        aliases: &IdAliasMap,
+    ) -> Result<bool, SyncError> {
+        match value {
+            serde_json::Value::Object(map) => {
+                let mut changed = false;
+                for (key, child) in map.iter_mut() {
+                    if keys.contains(&key.as_str()) {
+                        if let serde_json::Value::String(id) = child {
+                            if !id.trim().is_empty() {
+                                let canonical = Self::resolve_alias(aliases, "files", id)?;
+                                if canonical != *id {
+                                    *id = canonical;
+                                    changed = true;
+                                }
+                            }
+                        }
+                    }
+                    changed |= Self::remap_ids_in_json_value(child, keys, aliases)?;
+                }
+                Ok(changed)
+            }
+            serde_json::Value::Array(items) => {
+                let mut changed = false;
+                for item in items {
+                    changed |= Self::remap_ids_in_json_value(item, keys, aliases)?;
+                }
+                Ok(changed)
+            }
+            _ => Ok(false),
+        }
     }
 
     fn find_canonical_id_by_business_key(
@@ -6104,6 +6177,11 @@ impl SyncManager {
             "chat_v2_blocks" => 42,
             "note_document_formats" => 43,
             "note_document_revisions" => 45,
+            // 题目导入 v2：来源证据 → 共享材料 → 题组 → 组成员 → 题目
+            "qbank_sources" => 44,
+            "qbank_materials" => 45,
+            "qbank_groups" => 46,
+            "qbank_group_materials" => 47,
             "note_learning_relations" => 70,
             "chat_v2_compactions" => 45,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
@@ -6883,6 +6961,7 @@ impl SyncManager {
                 || Self::table_has_column(conn, table, "image_blob_hash")
                 || Self::table_has_column(conn, table, "preview_json")
                 || Self::table_has_column(conn, table, "images_json")
+                || Self::table_has_column(conn, table, "descriptor_json")
             {
                 return true;
             }
@@ -7094,6 +7173,70 @@ impl SyncManager {
                    AND json_extract(img.value, '$.hash') IS NOT NULL
                    AND json_extract(img.value, '$.hash') <> ''"
                     .to_string(),
+            );
+        }
+
+        // ★ issue 489/491（V20261023）：题目导入 v2 的共享材料图、来源证据页图，
+        // 以及尚未确认的本地导入草稿资产，同样只存在于 JSON 列里。若不计入重算，
+        // 首次同步就会把它们清零并被 cleanup_unreferenced 物理删除。
+        // json_tree 按 key 匹配，兼容 images 对象与 descriptor.pages 的字段演进。
+        if Self::table_has_column(conn, "qbank_materials", "images_json") {
+            subqueries.push(
+                "SELECT ref.value AS blob_hash
+                 FROM qbank_materials, json_tree(qbank_materials.images_json) AS ref
+                 WHERE qbank_materials.images_json IS NOT NULL
+                   AND json_valid(qbank_materials.images_json)
+                   AND ref.key = 'hash'
+                   AND ref.type = 'text'
+                   AND ref.value IS NOT NULL
+                   AND ref.value <> ''"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "qbank_sources", "descriptor_json") {
+            subqueries.push(
+                "SELECT ref.value AS blob_hash
+                 FROM qbank_sources, json_tree(qbank_sources.descriptor_json) AS ref
+                 WHERE qbank_sources.descriptor_json IS NOT NULL
+                   AND json_valid(qbank_sources.descriptor_json)
+                   AND ref.key = 'blob_hash'
+                   AND ref.type = 'text'
+                   AND ref.value IS NOT NULL
+                   AND ref.value <> ''"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "qbank_import_jobs", "document_json") {
+            // 草稿/复核/部分完成的任务仍会把裁图与页图引用留在 document_json；
+            // 只有 committed 之后才由 canonical 题目/材料接管引用计数。
+            subqueries.push(
+                "SELECT ref.value AS blob_hash
+                 FROM qbank_import_jobs, json_tree(qbank_import_jobs.document_json) AS ref
+                 WHERE qbank_import_jobs.status IN ('ready', 'needs_review', 'partial')
+                   AND json_valid(qbank_import_jobs.document_json)
+                   AND ref.key = 'hash'
+                   AND ref.type = 'text'
+                   AND ref.value IS NOT NULL
+                   AND ref.value <> ''"
+                    .to_string(),
+            );
+            subqueries.push(
+                "SELECT ref.value AS blob_hash
+                 FROM qbank_import_jobs, json_tree(qbank_import_jobs.metadata_json) AS ref
+                 WHERE qbank_import_jobs.status IN ('ready', 'needs_review', 'partial')
+                   AND json_valid(qbank_import_jobs.metadata_json)
+                   AND ref.key IN ('blob_hash', 'content_hash')
+                   AND ref.type = 'text'
+                   AND ref.value IS NOT NULL
+                   AND ref.value <> ''"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "exam_sheets", "import_state_json") {
+            subqueries.push(
+                "SELECT ref.value AS blob_hash FROM exam_sheets, json_tree(exam_sheets.import_state_json) AS ref
+                 WHERE exam_sheets.import_state_json IS NOT NULL AND json_valid(exam_sheets.import_state_json)
+                   AND ref.key IN ('blob_hash','hash') AND ref.type='text' AND ref.value <> ''".to_string()
             );
         }
 
@@ -17875,5 +18018,133 @@ mod tests {
             "明文遗留资产必须被拒收"
         );
         assert!(!dir_b.path().join("images/legacy.png").exists());
+    }
+    /// ★ issue 489/491（V20261023）：题目导入 v2 只在 JSON 列里引用的素材
+    /// （共享材料图、来源页图、未确认草稿裁图）必须参与 blob 引用重算，
+    /// 否则首次同步就被清零并被本地清扫物理删除。
+    #[test]
+    fn regression_recompute_counts_qbank_material_source_and_pinned_draft_assets() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE blobs (
+                hash TEXT PRIMARY KEY,
+                ref_count INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE qbank_materials (
+                id TEXT PRIMARY KEY,
+                images_json TEXT
+            );
+            CREATE TABLE qbank_sources (
+                id TEXT PRIMARY KEY,
+                descriptor_json TEXT
+            );
+            CREATE TABLE qbank_import_jobs (
+                id TEXT PRIMARY KEY,
+                status TEXT,
+                document_json TEXT,
+                metadata_json TEXT
+            );
+            "#,
+        )
+        .unwrap();
+
+        for hash in [
+            "material-img",
+            "source-page",
+            "draft-crop",
+            "settled-draft-crop",
+        ] {
+            conn.execute(
+                "INSERT INTO blobs(hash, ref_count) VALUES (?1, 99)",
+                rusqlite::params![hash],
+            )
+            .unwrap();
+        }
+        conn.execute(
+            r#"INSERT INTO qbank_materials(id, images_json) VALUES
+                ('m-1', '[{"id":"att_1","hash":"material-img","role":"material"}]')"#,
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO qbank_sources(id, descriptor_json) VALUES
+                ('s-1', '{"pages":[{"page":1,"blob_hash":"source-page"}],"content_hash":"c1"}')"#,
+            [],
+        )
+        .unwrap();
+        // ready/needs_review/partial 的草稿资产仍被本次导入任务占用；
+        // committed 之后由 canonical 题目/材料接手引用，不再钉住。
+        conn.execute(
+            r#"INSERT INTO qbank_import_jobs(id, status, document_json, metadata_json) VALUES
+                ('job-ready', 'ready',
+                 '{"questions":[{"images":[{"hash":"draft-crop"}]}]}', '{}'),
+                ('job-committed', 'committed',
+                 '{"questions":[{"images":[{"hash":"settled-draft-crop"}]}]}', '{}')"#,
+            [],
+        )
+        .unwrap();
+
+        SyncManager::recompute_blob_ref_counts(&conn).unwrap();
+
+        let count_of = |hash: &str| -> i64 {
+            conn.query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                rusqlite::params![hash],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(count_of("material-img"), 1, "共享材料图不得被清零");
+        assert_eq!(count_of("source-page"), 1, "来源页图不得被清零");
+        assert_eq!(count_of("draft-crop"), 1, "未确认草稿资产必须钉住");
+        assert_eq!(
+            count_of("settled-draft-crop"),
+            0,
+            "committed 任务不再钉住资产，交由 canonical 实体引用"
+        );
+    }
+
+    /// 跨设备 files 去重后，材料图与来源描述里的 file id 必须随别名重写，
+    /// 否则对端打开共享材料 / 回跳原页会指向已合并掉的旧 file。
+    #[test]
+    fn remap_json_embedded_file_ids_rewrites_material_images_and_source_descriptors() {
+        let mut aliases: IdAliasMap = HashMap::new();
+        aliases.insert(
+            ("files".to_string(), "file-old".to_string()),
+            "file-new".to_string(),
+        );
+
+        let mut material = serde_json::Map::new();
+        material.insert(
+            "images_json".to_string(),
+            serde_json::json!(r#"[{"id":"file-old","hash":"h1"},{"id":"file-other","hash":"h2"}]"#),
+        );
+        SyncManager::remap_json_embedded_ids(&aliases, &mut material, "images_json", &["id"])
+            .unwrap();
+        let images: serde_json::Value =
+            serde_json::from_str(material["images_json"].as_str().unwrap()).unwrap();
+        assert_eq!(images[0]["id"], "file-new");
+        assert_eq!(images[1]["id"], "file-other", "无别名保持原值");
+
+        let mut source = serde_json::Map::new();
+        source.insert(
+            "descriptor_json".to_string(),
+            serde_json::json!(r#"{"pages":[{"page":1,"file_id":"file-old","blob_hash":"h1"}]}"#),
+        );
+        SyncManager::remap_json_embedded_ids(
+            &aliases,
+            &mut source,
+            "descriptor_json",
+            &["file_id", "vfs_file_id"],
+        )
+        .unwrap();
+        let descriptor: serde_json::Value =
+            serde_json::from_str(source["descriptor_json"].as_str().unwrap()).unwrap();
+        assert_eq!(descriptor["pages"][0]["file_id"], "file-new");
+        assert_eq!(
+            descriptor["pages"][0]["blob_hash"], "h1",
+            "内容哈希不是 file id，不得改写"
+        );
     }
 }

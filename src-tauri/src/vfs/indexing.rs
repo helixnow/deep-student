@@ -979,6 +979,23 @@ fn resolve_indexable_content(
         }
 
         VfsResourceType::Exam => {
+            let exam_id: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM exam_sheets WHERE resource_id=?1 AND deleted_at IS NULL",
+                    rusqlite::params![resource.id],
+                    |r| r.get(0),
+                )
+                .ok();
+            if let Some(exam_id) = exam_id {
+                match crate::qbank_read::context_with_conn(conn, &exam_id) {
+                    Ok(Some(document)) => return Some(crate::qbank_read::context_text(&document)),
+                    Err(error) => {
+                        log::warn!("[VFS] Canonical question context failed: {error}");
+                        return None;
+                    }
+                    Ok(None) => {}
+                }
+            }
             // 题目集：从 exam_sheets.preview_json 获取
             let preview_json: Option<String> = conn
                 .query_row(
@@ -1428,6 +1445,29 @@ fn resolve_indexable_pages(
 
         VfsResourceType::Exam => {
             // 从 exam_sheets.preview_json 获取按页内容
+            let exam_id: Option<String> = conn
+                .query_row(
+                    "SELECT id FROM exam_sheets WHERE resource_id=?1 AND deleted_at IS NULL",
+                    rusqlite::params![resource.id],
+                    |row| row.get(0),
+                )
+                .ok();
+            if let Some(exam_id) = exam_id {
+                match crate::qbank_read::context_with_conn(conn, &exam_id) {
+                    Ok(Some(document)) => {
+                        return Some(vec![PageText {
+                            page_index: 0,
+                            text: crate::qbank_read::context_text(&document),
+                            source_id: Some(exam_id),
+                        }])
+                    }
+                    Err(error) => {
+                        log::warn!("[VFS] Canonical exam pages unavailable: {error}");
+                        return None;
+                    }
+                    Ok(None) => {}
+                }
+            }
             let preview_json: Option<String> = conn
                 .query_row(
                     "SELECT preview_json FROM exam_sheets WHERE resource_id = ?1",
@@ -2080,6 +2120,35 @@ impl VfsFullIndexingService {
                     page_count,
                     extracted_text,
                     preview_json,
+                }
+            }
+            VfsResourceType::Exam => {
+                let conn = self.db.get_conn_safe()?;
+                let exam_id: Option<String> = conn
+                    .query_row(
+                        "SELECT id FROM exam_sheets WHERE resource_id=?1 AND deleted_at IS NULL",
+                        rusqlite::params![resource_id],
+                        |row| row.get(0),
+                    )
+                    .optional()?;
+                let document = exam_id
+                    .as_deref()
+                    .map(|id| crate::qbank_read::context_with_conn(&conn, id))
+                    .transpose()
+                    .map_err(crate::vfs::VfsError::Other)?
+                    .flatten();
+                let text = document.as_ref().map(crate::qbank_read::context_text);
+                UnitBuildInput {
+                    resource_id: resource_id.into(),
+                    resource_type: "exam".into(),
+                    data: document.map(|d| d.to_string()).or(resource.data),
+                    ocr_text: text.clone(),
+                    ocr_pages_json: text
+                        .map(|text| serde_json::json!([{"page_index":0,"text":text}]).to_string()),
+                    blob_hash: None,
+                    page_count: Some(1),
+                    extracted_text: None,
+                    preview_json: None,
                 }
             }
             _ => UnitBuildInput {

@@ -29,6 +29,7 @@ import type {
   SkippedReference,
 } from '@/types/qbankGeneration';
 import { buildCreateParams } from '@/utils/qbankDraftToParams';
+import type { QuestionDocumentV2 } from '@/api/questionBankApi';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -37,6 +38,9 @@ import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 /** qbank_generate_questions 工具输出（与 Rust 侧 json! 对齐） */
 interface QbankQuestionsToolOutput {
+  job_id?: string;
+  version?: number;
+  document?: QuestionDocumentV2;
   action?: string;
   taskId?: string;
   examId?: string;
@@ -84,6 +88,7 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
   }, [taskId, storeTask, upsertTask]);
 
   const task = storeTask;
+  const authoring = task?.authoringResult ?? output;
   const drafts = useMemo(
     () => task?.drafts ?? output.drafts ?? [],
     [task?.drafts, output.drafts],
@@ -124,21 +129,21 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
     if (selected.size === 0 || importing || !examId) return;
     setImporting(true);
     try {
-      const paramsList = drafts
-        .filter((_, index) => selected.has(index))
-        .map((draft) => buildCreateParams(draft, examId));
-      const created = await invoke<CreatedQuestion[]>('qbank_batch_create_questions', {
-        paramsList,
+      if (!authoring.job_id) throw new Error(t('exam_sheet:aiGeneration.regenerateLegacy'));
+      const created = await invoke<{committed:boolean;imported_count:number;question_ids:string[]}>('qbank_commit_authoring_draft', {
+        jobId:authoring.job_id,expectedVersion:authoring.version,
+        selectedLocalIds:drafts.filter((_,index)=>selected.has(index)).map(draft=>draft.local_id),
       });
-      setImportedCount(created.length);
+      if (!created.committed) throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
+      setImportedCount(created.imported_count);
       // 已打开的题目集（ExamContentView）只听这个事件刷新；字面量同 qbankDriver 的
       // QBANK_REFRESH_EVENT，不静态引入工作台 agent 驱动
       window.dispatchEvent(new CustomEvent('qbank:refresh', {
-        detail: { source: 'user', action: 'import', entityIds: created.map((question) => question.id) },
+        detail: { source: 'user', action: 'import', entityIds: created.question_ids },
       }));
       showGlobalNotification(
         'success',
-        t('exam_sheet:aiGeneration.importSuccess', { count: created.length }),
+        t('exam_sheet:aiGeneration.importSuccess', { count: created.imported_count }),
       );
     } catch (error) {
       debugLog.error('[QbankQuestionsBlock] import failed:', error);
@@ -149,7 +154,7 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
     } finally {
       setImporting(false);
     }
-  }, [drafts, examId, importing, selected, t]);
+  }, [authoring, drafts, examId, importing, selected, t]);
 
   // ----- 渲染：进行中 -----
   if (status === 'queued' || status === 'running') {
@@ -220,6 +225,9 @@ const QbankQuestionsBlock: React.FC<BlockComponentProps> = React.memo(({ block }
       )}
 
       <div className="max-h-80 space-y-1.5 overflow-auto pr-1">
+        {(authoring.document?.materials || []).map(material=>(
+          <section key={material.local_id || material.id} className="border-l-2 border-border px-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
+        ))}
         {drafts.map((draft, index) => (
           <label
             key={index}

@@ -72,6 +72,7 @@ pub struct GenerationTaskRecord {
     pub created_at: i64,
     pub updated_at: i64,
     pub finished_at: Option<i64>,
+    pub authoring_result: Option<serde_json::Value>,
 }
 
 /// 任务对外视图（发给前端；不含 request_json/stream_event，避免大 base64 回传）
@@ -90,6 +91,7 @@ pub struct GenerationTaskView {
     pub created_at: i64,
     pub updated_at: i64,
     pub finished_at: Option<i64>,
+    pub authoring_result: Option<serde_json::Value>,
 }
 
 impl From<GenerationTaskRecord> for GenerationTaskView {
@@ -107,6 +109,7 @@ impl From<GenerationTaskRecord> for GenerationTaskView {
             created_at: record.created_at,
             updated_at: record.updated_at,
             finished_at: record.finished_at,
+            authoring_result: record.authoring_result,
         }
     }
 }
@@ -164,7 +167,7 @@ fn get_task_with_conn(
     conn.query_row(
         r#"SELECT id, exam_id, status, request_json, drafts_json, rejected_count,
                   rejection_reasons_json, skipped_references_json, used_reference_count,
-                  stream_event, error, created_at, updated_at, finished_at
+                  stream_event, error, created_at, updated_at, finished_at, authoring_result_json
            FROM qbank_generation_tasks WHERE id = ?1"#,
         params![task_id],
         row_to_record,
@@ -184,7 +187,7 @@ pub fn list_tasks(
         .prepare(
             r#"SELECT id, exam_id, status, request_json, drafts_json, rejected_count,
                       rejection_reasons_json, skipped_references_json, used_reference_count,
-                      stream_event, error, created_at, updated_at, finished_at
+                      stream_event, error, created_at, updated_at, finished_at, authoring_result_json
                FROM qbank_generation_tasks
                WHERE exam_id = ?1
                ORDER BY created_at DESC
@@ -271,6 +274,16 @@ pub fn mark_failed(db: &VfsDatabase, task_id: &str, error: &str) -> Result<(), V
     Ok(())
 }
 
+pub fn save_authoring_result(
+    db: &VfsDatabase,
+    task_id: &str,
+    response: &super::types::QbankGenerationResponse,
+) -> Result<(), VfsError> {
+    let conn = db.get_conn_safe()?;
+    conn.execute("UPDATE qbank_generation_tasks SET authoring_result_json=?1 WHERE id=?2 AND status IN ('queued','running')",params![serde_json::to_string(response).map_err(|e|VfsError::Serialization(e.to_string()))?,task_id]).map_err(map_db_err)?;
+    Ok(())
+}
+
 /// 标记为已取消
 pub fn mark_cancelled(db: &VfsDatabase, task_id: &str) -> Result<(), VfsError> {
     let now = now_ms();
@@ -295,7 +308,7 @@ fn update_status(
     let now = now_ms();
     let conn = db.get_conn_safe()?;
     conn.execute(
-        "UPDATE qbank_generation_tasks SET status = ?2, error = ?3, updated_at = ?4 WHERE id = ?1",
+        "UPDATE qbank_generation_tasks SET status = ?2, error = ?3, updated_at = ?4 WHERE id = ?1 AND status IN ('queued','running')",
         params![task_id, status.as_str(), error, now],
     )
     .map_err(map_db_err)?;
@@ -351,6 +364,9 @@ fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<GenerationTaskReco
         created_at: row.get(11)?,
         updated_at: row.get(12)?,
         finished_at: row.get(13)?,
+        authoring_result: row
+            .get::<_, Option<String>>(14)?
+            .and_then(|s| serde_json::from_str(&s).ok()),
     })
 }
 
@@ -393,6 +409,7 @@ mod tests {
             created_at: 1,
             updated_at: 2,
             finished_at: Some(2),
+            authoring_result: None,
         };
         let view = GenerationTaskView::from(record);
         let json = serde_json::to_value(&view).expect("serialize view");

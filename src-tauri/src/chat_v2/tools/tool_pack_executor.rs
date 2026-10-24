@@ -89,6 +89,7 @@ fn create_sub_context(
         llm_manager: parent.llm_manager.clone(),
         chat_v2_db: parent.chat_v2_db.clone(),
         question_bank_service: parent.question_bank_service.clone(),
+        question_authoring_config: parent.question_authoring_config.clone(),
         skill_contents: parent.skill_contents.clone(),
         skill_embedded_tools: parent.skill_embedded_tools.clone(),
         skill_admission_errors: parent.skill_admission_errors.clone(),

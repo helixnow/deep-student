@@ -128,6 +128,27 @@ export interface QuestionImage {
   name: string;
   mime: string;
   hash: string;
+  /**
+   * 图片语义角色（后端新字段；旧数据缺省）。
+   * - question：题干/答案确认图
+   * - material：共享材料图
+   * - option：选项图
+   * - source：自动关联的原始整页/整题截图（折叠展示）
+   */
+  role?: QuestionImageRole | null;
+}
+
+export type QuestionImageRole = 'question' | 'material' | 'option' | 'source';
+
+/**
+ * 判断图片是否为「原始来源截图」。
+ *
+ * 新数据优先使用 `role`；旧数据没有 role 时仅作为兼容回退：
+ * `crop_` 前缀代表用户确认的裁剪图，其余按来源图折叠。
+ */
+export function isSourceQuestionImage(image: Pick<QuestionImage, 'name' | 'role'>): boolean {
+  if (image.role) return image.role === 'source';
+  return !image.name.startsWith('crop_');
 }
 
 // ============================================================================
@@ -161,6 +182,236 @@ export interface ImageAnswerPayload {
   text: string;
 }
 
+// ============================================================================
+// 共享材料 / 题组（issue 491）
+//
+// 一篇阅读文章、一组共用条件或共用图片只存一份材料，由同组子题引用。
+// 后端 Question 序列化（snake_case）额外携带：
+//   group_id / group_position / group_label / materials[]
+// 前端在 convertToApiQuestion 中映射为 camelCase，同时保留单题 materials
+// 访问路径，保证独立练习、浏览、导出和追问都能拿到完整材料。
+// ============================================================================
+
+/** 材料来源定位（稳定来源 id + 可选页/归一化 bbox） */
+export interface QuestionSourceRef {
+  source_id: string;
+  page?: number;
+  bbox?: [number, number, number, number];
+}
+
+/** 材料配图（与题目图片相同的 VFS 引用形状） */
+export interface QuestionMaterialImage {
+  id: string;
+  name: string;
+  mime: string;
+  hash: string;
+}
+
+/** 共享材料（文章正文、共用条件、共用图表） */
+export interface QuestionMaterial {
+  id: string;
+  content: string;
+  images: QuestionMaterialImage[];
+  source_refs?: QuestionSourceRef[];
+  /** 材料独立版本号，用于 OCC 更新；后端 i64 在 JS 侧按 number 处理 */
+  version: number;
+}
+
+/** 从任意题目形状中取出材料列表（缺失/旧后端时为空数组） */
+export function getQuestionMaterials(question: Pick<Question, 'materials'> | null | undefined): QuestionMaterial[] {
+  return question?.materials ?? [];
+}
+
+/** 后端 qbank_update_material 的返回体（与 QuestionMaterial 同形） */
+export type UpdatedQuestionMaterial = QuestionMaterial;
+
+/**
+ * 更新共享材料正文（乐观并发控制）。
+ *
+ * 成功返回更新后的材料（version 已递增）；`expectedVersion` 与库中不一致时
+ * 后端返回版本冲突错误，调用方必须提示用户重新加载而不是覆盖。
+ */
+export async function updateQuestionMaterial(
+  materialId: string,
+  content: string,
+  expectedVersion: number
+): Promise<UpdatedQuestionMaterial> {
+  return invoke<UpdatedQuestionMaterial>('qbank_update_material', {
+    materialId,
+    content,
+    expectedVersion,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 题组结构管理（材料关联、成员顺序、解散/删除）
+//
+// 后端契约（snake_case）：
+//   qbank_list_structure(examId) -> { exam_id, materials[], groups[] }
+//   qbank_update_group(groupId,label,questionIds,materialIds,expectedVersion)
+//   qbank_delete_group(groupId,mode,expectedVersion)
+//   qbank_delete_material(materialId,expectedVersion)
+//
+// 所有写操作都带 expectedVersion（OCC）；版本不一致时后端返回冲突错误，
+// 调用方必须重新读取结构后再让用户决定，不能覆盖。
+// ---------------------------------------------------------------------------
+
+/** 题组结构中的题组（与后端字段一致，供管理面板原样消费） */
+export interface QuestionStructureGroup {
+  id: string;
+  exam_id: string;
+  label: string | null;
+  /** 题目集内稳定展示位置 */
+  position: number;
+  /** 题组版本号，用于 OCC 更新/删除 */
+  version: number;
+  material_ids: string[];
+  question_ids: string[];
+}
+
+/** qbank_list_structure 的返回体；材料与 QuestionMaterial 同形 */
+export interface QuestionBankStructure {
+  exam_id: string;
+  materials: QuestionMaterial[];
+  groups: QuestionStructureGroup[];
+}
+
+/** qbank_update_group 的输入（camelCase 参数名由 invoke 自动映射） */
+export interface UpdateQuestionGroupInput {
+  label: string;
+  questionIds: string[];
+  materialIds: string[];
+  expectedVersion: number;
+}
+
+/**
+ * qbank_update_group 的返回体。
+ *
+ * 后端解绑成员时可能为“仍依赖共享材料”的子题保留/生成独立承载结构，
+ * `removed_question_ids` 与 `solo_group_ids` 用于调用方提示或定向刷新。
+ */
+export interface UpdatedQuestionGroup {
+  exam_id: string;
+  group: QuestionStructureGroup;
+  removed_question_ids: string[];
+  solo_group_ids: string[];
+}
+
+/**
+ * 解散题组（ungroup）或删除题组及其成员（delete_members）。
+ * - ungroup：保留子题与共享材料，只解除分组关系；
+ * - delete_members：删除题组及其全部子题，不可撤销。
+ */
+export type QuestionGroupDeleteMode = 'ungroup' | 'delete_members';
+
+/** 读取题目集当前题组/材料结构（管理面板的唯一数据源） */
+export async function getQuestionBankStructure(examId: string): Promise<QuestionBankStructure> {
+  return invoke<QuestionBankStructure>('qbank_list_structure', { examId });
+}
+
+/** 更新题组标签、成员顺序与关联材料（OCC） */
+export async function updateQuestionGroup(
+  groupId: string,
+  input: UpdateQuestionGroupInput,
+): Promise<UpdatedQuestionGroup> {
+  return invoke<UpdatedQuestionGroup>('qbank_update_group', {
+    groupId,
+    label: input.label,
+    questionIds: input.questionIds,
+    materialIds: input.materialIds,
+    expectedVersion: input.expectedVersion,
+  });
+}
+
+/** 解散或删除题组（OCC）；成功返回后调用方必须重新读取结构 */
+export async function deleteQuestionGroup(
+  groupId: string,
+  mode: QuestionGroupDeleteMode,
+  expectedVersion: number,
+): Promise<void> {
+  return invoke<void>('qbank_delete_group', { groupId, mode, expectedVersion });
+}
+
+/** 删除未被任何题组引用的材料（OCC） */
+export async function deleteQuestionMaterial(
+  materialId: string,
+  expectedVersion: number,
+): Promise<void> {
+  return invoke<void>('qbank_delete_material', { materialId, expectedVersion });
+}
+
+// ============================================================================
+// QuestionDocument v2（无损耗导出契约）
+// ============================================================================
+
+/** v2 导出中的题目条目（snake_case，保留结构化数据与来源） */
+export interface QuestionDocumentV2Question {
+  id?: string;
+  local_id?: string;
+  group_id?: string | null;
+  group_position?: number;
+  original_label?: string;
+  question_label?: string;
+  section_path?: string[];
+  content: string;
+  question_type: QuestionType;
+  options?: QuestionOption[] | null;
+  answer?: string | null;
+  answer_origin?: string | null;
+  explanation?: string | null;
+  structured_data?: QuestionStructuredData | null;
+  difficulty?: Difficulty | null;
+  tags?: string[];
+  source_refs?: QuestionSourceRef[];
+  figures?: unknown[];
+  images?: QuestionImage[];
+  [key: string]: unknown;
+}
+
+/** v2 导出根对象：材料、题组、题目、未匹配答案、覆盖与问题 */
+export interface QuestionDocumentV2 {
+  schema_version: 2;
+  mode?: string;
+  materials: Array<{
+    id?: string;
+    local_id?: string;
+    content: string;
+    images?: QuestionMaterialImage[];
+    figures?: unknown[];
+    source_refs?: QuestionSourceRef[];
+    [key: string]: unknown;
+  }>;
+  groups: Array<{
+    id?: string;
+    local_id?: string;
+    label?: string | null;
+    material_ids?: string[];
+    question_ids?: string[];
+    [key: string]: unknown;
+  }>;
+  questions: QuestionDocumentV2Question[];
+  unmatched_answers?: unknown[];
+  coverage?: unknown[];
+  issues?: unknown[];
+  [key: string]: unknown;
+}
+
+/** 从后端读取题目集的 v2 规范导出（材料关系、structured_data、来源完整） */
+export async function exportQuestionDocument(examId: string): Promise<QuestionDocumentV2> {
+  return invoke<QuestionDocumentV2>('qbank_export_document', { examId });
+}
+
+/** 便携包（JSON + 资产 zip，base64）导出结果 */
+export interface PortableQuestionBankExport {
+  base64: string;
+  name: string;
+}
+
+/** 导出便携包（由调用方决定落盘方式） */
+export async function exportPortableQuestionBank(examId: string): Promise<PortableQuestionBankExport> {
+  return invoke<PortableQuestionBankExport>('qbank_export_portable', { examId });
+}
+
 export interface Question {
   id: string;
   cardId?: string;
@@ -186,6 +437,17 @@ export interface Question {
   structured_data?: QuestionStructuredData | null;
   /** 出处（JSON，如 {"resourceIds":[…]}，AI 出题依据的资料） */
   sourceRef?: string | null;
+  /** 所属题组（issue 491）。普通独立题为 undefined/null。 */
+  groupId?: string | null;
+  /** 题组内稳定顺序（用于分组连续展示排序） */
+  groupPosition?: number | null;
+  /** 题组展示标签（如「阅读理解一」） */
+  groupLabel?: string | null;
+  /**
+   * 本题依赖的共享材料（文章/共用条件/共用图片）。
+   * 单题随机练习也必须能取得，不可只在题组展示时注入。
+   */
+  materials?: QuestionMaterial[];
   // AI 评判缓存
   ai_feedback?: string;
   ai_score?: number;

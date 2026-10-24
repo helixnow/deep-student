@@ -319,6 +319,10 @@ pub enum QuestionType {
     Essay,            // 论述题
     Calculation,      // 计算题
     Proof,            // 证明题
+    TrueFalse,
+    Matching,
+    Ordering,
+    Numeric,
     #[default]
     Other, // 其他
 }
@@ -353,10 +357,13 @@ pub enum QuestionStatus {
 #[derive(Default)]
 pub enum SourceType {
     #[default]
+    #[serde(alias = "ocr")]
     OcrImage, // 图片 OCR 识别
-    ImportFile,   // 文件导入
+    #[serde(alias = "imported")]
+    ImportFile, // 文件导入
+    #[serde(alias = "manual")]
     ManualCreate, // 手动创建
-    AiGenerated,  // AI 生成（变式）
+    AiGenerated, // AI 生成（变式）
 }
 
 /// 导入来源详情

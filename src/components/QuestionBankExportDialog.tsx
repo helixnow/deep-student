@@ -18,6 +18,7 @@ import { DsButton } from '@/components/ui/DsButton';
 import { Label } from '@/components/ui/shad/Label';
 import {
   Download,
+  FileZip,
   FileJs,
   FileText,
   Table,
@@ -36,9 +37,16 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { useMobileSubviewChrome } from '@/components/layout';
 import { showGlobalNotification } from './UnifiedNotification';
 import { CustomScrollArea } from './custom-scroll-area';
-import type { Question } from '@/api/questionBankApi';
+import {
+  exportQuestionDocument,
+  exportPortableQuestionBank,
+  type Question,
+  type QuestionDocumentV2,
+  type QuestionMaterial,
+} from '@/api/questionBankApi';
+import { buildDisplayGroups } from './QuestionMaterialView';
 
-type ExportFormat = 'json' | 'txt' | 'csv';
+type ExportFormat = 'json' | 'txt' | 'csv' | 'zip';
 type CsvEncoding = 'utf8' | 'gbk' | 'utf8_bom';
 
 interface QuestionBankExportDialogProps {
@@ -69,6 +77,36 @@ interface ExportOptions {
 interface ExportOutcome {
   path: string;
   count: number;
+}
+
+/**
+ * 读取后端 canonical v2 导出，并按用户选项合并进度字段 / 隐藏答案。
+ *
+ * 材料、题组、structured_data、source_refs 与图片始终保留（无损契约）；
+ * includeStatus/includeStats 只补充本机作答进度，不改变题目内容。
+ */
+export async function buildCanonicalExportDocument(
+  examId: string,
+  options: Pick<ExportOptions, 'includeAnswer' | 'includeExplanation' | 'includeStatus' | 'includeStats'>,
+  progressQuestions: Question[],
+): Promise<QuestionDocumentV2> {
+  const document = await exportQuestionDocument(examId);
+  const progressById = new Map(progressQuestions.map((question) => [String(question.id), question]));
+  const questions = document.questions.map((item) => {
+    const id = String(item.local_id ?? item.id ?? '');
+    const progress = progressById.get(id);
+    const next: Record<string, unknown> = { ...item };
+    if (!options.includeAnswer) delete next.answer;
+    if (!options.includeExplanation) delete next.explanation;
+    if (options.includeStatus && progress) next.status = progress.status;
+    if (options.includeStats && progress) {
+      next.attempt_count = progress.attemptCount ?? 0;
+      next.correct_count = progress.correctCount ?? 0;
+      next.is_favorite = progress.isFavorite ?? false;
+    }
+    return next as QuestionDocumentV2['questions'][number];
+  });
+  return { ...document, questions };
 }
 
 // CSV 可导出字段定义
@@ -104,12 +142,14 @@ const formatIcons: Record<ExportFormat, React.ReactNode> = {
   json: <FileJs size={16} />,
   txt: <FileText size={16} />,
   csv: <Table size={16} />,
+  zip: <FileZip size={16} />,
 };
 
 const formatLabels: Record<ExportFormat, string> = {
   json: 'JSON',
   txt: 'TXT/Markdown',
   csv: 'CSV',
+  zip: 'ZIP',
 };
 
 // Format description keys - translated at render time via t()
@@ -117,7 +157,21 @@ const FORMAT_DESC_KEYS: Record<ExportFormat, string> = {
   json: 'exam_sheet:questionBank.export.formatDesc.json',
   txt: 'exam_sheet:questionBank.export.formatDesc.txt',
   csv: 'exam_sheet:questionBank.export.formatDesc.csv',
+  zip: 'exam_sheet:questionBank.export.formatDesc.zip',
 };
+
+const FORMAT_DESC_DEFAULTS: Partial<Record<ExportFormat, string>> = {
+  zip: '便携包：JSON + 源资产打包为 ZIP（哈希校验，可在其他设备导入）',
+};
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
 
 /** 通用 chip 多选按钮（选中态带对勾） */
 const FieldChip: React.FC<{
@@ -312,30 +366,58 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   }, []);
 
   const generateJsonExport = useCallback(() => {
+    // 无 examId（或旧数据）时本地组装 v2 形状：snake_case + 材料/题组/
+    // structured_data/来源/图片，避免再导出丢失题型与共享关系。
+    const materialById = new Map<string, QuestionMaterial>();
+    const groupById = new Map<string, { local_id: string; label: string | null; question_ids: string[] }>();
+    for (const q of questions) {
+      for (const material of q.materials ?? []) {
+        if (material?.id && !materialById.has(material.id)) materialById.set(material.id, material);
+      }
+      if (q.groupId) {
+        const group = groupById.get(q.groupId) ?? { local_id: q.groupId, label: q.groupLabel ?? null, question_ids: [] };
+        group.question_ids.push(q.id);
+        groupById.set(q.groupId, group);
+      }
+    }
     const data = {
-      name: examName || t('exam_sheet:questionBank.export.defaultName'),
-      exportedAt: new Date().toISOString(),
-      totalCount: questions.length,
+      schema_version: 2,
+      mode: 'extract',
+      materials: Array.from(materialById.values()).map((material) => ({
+        local_id: material.id,
+        content: material.content,
+        images: material.images,
+        source_refs: material.source_refs ?? [],
+      })),
+      groups: Array.from(groupById.values()),
       questions: questions.map(q => ({
-        id: q.id,
-        label: q.questionLabel,
+        local_id: q.id,
+        group_id: q.groupId ?? null,
+        group_position: q.groupPosition ?? undefined,
+        original_label: q.questionLabel,
         content: q.content,
-        questionType: q.questionType,
+        question_type: q.questionType,
         options: q.options,
         ...(options.includeAnswer && { answer: q.answer }),
         ...(options.includeExplanation && { explanation: q.explanation }),
+        structured_data: q.structured_data ?? null,
         difficulty: q.difficulty,
         tags: q.tags,
+        source_ref: q.sourceRef ?? null,
+        images: q.images ?? [],
         ...(options.includeStatus && { status: q.status }),
         ...(options.includeStats && {
-          attemptCount: q.attemptCount,
-          correctCount: q.correctCount,
-          isCorrect: q.isCorrect,
+          attempt_count: q.attemptCount,
+          correct_count: q.correctCount,
+          is_favorite: q.isFavorite ?? false,
         }),
       })),
+      unmatched_answers: [],
+      coverage: [],
+      issues: [],
     };
     return JSON.stringify(data, null, 2);
-  }, [questions, examName, options, t]);
+  }, [questions, options]);
 
   const generateTxtExport = useCallback(() => {
     const lines: string[] = [];
@@ -346,7 +428,29 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     lines.push('---');
     lines.push('');
 
+    // issue 491：展示格式也必须保留共享材料/题组，材料每组只输出一次
+    const displayGroups = buildDisplayGroups(questions);
+    const groupByQuestionId = new Map<string, (typeof displayGroups)[number]>();
+    for (const group of displayGroups) {
+      for (const questionId of group.questionIds) groupByQuestionId.set(questionId, group);
+    }
+    const printedGroups = new Set<string>();
+
     questions.forEach((q, index) => {
+      const group = groupByQuestionId.get(q.id);
+      if (group && (group.groupId || group.materials.length > 0) && !printedGroups.has(group.key)) {
+        printedGroups.add(group.key);
+        lines.push(`## ${t('exam_sheet:questionBank.export.groupHeading', { defaultValue: '题组' })}${group.label ? ` · ${group.label}` : ''}`);
+        lines.push('');
+        if (group.materials.length > 0) {
+          lines.push(`**${t('exam_sheet:questionBank.export.sharedMaterial', { defaultValue: '共享材料' })}**`);
+          for (const material of group.materials) {
+            lines.push(material.content);
+            for (const image of material.images ?? []) lines.push(`- ${image.name || image.id}`);
+          }
+          lines.push('');
+        }
+      }
       lines.push(`## ${t('exam_sheet:questionBank.export.questionPrefix')} ${index + 1}${q.questionLabel ? ` (${q.questionLabel})` : ''}`);
       lines.push('');
       lines.push(`**${t('exam_sheet:questionBank.export.txtContent')}**`);
@@ -527,6 +631,9 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     try {
       // CSV 格式且有 examId 时使用后端导出（支持更多选项）
       if (format === 'csv' && examId) {
+        if (questions.some(question => question.groupId || question.materials?.length)) {
+          throw new Error(t('exam_sheet:questionBank.export.csvGroupedUnsupported', { defaultValue: 'CSV 无法保留共享材料和题组关系，请选择 v2 JSON 或 ZIP 便携包。' }));
+        }
         try {
           const outcome = await handleCsvBackendExport();
           if (outcome) {
@@ -547,9 +654,32 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       const baseName = examName?.replace(/[/\\?%*:|"<>]/g, '-') || 'question-bank';
       const timestamp = new Date().toISOString().slice(0, 10);
 
+      // 便携包：后端生成 JSON + 资产 ZIP（base64），此处只负责落盘
+      if (format === 'zip') {
+        if (!examId) {
+          showGlobalNotification('error', t('exam_sheet:questionBank.export.noExamId'));
+          return;
+        }
+        const portable = await exportPortableQuestionBank(examId);
+        const result = await fileManager.saveBinaryFile({
+          title: t('exam_sheet:questionBank.export.selectPath'),
+          defaultFileName: portable.name || `${baseName}-${timestamp}.zip`,
+          filters: [{ name: 'ZIP', extensions: ['zip'] }],
+          data: base64ToBytes(portable.base64),
+        });
+        if (!result.canceled && result.path) {
+          setExportOutcome({ path: result.path, count: questions.length });
+          showGlobalNotification('success', t('exam_sheet:questionBank.export.success'));
+        }
+        return;
+      }
+
       switch (format) {
         case 'json':
-          content = generateJsonExport();
+          // 有 examId 时使用后端 canonical v2 导出（材料/题组/来源无损）
+          content = examId
+            ? JSON.stringify(await buildCanonicalExportDocument(examId, options, questions), null, 2)
+            : generateJsonExport();
           filename = `${baseName}-${timestamp}.json`;
           break;
         case 'txt':
@@ -581,7 +711,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     } finally {
       setIsExporting(false);
     }
-  }, [isExporting, format, examName, examId, questions.length, generateJsonExport, generateTxtExport, generateCsvExport, handleCsvBackendExport, t]);
+  }, [isExporting, format, examName, examId, questions, options, generateJsonExport, generateTxtExport, generateCsvExport, handleCsvBackendExport, t]);
 
   // 桌面：打开导出文件所在文件夹；Android：用其他应用打开导出的文件
   // （移动端没有文件管理器定位，SAF 保存得到的 content:// 由原生侧转授读取权限）
@@ -611,7 +741,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
         value={format}
         onChange={(value) => setFormat(value as ExportFormat)}
         ariaLabel={t('exam_sheet:questionBank.export.format')}
-        options={(['json', 'txt', 'csv'] as ExportFormat[]).map((f) => ({
+        options={((examId ? ['json', 'txt', 'csv', 'zip'] : ['json', 'txt', 'csv']) as ExportFormat[]).map((f) => ({
           value: f,
           label: (
             <>
@@ -621,7 +751,9 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           ),
         }))}
       />
-      <p className="text-xs text-muted-foreground">{t(FORMAT_DESC_KEYS[format])}</p>
+      <p className="text-xs text-muted-foreground">
+        {t(FORMAT_DESC_KEYS[format], { defaultValue: FORMAT_DESC_DEFAULTS[format] ?? '' })}
+      </p>
     </div>
   );
 
@@ -651,7 +783,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
       <Label>{t('exam_sheet:questionBank.export.options')}</Label>
 
       {/* JSON/TXT 格式（以及缺少 examId 的 CSV）的内容选项 */}
-      {(format !== 'csv' || !examId) && simpleOptionChips}
+      {format !== 'zip' && (format !== 'csv' || !examId) && simpleOptionChips}
 
       {/* CSV 格式的高级选项 */}
       {format === 'csv' && examId && (
@@ -720,7 +852,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
   );
 
   // 实时导出列预览分区
-  const columnsPreviewSection = (
+  const columnsPreviewSection = format !== 'zip' && (
     <div className="space-y-2">
       <Label className="text-sm">{t('exam_sheet:questionBank.export.columnsPreview')}</Label>
       <div className="flex flex-wrap items-center gap-1 rounded-md border border-border/50 bg-muted/20 p-2">

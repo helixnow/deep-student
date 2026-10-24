@@ -38,12 +38,15 @@ import {
   Scan,
   Table as TableIcon,
   Sparkle,
+  TreeStructure,
 } from '@phosphor-icons/react';
 import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
 import { ratioToPercent } from '@/components/stats';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
+import { QuestionMaterialView, buildDisplayGroups, type QuestionDisplayGroup } from './QuestionMaterialView';
+import { QuestionStructureManager } from './QuestionStructureManager';
 import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { EXAM_DOCUMENT_TYPE, EXAM_IMAGE_TYPE } from './ExamSheetUploader';
@@ -76,6 +79,13 @@ export interface QuestionBankListViewProps {
   onResetProgress?: (questionIds: string[]) => Promise<void>;
   /** 单题收藏切换回调（可选，行 hover 快捷操作） */
   onToggleFavorite?: (questionId: string) => Promise<void>;
+  /**
+   * 题组连续练习（issue 491）：传入该组全部稳定题目 ID。
+   * 未提供时回退为跳转到组内第一题（顺序练习会自然连续经过同组成员）。
+   */
+  onStartGroupPractice?: (questionIds: string[]) => void;
+  /** 题组/材料结构变更后的宿主刷新回调（可选；组件同时派发 qbank:refresh） */
+  onStructureChanged?: () => void | Promise<void>;
   /** 更新题目回调 */
   onUpdateQuestion?: (question: Question) => Promise<void>;
   /** 题目集 ID（用于内联创建新题目） */
@@ -599,6 +609,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   onDelete,
   onResetProgress,
   onToggleFavorite,
+  onStartGroupPractice,
+  onStructureChanged,
   onUpdateQuestion,
   examId,
   onCreateQuestion,
@@ -625,6 +637,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
 
   // 编辑模式状态（批量操作）
   const [isEditMode, setIsEditMode] = useState(false);
+  const [structureManagerOpen, setStructureManagerOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isOperating, setIsOperating] = useState(false);
   // shift 范围选择锚点（筛选结果内的索引）
@@ -663,6 +676,18 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
   const questionIndexMap = useMemo(() => {
     const map = new Map<string, number>();
     questions.forEach((q, i) => map.set(q.id, i));
+    return map;
+  }, [questions]);
+
+  // issue 491：题组稳定成员（全量数据，不随当前筛选丢失组内其他子题）
+  const groupMembersById = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const question of questions) {
+      if (!question.groupId) continue;
+      const members = map.get(question.groupId);
+      if (members) members.push(question.id);
+      else map.set(question.groupId, [question.id]);
+    }
     return map;
   }, [questions]);
 
@@ -707,6 +732,14 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       return true;
     });
   }, [questions, debouncedSearch, statusFilter, difficultyFilter, typeFilter, showFavoriteOnly, useBackendFilter]);
+
+  // 展示分组：连续同组题只在第一题前渲染一次材料
+  const displayGroups = useMemo(() => buildDisplayGroups(filteredQuestions), [filteredQuestions]);
+  const displayGroupByStartIndex = useMemo(() => {
+    const map = new Map<number, QuestionDisplayGroup>();
+    for (const group of displayGroups) map.set(group.startIndex, group);
+    return map;
+  }, [displayGroups]);
 
   // ★ 修复：筛选结果变化后旧的 shift 范围选择锚点已失效（索引意义改变），
   // 保留会导致下一次 shift+点击按错误的区间批量选中
@@ -1117,6 +1150,62 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       await onUpdateQuestion(updatedQuestion);
     }
   }, [onUpdateQuestion]);
+
+  /**
+   * 分组头部：材料每连续组只渲染一次；有稳定 groupId 时提供整组练习入口。
+   * 独立题只在自身携带材料时渲染（无题组条）。
+   */
+  const renderGroupHeader = useCallback((group: QuestionDisplayGroup, listIndex: number) => {
+    const hasGroup = Boolean(group.groupId);
+    if (!hasGroup && group.materials.length === 0) return null;
+    const memberIds = group.groupId
+      ? (groupMembersById.get(group.groupId) ?? group.questionIds)
+      : group.questionIds;
+    return (
+      <div className="space-y-1 pb-1">
+        {hasGroup && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            <ListChecks size={13} className="flex-shrink-0 text-primary" aria-hidden="true" />
+            <span className="font-medium text-foreground">
+              {group.label || t('practice:questionBank.groupFallbackLabel', { defaultValue: '题组' })}
+            </span>
+            <span className="tabular-nums">
+              {t('practice:questionBank.groupQuestionCount', {
+                count: memberIds.length,
+                defaultValue: '{{count}} 道子题',
+              })}
+            </span>
+            {memberIds.length > 1 && (
+              <DsButton
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (onStartGroupPractice) onStartGroupPractice(memberIds);
+                  else handleQuestionClick(listIndex);
+                }}
+                className="!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-primary hover:bg-primary/10"
+              >
+                <Play size={11} weight="fill" className="mr-1" />
+                {t('practice:questionBank.practiceGroup', { defaultValue: '练习本组' })}
+              </DsButton>
+            )}
+          </div>
+        )}
+        {group.materials.length > 0 && (
+          <QuestionMaterialView
+            materials={group.materials}
+            mode={onUpdateQuestion ? 'edit' : 'view'}
+            compact
+            onUpdated={() => {
+              window.dispatchEvent(new CustomEvent('qbank:refresh', {
+                detail: { source: 'user', action: 'update_material' },
+              }));
+            }}
+          />
+        )}
+      </div>
+    );
+  }, [groupMembersById, handleQuestionClick, onStartGroupPractice, onUpdateQuestion, t]);
   
   if (isLoading && questions.length === 0) {
     // 加载骨架：模拟工具行 + 列表行结构，与管理视图同款，避免整屏转圈闪切
@@ -1349,6 +1438,29 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </DsButton>
 
+          {/* 题组与共享材料结构管理 */}
+          {examId && onUpdateQuestion && !isEditMode && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const openManager = () => setStructureManagerOpen(true);
+                if (!requestInlineEditorDiscard({ kind: 'callback', run: openManager })) return;
+                openManager();
+              }}
+              className="lg:!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
+              aria-label={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+              aria-haspopup="dialog"
+              aria-expanded={structureManagerOpen}
+              title={t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+            >
+              <TreeStructure size={14} className="sm:mr-1" />
+              <span className="hidden sm:inline">
+                {t('practice:questionBank.structure.trigger', { defaultValue: '题组与材料' })}
+              </span>
+            </DsButton>
+          )}
+
           {/* 新建题目入口统一在题目集顶栏「添加题目」菜单（ExamContentView），工具栏不再重复一个「+」 */}
 
           {/* 编辑模式按钮 */}
@@ -1551,6 +1663,11 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           <div key="grid" className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,220px),1fr))] gap-2">
             {filteredQuestions.map((q, idx) => (
               <React.Fragment key={q.id}>
+                {displayGroupByStartIndex.get(idx) && (
+                  <div className="col-span-full">
+                    {renderGroupHeader(displayGroupByStartIndex.get(idx)!, idx)}
+                  </div>
+                )}
                 <QuestionGridCard
                   question={q}
                   index={questionIndexMap.get(q.id) ?? 0}
@@ -1585,6 +1702,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           <div key="list" className="space-y-0.5">
             {filteredQuestions.map((q, idx) => (
               <React.Fragment key={q.id}>
+                {displayGroupByStartIndex.get(idx) && renderGroupHeader(displayGroupByStartIndex.get(idx)!, idx)}
                 <QuestionListRow
                   question={q}
                   index={questionIndexMap.get(q.id) ?? 0}
@@ -1708,6 +1826,17 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             </div>
           )}
       </UiPresence>
+
+      {/* 题组与共享材料结构管理（写模式） */}
+      {examId && onUpdateQuestion && (
+        <QuestionStructureManager
+          open={structureManagerOpen}
+          onOpenChange={setStructureManagerOpen}
+          examId={examId}
+          questions={questions}
+          onChanged={onStructureChanged}
+        />
+      )}
     </div>
   );
 };

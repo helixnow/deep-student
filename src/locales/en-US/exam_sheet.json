@@ -539,6 +539,11 @@
     "ocr_image_progress": "Recognized {{current}}/{{total}} pages…",
     "ocr_phase_done": "{{total}} images recognized, starting question parsing...",
     "import_done": "Imported {{count}} questions",
+    "draft_ready": "{{count}} questions parsed, awaiting confirmation",
+    "add_source_files": "Add Questions or Answer Files",
+    "confirm_import": "Confirm Import",
+    "draft_needs_review": "Some source issues or unmatched answers require review. Select only verified questions.",
+    "commit_not_confirmed": "The questions were not committed. Please retry.",
     "import_interrupted": "Import interrupted, {{count}} questions saved",
     "resume_import": "Resume from where it stopped",
     "resuming": "Resuming...",
@@ -577,6 +582,7 @@
     "other": "Other"
   },
   "aiGeneration": {
+    "regenerateLegacy": "This legacy result has no complete material draft. Regenerate it before confirming import.",
     "title": "AI Question Generation",
     "specsLabel": "Question types & counts",
     "addSpec": "Add type",

@@ -30,6 +30,7 @@ import {
   Eye,
   CaretDown,
   CaretRight,
+  BookOpen,
 } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -52,6 +53,8 @@ import {
   BlanksEditor,
 } from '@/components/question-types';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
+import { QuestionMaterialView } from './QuestionMaterialView';
+import { QuestionSourceViewer, type QuestionSourceRef } from './QuestionSourceViewer';
 
 export interface QuestionInlineEditorProps {
   question: Question | null;
@@ -62,6 +65,49 @@ export interface QuestionInlineEditorProps {
   examId?: string;
   onCreate?: (question: Question) => Promise<void>;
   className?: string;
+}
+
+/** 后端 Question 已有 source_refs；API 类型由题目库模块逐步补齐，这里结构兼容两种命名。 */
+type QuestionWithSourceRefs = Question & {
+  examId?: string | null;
+  sourceRefs?: QuestionSourceRef[] | null;
+  source_refs?: QuestionSourceRef[] | null;
+  answerSourceRefs?: QuestionSourceRef[] | null;
+  answer_source_refs?: QuestionSourceRef[] | null;
+};
+
+function parseSourceRefJson(raw: string | null | undefined): {
+  sourceRefs: QuestionSourceRef[];
+  answerSourceRefs: QuestionSourceRef[];
+} {
+  if (!raw?.trim()) return { sourceRefs: [], answerSourceRefs: [] };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const sourceRefs = parsed.source_refs ?? parsed.sourceRefs;
+    const answerSourceRefs = parsed.answer_source_refs ?? parsed.answerSourceRefs;
+    return {
+      sourceRefs: Array.isArray(sourceRefs) ? (sourceRefs as QuestionSourceRef[]) : [],
+      answerSourceRefs: Array.isArray(answerSourceRefs)
+        ? (answerSourceRefs as QuestionSourceRef[])
+        : [],
+    };
+  } catch {
+    // `sourceRef` also carries legacy non-provenance JSON; ignore unparseable values.
+    return { sourceRefs: [], answerSourceRefs: [] };
+  }
+}
+
+export function getQuestionSourceRefs(question: Question | null): {
+  sourceRefs: QuestionSourceRef[];
+  answerSourceRefs: QuestionSourceRef[];
+} {
+  const source = question as QuestionWithSourceRefs | null;
+  const serialized = parseSourceRefJson(source?.sourceRef);
+  return {
+    sourceRefs: source?.sourceRefs ?? source?.source_refs ?? serialized.sourceRefs,
+    answerSourceRefs:
+      source?.answerSourceRefs ?? source?.answer_source_refs ?? serialized.answerSourceRefs,
+  };
 }
 
 /** 结构化题型编辑草稿（一并纳入 editData，dirty 判定与重置自然生效） */
@@ -204,6 +250,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [showOptional, setShowOptional] = useState(false);
+  const [showSourceViewer, setShowSourceViewer] = useState(false);
   // 内联放弃确认条（替代原 DsAlertDialog 模态确认）
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [contentTouched, setContentTouched] = useState(false);
@@ -241,6 +288,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       setShowDiscardConfirm(false);
       setContentTouched(false);
       setLastAddedOptionIndex(null);
+      setShowSourceViewer(false);
       // 创建模式：解析/笔记默认折叠，保持表单紧凑
       setShowOptional(false);
     } else if (question) {
@@ -262,6 +310,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
       setShowDiscardConfirm(false);
       setContentTouched(false);
       setLastAddedOptionIndex(null);
+      setShowSourceViewer(false);
       // 编辑模式：已有解析/笔记内容时自动展开选填区
       setShowOptional(Boolean(initialData.explanation || initialData.userNote));
     }
@@ -269,6 +318,11 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
   const isDirty = initialDataRef.current !== null
     && JSON.stringify(editData) !== JSON.stringify(initialDataRef.current);
+
+  const questionSource = useMemo(() => getQuestionSourceRefs(question), [question]);
+  const sourceRefCount = questionSource.sourceRefs.length + questionSource.answerSourceRefs.length;
+  const canShowSource = mode === 'edit' && question != null && sourceRefCount > 0;
+  const sourceExamId = examId ?? (question as QuestionWithSourceRefs | null)?.examId ?? null;
 
   // 内容改回原状后（不再脏）自动收起放弃确认条
   useEffect(() => {
@@ -738,6 +792,20 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
     >
       {/* 内容区内部滚动 + 页脚钉底：矮窗口下保存按钮不再被截断 */}
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="space-y-4 p-4">
+        {/* issue 491：共享材料独立编辑（OCC），不随题目字段保存覆盖 */}
+        {mode === 'edit' && question && (question.materials?.length ?? 0) > 0 && (
+          <QuestionMaterialView
+            materials={question.materials ?? []}
+            mode="edit"
+            compact
+            onUpdated={() => {
+              // 题目集视图监听该事件后全量刷新，所有关联子题同步材料版本
+              window.dispatchEvent(new CustomEvent('qbank:refresh', {
+                detail: { source: 'user', action: 'update_material' },
+              }));
+            }}
+          />
+        )}
         {/* 错误提示 */}
         {error && (
           <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 text-destructive text-sm">
@@ -1265,16 +1333,34 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
 
       {/* 底部操作栏：左侧预览切换，右侧取消/保存（钉底，不随内容滚动） */}
       <div className="flex-shrink-0 flex items-center justify-between gap-2 px-4 py-2.5 border-t border-border/40 bg-muted/20">
-        <DsButton
-          variant="ghost"
-          size="sm"
-          onClick={() => setShowPreview((v) => !v)}
-          className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-11', showPreview ? 'text-primary' : 'text-muted-foreground')}
-          aria-expanded={showPreview}
-        >
-          <Eye size={14} className="mr-1" />
-          {t('common:actions.preview')}
-        </DsButton>
+        <div className="flex min-w-0 items-center gap-1">
+          <DsButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowPreview((v) => !v)}
+            className={cn('h-6 text-xs [@media(pointer:coarse)]:!min-h-11', showPreview ? 'text-primary' : 'text-muted-foreground')}
+            aria-expanded={showPreview}
+          >
+            <Eye size={14} className="mr-1" />
+            {t('common:actions.preview')}
+          </DsButton>
+          {canShowSource && (
+            <DsButton
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowSourceViewer(true)}
+              className="h-6 text-xs text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!min-h-11"
+              aria-label={t('exam_sheet:questionBank.sourceViewer.open', { defaultValue: '查看原题来源' })}
+              aria-haspopup="dialog"
+            >
+              <BookOpen size={14} className="mr-1" />
+              {t('exam_sheet:questionBank.sourceViewer.openShort', { defaultValue: '原题来源' })}
+              <span className="ml-1 rounded bg-muted/50 px-1 text-[10px] tabular-nums text-muted-foreground">
+                {sourceRefCount}
+              </span>
+            </DsButton>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <DsButton
             variant="ghost"
@@ -1302,6 +1388,14 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           </DsButton>
         </div>
       </div>
+
+      <QuestionSourceViewer
+        isOpen={showSourceViewer && canShowSource}
+        onClose={() => setShowSourceViewer(false)}
+        examId={sourceExamId}
+        sourceRefs={questionSource.sourceRefs}
+        answerSourceRefs={questionSource.answerSourceRefs}
+      />
     </div>
   );
 };

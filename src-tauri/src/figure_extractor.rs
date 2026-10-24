@@ -162,6 +162,7 @@ fn store_figure(
         name: file_name,
         mime: "image/png".to_string(),
         hash: blob.hash,
+        role: Some("question".into()),
     })
 }
 

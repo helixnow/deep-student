@@ -40,6 +40,16 @@ import { UnifiedDragDropZone, DEFAULT_MAX_UPLOAD_FILE_SIZE, type FileTypeDefinit
 import type { ApiConfig } from '@/types';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { describeHeicConversionError, isHeicFile, prepareHeicFiles } from '@/utils/heicConversion';
+import {
+  buildQuestionSourceCoverage,
+  QuestionSourceCoverage,
+  QuestionSourceRangePicker,
+  readQuestionSourceRangeFailure,
+  type QuestionSourceCoverageEntry,
+  type QuestionSourceDescriptor,
+  type QuestionSourceImportMetadata,
+  type QuestionSourceRange,
+} from './QuestionSourceRangePicker';
 
 // ★ 试卷上传专用文件类型（支持 HEIC，与统一组件的 IMAGE 略有不同）
 // 导出给题目集启动台的拖放区域复用，保证两处接受的文件类型一致
@@ -49,7 +59,7 @@ export const EXAM_IMAGE_TYPE: FileTypeDefinition = {
   description: 'Image',
 };
 export const EXAM_DOCUMENT_TYPE: FileTypeDefinition = {
-  extensions: ['docx', 'xlsx', 'xls', 'txt', 'md', 'pdf'],
+  extensions: ['docx', 'xlsx', 'xls', 'txt', 'md', 'pdf', 'json', 'zip'],
   mimeTypes: [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -57,6 +67,8 @@ export const EXAM_DOCUMENT_TYPE: FileTypeDefinition = {
     'text/plain',
     'text/markdown',
     'application/pdf',
+    'application/json',
+    'application/zip',
   ],
   description: 'Document',
 };
@@ -74,6 +86,7 @@ export interface ExamSheetUploaderProps {
   onManualCreate?: () => void;
   /** 从题目集启动台拖入的初始文件（传入后自动带入选择流程） */
   initialFiles?: File[] | null;
+  initialDraft?: ImportDraftResponse | null;
   /** initialFiles 消费完成回调（父组件应清空对应状态） */
   onInitialFilesConsumed?: () => void;
   /** 自定义类名 */
@@ -91,7 +104,7 @@ interface FileInfo {
 
 // 支持的格式
 const IMAGE_FORMATS = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
-const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf'];
+const DOCUMENT_EXTENSIONS = ['.docx', '.xlsx', '.xls', '.txt', '.md', '.pdf', '.json', '.zip'];
 
 // ★ 上传文件大小上限：引用 UnifiedDragDropZone 的统一默认上限（#62/ATT-09，
 // 与 Tauri 原生拖拽路径保持一致，不再各自硬编码 50MB）。
@@ -147,6 +160,7 @@ interface ImportAttempt {
   resumeSessionId?: string;
   /** 本次流式导入创建的 session（SessionCreated 事件回填），失败时用于断点续导 */
   createdSessionId?: string;
+  targetSessionId?: string;
 }
 
 interface ParsedQuestionPreview {
@@ -154,6 +168,59 @@ interface ParsedQuestionPreview {
   question_type?: string;
   answer?: string;
   options?: Array<{ key: string; content: string }>;
+}
+
+export interface ImportDraftResponse extends ExamSheetSessionDetail {
+  draft_job_id?: string | null;
+  draft_version?: number | null;
+  draft_document?: {
+    questions: Array<ParsedQuestionPreview & { local_id: string; original_label?: string; group_id?: string | null }>;
+    materials?: Array<{ local_id: string; content: string }>;
+    groups?: Array<{ local_id: string; label: string; material_ids: string[]; question_ids: string[] }>;
+    issues?: unknown[];
+    unmatched_answers?: unknown[];
+    coverage?: QuestionSourceCoverageEntry[];
+  } | null;
+  model_route?: QuestionSourceImportMetadata | null;
+  metadata?: QuestionSourceImportMetadata | null;
+  status?: string;
+  needs_review?: boolean;
+  committed?: boolean;
+}
+
+const draftMetadata = (detail: ImportDraftResponse | null): QuestionSourceImportMetadata | null =>
+  detail?.metadata ? { ...detail.model_route, ...detail.metadata } : detail?.model_route ?? null;
+
+const draftRequiresReview = (detail: ImportDraftResponse | null): boolean => {
+  const metadata = draftMetadata(detail);
+  return detail?.needs_review === true || detail?.status === 'needs_review' || detail?.status === 'partial'
+    || metadata?.complete_document === false || metadata?.source_scope?.complete_document === false
+    || (detail?.draft_document?.issues?.length || 0) > 0
+    || (detail?.draft_document?.unmatched_answers?.length || 0) > 0
+    || buildQuestionSourceCoverage(metadata, detail?.draft_document?.coverage).some(entry => entry.status !== 'processed');
+};
+
+interface PreparedImportSource {
+  content: string;
+  format: string;
+  name: string;
+  sources: QuestionSourceDescriptor[];
+}
+
+export function buildDraftImportSummary(detail: ImportDraftResponse): ImportSummary | null {
+  if (!detail.draft_job_id || !detail.draft_document) return null;
+  const cards = detail.draft_document.questions.map((question, index) => ({
+    card_id: question.local_id,
+    question_label: question.original_label || String(index + 1),
+    page_index: 0,
+    ocr_text: question.content,
+    question_type: question.question_type || 'other',
+    answer: question.answer,
+    tags: [],
+  })) as ExamSheetCard[];
+  const questionTypes: Record<string, number> = {};
+  for (const card of cards) questionTypes[card.question_type || 'other'] = (questionTypes[card.question_type || 'other'] || 0) + 1;
+  return { cards, questionTypes, emptyQuestions: cards.filter(card => !card.ocr_text?.trim()).length };
 }
 
 const createQuestionImportId = (): string => {
@@ -188,6 +255,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   onBack,
   onManualCreate,
   initialFiles,
+  initialDraft,
   onInitialFilesConsumed,
   className,
 }) => {
@@ -206,6 +274,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   const mountedRef = useRef(true);
   // 导入前已有题目 ID：摘要只展示本次新增题目（见 buildImportSummary）
   const baselineCardIdsRef = useRef<Set<string> | null>(null);
+  const preparedSourceRef = useRef<PreparedImportSource | null>(null);
+  const rangeRetrySessionRef = useRef<string | undefined>(undefined);
 
   // 文件状态
   const [selectedFiles, setSelectedFiles] = useState<FileInfo[]>([]);
@@ -235,16 +305,49 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   // 模型选择
   const [selectedModelId, setSelectedModelId] = useState<string>('');
   const [availableModels, setAvailableModels] = useState<UnifiedModelInfo[]>([]);
+  const [defaultModelId, setDefaultModelId] = useState('');
+  const [plannedRoute, setPlannedRoute] = useState<ImportDraftResponse['model_route']>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [rangeFailure, setRangeFailure] = useState<NonNullable<ReturnType<typeof readQuestionSourceRangeFailure>> | null>(null);
+  const [selectedSourceRanges, setSelectedSourceRanges] = useState<QuestionSourceRange[]>([]);
+  const [rangeSelectionValid, setRangeSelectionValid] = useState(false);
 
   // 导入结果摘要
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
-  const [pendingDetail, setPendingDetail] = useState<ExamSheetSessionDetail | null>(null);
+  const [pendingDetail, setPendingDetail] = useState<ImportDraftResponse | null>(null);
 
   // 完成页：用户取消勾选不需要录入的题目
   const [excludedCardIds, setExcludedCardIds] = useState<Set<string>>(new Set());
   const [isConfirming, setIsConfirming] = useState(false);
+  const [reviewAcknowledged, setReviewAcknowledged] = useState(false);
+
+  const captureRangeFailure = useCallback((failure: unknown, attempt: ImportAttempt): boolean => {
+    const parsed = readQuestionSourceRangeFailure(failure);
+    if (!parsed) return false;
+    const sources = new Map((preparedSourceRef.current?.sources || []).map(source => [source.source_id, source]));
+    for (const source of parsed.sources) {
+      const previous = sources.get(source.source_id);
+      sources.set(source.source_id, {
+        source_id: source.source_id,
+        name: source.name ?? previous?.name,
+        format: source.format ?? previous?.format,
+        page_count: source.page_count === undefined ? previous?.page_count : source.page_count,
+      });
+    }
+    rangeRetrySessionRef.current = sessionIdRef.current || attempt.createdSessionId
+      || parsed.sessionId || attempt.targetSessionId;
+    setRangeFailure({ ...parsed, sources: [...sources.values()] });
+    setSelectedSourceRanges([]);
+    setRangeSelectionValid(false);
+    setResumableSession(null);
+    return true;
+  }, []);
+
+  const handleRangeSelection = useCallback((ranges: QuestionSourceRange[], valid: boolean) => {
+    setSelectedSourceRanges(ranges);
+    setRangeSelectionValid(valid);
+  }, []);
 
   const isCurrentImportAttempt = useCallback((attempt: ImportAttempt): boolean => {
     const activeAttempt = activeImportAttemptRef.current;
@@ -307,6 +410,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           isReasoning: cfg.isReasoning,
         }))
       );
+      if (typeof TauriAPI.getModelAssignments === 'function') {
+        const assignments = await TauriAPI.getModelAssignments();
+        setDefaultModelId(assignments?.model2_config_id || assignments?.model2ConfigId || '');
+      }
     } catch (error: unknown) {
       debugLog.error('[ExamSheetUploader] Failed to load models:', error);
       setAvailableModels([]);
@@ -316,6 +423,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   useEffect(() => {
     loadModels();
   }, [loadModels]);
+
+  useEffect(() => {
+    if (!selectedFiles.length) { setPlannedRoute(null); return; }
+    let disposed = false;
+    const requiresVision = selectedFiles.some(info => info.category === 'image' || info.file.name.toLowerCase().endsWith('.pdf'));
+    void invoke<ImportDraftResponse['model_route']>('qbank_resolve_authoring_route', {
+      modelConfigId: selectedModelId || null,
+      requiresVision,
+    }).then(route => { if (!disposed) setPlannedRoute(route); }).catch(() => { if (!disposed) setPlannedRoute(null); });
+    return () => { disposed = true; };
+  }, [selectedFiles, selectedModelId]);
 
   useEffect(() => {
     const reload = () => { void loadModels(); };
@@ -352,7 +470,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         total_images?: number;
         total_chars?: number;
         image_index?: number;
-        error?: string;
+        error?: unknown;
         stage?: string;
         message?: string;
         percent?: number;
@@ -377,7 +495,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         }
 
         // ★ 标签页：过滤非当前 session 的事件，防止多 tab 上传时交叉污染
-        if (sessionIdRef.current && payload.session_id && payload.session_id !== sessionIdRef.current) {
+        const targetSessionId = activeAttempt.targetSessionId || sessionIdRef.current;
+        if (targetSessionId && payload.session_id && payload.session_id !== targetSessionId) {
           return;
         }
 
@@ -431,6 +550,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             // 回填本次导入创建的 session，失败时用于断点续导
             if (payload.session_id) {
               activeAttempt.createdSessionId = payload.session_id;
+              rangeRetrySessionRef.current = payload.session_id;
             }
             advance(42, t('exam_sheet:uploader.parsing_started'));
             break;
@@ -477,10 +597,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             });
             break;
           case 'Failed': {
-            setError(t('exam_sheet:uploader.import_failed_prefix', { error: payload.error }));
+            const hasRangePlan = captureRangeFailure(payload.error, activeAttempt);
+            setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessageOf(payload.error) }));
             // 已解析部分题目且后端留有 checkpoint → 提供断点续导入口
             const failedSessionId = payload.session_id || activeAttempt.createdSessionId;
-            if (failedSessionId && (payload.total_parsed || 0) > 0) {
+            if (!hasRangePlan && failedSessionId && (payload.total_parsed || 0) > 0) {
               setResumableSession({
                 sessionId: failedSessionId,
                 parsedCount: payload.total_parsed || 0,
@@ -522,12 +643,18 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
   }, [parsedQuestions.length, step]);
 
-  const showSummary = useCallback((detail: ExamSheetSessionDetail) => {
-    setImportSummary(buildImportSummary(detail, baselineCardIdsRef.current));
+  const showSummary = useCallback((detail: ImportDraftResponse) => {
+    setImportSummary(buildDraftImportSummary(detail) ?? buildImportSummary(detail, baselineCardIdsRef.current));
     setPendingDetail(detail);
     setExcludedCardIds(new Set());
+    setReviewAcknowledged(false);
+    if (draftMetadata(detail)?.complete_document === false) setImportIncomplete(true);
     setStep('summary');
   }, []);
+
+  useEffect(() => {
+    if (initialDraft) showSummary(initialDraft);
+  }, [initialDraft, showSummary]);
 
   // 导入前快照已有题目 ID（追加导入时用于区分本次新增）；失败返回 null（退回统计全部）
   const snapshotBaselineCardIds = useCallback(async (): Promise<Set<string> | null> => {
@@ -549,6 +676,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     content: string,
     format: string,
     name: string,
+    sourceRanges: QuestionSourceRange[] = [],
   ) => {
     emitImportDebug('info', 'frontend:invoke-start',
       `发起导入: format=${format} name=${name} size=${(content.length / 1024).toFixed(0)}KB`,
@@ -556,56 +684,83 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     );
     const invokeStartAt = Date.now();
     attempt.backendStarted = true;
-    const response = await invoke<ExamSheetSessionDetail>('import_question_bank_stream', {
+    const response = await invoke<ImportDraftResponse>('import_question_bank_stream', {
       request: {
         content,
         format,
         name,
         folder_id: undefined,
-        session_id: sessionId || undefined,
+        session_id: attempt.targetSessionId || sessionId || undefined,
         model_config_id: selectedModelId || undefined,
         import_id: attempt.id,
+        source_ranges: sourceRanges.length ? sourceRanges : undefined,
       },
     });
     emitImportDebug('success', 'frontend:invoke-end',
       `导入 invoke 返回成功 | 耗时 ${Date.now() - invokeStartAt}ms`,
       { durationMs: Date.now() - invokeStartAt, sessionId: response?.summary?.id },
     );
+    if (sourceRanges.length && draftMetadata(response)?.complete_document !== true) {
+      response.model_route = { ...response.model_route, complete_document: false };
+      if (response.metadata) response.metadata = { ...response.metadata, complete_document: false };
+    }
     return response;
   }, [sessionId, selectedModelId]);
 
   // 开始处理：图片与文档统一走流式导入，差别只在 content / format / 默认名称
-  const handleStartProcess = useCallback(async () => {
+  const handleStartProcess = useCallback(async (sourceRanges: QuestionSourceRange[] = []) => {
+    if (isLLMProcessing || activeImportAttemptRef.current) return;
     if (selectedFiles.length === 0) {
       setError(t('exam_sheet:uploader.select_first_error'));
       return;
     }
     const category = selectedFiles[0].category;
     const attempt = beginImportAttempt();
+    attempt.targetSessionId = sessionId || rangeRetrySessionRef.current;
 
     try {
       baselineCardIdsRef.current = await snapshotBaselineCardIds();
       if (!isCurrentImportAttempt(attempt)) return;
 
-      let content: string;
-      let format: string;
-      let name: string;
-      if (category === 'image') {
-        content = JSON.stringify(await Promise.all(selectedFiles.map(f => readFileAsBase64(f.file))));
-        format = 'image';
-        name = resolvedSessionName
-          || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '')
-          || t('exam_sheet:uploader.image_import_name');
-      } else {
-        const file = selectedFiles[0].file;
-        content = await readFileAsBase64(file);
-        format = file.name.split('.').pop()?.toLowerCase() || 'txt';
-        name = qbankName || file.name.replace(/\.[^/.]+$/, '');
+      if (!preparedSourceRef.current) {
+        let content: string;
+        let format: string;
+        let name: string;
+        if (selectedFiles.length > 1) {
+          const sources = await Promise.all(selectedFiles.map(async ({ file, category: fileCategory }) => ({
+            name: file.name,
+            format: fileCategory === 'image' ? 'image' : file.name.split('.').pop()?.toLowerCase() || 'txt',
+            content: await readFileAsBase64(file),
+          })));
+          content = JSON.stringify(sources);
+          format = 'bundle';
+          name = qbankName || resolvedSessionName || selectedFiles[0].file.name.replace(/\.[^/.]+$/, '');
+        } else if (category === 'image') {
+          content = JSON.stringify(await Promise.all(selectedFiles.map(f => readFileAsBase64(f.file))));
+          format = 'image';
+          name = resolvedSessionName
+            || selectedFiles[0]?.file.name.replace(/\.[^/.]+$/, '')
+            || t('exam_sheet:uploader.image_import_name');
+        } else {
+          const file = selectedFiles[0].file;
+          content = await readFileAsBase64(file);
+          format = file.name.split('.').pop()?.toLowerCase() || 'txt';
+          name = qbankName || file.name.replace(/\.[^/.]+$/, '');
+        }
+        if (!isCurrentImportAttempt(attempt)) return;
+        const sources = selectedFiles.map(({ file, category: fileCategory }, index) => ({
+          source_id: format === 'bundle' ? `file${index + 1}_s1` : 's1',
+          name: file.name,
+          format: fileCategory === 'image' ? 'image' : file.name.split('.').pop()?.toLowerCase(),
+          page_count: fileCategory === 'image' ? 1 : /\.(docx|xlsx|xls|txt|md)$/i.test(file.name) ? null : undefined,
+        }));
+        preparedSourceRef.current = { content, format, name, sources };
       }
       if (!isCurrentImportAttempt(attempt)) return;
+      const { content, format, name } = preparedSourceRef.current;
 
       setLlmProgress({ percent: 5, message: t('exam_sheet:uploader.parsing_document') });
-      const response = await runStreamImport(attempt, content, format, name);
+      const response = await runStreamImport(attempt, content, format, name, sourceRanges);
       if (!isCurrentImportAttempt(attempt)) return;
       showSummary(response);
     } catch (err: unknown) {
@@ -613,9 +768,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       debugLog.error('[ExamSheetUploader] 导入失败:', err);
       emitImportDebug('error', 'frontend:invoke-end', `导入 invoke 失败: ${errorMessage}`, { detail: { error: errorMessage } });
       if (!isCurrentImportAttempt(attempt)) return;
+      const hasRangePlan = captureRangeFailure(err, attempt);
       setError(t('exam_sheet:uploader.import_failed_prefix', { error: errorMessage }));
       // invoke reject 可能先于 Failed 事件到达（或事件缺失）：同样提供断点续导入口
-      if (attempt.createdSessionId && parsedCountRef.current > 0) {
+      if (attempt.createdSessionId) rangeRetrySessionRef.current = attempt.createdSessionId;
+      if (!hasRangePlan && !rangeFailure && attempt.createdSessionId) {
         setResumableSession({
           sessionId: attempt.createdSessionId,
           parsedCount: parsedCountRef.current,
@@ -629,35 +786,51 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         setIsCancelling(false);
       }
     }
-  }, [selectedFiles, qbankName, resolvedSessionName, t, beginImportAttempt, isCurrentImportAttempt, snapshotBaselineCardIds, runStreamImport, showSummary]);
+  }, [selectedFiles, qbankName, resolvedSessionName, sessionId, isLLMProcessing, rangeFailure, t, beginImportAttempt, isCurrentImportAttempt, snapshotBaselineCardIds, runStreamImport, showSummary, captureRangeFailure]);
 
-  // 完成：删除被取消勾选的题目后交给父组件
+  // Selection changes the draft only. Formal writes happen in this transaction.
   const handleConfirmSummary = useCallback(async () => {
     if (!pendingDetail || isConfirming) return;
+    if (pendingDetail.draft_job_id && (draftRequiresReview(pendingDetail) || importIncomplete) && !reviewAcknowledged) return;
     setIsConfirming(true);
 
     try {
-      if (excludedCardIds.size > 0) {
-        try {
-          const updatedDetail = await TauriAPI.updateExamSheetCards({
-            session_id: pendingDetail.summary.id,
-            delete_card_ids: Array.from(excludedCardIds),
-          });
-          onUploadSuccess?.(updatedDetail);
-        } catch (err: unknown) {
-          debugLog.error('[ExamSheetUploader] Failed to delete excluded cards:', err);
-          showGlobalNotification('error', t('exam_sheet:uploader.filter_delete_failed'));
-          // 即使删除失败也让用户继续
-          onUploadSuccess?.(pendingDetail);
+      if (pendingDetail.draft_job_id && pendingDetail.draft_document) {
+        const selectedLocalIds = pendingDetail.draft_document.questions
+          .map(question => question.local_id).filter(id => !excludedCardIds.has(id));
+        if (!selectedLocalIds.length) return;
+        const receipt = await invoke<{ committed: boolean; exam_id: string; partial?: boolean; needs_review?: boolean }>('qbank_commit_authoring_draft', {
+          jobId: pendingDetail.draft_job_id,
+          selectedLocalIds,
+          expectedVersion: pendingDetail.draft_version,
+        });
+        if (!receipt.committed) throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
+        const updatedDetail = await TauriAPI.getExamSheetSessionDetail(receipt.exam_id);
+        if (receipt.partial || receipt.needs_review || draftMetadata(pendingDetail)?.complete_document === false) {
+          showGlobalNotification('warning', t('exam_sheet:uploader.ranges.partial_committed', {
+            defaultValue: 'Selected questions were committed. Unprocessed source ranges remain incomplete.',
+          }));
         }
+        onUploadSuccess?.(updatedDetail);
+      } else if (excludedCardIds.size > 0) {
+        // An old checkpoint may already have formal questions. Delete those
+        // canonical rows, never only their compatibility preview projection.
+        const result = await invoke<{ success_count: number; failed_count: number }>('qbank_batch_delete_questions', {
+          questionIds: Array.from(excludedCardIds),
+        });
+        if (result.failed_count) throw new Error(t('exam_sheet:uploader.filter_delete_failed'));
+        onUploadSuccess?.(await TauriAPI.getExamSheetSessionDetail(pendingDetail.summary.id));
       } else {
         onUploadSuccess?.(pendingDetail);
       }
       setExcludedCardIds(new Set());
+    } catch (err: unknown) {
+      setError(errorMessageOf(err));
+      showGlobalNotification('error', errorMessageOf(err));
     } finally {
       setIsConfirming(false);
     }
-  }, [pendingDetail, onUploadSuccess, excludedCardIds, isConfirming, t]);
+  }, [pendingDetail, onUploadSuccess, excludedCardIds, isConfirming, importIncomplete, reviewAcknowledged, t]);
 
   // 判断文件类型
   const categorizeFile = useCallback((file: File): FileCategory | null => {
@@ -693,12 +866,6 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         return;
       }
 
-      // 已选图片时只接受图片；已选文档时新文档直接替换（文档只导入一个）
-      if (currentCategory === 'image' && category !== 'image') {
-        setError(t('exam_sheet:uploader.select_same_type_error', { type: t('exam_sheet:uploader.file_type_image') }));
-        return;
-      }
-
       const fileInfo: FileInfo = { file, category };
       if (category === 'image') {
         fileInfo.previewUrl = URL.createObjectURL(file);
@@ -712,21 +879,15 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     }
 
     setError(null);
-
-    // 文档只接受一个文件
-    if (validFiles[0].category === 'document') {
-      validFiles.slice(1).forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
-      setSelectedFiles(prev => {
-        prev.forEach(f => { if (f.previewUrl) URL.revokeObjectURL(f.previewUrl); });
-        return [validFiles[0]];
-      });
-      setQbankName(validFiles[0].file.name.replace(/\.[^/.]+$/, ''));
-    } else {
-      // 一次拖入图片 + 文档混合时只取图片；已选文档时改选图片 = 替换
-      const images = validFiles.filter(f => f.category === 'image');
-      setSelectedFiles(prev => (prev[0]?.category === 'document' ? images : [...prev, ...images]));
-    }
-  }, [categorizeFile, currentCategory, t]);
+    preparedSourceRef.current = null;
+    rangeRetrySessionRef.current = undefined;
+    setRangeFailure(null);
+    setSelectedSourceRanges([]);
+    setRangeSelectionValid(false);
+    setResumableSession(null);
+    setSelectedFiles(prev => [...prev, ...validFiles]);
+    if (!qbankName && validFiles[0].category === 'document') setQbankName(validFiles[0].file.name.replace(/\.[^/.]+$/, ''));
+  }, [categorizeFile, qbankName, t]);
 
   // iPhone 照片多为 HEIC：先经平台原生解码转 JPEG（WebView / Android ImageDecoder），
   // 无法转换的明确提示并剔除，不再把 OCR/视觉模型不认的 HEIC 原样送下游。
@@ -761,6 +922,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
   // 移除已选文件
   const handleRemoveFile = useCallback((index: number) => {
+    preparedSourceRef.current = null;
+    rangeRetrySessionRef.current = undefined;
+    setRangeFailure(null);
+    setSelectedSourceRanges([]);
+    setRangeSelectionValid(false);
+    setResumableSession(null);
     setSelectedFiles(prev => {
       const file = prev[index];
       if (file?.previewUrl) {
@@ -819,6 +986,12 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     baselineCardIdsRef.current = null;
     setImportSummary(null);
     setPendingDetail(null);
+    preparedSourceRef.current = null;
+    rangeRetrySessionRef.current = undefined;
+    setRangeFailure(null);
+    setSelectedSourceRanges([]);
+    setRangeSelectionValid(false);
+    setReviewAcknowledged(false);
     setExcludedCardIds(new Set());
     setIsLLMProcessing(false);
     setIsCancelling(false);
@@ -869,8 +1042,8 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     if (!resume || isLLMProcessing) return;
 
     const attempt = beginImportAttempt();
-    attempt.resumeSessionId = resume.sessionId;
     attempt.createdSessionId = resume.sessionId;
+    attempt.targetSessionId = resume.sessionId;
     // resume 命令没有 import_id 注册，无法被 cancel_question_bank_import 取消
     attempt.backendStarted = true;
     setIsResumeRun(true);
@@ -878,8 +1051,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     setLlmProgress({ percent: 42, message: t('exam_sheet:uploader.resuming') });
 
     try {
-      const response = await invoke<ExamSheetSessionDetail>('resume_question_import', {
+      const response = await invoke<ImportDraftResponse>('resume_question_import', {
         sessionId: resume.sessionId,
+        importId: attempt.id,
       });
 
       if (!isCurrentImportAttempt(attempt)) return;
@@ -887,9 +1061,10 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
     } catch (err: unknown) {
       debugLog.error('[ExamSheetUploader] 断点续导失败:', err);
       if (!isCurrentImportAttempt(attempt)) return;
+      const hasRangePlan = captureRangeFailure(err, attempt);
       setError(t('exam_sheet:uploader.resume_failed', { error: errorMessageOf(err) }));
       // 失败后保留续导入口，允许再次尝试
-      setResumableSession(resume);
+      if (!hasRangePlan) setResumableSession(resume);
       setStep('select');
     } finally {
       if (isCurrentImportAttempt(attempt)) {
@@ -899,7 +1074,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         setIsResumeRun(false);
       }
     }
-  }, [resumableSession, isLLMProcessing, beginImportAttempt, isCurrentImportAttempt, showSummary, t]);
+  }, [resumableSession, isLLMProcessing, beginImportAttempt, isCurrentImportAttempt, showSummary, captureRangeFailure, t]);
 
   const hasFiles = selectedFiles.length > 0;
   const fileInputs = (
@@ -907,9 +1082,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
       <input
         ref={fileInputRef}
         type="file"
-        multiple={currentCategory !== 'document'}
+        multiple
         // MIME 在前 + 显式 text/markdown：wry Android 会丢弃 MimeTypeMap 不认识的扩展名（如旧系统的 .md）
-        accept="image/*,application/pdf,text/plain,text/markdown,.docx,.xlsx,.xls,.txt,.md,.pdf,.heic,.heif"
+        accept="image/*,application/pdf,application/json,application/zip,text/plain,text/markdown,.docx,.xlsx,.xls,.txt,.md,.pdf,.json,.zip,.heic,.heif"
         onChange={handleInputChange}
         className="hidden"
         data-testid="exam-uploader-file-input"
@@ -939,7 +1114,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
   );
 
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
+    <div className={cn('flex min-w-0 max-w-full flex-col h-full overflow-x-hidden bg-background', className)}>
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="flex flex-col p-4">
         {/* min-h-full 列：内容矮时撑满高度让 dropzone 弹性扩展；内容高时自然向下滚动 */}
         <div className="w-full max-w-2xl mx-auto flex min-h-full flex-col gap-4">
@@ -955,7 +1130,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 onFilesDropped={handleFileSelect}
                 onDragStateChange={setIsDragActive}
                 acceptedFileTypes={[EXAM_IMAGE_TYPE, EXAM_DOCUMENT_TYPE]}
-                maxFiles={currentCategory === 'document' ? 1 : 20}
+                maxFiles={100}
                 maxFileSize={MAX_UPLOAD_FILE_SIZE}
                 showOverlay={true}
                 className={cn('flex flex-col rounded-md', hasFiles ? 'flex-shrink-0' : 'min-h-[180px] flex-1')}
@@ -975,7 +1150,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     <Plus size={14} />
                     {currentCategory === 'image'
                       ? t('exam_sheet:uploader.add_more_images')
-                      : t('exam_sheet:uploader.replace_file')}
+                      : t('exam_sheet:uploader.add_source_files')}
                   </DsButton>
                 ) : (
                   <div
@@ -1024,7 +1199,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               </UnifiedDragDropZone>
 
               {/* 已选图片 */}
-              {currentCategory === 'image' && (
+              {selectedFiles.length > 0 && selectedFiles.every(info => info.category === 'image') && (
                 <div className="space-y-2" data-testid="exam-uploader-selected-images">
                   <div className="flex items-center justify-between">
                     <span className="text-sm font-medium">
@@ -1056,25 +1231,29 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               )}
 
               {/* 已选文档 */}
-              {currentCategory === 'document' && (
-                <div className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5" data-testid="exam-uploader-selected-document">
+              {selectedFiles.some(info => info.category === 'document') && (
+                <div className="space-y-2" data-testid="exam-uploader-selected-document">
+                  {selectedFiles.map((info, index) => (
+                <div key={`${info.file.name}-${index}`} className="flex items-center gap-3 rounded-md bg-muted/50 px-3 py-2.5">
                   <FileText size={20} className="flex-shrink-0 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium">{selectedFiles[0].file.name}</div>
+                    <div className="truncate text-sm font-medium">{info.file.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {(selectedFiles[0].file.size / 1024).toFixed(1)} KB
+                      {(info.file.size / 1024).toFixed(1)} KB
                     </div>
                   </div>
                   <DsButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    onClick={handleReset}
+                    onClick={() => handleRemoveFile(index)}
                                         aria-label={t('exam_sheet:uploader.remove')}
                     title={t('exam_sheet:uploader.remove')}
                   >
                     <X size={16} />
                   </DsButton>
+                </div>
+                  ))}
                 </div>
               )}
 
@@ -1092,7 +1271,23 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     placeholder={t('settings:placeholders.use_default_model')}
                     className="flex-1"
                   />
+                  {!selectedModelId && defaultModelId && (
+                    <span className="truncate text-xs text-muted-foreground">{availableModels.find(model => model.id === defaultModelId)?.name}</span>
+                  )}
                 </div>
+              )}
+              {plannedRoute?.model?.name && (
+                <p className="break-words text-xs text-muted-foreground" data-testid="exam-uploader-route">
+                  {plannedRoute.model.name}{plannedRoute.visual_fallback?.name && ` + ${plannedRoute.visual_fallback.name}`}
+                </p>
+              )}
+              {rangeFailure && (
+                <QuestionSourceRangePicker
+                  plan={rangeFailure.plan}
+                  sources={rangeFailure.sources}
+                  onChange={handleRangeSelection}
+                  disabled={isLLMProcessing}
+                />
               )}
             </div>
           )}
@@ -1104,7 +1299,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="flex items-center gap-2">
                   <CircleNotch size={16} className="flex-shrink-0 animate-spin text-primary" />
                   <span className="min-w-0 flex-1 text-sm font-medium" aria-live="polite">{llmProgress.message}</span>
-                  {isLLMProcessing && !isResumeRun && !showCancelConfirm && (
+                  {isLLMProcessing && !showCancelConfirm && (
                     <DsButton
                       variant="ghost"
                       size="sm"
@@ -1183,6 +1378,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             const total = cards.length;
             const keptCount = Math.max(0, total - excludedCardIds.size);
             const allExcluded = total > 0 && excludedCardIds.size >= total;
+            const metadata = draftMetadata(pendingDetail);
+            const partialSource = metadata?.complete_document === false || metadata?.source_scope?.complete_document === false;
+            const needsReview = Boolean(pendingDetail?.draft_job_id) && (draftRequiresReview(pendingDetail) || importIncomplete);
             const notes: string[] = [];
             if (total === 0) notes.push(t('exam_sheet:uploader.no_questions_warning'));
             if (importSummary.emptyQuestions > 0) notes.push(t('exam_sheet:uploader.empty_warning', { count: importSummary.emptyQuestions }));
@@ -1191,8 +1389,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               <div className="flex flex-1 min-h-0 flex-col gap-3 ui-slide-fade-in [--ui-enter-x:24px]" data-testid="exam-uploader-summary">
                 <div className="flex-shrink-0 space-y-1 text-center">
                   <h3 className="flex items-center justify-center gap-1.5 text-base font-semibold">
-                    <CheckCircle size={18} weight="fill" className="text-success ui-zoom-fade-in" />
-                    {t('exam_sheet:uploader.import_done', { count: total })}
+                    {partialSource ? <WarningCircle size={18} weight="fill" className="text-warning" />
+                      : <CheckCircle size={18} weight="fill" className="text-success ui-zoom-fade-in" />}
+                    {partialSource
+                      ? t('exam_sheet:uploader.ranges.partial_draft_ready', { defaultValue: 'Partial source draft: {{count}} questions', count: total })
+                      : t(pendingDetail?.draft_job_id ? 'exam_sheet:uploader.draft_ready' : 'exam_sheet:uploader.import_done', { count: total })}
                   </h3>
                   {total > 0 && (
                     <p className="text-xs text-muted-foreground">
@@ -1202,6 +1403,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     </p>
                   )}
                 </div>
+
+                {pendingDetail?.model_route?.model?.name && (
+                  <p className="text-xs text-muted-foreground">
+                    {pendingDetail.model_route.model.name}
+                    {pendingDetail.model_route.visual_fallback?.name && ` + ${pendingDetail.model_route.visual_fallback.name}`}
+                  </p>
+                )}
+                <QuestionSourceCoverage metadata={metadata} coverage={pendingDetail?.draft_document?.coverage} />
+                {needsReview && (
+                  <div className="text-sm text-warning" role="status">{t('exam_sheet:uploader.draft_needs_review')}</div>
+                )}
 
                 {notes.length > 0 && (
                   <div className="flex flex-shrink-0 items-start gap-2 rounded-md bg-warning/10 px-3 py-2 text-sm text-warning">
@@ -1227,6 +1439,16 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       </DsButton>
                     </div>
                     <CustomScrollArea className="min-h-[120px] flex-1" viewportClassName="divide-y divide-border/30">
+                      {(pendingDetail?.draft_document?.materials || []).map(material => (
+                        <section key={material.local_id} className="border-l-2 border-border px-3 py-2 text-sm">
+                          <LatexText content={material.content} />
+                        </section>
+                      ))}
+                      {[...(pendingDetail?.draft_document?.issues || []), ...(pendingDetail?.draft_document?.unmatched_answers || [])].map((issue, index) => (
+                        <div key={`review-${index}`} className="break-words px-3 py-2 text-xs text-warning">
+                          {typeof issue === 'string' ? issue : JSON.stringify(issue)}
+                        </div>
+                      ))}
                       {cards.map((card) => {
                         const isExcluded = excludedCardIds.has(card.card_id);
                         const text = card.ocr_text?.trim() || card.question_label || '';
@@ -1266,15 +1488,25 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   </div>
                 )}
 
-                <div className="flex flex-shrink-0 gap-3 pt-1">
-                  <DsButton variant="ghost" onClick={handleReset} className="flex-1">
+                {needsReview && (
+                  <label className="flex cursor-pointer items-start gap-2 text-sm text-warning" data-testid="exam-uploader-review-acknowledgment">
+                    <input type="checkbox" className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                      checked={reviewAcknowledged} onChange={event => setReviewAcknowledged(event.target.checked)} />
+                    <span className="min-w-0 break-words">{t('exam_sheet:uploader.ranges.review_acknowledgment', {
+                      defaultValue: 'I have reviewed the source coverage, material and answer dependencies, and unresolved issues. Commit only the selected verified questions.',
+                    })}</span>
+                  </label>
+                )}
+
+                <div className="flex min-w-0 flex-shrink-0 flex-wrap gap-3 pt-1">
+                  <DsButton variant="ghost" onClick={handleReset} className="min-w-0 flex-1 whitespace-normal">
                     {t('exam_sheet:uploader.import_another')}
                   </DsButton>
-                  <DsButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={(total > 0 && keptCount === 0) || isConfirming}>
+                  <DsButton onClick={() => void handleConfirmSummary()} className="min-w-0 flex-1 whitespace-normal" disabled={(total > 0 && keptCount === 0) || isConfirming || (needsReview && !reviewAcknowledged)}>
                     {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
                     {excludedCardIds.size > 0
                       ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
-                      : t('exam_sheet:uploader.view_questions')}
+                      : t(pendingDetail?.draft_job_id ? 'exam_sheet:uploader.confirm_import' : 'exam_sheet:uploader.view_questions')}
                   </DsButton>
                 </div>
               </div>
@@ -1289,7 +1521,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="min-w-0 flex-1 break-words">{error}</div>
               </div>
               {/* 断点续导：失败前已解析部分题目时，可跳过已完成分块继续导入 */}
-              {resumableSession && step === 'select' && !isLLMProcessing && (
+              {resumableSession && !rangeFailure && step === 'select' && !isLLMProcessing && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2">
                   <span className="flex-1 min-w-[12rem] text-xs text-warning">
                     {t('exam_sheet:uploader.import_interrupted', { count: resumableSession.parsedCount })}
@@ -1310,19 +1542,29 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
 
           {/* 操作按钮：选了文件才出现，避免空态下的 disabled 主按钮 */}
           {step === 'select' && hasFiles && (
-            <div className="flex flex-shrink-0 gap-3">
+            <div className="flex flex-shrink-0 flex-wrap gap-3">
               {onBack && (
                 <DsButton variant="ghost" onClick={onBack} className="flex-1">
                   {t('common:actions.back')}
                 </DsButton>
               )}
+              {rangeFailure && (
+                <DsButton variant="secondary" onClick={() => void handleStartProcess()}
+                  data-testid="exam-uploader-retry-whole" className="min-w-0 flex-1 whitespace-normal gap-2" disabled={isLLMProcessing}>
+                  <ArrowClockwise size={16} className="shrink-0" />
+                  {t('exam_sheet:uploader.ranges.retry_whole', { defaultValue: 'Retry entire source' })}
+                </DsButton>
+              )}
               <DsButton
-                onClick={() => void handleStartProcess()}
-                className="flex-1 gap-2"
+                onClick={() => void handleStartProcess(rangeFailure ? selectedSourceRanges : [])}
+                disabled={isLLMProcessing || (Boolean(rangeFailure) && !rangeSelectionValid)}
+                className="min-w-0 flex-1 gap-2 whitespace-normal"
                 data-testid="exam-uploader-start"
               >
                 {error ? <ArrowClockwise size={16} /> : <UploadSimple size={16} />}
-                {error ? t('common:retry') : t('exam_sheet:uploader.start_recognize')}
+                {rangeFailure
+                  ? t('exam_sheet:uploader.ranges.process_selected', { defaultValue: 'Process selected ranges' })
+                  : error ? t('common:retry') : t('exam_sheet:uploader.start_recognize')}
               </DsButton>
             </div>
           )}

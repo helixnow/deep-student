@@ -52,6 +52,7 @@ export interface ReportAdapterErrorOptions {
   cause?: unknown;
   retryable?: boolean;
   retry?: () => void | Promise<void>;
+  action?: { label: string; onClick: () => void };
   notificationType?: 'error' | 'warning' | 'info';
   /** When false, still set the flag but skip the toast. Default true for user. */
   notify?: boolean;
@@ -132,8 +133,7 @@ export function reportAdapterError(options: ReportAdapterErrorOptions): AdapterE
   }
 
   if (options.notify !== false) {
-    const action =
-      options.retryable && options.retry
+    const action = options.action ?? (options.retryable && options.retry
         ? {
             label: i18n.t('chatV2:error.retry'),
             onClick: () => {
@@ -142,7 +142,8 @@ export function reportAdapterError(options: ReportAdapterErrorOptions): AdapterE
               });
             },
           }
-        : undefined;
+        : undefined
+    );
 
     showGlobalNotification(
       options.notificationType ?? 'error',

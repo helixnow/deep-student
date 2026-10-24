@@ -10,10 +10,15 @@ describe('chat v2 session settings contract', () => {
     expect(typesSource).toContain('deserialize_with = "deserialize_optional_value"');
   });
 
-  it('clears metadata when session settings explicitly send null', () => {
+  it('clears ordinary metadata while preserving backend-owned state', () => {
     const source = readFileSync(resolve(process.cwd(), 'src-tauri/src/chat_v2/handlers/manage_session.rs'), 'utf-8');
 
     expect(source).not.toContain('settings.metadata.clone().or(existing.metadata)');
-    expect(source).toContain('merge_session_metadata(existing.metadata, &settings.metadata)');
+    expect(source).toContain('patch_session_metadata(existing.metadata, &settings.metadata)');
+    expect(source).toContain('supplied.retain(');
+    expect(source).toContain('!is_backend_authoritative_metadata_key(key)');
+    expect(source).toContain('Some(Value::Null) | None => serde_json::Map::new()');
+    expect(source).toContain('for (key, value) in authoritative');
+    expect(source).toContain('rusqlite::TransactionBehavior::Immediate');
   });
 });

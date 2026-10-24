@@ -963,12 +963,14 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
       const isQbankCitation = props['data-qbank-citation'] === 'true';
       if (isQbankCitation) {
         const sessionId = props['data-qbank-session-id'] as string;
+        const targetId = props['data-qbank-target-id'] as string | undefined;
         const rawTitle = props['data-qbank-title'] as string | undefined;
         const displayTitle = rawTitle ? decodeURIComponent(rawTitle) : undefined;
         return (
           <QbankCitationBadge
             sessionId={sessionId}
             title={displayTitle}
+            targetId={targetId}
           />
         );
       }

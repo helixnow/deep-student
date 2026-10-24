@@ -68,6 +68,10 @@ export const PRACTICE_QUESTION_TYPES: readonly ExtendedQuestionType[] = [
 ];
 
 export interface Question {
+  group_id?: string | null;
+  group_position?: number | null;
+  group_label?: string | null;
+  materials?: import('@/api/questionBankApi').QuestionMaterial[];
   id: string;
   exam_id: string;
   card_id?: string;

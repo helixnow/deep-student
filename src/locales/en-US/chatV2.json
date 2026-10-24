@@ -31,6 +31,8 @@
     "sessionLoadFailedMessage": "A new session was created automatically. Check network or restart the app if needed.",
     "sessionLoadFailed": "Session load failed",
     "streamInterrupted": "Stream interrupted",
+    "contextWindowExceeded": "The input still exceeds the model's context budget after history recovery. Reduce the current attachments, compact the conversation, or select a model with a larger context window before retrying.",
+    "chooseLargerModel": "Choose a larger-context model",
     "abortFailed": "Abort failed",
     "abortFailedMessage": "Could not reliably abort generation; local state was force-reset",
     "killSwitchBlocked": "Agents are powered off. Resume them from the desktop control center, then try again.",

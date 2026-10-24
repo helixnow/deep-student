@@ -89,6 +89,69 @@ describe('progressive disclosure defaults', () => {
     });
   });
 
+  it('returns exact trusted IDs in the model-facing failure message for unknown skills', () => {
+    skillRegistry.register({
+      id: 'legacy-load-test-skill',
+      name: 'Legacy Load Test Skill',
+      description: 'Exact ID discovery regression test',
+      location: 'builtin',
+      sourcePath: 'builtin://legacy-load-test-skill',
+      trustStatus: 'builtin',
+      content: '# body',
+    });
+    skillRegistry.register({
+      id: 'untrusted-runtime-skill',
+      name: 'Untrusted Runtime Skill',
+      description: 'Must never be advertised as loadable',
+      location: 'global',
+      sourcePath: '/tmp/untrusted/SKILL.md',
+      trustStatus: 'untrusted',
+      content: '# untrusted',
+    });
+
+    const result = JSON.parse(handleLoadSkillsToolCall('legacy-load-test-session', {
+      skills: ['question_bank', '题库'],
+    }));
+
+    expect(result.result).toMatchObject({
+      status: 'error',
+      requested_skill_ids: ['question_bank', '题库'],
+      loaded_skill_ids: [],
+      newly_loaded_skill_ids: [],
+      missing_skill_ids: ['question_bank', '题库'],
+      rejected_skill_ids: [],
+    });
+    expect(result.result.available_skill_ids).toContain('legacy-load-test-skill');
+    expect(result.result.available_skill_ids).not.toContain('untrusted-runtime-skill');
+    // 模型在失败 tool message 中只能看到 message/error 文本，精确 ID 必须在其中。
+    expect(result.result.message).toContain('legacy-load-test-skill');
+    expect(result.result.message).toContain('do not guess');
+    expect(result.result.message).not.toContain('untrusted-runtime-skill');
+    expect(getLoadedSkills('legacy-load-test-session')).toEqual([]);
+  });
+
+  it('empty load_skills request returns discovery IDs without loading anything', () => {
+    skillRegistry.register({
+      id: 'legacy-load-test-skill',
+      name: 'Legacy Load Test Skill',
+      description: 'Empty request discovery regression test',
+      location: 'builtin',
+      sourcePath: 'builtin://legacy-load-test-skill',
+      trustStatus: 'builtin',
+      content: '# body',
+    });
+
+    const result = JSON.parse(handleLoadSkillsToolCall('legacy-load-test-session', {
+      skills: [],
+    }));
+
+    expect(result.result.status).toBe('error');
+    expect(result.result.newly_loaded_skill_ids).toEqual([]);
+    expect(result.result.available_skill_ids).toContain('legacy-load-test-skill');
+    expect(result.result.message).toContain('legacy-load-test-skill');
+    expect(getLoadedSkills('legacy-load-test-session')).toEqual([]);
+  });
+
   it('keeps the available_skills catalog constant after load_skills (loaded state lives in the tool result)', () => {
     // 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
     // 技能加载后目录不得从 system 收缩，否则 system 前缀从第 0 字节变化，
@@ -370,6 +433,8 @@ describe('first-turn tool face (prompt cache A1/A2)', () => {
     // 否则模型会中途逐个 load_skills，每次新增工具面都让 provider 前缀缓存整段失效。
     expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('第一次工具调用中一次性加载完');
     expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('不要在任务进行到一半时逐个追加加载');
+    expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('available_skill_ids');
+    expect(LOAD_SKILLS_TOOL_SCHEMA.description).toContain('不要猜测');
   });
 
   it('advertises the same constraint in the available_skills catalog footer', () => {

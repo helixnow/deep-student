@@ -95,6 +95,7 @@ pub use question_repo::{
     QuestionType,
     SearchSortBy,
     SourceType,
+    SubmissionSnapshot,
     UpdateQuestionParams,
     VfsQuestionRepo,
     MAX_SEARCH_KEYWORD_LENGTH,

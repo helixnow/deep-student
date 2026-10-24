@@ -115,7 +115,7 @@ impl ExamSheetService {
             Some(exam) => {
                 let metadata: Option<ExamSheetSessionMetadata> =
                     serde_json::from_value(exam.metadata_json.clone()).ok();
-                let preview: ExamSheetPreviewResult =
+                let mut preview: ExamSheetPreviewResult =
                     serde_json::from_value(exam.preview_json.clone()).unwrap_or_else(|_| {
                         ExamSheetPreviewResult {
                             temp_id: exam.temp_id.clone(),
@@ -126,6 +126,98 @@ impl ExamSheetService {
                             session_id: Some(exam.id.clone()),
                         }
                     });
+
+                let mut formal = Vec::new();
+                let mut page = 1;
+                loop {
+                    let result = crate::vfs::repos::VfsQuestionRepo::list_questions(
+                        &self.vfs_db,
+                        session_id,
+                        &crate::vfs::repos::QuestionFilters::default(),
+                        page,
+                        100,
+                    )
+                    .map_err(|e| AppError::database(format!("读取正式题目失败: {e}")))?;
+                    formal.extend(result.questions);
+                    if !result.has_more {
+                        break;
+                    }
+                    page += 1;
+                }
+                // Keep original page images and geometry, but derive question
+                // text and identity from the formal table on every read.
+                if !formal.is_empty()
+                    || exam
+                        .metadata_json
+                        .get("question_document_version")
+                        .is_some()
+                {
+                    let old: HashMap<String, ExamCardPreview> = preview
+                        .pages
+                        .iter()
+                        .flat_map(|page| page.cards.iter().cloned())
+                        .map(|card| (card.card_id.clone(), card))
+                        .collect();
+                    for page in &mut preview.pages {
+                        page.cards.clear();
+                    }
+                    if preview.pages.is_empty() {
+                        preview.pages.push(ExamSheetPreviewPage {
+                            page_index: 0,
+                            blob_hash: None,
+                            width: None,
+                            height: None,
+                            original_image_path: String::new(),
+                            cards: vec![],
+                            raw_ocr_text: None,
+                            ocr_completed: true,
+                            parse_completed: true,
+                        });
+                    }
+                    for (index, question) in formal.iter().enumerate() {
+                        let card_id = question
+                            .card_id
+                            .clone()
+                            .unwrap_or_else(|| question.id.clone());
+                        let mut value = old
+                            .get(&card_id)
+                            .and_then(|card| serde_json::to_value(card).ok())
+                            .unwrap_or(serde_json::json!({}));
+                        value["card_id"] = serde_json::json!(card_id);
+                        value["question_label"] = serde_json::json!(question
+                            .question_label
+                            .clone()
+                            .unwrap_or_else(|| (index + 1).to_string()));
+                        value["ocr_text"] = serde_json::json!(question.content);
+                        value["question_type"] = serde_json::json!(question.question_type);
+                        value["answer"] = serde_json::json!(question.answer);
+                        value["explanation"] = serde_json::json!(question.explanation);
+                        value["difficulty"] = serde_json::json!(question.difficulty);
+                        value["tags"] = serde_json::json!(question.tags);
+                        value["status"] = serde_json::json!(question.status);
+                        value["user_answer"] = serde_json::json!(question.user_answer);
+                        value["is_correct"] = serde_json::json!(question.is_correct);
+                        value["attempt_count"] = serde_json::json!(question.attempt_count);
+                        value["correct_count"] = serde_json::json!(question.correct_count);
+                        value["source_type"] = serde_json::json!(match question.source_type {
+                            crate::vfs::repos::SourceType::Ocr => SourceType::OcrImage,
+                            crate::vfs::repos::SourceType::Imported => SourceType::ImportFile,
+                            crate::vfs::repos::SourceType::Manual => SourceType::ManualCreate,
+                            crate::vfs::repos::SourceType::AiGenerated => SourceType::AiGenerated,
+                        });
+                        value["options"] = serde_json::json!(question.options);
+                        value["structured_data"] = serde_json::json!(question.structured_data);
+                        value["images"] = serde_json::json!(question.images);
+                        let page_index = value["page_index"].as_u64().unwrap_or(0) as usize;
+                        let target = page_index.min(preview.pages.len() - 1);
+                        value["page_index"] = serde_json::json!(target);
+                        preview.pages[target]
+                            .cards
+                            .push(serde_json::from_value(value).map_err(|e| {
+                                AppError::validation(format!("正式题目预览投影无效: {e}"))
+                            })?);
+                    }
+                }
 
                 let created_ts = &exam.created_at;
                 let updated_ts = &exam.updated_at;
@@ -240,6 +332,16 @@ impl ExamSheetService {
                 .unwrap_or(false);
 
         let rename_requested = exam_name.is_some();
+
+        if cards_requested
+            && crate::vfs::repos::VfsQuestionRepo::count_questions(&self.vfs_db, &session_id)
+                .map_err(|e| AppError::database(e.to_string()))?
+                > 0
+        {
+            return Err(AppError::validation(
+                "该题目集使用正式题目实体，请通过题目编辑/删除接口操作，不能单独修改兼容预览",
+            ));
+        }
 
         if !cards_requested && !rename_requested {
             return Err(AppError::validation("没有需要更新的内容"));

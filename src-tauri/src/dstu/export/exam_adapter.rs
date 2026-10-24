@@ -69,6 +69,21 @@ impl ExamExportAdapter {
         md.push_str("---\n\n");
         md.push_str(&format!("# {}\n\n", title));
 
+        let canonical = {
+            let conn = vfs_db
+                .get_conn_safe()
+                .map_err(|e| DstuError::Internal(e.to_string()))?;
+            crate::qbank_read::context_with_conn(&conn, resource_id).map_err(DstuError::Internal)?
+        };
+        if let Some(document) = canonical {
+            md.push_str(&crate::qbank_read::context_text(&document));
+            return Ok(ExportPayload::Text {
+                content: md,
+                suggested_filename: format!("{}.md", sanitize_filename(title)),
+                mime_type: "text/markdown".into(),
+            });
+        }
+
         // 解析 preview_json 生成结构化 Markdown
         if let Some(pages) = exam.preview_json.get("pages").and_then(|v| v.as_array()) {
             for (page_idx, page) in pages.iter().enumerate() {
@@ -84,11 +99,13 @@ impl ExamExportAdapter {
                 ));
                 for card in &cards {
                     let label = card
-                        .get("questionLabel")
+                        .get("question_label")
+                        .or_else(|| card.get("questionLabel"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("-");
                     let ocr = card
-                        .get("ocrText")
+                        .get("ocr_text")
+                        .or_else(|| card.get("ocrText"))
                         .and_then(|v| v.as_str())
                         .unwrap_or("")
                         .trim();
@@ -121,7 +138,18 @@ impl ExamExportAdapter {
         let exam = self.get_exam(vfs_db, resource_id)?;
         let title = exam.exam_name.as_deref().unwrap_or("未命名题目集");
 
-        let json_str = serde_json::to_string_pretty(&exam.preview_json)
+        let document =
+            crate::question_export_service::authoring::export_document(vfs_db, resource_id)
+                .map_err(|e| DstuError::Internal(e.to_string()))?;
+        let value = if document["questions"]
+            .as_array()
+            .is_some_and(|q| !q.is_empty())
+        {
+            document
+        } else {
+            exam.preview_json.clone()
+        };
+        let json_str = serde_json::to_string_pretty(&value)
             .map_err(|e| DstuError::Internal(format!("序列化 JSON 失败: {}", e)))?;
 
         let safe_title = sanitize_filename(title);

@@ -15,6 +15,7 @@ import { skillDefaults } from './skillDefaults';
 import { getRequiresGate, isSkillRequiresSatisfied } from './requiresGating';
 import {
   getSkillRuntimeAdmission,
+  getSkillRuntimeAdmissionWithDependencies,
   isSkillPromptVisible,
   type SkillRuntimeAdmissionCode,
 } from './runtimeAdmission';
@@ -98,6 +99,10 @@ export const LOAD_SKILLS_TOOL_SCHEMA: {
 当你需要执行某项任务但没有合适的工具时，请先查看 <available_skills> 列表，选择相关的技能并加载。
 加载技能后，你将获得该技能提供的工具，可以用来完成任务。
 
+技能 ID 必须从 <available_skills> 或 load_skills 失败结果中的 available_skill_ids 原样复制。
+不要猜测、翻译、缩写或自行发明 ID；未知 ID 不会被加载，也不存在模糊匹配或别名。
+如果 load_skills 返回失败，请读取其中的 available_skill_ids 并用其中的精确 ID 重试。
+
 【重要】在开始任务前，先判断本任务需要的全部技能，并在第一次工具调用中一次性加载完；
 不要在任务进行到一半时逐个追加加载——中途新增工具会打断上下文复用，显著增加延迟与成本。
 
@@ -107,8 +112,9 @@ export const LOAD_SKILLS_TOOL_SCHEMA: {
     properties: {
       skills: {
         type: 'array',
-        items: { type: 'string' },
-        description: '要加载的技能 ID 列表，参考 <available_skills> 中的技能 ID',
+        items: { type: 'string', minLength: 1 },
+        description:
+          '要加载的技能 ID 列表。必须从 <available_skills> 原样复制精确 ID；失败时从 tool result 的 available_skill_ids 原样复制。不要猜测、翻译或发明 ID。',
       },
     },
     required: ['skills'],
@@ -243,6 +249,32 @@ export function getLoadedToolSchemas(sessionId: string): ToolSchema[] {
 export function isSkillLoaded(sessionId: string, skillId: string): boolean {
   const sessionSkills = loadedSkillsMap.get(sessionId);
   return sessionSkills?.has(skillId) ?? false;
+}
+
+/**
+ * 返回当前可信运行时中真正可加载的精确 Skill IDs。
+ *
+ * 与 `<available_skills>` 使用同一套可见性口径，并额外检查完整依赖准入。
+ * 该列表只用于失败时的可发现性提示，绝不据此自动加载任何技能。
+ */
+export function getAvailableSkillIdsForDiscovery(): string[] {
+  return skillRegistry
+    .getAll()
+    .filter(isSkillPromptVisible)
+    .filter((skill) => !skill.disableAutoInvoke)
+    .filter((skill) => isSkillRequiresSatisfied(skill.id))
+    .filter((skill) =>
+      getSkillRuntimeAdmissionWithDependencies(skill, (id) => skillRegistry.get(id)).allowed
+    )
+    .map((skill) => skill.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    .sort();
+}
+
+function formatAvailableSkillIdsHint(available: readonly string[]): string {
+  return available.length > 0
+    ? `Available skill IDs (trusted runtime, exact): ${available.join(', ')}`
+    : 'The trusted runtime catalog currently contains no loadable skill IDs.';
 }
 
 /**
@@ -481,15 +513,29 @@ export function handleLoadSkillsToolCall(
     skillIds = [];
   }
 
+  const availableSkillIds = getAvailableSkillIdsForDiscovery();
+
   if (skillIds.length === 0) {
+    const message = [
+      'No skills were requested.',
+      formatAvailableSkillIdsHint(availableSkillIds),
+      'Call load_skills again with exact IDs copied from that list or from <available_skills>; do not guess, translate, shorten, or invent IDs.',
+    ].join(' ');
     return JSON.stringify({
       result: {
         status: 'error',
+        requested_skill_ids: [],
         loaded_skill_ids: [],
+        newly_loaded_skill_ids: [],
+        already_loaded_skill_ids: [],
+        missing_skill_ids: [],
+        available_skill_ids: availableSkillIds,
         loaded_tool_names: [],
         loaded_tools: [],
+        rejected_skill_ids: [],
+        rejected_skills: [],
         skill_state_version: 0,
-        message: '请指定要加载的技能 ID 列表',
+        message,
       },
     });
   }
@@ -509,19 +555,31 @@ export function handleLoadSkillsToolCall(
   const loadedToolNames = Array.from(new Set(
     loadedTools.map(tool => tool.name)
   ));
+  const missingSkillIds = notFound;
+  const alreadyLoadedSkillIds = alreadyLoaded;
+  const rejectedSkillIds = rejected.map((item) => item.skillId).sort();
+  const hasProblem = missingSkillIds.length > 0 || rejected.length > 0;
 
   const messageParts: string[] = [];
   if (loaded.length > 0) {
     messageParts.push('Skills loaded. Instructions will be provided in the next transient skill message.');
   }
-  if (alreadyLoaded.length > 0) {
-    messageParts.push(`Already loaded: ${alreadyLoaded.join(', ')}`);
+  if (alreadyLoadedSkillIds.length > 0) {
+    messageParts.push(`Already loaded: ${alreadyLoadedSkillIds.join(', ')}`);
   }
-  if (notFound.length > 0) {
-    messageParts.push(`Missing: ${notFound.join(', ')}`);
+  if (missingSkillIds.length > 0) {
+    messageParts.push(`Missing: ${missingSkillIds.join(', ')}`);
   }
   if (rejected.length > 0) {
     messageParts.push(rejected.map((item) => item.message).join(' '));
+  }
+  if (hasProblem) {
+    // 失败结果回喂模型时只保留 error/message 文本；精确 ID 必须出现在这里，
+    // 不能只藏在结构化字段中。
+    messageParts.push(formatAvailableSkillIdsHint(availableSkillIds));
+    messageParts.push(
+      'Retry load_skills only with exact IDs copied from that list or from <available_skills>; do not guess, translate, shorten, or invent IDs.'
+    );
   }
   if (messageParts.length === 0) {
     messageParts.push('No new skills were loaded.');
@@ -529,12 +587,18 @@ export function handleLoadSkillsToolCall(
 
   return JSON.stringify({
     result: {
-      status: loaded.length === 0 && alreadyLoaded.length === 0 && rejected.length > 0
+      status: loaded.length === 0 && alreadyLoaded.length === 0 && hasProblem
         ? 'error'
         : 'success',
+      requested_skill_ids: skillIds,
       loaded_skill_ids: loadedSkillIds,
+      newly_loaded_skill_ids: loaded.map((skill) => skill.id),
+      already_loaded_skill_ids: alreadyLoadedSkillIds,
+      missing_skill_ids: missingSkillIds,
+      available_skill_ids: availableSkillIds,
       loaded_tool_names: loadedToolNames,
       loaded_tools: loadedTools,
+      rejected_skill_ids: rejectedSkillIds,
       rejected_skills: rejected,
       skill_state_version: 0,
       message: messageParts.join(' '),

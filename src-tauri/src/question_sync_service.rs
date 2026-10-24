@@ -1709,6 +1709,7 @@ impl QuestionSyncService {
                 ai_feedback: row.get(26)?,
                 ai_score: row.get(27)?,
                 ai_graded_at: row.get(28)?,
+                ..Default::default()
             })
         })
         .map_err(|_| VfsError::NotFound {
@@ -1847,6 +1848,7 @@ impl LocalQuestionWithSync {
                     ai_feedback: row.get(26)?,
                     ai_score: row.get(27)?,
                     ai_graded_at: row.get(28)?,
+                    ..Default::default()
                 };
 
                 // 如果没有 content_hash，计算一个
@@ -1982,6 +1984,7 @@ impl LocalQuestionWithSync {
                 ai_feedback: row.get(26)?,
                 ai_score: row.get(27)?,
                 ai_graded_at: row.get(28)?,
+                ..Default::default()
             };
 
             // 如果没有 content_hash，计算一个
@@ -2052,6 +2055,7 @@ mod tests {
             ai_feedback: None,
             ai_score: None,
             ai_graded_at: None,
+            ..Default::default()
         };
 
         let hash1 = QuestionSyncService::compute_content_hash(&question);

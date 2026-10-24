@@ -2668,7 +2668,8 @@ export class ChatV2TauriAdapter {
           chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           // 先归一化再收尾，孤儿 preparing 块才能显示后端真实原因而不是通用兜底文案
-          const streamError = normalizeStreamTerminalError(payload.error);
+          const contextOverflow = payload.payload?.code === 'CONTEXT_WINDOW_EXCEEDED';
+          const streamError = normalizeStreamTerminalError(payload.error, payload.payload?.code);
           this.store.completeStream('error', streamError);
           this.store.updateMessageMeta(
             payload.messageId!,
@@ -2693,6 +2694,13 @@ export class ChatV2TauriAdapter {
               title: i18n.t('chatV2:error.streamInterrupted'),
               cause: payload.error,
               retryable: false,
+              action: contextOverflow && payload.messageId ? {
+                label: i18n.t('chatV2:error.chooseLargerModel'),
+                onClick: () => {
+                  this.getCurrentState().setModelRetryTarget(payload.messageId!);
+                  this.getCurrentState().setPanelState('model', true);
+                },
+              } : undefined,
               storeApi: this.getErrorStoreApi(),
             });
           }

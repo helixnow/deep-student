@@ -63,7 +63,20 @@ impl PageRasterizer {
             .check_pdf_encryption_bytes(&pdf_bytes, "document.pdf")
             .map_err(|e| AppError::validation(format!("{}", e)))?;
 
-        Self::render_and_store_pdf_pages(&pdf_bytes, "pdf", vfs_db)
+        Self::render_and_store_pdf_pages(&pdf_bytes, "pdf", vfs_db, None)
+    }
+
+    pub fn rasterize_pdf_cancellable(
+        base64_content: &str,
+        vfs_db: &VfsDatabase,
+        cancel: Option<&tokio_util::sync::CancellationToken>,
+    ) -> Result<RasterizerResult, AppError> {
+        let bytes = Self::decode_base64(base64_content)?;
+        Self::check_file_size(bytes.len())?;
+        DocumentParser::new()
+            .check_pdf_encryption_bytes(&bytes, "document.pdf")
+            .map_err(|e| AppError::validation(e.to_string()))?;
+        Self::render_and_store_pdf_pages(&bytes, "pdf", vfs_db, cancel)
     }
 
     /// 逐页渲染 + 立即入库：每页渲染→编码 JPEG→写入 VFS Blob→丢弃字节，
@@ -75,6 +88,7 @@ impl PageRasterizer {
         pdf_bytes: &[u8],
         source_format: &str,
         vfs_db: &VfsDatabase,
+        cancel: Option<&tokio_util::sync::CancellationToken>,
     ) -> Result<RasterizerResult, AppError> {
         let pdfium = crate::pdfium_utils::load_pdfium()
             .map_err(|e| AppError::internal(format!("加载 pdfium 失败: {}", e)))?;
@@ -100,6 +114,9 @@ impl PageRasterizer {
         let mut pages = Vec::with_capacity(total_pages);
 
         for page_idx in 0..total_pages {
+            if cancel.is_some_and(|token| token.is_cancelled()) {
+                return Err(AppError::validation("题目来源渲染已取消"));
+            }
             let page = document
                 .pages()
                 .get(safe_page_index(page_idx)? as i32)
@@ -219,6 +236,18 @@ impl PageRasterizer {
                 .ok()
                 .and_then(|reader| reader.into_dimensions().ok())
                 .unwrap_or((0, 0));
+            if width == 0 || height == 0 {
+                return Err(AppError::validation(format!(
+                    "来源图片 {} 无法读取尺寸，请先转换为 PNG/JPEG/WebP",
+                    idx + 1
+                )));
+            }
+            if u64::from(width) * u64::from(height) > 120_000_000 {
+                return Err(AppError::validation(format!(
+                    "来源图片 {} 超过图像解码安全限制，请缩小图片后重新导入",
+                    idx + 1
+                )));
+            }
 
             let (mime, ext) = detect_image_format(&bytes);
 
@@ -276,7 +305,7 @@ impl PageRasterizer {
         let result = match conversion {
             DocxConversionResult::PdfBytes(pdf_bytes) => {
                 info!("[PageRasterizer] DOCX → PDF 转换成功，开始渲染");
-                Self::render_and_store_pdf_pages(&pdf_bytes, "docx", vfs_db)
+                Self::render_and_store_pdf_pages(&pdf_bytes, "docx", vfs_db, None)
             }
             DocxConversionResult::NotAvailable(reason) => Err(AppError::validation(format!(
                 "DOCX → PDF 转换不可用 ({})",

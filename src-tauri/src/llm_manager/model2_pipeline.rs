@@ -57,6 +57,7 @@ const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 #[derive(Debug, Default)]
 struct RequestBudgetTrim {
     removed_messages: usize,
+    removed_history_images: usize,
     /// 最近一轮易变尾被截断的字符数（首选裁剪路径，不动历史头字节）。
     trimmed_tail_chars: usize,
     tokens_before: usize,
@@ -412,6 +413,33 @@ fn collect_trimmable_texts<'a>(message: &'a mut Value, out: &mut Vec<&'a mut Str
     }
 }
 
+/// Release one old image at a time; the latest real user turn and pinned inputs stay intact.
+fn omit_oldest_request_image(request: &mut Value) -> bool {
+    let Some(messages) = request.get_mut("messages").and_then(Value::as_array_mut) else {
+        return false;
+    };
+    let Some(current_start) = removable_request_turns(messages).last().map(|r| r.0) else {
+        return false;
+    };
+    for message in &mut messages[..current_start] {
+        if is_pinned_request_message(message) {
+            continue;
+        }
+        if let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) {
+            if let Some(part) = parts.iter_mut().find(|part| {
+                matches!(
+                    part.get("type").and_then(Value::as_str),
+                    Some("image_url" | "image")
+                )
+            }) {
+                *part = json!({"type":"text", "text":"[历史图片因输入预算已省略，原始资源引用仍保留。]"});
+                return true;
+            }
+        }
+    }
+    false
+}
+
 /// 首选裁剪路径：只截断**最近一轮**（最后一个可移除 user 轮及其后续消息）
 /// 里最大的文本载荷（附件/工具结果等易变尾），每次截半并附截断标记，直到
 /// 达标或该轮所有载荷都到下限。此路径不触碰最近一轮之前的任何消息，
@@ -466,6 +494,15 @@ fn enforce_request_input_budget(
     max_input_tokens: Option<usize>,
     config: &ApiConfig,
 ) -> Result<RequestBudgetTrim> {
+    enforce_request_input_budget_with_policy(request_body, max_input_tokens, config, false)
+}
+
+fn enforce_request_input_budget_with_policy(
+    request_body: &mut Value,
+    max_input_tokens: Option<usize>,
+    config: &ApiConfig,
+    chat_v2_request: bool,
+) -> Result<RequestBudgetTrim> {
     let Some(max_input_tokens) = max_input_tokens else {
         return Ok(RequestBudgetTrim::default());
     };
@@ -498,14 +535,22 @@ fn enforce_request_input_budget(
         ..Default::default()
     };
 
-    // 第一优先级：裁最近一轮的易变尾。历史头字节不动，前缀缓存不分叉。
-    trim_latest_turn_volatile_tail(request_body, max_input_tokens, &estimate, &mut stats);
+    while stats.tokens_after > max_input_tokens && omit_oldest_request_image(request_body) {
+        stats.removed_history_images += 1;
+        stats.tokens_after = estimate(request_body);
+    }
+
+    // ChatV2 owns overflow recovery. Never truncate its current question/tool JSON before
+    // the caller has had a chance to summarize history and rebuild the request.
+    if !chat_v2_request {
+        trim_latest_turn_volatile_tail(request_body, max_input_tokens, &estimate, &mut stats);
+    }
 
     // 兜底：尾裁到底仍超预算时才允许 FIFO 头删。头删会让后续所有请求的
     // 前缀整体左移、跨轮缓存全 miss，常态禁止；触发即 warn，供上游排查
     // 为何 compaction 没有先生效。
     let mut warned_head_drop = false;
-    while stats.tokens_after > max_input_tokens {
+    while !chat_v2_request && stats.tokens_after > max_input_tokens {
         let ranges = request_body
             .get("messages")
             .and_then(Value::as_array)
@@ -533,13 +578,28 @@ fn enforce_request_input_budget(
         stats.tokens_after = estimate(request_body);
     }
     if stats.tokens_after > max_input_tokens {
-        return Err(routing::attach_llm_error_code(
+        let image_count = redact_image_payloads_for_budget(&mut request_body.clone());
+        let fixed_tokens = estimate(
+            &json!({"messages": request_body.get("messages").and_then(Value::as_array).map(|messages| messages.iter().filter(|message| is_pinned_request_message(message)).cloned().collect::<Vec<_>>()).unwrap_or_default(), "tools": request_body.get("tools")}),
+        );
+        let mut error = routing::attach_llm_error_code(
             AppError::llm(format!(
                 "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={} trimmed_tail_chars={}; reduce the current attachment/tool payload or choose a larger-context model",
                 stats.tokens_after, max_input_tokens, stats.removed_messages, stats.trimmed_tail_chars
             )),
             routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
-        ));
+        );
+        error.details.as_mut().unwrap()["budget"] = json!({
+            "stage": "input_guard",
+            "estimatedInputTokens": stats.tokens_after,
+            "limit": max_input_tokens,
+            "removedHistoryImages": stats.removed_history_images,
+            "removedMessages": stats.removed_messages,
+            "trimmedTailChars": stats.trimmed_tail_chars,
+            "imageCount": image_count,
+            "fixedInputTokens": fixed_tokens,
+        });
+        return Err(error);
     }
     Ok(stats)
 }
@@ -1479,6 +1539,51 @@ mod tests {
         assert_eq!(deepseek_v41_image_tokens(544, 544), 184);
         assert_eq!(deepseek_v41_image_tokens(1_000, 1_000), 602);
         assert!(deepseek_v41_image_tokens(8_000, 6_000) <= 1_024);
+    }
+
+    #[test]
+    fn input_guard_releases_only_history_images_and_preserves_current_payload() {
+        let current = json!({"role":"user", "content":[
+            {"type":"text", "text":"current question"},
+            {"type":"image_url", "image_url":{"url":"data:image/png;base64,current"}}
+        ]});
+        let mut body = json!({"messages":[
+            {"role":"system", "content":"rules"},
+            {"role":"user", "content":[{"type":"image_url", "image_url":{"url":"data:image/png;base64,old"}}]},
+            {"role":"assistant", "content":"old answer"}, current.clone()
+        ]});
+        let result = enforce_request_input_budget_with_policy(
+            &mut body,
+            Some(9_000),
+            &ApiConfig::default(),
+            true,
+        )
+        .unwrap();
+        assert_eq!(result.removed_history_images, 1);
+        assert_eq!(body["messages"][3], current);
+        assert_eq!(body["messages"][1]["content"][0]["type"], "text");
+    }
+
+    #[test]
+    fn chat_input_guard_reports_overflow_without_truncating_current_text_or_tools() {
+        let mut body = json!({"messages":[
+            {"role":"user", "content":"current question ".repeat(3_000)},
+            {"role":"tool", "tool_call_id":"call_1", "content":json!({"source":"abc".repeat(10_000)}).to_string()}
+        ]});
+        let original = body.clone();
+        let error = enforce_request_input_budget_with_policy(
+            &mut body,
+            Some(1_000),
+            &ApiConfig::default(),
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(body, original);
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED)
+        );
+        assert_eq!(error.details.unwrap()["budget"]["stage"], "input_guard");
     }
 
     #[test]
@@ -5828,8 +5933,16 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config, &quirks);
         ensure_official_deepseek_v4_reasoning_passback(&mut request_body, &config);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
-        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
-        if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
+        let budget_trim = enforce_request_input_budget_with_policy(
+            &mut request_body,
+            input_limit,
+            &config,
+            task_context == Some("chat_v2"),
+        )?;
+        if budget_trim.removed_messages > 0
+            || budget_trim.trimmed_tail_chars > 0
+            || budget_trim.removed_history_images > 0
+        {
             warn!(
                 "[model2_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
                 budget_trim.trimmed_tail_chars,
@@ -5843,6 +5956,7 @@ impl LLMManager {
                 &json!({
                     "messageId": message_id,
                     "removedMessages": budget_trim.removed_messages,
+                    "removedHistoryImages": budget_trim.removed_history_images,
                     "trimmedTailChars": budget_trim.trimmed_tail_chars,
                     "tokensBefore": budget_trim.tokens_before,
                     "tokensAfter": budget_trim.tokens_after,

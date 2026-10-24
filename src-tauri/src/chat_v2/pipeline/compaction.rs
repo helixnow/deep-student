@@ -352,7 +352,7 @@ impl ChatV2Pipeline {
         // 触发直接跳过，避免「每轮触发 → 昂贵准备 → 失败/空转」循环
         // （实测曾 7 分钟内空转 12 次 + 3 次 75 秒无效摘要调用）。
         // 手动压缩（reason="manual"）不受冷却限制。
-        if reason != "manual" {
+        if reason != "manual" && reason != "overflow" {
             let cooling = self
                 .compaction_cooldowns
                 .lock()
@@ -524,7 +524,11 @@ impl ChatV2Pipeline {
 
         // 2. 构建 turn 列表
         let turns = split_into_turns(&messages);
-        if turns.len() < HEAD_USER_TURNS + 2 && messages.len() < HEAD_USER_TURNS * 2 + 2 {
+        let recovery = matches!(reason, "overflow" | "manual");
+        if !recovery
+            && turns.len() < HEAD_USER_TURNS + 2
+            && messages.len() < HEAD_USER_TURNS * 2 + 2
+        {
             // 条数与轮数都少：此时若 token 确凿很小（未到 usable 触发位）才判定
             // "会话太短"；若消息/轮数少但 token 已巨大（少条数多工具重型会话），
             // 交由 select_tail 决策——它可能把超大单轮切进 tail 或放弃（NoCompactibleRange），
@@ -557,13 +561,38 @@ impl ChatV2Pipeline {
         let tail_budget_raw = (usable as f64 * TAIL_PRESERVE_RATIO) as usize;
         let tail_budget = tail_budget_raw.clamp(MIN_TAIL_TOKENS, MAX_TAIL_TOKENS);
 
-        let tail = match select_tail(
-            &messages,
-            &turns,
-            tail_budget,
-            &blocks_by_msg,
-            model_id_for_tokens,
-        ) {
+        let tail = match if recovery {
+            // Summarize old anchors too. An empty raw tail is represented by the summary's
+            // own ID plus the last summarized message as its boundary (no synthetic DB row).
+            let start = turns
+                .last()
+                .map(|turn| turn.start)
+                .unwrap_or(messages.len());
+            let last_tokens: usize = messages[start..]
+                .iter()
+                .map(|m| estimate_message_tokens(m, &blocks_by_msg, model_id_for_tokens))
+                .sum();
+            let start = if start == 0 || last_tokens > tail_budget {
+                messages.len()
+            } else {
+                start
+            };
+            Some(segmentation::TailSelection {
+                tail_start_idx: start,
+                tail_tokens: messages[start..]
+                    .iter()
+                    .map(|m| estimate_message_tokens(m, &blocks_by_msg, model_id_for_tokens))
+                    .sum(),
+            })
+        } else {
+            select_tail(
+                &messages,
+                &turns,
+                tail_budget,
+                &blocks_by_msg,
+                model_id_for_tokens,
+            )
+        } {
             Some(t) => t,
             None => {
                 info!("[compaction] no suitable tail cut; skip");
@@ -573,10 +602,20 @@ impl ChatV2Pipeline {
             }
         };
 
-        let tail_start_msg = &messages[tail.tail_start_idx];
+        if messages.is_empty() {
+            return Ok(CompactionOutcome::NotNeeded(
+                CompactionSkipReason::SessionTooShort,
+            ));
+        }
+        let tail_start_msg = messages.get(tail.tail_start_idx);
+        let summary_msg_id = format!("msg_{}", uuid::Uuid::new_v4());
+        let tail_boundary_id = tail_start_msg
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| summary_msg_id.clone());
+        let range_end_msg = tail_start_msg.unwrap_or_else(|| messages.last().unwrap());
         debug!(
             "[compaction] tail_start={} idx={} tail_tokens~{} budget={}",
-            tail_start_msg.id, tail.tail_start_idx, tail.tail_tokens, tail_budget
+            tail_boundary_id, tail.tail_start_idx, tail.tail_tokens, tail_budget
         );
 
         // 4. 读取此前最近一次 compaction 记录（锚定链接续 + memory flush 增量起点）
@@ -596,7 +635,11 @@ impl ChatV2Pipeline {
         };
 
         // 5. 仅摘要上一条 active tail 到新 tail 的增量区间。
-        let head_tokens_used = HEAD_USER_TURNS.min(turns.len());
+        let head_tokens_used = if recovery {
+            0
+        } else {
+            HEAD_USER_TURNS.min(turns.len())
+        };
         let head_end = if head_tokens_used > 0 {
             turns[head_tokens_used - 1].end
         } else {
@@ -607,7 +650,8 @@ impl ChatV2Pipeline {
             .and_then(|previous| {
                 messages
                     .iter()
-                    .position(|message| message.id == previous.tail_start_message_id)
+                    .position(|message| message.id == previous.history_boundary_id())
+                    .map(|index| index + usize::from(previous.is_summary_only()))
             })
             .map(|index| index.max(head_end))
             .unwrap_or(head_end);
@@ -748,7 +792,7 @@ impl ChatV2Pipeline {
                             session_id,
                             previous_record.as_ref().map(|record| record.id.as_str()),
                             &messages[flush_start].id,
-                            &messages[middle_end].id,
+                            &range_end_msg.id,
                             ordinal,
                         ),
                         segment_text,
@@ -763,7 +807,8 @@ impl ChatV2Pipeline {
             .and_then(|previous| {
                 messages
                     .iter()
-                    .position(|message| message.id == previous.tail_start_message_id)
+                    .position(|message| message.id == previous.history_boundary_id())
+                    .map(|index| index + usize::from(previous.is_summary_only()))
             })
             .unwrap_or(0);
         let previous_summary_tokens = previous_summary
@@ -995,7 +1040,6 @@ impl ChatV2Pipeline {
                 ) as u32;
                 let tokens_after = Some(summary_tokens + tail.tail_tokens as u32);
                 let now_ms = Utc::now().timestamp_millis();
-                let summary_msg_id = format!("msg_{}", uuid::Uuid::new_v4());
                 let summary_block_id = format!("blk_{}", uuid::Uuid::new_v4());
                 let compaction_id = CompactionRecord::generate_id();
 
@@ -1029,8 +1073,8 @@ impl ChatV2Pipeline {
                         "reason": reason,
                         "createdAt": now_ms,
                         "rangeStartMessageId": messages[middle_start].id,
-                        "rangeEndMessageId": tail_start_msg.id,
-                        "tailStartMessageId": tail_start_msg.id,
+                        "rangeEndMessageId": range_end_msg.id,
+                        "tailStartMessageId": tail_boundary_id,
                         "compactedMessageCount": compacted_message_count,
                         "tailMessageCount": messages.len().saturating_sub(tail.tail_start_idx),
                         "tokensBefore": tokens_before_estimate,
@@ -1051,9 +1095,9 @@ impl ChatV2Pipeline {
                 let record = CompactionRecord {
                     id: compaction_id.clone(),
                     session_id: session_id.to_string(),
-                    summary_message_id: summary_msg_id,
-                    tail_start_message_id: tail_start_msg.id.clone(),
-                    tail_start_time_created: tail_start_msg.timestamp,
+                    summary_message_id: summary_msg_id.clone(),
+                    tail_start_message_id: tail_boundary_id.clone(),
+                    tail_start_time_created: range_end_msg.timestamp,
                     reason: reason.to_string(),
                     is_auto: reason == "auto",
                     is_overflow: reason == "overflow",
@@ -1065,7 +1109,7 @@ impl ChatV2Pipeline {
                         .as_ref()
                         .map(|record| record.id.clone()),
                     range_start_message_id: Some(messages[middle_start].id.clone()),
-                    range_end_message_id: Some(tail_start_msg.id.clone()),
+                    range_end_message_id: Some(range_end_msg.id.clone()),
                     compacted_message_count: Some(compacted_message_count),
                     created_at: now_ms,
                 };
@@ -1202,8 +1246,20 @@ impl ChatV2Pipeline {
         &self,
         ctx: &PipelineContext,
     ) -> Option<ApiConfig> {
-        self.resolve_api_config_by_id(ctx.options.model_id.as_deref())
-            .await
+        let mut config = self
+            .resolve_api_config_by_id(
+                ctx.options
+                    .model2_override_id
+                    .as_deref()
+                    .or(ctx.options.model_id.as_deref()),
+            )
+            .await?;
+        crate::llm_manager::routing::ParamOverrides {
+            max_output_tokens: ctx.options.max_tokens,
+            ..Default::default()
+        }
+        .apply(&mut config);
+        Some(config)
     }
 
     /// 按 model_id（config.id 或 config.model）解析 ApiConfig
@@ -1396,9 +1452,11 @@ fn apply_compaction_view_by_id<T>(
         return (None, messages);
     }
 
+    let summary_only = record.is_summary_only();
+    let boundary = record.history_boundary_id();
     let Some(tail_index) = messages
         .iter()
-        .position(|message| message_id(message) == record.tail_start_message_id)
+        .position(|message| message_id(message) == boundary)
     else {
         warn!(
             "[compaction] tail boundary missing for session={} compaction={}; using raw history",
@@ -1406,7 +1464,10 @@ fn apply_compaction_view_by_id<T>(
         );
         return (None, messages);
     };
-    let kept = messages.into_iter().skip(tail_index).collect();
+    let kept = messages
+        .into_iter()
+        .skip(tail_index + usize::from(summary_only))
+        .collect();
 
     let summary_msg = make_summary_system_message(&summary_text, &record.id);
     (Some(summary_msg), kept)
@@ -1532,6 +1593,175 @@ mod tests {
             validated_compaction_model_id(Some("  cfg_1  ")),
             Some("cfg_1")
         );
+    }
+
+    #[tokio::test]
+    async fn overflow_summarizes_single_turn_and_reloads_summary_only_history() {
+        let mut server = mockito::Server::new_async().await;
+        let summary = GENERIC_COMPACTION_PROFILE
+            .required_headings
+            .iter()
+            .map(|heading| format!("{}\nSaved task details and progress.\n", heading))
+            .collect::<String>();
+        let _response = server.mock("POST", "/chat/completions").with_status(200).with_header("content-type", "application/json")
+            .with_body(serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string()).create_async().await;
+        let (_dir, pipeline, session) =
+            e2e_pipeline_with_model(Some(&server.url()), "test-key", "test-model").await;
+        let mut message = ChatMessage::new_user(session.clone(), vec![]);
+        message.timestamp = 1_000;
+        let mut block = MessageBlock::new_content(message.id.clone(), 0);
+        block.content = Some("Please remember the original task and its constraints.".into());
+        message.block_ids = vec![block.id.clone()];
+        ChatV2Repo::create_message_v2(&pipeline.db, &message).unwrap();
+        ChatV2Repo::create_block_v2(&pipeline.db, &block).unwrap();
+        pipeline.compaction_cooldowns.lock().unwrap().insert(
+            session.clone(),
+            std::time::Instant::now() + std::time::Duration::from_secs(60),
+        );
+        let result = pipeline
+            .run_compaction_for_session(
+                &session,
+                Some("vm_e2e_k3"),
+                "overflow",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(result.did_compact(), "{:?}", result);
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &session)
+            .unwrap()
+            .unwrap();
+        assert_eq!(record.tail_start_message_id, record.summary_message_id);
+        let (summary, history) = apply_compaction_view_to_ids(
+            &conn,
+            &session,
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session).unwrap(),
+        );
+        assert!(summary.is_some());
+        assert!(history.is_empty());
+        let mut next = ChatMessage::new_user(session.clone(), vec![]);
+        next.timestamp = 2_000;
+        ChatV2Repo::create_message_with_conn(&conn, &next).unwrap();
+        let (_, history) = apply_compaction_view_to_ids(
+            &conn,
+            &session,
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session).unwrap(),
+        );
+        assert_eq!(history, vec![next.id]);
+        let mut ctx = PipelineContext::new(crate::chat_v2::types::SendMessageRequest {
+            session_id: session.clone(),
+            user_message_id: None,
+            assistant_message_id: None,
+            content: "next question".into(),
+            options: None,
+            user_context_refs: None,
+            workspace_id: None,
+            path_map: None,
+        });
+        drop(conn);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert!(ctx
+            .chat_history
+            .iter()
+            .any(|message| message.content.contains("<compacted_context>")));
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        assert!(ChatV2Repo::invalidate_compaction_for_message_with_conn(
+            &conn,
+            &session,
+            &message.id
+        )
+        .unwrap());
+    }
+
+    #[tokio::test]
+    async fn input_overflow_recovers_without_reexecuting_completed_tools() {
+        use crate::chat_v2::types::{SendMessageRequest, SendOptions, ToolResultInfo};
+        let mut server = mockito::Server::new_async().await;
+        let summary = GENERIC_COMPACTION_PROFILE
+            .required_headings
+            .iter()
+            .map(|heading| format!("{}\nTask progress preserved.\n", heading))
+            .collect::<String>();
+        let summary_call = server.mock("POST", "/chat/completions")
+            .match_body(mockito::Matcher::PartialJson(serde_json::json!({"stream":false})))
+            .with_header("content-type", "application/json")
+            .with_body(serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string())
+            .expect(1).create_async().await;
+        let stream_call = server.mock("POST", "/chat/completions")
+            .match_body(mockito::Matcher::AllOf(vec![
+                mockito::Matcher::PartialJson(serde_json::json!({"stream":true})),
+                mockito::Matcher::Regex("CURRENT_QUESTION".into()),
+                mockito::Matcher::Regex("completed_call_1".into()),
+            ]))
+            .with_header("content-type", "text/event-stream")
+            .with_body("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Recovered\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n")
+            .expect(1).create_async().await;
+        let (_dir, pipeline, session) =
+            e2e_pipeline_with_model(Some(&server.url()), "test-key", "test-model").await;
+        let mut old = ChatMessage::new_user(session.clone(), vec![]);
+        old.timestamp = 1_000;
+        let mut block = MessageBlock::new_content(old.id.clone(), 0);
+        let content = "historical content with varied words and punctuation. ".repeat(4_000);
+        block.content = Some(content.clone());
+        old.block_ids = vec![block.id.clone()];
+        ChatV2Repo::create_message_v2(&pipeline.db, &old).unwrap();
+        ChatV2Repo::create_block_v2(&pipeline.db, &block).unwrap();
+        let mut ctx = PipelineContext::new(SendMessageRequest {
+            session_id: session.clone(),
+            user_message_id: None,
+            assistant_message_id: None,
+            content: "CURRENT_QUESTION".into(),
+            options: Some(SendOptions {
+                model_id: Some("vm_e2e_k3".into()),
+                max_tokens: Some(4_096),
+                context_limit: Some(27_904),
+                memory_enabled: Some(false),
+                rag_enabled: Some(false),
+                web_search_enabled: Some(false),
+                ..Default::default()
+            }),
+            user_context_refs: None,
+            workspace_id: None,
+            path_map: None,
+        });
+        pipeline.freeze_execution_context(&mut ctx).await.unwrap();
+        let mut legacy = make_summary_system_message(&content, "not-a-summary");
+        legacy.role = "user".into();
+        legacy.content = content;
+        legacy.metadata = None;
+        ctx.chat_history = vec![legacy];
+        pipeline.compile_frozen_context(&mut ctx).await.unwrap();
+        ctx.tool_results.push(ToolResultInfo {
+            tool_call_id: Some("completed_call_1".into()),
+            block_id: None,
+            tool_name: "already_completed".into(),
+            input: serde_json::json!({}),
+            output: serde_json::json!({"done":true}),
+            success: true,
+            error: None,
+            duration_ms: None,
+            reasoning_content: None,
+            thought_signature: None,
+        });
+        let emitter = std::sync::Arc::new(
+            crate::chat_v2::events::ChatV2EventEmitter::new_headless(session),
+        );
+        pipeline
+            .execute_with_tools(&mut ctx, emitter, "Follow the task.", 0)
+            .await
+            .unwrap();
+        assert_eq!(ctx.final_content, "Recovered");
+        assert_eq!(ctx.tool_results.len(), 1);
+        assert_eq!(
+            ctx.tool_results[0].tool_call_id.as_deref(),
+            Some("completed_call_1")
+        );
+        summary_call.assert_async().await;
+        stream_call.assert_async().await;
     }
 
     #[tokio::test]

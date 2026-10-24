@@ -24,13 +24,56 @@ export function questionSourceResourceId(sourceRef: string | null | undefined): 
   }
 }
 
-function questionBlock(question: Question, labels: { stem: string; options: string; answer: string; explanation: string }): string {
-  const lines = [`${labels.stem}${question.content.trim()}`];
+/**
+ * 稳定的单题引用：`[题目集:exam_id#question_id:显示名]`。
+ *
+ * 旧格式 `[题目集:exam_id:名称]` 保持兼容；`#` 定位后缀只新增、不改变旧引用。
+ */
+export function buildQuestionCitation(examId: string, question: Question): string {
+  const label = (question.questionLabel || '').replace(/[:[\]#\n]/g, ' ').trim();
+  const head = `[题目集:${examId}#${question.id}`;
+  return label ? `${head}:${label}]` : `${head}]`;
+}
+
+function questionBlock(
+  question: Question,
+  labels: {
+    stem: string;
+    options: string;
+    answer: string;
+    explanation: string;
+    materials: string;
+    structured: string;
+    images: string;
+    citation: string;
+  },
+  examId?: string,
+): string {
+  const lines: string[] = [];
+  // issue 491：共享材料是解题必要条件，追问不能只复制子题题干
+  const materials = question.materials ?? [];
+  if (materials.length > 0) {
+    lines.push(labels.materials);
+    for (const material of materials) {
+      if (material.content?.trim()) lines.push(material.content.trim());
+      for (const image of material.images ?? []) {
+        lines.push(`${labels.images}${image.name || image.id}`);
+      }
+    }
+  }
+  lines.push(`${labels.stem}${question.content.trim()}`);
   if (question.options?.length) {
     lines.push(labels.options, ...question.options.map((option) => `${option.key}. ${option.content}`));
   }
+  if (question.structured_data) {
+    lines.push(labels.structured, JSON.stringify(question.structured_data));
+  }
+  if (question.images?.length) {
+    lines.push(labels.images, ...question.images.map((image) => image.name || image.id));
+  }
   if (question.answer?.trim()) lines.push(`${labels.answer}${question.answer.trim()}`);
   if (question.explanation?.trim()) lines.push(`${labels.explanation}${question.explanation.trim()}`);
+  if (examId) lines.push(labels.citation, buildQuestionCitation(examId, question));
   return lines.join('\n');
 }
 
@@ -50,6 +93,10 @@ export const QuestionFollowUpBar: React.FC<{
     options: t('followUp.options', { defaultValue: '选项：' }),
     answer: t('followUp.answer', { defaultValue: '正确答案：' }),
     explanation: t('followUp.explanation', { defaultValue: '解析：' }),
+    materials: t('followUp.materials', { defaultValue: '共享材料：' }),
+    structured: t('followUp.structured', { defaultValue: '结构化数据：' }),
+    images: t('followUp.images', { defaultValue: '图片：' }),
+    citation: t('followUp.citation', { defaultValue: '题目引用：' }),
   };
   const sourceId = questionSourceResourceId(question.sourceRef);
   // 音视频出的题：解析末尾的 [媒体@…] 比资料 id 更准，出处直接跳到依据所在时刻
@@ -63,7 +110,7 @@ export const QuestionFollowUpBar: React.FC<{
     const intro = isCorrect === false
       ? t('followUp.askWrong', { defaultValue: '这道题我做错了，请指出我的错误思路，讲清考点，再给我一道巩固练习。' })
       : t('followUp.ask', { defaultValue: '请帮我讲解这道题的考点与解题思路。' });
-    prefillNewChat(`${intro}\n\n${questionBlock(question, labels)}${mine}`);
+    prefillNewChat(`${intro}\n\n${questionBlock(question, labels, examId)}${mine}`);
   };
 
   const similar = () => {
@@ -71,7 +118,7 @@ export const QuestionFollowUpBar: React.FC<{
       defaultValue: '请基于下面这道题，生成 2 道考查同一知识点、难度相近的同类题，并加入题目集（id: {{examId}}）。',
       examId,
     });
-    prefillNewChat(`${intro}\n\n${questionBlock(question, labels)}`);
+    prefillNewChat(`${intro}\n\n${questionBlock(question, labels, examId)}`);
   };
 
   const openSource = () => {

@@ -1,5 +1,62 @@
+export type CtInvokeHandler = (
+  command: string,
+  payload?: Record<string, unknown>,
+) => unknown | Promise<unknown>;
+
+interface CtInvokeCall {
+  command: string;
+  payload?: Record<string, unknown>;
+}
+
+interface CtInvokeState {
+  handlers: Record<string, CtInvokeHandler>;
+  calls: CtInvokeCall[];
+}
+
+/**
+ * Page-local invoke fixture state.
+ *
+ * Playwright CT runs every test in a fresh page, so this module-level state is
+ * naturally isolated per test. Harnesses configure it before mounting a
+ * component; the app's own `invoke` import resolves to this same module via the
+ * Vite alias in playwright-ct.config.ts.
+ */
+const ctInvokeState: CtInvokeState = {
+  handlers: {},
+  calls: [],
+};
+
+function exposeCalls(state: CtInvokeState) {
+  if (typeof window === 'undefined') return;
+  (window as unknown as Record<string, unknown>).__CT_INVOKE_CALLS__ = state.calls;
+}
+
+/** Install command handlers for one isolated CT page. */
+export const setCtInvokeHandlers = (handlers: Record<string, CtInvokeHandler>) => {
+  ctInvokeState.handlers = { ...handlers };
+  ctInvokeState.calls = [];
+  exposeCalls(ctInvokeState);
+};
+
+/** Drop all installed handlers and recorded calls. */
+export const resetCtInvokeHandlers = () => {
+  ctInvokeState.handlers = {};
+  ctInvokeState.calls = [];
+  exposeCalls(ctInvokeState);
+};
+
+/** Read back the calls recorded on this page (useful in page.evaluate). */
+export const getCtInvokeCalls = (): CtInvokeCall[] => ctInvokeState.calls;
+
 export const invoke = async (command: string, _payload?: Record<string, unknown>) => {
+  ctInvokeState.calls.push({ command, payload: _payload });
+  exposeCalls(ctInvokeState);
+
+  const handler = ctInvokeState.handlers[command];
+  if (handler) return handler(command, _payload);
+
   switch (command) {
+    case 'qbank_list_authoring_drafts':
     case 'get_all_custom_templates':
       return [];
     case 'get_default_template_id':

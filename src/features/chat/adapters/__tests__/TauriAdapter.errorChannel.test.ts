@@ -116,6 +116,19 @@ function createStreamingStore() {
 }
 
 describe('ChatV2TauriAdapter error channel surfacing', () => {
+  it('preserves the context-overflow code as a localized error with an actionable model picker', () => {
+    const { store, storeApi, getState } = createStreamingStore();
+    getState().setModelRetryTarget = vi.fn();
+    getState().setPanelState = vi.fn();
+    const adapter = new ChatV2TauriAdapter('sess_err', store as any, storeApi as any);
+    (adapter as any).handleSessionEvent({ sessionId: 'sess_err', eventType: 'stream_error', messageId: 'msg_err', timestamp: Date.now(), error: 'budget failure', payload: { code: 'CONTEXT_WINDOW_EXCEEDED' } });
+    expect(showGlobalNotification).toHaveBeenCalledWith('error', expect.stringMatching(/context|上下文/i), expect.any(String), expect.objectContaining({ action: expect.any(Object) }));
+    const action = showGlobalNotification.mock.calls.at(-1)![3].action;
+    action.onClick();
+    expect(getState().setModelRetryTarget).toHaveBeenCalledWith('msg_err');
+    expect(getState().setPanelState).toHaveBeenCalledWith('model', true);
+    expect(store.completeStream).toHaveBeenCalledWith('error', expect.stringMatching(/context|上下文/i));
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     clearAdapterErrorFlag('sess_err');

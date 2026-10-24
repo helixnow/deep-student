@@ -106,8 +106,15 @@ pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod providers;
+pub mod qbank_authoring_service;
+pub mod qbank_document;
 pub mod qbank_generation;
 pub mod qbank_grading;
+pub mod qbank_legacy_reconcile;
+pub mod qbank_management;
+pub mod qbank_read;
+pub mod qbank_source_view;
+pub mod question_authoring_runner;
 #[allow(dead_code)]
 pub mod question_bank_service;
 pub mod question_export_service;
@@ -1777,11 +1784,28 @@ pub fn run() {
             crate::commands::cancel_question_bank_import,
             // 断点续导
             crate::commands::resume_question_import,
+            crate::commands::qbank_commit_authoring_draft,
+            crate::commands::qbank_get_authoring_draft,
+            crate::commands::qbank_list_authoring_drafts,
+            crate::commands::qbank_review_authoring_draft,
+            crate::commands::qbank_update_material,
+            crate::commands::qbank_delete_material,
+            crate::commands::qbank_resolve_authoring_route,
+            crate::commands::qbank_export_document,
+            crate::commands::qbank_update_group,
+            crate::commands::qbank_list_structure,
+            crate::commands::qbank_legacy_audit,
+            crate::commands::qbank_legacy_migrate_selected,
+            crate::commands::qbank_reparse_report,
+            crate::commands::qbank_reparse_resolve,
+            crate::commands::qbank_delete_group,
+            crate::commands::qbank_export_portable,
             crate::commands::list_importing_sessions,
             // 题目集原始图片管理
             crate::commands::qbank_get_source_images,
             crate::commands::qbank_crop_source_image,
             crate::commands::qbank_remove_question_image,
+            crate::qbank_source_view::qbank_get_source_page,
             // CSV 导入导出命令
             crate::commands::import_questions_csv,
             crate::commands::cancel_questions_csv_import,

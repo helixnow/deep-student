@@ -17,7 +17,10 @@ export function isActiveStreamConflict(error: unknown): boolean {
  * Normalize a stream_error payload into a stable, user-facing terminal message.
  * When `error` is absent, falls back to the same i18n key used by the adapter.
  */
-export function normalizeStreamTerminalError(error: unknown): string {
+export function normalizeStreamTerminalError(error: unknown, code?: unknown): string {
+  if (code === 'CONTEXT_WINDOW_EXCEEDED' || (typeof error === 'string' && error.includes('context budget exceeded after safe trimming'))) {
+    return i18n.t('chatV2:error.contextWindowExceeded');
+  }
   if (error) {
     return formatUserFacingError(
       error,

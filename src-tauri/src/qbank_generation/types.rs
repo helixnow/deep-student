@@ -1,8 +1,7 @@
 /// 题目集 AI 出题模块 - 类型定义
 ///
-/// MVP 方案（docs/dev/ai-question-generation-feasibility-2026-09-07.md §四）：
-/// - prompt 约定输出 JSON 数组，逐题强校验后流式回调前端
-/// - 前端预览确认后走既有 qbank_batch_create_questions 入库（source_type=ai_generated）
+/// v2 契约：与导入共用 QuestionDocument 根对象和 canonical 草稿；旧 drafts 字段仅用于
+/// 兼容已有前端展示与历史任务。正式入库必须经 `qbank_commit_authoring_draft`。
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -82,6 +81,15 @@ fn default_max_questions() -> u32 {
 /// 单道 AI 生成的题目（校验后的结构化预览，未入库）
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneratedQuestionDraft {
+    /// QuestionDocument 内稳定临时 ID（确认时按它选择，不按数组下标）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_id: Option<String>,
+    /// 所属题组（共享材料/阅读文章）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_id: Option<String>,
+    /// 原题号/展示标签
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub original_label: Option<String>,
     /// 题型（snake_case 字符串；入库前由前端映射回枚举）
     pub question_type: String,
     /// 题干（Markdown；公式 $...$ / $$...$$）
@@ -101,6 +109,10 @@ pub struct GeneratedQuestionDraft {
     /// 知识点标签
     #[serde(default)]
     pub tags: Option<Vec<String>>,
+    /// 新题型结构化答案（matching/ordering/numeric/fill_blank）。
+    /// 必须原样保留，不能因为旧预览层不支持就丢弃。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub structured_data: Option<Value>,
     /// 分子结构式 SMILES 串（可选；有机结构题填写，前端用 SmilesDrawer 渲染为骨架式）
     #[serde(default)]
     pub smiles: Option<String>,
@@ -124,6 +136,18 @@ pub struct GeneratedQuestionOption {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QbankGenerationResponse {
     pub exam_id: String,
+    /// 同一 canonical 契约下的完整出题文档（materials/groups/questions/coverage/issues）
+    #[serde(default)]
+    pub document: Value,
+    /// 已持久化草稿 job ID；前端确认时提交它，而不是重新拼 CreateQuestionParams
+    #[serde(default)]
+    pub job_id: String,
+    /// 草稿 OCC 版本
+    #[serde(default)]
+    pub version: i64,
+    /// 本次实际模型路线（主模型、视觉兜底、JSON 模式、usage）
+    #[serde(default)]
+    pub model_route: Value,
     /// 通过校验的题目草稿
     pub drafts: Vec<GeneratedQuestionDraft>,
     /// 被剔除的题目数（校验失败）
@@ -143,34 +167,34 @@ pub struct QbankGenerationResponse {
 // ============================================================================
 
 /// 出题系统提示词（JSON 数组输出契约）
-pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题教师，负责为一套题目集生成高质量的练习题目。
+pub const GENERATION_SYSTEM_PROMPT: &str = r#"你是一位经验丰富的命题教师。你在生成新题，不是抽取已有题目。
 
-## 输出格式要求（严格遵守）
-只输出一个 JSON 数组，不要输出任何其他文字、代码块标记或解释。数组中每个元素是一道题目，结构如下：
-[
-  {
-    "question_type": "single_choice",
-    "content": "题干（Markdown 格式）",
-    "options": [{"key": "A", "content": "选项内容"}, {"key": "B", "content": "..."}],
-    "answer": "A",
-    "explanation": "详细解析（Markdown 格式）",
-    "difficulty": "medium",
-    "tags": ["知识点1", "知识点2"],
-    "smiles": null,
-    "smiles_caption": null
-  }
-]
+## 输出契约
+只输出一个完整 JSON 根对象，不要 Markdown 代码围栏，不要数组顶层。根对象字段与统一
+QuestionDocument v2 完全一致：schema_version / mode / materials / groups / questions /
+unmatched_answers / coverage / issues。mode 必须为 "generate"。
 
 ## 字符串转义要求（重要）
 JSON 字符串内部的换行必须使用标准 JSON 转义 \n（一个反斜杠），严禁写成 \\n（两个反斜杠）——
 后者会让题目里出现字面的 "\n" 字符而不是换行。同理制表符用 \t，不要写成 \\t。
 
 ## 各题型的字段约定
-1. single_choice / multiple_choice / indefinite_choice：必须给出 options（2-6 个），answer 为正确选项 key 的拼接（如 "A" 或 "ABD"）
+1. single_choice / multiple_choice / indefinite_choice：必须给出 options（2-8 个），answer 为正确选项 key 的拼接（如 "A" 或 "ABD"）
 2. true_false：不给 options，answer 为 "true" 或 "false"
-3. fill_blank：不给 options，answer 为答案文本（多空用 "||" 分隔）；content 中空位用 ______ 表示
+3. fill_blank：不给 options，answer 为答案文本（多空用 "||" 分隔），并尽量给出
+   structured_data.blanks（每空 answers 数组）；content 中空位用 ______ 表示
 4. short_answer / essay / calculation / proof：不给 options，answer 为参考答案（Markdown）
-5. matching / ordering / numeric：请避免生成（结构复杂，MVP 不支持）
+5. matching：structured_data 必须为 {left:[{key,content}],right:[{key,content}],pairs:[{left,right}]}
+6. ordering：structured_data 必须为 {items:[{key,content}],correct_order:[key]}
+7. numeric：structured_data 必须为 {answer_value:number,tolerance:number,unit:string,tolerance_mode:"absolute"|"relative"}
+8. other：仅用于无法归类的题型，必须提供 answer。
+
+## 材料与题组
+- 阅读文章、实验条件、共同图表等共享内容只生成一次 material，并在 groups.material_ids 引用。
+- 同一材料下的每个独立作答位各生成一个 question；questions[i].group_id 必须与对应
+  groups[j].question_ids 闭合一致，不能只写进 structured_data 副本。
+- 普通独立题 group_id=null，不要伪造单题题组。
+- generation 模式答案由你推导，answer_origin 必须为 "generated"。
 
 ## 质量要求
 1. 题干表述清晰无歧义；公式一律遵循统一的 LaTeX 公式契约（见 prompt 末尾）
@@ -178,6 +202,8 @@ JSON 字符串内部的换行必须使用标准 JSON 转义 \n（一个反斜杠
 3. difficulty 取值只能是 easy / medium / hard / very_hard
 4. tags 给出 1-3 个核心知识点
 5. 严格按用户指定的题量与题型分布生成，不要多生成或遗漏
+6. 参考材料只作为命题依据；不得把资料中的原题直接抄成新题，也不得编造不存在的图片路径或 hash。
+7. coverage 必须覆盖所有实际提供的来源页；没有来源时输出空数组。
 
 ## 化学式与分子结构（化学类题目必须遵守）
 1. 一切化学式、化学方程式、离子方程式必须用 LaTeX 的 \\ce{} 宏书写，并包裹在 $ 或 $$ 中：
@@ -191,24 +217,14 @@ JSON 字符串内部的换行必须使用标准 JSON 转义 \n（一个反斜杠
    - "smiles_caption": 分子中文名（如 "乙醇"、"苯"）
    - 每题最多给一个主要结构的 SMILES；非有机结构题（无需画结构式）两字段保持 null
 4. SMILES 必须是合法的标准写法：原子用元素符号、支链用括号、双键 =、三键 #、芳香环用小写 c"#;
-
-/// 单份参考文本的最大注入长度（字符）；超出截断，避免 prompt 体积失控
-pub const REFERENCE_TEXT_MAX_CHARS: usize = 30_000;
-/// 参考文件数量上限（file_ids 与 base64 合计）
-pub const REFERENCE_FILES_MAX_COUNT: usize = 3;
-/// 文本层有效性的最小字符数：低于该值视为「未提取到有效文本」，
-/// 触发页面图直读路径（2026-09-09 修复：扫描件此前被静默跳过）
-pub const REFERENCE_TEXT_MIN_CHARS: usize = 100;
-/// 参考资料页面图直读的最大页数（防止多模态 prompt 体积失控）
-pub const REFERENCE_IMAGE_MAX_PAGES: usize = 20;
-
-/// 构造出题用户 Prompt（含题目集上下文与参数）
-pub fn build_generation_user_prompt(
+/// 构造出题指令。完整原文/页图由 `SourceBundle::user_content` 紧随其后提供，
+/// 此处只放任务约束和来源清单，不截断参考资料。
+pub fn build_generation_instructions(
     exam_name: &str,
     existing_samples: &[String],
     request: &QbankGenerationRequest,
-    reference_texts: &[ReferenceText],
-    reference_images: &[ReferenceImage],
+    sources: &[Value],
+    has_media_anchors: bool,
 ) -> String {
     let language = request.language.as_deref().unwrap_or("zh-CN");
     let mut prompt = String::new();
@@ -266,98 +282,43 @@ pub fn build_generation_user_prompt(
 
     if request.based_on_existing && !existing_samples.is_empty() {
         prompt.push_str("## 现有题目样本（请出与之风格相近、不重复的变式题）\n");
-        for (i, sample) in existing_samples.iter().enumerate().take(10) {
+        for (i, sample) in existing_samples.iter().enumerate() {
             prompt.push_str(&format!("{}. {}\n", i + 1, sample));
         }
         prompt.push('\n');
     }
 
-    if !reference_texts.is_empty() {
-        prompt.push_str("## 参考资料（据此出题；题干不得直接抄袭原文成句）\n");
-        for reference in reference_texts {
-            prompt.push_str(&format!("### 文件：{}\n", reference.name));
-            let mut text = reference.text.as_str();
-            if text.len() > REFERENCE_TEXT_MAX_CHARS {
-                // 按字符边界截断（文本可能是多字节 UTF-8）
-                let mut cut = REFERENCE_TEXT_MAX_CHARS;
-                while !text.is_char_boundary(cut) {
-                    cut -= 1;
-                }
-                text = &text[..cut];
-                prompt.push_str(text);
-                prompt.push_str("\n…（原文过长，已截断）\n");
-            } else {
-                prompt.push_str(text);
-                prompt.push('\n');
-            }
-            prompt.push('\n');
+    if sources.is_empty() {
+        prompt.push_str("## 参考资料\n本次没有参考文件，请仅依据题目集信息与知识点要求命题。\n\n");
+    } else {
+        prompt.push_str("## 参考资料清单（完整正文/页图随后提供）\n");
+        for source in sources {
+            prompt.push_str(&format!(
+                "- source_id={} name={} format={} pages={}\n",
+                source["source_id"].as_str().unwrap_or(""),
+                source["name"].as_str().unwrap_or(""),
+                source["format"].as_str().unwrap_or(""),
+                source["page_count"]
+                    .as_u64()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "无分页".to_string())
+            ));
         }
+        prompt.push_str(
+            "请完整阅读后续全部来源。题干不得直接抄袭原文成句；不得只处理前几页或截断长文。\n\n",
+        );
     }
 
     // 音视频转写参考资料：解析末尾写可跳转的 [媒体@id:mm:ss] 出处
-    if reference_texts
-        .iter()
-        .any(|r| crate::study_loop::media_source::contains_media_anchor(&r.text))
-    {
+    if has_media_anchors {
         prompt.push_str(crate::study_loop::media_source::MEDIA_QUESTION_REQUIREMENTS);
     }
 
-    if !reference_images.is_empty() {
-        // 页面图作为 image 内容块附在本消息末尾（见 pipeline::build_user_message）
-        prompt.push_str(&format!(
-            "## 参考资料图片\n本消息末尾附有 {} 页参考文件扫描图（依次为：{}）。\
-请阅读这些图片内容，据此出题；题干不得直接抄袭原文成句。\n\n",
-            reference_images.len(),
-            reference_images
-                .iter()
-                .map(|img| format!("《{}》第 {} 页", img.name, img.page))
-                .collect::<Vec<_>>()
-                .join("、")
-        ));
-    }
-
     prompt.push_str(&format!(
-        "## 输出语言\n题目使用 {}。现在请生成题目，只输出 JSON 数组。\n",
+        "## 输出语言\n题目使用 {}。现在请生成题目，只输出一个 QuestionDocument JSON 根对象。\n",
         language
     ));
     prompt
-}
-
-/// 一份参考文件的提取文本（已就绪，供 prompt 注入）
-#[derive(Debug, Clone)]
-pub struct ReferenceText {
-    /// 展示名（文件名）
-    pub name: String,
-    /// 提取出的纯文本
-    pub text: String,
-    /// 文本来源（文本层提取 / 资源库现成 OCR 结果），供日志与前端展示区分
-    pub source: ReferenceTextSource,
-}
-
-/// 参考文本来源
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ReferenceTextSource {
-    /// 文本层提取（pdfium / DocumentParser / 资源库 extracted_text）
-    TextLayer,
-    /// 资源库现成 OCR 结果（复用已处理数据，非本次触发 OCR）
-    LibraryOcr,
-}
-
-/// 页面图内容块（多模态模型直读，无需 OCR）
-///
-/// 2026-09-09 新增：扫描版 PDF / 图片文件在文本层为空时，直接把页面图
-/// 作为 image 内容块送进 LLM（复用对话侧 PDF 注入模式的数据来源）。
-#[derive(Debug, Clone)]
-pub struct ReferenceImage {
-    /// 来源文件名（用于 prompt 中的页面标注）
-    pub name: String,
-    /// 页码（1-based）
-    pub page: usize,
-    /// MIME 类型（image/jpeg 或 image/png）
-    pub media_type: String,
-    /// base64 图片数据
-    pub base64: String,
 }
 
 /// 被跳过的参考文件（提取失败 / 超限）
@@ -703,6 +664,10 @@ pub fn parse_generation_output(
 
     Ok(QbankGenerationResponse {
         exam_id: String::new(),
+        document: Value::Null,
+        job_id: String::new(),
+        version: 0,
+        model_route: Value::Null,
         rejected_count: reasons.len(),
         rejection_reasons: reasons,
         drafts,
@@ -723,6 +688,10 @@ mod tests {
         answer: &str,
     ) -> GeneratedQuestionDraft {
         GeneratedQuestionDraft {
+            local_id: None,
+            group_id: None,
+            original_label: None,
+            structured_data: None,
             source_ref: None,
             question_type: question_type.to_string(),
             content: content.to_string(),
@@ -901,7 +870,7 @@ mod tests {
             reference_files_base64: vec![],
             knowledge_points: vec![],
         };
-        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &[], &[]);
+        let prompt = build_generation_instructions("测试题目集", &[], &request, &[], false);
         assert!(prompt.contains("「测试题目集」"));
         assert!(prompt.contains("single_choice: 3 题"));
         assert!(prompt.contains("二次函数"));
@@ -928,19 +897,14 @@ mod tests {
                 "因式分解".to_string(),
             ],
         };
-        let references = vec![ReferenceText {
-            name: "课本第2章.pdf".to_string(),
-            text: "二次函数的图像是抛物线。".to_string(),
-            source: ReferenceTextSource::TextLayer,
-        }];
-        let prompt = build_generation_user_prompt("测试题目集", &[], &request, &references, &[]);
+        let references =
+            vec![serde_json::json!({"source_id":"s1","name":"课本第2章.pdf","page_count":2})];
+        let prompt = build_generation_instructions("测试题目集", &[], &request, &references, false);
         assert!(prompt.contains("## 知识点范围（围绕这些知识点出题）"));
         assert!(prompt.contains("- 二次函数"));
         // 空白知识点被过滤
         assert!(!prompt.contains("-  "));
-        assert!(prompt.contains("## 参考资料"));
-        assert!(prompt.contains("### 文件：课本第2章.pdf"));
-        assert!(prompt.contains("抛物线"));
+        assert!(prompt.contains("课本第2章.pdf"));
     }
 
     #[test]
@@ -959,26 +923,16 @@ mod tests {
             reference_files_base64: vec![],
             knowledge_points: vec![],
         };
-        let media = vec![ReferenceText {
-            name: "第1讲.mp4".to_string(),
-            text: "## 片段 1/1 · [媒体@file_lecture:00:00] 起\n[00:05] 牛顿第一定律".to_string(),
-            source: ReferenceTextSource::TextLayer,
-        }];
-        let prompt = build_generation_user_prompt("物理", &[], &request, &media, &[]);
+        let prompt = build_generation_instructions("物理", &[], &request, &[], true);
         assert!(prompt.contains("## 音视频课程出处要求"));
         assert!(prompt.contains("[媒体@资源ID:mm:ss]"));
 
-        let plain = vec![ReferenceText {
-            name: "讲义.pdf".to_string(),
-            text: "牛顿第一定律 [03:00]".to_string(),
-            source: ReferenceTextSource::TextLayer,
-        }];
-        let prompt = build_generation_user_prompt("物理", &[], &request, &plain, &[]);
+        let prompt = build_generation_instructions("物理", &[], &request, &[], false);
         assert!(!prompt.contains("音视频课程出处要求"));
     }
 
     #[test]
-    fn build_generation_user_prompt_truncates_long_reference_text() {
+    fn generation_instructions_preserve_long_user_requirements() {
         let request = QbankGenerationRequest {
             exam_id: "exam_1".to_string(),
             stream_session_id: "sess".to_string(),
@@ -986,23 +940,16 @@ mod tests {
             max_questions: 5,
             specs: vec![],
             difficulty: None,
-            topic_hint: None,
+            topic_hint: Some("long user requirement ".repeat(5000)),
             based_on_existing: false,
             language: None,
             reference_file_ids: vec![],
             reference_files_base64: vec![],
             knowledge_points: vec![],
         };
-        let long_text = "长".repeat(REFERENCE_TEXT_MAX_CHARS + 500);
-        let references = vec![ReferenceText {
-            name: "big.txt".to_string(),
-            text: long_text,
-            source: ReferenceTextSource::TextLayer,
-        }];
-        let prompt = build_generation_user_prompt("测试", &[], &request, &references, &[]);
-        assert!(prompt.contains("（原文过长，已截断）"));
-        // 截断后总长度应有界
-        assert!(prompt.len() < REFERENCE_TEXT_MAX_CHARS + 2000);
+        let prompt = build_generation_instructions("测试", &[], &request, &[], false);
+        assert!(prompt.contains(request.topic_hint.as_deref().unwrap().trim()));
+        assert!(!prompt.contains("已截断"));
     }
 
     #[test]
@@ -1021,25 +968,11 @@ mod tests {
             reference_files_base64: vec![],
             knowledge_points: vec![],
         };
-        let images = vec![
-            ReferenceImage {
-                name: "单词表.pdf".to_string(),
-                page: 1,
-                media_type: "image/jpeg".to_string(),
-                base64: "AAAA".to_string(),
-            },
-            ReferenceImage {
-                name: "单词表.pdf".to_string(),
-                page: 2,
-                media_type: "image/jpeg".to_string(),
-                base64: "BBBB".to_string(),
-            },
-        ];
-        let prompt = build_generation_user_prompt("测试", &[], &request, &[], &images);
-        assert!(prompt.contains("## 参考资料图片"));
-        assert!(prompt.contains("2 页"));
-        assert!(prompt.contains("《单词表.pdf》第 1 页"));
-        assert!(prompt.contains("《单词表.pdf》第 2 页"));
+        let sources =
+            vec![serde_json::json!({"source_id":"s1","name":"单词表.pdf","page_count":20})];
+        let prompt = build_generation_instructions("测试", &[], &request, &sources, false);
+        assert!(prompt.contains("单词表.pdf"));
+        assert!(prompt.contains("20"));
     }
 
     #[test]

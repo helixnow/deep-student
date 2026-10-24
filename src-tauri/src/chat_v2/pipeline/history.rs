@@ -86,7 +86,7 @@ impl ChatV2Pipeline {
                 "[ChatV2::pipeline] No chat history after excluding current messages for session={}",
                 ctx.session_id
             );
-            ctx.chat_history = Vec::new();
+            ctx.chat_history = compaction_summary_msg.into_iter().collect();
             return Ok(false);
         }
 

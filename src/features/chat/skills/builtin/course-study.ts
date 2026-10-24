@@ -54,7 +54,8 @@ export const courseStudySkill: SkillDefinition = {
 
 ## 制卡 / 出题
 - 制卡：\`builtin-chatanki_run\` 传 \`resourceId\`（转写自动作为材料，系统会按约 10 分钟分片并注入时间锚点）。
-- 出题：\`builtin-qbank_generate_questions\` 传 \`reference_file_ids\`。
+- 出题：当前对话模型直接依据完整转写与用户要求命题，用 \`builtin-qbank_batch_import\` 提交 v2 文档。共享材料只定义一次，子题独立；不另切出题/批改模型。后台委托仅限用户明确要求，且传 \`reference_file_ids\` 保留来源。
+- 解析预览不等于入库，仅 committed=true 回执可以报告已创建；partial/needs_review 和缺失材料须如实说明。
 - 两者生成的卡片背面 / 题目解析末尾都应带 \`[媒体@…]\` 出处；一卡一事实、问题自包含，跨片段重复的知识点只出一次。
 `,
 };

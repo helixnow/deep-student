@@ -154,6 +154,7 @@ struct PtcSubContextTemplate {
     llm_manager: Option<Arc<crate::llm_manager::LLMManager>>,
     chat_v2_db: Option<Arc<crate::chat_v2::database::ChatV2Database>>,
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
+    question_authoring_config: Option<Arc<crate::llm_manager::ApiConfig>>,
     skill_contents: Option<std::collections::HashMap<String, String>>,
     skill_embedded_tools:
         Option<std::collections::HashMap<String, Vec<crate::chat_v2::types::McpToolSchema>>>,
@@ -191,6 +192,7 @@ impl PtcSubContextTemplate {
             llm_manager: ctx.llm_manager.clone(),
             chat_v2_db: ctx.chat_v2_db.clone(),
             question_bank_service: ctx.question_bank_service.clone(),
+            question_authoring_config: ctx.question_authoring_config.clone(),
             skill_contents: ctx.skill_contents.clone(),
             skill_embedded_tools: ctx.skill_embedded_tools.clone(),
             skill_admission_errors: ctx.skill_admission_errors.clone(),
@@ -228,6 +230,7 @@ impl PtcSubContextTemplate {
             llm_manager: self.llm_manager.clone(),
             chat_v2_db: self.chat_v2_db.clone(),
             question_bank_service: self.question_bank_service.clone(),
+            question_authoring_config: self.question_authoring_config.clone(),
             skill_contents: self.skill_contents.clone(),
             skill_embedded_tools: self.skill_embedded_tools.clone(),
             skill_admission_errors: self.skill_admission_errors.clone(),

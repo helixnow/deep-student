@@ -31,6 +31,8 @@
     "sessionLoadFailedMessage": "已自动创建新会话，如有需要请检查网络或重启应用",
     "sessionLoadFailed": "会话加载失败",
     "streamInterrupted": "流式响应中断",
+    "contextWindowExceeded": "当前输入仍超过模型的上下文预算。已尝试回收历史内容；请减少当前附件、手动压缩上下文，或选择更大窗口的模型后重试。",
+    "chooseLargerModel": "选择更大窗口模型",
     "abortFailed": "中断失败",
     "abortFailedMessage": "无法可靠中断生成，已强制重置本地状态",
     "killSwitchBlocked": "Agent 已断电，无法发送。请在桌面操控中心恢复后再试。",

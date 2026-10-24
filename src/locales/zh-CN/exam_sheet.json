@@ -539,6 +539,11 @@
     "ocr_image_progress": "已识别 {{current}}/{{total}} 页…",
     "ocr_phase_done": "{{total}} 张图片识别完成，开始解析题目...",
     "import_done": "已导入 {{count}} 道题目",
+    "draft_ready": "已解析 {{count}} 道题目，待确认",
+    "add_source_files": "添加试题或答案文件",
+    "confirm_import": "确认录入",
+    "draft_needs_review": "来源存在待复核事项或未匹配答案，请核对后选择有效题目。",
+    "commit_not_confirmed": "题目尚未确认入库，请重试。",
     "import_interrupted": "导入中断，已保存 {{count}} 道题目",
     "resume_import": "从中断处继续",
     "resuming": "恢复中...",
@@ -577,6 +582,7 @@
     "other": "其他"
   },
   "aiGeneration": {
+    "regenerateLegacy": "该历史结果没有完整材料草稿，请重新生成后确认录入。",
     "title": "AI 出题",
     "specsLabel": "题型与数量",
     "addSpec": "添加题型",

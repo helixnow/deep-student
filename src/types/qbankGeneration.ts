@@ -5,7 +5,7 @@
  * 单独成文件是为了让 store / hook / 面板都能引用而不产生循环依赖。
  */
 
-import type { QuestionType, Difficulty } from '@/api/questionBankApi';
+import type { QuestionType, Difficulty, QuestionStructuredData, QuestionDocumentV2 } from '@/api/questionBankApi';
 
 export interface GeneratedQuestionOption {
   key: string;
@@ -13,6 +13,10 @@ export interface GeneratedQuestionOption {
 }
 
 export interface GeneratedQuestionDraft {
+  local_id?: string;
+  group_id?: string | null;
+  original_label?: string;
+  structured_data?: QuestionStructuredData | null;
   question_type: QuestionType;
   content: string;
   options?: GeneratedQuestionOption[];
@@ -83,6 +87,12 @@ export interface QbankGenerationTask {
   createdAt: number;
   updatedAt: number;
   finishedAt: number | null;
+  authoringResult?: {
+    document: QuestionDocumentV2;
+    job_id: string;
+    version: number;
+    model_route?: unknown;
+  } | null;
 }
 
 /** 是否终态（终态任务不再变化） */

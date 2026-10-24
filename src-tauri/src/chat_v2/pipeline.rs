@@ -1071,7 +1071,16 @@ impl ChatV2Pipeline {
                 }
 
                 // 发射错误事件
-                emitter.emit_stream_error(&assistant_message_id, &e.to_string());
+                if let ChatV2Error::ContextWindowExceeded { details, .. } = &e {
+                    emitter.emit_stream_error_with_details(
+                        &assistant_message_id,
+                        &e.to_string(),
+                        e.code(),
+                        details.clone(),
+                    );
+                } else {
+                    emitter.emit_stream_error(&assistant_message_id, &e.to_string());
+                }
                 Err(e)
             }
         }

@@ -52,7 +52,7 @@ pub fn usable_tokens(config: Option<&ApiConfig>) -> u32 {
                 .unwrap_or(requested)
         })
         .unwrap_or(DEFAULT_MAX_OUTPUT);
-    context.saturating_sub(max_output)
+    context.saturating_sub(max_output.min(context / 2))
 }
 
 pub fn effective_usable_tokens(config: Option<&ApiConfig>, context_limit: Option<u32>) -> u32 {
@@ -173,7 +173,34 @@ pub(super) fn estimate_message_tokens(
             }
         }
     }
+    let images = msg
+        .meta
+        .as_ref()
+        .and_then(|meta| meta.canonical_content.as_ref())
+        .map(|parts| {
+            parts
+                .iter()
+                .filter(|part| {
+                    matches!(
+                        part,
+                        crate::chat_v2::types::CanonicalContentPart::ImageRef { .. }
+                    )
+                })
+                .count()
+        })
+        .unwrap_or_else(|| {
+            msg.attachments
+                .as_ref()
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter(|item| item.mime_type.starts_with("image/"))
+                        .count()
+                })
+                .unwrap_or(0)
+        });
     crate::utils::token_budget::estimate_tokens_with_model(&text, model_id)
+        .saturating_add(images * 8_192)
 }
 
 #[cfg(test)]

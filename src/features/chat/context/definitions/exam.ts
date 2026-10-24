@@ -34,6 +34,10 @@ export interface ExamMetadata {
   pageCount?: number;
   /** 题目数量 */
   questionCount?: number;
+  /** 共享材料数量（issue 491，可选；旧元数据无此字段） */
+  materialCount?: number;
+  /** 题组数量（issue 491，可选） */
+  groupCount?: number;
   /** 创建时间戳 */
   createdAt?: number;
   /** 文件夹路径（真实路径） */
@@ -90,7 +94,8 @@ export const examDefinition: ContextTypeDefinition = {
   // System Prompt 中的标签格式说明
   systemPromptHint:
     '<exam_sheet title="..." question-count="..." path="...">试卷内容</exam_sheet> - ' +
-    '用户引用的题目集识别结果，包含试卷标题和识别的题目内容',
+    '用户引用的题目集识别结果，包含试卷标题和识别的题目内容；' +
+    '共享材料（文章/共用条件）只出现一次，子题引用同一材料；不要臆造未提供的材料或图片',
 
   formatToBlocks(resource: Resource, options?: FormatOptions): ContentBlock[] {
     const { isMultimodal = false } = options ?? {};
@@ -115,6 +120,8 @@ export const examDefinition: ContextTypeDefinition = {
           title: resolvedMetadata?.title || resolved.name || '',
           'page-count': resolvedMetadata?.pageCount !== undefined ? String(resolvedMetadata.pageCount) : undefined,
           'question-count': resolvedMetadata?.questionCount !== undefined ? String(resolvedMetadata.questionCount) : undefined,
+          'material-count': resolvedMetadata?.materialCount !== undefined ? String(resolvedMetadata.materialCount) : undefined,
+          'group-count': resolvedMetadata?.groupCount !== undefined ? String(resolvedMetadata.groupCount) : undefined,
           'session-id': resolved.sourceId,
           path: resolved.path,
           mode: 'multimodal',
@@ -132,6 +139,8 @@ export const examDefinition: ContextTypeDefinition = {
         title: resolvedMetadata?.title || resolved.name || '',
         'page-count': resolvedMetadata?.pageCount !== undefined ? String(resolvedMetadata.pageCount) : undefined,
         'question-count': resolvedMetadata?.questionCount !== undefined ? String(resolvedMetadata.questionCount) : undefined,
+        'material-count': resolvedMetadata?.materialCount !== undefined ? String(resolvedMetadata.materialCount) : undefined,
+        'group-count': resolvedMetadata?.groupCount !== undefined ? String(resolvedMetadata.groupCount) : undefined,
         'session-id': resolved.sourceId,
         path: resolved.path, // ★ 真实文件夹路径
       })];

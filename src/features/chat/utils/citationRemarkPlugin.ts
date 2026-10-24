@@ -56,10 +56,11 @@ const MINDMAP_CITATION_PATTERN = /\[(思维导图|导图|脑图|MindMap|mindmap)
 
 /**
  * 题目集引用正则表达式（全局匹配）
- * 匹配格式：[题目集:session_id] 或 [题目集:session_id:名称]
- * 支持 UUID 和 exam_ 前缀的 ID 格式
+ * 匹配格式：[题目集:session_id] / [题目集:session_id:名称]
+ * 向后兼容扩展：[题目集:session_id#question_or_group_id:名称]
+ * 支持 UUID 和 exam_ 前缀的 ID 格式；`#` 定位后缀用于稳定跳转到单题/题组。
  */
-const QBANK_CITATION_PATTERN = /\[(题目集|题库|练习册|QuestionBank|question[_ ]?bank|qbank):([\w-]+)(?::([^\]]+))?\]/gi;
+const QBANK_CITATION_PATTERN = /\[(题目集|题库|练习册|QuestionBank|question[_ ]?bank|qbank):([\w-]+)(?:#([\w-]+))?(?::([^\]]+))?\]/gi;
 
 // ============================================================================
 // PDF 页码显示辅助函数
@@ -166,12 +167,13 @@ export function makeCitationRemarkPlugin() {
           QBANK_CITATION_PATTERN.lastIndex = 0;
           while ((match = QBANK_CITATION_PATTERN.exec(value)) !== null) {
             const sessionId = match[2];
-            const title = match[3]?.trim();
+            const targetId = match[3]?.trim();
+            const title = match[4]?.trim();
             matches.push({
               type: 'qbank',
               index: match.index,
               length: match[0].length,
-              data: { sessionId, title },
+              data: { sessionId, title, targetId },
             });
           }
 
@@ -271,11 +273,12 @@ export function makeCitationRemarkPlugin() {
               });
             } else if (m.type === 'qbank') {
               // 题目集引用节点
-              const { sessionId, title } = m.data;
+              const { sessionId, title, targetId } = m.data;
               const titleAttr = title ? ` data-qbank-title="${encodeURIComponent(title)}"` : '';
+              const targetAttr = targetId ? ` data-qbank-target-id="${targetId}"` : '';
               parts.push({
                 type: 'html',
-                value: `<span data-qbank-citation="true" data-qbank-session-id="${sessionId}"${titleAttr} class="qbank-citation-placeholder">[题目集]</span>`,
+                value: `<span data-qbank-citation="true" data-qbank-session-id="${sessionId}"${targetAttr}${titleAttr} class="qbank-citation-placeholder">[题目集]</span>`,
               });
             } else if (m.type === 'pdf_ref') {
               // PDF 页面引用节点（支持单页 "3"、范围 "2-3"、逗号 "1,3,5"）

@@ -1035,6 +1035,8 @@ pub struct ImportQuestionBankRequest {
     /// 前端为每次流式导入生成的唯一标识，用于取消与事件隔离。
     #[serde(default)]
     pub import_id: Option<String>,
+    #[serde(default)]
+    pub source_ranges: Vec<crate::question_authoring_runner::SourceRange>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1058,11 +1060,40 @@ pub async fn inspect_pdf_text_for_qbank(
 ///
 /// 支持格式：json, txt, md, docx
 /// 超长文档自动分块处理
+#[derive(Debug, serde::Serialize)]
+pub struct QuestionImportDraftResponse {
+    #[serde(flatten)]
+    pub detail: ExamSheetSessionDetail,
+    pub draft_job_id: Option<String>,
+    pub draft_version: Option<i64>,
+    pub draft_document: Option<serde_json::Value>,
+    pub model_route: Option<serde_json::Value>,
+    pub committed: bool,
+}
+
+async fn question_import_draft_response(
+    state: &AppState,
+    result: crate::question_import_service::ImportResult,
+) -> Result<QuestionImportDraftResponse> {
+    let detail = state
+        .exam_sheet_service
+        .get_exam_sheet_session_detail(&result.session_id)
+        .await?;
+    Ok(QuestionImportDraftResponse {
+        detail,
+        draft_job_id: result.draft_job_id,
+        draft_version: result.draft_version,
+        draft_document: result.draft_document,
+        model_route: result.model_route,
+        committed: result.committed,
+    })
+}
+
 #[tauri::command]
 pub async fn import_question_bank(
     request: ImportQuestionBankRequest,
     state: State<'_, AppState>,
-) -> Result<ExamSheetSessionDetail> {
+) -> Result<QuestionImportDraftResponse> {
     use crate::question_import_service::{ImportRequest, QuestionImportService};
 
     let vfs_db = state
@@ -1082,6 +1113,7 @@ pub async fn import_question_bank(
         folder_id: request.folder_id,
         model_config_id: request.model_config_id,
         pdf_prefer_ocr: request.pdf_prefer_ocr,
+        source_ranges: request.source_ranges,
     };
 
     let result = import_service
@@ -1089,10 +1121,7 @@ pub async fn import_question_bank(
         .await?;
 
     // 获取完整的 session detail 返回
-    state
-        .exam_sheet_service
-        .get_exam_sheet_session_detail(&result.session_id)
-        .await
+    question_import_draft_response(&state, result).await
 }
 
 #[tauri::command]
@@ -1100,7 +1129,7 @@ pub async fn import_question_bank_stream(
     request: ImportQuestionBankRequest,
     state: State<'_, AppState>,
     app_handle: AppHandle,
-) -> Result<ExamSheetSessionDetail> {
+) -> Result<QuestionImportDraftResponse> {
     use crate::question_import_service::{
         ImportRequest, QuestionImportCancellation, QuestionImportProgress, QuestionImportService,
     };
@@ -1177,8 +1206,11 @@ pub async fn import_question_bank_stream(
         folder_id: request.folder_id,
         model_config_id: request.model_config_id,
         pdf_prefer_ocr: request.pdf_prefer_ocr,
+        source_ranges: request.source_ranges,
     };
 
+    let import_service =
+        import_service.with_cancel(cancellation.as_ref().map(|state| state.token()));
     // Dropping this future cancels the in-flight request at its next await
     // point, which also closes the progress channel. This is intentionally
     // scoped to the caller-provided import_id; another retry has its own token.
@@ -1226,10 +1258,7 @@ pub async fn import_question_bank_stream(
 
     let result = result?;
 
-    state
-        .exam_sheet_service
-        .get_exam_sheet_session_detail(&result.session_id)
-        .await
+    question_import_draft_response(&state, result).await
 }
 
 /// Requests cancellation for one active streaming question-bank import.
@@ -1261,9 +1290,10 @@ pub fn cancel_question_bank_import(import_id: String, state: State<'_, AppState>
 #[tauri::command]
 pub async fn resume_question_import(
     session_id: String,
+    import_id: Option<String>,
     state: State<'_, AppState>,
     app_handle: AppHandle,
-) -> Result<ExamSheetSessionDetail> {
+) -> Result<QuestionImportDraftResponse> {
     use crate::question_import_service::{QuestionImportProgress, QuestionImportService};
 
     let vfs_db = state
@@ -1271,13 +1301,31 @@ pub async fn resume_question_import(
         .as_ref()
         .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
 
+    let cancellation = Arc::new(crate::question_import_service::QuestionImportCancellation::new());
+    let import_id = import_id.filter(|id| !id.trim().is_empty());
+    if let Some(id) = &import_id {
+        match state.question_import_cancellations.entry(id.clone()) {
+            dashmap::mapref::entry::Entry::Vacant(entry) => {
+                entry.insert(cancellation.clone());
+            }
+            dashmap::mapref::entry::Entry::Occupied(_) => {
+                return Err(AppError::validation("该恢复任务仍在运行"))
+            }
+        }
+    }
+
     let (progress_tx, mut progress_rx) =
         tokio::sync::mpsc::unbounded_channel::<QuestionImportProgress>();
 
     let event_forwarder = {
         let app_handle = app_handle.clone();
+        let import_id = import_id.clone();
         tokio::spawn(async move {
             while let Some(payload) = progress_rx.recv().await {
+                let mut payload = serde_json::to_value(payload).unwrap_or_default();
+                if let Some(id) = &import_id {
+                    payload["import_id"] = serde_json::json!(id);
+                }
                 if let Err(err) = app_handle.emit("question_import_progress", payload) {
                     error!("[question_import_progress] emit failed: {}", err);
                 }
@@ -1286,11 +1334,19 @@ pub async fn resume_question_import(
     };
 
     let import_service =
-        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone());
+        QuestionImportService::new(state.llm_manager.clone(), state.file_manager.clone())
+            .with_cancel(Some(cancellation.token()));
 
-    let result = import_service
-        .resume_import(vfs_db, &session_id, Some(progress_tx))
-        .await;
+    let token = cancellation.token();
+    let result = tokio::select! {
+        result=import_service.resume_import(vfs_db,&session_id,Some(progress_tx))=>result,
+        _=token.cancelled()=>Err(AppError::validation("题目解析恢复已取消")),
+    };
+    let result = if cancellation.finish_or_cancelled() {
+        result
+    } else {
+        Err(AppError::validation("题目解析恢复已取消"))
+    };
 
     if let Err(err) = event_forwarder.await {
         error!(
@@ -1299,12 +1355,296 @@ pub async fn resume_question_import(
         );
     }
 
+    if let Some(id) = &import_id {
+        state.question_import_cancellations.remove(id);
+    }
     let result = result?;
 
-    state
-        .exam_sheet_service
-        .get_exam_sheet_session_detail(&result.session_id)
-        .await
+    question_import_draft_response(&state, result).await
+}
+
+#[tauri::command]
+pub fn qbank_commit_authoring_draft(
+    job_id: String,
+    selected_local_ids: Vec<String>,
+    expected_version: i64,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<crate::qbank_authoring_service::AuthoringCommitReceipt> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let receipt = crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone())
+        .commit_draft(&job_id, &selected_local_ids, expected_version)?;
+    if receipt.committed {
+        let _ = crate::vfs::repos::VfsExamRepo::clear_import_state(db, &receipt.exam_id);
+        let _ = crate::vfs::repos::VfsExamRepo::update_status(db, &receipt.exam_id, "completed");
+        let _ = app_handle.emit(
+            "qbank://changed",
+            serde_json::json!({"exam_id":receipt.exam_id,"reason":"authoring_committed"}),
+        );
+    }
+    Ok(receipt)
+}
+
+#[tauri::command]
+pub fn qbank_get_authoring_draft(
+    job_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::qbank_authoring_service::QuestionAuthoringDraft> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone()).get_draft(&job_id)
+}
+
+#[tauri::command]
+pub fn qbank_list_authoring_drafts(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<crate::qbank_authoring_service::QuestionDraftSummary>> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone()).list_drafts(&exam_id)
+}
+
+#[tauri::command]
+pub fn qbank_review_authoring_draft(
+    job_id: String,
+    expected_version: i64,
+    coverage: Option<Vec<serde_json::Value>>,
+    issues: Option<Vec<serde_json::Value>>,
+    unmatched_answers: Option<Vec<serde_json::Value>>,
+    state: State<'_, AppState>,
+) -> Result<crate::qbank_authoring_service::QuestionAuthoringDraft> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone()).update_draft_review(
+        &job_id,
+        expected_version,
+        coverage,
+        issues,
+        unmatched_answers,
+    )
+}
+
+#[tauri::command]
+pub fn qbank_update_material(
+    material_id: String,
+    content: String,
+    expected_version: i64,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<crate::qbank_document::QuestionMaterial> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let material = crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone())
+        .update_material(&material_id, &content, expected_version)?;
+    let _ = app_handle.emit(
+        "qbank://changed",
+        serde_json::json!({"reason":"material_updated","material_id":material_id}),
+    );
+    Ok(material)
+}
+
+#[tauri::command]
+pub fn qbank_delete_material(
+    material_id: String,
+    expected_version: i64,
+    state: State<'_, AppState>,
+) -> Result<()> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_authoring_service::QuestionAuthoringService::new(db.clone())
+        .delete_material(&material_id, expected_version)
+}
+
+#[tauri::command]
+pub async fn qbank_resolve_authoring_route(
+    model_config_id: Option<String>,
+    requires_vision: bool,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
+    let config = state
+        .llm_manager
+        .resolve_question_authoring_config(model_config_id.as_deref())
+        .await?;
+    let fallback = if requires_vision && !config.is_multimodal {
+        let visual =
+            crate::question_authoring_runner::resolve_visual_fallback(&state.llm_manager).await?;
+        Some(serde_json::json!({"id":visual.id,"name":visual.name,"model":visual.model}))
+    } else {
+        None
+    };
+    Ok(
+        serde_json::json!({"model":{"id":config.id,"name":config.name,"model":config.model,"is_multimodal":config.is_multimodal},"visual_fallback":fallback}),
+    )
+}
+
+#[tauri::command]
+pub fn qbank_export_document(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::question_export_service::authoring::export_document(db, &exam_id)
+}
+
+#[tauri::command]
+pub fn qbank_update_group(
+    group_id: String,
+    label: String,
+    question_ids: Vec<String>,
+    material_ids: Vec<String>,
+    expected_version: i64,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<serde_json::Value> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let result = crate::qbank_management::QuestionBankManagementService::new(db.clone())
+        .update_group(
+            &group_id,
+            &label,
+            &question_ids,
+            &material_ids,
+            expected_version,
+        )?;
+    let _ = app_handle.emit(
+        "qbank://changed",
+        serde_json::json!({"exam_id":result.exam_id,"reason":"group_updated"}),
+    );
+    Ok(serde_json::to_value(result).map_err(|error| AppError::internal(error.to_string()))?)
+}
+
+#[tauri::command]
+pub fn qbank_list_structure(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::qbank_management::QuestionBankStructure> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_management::QuestionBankManagementService::new(db.clone()).list_structure(&exam_id)
+}
+
+#[tauri::command]
+pub fn qbank_legacy_audit(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::qbank_legacy_reconcile::LegacyMigrationAudit> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_legacy_reconcile::LegacyReconcileService::new(db.clone())
+        .audit_legacy_cards(&exam_id)
+}
+
+#[tauri::command]
+pub fn qbank_legacy_migrate_selected(
+    exam_id: String,
+    card_ids: Vec<String>,
+    expected_version: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<crate::qbank_legacy_reconcile::LegacyMigrationReceipt> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let result = crate::qbank_legacy_reconcile::LegacyReconcileService::new(db.clone())
+        .migrate_legacy_cards(&exam_id, &card_ids, &expected_version)?;
+    let _ = app_handle.emit(
+        "qbank://changed",
+        serde_json::json!({"exam_id":exam_id,"reason":"legacy_migrated"}),
+    );
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn qbank_reparse_report(
+    exam_id: String,
+    job_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<crate::qbank_legacy_reconcile::ReparseReport> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::qbank_legacy_reconcile::LegacyReconcileService::new(db.clone())
+        .reparse_report(&exam_id, job_id.as_deref())
+}
+
+#[tauri::command]
+pub fn qbank_reparse_resolve(
+    exam_id: String,
+    job_id: String,
+    decisions: Vec<crate::qbank_legacy_reconcile::ReparseDecision>,
+    expected_report_version: String,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<crate::qbank_legacy_reconcile::ReparseResolveReceipt> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let result = crate::qbank_legacy_reconcile::LegacyReconcileService::new(db.clone())
+        .resolve_reparse(&exam_id, &job_id, &decisions, &expected_report_version)?;
+    let _ = app_handle.emit(
+        "qbank://changed",
+        serde_json::json!({"exam_id":exam_id,"reason":"reparse_resolved"}),
+    );
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn qbank_delete_group(
+    group_id: String,
+    mode: crate::qbank_management::DeleteGroupMode,
+    expected_version: i64,
+    state: State<'_, AppState>,
+    app_handle: AppHandle,
+) -> Result<crate::qbank_management::GroupDeleteResult> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    let result = crate::qbank_management::QuestionBankManagementService::new(db.clone())
+        .delete_group(&group_id, mode, expected_version)?;
+    let _ = app_handle.emit(
+        "qbank://changed",
+        serde_json::json!({"exam_id":result.exam_id,"reason":"group_deleted"}),
+    );
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn qbank_export_portable(
+    exam_id: String,
+    state: State<'_, AppState>,
+) -> Result<crate::question_export_service::authoring::PortableExport> {
+    let db = state
+        .vfs_db
+        .as_ref()
+        .ok_or_else(|| AppError::validation("VFS 数据库未初始化"))?;
+    crate::question_export_service::authoring::export_portable(db, &exam_id)
 }
 
 /// 查询可恢复的中断导入会话
@@ -8452,6 +8792,7 @@ pub async fn qbank_crop_source_image(
         name: file_name,
         mime: "image/png".to_string(),
         hash: blob.hash.clone(),
+        role: Some("question".into()),
     };
 
     // 读取现有题目的 images，追加新图片

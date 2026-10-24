@@ -12,17 +12,36 @@ use crate::chat_v2::error::ChatV2Error;
 use crate::chat_v2::events::clear_session_sequence_counter;
 use crate::chat_v2::handlers::ensure_session_writable;
 use crate::chat_v2::pipeline::authority_mode::{global_plan_gate_manager, PlanGateResponse};
-use crate::chat_v2::repo::ChatV2Repo;
+use crate::chat_v2::repo::{
+    ChatV2Repo, AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY,
+    AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY,
+};
 use crate::chat_v2::runtime_roots::{cleanup_session_runtime_roots, ensure_session_runtime_roots};
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{
     block_types, AuthorityMode, ChatSession, CompactionRecord, PersistStatus, SessionSettings,
-    SessionSkillState, SessionState, SkillStateSnapshot,
+    SessionSkillState, SessionState, SkillStateSnapshot, AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
+    FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY, MICROCOMPACT_ANCHOR_METADATA_KEY,
+    TOOL_FACE_PREFIX_GENERATION_METADATA_KEY, TOOL_SCHEMA_DIGEST_METADATA_KEY,
 };
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
 const MANUALLY_ARCHIVED_BY_KEY: &str = "manuallyArchivedBy";
+/// Metadata keys owned by backend runtime state. A settings patch from an
+/// older renderer snapshot must never delete or overwrite these keys.
+const BACKEND_AUTHORITATIVE_METADATA_KEYS: &[&str] = &[
+    AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
+    AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY,
+    AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY,
+    TOOL_FACE_PREFIX_GENERATION_METADATA_KEY,
+    FROZEN_TOOL_SCHEMA_ORDER_METADATA_KEY,
+    TOOL_SCHEMA_DIGEST_METADATA_KEY,
+    MICROCOMPACT_ANCHOR_METADATA_KEY,
+    MANUALLY_ARCHIVED_BY_KEY,
+    "groupArchivedBy",
+    "branchedFrom",
+];
 static SESSION_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn session_lifecycle_guard() -> MutexGuard<'static, ()> {
@@ -334,6 +353,10 @@ pub async fn chat_v2_get_session(
 /// 更新会话设置
 ///
 /// 更新会话的标题或其他元数据。
+///
+/// `settings.metadata` 是普通 metadata 的新快照（保持既有替换语义）；
+/// 后端运行时键（skills 目录/代际、tool prefix、microcompact anchor 等）
+/// 永远从当前 DB 行保留，不能被旧 renderer 快照删除或覆盖。
 ///
 /// ## 参数
 /// - `session_id`: 会话 ID
@@ -1089,8 +1112,15 @@ fn update_session_settings_in_db(
     settings: &SessionSettings,
     db: &ChatV2Database,
 ) -> Result<ChatSession, ChatV2Error> {
+    // Read + patch + write must be one IMMEDIATE transaction. Freeze/advance
+    // helpers for runtime metadata also take IMMEDIATE transactions; this
+    // serializes settings updates against them instead of writing back a
+    // stale metadata snapshot captured before a freeze.
+    let mut conn = db.get_conn_safe()?;
+    let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+
     // 先获取现有会话
-    let existing = ChatV2Repo::get_session_v2(db, session_id)?
+    let existing = ChatV2Repo::get_session_with_conn(&tx, session_id)?
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
     if existing.persist_status != PersistStatus::Active {
@@ -1122,26 +1152,86 @@ fn update_session_settings_in_db(
         persist_status: existing.persist_status,
         created_at: existing.created_at,
         updated_at: now,
-        metadata: merge_session_metadata(existing.metadata, &settings.metadata),
+        metadata: patch_session_metadata(existing.metadata, &settings.metadata),
         group_id: existing.group_id,
         tags_hash: existing.tags_hash,
         tags: None,
     };
 
     // 更新数据库
-    ChatV2Repo::update_session_v2(db, &updated_session)?;
+    ChatV2Repo::update_session_with_conn(&tx, &updated_session)?;
+    tx.commit()?;
 
     Ok(updated_session)
 }
 
-fn merge_session_metadata(
+fn is_backend_authoritative_metadata_key(key: &str) -> bool {
+    BACKEND_AUTHORITATIVE_METADATA_KEYS.contains(&key)
+}
+
+/// Apply supplied normal metadata while treating backend runtime keys as
+/// authoritative.
+///
+/// - `None`: settings did not mention metadata; leave it untouched.
+/// - `Some(None)` / `Some(null)`: clear normal user metadata, keep runtime keys.
+/// - `Some(object)`: the supplied object is the new normal metadata snapshot
+///   (existing replacement semantics). Omitted normal keys are removed.
+///   Authoritative keys are stripped from the incoming object and re-stamped
+///   from the current DB row.
+///
+/// The caller must evaluate this inside the same IMMEDIATE transaction as the
+/// read/write so a concurrent freeze cannot be lost.
+fn patch_session_metadata(
     existing_metadata: Option<Value>,
     incoming_metadata: &Option<Option<Value>>,
 ) -> Option<Value> {
-    match incoming_metadata {
-        Some(Some(metadata)) => Some(metadata.clone()),
-        Some(None) => None,
-        None => existing_metadata,
+    let Some(incoming) = incoming_metadata else {
+        return existing_metadata;
+    };
+
+    let authoritative: Vec<(String, Value)> = BACKEND_AUTHORITATIVE_METADATA_KEYS
+        .iter()
+        .filter_map(|key| {
+            existing_metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(*key))
+                .map(|value| ((*key).to_string(), value.clone()))
+        })
+        .collect();
+
+    let mut next = match incoming {
+        Some(Value::Object(patch)) => {
+            let mut supplied = patch.clone();
+            supplied.retain(|key, value| {
+                !is_backend_authoritative_metadata_key(key) && !value.is_null()
+            });
+            supplied
+        }
+        Some(Value::Null) | None => serde_json::Map::new(),
+        Some(other) => {
+            // Frontend contract is object|null. Refuse to replace an object
+            // with a scalar when doing so would drop authoritative keys.
+            if authoritative.is_empty() {
+                return Some(other.clone());
+            }
+            log::warn!(
+                "[ChatV2::handlers] Ignoring non-object settings.metadata patch to protect internal metadata: {}",
+                other
+            );
+            return existing_metadata;
+        }
+    };
+
+    // Re-stamp after applying the patch so even an explicit null/attempted
+    // overwrite cannot remove backend-owned state.
+    for (key, value) in authoritative {
+        next.insert(key, value);
+    }
+
+    if next.is_empty() {
+        None
+    } else {
+        Some(Value::Object(next))
     }
 }
 
@@ -1648,11 +1738,18 @@ fn branch_session_in_db(
 
     // 10. Clone a self-contained active compaction when both its summary and tail survive.
     if let Some(source_record) = source_compaction {
-        let tail_start_message_id = msg_id_map
+        let summary_only = source_record.is_summary_only();
+        let mut tail_start_message_id = msg_id_map
             .get(&source_record.tail_start_message_id)
             .cloned();
         let mut summary_message_id = msg_id_map.get(&source_record.summary_message_id).cloned();
-        if summary_message_id.is_none() && tail_start_message_id.is_some() {
+        let boundary_survives = source_record
+            .range_end_message_id
+            .as_ref()
+            .is_some_and(|id| msg_id_map.contains_key(id));
+        if summary_message_id.is_none()
+            && (tail_start_message_id.is_some() || (summary_only && boundary_survives))
+        {
             if let Some(source_summary) =
                 ChatV2Repo::get_message_with_conn(&tx, &source_record.summary_message_id)?
             {
@@ -1686,6 +1783,11 @@ fn branch_session_in_db(
                 }
                 summary_message_id = Some(new_summary_message_id);
             }
+        }
+        if summary_only {
+            tail_start_message_id = boundary_survives
+                .then(|| summary_message_id.clone())
+                .flatten();
         }
         if let (Some(summary_message_id), Some(tail_start_message_id)) =
             (summary_message_id, tail_start_message_id)
@@ -1977,6 +2079,329 @@ pub async fn chat_v2_plan_gate_respond(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn branch_preserves_summary_only_compaction_boundaries() {
+        use crate::chat_v2::types::{block_types, ChatMessage, CompactionRecord, MessageBlock};
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        let dir = tempfile::tempdir().unwrap();
+        MigrationCoordinator::new(dir.path().to_path_buf())
+            .with_audit_db(None)
+            .migrate_single(DatabaseId::ChatV2)
+            .unwrap();
+        let db = ChatV2Database::new(dir.path()).unwrap();
+        let session = ChatSession::new("sess_summary_only_branch".into(), "chat".into());
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+        let mut original = ChatMessage::new_user(session.id.clone(), vec![]);
+        original.timestamp = 1_000;
+        ChatV2Repo::create_message_v2(&db, &original).unwrap();
+        let mut summary = ChatMessage::new_assistant(session.id.clone());
+        summary.timestamp = 2_000;
+        let mut block = MessageBlock::new_content(summary.id.clone(), 0);
+        block.block_type = block_types::COMPACTION_SUMMARY.into();
+        block.content = Some("Saved task state".into());
+        summary.block_ids = vec![block.id.clone()];
+        ChatV2Repo::create_message_v2(&db, &summary).unwrap();
+        ChatV2Repo::create_block_v2(&db, &block).unwrap();
+        let record = CompactionRecord {
+            id: CompactionRecord::generate_id(),
+            session_id: session.id.clone(),
+            summary_message_id: summary.id.clone(),
+            tail_start_message_id: summary.id.clone(),
+            tail_start_time_created: 1_000,
+            reason: "overflow".into(),
+            is_auto: false,
+            is_overflow: true,
+            tokens_before: None,
+            tokens_after: None,
+            model_id: None,
+            model_config_id: None,
+            previous_compaction_id: None,
+            range_start_message_id: Some(original.id.clone()),
+            range_end_message_id: Some(original.id.clone()),
+            compacted_message_count: Some(1),
+            created_at: 2_000,
+        };
+        let conn = db.get_conn_safe().unwrap();
+        ChatV2Repo::create_compaction_with_conn(&conn, &record).unwrap();
+        ChatV2Repo::set_session_last_compaction_with_conn(&conn, &session.id, &record.id).unwrap();
+        drop(conn);
+        // Branch before the summary artifact: it must be copied explicitly and remapped.
+        let (branched, _) = branch_session_in_db(&session.id, &original.id, &db).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let copied = ChatV2Repo::get_active_compaction_with_conn(&conn, &branched.id)
+            .unwrap()
+            .unwrap();
+        assert!(copied.is_summary_only());
+        assert_ne!(copied.summary_message_id, record.summary_message_id);
+        assert_ne!(copied.history_boundary_id(), original.id);
+        let (summary, history) = crate::chat_v2::pipeline::compaction::apply_compaction_view(
+            &conn,
+            &branched.id,
+            ChatV2Repo::get_session_messages_with_conn(&conn, &branched.id).unwrap(),
+        );
+        assert!(summary.is_some());
+        assert!(history.is_empty());
+    }
+
+    fn setup_chat_v2_test_db() -> (tempfile::TempDir, ChatV2Database) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+        let dir = tempfile::tempdir().unwrap();
+        MigrationCoordinator::new(dir.path().to_path_buf())
+            .with_audit_db(None)
+            .migrate_single(DatabaseId::ChatV2)
+            .unwrap();
+        let db = ChatV2Database::new(dir.path()).unwrap();
+        (dir, db)
+    }
+
+    #[test]
+    fn settings_patch_preserves_runtime_metadata_against_stale_snapshot() {
+        use crate::chat_v2::pipeline::helpers::MicrocompactAnchor;
+        use crate::chat_v2::types::ToolFacePrefixSnapshot;
+        use serde_json::json;
+
+        let (_dir, db) = setup_chat_v2_test_db();
+        let session_id = "sess_settings_runtime_patch";
+        let mut session = ChatSession::new(session_id.to_string(), "chat".to_string());
+        session.metadata = Some(json!({
+            "authorityMode": "plan",
+            "plan": { "batchId": "batch-1" },
+        }));
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+
+        // Freeze v0 -> promote it to generation 1 -> declare pending generation 2.
+        ChatV2Repo::freeze_session_available_skills_snapshot(&db, session_id, "catalog-v0")
+            .unwrap();
+        ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+            &db.get_conn_safe().unwrap(),
+            session_id,
+        )
+        .unwrap();
+        ChatV2Repo::freeze_session_available_skills_snapshot(&db, session_id, "catalog-v1")
+            .unwrap();
+        ChatV2Repo::mark_session_available_skills_snapshot_stale_with_conn(
+            &db.get_conn_safe().unwrap(),
+            session_id,
+        )
+        .unwrap();
+
+        ChatV2Repo::advance_session_tool_face_prefix(
+            &db,
+            session_id,
+            &ToolFacePrefixSnapshot {
+                generation: 3,
+                order: vec![
+                    "builtin-load_skills".to_string(),
+                    "builtin-qbank_list".to_string(),
+                ],
+                schema_digest: Some("digest-3".to_string()),
+            },
+        )
+        .unwrap();
+        ChatV2Repo::set_session_microcompact_anchor(
+            &db,
+            session_id,
+            &MicrocompactAnchor {
+                lineage: Some("cmp-1".to_string()),
+                eligible_user_turns: 4,
+            },
+        )
+        .unwrap();
+
+        // This is a renderer snapshot captured before the freeze above. It
+        // contains stale copies of every authoritative key.
+        let settings = SessionSettings {
+            title: Some("Renamed".to_string()),
+            metadata: Some(Some(json!({
+                "authorityMode": "craft",
+                "workspace_id": "ws-2",
+                "plan": { "batchId": "batch-2" },
+                "availableSkillsSnapshot": "stale-catalog",
+                "availableSkillsSnapshotGeneration": 99,
+                "availableSkillsSnapshotPendingGeneration": 99,
+                "toolFacePrefixGeneration": 99,
+                "frozenToolSchemaOrder": ["stale-tool"],
+                "toolSchemaDigest": "stale-digest",
+                "microcompactAnchor": null,
+            }))),
+        };
+        let updated = update_session_settings_in_db(session_id, &settings, &db).unwrap();
+        assert_eq!(updated.title.as_deref(), Some("Renamed"));
+        assert!(updated.title_locked);
+
+        let reloaded = ChatV2Repo::get_session_v2(&db, session_id)
+            .unwrap()
+            .unwrap();
+        let metadata = reloaded.metadata.unwrap();
+        assert_eq!(metadata["availableSkillsSnapshot"], json!("catalog-v1"));
+        assert_eq!(metadata["availableSkillsSnapshotGeneration"], json!(1));
+        assert_eq!(
+            metadata["availableSkillsSnapshotPendingGeneration"],
+            json!(2)
+        );
+        assert_eq!(metadata["toolFacePrefixGeneration"], json!(3));
+        assert_eq!(
+            metadata["frozenToolSchemaOrder"],
+            json!(["builtin-load_skills", "builtin-qbank_list"])
+        );
+        assert_eq!(metadata["toolSchemaDigest"], json!("digest-3"));
+        assert_eq!(
+            metadata["microcompactAnchor"],
+            json!({ "lineage": "cmp-1", "eligibleUserTurns": 4 })
+        );
+        assert_eq!(metadata["authorityMode"], json!("craft"));
+        assert_eq!(metadata["workspace_id"], json!("ws-2"));
+        assert_eq!(metadata["plan"], json!({ "batchId": "batch-2" }));
+    }
+
+    #[test]
+    fn settings_patch_leaves_487_compaction_boundaries_unchanged() {
+        use crate::chat_v2::types::{block_types, ChatMessage, CompactionRecord, MessageBlock};
+        use serde_json::json;
+
+        let (_dir, db) = setup_chat_v2_test_db();
+        let session = ChatSession::new(
+            "sess_settings_compaction_stamp".to_string(),
+            "chat".to_string(),
+        );
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+
+        let mut original = ChatMessage::new_user(session.id.clone(), vec![]);
+        original.timestamp = 1_000;
+        ChatV2Repo::create_message_v2(&db, &original).unwrap();
+        let mut summary = ChatMessage::new_assistant(session.id.clone());
+        summary.timestamp = 2_000;
+        let mut block = MessageBlock::new_content(summary.id.clone(), 0);
+        block.block_type = block_types::COMPACTION_SUMMARY.into();
+        block.content = Some("Saved task state".into());
+        summary.block_ids = vec![block.id.clone()];
+        ChatV2Repo::create_message_v2(&db, &summary).unwrap();
+        ChatV2Repo::create_block_v2(&db, &block).unwrap();
+
+        let record = CompactionRecord {
+            id: CompactionRecord::generate_id(),
+            session_id: session.id.clone(),
+            summary_message_id: summary.id.clone(),
+            tail_start_message_id: summary.id.clone(),
+            tail_start_time_created: 1_000,
+            reason: "overflow".into(),
+            is_auto: false,
+            is_overflow: true,
+            tokens_before: None,
+            tokens_after: None,
+            model_id: None,
+            model_config_id: None,
+            previous_compaction_id: None,
+            range_start_message_id: Some(original.id.clone()),
+            range_end_message_id: Some(original.id.clone()),
+            compacted_message_count: Some(1),
+            created_at: 2_000,
+        };
+        {
+            let conn = db.get_conn_safe().unwrap();
+            ChatV2Repo::create_compaction_with_conn(&conn, &record).unwrap();
+            ChatV2Repo::set_session_last_compaction_with_conn(&conn, &session.id, &record.id)
+                .unwrap();
+        }
+        let before = {
+            let conn = db.get_conn_safe().unwrap();
+            ChatV2Repo::get_active_compaction_with_conn(&conn, &session.id)
+                .unwrap()
+                .unwrap()
+        };
+
+        let settings = SessionSettings {
+            title: None,
+            metadata: Some(Some(json!({ "pinned": true }))),
+        };
+        update_session_settings_in_db(&session.id, &settings, &db).unwrap();
+
+        let conn = db.get_conn_safe().unwrap();
+        let after = ChatV2Repo::get_active_compaction_with_conn(&conn, &session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.summary_message_id, before.summary_message_id);
+        assert_eq!(after.tail_start_message_id, before.tail_start_message_id);
+        assert_eq!(after.range_end_message_id, before.range_end_message_id);
+        assert_eq!(
+            after.compacted_message_count,
+            before.compacted_message_count
+        );
+        assert!(after.is_summary_only());
+        let last_compaction_id: String = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                rusqlite::params![session.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(last_compaction_id, record.id);
+    }
+
+    #[test]
+    fn settings_metadata_replaces_normal_fields_and_preserves_runtime_keys() {
+        use serde_json::json;
+
+        let (_dir, db) = setup_chat_v2_test_db();
+        let session_id = "sess_settings_normal_patch";
+        let mut session = ChatSession::new(session_id.to_string(), "chat".to_string());
+        session.metadata = Some(json!({
+            "authorityMode": "plan",
+            "plan": { "batchId": "batch-1" },
+            "pinned": false,
+            "legacyKey": "remove-me",
+            "chatV2Draft": { "hidden": true, "scope": "chat:ungrouped" },
+            "availableSkillsSnapshot": "catalog-keep",
+        }));
+        ChatV2Repo::create_session_v2(&db, &session).unwrap();
+
+        let settings = SessionSettings {
+            title: None,
+            metadata: Some(Some(json!({
+                "authorityMode": "craft",
+                "workspaceId": "ws-9",
+                "pinned": true,
+                "legacyKey": null,
+            }))),
+        };
+        update_session_settings_in_db(session_id, &settings, &db).unwrap();
+
+        let reloaded = ChatV2Repo::get_session_v2(&db, session_id)
+            .unwrap()
+            .unwrap();
+        let metadata = reloaded.metadata.unwrap();
+        assert_eq!(metadata["authorityMode"], json!("craft"));
+        assert_eq!(metadata["workspaceId"], json!("ws-9"));
+        assert_eq!(metadata["pinned"], json!(true));
+        assert!(
+            metadata.get("plan").is_none(),
+            "normal metadata replacement semantics must still allow omission to remove old keys"
+        );
+        assert!(metadata.get("legacyKey").is_none());
+        assert!(
+            metadata.get("chatV2Draft").is_none(),
+            "omitted hidden-draft metadata must still be cleared so promotion cannot leave the session hidden"
+        );
+        assert_eq!(metadata["availableSkillsSnapshot"], json!("catalog-keep"));
+
+        // Explicit clear removes normal fields only; runtime keys survive.
+        let clear = SessionSettings {
+            title: None,
+            metadata: Some(None),
+        };
+        update_session_settings_in_db(session_id, &clear, &db).unwrap();
+        let reloaded = ChatV2Repo::get_session_v2(&db, session_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reloaded.metadata.unwrap(),
+            json!({ "availableSkillsSnapshot": "catalog-keep" })
+        );
+    }
+
     use crate::chat_v2::types::{ChatMessage, MessageMeta, Variant, VariantMeta};
 
     #[test]

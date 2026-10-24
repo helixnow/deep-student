@@ -22,6 +22,11 @@ import { BookOpen } from '@phosphor-icons/react';
 export interface QbankCitationBadgeProps {
   /** 题目集 session ID */
   sessionId: string;
+  /**
+   * 稳定定位 ID（issue 491）：`q_*` 题目或 `qgroup_*` 题组。
+   * 引用格式 `[题目集:exam_1#q_xxx:名称]`；旧引用无此字段时行为不变。
+   */
+  targetId?: string;
   /** 显示标题 */
   title?: string;
   /** 点击回调（覆盖默认跳转） */
@@ -40,8 +45,34 @@ export interface QbankCitationBadgeProps {
  * 内联可点击徽章，点击后跳转到 Learning Hub 打开对应题目集。
  * 使用 `navigateToExamSheet` 事件（与 ChatV2Page 中的统一跳转机制一致）。
  */
+const FOCUS_RETRY_DELAYS_MS = [250, 600, 1200, 2000, 3200, 5000];
+
+/** 题目集异步加载，按既有 QBANK_FOCUS_EVENT 约定重试定位（收到 handled 即停） */
+function focusInsideExam(sessionId: string, targetId: string): void {
+  const isGroup = targetId.startsWith('qgroup_') || targetId.startsWith('g_');
+  void import('@/features/workbench/agent/drivers/qbankDriver').then(({ QBANK_FOCUS_EVENT }) => {
+    let handled = false;
+    for (const delay of FOCUS_RETRY_DELAYS_MS) {
+      window.setTimeout(() => {
+        if (handled) return;
+        window.dispatchEvent(new CustomEvent(QBANK_FOCUS_EVENT, {
+          detail: {
+            ...(isGroup ? {} : { questionId: targetId }),
+            ...(isGroup ? { groupId: targetId } : {}),
+            targetResourceId: sessionId,
+            acknowledge: (result: { handled: boolean }) => {
+              if (result.handled) handled = true;
+            },
+          },
+        }));
+      }, delay);
+    }
+  });
+}
+
 export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
   sessionId,
+  targetId,
   title,
   onClick,
   className,
@@ -67,7 +98,10 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
         },
       })
     );
-  }, [sessionId, title, onClick, t]);
+
+    // 单题/题组深链：先打开题目集，再按稳定 ID 定位（异步加载，带重试）
+    if (targetId) focusInsideExam(sessionId, targetId);
+  }, [sessionId, targetId, title, onClick, t]);
 
   return (
     <DsButton

@@ -32,6 +32,7 @@ use crate::providers::ProviderAdapter;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{AnswerSubmission, Question, VfsQuestionRepo};
 
+use super::context::{submission_snapshots, GradingContext, GradingImage};
 use super::events::QbankGradingEmitter;
 use super::image_answer::{
     fetch_image_answer_contents, parse_image_answer_envelope, ImageAnswerPayload,
@@ -118,6 +119,16 @@ pub async fn run_qbank_grading(
         None => None,
     };
 
+    // 2b. 提交时版本快照（issue 491）：题干/共享材料被编辑后，历史 submission
+    //     仍按提交当时的版本判分。快照列缺失（旧库）时退回 live canonical 内容。
+    let (question_snapshot, material_snapshot) = match current_submission.as_ref() {
+        Some(sub) => match deps.vfs_db.get_conn_safe() {
+            Ok(conn) => submission_snapshots(&conn, &sub.id),
+            Err(_) => (None, None),
+        },
+        None => (None, None),
+    };
+
     // 3. 获取作答历史（最近 5 条）；通用解析与作答无关，不带历史
     let submissions = if current_submission.is_some() {
         VfsQuestionRepo::get_submissions(&deps.vfs_db, &request.question_id, 5)
@@ -139,9 +150,20 @@ pub async fn run_qbank_grading(
         None => Vec::new(),
     };
 
-    // 5. 构造 Prompt
+    // 5. 判分上下文：canonical 题干 + 题组共享材料 + 题干/材料配图。
+    //    组内子题缺少材料就无法判分，因此材料随上下文进入同一次模型输入。
+    let context = GradingContext::load(
+        &deps.vfs_db,
+        &question,
+        question_snapshot.as_deref(),
+        material_snapshot.as_deref(),
+    )
+    .map_err(&emit_and_return)?;
+
+    // 6. 构造 Prompt
     let (system_prompt, user_prompt) = build_prompts(
         &question,
+        &context,
         current_submission.as_ref(),
         &submissions,
         &request.mode,
@@ -149,20 +171,27 @@ pub async fn run_qbank_grading(
     )
     .map_err(&emit_and_return)?;
 
-    // 6. 获取模型配置（图片作答必须落多模态模型，非多模态配置显式报错引导）
-    let config = resolve_grading_config(
-        &deps.llm,
-        request.model_config_id.as_ref(),
-        !answer_images.is_empty(),
-    )
-    .await
-    .map_err(&emit_and_return)?;
+    // 7. 获取模型配置（作答图/题干图/材料图任一存在即需要视觉能力，显式报错引导）
+    let needs_vision = !answer_images.is_empty() || !context.images.is_empty();
+    let config = resolve_grading_config(&deps.llm, request.model_config_id.as_ref(), needs_vision)
+        .await
+        .map_err(&emit_and_return)?;
     let api_key = deps
         .llm
         .decrypt_api_key(&config.api_key)
         .map_err(&emit_and_return)?;
 
-    // 7. 流式调用 LLM
+    // 8. 合并附图：题干/材料图在前，学生作答图在后（与 prompt 附图清单一致）
+    let mut images = context.images.clone();
+    for (index, base64) in answer_images.iter().enumerate() {
+        images.push(GradingImage {
+            base64: base64.clone(),
+            mime: guess_image_mime(base64).to_string(),
+            label: format!("学生作答图 {}", index + 1),
+        });
+    }
+
+    // 9. 流式调用 LLM
     let mut accumulated = String::new();
     let stream_event = format!("qbank_grading_stream_{}", request.stream_session_id);
 
@@ -174,7 +203,7 @@ pub async fn run_qbank_grading(
         &stream_event,
         deps.llm.clone(),
         config.is_multimodal,
-        &answer_images,
+        &images,
         |chunk| {
             accumulated.push_str(&chunk);
             deps.emitter
@@ -581,7 +610,7 @@ async fn resolve_grading_config(
     let reject_non_multimodal = |config: &ApiConfig, source: &str| -> Option<AppError> {
         if require_multimodal && !config.is_multimodal {
             return Some(AppError::validation(format!(
-                "图片作答需要视觉模型，但{}（{}）不支持图片输入。请在「设置 → 模型分配」中为题库 AI 评判配置多模态模型，或将作答改为文字。",
+                "题目/材料配图或图片作答需要视觉模型，但{}（{}）不支持图片输入。请在「设置 → 模型分配」中为题库 AI 评判配置多模态模型，或将图片作答改为文字。",
                 source, config.model
             )));
         }
@@ -660,6 +689,7 @@ const QBANK_RESPONSE_LANGUAGE_RULE: &str = "Language: write your feedback in the
 
 fn build_prompts(
     question: &Question,
+    context: &GradingContext,
     current_submission: Option<&AnswerSubmission>,
     submissions: &[AnswerSubmission],
     mode: &QbankGradingMode,
@@ -679,16 +709,52 @@ fn build_prompts(
 
     let mut user_prompt = String::new();
 
+    // 共享材料（issue 491）：题组子题依赖的阅读文章/共同条件/材料配图必须随题给出，
+    // 否则模型只能凭题干盲判；同一材料在组内只出现一次。
+    if !context.materials.is_empty() {
+        user_prompt.push_str("## 共享材料\n");
+        for (index, material) in context.materials.iter().enumerate() {
+            user_prompt.push_str(&format!(
+                "### 材料 {}（id: {}，version: {}）\n",
+                index + 1,
+                material.id,
+                material.version
+            ));
+            if material.content.trim().is_empty() {
+                user_prompt.push_str("（该材料无可读文字，内容见配图）\n");
+            } else {
+                user_prompt.push_str(&material.content);
+                user_prompt.push('\n');
+            }
+            if !material.images.is_empty() {
+                user_prompt.push_str(&format!(
+                    "（该材料附带 {} 张配图，见附图清单与消息中的图片）\n",
+                    material.images.len()
+                ));
+            }
+            user_prompt.push('\n');
+        }
+    }
+
+    // 附图清单：材料图在前、题干图在后、学生作答图最后，编号与多模态消息一致
+    if !context.images.is_empty() {
+        user_prompt.push_str("## 附图清单\n");
+        for (index, image) in context.images.iter().enumerate() {
+            user_prompt.push_str(&format!("- 图{}：{}\n", index + 1, image.label));
+        }
+        user_prompt.push('\n');
+    }
+
     // 题目内容
     user_prompt.push_str("## 题目\n");
-    user_prompt.push_str(&question.content);
+    user_prompt.push_str(&context.content);
     user_prompt.push_str("\n\n");
 
     // 题型
-    user_prompt.push_str(&format!("## 题型\n{:?}\n\n", question.question_type));
+    user_prompt.push_str(&format!("## 题型\n{}\n\n", context.question_type));
 
     // 选项（如果有）
-    if let Some(ref options) = question.options {
+    if let Some(ref options) = context.options {
         user_prompt.push_str("## 选项\n");
         for opt in options {
             user_prompt.push_str(&format!("{}. {}\n", opt.key, opt.content));
@@ -699,7 +765,7 @@ fn build_prompts(
     // 结构化数据（填空空位定义 / 数值容差 / 匹配配对 / 排序正序）：
     // 判分依据不止 question.answer，填空题的可接受答案列表存在这里——
     // 不传的话模型看不到"有几个空、每空接受什么答案"，只能盲猜。
-    if let Some(structured) = question
+    if let Some(structured) = context
         .structured_data
         .as_ref()
         .filter(|v| !v.is_null() && **v != serde_json::json!({}))
@@ -710,14 +776,14 @@ fn build_prompts(
     }
 
     // 参考答案
-    if let Some(ref answer) = question.answer {
+    if let Some(ref answer) = context.answer {
         user_prompt.push_str("## 参考答案\n");
         user_prompt.push_str(answer);
         user_prompt.push_str("\n\n");
     }
 
     // 参考解析
-    if let Some(ref explanation) = question.explanation {
+    if let Some(ref explanation) = context.explanation {
         user_prompt.push_str("## 参考解析\n");
         user_prompt.push_str(explanation);
         user_prompt.push_str("\n\n");
@@ -741,9 +807,20 @@ fn build_prompts(
     user_prompt.push('\n');
     match image_answer {
         Some(payload) => {
+            let start = context.images.len() + 1;
+            let range = if payload.images.len() == 1 {
+                format!("图{}", start)
+            } else {
+                format!(
+                    "图{}–图{}",
+                    start,
+                    start + payload.images.len().saturating_sub(1)
+                )
+            };
             user_prompt.push_str(&format!(
-                "（学生以手写图片作答，共 {} 张，图片附在本消息末尾，请直接阅读图片内容评判）\n",
-                payload.images.len()
+                "（学生以手写图片作答，共 {} 张，对应{}，请直接阅读图片内容评判）\n",
+                payload.images.len(),
+                range
             ));
             if !payload.text.trim().is_empty() {
                 user_prompt.push_str(&format!("学生文字补充：{}\n", payload.text));
@@ -912,28 +989,41 @@ async fn stream_grade<F>(
     stream_event: &str,
     llm: Arc<LLMManager>,
     is_multimodal: bool,
-    answer_images: &[String],
+    images: &[GradingImage],
     mut on_chunk: F,
 ) -> Result<StreamStatus, AppError>
 where
     F: FnMut(String),
 {
     let result = async {
-        // 构造消息：图片作答在多模态模型下转为图文混合 content；
+        // 构造消息：题干图/材料图/作答图在多模态模型下转为图文混合 content；
         // 无图（或非多模态——调用方已在校验层拦下图片+非多模态组合）保持纯文本。
-        let has_images = !answer_images.is_empty();
+        let has_images = !images.is_empty();
         let messages = if is_multimodal && has_images {
             let mut user_content_parts: Vec<serde_json::Value> = Vec::new();
+            let manifest = images
+                .iter()
+                .enumerate()
+                .map(|(index, image)| format!("图{}：{}", index + 1, image.label))
+                .collect::<Vec<_>>()
+                .join("\n");
             user_content_parts.push(json!({
                 "type": "text",
-                "text": "【学生手写答案图片】以下是学生手写/拍摄答案的原始图片，请先逐条誊写识别出的内容，再对照参考答案评判："
+                "text": format!(
+                    "【附图】以下图片按顺序提供（题干配图/共享材料配图/学生作答图）：\n{}\n请先阅读与题目、材料相关的图片；若含学生手写作答，先逐条誊写识别内容再评判。",
+                    manifest
+                )
             }));
-            for img_b64 in answer_images {
-                let mime = guess_image_mime(img_b64);
+            for image in images {
+                let mime = if image.mime.trim().is_empty() {
+                    guess_image_mime(&image.base64).to_string()
+                } else {
+                    image.mime.clone()
+                };
                 user_content_parts.push(json!({
                     "type": "image_url",
                     "image_url": {
-                        "url": format!("data:{};base64,{}", mime, img_b64)
+                        "url": format!("data:{};base64,{}", mime, image.base64)
                     }
                 }));
             }
@@ -942,8 +1032,8 @@ where
                 "text": user_prompt
             }));
             log::info!(
-                "[QbankGrading] 多模态评判：{} 张答案图片",
-                answer_images.len()
+                "[QbankGrading] 多模态评判：{} 张图片（含题干/材料/作答图）",
+                images.len()
             );
             vec![
                 json!({ "role": "system", "content": system_prompt }),
@@ -1215,6 +1305,7 @@ mod tests {
             user_note: None,
             is_favorite: false,
             is_bookmarked: false,
+            ..Default::default()
         }
     }
 
@@ -1250,6 +1341,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             Some(&submission),
             &[],
             &QbankGradingMode::Grade,
@@ -1271,6 +1363,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             Some(&submission),
             &[],
             &QbankGradingMode::Grade,
@@ -1294,6 +1387,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             Some(&submission),
             &[],
             &QbankGradingMode::Grade,
@@ -1320,6 +1414,7 @@ mod tests {
 
             let (_, user_prompt) = build_prompts(
                 &question,
+                &GradingContext::from_question(&question),
                 Some(&submission),
                 &[],
                 &QbankGradingMode::Grade,
@@ -1329,6 +1424,49 @@ mod tests {
 
             assert!(!user_prompt.contains("## 结构化作答要求"));
         }
+    }
+
+    #[test]
+    fn build_prompts_includes_shared_material_and_figure_manifest() {
+        let question = test_question_for_prompt();
+        let mut context = GradingContext::from_question(&question);
+        context
+            .materials
+            .push(crate::qbank_document::QuestionMaterial {
+                id: "m1".to_string(),
+                content: "阅读下面的文章，回答第 1 题。".to_string(),
+                images: vec![crate::vfs::repos::QuestionImage {
+                    id: "att_fig".to_string(),
+                    name: "fig.png".to_string(),
+                    mime: "image/png".to_string(),
+                    hash: "h1".to_string(),
+                    role: None,
+                }],
+                source_refs: Vec::new(),
+                version: 2,
+            });
+        context.images.push(GradingImage {
+            base64: "AAA".to_string(),
+            mime: "image/png".to_string(),
+            label: "材料「阅读下面的文章，回答第 1 题。」配图".to_string(),
+        });
+
+        let (_, user_prompt) = build_prompts(
+            &question,
+            &context,
+            None,
+            &[],
+            &QbankGradingMode::Analyze,
+            None,
+        )
+        .unwrap();
+
+        // 组内子题判分必须看到共享材料与材料配图，不能只凭题干盲判
+        assert!(user_prompt.contains("## 共享材料"));
+        assert!(user_prompt.contains("阅读下面的文章"));
+        assert!(user_prompt.contains("version: 2"));
+        assert!(user_prompt.contains("## 附图清单"));
+        assert!(user_prompt.contains("图1：材料「阅读下面的文章"));
     }
 
     #[test]
@@ -1345,6 +1483,7 @@ mod tests {
 
         let (_, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             Some(&current),
             &[history_envelope, history_text],
             &QbankGradingMode::Grade,
@@ -1787,6 +1926,7 @@ mod tests {
 
         let (system_prompt, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             None,
             &[history],
             &QbankGradingMode::Analyze,
@@ -1813,6 +1953,7 @@ mod tests {
 
         let (system_prompt, user_prompt) = build_prompts(
             &question,
+            &GradingContext::from_question(&question),
             Some(&submission),
             &[],
             &QbankGradingMode::Analyze,

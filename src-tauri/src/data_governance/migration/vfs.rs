@@ -1092,6 +1092,37 @@ pub const V20261006_STUDY_TIME: MigrationDef = MigrationDef::new(
 .with_expected_tables(&["study_time_daily"])
 .idempotent();
 
+/// V20261023: 题目导入 v2 草稿/材料/题组/来源实体 + 作答快照列。
+///
+/// 设计契约：question-import-refactor-plan.md §6/§7。纯增量：新表 + 可空列，
+/// 旧独立题保持 `group_id = NULL`，不猜测题组关系。
+///
+/// `qbank_import_jobs` 是设备本地导入任务（不入 RowSync，见
+/// `sync::classification`）；其余四张 qbank_* 表均为 RowSync 实体。
+pub const V20261023_QUESTION_AUTHORING_V2: MigrationDef = MigrationDef::new(
+    20261023,
+    "question_authoring_v2",
+    include_str!("../../../migrations/vfs/V20261023__question_authoring_v2.sql"),
+)
+.with_expected_tables(&[
+    "qbank_sources",
+    "qbank_materials",
+    "qbank_groups",
+    "qbank_group_materials",
+    "qbank_import_jobs",
+])
+.with_expected_columns(&[
+    ("questions", "group_id"),
+    ("questions", "group_position"),
+    ("questions", "source_key"),
+    ("questions", "provenance_json"),
+    ("questions", "answer_origin"),
+    ("questions", "deletion_batch"),
+    ("exam_sheets", "deletion_batch"),
+    ("answer_submissions", "question_snapshot_json"),
+    ("answer_submissions", "material_snapshot_json"),
+]);
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1162,6 +1193,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260924_NOTE_EDITOR_LEASES,
     V20261005_MEDIA_TRANSCRIPTS,
     V20261006_STUDY_TIME,
+    V20261023_QUESTION_AUTHORING_V2,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1244,6 +1276,12 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "media_progress",
     // 学习时长（V20261006，设备本地计数）
     "study_time_daily",
+    // 题目导入 v2：来源 / 材料 / 题组 / 组成员 / 本地导入任务（V20261023）
+    "qbank_sources",
+    "qbank_materials",
+    "qbank_groups",
+    "qbank_group_materials",
+    "qbank_import_jobs",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
@@ -1258,7 +1296,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 58;
+pub const VFS_TABLE_COUNT: usize = 63;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1332,16 +1370,26 @@ mod tests {
 
     #[test]
     fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20261006);
+        assert_eq!(VFS_SCHEMA_VERSION, 20261023);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("study_time")
+            Some("question_authoring_v2")
         );
         assert_eq!(V20261006_STUDY_TIME.expected_tables, &["study_time_daily"]);
+        assert_eq!(
+            V20261023_QUESTION_AUTHORING_V2.expected_tables,
+            &[
+                "qbank_sources",
+                "qbank_materials",
+                "qbank_groups",
+                "qbank_group_materials",
+                "qbank_import_jobs",
+            ]
+        );
         assert!(V20260907_INSIGHT_CARDS
             .expected_tables
             .contains(&"insights"));

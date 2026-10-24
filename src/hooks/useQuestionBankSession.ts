@@ -10,7 +10,14 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { type Question, type QuestionBankStats, type SubmitResult, type PracticeMode, type QuestionStructuredData } from '@/api/questionBankApi';
+import {
+  type Question,
+  type QuestionBankStats,
+  type SubmitResult,
+  type PracticeMode,
+  type QuestionStructuredData,
+  type QuestionMaterial,
+} from '@/api/questionBankApi';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { emitExamSheetDebug } from '@/debug-panel/plugins/ExamSheetProcessingDebugPlugin';
 import {
@@ -49,6 +56,11 @@ export interface StoreQuestion {
    * 本 hook 只负责透传，不做解析；契约类型见 questionBankApi.QuestionStructuredData。
    */
   structured_data?: QuestionStructuredData | null;
+  /** issue 491：题组与共享材料（后端 snake_case；旧后端缺省） */
+  group_id?: string | null;
+  group_position?: number | null;
+  group_label?: string | null;
+  materials?: QuestionMaterial[] | null;
 }
 
 interface StoreStats {
@@ -128,6 +140,10 @@ export function convertToApiQuestion(q: StoreQuestion): Question {
     ai_score: q.ai_score,
     ai_graded_at: q.ai_graded_at,
     sourceRef: q.source_ref ?? null,
+    groupId: q.group_id ?? null,
+    groupPosition: q.group_position ?? null,
+    groupLabel: q.group_label ?? null,
+    materials: q.materials ?? [],
   };
   // 透传新题型结构化数据（不做穷举解析；组件侧经 parse*Data 收窄校验）
   if (q.structured_data !== undefined) {

@@ -60,7 +60,10 @@ describe('FlowToken code dependency boundary', () => {
 
     // A native code fallback remains visible while its separate chunk loads.
     expect(container.textContent).toContain('const answer = 42;');
-    await waitFor(() => expect(container.querySelector('.ft-code-container')).not.toBeNull());
+    await waitFor(() => expect(container.querySelector('.ft-code-container')).not.toBeNull(), {
+      // The lazy Prism chunk may need a cold transform during a full CI shard.
+      timeout: 5000,
+    });
     expect(container.querySelector('.ft-code-language')).toHaveTextContent('js');
     expect(container.querySelector('.ft-code-content .token')).not.toBeNull();
     fireEvent.click(getByRole('button', { name: 'Copy code' }));

@@ -11,7 +11,7 @@
 const PDF_REF = /\[PDF@[A-Za-z0-9_-]+:\s*(\d+(?:[-,]\d+)*)\]/gi;
 const PDF_BARE = /\[PDF@[A-Za-z0-9_-]+\]/gi;
 const MINDMAP_REF = /\[(?:思维导图|导图|脑图|MindMap|mindmap):(?:mm_|mv_)[A-Za-z0-9_-]+(?:#[^:\]\n]+)?(?::([^\]]+))?\]/gi;
-const QBANK_REF = /\[(?:题目集|题库|练习册|QuestionBank|question[_ ]?bank|qbank):[\w-]+(?::([^\]]+))?\]/gi;
+const QBANK_REF = /\[(?:题目集|题库|练习册|QuestionBank|question[_ ]?bank|qbank):[\w-]+(?:#[\w-]+)?(?::([^\]]+))?\]/gi;
 const RETRIEVAL_REF = /\[(?:知识库|knowledge base|knowledge|记忆|memory|搜索|search|web|图片|image|灵感|insight)-\d+\]/gi;
 const ANY_MARKER = /\[(?:PDF@|思维导图:|导图:|脑图:|MindMap:|mindmap:|题目集:|题库:|练习册:|QuestionBank:|question[_ ]?bank:|qbank:|知识库-|knowledge|记忆-|memory-|搜索-|search-|web-|图片-|image-|灵感-|insight-)/i;
 

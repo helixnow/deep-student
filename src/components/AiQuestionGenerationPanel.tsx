@@ -411,15 +411,16 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
     if (selected.size === 0 || importing) return;
     setImporting(true);
     try {
-      const paramsList = drafts
-        .filter((_, index) => selected.has(index))
-        .map((draft) => buildCreateParams(draft, examId));
-      const created = await invoke<Question[]>('qbank_batch_create_questions', {
-        paramsList,
+      if (!task?.authoringResult?.job_id) throw new Error(t('exam_sheet:aiGeneration.regenerateLegacy'));
+      const created = await invoke<{committed:boolean;imported_count:number}>('qbank_commit_authoring_draft', {
+        jobId:task.authoringResult.job_id,
+        expectedVersion:task.authoringResult.version,
+        selectedLocalIds:drafts.filter((_,index)=>selected.has(index)).map(draft=>draft.local_id),
       });
+      if (!created.committed) throw new Error(t('exam_sheet:uploader.commit_not_confirmed'));
       showGlobalNotification(
         'success',
-        t('exam_sheet:aiGeneration.importSuccess', { count: created.length }),
+        t('exam_sheet:aiGeneration.importSuccess', { count: created.imported_count }),
       );
       onImportComplete?.();
       onOpenChange(false);
@@ -812,6 +813,9 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
               </div>
             )}
             <div className="max-h-80 space-y-2 overflow-auto pr-1">
+              {(task?.authoringResult?.document.materials || []).map(material=>(
+                <section key={material.local_id || material.id} className="border-l-2 border-border px-3 py-2 text-sm whitespace-pre-wrap">{material.content}</section>
+              ))}
               {drafts.map((draft, index) => (
                 <label
                   key={index}

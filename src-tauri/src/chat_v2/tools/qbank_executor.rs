@@ -13,9 +13,11 @@ use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensi
 use super::strip_tool_namespace;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::models::{
-    ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult, QuestionBankStats,
-    QuestionStatus as ModelsQuestionStatus, QuestionType, SourceType,
+    ExamCardPreview, ExamSheetPreviewResult, QuestionBankStats,
+    QuestionStatus as ModelsQuestionStatus, QuestionType,
 };
+use crate::qbank_authoring_service::{AuthoringCommitReceipt, QuestionAuthoringService};
+use crate::qbank_document::QuestionDocument;
 use crate::qbank_grading::events::QbankGradingEmitter;
 use crate::qbank_grading::pipeline::{run_qbank_grading, QbankGradingDeps};
 use crate::qbank_grading::types::{QbankGradingMode, QbankGradingRequest};
@@ -29,6 +31,7 @@ use crate::vfs::repos::{
     SourceType as RepoSourceType, UpdateQuestionParams, VfsAttachmentRepo, VfsExamRepo,
     VfsQuestionRepo,
 };
+use crate::vfs::types::VfsCreateExamSheetParams;
 
 static QBANK_WRITE_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -895,6 +898,235 @@ fn bounded_optional_text(value: Option<&str>) -> Value {
     }
 }
 
+fn parse_json_argument(value: &Value, field: &str) -> Result<Value, String> {
+    match value {
+        Value::String(text) => serde_json::from_str(text).map_err(|error| {
+            qbank_error(
+                "INVALID_ARGS",
+                format!("{field} 是字符串但不是有效 JSON: {error}"),
+                "传入 JSON 对象/数组，而不是被二次编码的字符串",
+            )
+        }),
+        _ => Ok(value.clone()),
+    }
+}
+
+/// Normalize both the v2 authoring contract and the legacy flat batch form
+/// into one root object. Unknown/legacy extras are retained for forward
+/// compatibility, while identity/required fields are made explicit.
+pub(crate) fn normalize_authoring_document(args: &Value) -> Result<Value, String> {
+    let source = if let Some(document) = args.get("document") {
+        parse_json_argument(document, "document")?
+    } else if args.get("questions").is_some()
+        || args.get("materials").is_some()
+        || args.get("groups").is_some()
+    {
+        args.clone()
+    } else {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            "缺少题目文档",
+            "传入 v2 document，或至少提供 questions 数组",
+        ));
+    };
+
+    let mut root = source.as_object().cloned().ok_or_else(|| {
+        qbank_error(
+            "INVALID_ARGS",
+            "题目文档必须是 JSON 对象",
+            "使用 {schema_version,mode,materials,groups,questions,...} 根对象",
+        )
+    })?;
+    let mode = root
+        .get("mode")
+        .and_then(Value::as_str)
+        .unwrap_or("generate")
+        .to_string();
+    if !matches!(mode.as_str(), "extract" | "generate") {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            format!("不支持的 mode: {mode}"),
+            "mode 只能是 extract 或 generate",
+        ));
+    }
+    let questions_value = root.get("questions").cloned().ok_or_else(|| {
+        qbank_error(
+            "INVALID_ARGS",
+            "缺少 questions 数组",
+            "至少提供一道可作答题目",
+        )
+    })?;
+    let questions_value = parse_json_argument(&questions_value, "questions")?;
+    let mut questions = questions_value.as_array().cloned().ok_or_else(|| {
+        qbank_error(
+            "INVALID_ARGS",
+            "questions 必须是数组",
+            "修正后重试；本批次未写入任何题目",
+        )
+    })?;
+    if questions.is_empty() {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            "questions 不能为空",
+            "至少传入一道题目",
+        ));
+    }
+    if questions.len() > 200 {
+        return Err(qbank_error(
+            "INVALID_ARGS",
+            format!("questions 单次最多 200 道，收到 {}", questions.len()),
+            "按题组/章节分批，且每批保留完整材料",
+        ));
+    }
+
+    for (index, value) in questions.iter_mut().enumerate() {
+        let question = value.as_object_mut().ok_or_else(|| {
+            qbank_error(
+                "INVALID_ARGS",
+                format!("questions[{index}] 必须是对象"),
+                "修正后重试；本批次未写入任何题目",
+            )
+        })?;
+        let local_id = question
+            .get("local_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| format!("q{}", index + 1));
+        question.insert("local_id".to_string(), Value::String(local_id));
+        if question.get("original_label").is_none() {
+            let label = question
+                .get("question_label")
+                .or_else(|| question.get("questionLabel"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+                .unwrap_or_else(|| (index + 1).to_string());
+            question.insert("original_label".to_string(), Value::String(label));
+        }
+        if question.get("question_type").is_none() {
+            let legacy = question.get("questionType").cloned();
+            let inferred = if question
+                .get("options")
+                .and_then(Value::as_array)
+                .is_some_and(|options| !options.is_empty())
+            {
+                "single_choice"
+            } else {
+                "other"
+            };
+            question.insert(
+                "question_type".to_string(),
+                legacy.unwrap_or_else(|| json!(inferred)),
+            );
+        }
+        question.remove("questionType");
+        question.remove("questionLabel");
+        question.remove("question_label");
+        if question.get("tags").is_none() {
+            question.insert("tags".to_string(), json!([]));
+        }
+        if question.get("section_path").is_none() {
+            question.insert("section_path".to_string(), json!([]));
+        }
+        if question.get("answer_origin").is_none() {
+            let has_answer = question
+                .get("answer")
+                .and_then(Value::as_str)
+                .is_some_and(|answer| !answer.trim().is_empty());
+            let origin = if mode == "generate" && has_answer {
+                "generated"
+            } else if has_answer {
+                "source"
+            } else {
+                "missing"
+            };
+            question.insert("answer_origin".to_string(), json!(origin));
+        }
+    }
+
+    root.insert("schema_version".to_string(), json!(2));
+    root.insert("mode".to_string(), json!(mode));
+    root.insert("questions".to_string(), Value::Array(questions));
+    for field in [
+        "materials",
+        "groups",
+        "unmatched_answers",
+        "coverage",
+        "issues",
+    ] {
+        if root.get(field).is_none() {
+            root.insert(field.to_string(), json!([]));
+        }
+    }
+    for (index, coverage) in root["coverage"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .enumerate()
+    {
+        if coverage["source_id"]
+            .as_str()
+            .is_none_or(|id| id.trim().is_empty())
+            || !matches!(
+                coverage["status"].as_str(),
+                Some("processed" | "uncertain" | "unprocessed")
+            )
+            || !(coverage["page"].is_null() || coverage["page"].as_u64().is_some_and(|n| n > 0))
+        {
+            return Err(qbank_error(
+                "INVALID_COVERAGE",
+                format!("coverage[{index}] 必须为 {{source_id,page,status}}，不是试卷简介或题量统计"),
+                "逐页填写真实覆盖范围，例如 {source_id:来源ID,page:1,status:processed}；未知页号用 null。对话命题无逐页来源时用 coverage:[]。题干与材料无需重写。",
+            ));
+        }
+    }
+    // Validate before allocating a target container so a rejected document
+    // cannot leave another empty question bank behind.
+    let document: QuestionDocument = serde_json::from_value(Value::Object(root.clone())).map_err(|error| {
+        qbank_error("INVALID_ARGS", format!("题目文档契约无效: {error}"), "source_refs 必须使用 {source_id,page,bbox?}；材料与题组必须在同一文档中完整定义；本批次尚未写入")
+    })?;
+    document.validate().map_err(|error| qbank_error(
+        "INVALID_DOCUMENT", error.to_string(), "按错误指出的 local_id 修正完整文档。不能通过删除必要共享材料或只重试子题绕过校验；本批次尚未写入。"
+    ))?;
+    Ok(Value::Object(root))
+}
+
+fn create_empty_exam(
+    vfs_db: &crate::vfs::database::VfsDatabase,
+    name: Option<&str>,
+    folder_id: Option<&str>,
+) -> Result<String, String> {
+    let temp_id = format!("chat_{}", nanoid::nanoid!(12));
+    let exam = VfsExamRepo::create_exam_sheet(
+        vfs_db,
+        VfsCreateExamSheetParams {
+            exam_name: Some(name.unwrap_or("导入的题目集").to_string()),
+            temp_id,
+            metadata_json: json!({"created_by": "chat_qbank_authoring"}),
+            preview_json: json!({"pages": [{"page_index": 0, "cards": []}]}),
+            status: "pending".to_string(),
+            folder_id: folder_id.map(str::to_string),
+        },
+    )
+    .map_err(|error| format!("创建题目集失败: {error}"))?;
+    Ok(exam.id)
+}
+
+fn receipt_to_payload(receipt: &AuthoringCommitReceipt) -> Value {
+    serde_json::to_value(receipt).unwrap_or_else(|_| {
+        json!({
+            "committed": receipt.committed,
+            "exam_id": receipt.exam_id,
+            "question_ids": receipt.question_ids,
+            "material_ids": receipt.material_ids,
+            "group_ids": receipt.group_ids,
+            "imported_count": receipt.imported_count,
+            "total_questions": receipt.total_questions,
+        })
+    })
+}
+
 fn render_paper_markdown(paper: &GeneratedPaper) -> String {
     let mut output = String::new();
     output.push_str("# ");
@@ -1032,7 +1264,16 @@ fn bounded_export_preview(questions: &[Value]) -> Vec<Value> {
 
 fn render_question_export_markdown(name: &str, questions: &[Value]) -> String {
     let mut markdown = format!("# {name}\n\n");
+    let mut seen_materials = HashSet::new();
     for (index, question) in questions.iter().enumerate() {
+        for material in question["materials"].as_array().into_iter().flatten() {
+            if seen_materials.insert(material["id"].as_str().unwrap_or("").to_string()) {
+                markdown.push_str(&format!(
+                    "### 共享材料\n\n{}\n\n",
+                    material["content"].as_str().unwrap_or("")
+                ));
+            }
+        }
         markdown.push_str(&format!("## 题目 {}\n\n", index + 1));
         markdown.push_str(&format!(
             "**题干**\n{}\n\n",
@@ -1041,6 +1282,13 @@ fn render_question_export_markdown(name: &str, questions: &[Value]) -> String {
                 .and_then(Value::as_str)
                 .unwrap_or("")
         ));
+        for option in question["options"].as_array().into_iter().flatten() {
+            markdown.push_str(&format!(
+                "- {}. {}\n",
+                option["key"].as_str().unwrap_or(""),
+                option["content"].as_str().unwrap_or("")
+            ));
+        }
         if let Some(answer) = question.get("answer").and_then(Value::as_str) {
             markdown.push_str(&format!("**答案**\n{answer}\n\n"));
         }
@@ -1056,11 +1304,20 @@ fn render_question_export_docx(name: &str, questions: &[Value]) -> Result<Vec<u8
     use crate::document_parser::DocumentParser;
 
     let mut blocks = Vec::new();
+    let mut seen_materials = HashSet::new();
     for (index, question) in questions.iter().enumerate() {
+        for material in question["materials"].as_array().into_iter().flatten() {
+            if seen_materials.insert(material["id"].as_str().unwrap_or("").to_string()) {
+                blocks.push(json!({"type":"paragraph","text":format!("共享材料：{}",material["content"].as_str().unwrap_or(""))}));
+            }
+        }
         blocks
             .push(json!({ "type": "heading", "level": 2, "text": format!("题目 {}", index + 1) }));
         if let Some(content) = question.get("content").and_then(Value::as_str) {
             blocks.push(json!({ "type": "paragraph", "text": content }));
+        }
+        for option in question["options"].as_array().into_iter().flatten() {
+            blocks.push(json!({"type":"paragraph","text":format!("{}. {}",option["key"].as_str().unwrap_or(""),option["content"].as_str().unwrap_or(""))}));
         }
         if let Some(answer) = question.get("answer").and_then(Value::as_str) {
             blocks.push(
@@ -1135,6 +1392,10 @@ fn parse_question_images(value: &Value) -> Result<Vec<QuestionImage>, String> {
                 name: optional_string("name", "")?,
                 mime: optional_string("mime", "image/png")?,
                 hash: optional_string("hash", "")?,
+                role: object
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .map(str::to_string),
             })
         })
         .collect()
@@ -1226,6 +1487,11 @@ fn parse_ai_grade_submission_id(
 
 /// R1-04 / R2-01 / docs/dev/acr/DESIGN.md §5.6：题库写操作成功后通知前端刷新。
 fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String]) {
+    // Notifications are optional after a durable commit, including headless
+    // tool dispatch. Missing UI must not turn a successful write into a panic.
+    let Some(window) = ctx.tauri_window.as_ref() else {
+        return;
+    };
     // ACR 4.0：域事件 source 统一为 "agent"（前端 normalize 仍双认 "ai" 兼容旧持久化事件）
     let payload = json!({
         "source": "agent",
@@ -1233,7 +1499,7 @@ fn emit_qbank_changed(ctx: &ExecutionContext, action: &str, entity_ids: &[String
         "entityIds": entity_ids,
         "runId": ctx.run_id(),
     });
-    if let Err(e) = ctx.window_ref().emit("qbank://changed", payload) {
+    if let Err(e) = window.emit("qbank://changed", payload) {
         log::debug!("[QBankExecutor] Failed to emit qbank://changed: {}", e);
     }
 }
@@ -1783,6 +2049,14 @@ impl QBankExecutor {
                     "is_favorite": q.is_favorite,
                     "is_bookmarked": q.is_bookmarked,
                     "images": q.images,
+                    "group_id": q.group_id,
+                    "group_position": q.group_position,
+                    "group_label": q.group_label,
+                    "materials": q.materials,
+                    "answer_origin": q.answer_origin,
+                    "source_refs": q.source_refs,
+                    "answer_source_refs": q.answer_source_refs,
+                    "source_key": q.source_key,
                     "updated_at": updated_at.clone(),
                     "updatedAt": updated_at,
                     "occ_supported": true,
@@ -4179,6 +4453,8 @@ impl QBankExecutor {
                         "correct_count": question.correct_count,
                         "user_note": question.user_note,
                         "images": question.images,
+                        "materials": question.materials,
+                        "group_id": question.group_id,
                     })
                 })
                 .collect::<Vec<Value>>();
@@ -4224,17 +4500,28 @@ impl QBankExecutor {
                 render_question_export_markdown(&name, &questions).into_bytes(),
             ),
             "docx" => ("docx", render_question_export_docx(&name, &questions)?),
-            _ => (
-                "json",
-                serde_json::to_vec_pretty(&json!({ "name": name, "questions": questions }))
-                    .map_err(|error| {
+            _ => {
+                let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+                let document =
+                    crate::question_export_service::authoring::export_document(db, session_id)
+                        .map_err(|error| {
+                            qbank_error(
+                                "QBANK_EXPORT_FAILED",
+                                format!("题目文档导出失败: {error}"),
+                                "重新读取题目集后导出",
+                            )
+                        })?;
+                (
+                    "json",
+                    serde_json::to_vec_pretty(&document).map_err(|error| {
                         qbank_error(
                             "QBANK_EXPORT_FAILED",
                             format!("JSON 序列化失败: {error}"),
                             "重新导出",
                         )
                     })?,
-            ),
+                )
+            }
         };
         let export_path = write_qbank_export(ctx, &name, extension, &bytes)?;
         let mut result = json!({
@@ -4247,6 +4534,7 @@ impl QBankExecutor {
             "questionsTruncated": questions.len() > 20,
             "source": source,
             "degraded": degraded,
+            "schemaVersion": 2,
         });
         if include_stats {
             result["stats"] = self.execute_get_stats(call, ctx).await?;
@@ -4363,9 +4651,9 @@ impl QBankExecutor {
         }))
     }
 
-    /// P2-4: 文档导入 - 使用统一的 QuestionImportService
-    ///
-    /// 与 Tauri 命令 `import_question_bank` 使用相同的实现
+    /// Document import now stages a canonical draft. It only creates formal
+    /// questions after an explicit create request and a complete, review-free
+    /// draft; `preview` always leaves the draft uncommitted.
     async fn execute_import_document(
         &self,
         call: &ToolCall,
@@ -4374,8 +4662,6 @@ impl QBankExecutor {
         use super::qbank_import_source::{resolve_import_input, ImportInput};
         use crate::question_import_service::{ImportRequest, QuestionImportService};
 
-        // 输入：content（base64/纯文本，向后兼容）或资源库 resource_id/file_id（直接读 VFS，
-        // 无需 Agent 自行 base64 编码）。解析/OCR 未完成时原样返回 processing 提示。
         let pdf_service = ctx.pdf_processing_service.clone();
         let is_parse_running = move |file_id: &str| {
             pdf_service
@@ -4388,57 +4674,153 @@ impl QBankExecutor {
                 ImportInput::NotReady(status) => return Ok(status),
             };
 
-        let _write_guard = QBANK_WRITE_LOCK.lock().await;
+        let mode = call
+            .arguments
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("preview");
+        if !matches!(mode, "preview" | "commit" | "create") {
+            return Err(qbank_error(
+                "INVALID_ARGS",
+                format!("不支持的导入模式: {mode}"),
+                "mode 只能是 preview（只生成草稿）或 commit（明确要求入库，兼容旧create）",
+            ));
+        }
 
-        let content = resolved.content.as_str();
-        let format = resolved.format.as_str();
+        let _write_guard = QBANK_WRITE_LOCK.lock().await;
         let name = call
             .arguments
             .get("name")
-            .and_then(|v| v.as_str())
+            .and_then(Value::as_str)
             .map(str::trim)
-            .filter(|s| !s.is_empty())
+            .filter(|value| !value.is_empty())
             .or(resolved.default_name.as_deref());
-        let session_id = call.arguments.get("session_id").and_then(|v| v.as_str());
-        let folder_id = call.arguments.get("folder_id").and_then(|v| v.as_str());
-
+        let session_id = call
+            .arguments
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let folder_id = call
+            .arguments
+            .get("folder_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         let llm_manager = ctx
             .llm_manager
             .as_ref()
             .ok_or("LLM Manager not available")?;
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let trusted_config = ctx.question_authoring_config();
+        if !resolved.format.eq_ignore_ascii_case("json") && trusted_config.is_none() {
+            return Err(qbank_error(
+                "MODEL_CONTEXT_UNAVAILABLE",
+                "当前工具调用缺少可信的实际对话模型快照，无法解析该文档",
+                "重新发送本轮请求；不要回退到默认模型、出题槽或让模型自行指定模型 ID",
+            ));
+        }
+        let model_config_id = trusted_config.as_ref().map(|config| config.id.clone());
 
-        // 使用统一的 QuestionImportService
-        let import_service = QuestionImportService::new_without_file_manager(llm_manager.clone());
-
+        let import_service = QuestionImportService::new_without_file_manager(llm_manager.clone())
+            .with_cancel(ctx.cancellation_token.clone());
         let import_request = ImportRequest {
-            content: content.to_string(),
-            format: format.to_string(),
-            name: name.map(String::from),
-            session_id: session_id.map(String::from),
-            folder_id: folder_id.map(String::from),
-            model_config_id: None,
+            content: resolved.content.clone(),
+            format: resolved.format.clone(),
+            name: name.map(str::to_string),
+            session_id: session_id.map(str::to_string),
+            folder_id: folder_id.map(str::to_string),
+            model_config_id,
             pdf_prefer_ocr: None,
+            source_ranges: serde_json::from_value(
+                call.arguments
+                    .get("source_ranges")
+                    .cloned()
+                    .unwrap_or_else(|| json!([])),
+            )
+            .map_err(|error| format!("source_ranges 无效: {error}"))?,
         };
-
         let result = import_service
-            .import_document(vfs_db, import_request)
+            .import_document_with_config(vfs_db, import_request, trusted_config)
             .await
-            .map_err(|e| format!("导入失败: {}", e))?;
+            .map_err(|error| {
+                if error.details.as_ref().is_some_and(|details| details["code"] == "SOURCE_RANGE_PLAN_REQUIRED") {
+                    json!({"code":"SOURCE_RANGE_PLAN_REQUIRED","message":error.message,"details":error.details,"retryable":false,"hint":"完整原文已保留。请展示返回的范围计划和跨页/答案依赖警告，取得用户明确范围选择后用 source_ranges 重试；不能自动丢弃页或把部分内容宣称为整份。"}).to_string()
+                } else { format!("解析文档失败: {error}") }
+            })?;
 
-        emit_qbank_changed(
-            ctx,
-            "import_document",
-            std::slice::from_ref(&result.session_id),
-        );
-
+        let job_id = result.draft_job_id.clone().ok_or_else(|| {
+            qbank_error(
+                "INCOMPLETE_RESULT",
+                "导入器未返回草稿任务",
+                "重新解析文档；不要伪称已导入",
+            )
+        })?;
+        let service = QuestionAuthoringService::new(vfs_db.clone());
+        let draft = service
+            .get_draft(&job_id)
+            .map_err(|error| format!("读取导入草稿失败: {error}"))?;
         let mut payload = json!({
             "success": true,
-            "session_id": result.session_id,
-            "name": result.name,
-            "imported_count": result.imported_count,
-            "total_questions": result.total_questions,
+            "committed": false,
+            "status": "draft",
+            "session_id": result.session_id.clone(),
+            "name": result.name.clone(),
+            "draft_job_id": job_id.clone(),
+            "draft_version": draft.version,
+            "question_count": draft.document.questions.len(),
+            "material_count": draft.document.materials.len(),
+            "group_count": draft.document.groups.len(),
+            "needs_review": draft.document.needs_review() || draft.status == "partial",
+            "partial": draft.status == "partial",
+            "coverage": draft.document.coverage.clone(),
+            "unmatched_answers": draft.document.unmatched_answers.clone(),
+            "issues": draft.document.issues.clone(),
+            "model_route": result.model_route.clone().or_else(|| ctx.question_authoring_route()),
         });
+        if let Some(source) = resolved.source.clone() {
+            payload["source"] = source;
+        }
+
+        if mode == "preview" || draft.document.needs_review() || draft.status == "partial" {
+            payload["draft_document"] = serde_json::to_value(&draft.document)
+                .map_err(|error| format!("序列化草稿失败: {error}"))?;
+            payload["hint"] = json!(if mode == "preview" {
+                "仅生成草稿，未写入正式题目。"
+            } else {
+                "草稿存在待复核项，未自动提交；检查 coverage/issues/unmatched_answers 后再明确处理。"
+            });
+            emit_qbank_changed(
+                ctx,
+                "import_document_draft",
+                std::slice::from_ref(&result.session_id),
+            );
+            return Ok(payload);
+        }
+
+        let selected: Vec<String> = draft
+            .document
+            .questions
+            .iter()
+            .map(|question| question.local_id.clone())
+            .collect();
+        let receipt = service
+            .commit_draft(&job_id, &selected, draft.version)
+            .map_err(|error| format!("提交导入草稿失败: {error}"))?;
+        emit_qbank_changed(ctx, "import_document", &receipt.question_ids);
+
+        payload = receipt_to_payload(&receipt);
+        payload["success"] = json!(true);
+        payload["status"] = json!("committed");
+        payload["session_id"] = json!(receipt.exam_id);
+        payload["name"] = json!(result.name);
+        payload["draft_job_id"] = json!(job_id);
+        payload["draft_version"] = json!(draft.version + 1);
+        payload["model_route"] = result
+            .model_route
+            .clone()
+            .or_else(|| ctx.question_authoring_route())
+            .unwrap_or(Value::Null);
         if let Some(source) = resolved.source {
             payload["source"] = source;
         }
@@ -4446,26 +4828,66 @@ impl QBankExecutor {
         Ok(with_localized_message(
             payload,
             "chat.tools.qbank.questions_imported",
-            json!({ "count": result.imported_count }),
-            format!("成功导入 {} 道题目", result.imported_count),
-            format!("Imported {} questions successfully.", result.imported_count),
+            json!({ "count": receipt.imported_count }),
+            format!(
+                "已提交 {} 道题目；题目集共 {} 道",
+                receipt.imported_count, receipt.total_questions
+            ),
+            format!(
+                "Committed {} questions; the bank now has {}.",
+                receipt.imported_count, receipt.total_questions
+            ),
         ))
     }
 
-    /// 2026-09-09（D1）：对话内 AI 出题 —— 复用 qbank_generation 后台任务管线。
-    ///
-    /// `background=false`（默认）：同步跑完并返回草稿，模型随后用 `qbank_batch_import` 入库；
-    /// `background=true`：立即返回 task_id，任务在后台执行，完成后发全局事件通知（D3）。
+    /// Chat question authoring is direct: the current conversation model
+    /// supplies structured `qbank_batch_import` arguments. Foreground calls no
+    /// longer invoke a nested generation slot. `background=true` is the legacy
+    /// explicit delegation path and is pinned to the trusted active config.
     async fn execute_generate_questions(
         &self,
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        use crate::qbank_generation::pipeline::{run_qbank_generation, QbankGenerationDeps};
         use crate::qbank_generation::task_repo;
         use crate::qbank_generation::types::{QbankGenerationRequest, QuestionGenerationSpec};
 
         let exam_id = required_non_empty_string(&call.arguments, "exam_id")?;
+        let background = call
+            .arguments
+            .get("background")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let trusted_config = ctx.question_authoring_config().ok_or_else(|| {
+            qbank_error(
+                "MODEL_CONTEXT_UNAVAILABLE",
+                "当前工具调用缺少可信的对话模型上下文",
+                "重新发送本轮请求；不要指定其他模型或创建新的出题槽",
+            )
+        })?;
+
+        if !background {
+            return Ok(json!({
+                "action": "author_with_current_model",
+                "committed": false,
+                "exam_id": exam_id,
+                "model": trusted_config.name,
+                "model_config_id": trusted_config.id,
+                "model_route": ctx.question_authoring_route(),
+                "instructions": "直接使用当前对话模型组织 QuestionDocument v2，然后调用 qbank_batch_import：questions 为独立可作答题目；共享文章/条件/图放 materials；groups 用 material_ids 与 question_ids 关联。为每道生成题给出 answer 与 answer_origin=generated，不得伪称来自原资料。",
+                "contract": {
+                    "schema_version": 2,
+                    "mode": "generate",
+                    "materials": [],
+                    "groups": [],
+                    "questions": [],
+                    "coverage": [],
+                    "issues": []
+                },
+                "hint": "不要再调用 qbank_generate_questions 等后台模型；后台委托仅在用户明确要求大批量异步任务时使用 background=true。"
+            }));
+        }
+
         let llm = ctx
             .llm_manager
             .as_ref()
@@ -4476,170 +4898,97 @@ impl QBankExecutor {
             .as_ref()
             .ok_or("VFS database not available")?
             .clone();
-
         let specs: Vec<QuestionGenerationSpec> = call
             .arguments
             .get("specs")
             .and_then(|value| serde_json::from_value(value.clone()).ok())
             .unwrap_or_default();
-
         let request = QbankGenerationRequest {
             exam_id: exam_id.clone(),
             stream_session_id: format!("chat_{}", nanoid::nanoid!(10)),
-            model_config_id: call
-                .arguments
-                .get("model_config_id")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+            model_config_id: Some(trusted_config.id.clone()),
             max_questions: call
                 .arguments
                 .get("max_questions")
-                .and_then(|v| v.as_u64())
+                .and_then(Value::as_u64)
                 .unwrap_or(10)
                 .clamp(1, 50) as u32,
             specs,
             difficulty: call
                 .arguments
                 .get("difficulty")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+                .and_then(Value::as_str)
+                .map(str::to_string),
             topic_hint: call
                 .arguments
                 .get("topic_hint")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+                .and_then(Value::as_str)
+                .map(str::to_string),
             based_on_existing: call
                 .arguments
                 .get("based_on_existing")
-                .and_then(|v| v.as_bool())
+                .and_then(Value::as_bool)
                 .unwrap_or(false),
             language: call
                 .arguments
                 .get("language")
-                .and_then(|v| v.as_str())
-                .map(String::from),
+                .and_then(Value::as_str)
+                .map(str::to_string),
             reference_file_ids: call
                 .arguments
                 .get("reference_file_ids")
-                .and_then(|v| v.as_array())
+                .and_then(Value::as_array)
                 .map(|items| {
                     items
                         .iter()
-                        .filter_map(|item| item.as_str().map(String::from))
+                        .filter_map(|item| item.as_str().map(str::to_string))
                         .collect()
                 })
                 .unwrap_or_default(),
-            // 对话工具不接收 base64（体积大、易被模型误传）；参考资料走资源库 file_id
             reference_files_base64: vec![],
             knowledge_points: call
                 .arguments
                 .get("knowledge_points")
-                .and_then(|v| v.as_array())
+                .and_then(Value::as_array)
                 .map(|items| {
                     items
                         .iter()
-                        .filter_map(|item| item.as_str().map(String::from))
+                        .filter_map(|item| item.as_str().map(str::to_string))
                         .collect()
                 })
                 .unwrap_or_default(),
         };
 
-        let background = call
-            .arguments
-            .get("background")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // 2026-09-09：同步/后台统一创建任务记录（便于追溯、面板恢复与块轮询）
         let task_id = format!("task_{}", nanoid::nanoid!(10));
         let stream_event = format!("qbank_generation_stream_{}", request.stream_session_id);
-        let request_json =
-            serde_json::to_string(&request).map_err(|e| format!("序列化出题请求失败: {}", e))?;
+        let request_json = serde_json::to_string(&request)
+            .map_err(|error| format!("序列化出题请求失败: {error}"))?;
         task_repo::create_task(&vfs_db, &task_id, &exam_id, &request_json, &stream_event)
-            .map_err(|e| format!("创建出题任务失败: {}", e))?;
+            .map_err(|error| format!("创建出题任务失败: {error}"))?;
 
         let app_handle = ctx
             .tauri_window
             .as_ref()
             .map(|window| window.app_handle().clone());
-
-        if background {
-            let app = app_handle.ok_or("后台出题需要窗口上下文（app handle 不可用）")?;
-            log::info!(
-                "[QBankExecutor] qbank_generate_questions 后台任务已提交: task_id={}, exam={}",
-                task_id,
-                exam_id
-            );
-            crate::qbank_generation::spawn_generation_task(
-                app,
-                vfs_db.clone(),
-                llm.clone(),
-                task_id.clone(),
-                request.clone(),
-                stream_event,
-            );
-            return Ok(json!({
-                "action": "generate_questions_background",
-                "taskId": task_id,
-                "examId": exam_id,
-                "status": "queued",
-                "hint": "任务已在后台执行，完成后会通知用户；用 qbank_get_generation_task 查询结果，再用 qbank_batch_import 入库。",
-            }));
-        }
-
-        log::info!(
-            "[QBankExecutor] qbank_generate_questions 同步执行: task_id={}, exam={}, max_questions={}, specs={}",
-            task_id,
-            exam_id,
-            request.max_questions,
-            request.specs.len()
+        let app = app_handle.ok_or("后台出题需要窗口上下文（app handle 不可用）")?;
+        crate::qbank_generation::spawn_generation_task_with_config(
+            app,
+            vfs_db.clone(),
+            llm.clone(),
+            task_id.clone(),
+            request.clone(),
+            stream_event,
+            Some(trusted_config),
         );
-        let debug_log_dir = llm.build_debug_persist_config().map(|c| c.log_dir);
-        let deps = QbankGenerationDeps {
-            llm,
-            vfs_db: vfs_db.clone(),
-            debug_log_dir,
-        };
-        let result = run_qbank_generation(request, deps).await;
-
-        match result {
-            Ok(Some(response)) => {
-                if let Err(e) = task_repo::mark_completed(
-                    &vfs_db,
-                    &task_id,
-                    &response.drafts,
-                    response.rejected_count,
-                    &response.rejection_reasons,
-                    &response.skipped_references,
-                    response.used_reference_count,
-                ) {
-                    log::warn!("[QBankExecutor] 写任务完成状态失败: {}", e);
-                }
-                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
-
-                Ok(json!({
-                    "action": "generate_questions",
-                    "taskId": task_id,
-                    "examId": response.exam_id,
-                    "drafts": response.drafts,
-                    "rejectedCount": response.rejected_count,
-                    "rejectionReasons": response.rejection_reasons,
-                    "skippedReferences": response.skipped_references,
-                    "usedReferenceCount": response.used_reference_count,
-                    "hint": "草稿已渲染为可勾选预览块，用户确认后入库；也可直接调用 qbank_batch_import 导入题目集。",
-                }))
-            }
-            Ok(None) => {
-                let _ = task_repo::mark_cancelled(&vfs_db, &task_id);
-                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
-                Err("出题已取消".to_string())
-            }
-            Err(e) => {
-                let _ = task_repo::mark_failed(&vfs_db, &task_id, &e.message);
-                emit_task_event_if_possible(&app_handle, &vfs_db, &task_id);
-                Err(format!("出题失败: {}", e))
-            }
-        }
+        Ok(json!({
+            "action": "generate_questions_background",
+            "taskId": task_id,
+            "examId": exam_id,
+            "status": "queued",
+            "committed": false,
+            "model_route": ctx.question_authoring_route(),
+            "hint": "用户明确要求的大批量后台任务已用本轮实际对话模型提交；完成后用 qbank_get_generation_task 查询，再按回执确认。",
+        }))
     }
 
     /// 2026-09-09（D3）：查询后台出题任务状态与结果。
@@ -4659,417 +5008,393 @@ impl QBankExecutor {
         serde_json::to_value(&view).map_err(|e| format!("序列化任务失败: {}", e))
     }
 
-    /// P2-3: 批量导入 - 解析 AI 生成的题目并添加到题目集
+    /// Canonical batch authoring entry. Accepts either a v2 QuestionDocument
+    /// (`document` or root fields) or the legacy flat `questions` form. Both
+    /// normalize to the same root object and go through draft + atomic commit;
+    /// no preview_json is treated as a second writable question store.
     async fn execute_batch_import(
         &self,
         call: &ToolCall,
         ctx: &ExecutionContext,
     ) -> Result<Value, String> {
-        use crate::vfs::types::VfsCreateExamSheetParams;
-
         let _write_guard = QBANK_WRITE_LOCK.lock().await;
 
+        let mut document_value = normalize_authoring_document(&call.arguments)?;
+        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
         let session_id = call
             .arguments
             .get("session_id")
-            .and_then(|v| v.as_str())
-            .map(|v| v.to_string());
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_string);
         let name = call
             .arguments
             .get("name")
-            .and_then(|v| v.as_str())
-            .map(String::from);
-        // ★ 容错处理：部分模型可能将 questions 序列化为 JSON 字符串而非数组
-        let questions_value = call.arguments.get("questions");
-        let parsed_questions: Option<Vec<Value>>;
-        let questions: &Vec<Value> = if let Some(arr) = questions_value.and_then(|v| v.as_array()) {
-            arr
-        } else if let Some(s) = questions_value.and_then(|v| v.as_str()) {
-            parsed_questions = serde_json::from_str(s).ok();
-            parsed_questions
-                .as_ref()
-                .ok_or("'questions' parameter is a string but not valid JSON array")?
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty());
+
+        let request_key = call
+            .arguments
+            .get("idempotency_key")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|key| !key.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| {
+                use sha2::{Digest, Sha256};
+                format!(
+                    "chat-{}-{}",
+                    ctx.session_id,
+                    hex::encode(Sha256::digest(document_value.to_string().as_bytes()))
+                )
+            });
+        let previous_exam = if session_id.is_none() {
+            use rusqlite::OptionalExtension;
+            let conn = vfs_db.get_conn_safe().map_err(|error| error.to_string())?;
+            conn.query_row("SELECT j.exam_id FROM qbank_import_jobs j JOIN exam_sheets e ON e.id=j.exam_id WHERE j.idempotency_key=?1 AND json_extract(j.metadata_json,'$.chat_session_id')=?2 AND e.deleted_at IS NULL ORDER BY j.created_at LIMIT 1", rusqlite::params![request_key,ctx.session_id], |row| row.get::<_,String>(0))
+                .optional().map_err(|error| error.to_string())?
         } else {
-            return Err("Missing 'questions' parameter".to_string());
+            None
         };
-        if questions.is_empty() {
-            return Err(qbank_error(
-                "INVALID_ARGS",
-                "questions 不能为空",
-                "传入至少一道题目",
-            ));
-        }
-        if questions.len() > 200 {
-            return Err(qbank_error(
-                "INVALID_ARGS",
-                format!("questions 单次最多 200 道，收到 {}", questions.len()),
-                "分批调用 qbank_batch_import 导入",
-            ));
-        }
-        let top_parent_card_id = call
+
+        let exam_id = match session_id.or(previous_exam) {
+            Some(exam_id) => {
+                VfsExamRepo::get_exam_sheet(vfs_db, &exam_id)
+                    .map_err(|error| format!("读取题目集失败: {error}"))?
+                    .ok_or_else(|| {
+                        qbank_error(
+                            "NOT_FOUND",
+                            format!("题目集不存在: {exam_id}"),
+                            "先 qbank_list 取得有效题目集 ID",
+                        )
+                    })?;
+                exam_id
+            }
+            None => create_empty_exam(
+                vfs_db,
+                name,
+                call.arguments.get("folder_id").and_then(Value::as_str),
+            )?,
+        };
+
+        // Preserve variant semantics: legacy parent_card_id must resolve to the
+        // formal questions.id of a parent in this same exam before commit.
+        let top_parent_card = call
             .arguments
             .get("parent_card_id")
-            .and_then(|v| v.as_str());
-
-        let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
-        let mut is_new_session = false;
-        // ACR 4.0 P1：既有会话的 preview_json 回写带 OCC 基线（新会话无需）
-        let (mut session_id, exam_name, mut preview, preview_revision) =
-            if let Some(sid) = session_id {
-                let exam = VfsExamRepo::get_exam_sheet(vfs_db, &sid)
-                    .map_err(|e| format!("Failed to get exam sheet: {}", e))?
-                    .ok_or("Exam sheet not found")?;
-                let revision = exam.updated_at.clone();
-                let preview: ExamSheetPreviewResult = serde_json::from_value(exam.preview_json)
-                    .map_err(|e| format!("Failed to parse preview: {}", e))?;
-                (
-                    sid,
-                    exam.exam_name.unwrap_or_else(|| "未命名题目集".to_string()),
-                    preview,
-                    Some(revision),
-                )
-            } else {
-                let new_session_id = uuid::Uuid::new_v4().to_string();
-                let exam_name = name.clone().unwrap_or_else(|| "导入的题目集".to_string());
-                let preview = ExamSheetPreviewResult {
-                    temp_id: new_session_id.clone(),
-                    exam_name: Some(exam_name.clone()),
-                    pages: Vec::new(),
-                    raw_model_response: None,
-                    instructions: None,
-                    session_id: Some(new_session_id.clone()),
-                };
-                is_new_session = true;
-                (new_session_id, exam_name, preview, None)
-            };
-
-        let mut imported_count = 0;
-        let mut new_card_ids: Vec<String> = Vec::new();
-        let mut question_params_list: Vec<CreateQuestionParams> = Vec::new();
-
-        if preview.pages.is_empty() {
-            preview.pages.push(ExamSheetPreviewPage {
-                page_index: 0,
-                cards: Vec::new(),
-                blob_hash: None,
-                width: None,
-                height: None,
-                original_image_path: String::new(),
-                raw_ocr_text: None,
-                ocr_completed: false,
-                parse_completed: false,
-            });
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let raw_questions = document_value["questions"]
+            .as_array()
+            .cloned()
+            .unwrap_or_default();
+        let mut parent_cards = HashSet::new();
+        if let Some(parent) = top_parent_card {
+            parent_cards.insert(parent.to_string());
         }
-
-        for (question_index, q) in questions.iter().enumerate() {
-            let content = q
-                .get("content")
-                .and_then(|v| v.as_str())
-                .map(str::trim)
-                .unwrap_or("");
-            if content.is_empty() {
-                // 之前静默 continue 会让模型误以为全部导入成功
-                return Err(qbank_error(
-                    "INVALID_ARGS",
-                    format!("questions[{question_index}].content 必须是非空字符串"),
-                    "修正该题后重新导入；本批次未写入任何题目",
-                ));
-            }
-
-            let existing_count = preview.pages.iter().map(|p| p.cards.len()).sum::<usize>();
-            let question_label = format!("Q{}", existing_count + 1);
-            let card_id = format!(
-                "card_{}",
-                &uuid::Uuid::new_v4().to_string().replace("-", "")[..12]
-            );
-            let question_type = q.get("question_type").and_then(|v| v.as_str());
-            // 之前无效题型/难度会被静默降级为 Other/None；改为结构化报错
-            let repo_question_type = q
-                .get("question_type")
-                .map(|value| {
-                    parse_repo_question_type(
-                        value,
-                        &format!("questions[{question_index}].question_type"),
-                    )
-                })
-                .transpose()?;
-            let repo_difficulty = q
-                .get("difficulty")
-                .map(|value| {
-                    parse_difficulty(value, &format!("questions[{question_index}].difficulty"))
-                })
-                .transpose()?;
-            let effective_type = repo_question_type.clone().unwrap_or_default();
-            let structured_data = match q.get("structured_data") {
-                Some(Value::Null) | None => {
-                    if question_type_requires_structured_data(&effective_type) {
-                        return Err(qbank_error(
-                            "INVALID_ARGS",
-                            format!(
-                                "questions[{question_index}] 为 matching/ordering/numeric 题型，必须提供 structured_data"
-                            ),
-                            r#"matching 需 {"left","right","pairs"}；ordering 需 {"items","correct_order"}；numeric 需 {"answer_value",...}"#,
-                        ));
-                    }
-                    None
-                }
-                Some(data) => {
-                    validate_structured_data(&effective_type, data)?;
-                    Some(data.clone())
-                }
-            };
-            let answer = q.get("answer").and_then(|v| v.as_str()).map(String::from);
-            if matches!(effective_type, RepoQuestionType::TrueFalse) {
-                if let Some(answer) = &answer {
-                    validate_true_false_answer(answer)?;
-                }
-            }
-            let explanation = q
-                .get("explanation")
-                .and_then(|v| v.as_str())
-                .map(String::from);
-            let difficulty = q.get("difficulty").and_then(|v| v.as_str());
-            let tags: Vec<String> = q
-                .get("tags")
-                .and_then(|v| v.as_array())
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|t| t.as_str().map(String::from))
-                        .collect()
-                })
-                .unwrap_or_default();
-            let parent_card_id = q
+        for question in &raw_questions {
+            if let Some(parent) = question
                 .get("parent_card_id")
-                .and_then(|v| v.as_str())
-                .or(top_parent_card_id);
-            let parent_question_id = if let (Some(parent_card_id), Some(service)) =
-                (parent_card_id, &ctx.question_bank_service)
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
             {
-                service
-                    .get_question_by_card_id(&session_id, parent_card_id)
-                    .ok()
-                    .flatten()
-                    .map(|existing| existing.id)
-            } else {
-                None
-            };
+                parent_cards.insert(parent.to_string());
+            }
+        }
+        let mut resolved_parents = HashMap::new();
+        if !parent_cards.is_empty() {
+            let service = ctx.question_bank_service.as_ref().ok_or_else(|| {
+                qbank_error(
+                    "UNAVAILABLE",
+                    "题目服务不可用，无法校验变式父题",
+                    "稍后重试；本批次未写入任何题目",
+                )
+            })?;
+            for card_id in parent_cards {
+                let parent = service
+                    .get_question_by_card_id(&exam_id, &card_id)
+                    .map_err(|error| format!("读取变式父题失败: {error}"))?
+                    .ok_or_else(|| {
+                        qbank_error(
+                            "NOT_FOUND",
+                            format!("变式父题不存在于目标题目集: {card_id}"),
+                            "先用 qbank_get_question 确认父题；本批次未写入任何题目",
+                        )
+                    })?;
+                resolved_parents.insert(card_id, parent.id);
+            }
+        }
+        if let Some(questions) = document_value["questions"].as_array_mut() {
+            for question in questions {
+                let card = question
+                    .get("parent_card_id")
+                    .and_then(Value::as_str)
+                    .or(top_parent_card);
+                if let Some(card) = card {
+                    if let Some(parent_id) = resolved_parents.get(card) {
+                        question["parent_id"] = json!(parent_id);
+                    }
+                }
+            }
+        }
 
-            let new_card = ExamCardPreview {
-                card_id: card_id.clone(),
-                page_index: 0,
-                question_label: question_label.clone(),
-                ocr_text: content.to_string(),
-                tags,
-                question_type: question_type
-                    .and_then(|t| serde_json::from_str(&format!("\"{}\"", t)).ok()),
-                answer,
-                explanation,
-                difficulty: difficulty
-                    .and_then(|d| serde_json::from_str(&format!("\"{}\"", d)).ok()),
-                status: ModelsQuestionStatus::New,
-                source_type: SourceType::AiGenerated,
-                parent_card_id: parent_card_id.map(String::from),
-                ..Default::default()
-            };
-
-            preview.pages[0].cards.push(new_card);
-            new_card_ids.push(card_id.clone());
-            imported_count += 1;
-
-            // 解析选项（仅 questions 表需要）
-            let options: Option<Vec<QuestionOption>> =
-                q.get("options").and_then(|v| v.as_array()).map(|arr| {
-                    arr.iter()
-                        .filter_map(|opt| {
-                            let key = opt
-                                .get("key")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            let content = opt
-                                .get("content")
-                                .and_then(|v| v.as_str())
-                                .unwrap_or("")
-                                .to_string();
-                            if key.is_empty() && content.is_empty() {
-                                None
-                            } else {
-                                Some(QuestionOption { key, content })
-                            }
-                        })
-                        .collect()
-                });
-            // 与 create_question 一致：选择题必须携带非空 options，
-            // 否则导入后 UI 无法作答（此前会静默写入无选项的选择题）
-            if matches!(
-                effective_type,
-                RepoQuestionType::SingleChoice
-                    | RepoQuestionType::MultipleChoice
-                    | RepoQuestionType::IndefiniteChoice
-            ) && options.as_ref().map(Vec::is_empty).unwrap_or(true)
-            {
-                return Err(qbank_error(
+        let document: QuestionDocument =
+            serde_json::from_value(document_value).map_err(|error| {
+                qbank_error(
                     "INVALID_ARGS",
-                    format!("questions[{question_index}] 是选择题但缺少非空 options"),
-                    "把选项作为 {key,content} 数组传入；本批次未写入任何题目",
-                ));
-            }
+                    format!("题目文档契约无效: {error}"),
+                    "按 QuestionDocument v2 字段修正；本批次未写入任何题目",
+                )
+            })?;
+        document.validate().map_err(|error| error.to_string())?;
 
-            let question_params = CreateQuestionParams {
-                exam_id: session_id.clone(),
-                card_id: Some(card_id.clone()),
-                question_label: Some(question_label),
-                content: content.to_string(),
-                options,
-                answer: q.get("answer").and_then(|v| v.as_str()).map(String::from),
-                explanation: q
-                    .get("explanation")
-                    .and_then(|v| v.as_str())
-                    .map(String::from),
-                question_type: repo_question_type,
-                difficulty: repo_difficulty,
-                tags: Some(
-                    q.get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|arr| {
-                            arr.iter()
-                                .filter_map(|t| t.as_str().map(String::from))
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                ),
-                source_type: Some(RepoSourceType::AiGenerated),
-                source_ref: None,
-                images: None,
-                parent_id: parent_question_id.clone(),
-                structured_data,
-            };
-            question_params_list.push(question_params);
+        let metadata = json!({
+            "idempotency_key": request_key,
+            "chat_session_id": ctx.session_id,
+            "source_format": "chat_qbank_batch_import",
+            "sources": [],
+            "pages": [],
+            "model_route": ctx.question_authoring_route(),
+        });
+        let service = QuestionAuthoringService::new(vfs_db.clone());
+        let job_id = service
+            .save_draft(&exam_id, &document, &metadata)
+            .map_err(|error| format!("保存题目草稿失败: {error}"))?;
+        let draft = service
+            .get_draft(&job_id)
+            .map_err(|error| format!("读取题目草稿失败: {error}"))?;
+
+        if draft.document.needs_review() || draft.status == "partial" {
+            emit_qbank_changed(ctx, "batch_import_draft", std::slice::from_ref(&exam_id));
+            return Ok(json!({
+                "success": true,
+                "committed": false,
+                "status": "needs_review",
+                "session_id": exam_id,
+                "draft_job_id": job_id,
+                "draft_version": draft.version,
+                "question_count": draft.document.questions.len(),
+                "needs_review": true,
+                "coverage": draft.document.coverage,
+                "unmatched_answers": draft.document.unmatched_answers,
+                "issues": draft.document.issues,
+                "next_tool": "qbank_get_authoring_draft",
+                "model_route": ctx.question_authoring_route(),
+                "hint": "草稿已保存，勿重新生成题目。用 qbank_get_authoring_draft(job_id) 读取原内容；需要更正覆盖/复核字段时用 qbank_review_authoring_draft，用户确认后用 qbank_commit_authoring_draft(job_id,expected_version,selected_local_ids,acknowledge_review=true) 提交。也可在题目集待确认草稿中操作。",
+            }));
         }
 
-        if imported_count == 0 {
-            return Err("未能导入题目：内容为空或格式不完整".to_string());
-        }
+        let selected: Vec<String> = draft
+            .document
+            .questions
+            .iter()
+            .map(|question| question.local_id.clone())
+            .collect();
+        let receipt = service
+            .commit_draft(&job_id, &selected, draft.version)
+            .map_err(|error| format!("提交题目草稿失败: {error}"))?;
+        emit_qbank_changed(ctx, "batch_import", &receipt.question_ids);
 
-        if imported_count > 0 {
-            // 如果有 parent_card_id，更新父题的 variant_ids
-            if let Some(parent_id) = top_parent_card_id {
-                for page in &mut preview.pages {
-                    for card in &mut page.cards {
-                        if card.card_id == parent_id {
-                            let mut variants = card.variant_ids.clone().unwrap_or_default();
-                            variants.extend(new_card_ids.clone());
-                            card.variant_ids = Some(variants);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            let preview_json = serde_json::to_value(&preview)
-                .map_err(|e| format!("Failed to serialize preview: {}", e))?;
-
-            // S-009: 获取单一连接 + SAVEPOINT 事务保护，确保 preview_json 与 questions 原子写入
-            let conn = vfs_db
-                .get_conn_safe()
-                .map_err(|e| format!("Failed to get db connection: {}", e))?;
-
-            conn.execute("SAVEPOINT batch_import", [])
-                .map_err(|e| format!("Failed to create savepoint: {}", e))?;
-
-            // S-009-fix: 使用 actual_exam_id 追踪真实的 exam_sheets.id
-            let mut actual_exam_id = session_id.clone();
-
-            let sp_result = (|| -> Result<(), String> {
-                if is_new_session {
-                    let params = VfsCreateExamSheetParams {
-                        exam_name: Some(exam_name.clone()),
-                        temp_id: session_id.clone(),
-                        metadata_json: json!({}),
-                        preview_json,
-                        status: "completed".to_string(),
-                        folder_id: None,
-                    };
-                    let created_exam = VfsExamRepo::create_exam_sheet_with_conn(&conn, params)
-                        .map_err(|e| format!("Failed to create exam sheet: {}", e))?;
-                    // ★ 关键修复：使用 VfsExamSheet::generate_id() 生成的真实 ID
-                    // 而非 uuid::Uuid 格式的 temp_id，否则 questions.exam_id FK 会违反约束
-                    actual_exam_id = created_exam.id.clone();
-                } else {
-                    // ACR 4.0 P1：OCC 校验读取基线；冲突走 SAVEPOINT 回滚并返回结构化错误
-                    let expected = preview_revision
-                        .as_deref()
-                        .ok_or("Missing preview revision for existing session")?;
-                    let occ_ok = VfsExamRepo::update_preview_json_with_conn_if_unchanged(
-                        &conn,
-                        &session_id,
-                        preview_json,
-                        expected,
-                    )
-                    .map_err(|e| format!("Failed to update exam sheet: {}", e))?;
-                    if !occ_ok {
-                        return Err(qbank_conflict_error(
-                            "题目集在读取后已被并发修改，批量导入未写入",
-                            "重新读取题目集最新状态后再导入；不要凭旧状态重试",
-                            json!({ "session_id": session_id, "expected_updated_at": expected }),
-                        ));
-                    }
-                }
-
-                // 逐条写入 questions 表（不使用 batch 版本，因其内部有独立事务）
-                for params in &mut question_params_list {
-                    // ★ 将每条题目的 exam_id 修正为真实的 exam_sheets.id
-                    params.exam_id = actual_exam_id.clone();
-                    VfsQuestionRepo::create_question_with_conn(&conn, params)
-                        .map_err(|e| format!("Failed to write question: {}", e))?;
-                }
-
-                Ok(())
-            })();
-
-            match sp_result {
-                Ok(()) => {
-                    conn.execute("RELEASE batch_import", [])
-                        .map_err(|e| format!("Failed to release savepoint: {}", e))?;
-                }
-                Err(e) => {
-                    let _ = conn.execute("ROLLBACK TO batch_import", []);
-                    let _ = conn.execute("RELEASE batch_import", []);
-                    log::warn!(
-                        "[QBankExecutor] S-009: batch_import SAVEPOINT rolled back: {}",
-                        e
-                    );
-                    return Err(e);
-                }
-            }
-
-            // 刷新统计（非关键，在 SAVEPOINT 外执行）
-            if !question_params_list.is_empty() {
-                if let Err(e) = VfsQuestionRepo::refresh_stats_with_conn(&conn, &actual_exam_id) {
-                    log::warn!("[QuestionBank] 统计刷新失败: {}", e);
-                }
-            }
-
-            // ★ 使用真实 exam_id 覆盖 session_id，确保返回值正确
-            session_id = actual_exam_id;
-        }
-
-        emit_qbank_changed(ctx, "batch_import", &new_card_ids);
+        let mut payload = receipt_to_payload(&receipt);
+        let replay = draft.status == "committed";
+        let imported_count = if replay { 0 } else { receipt.imported_count };
+        payload["imported_count"] = json!(imported_count);
+        payload["success"] = json!(true);
+        payload["status"] = json!("committed");
+        payload["session_id"] = json!(receipt.exam_id);
+        payload["name"] = json!(name.unwrap_or("题目集"));
+        payload["draft_job_id"] = json!(job_id);
+        payload["draft_version"] = json!(if replay {
+            draft.version
+        } else {
+            draft.version + 1
+        });
+        payload["new_card_ids"] = if replay {
+            json!([])
+        } else {
+            json!(receipt.question_ids)
+        };
+        payload["model_route"] = ctx.question_authoring_route().unwrap_or(Value::Null);
+        payload["idempotent_replay"] = json!(replay || receipt.imported_count == 0);
 
         Ok(with_localized_message(
-            json!({
-                "success": true,
-                "session_id": session_id,
-                "name": exam_name,
-                "imported_count": imported_count,
-                "total_questions": preview.pages.iter().map(|p| p.cards.len()).sum::<usize>(),
-                "new_card_ids": new_card_ids,
-            }),
+            payload,
             "chat.tools.qbank.questions_imported",
             json!({ "count": imported_count }),
-            format!("成功导入 {} 道题目", imported_count),
-            format!("Imported {} questions successfully.", imported_count),
+            format!(
+                "已提交 {} 道题目；题目集共 {} 道",
+                imported_count, receipt.total_questions
+            ),
+            format!(
+                "Committed {} questions; the bank now has {}.",
+                imported_count, receipt.total_questions
+            ),
         ))
+    }
+
+    async fn execute_structure(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let service = crate::qbank_management::QuestionBankManagementService::new(db.clone());
+        let name = strip_tool_namespace(&call.name);
+        if name == "qbank_list_structure" {
+            let exam = required_non_empty_string(&call.arguments, "session_id")?;
+            return service
+                .list_structure(&exam)
+                .map(|view| json!(view))
+                .map_err(|error| error.to_string());
+        }
+        let _guard = QBANK_WRITE_LOCK.lock().await;
+        let version = call.arguments["expected_version"]
+            .as_i64()
+            .filter(|n| *n > 0)
+            .ok_or("必须提供 expected_version，先读取 qbank_list_structure")?;
+        let result = match name {
+            "qbank_update_material" => {
+                let id = required_non_empty_string(&call.arguments, "material_id")?;
+                let content = required_non_empty_string(&call.arguments, "content")?;
+                json!(QuestionAuthoringService::new(db.clone())
+                    .update_material(&id, &content, version)
+                    .map_err(|error| error.to_string())?)
+            }
+            "qbank_delete_material" => {
+                let id = required_non_empty_string(&call.arguments, "material_id")?;
+                let exam = required_non_empty_string(&call.arguments, "session_id")?;
+                json!(service
+                    .delete_unused_materials(
+                        &exam,
+                        &[crate::qbank_management::MaterialVersionExpectation {
+                            material_id: id,
+                            expected_version: version
+                        }]
+                    )
+                    .map_err(|error| error.to_string())?)
+            }
+            "qbank_update_group" => {
+                let id = required_non_empty_string(&call.arguments, "group_id")?;
+                let label = required_non_empty_string(&call.arguments, "label")?;
+                let strings = |key: &str| -> Result<Vec<String>, String> {
+                    call.arguments[key]
+                        .as_array()
+                        .ok_or_else(|| format!("{key} 必须为数组"))?
+                        .iter()
+                        .map(|v| {
+                            v.as_str()
+                                .map(str::to_string)
+                                .ok_or_else(|| format!("{key} 必须为字符串数组"))
+                        })
+                        .collect()
+                };
+                json!(service
+                    .update_group(
+                        &id,
+                        &label,
+                        &strings("question_ids")?,
+                        &strings("material_ids")?,
+                        version
+                    )
+                    .map_err(|error| error.to_string())?)
+            }
+            "qbank_delete_group" => {
+                let id = required_non_empty_string(&call.arguments, "group_id")?;
+                let mode = serde_json::from_value::<crate::qbank_management::DeleteGroupMode>(
+                    call.arguments["mode"].clone(),
+                )
+                .map_err(|_| "mode 必须为 ungroup 或 delete_members")?;
+                json!(service
+                    .delete_group(&id, mode, version)
+                    .map_err(|error| error.to_string())?)
+            }
+            _ => return Err(format!("Unknown structure tool: {name}")),
+        };
+        emit_qbank_changed(ctx, name, &[]);
+        Ok(result)
+    }
+
+    async fn execute_authoring_draft(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let service = QuestionAuthoringService::new(db.clone());
+        let name = strip_tool_namespace(&call.name);
+        if name == "qbank_list_authoring_drafts" {
+            let exam = required_non_empty_string(&call.arguments, "session_id")?;
+            return service
+                .list_drafts(&exam)
+                .map(|items| json!({"drafts":items}))
+                .map_err(|error| error.to_string());
+        }
+        let job = required_non_empty_string(&call.arguments, "job_id")?;
+        if name == "qbank_get_authoring_draft" {
+            return service
+                .get_draft(&job)
+                .map(|draft| json!(draft))
+                .map_err(|error| error.to_string());
+        }
+        let _guard = QBANK_WRITE_LOCK.lock().await;
+        let version = call.arguments["expected_version"]
+            .as_i64()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| {
+                qbank_error(
+                    "QBANK_OCC_REQUIRED",
+                    "必须提供草稿 expected_version",
+                    "先读取草稿原样传入 version",
+                )
+            })?;
+        if name == "qbank_review_authoring_draft" {
+            let field = |name: &str| -> Result<Option<Vec<Value>>, String> {
+                call.arguments
+                    .get(name)
+                    .map(|value| {
+                        value
+                            .as_array()
+                            .cloned()
+                            .ok_or_else(|| format!("{name} 必须为数组"))
+                    })
+                    .transpose()
+            };
+            return service
+                .update_draft_review(
+                    &job,
+                    version,
+                    field("coverage")?,
+                    field("issues")?,
+                    field("unmatched_answers")?,
+                )
+                .map(|draft| json!(draft))
+                .map_err(|error| error.to_string());
+        }
+        let draft = service.get_draft(&job).map_err(|error| error.to_string())?;
+        if (draft.document.needs_review() || draft.status == "partial")
+            && call.arguments["acknowledge_review"] != true
+        {
+            return Err(qbank_error("REVIEW_REQUIRED", "草稿包含待复核内容", "先向用户展示 coverage/issues/unmatched_answers，明确确认后 acknowledge_review=true 提交所选题目；无需重发题干"));
+        }
+        let selected = call.arguments["selected_local_ids"]
+            .as_array()
+            .ok_or("必须明确提供 selected_local_ids")?
+            .iter()
+            .map(|id| {
+                id.as_str()
+                    .map(str::to_string)
+                    .ok_or("selected_local_ids 必须为字符串数组")
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let receipt = service
+            .commit_draft(&job, &selected, version)
+            .map_err(|error| error.to_string())?;
+        emit_qbank_changed(ctx, "authoring_committed", &receipt.question_ids);
+        Ok(json!(receipt))
     }
 }
 
@@ -5112,6 +5437,15 @@ impl ToolExecutor for QBankExecutor {
                 | "qbank_get_knowledge_stats"
                 | "qbank_generate_variant"
                 | "qbank_batch_import"
+                | "qbank_list_authoring_drafts"
+                | "qbank_get_authoring_draft"
+                | "qbank_review_authoring_draft"
+                | "qbank_commit_authoring_draft"
+                | "qbank_list_structure"
+                | "qbank_update_group"
+                | "qbank_delete_group"
+                | "qbank_update_material"
+                | "qbank_delete_material"
                 | "qbank_import_document"
                 | "qbank_reset_progress"
                 | "qbank_export"
@@ -5163,6 +5497,15 @@ impl ToolExecutor for QBankExecutor {
             "qbank_export" => self.execute_export(call, ctx).await,
             "qbank_generate_variant" => self.execute_generate_variant(call, ctx).await,
             "qbank_batch_import" => self.execute_batch_import(call, ctx).await,
+            "qbank_list_authoring_drafts"
+            | "qbank_get_authoring_draft"
+            | "qbank_review_authoring_draft"
+            | "qbank_commit_authoring_draft" => self.execute_authoring_draft(call, ctx).await,
+            "qbank_list_structure"
+            | "qbank_update_group"
+            | "qbank_delete_group"
+            | "qbank_update_material"
+            | "qbank_delete_material" => self.execute_structure(call, ctx).await,
             "qbank_import_document" => self.execute_import_document(call, ctx).await,
             "qbank_ai_grade" => self.execute_ai_grade(call, ctx).await,
             "qbank_generate_questions" => self.execute_generate_questions(call, ctx).await,
@@ -5229,7 +5572,7 @@ impl ToolExecutor for QBankExecutor {
     fn sensitivity_level(&self, tool_name: &str) -> ToolSensitivity {
         let stripped = strip_tool_namespace(tool_name);
         match stripped {
-            "qbank_delete_questions" => ToolSensitivity::High,
+            "qbank_delete_questions" | "qbank_delete_group" | "qbank_delete_material" => ToolSensitivity::High,
             "qbank_create_question"
             | "qbank_toggle_favorite"
             | "qbank_toggle_bookmark"
@@ -5238,6 +5581,10 @@ impl ToolExecutor for QBankExecutor {
             | "qbank_batch_update_questions"
             | "qbank_generate_paper"
             | "qbank_batch_import"
+            | "qbank_review_authoring_draft"
+            | "qbank_commit_authoring_draft"
+            | "qbank_update_group"
+            | "qbank_update_material"
             | "qbank_import_document"
             | "qbank_reset_progress"
             | "qbank_export"
@@ -5504,6 +5851,7 @@ mod occ_contract_tests {
                 name: "图".repeat(2_001),
                 mime: "image/png".to_string(),
                 hash: "a".repeat(2_001),
+                role: None,
             }],
             parent_id: None,
             created_at: "2026-07-13T00:00:00Z".to_string(),
@@ -5511,6 +5859,14 @@ mod occ_contract_tests {
             ai_feedback: None,
             ai_score: None,
             ai_graded_at: None,
+            group_id: None,
+            group_position: None,
+            group_label: None,
+            materials: Vec::new(),
+            answer_origin: None,
+            source_refs: Vec::new(),
+            answer_source_refs: Vec::new(),
+            source_key: None,
         };
 
         let bounded = question_to_bounded_value(&question);
@@ -5814,5 +6170,193 @@ mod occ_contract_tests {
             .expect("fallback service read")
             .expect("question should exist");
         assert_eq!(loaded.content, "fallback probe");
+    }
+
+    #[test]
+    fn legacy_batch_questions_normalize_to_v2_document() {
+        let normalized = normalize_authoring_document(&json!({
+            "name": "legacy",
+            "questions": [{
+                "content": "1 + 1 = ?",
+                "questionType": "single_choice",
+                "options": [
+                    {"key": "A", "content": "1"},
+                    {"key": "B", "content": "2"}
+                ],
+                "answer": "B",
+                "parent_card_id": "card_parent"
+            }]
+        }))
+        .expect("legacy normalization");
+        let document: crate::qbank_document::QuestionDocument =
+            serde_json::from_value(normalized).expect("deserialize normalized document");
+        assert_eq!(document.schema_version, 2);
+        assert_eq!(document.mode, "generate");
+        assert_eq!(document.questions.len(), 1);
+        assert_eq!(document.questions[0].local_id, "q1");
+        assert_eq!(document.questions[0].question_type, "single_choice");
+        assert_eq!(
+            document.questions[0].answer_origin.as_deref(),
+            Some("generated")
+        );
+        assert!(document.materials.is_empty());
+        document.validate().expect("normalized document validates");
+    }
+
+    #[test]
+    fn v2_batch_document_keeps_material_and_group_identity() {
+        let normalized = normalize_authoring_document(&json!({
+            "document": {
+                "schema_version": 2,
+                "mode": "generate",
+                "materials": [{"local_id": "m1", "content": "Shared passage"}],
+                "groups": [{
+                    "local_id": "g1",
+                    "label": "Reading",
+                    "material_ids": ["m1"],
+                    "question_ids": ["q1"]
+                }],
+                "questions": [{
+                    "local_id": "q1",
+                    "group_id": "g1",
+                    "content": "What is the main idea?",
+                    "question_type": "short_answer",
+                    "answer": "Shared context"
+                }]
+            }
+        }))
+        .expect("v2 normalization");
+        let document: crate::qbank_document::QuestionDocument =
+            serde_json::from_value(normalized).expect("deserialize v2 document");
+        assert_eq!(document.materials[0].local_id, "m1");
+        assert_eq!(document.groups[0].question_ids, vec!["q1"]);
+        assert_eq!(document.questions[0].group_id.as_deref(), Some("g1"));
+        document.validate().expect("v2 document validates");
+    }
+
+    #[test]
+    fn invalid_coverage_and_missing_material_return_actionable_errors_before_writes() {
+        let question = json!({"local_id":"q1","content":"Question","question_type":"short_answer","answer":"Answer"});
+        let error = normalize_authoring_document(
+            &json!({"questions":[question],"coverage":[{"exam":"exam","total_questions":52}]}),
+        )
+        .unwrap_err();
+        assert!(error.contains("INVALID_COVERAGE"));
+        let mut grouped = question.clone();
+        grouped["group_id"] = json!("g1");
+        let error=normalize_authoring_document(&json!({"questions":[grouped],"groups":[{"local_id":"g1","material_ids":["m_missing"],"question_ids":["q1"]}]})).unwrap_err();
+        assert!(error.contains("m_missing"));
+        assert!(error.contains("materials"));
+        let mut source = question;
+        source["source_refs"] = json!([{"page":1}]);
+        assert!(normalize_authoring_document(&json!({"questions":[source]}))
+            .unwrap_err()
+            .contains("source_id"));
+    }
+
+    #[test]
+    fn trusted_authoring_route_never_exposes_credentials() {
+        let mut config = crate::llm_manager::ApiConfig::default();
+        config.id = "trusted-config".to_string();
+        config.name = "Trusted Model".to_string();
+        config.model = "vision-chat".to_string();
+        config.api_key = "must-not-leak".to_string();
+        let emitter = std::sync::Arc::new(
+            crate::chat_v2::events::ChatV2EventEmitter::new_headless("sess-route".to_string()),
+        );
+        let context = ExecutionContext::new(
+            "sess-route".to_string(),
+            "msg-route".to_string(),
+            "block-route".to_string(),
+            emitter,
+            std::sync::Arc::new(crate::tools::ToolRegistry::new()),
+            None,
+        )
+        .with_question_authoring_config(Some(std::sync::Arc::new(config)));
+        let route = context.question_authoring_route().expect("route snapshot");
+        assert_eq!(route["model_config_id"], "trusted-config");
+        assert!(route.get("api_key").is_none());
+        assert!(!route.to_string().contains("must-not-leak"));
+    }
+
+    #[tokio::test]
+    async fn chat_batch_and_review_tools_commit_saved_questions_with_shared_materials() {
+        let (_temp, db) = crate::vfs::database::setup_migrated_test_db();
+        let db = std::sync::Arc::new(db);
+        let exam = create_empty_exam(&db, Some("Chat regression"), None).unwrap();
+        let emitter = std::sync::Arc::new(
+            crate::chat_v2::events::ChatV2EventEmitter::new_headless("sess-import-check".into()),
+        );
+        let ctx = ExecutionContext::new(
+            "sess-import-check".into(),
+            "msg-import-check".into(),
+            "blk-import-check".into(),
+            emitter,
+            std::sync::Arc::new(crate::tools::ToolRegistry::new()),
+            None,
+        )
+        .with_vfs_db(Some(db.clone()));
+        let executor = QBankExecutor::new();
+        let args = json!({"session_id":exam,"mode":"extract","idempotency_key":"chat-regression","materials":[{"local_id":"m1","content":"Complete shared passage"}],"groups":[{"local_id":"g1","label":"Reading","material_ids":["m1"],"question_ids":["q1"]}],"questions":[{"local_id":"q1","group_id":"g1","original_label":"1","content":"What is the main idea?","question_type":"short_answer"}]});
+        let call = ToolCall::new(
+            "call-batch".into(),
+            "builtin-qbank_batch_import".into(),
+            args,
+        );
+        let result = executor.execute(&call, &ctx).await.unwrap();
+        assert!(result.success, "{:?}", result.error);
+        assert_eq!(result.output["committed"], true);
+        let question_id = result.output["question_ids"][0].as_str().unwrap();
+        let question = VfsQuestionRepo::get_question(&db, question_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(question.materials.len(), 1);
+        let again = executor.execute(&call, &ctx).await.unwrap();
+        assert_eq!(again.output["imported_count"], 0);
+        assert_eq!(again.output["question_ids"], result.output["question_ids"]);
+
+        let service = QuestionAuthoringService::new(db.clone());
+        let mut document = QuestionDocument::default();
+        document
+            .questions
+            .push(crate::qbank_document::DraftQuestion {
+                local_id: "saved-q1".into(),
+                content: "Already parsed, do not regenerate".into(),
+                question_type: "short_answer".into(),
+                ..Default::default()
+            });
+        document.coverage = vec![json!({"exam":"legacy coverage summary"})];
+        let job = service.save_draft(&exam, &document, &json!({})).unwrap();
+        let read = executor
+            .execute(
+                &ToolCall::new(
+                    "call-read".into(),
+                    "builtin-qbank_get_authoring_draft".into(),
+                    json!({"job_id":job}),
+                ),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            read.output["document"]["questions"][0]["content"],
+            document.questions[0].content
+        );
+        let blocked = executor
+            .execute(
+                &ToolCall::new(
+                    "call-commit-blocked".into(),
+                    "builtin-qbank_commit_authoring_draft".into(),
+                    json!({"job_id":job,"expected_version":1,"selected_local_ids":["saved-q1"]}),
+                ),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        assert!(!blocked.success);
+        let confirmed=executor.execute(&ToolCall::new("call-commit-confirmed".into(),"builtin-qbank_commit_authoring_draft".into(),json!({"job_id":job,"expected_version":1,"selected_local_ids":["saved-q1"],"acknowledge_review":true})),&ctx).await.unwrap();
+        assert!(confirmed.success, "{:?}", confirmed.error);
+        assert_eq!(confirmed.output["committed"], true);
+        assert_eq!(VfsQuestionRepo::count_questions(&db, &exam).unwrap(), 2);
     }
 }

@@ -27,6 +27,43 @@ use crate::question_sync_service::QuestionSyncService;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 
+/// 从 `questions.provenance_json` 解析题干/答案来源定位。
+///
+/// provenance 是只读来源证据快照，不是可写题目内容；解析失败按"无定位"处理，
+/// 不阻断题目读取（旧数据本来就没有 provenance）。
+fn parse_provenance_refs(
+    provenance_json: Option<&str>,
+) -> (
+    Vec<crate::qbank_document::SourceRef>,
+    Vec<crate::qbank_document::SourceRef>,
+) {
+    let Some(raw) = provenance_json.filter(|s| !s.trim().is_empty()) else {
+        return (Vec::new(), Vec::new());
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(raw) else {
+        warn!("[VFS::QuestionRepo] provenance_json 不是合法 JSON，按无来源处理");
+        return (Vec::new(), Vec::new());
+    };
+    let parse = |key: &str| -> Vec<crate::qbank_document::SourceRef> {
+        value
+            .get(key)
+            .cloned()
+            .and_then(|v| serde_json::from_value(v).ok())
+            .unwrap_or_default()
+    };
+    (parse("source_refs"), parse("answer_source_refs"))
+}
+
+/// 表是否存在于当前连接（兼容迁移前后的测试库）。
+fn table_exists(conn: &Connection, table: &str) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        params![table],
+        |row| row.get::<_, bool>(0),
+    )
+    .unwrap_or(false)
+}
+
 /// Log row-parse errors instead of silently discarding them.
 fn log_and_skip_err<T>(result: Result<T, rusqlite::Error>) -> Option<T> {
     match result {
@@ -226,10 +263,17 @@ pub struct QuestionImage {
     pub mime: String,
     /// 内容哈希 (SHA-256)
     pub hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
 }
 
 /// 题目实体
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// 题组/材料字段（`group_id`/`group_position`/`group_label`/`materials`）是
+/// 读取期投影：成员关系只以 `questions.group_id/group_position` 为权威，
+/// `materials` 由 `qbank_group_materials` + `qbank_materials` 派生，
+/// 不在题目行里重复存一份可写副本。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct Question {
     pub id: String,
     pub exam_id: String,
@@ -265,6 +309,30 @@ pub struct Question {
     pub ai_feedback: Option<String>,
     pub ai_score: Option<i32>,
     pub ai_graded_at: Option<String>,
+    /// 所属题组（issue 491）。普通独立题为 None。
+    #[serde(default)]
+    pub group_id: Option<String>,
+    /// 题组内稳定顺序（0 起）。
+    #[serde(default)]
+    pub group_position: Option<i32>,
+    /// 题组展示标题（读取期从 qbank_groups 派生）。
+    #[serde(default)]
+    pub group_label: Option<String>,
+    /// 该题所需的共享材料（读取期从 qbank_group_materials 派生，去重、按 position 排序）。
+    #[serde(default)]
+    pub materials: Vec<crate::qbank_document::QuestionMaterial>,
+    /// 答案来源：source | generated | manual | unknown。
+    #[serde(default)]
+    pub answer_origin: Option<String>,
+    /// 题干来源定位（来自 provenance_json.source_refs）。
+    #[serde(default)]
+    pub source_refs: Vec<crate::qbank_document::SourceRef>,
+    /// 答案来源定位（来自 provenance_json.answer_source_refs）。
+    #[serde(default)]
+    pub answer_source_refs: Vec<crate::qbank_document::SourceRef>,
+    /// 原始来源键（同一来源+题位稳定标识，用于重解析去重/冲突识别）。
+    #[serde(default)]
+    pub source_key: Option<String>,
 }
 
 /// 作答历史记录
@@ -276,6 +344,19 @@ pub struct AnswerSubmission {
     pub is_correct: Option<bool>,
     pub grading_method: String,
     pub submitted_at: String,
+}
+
+/// 作答时冻结的题目/材料快照（历史复核用）。
+///
+/// 单独成结构而不是给 `AnswerSubmission` 加字段：旧调用点按位置构造
+/// `AnswerSubmission` 的代码不受影响，快照只在需要复核的路径显式读取。
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SubmissionSnapshot {
+    pub submission_id: String,
+    /// 提交当时的题目投影（题干/选项/答案/结构化数据/题组与材料 id）。
+    pub question_snapshot_json: Option<String>,
+    /// 提交当时题目所依赖共享材料的完整快照（含版本）。
+    pub material_snapshot_json: Option<String>,
 }
 
 /// 题目筛选参数
@@ -401,7 +482,7 @@ pub enum SearchSortBy {
 }
 
 /// 题目创建参数
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CreateQuestionParams {
     pub exam_id: String,
     pub card_id: Option<String>,
@@ -808,6 +889,7 @@ impl VfsQuestionRepo {
                 q.last_attempt_at, q.user_note, q.is_favorite, q.is_bookmarked,
                 q.source_type, q.source_ref, q.images_json, q.parent_id, q.created_at, q.updated_at,
                 q.ai_feedback, q.ai_score, q.ai_graded_at, q.structured_data,
+                q.group_id, q.group_position, q.source_key, q.provenance_json, q.answer_origin,
                 highlight(questions_fts, 0, '<mark>', '</mark>') as hl_content,
                 highlight(questions_fts, 1, '<mark>', '</mark>') as hl_answer,
                 highlight(questions_fts, 2, '<mark>', '</mark>') as hl_explanation,
@@ -838,11 +920,12 @@ impl VfsQuestionRepo {
             // 解析基础 Question 字段
             let question = Self::row_to_question(row)?;
 
-            // 解析高亮和分数字段（索引 30-33；structured_data 在 29）
-            let hl_content: Option<String> = row.get(30)?;
-            let hl_answer: Option<String> = row.get(31)?;
-            let hl_explanation: Option<String> = row.get(32)?;
-            let relevance: f64 = row.get(33)?;
+            // 解析高亮和分数字段（索引 35-38；基础列 0-34，structured_data 在 29，
+            // 题组/来源投影列 30-34 与 row_to_question 保持一致）
+            let hl_content: Option<String> = row.get(35)?;
+            let hl_answer: Option<String> = row.get(36)?;
+            let hl_explanation: Option<String> = row.get(37)?;
+            let relevance: f64 = row.get(38)?;
 
             Ok(QuestionSearchResult {
                 question,
@@ -853,7 +936,14 @@ impl VfsQuestionRepo {
             })
         })?;
 
-        let results: Vec<QuestionSearchResult> = rows.filter_map(log_and_skip_err).collect();
+        let mut results: Vec<QuestionSearchResult> = rows.filter_map(log_and_skip_err).collect();
+        {
+            let mut questions: Vec<Question> = results.iter().map(|r| r.question.clone()).collect();
+            Self::hydrate_question_context_with_conn(conn, &mut questions)?;
+            for (result, question) in results.iter_mut().zip(questions) {
+                result.question = question;
+            }
+        }
         let has_more = (offset + page_size) < total as u32;
         let search_time_ms = start_time.elapsed().as_millis() as u64;
 
@@ -995,7 +1085,8 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at, structured_data
+                   ai_feedback, ai_score, ai_graded_at, structured_data,
+                   group_id, group_position, source_key, provenance_json, answer_origin
             FROM questions
             WHERE {}
             ORDER BY created_at ASC, id ASC
@@ -1023,7 +1114,14 @@ impl VfsQuestionRepo {
             })
         })?;
 
-        let results: Vec<QuestionSearchResult> = rows.filter_map(log_and_skip_err).collect();
+        let mut results: Vec<QuestionSearchResult> = rows.filter_map(log_and_skip_err).collect();
+        {
+            let mut questions: Vec<Question> = results.iter().map(|r| r.question.clone()).collect();
+            Self::hydrate_question_context_with_conn(conn, &mut questions)?;
+            for (result, question) in results.iter_mut().zip(questions) {
+                result.question = question;
+            }
+        }
         let has_more = (offset + page_size) < total as u32;
         let search_time_ms = start_time.elapsed().as_millis() as u64;
 
@@ -1264,7 +1362,8 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at, structured_data
+                   ai_feedback, ai_score, ai_graded_at, structured_data,
+                   group_id, group_position, source_key, provenance_json, answer_origin
             FROM questions
             WHERE {}
             ORDER BY created_at ASC, id ASC
@@ -1283,7 +1382,8 @@ impl VfsQuestionRepo {
         let mut stmt = conn.prepare(&query_sql)?;
         let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_question)?;
 
-        let questions: Vec<Question> = rows.filter_map(log_and_skip_err).collect();
+        let mut questions: Vec<Question> = rows.filter_map(log_and_skip_err).collect();
+        Self::hydrate_question_context_with_conn(conn, &mut questions)?;
         let has_more = (offset + page_size) < total as u32;
 
         debug!(
@@ -1396,6 +1496,7 @@ impl VfsQuestionRepo {
                    q.last_attempt_at, q.user_note, q.is_favorite, q.is_bookmarked,
                    q.source_type, q.source_ref, q.images_json, q.parent_id, q.created_at, q.updated_at,
                    q.ai_feedback, q.ai_score, q.ai_graded_at, q.structured_data,
+                   q.group_id, q.group_position, q.source_key, q.provenance_json, q.answer_origin,
                    e.exam_name
             {BASE}{extra}
             ORDER BY {order_by}
@@ -1406,15 +1507,23 @@ impl VfsQuestionRepo {
         let params_refs: Vec<&dyn rusqlite::ToSql> =
             params_vec.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&query_sql)?;
-        let items: Vec<MistakeQuestion> = stmt
+        let mut items: Vec<MistakeQuestion> = stmt
             .query_map(params_refs.as_slice(), |row| {
                 Ok(MistakeQuestion {
                     question: Self::row_to_question(row)?,
-                    exam_name: row.get(30)?,
+                    exam_name: row.get(35)?,
                 })
             })?
             .filter_map(log_and_skip_err)
             .collect();
+        {
+            let mut questions: Vec<Question> =
+                items.iter().map(|item| item.question.clone()).collect();
+            Self::hydrate_question_context_with_conn(conn, &mut questions)?;
+            for (item, question) in items.iter_mut().zip(questions) {
+                item.question = question;
+            }
+        }
         let has_more = (offset as i64 + page_size as i64) < total;
 
         Ok(MistakeListResult {
@@ -1651,7 +1760,8 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at, structured_data
+                   ai_feedback, ai_score, ai_graded_at, structured_data,
+                   group_id, group_position, source_key, provenance_json, answer_origin
             FROM questions
             WHERE {}
             ORDER BY RANDOM()
@@ -1665,7 +1775,8 @@ impl VfsQuestionRepo {
             params_vec.iter().map(|p| p.as_ref()).collect();
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query_map(params_refs.as_slice(), Self::row_to_question)?;
-        let questions: Vec<Question> = rows.filter_map(log_and_skip_err).collect();
+        let mut questions: Vec<Question> = rows.filter_map(log_and_skip_err).collect();
+        Self::hydrate_question_context_with_conn(conn, &mut questions)?;
 
         debug!(
             "[VFS::QuestionRepo] Random selected {} questions for exam_id={}, limit={}",
@@ -1686,6 +1797,262 @@ impl VfsQuestionRepo {
             |row| row.get(0),
         )?;
         Ok(count)
+    }
+
+    // ========================================================================
+    // 题组 / 共享材料读取期投影（issue 491）
+    // ========================================================================
+
+    /// 批量补齐题组标题与共享材料，避免逐题 N+1。
+    ///
+    /// 权威关系只有 `questions.group_id/group_position` + `qbank_group_materials`；
+    /// 这里只做读取投影，不写入第二份成员关系。
+    pub fn hydrate_question_context_with_conn(
+        conn: &Connection,
+        questions: &mut [Question],
+    ) -> VfsResult<()> {
+        if questions.is_empty() {
+            return Ok(());
+        }
+        if !table_exists(conn, "qbank_groups") || !table_exists(conn, "qbank_materials") {
+            return Ok(());
+        }
+
+        let group_ids: Vec<String> = {
+            let mut ids: Vec<String> = questions
+                .iter()
+                .filter_map(|q| q.group_id.clone())
+                .collect();
+            ids.sort();
+            ids.dedup();
+            ids
+        };
+        if group_ids.is_empty() {
+            return Ok(());
+        }
+
+        // 1. 题组标题
+        let mut labels: HashMap<String, String> = HashMap::new();
+        for chunk in group_ids.chunks(500) {
+            let placeholders: Vec<String> = (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+            let sql = format!(
+                "SELECT id, label FROM qbank_groups WHERE id IN ({}) AND deleted_at IS NULL",
+                placeholders.join(", ")
+            );
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?;
+            for row in rows.filter_map(log_and_skip_err) {
+                labels.insert(row.0, row.1);
+            }
+        }
+
+        // 2. 组内共享材料（按组 + position 排序，去重）
+        let mut materials_by_group: HashMap<String, Vec<crate::qbank_document::QuestionMaterial>> =
+            HashMap::new();
+        if table_exists(conn, "qbank_group_materials") {
+            for chunk in group_ids.chunks(500) {
+                let placeholders: Vec<String> =
+                    (1..=chunk.len()).map(|i| format!("?{}", i)).collect();
+                let sql = format!(
+                    r#"
+                    SELECT gm.group_id, m.id, m.content, m.images_json,
+                           m.source_refs_json, m.local_version
+                    FROM qbank_group_materials gm
+                    JOIN qbank_materials m
+                      ON m.id = gm.material_id AND m.exam_id = gm.exam_id
+                    WHERE gm.group_id IN ({}) AND gm.deleted_at IS NULL AND m.deleted_at IS NULL
+                    ORDER BY gm.group_id ASC, gm.position ASC, gm.id ASC
+                    "#,
+                    placeholders.join(", ")
+                );
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    chunk.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(params_refs.as_slice(), |row| {
+                    let group_id: String = row.get(0)?;
+                    let id: String = row.get(1)?;
+                    let content: String = row.get(2)?;
+                    let images_json: Option<String> = row.get(3)?;
+                    let source_refs_json: Option<String> = row.get(4)?;
+                    let version: i64 = row.get(5)?;
+                    Ok((
+                        group_id,
+                        id,
+                        content,
+                        images_json,
+                        source_refs_json,
+                        version,
+                    ))
+                })?;
+                for (group_id, id, content, images_json, source_refs_json, version) in
+                    rows.filter_map(log_and_skip_err)
+                {
+                    let bucket = materials_by_group.entry(group_id).or_default();
+                    if bucket.iter().any(|m| m.id == id) {
+                        continue;
+                    }
+                    bucket.push(crate::qbank_document::QuestionMaterial {
+                        id,
+                        content,
+                        images: images_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str(s).ok())
+                            .unwrap_or_default(),
+                        source_refs: source_refs_json
+                            .as_deref()
+                            .and_then(|s| serde_json::from_str(s).ok())
+                            .unwrap_or_default(),
+                        version,
+                    });
+                }
+            }
+        }
+
+        for question in questions.iter_mut() {
+            let Some(group_id) = question.group_id.as_deref() else {
+                continue;
+            };
+            question.group_label = labels.get(group_id).cloned();
+            if let Some(materials) = materials_by_group.get(group_id) {
+                question.materials = materials.clone();
+            }
+        }
+        Ok(())
+    }
+
+    /// 读取题目集全部正式题目（显式翻页，不再用超大 page_size 假装全量）。
+    ///
+    /// 供 canonical 读取（预览投影、聊天上下文、导出、检索）复用，避免各处
+    /// 自行传 `page_size=10000` 被 repo 夹到 100 而静默丢题。
+    pub fn canonical_questions_with_conn(
+        conn: &Connection,
+        exam_id: &str,
+    ) -> VfsResult<Vec<Question>> {
+        const PAGE_SIZE: u32 = 100;
+        let mut page = 1u32;
+        let mut all: Vec<Question> = Vec::new();
+        loop {
+            let result = Self::list_questions_with_conn(
+                conn,
+                exam_id,
+                &QuestionFilters::default(),
+                page,
+                PAGE_SIZE,
+            )?;
+            let fetched = result.questions.len();
+            all.extend(result.questions);
+            if !result.has_more || fetched == 0 {
+                break;
+            }
+            page = page.saturating_add(1);
+            if page > 10_000 {
+                return Err(VfsError::InvalidArgument {
+                    param: "exam_id".to_string(),
+                    reason: "题目集分页超出安全上限".to_string(),
+                });
+            }
+        }
+        Ok(all)
+    }
+
+    /// 题目集 canonical 纯文本投影：共享材料按题组输出一次，再输出子题。
+    ///
+    /// 仅用于展示/索引/导出的文本形态，不承担无损往返；无损契约是 v2 JSON。
+    pub fn canonical_text_with_conn(conn: &Connection, exam_id: &str) -> VfsResult<String> {
+        let questions = Self::canonical_questions_with_conn(conn, exam_id)?;
+        let mut out = String::new();
+        let mut emitted_materials: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut last_group: Option<String> = None;
+
+        for (index, question) in questions.iter().enumerate() {
+            if question.group_id != last_group {
+                if let Some(group_id) = question.group_id.clone() {
+                    if let Some(label) = question.group_label.as_deref() {
+                        out.push_str(&format!("\n## {}\n", label));
+                    }
+                    for material in &question.materials {
+                        if emitted_materials.insert(material.id.clone()) {
+                            out.push_str(&format!("\n[共享材料]\n{}\n", material.content));
+                        }
+                    }
+                    let _ = group_id;
+                }
+                last_group = question.group_id.clone();
+            }
+            let label = question
+                .question_label
+                .clone()
+                .unwrap_or_else(|| format!("{}", index + 1));
+            out.push_str(&format!("\n{}. {}\n", label, question.content));
+            if let Some(options) = &question.options {
+                for option in options {
+                    out.push_str(&format!("   {}. {}\n", option.key, option.content));
+                }
+            }
+            if let Some(answer) = &question.answer {
+                out.push_str(&format!("   答案：{}\n", answer));
+            }
+            if let Some(explanation) = &question.explanation {
+                out.push_str(&format!("   解析：{}\n", explanation));
+            }
+        }
+        Ok(out.trim_start().to_string())
+    }
+
+    /// 题目/材料内容变更后，把题目集关联资源的文本索引标记为待重建。
+    ///
+    /// 只把 `index_state` 从 indexed 抬回 pending（已 pending/disabled 时不重复写），
+    /// 由索引 worker 按 canonical 内容重建；不在这里直接重算向量，避免读路径
+    /// 阻塞或半途失败留下新旧混合索引。
+    pub fn invalidate_exam_content_index_with_conn(
+        conn: &Connection,
+        exam_id: &str,
+    ) -> VfsResult<()> {
+        if !table_exists(conn, "resources") || !table_exists(conn, "exam_sheets") {
+            return Ok(());
+        }
+        let resource_id: Option<String> = conn
+            .query_row(
+                "SELECT resource_id FROM exam_sheets WHERE id = ?1",
+                params![exam_id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten();
+        let Some(resource_id) = resource_id.filter(|id| !id.trim().is_empty()) else {
+            return Ok(());
+        };
+        let now = chrono::Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE resources SET index_state = 'pending', indexed_at = NULL, updated_at = ?1 \
+             WHERE id = ?2 AND index_state NOT IN ('pending', 'disabled')",
+            params![now, resource_id],
+        )?;
+        debug!(
+            "[VFS::QuestionRepo] Invalidated content index for exam={} resource={}",
+            exam_id, resource_id
+        );
+        Ok(())
+    }
+
+    /// 查题目所属题目集（含已软删题，删除后仍需要失效其索引）。
+    pub fn exam_id_for_question_with_conn(
+        conn: &Connection,
+        question_id: &str,
+    ) -> VfsResult<Option<String>> {
+        let exam_id = conn
+            .query_row(
+                "SELECT exam_id FROM questions WHERE id = ?1",
+                params![question_id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()?;
+        Ok(exam_id)
     }
 
     // ========================================================================
@@ -1710,15 +2077,19 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at, structured_data
+                   ai_feedback, ai_score, ai_graded_at, structured_data,
+                   group_id, group_position, source_key, provenance_json, answer_origin
             FROM questions
             WHERE id = ?1 AND deleted_at IS NULL
             "#,
         )?;
 
-        let question = stmt
+        let mut question = stmt
             .query_row(params![question_id], Self::row_to_question)
             .optional()?;
+        if let Some(question) = question.as_mut() {
+            Self::hydrate_question_context_with_conn(conn, std::slice::from_mut(question))?;
+        }
 
         Ok(question)
     }
@@ -1750,15 +2121,19 @@ impl VfsQuestionRepo {
                    status, user_answer, is_correct, attempt_count, correct_count,
                    last_attempt_at, user_note, is_favorite, is_bookmarked,
                    source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                   ai_feedback, ai_score, ai_graded_at, structured_data
+                   ai_feedback, ai_score, ai_graded_at, structured_data,
+                   group_id, group_position, source_key, provenance_json, answer_origin
             FROM questions
             WHERE exam_id = ?1 AND (card_id = ?2 OR id = ?2) AND deleted_at IS NULL
             "#,
         )?;
 
-        let question = stmt
+        let mut question = stmt
             .query_row(params![exam_id, card_id], Self::row_to_question)
             .optional()?;
+        if let Some(question) = question.as_mut() {
+            Self::hydrate_question_context_with_conn(conn, std::slice::from_mut(question))?;
+        }
 
         Ok(question)
     }
@@ -1793,7 +2168,8 @@ impl VfsQuestionRepo {
                        status, user_answer, is_correct, attempt_count, correct_count,
                        last_attempt_at, user_note, is_favorite, is_bookmarked,
                        source_type, source_ref, images_json, parent_id, created_at, updated_at,
-                       ai_feedback, ai_score, ai_graded_at, structured_data
+                       ai_feedback, ai_score, ai_graded_at, structured_data,
+                       group_id, group_position, source_key, provenance_json, answer_origin
                 FROM questions
                 WHERE id IN ({}) AND deleted_at IS NULL
                 "#,
@@ -1807,6 +2183,7 @@ impl VfsQuestionRepo {
             questions.extend(rows.filter_map(log_and_skip_err));
         }
 
+        Self::hydrate_question_context_with_conn(conn, &mut questions)?;
         Ok(questions)
     }
 
@@ -1894,6 +2271,7 @@ impl VfsQuestionRepo {
 
         info!("[VFS::QuestionRepo] Created question id={}", id);
 
+        Self::invalidate_exam_content_index_with_conn(conn, &params.exam_id)?;
         Self::get_question_with_conn(conn, &id)?.ok_or_else(|| VfsError::NotFound {
             resource_type: "question".to_string(),
             id: id.clone(),
@@ -2133,6 +2511,9 @@ impl VfsQuestionRepo {
 
         debug!("[VFS::QuestionRepo] Updated question id={}", question_id);
 
+        if let Some(exam_id) = Self::exam_id_for_question_with_conn(conn, question_id)? {
+            Self::invalidate_exam_content_index_with_conn(conn, &exam_id)?;
+        }
         Self::get_question_with_conn(conn, question_id)?.ok_or_else(|| VfsError::NotFound {
             resource_type: "question".to_string(),
             id: question_id.to_string(),
@@ -2237,6 +2618,7 @@ impl VfsQuestionRepo {
 
     /// 软删除题目（使用现有连接）
     pub fn delete_question_with_conn(conn: &Connection, question_id: &str) -> VfsResult<()> {
+        let exam_id = Self::exam_id_for_question_with_conn(conn, question_id)?;
         let now = chrono::Utc::now().to_rfc3339();
         let affected = conn.execute(
             "UPDATE questions SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
@@ -2254,6 +2636,9 @@ impl VfsQuestionRepo {
             "[VFS::QuestionRepo] Soft deleted question id={}",
             question_id
         );
+        if let Some(exam_id) = exam_id {
+            Self::invalidate_exam_content_index_with_conn(conn, &exam_id)?;
+        }
         Ok(())
     }
 
@@ -2310,12 +2695,21 @@ impl VfsQuestionRepo {
         let result = (|| -> VfsResult<usize> {
             let now = chrono::Utc::now().to_rfc3339();
             let mut deleted = 0;
+            let mut exam_ids: Vec<String> = Vec::new();
             for id in question_ids {
+                if let Some(exam_id) = Self::exam_id_for_question_with_conn(conn, id)? {
+                    if !exam_ids.contains(&exam_id) {
+                        exam_ids.push(exam_id);
+                    }
+                }
                 let affected = conn.execute(
                     "UPDATE questions SET deleted_at = ?1, updated_at = ?1 WHERE id = ?2 AND deleted_at IS NULL",
                     params![now, id],
                 )?;
                 deleted += affected;
+            }
+            for exam_id in &exam_ids {
+                Self::invalidate_exam_content_index_with_conn(conn, exam_id)?;
             }
             Ok(deleted)
         })();
@@ -2453,10 +2847,13 @@ impl VfsQuestionRepo {
     // ========================================================================
 
     /// 按题型统计题目数量（组卷配置的前端余量校验用）
+    ///
+    /// 口径与列表/统计一致：只统计未删除题目，避免软删题把余量算大。
     pub fn count_by_type(db: &VfsDatabase, exam_id: &str) -> VfsResult<HashMap<String, u32>> {
         let conn = db.get_conn_safe()?;
         let mut stmt = conn.prepare(
-            "SELECT question_type, COUNT(*) FROM questions WHERE exam_id = ?1 GROUP BY question_type",
+            "SELECT question_type, COUNT(*) FROM questions \
+             WHERE exam_id = ?1 AND deleted_at IS NULL GROUP BY question_type",
         )?;
         let rows = stmt.query_map(params![exam_id], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
@@ -2642,6 +3039,33 @@ impl VfsQuestionRepo {
         grading_method: &str,
         client_request_id: Option<&str>,
     ) -> VfsResult<String> {
+        Self::insert_submission_with_snapshot_with_conn(
+            conn,
+            question_id,
+            user_answer,
+            is_correct,
+            grading_method,
+            client_request_id,
+            None,
+            None,
+        )
+    }
+
+    /// 记录一条作答提交，并冻结题目/材料快照（历史判分复核）。
+    ///
+    /// 快照在建档时一次性拷贝题目投影与所需材料全文：此后编辑题目或材料、
+    /// 或删除材料关联，都不会改变这次作答当时被评判的内容。
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_submission_with_snapshot_with_conn(
+        conn: &Connection,
+        question_id: &str,
+        user_answer: &str,
+        is_correct: Option<bool>,
+        grading_method: &str,
+        client_request_id: Option<&str>,
+        question_snapshot_json: Option<&str>,
+        material_snapshot_json: Option<&str>,
+    ) -> VfsResult<String> {
         let normalized_request_id = client_request_id.map(str::trim).filter(|s| !s.is_empty());
         if let Some(req_id) = normalized_request_id {
             if let Some(existing) =
@@ -2651,14 +3075,32 @@ impl VfsQuestionRepo {
             }
         }
 
+        // 所有作答入口（手动作答、工具批量练习、AI 判分）都冻结同一份快照：
+        // 调用方不需要理解快照格式，也不可能忘记传；历史复核永远看到提交当时的
+        // 题干/选项/答案与所需材料，而不是被后续编辑覆盖的当前内容。
+        // 快照生成失败必须上抛（VfsResult）：历史复核不能静默丢掉材料快照，
+        // 否则旧判分在材料被编辑后无法复原当时的条件。
+        let (question_snapshot_json, material_snapshot_json) =
+            if question_snapshot_json.is_none() && material_snapshot_json.is_none() {
+                Self::build_submission_snapshots_with_conn(conn, question_id)?
+            } else {
+                (
+                    question_snapshot_json.map(str::to_string),
+                    material_snapshot_json.map(str::to_string),
+                )
+            };
+
         let id = format!("as_{}", nanoid::nanoid!(10));
         let now = chrono::Utc::now().to_rfc3339();
         let is_correct_val = is_correct.map(|v| if v { 1 } else { 0 });
 
         conn.execute(
             r#"
-            INSERT INTO answer_submissions (id, question_id, user_answer, is_correct, grading_method, submitted_at, client_request_id)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            INSERT INTO answer_submissions (
+                id, question_id, user_answer, is_correct, grading_method, submitted_at,
+                client_request_id, question_snapshot_json, material_snapshot_json
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
             "#,
             params![
                 id,
@@ -2667,7 +3109,9 @@ impl VfsQuestionRepo {
                 is_correct_val,
                 grading_method,
                 now,
-                normalized_request_id
+                normalized_request_id,
+                question_snapshot_json,
+                material_snapshot_json,
             ],
         )?;
 
@@ -2677,6 +3121,111 @@ impl VfsQuestionRepo {
         );
 
         Ok(id)
+    }
+
+    /// 读取单次作答冻结的题目/材料快照。
+    pub fn get_submission_snapshot_with_conn(
+        conn: &Connection,
+        submission_id: &str,
+    ) -> VfsResult<Option<SubmissionSnapshot>> {
+        let snapshot = conn
+            .query_row(
+                r#"
+                SELECT id, question_snapshot_json, material_snapshot_json
+                FROM answer_submissions
+                WHERE id = ?1
+                "#,
+                params![submission_id],
+                |row| {
+                    Ok(SubmissionSnapshot {
+                        submission_id: row.get(0)?,
+                        question_snapshot_json: row.get(1)?,
+                        material_snapshot_json: row.get(2)?,
+                    })
+                },
+            )
+            .optional()?;
+        Ok(snapshot)
+    }
+
+    /// 生成作答时冻结的题目/材料快照。
+    ///
+    /// 题目快照只包含判分与复核需要的内容（不含学习状态/计数），材料快照按
+    /// 组的 `qbank_group_materials` 投影一次性写全，附 `local_version` 以便
+    /// 复核界面提示"材料已更新"。
+    pub fn build_submission_snapshots_with_conn(
+        conn: &Connection,
+        question_id: &str,
+    ) -> VfsResult<(Option<String>, Option<String>)> {
+        let Some(question) = Self::get_question_with_conn(conn, question_id)? else {
+            return Ok((None, None));
+        };
+        let material_ids: Vec<String> = question.materials.iter().map(|m| m.id.clone()).collect();
+        let question_snapshot = serde_json::json!({
+            "id": question.id,
+            "exam_id": question.exam_id,
+            "question_label": question.question_label,
+            "content": question.content,
+            "options": question.options,
+            "answer": question.answer,
+            "explanation": question.explanation,
+            "structured_data": question.structured_data,
+            "question_type": question.question_type.as_str(),
+            "difficulty": question.difficulty.as_ref().map(|d| d.as_str()),
+            "tags": question.tags,
+            "images": question.images,
+            "group_id": question.group_id,
+            "group_position": question.group_position,
+            "group_label": question.group_label,
+            "material_ids": material_ids,
+            "answer_origin": question.answer_origin,
+            "question_updated_at": question.updated_at,
+        });
+        let material_snapshot = serde_json::json!({
+            "materials": question.materials,
+        });
+        Ok((
+            Some(serde_json::to_string(&question_snapshot).unwrap_or_default()),
+            Some(serde_json::to_string(&material_snapshot).unwrap_or_default()),
+        ))
+    }
+
+    /// 读取某题历次作答及其冻结快照（新的在前）。
+    pub fn get_submissions_with_snapshots_with_conn(
+        conn: &Connection,
+        question_id: &str,
+        limit: u32,
+    ) -> VfsResult<Vec<(AnswerSubmission, SubmissionSnapshot)>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, question_id, user_answer, is_correct, grading_method, submitted_at,
+                   question_snapshot_json, material_snapshot_json
+            FROM answer_submissions
+            WHERE question_id = ?1
+            ORDER BY submitted_at DESC
+            LIMIT ?2
+            "#,
+        )?;
+        let rows = stmt.query_map(params![question_id, limit], |row| {
+            let is_correct: Option<i32> = row.get(3)?;
+            let id: String = row.get(0)?;
+            Ok((
+                AnswerSubmission {
+                    id: id.clone(),
+                    question_id: row.get(1)?,
+                    user_answer: row.get(2)?,
+                    is_correct: is_correct.map(|v| v != 0),
+                    grading_method: row.get(4)?,
+                    submitted_at: row.get(5)?,
+                },
+                SubmissionSnapshot {
+                    submission_id: id,
+                    question_snapshot_json: row.get(6)?,
+                    material_snapshot_json: row.get(7)?,
+                },
+            ))
+        })?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
     /// 按客户端请求 ID 查询已存在的提交（用于幂等）
@@ -2875,6 +3424,14 @@ impl VfsQuestionRepo {
                     }
                 });
 
+        // 题组/来源投影：列在 V20261023 后存在；旧测试库若尚未迁移则为 NULL。
+        let group_id: Option<String> = row.get(30)?;
+        let group_position: Option<i32> = row.get(31)?;
+        let source_key: Option<String> = row.get(32)?;
+        let provenance_json: Option<String> = row.get(33)?;
+        let answer_origin: Option<String> = row.get(34)?;
+        let (source_refs, answer_source_refs) = parse_provenance_refs(provenance_json.as_deref());
+
         Ok(Question {
             id: row.get(0)?,
             exam_id: row.get(1)?,
@@ -2906,6 +3463,14 @@ impl VfsQuestionRepo {
             ai_feedback: row.get(26)?,
             ai_score,
             ai_graded_at: row.get(28)?,
+            group_id,
+            group_position,
+            group_label: None,
+            materials: Vec::new(),
+            answer_origin,
+            source_refs,
+            answer_source_refs,
+            source_key,
         })
     }
 }
@@ -3302,5 +3867,316 @@ mod tests {
             .expect("reload concurrent question")
             .expect("concurrent question should exist");
         assert!(persisted.content == "writer-a" || persisted.content == "writer-b");
+    }
+    // ========================================================================
+    // 题目导入 v2（issue 489/491）：题组/材料读取投影、作答快照、统计口径
+    // ========================================================================
+
+    fn insert_exam(conn: &Connection, exam_id: &str, resource_id: Option<&str>) {
+        conn.execute(
+            "INSERT INTO exam_sheets (
+                id, resource_id, exam_name, status, temp_id, metadata_json, preview_json,
+                created_at, updated_at
+             ) VALUES (?1, ?2, ?1, 'completed', ?1, '{}', '{}', ?3, ?3)",
+            params![exam_id, resource_id, "2026-10-23T00:00:00Z"],
+        )
+        .expect("insert exam");
+    }
+
+    fn seed_group_and_material(conn: &Connection, exam_id: &str) {
+        let now = "2026-10-23T00:00:00Z";
+        conn.execute(
+            "INSERT INTO qbank_groups (id, exam_id, label, position, created_at, updated_at)
+             VALUES ('g1', ?1, '阅读一', 0, ?2, ?2)",
+            params![exam_id, now],
+        )
+        .expect("insert group");
+        conn.execute(
+            "INSERT INTO qbank_materials (
+                id, exam_id, content, images_json, source_refs_json,
+                local_version, created_at, updated_at
+             ) VALUES ('m1', ?1, '共享文章正文', '[]', '[]', 3, ?2, ?2)",
+            params![exam_id, now],
+        )
+        .expect("insert material");
+        conn.execute(
+            "INSERT INTO qbank_group_materials (
+                id, exam_id, group_id, material_id, position, created_at, updated_at
+             ) VALUES ('gm1', ?1, 'g1', 'm1', 0, ?2, ?2)",
+            params![exam_id, now],
+        )
+        .expect("insert group material");
+    }
+
+    fn create_grouped_question(db: &VfsDatabase, exam_id: &str, content: &str) -> Question {
+        let conn = db.get_conn_safe().expect("open conn");
+        let question = VfsQuestionRepo::create_question_with_conn(
+            &conn,
+            &CreateQuestionParams {
+                exam_id: exam_id.to_string(),
+                content: content.to_string(),
+                question_type: Some(QuestionType::ShortAnswer),
+                ..Default::default()
+            },
+        )
+        .expect("create question");
+        conn.execute(
+            "UPDATE questions SET group_id = 'g1', group_position = 0 WHERE id = ?1",
+            params![question.id],
+        )
+        .expect("attach group");
+        question
+    }
+
+    #[test]
+    fn list_and_single_reads_hydrate_group_materials_without_duplicating_membership() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            insert_exam(&conn, "exam-hydrate", None);
+            seed_group_and_material(&conn, "exam-hydrate");
+        }
+        create_grouped_question(&db, "exam-hydrate", "子题一");
+        let created = VfsQuestionRepo::create_question_with_conn(
+            &db.get_conn_safe().expect("open conn"),
+            &CreateQuestionParams {
+                exam_id: "exam-hydrate".to_string(),
+                content: "子题二".to_string(),
+                question_type: Some(QuestionType::ShortAnswer),
+                ..Default::default()
+            },
+        )
+        .expect("second question");
+        db.get_conn_safe()
+            .expect("open group connection")
+            .execute(
+                "UPDATE questions SET group_id='g1',group_position=1 WHERE id=?1",
+                params![created.id],
+            )
+            .expect("attach second group member");
+
+        let list = VfsQuestionRepo::list_questions(
+            &db,
+            "exam-hydrate",
+            &QuestionFilters::default(),
+            1,
+            50,
+        )
+        .expect("list questions");
+        assert_eq!(list.questions.len(), 2);
+        let hydrated = list
+            .questions
+            .iter()
+            .find(|q| q.id == created.id)
+            .expect("second question in list");
+        assert_eq!(hydrated.group_id.as_deref(), Some("g1"));
+        assert_eq!(hydrated.group_label.as_deref(), Some("阅读一"));
+        assert_eq!(hydrated.materials.len(), 1);
+        assert_eq!(hydrated.materials[0].id, "m1");
+        assert_eq!(hydrated.materials[0].version, 3);
+        assert_eq!(hydrated.materials[0].content, "共享文章正文");
+
+        let single = VfsQuestionRepo::get_question(&db, &created.id)
+            .expect("get question")
+            .expect("question exists");
+        assert_eq!(
+            single.materials.len(),
+            1,
+            "single read must hydrate materials"
+        );
+        assert_eq!(single.group_position, Some(1));
+
+        // 成员关系只有 questions.group_id 一份权威：题组表没有 question_ids 列。
+        let columns: Vec<String> = {
+            let conn = db.get_conn_safe().expect("open conn");
+            let mut stmt = conn
+                .prepare("SELECT name FROM pragma_table_info('qbank_groups')")
+                .expect("pragma");
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .expect("rows");
+            rows.filter_map(Result::ok).collect()
+        };
+        assert!(!columns.iter().any(|c| c == "question_ids"));
+    }
+
+    #[test]
+    fn canonical_read_returns_all_questions_beyond_repo_page_cap() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            insert_exam(&conn, "exam-canonical", None);
+            for index in 0..105 {
+                conn.execute(
+                    "INSERT INTO questions (
+                        id, exam_id, content, question_type, tags, created_at, updated_at
+                     ) VALUES (?1, 'exam-canonical', ?2, 'short_answer', '[]', ?3, ?3)",
+                    params![
+                        format!("q-canonical-{index:03}"),
+                        format!("题目 {index}"),
+                        "2026-10-23T00:00:00Z"
+                    ],
+                )
+                .expect("insert question");
+            }
+        }
+        let conn = db.get_conn_safe().expect("open conn");
+        let questions = VfsQuestionRepo::canonical_questions_with_conn(&conn, "exam-canonical")
+            .expect("canonical read");
+        assert_eq!(
+            questions.len(),
+            105,
+            "canonical read must paginate internally"
+        );
+
+        let text = VfsQuestionRepo::canonical_text_with_conn(&conn, "exam-canonical")
+            .expect("canonical text");
+        assert!(text.contains("题目 0"));
+        assert!(text.contains("题目 104"));
+    }
+
+    #[test]
+    fn count_by_type_excludes_soft_deleted_questions() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            insert_exam(&conn, "exam-count", None);
+        }
+        let question = VfsQuestionRepo::create_question(
+            &db,
+            &CreateQuestionParams {
+                exam_id: "exam-count".to_string(),
+                content: "选择题".to_string(),
+                question_type: Some(QuestionType::SingleChoice),
+                options: Some(vec![
+                    QuestionOption {
+                        key: "A".to_string(),
+                        content: "甲".to_string(),
+                    },
+                    QuestionOption {
+                        key: "B".to_string(),
+                        content: "乙".to_string(),
+                    },
+                ]),
+                ..Default::default()
+            },
+        )
+        .expect("create question");
+
+        let counts = VfsQuestionRepo::count_by_type(&db, "exam-count").expect("count");
+        assert_eq!(counts.get("single_choice"), Some(&1));
+
+        VfsQuestionRepo::delete_question(&db, &question.id).expect("soft delete");
+        let counts = VfsQuestionRepo::count_by_type(&db, "exam-count").expect("count again");
+        assert_eq!(
+            counts.get("single_choice"),
+            None,
+            "soft-deleted questions must not inflate组卷余量"
+        );
+    }
+
+    #[test]
+    fn submission_freezes_question_and_material_snapshot_for_historical_review() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            insert_exam(&conn, "exam-snapshot", None);
+            seed_group_and_material(&conn, "exam-snapshot");
+        }
+        let question = create_grouped_question(&db, "exam-snapshot", "子题快照");
+
+        let submission_id = {
+            let conn = db.get_conn_safe().expect("open conn");
+            VfsQuestionRepo::insert_submission_with_conn(
+                &conn,
+                &question.id,
+                "原文答案",
+                Some(true),
+                "auto",
+                None,
+            )
+            .expect("insert submission")
+        };
+
+        let conn = db.get_conn_safe().expect("open conn");
+        let snapshot = VfsQuestionRepo::get_submission_snapshot_with_conn(&conn, &submission_id)
+            .expect("read snapshot")
+            .expect("snapshot exists");
+        let question_snapshot = snapshot
+            .question_snapshot_json
+            .expect("question snapshot auto-populated");
+        assert!(question_snapshot.contains("子题快照"));
+        assert!(question_snapshot.contains("\"material_ids\":[\"m1\"]"));
+        let material_snapshot = snapshot
+            .material_snapshot_json
+            .expect("material snapshot auto-populated");
+        assert!(material_snapshot.contains("共享文章正文"));
+
+        // 材料之后被编辑，快照保持不变（历史判分可复核当时的条件）。
+        conn.execute(
+            "UPDATE qbank_materials SET content = '修订后的文章', local_version = 4 WHERE id = 'm1'",
+            [],
+        )
+        .expect("edit material");
+        let snapshot = VfsQuestionRepo::get_submission_snapshot_with_conn(&conn, &submission_id)
+            .expect("read snapshot again")
+            .expect("snapshot exists");
+        assert!(snapshot
+            .material_snapshot_json
+            .expect("material snapshot")
+            .contains("共享文章正文"));
+    }
+
+    #[test]
+    fn question_mutation_marks_linked_resource_index_pending() {
+        let (_temp_dir, db) = crate::vfs::database::setup_migrated_test_db();
+        {
+            let conn = db.get_conn_safe().expect("open conn");
+            conn.execute(
+                "INSERT INTO resources (
+                    id, hash, type, storage_mode, ref_count, created_at, updated_at, index_state
+                 ) VALUES ('res-index', 'hash-index', 'exam', 'managed', 1, 0, 0, 'indexed')",
+                [],
+            )
+            .expect("insert resource");
+            insert_exam(&conn, "exam-index", Some("res-index"));
+        }
+        let question = VfsQuestionRepo::create_question(
+            &db,
+            &CreateQuestionParams {
+                exam_id: "exam-index".to_string(),
+                content: "索引失效题目".to_string(),
+                ..Default::default()
+            },
+        )
+        .expect("create question");
+
+        let conn = db.get_conn_safe().expect("open conn");
+        let state: String = conn
+            .query_row(
+                "SELECT index_state FROM resources WHERE id = 'res-index'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read index state");
+        assert_eq!(state, "pending");
+
+        conn.execute(
+            "UPDATE resources SET index_state = 'indexed' WHERE id = 'res-index'",
+            [],
+        )
+        .expect("reset state");
+        VfsQuestionRepo::delete_question_with_conn(&conn, &question.id).expect("delete question");
+        let state: String = conn
+            .query_row(
+                "SELECT index_state FROM resources WHERE id = 'res-index'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read index state");
+        assert_eq!(
+            state, "pending",
+            "deletion must invalidate canonical index too"
+        );
     }
 }

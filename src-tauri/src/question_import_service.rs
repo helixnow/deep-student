@@ -199,15 +199,21 @@ pub struct ImportRequest {
     pub model_config_id: Option<String>,
     /// 保留兼容性（Visual-First 架构下忽略此字段）
     pub pdf_prefer_ocr: Option<bool>,
+    pub source_ranges: Vec<crate::question_authoring_runner::SourceRange>,
 }
 
 /// 导入结果
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ImportResult {
     pub session_id: String,
     pub name: String,
     pub imported_count: usize,
     pub total_questions: usize,
+    pub draft_job_id: Option<String>,
+    pub draft_version: Option<i64>,
+    pub draft_document: Option<Value>,
+    pub model_route: Option<Value>,
+    pub committed: bool,
 }
 
 /// PDF 文本检测结果（保留向后兼容，新架构下不再需要前端调用）
@@ -318,6 +324,7 @@ pub struct ImportCheckpointState {
 pub struct QuestionImportService {
     llm_manager: Arc<LLMManager>,
     file_manager: Option<Arc<FileManager>>,
+    cancel: Option<CancellationToken>,
 }
 
 impl QuestionImportService {
@@ -325,6 +332,7 @@ impl QuestionImportService {
         Self {
             llm_manager,
             file_manager: Some(file_manager),
+            cancel: None,
         }
     }
 
@@ -332,6 +340,24 @@ impl QuestionImportService {
         Self {
             llm_manager,
             file_manager: None,
+            cancel: None,
+        }
+    }
+
+    pub fn with_cancel(mut self, cancel: Option<CancellationToken>) -> Self {
+        self.cancel = cancel;
+        self
+    }
+
+    fn check_cancelled(&self) -> Result<(), AppError> {
+        if self
+            .cancel
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            Err(AppError::validation("题目解析已取消"))
+        } else {
+            Ok(())
         }
     }
 
@@ -373,6 +399,216 @@ impl QuestionImportService {
 
     /// Visual-First 统一导入管线（流式）
     pub async fn import_document_stream(
+        &self,
+        vfs_db: &Arc<VfsDatabase>,
+        request: ImportRequest,
+        progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
+    ) -> Result<ImportResult, AppError> {
+        self.prepare_document(vfs_db, request, progress_tx, None)
+            .await
+    }
+
+    pub async fn import_document_with_config(
+        &self,
+        vfs_db: &Arc<VfsDatabase>,
+        request: ImportRequest,
+        config: Option<Arc<crate::llm_manager::ApiConfig>>,
+    ) -> Result<ImportResult, AppError> {
+        self.prepare_document(vfs_db, request, None, config).await
+    }
+
+    async fn prepare_document(
+        &self,
+        vfs_db: &Arc<VfsDatabase>,
+        request: ImportRequest,
+        progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
+        trusted_config: Option<Arc<crate::llm_manager::ApiConfig>>,
+    ) -> Result<ImportResult, AppError> {
+        use crate::qbank_authoring_service::QuestionAuthoringService;
+        use crate::question_authoring_runner::{load_source_bundle_cancellable, run_document};
+        let qbank_name = request
+            .name
+            .clone()
+            .unwrap_or_else(|| "导入的题目集".to_string());
+        self.check_cancelled()?;
+        if let Some(tx) = &progress_tx {
+            let _ = tx.send(QuestionImportProgress::Preprocessing {
+                stage: "preparing_sources".into(),
+                message: "正在准备完整来源...".into(),
+                percent: 2,
+            });
+        }
+        let mut prepared_session = None;
+        let (document, metadata, pages) = if request.format == "zip" {
+            let (document, metadata) = crate::question_export_service::authoring::import_portable(
+                vfs_db,
+                &request.content,
+            )?;
+            (document, metadata, Vec::new())
+        } else if request.format == "json" {
+            let text = self
+                .decode_text_content(&request.content)
+                .unwrap_or_else(|_| request.content.clone());
+            let mut raw: Value = serde_json::from_str(&text)
+                .map_err(|e| AppError::validation(format!("JSON 解析失败: {e}")))?;
+            if raw.get("schema_version").is_none() {
+                let items = raw["questions"]
+                    .as_array_mut()
+                    .ok_or_else(|| AppError::validation("JSON 需要 questions 数组"))?;
+                for (index, item) in items.iter_mut().enumerate() {
+                    item["local_id"] = json!(format!("q{}", index + 1));
+                    if item.get("question_type").is_none() {
+                        item["question_type"] =
+                            item.get("questionType").cloned().unwrap_or(json!("other"));
+                    }
+                    if item.get("original_label").is_none() {
+                        item["original_label"] = item
+                            .get("questionLabel")
+                            .cloned()
+                            .unwrap_or(json!(format!("{}", index + 1)));
+                    }
+                    if let Some(item) = item.as_object_mut() {
+                        item.remove("questionType");
+                        item.remove("questionLabel");
+                        item.remove("question_label");
+                    }
+                }
+                raw["schema_version"] = json!(2);
+                raw["mode"] = json!("extract");
+            }
+            let metadata = json!({"sources":raw.get("sources").cloned().unwrap_or(json!([])),"pages":raw.get("source_pages").cloned().unwrap_or(json!([])),"source_format":"json"});
+            let document: crate::qbank_document::QuestionDocument = serde_json::from_value(raw)
+                .map_err(|e| AppError::validation(format!("题目 JSON 契约无效: {e}")))?;
+            document.validate()?;
+            (document, metadata, Vec::new())
+        } else {
+            let original_bundle = load_source_bundle_cancellable(
+                vfs_db,
+                &request.content,
+                &request.format,
+                &qbank_name,
+                self.cancel.clone(),
+            )
+            .await?;
+            let bundle = if request.source_ranges.is_empty() {
+                original_bundle
+            } else {
+                original_bundle.scoped(&request.source_ranges)?
+            };
+            self.check_cancelled()?;
+            let config = match trusted_config {
+                Some(config) => (*config).clone(),
+                None => {
+                    self.llm_manager
+                        .resolve_question_authoring_config(request.model_config_id.as_deref())
+                        .await?
+                }
+            };
+            let session =
+                self.create_import_session(vfs_db, &request, &qbank_name, &bundle.legacy_pages())?;
+            VfsExamRepo::update_import_state(vfs_db,&session,&json!({"schema_version":2,"source_bundle":bundle,"model_config_id":config.id,"model_fingerprint":authoring_config_fingerprint(&config),"qbank_name":qbank_name})).map_err(|e|AppError::database(e.to_string()))?;
+            if let Some(tx) = &progress_tx {
+                let _ = tx.send(QuestionImportProgress::SessionCreated {
+                    session_id: session.clone(),
+                    name: qbank_name.clone(),
+                    total_chunks: 1,
+                });
+            }
+            prepared_session = Some(session);
+            if let Some(tx) = &progress_tx {
+                let _ = tx.send(QuestionImportProgress::Preprocessing {
+                    stage: "understanding_document".into(),
+                    message: format!("正在使用 {} 理解完整材料...", config.name),
+                    percent: 25,
+                });
+            }
+            let (document, metadata) = match run_document(
+                &self.llm_manager,
+                vfs_db,
+                &bundle,
+                &config,
+                self.cancel.clone(),
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(error) => {
+                    if let Some(session) = &prepared_session {
+                        let _ = VfsExamRepo::update_import_state(
+                            vfs_db,
+                            session,
+                            &json!({"schema_version":2,"source_bundle":bundle,"model_config_id":config.id,"model_fingerprint":authoring_config_fingerprint(&config),"qbank_name":qbank_name,"last_error":error}),
+                        );
+                    }
+                    return Err(error);
+                }
+            };
+            (document, metadata, bundle.legacy_pages())
+        };
+        if document.questions.is_empty() {
+            return Err(AppError::validation("未提取到可作答题目，未创建正式内容"));
+        }
+        self.check_cancelled()?;
+        let session_id = match prepared_session {
+            Some(session) => session,
+            None => self.create_import_session(vfs_db, &request, &qbank_name, &pages)?,
+        };
+        let service = QuestionAuthoringService::new(vfs_db.clone());
+        let job_id = service.save_draft(&session_id, &document, &metadata)?;
+        let draft = service.get_draft(&job_id)?;
+        let draft_json =
+            serde_json::to_value(&document).map_err(|e| AppError::internal(e.to_string()))?;
+        // Only a versioned draft pointer is stored in the legacy checkpoint.
+        // Formal questions are not created until explicit confirmation.
+        VfsExamRepo::update_import_state(
+            vfs_db,
+            &session_id,
+            &json!({"schema_version":2,"job_id":job_id}),
+        )
+        .map_err(|e| AppError::database(e.to_string()))?;
+        if let Some(tx) = &progress_tx {
+            let _ = tx.send(QuestionImportProgress::SessionCreated {
+                session_id: session_id.clone(),
+                name: qbank_name.clone(),
+                total_chunks: 1,
+            });
+            for (index, question) in draft_json["questions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .enumerate()
+            {
+                let _ = tx.send(QuestionImportProgress::QuestionParsed {
+                    question: question.clone(),
+                    question_index: index,
+                    total_parsed: index + 1,
+                });
+            }
+            let _ = tx.send(QuestionImportProgress::Completed {
+                session_id: session_id.clone(),
+                name: qbank_name.clone(),
+                total_questions: document.questions.len(),
+                partial: draft.status != "ready",
+                failed_count: 0,
+            });
+        }
+        let total = VfsQuestionRepo::count_questions(vfs_db, &session_id).unwrap_or(0) as usize;
+        Ok(ImportResult {
+            session_id,
+            name: qbank_name,
+            imported_count: 0,
+            total_questions: total,
+            draft_job_id: Some(job_id),
+            draft_version: Some(draft.version),
+            draft_document: Some(draft_json),
+            model_route: Some(metadata),
+            committed: false,
+        })
+    }
+
+    /// Compatibility implementation retained only for existing checkpoints.
+    #[allow(dead_code)]
+    async fn import_document_stream_legacy(
         &self,
         vfs_db: &Arc<VfsDatabase>,
         request: ImportRequest,
@@ -504,7 +740,7 @@ impl QuestionImportService {
     /// 恢复中断的导入（分阶段 checkpoint 状态机）
     pub async fn resume_import(
         &self,
-        vfs_db: &VfsDatabase,
+        vfs_db: &Arc<VfsDatabase>,
         session_id: &str,
         progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
@@ -512,6 +748,79 @@ impl QuestionImportService {
             .map_err(|e| AppError::database(format!("读取导入状态失败: {}", e)))?
             .ok_or_else(|| AppError::not_found("未找到可恢复的导入状态"))?;
 
+        if let Ok(state) = serde_json::from_str::<Value>(&state_str) {
+            if state["schema_version"] == 2 {
+                if let Some(bundle) = state.get("source_bundle") {
+                    let bundle: crate::question_authoring_runner::SourceBundle =
+                        serde_json::from_value(bundle.clone())
+                            .map_err(|e| AppError::validation(e.to_string()))?;
+                    let config = self
+                        .llm_manager
+                        .resolve_question_authoring_config(state["model_config_id"].as_str())
+                        .await?;
+                    if state["model_fingerprint"].as_str()
+                        != Some(authoring_config_fingerprint(&config).as_str())
+                    {
+                        return Err(AppError::configuration(
+                            "恢复任务的模型配置已变化，请从原文件创建新解析任务",
+                        ));
+                    }
+                    let (document, metadata) = crate::question_authoring_runner::run_document(
+                        &self.llm_manager,
+                        vfs_db,
+                        &bundle,
+                        &config,
+                        self.cancel.clone(),
+                    )
+                    .await?;
+                    self.check_cancelled()?;
+                    let service = crate::qbank_authoring_service::QuestionAuthoringService::new(
+                        vfs_db.clone(),
+                    );
+                    let job_id = service.save_draft(session_id, &document, &metadata)?;
+                    let draft = service.get_draft(&job_id)?;
+                    VfsExamRepo::update_import_state(
+                        vfs_db,
+                        session_id,
+                        &json!({"schema_version":2,"job_id":job_id}),
+                    )
+                    .map_err(|e| AppError::database(e.to_string()))?;
+                    return Ok(ImportResult {
+                        session_id: session_id.to_string(),
+                        name: state["qbank_name"].as_str().unwrap_or("题目集").into(),
+                        draft_job_id: Some(job_id),
+                        draft_version: Some(draft.version),
+                        draft_document: Some(
+                            serde_json::to_value(document)
+                                .map_err(|e| AppError::internal(e.to_string()))?,
+                        ),
+                        model_route: Some(metadata),
+                        ..Default::default()
+                    });
+                }
+                let job_id = state["job_id"]
+                    .as_str()
+                    .ok_or_else(|| AppError::validation("草稿恢复状态缺少job_id"))?;
+                let draft =
+                    crate::qbank_authoring_service::QuestionAuthoringService::new(vfs_db.clone())
+                        .get_draft(job_id)?;
+                let sheet = VfsExamRepo::get_exam_sheet(vfs_db, session_id)
+                    .map_err(|e| AppError::database(e.to_string()))?
+                    .ok_or_else(|| AppError::not_found("目标题目集不存在"))?;
+                return Ok(ImportResult {
+                    session_id: session_id.to_string(),
+                    name: sheet.exam_name.unwrap_or_default(),
+                    draft_job_id: Some(job_id.to_string()),
+                    draft_version: Some(draft.version),
+                    draft_document: Some(
+                        serde_json::to_value(&draft.document)
+                            .map_err(|e| AppError::internal(e.to_string()))?,
+                    ),
+                    model_route: Some(draft.metadata),
+                    ..Default::default()
+                });
+            }
+        }
         let mut checkpoint: ImportCheckpointState = serde_json::from_str(&state_str)
             .map_err(|e| AppError::validation(format!("解析导入状态失败: {}", e)))?;
 
@@ -585,6 +894,8 @@ impl QuestionImportService {
                     name: qbank_name,
                     imported_count: already_saved,
                     total_questions: already_saved,
+                    committed: true,
+                    ..Default::default()
                 });
             }
 
@@ -666,6 +977,8 @@ impl QuestionImportService {
                 name: qbank_name,
                 imported_count: total_saved,
                 total_questions: total_saved,
+                committed: true,
+                ..Default::default()
             });
         }
 
@@ -860,6 +1173,8 @@ impl QuestionImportService {
                 name: qbank_name,
                 imported_count: total_parsed,
                 total_questions: total_parsed,
+                committed: true,
+                ..Default::default()
             });
         }
 
@@ -1339,6 +1654,8 @@ impl QuestionImportService {
             name: qbank_name,
             imported_count: total_saved,
             total_questions: total_saved,
+            committed: true,
+            ..Default::default()
         })
     }
 
@@ -1445,6 +1762,7 @@ impl QuestionImportService {
                                 name: img_name,
                                 mime: img_mime,
                                 hash: blob_hashes[img_idx].clone(),
+                                role: Some("question".into()),
                             })
                         } else {
                             None
@@ -2035,6 +2353,8 @@ impl QuestionImportService {
             name: qbank_name,
             imported_count: total_parsed,
             total_questions: total_parsed,
+            committed: true,
+            ..Default::default()
         })
     }
 
@@ -2111,6 +2431,7 @@ impl QuestionImportService {
                     name: format!("docx_image_{}.{}", orphan.marker_index, orphan.ext),
                     mime: orphan.mime.clone(),
                     hash: orphan.blob_hash.clone(),
+                    role: Some("question".into()),
                 };
                 updates.entry(question.id.clone()).or_default().push(img);
             }
@@ -2399,6 +2720,8 @@ impl QuestionImportService {
             name: qbank_name,
             imported_count: total_parsed,
             total_questions: total_parsed,
+            committed: true,
+            ..Default::default()
         })
     }
 
@@ -2411,6 +2734,14 @@ impl QuestionImportService {
         pages: &[PageSlice],
     ) -> Result<String, AppError> {
         if let Some(sid) = &request.session_id {
+            if VfsExamRepo::get_exam_sheet(vfs_db, sid)
+                .map_err(|e| AppError::database(e.to_string()))?
+                .is_none()
+            {
+                return Err(AppError::not_found("目标题目集不存在"));
+            }
+            VfsExamRepo::update_status(vfs_db, sid, "importing")
+                .map_err(|e| AppError::database(e.to_string()))?;
             return Ok(sid.clone());
         }
 
@@ -2590,6 +2921,8 @@ impl QuestionImportService {
                     name: qbank_name.to_string(),
                     imported_count: total_saved,
                     total_questions: total_saved,
+                    committed: true,
+                    ..Default::default()
                 })
             }
             Err(e) => {
@@ -2721,6 +3054,8 @@ impl QuestionImportService {
             name: qbank_name,
             imported_count: total,
             total_questions: total,
+            committed: true,
+            ..Default::default()
         })
     }
 
@@ -2761,6 +3096,15 @@ impl QuestionImportService {
 // ============================================================================
 // 辅助函数
 // ============================================================================
+
+fn authoring_config_fingerprint(config: &crate::llm_manager::ApiConfig) -> String {
+    let mut snapshot = serde_json::to_value(config).unwrap_or(Value::Null);
+    if let Some(object) = snapshot.as_object_mut() {
+        object.remove("api_key");
+        object.remove("headers");
+    }
+    hex::encode(Sha256::digest(snapshot.to_string().as_bytes()))
+}
 
 fn is_image_format(format: &str) -> bool {
     matches!(
@@ -3269,6 +3613,7 @@ fn extract_images_from_question_json(
                     name: format!("docx_image_{}.{}", entry.marker_index, entry.ext),
                     mime: entry.mime.clone(),
                     hash: entry.blob_hash.clone(),
+                    role: Some("question".into()),
                 })
         })
         .collect()
@@ -3468,19 +3813,29 @@ fn ensure_vfs_file_for_blob(
 /// 仅用于 DOCX VLM 直提 / 纯文本 等不经过 Visual-First 管线的导入路径。
 fn rebuild_preview_from_questions(vfs_db: &VfsDatabase, session_id: &str) {
     // 读取所有已保存题目
-    let questions = match VfsQuestionRepo::list_questions(
-        vfs_db,
-        session_id,
-        &QuestionFilters::default(),
-        1,
-        10000, // 足够大，一次拿完
-    ) {
-        Ok(result) => result.questions,
-        Err(e) => {
-            log::warn!("[QuestionImport] rebuild_preview: 读取题目失败: {}", e);
-            return;
+    let mut questions = Vec::new();
+    let mut page = 1;
+    loop {
+        match VfsQuestionRepo::list_questions(
+            vfs_db,
+            session_id,
+            &QuestionFilters::default(),
+            page,
+            100,
+        ) {
+            Ok(result) => {
+                questions.extend(result.questions);
+                if !result.has_more {
+                    break;
+                }
+                page += 1;
+            }
+            Err(e) => {
+                log::warn!("[QuestionImport] rebuild_preview: 读取题目失败: {}", e);
+                return;
+            }
         }
-    };
+    }
 
     if questions.is_empty() {
         return;

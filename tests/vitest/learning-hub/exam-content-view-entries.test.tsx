@@ -252,6 +252,10 @@ describe('ExamContentView secondary entry points', () => {
     storeState.setMockExamSession.mockReset();
 
     mockInvoke.mockReset();
+    mockInvoke.mockImplementation(async (command: string) => {
+      if (command === 'qbank_list_authoring_drafts') return [];
+      return null;
+    });
     mockGetExamSheetSessionDetail.mockReset();
     mockResumeQuestionImport.mockReset();
     hookState.loadQuestions.mockReset();

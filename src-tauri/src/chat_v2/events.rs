@@ -1865,6 +1865,18 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    pub fn emit_stream_error_with_details(
+        &self,
+        message_id: &str,
+        error: &str,
+        code: &str,
+        details: serde_json::Value,
+    ) {
+        let mut event = SessionEvent::stream_error(&self.session_id, message_id, error);
+        event.payload = Some(serde_json::json!({"code": code, "details": details}));
+        self.emit_session(event);
+    }
+
     /// 发射流式取消事件
     pub fn emit_stream_cancelled(&self, message_id: &str) {
         let event = SessionEvent::stream_cancelled(&self.session_id, message_id);

@@ -4,6 +4,7 @@ mod exam_engine;
 pub(crate) mod model2_pipeline;
 pub(crate) mod parser;
 pub(crate) mod provider_quirks;
+pub mod question_authoring;
 mod rag_extension;
 pub(crate) mod reasoning_level_map;
 pub mod routing;
@@ -2911,6 +2912,19 @@ mod tests {
             .expect("whitespace args should be accepted as no-arg call");
         assert_eq!(converted.tool_name, "tag_list_all");
         assert_eq!(converted.args_json, json!({}));
+    }
+
+    #[test]
+    fn authoring_tool_never_repairs_truncated_question_or_material_arrays() {
+        for name in [
+            "builtin-qbank_batch_import",
+            "qbank_import_document",
+            "builtin-qbank_commit_authoring_draft",
+        ] {
+            let call = json!({"id":"call-cut","type":"function","function":{"name":name,"arguments":"{\"questions\":[{\"content\":\"complete\"}],\"materials\":[{\"content\":\"unfinished"}});
+            let error = LLMManager::convert_openai_tool_call(&call).unwrap_err();
+            assert!(error.contains("INCOMPLETE_TOOL_ARGUMENTS"), "{error}");
+        }
     }
 
     #[test]
@@ -8469,6 +8483,16 @@ impl LLMManager {
         let args_json: Value = match serde_json::from_str(arguments_str) {
             Ok(v) => v,
             Err(e) => {
+                // Authoring writes must never accept a repaired prefix as a
+                // complete document (it may omit materials or child questions).
+                if matches!(
+                    tool_name.trim_start_matches("builtin-"),
+                    "qbank_batch_import" | "qbank_import_document" | "qbank_commit_authoring_draft"
+                ) {
+                    return Err(format!(
+                        "INCOMPLETE_TOOL_ARGUMENTS: {tool_name} JSON is incomplete or invalid; no questions were written. Retry with a complete material/group boundary or the saved draft job_id: {e}"
+                    ));
+                }
                 // 检测是否为截断导致的 EOF 错误
                 let err_msg = e.to_string();
                 if err_msg.contains("EOF")

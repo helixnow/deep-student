@@ -231,7 +231,8 @@ jobs:
     name: Rust Tests (${{ matrix.partition }}/8)
     needs: [rust-test-build]
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    # Slow dependency/artifact downloads must not consume the test execution budget.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -251,6 +252,7 @@ jobs:
           name: nextest-archive
           path: ${{ runner.temp }}
       - name: Run test partition
+        timeout-minutes: 15
         working-directory: src-tauri
         run: |
           xvfb-run -a dbus-run-session -- cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \
@@ -263,7 +265,8 @@ jobs:
     needs: [changes, rust-test-build]
     if: github.event_name != 'pull_request' || needs.changes.outputs.provider-contract == 'true'
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    # Dependency/artifact downloads must leave room for bounded provider tests.
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -310,6 +313,7 @@ jobs:
             test "$(docker inspect --format '{{.State.Health.Status}}' "$container_id")" = healthy
           done
       - name: Execute ignored provider tests from the archive (no Cargo compilation)
+        timeout-minutes: 15
         working-directory: src-tauri
         run: |
           cargo nextest run --no-fail-fast --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" \

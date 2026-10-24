@@ -3288,7 +3288,8 @@ pub struct CompactionRecord {
     pub session_id: String,
     /// 承载摘要文本的 assistant 消息 ID
     pub summary_message_id: String,
-    /// 首条逐字保留消息的 ID
+    /// 首条逐字保留消息的 ID。等于 summary_message_id 时无原文 tail，
+    /// range_end_message_id 是最后一条已摘要消息（含边界）。
     pub tail_start_message_id: String,
     /// 首条逐字保留消息的创建时间（ms epoch），用于 SQL 层过滤
     pub tail_start_time_created: i64,
@@ -3306,7 +3307,7 @@ pub struct CompactionRecord {
     pub previous_compaction_id: Option<String>,
     /// 本次新纳入摘要的首条消息
     pub range_start_message_id: Option<String>,
-    /// 本次摘要区间的右开边界（通常为 tail_start）
+    /// 本次摘要区间的右开边界（通常为 tail_start）；summary-only 时为含边界。
     pub range_end_message_id: Option<String>,
     /// 本次新纳入摘要的原始消息数量
     pub compacted_message_count: Option<u32>,
@@ -3315,6 +3316,18 @@ pub struct CompactionRecord {
 }
 
 impl CompactionRecord {
+    pub fn is_summary_only(&self) -> bool {
+        self.tail_start_message_id == self.summary_message_id
+    }
+
+    pub fn history_boundary_id(&self) -> &str {
+        if self.is_summary_only() {
+            self.range_end_message_id.as_deref().unwrap_or("")
+        } else {
+            &self.tail_start_message_id
+        }
+    }
+
     pub fn generate_id() -> String {
         format!("cmp_{}", uuid::Uuid::new_v4())
     }

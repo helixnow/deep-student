@@ -14,7 +14,9 @@ export const PREBUILT_GUARD = `
                 throw GradleException("CI prebuilt native is restricted to aarch64 release")
             }
             val root = File(project.projectDir, rootDirRel ?: throw GradleException("missing Rust root")).canonicalFile
-            val lib = File(root, "target/aarch64-linux-android/release/libdeep_student_lib.so")
+            val configuredTarget = System.getenv("CARGO_TARGET_DIR")
+            val targetRoot = if (configuredTarget.isNullOrBlank()) File(root, "target") else File(configuredTarget).let { if (it.isAbsolute) it else File(root, configuredTarget) }
+            val lib = File(targetRoot, "aarch64-linux-android/release/libdeep_student_lib.so")
             val jni = File(project.projectDir, "src/main/jniLibs/arm64-v8a/libdeep_student_lib.so")
             if (!lib.isFile || lib.length() == 0L || jni.canonicalFile != lib.canonicalFile) {
                 throw GradleException("Tauri initial native build did not prepare the expected JNI library")

@@ -96,6 +96,7 @@ describe('buildImportSummary', () => {
 describe('ExamSheetUploader (streamlined layout)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.invoke.mockResolvedValue(null);
     mocks.getApiConfigurations.mockResolvedValue([]);
     mocks.getExamSheetSessionDetail.mockResolvedValue(detailWith([card('old-1')]));
     (globalThis as any).URL.createObjectURL = vi.fn(() => 'blob:preview');
@@ -118,7 +119,7 @@ describe('ExamSheetUploader (streamlined layout)', () => {
 
     expect(await screen.findByTestId('exam-uploader-selected-document')).toHaveTextContent('quiz.docx');
     expect(screen.queryByTestId('exam-uploader-dropzone')).toBeNull();
-    expect(screen.getByTestId('exam-uploader-add-more')).toHaveTextContent('exam_sheet:uploader.replace_file');
+    expect(screen.getByTestId('exam-uploader-add-more')).toHaveTextContent('exam_sheet:uploader.add_source_files');
     expect(screen.queryByTestId('exam-uploader-model')).toBeNull();
     expect(screen.queryByText('exam_sheet:uploader.manual_create_link')).toBeNull();
     expect(screen.getByTestId('exam-uploader-start')).toBeInTheDocument();
@@ -135,12 +136,17 @@ describe('ExamSheetUploader (streamlined layout)', () => {
     expect(screen.getByTestId('exam-uploader-add-more')).toHaveTextContent('exam_sheet:uploader.add_more_images');
   });
 
-  it('summary lists only the newly imported questions and only deletes the ones the user unchecks', async () => {
+  it('keeps selection in the draft and commits only selected local identities', async () => {
     const onUploadSuccess = vi.fn();
     mocks.invoke.mockImplementation(async (cmd: string) => {
       if (cmd === 'import_question_bank_stream') {
-        return detailWith([card('old-1'), card('new-1'), card('new-2')]);
+        return { ...detailWith([card('old-1')]), draft_job_id: 'job_1', draft_version: 3,
+          draft_document: { questions: [
+            { local_id: 'new-1', content: 'question new-1', question_type: 'single_choice' },
+            { local_id: 'new-2', content: 'question new-2', question_type: 'single_choice' },
+          ] } };
       }
+      if (cmd === 'qbank_commit_authoring_draft') return { committed: true, exam_id: 'exam_1' };
       return true;
     });
     mocks.updateExamSheetCards.mockResolvedValue(detailWith([card('old-1'), card('new-1')]));
@@ -154,15 +160,33 @@ describe('ExamSheetUploader (streamlined layout)', () => {
     const rows = await screen.findAllByTestId('exam-uploader-summary-question');
     expect(rows).toHaveLength(2);
     expect(screen.queryByText('question old-1')).toBeNull();
-    expect(screen.getByText('exam_sheet:uploader.import_done:2')).toBeInTheDocument();
+    expect(screen.getByText('exam_sheet:uploader.draft_ready:2')).toBeInTheDocument();
+    expect(mocks.invoke).not.toHaveBeenCalledWith('qbank_commit_authoring_draft', expect.anything());
 
     fireEvent.click(rows[1].querySelector('input[type="checkbox"]')!);
     await act(async () => {
       fireEvent.click(screen.getByText('exam_sheet:uploader.view_questions_filtered:1'));
     });
 
-    expect(mocks.updateExamSheetCards).toHaveBeenCalledWith({ session_id: 'exam_1', delete_card_ids: ['new-2'] });
+    expect(mocks.invoke).toHaveBeenCalledWith('qbank_commit_authoring_draft', { jobId: 'job_1', selectedLocalIds: ['new-1'], expectedVersion: 3 });
+    expect(mocks.updateExamSheetCards).not.toHaveBeenCalled();
     expect(onUploadSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not report success when the canonical commit fails', async () => {
+    const onUploadSuccess = vi.fn();
+    mocks.invoke.mockImplementation(async (cmd: string) => {
+      if (cmd === 'import_question_bank_stream') return { ...detailWith([]), draft_job_id: 'job_1', draft_version: 1,
+        draft_document: { questions: [{ local_id: 'q1', content: 'draft question' }] } };
+      if (cmd === 'qbank_commit_authoring_draft') throw new Error('version conflict');
+      return true;
+    });
+    render(<ExamSheetUploader sessionId="exam_1" onUploadSuccess={onUploadSuccess} />);
+    selectFiles([docx()]);
+    fireEvent.click(await screen.findByTestId('exam-uploader-start'));
+    fireEvent.click(await screen.findByText('exam_sheet:uploader.confirm_import'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('version conflict');
+    expect(onUploadSuccess).not.toHaveBeenCalled();
   });
 
   it('shows a failure once, with retry as the primary action instead of a second retry button', async () => {

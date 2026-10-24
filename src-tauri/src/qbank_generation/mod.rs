@@ -50,6 +50,10 @@ pub async fn qbank_ai_generate_questions(
         .ok_or_else(|| AppError::database("VFS 数据库未初始化".to_string()))?
         .clone();
     let llm = state.llm_manager.clone();
+    let config = Arc::new(
+        llm.resolve_question_authoring_config(request.model_config_id.as_deref())
+            .await?,
+    );
 
     let task_id = format!("task_{}", nanoid::nanoid!(10));
     let stream_event = format!("qbank_generation_stream_{}", request.stream_session_id);
@@ -76,7 +80,15 @@ pub async fn qbank_ai_generate_questions(
 
     let app_handle = app.clone();
     let vfs_db_bg = vfs_db.clone();
-    spawn_generation_task(app_handle, vfs_db_bg, llm, task_id, request, stream_event);
+    spawn_generation_task_with_config(
+        app_handle,
+        vfs_db_bg,
+        llm,
+        task_id,
+        request,
+        stream_event,
+        Some(config),
+    );
 
     Ok(view)
 }
@@ -92,8 +104,20 @@ pub fn spawn_generation_task(
     request: QbankGenerationRequest,
     stream_event: String,
 ) {
+    spawn_generation_task_with_config(app, vfs_db, llm, task_id, request, stream_event, None);
+}
+
+pub fn spawn_generation_task_with_config(
+    app: AppHandle,
+    vfs_db: Arc<VfsDatabase>,
+    llm: Arc<LLMManager>,
+    task_id: String,
+    request: QbankGenerationRequest,
+    stream_event: String,
+    config: Option<Arc<crate::llm_manager::ApiConfig>>,
+) {
     crate::background_tasks::spawn(async move {
-        execute_generation_task(app, vfs_db, llm, task_id, request, stream_event).await;
+        execute_generation_task(app, vfs_db, llm, task_id, request, stream_event, config).await;
     });
 }
 
@@ -105,10 +129,18 @@ async fn execute_generation_task(
     task_id: String,
     request: QbankGenerationRequest,
     _stream_event: String,
+    trusted_config: Option<Arc<crate::llm_manager::ApiConfig>>,
 ) {
     // 阶段计时：区分后台任务是否被调度、以及每段耗时
     // （安卓曾现后台任务提交后长时间无进度 → tokio 饿死 connection aborted）。
     let task_start = std::time::Instant::now();
+    if task_repo::get_task(&vfs_db, &task_id)
+        .ok()
+        .flatten()
+        .is_some_and(|record| record.status.is_terminal())
+    {
+        return;
+    }
     log::info!(
         "[QbankGeneration][task-exec] task body started: id={}",
         task_id
@@ -130,7 +162,7 @@ async fn execute_generation_task(
         vfs_db: vfs_db.clone(),
         debug_log_dir,
     };
-    let result = pipeline::run_qbank_generation(request, deps).await;
+    let result = pipeline::run_qbank_generation_with_config(request, deps, trusted_config).await;
     let pipeline_elapsed = task_start.elapsed();
     log::info!(
         "[QbankGeneration][task-exec] pipeline returned: id={} after {:.1}s, ok={}",
@@ -141,6 +173,10 @@ async fn execute_generation_task(
 
     match result {
         Ok(Some(response)) => {
+            if let Err(error) = task_repo::save_authoring_result(&vfs_db, &task_id, &response) {
+                let _ = task_repo::mark_failed(&vfs_db, &task_id, &error.to_string());
+                return;
+            }
             if let Err(e) = task_repo::mark_completed(
                 &vfs_db,
                 &task_id,
@@ -261,6 +297,8 @@ pub async fn qbank_cancel_generation_task(
         .llm_manager
         .request_cancel_stream(&record.stream_event)
         .await;
+    pipeline::cancel_generation_session(&record.stream_event);
+    task_repo::mark_cancelled(vfs_db, &task_id).map_err(|e| AppError::database(e.to_string()))?;
 
     Ok(Some(GenerationTaskView::from(record)))
 }

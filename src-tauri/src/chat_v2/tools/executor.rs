@@ -29,6 +29,7 @@ use crate::chat_v2::types::{
     ToolResultInfo,
 };
 use crate::database::Database;
+use crate::llm_manager::ApiConfig;
 use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;
 use crate::vfs::database::VfsDatabase;
@@ -263,6 +264,14 @@ pub struct ExecutionContext {
     pub chat_v2_db: Option<Arc<ChatV2Database>>,
     /// 🆕 智能题目集服务（用于 qbank_* 工具，2026-01）
     pub question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
+    /// Trusted snapshot of the model that made the current tool call.
+    ///
+    /// Question authoring tools must not choose (or accept from model-supplied
+    /// arguments) a different generation slot. The pipeline resolves this from
+    /// the active request immediately before dispatch and clones it through
+    /// nested admission/variant paths. It is backend-owned; never populate it
+    /// from tool arguments.
+    pub question_authoring_config: Option<Arc<ApiConfig>>,
     /// 🆕 渐进披露：技能内容映射（skillId -> content）
     /// 用于 load_skills 验证技能是否可加载；技能正文由 transient message 注入给 LLM
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
@@ -330,6 +339,7 @@ impl ExecutionContext {
             llm_manager: None,
             chat_v2_db: None,
             question_bank_service: None,
+            question_authoring_config: None,
             skill_contents: None,
             skill_embedded_tools: None,
             skill_admission_errors: None,
@@ -398,6 +408,33 @@ impl ExecutionContext {
         self
     }
 
+    /// Attach the backend-resolved model snapshot for question authoring.
+    pub fn with_question_authoring_config(mut self, config: Option<Arc<ApiConfig>>) -> Self {
+        self.question_authoring_config = config;
+        self
+    }
+
+    /// Return the trusted authoring-model snapshot without exposing credentials.
+    pub fn question_authoring_config(&self) -> Option<Arc<ApiConfig>> {
+        self.question_authoring_config.clone()
+    }
+
+    /// Non-sensitive route evidence suitable for tool receipts.
+    pub fn question_authoring_route(&self) -> Option<Value> {
+        self.question_authoring_config.as_ref().map(|config| {
+            serde_json::json!({
+                "model_config_id": config.id,
+                "name": config.name,
+                "model": config.model,
+                "provider_type": config.provider_type,
+                "is_multimodal": config.is_multimodal,
+                "max_output_tokens": config.max_output_tokens,
+                "max_tokens_limit": config.max_tokens_limit,
+                "context_window": config.context_window,
+            })
+        })
+    }
+
     pub(crate) fn admitted_tool_dispatcher(&self) -> Option<Arc<dyn AdmittedToolDispatcher>> {
         self.admitted_tool_dispatcher.clone()
     }
@@ -430,6 +467,7 @@ impl ExecutionContext {
             llm_manager: self.llm_manager.clone(),
             chat_v2_db: self.chat_v2_db.clone(),
             question_bank_service: self.question_bank_service.clone(),
+            question_authoring_config: self.question_authoring_config.clone(),
             skill_contents: self.skill_contents.clone(),
             skill_embedded_tools: self.skill_embedded_tools.clone(),
             skill_admission_errors: self.skill_admission_errors.clone(),

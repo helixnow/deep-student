@@ -8320,7 +8320,7 @@ impl ChatV2Repo {
         let target = messages.iter().position(|message| message.id == message_id);
         let tail = messages
             .iter()
-            .position(|message| message.id == record.tail_start_message_id);
+            .position(|message| message.id == record.history_boundary_id());
         let affected = match (target, tail) {
             (Some(target), Some(tail)) => target <= tail,
             (_, None) => true,

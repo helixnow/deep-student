@@ -528,3 +528,4 @@ mod tests {
         assert_eq!(formatted, "A. 选项A; B. 选项B");
     }
 }
+pub mod authoring;

@@ -23,6 +23,12 @@ function getTool(name: string) {
   return matches[0]!;
 }
 
+// Shared rules are injected with the loaded skill, so contracts may be stated
+// once there instead of repeated in every tool schema.
+function instructionsFor(name: string): string {
+  return `${getTool(name).description}\n${qbankToolsSkill.content}`;
+}
+
 describe('phase 4 qbank tool contracts', () => {
   it('keeps every allowed tool backed by one embedded schema', () => {
     const embeddedNames = qbankToolsSkill.embeddedTools?.map((tool) => tool.name) ?? [];
@@ -46,8 +52,8 @@ describe('phase 4 qbank tool contracts', () => {
       minimum: 1,
       maximum: 20,
     });
-    expect(list.description).toMatch(/total.*limit.*offset.*has_more.*truncated/);
-    expect(listQuestions.description).toMatch(
+    expect(instructionsFor(list.name)).toMatch(/total.*limit.*offset.*has_more.*truncated/);
+    expect(instructionsFor(listQuestions.name)).toMatch(
       /total.*page.*page_size.*questions.*has_more.*truncated/,
     );
   });
@@ -72,8 +78,8 @@ describe('phase 4 qbank tool contracts', () => {
     expect(tool.inputSchema.properties.tags.maxItems).toBe(50);
     expect(tool.description).toMatch(/Medium/);
     expect(tool.description).toMatch(/High.*ask_user/);
-    expect(tool.description).toMatch(/2000.*truncated/);
-    expect(tool.description).toMatch(/reversible=false.*reversibleWithApproval=true/);
+    expect(instructionsFor(tool.name)).toMatch(/2000.*truncated/);
+    expect(instructionsFor(tool.name)).toMatch(/reversible=false.*reversibleWithApproval=true/);
   });
 
   it('extends OCC updates to content, options and question_type', () => {
@@ -98,8 +104,8 @@ describe('phase 4 qbank tool contracts', () => {
       items: { type: 'string', minLength: 1, maxLength: 100 },
     });
     expect(tool.inputSchema.properties.user_note.maxLength).toBe(50000);
-    expect(tool.description).toMatch(/reversible=false.*reversibleWithOcc=true/);
-    expect(tool.description).toMatch(/fieldsTruncated/);
+    expect(instructionsFor(tool.name)).toMatch(/reversible=false.*reversibleWithOcc=true/);
+    expect(instructionsFor(tool.name)).toMatch(/fieldsTruncated/);
   });
 
   it('makes batch deletion High, atomic in scope, and never remembered', () => {
@@ -119,11 +125,11 @@ describe('phase 4 qbank tool contracts', () => {
       additionalProperties: { type: 'string', minLength: 1 },
     });
     expect(tool.description).toMatch(/High/);
-    expect(tool.description).toMatch(/每次调用前.*builtin-ask_user/);
-    expect(tool.description).toMatch(/永不记忆.*不得复用/);
-    expect(tool.description).toMatch(/headless.*不得执行/);
-    expect(tool.description).toMatch(/原子 OCC/);
-    expect(tool.description).toMatch(/reversible=false/);
+    expect(instructionsFor(tool.name)).toMatch(/每次调用.*builtin-ask_user/s);
+    expect(instructionsFor(tool.name)).toMatch(/永不记忆.*禁止复用/);
+    expect(instructionsFor(tool.name)).toMatch(/headless.*不得执行/);
+    expect(tool.description).toMatch(/OCC冲突整批不删/);
+    expect(instructionsFor(tool.name)).toMatch(/reversible=false/);
   });
 
   it('supports either stable question identity for favorite toggles', () => {
@@ -134,9 +140,9 @@ describe('phase 4 qbank tool contracts', () => {
       { required: ['question_id'] },
       { required: ['session_id', 'card_id'] },
     ]);
-    expect(tool.description).toMatch(/Medium.*OCC.*可撤销/);
-    expect(tool.description).toContain('2000');
-    expect(tool.description).toMatch(/fieldsTruncated/);
+    expect(tool.description).toMatch(/Medium.*OCC.*undo/);
+    expect(instructionsFor(tool.name)).toContain('2000');
+    expect(instructionsFor(tool.name)).toMatch(/fieldsTruncated/);
   });
 
   it('keeps answers user-authored across regular and UI practice', () => {
@@ -145,7 +151,8 @@ describe('phase 4 qbank tool contracts', () => {
     const mock = getTool('builtin-qbank_generate_mock_exam');
     const daily = getTool('builtin-qbank_get_daily_practice');
 
-    expect(regular.description).toMatch(/用户明确提供.*不得生成、猜测或代替用户作答/);
+    expect(regular.description).toContain('用户明确提供');
+    expect(instructionsFor(regular.name)).toContain('不得生成、猜测或代替用户作答');
     expect(timed.inputSchema.properties.duration_minutes).toMatchObject({
       minimum: 1,
       maximum: 480,
@@ -170,10 +177,12 @@ describe('phase 4 qbank tool contracts', () => {
     });
 
     for (const tool of [timed, mock, daily]) {
-      expect(tool.description).toContain('agentCanAnswer=false');
-      expect(tool.description).toContain('payloadHydrationSupported=true');
-      expect(tool.description).toContain('handoff_persisted=true');
-      expect(tool.description).toMatch(/不会自动打开 UI|authoritative ACK/);
+      expect(tool.description).toContain('handoff');
+      expect(tool.description).toContain('workbenchAction');
+      expect(instructionsFor(tool.name)).toContain('agentCanAnswer=false');
+      expect(instructionsFor(tool.name)).toContain('payloadHydrationSupported=true');
+      expect(instructionsFor(tool.name)).toContain('handoff_persisted=true');
+      expect(instructionsFor(tool.name)).toContain('authoritative ACK');
     }
   });
 
@@ -209,7 +218,7 @@ describe('phase 4 qbank tool contracts', () => {
       maximum: 20,
       default: 20,
     });
-    expect(tool.description).toMatch(/total.*page.*page_size.*has_more.*truncated/);
+    expect(instructionsFor(tool.name)).toMatch(/total.*page.*page_size.*has_more.*truncated/);
   });
 
   it('limits search filters to backend enums and marks field truncation', () => {
@@ -223,9 +232,9 @@ describe('phase 4 qbank tool contracts', () => {
     ]);
     expect(tool.inputSchema.properties.question_type.enum).toContain('indefinite_choice');
     expect(tool.inputSchema.properties.tags.maxItems).toBe(20);
-    expect(tool.description).toContain('2000');
-    expect(tool.description).toContain('fieldsTruncated');
-    expect(tool.description).toMatch(/highlight_content.*\{text,truncated\}.*null/);
+    expect(instructionsFor(tool.name)).toContain('2000');
+    expect(instructionsFor(tool.name)).toContain('fieldsTruncated');
+    expect(tool.description).toMatch(/highlight_\*.*\{text,truncated\}.*null/);
   });
 
   it('exports generated papers only as preview or real Markdown files', () => {
@@ -240,10 +249,10 @@ describe('phase 4 qbank tool contracts', () => {
     });
     expect(tool.description).toMatch(/preview.*export_path=null.*file_created=false/);
     expect(tool.description).toMatch(/markdown.*exports\/qbank\/\*\.md/);
-    expect(tool.description).toMatch(/PDF\/Word.*拒绝/);
+    expect(tool.description).toMatch(/拒绝PDF\/Word/);
     expect(tool.description).toMatch(/questions.*20.*questions_truncated/);
-    expect(tool.description).toContain('2000');
-    expect(tool.description).toContain('fieldsTruncated');
+    expect(instructionsFor(tool.name)).toContain('2000');
+    expect(instructionsFor(tool.name)).toContain('fieldsTruncated');
   });
 
   it('documents the full build-practice-mistake-analysis-paper workflow truthfully', () => {

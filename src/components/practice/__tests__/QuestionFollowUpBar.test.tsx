@@ -63,6 +63,34 @@ describe('QuestionFollowUpBar', () => {
     document.removeEventListener('media-ref:open', opened);
   });
 
+  it('carries shared materials, structured data, image refs and a stable question citation', () => {
+    const grouped = {
+      ...(question as object),
+      id: 'q_child1',
+      groupId: 'qgroup_1',
+      groupLabel: '阅读理解一',
+      materials: [{
+        id: 'qmat_1',
+        content: '阅读材料：光合作用分为光反应和暗反应。',
+        images: [{ id: 'file_mat_img', name: '材料图.png', mime: 'image/png', hash: 'b'.repeat(64) }],
+        source_refs: [{ source_id: 'src_1', page: 1 }],
+        version: 1,
+      }],
+      images: [{ id: 'file_q_img', name: '题干图.png', mime: 'image/png', hash: 'c'.repeat(64) }],
+      structured_data: { answer_value: 3.14, tolerance: 0.01 },
+    } as never;
+
+    render(<QuestionFollowUpBar question={grouped} examId="exam_1" userAnswer="A" isCorrect={false} />);
+    fireEvent.click(screen.getByRole('button', { name: /问 AI 讲解/ }));
+    const text = prefilled();
+
+    expect(text).toContain('阅读材料：光合作用分为光反应和暗反应。');
+    expect(text).toContain('材料图.png');
+    expect(text).toContain('题干图.png');
+    expect(text).toContain('"answer_value":3.14');
+    expect(text).toContain('[题目集:exam_1#q_child1:1]');
+  });
+
   it('parses source refs defensively', () => {
     expect(questionSourceResourceId('{"resourceIds":["a","b"]}')).toBe('a');
     expect(questionSourceResourceId('not json')).toBeNull();

@@ -146,6 +146,7 @@ export {
   LOAD_SKILLS_TOOL_SCHEMA,
   getLoadedSkills,
   getLoadedToolSchemas,
+  getAvailableSkillIdsForDiscovery,
   isSkillLoaded,
   loadSkillsToSession,
   clearSessionSkills,

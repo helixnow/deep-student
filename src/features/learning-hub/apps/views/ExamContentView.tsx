@@ -4,6 +4,7 @@ import i18n from '@/i18n';
 import { CircleNotch, WarningCircle, ArrowClockwise, Scan, Tag, Clock, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download, Plus, CaretDown, PencilSimple, XCircle, ClockCounterClockwise, Table as TableIcon, Sparkle } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { DsButton } from '@/components/ui/DsButton';
+import { DsDialog, DsDialogHeader, DsDialogTitle, DsDialogBody } from '@/components/ui/DsDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { percentOf, ratioToPercent } from '@/components/stats';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -50,6 +51,7 @@ import type { DomainChangePayload } from '@/features/workbench/agent/types';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
+const QuestionImportAuditPanel = lazy(() => import('@/components/QuestionImportAuditPanel'));
 const QuestionBankEditor = lazy(() => import('@/components/QuestionBankEditor'));
 const QuestionBankListView = lazy(() => import('@/components/QuestionBankListView'));
 const AiQuestionGenerationPanel = lazy(() => import('@/components/AiQuestionGenerationPanel'));
@@ -387,6 +389,8 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [sessionDetail, setSessionDetail] = useState<ExamSheetSessionDetail | null>(null);
   const [sessionDetailError, setSessionDetailError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [groupPracticeIds, setGroupPracticeIds] = useState<string[] | null>(null);
+  useEffect(() => setGroupPracticeIds(null), [sessionId]);
   // 只读浏览（#466）的当前题：按 id 记忆，独立于做题进度（currentIndex），看答案不挪动练习位置
   const [browseQuestionId, setBrowseQuestionId] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string>('');
@@ -1248,8 +1252,25 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     });
   }, [currentIndex, navigate, questions, requestViewMode, setStorePracticeMode]);
 
+  /**
+   * issue 491：从题组头部进入练习。
+   * 题组成员按后端 group_position 连续排列，采用顺序模式从组内第一题开始；
+   * 当前题始终加载完整共享材料（单题随机练习同样如此）。
+   */
+  const handleStartGroupPractice = useCallback((groupQuestionIds: string[]) => {
+    if (groupQuestionIds.length === 0) return;
+    const firstIndex = questions.findIndex((question) => question.id === groupQuestionIds[0]);
+    if (firstIndex < 0) return;
+    requestViewMode('practice', () => {
+      setStorePracticeMode('sequential');
+      setGroupPracticeIds(groupQuestionIds);
+      navigate(firstIndex);
+    });
+  }, [navigate, questions, requestViewMode, setStorePracticeMode]);
+
   // 点击题目进入做题模式（必须在条件返回之前定义）
   const handleQuestionClick = useCallback((index: number) => {
+    setGroupPracticeIds(null);
     requestViewMode('practice', () => navigate(index));
   }, [navigate, requestViewMode]);
 
@@ -1353,6 +1374,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         .filter((question): question is Question => Boolean(question));
     };
 
+    if (practiceMode === 'sequential' && groupPracticeIds) return orderQuestionsByIds(groupPracticeIds);
     switch (practiceMode) {
       case 'mock_exam': {
         return orderQuestionsByIds(activeMockExamSession?.question_ids || []);
@@ -1376,7 +1398,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       default:
         return questions;
     }
-  }, [practiceMode, questions, selectedTag, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
+  }, [practiceMode, groupPracticeIds, questions, selectedTag, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
+
+  useEffect(() => {
+    if (viewMode !== 'practice' || practiceMode !== 'sequential') setGroupPracticeIds(null);
+  }, [viewMode, practiceMode, sessionId]);
 
   const handleRefreshQuestion = useCallback(async (questionId: string) => {
     await refreshQuestion(questionId);
@@ -1883,12 +1909,42 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // ★ 断点续导：检测 importing 状态
   const isImportingSession = sessionDetail?.summary.status === 'importing';
   const [isResuming, setIsResuming] = useState(false);
+  const [resumedImportDraft, setResumedImportDraft] = useState<import('@/components/ExamSheetUploader').ImportDraftResponse | null>(null);
   const [resumeError, setResumeError] = useState<string | null>(null);
+  const [showImportAudit, setShowImportAudit] = useState(false);
+  const [pendingAuthoringDrafts, setPendingAuthoringDrafts] = useState<Array<{job_id:string;version:number;question_count:number;status:string}>>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      void invoke<typeof pendingAuthoringDrafts>('qbank_list_authoring_drafts', {examId:sessionId})
+        .then((drafts) => { if (!cancelled) setPendingAuthoringDrafts(drafts); })
+        .catch((error) => { debugLog.warn('[ExamContentView] Pending drafts unavailable:', error); });
+    };
+    setPendingAuthoringDrafts([]);
+    refresh();
+    window.addEventListener('qbank:refresh', refresh);
+    return () => { cancelled = true; window.removeEventListener('qbank:refresh', refresh); };
+  }, [sessionId, questions.length]);
+
+  const handleOpenAuthoringDraft = useCallback(async (jobId:string) => {
+    try {
+      const draft = await invoke<{job_id:string;version:number;metadata:import('@/components/ExamSheetUploader').ImportDraftResponse['model_route'];document:NonNullable<import('@/components/ExamSheetUploader').ImportDraftResponse['draft_document']>}>('qbank_get_authoring_draft', {jobId});
+      if (latestSessionIdRef.current !== sessionId) return;
+      const detail = sessionDetail ?? await TauriAPI.getExamSheetSessionDetail(sessionId);
+      if (latestSessionIdRef.current !== sessionId) return;
+      setResumedImportDraft({...detail,draft_job_id:draft.job_id,draft_version:draft.version,draft_document:draft.document,model_route:draft.metadata,committed:false});
+      switchViewMode('upload');
+    } catch (error) {
+      showGlobalNotification('error', error instanceof Error ? error.message : String(error));
+    }
+  }, [sessionId, sessionDetail, switchViewMode]);
 
   // 会话切换时清理上一会话的恢复导入状态
   useEffect(() => {
     setIsResuming(false);
     setResumeError(null);
+    setResumedImportDraft(null);
   }, [sessionId]);
 
   const handleResumeImport = useCallback(async () => {
@@ -1898,6 +1954,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     try {
       const detail = await TauriAPI.resumeQuestionImport(sessionId);
       if (latestSessionIdRef.current !== sessionId) return;
+      if ((detail as import('@/components/ExamSheetUploader').ImportDraftResponse).draft_job_id) {
+        setResumedImportDraft(detail as import('@/components/ExamSheetUploader').ImportDraftResponse);
+        switchViewMode('upload');
+        return;
+      }
       setSessionDetail(detail);
       await loadQuestions();
       showGlobalNotification('success', t('exam_sheet:uploader.resume_success'));
@@ -1911,7 +1972,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         setIsResuming(false);
       }
     }
-  }, [sessionId, isResuming, loadQuestions, t]);
+  }, [sessionId, isResuming, loadQuestions, switchViewMode, t]);
 
   const isEmptySession = sessionDetail?.summary.status === 'empty' && 
     (!sessionDetail?.preview.pages || sessionDetail.preview.pages.length === 0);
@@ -2031,6 +2092,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [isEmptySession, hasQuestions, viewMode, isLoading, sessionStatus, error, sessionId]);
 
   const handleUploadSuccess = useCallback(async (detail: ExamSheetSessionDetail) => {
+    setResumedImportDraft(null);
     emitExamSheetDebug('info', 'frontend:navigate', `[ExamContentView] onUploadSuccess 触发, pages=${detail.preview.pages?.length}`, { sessionId });
     await handleSessionUpdate(detail);
     if (latestSessionIdRef.current !== sessionId) return;
@@ -2179,16 +2241,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     };
 
     const onFocus = (ev: Event) => {
-      const detail = (ev as CustomEvent<QbankFocusEventDetail>).detail;
+      const detail = (ev as CustomEvent<QbankFocusEventDetail & { groupId?: string }>).detail;
       if (detail?.targetScopeId && detail.targetScopeId !== focusScopeId) return;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
       const questionId = detail?.questionId;
-      if (!questionId) return;
-      const index = questions.findIndex((question) => question.id === questionId);
+      // issue 491：题组深链定位到组内第一题（组内顺序由后端 group_position 保证）
+      const groupId = detail?.groupId;
+      if (!questionId && !groupId) return;
+      const index = questionId
+        ? questions.findIndex((question) => question.id === questionId)
+        : questions.findIndex((question) => question.groupId === groupId);
       const handled = index >= 0 && requestViewMode('practice', () => navigate(index));
       const previousQuestionId = questions[currentIndex]?.id ?? null;
-      if (handled) {
-        agentFlash('exam', questionId, { scope: agentFlashRootRef.current });
+      const resolvedQuestionId = index >= 0 ? questions[index].id : questionId;
+      if (handled && resolvedQuestionId) {
+        agentFlash('exam', resolvedQuestionId, { scope: agentFlashRootRef.current });
       }
       detail.acknowledge?.({ handled, previousQuestionId });
     };
@@ -2570,6 +2637,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   >
                     {t('learningHub:exam.tab.importCsv')}
                   </AppMenuItem>
+                  <AppMenuItem onClick={() => setShowImportAudit(true)} icon={<Scan size={16} />}>
+                    {t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}
+                  </AppMenuItem>
                 </AppMenuContent>
               </AppMenu>
             )}
@@ -2645,6 +2715,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               {t('common:actions.discard')}
             </DsButton>
           </div>
+        </div>
+      )}
+
+      {!readOnly && viewMode !== 'upload' && pendingAuthoringDrafts.length > 0 && (
+        <div className="flex flex-shrink-0 flex-wrap items-center gap-2 border-b border-border px-3 py-2" role="status">
+          <span className="min-w-0 flex-1 text-sm">{t('exam_sheet:uploader.pending_drafts', {count:pendingAuthoringDrafts.length,defaultValue:'待确认草稿：{{count}}'})}</span>
+          <DsButton size="sm" variant="outline" onClick={() => void handleOpenAuthoringDraft(pendingAuthoringDrafts[0].job_id)}>
+            <Scan size={16} />{t('exam_sheet:uploader.review_pending_draft', {defaultValue:'复核并导入'})} ({pendingAuthoringDrafts[0].question_count})
+          </DsButton>
         </div>
       )}
 
@@ -2731,6 +2810,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               sessionId={sessionId}
               sessionName={sessionDetail?.summary?.exam_name || node.name}
               initialFiles={pendingUploadFiles}
+              initialDraft={resumedImportDraft}
               onInitialFilesConsumed={() => setPendingUploadFiles(null)}
               onUploadSuccess={handleUploadSuccess}
               onBack={handleUploaderBack}
@@ -2795,6 +2875,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               onDelete={readOnly ? undefined : handleDeleteQuestions}
               onResetProgress={readOnly ? undefined : handleResetProgress}
               onToggleFavorite={readOnly ? undefined : toggleFavoriteInSession}
+              onStartGroupPractice={handleStartGroupPractice}
               onUpdateQuestion={readOnly ? undefined : handleListChanged}
               onCreateQuestion={readOnly ? undefined : handleListChanged}
               onUploadQuestions={readOnly ? undefined : handleOpenUploadEntry}
@@ -2813,6 +2894,15 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       </div>
 
       {/* AI 出题面板（MVP：生成预览 → 确认入库 source_type=ai_generated） */}
+      <DsDialog open={showImportAudit} onOpenChange={setShowImportAudit}>
+        <DsDialogHeader>
+          <DsDialogTitle>{t('exam_sheet:uploader.audit_imports', {defaultValue:'导入记录与重解析复核'})}</DsDialogTitle>
+        </DsDialogHeader>
+        <DsDialogBody className="overflow-y-auto">
+          {showImportAudit && <Suspense fallback={<ViewSkeleton />}><QuestionImportAuditPanel examId={sessionId} onChanged={handleListChanged} /></Suspense>}
+        </DsDialogBody>
+      </DsDialog>
+
       {showAiGenerationPanel && (
         <Suspense fallback={null}>
           <AiQuestionGenerationPanel

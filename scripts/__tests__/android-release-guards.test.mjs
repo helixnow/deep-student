@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PUBLISHED_ANDROID_VERSION_CODE, resolveAndroidVersionCode } from '../generate-version.mjs';
+import { patchBuildTask } from '../ci/prepare-android-gradle.mjs';
 
 const project = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const readProject = (file) => readFileSync(path.join(project, file), 'utf8');
@@ -42,4 +43,13 @@ test('Android versionCode stays monotonic across published release lines', () =>
     assert.ok(codes[i] > PUBLISHED_ANDROID_VERSION_CODE);
     if (i > 0) assert.ok(codes[i] > codes[i - 1], `${versions[i]} must exceed ${versions[i - 1]}`);
   }
+});
+
+test('prebuilt JNI validation follows an isolated Cargo target and retains native guards', () => {
+  const patched=patchBuildTask('class BuildTask { fun assemble() { buildNative() } }');
+  assert.match(patched,/System\.getenv\("CARGO_TARGET_DIR"\)/u);
+  assert.match(patched,/if \(it\.isAbsolute\) it else File\(root, configuredTarget\)/u);
+  assert.match(patched,/jni\.canonicalFile != lib\.canonicalFile/u);
+  assert.match(patched,/Java_app_tauri_plugin_PluginManager_handlePluginResponse/u);
+  assert.equal(patchBuildTask(patched),patched);
 });

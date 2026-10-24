@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { usePracticeRequestScope } from './usePracticeRequestScope';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { DsButton } from '@/components/ui/DsButton';
+import { QuestionMaterialView } from '@/components/QuestionMaterialView';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
@@ -226,7 +227,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
       const answerLabel = t('paper.answer');
       const explanationLabel = t('paper.explanation');
       const lines: string[] = [`# ${generatedPaper.title}`, ''];
+      const exportedMaterials=new Set<string>();
       generatedPaper.questions.forEach((q, i) => {
+        for (const material of q.materials || []) {
+          if (exportedMaterials.has(material.id)) continue;
+          exportedMaterials.add(material.id);
+          lines.push(`### ${q.group_label || t('exam_sheet:materials.title', {defaultValue:'共享材料'})}`,material.content,'');
+        }
         lines.push(`## ${i + 1}. ${q.content}`, '');
         if (q.options && q.options.length > 0) {
           q.options.forEach((opt) => lines.push(`- ${opt.key}. ${opt.content}`));
@@ -330,6 +337,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 
                 {expandedQuestions.has(question.id) && (
                   <CardContent className="ui-rise-in pt-0 space-y-3">
+                    {!!question.materials?.length && <QuestionMaterialView materials={question.materials} />}
                     {/* 选项 */}
                     {question.options && question.options.length > 0 && (
                       <div className="ml-0 space-y-2 sm:ml-8">
