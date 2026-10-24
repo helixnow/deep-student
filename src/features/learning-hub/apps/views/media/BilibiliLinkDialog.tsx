@@ -124,9 +124,13 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
   const [batch, setBatch] = useState<{ index: number; total: number; page: number; part: string } | null>(null);
   const [stopRequested, setStopRequested] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [batchSummary, setBatchSummary] = useState<BilibiliBatchSummary | null>(null);
   const requestRef = useRef(0);
   const stopRef = useRef(false);
   const batchRunningRef = useRef(false);
+  const taskRef = useRef<string | null>(null);
+  const newTask = useCallback(() => { const id = crypto.randomUUID(); taskRef.current = id; return id; }, []);
+  useEffect(() => () => { if (taskRef.current) void bilibiliLinkApi.cancel(taskRef.current).catch(() => undefined); }, []);
 
   const runProbe = useCallback(async (link: string, pageArg: number | null) => {
     const text = link.trim();
@@ -135,7 +139,8 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
     setProbing(true);
     setError(null);
     try {
-      const result = await bilibiliLinkApi.probe(text, pageArg);
+      if (taskRef.current) void bilibiliLinkApi.cancel(taskRef.current).catch(() => undefined);
+      const result = await bilibiliLinkApi.probe(text, pageArg, newTask());
       if (request !== requestRef.current) return;
       setProbe(result);
       setPage(result.page);
@@ -148,11 +153,12 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
     } finally {
       if (request === requestRef.current) setProbing(false);
     }
-  }, []);
+  }, [newTask]);
 
   // 打开时重置；重新获取模式直接解析条目自己的链接（批量导入进行中不重置）
   useEffect(() => {
     if (!open || batchRunningRef.current) return;
+    setBatchSummary(null);
     requestRef.current += 1;
     setProbe(null);
     setLan(null);
@@ -207,7 +213,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
     async (url: string, pageNo: number): Promise<PageOutcome> => {
       for (let attempt = 0; ; attempt += 1) {
         try {
-          const result = await bilibiliLinkApi.create(url, pageNo, lan);
+          const result = await bilibiliLinkApi.create(url, pageNo, lan, newTask());
           return { kind: 'ok', created: result.created, fileId: result.fileId, segments: result.segments };
         } catch (err: unknown) {
           const code = err instanceof MediaCommandError ? err.code : 'unknown';
@@ -221,11 +227,12 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
         }
       }
     },
-    [lan, retryDelayMs],
+    [lan, retryDelayMs, newTask],
   );
 
   const runBatch = useCallback(
     async (current: BilibiliProbe, pages: number[]) => {
+      setBatchSummary(null);
       const url = `https://www.bilibili.com/video/${current.bvid}`;
       const summary: BilibiliBatchSummary = { total: pages.length, created: 0, updated: 0, skipped: [], failed: [], remaining: 0 };
       let firstFileId = '';
@@ -268,7 +275,12 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
         setBatch(null);
       }
       onDone?.({ fileId: firstFileId, created: summary.created > 0, segments, name: current.title, batch: summary });
-      onOpenChange(false);
+      const pendingPages = new Set(summary.failed.map((item) => item.page));
+      if (summary.remaining) pages.slice(pages.length - summary.remaining).forEach((value) => pendingPages.add(value));
+      if (pendingPages.size) {
+        setBatchSummary(summary);
+        setSelectedPages(pendingPages);
+      } else { onOpenChange(false); }
     },
     [batchIntervalMs, importPage, onDone, onOpenChange],
   );
@@ -285,10 +297,10 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
         return;
       }
       if (mode.kind === 'create') {
-        const result = await bilibiliLinkApi.create(input.trim(), pages[0], lan);
+        const result = await bilibiliLinkApi.create(input.trim(), pages[0], lan, newTask());
         onDone?.({ fileId: result.fileId, created: result.created, segments: result.segments, name: result.name });
       } else {
-        const transcript = await bilibiliLinkApi.importSubtitle(mode.resourceId, input.trim(), pages[0], lan);
+        const transcript = await bilibiliLinkApi.importSubtitle(mode.resourceId, input.trim(), pages[0], lan, newTask());
         onDone?.({
           fileId: mode.resourceId,
           created: false,
@@ -302,11 +314,12 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
     } finally {
       setImporting(false);
     }
-  }, [canImport, input, lan, mode, multiPage, onDone, onOpenChange, page, probe, runBatch, selectedPages]);
+  }, [canImport, input, lan, mode, multiPage, onDone, onOpenChange, page, probe, runBatch, selectedPages, newTask]);
 
   const requestStop = useCallback(() => {
     stopRef.current = true;
     setStopRequested(true);
+    if (taskRef.current) void bilibiliLinkApi.cancel(taskRef.current).catch(() => undefined);
   }, []);
 
   // 批量导入进行中关闭（Esc / 遮罩 / 关闭按钮）= 停止：做完当前这一 P 再关
@@ -316,6 +329,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
         requestStop();
         return;
       }
+      if (!next && taskRef.current) { requestRef.current += 1; void bilibiliLinkApi.cancel(taskRef.current).catch(() => undefined); }
       onOpenChange(next);
     },
     [onOpenChange, requestStop],
@@ -510,6 +524,8 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
                   <span className="leading-relaxed">{t('learningHub:mediaBilibili.batchTrackHint')}</span>
                 ) : null}
               </label>
+            ) : probe.subtitleError ? (
+              <p role="alert" className="break-words text-xs text-destructive" data-bilibili-subtitle-error="">{probe.subtitleError}</p>
             ) : (
               <p className="rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground" data-bilibili-no-tracks="">
                 {multiPage
@@ -551,6 +567,7 @@ export const BilibiliLinkDialog: React.FC<BilibiliLinkDialogProps> = ({
           </div>
         ) : null}
 
+        {batchSummary && <p role="status" className="break-words text-xs text-muted-foreground" data-bilibili-batch-summary="">{summarizeBilibiliBatch(batchSummary, t)}</p>}
         {error ? (
           <p className="break-words text-xs leading-relaxed text-destructive" role="alert" data-bilibili-error="">
             {error}

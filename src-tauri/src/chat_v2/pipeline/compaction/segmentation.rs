@@ -84,6 +84,38 @@ pub(super) struct TailSelection {
     pub(super) tail_tokens: usize,
 }
 
+/// User-requested compaction summarizes older turns regardless of the model window.
+/// Always retain the latest complete turn, including its signatures/tool blocks.
+pub(super) fn select_manual_tail(
+    messages: &[ChatMessage],
+    turns: &[TurnRange],
+    budget_tokens: usize,
+    blocks_by_msg: &std::collections::HashMap<String, Vec<MessageBlock>>,
+    model_id: Option<&str>,
+) -> Option<TailSelection> {
+    let last = turns.last()?;
+    let mut start = last.start;
+    let mut tokens: usize = messages[last.start..last.end]
+        .iter()
+        .map(|message| estimate_message_tokens(message, blocks_by_msg, model_id))
+        .sum();
+    for turn in turns[..turns.len() - 1].iter().rev() {
+        let extra: usize = messages[turn.start..turn.end]
+            .iter()
+            .map(|message| estimate_message_tokens(message, blocks_by_msg, model_id))
+            .sum();
+        if tokens.saturating_add(extra) > budget_tokens {
+            break;
+        }
+        start = turn.start;
+        tokens = tokens.saturating_add(extra);
+    }
+    (start > 0).then_some(TailSelection {
+        tail_start_idx: start,
+        tail_tokens: tokens,
+    })
+}
+
 pub(super) fn select_tail(
     messages: &[ChatMessage],
     turns: &[TurnRange],
@@ -150,7 +182,7 @@ pub(super) fn select_tail(
                     }
                     _ => {
                         // 最后一条消息单独就超 hard_cap：压缩后仍必溢出，放弃。
-                        // 让 trim_history_by_token_budget 走常规 FIFO 兜底更稳妥。
+                        // The final request guard reports overflow without deleting turns.
                         warn!(
                             "[compaction] last turn alone ({} tokens) exceeds hard cap ({}); aborting compaction to avoid loop",
                             turn_tokens, hard_cap
@@ -287,6 +319,36 @@ mod tests {
         assert_eq!(turns.len(), 2);
         assert_eq!((turns[0].start, turns[0].end), (0, 3));
         assert_eq!((turns[1].start, turns[1].end), (3, 5));
+    }
+
+    #[test]
+    fn manual_tail_keeps_latest_turn_and_summarizes_earlier_short_conversations() {
+        let messages = vec![
+            make_msg("u1", MessageRole::User),
+            make_msg("a1", MessageRole::Assistant),
+            make_msg("u2", MessageRole::User),
+            make_msg("a2", MessageRole::Assistant),
+        ];
+        let blocks = messages
+            .iter()
+            .map(|message| {
+                (
+                    message.id.clone(),
+                    vec![make_text_block(
+                        "block",
+                        &message.id,
+                        "some conversation text",
+                    )],
+                )
+            })
+            .collect();
+        let turns = split_into_turns(&messages);
+        let tail = select_manual_tail(&messages, &turns, 1, &blocks, None).unwrap();
+        assert_eq!(tail.tail_start_idx, 2);
+        assert!(
+            tail.tail_tokens > 1,
+            "keep the full latest turn even if it exceeds the target tail size"
+        );
     }
 
     /// CORRECTNESS: select_tail 在最后一个 turn 单独超过 hard_cap 时必须放弃（P1-B3）

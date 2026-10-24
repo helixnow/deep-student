@@ -192,6 +192,9 @@ pub const LLM_ERROR_CODE_EMPTY_RESPONSE: &str = "EMPTY_RESPONSE";
 /// 上下文超限：参数类错误，重试无用，需要裁剪或换更大窗口的模型。
 pub const LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED: &str = "CONTEXT_WINDOW_EXCEEDED";
 
+/// Local preflight only: compact and rebuild before any provider request is sent.
+pub const LLM_ERROR_CODE_COMPACTION_REQUIRED: &str = "COMPACTION_REQUIRED";
+
 /// 给错误附加稳定错误码（与 `llm_failover` 等其他 details 字段共存）。
 pub(crate) fn attach_llm_error_code(mut err: AppError, code: &str) -> AppError {
     let mut details = err.details.take().unwrap_or_else(|| json!({}));
@@ -245,7 +248,9 @@ pub fn classify_llm_error(err: &AppError) -> LlmErrorClass {
     if let Some(code) = llm_error_code(err) {
         match code {
             LLM_ERROR_CODE_EMPTY_RESPONSE => return LlmErrorClass::RetryableTransient,
-            LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED => return LlmErrorClass::NonRetryable,
+            LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED | LLM_ERROR_CODE_COMPACTION_REQUIRED => {
+                return LlmErrorClass::NonRetryable;
+            }
             _ => {}
         }
     }

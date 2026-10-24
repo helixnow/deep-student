@@ -4,20 +4,8 @@ use crate::chat_v2::types::CanonicalContentPart;
 impl ChatV2Pipeline {
     /// 加载聊天历史
     ///
-    /// 从数据库加载会话的历史消息，应用 context_limit 限制，
-    /// 并提取 content 类型块的内容构建 LLM 对话历史。
-    ///
-    /// 🆕 DESIGN：单趟加载发现超预算且需要 FIFO 头删时，会先强制跑一次
-    /// compaction；压缩落盘后重新加载（应用新的压缩视图）。
-    /// `ctx.forced_compaction_before_trim` 保证每轮 send 至多重载一次。
+    /// 保留压缩视图中的全部消息；完整请求的预算检查在 LLM 发送前执行。
     pub(crate) async fn load_chat_history(&self, ctx: &mut PipelineContext) -> ChatV2Result<()> {
-        while self.load_chat_history_pass(ctx).await? {}
-        Ok(())
-    }
-
-    /// 单趟历史加载。返回 `true` 表示本趟触发了「FIFO 前强制 compaction」
-    /// 且压缩成功落盘，调用方（外层 while）需要整体重载以应用新压缩视图。
-    async fn load_chat_history_pass(&self, ctx: &mut PipelineContext) -> ChatV2Result<bool> {
         log::debug!(
             "[ChatV2::pipeline] Loading chat history for session={}",
             ctx.session_id
@@ -50,7 +38,7 @@ impl ChatV2Pipeline {
                 ctx.session_id
             );
             ctx.chat_history = Vec::new();
-            return Ok(false);
+            return Ok(());
         }
 
         // 🔧 排除当前用户消息和助手消息：save_user_message_immediately 会在
@@ -68,14 +56,6 @@ impl ChatV2Pipeline {
             .filter(|id| !exclude_ids.contains(id.as_str()))
             .collect();
 
-        // 🆕 活跃 compaction 记录 id：作为 microcompact 锚点的世代（lineage）
-        // 标识 —— 锚点只在它变化（= compaction 事件）时批量推进。
-        let active_compaction_id =
-            ChatV2Repo::get_active_compaction_with_conn(&conn, &ctx.session_id)
-                .ok()
-                .flatten()
-                .map(|record| record.id);
-
         // 🆕 P1: 应用 compaction 视图 — 隐藏 tail_start 之前的原始消息，
         // 返回一条 system 摘要伪消息。原消息仍在 DB 中（供"展开原文"）。
         let (compaction_summary_msg, messages) =
@@ -87,26 +67,12 @@ impl ChatV2Pipeline {
                 ctx.session_id
             );
             ctx.chat_history = compaction_summary_msg.into_iter().collect();
-            return Ok(false);
+            return Ok(());
         }
 
-        // 🔧 P1修复：条数限制与 context_limit（token 语义）分离
-        // 🔧 P1-6 修复：token 预算充裕时按预算放宽条数粗筛上限（50–400 条），
-        // 精确裁剪仍由下方 trim_history_by_token_budget 按 token 完成
-        let max_messages = effective_max_history_messages(ctx.options.context_limit);
-        let messages_to_load: Vec<_> = if messages.len() > max_messages {
-            // 取最新的 max_messages 条消息
-            messages
-                .into_iter()
-                .rev()
-                .take(max_messages)
-                .rev()
-                .collect()
-        } else {
-            messages
-        };
+        // Repository hydration batches SQLite parameters without dropping conversation turns.
         let messages_to_load =
-            ChatV2Repo::get_messages_by_ids_with_conn(&conn, &ctx.session_id, &messages_to_load)?;
+            ChatV2Repo::get_messages_by_ids_with_conn(&conn, &ctx.session_id, &messages)?;
         let message_ids: Vec<_> = messages_to_load
             .iter()
             .map(|message| message.id.clone())
@@ -121,9 +87,8 @@ impl ChatV2Pipeline {
         let mut digest_mismatch_skill_ids: Vec<String> = Vec::new();
 
         log::debug!(
-            "[ChatV2::pipeline] Loading {} messages (max_messages={})",
-            messages_to_load.len(),
-            max_messages
+            "[ChatV2::pipeline] Loading all {} unsummarized messages",
+            messages_to_load.len()
         );
 
         // 转换为 LegacyChatMessage 格式
@@ -587,28 +552,7 @@ impl ChatV2Pipeline {
             );
         }
 
-        // 🆕 零成本前置层（microcompact）：把锚点之前的旧工具输出替换为占位符。
-        // 只影响本次发给模型的视图，不动数据库；在插入 compaction summary
-        // 伪消息之前执行（伪消息与瞬态注入均带 pinned 标记，天然豁免）。
-        // 锚点为会话级状态，只随 compaction 事件批量推进 —— 连续多轮不
-        // compaction 时历史头部字节逐字稳定，不打破 provider prompt cache。
-        let eligible_turns = self.resolve_microcompact_eligible_turns(
-            &ctx.session_id,
-            active_compaction_id.as_deref(),
-            &chat_history,
-        );
-        let microcompacted = microcompact_old_tool_outputs(&mut chat_history, eligible_turns);
-        if microcompacted > 0 {
-            log::info!(
-                "[ChatV2::pipeline] Microcompact: replaced {} old tool output(s) with placeholders for session={} (anchored at {} eligible turn(s))",
-                microcompacted,
-                ctx.session_id,
-                eligible_turns
-            );
-        }
-
-        // The summary participates in the same authoritative history budget. Its pinned
-        // metadata prevents FIFO removal while still forcing older tail turns to yield space.
+        // Keep the anchored summary alongside the verbatim unsummarized tail.
         if let Some(summary_msg) = compaction_summary_msg {
             chat_history.insert(0, summary_msg);
         }
@@ -619,81 +563,8 @@ impl ChatV2Pipeline {
             repair_tool_chain(&mut chat_history);
         }
 
-        // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
-        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-        let max_tokens = effective_history_token_budget(ctx.options.context_limit);
-
-        // 🆕 DESIGN：FIFO 头删触发前强制 compaction。头删会改写历史前缀
-        // （打破 prompt cache，且抢在正确的 tail 锚定压缩之前把任务锚点清零），
-        // 因此超预算时先走 compaction；只有 compaction 无法执行 / 无法回收
-        // 足够预算时才允许 FIFO 头删兜底。
-        if plan_history_overflow_action(
-            &chat_history,
-            max_tokens,
-            ctx.forced_compaction_before_trim,
-        ) == HistoryOverflowAction::CompactionFirst
-        {
-            ctx.forced_compaction_before_trim = true;
-            // 在 await 前归还数据库连接（compaction 与重载会各自取连接）。
-            drop(vfs_conn_opt);
-            drop(conn);
-            let session_id = ctx.session_id.clone();
-            let model_id = ctx
-                .options
-                .model2_override_id
-                .clone()
-                .or_else(|| ctx.options.model_id.clone());
-            let exclude_ids = vec![
-                ctx.user_message_id.clone(),
-                ctx.assistant_message_id.clone(),
-            ];
-            let cancellation_token = ctx.cancellation_token.clone();
-            match self
-                .run_compaction_for_session(
-                    &session_id,
-                    model_id.as_deref(),
-                    "overflow",
-                    &exclude_ids,
-                    ctx.options.context_limit,
-                    ctx.options.memory_enabled,
-                    cancellation_token.as_ref(),
-                )
-                .await
-            {
-                Ok(outcome) if outcome.did_compact() => {
-                    log::info!(
-                        "[ChatV2::pipeline] Forced compaction before FIFO trim committed for session={}; reloading history with new compaction view",
-                        session_id
-                    );
-                    return Ok(true);
-                }
-                Ok(outcome) => {
-                    log::info!(
-                        "[ChatV2::pipeline] Forced compaction before FIFO trim did not compact for session={} (status={}, reason={:?}); falling back to FIFO trim",
-                        session_id,
-                        outcome.status_code(),
-                        outcome.reason_code()
-                    );
-                }
-                Err(err) => {
-                    log::warn!(
-                        "[ChatV2::pipeline] Forced compaction before FIFO trim failed for session={}: {}; falling back to FIFO trim",
-                        session_id,
-                        err
-                    );
-                }
-            }
-        }
-
-        let trim_outcome = trim_history_by_token_budget(&mut chat_history, max_tokens);
-        // 🆕 实际丢弃了消息时挂起报告，由调用方（execute_internal / tool_loop）
-        // 在拿到 emitter 的位置发射 `context_trimmed` 事件
-        if trim_outcome.dropped_messages > 0 {
-            ctx.pending_context_trim = Some(trim_outcome);
-        }
-
         ctx.chat_history = chat_history;
-        Ok(false)
+        Ok(())
     }
 
     /// 解析历史消息中的 context_snapshot（V2 版本）
@@ -1498,6 +1369,87 @@ mod replay_consistency_tests {
     use crate::chat_v2::repo::BlockReplayData;
     use crate::chat_v2::types::{ChatSession, MessageMeta, SendMessageRequest, Variant};
     use std::collections::HashMap;
+
+    #[tokio::test]
+    async fn history_keeps_more_than_four_hundred_short_messages() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let session_id = "history_no_message_cap";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        for index in 0..450 {
+            insert_user_turn(
+                &conn,
+                session_id,
+                &format!("msg_{index}"),
+                &format!("block_{index}"),
+                &format!("turn {index}"),
+                index,
+            );
+        }
+        drop(conn);
+        let mut ctx = next_turn_ctx(session_id);
+        ctx.options.context_limit = Some(1_000_448);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 450);
+        assert!(ctx.chat_history[0].content.contains("turn 0"));
+        assert!(ctx.chat_history[449].content.contains("turn 449"));
+        // Loading must not preemptively truncate even for a much smaller model.
+        ctx.options.context_limit = Some(1);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        assert_eq!(ctx.chat_history.len(), 450);
+    }
+
+    #[tokio::test]
+    async fn unsummarized_history_keeps_old_tool_outputs_verbatim() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let session_id = "history_tool_outputs_verbatim";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+        let payload = "important historical tool output ".repeat(100);
+        for index in 0..6 {
+            let user_id = format!("msg_tool_user_{index}");
+            insert_user_turn(
+                &conn,
+                session_id,
+                &user_id,
+                &format!("blk_tool_user_{index}"),
+                "read file",
+                index * 2,
+            );
+            let mut assistant = ChatMessage::new_assistant(session_id.into());
+            assistant.id = format!("msg_tool_assistant_{index}");
+            assistant.timestamp = index * 2 + 1;
+            let mut block = MessageBlock::new(assistant.id.clone(), block_types::MCP_TOOL, 0);
+            block.status = block_status::SUCCESS.into();
+            block.tool_name = Some("builtin-workspace_read_file".into());
+            block.tool_input = Some(json!({"path": "file.txt"}));
+            block.tool_output = Some(json!({"content": payload}));
+            assistant.block_ids = vec![block.id.clone()];
+            ChatV2Repo::create_message_with_conn(&conn, &assistant).unwrap();
+            ChatV2Repo::create_block_with_conn(&conn, &block).unwrap();
+        }
+        drop(conn);
+        let mut ctx = next_turn_ctx(session_id);
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        let results: Vec<_> = ctx
+            .chat_history
+            .iter()
+            .filter(|message| message.role == "tool")
+            .collect();
+        assert_eq!(results.len(), 6);
+        assert!(results
+            .iter()
+            .all(|message| message.content.contains(&payload)));
+        assert!(validate_tool_chain(&ctx.chat_history));
+    }
 
     /// 要求 9 主测试：live 写入三列后，history 读回与 live 请求字节相等
     /// （用户包装 / provider tool_call_id / round_text / thought_signature /

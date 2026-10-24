@@ -54,88 +54,11 @@ impl From<ToolFacePrefixSnapshot> for ToolFaceBaseline {
     }
 }
 
-#[derive(Debug, Clone)]
-struct HistoryUnit {
-    start: usize,
-    end: usize,
-    is_pinned: bool,
-    token_estimate: usize,
-}
-
-fn history_unit_token_estimate(msg: &LegacyChatMessage) -> usize {
-    use crate::utils::token_budget::estimate_tokens;
-
-    let mut total = estimate_tokens(&msg.content);
-    if let Some(thinking) = &msg.thinking_content {
-        total = total.saturating_add(estimate_tokens(thinking));
-    }
-    if let Some(tool_call) = &msg.tool_call {
-        total = total.saturating_add(estimate_tokens(&tool_call.args_json.to_string()));
-    }
-    if let Some(tool_result) = &msg.tool_result {
-        if let Some(data) = &tool_result.data_json {
-            total = total.saturating_add(estimate_tokens(&data.to_string()));
-        }
-        if let Some(error) = &tool_result.error {
-            total = total.saturating_add(estimate_tokens(error));
-        }
-    }
-    if let Some(image_base64) = &msg.image_base64 {
-        for image in image_base64 {
-            total = total.saturating_add(image.len() / 4);
-        }
-    }
-    if let Some(doc_attachments) = &msg.doc_attachments {
-        for doc in doc_attachments {
-            if let Some(text) = &doc.text_content {
-                total = total.saturating_add(estimate_tokens(text));
-            }
-            if let Some(base64) = &doc.base64_content {
-                total = total.saturating_add(base64.len() / 4);
-            }
-        }
-    }
-    total
-}
-
 fn is_pinned_history_message(msg: &LegacyChatMessage) -> bool {
     is_transient_llm_only_message(msg)
         || msg.metadata.as_ref().is_some_and(|metadata| {
             metadata.get("kind").and_then(Value::as_str) == Some("compaction_summary")
         })
-}
-
-fn group_history_units(history: &[LegacyChatMessage]) -> Vec<HistoryUnit> {
-    let mut units = Vec::new();
-    let mut i = 0usize;
-
-    while i < history.len() {
-        let start = i;
-        let mut end = i + 1;
-        let pinned = is_pinned_history_message(&history[i]);
-        if !pinned {
-            while end < history.len()
-                && !is_pinned_history_message(&history[end])
-                && history[end].role != "user"
-            {
-                end += 1;
-            }
-        }
-        let total = history[start..end]
-            .iter()
-            .map(history_unit_token_estimate)
-            .sum();
-
-        units.push(HistoryUnit {
-            start,
-            end,
-            is_pinned: pinned,
-            token_estimate: total,
-        });
-        i = end;
-    }
-
-    units
 }
 
 // ============================================================
@@ -1024,28 +947,6 @@ pub(crate) fn insert_skill_messages_after_tool_result(
 }
 
 impl ChatV2Pipeline {
-    /// 🆕 发射 `context_trimmed` 事件（消费 ctx 上挂起的截断报告）。
-    ///
-    /// 去重策略：同一轮流式（同一个 PipelineContext 生命周期）内最多发一次，
-    /// 避免工具环内多次重载历史时刷屏。
-    pub(crate) fn notify_context_trimmed(
-        &self,
-        ctx: &mut PipelineContext,
-        emitter: &ChatV2EventEmitter,
-    ) {
-        let Some(report) = ctx.pending_context_trim.take() else {
-            return;
-        };
-        if report.dropped_messages == 0 || ctx.context_trim_notified {
-            return;
-        }
-        ctx.context_trim_notified = true;
-        emitter.emit_context_trimmed(
-            report.dropped_messages,
-            (report.dropped_tokens > 0).then_some(report.dropped_tokens),
-        );
-    }
-
     /// 🆕 解析本次历史加载应生效的 microcompact 可占位符化轮数。
     ///
     /// 锚点存于 Pipeline 共享的会话级状态（所有 clone 共享），以活跃
@@ -1469,99 +1370,9 @@ impl ChatV2Pipeline {
 /// 启发式估算文本的 token 数量（支持中英混排）
 ///
 /// 🔧 P1-5 修复：统一到 `utils::token_budget::estimate_tokens` 单一口径，
-/// 消除与 `history_unit_token_estimate`（同文件上方，已用 token_budget）的
-/// 双轨漂移。本函数仅作转发别名保留，勿在此重新实现估算逻辑。
+/// 本函数仅作转发别名保留，勿在此重新实现估算逻辑。
 pub(crate) fn estimate_token_count(text: &str) -> usize {
     crate::utils::token_budget::estimate_tokens(text)
-}
-
-/// FIFO 截断结果（供 `context_trimmed` 事件上报使用）
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct TrimOutcome {
-    /// 实际丢弃的消息条数
-    pub dropped_messages: usize,
-    /// 丢弃消息的估算 token 总量
-    pub dropped_tokens: usize,
-}
-
-/// 按 token 预算裁剪聊天历史（从最旧消息开始移除）
-///
-/// 🆕 返回实际丢弃的消息数与估算 token 量；调用方据此发射 `context_trimmed`
-/// 事件让用户感知"无声丢消息"（仅在 dropped_messages > 0 时应发射）。
-pub(crate) fn trim_history_by_token_budget(
-    history: &mut Vec<LegacyChatMessage>,
-    max_tokens: usize,
-) -> TrimOutcome {
-    let units = group_history_units(history);
-    let mut total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
-
-    let original_len = history.len();
-    let mut dropped_tokens = 0usize;
-    let mut removable_units: Vec<HistoryUnit> =
-        units.into_iter().filter(|u| !u.is_pinned).collect();
-
-    while total_tokens > max_tokens && removable_units.len() > 2 {
-        let Some(unit) = removable_units.first().cloned() else {
-            break;
-        };
-        history.drain(unit.start..unit.end);
-        total_tokens = total_tokens.saturating_sub(unit.token_estimate);
-        dropped_tokens = dropped_tokens.saturating_add(unit.token_estimate);
-        removable_units.remove(0);
-
-        for remaining in &mut removable_units {
-            if remaining.start >= unit.end {
-                remaining.start -= unit.end - unit.start;
-                remaining.end -= unit.end - unit.start;
-            }
-        }
-    }
-
-    let dropped_messages = original_len - history.len();
-    if dropped_messages > 0 {
-        log::info!(
-            "[ChatV2::pipeline] Token budget trim: {} -> {} messages (budget={}, remaining≈{})",
-            original_len,
-            history.len(),
-            max_tokens,
-            total_tokens
-        );
-    }
-    TrimOutcome {
-        dropped_messages,
-        dropped_tokens,
-    }
-}
-
-/// 🆕 历史超预算时的处理决策（DESIGN：FIFO 头删触发前强制 compaction）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HistoryOverflowAction {
-    /// 历史实际处于预算内
-    WithinBudget,
-    /// 超预算且本轮尚未强制过 compaction：先跑 compaction 回收预算
-    CompactionFirst,
-    /// 超预算且 compaction 已尝试过（失败/跳过/回收不足）：允许 FIFO 头删兜底
-    FifoTrim,
-}
-
-/// 超预算时先尝试压缩，即使只剩两轮、FIFO 无法回收。
-/// 头删会改写历史前缀（打破 prompt cache 前缀，且抢在正确的 tail 锚定压缩
-/// 之前把任务锚点清零），因此只允许在 compaction 无法回收足够预算时兜底。
-pub(crate) fn plan_history_overflow_action(
-    history: &[LegacyChatMessage],
-    max_tokens: usize,
-    compaction_already_attempted: bool,
-) -> HistoryOverflowAction {
-    let units = group_history_units(history);
-    let total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
-    if total_tokens <= max_tokens {
-        return HistoryOverflowAction::WithinBudget;
-    }
-    if compaction_already_attempted {
-        HistoryOverflowAction::FifoTrim
-    } else {
-        HistoryOverflowAction::CompactionFirst
-    }
 }
 
 // ============================================================
@@ -1857,152 +1668,6 @@ mod tests {
         assert!(is_transient_skill_message(&messages[1]));
     }
 
-    #[test]
-    fn test_trim_history_by_token_budget_preserves_transient_skill_messages() {
-        let mut history = vec![
-            make_empty_message("user", "oldest user message".to_string()),
-            make_transient_skill_message("skill-a", "skill body"),
-            make_empty_message("assistant", "assistant reply".to_string()),
-            make_empty_message("user", "latest user turn".to_string()),
-        ];
-
-        trim_history_by_token_budget(
-            &mut history,
-            estimate_token_count("skill bodyassistant replylatest user turn"),
-        );
-
-        assert_eq!(history.len(), 3);
-        assert!(is_transient_skill_message(&history[0]));
-        assert_eq!(history[1].content, "assistant reply");
-        assert_eq!(history[2].content, "latest user turn");
-    }
-
-    /// 🔧 2026-07 修复：group_history_units 已改为按 user 轮分组（3c6a57f09），
-    /// 本测试改写为轮次语义。核心意图不变：tool_call args / tool_result data
-    /// 必须计入单元 token 预算——若不计入，纯文本总量不会超预算，最旧轮不会被丢。
-    #[test]
-    fn test_trim_history_by_token_budget_counts_tool_payloads() {
-        let mut tool_call_message = make_empty_message("assistant", String::new());
-        tool_call_message.tool_call = Some(crate::models::ToolCall {
-            id: "call-1".to_string(),
-            tool_name: "builtin_fetch".to_string(),
-            args_json: json!({ "payload": "x".repeat(4000) }),
-        });
-
-        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
-        tool_result_message.tool_result = Some(crate::models::ToolResult {
-            call_id: "call-1".to_string(),
-            ok: true,
-            error: None,
-            error_details: None,
-            data_json: Some(json!({ "result": "y".repeat(4000) })),
-            usage: None,
-            citations: None,
-        });
-
-        let mut history = vec![
-            // 轮 1（含大 tool payload）
-            make_empty_message("user", "oldest user message".to_string()),
-            tool_call_message,
-            tool_result_message,
-            // 轮 2
-            make_empty_message("user", "middle user turn".to_string()),
-            make_empty_message("assistant", "middle assistant reply".to_string()),
-            // 轮 3
-            make_empty_message("user", "latest user turn".to_string()),
-            make_empty_message("assistant", "latest assistant reply".to_string()),
-        ];
-
-        // 预算 = 所有纯文本 token + 余量，但远小于 tool payload 的 token 量。
-        // 只有把 payload 计入预算，总量才会超限并触发丢弃最旧轮。
-        let all_text_tokens = estimate_token_count(
-            "oldest user messageokmiddle user turnmiddle assistant replylatest user turnlatest assistant reply",
-        );
-        trim_history_by_token_budget(&mut history, all_text_tokens + 200);
-
-        assert_eq!(history.len(), 4, "含大 payload 的最旧轮必须被整体移除");
-        assert_eq!(history[0].content, "middle user turn");
-        assert!(history
-            .iter()
-            .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
-    }
-
-    /// 🔧 2026-07 修复：同上，按 user 轮分组语义改写。核心意图不变：
-    /// tool_call / tool_result 必须随所在轮次整体移除，不能留下孤儿。
-    #[test]
-    fn test_trim_history_by_token_budget_removes_complete_tool_rounds() {
-        let mut tool_call_message = make_empty_message("assistant", String::new());
-        tool_call_message.tool_call = Some(crate::models::ToolCall {
-            id: "call-1".to_string(),
-            tool_name: "builtin_fetch".to_string(),
-            args_json: json!({ "query": "enzyme kinetics" }),
-        });
-
-        let mut tool_result_message = make_empty_message("tool", "big ".repeat(2000));
-        tool_result_message.tool_result = Some(crate::models::ToolResult {
-            call_id: "call-1".to_string(),
-            ok: true,
-            error: None,
-            error_details: None,
-            data_json: Some(json!({ "result": "Michaelis-Menten" })),
-            usage: None,
-            citations: None,
-        });
-
-        let mut history = vec![
-            // 轮 1（工具轮，体积大）
-            make_empty_message("user", "turn 1".to_string()),
-            tool_call_message,
-            tool_result_message,
-            // 轮 2
-            make_empty_message("user", "turn 2 user".to_string()),
-            make_empty_message("assistant", "turn 2 assistant".to_string()),
-            // 轮 3
-            make_empty_message("user", "turn 3 user".to_string()),
-            make_empty_message("assistant", "turn 3 assistant".to_string()),
-        ];
-
-        trim_history_by_token_budget(
-            &mut history,
-            estimate_token_count("turn 2 userturn 2 assistantturn 3 userturn 3 assistant") + 100,
-        );
-
-        assert_eq!(history.len(), 4);
-        assert!(
-            history
-                .iter()
-                .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()),
-            "工具轮必须被整体移除，不能留下孤儿 tool_call / tool_result"
-        );
-        assert_eq!(history[0].content, "turn 2 user");
-        assert_eq!(history[3].content, "turn 3 assistant");
-    }
-
-    /// 🆕 trim 返回值：报告实际丢弃的条数与 token 估算，未丢弃时为零
-    #[test]
-    fn test_trim_history_reports_dropped_stats() {
-        let mut history = vec![
-            make_empty_message("user", "old ".repeat(200)),
-            make_empty_message("assistant", "old reply ".repeat(200)),
-            make_empty_message("user", "turn 2".to_string()),
-            make_empty_message("assistant", "turn 2 reply".to_string()),
-            make_empty_message("user", "latest".to_string()),
-        ];
-
-        // 预算充足 → 不丢弃
-        let outcome = trim_history_by_token_budget(&mut history.clone(), usize::MAX);
-        assert_eq!(outcome, TrimOutcome::default());
-
-        // 预算紧张 → 丢弃最旧单元并上报统计
-        let outcome = trim_history_by_token_budget(
-            &mut history,
-            estimate_token_count("turn 2turn 2 replylatest"),
-        );
-        assert!(outcome.dropped_messages > 0);
-        assert!(outcome.dropped_tokens > 0);
-        assert_eq!(outcome.dropped_messages, 5 - history.len());
-    }
-
     /// 🆕 microcompact：旧轮次工具输出替换为占位符，最近 K 轮保留原文，
     /// 且 tool call/result 配对不被破坏（validate_tool_chain 仍通过）
     #[test]
@@ -2250,48 +1915,6 @@ mod tests {
         // 防御性钳制：历史变短（编辑/换分支）时不越界
         let (_, eligible) = advance_microcompact_anchor(Some(&advanced), Some("cmp_1"), 1);
         assert_eq!(eligible, 1);
-    }
-
-    /// 🆕 DESIGN 回归测试（必须做 3b）：超预算时 compaction 先于 FIFO 头删；
-    /// 只有本轮已强制尝试过 compaction 才允许 FIFO 兜底。
-    #[test]
-    fn test_plan_history_overflow_compaction_before_fifo() {
-        let mut history: Vec<LegacyChatMessage> = Vec::new();
-        for i in 0..5 {
-            history.extend(make_big_tool_round(
-                &format!("call-{}", i),
-                &format!("turn {}", i),
-            ));
-        }
-
-        // 预算充足 → 无需处理
-        assert_eq!(
-            plan_history_overflow_action(&history, usize::MAX, false),
-            HistoryOverflowAction::WithinBudget
-        );
-
-        // 超预算且尚未强制 compaction → 必须先走 compaction，不许头删
-        assert_eq!(
-            plan_history_overflow_action(&history, 10, false),
-            HistoryOverflowAction::CompactionFirst
-        );
-
-        // 超预算但 compaction 已尝试（失败/跳过/回收不足）→ 才允许 FIFO 头删
-        assert_eq!(
-            plan_history_overflow_action(&history, 10, true),
-            HistoryOverflowAction::FifoTrim
-        );
-
-        // Even two turns may exceed the budget and require summarization.
-        let tiny = vec![
-            make_empty_message("user", "big ".repeat(500)),
-            make_empty_message("assistant", "reply".to_string()),
-            make_empty_message("user", "next".to_string()),
-        ];
-        assert_eq!(
-            plan_history_overflow_action(&tiny, 10, false),
-            HistoryOverflowAction::CompactionFirst
-        );
     }
 
     #[test]

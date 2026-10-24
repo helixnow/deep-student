@@ -1428,6 +1428,17 @@ impl VfsAttachmentRepo {
         reader: &mut dyn std::io::Read,
         folder_id: Option<&str>,
     ) -> VfsResult<VfsUploadAttachmentResult> {
+        Self::upload_media_stream_finalized(db, params, reader, folder_id, |_, _| Ok(()))
+    }
+
+    /// Finalize media-specific metadata in the same transaction as file registration.
+    pub(crate) fn upload_media_stream_finalized(
+        db: &VfsDatabase,
+        params: &VfsUploadAttachmentParams,
+        reader: &mut dyn std::io::Read,
+        folder_id: Option<&str>,
+        mut finalize: impl FnMut(&Connection, &VfsUploadAttachmentResult) -> VfsResult<()>,
+    ) -> VfsResult<VfsUploadAttachmentResult> {
         Self::validate_upload_type(&params.name, &params.mime_type)?;
         if crate::media::media_kind(&params.mime_type, &params.name).is_none() {
             return Err(VfsError::InvalidArgument {
@@ -1452,7 +1463,11 @@ impl VfsAttachmentRepo {
                 params,
                 &mut staged,
                 folder_id,
-            );
+            )
+            .and_then(|result| {
+                finalize(&conn, &result)?;
+                Ok(result)
+            });
             match result {
                 Ok(res) => {
                     conn.execute("RELEASE upload_media_stream", [])

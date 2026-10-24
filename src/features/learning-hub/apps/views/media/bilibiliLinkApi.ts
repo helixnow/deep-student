@@ -51,6 +51,9 @@ export interface BilibiliProbe {
   url: string;
   /** 同一视频同一分 P 已有的链接条目（再导入复用、只替换字幕） */
   existingId: string | null;
+  subtitleState?: 'available' | 'none_confirmed' | 'login_required' | 'failed' | 'unsupported';
+  subtitleError?: string | null;
+  route?: string;
 }
 
 export interface BilibiliCreateResult {
@@ -116,6 +119,9 @@ export function normalizeProbe(raw: unknown): BilibiliProbe {
     defaultLan: optStr(pick(r, 'defaultLan', 'default_lan')),
     url: str(r.url),
     existingId: optStr(pick(r, 'existingId', 'existing_id')),
+    subtitleState: str(pick(r, 'subtitleState', 'subtitle_state')) as BilibiliProbe['subtitleState'] || undefined,
+    subtitleError: optStr(pick(r, 'subtitleError', 'subtitle_error')),
+    route: optStr(r.route) ?? undefined,
   };
 }
 
@@ -188,14 +194,14 @@ async function invoke<T = unknown>(command: string, args: Record<string, unknown
 
 export const bilibiliLinkApi = {
   /** 解析链接：标题 / 分 P / 该分 P 的字幕轨 / 默认轨 / 已有条目 */
-  async probe(input: string, page?: number | null): Promise<BilibiliProbe> {
-    return normalizeProbe(await invoke('media_bilibili_probe', { input, page: page ?? null }));
+  async probe(input: string, page?: number | null, taskId?: string): Promise<BilibiliProbe> {
+    return normalizeProbe(await invoke('media_bilibili_probe', { input, page: page ?? null, ...(taskId ? { taskId } : {}) }));
   },
 
   /** 新建（或复用同一视频同一分 P 的）链接条目并导入字幕 */
-  async create(input: string, page?: number | null, lan?: string | null): Promise<BilibiliCreateResult> {
+  async create(input: string, page?: number | null, lan?: string | null, taskId?: string): Promise<BilibiliCreateResult> {
     return normalizeCreateResult(
-      await invoke('media_bilibili_create', { input, page: page ?? null, lan: lan ?? null }),
+      await invoke('media_bilibili_create', { input, page: page ?? null, lan: lan ?? null, ...(taskId ? { taskId } : {}) }),
     );
   },
 
@@ -205,6 +211,7 @@ export const bilibiliLinkApi = {
     input: string,
     page?: number | null,
     lan?: string | null,
+    taskId?: string,
   ): Promise<MediaTranscript> {
     return normalizeTranscript(
       await invoke('media_bilibili_import_subtitle', {
@@ -212,6 +219,7 @@ export const bilibiliLinkApi = {
         input,
         page: page ?? null,
         lan: lan ?? null,
+        ...(taskId ? { taskId } : {}),
       }),
     );
   },
@@ -219,4 +227,5 @@ export const bilibiliLinkApi = {
   async getLink(resourceId: string): Promise<BilibiliLinkDescriptor> {
     return normalizeLinkDescriptor(await invoke('media_bilibili_link_get', { resourceId }));
   },
+  async cancel(taskId: string): Promise<void> { await invoke('media_bilibili_cancel', { taskId }); },
 };

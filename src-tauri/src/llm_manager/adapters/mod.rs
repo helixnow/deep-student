@@ -37,7 +37,7 @@ pub use anthropic::{
 pub use deepseek::DeepSeekAdapter;
 pub(crate) use deepseek::{
     apply_official_deepseek_generation_params, is_official_deepseek_v4,
-    uses_deepseek_v41_image_tokens,
+    normalize_deepseek_chat_request, uses_deepseek_v41_image_tokens,
 };
 pub use doubao::DoubaoAdapter;
 pub use ernie::ErnieAdapter;

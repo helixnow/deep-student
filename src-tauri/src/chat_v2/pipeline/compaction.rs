@@ -16,9 +16,8 @@
 //! tail 起点对齐 user turn 边界；扫描 tail 内部的 assistant 消息，若含活跃
 //! `thought_signature`（Gemini 3）或 Anthropic 签名则把整个 turn 包进 tail。
 //!
-//! ## 失败兜底
-//! 摘要 LLM 调用失败 → 把 `needs_compaction` 清零，本轮改走 FIFO 截断，
-//! 不阻塞用户发消息。
+//! ## 失败处理
+//! 摘要失败不删除原始轮次；完整请求仍超预算时停止发送并报告错误。
 //!
 //! ## 子模块划分
 //! - [`budget`]：触发参数、token 预算估算与检查点 A/B 判定
@@ -58,13 +57,14 @@ use self::memory_flush::{
 use self::prompts::build_static_fallback_summary;
 use self::prompts::{
     actual_model_from_raw_response, build_compaction_prompt, escape_untrusted_prompt_data,
-    make_summary_system_message, render_messages_for_prompt, summary_is_structurally_valid,
-    truncate_text_to_token_budget,
+    make_summary_system_message, render_messages_for_prompt, split_text_to_token_budget,
+    summary_is_structurally_valid, truncate_text_to_token_budget,
 };
-use self::segmentation::{select_tail, split_into_turns, split_summary_ranges};
+use self::segmentation::{select_manual_tail, select_tail, split_into_turns, split_summary_ranges};
 use super::ChatV2Pipeline;
 use crate::chat_v2::context::PipelineContext;
 use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
+use crate::chat_v2::events::ChatV2EventEmitter;
 use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::types::{
     block_status, block_types, ChatMessage, CompactionRecord, MessageBlock, MessageRole,
@@ -242,7 +242,7 @@ where
 impl ChatV2Pipeline {
     /// 运行压缩：从 DB 加载全量历史，生成摘要并持久化，重置 ctx.needs_compaction
     ///
-    /// LLM 摘要失败时仅记录日志并清零标志，不返回错误（退化为 FIFO 截断）
+    /// LLM 摘要失败时清零标志；发送前的只读预算检查决定是否还能继续。
     ///
     /// 🔧 P1-4 / 结构化结果：返回 `CompactionOutcome::Compacted` 表示本次真的
     /// 落盘了一条 compaction 记录（调用方可据此重新加载历史以立即应用压缩视图）；
@@ -250,6 +250,7 @@ impl ChatV2Pipeline {
     pub(crate) async fn run_compaction(
         &self,
         ctx: &mut PipelineContext,
+        emitter: &ChatV2EventEmitter,
     ) -> ChatV2Result<CompactionOutcome> {
         if !ctx.needs_compaction {
             return Ok(CompactionOutcome::NotNeeded(
@@ -270,7 +271,7 @@ impl ChatV2Pipeline {
         ];
 
         let outcome = self
-            .run_compaction_for_session(
+            .run_compaction_for_session_with_feedback(
                 &session_id,
                 model_id.as_deref(),
                 "auto",
@@ -278,6 +279,7 @@ impl ChatV2Pipeline {
                 context_limit,
                 ctx.options.memory_enabled,
                 cancellation_token.as_ref(),
+                Some(emitter),
             )
             .await?;
 
@@ -292,6 +294,94 @@ impl ChatV2Pipeline {
             );
         }
         Ok(outcome)
+    }
+
+    /// A local preflight error carries the actual selected model and complete input budget,
+    /// including model fallback/downsizing. No provider request has been sent yet.
+    pub(crate) async fn compact_for_request(
+        &self,
+        session_id: &str,
+        options: &crate::chat_v2::types::SendOptions,
+        exclude_ids: &[String],
+        emitter: &crate::chat_v2::events::ChatV2EventEmitter,
+        cancellation_token: Option<&tokio_util::sync::CancellationToken>,
+        budget_error: &crate::models::AppError,
+    ) -> ChatV2Result<bool> {
+        let details = budget_error.details.as_ref();
+        let model_id = details
+            .and_then(|value| value.get("compaction_model_id"))
+            .and_then(serde_json::Value::as_str)
+            .or(options.model2_override_id.as_deref())
+            .or(options.model_id.as_deref());
+        let input_limit = details
+            .and_then(|value| value.get("input_limit"))
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|limit| u32::try_from(limit).ok())
+            .or(options.context_limit);
+        let outcome = self
+            .run_compaction_for_session_with_feedback(
+                session_id,
+                model_id,
+                "auto",
+                exclude_ids,
+                input_limit,
+                options.memory_enabled,
+                cancellation_token,
+                Some(emitter),
+            )
+            .await;
+        if cancellation_token.is_some_and(|token| token.is_cancelled()) {
+            return Err(ChatV2Error::Cancelled);
+        }
+        match outcome {
+            Ok(outcome) if outcome.did_compact() => {
+                let (before, after) = outcome.token_estimates();
+                emitter.emit_compaction_completed(before, after);
+                Ok(true)
+            }
+            Ok(CompactionOutcome::Skipped(CompactionSkipReason::LockBusy)) => {
+                // Parallel variants share one history. Wait for its compaction rather than
+                // sending an obsolete view or starting a duplicate summary request.
+                let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
+                loop {
+                    if cancellation_token.is_some_and(|token| token.is_cancelled()) {
+                        return Err(ChatV2Error::Cancelled);
+                    }
+                    if !self
+                        .compaction_locks
+                        .lock()
+                        .unwrap_or_else(|p| p.into_inner())
+                        .contains(session_id)
+                    {
+                        return Ok(true);
+                    }
+                    if tokio::time::Instant::now() >= deadline {
+                        return Ok(false);
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            }
+            Ok(outcome) => {
+                info!(
+                    "[compaction] request preflight did not compact session={}: status={} reason={:?}; keeping every unsummarized message",
+                    session_id, outcome.status_code(), outcome.reason_code()
+                );
+                if outcome.is_failed() {
+                    if let Some(reason) = outcome.reason_code() {
+                        emitter.emit_compaction_failed(reason);
+                    }
+                }
+                Ok(false)
+            }
+            Err(error) => {
+                warn!(
+                    "[compaction] request preflight failed session={}: {}",
+                    session_id, error
+                );
+                emitter.emit_compaction_failed(CompactionSkipReason::InternalError.as_code());
+                Ok(false)
+            }
+        }
     }
 
     /// 读取全局「压缩专用模型」配置（settings 表 model_assignments JSON 的
@@ -348,6 +438,30 @@ impl ChatV2Pipeline {
         session_memory_enabled: Option<bool>,
         cancellation_token: Option<&tokio_util::sync::CancellationToken>,
     ) -> ChatV2Result<CompactionOutcome> {
+        self.run_compaction_for_session_with_feedback(
+            session_id,
+            model_id,
+            reason,
+            exclude_ids,
+            context_limit,
+            session_memory_enabled,
+            cancellation_token,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn run_compaction_for_session_with_feedback(
+        &self,
+        session_id: &str,
+        model_id: Option<&str>,
+        reason: &str,
+        exclude_ids: &[String],
+        context_limit: Option<u32>,
+        session_memory_enabled: Option<bool>,
+        cancellation_token: Option<&tokio_util::sync::CancellationToken>,
+        emitter: Option<&ChatV2EventEmitter>,
+    ) -> ChatV2Result<CompactionOutcome> {
         // 🆕 2026-09 防抖动冷却：失败（或无可压缩区间）后在冷却期内的自动
         // 触发直接跳过，避免「每轮触发 → 昂贵准备 → 失败/空转」循环
         // （实测曾 7 分钟内空转 12 次 + 3 次 75 秒无效摘要调用）。
@@ -378,6 +492,7 @@ impl ChatV2Pipeline {
                 context_limit,
                 session_memory_enabled,
                 cancellation_token,
+                emitter,
             )
             .await?;
 
@@ -408,6 +523,7 @@ impl ChatV2Pipeline {
         context_limit: Option<u32>,
         session_memory_enabled: Option<bool>,
         cancellation_token: Option<&tokio_util::sync::CancellationToken>,
+        emitter: Option<&ChatV2EventEmitter>,
     ) -> ChatV2Result<CompactionOutcome> {
         // 🆕 压缩专用模型：全局设置了就统一覆盖（所有触发路径共用此单点）
         let dedicated_model = self.compaction_model_override();
@@ -558,10 +674,45 @@ impl ChatV2Pipeline {
             }
         }
 
-        let tail_budget_raw = (usable as f64 * TAIL_PRESERVE_RATIO) as usize;
-        let tail_budget = tail_budget_raw.clamp(MIN_TAIL_TOKENS, MAX_TAIL_TOKENS);
+        let previous_record = ChatV2Repo::get_active_compaction_with_conn(&conn, session_id)?;
+        let visible_start = previous_record
+            .as_ref()
+            .and_then(|record| {
+                messages
+                    .iter()
+                    .position(|message| message.id == record.history_boundary_id())
+                    .map(|index| index + usize::from(record.is_summary_only()))
+            })
+            .unwrap_or(0);
+        let tail_budget_raw = if reason == "manual" {
+            // A user-requested compaction must reclaim history even far below the model's
+            // capacity. Base the verbatim tail on the visible conversation, not its window.
+            let visible_tokens: usize = messages[visible_start..]
+                .iter()
+                .map(|message| {
+                    estimate_message_tokens(message, &blocks_by_msg, model_id_for_tokens)
+                })
+                .sum();
+            (visible_tokens.min(usable) as f64 * TAIL_PRESERVE_RATIO) as usize
+        } else {
+            (usable as f64 * TAIL_PRESERVE_RATIO) as usize
+        };
+        let min_tail = if reason == "manual" {
+            1
+        } else {
+            MIN_TAIL_TOKENS
+        };
+        let tail_budget = tail_budget_raw.clamp(min_tail, MAX_TAIL_TOKENS);
 
-        let tail = match if recovery {
+        let tail = match if reason == "manual" {
+            select_manual_tail(
+                &messages,
+                &turns,
+                tail_budget,
+                &blocks_by_msg,
+                model_id_for_tokens,
+            )
+        } else if reason == "overflow" {
             // Summarize old anchors too. An empty raw tail is represented by the summary's
             // own ID plus the last summarized message as its boundary (no synthetic DB row).
             let start = turns
@@ -619,11 +770,6 @@ impl ChatV2Pipeline {
         );
 
         // 4. 读取此前最近一次 compaction 记录（锚定链接续 + memory flush 增量起点）
-        let previous_record = ChatV2Repo::get_active_compaction_with_conn(&conn, session_id)
-            .map_err(|e| {
-                warn!("[compaction] get_active_compaction failed: {}", e);
-                e
-            })?;
         let previous_summary: Option<String> = match previous_record.as_ref() {
             Some(previous) => {
                 ChatV2Repo::get_message_blocks_with_conn(&conn, &previous.summary_message_id)?
@@ -645,6 +791,7 @@ impl ChatV2Pipeline {
         } else {
             0
         };
+        let anchor_end = if reason == "manual" { 0 } else { head_end };
         let middle_start = previous_record
             .as_ref()
             .and_then(|previous| {
@@ -653,8 +800,8 @@ impl ChatV2Pipeline {
                     .position(|message| message.id == previous.history_boundary_id())
                     .map(|index| index + usize::from(previous.is_summary_only()))
             })
-            .map(|index| index.max(head_end))
-            .unwrap_or(head_end);
+            .map(|index| index.max(anchor_end))
+            .unwrap_or(anchor_end);
         let middle_end = tail.tail_start_idx;
         if middle_start >= middle_end {
             info!("[compaction] no incremental middle to summarize; skip");
@@ -724,16 +871,17 @@ impl ChatV2Pipeline {
         }
         let summary_chunks = summary_ranges
             .iter()
-            .map(|(start, end)| {
-                truncate_text_to_token_budget(
-                    &render_messages_for_prompt(
-                        &messages,
-                        &blocks_by_msg,
-                        *start,
-                        *end,
-                        per_msg_cap,
-                        model_id_for_tokens,
-                    ),
+            .flat_map(|(start, end)| {
+                let rendered = render_messages_for_prompt(
+                    &messages,
+                    &blocks_by_msg,
+                    *start,
+                    *end,
+                    usize::MAX,
+                    model_id_for_tokens,
+                );
+                split_text_to_token_budget(
+                    &escape_untrusted_prompt_data(&rendered),
                     summary_input_budget,
                     model_id_for_tokens,
                 )
@@ -827,6 +975,20 @@ impl ChatV2Pipeline {
         // 6. 释放连接，执行 LLM 调用
         drop(conn);
 
+        // Only announce real summary work. Clear progress even if its future is dropped.
+        struct FeedbackGuard<'a>(Option<&'a ChatV2EventEmitter>);
+        impl Drop for FeedbackGuard<'_> {
+            fn drop(&mut self) {
+                if let Some(emitter) = self.0 {
+                    emitter.emit_compaction_finished();
+                }
+            }
+        }
+        if let Some(emitter) = emitter {
+            emitter.emit_compaction_started(reason);
+        }
+        let _feedback = FeedbackGuard(emitter);
+
         // 摘要/落盘闭包内的失败原因回传通道。默认 SummaryFailed；
         // 取消 / lineage 失效路径会覆写。用 Arc<Mutex> 而非 RefCell 以保持
         // future 的 Send 约束（tauri 命令要求）。
@@ -904,6 +1066,10 @@ impl ChatV2Pipeline {
                                 summary_chunks.len(),
                                 error
                             );
+                            if reason == "manual" {
+                                set_abort_reason(&abort_reason, CompactionSkipReason::SummaryFailed);
+                                return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                            }
                             // 🆕 不再中止：落入静态降级摘要，继续后续 chunk
                             rolling_summary = Some(static_fallback("llm_call_failed"));
                             continue;
@@ -981,6 +1147,10 @@ impl ChatV2Pipeline {
                                     summary_chunks.len(),
                                     error
                                 );
+                                if reason == "manual" {
+                                    set_abort_reason(&abort_reason, CompactionSkipReason::SummaryFailed);
+                                    return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                                }
                                 // 🆕 修复调用失败：落入静态降级摘要
                                 rolling_summary = Some(static_fallback("repair_call_failed"));
                                 continue;
@@ -1005,6 +1175,10 @@ impl ChatV2Pipeline {
                     if !summary_is_structurally_valid(&candidate, profile)
                         || candidate_tokens > hard_cap_tokens
                     {
+                        if reason == "manual" {
+                            set_abort_reason(&abort_reason, CompactionSkipReason::SummaryFailed);
+                            return Ok::<Option<PreparedCompaction>, ChatV2Error>(None);
+                        }
                         // 🆕 修复后仍不合规：落入静态降级摘要而非中止
                         rolling_summary = Some(static_fallback("invalid_after_repair"));
                         continue;
@@ -1241,25 +1415,29 @@ impl ChatV2Pipeline {
         Ok(true)
     }
 
-    /// 尝试从 `ctx.options.model_id` 解析活跃的 ApiConfig，用于 usable_tokens 估算
+    /// Resolve the same model and output reservation as the streaming request.
     pub(crate) async fn resolve_active_api_config(
         &self,
         ctx: &PipelineContext,
     ) -> Option<ApiConfig> {
-        let mut config = self
-            .resolve_api_config_by_id(
-                ctx.options
-                    .model2_override_id
-                    .as_deref()
-                    .or(ctx.options.model_id.as_deref()),
+        let key = ctx
+            .options
+            .model2_override_id
+            .as_deref()
+            .or(ctx.options.model_id.as_deref());
+        self.llm_manager
+            .select_model_for(
+                "default",
+                key.map(str::to_string),
+                ctx.options.temperature,
+                ctx.options.top_p,
+                ctx.options.frequency_penalty,
+                ctx.options.presence_penalty,
+                ctx.options.max_tokens,
             )
-            .await?;
-        crate::llm_manager::routing::ParamOverrides {
-            max_output_tokens: ctx.options.max_tokens,
-            ..Default::default()
-        }
-        .apply(&mut config);
-        Some(config)
+            .await
+            .ok()
+            .map(|(config, _)| config)
     }
 
     /// 按 model_id（config.id 或 config.model）解析 ApiConfig
@@ -1285,62 +1463,6 @@ impl ChatV2Pipeline {
             .find(|c| c.id == key)
             .or_else(|| configs.iter().find(|c| c.model == key))
             .cloned()
-    }
-
-    /// 🆕 R2-CR-R2-02：多变体 fan-out 前的压缩预检查
-    ///
-    /// 由于多变体路径不经过 `execute_internal`，没有 checkpoint A/B 去累加 usage，
-    /// 这里直接估算"当前历史 + 共享上下文"的 token 数是否接近上限。
-    pub(crate) async fn should_compact_before_multi_variant_fanout(
-        &self,
-        session_id: &str,
-        api_config: Option<&ApiConfig>,
-        context_limit: Option<u32>,
-    ) -> bool {
-        let usable = effective_usable_tokens(api_config, context_limit);
-        if usable == 0 {
-            return false;
-        }
-        let threshold = ((usable as f64) * TRIGGER_RATIO) as u32;
-
-        // 估算历史 token（只看 message/block 的 content + tool_input/output，
-        // 不加载其他开销；粗略但足以触发阈值判断）
-        let Ok(conn) = self.db.get_conn_safe() else {
-            return false;
-        };
-        let Ok(messages) = ChatV2Repo::get_session_messages_with_conn(&conn, session_id) else {
-            return false;
-        };
-        if messages.is_empty() {
-            return false;
-        }
-        let model_id_for_tokens = api_config.map(|c| c.model.as_str());
-
-        let mut total: usize = 0;
-        for m in &messages {
-            let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &m.id).ok();
-            let Some(blocks) = blocks else { continue };
-            // 复用 estimate_message_tokens 的思路
-            let mut blocks_by_msg: std::collections::HashMap<String, Vec<MessageBlock>> =
-                std::collections::HashMap::new();
-            blocks_by_msg.insert(m.id.clone(), blocks);
-            total = total.saturating_add(estimate_message_tokens(
-                m,
-                &blocks_by_msg,
-                model_id_for_tokens,
-            ));
-            if total >= threshold as usize {
-                return true;
-            }
-        }
-        let trigger = (total as u32) >= threshold;
-        if trigger {
-            info!(
-                "[compaction] trigger@multi-variant-fanout: history_tokens~{} threshold={} usable={}",
-                total, threshold, usable
-            );
-        }
-        trigger
     }
 }
 
@@ -1681,16 +1803,32 @@ mod tests {
     async fn input_overflow_recovers_without_reexecuting_completed_tools() {
         use crate::chat_v2::types::{SendMessageRequest, SendOptions, ToolResultInfo};
         let mut server = mockito::Server::new_async().await;
+        let summary_requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let request_log = summary_requests.clone();
         let summary = GENERIC_COMPACTION_PROFILE
             .required_headings
             .iter()
             .map(|heading| format!("{}\nTask progress preserved.\n", heading))
             .collect::<String>();
-        let summary_call = server.mock("POST", "/chat/completions")
-            .match_body(mockito::Matcher::PartialJson(serde_json::json!({"stream":false})))
+        let summary_response = serde_json::json!({
+            "choices": [{"message": {"role": "assistant", "content": summary}, "finish_reason": "stop"}]
+        })
+        .to_string();
+        let summary_call = server
+            .mock("POST", "/chat/completions")
+            .match_body(mockito::Matcher::PartialJson(
+                serde_json::json!({"stream":false}),
+            ))
             .with_header("content-type", "application/json")
-            .with_body(serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string())
-            .expect(1).create_async().await;
+            .with_body_from_request(move |request| {
+                let body: serde_json::Value =
+                    serde_json::from_slice(request.body().unwrap()).unwrap();
+                request_log.lock().unwrap().push(body);
+                summary_response.clone().into_bytes()
+            })
+            .expect_at_least(2)
+            .create_async()
+            .await;
         let stream_call = server.mock("POST", "/chat/completions")
             .match_body(mockito::Matcher::AllOf(vec![
                 mockito::Matcher::PartialJson(serde_json::json!({"stream":true})),
@@ -1731,7 +1869,7 @@ mod tests {
         pipeline.freeze_execution_context(&mut ctx).await.unwrap();
         let mut legacy = make_summary_system_message(&content, "not-a-summary");
         legacy.role = "user".into();
-        legacy.content = content;
+        legacy.content = content.clone();
         legacy.metadata = None;
         ctx.chat_history = vec![legacy];
         pipeline.compile_frozen_context(&mut ctx).await.unwrap();
@@ -1762,6 +1900,45 @@ mod tests {
         );
         summary_call.assert_async().await;
         stream_call.assert_async().await;
+
+        // Oversized history needs multiple summary passes, with no lost chunks or retries.
+        let requests = summary_requests.lock().unwrap();
+        let chunks = requests
+            .iter()
+            .map(|request| {
+                let prompt = request
+                    .pointer("/messages/0/content/0/text")
+                    .and_then(serde_json::Value::as_str)
+                    .or_else(|| request.pointer("/messages/0/content")?.as_str())
+                    .expect("summary request must contain a text prompt");
+                prompt
+                    .split_once("<conversation_data>\n")
+                    .expect("each summary pass must summarize a history chunk")
+                    .1
+                    .split_once("\n</conversation_data>")
+                    .unwrap()
+                    .0
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(chunks.concat(), format!("[#0 USER]\n{}\n\n", content));
+
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &ctx.session_id)
+            .unwrap()
+            .unwrap();
+        let summary_block =
+            ChatV2Repo::get_message_blocks_with_conn(&conn, &record.summary_message_id)
+                .unwrap()
+                .into_iter()
+                .find(|block| block.block_type == block_types::COMPACTION_SUMMARY)
+                .unwrap();
+        let metadata = summary_block.tool_output.as_ref().unwrap();
+        assert_eq!(
+            metadata["summaryPasses"].as_u64(),
+            Some(requests.len() as u64)
+        );
+        assert_eq!(metadata["summaryDegraded"], false);
+        assert_eq!(summary_block.content.as_deref(), Some(summary.trim()));
     }
 
     #[tokio::test]
@@ -2337,6 +2514,328 @@ mod tests {
         push_turn("把 big.rs 的内容总结一下", vec!["文件内容如下："], 25_000);
     }
 
+    #[tokio::test]
+    async fn manual_compaction_calls_summary_model_below_twenty_percent() {
+        use hyper::service::{make_service_fn, service_fn};
+        use hyper::{Body, Request, Response};
+        use std::convert::Infallible;
+        let prompts = Arc::new(std::sync::Mutex::new(Vec::<String>::new()));
+        let captured = prompts.clone();
+        let service = make_service_fn(move |_| {
+            let captured = captured.clone();
+            async move {
+                Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                    let captured = captured.clone();
+                    async move {
+                        let body = hyper::body::to_bytes(request.into_body()).await.unwrap();
+                        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                        captured.lock().unwrap().push(body["messages"].to_string());
+                        let summary = GENERIC_COMPACTION_PROFILE.required_headings.iter()
+                            .map(|heading| format!("{heading}\nMODEL_SUMMARY: keep the confirmed decisions and pending work."))
+                            .collect::<Vec<_>>().join("\n\n");
+                        Ok::<_, Infallible>(Response::builder().header("content-type", "application/json").body(Body::from(
+                            serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string()
+                        )).unwrap())
+                    }
+                }))
+            }
+        });
+        let server = hyper::Server::bind(&([127, 0, 0, 1], 0).into()).serve(service);
+        let address = server.local_addr();
+        let server_task = tokio::spawn(server);
+        let (_dir, pipeline, session_id) = e2e_pipeline_with_model(
+            Some(&format!("http://{address}/v1")),
+            "test-key",
+            "wide-test-model",
+        )
+        .await;
+        let mut profiles = pipeline.llm_manager.get_model_profiles().await.unwrap();
+        profiles
+            .iter_mut()
+            .find(|profile| profile.id == "vm_e2e_k3")
+            .unwrap()
+            .context_window = Some(1_000_448);
+        pipeline
+            .llm_manager
+            .save_model_profiles(&profiles)
+            .await
+            .unwrap();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        for index in 0..12 {
+            super::super::history::replay_test_support::insert_user_turn(
+                &conn,
+                &session_id,
+                &format!("manual_user_{index}"),
+                &format!("manual_block_{index}"),
+                &format!(
+                    "Conversation turn {index}: {}",
+                    "confirmed decisions and unfinished work. ".repeat(100)
+                ),
+                index,
+            );
+        }
+        let original_ids =
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap();
+        drop(conn);
+        let automatic = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "auto",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .unwrap();
+        assert!(
+            !automatic.did_compact(),
+            "test conversation must be below the automatic tail budget"
+        );
+        assert!(prompts.lock().unwrap().is_empty());
+        // Manual compaction bypasses both the water level and the preceding no-range cooldown.
+        let manual = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "manual",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .unwrap();
+        server_task.abort();
+        assert!(manual.did_compact(), "{manual:?}");
+        assert!(manual.token_estimates().0.unwrap() < 200_000);
+        let captured = prompts.lock().unwrap();
+        assert!(
+            !captured.is_empty(),
+            "must call the summary model, not merely drop old messages"
+        );
+        assert!(
+            captured[0].contains("Conversation turn 0"),
+            "summary prompt includes task anchors"
+        );
+        assert!(
+            captured[0].contains("Conversation turn 2"),
+            "summary prompt includes old conversation data"
+        );
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let record = ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+            .unwrap()
+            .unwrap();
+        let summary_block =
+            ChatV2Repo::get_message_blocks_with_conn(&conn, &record.summary_message_id)
+                .unwrap()
+                .into_iter()
+                .find(|block| block.block_type == block_types::COMPACTION_SUMMARY)
+                .unwrap();
+        assert!(summary_block.content.unwrap().contains("MODEL_SUMMARY"));
+        assert_eq!(
+            summary_block.tool_output.as_ref().unwrap()["summaryDegraded"],
+            false
+        );
+        let after = ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap();
+        assert!(original_ids.iter().all(|id| after.contains(id)));
+        let (summary, tail) = apply_compaction_view_to_ids(&conn, &session_id, after);
+        assert!(summary.unwrap().content.contains("MODEL_SUMMARY"));
+        assert!(tail.len() < original_ids.len());
+        assert_eq!(tail.last(), original_ids.last());
+    }
+
+    #[tokio::test]
+    async fn manual_compaction_does_not_replace_history_when_summary_model_fails() {
+        use hyper::service::{make_service_fn, service_fn};
+        use hyper::{Body, Response};
+        use std::convert::Infallible;
+        let service = make_service_fn(|_| async {
+            Ok::<_, Infallible>(service_fn(|_| async {
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(400)
+                        .body(Body::from("summary model rejected request"))
+                        .unwrap(),
+                )
+            }))
+        });
+        let server = hyper::Server::bind(&([127, 0, 0, 1], 0).into()).serve(service);
+        let address = server.local_addr();
+        let server_task = tokio::spawn(server);
+        let (_dir, pipeline, session_id) = e2e_pipeline_with_model(
+            Some(&format!("http://{address}/v1")),
+            "test-key",
+            "test-model",
+        )
+        .await;
+        seed_compactible_session(&pipeline, &session_id);
+        let before = {
+            let conn = pipeline.db.get_conn_safe().unwrap();
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap()
+        };
+        let outcome = pipeline
+            .run_compaction_for_session(
+                &session_id,
+                Some("vm_e2e_k3"),
+                "manual",
+                &[],
+                None,
+                Some(false),
+                None,
+            )
+            .await
+            .unwrap();
+        server_task.abort();
+        assert_eq!(
+            outcome,
+            CompactionOutcome::Failed(CompactionSkipReason::SummaryFailed)
+        );
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        assert!(
+            ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap(),
+            before
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_automatically_compacts_and_rebuilds_before_sending() {
+        use hyper::service::{make_service_fn, service_fn};
+        use hyper::{Body, Request, Response};
+        use std::convert::Infallible;
+
+        let requests = Arc::new(std::sync::Mutex::new(Vec::<serde_json::Value>::new()));
+        let captured = requests.clone();
+        let service = make_service_fn(move |_| {
+            let captured = captured.clone();
+            async move {
+                Ok::<_, Infallible>(service_fn(move |request: Request<Body>| {
+                    let captured = captured.clone();
+                    async move {
+                        let body = hyper::body::to_bytes(request.into_body()).await.unwrap();
+                        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                        let streaming = body["stream"].as_bool() == Some(true);
+                        captured.lock().unwrap().push(body);
+                        let response = if streaming {
+                            Response::builder().header("content-type", "text/event-stream").body(Body::from(
+                                "data: {\"choices\":[{\"delta\":{\"content\":\"answer\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+                            )).unwrap()
+                        } else {
+                            let summary = GENERIC_COMPACTION_PROFILE.required_headings.iter()
+                                .map(|heading| format!("{heading}\nPreserve the Rust ownership task and its decisions."))
+                                .collect::<Vec<_>>().join("\n\n");
+                            Response::builder().header("content-type", "application/json").body(Body::from(
+                                serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string()
+                            )).unwrap()
+                        };
+                        Ok::<_, Infallible>(response)
+                    }
+                }))
+            }
+        });
+        let server = hyper::Server::bind(&([127, 0, 0, 1], 0).into()).serve(service);
+        let address = server.local_addr();
+        let server_task = tokio::spawn(server);
+        let (_dir, pipeline, session_id) = e2e_pipeline_with_model(
+            Some(&format!("http://{address}/v1")),
+            "test-key",
+            "test-model",
+        )
+        .await;
+        seed_compactible_session(&pipeline, &session_id);
+        let before = {
+            let conn = pipeline.db.get_conn_safe().unwrap();
+            ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap()
+        };
+        let mut ctx = super::super::history::replay_test_support::next_turn_ctx(&session_id);
+        ctx.options.model_id = Some("vm_e2e_k3".into());
+        ctx.options.model2_override_id = Some("vm_e2e_k3".into());
+        ctx.options.max_tokens = Some(4_096);
+        ctx.options.context_limit = Some(26_000);
+        ctx.options.enable_thinking = Some(false);
+        ctx.options.memory_enabled = Some(false);
+        ctx.options.rag_enabled = Some(false);
+        ctx.options.web_search_enabled = Some(false);
+        pipeline.freeze_execution_context(&mut ctx).await.unwrap();
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        pipeline.compile_frozen_context(&mut ctx).await.unwrap();
+        let emitter = Arc::new(crate::chat_v2::events::ChatV2EventEmitter::new_headless(
+            session_id.clone(),
+        ));
+        pipeline
+            .execute_with_tools(
+                &mut ctx,
+                emitter,
+                "System instructions. ".repeat(2_500).as_str(),
+                0,
+            )
+            .await
+            .unwrap();
+        server_task.abort();
+        let captured = requests.lock().unwrap();
+        assert!(
+            captured.len() >= 2,
+            "must summarize before the first chat request"
+        );
+        assert_ne!(captured[0]["stream"], true);
+        let chat = captured
+            .iter()
+            .find(|request| request["stream"] == true)
+            .unwrap();
+        assert!(chat["messages"].to_string().contains("<compacted_context>"));
+        assert!(chat["messages"].to_string().contains("下一轮问题"));
+        assert_eq!(ctx.final_content, "answer");
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let after = ChatV2Repo::get_session_message_ids_with_conn(&conn, &session_id).unwrap();
+        assert!(
+            before.iter().all(|id| after.contains(id)),
+            "compaction must not delete database messages"
+        );
+    }
+
+    #[tokio::test]
+    async fn preflight_uncompactible_single_turn_stops_without_network_or_data_loss() {
+        let (_dir, pipeline, session_id) =
+            e2e_pipeline_with_model(Some("http://127.0.0.1:9/v1"), "test-key", "test-model").await;
+        let mut ctx = super::super::history::replay_test_support::next_turn_ctx(&session_id);
+        ctx.options.model_id = Some("vm_e2e_k3".into());
+        ctx.options.context_limit = Some(8_000);
+        ctx.options.memory_enabled = Some(false);
+        pipeline.freeze_execution_context(&mut ctx).await.unwrap();
+        pipeline.load_chat_history(&mut ctx).await.unwrap();
+        pipeline.compile_frozen_context(&mut ctx).await.unwrap();
+        let original = ctx
+            .compiled_current_user_message
+            .as_ref()
+            .unwrap()
+            .content
+            .clone();
+        let emitter = Arc::new(crate::chat_v2::events::ChatV2EventEmitter::new_headless(
+            session_id.clone(),
+        ));
+        let error = pipeline
+            .execute_with_tools(&mut ctx, emitter, &"large attachment ".repeat(8_000), 0)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("上下文预算不足"), "{error}");
+        assert_eq!(
+            ctx.compiled_current_user_message.as_ref().unwrap().content,
+            original
+        );
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        assert!(
+            ChatV2Repo::get_active_compaction_with_conn(&conn, &session_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
     /// 真实网关 E2E：统一入口 k3 模型完成 LLM 摘要压缩并落盘。
     /// 需要 DS_E2E_K3_BASE_URL / DS_E2E_K3_API_KEY 环境变量。
     #[tokio::test]
@@ -2519,8 +3018,33 @@ mod tests {
     /// 连点 4 次全部被静默丢弃）。指纹校验移除后，此形状下必须能正常提交。
     #[tokio::test]
     async fn e2e_compaction_commits_with_hashmap_laden_skill_meta() {
-        let (_dir, pipeline, session_id) =
-            e2e_pipeline_with_model(Some("http://127.0.0.1:9"), "sk-dead", "dead-model").await;
+        use hyper::service::{make_service_fn, service_fn};
+        use hyper::{Body, Response};
+        use std::convert::Infallible;
+        let service = make_service_fn(|_| async {
+            Ok::<_, Infallible>(service_fn(|_| async {
+                let summary = GENERIC_COMPACTION_PROFILE
+                    .required_headings
+                    .iter()
+                    .map(|heading| {
+                        format!("{heading}\nKeep the confirmed conversation state and metadata.")
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n\n");
+                Ok::<_, Infallible>(Response::builder().header("content-type", "application/json").body(Body::from(
+                    serde_json::json!({"choices":[{"message":{"role":"assistant","content":summary},"finish_reason":"stop"}]}).to_string()
+                )).unwrap())
+            }))
+        });
+        let server = hyper::Server::bind(&([127, 0, 0, 1], 0).into()).serve(service);
+        let address = server.local_addr();
+        let server_task = tokio::spawn(server);
+        let (_dir, pipeline, session_id) = e2e_pipeline_with_model(
+            Some(&format!("http://{address}/v1")),
+            "test-key",
+            "test-model",
+        )
+        .await;
         seed_compactible_session(&pipeline, &session_id);
 
         // 给全部消息挂上含多键 HashMap 的 meta，模拟真实技能会话落库形状。
@@ -2569,6 +3093,7 @@ mod tests {
             )
             .await
             .expect("compaction run");
+        server_task.abort();
         assert!(
             matches!(outcome, CompactionOutcome::Compacted { .. }),
             "含 HashMap meta 的真实消息形状下压缩必须能提交（曾因指纹误丢 100% 失败），实际是 {outcome:?}"

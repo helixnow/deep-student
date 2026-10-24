@@ -24,13 +24,13 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use regex::Regex;
-use reqwest::header::{HeaderMap, HeaderValue, COOKIE, LOCATION, REFERER};
 use reqwest::Url;
 use rusqlite::params;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Window};
 
+use super::bilibili_transport::{BiliAttempt, BiliRequest, BiliResponse, RequestKind, API_LIMIT};
 use super::commands::{import_subtitle_bytes, load, TranscriptView};
 use super::pipeline::{load_media_file, resolve_media_source, MediaFileInfo};
 use super::subtitle::{parse_subtitle, MAX_SUBTITLE_BYTES};
@@ -48,8 +48,6 @@ fn err(e: MediaError) -> String {
 }
 
 const API_BASE: &str = "https://api.bilibili.com";
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const DESCRIPTOR_KIND: &str = "bilibili";
 const DESCRIPTOR_VERSION: u32 = 1;
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
@@ -62,6 +60,7 @@ const VIDEO_CACHE_MAX_ENTRIES: usize = 64;
 
 static VIDEO_CACHE: LazyLock<Mutex<HashMap<String, (Instant, BiliVideo)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
+static CREATE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 pub const ERR_INVALID_LINK: &str = "bilibili-invalid-link";
 pub const ERR_UNSUPPORTED_LINK: &str = "bilibili-unsupported-link";
@@ -73,14 +72,6 @@ fn bili_err(code: &str, message: impl Into<String>) -> MediaError {
     MediaError::Bilibili {
         code: code.to_string(),
         message: message.into(),
-    }
-}
-
-fn request_failed(e: reqwest::Error) -> MediaError {
-    if e.is_timeout() {
-        bili_err(ERR_REQUEST, "请求 B 站超时，请检查网络后重试")
-    } else {
-        bili_err(ERR_REQUEST, format!("请求 B 站失败：{}", e))
     }
 }
 
@@ -255,6 +246,8 @@ pub struct BiliLookup {
     pub video: BiliVideo,
     pub page: BiliPage,
     pub tracks: Vec<BiliSubtitleTrack>,
+    pub subtitle_state: &'static str,
+    pub subtitle_error: Option<(String, String)>,
 }
 
 #[derive(Deserialize)]
@@ -297,18 +290,6 @@ struct ViewPage {
     part: String,
     #[serde(default)]
     duration: i64,
-}
-
-#[derive(Deserialize)]
-struct DmViewData {
-    #[serde(default)]
-    subtitle: Option<DmSubtitle>,
-}
-
-#[derive(Deserialize)]
-struct DmSubtitle {
-    #[serde(default)]
-    subtitles: Option<Vec<DmSubtitleItem>>,
 }
 
 #[derive(Deserialize)]
@@ -357,59 +338,42 @@ fn track_rank(track: &BiliSubtitleTrack) -> u8 {
 // ============================================================================
 
 pub struct BiliClient {
-    http: reqwest::Client,
-    no_redirect: reqwest::Client,
+    pub(crate) attempt: BiliAttempt,
     api_base: String,
     /// 字幕地址只认 B 站域名并升级为 https（测试指向本地 mock 时关闭）
     strict_hosts: bool,
-    /// 扫码登录后的会话 Cookie；只随 B 站接口请求发送（字幕 CDN 与视频 CDN 不带）
-    cookie: Option<String>,
 }
 
 impl BiliClient {
     pub fn new() -> Result<Self, MediaError> {
-        Self::build(API_BASE, true, false)
+        Ok(Self::from_attempt(BiliAttempt::native(None)?))
     }
 
-    /// 带上登录会话（未登录传 None，保持匿名）
-    pub fn with_cookie(mut self, cookie: Option<String>) -> Self {
-        self.cookie = cookie.filter(|c| !c.trim().is_empty());
+    pub fn for_app(app: &AppHandle, media: bool) -> Result<Self, MediaError> {
+        Ok(Self::from_attempt(BiliAttempt::begin(app, media)?))
+    }
+
+    pub(crate) fn from_attempt(attempt: BiliAttempt) -> Self {
+        Self {
+            attempt,
+            api_base: API_BASE.into(),
+            strict_hosts: true,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_cookie(mut self, cookie: Option<String>) -> Self {
+        self.attempt = BiliAttempt::for_test(cookie);
         self
     }
 
     #[cfg(test)]
     pub(crate) fn for_test(api_base: &str) -> Self {
-        Self::build(api_base, false, true).expect("test client")
-    }
-
-    fn build(api_base: &str, strict_hosts: bool, no_proxy: bool) -> Result<Self, MediaError> {
-        let make = |follow_redirects: bool| {
-            let mut headers = HeaderMap::new();
-            headers.insert(
-                REFERER,
-                HeaderValue::from_static("https://www.bilibili.com/"),
-            );
-            let mut builder = reqwest::Client::builder()
-                .user_agent(USER_AGENT)
-                .default_headers(headers)
-                .timeout(REQUEST_TIMEOUT);
-            if !follow_redirects {
-                builder = builder.redirect(reqwest::redirect::Policy::none());
-            }
-            if no_proxy {
-                builder = builder.no_proxy();
-            }
-            builder
-                .build()
-                .map_err(|e| bili_err(ERR_REQUEST, format!("初始化网络客户端失败：{}", e)))
-        };
-        Ok(Self {
-            http: make(true)?,
-            no_redirect: make(false)?,
+        Self {
+            attempt: BiliAttempt::for_test(None),
             api_base: api_base.trim_end_matches('/').to_string(),
-            strict_hosts,
-            cookie: None,
-        })
+            strict_hosts: false,
+        }
     }
 
     pub async fn resolve(&self, input: &str) -> Result<BiliTarget, MediaError> {
@@ -418,7 +382,13 @@ impl BiliClient {
             ParsedLink::Short(url) => {
                 let location = self.follow_short_link(&url).await?;
                 match parse_link(&location) {
-                    Ok(ParsedLink::Video(target)) => Ok(target),
+                    Ok(ParsedLink::Video(mut target)) => {
+                        target.page = PAGE_RE
+                            .captures(input)
+                            .and_then(|c| c[1].parse().ok())
+                            .or(target.page);
+                        Ok(target)
+                    }
                     _ => Err(bili_err(
                         ERR_INVALID_LINK,
                         "短链没有跳转到 B 站视频页，请改贴视频页地址",
@@ -429,24 +399,44 @@ impl BiliClient {
     }
 
     async fn follow_short_link(&self, url: &str) -> Result<String, MediaError> {
-        let resp = self
-            .no_redirect
-            .get(url)
-            .send()
-            .await
-            .map_err(request_failed)?;
-        resp.status()
-            .is_redirection()
-            .then(|| resp.headers().get(LOCATION))
-            .flatten()
-            .and_then(|v| v.to_str().ok())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                bili_err(
-                    ERR_INVALID_LINK,
-                    "短链已失效或没有跳转到视频页，请改贴视频页地址",
-                )
-            })
+        let mut url = Url::parse(url).map_err(|_| bili_err(ERR_INVALID_LINK, "短链地址无效"))?;
+        let mut visited = std::collections::HashSet::new();
+        for _ in 0..5 {
+            if self.strict_hosts {
+                super::bilibili_transport::policy::validate_url(&url, RequestKind::ShortLink)?;
+            }
+            if !visited.insert(url.clone()) {
+                return Err(bili_err(ERR_INVALID_LINK, "短链发生循环跳转"));
+            }
+            if matches!(parse_link(url.as_str()), Ok(ParsedLink::Video(_))) {
+                return Ok(url.into());
+            }
+            let response = self
+                .attempt
+                .execute(BiliRequest::get(
+                    RequestKind::ShortLink,
+                    url.clone(),
+                    64 * 1024,
+                ))
+                .await?;
+            let next = if (300..400).contains(&response.status) {
+                response.header("location")
+            } else {
+                None
+            }
+            .ok_or_else(|| bili_err(ERR_INVALID_LINK, "短链已失效或没有跳转到视频页"))?;
+            url = url
+                .join(next)
+                .map_err(|_| bili_err(ERR_INVALID_LINK, "短链跳转地址无效"))?;
+        }
+        if self.strict_hosts {
+            super::bilibili_transport::policy::validate_url(&url, RequestKind::ShortLink)?;
+        }
+        if matches!(parse_link(url.as_str()), Ok(ParsedLink::Video(_))) {
+            Ok(url.into())
+        } else {
+            Err(bili_err(ERR_INVALID_LINK, "短链跳转次数过多"))
+        }
     }
 
     pub(crate) async fn get_api<T: DeserializeOwned>(
@@ -454,26 +444,30 @@ impl BiliClient {
         path: &str,
         query: &[(&str, String)],
     ) -> Result<Option<T>, MediaError> {
-        let url = format!("{}{}", self.api_base, path);
-        let mut request = self.http.get(&url).query(query);
-        if let Some(cookie) = &self.cookie {
-            request = request.header(COOKIE, cookie);
-        }
-        let resp = request.send().await.map_err(request_failed)?;
-        let status = resp.status();
-        if status.as_u16() == 412 {
+        let mut url = Url::parse(&format!("{}{}", self.api_base, path))
+            .map_err(|_| bili_err(ERR_REQUEST, "接口地址无效"))?;
+        url.query_pairs_mut()
+            .extend_pairs(query.iter().map(|(k, v)| (*k, v.as_str())));
+        let resp = self
+            .attempt
+            .execute(BiliRequest::get(RequestKind::Api, url, API_LIMIT))
+            .await?;
+        let status = resp.status;
+        if matches!(status, 412 | 429) {
             return Err(blocked_error());
         }
-        if !status.is_success() {
+        if !(200..300).contains(&status) {
             return Err(bili_err(
                 ERR_REQUEST,
-                format!("B 站接口返回 HTTP {}", status.as_u16()),
+                format!("B 站接口返回 HTTP {}", status),
             ));
         }
-        let body: ApiEnvelope<T> = resp
-            .json()
-            .await
-            .map_err(|e| bili_err(ERR_REQUEST, format!("B 站接口返回的内容无法解析：{}", e)))?;
+        let body: ApiEnvelope<T> = serde_json::from_slice(&resp.body).map_err(|_| {
+            bili_err(
+                "bilibili-protocol",
+                "B 站接口返回了未知格式（可能为验证页面）",
+            )
+        })?;
         match body.code {
             0 => Ok(body.data),
             -404 | -403 | 62002 | 62004 | 62005 | 62012 => Err(bili_err(
@@ -484,6 +478,7 @@ impl BiliClient {
                 ),
             )),
             -412 | -352 => Err(blocked_error()),
+            -101 => Err(bili_err("bilibili-login-required", "当前出口需要登录 B 站")),
             code => Err(bili_err(
                 ERR_REQUEST,
                 format!("B 站接口返回错误 {}：{}", code, body.message),
@@ -492,9 +487,19 @@ impl BiliClient {
     }
 
     fn video_cache_key(&self, id: &BiliVideoId) -> String {
+        // Mock servers recycle ports; retain caching within a test client, not across clients.
+        let scope = if self.strict_hosts {
+            self.attempt.cache_scope()
+        } else {
+            self.attempt.id.clone()
+        };
         match id {
-            BiliVideoId::Bv(bvid) => format!("{}|{}", self.api_base, bvid),
-            BiliVideoId::Av(aid) => format!("{}|av{}", self.api_base, aid),
+            BiliVideoId::Bv(bvid) => {
+                format!("{}|{}|{}", scope, self.api_base, bvid)
+            }
+            BiliVideoId::Av(aid) => {
+                format!("{}|{}|av{}", scope, self.api_base, aid)
+            }
         }
     }
 
@@ -566,7 +571,7 @@ impl BiliClient {
         aid: u64,
         cid: u64,
     ) -> Result<Vec<BiliSubtitleTrack>, MediaError> {
-        let data: Option<DmViewData> = self
+        let data: Option<serde_json::Value> = match self
             .get_api(
                 "/x/v2/dm/view",
                 &[
@@ -575,11 +580,50 @@ impl BiliClient {
                     ("pid", aid.to_string()),
                 ],
             )
-            .await?;
-        Ok(data
-            .and_then(|d| d.subtitle)
-            .and_then(|s| s.subtitles)
-            .unwrap_or_default()
+            .await
+        {
+            Ok(value) => value,
+            Err(error) if error.code() == "bilibili-protocol" => {
+                return self.grpc_subtitle_tracks(aid, cid).await
+            }
+            Err(error) => return Err(error),
+        };
+        let data = data.ok_or_else(|| {
+            bili_err(
+                "bilibili-subtitle-protocol",
+                "字幕接口未返回状态，无法确认是否无字幕",
+            )
+        })?;
+        if data
+            .get("need_login_subtitle")
+            .and_then(serde_json::Value::as_bool)
+            == Some(true)
+        {
+            return Err(bili_err(
+                "bilibili-login-required",
+                "当前出口需要登录后获取字幕",
+            ));
+        }
+        let Some(tracks) = data
+            .get("subtitle")
+            .and_then(|v| v.get("subtitles"))
+            .filter(|v| v.is_array())
+        else {
+            return self.grpc_subtitle_tracks(aid, cid).await;
+        };
+        let tracks: Vec<DmSubtitleItem> = serde_json::from_value(tracks.clone())
+            .map_err(|_| bili_err("bilibili-subtitle-protocol", "字幕列表格式无效"))?;
+        if !tracks.is_empty()
+            && tracks
+                .iter()
+                .all(|s| s.subtitle_url.trim().is_empty() || s.lan.trim().is_empty())
+        {
+            return Err(bili_err(
+                "bilibili-subtitle-protocol",
+                "字幕轨缺少地址或语言，无法确认是否无字幕",
+            ));
+        }
+        Ok(tracks
             .into_iter()
             .filter(|s| !s.subtitle_url.trim().is_empty() && !s.lan.trim().is_empty())
             .map(|s| BiliSubtitleTrack {
@@ -595,8 +639,62 @@ impl BiliClient {
             .collect())
     }
 
+    async fn grpc_subtitle_tracks(
+        &self,
+        aid: u64,
+        cid: u64,
+    ) -> Result<Vec<BiliSubtitleTrack>, MediaError> {
+        use super::bilibili_transport::grpc;
+        let endpoint = if self.strict_hosts {
+            "https://app.biliapi.net"
+        } else {
+            &self.api_base
+        };
+        let mut request = BiliRequest::get(
+            RequestKind::Api,
+            Url::parse(&format!(
+                "{endpoint}/bilibili.community.service.dm.v1.DM/DmView"
+            ))
+            .unwrap(),
+            API_LIMIT,
+        );
+        request.method = "POST".into();
+        request.body = grpc::request(aid, cid);
+        request
+            .headers
+            .insert("content-type".into(), "application/grpc".into());
+        request
+            .headers
+            .insert("grpc-accept-encoding".into(), "identity,gzip".into());
+        let response = self.attempt.execute(request).await?;
+        if response.status != 200 {
+            return Err(bili_err(
+                ERR_REQUEST,
+                format!("字幕 gRPC 接口返回 HTTP {}", response.status),
+            ));
+        }
+        Ok(grpc::decode(
+            &response.body,
+            response.header("grpc-encoding"),
+            response.header("grpc-status"),
+        )?
+        .into_iter()
+        .map(|t| BiliSubtitleTrack {
+            ai: t.lan.starts_with("ai-") || t.ai_mark != 0 || t.ai_type != 0,
+            lan_doc: if t.lan_doc.is_empty() {
+                t.lan.clone()
+            } else {
+                t.lan_doc
+            },
+            lan: t.lan,
+            url: t.url,
+        })
+        .collect())
+    }
+
     /// 链接 → 视频信息 + 选中的分 P（参数 page > 链接 `?p=` > 第 1 P）+ 该分 P 的字幕轨
     pub async fn lookup(&self, input: &str, page: Option<u32>) -> Result<BiliLookup, MediaError> {
+        self.attempt.verify_identity().await?;
         let target = self.resolve(input).await?;
         let video = self.video(&target.id).await?;
         let wanted = page.filter(|p| *p > 0).or(target.page).unwrap_or(1);
@@ -611,11 +709,38 @@ impl BiliClient {
                     format!("这个视频没有第 {} P（共 {} P）", wanted, video.pages.len()),
                 )
             })?;
-        let tracks = self.subtitle_tracks(video.aid, selected.cid).await?;
+        let (tracks, subtitle_state, subtitle_error) =
+            match self.subtitle_tracks(video.aid, selected.cid).await {
+                Ok(tracks) => {
+                    let state = if tracks.is_empty() {
+                        "none_confirmed"
+                    } else {
+                        "available"
+                    };
+                    (tracks, state, None)
+                }
+                Err(error) => {
+                    let state = if error.code() == "bilibili-login-required" {
+                        "login_required"
+                    } else if error.code().contains("unsupported") {
+                        "unsupported"
+                    } else {
+                        "failed"
+                    };
+                    (
+                        Vec::new(),
+                        state,
+                        Some((error.code().to_owned(), error.to_string())),
+                    )
+                }
+            };
+        self.attempt.verify_identity().await?;
         Ok(BiliLookup {
             video,
             page: selected,
             tracks,
+            subtitle_state,
+            subtitle_error,
         })
     }
 
@@ -624,6 +749,9 @@ impl BiliClient {
         lookup: &BiliLookup,
         lan: Option<&str>,
     ) -> Result<(BiliSubtitleTrack, Vec<u8>), MediaError> {
+        if let Some((code, message)) = &lookup.subtitle_error {
+            return Err(bili_err(code, message.clone()));
+        }
         let track = pick_track(&lookup.tracks, lan).cloned().ok_or_else(|| {
             let which = if lookup.video.pages.len() > 1 {
                 format!("第 {} P", lookup.page.page)
@@ -638,27 +766,69 @@ impl BiliClient {
                 ),
             )
         })?;
-        let bytes = self.download_subtitle(&track).await?;
-        Ok((track, bytes))
-    }
-
-    async fn download_subtitle(&self, track: &BiliSubtitleTrack) -> Result<Vec<u8>, MediaError> {
-        let url = self.subtitle_url(&track.url)?;
-        let mut resp = self.http.get(url).send().await.map_err(request_failed)?;
-        if !resp.status().is_success() {
+        let response = self.download_subtitle(&track).await?;
+        let (track, response) = if matches!(response.status, 403 | 404 | 410) {
+            let tracks = self
+                .subtitle_tracks(lookup.video.aid, lookup.page.cid)
+                .await?;
+            let fresh = pick_track(&tracks, Some(&track.lan))
+                .filter(|t| t.lan == track.lan)
+                .cloned()
+                .ok_or_else(|| bili_err(ERR_NO_SUBTITLE, "原字幕轨已失效"))?;
+            let response = self.download_subtitle(&fresh).await?;
+            (fresh, response)
+        } else {
+            (track, response)
+        };
+        if !(200..300).contains(&response.status) {
             return Err(bili_err(
                 ERR_REQUEST,
-                format!("下载字幕失败：HTTP {}", resp.status().as_u16()),
+                format!("下载字幕失败：HTTP {}", response.status),
             ));
         }
-        let mut buf = Vec::new();
-        while let Some(chunk) = resp.chunk().await.map_err(request_failed)? {
-            if (buf.len() + chunk.len()) as u64 > MAX_SUBTITLE_BYTES {
-                return Err(bili_err(ERR_REQUEST, "字幕文件超过 20 MB，已放弃"));
-            }
-            buf.extend_from_slice(&chunk);
+        self.attempt.verify_identity().await?;
+        Ok((track, response.body))
+    }
+
+    async fn download_subtitle(
+        &self,
+        track: &BiliSubtitleTrack,
+    ) -> Result<BiliResponse, MediaError> {
+        let url = self.subtitle_url(&track.url)?;
+        Ok(self
+            .attempt
+            .execute(BiliRequest::get(
+                RequestKind::Subtitle,
+                url,
+                MAX_SUBTITLE_BYTES as usize,
+            ))
+            .await?)
+    }
+
+    async fn cover_data_url(&self, raw: Option<&str>) -> Option<String> {
+        let url = normalize_bilibili_url(raw?)?;
+        let response = self
+            .attempt
+            .execute(BiliRequest::get(RequestKind::Cover, url, 1024 * 1024))
+            .await
+            .ok()?;
+        if response.status != 200 {
+            return None;
         }
-        Ok(buf)
+        let mime = if response.body.starts_with(&[0xff, 0xd8, 0xff]) {
+            "image/jpeg"
+        } else if response.body.starts_with(b"\x89PNG\r\n\x1a\n") {
+            "image/png"
+        } else if response.body.starts_with(b"RIFF") && response.body.get(8..12) == Some(b"WEBP") {
+            "image/webp"
+        } else {
+            return None;
+        };
+        use base64::Engine;
+        Some(format!(
+            "data:{mime};base64,{}",
+            base64::engine::general_purpose::STANDARD.encode(response.body)
+        ))
     }
 
     fn subtitle_url(&self, raw: &str) -> Result<Url, MediaError> {
@@ -815,8 +985,38 @@ pub fn upsert_link_item(
     vfs_db: &VfsDatabase,
     descriptor: &BiliLinkDescriptor,
 ) -> Result<(MediaFileInfo, Option<VfsAttachment>), MediaError> {
+    upsert_link_item_finalized(vfs_db, descriptor, None)
+}
+
+fn upsert_link_item_finalized(
+    vfs_db: &VfsDatabase,
+    descriptor: &BiliLinkDescriptor,
+    subtitle: Option<&[u8]>,
+) -> Result<(MediaFileInfo, Option<VfsAttachment>), MediaError> {
+    let cues = subtitle
+        .map(|bytes| parse_subtitle(SUBTITLE_FILE_NAME, bytes))
+        .transpose()?;
     let (file_id, created) = match find_link_item(vfs_db, &descriptor.bvid, descriptor.page)? {
-        Some(id) => (id, None),
+        Some(id) => {
+            if let Some(cues) = &cues {
+                let mut conn = vfs_db.get_conn_safe()?;
+                let transaction = conn.transaction()?;
+                if MediaTranscriptRepo::list_segments_with_conn(&transaction, &id)?.is_empty() {
+                    MediaTranscriptRepo::set_imported_segments_with_conn(&transaction, &id, cues)?;
+                    let text = cues
+                        .iter()
+                        .map(|(span, text)| super::transcript::format_line(span.start_ms, text))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    transaction.execute(
+                        "UPDATE files SET extracted_text=?1 WHERE id=?2",
+                        params![text, id],
+                    )?;
+                }
+                transaction.commit()?;
+            }
+            (id, None)
+        }
         None => {
             let params = VfsUploadAttachmentParams {
                 name: descriptor.file_name(),
@@ -824,11 +1024,37 @@ pub fn upsert_link_item(
                 base64_content: String::new(),
                 attachment_type: None,
             };
-            let result = VfsAttachmentRepo::upload_media_stream_with_folder(
+            let result = VfsAttachmentRepo::upload_media_stream_finalized(
                 vfs_db,
                 &params,
                 &mut std::io::Cursor::new(descriptor.to_bytes()),
                 None,
+                |conn, result| {
+                    if let Some(cues) = &cues {
+                        MediaTranscriptRepo::set_imported_segments_with_conn(
+                            conn,
+                            &result.source_id,
+                            cues,
+                        )?;
+                        let text = cues
+                            .iter()
+                            .map(|(span, text)| super::transcript::format_line(span.start_ms, text))
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        conn.execute(
+                            "UPDATE files SET extracted_text = ?1 WHERE id = ?2",
+                            params![text, result.source_id],
+                        )?;
+                    }
+                    if descriptor.duration_ms > 0 {
+                        MediaTranscriptRepo::record_duration_with_conn(
+                            conn,
+                            &result.source_id,
+                            descriptor.duration_ms,
+                        )?;
+                    }
+                    Ok(())
+                },
             )?;
             let id = result.source_id.clone();
             (id, result.is_new.then_some(result.attachment))
@@ -866,6 +1092,9 @@ pub struct BiliProbeView {
     pub url: String,
     /// 同一视频同一分 P 已有的链接条目（再导入复用它，只替换字幕）
     pub existing_id: Option<String>,
+    pub subtitle_state: &'static str,
+    pub subtitle_error: Option<String>,
+    pub route: super::bilibili_transport::Route,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -890,17 +1119,68 @@ where
         .map_err(|e| MediaError::Io(e.to_string()))?
 }
 
+fn task_client(
+    app: &AppHandle,
+    task_id: Option<&str>,
+) -> Result<(BiliClient, super::bilibili_transport::session::TaskGuard), MediaError> {
+    let (attempt, guard) = BiliAttempt::begin(app, false)?.task(task_id);
+    Ok((BiliClient::from_attempt(attempt), guard))
+}
+
+fn transient(code: &str) -> bool {
+    matches!(
+        code,
+        "bilibili-timeout" | "bilibili-network" | "bilibili-bridge-offline"
+    )
+}
+
+async fn lookup_with_fallback(
+    app: &AppHandle,
+    client: BiliClient,
+    input: &str,
+    page: Option<u32>,
+) -> Result<(BiliClient, BiliLookup), MediaError> {
+    match client.lookup(input, page).await {
+        Ok(lookup)
+            if !lookup
+                .subtitle_error
+                .as_ref()
+                .is_some_and(|(code, _)| transient(code)) =>
+        {
+            Ok((client, lookup))
+        }
+        first => {
+            let retryable = match &first {
+                Ok(lookup) => lookup
+                    .subtitle_error
+                    .as_ref()
+                    .is_some_and(|(code, _)| transient(code)),
+                Err(error) => transient(error.code()),
+            };
+            if retryable {
+                if let Ok(attempt) = client.attempt.fallback(app) {
+                    let next = BiliClient::from_attempt(attempt);
+                    let lookup = next.lookup(input, page).await?;
+                    return Ok((next, lookup));
+                }
+            }
+            first.map(|lookup| (client, lookup))
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn media_bilibili_probe(
     app: AppHandle,
     input: String,
     page: Option<u32>,
+    task_id: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
 ) -> CmdResult<BiliProbeView> {
-    let client = BiliClient::new()
-        .map_err(err)?
-        .with_cookie(super::bilibili_auth::load_cookie(&app));
-    let lookup = client.lookup(&input, page).await.map_err(err)?;
+    let (client, _task) = task_client(&app, task_id.as_deref()).map_err(err)?;
+    let (client, lookup) = lookup_with_fallback(&app, client, &input, page)
+        .await
+        .map_err(err)?;
     let existing_id = {
         let db = Arc::clone(vfs_db.inner());
         let bvid = lookup.video.bvid.clone();
@@ -910,18 +1190,22 @@ pub async fn media_bilibili_probe(
             .map_err(err)?
     };
     let default_lan = pick_track(&lookup.tracks, None).map(|t| t.lan.clone());
+    let cover = client.cover_data_url(lookup.video.cover.as_deref()).await;
     Ok(BiliProbeView {
         url: page_url(&lookup.video.bvid, lookup.page.page),
         bvid: lookup.video.bvid,
         title: lookup.video.title,
         owner: lookup.video.owner,
-        cover: lookup.video.cover,
+        cover,
         duration_ms: lookup.video.duration_ms,
         pages: lookup.video.pages,
         page: lookup.page.page,
         tracks: lookup.tracks,
         default_lan,
         existing_id,
+        subtitle_state: lookup.subtitle_state,
+        subtitle_error: lookup.subtitle_error.map(|(_, message)| message),
+        route: client.attempt.route,
     })
 }
 
@@ -932,30 +1216,65 @@ pub async fn media_bilibili_create(
     input: String,
     page: Option<u32>,
     lan: Option<String>,
+    task_id: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> CmdResult<BiliCreateResult> {
     let db = Arc::clone(vfs_db.inner());
     let service = Arc::clone(pdf_processing_service.inner());
-    let client = BiliClient::new()
-        .map_err(err)?
-        .with_cookie(super::bilibili_auth::load_cookie(&app));
-    let lookup = client.lookup(&input, page).await.map_err(err)?;
+    let (client, _task) = task_client(&app, task_id.as_deref()).map_err(err)?;
+    let _create = client
+        .attempt
+        .wait_create(&CREATE_LOCK)
+        .await
+        .map_err(|e| err(e.into()))?;
+    let (client, lookup) = lookup_with_fallback(&app, client, &input, page)
+        .await
+        .map_err(err)?;
+    if let Some(existing) =
+        find_link_item(&db, &lookup.video.bvid, lookup.page.page).map_err(err)?
+    {
+        let info = load(&db, &existing).await.map_err(err)?;
+        let view = super::commands::build_view(&db, &info, service.is_running(&info.file_id), true)
+            .map_err(err)?;
+        if !view.segments.is_empty() {
+            return Ok(BiliCreateResult {
+                file_id: info.file_id,
+                name: info.file_name,
+                created: false,
+                segments: view.segments.len(),
+                lan: lan.unwrap_or_default(),
+                lan_doc: String::new(),
+                ai: false,
+            });
+        }
+    }
     let (track, bytes) = client
         .subtitle_bytes(&lookup, lan.as_deref())
         .await
         .map_err(err)?;
     // 字幕先解析通过再建条目，不留下没有字幕的空条目
     parse_subtitle(SUBTITLE_FILE_NAME, &bytes).map_err(err)?;
+    client
+        .attempt
+        .verify_identity()
+        .await
+        .map_err(|e| err(e.into()))?;
     let descriptor = BiliLinkDescriptor::from_lookup(&lookup);
     let (info, created) = {
         let db = Arc::clone(&db);
-        blocking(move || upsert_link_item(&db, &descriptor))
-            .await
-            .map_err(err)?
-    };
-    let view = import_subtitle_bytes(&db, &service, &info, SUBTITLE_FILE_NAME.into(), bytes)
+        let bytes = bytes.clone();
+        let attempt = client.attempt.clone();
+        blocking(move || {
+            attempt.ensure_active()?;
+            upsert_link_item_finalized(&db, &descriptor, Some(&bytes))
+        })
         .await
+        .map_err(err)?
+    };
+    super::pipeline::refresh_index(&db, &info.file_id);
+    let _ = service.start_pipeline(&info.file_id, None).await;
+    let view = super::commands::build_view(&db, &info, service.is_running(&info.file_id), true)
         .map_err(err)?;
     if let Some(attachment) = created.as_ref() {
         use crate::dstu::handler_utils::{attachment_to_dstu_node, emit_watch_event};
@@ -996,16 +1315,17 @@ pub async fn media_bilibili_import_subtitle(
     input: String,
     page: Option<u32>,
     lan: Option<String>,
+    task_id: Option<String>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
     pdf_processing_service: State<'_, Arc<PdfProcessingService>>,
 ) -> CmdResult<TranscriptView> {
     let db = Arc::clone(vfs_db.inner());
     let service = Arc::clone(pdf_processing_service.inner());
     let info = load(&db, &resource_id).await.map_err(err)?;
-    let client = BiliClient::new()
-        .map_err(err)?
-        .with_cookie(super::bilibili_auth::load_cookie(&app));
-    let lookup = client.lookup(&input, page).await.map_err(err)?;
+    let (client, _task) = task_client(&app, task_id.as_deref()).map_err(err)?;
+    let (client, lookup) = lookup_with_fallback(&app, client, &input, page)
+        .await
+        .map_err(err)?;
     if info.is_link_item() {
         let own = {
             let db = Arc::clone(&db);
@@ -1390,7 +1710,7 @@ mod tests {
             .mock("GET", "/x/v2/dm/view")
             .match_query(Matcher::Any)
             .with_status(200)
-            .with_body(r#"{"code":0,"data":{"subtitle":null}}"#)
+            .with_body(r#"{"code":0,"data":{"subtitle":{"subtitles":[]}}}"#)
             .create_async()
             .await;
 
@@ -1407,6 +1727,116 @@ mod tests {
         let e = client.subtitle_bytes(&lookup, None).await.unwrap_err();
         assert_eq!(e.code(), ERR_NO_SUBTITLE);
         assert!(e.to_string().starts_with("第 1 P"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn unknown_subtitles_use_same_route_grpc_and_never_claim_empty_on_failure() {
+        let mut server = Server::new_async().await;
+        let _view = server
+            .mock("GET", "/x/web-interface/view")
+            .match_query(Matcher::Any)
+            .with_body(view_body())
+            .create_async()
+            .await;
+        let _dm = server
+            .mock("GET", "/x/v2/dm/view")
+            .match_query(Matcher::Any)
+            .with_body(r#"{"code":0,"data":{"subtitle":null}}"#)
+            .create_async()
+            .await;
+        let bad = server
+            .mock("POST", "/bilibili.community.service.dm.v1.DM/DmView")
+            .match_header("content-type", "application/grpc")
+            .with_body(vec![0, 0, 0, 0, 9, 0])
+            .create_async()
+            .await;
+        let client = BiliClient::for_test(&server.url());
+        let lookup = client.lookup("BV1xx411c7mD", None).await.unwrap();
+        assert_eq!(lookup.subtitle_state, "failed");
+        assert_eq!(
+            client
+                .subtitle_bytes(&lookup, None)
+                .await
+                .unwrap_err()
+                .code(),
+            "bilibili-subtitle-protocol"
+        );
+        bad.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn relative_multihop_short_links_and_loops_are_bounded() {
+        let mut server = Server::new_async().await;
+        let _one = server
+            .mock("GET", "/one")
+            .with_status(302)
+            .with_header("location", "/two")
+            .create_async()
+            .await;
+        let _two = server
+            .mock("GET", "/two")
+            .with_status(302)
+            .with_header(
+                "location",
+                "https://www.bilibili.com/video/BV1GJ411x7h7?p=3",
+            )
+            .create_async()
+            .await;
+        let _loop = server
+            .mock("GET", "/loop")
+            .with_status(302)
+            .with_header("location", "/loop")
+            .create_async()
+            .await;
+        let client = BiliClient::for_test(&server.url());
+        assert!(client
+            .follow_short_link(&format!("{}/one", server.url()))
+            .await
+            .unwrap()
+            .ends_with("?p=3"));
+        assert_eq!(
+            client
+                .follow_short_link(&format!("{}/loop", server.url()))
+                .await
+                .unwrap_err()
+                .code(),
+            ERR_INVALID_LINK
+        );
+    }
+
+    #[test]
+    fn new_import_commits_subtitles_atomically_and_reimport_preserves_user_edits() {
+        let (_tmp, db) = setup_migrated_test_db();
+        let descriptor = descriptor("Atomic", 1, 1, "");
+        let bytes = br#"{"body":[{"from":0,"to":1,"content":"first"}]}"#;
+        let (info, created) = upsert_link_item_finalized(&db, &descriptor, Some(bytes)).unwrap();
+        assert!(created.is_some());
+        let replacement = br#"{"body":[{"from":0,"to":1,"content":"replacement"}]}"#;
+        upsert_link_item_finalized(&db, &descriptor, Some(replacement)).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        assert_eq!(
+            MediaTranscriptRepo::list_segments_with_conn(&conn, &info.file_id).unwrap()[0].text,
+            "first"
+        );
+        assert_eq!(
+            conn.query_row(
+                "SELECT extracted_text FROM files WHERE id=?1",
+                [&info.file_id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            "[00:00] first"
+        );
+        conn.execute_batch("CREATE TRIGGER reject_bili_subtitle BEFORE INSERT ON media_transcript_segments BEGIN SELECT RAISE(ABORT, 'fixture'); END;").unwrap();
+        drop(conn);
+        let mut second = descriptor.clone();
+        second.bvid = "BV1xx411c7mD".into();
+        assert!(upsert_link_item_finalized(&db, &second, Some(bytes)).is_err());
+        assert!(find_link_item(&db, &second.bvid, 1).unwrap().is_none());
+        assert_eq!(
+            find_link_item(&db, &descriptor.bvid, 1).unwrap(),
+            Some(info.file_id)
+        );
     }
 
     #[tokio::test]

@@ -526,6 +526,7 @@ impl ChatV2Pipeline {
         let mut cumulative_skill_audit = SkillInjectionAudit::default();
         let mut previous_empty_required_tools: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        let mut compaction_checked_depth: Option<u32> = None;
         loop {
             // WI-13: PipelineHook 回合边界 —— 每轮迭代开头、doom-loop/上限检查
             // 与本轮 LLM 调用之前触发（内置 TaskAuditHook 在此落审计日志）。
@@ -584,11 +585,12 @@ impl ChatV2Pipeline {
             // 保证（与回合末路径复用同一把锁）。
             // ============================================================
             if ctx.needs_compaction {
+                compaction_checked_depth = Some(recursion_depth);
                 // WI-13: PipelineHook 压缩边界 —— 环内 compaction 真正执行前触发。
                 for hook in self.hooks.iter() {
                     hook.before_compaction(self, ctx, recursion_depth).await;
                 }
-                match self.run_compaction(ctx).await {
+                match self.run_compaction(ctx, &emitter).await {
                     Ok(outcome) if outcome.did_compact() => {
                         // 🆕 压缩已落盘：立即向前端广播，水位环不等下一轮 usage 即可刷新
                         let (tokens_before, tokens_after) = outcome.token_estimates();
@@ -597,39 +599,8 @@ impl ChatV2Pipeline {
                         // 立即应用压缩视图（隐藏旧消息 + 注入锚定摘要）。
                         // ctx.tool_results（当前环内工具链）独立于 chat_history，
                         // 仍会在下方全量追加，不受重载影响。
-                        let prev_history = ctx.chat_history.clone();
-                        let reload_ok = match self.load_chat_history(ctx).await {
-                            Ok(()) => match self.compile_frozen_context(ctx).await {
-                                Ok(()) => true,
-                                Err(e) => {
-                                    log::warn!(
-                                        "[ChatV2::pipeline] In-loop context recompile after compaction failed: {}; keeping pre-compaction in-memory history",
-                                        e
-                                    );
-                                    false
-                                }
-                            },
-                            Err(e) => {
-                                log::warn!(
-                                    "[ChatV2::pipeline] In-loop history reload after compaction failed: {}; keeping pre-compaction in-memory history",
-                                    e
-                                );
-                                false
-                            }
-                        };
-                        if reload_ok {
-                            log::info!(
-                                "[ChatV2::pipeline] In-loop compaction applied at depth={}: history now {} messages",
-                                recursion_depth,
-                                ctx.chat_history.len()
-                            );
-                            // 🆕 重载后若压缩视图仍不够、发生了 FIFO 截断，上报事件
-                            self.notify_context_trimmed(ctx, &emitter);
-                        } else {
-                            // 回滚到压缩前的内存历史（压缩记录已落盘，下次
-                            // load_chat_history 仍会应用视图），本轮沿用旧 prompt
-                            ctx.chat_history = prev_history;
-                        }
+                        self.load_chat_history(ctx).await?;
+                        self.compile_frozen_context(ctx).await?;
                     }
                     // 跳过/无需（锁占用/会话过短等），标志已在 run_compaction 内清零；
                     // 🆕 真正失败（摘要失败/lineage 失效）时发 compaction_failed 事件
@@ -641,9 +612,9 @@ impl ChatV2Pipeline {
                         }
                     }
                     Err(e) => {
-                        // DB 硬错误：清零标志防止环内反复重试，退化为 FIFO 截断
+                        // Keep history intact; the final preflight still enforces the hard limit.
                         log::error!(
-                            "[ChatV2::pipeline] In-loop compaction failed for session={} (non-fatal, falling back to FIFO trim): {}",
+                            "[ChatV2::pipeline] In-loop compaction failed for session={} (history preserved): {}",
                             ctx.session_id,
                             e
                         );
@@ -838,6 +809,10 @@ impl ChatV2Pipeline {
             // ============================================================
             // 构建 LLM 调用上下文
             let mut llm_context: HashMap<String, Value> = HashMap::new();
+            llm_context.insert(
+                crate::llm_manager::model2_pipeline::COMPACTION_CHECKED_CONTEXT_KEY.into(),
+                Value::Bool(compaction_checked_depth == Some(recursion_depth)),
+            );
 
             // 注入检索到的来源到上下文
             if let Some(ref rag_sources) = ctx.retrieved_sources.rag {
@@ -1328,7 +1303,11 @@ impl ChatV2Pipeline {
                     ctx.session_id
                 );
             }
-            if call_result.is_err() && !stream_has_output {
+            let local_compaction_required = call_result.as_ref().err().is_some_and(|error| {
+                crate::llm_manager::routing::llm_error_code(error)
+                    == Some(crate::llm_manager::routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+            });
+            if call_result.is_err() && !stream_has_output && !local_compaction_required {
                 for retry in 1..=LLM_MAX_RETRIES {
                     if ctx
                         .cancellation_token
@@ -1467,6 +1446,38 @@ impl ChatV2Pipeline {
             // 注销 hooks（正常路径显式注销；guard 仅兜底 select! drop 取消路径）
             hooks_guard.cleanup().await;
 
+            if let Err(error) = &call_result {
+                if crate::llm_manager::routing::llm_error_code(error)
+                    == Some(crate::llm_manager::routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+                {
+                    compaction_checked_depth = Some(recursion_depth);
+                    for hook in self.hooks.iter() {
+                        hook.before_compaction(self, ctx, recursion_depth).await;
+                    }
+                    let exclude_ids = vec![
+                        ctx.user_message_id.clone(),
+                        ctx.assistant_message_id.clone(),
+                    ];
+                    if self
+                        .compact_for_request(
+                            &ctx.session_id,
+                            &ctx.options,
+                            &exclude_ids,
+                            &emitter,
+                            ctx.cancellation_token.as_ref(),
+                            error,
+                        )
+                        .await?
+                    {
+                        self.load_chat_history(ctx).await?;
+                        self.compile_frozen_context(ctx).await?;
+                    }
+                    // Rebuild all request components even if compaction was skipped. The next
+                    // preflight either sends the unchanged, fitting request or stops explicitly.
+                    continue;
+                }
+            }
+
             // 处理 LLM 调用结果
             let input_overflow = call_result.as_ref().err().is_some_and(|error| {
                 crate::llm_manager::routing::llm_error_code(error)
@@ -1490,7 +1501,7 @@ impl ChatV2Pipeline {
                 ];
                 let cancel = ctx.cancellation_token.clone();
                 match self
-                    .run_compaction_for_session(
+                    .run_compaction_for_session_with_feedback(
                         &ctx.session_id,
                         model_override.as_deref(),
                         "overflow",
@@ -1498,6 +1509,7 @@ impl ChatV2Pipeline {
                         ctx.options.context_limit,
                         ctx.options.memory_enabled,
                         cancel.as_ref(),
+                        Some(&emitter),
                     )
                     .await
                 {
@@ -1510,8 +1522,19 @@ impl ChatV2Pipeline {
                         // rebuilt request on the next iteration at this same recursion depth.
                         continue;
                     }
-                    Ok(_) => {}
-                    Err(error) => log::warn!("[compaction] overflow recovery failed: {}", error),
+                    Ok(outcome) => {
+                        if outcome.is_failed() {
+                            if let Some(reason) = outcome.reason_code() {
+                                emitter.emit_compaction_failed(reason);
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        log::warn!("[compaction] overflow recovery failed: {}", error);
+                        emitter.emit_compaction_failed(
+                            super::compaction::CompactionSkipReason::InternalError.as_code(),
+                        );
+                    }
                 }
             }
             // 🔧 P1-1 修复：llm_manager 存在与 pipeline CancellationToken 平行的第二条取消通道

@@ -116,6 +116,36 @@ function createStreamingStore() {
 }
 
 describe('ChatV2TauriAdapter error channel surfacing', () => {
+  it('surfaces automatic compaction progress and notifies after the summary is committed', () => {
+    const { store, storeApi, getState } = createStreamingStore();
+    const setCompactionInProgress = vi.fn((active: boolean) => storeApi.setState({ compactionInProgress: active }));
+    const setContextUsageOverride = vi.fn();
+    Object.assign(store, { setCompactionInProgress, setContextUsageOverride });
+    const adapter = new ChatV2TauriAdapter('sess_err', store as any, storeApi as any);
+    const start = { sessionId: 'sess_err', eventType: 'compaction_started', timestamp: Date.now(), payload: { reason: 'auto' } };
+    (adapter as any).handleSessionEvent(start);
+    (adapter as any).handleSessionEvent(start);
+    expect(getState().compactionInProgress).toBe(true);
+    expect(showGlobalNotification).toHaveBeenCalledTimes(1);
+    (adapter as any).handleSessionEvent({ sessionId: 'sess_err', eventType: 'compaction_finished', timestamp: Date.now() });
+    expect(getState().compactionInProgress).toBe(false);
+    (adapter as any).handleSessionEvent({ sessionId: 'sess_err', eventType: 'compaction_completed', timestamp: Date.now(), payload: { tokensBefore: 200_000, tokensAfter: 40_000 } });
+    expect(setContextUsageOverride).toHaveBeenCalledWith({ sessionId: 'sess_err', tokensAfter: 40_000 });
+    expect(showGlobalNotification).toHaveBeenLastCalledWith('success', expect.any(String), expect.any(String));
+  });
+
+  it('clears automatic compaction progress on failure without a success notification', () => {
+    const { store, storeApi, getState } = createStreamingStore();
+    const setCompactionInProgress = vi.fn((active: boolean) => storeApi.setState({ compactionInProgress: active }));
+    Object.assign(store, { setCompactionInProgress });
+    const adapter = new ChatV2TauriAdapter('sess_err', store as any, storeApi as any);
+    (adapter as any).handleSessionEvent({ sessionId: 'sess_err', eventType: 'compaction_started', timestamp: Date.now() });
+    (adapter as any).handleSessionEvent({ sessionId: 'sess_err', eventType: 'compaction_failed', timestamp: Date.now(), payload: { reason: 'summaryFailed' } });
+    expect(getState().compactionInProgress).toBe(false);
+    expect(showGlobalNotification.mock.calls.some(([type]) => type === 'success')).toBe(false);
+    expect(showGlobalNotification).toHaveBeenLastCalledWith('warning', expect.any(String), expect.any(String));
+  });
+
   it('preserves the context-overflow code as a localized error with an actionable model picker', () => {
     const { store, storeApi, getState } = createStreamingStore();
     getState().setModelRetryTarget = vi.fn();

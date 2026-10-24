@@ -605,9 +605,61 @@ pub(super) fn truncate_text_to_token_budget(
     chars[..low].iter().collect()
 }
 
+/// Split oversized summary input without discarding the rest of a message/tool result.
+pub(super) fn split_text_to_token_budget(
+    text: &str,
+    token_budget: usize,
+    model_id: Option<&str>,
+) -> Vec<String> {
+    if text.is_empty() || token_budget == 0 {
+        return Vec::new();
+    }
+    let mut chunks = Vec::new();
+    let mut remaining = text;
+    while !remaining.is_empty() {
+        // Bound each estimate to one candidate instead of repeatedly tokenizing the entire
+        // remaining conversation during binary search. Dense candidates shrink as needed.
+        let mut chars = token_budget.saturating_mul(3).max(1);
+        let bytes = loop {
+            let bytes = remaining
+                .char_indices()
+                .nth(chars)
+                .map_or(remaining.len(), |(index, _)| index);
+            let tokens = crate::utils::token_budget::estimate_tokens_with_model(
+                &remaining[..bytes],
+                model_id,
+            );
+            if tokens <= token_budget || chars == 1 {
+                break bytes;
+            }
+            chars = ((chars as f64 * token_budget as f64 / tokens as f64 * 0.9) as usize)
+                .max(1)
+                .min(chars.saturating_sub(1).max(1));
+        };
+        chunks.push(remaining[..bytes].to_string());
+        remaining = &remaining[bytes..];
+    }
+    chunks
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_chunks_cover_entire_oversized_message_without_losing_its_tail() {
+        let text = format!(
+            "{}\nIMPORTANT_FINAL_DECISION",
+            "conversation and tool output 中文。\n".repeat(200)
+        );
+        let chunks = split_text_to_token_budget(&text, 128, None);
+        assert!(chunks.len() > 1);
+        assert_eq!(chunks.concat(), text);
+        assert!(chunks.last().unwrap().contains("IMPORTANT_FINAL_DECISION"));
+        assert!(chunks.iter().all(
+            |chunk| crate::utils::token_budget::estimate_tokens_with_model(chunk, None) <= 128
+        ));
+    }
 
     /// 🆕 模板选择：学习类模式走学习域模板，agent/通用/未知模式走通用模板
     #[test]

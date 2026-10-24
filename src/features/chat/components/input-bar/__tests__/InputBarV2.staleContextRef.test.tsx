@@ -10,6 +10,10 @@ let capturedInputBarUIProps: Record<string, any> | null = null;
 const mockModeRegistryState = vi.hoisted(() => ({
   plugin: {} as Record<string, any>,
 }));
+const mockSendMessage = vi.hoisted(() => vi.fn());
+const mockNotification = vi.hoisted(() => vi.fn());
+
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: mockNotification }));
 
 vi.mock('../InputBarUI', () => ({
   InputBarUI: (props: Record<string, any>) => {
@@ -32,7 +36,7 @@ vi.mock('../useInputBarV2', () => ({
       skill: false,
     },
     setInputValue: vi.fn(),
-    sendMessage: vi.fn(),
+    sendMessage: mockSendMessage,
     abortStream: vi.fn(),
     addAttachment: vi.fn(),
     updateAttachment: vi.fn(),
@@ -159,6 +163,9 @@ function createMockStore() {
     setPanelState: vi.fn(),
     retryMessage: vi.fn(),
     setPendingParallelModelIds: vi.fn(),
+    setInputValue: vi.fn((inputValue: string) => store.setState({ inputValue })),
+    setContextUsageOverride: vi.fn(),
+    loadSession: vi.fn().mockResolvedValue(undefined),
   }));
 
   return { store, addContextRef, setChatParams };
@@ -194,6 +201,82 @@ describe('InputBarV2 stale context ref guard', () => {
     });
 
     expect(addContextRef).not.toHaveBeenCalled();
+  });
+
+  it.each(['button', '/compact'])('manually summarizes at 20%% usage via %s without sending a chat message', async (entry) => {
+    const { store } = createMockStore();
+    store.setState({
+      inputValue: entry === '/compact' ? ' /compact ' : 'keep my draft',
+      chatParams: { ...store.getState().chatParams, contextLimit: 1_000_000 },
+      messageOrder: ['assistant'],
+      messageMap: new Map([['assistant', {
+        id: 'assistant', role: 'assistant', blockIds: [], timestamp: 1,
+        _meta: { usage: { promptTokens: 199_000, completionTokens: 1_000, totalTokens: 200_000, lastRoundPromptTokens: 200_000, source: 'api' } },
+      }]]),
+    });
+    vi.mocked(invoke).mockImplementation(async (command) => command === 'chat_v2_compact_session'
+      ? { status: 'compacted', tokensBefore: 200_000, tokensAfter: 40_000 }
+      : []);
+    render(<InputBarV2 store={store as any} />);
+    expect(capturedInputBarUIProps?.contextWindowUsage.usedPercent).toBe(20);
+    await act(async () => {
+      await (entry === '/compact' ? capturedInputBarUIProps?.onSend() : capturedInputBarUIProps?.onCompactContext());
+    });
+    expect(invoke).toHaveBeenCalledWith('chat_v2_compact_session', {
+      sessionId: 'session_1', modelConfigId: 'deepseek-official-v4', contextLimit: 1_000_000,
+    });
+    expect(store.getState().setContextUsageOverride).toHaveBeenCalledWith({ sessionId: 'session_1', tokensAfter: 40_000 });
+    expect(store.getState().loadSession).toHaveBeenCalledWith('session_1');
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    expect(store.getState().attachments).toEqual([{ id: 'att_1' }]);
+    expect(store.getState().inputValue).toBe(entry === '/compact' ? '' : 'keep my draft');
+    expect(mockNotification).toHaveBeenCalledWith(
+      'info', 'chatV2:compaction.started', 'chatV2:compaction.startedTitle',
+    );
+    expect(mockNotification).toHaveBeenCalledWith(
+      'success', 'chatV2:compaction.completedWithUsage', 'chatV2:compaction.completedTitle',
+    );
+  });
+
+  it('keeps manual compaction visible until the command settles and blocks duplicate requests', async () => {
+    const { store } = createMockStore();
+    let finish!: (result: unknown) => void;
+    vi.mocked(invoke).mockImplementation(async (command) => command === 'chat_v2_compact_session'
+      ? new Promise(resolve => { finish = resolve; })
+      : []);
+    const view = render(<InputBarV2 store={store as any} />);
+    let pending!: Promise<void>;
+    act(() => { pending = capturedInputBarUIProps?.onCompactContext(); });
+    expect(view.getByTestId('context-compaction-progress')).toBeTruthy();
+    expect(capturedInputBarUIProps?.canSend).toBe(false);
+    await act(async () => { await capturedInputBarUIProps?.onCompactContext(); });
+    expect(vi.mocked(invoke).mock.calls.filter(([command]) => command === 'chat_v2_compact_session')).toHaveLength(1);
+    await act(async () => { finish({ status: 'compacted' }); await pending; });
+    expect(view.queryByTestId('context-compaction-progress')).toBeNull();
+    expect(capturedInputBarUIProps?.canSend).toBe(true);
+  });
+
+  it('shows backend compaction progress and prevents manual submission while it is active', async () => {
+    const { store } = createMockStore();
+    store.setState({ compactionInProgress: true, inputValue: 'keep my draft' });
+    const view = render(<InputBarV2 store={store as any} />);
+    expect(view.getByTestId('context-compaction-progress')).toBeTruthy();
+    expect(capturedInputBarUIProps?.canSend).toBe(false);
+    await act(async () => { await capturedInputBarUIProps?.onCompactContext(); await capturedInputBarUIProps?.onSend(); });
+    expect(mockSendMessage).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalledWith('chat_v2_compact_session', expect.anything());
+    act(() => { store.setState({ compactionInProgress: false }); });
+    expect(view.queryByTestId('context-compaction-progress')).toBeNull();
+    expect(store.getState().inputValue).toBe('keep my draft');
+  });
+
+  it('does not interpret compact paths or commands with message text as a local command', async () => {
+    const { store } = createMockStore();
+    store.setState({ inputValue: '/compact/file.txt' });
+    render(<InputBarV2 store={store as any} />);
+    await act(async () => { await capturedInputBarUIProps?.onSend(); });
+    expect(mockSendMessage).toHaveBeenCalledOnce();
+    expect(invoke).not.toHaveBeenCalledWith('chat_v2_compact_session', expect.anything());
   });
 
   it('only passes manual pinned skills to InputBarUI badges', () => {

@@ -1101,16 +1101,7 @@ impl ChatV2Pipeline {
             return Err(ChatV2Error::Cancelled);
         }
 
-        // 阶段 1.5：🆕 P0 预算口径对齐（FIFO 仅 compaction 不够时兜底）。
-        // 用户未配置 context_limit 时，历史裁剪预算不得回退到固定 32K ——
-        // 大窗口模型（如 200K）的 compaction 触发阈值（usable × 0.85）远高于
-        // 32K，固定回退会让 FIFO/强制压缩先于 compaction 自然阈值启动。
-        // 这里把本轮口径填充为 provider 真实 usable（context_window −
-        // max_output），恒大于 compaction 阈值，保证 compaction 恒先行；
-        // 对 compaction 自身无影响（effective_usable_tokens 取 min，
-        // min(usable, usable) = usable，与未配置时等价）。解析不到配置时
-        // 保持 None，由 constants::effective_history_token_budget 回退 32K
-        // （仍高于 compaction 默认口径阈值，有测试钳制）。
+        // 未配置输入预算时采用实际模型的可用窗口；完整请求发送前还会检查。
         if ctx.options.context_limit.map_or(true, |v| v == 0) {
             if let Some(config) = self.resolve_active_api_config(ctx).await {
                 let provider_usable = usable_tokens(Some(&config));
@@ -1127,8 +1118,6 @@ impl ChatV2Pipeline {
 
         // 阶段 2：加载聊天历史
         self.load_chat_history(ctx).await?;
-        // 🆕 FIFO 截断可见化：实际丢弃了消息时向前端发 context_trimmed 事件
-        self.notify_context_trimmed(ctx, &emitter);
 
         // 阶段 3：并行执行检索
         if cancel_token.is_cancelled() {
@@ -1260,7 +1249,7 @@ impl ChatV2Pipeline {
         // 🔧 P1-4 后本阶段是兜底路径：工具环内（tool_loop）已在下一轮 LLM 调用前
         // 主动执行压缩，只有「最后一轮 LLM 回复才命中阈值」的情况会走到这里。
         if ctx.needs_compaction {
-            match self.run_compaction(ctx).await {
+            match self.run_compaction(ctx, &emitter).await {
                 Ok(outcome) => {
                     // 🆕 压缩已落盘：立即向前端广播，水位环不等下一轮 usage 即可刷新
                     if outcome.did_compact() {
@@ -1275,10 +1264,9 @@ impl ChatV2Pipeline {
                     }
                 }
                 Err(e) => {
-                    // 🔧 升级为 error：压缩失败意味着长会话只能靠 FIFO 截断兜底，
-                    // 上下文质量将悬崖式下降，不能只留一条 warn
+                    // Keep the complete history; the next request must pass its input guard.
                     log::error!(
-                        "[ChatV2::pipeline] run_compaction failed for session={} (non-fatal, falling back to FIFO trim next round): {}",
+                        "[ChatV2::pipeline] run_compaction failed for session={} (history preserved): {}",
                         ctx.session_id,
                         e
                     );

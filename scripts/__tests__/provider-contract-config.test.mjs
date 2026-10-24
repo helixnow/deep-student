@@ -49,6 +49,27 @@ test('provider contract is a fixed fail-closed CI job', () => {
   assert.match(job, /set -euo pipefail/);
 });
 
+test('shared Rust test archives strip symbols and consumers bound downloads', () => {
+  const jobs = yamlTopLevelSection(read('.github/workflows/ci.yml'), 'jobs', 0);
+  const build = yamlTopLevelSection(jobs, 'rust-test-build');
+  assert.match(build, /CARGO_PROFILE_TEST_STRIP: symbols/);
+  assert.match(build, /cargo nextest archive --locked --archive-file/);
+
+  for (const [name, timeoutMinutes] of [
+    ['rust-tests', 50],
+    ['provider-contract', 45],
+  ]) {
+    const job = yamlTopLevelSection(jobs, name);
+    assert.match(job, new RegExp(`^ {4}timeout-minutes: ${timeoutMinutes}$`, 'm'));
+    assert.match(
+      job,
+      /uses: actions\/download-artifact@[a-f0-9]{40}[ \t]*\n(?:[ \t]*#[^\n]*\n)*[ \t]+timeout-minutes: 20[ \t]*$/m,
+    );
+    assert.doesNotMatch(job, /continue-on-error:/);
+    assert.match(job, /--archive-file "\$RUNNER_TEMP\/nextest-archive\.tar\.zst"/);
+  }
+});
+
 test('provider gate reserves setup time without extending test execution', () => {
   const jobs = yamlTopLevelSection(read('.github/workflows/ci.yml'), 'jobs', 0);
   const job = yamlTopLevelSection(jobs, 'provider-contract');

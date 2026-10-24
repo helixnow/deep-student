@@ -54,15 +54,8 @@ const STREAMING_IDLE_TIMEOUT_SECS: u64 = 600;
 const CODEX_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 256 * 1024;
 const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
-#[derive(Debug, Default)]
-struct RequestBudgetTrim {
-    removed_messages: usize,
-    removed_history_images: usize,
-    /// 最近一轮易变尾被截断的字符数（首选裁剪路径，不动历史头字节）。
-    trimmed_tail_chars: usize,
-    tokens_before: usize,
-    tokens_after: usize,
-}
+/// Request-local acknowledgement, never persisted or forwarded to the provider.
+pub(crate) const COMPACTION_CHECKED_CONTEXT_KEY: &str = "chat_v2_compaction_checked";
 
 fn effective_request_input_limit(
     config: &ApiConfig,
@@ -92,34 +85,6 @@ fn effective_request_input_limit(
         (Some(limit), None) | (None, Some(limit)) => Some(limit),
         (None, None) => None,
     }
-}
-
-fn request_message_text(message: &Value) -> String {
-    match message.get("content") {
-        Some(Value::String(text)) => text.clone(),
-        Some(Value::Array(parts)) => parts
-            .iter()
-            .filter_map(|part| {
-                part.get("text")
-                    .and_then(Value::as_str)
-                    .or_else(|| part.get("content").and_then(Value::as_str))
-            })
-            .collect::<Vec<_>>()
-            .join("\n"),
-        _ => String::new(),
-    }
-}
-
-fn is_pinned_request_message(message: &Value) -> bool {
-    if message.get("role").and_then(Value::as_str) == Some("system") {
-        return true;
-    }
-    let text = request_message_text(message);
-    text.contains("<compacted_context>")
-        || text.contains("<skill_instructions")
-        || text.contains("<request_context>")
-        // issue #464：工具环内瞬态注入的检索页图消息不是用户轮次边界
-        || text.contains(crate::chat_v2::pipeline::context_compiler::RETRIEVAL_PAGE_IMAGES_TAG)
 }
 
 /// P1-8：合并规则恒定 —— 技能/锚点瞬态 user 消息永不与邻接 user 合并，
@@ -168,29 +133,6 @@ fn transient_user_contents_for_merge(
         .iter()
         .filter(|m| crate::chat_v2::pipeline::is_transient_llm_only_message(m))
         .map(|m| m.content.as_str())
-        .collect()
-}
-
-fn removable_request_turns(messages: &[Value]) -> Vec<(usize, usize)> {
-    let starts: Vec<usize> = messages
-        .iter()
-        .enumerate()
-        .filter_map(|(index, message)| {
-            (message.get("role").and_then(Value::as_str) == Some("user")).then_some(index)
-        })
-        .collect();
-    starts
-        .iter()
-        .enumerate()
-        .filter_map(|(position, start)| {
-            if is_pinned_request_message(&messages[*start]) {
-                return None;
-            }
-            Some((
-                *start,
-                starts.get(position + 1).copied().unwrap_or(messages.len()),
-            ))
-        })
         .collect()
 }
 
@@ -388,220 +330,70 @@ fn inline_image_token_budget(value: &Value) -> (usize, usize) {
     }
 }
 
-/// 尾裁截断标记：附加在被输入预算截断的易变尾文本末尾。
-const BUDGET_TAIL_TRIM_MARKER: &str = "\n…[内容超出输入预算，已截断]";
-/// 单条文本载荷的截断下限（字符）：低于该长度不再继续裁，避免把当前
-/// 请求正文裁成空文。
-const BUDGET_TAIL_TRIM_FLOOR_CHARS: usize = 2_048;
-/// 单次截断的最小进展（字符）：截掉的量必须显著大于截断标记本身，
-/// 否则视为不可裁（防止「截 10 字符、加 17 字符标记」的负进展死循环）。
-const BUDGET_TAIL_TRIM_MIN_PROGRESS_CHARS: usize = 64;
-
-/// 收集一条消息里可截断的文本载荷（content 字符串或 content 数组里的
-/// text 部件），供尾裁挑选最长者。
-fn collect_trimmable_texts<'a>(message: &'a mut Value, out: &mut Vec<&'a mut String>) {
-    match message.get_mut("content") {
-        Some(Value::String(text)) => out.push(text),
-        Some(Value::Array(parts)) => {
-            for part in parts {
-                if let Some(Value::String(text)) = part.get_mut("text") {
-                    out.push(text);
-                }
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Release one old image at a time; the latest real user turn and pinned inputs stay intact.
-fn omit_oldest_request_image(request: &mut Value) -> bool {
-    let Some(messages) = request.get_mut("messages").and_then(Value::as_array_mut) else {
-        return false;
+fn estimate_request_input_tokens(body: &Value, config: &ApiConfig) -> usize {
+    let mut text_only = body.clone();
+    let image_count = redact_image_payloads_for_budget(&mut text_only);
+    let serialized = text_only.to_string();
+    let heuristic = crate::utils::token_budget::estimate_tokens(&serialized);
+    let text_floor = serialized.len() / 4;
+    // V4.1 Flash is billed by its image projection rather than Base64 size.
+    // Unknown/corrupt payloads keep the old conservative reserve, and every
+    // other provider preserves the existing 8K-per-image estimate.
+    let image_tokens = if crate::llm_manager::adapters::uses_deepseek_v41_image_tokens(config) {
+        let (known_tokens, unknown_images) = inline_image_token_budget(body);
+        known_tokens + unknown_images * 8_192
+    } else {
+        image_count * 8_192
     };
-    let Some(current_start) = removable_request_turns(messages).last().map(|r| r.0) else {
-        return false;
-    };
-    for message in &mut messages[..current_start] {
-        if is_pinned_request_message(message) {
-            continue;
-        }
-        if let Some(parts) = message.get_mut("content").and_then(Value::as_array_mut) {
-            if let Some(part) = parts.iter_mut().find(|part| {
-                matches!(
-                    part.get("type").and_then(Value::as_str),
-                    Some("image_url" | "image")
-                )
-            }) {
-                *part = json!({"type":"text", "text":"[历史图片因输入预算已省略，原始资源引用仍保留。]"});
-                return true;
-            }
-        }
-    }
-    false
+    heuristic.max(text_floor) + image_tokens
 }
 
-/// 首选裁剪路径：只截断**最近一轮**（最后一个可移除 user 轮及其后续消息）
-/// 里最大的文本载荷（附件/工具结果等易变尾），每次截半并附截断标记，直到
-/// 达标或该轮所有载荷都到下限。此路径不触碰最近一轮之前的任何消息，
-/// 跨轮历史头字节保持不变，OpenAI/DeepSeek 前缀缓存不受影响。
-fn trim_latest_turn_volatile_tail(
-    request_body: &mut Value,
-    max_input_tokens: usize,
-    estimate: &impl Fn(&Value) -> usize,
-    stats: &mut RequestBudgetTrim,
-) {
-    while stats.tokens_after > max_input_tokens {
-        let Some((start, end)) = request_body
-            .get("messages")
-            .and_then(Value::as_array)
-            .map(|messages| removable_request_turns(messages))
-            .and_then(|ranges| ranges.last().copied())
-        else {
-            return;
-        };
-        let Some(messages) = request_body
-            .get_mut("messages")
-            .and_then(Value::as_array_mut)
-        else {
-            return;
-        };
-        let mut candidates: Vec<&mut String> = Vec::new();
-        for message in &mut messages[start..end] {
-            collect_trimmable_texts(message, &mut candidates);
-        }
-        let Some(longest) = candidates
-            .into_iter()
-            .filter(|text| {
-                text.chars().count()
-                    >= BUDGET_TAIL_TRIM_FLOOR_CHARS + BUDGET_TAIL_TRIM_MIN_PROGRESS_CHARS
-            })
-            .max_by_key(|text| text.len())
-        else {
-            return;
-        };
-        let total_chars = longest.chars().count();
-        let keep_chars = (total_chars / 2).max(BUDGET_TAIL_TRIM_FLOOR_CHARS);
-        let mut kept: String = longest.chars().take(keep_chars).collect();
-        kept.push_str(BUDGET_TAIL_TRIM_MARKER);
-        stats.trimmed_tail_chars += total_chars.saturating_sub(keep_chars);
-        *longest = kept;
-        stats.tokens_after = estimate(request_body);
-    }
-}
-
-fn enforce_request_input_budget(
-    request_body: &mut Value,
+/// Read-only preflight. Only the ChatV2 orchestrator may replace history with a summary.
+fn check_request_input_budget(
+    request_body: &Value,
     max_input_tokens: Option<usize>,
     config: &ApiConfig,
-) -> Result<RequestBudgetTrim> {
-    enforce_request_input_budget_with_policy(request_body, max_input_tokens, config, false)
-}
-
-fn enforce_request_input_budget_with_policy(
-    request_body: &mut Value,
-    max_input_tokens: Option<usize>,
-    config: &ApiConfig,
-    chat_v2_request: bool,
-) -> Result<RequestBudgetTrim> {
-    let Some(max_input_tokens) = max_input_tokens else {
-        return Ok(RequestBudgetTrim::default());
+    allow_compaction: bool,
+) -> Result<()> {
+    let Some(limit) = max_input_tokens else {
+        return Ok(());
     };
-    if max_input_tokens == 0 {
-        return Err(AppError::llm(
-            "model context window leaves no usable input budget",
-        ));
+    let used = estimate_request_input_tokens(request_body, config);
+    let needs_compaction = allow_compaction
+        && limit > 0
+        && used >= (limit as f64 * crate::chat_v2::pipeline::compaction::TRIGGER_RATIO) as usize;
+    if !needs_compaction && used <= limit && limit > 0 {
+        return Ok(());
     }
-    let estimate = |body: &Value| {
-        let mut text_only = body.clone();
-        let image_count = redact_image_payloads_for_budget(&mut text_only);
-        let serialized = text_only.to_string();
-        let heuristic = crate::utils::token_budget::estimate_tokens(&serialized);
-        let text_floor = serialized.len() / 4;
-        // V4.1 Flash is billed by its image projection rather than Base64 size.
-        // Unknown/corrupt payloads keep the old conservative reserve, and every
-        // other provider preserves the existing 8K-per-image estimate.
-        let image_tokens = if crate::llm_manager::adapters::uses_deepseek_v41_image_tokens(config) {
-            let (known_tokens, unknown_images) = inline_image_token_budget(body);
-            known_tokens + unknown_images * 8_192
-        } else {
-            image_count * 8_192
-        };
-        heuristic.max(text_floor) + image_tokens
-    };
-    let tokens_before = estimate(request_body);
-    let mut stats = RequestBudgetTrim {
-        tokens_before,
-        tokens_after: tokens_before,
-        ..Default::default()
-    };
-
-    while stats.tokens_after > max_input_tokens && omit_oldest_request_image(request_body) {
-        stats.removed_history_images += 1;
-        stats.tokens_after = estimate(request_body);
-    }
-
-    // ChatV2 owns overflow recovery. Never truncate its current question/tool JSON before
-    // the caller has had a chance to summarize history and rebuild the request.
-    if !chat_v2_request {
-        trim_latest_turn_volatile_tail(request_body, max_input_tokens, &estimate, &mut stats);
-    }
-
-    // 兜底：尾裁到底仍超预算时才允许 FIFO 头删。头删会让后续所有请求的
-    // 前缀整体左移、跨轮缓存全 miss，常态禁止；触发即 warn，供上游排查
-    // 为何 compaction 没有先生效。
-    let mut warned_head_drop = false;
-    while !chat_v2_request && stats.tokens_after > max_input_tokens {
-        let ranges = request_body
-            .get("messages")
-            .and_then(Value::as_array)
-            .map(|messages| removable_request_turns(messages))
-            .unwrap_or_default();
-        if ranges.len() <= 2 {
-            break;
-        }
-        if !warned_head_drop {
-            warn!(
-                "[input-budget] 最近一轮尾裁后仍超预算，回退 FIFO 头删（破坏跨轮前缀缓存，仅兜底）：estimated_input_tokens={} limit={} trimmed_tail_chars={}",
-                stats.tokens_after, max_input_tokens, stats.trimmed_tail_chars
-            );
-            warned_head_drop = true;
-        }
-        let (start, end) = ranges[0];
-        let Some(messages) = request_body
-            .get_mut("messages")
-            .and_then(Value::as_array_mut)
-        else {
-            break;
-        };
-        stats.removed_messages += end.saturating_sub(start);
-        messages.drain(start..end);
-        stats.tokens_after = estimate(request_body);
-    }
-    if stats.tokens_after > max_input_tokens {
-        let image_count = redact_image_payloads_for_budget(&mut request_body.clone());
-        let fixed_tokens = estimate(
-            &json!({"messages": request_body.get("messages").and_then(Value::as_array).map(|messages| messages.iter().filter(|message| is_pinned_request_message(message)).cloned().collect::<Vec<_>>()).unwrap_or_default(), "tools": request_body.get("tools")}),
-        );
-        let mut error = routing::attach_llm_error_code(
-            AppError::llm(format!(
-                "context budget exceeded after safe trimming: estimated_input_tokens={} limit={} removed_messages={} trimmed_tail_chars={}; reduce the current attachment/tool payload or choose a larger-context model",
-                stats.tokens_after, max_input_tokens, stats.removed_messages, stats.trimmed_tail_chars
-            )),
+    let (code, message) = if needs_compaction {
+        (
+            routing::LLM_ERROR_CODE_COMPACTION_REQUIRED,
+            format!("context compaction required before sending: estimated_input_tokens={used} limit={limit}"),
+        )
+    } else {
+        (
             routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED,
+            format!("上下文预算不足（估算 {used} tokens，上限 {limit}）。自动压缩未能释放足够空间，已停止发送且未丢弃历史消息；请减少当前附件或工具输出、手动压缩，或选择更大上下文的模型。"),
+        )
+    };
+    let mut error = routing::attach_llm_error_code(AppError::llm(message), code);
+    if let Some(details) = error.details.as_mut().and_then(Value::as_object_mut) {
+        details.insert("estimated_input_tokens".into(), json!(used));
+        details.insert("input_limit".into(), json!(limit));
+        details.insert("compaction_model_id".into(), json!(config.id));
+        details.insert(
+            "budget".into(),
+            json!({
+                "stage": "input_guard",
+                "estimatedInputTokens": used,
+                "limit": limit,
+                "removedHistoryImages": 0,
+                "removedMessages": 0,
+                "trimmedTailChars": 0,
+            }),
         );
-        error.details.as_mut().unwrap()["budget"] = json!({
-            "stage": "input_guard",
-            "estimatedInputTokens": stats.tokens_after,
-            "limit": max_input_tokens,
-            "removedHistoryImages": stats.removed_history_images,
-            "removedMessages": stats.removed_messages,
-            "trimmedTailChars": stats.trimmed_tail_chars,
-            "imageCount": image_count,
-            "fixedInputTokens": fixed_tokens,
-        });
-        return Err(error);
     }
-    Ok(stats)
+    Err(error)
 }
 
 fn chat_messages_require_multimodal(messages: &[ChatMessage]) -> bool {
@@ -1256,24 +1048,118 @@ mod tests {
     use tempfile::TempDir;
 
     #[test]
-    fn retrieval_page_image_message_is_not_a_removable_turn_start() {
-        // issue #464：工具环内的检索页图瞬态 user 消息不能被当成一轮用户提问头删
-        let messages = vec![
-            json!({"role": "user", "content": "q1"}),
-            json!({"role": "assistant", "content": "a1"}),
-            json!({"role": "user", "content": "q2"}),
-            json!({"role": "assistant", "content": "", "tool_calls": []}),
-            json!({"role": "tool", "content": "{}"}),
-            json!({"role": "user", "content": [
+    fn request_preflight_compacts_at_eighty_five_percent_without_mutation() {
+        let config = ApiConfig::default();
+        let request = json!({"messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "input ".repeat(1000)},
+        ]});
+        let original = request.clone();
+        let used = estimate_request_input_tokens(&request, &config);
+        let limit = used * 100 / 85;
+        let error = check_request_input_budget(&request, Some(limit), &config, true).unwrap_err();
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+        );
+        assert_eq!(
+            routing::classify_llm_error(&error),
+            routing::LlmErrorClass::NonRetryable
+        );
+        assert!(check_request_input_budget(&request, Some(limit), &config, false).is_ok());
+        assert!(check_request_input_budget(&request, Some(used * 2), &config, true).is_ok());
+        assert_eq!(request, original);
+    }
+
+    #[test]
+    fn request_preflight_counts_tools_system_and_current_attachment() {
+        let config = ApiConfig::default();
+        let history = json!({"messages": [{"role": "user", "content": "short history"}]});
+        assert!(check_request_input_budget(&history, Some(10_000), &config, true).is_ok());
+        for request in [
+            json!({"messages": [
+                {"role": "system", "content": "system ".repeat(12_000)},
+                {"role": "user", "content": "short history"},
+            ]}),
+            json!({"messages": history["messages"], "tools": [{"description": "schema ".repeat(12_000)}]}),
+            json!({"messages": [
+                {"role": "user", "content": "short history"},
+                {"role": "user", "content": "attachment ".repeat(12_000)},
+            ]}),
+        ] {
+            let original = request.clone();
+            let error =
+                check_request_input_budget(&request, Some(10_000), &config, true).unwrap_err();
+            assert_eq!(
+                routing::llm_error_code(&error),
+                Some(routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+            );
+            let error =
+                check_request_input_budget(&request, Some(10_000), &config, false).unwrap_err();
+            assert_eq!(
+                routing::llm_error_code(&error),
+                Some(routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED)
+            );
+            assert_eq!(request, original);
+        }
+    }
+
+    #[test]
+    fn request_preflight_stops_instead_of_dropping_turns_or_tool_payloads() {
+        let config = ApiConfig::default();
+        let request = json!({"messages": [
+            {"role": "user", "content": "<compacted_context>anchor</compacted_context>"},
+            {"role": "user", "content": "old ".repeat(2_000)},
+            {"role": "assistant", "content": "old answer"},
+            {"role": "user", "content": "middle ".repeat(2_000)},
+            {"role": "assistant", "content": "middle answer"},
+            {"role": "user", "content": "current"},
+            {"role": "assistant", "tool_calls": [{"id": "call-1", "function": {"name": "fetch", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "call-1", "content": "tool output ".repeat(4_000)},
+            {"role": "user", "content": [
                 {"type": "text", "text": "<retrieval_page_images>pages</retrieval_page_images>"},
                 {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}
-            ]}),
-        ];
-        let starts: Vec<usize> = removable_request_turns(&messages)
-            .into_iter()
-            .map(|(start, _)| start)
-            .collect();
-        assert_eq!(starts, vec![0, 2]);
+            ]},
+        ]});
+        let original = request.clone();
+        let error = check_request_input_budget(&request, Some(2_000), &config, false).unwrap_err();
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_CONTEXT_WINDOW_EXCEEDED)
+        );
+        assert_eq!(request, original);
+    }
+
+    #[test]
+    fn request_preflight_respects_model_downsize_and_input_override() {
+        let mut config = ApiConfig {
+            id: "actual-small-model".into(),
+            context_window: Some(100_000),
+            max_output_tokens: 8_000,
+            ..Default::default()
+        };
+        let request = json!({"messages": [{"role": "user", "content": "input ".repeat(10_000)}]});
+        assert!(check_request_input_budget(
+            &request,
+            effective_request_input_limit(&config, None),
+            &config,
+            true
+        )
+        .is_ok());
+        config.context_window = Some(16_000);
+        let error = check_request_input_budget(
+            &request,
+            effective_request_input_limit(&config, Some(1_000_448)),
+            &config,
+            true,
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.details.as_ref().unwrap()["compaction_model_id"],
+            "actual-small-model"
+        );
+        assert_eq!(error.details.as_ref().unwrap()["input_limit"], 8_000);
+        assert!(check_request_input_budget(&request, Some(0), &config, false).is_err());
     }
 
     #[test]
@@ -1542,42 +1428,37 @@ mod tests {
     }
 
     #[test]
-    fn input_guard_releases_only_history_images_and_preserves_current_payload() {
+    fn input_guard_preserves_history_images_until_compaction() {
         let current = json!({"role":"user", "content":[
             {"type":"text", "text":"current question"},
             {"type":"image_url", "image_url":{"url":"data:image/png;base64,current"}}
         ]});
-        let mut body = json!({"messages":[
+        let body = json!({"messages":[
             {"role":"system", "content":"rules"},
             {"role":"user", "content":[{"type":"image_url", "image_url":{"url":"data:image/png;base64,old"}}]},
             {"role":"assistant", "content":"old answer"}, current.clone()
         ]});
-        let result = enforce_request_input_budget_with_policy(
-            &mut body,
-            Some(9_000),
-            &ApiConfig::default(),
-            true,
-        )
-        .unwrap();
-        assert_eq!(result.removed_history_images, 1);
+        let original = body.clone();
+        let error = check_request_input_budget(&body, Some(9_000), &ApiConfig::default(), true)
+            .unwrap_err();
+        assert_eq!(body, original);
+        assert_eq!(
+            routing::llm_error_code(&error),
+            Some(routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+        );
         assert_eq!(body["messages"][3], current);
-        assert_eq!(body["messages"][1]["content"][0]["type"], "text");
+        assert_eq!(body["messages"][1]["content"][0]["type"], "image_url");
     }
 
     #[test]
     fn chat_input_guard_reports_overflow_without_truncating_current_text_or_tools() {
-        let mut body = json!({"messages":[
+        let body = json!({"messages":[
             {"role":"user", "content":"current question ".repeat(3_000)},
             {"role":"tool", "tool_call_id":"call_1", "content":json!({"source":"abc".repeat(10_000)}).to_string()}
         ]});
         let original = body.clone();
-        let error = enforce_request_input_budget_with_policy(
-            &mut body,
-            Some(1_000),
-            &ApiConfig::default(),
-            true,
-        )
-        .unwrap_err();
+        let error = check_request_input_budget(&body, Some(1_000), &ApiConfig::default(), false)
+            .unwrap_err();
         assert_eq!(body, original);
         assert_eq!(
             routing::llm_error_code(&error),
@@ -1624,8 +1505,8 @@ mod tests {
                 "data:image/png;base64,{}",
                 general_purpose::STANDARD.encode(bytes.into_inner())
             );
-            let mut request = json!({"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":url}}]}]});
-            let result = enforce_request_input_budget(&mut request, Some(2_000), &config);
+            let request = json!({"messages":[{"role":"user","content":[{"type":"image_url","image_url":{"url":url}}]}]});
+            let result = check_request_input_budget(&request, Some(2_000), &config, false);
             assert_eq!(result.is_ok(), uses_projection, "{endpoint}: {model}");
         }
     }
@@ -2454,6 +2335,62 @@ mod tests {
             actual,
             include_str!("snapshots/provider_requests_phase1.json").trim_end()
         );
+    }
+
+    #[tokio::test]
+    async fn deepseek_chat_audit_toggle_does_not_change_the_final_request() {
+        let temp = TempDir::new().unwrap();
+        let config = ApiConfig {
+            model: "tree-deepseek-v4.1-flash".into(),
+            model_adapter: "deepseek".into(),
+            provider_type: Some("custom".into()),
+            api_protocol: Some("openai_chat_completions".into()),
+            base_url: "https://relay.example/v1".into(),
+            ..Default::default()
+        };
+        let body = json!({"model": config.model, "max_completion_tokens": 128, "messages": [
+            {"role": "system", "content": [{"type": "text", "text": "<available_skills>exact IDs</available_skills>", "cache_control": {"type": "ephemeral"}}]},
+            {"role": "user", "content": "Load the skill"}
+        ]});
+        let adapter = build_provider_adapter(&config);
+        let prepared = LLMManager::prepare_plain_provider_request(
+            adapter.as_ref(),
+            &config,
+            &body,
+            None,
+            Some("sess-audit-test"),
+            "test request",
+        )
+        .unwrap();
+        assert_eq!(
+            prepared.body["messages"][0]["content"],
+            "<available_skills>exact IDs</available_skills>"
+        );
+        assert_eq!(prepared.body["max_tokens"], 128);
+        let before = prepared.body.clone();
+        let persist = DebugPersistConfig {
+            log_dir: temp.path().to_path_buf(),
+        };
+        for persist_config in [None, Some(&persist)] {
+            log_and_emit_llm_request(
+                "CHAT_STREAM",
+                &crate::llm_manager::NoopStreamSink,
+                "chat_v2_event_sess-audit-test",
+                Some("msg-test"),
+                &config.model,
+                &prepared.url,
+                &prepared.body,
+                persist_config,
+            );
+            assert_eq!(prepared.body, before);
+        }
+        assert!(crate::debug_log_service::flush_pending_debug_log_writes().await);
+        let files: Vec<_> = std::fs::read_dir(temp.path()).unwrap().collect();
+        assert_eq!(files.len(), 1);
+        let saved: Value =
+            serde_json::from_slice(&std::fs::read(files[0].as_ref().unwrap().path()).unwrap())
+                .unwrap();
+        assert_eq!(saved["request_body"]["messages"], before["messages"]);
     }
 
     #[tokio::test]
@@ -4755,6 +4692,7 @@ impl LLMManager {
             .build_request(&config.base_url, api_key, &config.model, request_body)
             .map_err(|error| Self::provider_error(build_error_context, error))?;
         let mut prepared = PreparedProviderRequest::from_provider(provider_request);
+        super::adapters::normalize_deepseek_chat_request(&mut prepared.body, config);
         merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
 
         // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
@@ -5933,37 +5871,12 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config, &quirks);
         ensure_official_deepseek_v4_reasoning_passback(&mut request_body, &config);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
-        let budget_trim = enforce_request_input_budget_with_policy(
-            &mut request_body,
-            input_limit,
-            &config,
-            task_context == Some("chat_v2"),
-        )?;
-        if budget_trim.removed_messages > 0
-            || budget_trim.trimmed_tail_chars > 0
-            || budget_trim.removed_history_images > 0
-        {
-            warn!(
-                "[model2_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
-                budget_trim.trimmed_tail_chars,
-                budget_trim.removed_messages,
-                budget_trim.tokens_before,
-                budget_trim.tokens_after,
-                input_limit
-            );
-            let _ = sink.emit(
-                "chat_v2_context_budget_trimmed",
-                &json!({
-                    "messageId": message_id,
-                    "removedMessages": budget_trim.removed_messages,
-                    "removedHistoryImages": budget_trim.removed_history_images,
-                    "trimmedTailChars": budget_trim.trimmed_tail_chars,
-                    "tokensBefore": budget_trim.tokens_before,
-                    "tokensAfter": budget_trim.tokens_after,
-                    "limit": input_limit,
-                }),
-            );
-        }
+        let allow_compaction = matches!(task_context, Some("chat_v2" | "chat_v2_variant"))
+            && context
+                .get(COMPACTION_CHECKED_CONTEXT_KEY)
+                .and_then(Value::as_bool)
+                != Some(true);
+        check_request_input_budget(&request_body, input_limit, &config, allow_compaction)?;
         if !config.is_reasoning && enable_chain_of_thought {
             warn!(
                 "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
@@ -7619,17 +7532,7 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config, &quirks);
         ensure_official_deepseek_v4_reasoning_passback(&mut request_body, &config);
         let input_limit = effective_request_input_limit(&config, max_input_tokens_override);
-        let budget_trim = enforce_request_input_budget(&mut request_body, input_limit, &config)?;
-        if budget_trim.removed_messages > 0 || budget_trim.trimmed_tail_chars > 0 {
-            warn!(
-                "[model2_non_stream] final input guard trimmed {} tail char(s), removed {} message(s): {} -> {} tokens (limit={:?})",
-                budget_trim.trimmed_tail_chars,
-                budget_trim.removed_messages,
-                budget_trim.tokens_before,
-                budget_trim.tokens_after,
-                input_limit
-            );
-        }
+        check_request_input_budget(&request_body, input_limit, &config, false)?;
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);

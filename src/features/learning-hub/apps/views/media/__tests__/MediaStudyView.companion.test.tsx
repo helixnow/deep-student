@@ -162,12 +162,14 @@ describe('MediaStudyView companion panel', () => {
 
 describe('MediaStudyView · Bilibili link items', () => {
   beforeEach(() => {
+    vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (Windows NT 10.0; Win64; x64)');
     vi.stubGlobal('ResizeObserver', FakeResizeObserver);
     transcriptState.transcript = null;
     lastVideo.current = null;
   });
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -176,23 +178,25 @@ describe('MediaStudyView · Bilibili link items', () => {
     title: '线代', part: '', owner: null, cover: null, durationMs: 60_000, url: 'https://www.bilibili.com/video/BV1xx411c7mD',
   };
 
-  it('plays the link in the app player and falls back to the Bilibili player on error', () => {
+  it('keeps the app player on error and offers explicit retry or external player', () => {
     observedWidth = 1200;
     render(
       <MediaStudyView kind="video" src="" bilibili={LINK as never} resourceId="file_link" fileName="线代.bilibili" onError={vi.fn()} />,
     );
-    expect(screen.getByTestId('video-player').dataset.src).toBe('bilistream://localhost/file_link?qn=80');
+    expect(screen.getByTestId('video-player').dataset.src).toMatch(/^bilistream:\/\/localhost\/file_link\?qn=80&a=\d+$/);
     expect(screen.queryByTestId('bilibili-embed')).toBeNull();
     // 画面可用：截帧按钮在
     expect(screen.getByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeTruthy();
 
     act(() => lastVideo.current?.onError());
-    expect(screen.getByTestId('bilibili-embed')).toBeTruthy();
-    expect(document.querySelector('[data-bilibili-fallback]')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeNull();
+    expect(screen.queryByTestId('bilibili-embed')).toBeNull();
+    expect(document.querySelector('[data-bilibili-stream-error]')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'learningHub:mediaTranscript.captureFrame' })).toBeTruthy();
 
     fireEvent.click(screen.getByText('learningHub:mediaBilibili.playback.retry'));
     expect(screen.getByTestId('video-player')).toBeTruthy();
+    fireEvent.click(screen.getByText('learningHub:mediaBilibili.playback.useEmbed'));
+    expect(screen.getByTestId('bilibili-embed')).toBeTruthy();
   });
 });
 });

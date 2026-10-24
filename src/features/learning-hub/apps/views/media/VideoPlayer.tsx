@@ -53,7 +53,7 @@ export interface VideoPlayerProps {
   compatibilityHint?: string;
   /** 所属标签页是否活跃；false 时自动暂停 */
   isActive?: boolean;
-  onError: () => void;
+  onError: (reason?: 'timeout' | 'media') => void;
   /** 外部驱动句柄（转写面板点击跳转、引用跳转、帧截取） */
   handleRef?: React.Ref<MediaPlayerHandle>;
   /** 播放状态变化（~10Hz，用于字幕跟随高亮与断点续播） */

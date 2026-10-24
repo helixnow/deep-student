@@ -9,6 +9,7 @@ import { ArrowClockwise, CircleNotch, QrCode, UserCircle } from '@phosphor-icons
 import { DsButton } from '@/components/ui/DsButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { BilibiliTransportPanel } from './BilibiliTransportPanel';
 import {
   bilibiliAccountApi,
   setBilibiliAccount,
@@ -29,7 +30,7 @@ export interface BilibiliAccountPanelProps {
   className?: string;
 }
 
-export const BilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = ({ className }) => {
+const NativeBilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = ({ className }) => {
   const { t } = useTranslation(['learningHub']);
   const account = useBilibiliAccount();
   const [phase, setPhase] = useState<LoginPhase>({ kind: 'idle' });
@@ -178,4 +179,5 @@ export const BilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = ({ clas
   );
 };
 
+export const BilibiliAccountPanel: React.FC<BilibiliAccountPanelProps> = (props) => <div className="min-w-0 space-y-2"><BilibiliTransportPanel /><NativeBilibiliAccountPanel {...props} /></div>;
 export default BilibiliAccountPanel;

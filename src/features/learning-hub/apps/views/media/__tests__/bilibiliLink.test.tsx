@@ -175,6 +175,7 @@ describe('BilibiliLinkDialog', () => {
       input: 'https://www.bilibili.com/video/BV1xx411c7mD?p=2',
       page: 2,
       lan: 'zh-CN',
+      taskId: expect.any(String),
     });
     expect(onDone).toHaveBeenCalledWith({ fileId: 'file_new', created: true, segments: 12, name: '线性代数 P2 02 矩阵.bilibili' });
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -229,6 +230,7 @@ describe('BilibiliLinkDialog', () => {
       input: 'BV1xx411c7mD',
       page: 2,
       lan: 'zh-CN',
+      taskId: expect.any(String),
     });
     expect(onDone).toHaveBeenCalledWith({ fileId: 'file_local', created: false, segments: 2, name: 'lecture.mp4' });
   });
@@ -244,7 +246,7 @@ describe('BilibiliLinkDialog', () => {
     );
     expect((document.querySelector('[data-bilibili-link-input]') as HTMLInputElement).readOnly).toBe(true);
     expect(screen.queryByRole('button', { name: /learningHub:mediaBilibili.parse/ })).toBeNull();
-    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('media_bilibili_probe', { input: LINK.url, page: 2 }));
+    await waitFor(() => expect(invokeMock).toHaveBeenCalledWith('media_bilibili_probe', { input: LINK.url, page: 2, taskId: expect.any(String) }));
   });
 });
 
@@ -298,7 +300,7 @@ describe('BilibiliLinkDialog · multi-part batch', () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     const creates = invokeMock.mock.calls.filter(([command]) => command === 'media_bilibili_create').map(([, args]) => args);
-    expect(creates).toEqual([1, 2, 3].map((page) => ({ input: CANONICAL, page, lan: 'zh-CN' })));
+    expect(creates).toEqual([1, 2, 3].map((page) => ({ input: CANONICAL, page, lan: 'zh-CN', taskId: expect.any(String) })));
     expect(onDone).toHaveBeenCalledWith({
       fileId: 'file_p1',
       created: true,
@@ -332,7 +334,7 @@ describe('BilibiliLinkDialog · multi-part batch', () => {
     });
   });
 
-  it('stop finishes the current part and leaves the rest', async () => {
+  it('stop cancels the current request and retains remaining parts for retry', async () => {
     let release: () => void = () => {};
     respond({
       media_bilibili_probe: () => THREE_PARTS,
@@ -356,7 +358,11 @@ describe('BilibiliLinkDialog · multi-part batch', () => {
     await act(async () => release());
     await waitFor(() => expect(onDone).toHaveBeenCalled());
     expect(onDone.mock.calls[0][0].batch).toMatchObject({ created: 1, remaining: 2 });
-    expect(onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(document.querySelector('[data-bilibili-page-check="1"]')?.getAttribute('data-state')).toBe('unchecked');
+    expect(document.querySelector('[data-bilibili-page-check="2"]')?.getAttribute('data-state')).toBe('checked');
+    expect(document.querySelector('[data-bilibili-page-check="3"]')?.getAttribute('data-state')).toBe('checked');
+    expect(invokeMock).toHaveBeenCalledWith('media_bilibili_cancel', { taskId: expect.any(String) });
   });
 
   it('summarizes batch results with locale-appropriate separators and a capped page list', () => {
@@ -381,6 +387,24 @@ describe('BilibiliLinkDialog · multi-part batch', () => {
 });
 
 describe('BilibiliEmbedPlayer', () => {
+  it('times out a frame load, allows reload, and starts a new deadline after seeking', () => {
+    vi.useFakeTimers();
+    try {
+      const handleRef: React.MutableRefObject<MediaPlayerHandle | null> = { current: null };
+      const { unmount } = render(<BilibiliEmbedPlayer link={LINK} handleRef={handleRef} />);
+      act(() => vi.advanceTimersByTime(20_001));
+      expect(screen.getByRole('alert')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'learningHub:mediaBilibili.playback.reloadEmbed' }));
+      expect(screen.queryByRole('alert')).toBeNull();
+      fireEvent.load(document.querySelector('[data-bilibili-frame]')!);
+      act(() => vi.advanceTimersByTime(20_001));
+      expect(screen.queryByRole('alert')).toBeNull();
+      act(() => handleRef.current?.seekTo(42));
+      act(() => vi.advanceTimersByTime(20_001));
+      expect(screen.getByRole('alert')).toBeTruthy();
+      unmount();
+    } finally { vi.useRealTimers(); }
+  });
   it('embeds the sandboxed player, seeks by reloading with t=, and unmounts when hidden', () => {
     const handleRef: React.MutableRefObject<MediaPlayerHandle | null> = { current: null };
     const statuses: MediaPlayerStatus[] = [];
@@ -392,10 +416,10 @@ describe('BilibiliEmbedPlayer', () => {
     expect(BILIBILI_EMBED_SANDBOX).not.toContain('allow-top-navigation');
     expect(BILIBILI_EMBED_SANDBOX).not.toContain('allow-popups');
     expect(new URL(frame()!.src).searchParams.get('t')).toBeNull();
-    expect(statuses.at(-1)).toMatchObject({ isReady: false, duration: 300 });
+    expect(statuses.at(-1)).toMatchObject({ isReady: false, canSeek: true, duration: 300 });
 
     fireEvent.load(frame()!);
-    expect(statuses.at(-1)).toMatchObject({ isReady: true, currentTime: 0 });
+    expect(statuses.at(-1)).toMatchObject({ isReady: false, currentTime: 0 });
     expect(handleRef.current?.getElement()).toBeNull();
 
     act(() => {
@@ -405,7 +429,7 @@ describe('BilibiliEmbedPlayer', () => {
     const url = new URL(frame()!.src);
     expect(url.searchParams.get('t')).toBe('65');
     expect(url.searchParams.get('autoplay')).toBe('1');
-    expect(statuses.at(-1)).toMatchObject({ currentTime: 65.7, isReady: true });
+    expect(statuses.at(-1)).toMatchObject({ currentTime: 65.7, isReady: false });
 
     // 超出时长：钳到结尾
     act(() => handleRef.current!.seekTo(10_000));

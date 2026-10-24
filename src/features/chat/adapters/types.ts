@@ -268,6 +268,8 @@ export type SessionEventType =
   | 'save_error'
   | 'summary_updated'
   | 'variant_deleted'
+  | 'compaction_started'
+  | 'compaction_finished'
   | 'compaction_failed'
   | 'compaction_completed'
   | 'context_trimmed'
@@ -340,6 +342,8 @@ export interface SessionEventPayload {
 
   /**
    * 事件附加数据（camelCase 序列化）：
+   * - compaction_started: `{ reason: 'auto' | 'overflow' | 'manual' }`
+   * - compaction_finished: no payload; clears progress on every exit path
    * - compaction_failed: `{ reason: string }`
    * - compaction_completed: `{ tokensBefore: number | null, tokensAfter: number | null }`
    *   （压缩已落盘；前端据此立即刷新上下文水位环，不等下一轮 usage）

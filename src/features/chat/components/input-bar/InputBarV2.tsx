@@ -13,6 +13,7 @@ import type { TFunction } from 'i18next';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { invoke } from '@tauri-apps/api/core';
+import { CircleNotch } from '@phosphor-icons/react';
 import { InputBarUI } from './InputBarUI';
 import { useInputBarV2 } from './useInputBarV2';
 import { useQueueSettings } from '../../queue/useQueueSettings';
@@ -260,6 +261,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       thinkingBudget,
       lastAssistantUsage,
       contextUsageOverride,
+      compactionInProgress,
       modelRetryTarget,
       setChatParams,
       // ★ Skills 系统（多选模式）
@@ -308,6 +310,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return undefined;
         })(),
         contextUsageOverride: s.contextUsageOverride,
+        compactionInProgress: s.compactionInProgress,
         modelRetryTarget: s.modelRetryTarget,
         setChatParams: s.setChatParams,
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
@@ -541,7 +544,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       () => deriveContextWindowUsage(effectiveLastAssistantUsage, contextUsageLimitTokens),
       [contextUsageLimitTokens, effectiveLastAssistantUsage]
     );
-    const [isCompactingContext, setIsCompactingContext] = useState(false);
+    const [isManualCompactingContext, setIsCompactingContext] = useState(false);
+    const isCompactingContext = isManualCompactingContext || compactionInProgress === true;
     const [compactContextStatus, setCompactContextStatus] = useState<
       'success' | 'not-needed' | 'skipped' | 'error' | null
     >(null);
@@ -996,12 +1000,22 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     } = useInputBarV2(store, inputBarOptions);
 
     // 手动压缩上下文（放在 useInputBarV2 之后：依赖其解构出的 isStreaming）
+    const compactionPendingRef = useRef(false);
     const handleCompactContext = useCallback(async () => {
       const modelConfigId =
         model2OverrideId || activeRuntimeModelInfo?.id || currentModelInfo?.id || modelId;
-      if (!sessionId || !modelConfigId || isCompactingContext || isStreaming) return;
+      if (
+        !sessionId || !modelConfigId || compactionPendingRef.current || isStreaming
+        || store.getState().compactionInProgress
+      ) return;
+      compactionPendingRef.current = true;
       setIsCompactingContext(true);
       setCompactContextStatus(null);
+      showGlobalNotification(
+        'info',
+        t('chatV2:compaction.started'),
+        t('chatV2:compaction.startedTitle'),
+      );
       try {
         // 契约：新版返回 { status, reason? }；联调期间可能仍是旧 boolean，
         // normalizeCompactSessionResponse 内部做降级兼容
@@ -1016,6 +1030,16 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         switch (result.status) {
           case 'compacted':
             setCompactContextStatus('success');
+            showGlobalNotification(
+              'success',
+              result.tokensBefore && result.tokensAfter
+                ? t('chatV2:compaction.completedWithUsage', {
+                    before: result.tokensBefore.toLocaleString(),
+                    after: result.tokensAfter.toLocaleString(),
+                  })
+                : t('chatV2:compaction.completed'),
+              t('chatV2:compaction.completedTitle'),
+            );
             // 🆕 手动压缩同样立即刷新水位环（命令返回值携带压缩后估算）
             if (typeof result.tokensAfter === 'number' && result.tokensAfter > 0) {
               store.getState().setContextUsageOverride({
@@ -1034,6 +1058,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             break;
           case 'notNeeded':
             setCompactContextStatus('not-needed');
+            showGlobalNotification(
+              'info',
+              t('chatV2:compaction.manualSkipped', { reason: reasonText }),
+              t('chatV2:inputBar.plusMenu.compactionSkipped'),
+            );
             break;
           case 'skipped':
             setCompactContextStatus('skipped');
@@ -1063,13 +1092,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           t('chatV2:inputBar.plusMenu.compactionFailed'),
         );
       } finally {
+        compactionPendingRef.current = false;
         setIsCompactingContext(false);
       }
     }, [
       activeRuntimeModelInfo?.id,
       contextUsageLimitTokens,
       currentModelInfo?.id,
-      isCompactingContext,
       isStreaming,
       model2OverrideId,
       modelId,
@@ -1286,6 +1315,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     //（最多叠加 5 个，遇到非技能令牌即停）
     const sendMessageWithSkillCommands = useCallback(async () => {
       const rawInput = store.getState().inputValue;
+      if (rawInput.trim().toLowerCase() === '/compact') {
+        if (isStreaming || compactionPendingRef.current || store.getState().compactionInProgress) return;
+        store.getState().setInputValue('');
+        await handleCompactContext();
+        return;
+      }
+      if (compactionPendingRef.current || store.getState().compactionInProgress) return;
       const parsed = parseLeadingSkillCommands(rawInput);
       if (parsed.skillIds.length > 0) {
         for (const skillId of parsed.skillIds) {
@@ -1302,7 +1338,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         store.getState().setInputValue(parsed.rest);
       }
       await sendMessage();
-    }, [store, activeSkillIds, activateSkill, sendMessage]);
+    }, [store, activeSkillIds, activateSkill, sendMessage, handleCompactContext, isStreaming]);
 
     return (
       <>
@@ -1312,18 +1348,29 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         <div className="w-full px-4 md:px-8">
           <ThreadContentShell>
             <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
+            {isCompactingContext && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="flex min-w-0 items-center gap-2 py-2 text-xs text-muted-foreground"
+                data-testid="context-compaction-progress"
+              >
+                <CircleNotch className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+                <span className="min-w-0 break-words">{t('chatV2:inputBar.plusMenu.compactingContext')}</span>
+              </div>
+            )}
           </ThreadContentShell>
         </div>
         <InputBarUI
         // 状态
         inputValue={inputValue}
-        canSend={canSend}
+        canSend={canSend && !isCompactingContext}
         canAbort={canAbort}
         isStreaming={isStreaming}
         // 🆕 队列模式：允许流式时入队，并在队列满时禁用发送
         queueEnabled={queueSettings.queueEnabled}
         queueFull={queueLength >= QUEUE_HARD_CAP}
-        canSubmit={canSubmit}
+        canSubmit={canSubmit && !isCompactingContext}
         contextWindowUsage={contextWindowUsage}
         sessionUsage={sessionUsage}
         attachments={attachments}

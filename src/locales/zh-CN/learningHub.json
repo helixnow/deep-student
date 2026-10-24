@@ -435,11 +435,17 @@
     "batchFailed": "{{pages}} 导入失败（{{message}}）",
     "batchStopped_one": "还有 {{count}} 个分 P 没有导入",
     "batchStopped_other": "还有 {{count}} 个分 P 没有导入",
+    "transport": {
+      "title": "B 站出口", "diagnostics": "请求诊断", "mode": "出口模式", "auto": "自动", "native": "应用原生", "browser_bridge": "浏览器桥", "proxy": "可信代理",
+      "browserAccount": "浏览器账号", "anonymous": "未登录", "fullCapability": "解析和媒体可用", "parsingOnly": "仅解析可用",
+      "connect": "连接浏览器", "disconnect": "断开", "approve": "确认此浏览器配对", "installScript": "安装脚本", "pairPage": "打开配对页", "proxyAddress": "可信代理地址", "save": "保存", "proxyInAuto": "允许自动模式使用此代理",
+      "state": { "unavailable": "未连接", "pairing": "等待浏览器", "awaiting_approval": "等待应用确认", "probing": "验证能力中", "ready": "已就绪", "offline": "已断开", "incompatible": "脚本版本不兼容" }
+    },
     "account": {
       "hint": "登录 B 站后字幕更全、清晰度更高（可选）",
       "expired": "B 站登录已失效，可重新扫码登录",
       "login": "扫码登录",
-      "loggedIn": "已登录 B 站：{{name}}",
+      "loggedIn": "应用账号：{{name}}",
       "vip": "大会员",
       "offline": "（未联网校验）",
       "logout": "退出",
@@ -454,6 +460,10 @@
     "playback": {
       "fallback": "无法在应用内直接播放这个视频，已改用 B 站播放器。",
       "retry": "重试应用内播放",
+      "loadTimeout": "视频加载超时。可重试应用内播放，或在 B 站打开。",
+      "loadFailed": "视频加载失败。可重试应用内播放，或在 B 站打开。",
+      "embedTimeout": "B 站播放器页面加载超时，请重新加载或在 B 站打开。",
+      "reloadEmbed": "重新加载 B 站播放器",
       "useEmbed": "改用 B 站播放器",
       "quality": "清晰度",
       "qualityDowngraded": "B 站没有给出所选清晰度，当前为 {{quality}}。",

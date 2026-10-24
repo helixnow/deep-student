@@ -231,6 +231,7 @@ export interface ChatStoreState extends StoreCallbacks {
    * （见 eventBridge stream_complete）。sessionId 匹配才生效，切会话天然失效。
    */
   contextUsageOverride: { sessionId: string; tokensAfter: number } | null;
+  compactionInProgress: boolean;
 
   // ========== 🆕 消息操作锁（✔️ 运行时状态） ==========
 
@@ -344,6 +345,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     pendingParallelModelIds: null,
     modelRetryTarget: null,
     contextUsageOverride: null, // 🆕 压缩后水位覆盖初始为 null
+    compactionInProgress: false,
     messageOperationLock: null, // 🆕 消息操作锁初始为 null
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
     pendingContextRefsDirty: false,

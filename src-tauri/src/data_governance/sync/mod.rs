@@ -6787,8 +6787,8 @@ impl SyncManager {
                 }
 
                 let savepoint = Self::begin_apply_savepoint(conn, index)?;
-                let result_before = result.clone();
-                let single_result: Result<(), SyncError> = (|| {
+                // Publish results only after validation, without cloning the growing key set.
+                let single_result = (|| -> Result<_, SyncError> {
                     let id_column = id_column_map
                         .and_then(|m| m.get(&change.table_name))
                         .map(|s| s.as_str())
@@ -6817,22 +6817,6 @@ impl SyncManager {
                         id_column,
                         allow_field_merge,
                     )?;
-                    if applied {
-                        result.success_count += 1;
-                        result.applied_keys.insert((
-                            change_to_apply.table_name.clone(),
-                            change_to_apply.record_id.clone(),
-                        ));
-                    } else {
-                        result.skipped_count += 1;
-                        if matches!(
-                            change_to_apply.operation,
-                            ChangeOperation::Insert | ChangeOperation::Update
-                        ) && change_to_apply.data.is_none()
-                        {
-                            result.skipped_incomplete_count += 1;
-                        }
-                    }
 
                     // 回放抑制：本次回放期间产生的 change_log 条目全部标记为已同步，
                     // 包括触发器为派生表（如笔记历史快照）写入的行。写入发生在本事务
@@ -6848,16 +6832,26 @@ impl SyncManager {
                     }
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
-                    Ok(())
+                    Ok((applied, change_to_apply))
                 })();
 
                 match single_result {
-                    Ok(()) => {
+                    Ok((applied, change_to_apply)) => {
                         Self::release_savepoint(conn, &savepoint)?;
+                        if applied {
+                            result.success_count += 1;
+                            result
+                                .applied_keys
+                                .insert((change_to_apply.table_name, change_to_apply.record_id));
+                        } else {
+                            result.skipped_count += 1;
+                            if Self::is_incomplete_upsert(&change_to_apply) {
+                                result.skipped_incomplete_count += 1;
+                            }
+                        }
                     }
                     Err(e) if !Self::is_transient_apply_error(&e) => {
                         Self::rollback_and_release_savepoint(conn, &savepoint);
-                        result = result_before;
                         Self::quarantine_change(conn, change, &e)?;
                         Self::record_apply_failure(&mut result, change, &e);
                         tracing::warn!(
@@ -6870,7 +6864,6 @@ impl SyncManager {
                     }
                     Err(e) => {
                         Self::rollback_and_release_savepoint(conn, &savepoint);
-                        result = result_before;
                         return Err(e);
                     }
                 }
@@ -7337,8 +7330,7 @@ impl SyncManager {
             let ordered_changes = Self::ordered_changes_for_apply(changes);
             for (index, change) in ordered_changes.into_iter().enumerate() {
                 let savepoint = Self::begin_apply_savepoint(conn, index)?;
-                let result_before = result.clone();
-                let single_result: Result<(), SyncError> = (|| {
+                let single_result = (|| -> Result<_, SyncError> {
                     let id_column = id_column_map
                         .and_then(|m| m.get(&change.table_name))
                         .map(|s| s.as_str())
@@ -7358,15 +7350,6 @@ impl SyncManager {
 
                     let applied =
                         Self::apply_single_change_force(conn, &change_to_apply, id_column, false)?;
-                    if applied {
-                        result.success_count += 1;
-                        result.applied_keys.insert((
-                            change_to_apply.table_name.clone(),
-                            change_to_apply.record_id.clone(),
-                        ));
-                    } else {
-                        result.skipped_count += 1;
-                    }
 
                     if let Some(max_id) = pre_log_max_id {
                         let sync_version = chrono::Utc::now().timestamp();
@@ -7384,14 +7367,23 @@ impl SyncManager {
                     }
 
                     Self::validate_no_new_fk_violations(conn, &fk_baseline, &fk_batch_tables)?;
-                    Ok(())
+                    Ok((applied, change_to_apply))
                 })();
 
                 match single_result {
-                    Ok(()) => Self::release_savepoint(conn, &savepoint)?,
+                    Ok((applied, change_to_apply)) => {
+                        Self::release_savepoint(conn, &savepoint)?;
+                        if applied {
+                            result.success_count += 1;
+                            result
+                                .applied_keys
+                                .insert((change_to_apply.table_name, change_to_apply.record_id));
+                        } else {
+                            result.skipped_count += 1;
+                        }
+                    }
                     Err(e) => {
                         Self::rollback_and_release_savepoint(conn, &savepoint);
-                        result = result_before;
                         return Err(e);
                     }
                 }

@@ -35,7 +35,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:* https://*.sentry.io; font-src 'self' data: blob:; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https:; media-src 'self' data: blob: asset: filestream: http://filestream.localhost https://filestream.localhost bilistream: http://bilistream.localhost https://bilistream.localhost; script-src 'self' 'sha256-5DNqcDbjxl8CMHN6KeObYW6ELLBJSbzBWcJTOrM3wVw=' 'sha256-5evs0dDWVUb5N9pkOo34OhkuFTbtNhxLzRvbfx3JTG0='; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; worker-src 'self' blob:; frame-src blob: https://player.bilibili.com;",
+      "csp": "default-src 'self' tauri: asset:; connect-src 'self' data: blob: tauri: ipc: http://ipc.localhost https://ipc.localhost asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https://api.openai.com https://api.anthropic.com https://generativelanguage.googleapis.com https://api.deepseek.com https://api.siliconflow.cn https://api.groq.com https://openrouter.ai https://download.deepstudent.cn https://dashscope.aliyuncs.com https://open.bigmodel.cn https://ark.cn-beijing.volces.com https://api.minimax.io https://api.moonshot.cn ws://localhost:* ws://127.0.0.1:* https://*.sentry.io; font-src 'self' data: blob:; img-src 'self' data: blob: asset: http://asset.localhost https://asset.localhost pdfstream: http://pdfstream.localhost https://pdfstream.localhost filestream: http://filestream.localhost https://filestream.localhost https:; media-src 'self' data: blob: asset: filestream: http://filestream.localhost https://filestream.localhost bilistream: http://bilistream.localhost https://bilistream.localhost http://127.0.0.1:*/deepstudent-bili-stream/v1/; script-src 'self' 'sha256-5DNqcDbjxl8CMHN6KeObYW6ELLBJSbzBWcJTOrM3wVw=' 'sha256-5evs0dDWVUb5N9pkOo34OhkuFTbtNhxLzRvbfx3JTG0='; style-src 'self' 'unsafe-inline'; style-src-elem 'self' 'unsafe-inline'; style-src-attr 'unsafe-inline'; worker-src 'self' blob:; frame-src blob: https://player.bilibili.com;",
       "assetProtocol": {
         "enable": true,
         "scope": [
@@ -69,6 +69,16 @@
     "copyright": "",
     "shortDescription": "开源、本地优先的 AI 学习工作台",
     "longDescription": "只专注学习本身就够了，剩下的都交给我。DeepStudent 是开源、本地优先的 AI 学习工作台。它的学习 Agent，可直接操作学习桌面上的每一个应用：说一句话，它去写笔记、建思维导图、出题、制卡、排复习、建待办、做调研。",
+    "linux": {
+      "deb": {
+        "depends": [
+          "gstreamer1.0-plugins-base",
+          "gstreamer1.0-plugins-good",
+          "gstreamer1.0-plugins-bad",
+          "gstreamer1.0-libav"
+        ]
+      }
+    },
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

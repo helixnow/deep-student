@@ -5,6 +5,7 @@
  */
 
 import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -17,8 +18,9 @@ import { Switch } from '@/components/ui/shad/Switch';
 import { Label } from '@/components/ui/shad/Label';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatStore } from '../../core/types';
-import { ensureModelsCacheLoaded, getModelInfoByConfigId } from '../../hooks/useAvailableModels';
+import { useAvailableModels } from '../../hooks/useAvailableModels';
 import { deriveInputContextBudget, inferModelContextWindow } from '@/utils/modelCapabilities';
 import { isOfficialDeepSeekV4Model, shouldLockDeepSeekV4SamplingControls } from './deepseekSamplingControls';
 
@@ -113,6 +115,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const chatParams = useStore(store, useShallow((s) => ({
     modelId: s.chatParams.modelId,
     model2OverrideId: s.chatParams.model2OverrideId,
+    modelIdPinnedByUser: s.chatParams.modelIdPinnedByUser,
     temperature: s.chatParams.temperature,
     topP: s.chatParams.topP,
     frequencyPenalty: s.chatParams.frequencyPenalty,
@@ -137,7 +140,16 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const presPenaltyId = useId();
   const maxTokensId = useId();
   const contextLimitId = useId();
-  const [modelMetaVersion, setModelMetaVersion] = useState(0);
+  const { models } = useAvailableModels();
+  const [globalDefaultModelId, setGlobalDefaultModelId] = useState<string | null>(null);
+  const [defaultModelVersion, setDefaultModelVersion] = useState(0);
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'model_assignments_changed',
+      listener: () => setDefaultModelVersion((version) => version + 1),
+    },
+  ], []);
 
   // 更新参数
   const updateParam = useCallback(
@@ -153,28 +165,35 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const presencePenalty = chatParams.presencePenalty ?? PENALTY_DEFAULT;
   const maxTokens = chatParams.maxTokens ?? MAX_TOKENS_DEFAULT;
   const enableThinking = chatParams.enableThinking ?? true;
-  // 面板选模型写的是 model2OverrideId（ModelPanel.handleSelectModel），未固定会话的
-  // modelId 恒为空——只读 modelId 会让滑条/采样锁永远解析不到模型，掉进 512k 兜底。
-  // 与发送侧 resolveInputContextLimit 的 `model2OverrideId || modelId` 口径一致。
-  const effectivePanelModelId = chatParams.model2OverrideId || chatParams.modelId;
+  // Match the composer/send path: a runtime override wins; otherwise unpinned
+  // sessions follow the global assignment, not an empty or stale modelId.
+  const effectivePanelModelId = chatParams.model2OverrideId || (
+    chatParams.modelIdPinnedByUser
+      ? chatParams.modelId
+      : globalDefaultModelId ?? chatParams.modelId
+  );
 
   useEffect(() => {
     let disposed = false;
-    void ensureModelsCacheLoaded()
-      .then(() => {
+    const loadDefaultModel = async () => {
+      try {
+        const assignments = await invoke<{ model2_config_id?: string | null }>('get_model_assignments');
         if (!disposed) {
-          setModelMetaVersion((prev) => prev + 1);
+          setGlobalDefaultModelId(assignments?.model2_config_id ?? null);
         }
-      })
-      .catch((err) => { console.warn('[AdvancedPanel] ensureModelsCacheLoaded failed:', err); });
+      } catch {
+        if (!disposed) setGlobalDefaultModelId(null);
+      }
+    };
+    void loadDefaultModel();
     return () => {
       disposed = true;
     };
-  }, [effectivePanelModelId]);
+  }, [defaultModelVersion]);
 
   const modelInfo = useMemo(
-    () => getModelInfoByConfigId(effectivePanelModelId),
-    [effectivePanelModelId, modelMetaVersion]
+    () => models.find((model) => model.id === effectivePanelModelId),
+    [effectivePanelModelId, models]
   );
   const samplingControlInput = useMemo(
     () => ({

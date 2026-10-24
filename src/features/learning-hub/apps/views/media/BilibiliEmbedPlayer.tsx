@@ -7,7 +7,8 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Television } from '@phosphor-icons/react';
+import { ArrowClockwise, Television } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import type { MediaPlayerHandle, MediaPlayerStatus } from './mediaPlayerHandle';
 import { buildBilibiliEmbedUrl, type BilibiliLinkDescriptor } from './bilibiliLinkApi';
 
@@ -36,7 +37,8 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
 }) => {
   const { t } = useTranslation(['learningHub']);
   const [frame, setFrame] = useState<FrameState>({ seconds: 0, autoplay: false, nonce: 0 });
-  const [ready, setReady] = useState(false);
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const seekPendingRef = useRef(false);
   const durationSec = link.durationMs > 0 ? link.durationMs / 1000 : 0;
 
@@ -44,6 +46,22 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
     () => buildBilibiliEmbedUrl(link, { startSeconds: frame.seconds, autoplay: frame.autoplay }),
     [link, frame.seconds, frame.autoplay],
   );
+  const frameKey = `${src}@${frame.nonce}`;
+  useEffect(() => {
+    if (!isActive) {
+      setLoadedSrc(null);
+      setFailedSrc(null);
+      return;
+    }
+    if (loadedSrc === frameKey) return;
+    const timeout = window.setTimeout(() => setFailedSrc(frameKey), 20_000);
+    return () => window.clearTimeout(timeout);
+  }, [frameKey, isActive, loadedSrc]);
+  const reload = useCallback(() => {
+    setLoadedSrc(null);
+    setFailedSrc(null);
+    setFrame((prev) => ({ ...prev, nonce: prev.nonce + 1 }));
+  }, []);
 
   useEffect(() => {
     handleRef.current = {
@@ -69,14 +87,17 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
       currentTime: frame.seconds,
       duration: durationSec,
       isPlaying: false,
-      isReady: ready,
+      // The cross-origin document's load event does not expose media readiness.
+      isReady: false,
+      canSeek: isActive,
     });
-  }, [frame.seconds, durationSec, ready, onStatusChange]);
+  }, [frame.seconds, durationSec, isActive, onStatusChange]);
 
   const handleLoad = useCallback(() => {
     seekPendingRef.current = false;
-    setReady(true);
-  }, []);
+    setLoadedSrc(frameKey);
+    setFailedSrc(null);
+  }, [frameKey]);
 
   const title = link.pageCount > 1 && link.part ? `${link.title} · P${link.page} ${link.part}` : link.title;
 
@@ -84,7 +105,7 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
     <div className="relative flex h-full w-full items-center justify-center bg-black" data-bilibili-player="">
       {isActive ? (
         <iframe
-          key={frame.nonce}
+          key={frameKey}
           src={src}
           title={t('learningHub:mediaBilibili.playerTitle', { title })}
           className="h-full w-full border-0"
@@ -92,6 +113,7 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
           allow="autoplay; fullscreen; picture-in-picture; encrypted-media"
           allowFullScreen
           onLoad={handleLoad}
+          onError={() => setFailedSrc(frameKey)}
           data-bilibili-frame=""
         />
       ) : (
@@ -99,6 +121,16 @@ export const BilibiliEmbedPlayer: React.FC<BilibiliEmbedPlayerProps> = ({
           <Television size={28} weight="duotone" aria-hidden="true" />
           <span className="max-w-xs truncate px-4">{title}</span>
         </div>
+      )}
+      {isActive && failedSrc === frameKey && (
+        <div className="absolute inset-x-0 bottom-0 bg-black/90 px-3 py-2 text-xs text-white" role="alert">
+          <span className="min-w-0 break-words">{t('learningHub:mediaBilibili.playback.embedTimeout')}</span>
+        </div>
+      )}
+      {isActive && (
+        <DsButton variant="ghost" size="sm" iconOnly onClick={reload} title={t('learningHub:mediaBilibili.playback.reloadEmbed')} aria-label={t('learningHub:mediaBilibili.playback.reloadEmbed')} className="absolute right-1 top-1 z-20 bg-black/80 text-white hover:bg-black">
+          <ArrowClockwise size={16} />
+        </DsButton>
       )}
     </div>
   );

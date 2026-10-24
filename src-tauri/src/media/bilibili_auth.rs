@@ -15,12 +15,10 @@
 //! | `media_bilibili_login_qr_poll(qrcodeKey)` | 查询扫码状态；成功时保存会话 |
 //! | `media_bilibili_logout()` | 退出登录 |
 
-use std::time::Duration;
-
-use reqwest::header::{HeaderMap, HeaderValue, COOKIE, REFERER, SET_COOKIE};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
+use super::bilibili_transport::{BiliAttempt, BiliRequest, BiliResponse, RequestKind, API_LIMIT};
 use crate::secure_store::{SecureStore, SecureStoreConfig};
 
 /// 安全存储里的会话键（`internal.oauth.` 前缀：后端专用、严禁落入明文设置）
@@ -28,8 +26,6 @@ pub const SESSION_SECRET_KEY: &str = "internal.oauth.bilibili.session";
 
 const PASSPORT_BASE: &str = "https://passport.bilibili.com";
 const API_BASE: &str = "https://api.bilibili.com";
-const USER_AGENT: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// B 站二维码有效期约 180 秒
 const QR_TTL_SECS: u32 = 180;
 /// 会话里需要保留的 Cookie（其余如 `sid` 只是跟踪用，丢弃）
@@ -134,10 +130,13 @@ fn save_session(app: &AppHandle, session: &StoredSession) -> Result<(), String> 
     let raw = serde_json::to_string(session).map_err(|e| e.to_string())?;
     secure_store(app)
         .save_secret(SESSION_SECRET_KEY, &raw)
-        .map_err(|e| format!("保存 B 站登录状态失败：{}", e))
+        .map_err(|_| "保存 B 站登录状态失败".to_string())?;
+    super::bilibili_transport::session::invalidate_auth();
+    Ok(())
 }
 
 fn delete_session(app: &AppHandle) {
+    super::bilibili_transport::session::invalidate_auth();
     if let Err(e) = secure_store(app).delete_secret(SESSION_SECRET_KEY) {
         log::warn!("[media::bilibili_auth] delete session failed: {}", e);
     }
@@ -242,9 +241,9 @@ fn sanitize_face(raw: &str) -> Option<String> {
 // ============================================================================
 
 struct AuthClient {
-    http: reqwest::Client,
     passport_base: String,
     api_base: String,
+    strict: bool,
 }
 
 #[derive(Deserialize)]
@@ -300,25 +299,36 @@ impl AuthClient {
     }
 
     fn build(passport_base: &str, api_base: &str, no_proxy: bool) -> Result<Self, String> {
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            REFERER,
-            HeaderValue::from_static("https://www.bilibili.com/"),
-        );
-        let mut builder = reqwest::Client::builder()
-            .user_agent(USER_AGENT)
-            .default_headers(headers)
-            .timeout(REQUEST_TIMEOUT);
-        if no_proxy {
-            builder = builder.no_proxy();
-        }
         Ok(Self {
-            http: builder
-                .build()
-                .map_err(|e| format!("初始化网络客户端失败：{}", e))?,
             passport_base: passport_base.trim_end_matches('/').to_string(),
             api_base: api_base.trim_end_matches('/').to_string(),
+            strict: !no_proxy,
         })
+    }
+
+    async fn send(
+        &self,
+        request: BiliRequest,
+        cookie: Option<String>,
+    ) -> Result<BiliResponse, String> {
+        // App QR login is deliberately the native account, independent of browser pairing.
+        let attempt = if self.strict {
+            BiliAttempt::native(cookie).map_err(|e| e.to_string())?
+        } else {
+            #[cfg(test)]
+            {
+                BiliAttempt::for_test(cookie)
+            }
+            #[cfg(not(test))]
+            {
+                return Err("Invalid auth transport".into());
+            }
+        };
+        let response = attempt.execute(request).await.map_err(|e| e.to_string())?;
+        if response.status != 200 {
+            return Err(format!("B 站账号接口返回 HTTP {}", response.status));
+        }
+        Ok(response)
     }
 
     async fn qr_generate(&self) -> Result<QrGenerateData, String> {
@@ -326,15 +336,18 @@ impl AuthClient {
             "{}/x/passport-login/web/qrcode/generate?source=main-fe-header",
             self.passport_base
         );
-        let body: Envelope<QrGenerateData> = self
-            .http
-            .get(url)
-            .send()
-            .await
-            .map_err(|e| format!("连接 B 站失败：{}", e))?
-            .json()
-            .await
-            .map_err(|e| format!("B 站返回的内容无法解析：{}", e))?;
+        let response = self
+            .send(
+                BiliRequest::get(
+                    RequestKind::Passport,
+                    url::Url::parse(&url).unwrap(),
+                    API_LIMIT,
+                ),
+                None,
+            )
+            .await?;
+        let body: Envelope<QrGenerateData> = serde_json::from_slice(&response.body)
+            .map_err(|_| "B 站账号响应格式无效".to_string())?;
         match (body.code, body.data) {
             (0, Some(data)) if is_valid_qrcode_key(&data.qrcode_key) => Ok(data),
             (code, _) => Err(format!("获取登录二维码失败（{}：{}）", code, body.message)),
@@ -343,24 +356,21 @@ impl AuthClient {
 
     /// 返回 (状态, 成功时的会话 Cookie)
     async fn qr_poll(&self, key: &str) -> Result<(&'static str, Option<String>), String> {
-        let url = format!("{}/x/passport-login/web/qrcode/poll", self.passport_base);
+        let mut url = url::Url::parse(&format!(
+            "{}/x/passport-login/web/qrcode/poll",
+            self.passport_base
+        ))
+        .unwrap();
+        url.query_pairs_mut().append_pair("qrcode_key", key);
         let resp = self
-            .http
-            .get(url)
-            .query(&[("qrcode_key", key)])
-            .send()
-            .await
-            .map_err(|e| format!("连接 B 站失败：{}", e))?;
-        let set_cookies: Vec<String> = resp
-            .headers()
-            .get_all(SET_COOKIE)
-            .iter()
-            .filter_map(|v| v.to_str().ok().map(str::to_string))
-            .collect();
-        let body: Envelope<QrPollData> = resp
-            .json()
-            .await
-            .map_err(|e| format!("B 站返回的内容无法解析：{}", e))?;
+            .send(
+                BiliRequest::get(RequestKind::Passport, url, API_LIMIT),
+                None,
+            )
+            .await?;
+        let set_cookies = resp.set_cookies;
+        let body: Envelope<QrPollData> =
+            serde_json::from_slice(&resp.body).map_err(|_| "B 站账号响应格式无效".to_string())?;
         let data = match (body.code, body.data) {
             (0, Some(data)) => data,
             (code, _) => return Err(format!("查询扫码状态失败（{}：{}）", code, body.message)),
@@ -378,16 +388,14 @@ impl AuthClient {
 
     async fn nav(&self, cookie: &str) -> Result<NavResult, String> {
         let url = format!("{}/x/web-interface/nav", self.api_base);
-        let body: Envelope<NavData> = self
-            .http
-            .get(url)
-            .header(COOKIE, cookie)
-            .send()
-            .await
-            .map_err(|e| format!("连接 B 站失败：{}", e))?
-            .json()
-            .await
-            .map_err(|e| format!("B 站返回的内容无法解析：{}", e))?;
+        let response = self
+            .send(
+                BiliRequest::get(RequestKind::Api, url::Url::parse(&url).unwrap(), API_LIMIT),
+                Some(cookie.into()),
+            )
+            .await?;
+        let body: Envelope<NavData> = serde_json::from_slice(&response.body)
+            .map_err(|_| "B 站账号响应格式无效".to_string())?;
         match body.code {
             0 => {
                 let data = body.data.unwrap_or_default();
@@ -407,15 +415,22 @@ impl AuthClient {
             return;
         };
         let url = format!("{}/login/exit/v2", self.passport_base);
-        let result = self
-            .http
-            .post(url)
-            .header(COOKIE, cookie)
-            .form(&[("biliCSRF", csrf)])
-            .send()
-            .await;
-        if let Err(e) = result {
-            log::info!("[media::bilibili_auth] server logout skipped: {}", e);
+        let mut request = BiliRequest::get(
+            RequestKind::Passport,
+            url::Url::parse(&url).unwrap(),
+            API_LIMIT,
+        );
+        request.method = "POST".into();
+        request.headers.insert(
+            "content-type".into(),
+            "application/x-www-form-urlencoded".into(),
+        );
+        request.body = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("biliCSRF", csrf)
+            .finish()
+            .into_bytes();
+        if self.send(request, Some(cookie.into())).await.is_err() {
+            log::info!("[media::bilibili_auth] server logout unavailable");
         }
     }
 }
@@ -505,7 +520,7 @@ pub async fn media_bilibili_login_qr_poll(
     };
     let session = session_with_profile(cookie, nav, now_ms());
     save_session(&app, &session)?;
-    log::info!("[media::bilibili_auth] logged in (mid {:?})", session.mid);
+    log::info!("[media::bilibili_auth] app login completed");
     Ok(BiliLoginPoll {
         state,
         status: Some(BiliAccountStatus::from_session(&session, true)),

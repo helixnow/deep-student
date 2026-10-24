@@ -181,6 +181,9 @@ inject_android_permissions() {
         "android.permission.RECORD_AUDIO"
         "android.permission.MODIFY_AUDIO_SETTINGS"
         "android.permission.REQUEST_INSTALL_PACKAGES"
+        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.FOREGROUND_SERVICE"
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC"
     )
     local changed=false
 
@@ -280,7 +283,8 @@ inject_apk_file_provider() {
 # 返回手势直接退出 App、安全区退回猜测值。受控副本是单一事实源。
 sync_main_activity() {
     local FILE SRC DST
-    for FILE in MainActivity.kt SafPermissionPlugin.kt HeicDecoderPlugin.kt SystemBarsPlugin.kt; do
+    node "$REPO_ROOT/scripts/ci/prepare-bilibili-android.mjs"
+    for FILE in MainActivity.kt SafPermissionPlugin.kt HeicDecoderPlugin.kt SystemBarsPlugin.kt BiliBridgePlugin.kt; do
         SRC="$REPO_ROOT/src-tauri/mobile/android/$FILE"
         DST="$REPO_ROOT/src-tauri/gen/android/app/src/main/java/com/deepstudent/app/$FILE"
         [[ -f "$SRC" ]] || die "受控 Android 文件不存在: $SRC"

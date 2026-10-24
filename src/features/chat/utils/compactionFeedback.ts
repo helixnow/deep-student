@@ -101,6 +101,8 @@ export function parseCompactionCompletedPayload(raw: unknown): CompactionComplet
 
 const KNOWN_COMPACTION_REASONS = new Set([
   'sessionTooShort',
+  'noCompactibleRange',
+  'noModel',
   'usableTooSmall',
   'lockBusy',
   'streaming',
@@ -109,6 +111,7 @@ const KNOWN_COMPACTION_REASONS = new Set([
   'staleLineage',
   'cooldown',
   'invalidResponse',
+  'internalError',
 ]);
 
 /**

@@ -117,6 +117,7 @@ export function useSkillSlashCommands({
   enabled,
   activeSkillIds,
 }: UseSkillSlashCommandsOptions): UseSkillSlashCommandsReturn {
+  const { t } = useTranslation(['chatV2']);
   const [skills, setSkills] = useState(readInvocableSkills);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [dismissedQuery, setDismissedQuery] = useState<string | null>(null);
@@ -142,7 +143,10 @@ export function useSkillSlashCommands({
     const query = context.query.toLowerCase();
     const activeSet = new Set(activeSkillIds ?? []);
 
-    const ranked = skills
+    const commands = inputValue.slice(0, context.tokenStart).trim() === ''
+      ? [{ id: 'compact', name: t('chatV2:inputBar.plusMenu.compactContext') }]
+      : [];
+    const ranked = [...commands, ...skills.filter(skill => skill.id !== 'compact')]
       .map((skill) => {
         const id = skill.id.toLowerCase();
         const name = skill.name.toLowerCase();
@@ -166,7 +170,7 @@ export function useSkillSlashCommands({
       ...skill,
       isActive: activeSet.has(skill.id),
     }));
-  }, [context, skills, activeSkillIds]);
+  }, [context, skills, activeSkillIds, inputValue, t]);
 
   // query 变化时恢复被 Esc 关闭的 popover，并复位选中索引
   const query = context?.query ?? '';

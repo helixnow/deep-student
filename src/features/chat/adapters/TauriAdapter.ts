@@ -1143,6 +1143,9 @@ export class ChatV2TauriAdapter {
 
     const ownsSessionRuntime = this.isSessionRuntimeOwner();
     if (ownsSessionRuntime) {
+      if (this.getCurrentState().compactionInProgress) {
+        this.store.setCompactionInProgress(false);
+      }
 
     // 🔧 同步修复：cleanup 前先保存会话状态（fire-and-forget）
     // 确保 idle 状态下修改的 UI 设置（chatParams, features 等）不丢失
@@ -2793,21 +2796,48 @@ export class ChatV2TauriAdapter {
           this.handleVariantDeleted(payload);
           break;
 
+        case 'compaction_started': {
+          if (this.getCurrentState().compactionInProgress) break;
+          this.store.setCompactionInProgress(true);
+          showGlobalNotification(
+            'info',
+            i18n.t('chatV2:compaction.started'),
+            i18n.t('chatV2:compaction.startedTitle'),
+          );
+          break;
+        }
+
+        case 'compaction_finished':
+          this.store.setCompactionInProgress(false);
+          break;
+
         case 'compaction_completed': {
           // 🆕 压缩已落盘：立即写入水位覆盖值，上下文水位环不等下一轮 usage 即刷新。
           // 覆盖值在下一轮真实 usage 到达时由 eventBridge 清除。
           const completed = parseCompactionCompletedPayload(payload.payload);
+          this.store.setCompactionInProgress(false);
           if (completed?.tokensAfter && completed.tokensAfter > 0) {
             this.store.setContextUsageOverride({
               sessionId: this.sessionId,
               tokensAfter: completed.tokensAfter,
             });
           }
+          showGlobalNotification(
+            'success',
+            completed?.tokensBefore && completed.tokensAfter
+              ? i18n.t('chatV2:compaction.completedWithUsage', {
+                  before: completed.tokensBefore.toLocaleString(),
+                  after: completed.tokensAfter.toLocaleString(),
+                })
+              : i18n.t('chatV2:compaction.completed'),
+            i18n.t('chatV2:compaction.completedTitle'),
+          );
           break;
         }
 
         case 'compaction_failed': {
-          // 自动压缩失败：仅提示（不打断输入/滚动），历史可能被 FIFO 截断兜底
+          // Keep the complete history on failure; never imply successful compaction.
+          this.store.setCompactionInProgress(false);
           const reason = parseCompactionFailedReason(payload.payload);
           const reasonText = i18n.t(`chatV2:${compactionReasonI18nKey(reason)}`);
           showGlobalNotification(

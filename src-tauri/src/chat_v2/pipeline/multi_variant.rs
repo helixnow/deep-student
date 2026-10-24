@@ -245,78 +245,8 @@ impl ChatV2Pipeline {
             shared_context.has_sources()
         );
 
-        // === 4.5. 🆕 R2-CR-R2-02 修复：多变体 fan-out 前先检查是否需要压缩 ===
-        // 估算会话接近上下文上限时主动压一次；所有变体看同一压缩视图。
-        // 失败 / 跳过时继续 fan-out，依赖 apply_compaction_view 读视图兜底。
-        if !options
-            .parallel_model_ids
-            .as_deref()
-            .unwrap_or(&[])
-            .is_empty()
-        {
-            let strictest_cfg = resolved_models
-                .iter()
-                .filter_map(|(_, config_id)| config_map.get(config_id))
-                .min_by_key(|config| {
-                    super::compaction::effective_usable_tokens(Some(*config), options.context_limit)
-                });
-            let model_for_budget = strictest_cfg
-                .map(|config| config.id.as_str())
-                .or_else(|| resolved_models.first().map(|(_, id)| id.as_str()))
-                .or(options.model_id.as_deref());
-            if self
-                .should_compact_before_multi_variant_fanout(
-                    &session_id,
-                    strictest_cfg,
-                    options.context_limit,
-                )
-                .await
-            {
-                let exclude = vec![user_message_id.clone(), assistant_message_id.clone()];
-                match self
-                    .run_compaction_for_session(
-                        &session_id,
-                        model_for_budget,
-                        "auto",
-                        &exclude,
-                        options.context_limit,
-                        options.memory_enabled,
-                        Some(&cancel_token),
-                    )
-                    .await
-                {
-                    Ok(outcome) if outcome.did_compact() => {
-                        log::info!(
-                            "[ChatV2::pipeline] multi-variant: compaction ran successfully for session={}",
-                            session_id
-                        );
-                    }
-                    Ok(outcome) => {
-                        log::debug!(
-                            "[ChatV2::pipeline] multi-variant: compaction skipped for session={}: status={} reason={:?}",
-                            session_id,
-                            outcome.status_code(),
-                            outcome.reason_code()
-                        );
-                        // 🆕 自动压缩失败可见化（与单变体路径同一事件契约）
-                        if outcome.is_failed() {
-                            if let Some(reason) = outcome.reason_code() {
-                                emitter.emit_compaction_failed(reason);
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        log::warn!(
-                            "[ChatV2::pipeline] multi-variant: compaction failed (non-fatal): {}",
-                            e
-                        );
-                        emitter.emit_compaction_failed(
-                            super::compaction::CompactionSkipReason::InternalError.as_code(),
-                        );
-                    }
-                }
-            }
-        }
+        // Each variant preflights its complete request, including its model's tools and images.
+        // Compaction remains session-locked; a history-only fan-out estimate is insufficient.
 
         // === 5. 发射 stream_start ===
         // 多变体模式不在 stream_start 中传递模型名称，每个变体通过 variant_start 事件传递
@@ -819,15 +749,11 @@ impl ChatV2Pipeline {
         let system_prompt = prompt_parts.stable_system;
 
         // 加载聊天历史
-        let mut chat_history = self
-            .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
+        let chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()))
             .await?;
         // load_variant_chat_history excludes this attempt's persisted user/assistant rows by id.
         // Do not infer duplicates from message text: consecutive identical prompts are valid.
-        // 🔧 Token 预算裁剪（对齐单变体路径）
-        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-        let max_tokens = effective_history_token_budget(options.context_limit);
-        trim_history_by_token_budget(&mut chat_history, max_tokens);
 
         // 构建当前用户消息（turn-volatile 块编入 <injected_context>）
         let current_user_message = self.build_variant_user_message(
@@ -1013,68 +939,108 @@ impl ChatV2Pipeline {
             Some(sink) => sink,
             None => &noop_sink,
         };
-        let llm_future = self.llm_manager.call_unified_model_2_stream(
-            &llm_context,
-            &messages,
-            "",
-            true,
-            enable_thinking,
-            Some("chat_v2_variant"),
-            stream_sink,
-            &stream_event,
-            Some(ctx.message_id()),
-            None,
-            disable_tools,
-            max_input_tokens_override,
-            options.model_id.clone(),
-            options.temperature,
-            Some(system_prompt),
-            options.top_p,
-            options.frequency_penalty,
-            options.presence_penalty,
-            options.max_tokens,
-            options.reasoning_effort.clone(),
-            options.thinking_budget,
-        );
+        let mut compaction_checked = false;
+        let mut history_prefix_len = base_history_len;
+        let call_result = loop {
+            llm_context.insert(
+                crate::llm_manager::model2_pipeline::COMPACTION_CHECKED_CONTEXT_KEY.into(),
+                Value::Bool(compaction_checked),
+            );
+            let llm_future = self.llm_manager.call_unified_model_2_stream(
+                &llm_context,
+                &messages,
+                "",
+                true,
+                enable_thinking,
+                Some("chat_v2_variant"),
+                stream_sink,
+                &stream_event,
+                Some(ctx.message_id()),
+                None,
+                disable_tools,
+                max_input_tokens_override,
+                options.model_id.clone(),
+                options.temperature,
+                Some(system_prompt.clone()),
+                options.top_p,
+                options.frequency_penalty,
+                options.presence_penalty,
+                options.max_tokens,
+                options.reasoning_effort.clone(),
+                options.thinking_budget,
+            );
 
-        // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
-        // 🔧 2026-07：空闲阈值/是否断流按请求读取 chat.stream.* 设置
-        let stream_idle_cfg = load_stream_idle_config(self.main_db.as_ref());
-        let call_result = {
-            let adapter_for_idle = emitter.clone();
-            match wait_llm_stream_with_idle_timeout(
-                llm_future,
-                stream_idle_cfg.idle_limit,
-                Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
-                stream_idle_cfg.cancel_on_idle,
-                move || adapter_for_idle.idle_elapsed(),
-            )
-            .await
-            {
-                LlmStreamWaitOutcome::Completed(result) => result,
-                LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
-                    log::error!(
+            // 🔧 F2 修复：空闲超时 + 绝对上限（替代总时长 600s 掐断健康长流）
+            // 🔧 2026-07：空闲阈值/是否断流按请求读取 chat.stream.* 设置
+            let stream_idle_cfg = load_stream_idle_config(self.main_db.as_ref());
+            let call_result = {
+                let adapter_for_idle = emitter.clone();
+                match wait_llm_stream_with_idle_timeout(
+                    llm_future,
+                    stream_idle_cfg.idle_limit,
+                    Duration::from_secs(LLM_STREAM_MAX_TOTAL_SECS),
+                    stream_idle_cfg.cancel_on_idle,
+                    move || adapter_for_idle.idle_elapsed(),
+                )
+                .await
+                {
+                    LlmStreamWaitOutcome::Completed(result) => result,
+                    LlmStreamWaitOutcome::IdleTimeout { idle_secs } => {
+                        log::error!(
                         "[ChatV2::VariantPipeline] LLM stream idle timeout after {}s, variant={}",
                         idle_secs,
                         ctx.variant_id()
                     );
-                    hooks_guard.cleanup().await;
-                    let msg = format!("LLM stream timed out: no data received for {}s", idle_secs);
-                    ctx.fail(&msg);
-                    return Err(ChatV2Error::Timeout(msg));
-                }
-                LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
-                    log::error!(
+                        hooks_guard.cleanup().await;
+                        let msg =
+                            format!("LLM stream timed out: no data received for {}s", idle_secs);
+                        ctx.fail(&msg);
+                        return Err(ChatV2Error::Timeout(msg));
+                    }
+                    LlmStreamWaitOutcome::TotalTimeout { total_secs } => {
+                        log::error!(
                         "[ChatV2::VariantPipeline] LLM stream exceeded absolute limit {}s, variant={}",
                         total_secs,
                         ctx.variant_id()
                     );
-                    hooks_guard.cleanup().await;
-                    let msg = format!("LLM stream exceeded absolute time limit ({}s)", total_secs);
-                    ctx.fail(&msg);
-                    return Err(ChatV2Error::Timeout(msg));
+                        hooks_guard.cleanup().await;
+                        let msg =
+                            format!("LLM stream exceeded absolute time limit ({}s)", total_secs);
+                        ctx.fail(&msg);
+                        return Err(ChatV2Error::Timeout(msg));
+                    }
+                }
+            };
+
+            if let Err(error) = &call_result {
+                if crate::llm_manager::routing::llm_error_code(error)
+                    == Some(crate::llm_manager::routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+                {
+                    compaction_checked = true;
+                    let exclude_ids =
+                        self.variant_compaction_exclude_ids(&session_id, ctx.message_id())?;
+                    if self
+                        .compact_for_request(
+                            &session_id,
+                            &options,
+                            &exclude_ids,
+                            ctx.emitter(),
+                            Some(ctx.cancel_token()),
+                            error,
+                        )
+                        .await?
+                    {
+                        let history = self
+                            .load_variant_chat_history(&session_id, Some(ctx.message_id()))
+                            .await?;
+                        let new_prefix_len = history.len();
+                        messages.splice(..history_prefix_len, history);
+                        history_prefix_len = new_prefix_len;
+                    }
+                    continue;
                 }
             }
+            break call_result;
         };
 
         // 注销 hooks
@@ -1177,13 +1143,9 @@ impl ChatV2Pipeline {
             .await;
         compile_ctx.turn_volatile_context = prompt_parts.turn_volatile.clone();
 
-        let mut chat_history = self
-            .load_variant_chat_history(&session_id, Some(ctx.message_id()), options.context_limit)
+        let chat_history = self
+            .load_variant_chat_history(&session_id, Some(ctx.message_id()))
             .await?;
-        // 🔧 Token 预算裁剪（对齐单变体路径）
-        // 🔧 P1-2 修复：context_limit 显式配置时为权威值，不再被 32K 常量 min() 钳制
-        let max_tokens_budget = effective_history_token_budget(options.context_limit);
-        trim_history_by_token_budget(&mut chat_history, max_tokens_budget);
         compile_ctx.chat_history = chat_history;
         self.compile_frozen_context(&mut compile_ctx).await?;
         let mut effective_meta = variant_meta.unwrap_or_default();
@@ -1219,9 +1181,10 @@ impl ChatV2Pipeline {
             });
         let system_prompt = prompt_parts.stable_system;
         let turn_volatile = prompt_parts.turn_volatile;
-        let chat_history = compile_ctx.chat_history;
+        let chat_history = std::mem::take(&mut compile_ctx.chat_history);
         let current_user_message = compile_ctx
             .compiled_current_user_message
+            .take()
             .unwrap_or_else(|| {
                 self.build_variant_user_message(
                     &user_content,
@@ -1460,6 +1423,8 @@ impl ChatV2Pipeline {
         );
 
         let mut tool_round = 0u32;
+        let mut compaction_checked_round = None;
+        let mut history_prefix_len = base_history_len;
         // 🆕 2026-07 Doom loop 检测：变体局部守卫（变体间互不影响），
         // 2026-09：工具循环完全不设限（长程 agent 支持），doom loop 守卫已移除。
         loop {
@@ -1494,6 +1459,10 @@ impl ChatV2Pipeline {
                 Some(sink) => sink,
                 None => &noop_sink,
             };
+            llm_context.insert(
+                crate::llm_manager::model2_pipeline::COMPACTION_CHECKED_CONTEXT_KEY.into(),
+                Value::Bool(compaction_checked_round == Some(tool_round)),
+            );
             let llm_future = self.llm_manager.call_unified_model_2_stream(
                 &llm_context,
                 &messages,
@@ -1592,6 +1561,36 @@ impl ChatV2Pipeline {
                     }
                 }
                 Some(Err(e)) => {
+                    if crate::llm_manager::routing::llm_error_code(&e)
+                        == Some(crate::llm_manager::routing::LLM_ERROR_CODE_COMPACTION_REQUIRED)
+                    {
+                        compaction_checked_round = Some(tool_round);
+                        let exclude_ids =
+                            self.variant_compaction_exclude_ids(&session_id, ctx.message_id())?;
+                        if self
+                            .compact_for_request(
+                                &session_id,
+                                &options,
+                                &exclude_ids,
+                                &emitter_arc,
+                                Some(ctx.cancel_token()),
+                                &e,
+                            )
+                            .await?
+                        {
+                            compile_ctx.chat_history = self
+                                .load_variant_chat_history(&session_id, Some(ctx.message_id()))
+                                .await?;
+                            self.compile_frozen_context(&mut compile_ctx).await?;
+                            let history = std::mem::take(&mut compile_ctx.chat_history);
+                            let new_prefix_len = history.len();
+                            // Preserve this variant's current user, frozen skills and entire
+                            // in-flight tool chain, which are excluded from DB compaction.
+                            messages.splice(..history_prefix_len, history);
+                            history_prefix_len = new_prefix_len;
+                        }
+                        continue;
+                    }
                     hooks_guard.cleanup().await;
                     ctx.fail(&e.to_string());
                     return Err(ChatV2Error::Llm(e.to_string()));
@@ -2248,7 +2247,7 @@ impl ChatV2Pipeline {
     /// 加载变体的聊天历史（V2 增强版）
     ///
     /// 对齐单变体 `load_chat_history()` 的完整能力：
-    /// - 使用 effective_max_history_messages（按 token 预算推导）粗筛消息条数
+    /// - 保留压缩视图中的全部消息，SQLite 查询按批次执行
     /// - 提取所有 content 块并拼接（不只是第一个）
     /// - 提取 thinking 块内容
     /// - 提取 mcp_tool 块的工具调用信息
@@ -2267,12 +2266,33 @@ impl ChatV2Pipeline {
         ))
     }
 
+    fn variant_compaction_exclude_ids(
+        &self,
+        session_id: &str,
+        assistant_message_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let conn = self.db.get_conn_safe()?;
+        let messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
+        let mut ids = vec![assistant_message_id.to_string()];
+        if let Some(index) = messages
+            .iter()
+            .position(|message| message.id == assistant_message_id)
+        {
+            if let Some(user) = messages[..index]
+                .iter()
+                .rev()
+                .find(|message| message.role == MessageRole::User)
+            {
+                ids.push(user.id.clone());
+            }
+        }
+        Ok(ids)
+    }
+
     async fn load_variant_chat_history(
         &self,
         session_id: &str,
         assistant_message_id: Option<&str>,
-        // 🔧 P1-6：用于按 token 预算推导条数粗筛上限（对齐单变体 load_chat_history）
-        context_limit: Option<u32>,
     ) -> ChatV2Result<Vec<LegacyChatMessage>> {
         log::debug!(
             "[ChatV2::pipeline] Loading variant chat history for session={}",
@@ -2329,28 +2349,19 @@ impl ChatV2Pipeline {
         let (compaction_summary_msg, messages) =
             super::compaction::apply_compaction_view(&conn, session_id, messages);
 
-        // 🔧 条数粗筛上限（对齐单变体）
-        // 🔧 P1-6 修复：token 预算充裕时按预算放宽（50–400 条），精确裁剪由
-        // 调用方的 trim_history_by_token_budget 按 token 完成
-        let max_messages = effective_max_history_messages(context_limit);
-        let messages_to_load: Vec<_> = if messages.len() > max_messages {
-            // 取最新的 max_messages 条消息
-            messages
-                .into_iter()
-                .rev()
-                .take(max_messages)
-                .rev()
-                .collect()
-        } else {
-            messages
-        };
+        let messages_to_load = messages;
+        let message_ids: Vec<_> = messages_to_load
+            .iter()
+            .map(|message| message.id.clone())
+            .collect();
+        let (mut blocks_by_message, replay_map) =
+            ChatV2Repo::get_history_blocks_with_replay_with_conn(&conn, &message_ids)?;
         let active_variant_artifacts =
             super::history::active_variant_artifacts_by_user(&messages_to_load);
 
         log::debug!(
-            "[ChatV2::pipeline] Loading {} variant messages (max_messages={})",
-            messages_to_load.len(),
-            max_messages
+            "[ChatV2::pipeline] Loading all {} unsummarized variant messages",
+            messages_to_load.len()
         );
 
         let mut chat_history = Vec::new();
@@ -2358,9 +2369,7 @@ impl ChatV2Pipeline {
         // 下标，workspace_injection 还原的 user 消息要插到这条消息之前
         let mut last_user_message_index: Option<usize> = None;
         for message in messages_to_load {
-            let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &message.id)?;
-            // V20260806 B 层：重放旁路三列（无列/NULL 时空表，回退旧重建）
-            let replay_map = ChatV2Repo::get_block_replay_map_with_conn(&conn, &message.id)?;
+            let blocks = blocks_by_message.remove(&message.id).unwrap_or_default();
             // 🔧 ROUND-01-pipeline #1：只重放 active variant 的块
             let blocks = super::history::filter_blocks_for_active_variant(&message, blocks);
 
@@ -3667,6 +3676,36 @@ mod variant_replay_tests {
     use crate::chat_v2::types::{ChatSession, MessageMeta};
     use std::collections::HashMap;
 
+    #[tokio::test]
+    async fn variant_history_keeps_more_than_four_hundred_short_messages() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let session_id = "variant_history_no_message_cap";
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.to_string(), "chat".to_string()),
+        )
+        .unwrap();
+        for index in 0..450 {
+            insert_user_turn(
+                &conn,
+                session_id,
+                &format!("msg_{index}"),
+                &format!("block_{index}"),
+                &format!("turn {index}"),
+                index,
+            );
+        }
+        drop(conn);
+        let history = pipeline
+            .load_variant_chat_history(session_id, None)
+            .await
+            .unwrap();
+        assert_eq!(history.len(), 450);
+        assert!(history[0].content.contains("turn 0"));
+        assert!(history[449].content.contains("turn 449"));
+    }
+
     /// 变体路径回放缺口回归：workspace_injection 还原为 user 消息插到该轮
     /// user 之前；工具轮 thought_signature / reasoning_content / Responses
     /// reasoning item 经 meta 回填；成功检索工具输出走同一份 LLM 视图脱敏。
@@ -3793,7 +3832,7 @@ mod variant_replay_tests {
 
         // ---- 变体路径重放 ----
         let history = pipeline
-            .load_variant_chat_history(session_id, Some("msg_mv_a2"), None)
+            .load_variant_chat_history(session_id, Some("msg_mv_a2"))
             .await
             .unwrap();
         assert_eq!(
@@ -3932,7 +3971,7 @@ mod variant_replay_tests {
         drop(conn);
 
         let history = pipeline
-            .load_variant_chat_history(session_id, Some("msg_mf_a2"), None)
+            .load_variant_chat_history(session_id, Some("msg_mf_a2"))
             .await
             .unwrap();
         assert_eq!(history.len(), 4, "user + tool_call + tool + final");

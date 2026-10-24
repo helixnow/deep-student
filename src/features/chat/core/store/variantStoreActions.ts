@@ -1013,5 +1013,9 @@ export function createVariantStoreActions(
         ): void => {
           set({ contextUsageOverride: override });
         },
+
+        setCompactionInProgress: (active: boolean): void => {
+          set({ compactionInProgress: active });
+        },
   };
 }

@@ -647,7 +647,8 @@ pub fn run() {
         // HEIC/HEIF → JPEG：Android WebView 无法解码 HEIC，走平台 ImageDecoder。
         .plugin(crate::heic_decoder::init())
         // 沉浸式全屏：隐藏状态栏 / 导航栏（#472）。
-        .plugin(crate::system_bars::init());
+        .plugin(crate::system_bars::init())
+        .plugin(crate::media::bilibili_lifecycle::init());
 
     // Android 专用：用其他应用打开 / 分享文件（opener 的 open_path 与
     // reveal_item_in_dir 在 Android 均不可用，移动端统一走此插件）。
@@ -1854,6 +1855,12 @@ pub fn run() {
             crate::media::bilibili_auth::media_bilibili_login_qr_poll,
             crate::media::bilibili_auth::media_bilibili_logout,
             crate::media::bilibili_stream::media_bilibili_stream_quality,
+            crate::media::bilibili_transport::bridge_server::media_bilibili_transport_status,
+            crate::media::bilibili_transport::session::media_bilibili_cancel,
+            crate::media::bilibili_transport::bridge_server::media_bilibili_transport_configure,
+            crate::media::bilibili_transport::bridge_server::media_bilibili_bridge_pair,
+            crate::media::bilibili_transport::bridge_server::media_bilibili_bridge_approve,
+            crate::media::bilibili_transport::bridge_server::media_bilibili_bridge_disconnect,
             crate::media::ledger::media_study_ledger,
             crate::media::ledger::media_checkpoints,
             crate::media::ledger::media_chapters,

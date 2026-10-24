@@ -183,9 +183,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
   const [linkEmbed, setLinkEmbed] = useState(false);
   /** 外链播放器是播放出错自动退回的（提示语不同） */
   const [embedFallback, setEmbedFallback] = useState(false);
+  const [linkFailure, setLinkFailure] = useState<string | null>(null);
   useEffect(() => {
     setLinkEmbed(false);
     setEmbedFallback(false);
+    setLinkFailure(null);
   }, [resourceId]);
   /** 外链 iframe 播放：拿不到画面与进度 */
   const embedPlayback = isLink && linkEmbed;
@@ -219,6 +221,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   // ---------------------------------------------------------------- 播放状态 / 跟随高亮
   const [isReady, setIsReady] = useState(false);
+  const [canSeek, setCanSeek] = useState(false);
   const [activeSegmentIdx, setActiveSegmentIdx] = useState(-1);
   const segmentsForActiveRef = useRef(displaySegments);
   segmentsForActiveRef.current = displaySegments;
@@ -283,6 +286,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
 
   const handleStatusChange = useCallback(
     (s: MediaPlayerStatus) => {
+      setCanSeek(s.canSeek ?? s.isReady);
       const restore = pendingRestoreRef.current;
       if (restore) {
         // 旧播放器卸载前可能还会回报一次就绪状态：等新播放器先回报「未就绪」再恢复
@@ -358,7 +362,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       return;
     }
     const handle = handleRef.current;
-    if (!handle || !isReady) return; // 就绪后 effect 重跑
+    if (!handle || !canSeek) return;
     externalSeekRef.current = true;
     handle.seekTo(focusRequest.seconds);
     if (focusRequest.play) handle.play();
@@ -367,11 +371,11 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       matchesMediaFocusTarget(id, { nodeId: resourceId, nodeSourceId: sourceId, nodePath }),
     );
     handleFocusHandled(focusRequest.requestId, true);
-  }, [focusRequest, isReady, handleFocusHandled, resourceId, sourceId, nodePath]);
+  }, [focusRequest, canSeek, handleFocusHandled, resourceId, sourceId, nodePath]);
 
   // 冷启动兜底：引用点击后视图晚于重发 / 回执窗口才就绪时，领取待兑现的跳转意图
   useEffect(() => {
-    if (!isActive || !isReady) return;
+    if (!isActive || !canSeek) return;
     const handle = handleRef.current;
     if (!handle) return;
     const seconds = takePendingMediaFocus((id) =>
@@ -381,7 +385,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
     externalSeekRef.current = true;
     handle.seekTo(seconds);
     handle.play();
-  }, [isActive, isReady, resourceId, sourceId, nodePath]);
+  }, [isActive, canSeek, resourceId, sourceId, nodePath]);
 
   // 断点续播提示（一次性）
   const resumeToastShownRef = useRef(false);
@@ -688,10 +692,13 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       </DsButton>
     ) : null;
 
-  const handleLinkStreamError = useCallback(() => {
-    setLinkEmbed(true);
-    setEmbedFallback(true);
-  }, []);
+  const handleLinkStreamError = useCallback((reason?: 'timeout' | 'media') => {
+    setLinkFailure(reason === 'timeout' ? t('learningHub:mediaBilibili.playback.loadTimeout') : t('learningHub:mediaBilibili.playback.loadFailed'));
+  }, [t]);
+  useEffect(() => {
+    if (isLink && bilibiliQuality.error && !linkEmbed) handleLinkStreamError();
+  }, [isLink, bilibiliQuality.error, linkEmbed, handleLinkStreamError]);
+  useEffect(() => { setLinkFailure(null); }, [playerSrc]);
 
   // ---------------------------------------------------------------- 清晰度（应用内播放）
   const { info: qualityInfo, select: selectQuality } = bilibiliQuality;
@@ -737,6 +744,10 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
       handleRef={handleRef}
       onStatusChange={handleStatusChange}
     />
+  ) : isLink && !playerSrc ? (
+    <div className="flex h-full w-full items-center justify-center bg-black text-white/60" role="status" aria-label={t('common:loading')}>
+      <CircleNotch size={24} className="animate-spin" aria-hidden="true" />
+    </div>
   ) : isVideo ? (
     <VideoPlayer
       key={playerSrc}
@@ -899,6 +910,7 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
             size="sm"
             onClick={() => {
               setEmbedFallback(false);
+              if (linkEmbed) { bilibiliQuality.retry(); setLinkFailure(null); }
               setLinkEmbed((prev) => !prev);
             }}
             className={cn(toolbarButtonClass, 'gap-1.5 px-2.5 text-xs')}
@@ -1034,10 +1046,14 @@ export const MediaStudyView: React.FC<MediaStudyViewProps> = ({
                   : 'h-[300px] shrink-0',
           )}
         >
+          {isLink && !embedPlayback && (bilibiliQuality.error || linkFailure) && <div className="absolute inset-x-0 top-0 z-10 flex flex-wrap items-center gap-2 bg-black/80 px-3 py-2 text-xs text-white" role="alert" data-bilibili-stream-error="">
+            <span className="min-w-0 flex-1 break-words">{bilibiliQuality.error ?? linkFailure}</span>
+            <DsButton variant="ghost" size="sm" className="text-white" onClick={() => { setLinkFailure(null); bilibiliQuality.retry(); }}><ArrowClockwise size={14} aria-hidden="true" />{t('learningHub:mediaBilibili.playback.retry')}</DsButton>
+          </div>}
           {embedPlayback && (
-            <p className="absolute inset-x-0 top-0 z-10 bg-black/60 px-3 py-1 text-[11px] text-white" role="status" data-bilibili-fallback="">
+            <p className="absolute inset-x-0 top-0 z-10 bg-black/60 py-1 pl-3 pr-14 text-2xs text-white" role="status" data-bilibili-fallback="">
               {embedFallback
-                ? `${t('learningHub:mediaBilibili.playback.fallback')} ${t('learningHub:mediaBilibili.playback.embedGuest')}`
+                ? `${bilibiliQuality.error ?? linkFailure ?? t('learningHub:mediaBilibili.playback.loadFailed')} ${t('learningHub:mediaBilibili.playback.fallback')}`
                 : t('learningHub:mediaBilibili.playback.embedGuest')}
             </p>
           )}

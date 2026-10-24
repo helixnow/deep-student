@@ -403,22 +403,6 @@ pub(crate) struct PipelineContext {
     /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
     /// LLM 调用前执行 compaction::run，完成后重置为 false。
     pub(crate) needs_compaction: bool,
-
-    /// 🆕 2026-07: Doom loop 守卫 —— 跨工具轮次追踪「工具名+参数」指纹的连续重复，
-    /// 连续第 3 次拦截执行回喂合成失败，连续第 5 次终止本轮循环（见 DoomLoopGuard）
-
-    /// 🆕 最近一次 load_chat_history 中 FIFO 截断的丢弃报告（dropped > 0 时挂起），
-    /// 由 notify_context_trimmed 消费并发射 `context_trimmed` 事件
-    pub(crate) pending_context_trim: Option<super::pipeline::TrimOutcome>,
-
-    /// 🆕 本轮流式内是否已发射过 `context_trimmed`（去重防刷屏）
-    pub(crate) context_trim_notified: bool,
-
-    /// 🆕 DESIGN：FIFO 头删触发前强制 compaction 的每轮一次性闸门。
-    /// load_chat_history 发现超预算时先跑 compaction；本标志保证同一轮
-    /// send 至多强制一次，compaction 后仍超预算时直接 FIFO 兜底，不会
-    /// 陷入「compaction → 重载 → 再 compaction」的循环。
-    pub(crate) forced_compaction_before_trim: bool,
 }
 
 impl PipelineContext {
@@ -491,10 +475,6 @@ impl PipelineContext {
 
             last_round_heartbeat: false,
             needs_compaction: false,
-
-            pending_context_trim: None,
-            context_trim_notified: false,
-            forced_compaction_before_trim: false,
         }
     }
 

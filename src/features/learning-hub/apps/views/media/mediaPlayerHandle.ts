@@ -16,4 +16,6 @@ export interface MediaPlayerStatus {
   duration: number;
   isPlaying: boolean;
   isReady: boolean;
+  /** An iframe can accept a URL-based seek without exposing media readiness. */
+  canSeek?: boolean;
 }

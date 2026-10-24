@@ -203,6 +203,8 @@ export const THINKING_DEPTH_SUFFIXES = [
 /** KNOWN_COMPACTION_REASONS（src/features/chat/utils/compactionFeedback.ts）；unknown 是兜底键 */
 export const COMPACTION_REASON_CODES = [
   'sessionTooShort',
+  'noCompactibleRange',
+  'noModel',
   'usableTooSmall',
   'lockBusy',
   'streaming',
@@ -211,6 +213,7 @@ export const COMPACTION_REASON_CODES = [
   'staleLineage',
   'cooldown',
   'invalidResponse',
+  'internalError',
 ] as const;
 
 export const INPUT_BAR_TEMPLATE_EXPANSIONS: readonly TemplateExpansion[] = [

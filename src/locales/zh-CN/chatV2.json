@@ -1437,14 +1437,21 @@
     "compactDisabledStreaming": "生成中不可压缩"
   },
   "compaction": {
+    "startedTitle": "正在压缩上下文",
+    "started": "正在总结较早的对话，原始消息将保留。",
+    "completedTitle": "上下文压缩完成",
+    "completed": "已生成上下文摘要，原始消息已保留。",
+    "completedWithUsage": "已生成摘要，上下文估算由 {{before}} 变为 {{after}} tokens。",
     "manualSkipped": "本次未压缩：{{reason}}",
     "manualFailed": "上下文压缩失败：{{reason}}，请稍后重试",
     "autoFailedTitle": "自动压缩失败",
-    "autoFailed": "自动压缩失败，较早的历史可能被截断（{{reason}}）",
+    "autoFailed": "自动压缩失败，历史消息已保留（{{reason}}）；若仍超出上下文上限，将停止发送",
     "contextTrimmedTitle": "上下文已满",
     "contextTrimmed": "上下文已满，最早的 {{count}} 条消息未参与本轮对话",
     "reason": {
       "sessionTooShort": "会话消息太少，无需压缩",
+      "noCompactibleRange": "没有可总结的更早对话，近期原文已保留",
+      "noModel": "未配置可用的上下文总结模型",
       "usableTooSmall": "可压缩的内容太少",
       "lockBusy": "另一个压缩任务正在进行，请稍后再试",
       "streaming": "会话正在生成中，稍后再试",
@@ -1453,6 +1460,7 @@
       "staleLineage": "会话上下文已变化，请重试",
       "cooldown": "压缩暂时冷却中，稍后再试",
       "invalidResponse": "返回结果异常",
+      "internalError": "压缩任务发生内部错误",
       "unknown": "未知原因"
     }
   },

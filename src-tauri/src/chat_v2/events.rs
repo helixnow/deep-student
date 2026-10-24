@@ -128,6 +128,10 @@ pub mod session_event_type {
     /// 注：原 `title_updated` 事件已废弃 —— 自动生成路径从未发射，
     /// 所有标题/简介更新统一走 `summary_updated`。
     pub const SUMMARY_UPDATED: &str = "summary_updated";
+    /// Automatic compaction owns the session lock; renderer shows persistent progress.
+    pub const COMPACTION_STARTED: &str = "compaction_started";
+    /// Clears progress on every exit, including skipped, cancelled and dropped futures.
+    pub const COMPACTION_FINISHED: &str = "compaction_finished";
     /// 🆕 自动压缩失败/被放弃（payload: {"reason": "<code>"}）
     /// 仅自动触发（检查点/兜底）路径发射；手动压缩结果走命令返回值。
     pub const COMPACTION_FAILED: &str = "compaction_failed";
@@ -747,6 +751,20 @@ impl SessionEvent {
             description: None,
             payload: None,
         }
+    }
+
+    pub fn compaction_started(session_id: &str, reason: &str) -> Self {
+        let mut event = Self::save_complete(session_id);
+        event.event_type = session_event_type::COMPACTION_STARTED.to_string();
+        event.payload = Some(serde_json::json!({ "reason": reason }));
+        event
+    }
+
+    pub fn compaction_finished(session_id: &str) -> Self {
+        let mut event = Self::compaction_started(session_id, "");
+        event.event_type = session_event_type::COMPACTION_FINISHED.to_string();
+        event.payload = None;
+        event
     }
 
     /// 创建自动压缩失败事件
@@ -1905,6 +1923,14 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    pub fn emit_compaction_started(&self, reason: &str) {
+        self.emit_session(SessionEvent::compaction_started(&self.session_id, reason));
+    }
+
+    pub fn emit_compaction_finished(&self) {
+        self.emit_session(SessionEvent::compaction_finished(&self.session_id));
+    }
+
     /// 🆕 发射自动压缩失败事件（仅自动路径；手动压缩结果走命令返回值）
     pub fn emit_compaction_failed(&self, reason: &str) {
         let event = SessionEvent::compaction_failed(&self.session_id, reason);
@@ -2343,6 +2369,21 @@ mod tests {
 
         assert_eq!(event.event_type, session_event_type::SAVE_COMPLETE);
         assert!(event.message_id.is_none());
+    }
+
+    #[test]
+    fn compaction_progress_events_have_stable_session_contracts() {
+        let started =
+            serde_json::to_value(SessionEvent::compaction_started("sess_progress", "auto"))
+                .unwrap();
+        assert_eq!(started["eventType"], "compaction_started");
+        assert_eq!(started["sessionId"], "sess_progress");
+        assert_eq!(started["payload"]["reason"], "auto");
+        let finished =
+            serde_json::to_value(SessionEvent::compaction_finished("sess_progress")).unwrap();
+        assert_eq!(finished["eventType"], "compaction_finished");
+        assert_eq!(finished["sessionId"], "sess_progress");
+        assert!(finished["payload"].is_null());
     }
 
     /// 🆕 compaction_failed 事件：事件名与 payload 键名是与前端逐字约定的契约

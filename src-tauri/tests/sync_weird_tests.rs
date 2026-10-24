@@ -2132,12 +2132,119 @@ fn w69_ten_thousand_tiny_records() {
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     let elapsed = t.elapsed();
     assert_eq!(r.success_count, 10000);
+    assert_eq!(r.failure_count, 0);
+    assert_eq!(r.applied_keys.len(), 10000);
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
         .unwrap();
     assert_eq!(n, 10000);
     println!("W.69 applied 10000 in {:?}", elapsed);
     assert!(elapsed.as_secs() < 30, "10000 条批次应在 30s 内完成");
+}
+
+#[test]
+fn apply_results_preserve_prior_keys_after_savepoint_rollback() {
+    let conn = new_db();
+    conn.execute_batch(
+        "PRAGMA foreign_keys = OFF;
+         ALTER TABLE items ADD COLUMN parent_id TEXT REFERENCES items(id);",
+    )
+    .unwrap();
+    let initial_ts = ts_ago(300);
+    let update_ts = ts_ago(200);
+    let changes = vec![
+        mk_change(
+            "shared",
+            ChangeOperation::Insert,
+            json!({"id": "shared", "title": "kept", "updated_at": initial_ts}),
+            &initial_ts,
+        ),
+        mk_change(
+            "shared",
+            ChangeOperation::Update,
+            json!({
+                "id": "shared", "title": "rolled back", "parent_id": "missing",
+                "updated_at": update_ts,
+            }),
+            &update_ts,
+        ),
+        mk_change(
+            "next",
+            ChangeOperation::Insert,
+            json!({"id": "next", "title": "next", "updated_at": update_ts}),
+            &update_ts,
+        ),
+    ];
+
+    let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(result.success_count, 2);
+    assert_eq!(result.failure_count, 1);
+    assert_eq!(result.skipped_count, 0);
+    assert_eq!(result.applied_keys.len(), 2);
+    assert!(result
+        .applied_keys
+        .contains(&("items".into(), "shared".into())));
+    assert!(result
+        .applied_keys
+        .contains(&("items".into(), "next".into())));
+    assert_eq!(result.failures[0].record_id, "shared");
+    assert_eq!(get_title(&conn, "shared").as_deref(), Some("kept"));
+    assert_eq!(get_title(&conn, "next").as_deref(), Some("next"));
+    let quarantined: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(quarantined, 1);
+}
+
+#[test]
+fn force_exact_results_are_validated_before_finalize() {
+    for invalid in [false, true] {
+        let conn = new_db();
+        conn.execute_batch(
+            "PRAGMA foreign_keys = OFF;
+             ALTER TABLE items ADD COLUMN parent_id TEXT REFERENCES items(id);",
+        )
+        .unwrap();
+        let ts = ts_ago(300);
+        let changes = vec![
+            mk_change(
+                "parent",
+                ChangeOperation::Insert,
+                json!({"id": "parent", "title": "parent", "updated_at": ts}),
+                &ts,
+            ),
+            mk_change(
+                "child",
+                ChangeOperation::Insert,
+                json!({
+                    "id": "child", "title": "child", "updated_at": ts,
+                    "parent_id": if invalid { "missing" } else { "parent" },
+                }),
+                &ts,
+            ),
+        ];
+        let mut finalized = false;
+        let result = SyncManager::apply_downloaded_changes_force_exact_with_hooks(
+            &conn,
+            &changes,
+            None,
+            |_| Ok(()),
+            |_, result| {
+                finalized = true;
+                assert_eq!(result.success_count, 2);
+                assert_eq!(result.failure_count, 0);
+                assert_eq!(result.applied_keys.len(), 2);
+                Ok(())
+            },
+        );
+
+        assert_eq!(result.is_err(), invalid);
+        assert_eq!(finalized, !invalid);
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, if invalid { 0 } else { 2 });
+    }
 }
 
 /// **W.70** 一个记录的 title 经过 7 次不同设备的修改（设备互相看不到对方）

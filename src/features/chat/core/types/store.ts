@@ -1232,6 +1232,10 @@ export interface ChatStore {
    */
   contextUsageOverride: { sessionId: string; tokensAfter: number } | null;
 
+  /** Transient backend compaction activity; never persisted with session data. */
+  compactionInProgress: boolean;
+  setCompactionInProgress(active: boolean): void;
+
   /** 设置/清除压缩后水位覆盖值（tokensAfter 传 null 表示清除） */
   setContextUsageOverride(
     override: { sessionId: string; tokensAfter: number } | null,

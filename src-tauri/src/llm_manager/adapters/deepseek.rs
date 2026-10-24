@@ -223,6 +223,51 @@ pub(crate) fn uses_deepseek_v41_image_tokens(config: &ApiConfig) -> bool {
         )
 }
 
+/// Chat Completions requires string system content, unlike Responses/Anthropic.
+/// Keep this wire normalization independent of audit logging, including on relays.
+pub(crate) fn normalize_deepseek_chat_request(body: &mut Value, config: &ApiConfig) {
+    if !(config.model_adapter.eq_ignore_ascii_case("deepseek")
+        || crate::llm_manager::is_official_deepseek_config(config))
+        || crate::llm_manager::effective_api_protocol_for_config(config)
+            != "openai_chat_completions"
+    {
+        return;
+    }
+    let Some(map) = body.as_object_mut() else {
+        return;
+    };
+    if let Some(limit) = map.remove("max_completion_tokens") {
+        map.entry("max_tokens".to_string()).or_insert(limit);
+    }
+    let Some(messages) = map.get_mut("messages").and_then(Value::as_array_mut) else {
+        return;
+    };
+    for message in messages {
+        if message.get("role").and_then(Value::as_str) != Some("system") {
+            continue;
+        }
+        let Some(parts) = message.get("content").and_then(Value::as_array) else {
+            continue;
+        };
+        let mut texts = Vec::with_capacity(parts.len());
+        for part in parts {
+            // Do not silently discard unsupported non-text parts.
+            let Some(text) = part.as_str().or_else(|| {
+                (part.get("type").and_then(Value::as_str) == Some("text"))
+                    .then(|| part.get("text").and_then(Value::as_str))
+                    .flatten()
+            }) else {
+                texts.clear();
+                break;
+            };
+            texts.push(text);
+        }
+        if texts.len() == parts.len() {
+            message["content"] = json!(texts.join("\n"));
+        }
+    }
+}
+
 /// Official V4/V4.1 sampling follows the resolved request mode, not `is_reasoning`.
 fn apply_official_sampling(body: &mut Map<String, Value>, thinking: bool) {
     body.remove("presence_penalty");
@@ -442,6 +487,75 @@ impl RequestAdapter for DeepSeekAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chat_wire_normalizes_system_parts_and_output_limit_on_deepseek_relays() {
+        let config = ApiConfig {
+            model: "tree-deepseek-v4.1-flash".into(),
+            model_adapter: "deepseek".into(),
+            provider_type: Some("custom".into()),
+            api_protocol: Some("openai_chat_completions".into()),
+            base_url: "https://relay.example/v1".into(),
+            ..Default::default()
+        };
+        let user = json!({"role": "user", "content": [
+            {"type": "text", "text": "Read this image"},
+            {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}}
+        ]});
+        let assistant = json!({"role": "assistant", "content": "", "reasoning_content": "keep reasoning",
+            "tool_calls": [{"id": "call-1", "type": "function", "function": {"name": "load_skills", "arguments": "{}"}}]});
+        let mut body = json!({"max_completion_tokens": 1024, "messages": [
+            {"role": "system", "content": [
+                {"type": "text", "text": "instructions", "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": "<available_skills>exact catalog</available_skills>"}
+            ]}, user, assistant
+        ]});
+        normalize_deepseek_chat_request(&mut body, &config);
+        assert_eq!(
+            body["messages"][0]["content"],
+            "instructions\n<available_skills>exact catalog</available_skills>"
+        );
+        assert_eq!(body["messages"][1], user);
+        assert_eq!(body["messages"][2], assistant);
+        assert_eq!(body["max_tokens"], 1024);
+        assert!(body.get("max_completion_tokens").is_none());
+        let once = body.clone();
+        normalize_deepseek_chat_request(&mut body, &config);
+        assert_eq!(body, once);
+    }
+
+    #[test]
+    fn chat_wire_preserves_explicit_limit_and_other_protocols() {
+        let body = json!({"max_tokens": 128, "max_completion_tokens": 1024, "messages": [
+            {"role": "system", "content": [{"type": "text", "text": "instructions", "cache_control": {"type": "ephemeral"}}]}
+        ]});
+        let mut config = ApiConfig {
+            model: "deepseek-flash".into(),
+            model_adapter: "deepseek".into(),
+            provider_type: Some("deepseek".into()),
+            api_protocol: Some("openai_chat_completions".into()),
+            base_url: "https://api.deepseek.com/v1".into(),
+            ..Default::default()
+        };
+        let mut normalized = body.clone();
+        normalize_deepseek_chat_request(&mut normalized, &config);
+        assert_eq!(normalized["max_tokens"], 128);
+        assert_eq!(normalized["messages"][0]["content"], "instructions");
+
+        for protocol in ["openai_responses", "anthropic_messages"] {
+            config.api_protocol = Some(protocol.into());
+            let mut other_protocol = body.clone();
+            normalize_deepseek_chat_request(&mut other_protocol, &config);
+            assert_eq!(other_protocol, body, "{protocol}");
+        }
+        config.model_adapter = "general".into();
+        config.model = "gpt-5.4".into();
+        config.base_url = "https://api.openai.com/v1".into();
+        config.api_protocol = Some("openai_chat_completions".into());
+        let mut other_model = body.clone();
+        normalize_deepseek_chat_request(&mut other_model, &config);
+        assert_eq!(other_model, body);
+    }
 
     #[test]
     fn test_thinking_type_format_deepseek_official() {

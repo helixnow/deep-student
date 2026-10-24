@@ -76,6 +76,12 @@ const listeners = new Set<() => void>();
  * 同一个播放地址在后端始终对应同一个 CDN 文件；身份变了能拿到的清晰度跟着变，换新地址重新取。
  */
 let accountEpoch = 0;
+let playbackAttempt = 0;
+
+export function nextBilibiliPlaybackAttempt(): number {
+  playbackAttempt = playbackAttempt >= 0xffff_fffe ? 1 : playbackAttempt + 1;
+  return playbackAttempt;
+}
 
 function sameIdentity(a: BilibiliAccount, b: BilibiliAccount): boolean {
   return a.loggedIn === b.loggedIn && a.mid === b.mid;
@@ -133,6 +139,7 @@ export function resetBilibiliAccountForTests(): void {
   current = null;
   inflight = null;
   accountEpoch = 0;
+  playbackAttempt = 0;
 }
 
 // ---------------------------------------------------------------- 播放
@@ -141,11 +148,12 @@ export function resetBilibiliAccountForTests(): void {
  * 链接条目的应用内播放地址：bilistream 协议由后端取 B 站 MP4 地址并转发 Range 请求。
  * `qn` 是请求的清晰度（B 站降到不高于它的可用档位），`epoch` 是账号代次；地址变了播放器重载。
  */
-export function buildBilibiliStreamUrl(fileId: string, qn?: number | null, epoch = 0): string {
+export function buildBilibiliStreamUrl(fileId: string, qn?: number | null, epoch = 0, attempt = 0): string {
   const base = convertFileSrc(fileId, 'bilistream');
   const params: string[] = [];
   if (typeof qn === 'number' && Number.isFinite(qn)) params.push(`qn=${qn}`);
   if (epoch > 0) params.push(`e=${epoch}`);
+  if (attempt > 0) params.push(`a=${attempt}`);
   return params.length ? `${base}?${params.join('&')}` : base;
 }
 
@@ -164,6 +172,8 @@ export interface BilibiliStreamQuality {
   current: number;
   /** 可选清晰度（高 → 低；只含单文件 MP4 能播的档位，随登录 / 大会员变化） */
   options: BilibiliQualityOption[];
+  /** Linux WebKit requires a loopback HTTP source instead of a custom scheme. */
+  streamUrl?: string;
 }
 
 /** 不记偏好时请求的清晰度（1080P，拿不到时 B 站自动降到可用的最高档） */
@@ -180,12 +190,12 @@ function normalizeQuality(raw: unknown): BilibiliStreamQuality {
         .map((o) => ({ qn: o.qn as number, label: typeof o.label === 'string' && o.label.trim() ? o.label.trim() : String(o.qn) }))
     : [];
   const requested = num(r.requested, BILIBILI_DEFAULT_QN);
-  return { requested, current: num(r.current, requested), options };
+  return { requested, current: num(r.current, requested), options, ...(typeof r.streamUrl === 'string' ? { streamUrl: r.streamUrl } : {}) };
 }
 
 export const bilibiliStreamApi = {
-  async quality(fileId: string, qn: number, epoch = 0): Promise<BilibiliStreamQuality> {
-    return normalizeQuality(await invoke('media_bilibili_stream_quality', { fileId, qn, epoch }));
+  async quality(fileId: string, qn: number, epoch = 0, attempt = 0): Promise<BilibiliStreamQuality> {
+    return normalizeQuality(await invoke('media_bilibili_stream_quality', { fileId, qn, epoch, ...(attempt > 0 ? { attempt } : {}) }));
   },
 };
 

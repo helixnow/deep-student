@@ -16,7 +16,9 @@
 pub mod asr;
 pub mod bilibili;
 pub mod bilibili_auth;
+pub mod bilibili_lifecycle;
 pub mod bilibili_stream;
+pub mod bilibili_transport;
 pub mod commands;
 pub mod decoder;
 pub mod ledger;
@@ -64,6 +66,8 @@ pub enum MediaError {
     /// B 站接口：链接无效 / 不支持 / 视频不可用 / 无字幕 / 请求失败（code 以 `bilibili-` 开头）
     #[error("{message}")]
     Bilibili { code: String, message: String },
+    #[error("{0}")]
+    Transport(Box<bilibili_transport::BiliError>),
 }
 
 impl MediaError {
@@ -80,11 +84,15 @@ impl MediaError {
             MediaError::AsrFatal { code, .. } => code.as_str(),
             MediaError::LinkOnly(_) => "media-link-only",
             MediaError::Bilibili { code, .. } => code.as_str(),
+            MediaError::Transport(error) => &error.code,
         }
     }
 
     /// 序列化为 `{"code":..,"message":..}`（与 voice_input 错误格式一致）
     pub fn to_payload_string(&self) -> String {
+        if let Self::Transport(error) = self {
+            return serde_json::to_string(error).unwrap_or_default();
+        }
         serde_json::json!({ "code": self.code(), "message": self.to_string() }).to_string()
     }
 }

@@ -1437,14 +1437,21 @@
     "compactDisabledStreaming": "Unavailable while generating"
   },
   "compaction": {
+    "startedTitle": "Compacting context",
+    "started": "Summarizing earlier conversation. Original messages will be kept.",
+    "completedTitle": "Context compaction complete",
+    "completed": "The context summary is ready. Original messages were kept.",
+    "completedWithUsage": "Summary ready. Estimated context changed from {{before}} to {{after}} tokens.",
     "manualSkipped": "Compaction skipped: {{reason}}",
     "manualFailed": "Context compaction failed: {{reason}}. Please try again.",
     "autoFailedTitle": "Auto-compaction failed",
-    "autoFailed": "Automatic context compaction failed; older history may be truncated ({{reason}})",
+    "autoFailed": "Automatic compaction failed; history was preserved ({{reason}}). Sending will stop if the context still exceeds its limit",
     "contextTrimmedTitle": "Context window full",
     "contextTrimmed": "Context is full — the earliest {{count}} messages were not included in this turn",
     "reason": {
       "sessionTooShort": "The session is too short to compact",
+      "noCompactibleRange": "No older conversation is available to summarize; recent messages were preserved",
+      "noModel": "No context summary model is configured",
       "usableTooSmall": "Not enough compactable content",
       "lockBusy": "Another compaction is already running, try again later",
       "streaming": "The session is still generating, try again later",
@@ -1453,6 +1460,7 @@
       "staleLineage": "The session context changed, please retry",
       "cooldown": "Compaction is cooling down, try again later",
       "invalidResponse": "Unexpected backend response",
+      "internalError": "An internal error interrupted compaction",
       "unknown": "Unknown reason"
     }
   },

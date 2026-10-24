@@ -435,11 +435,17 @@
     "batchFailed": "{{pages}} failed ({{message}})",
     "batchStopped_one": "{{count}} part was not imported",
     "batchStopped_other": "{{count}} parts were not imported",
+    "transport": {
+      "title": "Bilibili route", "diagnostics": "Request diagnostics", "mode": "Route mode", "auto": "Automatic", "native": "App native", "browser_bridge": "Browser bridge", "proxy": "Trusted proxy",
+      "browserAccount": "Browser account", "anonymous": "Signed out", "fullCapability": "Parsing and media ready", "parsingOnly": "Parsing only",
+      "connect": "Connect browser", "disconnect": "Disconnect", "approve": "Approve this browser", "installScript": "Install script", "pairPage": "Open pairing page", "proxyAddress": "Trusted proxy address", "save": "Save", "proxyInAuto": "Allow this proxy in automatic mode",
+      "state": { "unavailable": "Not connected", "pairing": "Waiting for browser", "awaiting_approval": "Waiting for app approval", "probing": "Checking capabilities", "ready": "Ready", "offline": "Disconnected", "incompatible": "Incompatible script version" }
+    },
     "account": {
       "hint": "Sign in to Bilibili for more subtitles and higher quality (optional)",
       "expired": "Your Bilibili sign-in expired. Scan again to sign in",
       "login": "Sign in with QR",
-      "loggedIn": "Signed in to Bilibili: {{name}}",
+      "loggedIn": "App account: {{name}}",
       "vip": "Premium",
       "offline": "(not verified offline)",
       "logout": "Sign out",
@@ -454,6 +460,10 @@
     "playback": {
       "fallback": "This video can't play in the app directly, so the Bilibili player is used instead.",
       "retry": "Try in-app playback again",
+      "loadTimeout": "Video loading timed out. Retry in-app playback or open on Bilibili.",
+      "loadFailed": "Video loading failed. Retry in-app playback or open on Bilibili.",
+      "embedTimeout": "The Bilibili player page timed out. Reload it or open on Bilibili.",
+      "reloadEmbed": "Reload Bilibili player",
       "useEmbed": "Use the Bilibili player",
       "quality": "Quality",
       "qualityDowngraded": "Bilibili didn't provide the selected quality; playing {{quality}}.",

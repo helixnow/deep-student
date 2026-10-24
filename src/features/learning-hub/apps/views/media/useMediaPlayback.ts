@@ -13,12 +13,15 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 
 /** 可选倍速档位 */
 export const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3] as const;
 
 const VOLUME_STORAGE_KEY = 'dstu-media-player-volume';
 const RATE_STORAGE_KEY = 'dstu-media-player-rate';
+export const MEDIA_LOAD_TIMEOUT_MS = 30_000;
 
 /** 播放进度写入 React state 的最小间隔（约 10Hz，避免 60fps 全量重渲染） */
 export const PROGRESS_COMMIT_INTERVAL_MS = 100;
@@ -81,7 +84,7 @@ export interface UseMediaPlaybackOptions {
   /** 所属标签页是否活跃；变为 false 时自动暂停 */
   isActive?: boolean;
   /** 媒体加载/解码失败回调 */
-  onError?: () => void;
+  onError?: (reason?: 'timeout' | 'media') => void;
 }
 
 export function useMediaPlayback<T extends HTMLMediaElement>({
@@ -105,6 +108,12 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
   const [isReady, setIsReady] = useState(false);
 
   const onErrorRef = useRef(onError);
+  const activeRef = useRef(isActive);
+  const visibilityChangedAt = useRef(0);
+  activeRef.current = isActive;
+  useEventRegistry([
+    { target: 'document', type: 'visibilitychange', listener: () => { visibilityChangedAt.current = Date.now(); } },
+  ], []);
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
@@ -130,11 +139,59 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     setBufferedEnd(0);
     setIsBuffering(false);
 
+    let lastProgress = Date.now();
+    let failed = false;
+    const fail = (reason: 'timeout' | 'media') => {
+      if (failed) return;
+      failed = true;
+      setIsBuffering(false);
+      if (/^(?:bilistream:|https?:\/\/bilistream\.localhost\/|http:\/\/127\.0\.0\.1:\d+\/deepstudent-bili-stream\/v1\/)/.test(src)) {
+        const details = {
+          reason,
+          mediaErrorCode: el.error?.code ?? null,
+          readyState: el.readyState,
+          networkState: el.networkState,
+          currentTime: Number.isFinite(el.currentTime) ? el.currentTime : null,
+          paused: el.paused,
+          visibility: document.visibilityState,
+        };
+        // Do not log currentSrc or the decoder's message: either can contain signed URLs.
+        console.error('[bilibili_player]', JSON.stringify(details));
+        void invoke('report_frontend_log', {
+          payload: { level: 'ERROR', kind: 'BILIBILI_PLAYBACK', component: 'useMediaPlayback', message: 'Bilibili playback failed', extra: details },
+        }).catch(() => undefined);
+      }
+      onErrorRef.current?.(reason);
+    };
+    const noteProgress = () => {
+      lastProgress = Date.now();
+    };
+    let previousTime = el.currentTime;
+    let previousBuffered = 0;
+    let waiting = false;
+    const watchdog = window.setInterval(() => {
+      lastProgress = Math.max(lastProgress, visibilityChangedAt.current);
+      if (!activeRef.current || document.visibilityState === 'hidden') {
+        noteProgress();
+        return;
+      }
+      if (failed) return;
+      if (el.currentTime !== previousTime) noteProgress();
+      previousTime = el.currentTime;
+      const stalled = !el.ended && (waiting || (!el.paused && el.readyState < 3));
+      if ((el.readyState === 0 || stalled) && Date.now() - lastProgress >= MEDIA_LOAD_TIMEOUT_MS) {
+        fail('timeout');
+      }
+    }, 1_000);
+
     const updateBuffered = () => {
       try {
         const ranges = el.buffered;
         if (ranges.length > 0) {
-          setBufferedEnd(ranges.end(ranges.length - 1));
+          const end = ranges.end(ranges.length - 1);
+          if (end > previousBuffered) noteProgress();
+          previousBuffered = end;
+          setBufferedEnd(end);
         }
       } catch {
         // 部分状态下 buffered ranges 不可读
@@ -142,6 +199,7 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     };
 
     const handleLoadedMetadata = () => {
+      noteProgress();
       setDuration(isFinite(el.duration) ? el.duration : 0);
       setIsReady(true);
       updateBuffered();
@@ -153,20 +211,27 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
       setCurrentTime(el.currentTime);
       updateBuffered();
     };
-    const handlePlay = () => setIsPlaying(true);
-    const handlePause = () => setIsPlaying(false);
+    const handlePlay = () => { noteProgress(); setIsPlaying(true); };
+    const handlePause = () => { waiting = false; setIsPlaying(false); setIsBuffering(false); };
     const handleEnded = () => setIsPlaying(false);
-    const handleWaiting = () => setIsBuffering(true);
-    const handlePlaying = () => setIsBuffering(false);
-    const handleCanPlay = () => setIsBuffering(false);
+    const handleWaiting = () => {
+      if (!waiting) noteProgress();
+      waiting = true;
+      setIsBuffering(true);
+    };
+    const handlePlaying = () => {
+      noteProgress();
+      waiting = false;
+      setIsBuffering(false);
+    };
+    const handleCanPlay = () => { waiting = false; setIsBuffering(false); };
     const handleProgress = () => updateBuffered();
     const handleVolumeChange = () => {
       setVolumeState(el.volume);
       setMutedState(el.muted);
     };
     const handleError = () => {
-      setIsBuffering(false);
-      onErrorRef.current?.();
+      fail('media');
     };
 
     el.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -183,6 +248,7 @@ export function useMediaPlayback<T extends HTMLMediaElement>({
     el.addEventListener('error', handleError);
 
     return () => {
+      window.clearInterval(watchdog);
       el.removeEventListener('loadedmetadata', handleLoadedMetadata);
       el.removeEventListener('durationchange', handleDurationChange);
       el.removeEventListener('timeupdate', handleTimeUpdate);

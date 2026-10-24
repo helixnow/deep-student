@@ -405,26 +405,39 @@ impl MediaTranscriptRepo {
         let spans: Vec<PlannedSpan> = segments.iter().map(|(span, _)| *span).collect();
         validate_spans(&spans)?;
         let texts: Vec<String> = segments.iter().map(|(_, text)| text.clone()).collect();
-        let tx = conn.unchecked_transaction()?;
-        let version = Self::plan_info_with_conn(&tx, resource_id)?
-            .map(|(v, _)| v + 1)
-            .unwrap_or(1);
-        tx.execute(
-            "DELETE FROM media_transcript_segments WHERE resource_id = ?1",
-            params![resource_id],
-        )?;
-        Self::insert_spans(
-            &tx,
-            resource_id,
-            &spans,
-            Some(&texts),
-            SEGMENT_STATUS_DONE,
-            SEGMENT_SOURCE_IMPORT,
-            version,
-            now_ms(),
-        )?;
-        tx.commit()?;
-        Ok(version)
+        conn.execute_batch("SAVEPOINT import_media_segments")?;
+        let result = (|| -> VfsResult<i64> {
+            let version = Self::plan_info_with_conn(conn, resource_id)?
+                .map(|(v, _)| v + 1)
+                .unwrap_or(1);
+            conn.execute(
+                "DELETE FROM media_transcript_segments WHERE resource_id = ?1",
+                params![resource_id],
+            )?;
+            Self::insert_spans(
+                conn,
+                resource_id,
+                &spans,
+                Some(&texts),
+                SEGMENT_STATUS_DONE,
+                SEGMENT_SOURCE_IMPORT,
+                version,
+                now_ms(),
+            )?;
+            Ok(version)
+        })();
+        match result {
+            Ok(version) => {
+                conn.execute_batch("RELEASE import_media_segments")?;
+                Ok(version)
+            }
+            Err(error) => {
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO import_media_segments; RELEASE import_media_segments",
+                );
+                Err(error)
+            }
+        }
     }
 
     pub fn delete_segments_with_conn(conn: &Connection, resource_id: &str) -> VfsResult<usize> {

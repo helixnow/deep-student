@@ -348,7 +348,9 @@ jobs:
           echo "✅ FileProvider present"
 
       - name: Copy custom Android icons
+        # The bridge service and permissions are managed identically in local and CI builds.
         run: |
+          node scripts/ci/prepare-bilibili-android.mjs
           ICONS_SRC="src-tauri/icons/android"
           RES_DST="src-tauri/gen/android/app/src/main/res"
           if [ -d "$ICONS_SRC" ]; then

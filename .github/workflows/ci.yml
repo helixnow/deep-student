@@ -205,6 +205,8 @@ jobs:
     timeout-minutes: 90
     env:
       RUSTFLAGS: -C link-arg=-fuse-ld=lld
+      # Hundreds of test binaries otherwise retain duplicated symbol tables.
+      CARGO_PROFILE_TEST_STRIP: symbols
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: ./.github/actions/setup-linux-rust
@@ -232,7 +234,7 @@ jobs:
     needs: [rust-test-build]
     runs-on: ubuntu-22.04
     # Slow dependency/artifact downloads must not consume the test execution budget.
-    timeout-minutes: 45
+    timeout-minutes: 50
     strategy:
       fail-fast: false
       matrix:
@@ -248,6 +250,8 @@ jobs:
         with:
           tool: cargo-nextest@0.9.145
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        # The shared archive is about 2 GiB; allow for slow artifact storage.
+        timeout-minutes: 20
         with:
           name: nextest-archive
           path: ${{ runner.temp }}
@@ -282,6 +286,8 @@ jobs:
         with:
           tool: cargo-nextest@0.9.145
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        # Keep the same download allowance as the Rust test partitions.
+        timeout-minutes: 20
         with:
           name: nextest-archive
           path: ${{ runner.temp }}

@@ -36,7 +36,7 @@ pub(crate) use images::{
 };
 pub(crate) use retrieval_images::{
     canonical_image_blob_hashes, count_request_images, insert_retrieval_page_image_message,
-    RetrievalPageImageBudget, RETRIEVAL_PAGE_IMAGES_TAG,
+    RetrievalPageImageBudget,
 };
 
 use images::{
