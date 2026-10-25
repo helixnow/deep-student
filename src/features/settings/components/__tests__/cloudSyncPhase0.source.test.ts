@@ -187,6 +187,26 @@ describe("cloud sync Phase 0 frontend guarantees", () => {
     expect(dashboard).not.toContain("window.confirm(warnMsg)");
   });
 
+  it("displays exact gap diagnostics and never bypasses a proven sequence gap", () => {
+    for (const source of [syncSettingsSection, dashboard]) {
+      expect(source).toContain("if (gap.has_gap)");
+      expect(source).toContain("gap.gap_details ?? t('data:governance.sync_prune_gap_warning'");
+      expect(source).not.toContain("gap.has_gap && !gap.uses_device_cursors");
+    }
+    for (const locale of ["zh-CN", "en-US"]) {
+      const data = JSON.parse(readFileSync(resolve(process.cwd(), `src/locales/${locale}/data.json`), "utf-8"));
+      expect(data.governance.sync_prune_gap_warning).toContain("{{since}}");
+      expect(data.governance.sync_prune_gap_warning).toContain("{{minAvail}}");
+    }
+  });
+
+  it("keeps server error details in both manual sync result paths", () => {
+    expect(syncSettingsSection).toContain("const message = result.error_message ??");
+    expect(dashboard).toContain("const errorMessage = result.error_message ??");
+    expect(syncSettingsSection).toContain("${message}");
+    expect(dashboard).toContain("showGlobalNotification('error', errorMessage)");
+  });
+
   it("creates a full cloud snapshot and requires immediate restart after restore", () => {
     expect(cloudStorageSection).toContain("['core', 'important', 'rebuildable', 'large_assets']");
     expect(cloudStorageSection).toContain('Number.MAX_SAFE_INTEGER');

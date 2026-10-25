@@ -141,6 +141,9 @@ where
             Ok(v) => return Ok(v),
             Err(e) => {
                 last_err = e;
+                if crate::cloud_storage::is_cloud_rate_limited(&last_err.to_string()) {
+                    return Err(last_err);
+                }
                 if attempt + 1 < max_retries {
                     let delay = base_ms * (1u64 << attempt);
                     tracing::warn!(
@@ -366,6 +369,32 @@ impl SyncResult {
     }
 }
 
+/// A real schema conflict, independent of database iteration order.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SchemaVersionMismatch {
+    pub database_name: String,
+    pub local: u32,
+    pub cloud: u32,
+}
+
+fn format_schema_mismatches(mismatches: &[SchemaVersionMismatch]) -> String {
+    mismatches
+        .iter()
+        .map(|mismatch| {
+            let action = if mismatch.local < mismatch.cloud {
+                "本端数据库版本过旧，请升级当前客户端后再同步；已阻止上传以避免降级云端数据"
+            } else {
+                "云端数据库版本过旧，请升级其他设备并完成同步后重试"
+            };
+            format!(
+                "{} (local={}, cloud={})：{}",
+                mismatch.database_name, mismatch.local, mismatch.cloud, action
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("；")
+}
+
 /// 同步错误
 #[derive(Debug, thiserror::Error)]
 pub enum SyncError {
@@ -381,8 +410,10 @@ pub enum SyncError {
     #[error("Conflict detected: {count} records")]
     Conflict { count: usize },
 
-    #[error("Schema mismatch: local={local}, cloud={cloud}")]
-    SchemaMismatch { local: u32, cloud: u32 },
+    #[error("Schema mismatch: {}", format_schema_mismatches(.mismatches))]
+    SchemaMismatch {
+        mismatches: Vec<SchemaVersionMismatch>,
+    },
 
     #[error("Partial sync: {completed}/{total} databases")]
     PartialSync { completed: usize, total: usize },
@@ -668,6 +699,34 @@ enum ParsedChangeKey {
         device_id: String,
         version: u64,
     },
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChangeLogGap {
+    pub device_id: String,
+    pub expected_seq: u64,
+    pub next_available_seq: Option<u64>,
+    pub published_max_seq: u64,
+}
+
+impl ChangeLogGap {
+    pub fn diagnostic(&self) -> String {
+        format!(
+            "设备 {} 缺少序号 {}（下一可用序号 {}，已发布到 {}）；已停止同步，请从数据完整的备份恢复。不会跳过缺失分片或清空本地消息。",
+            self.device_id,
+            self.expected_seq,
+            self.next_available_seq.map_or_else(|| "无".to_string(), |seq| seq.to_string()),
+            self.published_max_seq
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ChangeLogAvailability {
+    pub remote_format_version: u32,
+    pub instance_id: Option<String>,
+    pub min_available_version: Option<u64>,
+    pub gaps: Vec<ChangeLogGap>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1042,10 +1101,15 @@ impl SyncManager {
     ) -> Result<ConflictDetectionResult, SyncError> {
         let mut result = ConflictDetectionResult::empty();
 
-        // 收集所有数据库名称
-        let mut all_databases: std::collections::HashSet<&String> =
-            local_manifest.databases.keys().collect();
-        all_databases.extend(cloud_manifest.databases.keys());
+        // HashSet 的遍历顺序不稳定；排序后既让 UI 稳定，也让错误详情可复现。
+        let mut all_databases: Vec<&String> = local_manifest
+            .databases
+            .keys()
+            .chain(cloud_manifest.databases.keys())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        all_databases.sort();
 
         for db_name in all_databases {
             let local_state = local_manifest.databases.get(db_name);
@@ -1113,6 +1177,29 @@ impl SyncManager {
             !result.database_conflicts.is_empty() || !result.record_conflicts.is_empty();
 
         Ok(result)
+    }
+
+    fn schema_mismatch_error(detection: &ConflictDetectionResult) -> Option<SyncError> {
+        let mut mismatches = detection
+            .database_conflicts
+            .iter()
+            .filter(|conflict| conflict.conflict_type == DatabaseConflictType::SchemaMismatch)
+            .filter_map(|conflict| {
+                let local = conflict.local_state.as_ref()?.schema_version;
+                let cloud = conflict.cloud_state.as_ref()?.schema_version;
+                (local != cloud).then(|| SchemaVersionMismatch {
+                    database_name: conflict.database_name.clone(),
+                    local,
+                    cloud,
+                })
+            })
+            .collect::<Vec<_>>();
+        if mismatches.is_empty() {
+            None
+        } else {
+            mismatches.sort_by(|left, right| left.database_name.cmp(&right.database_name));
+            Some(SyncError::SchemaMismatch { mismatches })
+        }
     }
 
     /// 检测记录级冲突
@@ -1192,11 +1279,8 @@ impl SyncManager {
         detection_result: &ConflictDetectionResult,
     ) -> Result<SyncResult, SyncError> {
         // 如果需要迁移，先处理 Schema 不匹配
-        if detection_result.needs_migration {
-            return Err(SyncError::SchemaMismatch {
-                local: 0, // 具体版本在实际使用时填充
-                cloud: 0,
-            });
+        if let Some(error) = Self::schema_mismatch_error(detection_result) {
+            return Err(error);
         }
 
         // 如果是手动模式且有冲突，返回需要手动处理
@@ -1399,6 +1483,148 @@ impl SyncManager {
             }
         }
         aliases
+    }
+
+    fn change_sequence_inventory(
+        &self,
+        keys: &[String],
+        manifests: &HashMap<String, SyncManifest>,
+    ) -> HashMap<String, Vec<u64>> {
+        let path_ids = keys
+            .iter()
+            .filter_map(|key| match Self::parse_change_key(key) {
+                Some(ParsedChangeKey::V3 { device_id, .. })
+                | Some(ParsedChangeKey::V4Shard { device_id, .. }) => Some(device_id),
+                _ => None,
+            })
+            .collect();
+        let aliases = Self::path_device_aliases(&path_ids);
+        let mut sequences: HashMap<String, Vec<u64>> = HashMap::new();
+        for key in keys {
+            let (device_id, seq) = match Self::parse_change_key(key) {
+                Some(ParsedChangeKey::V3 { device_id, seq, .. })
+                | Some(ParsedChangeKey::V4Shard { device_id, seq, .. }) => (device_id, seq),
+                _ => continue,
+            };
+            if Self::path_id_matches_device(&device_id, &self.device_id) {
+                continue;
+            }
+            let canonical =
+                Self::resolve_path_device_id(&device_id, &self.device_id, manifests, &aliases);
+            sequences.entry(canonical).or_default().push(seq);
+        }
+        sequences
+    }
+
+    fn sequence_gaps(
+        &self,
+        mut sequences: HashMap<String, Vec<u64>>,
+        manifests: &HashMap<String, SyncManifest>,
+        cursors: &HashMap<String, u64>,
+    ) -> Vec<ChangeLogGap> {
+        // A manifest can prove a missing tail, even when no files from its device remain.
+        for (device, manifest) in manifests {
+            if manifest.published_max_seq > 0
+                && !Self::path_id_matches_device(device, &self.device_id)
+            {
+                sequences.entry(device.clone()).or_default();
+            }
+        }
+        let mut gaps = Vec::new();
+        for (device, mut seqs) in sequences {
+            seqs.sort_unstable();
+            seqs.dedup();
+            let cursor = cursors.get(&device).copied().unwrap_or(0).max(
+                cursors
+                    .get(&Self::device_path_id(&device))
+                    .copied()
+                    .unwrap_or(0),
+            );
+            let published = manifests
+                .get(&device)
+                .map(|m| m.published_max_seq)
+                .unwrap_or(0)
+                .max(seqs.last().copied().unwrap_or(0));
+            let mut expected = cursor.saturating_add(1);
+            let mut next_available = None;
+            for seq in seqs.into_iter().filter(|seq| *seq > cursor) {
+                if seq > expected {
+                    next_available = Some(seq);
+                    break;
+                }
+                expected = seq.saturating_add(1);
+            }
+            if expected <= published && cursor < published {
+                gaps.push(ChangeLogGap {
+                    device_id: device,
+                    expected_seq: expected,
+                    next_available_seq: next_available,
+                    published_max_seq: published,
+                });
+            }
+        }
+        gaps.sort_by(|left, right| left.device_id.cmp(&right.device_id));
+        gaps
+    }
+
+    /// Read-only preflight. Database publication timestamps cannot prove missing history.
+    /// Cursors are already keyed by remote instance, so a rebuilt cloud starts at zero
+    /// without deleting the previous instance's state or touching local business rows.
+    pub async fn detect_change_log_gaps(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<ChangeLogAvailability, SyncError> {
+        let format = self.validate_remote_format(storage, false).await?;
+        let instance_id = match storage
+            .get(Self::INSTANCE_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取远端实例标识失败: {e}")))?
+        {
+            Some(bytes) => {
+                let value: serde_json::Value = serde_json::from_slice(&bytes)
+                    .map_err(|e| SyncError::Database(format!("远端实例标识损坏: {e}")))?;
+                Some(
+                    value
+                        .get("instance_id")
+                        .and_then(|id| id.as_str())
+                        .map(str::trim)
+                        .filter(|id| !id.is_empty())
+                        .ok_or_else(|| SyncError::Database("远端实例标识缺少 instance_id".into()))?
+                        .to_string(),
+                )
+            }
+            None => None,
+        };
+        let cursors = if let Some(id) = instance_id.as_deref() {
+            let store = SyncStateStore::open_default()?;
+            store.bind_instance(
+                id,
+                storage.provider_name(),
+                &storage.instance_binding_hint(),
+            )?;
+            store.cursors(id)?
+        } else {
+            HashMap::new()
+        };
+        let keys = Self::list_all_change_keys(storage).await?;
+        let manifests = self.download_device_manifests(storage).await?;
+        let sequences = self.change_sequence_inventory(&keys, &manifests);
+        let gaps = self.sequence_gaps(sequences, &manifests, &cursors);
+        let min_available_version = keys
+            .iter()
+            .filter_map(|key| Self::parse_version_from_key(key))
+            .map(Self::normalize_version_to_seconds)
+            .min();
+        tracing::info!(
+            "[sync] 序号断层检测: instance={:?}, format={}, cursors={:?}, min_available={:?}, gaps={:?}",
+            instance_id, format.format_version, cursors, min_available_version, gaps
+        );
+        Ok(ChangeLogAvailability {
+            remote_format_version: format.format_version,
+            instance_id,
+            min_available_version,
+            gaps,
+        })
     }
 
     fn v4_features() -> Vec<String> {
@@ -1670,14 +1896,58 @@ impl SyncManager {
         }
     }
 
+    /// 写入本设备清单前，拒绝把较旧 schema 发布到已有更高 schema 的云端。
+    /// 清单按设备隔离，但下载端会合并所有设备；因此仅保护单个对象的
+    /// last-write 并不能阻止旧客户端继续污染云端同步状态。
+    pub async fn validate_upload_schema_compatibility(
+        &self,
+        storage: &dyn CloudStorage,
+        local_manifest: &SyncManifest,
+    ) -> Result<(), SyncError> {
+        let manifests = self.read_device_manifests(storage, true).await?;
+        let mut mismatches = Vec::new();
+        for manifest in manifests
+            .values()
+            .filter(|manifest| manifest.superseded_by.is_none())
+        {
+            for (db_name, cloud_state) in &manifest.databases {
+                let local = local_manifest
+                    .databases
+                    .get(db_name)
+                    .map(|state| state.schema_version)
+                    .unwrap_or(0);
+                if cloud_state.schema_version > local {
+                    mismatches.push(SchemaVersionMismatch {
+                        database_name: db_name.clone(),
+                        local,
+                        cloud: cloud_state.schema_version,
+                    });
+                }
+            }
+        }
+        mismatches.sort_by(|left, right| {
+            left.database_name
+                .cmp(&right.database_name)
+                .then(left.cloud.cmp(&right.cloud))
+        });
+        mismatches.dedup();
+        if mismatches.is_empty() {
+            Ok(())
+        } else {
+            Err(SyncError::SchemaMismatch { mismatches })
+        }
+    }
+
     /// 上传本地清单到云端（按设备隔离，自带网络重试）
     pub async fn upload_manifest(
         &self,
         storage: &dyn CloudStorage,
         manifest: &SyncManifest,
     ) -> Result<(), SyncError> {
-        let instance_id = self.ensure_remote_instance_id(storage).await?;
         let mut manifest = manifest.clone();
+        self.validate_upload_schema_compatibility(storage, &manifest)
+            .await?;
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
         // Manifest 字段是 additive 的；兼容期仍写 v3 change root，但用该字段
         // 发布本设备 reader 能力，供租约到期后的“全设备已升级”判定。
         manifest.format_version = Self::CURRENT_FORMAT_VERSION;
@@ -1835,7 +2105,7 @@ impl SyncManager {
     ///
     /// 策略：
     /// 1. 列出 `data_governance/manifests/` 下所有设备清单
-    /// 2. 排除本设备，合并其他设备的数据库状态（取各库最高 data_version）
+    /// 2. 排除本设备，优先保留最高 schema，再比较各库 data_version
     /// 3. 向后兼容：若新目录为空，回退读取旧的单文件清单
     pub async fn download_manifest(
         &self,
@@ -1900,7 +2170,9 @@ impl SyncManager {
                         continue;
                     }
                 };
-                if Self::path_id_matches_device(&manifest.device_id, &self.device_id) {
+                if manifest.superseded_by.is_some()
+                    || Self::path_id_matches_device(&manifest.device_id, &self.device_id)
+                {
                     continue;
                 }
                 any_found = true;
@@ -1910,14 +2182,20 @@ impl SyncManager {
                         latest_created_at_raw = manifest.created_at.clone();
                     }
                 }
-                // 合并：对每个数据库取最高 data_version 的状态
+                // 合并时 schema 版本优先于 data_version。旧客户端可能写出较新的
+                // data_version，但其 schema 仍然较旧；若只按 data_version 选择，
+                // 下载端会得到“云端 schema 被静默降级”的假状态。
                 for (db_name, state) in &manifest.databases {
                     let entry = merged_databases
                         .entry(db_name.clone())
                         .or_insert_with(|| state.clone());
-                    if state.data_version > entry.data_version {
+                    if state.schema_version > entry.schema_version
+                        || (state.schema_version == entry.schema_version
+                            && state.data_version > entry.data_version)
+                    {
                         *entry = state.clone();
-                    } else if state.data_version == entry.data_version
+                    } else if state.schema_version == entry.schema_version
+                        && state.data_version == entry.data_version
                         && !entry.checksum.is_empty()
                         && !state.checksum.is_empty()
                         && state.checksum != entry.checksum
@@ -2011,6 +2289,14 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<HashMap<String, SyncManifest>, SyncError> {
+        self.read_device_manifests(storage, false).await
+    }
+
+    async fn read_device_manifests(
+        &self,
+        storage: &dyn CloudStorage,
+        preserve_aliases: bool,
+    ) -> Result<HashMap<String, SyncManifest>, SyncError> {
         let list = storage
             .list_outcome(Self::MANIFESTS_PREFIX)
             .await
@@ -2035,6 +2321,12 @@ impl SyncManager {
                 .await
                 .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?
             else {
+                if preserve_aliases {
+                    return Err(SyncError::Network(format!(
+                        "已列举的设备清单消失，无法确认 schema 兼容性: {}",
+                        file.key
+                    )));
+                }
                 continue;
             };
             // [P2 fail-close] 解密失败必须硬错误：此函数支撑 prune 安全边界
@@ -2048,6 +2340,10 @@ impl SyncManager {
             })?;
             match serde_json::from_slice::<SyncManifest>(&decoded) {
                 Ok(manifest) => {
+                    if preserve_aliases {
+                        manifests.insert(file.key, manifest);
+                        continue;
+                    }
                     let canonical = if manifest.device_id.trim().is_empty() {
                         device_id.to_string()
                     } else {
@@ -2089,7 +2385,12 @@ impl SyncManager {
                 SyncError::Database(format!("legacy 清单损坏，无法证明全部客户端已升级: {}", e))
             })?;
             if !legacy.device_id.trim().is_empty() {
-                manifests.entry(legacy.device_id.clone()).or_insert(legacy);
+                let key = if preserve_aliases {
+                    Self::LEGACY_MANIFEST_KEY.to_string()
+                } else {
+                    legacy.device_id.clone()
+                };
+                manifests.entry(key).or_insert(legacy);
             }
         }
         Ok(manifests)
@@ -2225,8 +2526,13 @@ impl SyncManager {
 
             let streamed_ok = match storage.put_file(&key, tmp.path(), Some(cb)).await {
                 Ok(_) => {
-                    Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await
-                        && Self::verify_uploaded_bytes(storage, &key, &final_bytes).await
+                    let size_ok =
+                        Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await?;
+                    if size_ok {
+                        Self::verify_uploaded_bytes(storage, &key, &final_bytes).await?
+                    } else {
+                        false
+                    }
                 }
                 Err(e) => {
                     tracing::warn!(
@@ -2234,6 +2540,9 @@ impl SyncManager {
                         key,
                         e
                     );
+                    if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                        return Err(SyncError::Network(e.to_string()));
+                    }
                     false
                 }
             };
@@ -2265,29 +2574,40 @@ impl SyncManager {
     /// 而不是直接报错，以便上层统一处理重试与回退。
     /// PUT 后 GET 回读字节。size 一致仍可能是同长度短写/错包，
     /// 记录级变更不得只靠 size 推进水位。不宣称远端 SHA。
-    async fn verify_uploaded_bytes(storage: &dyn CloudStorage, key: &str, expected: &[u8]) -> bool {
+    async fn verify_uploaded_bytes(
+        storage: &dyn CloudStorage,
+        key: &str,
+        expected: &[u8],
+    ) -> Result<bool, SyncError> {
         match storage.get(key).await {
-            Ok(Some(actual)) if actual == expected => true,
+            Ok(Some(actual)) if actual == expected => Ok(true),
             Ok(Some(_)) => {
                 tracing::warn!("[sync] 上传后回读不一致: key={}", key);
-                false
+                Ok(false)
             }
             Ok(None) => {
                 tracing::warn!("[sync] 上传后回读对象不存在: key={}", key);
-                false
+                Ok(false)
             }
             Err(e) => {
+                if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                    return Err(SyncError::Network(e.to_string()));
+                }
                 tracing::warn!("[sync] 上传后回读失败: key={}, err={}", key, e);
-                false
+                Ok(false)
             }
         }
     }
 
-    async fn verify_uploaded_size(storage: &dyn CloudStorage, key: &str, expected: u64) -> bool {
+    async fn verify_uploaded_size(
+        storage: &dyn CloudStorage,
+        key: &str,
+        expected: u64,
+    ) -> Result<bool, SyncError> {
         match storage.stat(key).await {
             Ok(Some(info)) => {
                 if info.size == expected {
-                    true
+                    Ok(true)
                 } else {
                     tracing::warn!(
                         "[sync] 上传 size 回验不符: key={}, 期望={}, 实际={}",
@@ -2295,16 +2615,19 @@ impl SyncManager {
                         expected,
                         info.size
                     );
-                    false
+                    Ok(false)
                 }
             }
             Ok(None) => {
                 tracing::warn!("[sync] 上传后对象不存在（回验失败）: key={}", key);
-                false
+                Ok(false)
             }
             Err(e) => {
+                if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                    return Err(SyncError::Network(e.to_string()));
+                }
                 tracing::warn!("[sync] 上传 size 回验 stat 失败: key={}, err={}", key, e);
-                false
+                Ok(false)
             }
         }
     }
@@ -2328,7 +2651,7 @@ impl SyncManager {
             .put_file(key, path, progress)
             .await
             .map_err(|e| SyncError::Network(format!("{context} 上传失败: {e}")))?;
-        if Self::verify_uploaded_size(storage, key, expected_size).await {
+        if Self::verify_uploaded_size(storage, key, expected_size).await? {
             Ok(())
         } else {
             Err(SyncError::Network(format!(
@@ -2410,6 +2733,19 @@ impl SyncManager {
             .download_device_manifests(storage)
             .await
             .map_err(|e| SyncError::Network(format!("下载设备 manifest 失败: {}", e)))?;
+        let gaps = self.sequence_gaps(
+            self.change_sequence_inventory(&files, &device_manifests),
+            &device_manifests,
+            &store.cursors(&instance_id)?,
+        );
+        if !gaps.is_empty() {
+            return Err(SyncError::Network(
+                gaps.iter()
+                    .map(ChangeLogGap::diagnostic)
+                    .collect::<Vec<_>>()
+                    .join("；"),
+            ));
+        }
 
         // [P0-8/C6] 版本号毫秒/秒归一化：legacy 文件名可能写入了毫秒时间戳（>1e11），
         // 而 since_version / per_db_since / prune / min_available 都以秒为口径。
@@ -3625,6 +3961,9 @@ impl SyncManager {
     ) -> Result<(SyncExecutionResult, Vec<i64>), SyncError> {
         let start = std::time::Instant::now();
 
+        self.validate_upload_schema_compatibility(storage, local_manifest)
+            .await?;
+
         if !pending.has_changes() {
             return Ok((
                 SyncExecutionResult {
@@ -3685,6 +4024,10 @@ impl SyncManager {
     ) -> Result<(SyncExecutionResult, DownloadChangesResult), SyncError> {
         let start = std::time::Instant::now();
 
+        // Download also publishes this device's manifest after committing cursors.
+        self.validate_upload_schema_compatibility(storage, local_manifest)
+            .await?;
+
         // 1. 下载云端清单
         let cloud_manifest = self.download_manifest(storage).await?;
 
@@ -3726,21 +4069,8 @@ impl SyncManager {
         // 2. 检测冲突
         let detection = Self::detect_conflicts(local_manifest, &cloud_manifest)?;
 
-        if detection.needs_migration {
-            return Err(SyncError::SchemaMismatch {
-                local: detection
-                    .database_conflicts
-                    .first()
-                    .and_then(|c| c.local_state.as_ref())
-                    .map(|s| s.schema_version)
-                    .unwrap_or(0),
-                cloud: detection
-                    .database_conflicts
-                    .first()
-                    .and_then(|c| c.cloud_state.as_ref())
-                    .map(|s| s.schema_version)
-                    .unwrap_or(0),
-            });
+        if let Some(error) = Self::schema_mismatch_error(&detection) {
+            return Err(error);
         }
 
         // 3. 如果有冲突且是手动模式，返回错误
@@ -10563,6 +10893,10 @@ impl SyncManager {
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
                         }
                         Err(e) => {
+                            if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                                let _ = std::fs::remove_file(&snapshot);
+                                return Err(e);
+                            }
                             tracing::warn!("[sync] 工作区数据库上传失败（跳过）: {}: {}", ws_id, e);
                             failures.push(format!("{}: {}", ws_id, e));
                         }
@@ -10651,6 +10985,9 @@ impl SyncManager {
                             tracing::info!("[sync] 工作区数据库已下载: {}", ws_id);
                         }
                         Err(e) => {
+                            if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                                return Err(e);
+                            }
                             tracing::warn!("[sync] 工作区数据库下载失败（跳过）: {}: {}", ws_id, e);
                             failures.push(format!("{}: {}", ws_id, e));
                         }
@@ -10667,6 +11004,9 @@ impl SyncManager {
             let mut merged = match self.download_workspaces_manifest(storage).await {
                 Ok(fresh) => fresh,
                 Err(e) => {
+                    if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                        return Err(e);
+                    }
                     tracing::warn!("[sync] 写前刷新工作区清单失败，退回本地视图: {}", e);
                     cloud_manifest.clone()
                 }
@@ -10968,6 +11308,9 @@ impl SyncManager {
                         }
                         Err(e) => {
                             last_err = e.to_string();
+                            if crate::cloud_storage::is_cloud_rate_limited(&last_err) {
+                                return Err(e);
+                            }
                             if attempt + 1 < Self::BLOB_MAX_RETRIES {
                                 let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
                                 tracing::warn!(
@@ -11065,6 +11408,9 @@ impl SyncManager {
                         }
                         Err(e) => {
                             last_err = e.to_string();
+                            if crate::cloud_storage::is_cloud_rate_limited(&last_err) {
+                                return Err(e);
+                            }
                             // 清理可能写到一半的文件
                             let _ = std::fs::remove_file(&dest);
                             if attempt + 1 < Self::BLOB_MAX_RETRIES {
@@ -11104,6 +11450,9 @@ impl SyncManager {
             let mut merged = match self.download_blobs_manifest(storage).await {
                 Ok(fresh) => fresh,
                 Err(e) => {
+                    if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                        return Err(e);
+                    }
                     tracing::warn!("[sync] 写前刷新 blob 清单失败，退回本地视图: {}", e);
                     cloud_manifest.clone()
                 }
@@ -11544,6 +11893,9 @@ impl SyncManager {
                         uploaded += 1;
                     }
                     Err(e) => {
+                        if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                            return Err(e);
+                        }
                         tracing::warn!("[sync] 资产上传失败（跳过）: {}: {}", key, e);
                         upload_failures.push(key.clone());
                     }
@@ -11658,6 +12010,9 @@ impl SyncManager {
                             .insert(asset_filenames::casefold_key(canonical), canonical.clone());
                     }
                     Err(e) => {
+                        if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                            return Err(e);
+                        }
                         tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", cloud_key, e);
                         // Provider downloads verify into a sibling temporary file and only
                         // replace `dest` after checksum success. Keep an existing local file
@@ -11700,6 +12055,9 @@ impl SyncManager {
             let mut merged = match self.download_assets_manifest(storage).await {
                 Ok(fresh) => fresh,
                 Err(e) => {
+                    if crate::cloud_storage::is_cloud_rate_limited(&e.to_string()) {
+                        return Err(e);
+                    }
                     tracing::warn!("[sync] 写前刷新资产清单失败，退回本地视图: {}", e);
                     cloud_manifest.clone()
                 }
@@ -12735,6 +13093,278 @@ mod tests {
             superseded_by: None,
             snapshot_seen: HashMap::new(),
         }
+    }
+
+    #[test]
+    fn schema_error_reports_only_real_mismatches_in_stable_order() {
+        let local = create_test_manifest(
+            "old",
+            vec![
+                ("chat_v2", 20260910, 100, "local"),
+                ("vfs", 20261006, 100, "vfs"),
+                ("mistakes", 20261005, 100, "mistakes"),
+            ],
+        );
+        let cloud = create_test_manifest(
+            "new",
+            vec![
+                ("chat_v2", 20260910, 101, "cloud"),
+                ("vfs", 20261023, 101, "vfs"),
+                ("mistakes", 20261006, 101, "mistakes"),
+            ],
+        );
+        let detection = SyncManager::detect_conflicts(&local, &cloud).unwrap();
+        let error = SyncManager::schema_mismatch_error(&detection).unwrap();
+        let message = error.to_string();
+        assert!(!message.contains("chat_v2"), "{message}");
+        assert!(
+            message.contains("vfs (local=20261006, cloud=20261023)"),
+            "{message}"
+        );
+        assert!(message.contains("升级当前客户端"), "{message}");
+        let SyncError::SchemaMismatch { mismatches } = error else {
+            panic!("schema error")
+        };
+        assert_eq!(
+            mismatches
+                .iter()
+                .map(|m| m.database_name.as_str())
+                .collect::<Vec<_>>(),
+            ["mistakes", "vfs"]
+        );
+        let reverse = SyncManager::detect_conflicts(&cloud, &local).unwrap();
+        assert!(SyncManager::schema_mismatch_error(&reverse)
+            .unwrap()
+            .to_string()
+            .contains("升级其他设备"));
+    }
+
+    #[tokio::test]
+    async fn schema_upload_rejects_peer_and_same_device_downgrades_without_writes() {
+        for cloud_device in ["current", "peer"] {
+            let storage = FileE2eeMemoryStorage::default();
+            let manager = SyncManager::new("current".into());
+            let cloud = create_test_manifest(cloud_device, vec![("vfs", 20261023, 1, "new")]);
+            let key = SyncManager::device_manifest_key(cloud_device);
+            let bytes = serde_json::to_vec(&cloud).unwrap();
+            storage.put_raw(&key, bytes.clone());
+            let old = create_test_manifest("current", vec![("vfs", 20261006, 1000, "old")]);
+            let error = manager.upload_manifest(&storage, &old).await.unwrap_err();
+            assert!(error
+                .to_string()
+                .contains("vfs (local=20261006, cloud=20261023)"));
+            assert_eq!(storage.object(&key), Some(bytes));
+            assert_eq!(
+                storage.keys_with_prefix("").len(),
+                1,
+                "schema gate must precede instance/format/manifest writes"
+            );
+            manager
+                .execute_upload(&storage, &PendingChanges::from_entries(Vec::new()), &old)
+                .await
+                .expect_err("legacy upload also needs schema gate");
+        }
+    }
+
+    #[tokio::test]
+    async fn schema_upload_allows_upgrade_and_rejects_missing_local_database() {
+        let storage = FileE2eeMemoryStorage::default();
+        let manager = SyncManager::new("writer".into());
+        let cloud = create_test_manifest("peer", vec![("vfs", 20261006, 1000, "old")]);
+        storage.put_raw(
+            &SyncManager::device_manifest_key("peer"),
+            serde_json::to_vec(&cloud).unwrap(),
+        );
+        let upgraded = create_test_manifest("writer", vec![("vfs", 20261023, 1, "new")]);
+        manager
+            .validate_upload_schema_compatibility(&storage, &upgraded)
+            .await
+            .unwrap();
+        let missing = create_test_manifest("writer", vec![]);
+        manager
+            .validate_upload_schema_compatibility(&storage, &missing)
+            .await
+            .expect_err("omitted local database cannot silently bypass the gate");
+    }
+
+    #[tokio::test]
+    async fn schema_gate_checks_both_raw_and_hashed_manifests_before_deduplication() {
+        let storage = FileE2eeMemoryStorage::default();
+        let manager = SyncManager::new("current".into());
+        let upgraded = create_test_manifest("current", vec![("vfs", 20261023, 1, "new")]);
+        let mut downgraded = create_test_manifest("current", vec![("vfs", 20261006, 999, "old")]);
+        downgraded.published_max_seq = 999;
+        storage.put_raw(
+            &SyncManager::device_manifest_key("current"),
+            serde_json::to_vec(&upgraded).unwrap(),
+        );
+        storage.put_raw(
+            &SyncManager::device_manifest_legacy_key("current"),
+            serde_json::to_vec(&downgraded).unwrap(),
+        );
+        let error = manager
+            .validate_upload_schema_compatibility(&storage, &downgraded)
+            .await
+            .unwrap_err();
+        assert!(error.to_string().contains("local=20261006, cloud=20261023"));
+    }
+
+    #[tokio::test]
+    async fn cloud_manifest_keeps_highest_schema_despite_newer_old_client_data_version() {
+        let storage = FileE2eeMemoryStorage::default();
+        for (device, schema, data) in [("new", 20261023, 1), ("old", 20261006, 1000)] {
+            let manifest = create_test_manifest(device, vec![("vfs", schema, data, device)]);
+            storage.put_raw(
+                &SyncManager::device_manifest_key(device),
+                serde_json::to_vec(&manifest).unwrap(),
+            );
+        }
+        let manager = SyncManager::new("reader".into());
+        let merged = manager.download_manifest(&storage).await.unwrap();
+        assert_eq!(merged.databases["vfs"].schema_version, 20261023);
+        assert_eq!(merged.databases["vfs"].data_version, 1);
+    }
+
+    fn seed_sequence_cloud(
+        storage: &FileE2eeMemoryStorage,
+        source: &str,
+        seqs: &[u64],
+        published: u64,
+    ) -> String {
+        let instance = uuid::Uuid::new_v4().to_string();
+        storage.put_raw(
+            SyncManager::INSTANCE_KEY,
+            serde_json::to_vec(
+                &json!({"instance_id": instance, "created_at": "2026-10-25T00:00:00Z"}),
+            )
+            .unwrap(),
+        );
+        storage.put_raw(
+            SyncManager::FORMAT_KEY,
+            serde_json::to_vec(&json!({"format_version": 4, "min_client": 4})).unwrap(),
+        );
+        let source_manager = SyncManager::new(source.into());
+        let mut manifest = create_test_manifest(source, vec![("vfs", 20261023, 100, "vfs")]);
+        manifest.published_max_seq = published;
+        storage.put_raw(
+            &SyncManager::device_manifest_key(source),
+            serde_json::to_vec(&manifest).unwrap(),
+        );
+        for seq in seqs {
+            let payload = SyncChangesPayload {
+                changes: Vec::new(),
+                total_count: 0,
+                device_id: source.into(),
+                format_version: 3,
+                source_seq: *seq,
+                source_device_id: source.into(),
+                operation_id: None,
+            };
+            storage.put_raw(
+                &source_manager.build_change_key_v3(*seq, 1_792_755_307),
+                serde_json::to_vec(&payload).unwrap(),
+            );
+        }
+        instance
+    }
+
+    #[tokio::test]
+    async fn rebuilt_cloud_ignores_stale_database_versions_and_old_instance_cursors() {
+        let source = format!("source-{}", uuid::Uuid::new_v4());
+        let reader = SyncManager::new(format!("reader-{}", uuid::Uuid::new_v4()));
+        let storage = FileE2eeMemoryStorage::default();
+        let old_instance = seed_sequence_cloud(&storage, &source, &[1], 1);
+        let store = SyncStateStore::open_default().unwrap();
+        store.set_cursor(&old_instance, &source, 99).unwrap();
+        storage.files.lock().unwrap().clear();
+        let new_instance = seed_sequence_cloud(&storage, &source, &[1], 1);
+        let old_databases = create_test_manifest(
+            &reader.device_id,
+            vec![
+                ("vfs", 20261023, 1_792_755_314, "vfs"),
+                ("mistakes", 20261005, 1_792_655_731, "mistakes"),
+            ],
+        );
+        assert!(reader
+            .detect_change_log_gaps(&storage)
+            .await
+            .unwrap()
+            .gaps
+            .is_empty());
+        let downloaded = reader
+            .execute_download(&storage, &old_databases, MergeStrategy::KeepLatest)
+            .await
+            .unwrap()
+            .1;
+        assert_eq!(downloaded.cursor_advancements.get(&source), Some(&1));
+        assert_eq!(store.get_cursor(&old_instance, &source).unwrap(), 99);
+        assert_eq!(
+            store.get_cursor(&new_instance, &source).unwrap(),
+            0,
+            "preflight/download must not acknowledge unapplied records"
+        );
+    }
+
+    #[tokio::test]
+    async fn sequence_gap_preflight_catches_prefix_middle_tail_and_entire_missing_logs() {
+        for (seqs, published, expected) in [
+            (vec![2], 2, 1),
+            (vec![1, 3], 3, 2),
+            (vec![1], 2, 2),
+            (vec![], 1, 1),
+        ] {
+            let storage = FileE2eeMemoryStorage::default();
+            let source = format!("source-{}", uuid::Uuid::new_v4());
+            seed_sequence_cloud(&storage, &source, &seqs, published);
+            let reader = SyncManager::new(format!("reader-{}", uuid::Uuid::new_v4()));
+            let report = reader.detect_change_log_gaps(&storage).await.unwrap();
+            assert_eq!(report.gaps.len(), 1);
+            assert_eq!(report.gaps[0].expected_seq, expected);
+            reader
+                .download_changes(&storage, 0, None)
+                .await
+                .expect_err("actual download must enforce the same gap check");
+        }
+    }
+
+    #[tokio::test]
+    async fn legacy_timestamp_distance_alone_is_not_a_proven_prune_gap() {
+        let storage = FileE2eeMemoryStorage::default();
+        storage.put_raw(
+            "data_governance/changes/peer/1792755307.json.zst",
+            Vec::new(),
+        );
+        let report = SyncManager::new("reader".into())
+            .detect_change_log_gaps(&storage)
+            .await
+            .unwrap();
+        assert!(report.gaps.is_empty());
+        assert_eq!(report.min_available_version, Some(1_792_755_307));
+        assert!(
+            storage.object(SyncManager::INSTANCE_KEY).is_none(),
+            "preflight must be read-only"
+        );
+        assert!(
+            storage.object(SyncManager::FORMAT_KEY).is_none(),
+            "preflight must be read-only"
+        );
+    }
+
+    #[tokio::test]
+    async fn sync_outer_retry_preserves_rate_limit_without_another_attempt() {
+        let attempts = std::sync::atomic::AtomicUsize::new(0);
+        let message = format!(
+            "[{}] HTTP 503 BlockedTemporarily",
+            crate::cloud_storage::CLOUD_RATE_LIMITED_CODE
+        );
+        let error = retry_async("test", 3, || {
+            attempts.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            std::future::ready(Err::<(), _>(SyncError::Network(message.clone())))
+        })
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("BlockedTemporarily"));
+        assert_eq!(attempts.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
 
     #[test]

@@ -88,6 +88,9 @@ pub(crate) async fn get_file_with_optional_resume(
                 return Ok(actual);
             }
             Err(error) => {
+                if super::is_cloud_rate_limited(&error.message) {
+                    return Err(error);
+                }
                 tracing::warn!(
                     attempt,
                     resume_from,

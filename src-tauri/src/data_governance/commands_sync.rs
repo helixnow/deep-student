@@ -866,6 +866,13 @@ async fn run_file_level_sync(
                     warn!("[data_governance] {}", e);
                     append_warning_message(&mut report.warning, e);
                     report.failed = true;
+                    if report
+                        .warning
+                        .as_deref()
+                        .is_some_and(crate::cloud_storage::is_cloud_rate_limited)
+                    {
+                        return report;
+                    }
                 }
             }
             if let Err(e) = manager
@@ -892,6 +899,13 @@ async fn run_file_level_sync(
             report.failed = true;
         }
     }
+    if report
+        .warning
+        .as_deref()
+        .is_some_and(crate::cloud_storage::is_cloud_rate_limited)
+    {
+        return report;
+    }
     if let Some(progress) = progress {
         progress.emit(direction, 1, total_steps, "文件级同步：VFS blob");
     }
@@ -901,6 +915,13 @@ async fn run_file_level_sync(
             warn!("[data_governance] {}", e);
             append_warning_message(&mut report.warning, e);
             report.failed = true;
+            if report
+                .warning
+                .as_deref()
+                .is_some_and(crate::cloud_storage::is_cloud_rate_limited)
+            {
+                return report;
+            }
         }
     }
     match manager
@@ -930,6 +951,13 @@ async fn run_file_level_sync(
             report.failed = true;
         }
     }
+    if report
+        .warning
+        .as_deref()
+        .is_some_and(crate::cloud_storage::is_cloud_rate_limited)
+    {
+        return report;
+    }
     if let Some(progress) = progress {
         progress.emit(direction, 2, total_steps, "文件级同步：资产目录");
     }
@@ -939,6 +967,13 @@ async fn run_file_level_sync(
             warn!("[data_governance] {}", e);
             append_warning_message(&mut report.warning, e);
             report.failed = true;
+            if report
+                .warning
+                .as_deref()
+                .is_some_and(crate::cloud_storage::is_cloud_rate_limited)
+            {
+                return report;
+            }
         }
     }
     match manager
@@ -1705,6 +1740,13 @@ pub async fn data_governance_run_sync(
 
     let local_manifest = manager.create_manifest(local_databases);
 
+    // Schema 门禁必须先于任何记录级变更上传，避免旧客户端先发布变更、
+    // 最后才在 manifest 阶段发现自己会降级云端 schema。
+    manager
+        .validate_upload_schema_compatibility(storage.as_ref(), &local_manifest)
+        .await
+        .map_err(|e| format!("同步 schema 预检失败: {}", e))?;
+
     // 遍历所有数据库，收集待同步变更并用 enrich_changes_with_data 补全完整记录数据
     let mut all_enriched: Vec<SyncChangeWithData> = Vec::new();
     let mut all_change_ids: Vec<i64> = Vec::new();
@@ -1877,7 +1919,7 @@ pub async fn data_governance_run_sync(
             }
         }
         SyncDirection::Download => {
-            enforce_prune_gap_check(storage.as_ref(), &local_manifest).await?;
+            enforce_prune_gap_check(&manager, storage.as_ref(), &local_manifest).await?;
             let (snapshot_count, snapshot_skipped) = apply_snapshot_bootstrap_if_needed(
                 &manager,
                 storage.as_ref(),
@@ -1934,7 +1976,7 @@ pub async fn data_governance_run_sync(
             Ok((exec_result, total_warning_skipped))
         }
         SyncDirection::Bidirectional => {
-            enforce_prune_gap_check(storage.as_ref(), &local_manifest).await?;
+            enforce_prune_gap_check(&manager, storage.as_ref(), &local_manifest).await?;
             let (snapshot_count, snapshot_skipped) = apply_snapshot_bootstrap_if_needed(
                 &manager,
                 storage.as_ref(),
@@ -3023,6 +3065,16 @@ pub async fn data_governance_run_sync_with_progress(
 
     let local_manifest = manager.create_manifest(local_databases);
 
+    // Schema 门禁必须先于任何记录级变更上传。
+    if let Err(e) = manager
+        .validate_upload_schema_compatibility(storage.as_ref(), &local_manifest)
+        .await
+    {
+        let error_msg = format!("同步 schema 预检失败: {}", e);
+        emitter.emit_failed(&error_msg).await;
+        return Err(error_msg);
+    }
+
     // 遍历所有数据库，收集待同步变更并补全完整记录数据
     let mut all_enriched: Vec<SyncChangeWithData> = Vec::new();
     let mut db_found = false;
@@ -3513,36 +3565,23 @@ async fn execute_upload_with_progress_v2(
     ))
 }
 
-/// 执行下载同步（v2：带进度、多库路由）
-/// [P0-2/C5] 下载/双向同步前强制 prune 断层检测。
-///
-/// v1（非进度）路径在 `SyncDirection::Download`/`Bidirectional` 分支已有此检查，
-/// 但 v2 进度路径（`execute_download_with_progress_v2` /
-/// `execute_bidirectional_with_progress_v2`，即主 UI 路径）此前完全缺失，导致
-/// 云端变更被裁剪后本地仍静默"成功"。此处统一封装供两条路径复用。
+/// All sync entry points share the same per-device sequence gap check.
 async fn enforce_prune_gap_check(
+    manager: &SyncManager,
     storage: &dyn CloudStorage,
-    local_manifest: &SyncManifest,
+    _local_manifest: &SyncManifest,
 ) -> Result<(), String> {
-    let min_available = SyncManager::get_min_available_change_version(storage)
+    let availability = manager
+        .detect_change_log_gaps(storage)
         .await
-        .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
-    let since_version = local_manifest
-        .databases
-        .values()
-        .map(|s| s.data_version)
-        .min()
-        .unwrap_or(0);
-    // 新设备的合法游标是 0，v3 按上传设备从 seq=1 连续消费。全局最小
-    // wall-clock 文件名不具备跨设备序列语义，不能据此把 fresh device 误判为断层。
-    let needs_bootstrap = SyncManager::has_prune_gap(since_version, min_available);
-    if needs_bootstrap {
-        return Err(format!(
-            "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
-             当前 v1 快照不具备权威删除集合，不能安全覆盖本地；请先通过 ZIP 完整恢复后重新同步。",
-            since_version,
-            min_available.map_or("无".to_string(), |v| v.to_string())
-        ));
+        .map_err(|e| format!("检查云端变更断层失败: {e}"))?;
+    if !availability.gaps.is_empty() {
+        return Err(availability
+            .gaps
+            .iter()
+            .map(|gap| gap.diagnostic())
+            .collect::<Vec<_>>()
+            .join("；"));
     }
     Ok(())
 }
@@ -3606,28 +3645,11 @@ async fn commit_download_progress_if_needed(
 
 async fn apply_snapshot_bootstrap_if_needed(
     _manager: &SyncManager,
-    storage: &dyn CloudStorage,
-    local_manifest: &SyncManifest,
+    _storage: &dyn CloudStorage,
+    _local_manifest: &SyncManifest,
     _active_dir: &std::path::Path,
     _merge_strategy: MergeStrategy,
 ) -> Result<(usize, usize), String> {
-    let min_available = SyncManager::get_min_available_change_version(storage)
-        .await
-        .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
-    let since_version = local_manifest
-        .databases
-        .values()
-        .map(|s| s.data_version)
-        .min()
-        .unwrap_or(0);
-    let has_gap = SyncManager::has_prune_gap(since_version, min_available);
-    if has_gap {
-        return Err(
-            "检测到云端变更断层；UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标。请使用完整 ZIP 恢复。"
-                .to_string(),
-        );
-    }
-
     // With automatic prune disabled, a fresh device can safely replay the
     // immutable change log from sequence 1. Avoid v1 snapshot bootstrap because
     // it cannot delete stale rows or represent an authoritative table set.
@@ -3647,7 +3669,7 @@ async fn execute_download_with_progress_v2(
     let _start = std::time::Instant::now();
 
     // [P0-2/C5] 下载前强制断层检测，与 v1 路径口径一致。
-    enforce_prune_gap_check(storage, local_manifest).await?;
+    enforce_prune_gap_check(manager, storage, local_manifest).await?;
     // [P1 一致性] 快照引导沿用调用方策略：v1 download 与 v2 bidirectional 均传
     // 用户选择的 merge_strategy，此前唯独此路径硬编码 KeepLatest，导致用户选
     // keep_local 时快照引导仍可能覆盖较旧本地记录。
@@ -3747,7 +3769,7 @@ async fn execute_bidirectional_with_progress_v2(
     let _start = std::time::Instant::now();
 
     // [P0-2/C5] 双向同步前强制断层检测，与 v1 路径口径一致。
-    enforce_prune_gap_check(storage, local_manifest).await?;
+    enforce_prune_gap_check(manager, storage, local_manifest).await?;
     let (snapshot_count, snapshot_skipped) = apply_snapshot_bootstrap_if_needed(
         manager,
         storage,
@@ -5032,13 +5054,17 @@ pub async fn data_governance_purge_resolved_conflicts(
 ///
 /// ## 返回
 /// - `has_gap`: 是否存在断层
-/// - `since_version`: 本地最大 data_version
+/// - `since_version`: 本地最小发布版本，仅作诊断，不能用作消费游标
 /// - `min_available_version`: 云端当前可用的最小变更版本；None 表示云端空
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct PruneGapResponse {
     pub has_gap: bool,
     pub since_version: u64,
     pub min_available_version: Option<u64>,
+    pub remote_format_version: u32,
+    pub uses_device_cursors: bool,
+    pub instance_id: Option<String>,
+    pub gap_details: Option<String>,
 }
 
 #[tauri::command]
@@ -5055,7 +5081,10 @@ pub async fn data_governance_detect_prune_gap(
 
     let active_dir = get_active_data_dir(&app)?;
 
-    // 与实际下载口径一致：取各库 data_version 的最小值作为起点
+    let device_id = get_device_id(&app);
+    let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
+
+    // Publication timestamps are retained for diagnostics only, not gap decisions.
     let mut since_version: Option<u64> = None;
     for db_id in _DatabaseId::all_ordered() {
         let db_path =
@@ -5077,17 +5106,39 @@ pub async fn data_governance_detect_prune_gap(
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
-    let min_available = SyncManager::get_min_available_change_version(storage.as_ref())
+    let availability = manager
+        .detect_change_log_gaps(storage.as_ref())
         .await
-        .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
+        .map_err(|e| format!("检查云端变更断层失败: {e}"))?;
 
     let since_version = since_version.unwrap_or(0);
-    let has_gap = SyncManager::has_prune_gap(since_version, min_available);
+    let has_gap = !availability.gaps.is_empty();
+    let gap_details = has_gap.then(|| {
+        availability
+            .gaps
+            .iter()
+            .map(|gap| gap.diagnostic())
+            .collect::<Vec<_>>()
+            .join("；")
+    });
+
+    tracing::info!(
+        "[data_governance] prune gap 检测: format={}, instance={:?}, since={}, min_available={:?}, has_gap={}",
+        availability.remote_format_version,
+        availability.instance_id,
+        since_version,
+        availability.min_available_version,
+        has_gap
+    );
 
     Ok(PruneGapResponse {
         has_gap,
         since_version,
-        min_available_version: min_available,
+        min_available_version: availability.min_available_version,
+        remote_format_version: availability.remote_format_version,
+        uses_device_cursors: true,
+        instance_id: availability.instance_id,
+        gap_details,
     })
 }
 
@@ -6227,10 +6278,10 @@ mod tests {
         let download_body = &source[download_start..bidirectional_start];
         let bidirectional_body = &source[bidirectional_start..];
 
-        assert!(download_body.contains("enforce_prune_gap_check(storage, local_manifest).await?"));
-        assert!(
-            bidirectional_body.contains("enforce_prune_gap_check(storage, local_manifest).await?")
-        );
+        assert!(download_body
+            .contains("enforce_prune_gap_check(manager, storage, local_manifest).await?"));
+        assert!(bidirectional_body
+            .contains("enforce_prune_gap_check(manager, storage, local_manifest).await?"));
     }
 
     /// v1 快照不具备权威删除集合，不能再用于 bootstrap 或推进游标。
@@ -6242,8 +6293,12 @@ mod tests {
             .next()
             .expect("production source precedes tests");
         assert!(
-            production_source.contains("UPSERT-only 快照无法证明本地集合相等，已拒绝推进游标"),
-            "断层必须 fail-close"
+            production_source.contains(".detect_change_log_gaps(storage)"),
+            "断层预检必须使用真实设备序号"
+        );
+        assert!(
+            production_source.contains("if !availability.gaps.is_empty()"),
+            "真实断层必须 fail-close"
         );
         assert!(
             !production_source.contains("download_snapshot_bootstrap_changes(storage)"),
