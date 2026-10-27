@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -24,6 +24,8 @@ vi.mock('@/features/chat/components/renderers', () => ({
 
 import { QuestionBankEditor } from '../QuestionBankEditor';
 import type { Question } from '@/api/questionBankApi';
+
+beforeEach(() => mocks.invoke.mockResolvedValue([]));
 
 afterEach(() => {
   cleanup();
@@ -132,6 +134,24 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     renderBrowse([{ ...unanswered, ai_feedback: '已持久化的解题思路' }], { browseMode: false });
     fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
     expect(screen.getByText('已持久化的解题思路')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(false);
+  });
+
+  it('reopens a saved failed grading draft without replacing the successful feedback', async () => {
+    mocks.invoke.mockImplementation(async (command) => command === 'qbank_get_history' ? [{
+      field_name: 'ai_grading_draft', new_value: JSON.stringify({
+        feedback: 'Interrupted draft', diagnostics: { status: 'truncated', model: 'reasoner',
+          model_config_id: 'm1', max_output_tokens: 128000, finish_reason: 'length', usage: null,
+          response_chars: 17, reasoning_chars: 8000, http_status: 200 },
+      }),
+    }] : null);
+    renderBrowse([{ ...unanswered, ai_feedback: 'Previous complete feedback' }], {
+      onRefreshQuestion: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(screen.getByText('Previous complete feedback')).toBeInTheDocument();
+    await screen.findByText('Interrupted draft');
+    expect(screen.getByText('批改反馈草稿（非正式成绩）')).toBeInTheDocument();
+    expect(screen.getByText('reasoner')).toBeInTheDocument();
     expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(false);
   });
 

@@ -11,8 +11,20 @@ use url::Url;
 
 use super::routing::{key_cooldowns, key_fingerprint, tag_establish_failure};
 use super::{
-    build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig, LLMManager, Result,
+    build_provider_adapter, effective_max_tokens, normalize_nonstream_response_to_openai,
+    ApiConfig, LLMManager, Result,
 };
+
+fn rag_translation_request_body(config: &ApiConfig, messages: Vec<Value>) -> Value {
+    let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    json!({
+        "model": &config.model,
+        "messages": messages,
+        "temperature": 0.3,
+        "max_tokens": max_tokens,
+        "stream": false,
+    })
+}
 
 // ==================== 嵌入调用错误结构化 ====================
 
@@ -924,13 +936,7 @@ impl LLMManager {
         ];
 
         // 构造请求
-        let request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": 0.3,
-            "max_tokens": config.max_output_tokens,
-            "stream": false,
-        });
+        let request_body = rag_translation_request_body(&config, messages);
 
         let adapter = build_provider_adapter(&config);
         let mut preq = self
@@ -1881,5 +1887,29 @@ impl LLMManager {
         }
 
         "计算题".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rag_translation_request_uses_model_and_provider_token_limits() {
+        let config = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: Some(24_000),
+            ..ApiConfig::default()
+        };
+        let body = rag_translation_request_body(&config, Vec::new());
+        assert_eq!(body["max_tokens"], json!(24_000));
+
+        let config = ApiConfig {
+            max_output_tokens: 12_000,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = rag_translation_request_body(&config, Vec::new());
+        assert_eq!(body["max_tokens"], json!(12_000));
     }
 }

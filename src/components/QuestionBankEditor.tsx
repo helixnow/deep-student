@@ -23,6 +23,7 @@ import { ImageCropDialog } from '@/components/ImageCropDialog';
 import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { QuestionExplanation } from './practice/QuestionExplanation';
+import { GradingDiagnosticsView } from './practice/GradingDiagnosticsView';
 import { QuestionMaterialView } from './QuestionMaterialView';
 import {
   CaretLeft,
@@ -2286,6 +2287,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   </DsButton>
                 </div>
                 {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
+                <p role="alert" className="break-words text-xs text-destructive">{aiGrading.state.error}</p>
+                <GradingDiagnosticsView diagnostics={aiGrading.state.diagnostics} />
                 {aiGrading.state.feedback && (
                   <CustomScrollArea
                     className="max-h-48"

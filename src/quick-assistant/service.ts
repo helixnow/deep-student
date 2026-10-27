@@ -189,7 +189,9 @@ export async function startQuickLearningAction(
         request: {
           sessionId,
           content: `${actionPrompt(action)}\n\n${tt('prompts.content_separator')}\n${content}`,
-          options: { maxTokens: 1600, enableThinking: false },
+          // 未指定输出预算时由后端采用当前选中模型的 maxOutputTokens /
+          // maxTokensLimit，避免快捷助手暗中覆盖用户配置。
+          options: { enableThinking: false },
           userMessageId: null,
           assistantMessageId: null,
           userContextRefs: null,

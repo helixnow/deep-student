@@ -14,6 +14,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { nanoid } from 'nanoid';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import i18n from '@/i18n';
+import type { GradingDiagnostics } from '@/api/practiceApi';
 
 // ============================================================================
 // 类型定义
@@ -35,6 +36,7 @@ export interface QbankGradingState {
   explanationWritten?: boolean;
   /** 错误信息 */
   error?: string;
+  diagnostics?: GradingDiagnostics;
   /** 当前流 session ID */
   streamSessionId?: string;
 }
@@ -53,6 +55,7 @@ interface QbankGradingStreamEvent {
   explanation_written?: boolean;
   // error
   message?: string;
+  diagnostics?: GradingDiagnostics;
 }
 
 const INITIAL_STATE: QbankGradingState = {
@@ -284,6 +287,8 @@ export function useQbankAiGrading() {
                 ...prev,
                 isGrading: false,
                 error: payload.message || i18n.t('common:qbank_grading.failed'),
+                feedback: payload.feedback || prev.feedback,
+                diagnostics: payload.diagnostics,
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
@@ -319,6 +324,7 @@ export function useQbankAiGrading() {
             },
           });
         } catch (error: unknown) {
+          if (settled) return;
           cleanup();
           isStartingRef.current = false;
           isActiveRef.current = false;

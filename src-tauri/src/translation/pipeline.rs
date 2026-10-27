@@ -1,5 +1,5 @@
 use futures_util::StreamExt;
-use serde_json::json;
+use serde_json::{json, Value};
 /// 翻译管线 - 核心业务逻辑
 use std::sync::Arc;
 use std::time::Duration;
@@ -101,6 +101,40 @@ impl Default for StreamOptions {
             enable_thinking: None,
         }
     }
+}
+
+fn build_translation_request_body(
+    config: &ApiConfig,
+    system_prompt: &str,
+    user_prompt: &str,
+    options: &StreamOptions,
+) -> Value {
+    let max_tokens = options.max_tokens.unwrap_or_else(|| {
+        crate::llm_manager::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
+    });
+    let mut request_body = json!({
+        "model": config.model,
+        "messages": [
+            {
+                "role": "system",
+                "content": system_prompt
+            },
+            {
+                "role": "user",
+                "content": user_prompt
+            }
+        ],
+        "temperature": options.temperature,
+        "max_tokens": max_tokens,
+        "stream": true, // 关键：启用流式
+    });
+
+    crate::llm_manager::LLMManager::apply_reasoning_config(
+        &mut request_body,
+        config,
+        options.enable_thinking,
+    );
+    request_body
 }
 
 /// 运行翻译管线
@@ -1002,38 +1036,9 @@ where
     let total_deadline = tokio::time::Instant::now() + options.total_timeout;
 
     let result = async {
-        // 构造消息
-        let messages = vec![
-            json!({
-                "role": "system",
-                "content": system_prompt
-            }),
-            json!({
-                "role": "user",
-                "content": user_prompt
-            }),
-        ];
-
         // 构造请求体
-        let max_tokens = options.max_tokens.unwrap_or_else(|| {
-            crate::llm_manager::effective_max_tokens(
-                config.max_output_tokens,
-                config.max_tokens_limit,
-            )
-        });
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": options.temperature,
-            "max_tokens": max_tokens,
-            "stream": true, // 关键：启用流式
-        });
-
-        crate::llm_manager::LLMManager::apply_reasoning_config(
-            &mut request_body,
-            config,
-            options.enable_thinking,
-        );
+        let mut request_body =
+            build_translation_request_body(config, system_prompt, user_prompt, options);
 
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
@@ -1320,7 +1325,52 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{build_segments, detect_source_lang};
+    use super::{
+        build_segments, build_translation_request_body, detect_source_lang, StreamOptions,
+    };
+    use crate::llm_manager::ApiConfig;
+
+    fn config(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> ApiConfig {
+        ApiConfig {
+            max_output_tokens,
+            max_tokens_limit,
+            ..ApiConfig::default()
+        }
+    }
+
+    #[test]
+    fn translation_payload_uses_model_and_provider_output_budget() {
+        let options = StreamOptions::default();
+        let body =
+            build_translation_request_body(&config(65_536, None), "system", "user", &options);
+        assert_eq!(body["max_tokens"], serde_json::json!(65_536));
+
+        let body = build_translation_request_body(
+            &config(65_536, Some(32_768)),
+            "system",
+            "user",
+            &options,
+        );
+        assert_eq!(body["max_tokens"], serde_json::json!(32_768));
+
+        let body = build_translation_request_body(&config(1_024, None), "system", "user", &options);
+        assert_eq!(body["max_tokens"], serde_json::json!(1_024));
+    }
+
+    #[test]
+    fn translation_payload_preserves_explicit_output_budget() {
+        let options = StreamOptions {
+            max_tokens: Some(8_192),
+            ..StreamOptions::default()
+        };
+        let body = build_translation_request_body(
+            &config(16_384, Some(12_288)),
+            "system",
+            "user",
+            &options,
+        );
+        assert_eq!(body["max_tokens"], serde_json::json!(8_192));
+    }
 
     #[test]
     fn detect_japanese_with_kanji_mix() {

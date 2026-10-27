@@ -46,6 +46,7 @@ import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBack
 import { setPracticeRuntime } from './practiceRuntime';
 import { practiceAnswerText } from './practiceAnswerText';
 import { paperAnswer } from './paperDocument';
+import { GradingDiagnosticsView } from './GradingDiagnosticsView';
 
 export interface BatchPracticeWorkspaceProps {
   request?: CreatePracticeRequest;
@@ -817,6 +818,17 @@ export default function BatchPracticeWorkspace({
                   </div>
                 )}
                 {result?.feedback && <MarkdownRenderer content={result.feedback} />}
+                {result?.grading_drafts?.map((saved, draftIndex, drafts) => (
+                  <details key={`${saved.created_at}-${draftIndex}`} className="border-t pt-3 text-sm" open={draftIndex === drafts.length - 1 && result.status === 'failed'}>
+                    <summary className="cursor-pointer font-medium text-warning">{t('batch.feedbackDraft')} · {new Date(saved.created_at).toLocaleString()}</summary>
+                    <div className="mt-2 space-y-2">
+                      {saved.feedback && <MarkdownRenderer content={saved.feedback} />}
+                      <p className="break-words text-destructive">{saved.error}</p>
+                      <GradingDiagnosticsView diagnostics={saved.diagnostics} />
+                    </div>
+                  </details>
+                ))}
+                <GradingDiagnosticsView diagnostics={result?.grading_diagnostics} />
                 {result?.error && (
                   <p role="alert" className="break-words text-sm text-destructive">
                     {result.error}
