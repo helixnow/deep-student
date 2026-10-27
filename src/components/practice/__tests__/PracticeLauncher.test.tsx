@@ -11,6 +11,7 @@ vi.mock('@/components/UnifiedNotification', () => ({
 }));
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
     t: (key: string, options?: { count?: number }) => {
       if (key === 'practice:tagPicker.untagged') return '未分类';

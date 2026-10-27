@@ -4562,7 +4562,7 @@ impl FsrsReviewService {
                      WHERE card_state_id = ?1
                        AND deleted_at IS NULL
                        AND rating BETWEEN 1 AND 4
-                     ORDER BY review_ms ASC, id ASC
+                     ORDER BY review_ms ASC, created_at ASC, id ASC
                      LIMIT ?2",
                 )
                 .map_err(|e| AppError::database(format!("准备复习历史查询失败: {}", e)))?;
@@ -4604,7 +4604,7 @@ impl FsrsReviewService {
                 s.state, s.stability, s.difficulty, s.last_review_ms, s.due_ms, s.reps, s.lapses,
                 (SELECT l.rating FROM fsrs_review_logs l
                   WHERE l.card_state_id = s.id AND l.deleted_at IS NULL
-                  ORDER BY l.review_ms DESC
+                  ORDER BY l.review_ms DESC, l.created_at DESC, l.id DESC
                   LIMIT 1)
              FROM fsrs_card_states s
              INNER JOIN anki_cards a ON a.id = s.anki_card_id
@@ -6606,6 +6606,12 @@ mod tests {
         service
             .rate(&state_id, 3, Some(10), None)
             .expect("graduate from learning");
+
+        // Same-millisecond reviews must follow their creation order, not random UUIDs.
+        db.get_conn_safe().unwrap().execute(
+            "UPDATE fsrs_review_logs SET review_ms=1000, id=CASE state_before WHEN 0 THEN 'z-first' ELSE 'a-second' END, created_at=CASE state_before WHEN 0 THEN '2026-10-27T00:00:00.000001Z' ELSE '2026-10-27T00:00:00.000002Z' END WHERE card_state_id=?1",
+            [&state_id],
+        ).unwrap();
 
         let history = service
             .get_card_memory_history(&state_id)

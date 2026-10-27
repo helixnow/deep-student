@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
@@ -117,5 +117,41 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     // 已有解析：先确认，不直接覆盖
     expect(screen.getByRole('button', { name: /替换现有解析/ })).toBeInTheDocument();
     expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_update_question')).toBe(false);
+  });
+
+  it('opens an existing explanation before answering in drill mode', () => {
+    const submit = vi.fn();
+    renderBrowse([choice], { browseMode: false, onSubmitAnswer: submit });
+    expect(screen.queryByText('加法')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
+    expect(screen.getByText('加法')).toBeInTheDocument();
+    expect(submit).not.toHaveBeenCalled();
+  });
+
+  it('loads persisted AI feedback in drill mode without a submission or another model request', () => {
+    renderBrowse([{ ...unanswered, ai_feedback: '已持久化的解题思路' }], { browseMode: false });
+    fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
+    expect(screen.getByText('已持久化的解题思路')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(false);
+  });
+
+  it('saves an unanswered drill explanation on first completion and reloads it after reopening', async () => {
+    mocks.invoke.mockResolvedValue(null);
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    const view = renderBrowse([unanswered], { browseMode: false, onRefreshQuestion: refresh });
+    fireEvent.click(screen.getByRole('button', { name: /AI 解析/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('qbank_ai_grade', expect.anything()));
+    const [, args] = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'qbank_ai_grade')!;
+    expect(args.request).toMatchObject({ submission_id: null, mode: 'analyze' });
+    act(() => mocks.listeners.get(`qbank_grading_stream_${args.request.stream_session_id}`)!({
+      payload: { type: 'complete', feedback: '完整解析已落库', explanation_written: true },
+    }));
+    await screen.findByText('完整解析已落库');
+    expect(screen.queryByRole('button', { name: /写入解析/ })).toBeNull();
+    view.unmount();
+    renderBrowse([{ ...unanswered, explanation: '完整解析已落库' }], { browseMode: false });
+    fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
+    expect(screen.getByText('完整解析已落库')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'qbank_ai_grade')).toHaveLength(1);
   });
 });

@@ -161,8 +161,8 @@ describe('qbankDriver apply — 回执文案走 exam_sheet:agent.* key', () => {
         expect(receipt.status).toBe('completed');
         expect(run.ledger.record).toHaveBeenCalledTimes(1);
 
-        const invert = vi.mocked(run.ledger.record).mock.calls[0]![1] as () => void;
-        expect(() => invert()).toThrow('exam_sheet:agent.undo_question_missing');
+        const invert = vi.mocked(run.ledger.record).mock.calls[0]![1] as () => Promise<void>;
+        await expect(invert()).rejects.toThrow('exam_sheet:agent.undo_question_missing');
         expect(tSpy).toHaveBeenCalledWith(
           'exam_sheet:agent.undo_question_missing',
           expect.objectContaining({ questionId: 'q-old' }),

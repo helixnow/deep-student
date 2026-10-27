@@ -2383,6 +2383,9 @@ impl VfsAttachmentRepo {
         id: &str,
     ) -> VfsResult<()> {
         info!("[VFS::AttachmentRepo] Purging attachment: {}", id);
+        if crate::qbank_practice::retains_asset(conn, id)? {
+            return Ok(());
+        }
 
         // 先获取附件信息，确认存在（在事务外检查，减少事务持有时间）
         let attachment = match Self::get_by_id_with_conn(conn, id)? {

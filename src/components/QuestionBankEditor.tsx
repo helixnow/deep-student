@@ -22,9 +22,7 @@ import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
 import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
-import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
-import { AiExplanationWriteButton } from './practice/AiExplanationWriteButton';
-import { resolveAiExplanationWrite } from './practice/aiExplanation';
+import { QuestionExplanation } from './practice/QuestionExplanation';
 import { QuestionMaterialView } from './QuestionMaterialView';
 import {
   CaretLeft,
@@ -601,8 +599,6 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     startGrading: startAiGrading,
     retryGrading: retryAiGrading,
   } = aiGrading;
-  // AI 解析缓存（questionId -> feedback），跨题目切换保持
-  const aiFeedbackCacheRef = useRef<Map<string, string>>(new Map());
   
   // P1-2: 计时功能
   const [elapsedTime, setElapsedTime] = useState(0);
@@ -666,9 +662,6 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const noteSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 最近一次已成功保存的笔记内容（避免 blur 与点击保存的双重提交，并驱动草稿脏状态）
   const [lastSavedNote, setLastSavedNote] = useState('');
-  
-  // 答案解析折叠
-  const [explanationExpanded, setExplanationExpanded] = useState(false);
   
   // 题目搜索
   const [searchQuery, setSearchQuery] = useState('');
@@ -951,8 +944,6 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     setQuestionStartTime(Date.now());
     // 重置暗记模式揭示状态
     setAnswerRevealed(false);
-    // 重置解析折叠状态
-    setExplanationExpanded(false);
   }, [currentIndex, questions]);
 
   // 同步外部标签选择（知识点导航进入时）
@@ -1702,96 +1693,16 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     />
   ) : null;
 
-  // 提交结果里的 explanation 可能缺失（会话 hook 不返回该字段），回退到题目自身解析
-  const effectiveExplanation = submitResult?.explanation || currentQuestion.explanation || '';
-
-  // ========== 浏览模式：AI 解析（#467，无需作答） ==========
-  // 本次流式结果 > 本地缓存（比 prop 新）> 题目上持久化的 ai_feedback
-  const browseAiText = aiGrading.state.feedback
-    || aiFeedbackCacheRef.current.get(currentQuestion.id)
-    || currentQuestion.ai_feedback
-    || '';
-
-  const startBrowseAiExplanation = () => {
-    if (!onRefreshQuestion) return;
-    const qId = currentQuestion.id;
-    resetAiGrading();
-    // 不带作答记录：后端生成通用解析，原解析为空时直接写入题目解析
-    startAiGrading(qId, null, 'analyze', undefined, (_verdict, _score, feedback) => {
-      if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
-      onRefreshQuestion(qId).catch((err) => {
-        debugLog.warn('[QuestionBankEditor] refresh after AI explanation failed:', err);
-      });
-    }).catch((err) => { debugLog.error('[QuestionBankEditor] AI explanation failed:', err); });
-  };
-
-  const renderBrowseAiSection = () => {
-    // 只读宿主（不可写题目）不提供 AI 解析：生成结果会写库
-    if (!browseMode || !onRefreshQuestion) return null;
-    const refreshCurrent = () => onRefreshQuestion(currentQuestion.id);
-    if (aiGrading.state.isGrading) {
-      return (
-        <div className="pt-3 border-t border-foreground/[0.06] space-y-2">
-          <div className="flex items-center gap-2">
-            <DsAnalysisIconMuted className="w-4 h-4 text-info animate-pulse" />
-            <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
-            <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 text-xs text-muted-foreground hover:text-foreground">
-              {t('common:cancel')}
-            </DsButton>
-          </div>
-          {aiGrading.state.feedback && (
-            <div className="text-sm text-muted-foreground leading-relaxed">
-              <StreamingMarkdownRenderer content={aiGrading.state.feedback} isStreaming={true} />
-            </div>
-          )}
-        </div>
-      );
-    }
-    // 与题目解析相同（刚回填进去）时不重复展示
-    const showAiText = resolveAiExplanationWrite(currentQuestion.explanation, browseAiText) !== 'none';
-    return (
-      <div className="pt-3 border-t border-foreground/[0.06] space-y-2">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {showAiText ? (
-            <span className="flex items-center gap-1.5 text-sm text-info">
-              <DsAnalysisIconMuted className="w-4 h-4" />
-              {t('editor.aiAnalysis')}
-            </span>
-          ) : (
-            <DsButton variant="ghost" size="sm" onClick={startBrowseAiExplanation} className="!h-auto !p-0 text-info hover:underline">
-              <DsAnalysisIconMuted className="w-4 h-4" />
-              {t('editor.aiAnalysis')}
-            </DsButton>
-          )}
-          {showAiText && (
-            <div className="ml-auto flex items-center gap-1">
-              <AiExplanationWriteButton
-                questionId={currentQuestion.id}
-                explanation={currentQuestion.explanation}
-                aiText={browseAiText}
-                onWritten={refreshCurrent}
-              />
-              <DsButton variant="ghost" size="sm" onClick={startBrowseAiExplanation} className="!h-auto !px-1.5 !py-0.5 text-xs text-muted-foreground hover:text-foreground">
-                <ArrowClockwise size={12} />
-                {t('editor.aiRegenerate')}
-              </DsButton>
-            </div>
-          )}
-        </div>
-        {aiGrading.state.error && (
-          <div className="flex items-center gap-1.5 text-xs text-warning">
-            <WarningCircle size={12} />
-            {aiGrading.state.error}
-          </div>
-        )}
-        {showAiText && (
-          <div className="text-sm text-muted-foreground leading-relaxed">
-            <StreamingMarkdownRenderer content={browseAiText} isStreaming={false} />
-          </div>
-        )}
-      </div>
-    );
-  };
+  const renderExplanation = (defaultExpanded = false) => (
+    <QuestionExplanation
+      key={currentQuestion.id}
+      questionId={currentQuestion.id}
+      explanation={submitResult?.explanation || currentQuestion.explanation}
+      aiFeedback={currentQuestion.ai_feedback}
+      defaultExpanded={defaultExpanded}
+      onRefreshQuestion={onRefreshQuestion}
+    />
+  );
 
   const browsePracticeButton = browseMode && onPracticeQuestion ? (
     <DsButton
@@ -2533,139 +2444,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               </div>
             )}
 
-            {/* 解析折叠（回退到题目自身解析） */}
-            {effectiveExplanation && (
-              <div className="pt-2 border-t border-foreground/[0.06]">
-                <DsButton variant="ghost" size="sm" onClick={() => setExplanationExpanded(!explanationExpanded)} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-warning hover:underline">
-                  <Lightbulb size={16} />
-                  {explanationExpanded ? t('editor.collapseExplanation') : t('editor.viewExplanation')}
-                  {explanationExpanded ? <CaretUp size={14} /> : <CaretDown size={14} />}
-                </DsButton>
-                {explanationExpanded && (
-                  <div className="ui-rise-in mt-2 text-sm text-muted-foreground leading-relaxed">
-                    <MarkdownRenderer
-                      content={effectiveExplanation}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
             {/* 追问：问 AI 讲解 / 生成同类题 / 回到出处（错题 → 对话闭环） */}
             <QuestionFollowUpBar question={currentQuestion} examId={sessionId}
               userAnswer={selectedAnswer} isCorrect={submitResult?.isCorrect} />
-
-            {/* AI 解析按钮（客观题） */}
-            <div className="pt-2 border-t border-foreground/[0.06]">
-              {aiGrading.state.isGrading ? (
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <DsAnalysisIconMuted className="w-4 h-4 text-info animate-pulse" />
-                    <span className="text-sm text-info">{t('editor.aiAnalyzing')}</span>
-                    <DsButton variant="ghost" size="sm" onClick={() => aiGrading.cancelGrading()} className="ml-auto !h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-xs text-muted-foreground hover:text-foreground">
-                      {t('common:cancel')}
-                    </DsButton>
-                  </div>
-                  {aiGrading.state.feedback ? (
-                    <div className="text-sm text-muted-foreground leading-relaxed">
-                      <StreamingMarkdownRenderer
-                        content={aiGrading.state.feedback}
-                        isStreaming={true}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1 py-1" aria-hidden>
-                      <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:150ms]" />
-                      <span className="w-1.5 h-1.5 rounded-full bg-info/60 animate-bounce [animation-delay:300ms]" />
-                    </div>
-                  )}
-                </div>
-              ) : aiGrading.state.feedback ? (
-                /* #56: 即使流异常中断（error 态）也保留已输出的解析内容 */
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-sm text-info">
-                    <DsAnalysisIconMuted className="w-4 h-4" />
-                    {t('editor.aiAnalysis')}
-                    {onRefreshQuestion && !aiGrading.state.error && (
-                      <AiExplanationWriteButton
-                        className="ml-auto"
-                        questionId={currentQuestion.id}
-                        explanation={currentQuestion.explanation}
-                        aiText={aiGrading.state.feedback}
-                        onWritten={() => onRefreshQuestion(currentQuestion.id)}
-                      />
-                    )}
-                  </div>
-                  {aiGrading.state.error && (
-                    <div className="flex items-center gap-1.5 text-xs text-warning">
-                      <WarningCircle size={12} />
-                      {aiGrading.state.error}
-                      <DsButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          retryAiGrading()?.catch((err) => {
-                            debugLog.warn('[QuestionBankEditor] AI analyze retry failed:', err);
-                          });
-                        }}
-                        className="!h-auto !px-1.5 !py-0.5 [@media(pointer:coarse)]:!min-h-11 text-xs text-info hover:bg-info/10"
-                      >
-                        <ArrowClockwise size={12} />
-                        {t('editor.aiRetry')}
-                      </DsButton>
-                    </div>
-                  )}
-                  <div className="text-sm text-muted-foreground leading-relaxed">
-                    <StreamingMarkdownRenderer
-                      content={aiGrading.state.feedback}
-                      isStreaming={false}
-                    />
-                  </div>
-                </div>
-              ) : (currentQuestion?.ai_feedback || aiFeedbackCacheRef.current.get(currentQuestion?.id ?? '')) ? (
-                /* 展示缓存的 AI 解析（prop 或本地缓存） */
-                <div className="space-y-1">
-                  <div className="flex items-center gap-1.5 text-sm text-info">
-                    <DsAnalysisIconMuted className="w-4 h-4" />
-                    {t('editor.aiAnalysis')}
-                    {onRefreshQuestion && (
-                      <AiExplanationWriteButton
-                        className="ml-auto"
-                        questionId={currentQuestion.id}
-                        explanation={currentQuestion.explanation}
-                        aiText={currentQuestion.ai_feedback || aiFeedbackCacheRef.current.get(currentQuestion.id)}
-                        onWritten={() => onRefreshQuestion(currentQuestion.id)}
-                      />
-                    )}
-                  </div>
-                  <div className="text-sm text-muted-foreground leading-relaxed">
-                    <StreamingMarkdownRenderer
-                      content={currentQuestion?.ai_feedback || aiFeedbackCacheRef.current.get(currentQuestion?.id ?? '') || ''}
-                      isStreaming={false}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <DsButton variant="ghost" size="sm" onClick={() => {
-                    if (!currentQuestion || !submitResult.submissionId) return;
-                    const qId = currentQuestion.id;
-                    resetAiGrading();
-                    startAiGrading(
-                      qId,
-                      submitResult.submissionId,
-                      'analyze',
-                      undefined,
-                      (_verdict, _score, feedback) => {
-                        if (feedback) aiFeedbackCacheRef.current.set(qId, feedback);
-                      },
-                    ).catch((err) => { debugLog.error('[QBankEditor] AI analyze failed:', err); });
-                  }} className="!h-auto !p-0 [@media(pointer:coarse)]:!min-h-11 text-info hover:underline">
-                  <DsAnalysisIconMuted className="w-4 h-4" />
-                  {t('editor.aiAnalysis')}
-                </DsButton>
-              )}
-            </div>
           </>
         )}
       </div>
@@ -2854,25 +2635,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                             )}
                           </div>
                         )}
-                        {currentQuestion.explanation && (
-                          <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <Lightbulb size={14} className="text-primary" />
-                              <span className="text-xs font-medium text-primary">{t('editor.explanation')}</span>
-                            </div>
-                            <div className="text-sm">
-                              <MarkdownRenderer
-                                content={currentQuestion.explanation}
-/>
-                            </div>
-                          </div>
-                        )}
                         {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
                           <div className="rounded-md bg-muted/50 p-3 text-center">
                             <p className="text-sm text-muted-foreground">{t('editor.noAnswerOrExplanation')}</p>
                           </div>
                         )}
-                        {renderBrowseAiSection()}
+                        {renderExplanation(true)}
                       </div>
                     ) : (
                       <>
@@ -2905,6 +2673,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
                         {/* 提交结果（含 AI 判分/解析，与桌面端共用） */}
                         {renderSubmitResultCard('mt-1')}
+                        {renderExplanation()}
                       </>
                     )}
                   </CardContent>
@@ -3228,21 +2997,6 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     </div>
                   )}
 
-                  {/* 解析显示 */}
-                  {currentQuestion.explanation && (
-                    <div className="rounded-md border border-primary/30 bg-primary/5 p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Lightbulb size={16} className="text-primary" />
-                        <span className="text-sm font-medium text-primary">{t('editor.explanation')}</span>
-                      </div>
-                      <div className="text-sm">
-                        <MarkdownRenderer
-                          content={currentQuestion.explanation}
-/>
-                      </div>
-                    </div>
-                  )}
-
                   {/* 无答案提示 */}
                   {!structuredAnswerSummaryNode && !currentQuestion.answer && !currentQuestion.explanation && (
                     <div className="rounded-md bg-muted/50 p-3 text-center">
@@ -3250,7 +3004,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     </div>
                   )}
 
-                  {renderBrowseAiSection()}
+                  {renderExplanation(true)}
                 </div>
               ) : (
                 /* 做题模式：答题 UI */
@@ -3309,6 +3063,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
               {/* 提交结果（含 AI 判分/解析，与移动端共用） */}
               {renderSubmitResultCard()}
+              {!browseMode && renderExplanation()}
 
               {/* 用户笔记：内联展开编辑，失焦自动保存 */}
               {!browseMode && (

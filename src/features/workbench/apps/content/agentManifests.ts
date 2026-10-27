@@ -18,6 +18,7 @@ import {
 import { getContentAgentSurface } from './contentAgentSurfaces';
 import { normalizeResourceInstanceKey } from './resourceIdentity';
 import { getResourceWorkspaceActive } from './resourceWorkspaceRegistry';
+import { getPracticeRuntimes } from '@/components/practice/practiceRuntime';
 
 const PRACTICE_MODES = [
   'sequential', 'random', 'review_first', 'review_only', 'by_tag',
@@ -88,7 +89,7 @@ function practiceSessionSummaries(
       : state.practiceMode === 'daily'
         ? daily && { mode: 'daily', ...daily }
         : null;
-  return { timed, mockExam, daily, activePracticeSession };
+  return { timed, mockExam, daily, activePracticeSession, durable: getPracticeRuntimes(examId) };
 }
 
 export function createExamAgentManifest(
@@ -237,6 +238,7 @@ export function createExamAgentManifest(
             timed: practiceSessions.timed,
             mockExam: practiceSessions.mockExam,
             daily: practiceSessions.daily,
+            durable: practiceSessions.durable,
           },
           activePracticeSession: practiceSessions.activePracticeSession,
           filtersRevision: stableRevision(state.filters),
