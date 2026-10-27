@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.9](https://github.com/helixnow/deep-student/compare/v0.10.8...v0.10.9) (2026-10-27)
+
+
+### Features
+
+* **qbank:** persistent paper practice, exports, and explanations ([#503](https://github.com/helixnow/deep-student/issues/503)) ([b2a7cdc](https://github.com/helixnow/deep-student/commit/b2a7cdc1aac3ff0b017cb6398ddc646a53c80511))
+
+
+### Bug Fixes
+
+* **sync:** correct gap/schema checks and expose WebDAV rate-limit details ([#501](https://github.com/helixnow/deep-student/issues/501)) ([62f6d6b](https://github.com/helixnow/deep-student/commit/62f6d6b5092f45e9f33c5e3e813c89bf78c88f3e))
+
 ## [0.10.8](https://github.com/helixnow/deep-student/compare/v0.10.7...v0.10.8) (2026-10-24)
 
 
