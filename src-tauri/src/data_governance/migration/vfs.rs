@@ -1123,6 +1123,19 @@ pub const V20261023_QUESTION_AUTHORING_V2: MigrationDef = MigrationDef::new(
     ("answer_submissions", "material_snapshot_json"),
 ]);
 
+pub const V20261027_PRACTICE_SESSIONS: MigrationDef = MigrationDef::new(
+    20261027,
+    "practice_sessions",
+    include_str!("../../../migrations/vfs/V20261027__practice_sessions.sql"),
+)
+.with_expected_tables(&[
+    "qbank_papers",
+    "qbank_practice_drafts",
+    "qbank_practice_attempts",
+    "qbank_practice_jobs",
+])
+.idempotent();
+
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
     V20260131_CHANGE_LOG,
@@ -1194,6 +1207,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20261005_MEDIA_TRANSCRIPTS,
     V20261006_STUDY_TIME,
     V20261023_QUESTION_AUTHORING_V2,
+    V20261027_PRACTICE_SESSIONS,
 ];
 
 /// VFS 当前 Schema 版本，始终由已注册迁移的最后一项推导。
@@ -1282,6 +1296,10 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "qbank_groups",
     "qbank_group_materials",
     "qbank_import_jobs",
+    "qbank_papers",
+    "qbank_practice_drafts",
+    "qbank_practice_attempts",
+    "qbank_practice_jobs",
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
@@ -1296,7 +1314,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 63;
+pub const VFS_TABLE_COUNT: usize = 67;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -1370,14 +1388,14 @@ mod tests {
 
     #[test]
     fn test_note_history_is_registered_as_vfs_schema_head() {
-        assert_eq!(VFS_SCHEMA_VERSION, 20261023);
+        assert_eq!(VFS_SCHEMA_VERSION, 20261027);
         assert_eq!(
             V20260912_QBANK_GENERATION_TASKS.expected_tables,
             &["qbank_generation_tasks"]
         );
         assert_eq!(
             VFS_MIGRATIONS.last().map(|migration| migration.name),
-            Some("question_authoring_v2")
+            Some("practice_sessions")
         );
         assert_eq!(V20261006_STUDY_TIME.expected_tables, &["study_time_daily"]);
         assert_eq!(

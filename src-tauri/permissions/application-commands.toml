@@ -2,6 +2,20 @@
 identifier = "allow-application-commands"
 description = "Allows the trusted local application windows to invoke all registered Deep Student commands."
 commands.allow = [
+  "qbank_complete_paper_export",
+  "qbank_create_practice",
+  "qbank_delete_practice",
+  "qbank_export_paper_docx",
+  "qbank_get_paper",
+  "qbank_get_practice",
+  "qbank_grade_practice_manually",
+  "qbank_list_papers",
+  "qbank_list_practices",
+  "qbank_resume_practice_grading",
+  "qbank_retry_practice_grading",
+  "qbank_save_practice",
+  "qbank_submit_practice",
+  "qbank_update_paper",
   "add_cards_to_anki_connect",
   "add_ocr_engine",
   "anki_get_deck_names",

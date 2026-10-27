@@ -50,7 +50,7 @@ export const qbankToolsSkill: SkillDefinition = {
 
 1. **建题**：单题用 \`builtin-qbank_create_question\`，批量用 \`builtin-qbank_batch_import\`；资源直接传resource_id给 \`builtin-qbank_import_document\`。选项放options。当前模型产v2文档，不另选槽；generate_questions只给指引，用户明确要求后台才background=true。抽取不解题，缺答案null。
 2. **练习**：\`builtin-qbank_get_next_question\`取题，review_only=true仅错题/复习；限时/模拟考/每日分别用start_timed_practice/generate_mock_exam/get_daily_practice。
-3. **用户作答**：agentCanAnswer=false，不得生成、猜测或代替用户作答。submit_answer仅用户原答；限时/模拟考用户在UI交卷。成绩加载workbench-tools读取scoreSummary，绝不包含答案或逐题判定。
+3. **用户作答**：agentCanAnswer=false，不得生成、猜测或代替用户作答。刷题逐题判分，submit_answer仅提交用户要求立即批改的原答；其余用户UI交卷，禁止提前判分泄题。主观题交卷后AI批改，失败待批改。qbank_list_practices/workbench-tools只读scoreSummary，绝不包含答案或逐题判定。
 4. **错题闭环**：读取作答/交卷回执中的错题 ID；需要去重时先搜索并逐题读取版本。
    收藏难题用 \`builtin-qbank_toggle_favorite\`，书签标记用 \`builtin-qbank_toggle_bookmark\`
    （两个独立标记位）。回看一道题的完整作答记录用 \`builtin-qbank_get_submissions\`，
@@ -60,7 +60,7 @@ export const qbankToolsSkill: SkillDefinition = {
    无人值守/headless 场景不得执行。
 5. **分析**：search_questions/get_stats/\`builtin-qbank_get_learning_trend\`/get_activity_heatmap/get_knowledge_stats；单页最多 20 条，读到has_more=false才完整。
 6. **整理**：batch_update_questions改难度/状态/完整标签，最多20题，逐题OCC非原子；按results重读冲突。内容修改逐题update_question。
-7. **组卷**：\`builtin-qbank_generate_paper\`的preview不写文件，export_path=null；markdown写exports/qbank/*.md。不得声称生成PDF/Word。
+7. **组卷**：\`builtin-qbank_generate_paper\`保存到「试卷」页，返回paper_id/persisted=true。preview：export_path=null/file_created=false；markdown/pdf/word写exports/qbank，仅file_created=true且export_path非空才可称导出成功。答案解析开关只控导出，附卷末。qbank_list_papers查列表、qbank_get_paper读题量/ID、qbank_list_practices读成绩摘要。草稿本机保存，试卷与已交卷结果云同步。
 
 ## 材料、草稿和提交
 
@@ -71,74 +71,57 @@ export const qbankToolsSkill: SkillDefinition = {
 - 所有题目在 committed=true 回执前都只是草稿。只要求解析预览时用 mode=preview，不得写入正式题；明确要求创建/添加时才提交。
 - partial、needs_review、未匹配答案、截断或缺页必须如实报告，不得把前缀说成整份完成。题数只计独立子题，材料和题组不算题。
 - 解析模型由本轮可信执行上下文绑定；无视觉能力且确有视觉输入时才显式使用 VLM 兜底。1–20 页完整输入不分页多次调用；供应商真实限制显式报错，不静默删页或截正文。
-- JSON 参数仅用于专用解析请求，普通对话/工具调用不强制 json_object。模型输出合法 JSON 仍须经过后端字段、关系、来源和完整性校验。
+- 仅专用解析请求使用JSON模式，普通调用不强制json_object；后端仍校验字段、关系、来源和完整性。
 - source_refs 的每项必须有 source_id，页码是 page（未知用 null）。coverage 只能是 [{source_id,page,status:"processed"/"uncertain"/"unprocessed"}]，不能填写试卷简介、题量或章节；对话命题无逐页来源时用 []。
 - 题组与其完整 materials 必须一起提交。报材料引用不存在时，补回完整材料正文，不可删引用绕过校验。
-- 返回 draft_job_id 时使用 qbank_get_authoring_draft 读取、qbank_review_authoring_draft 修正复核字段，用户确认后 qbank_commit_authoring_draft 提交原草稿；不得反复重新生成整套题。qbank_list_authoring_drafts 可找回历史待确认内容。
+- draft_job_id用qbank_get_authoring_draft读取、qbank_review_authoring_draft修正，用户确认后qbank_commit_authoring_draft提交原稿；禁止重复生成。qbank_list_authoring_drafts查历史草稿。
 - 管理共享结构先 qbank_list_structure 读取真实 group/material ID 与 version；qbank_update_group 原子调整完整成员顺序和材料关联，移出的子题保留必要材料。qbank_delete_group(mode=ungroup) 保留每题材料；delete_members 连同子题软删并保留历史。删除组/材料为 High，须遵守既有精确确认流程。
 
-限时练习、模拟考、每日一练依赖题库 UI。工具返回版本化 \`handoff\`；它随当前 Chat
-工具结果持久保存（\`handoff_persisted=true\`、\`handoff_durability="chat_tool_result"\`），
-但题库领域 session 在 UI 水合前仍为 \`session_persisted=false\`。返回
-\`requires_user_interaction=true\`、\`agentCanAnswer=false\` 和 \`workbenchAction\`，
-**不代表 UI 已经打开**。需要用户作答时加载 \`workbench-tools\`，
-调用 \`workbenchAction.tool\`，并只把 \`workbenchAction.arguments\` 原样作为工具参数；
-只有 Workbench 返回 authoritative ACK 后才能说题目集已打开且会话已注入。
-\`workbenchAction.executed=false\`、\`payloadHydrationSupported=true\`；动作会严格校验 exam/session、
-拒绝预填答案或进度，并把 timed/mock/daily session 注入题库 store。跨轮可从原工具结果重放
-同一 handoff；任何作答和交卷仍必须由用户在 UI 完成。
+timed/mock/daily返回\`handoff\`，保存在Chat工具结果（\`handoff_persisted=true\`、\`handoff_durability="chat_tool_result"\`）；UI水合前\`session_persisted=false\`。\`requires_user_interaction=true\`、\`agentCanAnswer=false\`、\`workbenchAction.executed=false\`、\`payloadHydrationSupported=true\`不代表已打开。加载\`workbench-tools\`，调用\`workbenchAction.tool\`，参数原样取\`workbenchAction.arguments\`。只有 Workbench 返回 authoritative ACK 后才能说题目集已打开且会话已注入。交接校验exam/session，拒绝预填答案/进度；跨轮可重放原handoff。作答与交卷仅用户在UI执行。
 
 ## 并发与撤销
 
-- 更新、收藏、删除前先用 \`builtin-qbank_get_question\` 读取最新 \`updated_at\`；冲突后
-  重新读取并重新规划，禁止盲重试。
+- 更新/收藏/删除前\`builtin-qbank_get_question\`读取\`updated_at\`；冲突重读规划，禁止盲重试。
 - 创建返回 \`reversible=false/reversibleWithApproval=true\`：其 undo 指向 High 批删，仍须
   针对准确题目重新 ask_user。更新返回 \`reversible=false/reversibleWithOcc=true\`，须基于
   \`previous\` 和最新 OCC 版本人工构造反向更新；可空字段不保证自动清空。收藏切换才返回
   \`reversible=true\` 和可直接使用的精确 undo。任何撤销都只能使用最新回执参数。
 - 批量删除虽为软删除，但当前没有 Agent 恢复工具，因此 \`reversible=false\`，不得宣称可撤销。
-- 新增工具返回的题目对象是安全预览；content/answer/explanation/option content 单字段最多
-  2000 字符并带 \`truncated\` 标记。需要全文时按精确 ID 重新读取，禁止把截断预览当全文。
+- 题目回执为安全预览，长字段最多2000字符，\`truncated\`标记截断；需全文按ID重读。
 
 ## 主观题批改
 
-先 \`builtin-qbank_submit_answer\` 提交用户明确提供的答案并读取 \`submission_id\`，再调用
-\`builtin-qbank_ai_grade\`。评判工具会真实调用模型并持久化 grade 结果；没有工具回执时
-不得自行宣称已完成 AI 批改。
+仅用户要求立即批改时，\`builtin-qbank_submit_answer\`提交原答，取\`submission_id\`后调用\`builtin-qbank_ai_grade\`；须有成功回执才可称AI批改完成。整轮练习由UI交卷后排队批改。
 
 ## 引用格式
 
-创建/导入后必须引用工具返回的真实session_id：\`[题目集:session_id:名称]\`（名称可省略），使用户可点击打开。题数仅来自已提交回执。
+创建/导入后引用真实session_id：\`[题目集:session_id:名称]\`（名称可省略），题数以提交回执为准。
 
 ## 通用字段
 
 session_id/exam_id=题目集ID；question_id=正式题ID；card_id=同库卡片ID。
-page从1开始，offset从0开始；limit/page_size按has_more继续分页。
-长字段最多2000字符，<field>_truncated、options[i].content_truncated、fieldsTruncated标记，不得当全文。
-分页回执含total、limit/offset或page/page_size、questions/results、has_more、truncated；读到has_more=false才完整。
+page从1、offset从0开始；按has_more分页至false。长字段最多2000字符，<field>_truncated/options[i].content_truncated/fieldsTruncated标记截断，不是全文。
+分页回执：total、limit/offset或page/page_size、questions/results、has_more、truncated。
 
 ## 出题格式要求
 
-使用 \`qbank_batch_import\` 创建题目时，必须正确设置题型和选项：
+\`qbank_batch_import\`题型与选项契约：
 
-- **选择题**：\`question_type\` 设为 \`"single_choice"\` 或 \`"multiple_choice"\`，提供 \`options\` 数组（\`[{"key":"A","content":"..."}, ...]\`），\`answer\` 填选项字母（如 \`"A"\` 或 \`"ABD"\`）。不要把选项写在 content 题干里。
-- **填空题**：\`question_type\` 设为 \`"fill_blank"\`，题干中用 \`____\` 表示空位；多空或多个可接受答案时提供
-  \`structured_data\`：\`{"blanks":[{"answers":["答案1","备选答案"],"case_sensitive":false,"trim":true}]}\`（blanks 顺序与空位一一对应）
-- **判断题**：\`question_type\` 设为 \`"true_false"\`，\`answer\` 只能是小写 \`"true"\` 或 \`"false"\`
-- **匹配题**：\`question_type\` 设为 \`"matching"\`，**必须**提供 \`structured_data\`：
+- **选择题**：\`question_type="single_choice"/"multiple_choice"\`，\`options=[{"key":"A","content":"..."}]\`；\`answer="A"/"ABD"\`。选项不写content题干。
+- **fill_blank**：题干空位\`____\`；多空/备选答案用\`structured_data={"blanks":[{"answers":["答案1","备选答案"],"case_sensitive":false,"trim":true}]}\`，blanks顺序对应空位。
+- **true_false**：\`answer="true"/"false"\`，小写。
+- **matching**必须有\`structured_data\`：
   \`{"left":[{"key":"L1","content":"..."}],"right":[{"key":"R1","content":"..."}],"pairs":[{"left":"L1","right":"R1"}]}\`
-- **排序题**：\`question_type\` 设为 \`"ordering"\`，**必须**提供 \`structured_data\`：
+- **ordering**必须有\`structured_data\`：
   \`{"items":[{"key":"S1","content":"..."},{"key":"S2","content":"..."}],"correct_order":["S2","S1"]}\`（correct_order 是 items key 的一个排列）
-- **数值题**：\`question_type\` 设为 \`"numeric"\`，**必须**提供 \`structured_data\`：
+- **numeric**必须有\`structured_data\`：
   \`{"answer_value":3.14,"tolerance":0.01,"unit":"m","tolerance_mode":"absolute"}\`（tolerance_mode 可选 absolute/relative）
 - **简答/计算/证明题**：分别设 \`"short_answer"\`/\`"calculation"\`/\`"proof"\`
-- **禁止**：如果题目明显有 A/B/C/D 选项，不要设为 \`"other"\`；structured_data 只允许用于 fill_blank/matching/ordering/numeric
+- 有A/B/C/D选项不能为\`"other"\`；structured_data仅限fill_blank/matching/ordering/numeric。
 
 ## 新题型 user_answer 序列化格式
 
-\`qbank_submit_answer\` 的 \`user_answer\` 统一为字符串：判断题 \`"true"\`/\`"false"\`；
-数值题数字串如 \`"3.14"\`；多空填空 JSON 数组串 \`"[\\"答案1\\",\\"答案2\\"]"\`；
-匹配题 \`"{\\"pairs\\":[{\\"left\\":\\"L1\\",\\"right\\":\\"R1\\"}]}"\`；排序题 JSON 数组串 \`"[\\"S2\\",\\"S1\\"]"\`。
+user_answer统一字符串：判断题"true"/"false"；数值"3.14"；多空填空序列化["答案1","答案2"]；匹配题序列化{"pairs":[{"left":"L1","right":"R1"}]}；排序题序列化["S2","S1"]。对象/数组必须JSON.stringify后作为字符串传入。
 判分由后端完成，Agent 不得自行判定新题型对错。
 
 `,
@@ -180,6 +163,9 @@ page从1开始，offset从0开始；limit/page_size按has_more继续分页。
     'builtin-qbank_get_daily_practice',
     'builtin-qbank_get_check_in_calendar',
     'builtin-qbank_generate_paper',
+    'builtin-qbank_list_papers',
+    'builtin-qbank_get_paper',
+    'builtin-qbank_list_practices',
     'builtin-qbank_search_questions',
     'builtin-qbank_get_learning_trend',
     'builtin-qbank_get_activity_heatmap',
@@ -575,7 +561,7 @@ page从1开始，offset从0开始；limit/page_size按has_more继续分页。
     },
     {
       name: 'builtin-qbank_ai_grade',
-      description: '真实 AI：grade须qbank_submit_answer的submission_id并持久化评分；analyze仅写空explanation，已有解析不会被覆盖。',
+      description: '真实 AI：grade须qbank_submit_answer的submission_id，持久化评分；analyze省submission_id补空explanation，已有解析不会被覆盖，可未答查看。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -885,7 +871,7 @@ page从1开始，offset从0开始；limit/page_size按has_more继续分页。
     },
     {
       name: 'builtin-qbank_generate_paper',
-      description: 'Medium：筛题组卷。preview仅内存，export_path=null/file_created=false；markdown真实写exports/qbank/*.md。拒绝PDF/Word；questions最多20条，questions_truncated标记，长字段截断。',
+      description: '保存试卷。preview不导出文件；markdown/pdf/word写exports/qbank，file_created=true和export_path才算成功。questions最多20条，questions_truncated标记。',
       inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -908,12 +894,27 @@ page从1开始，offset从0开始；limit/page_size按has_more继续分页。
               shuffle: { type: 'boolean', default: true },
               include_answers: { type: 'boolean', default: true },
               include_explanations: { type: 'boolean', default: true },
-              export_format: { type: 'string', enum: ['preview', 'markdown'], default: 'preview' },
+              export_format: { type: 'string', enum: ['preview', 'markdown', 'pdf', 'word'], default: 'preview' },
             },
           },
         },
         required: ['session_id', 'config'],
       },
+    },
+    {
+      name: 'builtin-qbank_list_papers',
+      description: '分页列出已保存试卷ID、标题、题量。',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { session_id: { type: 'string', minLength: 1 }, page: { type: 'integer', minimum: 1, default: 1 }, page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20 } }, required: ['session_id'] },
+    },
+    {
+      name: 'builtin-qbank_get_paper',
+      description: '读试卷元数据和有序题目ID，不含答案。',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { paper_id: { type: 'string', minLength: 1 } }, required: ['paper_id'] },
+    },
+    {
+      name: 'builtin-qbank_list_practices',
+      description: '分页读已交卷成绩摘要：正确、错误、未答、待批改。无草稿、作答或逐题判定。',
+      inputSchema: { type: 'object', additionalProperties: false, properties: { session_id: { type: 'string', minLength: 1 }, page: { type: 'integer', minimum: 1, default: 1 }, page_size: { type: 'integer', minimum: 1, maximum: 20, default: 20 } }, required: ['session_id'] },
     },
     {
       name: 'builtin-qbank_search_questions',

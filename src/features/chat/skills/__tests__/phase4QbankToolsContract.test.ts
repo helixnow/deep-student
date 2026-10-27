@@ -237,19 +237,19 @@ describe('phase 4 qbank tool contracts', () => {
     expect(tool.description).toMatch(/highlight_\*.*\{text,truncated\}.*null/);
   });
 
-  it('exports generated papers only as preview or real Markdown files', () => {
+  it('persists papers and reports success only for real exports', () => {
     const tool = getTool('builtin-qbank_generate_paper');
     const config = tool.inputSchema.properties.config;
 
-    expect(config.properties?.export_format.enum).toEqual(['preview', 'markdown']);
+    expect(config.properties?.export_format.enum).toEqual(['preview', 'markdown', 'pdf', 'word']);
     expect(config.properties?.question_count).toMatchObject({
       minimum: 1,
       maximum: 100,
       default: 20,
     });
-    expect(tool.description).toMatch(/preview.*export_path=null.*file_created=false/);
-    expect(tool.description).toMatch(/markdown.*exports\/qbank\/\*\.md/);
-    expect(tool.description).toMatch(/拒绝PDF\/Word/);
+    expect(tool.description).toMatch(/preview不导出文件/);
+    expect(tool.description).toMatch(/markdown\/pdf\/word.*exports\/qbank/);
+    expect(tool.description).toMatch(/file_created=true.*export_path/);
     expect(tool.description).toMatch(/questions.*20.*questions_truncated/);
     expect(instructionsFor(tool.name)).toContain('2000');
     expect(instructionsFor(tool.name)).toContain('fieldsTruncated');

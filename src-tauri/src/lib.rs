@@ -112,6 +112,7 @@ pub mod qbank_generation;
 pub mod qbank_grading;
 pub mod qbank_legacy_reconcile;
 pub mod qbank_management;
+pub mod qbank_practice;
 pub mod qbank_read;
 pub mod qbank_source_view;
 pub mod question_authoring_runner;
@@ -2765,6 +2766,20 @@ pub fn run() {
             ,crate::commands::qbank_submit_mock_exam
             ,crate::commands::qbank_get_daily_practice
             ,crate::commands::qbank_generate_paper
+            ,crate::qbank_practice::qbank_create_practice
+            ,crate::qbank_practice::qbank_save_practice
+            ,crate::qbank_practice::qbank_get_practice
+            ,crate::qbank_practice::qbank_list_practices
+            ,crate::qbank_practice::qbank_submit_practice
+            ,crate::qbank_practice::qbank_delete_practice
+            ,crate::qbank_practice::qbank_resume_practice_grading
+            ,crate::qbank_practice::qbank_retry_practice_grading
+            ,crate::qbank_practice::qbank_grade_practice_manually
+            ,crate::qbank_practice::qbank_list_papers
+            ,crate::qbank_practice::qbank_get_paper
+            ,crate::qbank_practice::qbank_update_paper
+            ,crate::qbank_practice::export::qbank_export_paper_docx
+            ,crate::qbank_practice::export_bridge::qbank_complete_paper_export
             ,crate::commands::qbank_get_check_in_calendar
             // =================================================
             // 学习热力图命令

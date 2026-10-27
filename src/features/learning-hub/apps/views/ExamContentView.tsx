@@ -49,6 +49,7 @@ import { collectDomainEntityIds } from '@/features/workbench/agent/domainEvents'
 import { agentFlash, agentFlashMany } from '@/features/workbench/agent/visuals/agentFlash';
 import type { DomainChangePayload } from '@/features/workbench/agent/types';
 import { registerContentDirtyChecker } from '@/features/workbench/apps/content/contentDirtyRegistry';
+import { newPracticeId, type CreatePracticeRequest, type GradingMode } from '@/api/practiceApi';
 
 const ExamSheetUploader = lazy(() => import('@/components/ExamSheetUploader'));
 const QuestionImportAuditPanel = lazy(() => import('@/components/QuestionImportAuditPanel'));
@@ -66,10 +67,12 @@ const ReviewSession = lazy(() => import('@/components/ReviewSession'));
 const ReviewCalendarView = lazy(() => import('@/components/ReviewCalendarView'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
+const BatchPracticeWorkspace = lazy(() => import('@/components/practice/BatchPracticeWorkspace'));
+const PaperLibrary = lazy(() => import('@/components/practice/PaperLibrary'));
 const CsvImportPanel = lazy(() => import('@/components/CsvImportDialog').then((module) => ({ default: module.CsvImportPanel })));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'browse' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport';
+type ViewMode = 'list' | 'browse' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher' | 'csvImport' | 'papers';
 type LauncherRequestedMode = 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper';
 type DraftSource = 'practice' | 'inlineEditor';
 
@@ -340,6 +343,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     toggleFavorite: toggleFavoriteInSession,
   } = useQuestionBankSession({ examId: sessionId });
   const hasQuestions = questions.length > 0;
+  const [gradingMode, setGradingMode] = useState<GradingMode>('on_submit');
+  const [batchRequest, setBatchRequest] = useState<CreatePracticeRequest | null>(null);
+  const [batchRecord, setBatchRecord] = useState<{ id: string; submitted: boolean } | null>(null);
+  const batchFlushRef = useRef<(() => Promise<void>) | null>(null);
+  const batchNavigateRef = useRef<((target: number | string) => Promise<void>) | null>(null);
+  const setBatchNavigate = useCallback((navigate: ((target: number | string) => Promise<void>) | null) => { batchNavigateRef.current = navigate; }, []);
+  const setBatchFlush = useCallback((flush: (() => Promise<void>) | null) => { batchFlushRef.current = flush; }, []);
   const sm2DueCount = useExamDueReviewCount(sessionId);
 
   // 二级视图（收纳进 Tab 栏「更多」菜单）：错题 / 复习 / 收藏 / 知识点 / 统计 / 管理
@@ -545,6 +555,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // Keep submitted ratings, but ask before discarding the remaining local queue.
   const hasInProgressPracticeSession = useCallback((): boolean => {
     if (viewMode !== 'practice') return false;
+    if (gradingMode === 'on_submit') return false;
     if (
       practiceMode === 'timed'
       && activeTimedSession
@@ -590,6 +601,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     activeMockExamSession,
     activeDailyPractice,
     practiceSessionOwner,
+    gradingMode,
   ]);
 
   const applyViewMode = useCallback((mode: ViewMode, afterViewChange?: () => void, changesPractice = false): boolean => {
@@ -640,6 +652,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const handled = applyViewMode(mode, afterViewChange, changesPractice);
       if (handled) afterViewChange?.();
     };
+    if (viewMode === 'practice' && gradingMode === 'on_submit' && batchFlushRef.current) {
+      void batchFlushRef.current().then(() => {
+        if (changesPractice) { setBatchRequest(null); setBatchRecord(null); }
+        proceed();
+      }).catch(error => showGlobalNotification('error', String(error)));
+      return false;
+    }
     const currentDraft = draftStateRef.current;
     if (currentDraft.examId === sessionId && currentDraft.dirty) {
       setPendingDraftNavigation({
@@ -651,7 +670,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const handled = applyViewMode(mode, afterViewChange, changesPractice);
     if (handled) afterViewChange?.();
     return handled;
-  }, [applyViewMode, sessionId, viewMode]);
+  }, [applyViewMode, sessionId, viewMode, gradingMode]);
 
   // Settings are owned by this resource view, not the global question-bank store.
   // A workbench action can only succeed once this view can enter the practice surface.
@@ -817,6 +836,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setSessionDetailError(null);
     setViewMode('list');
     setSelectedTag('');
+    setBatchRequest(null);
+    setBatchRecord(null);
+    setGradingMode('on_submit');
     setManageFilters({});
     setShowExportDialog(false);
     setShowHistoryDialog(false);
@@ -837,6 +859,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, []);
 
   const activeAdvancedTimerDuration = useMemo(() => {
+    if (gradingMode === 'on_submit') return null;
     if (
       practiceMode === 'timed' &&
       activeTimedSession &&
@@ -853,7 +876,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       return activeMockExamSession.config.duration_minutes * 60;
     }
     return null;
-  }, [practiceMode, activeTimedSession, activeMockExamSession]);
+  }, [practiceMode, activeTimedSession, activeMockExamSession, gradingMode]);
 
   const activeAdvancedStartedAt = useMemo(() => {
     if (practiceMode === 'timed') return activeTimedSession?.started_at || null;
@@ -903,6 +926,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   //   限时/模拟考（advanced runtime）必须按墙钟走：后台切换、休眠恢复都不能"暂停"考试，
   //   否则与后端 time_spent（ended_at - started_at）和启动页的绝对时间倒计时不一致。
   useEffect(() => {
+    if (gradingMode === 'on_submit') return;
     const advancedRuntime = activeAdvancedTimerDuration != null;
     if (viewMode === 'practice' && isTimerRunning && (isActive !== false || advancedRuntime)) {
       timerRef.current = setInterval(() => {
@@ -927,7 +951,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         timerRef.current = null;
       }
     };
-  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt, activeAdvancedPausedSeconds]);
+  }, [viewMode, isTimerRunning, isActive, activeAdvancedTimerDuration, activeAdvancedStartedAt, activeAdvancedPausedSeconds, gradingMode]);
 
   const isAdvancedRuntimeTimer = activeAdvancedTimerDuration != null;
   const advancedTimerRemaining = useMemo(() => {
@@ -1239,6 +1263,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   const handleStartPracticeByTag = useCallback((tag: string) => {
     requestViewMode('practice', () => {
+      setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null);
       setStorePracticeMode('by_tag');
       setSelectedTag(tag);
       navigate(getNextQuestionIndex(questions, currentIndex, 'by_tag', tag));
@@ -1247,6 +1272,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
 
   const handleStartReview = useCallback(() => {
     requestViewMode('practice', () => {
+      setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null);
       setStorePracticeMode('review_first');
       navigate(getNextQuestionIndex(questions, currentIndex, 'review_first'));
     });
@@ -1262,6 +1288,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const firstIndex = questions.findIndex((question) => question.id === groupQuestionIds[0]);
     if (firstIndex < 0) return;
     requestViewMode('practice', () => {
+      setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null);
       setStorePracticeMode('sequential');
       setGroupPracticeIds(groupQuestionIds);
       navigate(firstIndex);
@@ -1271,7 +1298,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 点击题目进入做题模式（必须在条件返回之前定义）
   const handleQuestionClick = useCallback((index: number) => {
     setGroupPracticeIds(null);
-    requestViewMode('practice', () => navigate(index));
+    requestViewMode('practice', () => { setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null); navigate(index); });
   }, [navigate, requestViewMode]);
 
   const handleOpenQuestion = useCallback((questionId: string) => {
@@ -1401,6 +1428,27 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   }, [practiceMode, groupPracticeIds, questions, selectedTag, activeMockExamSession, activeTimedSession, activeDailyPractice, activeGeneratedPaper]);
 
   useEffect(() => {
+    if (viewMode !== 'practice' || gradingMode !== 'on_submit' || batchRequest || batchRecord || !practiceQuestions.length) return;
+    let selected = [...practiceQuestions];
+    if (practiceMode === 'review_only') selected = selected.filter(q => q.status === 'review');
+    if (practiceMode === 'review_first') selected.sort((a, b) => Number(b.status === 'review') - Number(a.status === 'review'));
+    if (practiceMode === 'random') {
+      for (let i = selected.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [selected[i], selected[j]] = [selected[j], selected[i]]; }
+    }
+    if (!selected.length) return;
+    const timed = practiceMode === 'timed' ? activeTimedSession : null;
+    const mock = practiceMode === 'mock_exam' ? activeMockExamSession : null;
+    setBatchRequest({ id: newPracticeId(), scope_id: sessionId, title: activeGeneratedPaper && practiceMode === 'paper' ? activeGeneratedPaper.title : t(MODE_LABEL_KEYS[practiceMode]), mode: groupPracticeIds ? 'group' : practiceMode,
+      question_ids: selected.map(q => q.id), paper_id: practiceMode === 'paper' ? activeGeneratedPaper?.id : undefined,
+      start_question_id: practiceMode === 'sequential' ? questions[currentIndex]?.id : undefined,
+      duration_seconds: timed ? timed.duration_minutes * 60 : mock ? mock.config.duration_minutes * 60 : undefined,
+      started_at: timed?.started_at ?? mock?.started_at,
+    });
+    if (timed) setTimedSession(null);
+    if (mock) setMockExamSession(null);
+  }, [viewMode, gradingMode, batchRequest, batchRecord, practiceQuestions, practiceMode, activeTimedSession, activeMockExamSession, activeGeneratedPaper, sessionId, groupPracticeIds, t, setTimedSession, setMockExamSession]);
+
+  useEffect(() => {
     if (viewMode !== 'practice' || practiceMode !== 'sequential') setGroupPracticeIds(null);
   }, [viewMode, practiceMode, sessionId]);
 
@@ -1481,6 +1529,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       const scopedIndex = scope.findIndex((question) => question.id === currentQuestionId);
 
       if (detail.action === 'nextQuestion' || detail.action === 'previousQuestion') {
+        if (viewMode === 'practice' && gradingMode === 'on_submit' && batchNavigateRef.current) {
+          void batchNavigateRef.current(detail.action === 'nextQuestion' ? 1 : -1).then(() => acknowledge(detail, { handled: true })).catch(error => acknowledge(detail, { handled: false, code: 'SAVE_FAILED', hint: String(error) }));
+          return;
+        }
         if (scope.length === 0) {
           acknowledge(detail, {
             handled: false,
@@ -1565,6 +1617,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             .hydratePracticeHandoff(validated, sessionId);
           outcome.current = hydration;
           if (hydration.ok === false) return;
+          setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord(null);
           setElapsedTime(0);
           setStorePracticeMode(hydration.mode);
           const firstIndex = questions.findIndex(
@@ -1667,10 +1720,13 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     setStorePracticeMode,
     t,
     viewMode,
+    gradingMode,
   ]);
 
   // PracticeLauncher 的 onStartPractice 回调
   const handleStartPractice = useCallback((mode: PracticeMode, tag?: string) => {
+    setGradingMode('on_submit');
+    setBatchRequest(null); setBatchRecord(null);
     setElapsedTime(0);
     setLauncherRequestedMode(null);
     setStorePracticeMode(mode);
@@ -2016,10 +2072,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   const [tabIndicator, setTabIndicator] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
 
   // 顶部三个一级入口的激活归属：题库 / 做题(含启动台) / 更多(二级视图)
-  const activeTopTab: 'list' | 'practice' | 'more' | null =
+  const activeTopTab: 'list' | 'practice' | 'papers' | 'more' | null =
     (viewMode === 'list' || viewMode === 'browse') ? 'list'
       : (viewMode === 'practice' || viewMode === 'launcher') ? 'practice'
-        : activeSecondaryTab ? 'more'
+        : viewMode === 'papers' ? 'papers' : activeSecondaryTab ? 'more'
           : null;
 
   // 指示器几何测量：布局阶段同步测量避免首帧闪跳；
@@ -2143,10 +2199,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   // 题目清空（如在管理/练习视图删光题目）后，依赖题目的视图已无内容支撑，
   // 回退到题库列表，保持 Tab 高亮与实际内容一致（上传/CSV 导入不依赖题目，不在此列）
   useEffect(() => {
-    if (!hasQuestions && !isLoading && viewMode !== 'list' && viewMode !== 'upload' && viewMode !== 'csvImport') {
+    const hasSavedSurface = viewMode === 'papers' || (viewMode === 'practice' && (batchRequest || batchRecord));
+    if (!hasQuestions && !isLoading && !hasSavedSurface && viewMode !== 'list' && viewMode !== 'upload' && viewMode !== 'csvImport') {
       switchViewMode('list');
     }
-  }, [hasQuestions, isLoading, viewMode, switchViewMode]);
+  }, [hasQuestions, isLoading, viewMode, switchViewMode, batchRequest, batchRecord]);
 
   /**
    * ACR R1-15：消费 qbankDriver 派发的域刷新 / 聚焦事件。
@@ -2245,6 +2302,10 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       if (detail?.targetScopeId && detail.targetScopeId !== focusScopeId) return;
       if (detail?.targetResourceId && detail.targetResourceId !== sessionId) return;
       const questionId = detail?.questionId;
+      if (questionId && viewMode === 'practice' && gradingMode === 'on_submit' && batchNavigateRef.current) {
+        void batchNavigateRef.current(questionId).then(() => detail.acknowledge?.({ handled: true, previousQuestionId: questions[currentIndex]?.id ?? null })).catch(() => detail.acknowledge?.({ handled: false, previousQuestionId: null }));
+        return;
+      }
       // issue 491：题组深链定位到组内第一题（组内顺序由后端 group_position 保证）
       const groupId = detail?.groupId;
       if (!questionId && !groupId) return;
@@ -2272,7 +2333,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         flushPendingQbankRefreshRef.current = null;
       }
     };
-  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId, focusScopeId]);
+  }, [refreshQuestionsAndStats, requestViewMode, questions, currentIndex, navigate, sessionId, focusScopeId, viewMode, gradingMode]);
 
   // ========== 条件返回（早期退出） ==========
   
@@ -2455,6 +2516,17 @@ const ExamContentView: React.FC<ContentViewProps> = ({
             <DsButton
               variant="ghost"
               size="sm"
+              onClick={() => requestViewMode('papers')}
+              data-exam-tab=""
+              data-active={viewMode === 'papers' || undefined}
+              aria-pressed={viewMode === 'papers'}
+              className="relative z-[1] shrink-0 whitespace-nowrap text-sm"
+            >
+              {t('practice:batch.papers')}
+            </DsButton>
+            <DsButton
+              variant="ghost"
+              size="sm"
               onClick={() => {
                 if (viewMode !== 'practice' && viewMode !== 'launcher') {
                   requestViewMode('launcher');
@@ -2527,7 +2599,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               </AppMenu>
             )}
 
-            {(viewMode === 'practice') && hasQuestions && (
+            {(viewMode === 'practice') && gradingMode === 'immediate' && hasQuestions && (
               <>
                 <div className="w-px h-4 bg-border/60 mx-1 sm:mx-2 flex-shrink-0" />
                 <AppSelect value={practiceMode} onValueChange={handleSelectMode}
@@ -2582,7 +2654,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
           
           {/* 右侧：统计摘要 + 导出 + 添加题目菜单（只读模式下隐藏添加） */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            {hasQuestions && stats && <StatsSummary stats={stats} />}
+            {hasQuestions && stats && !(viewMode === 'practice' && gradingMode === 'on_submit') && <StatsSummary stats={stats} />}
             {hasQuestions && (
               <DsButton
                 variant="ghost"
@@ -2732,13 +2804,19 @@ const ExamContentView: React.FC<ContentViewProps> = ({
       <div className="flex-1 min-h-0 overflow-hidden">
         <Suspense fallback={<ViewSkeleton />}>
           <div key={viewMode} className="h-full min-h-0 ui-rise-in">
-          {viewMode === 'launcher' && hasQuestions ? (
+          {viewMode === 'papers' ? (
+            <PaperLibrary examId={sessionId} readOnly={readOnly} onOpenPractice={(id, submitted) => { setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord({ id, submitted }); switchViewMode('practice'); }} onStartPaper={paper => { setGradingMode('on_submit'); setBatchRecord(null); setBatchRequest({ id: newPracticeId(), scope_id: sessionId, title: paper.title, mode: 'paper', paper_id: paper.id, question_ids: [] }); switchViewMode('practice'); }} />
+          ) : viewMode === 'practice' && gradingMode === 'on_submit' && (!readOnly || batchRecord?.submitted) ? (
+            batchRequest || batchRecord ? <BatchPracticeWorkspace key={batchRequest?.id ?? batchRecord?.id} readOnly={readOnly} request={batchRequest ?? undefined} practiceId={batchRecord?.id} submitted={batchRecord?.submitted} onBack={() => { setBatchRequest(null); setBatchRecord(null); switchViewMode('launcher'); }} onFlushReady={setBatchFlush} onNavigateReady={setBatchNavigate} onDirtyChange={handlePracticeDraftDirtyChange} onChanged={() => { void loadQuestions(); }} isActive={isActive} /> : <div className="space-y-3 p-4"><p className="text-sm text-muted-foreground">{t('practice:batch.noQuestions')}</p><DsButton variant="outline" onClick={() => switchViewMode('launcher')}>{t('common:back')}</DsButton></div>
+          ) : viewMode === 'launcher' && hasQuestions ? (
             /* 练习启动页 — 选择练习模式 */
             <PracticeLauncher
               examId={sessionId}
               stats={stats}
               questions={questions}
               onStartPractice={handleStartPractice}
+              onStartDrill={(mode, tag) => { setGradingMode('immediate'); setBatchRequest(null); setBatchRecord(null); setStorePracticeMode(mode); if (tag) setSelectedTag(tag); navigate(getPracticeStartIndex(questions, currentIndex, mode, tag)); switchViewMode('practice'); }}
+              onOpenPractice={(id, submitted) => { setGradingMode('on_submit'); setBatchRequest(null); setBatchRecord({ id, submitted }); switchViewMode('practice'); }}
               requestedMode={launcherRequestedMode}
               onRequestedModeHandled={() => setLauncherRequestedMode(null)}
               currentQuestionId={sessionCurrentQuestionId}

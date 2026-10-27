@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet};
-use std::path::Path;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -1125,71 +1124,6 @@ fn receipt_to_payload(receipt: &AuthoringCommitReceipt) -> Value {
             "total_questions": receipt.total_questions,
         })
     })
-}
-
-fn render_paper_markdown(paper: &GeneratedPaper) -> String {
-    let mut output = String::new();
-    output.push_str("# ");
-    output.push_str(&paper.title);
-    output.push_str("\n\n");
-    output.push_str(&format!(
-        "> 题目集：{}  |  题数：{}  |  生成时间：{}\n\n",
-        paper.exam_id,
-        paper.questions.len(),
-        paper.created_at
-    ));
-
-    for (index, question) in paper.questions.iter().enumerate() {
-        output.push_str(&format!("## {}. {}\n\n", index + 1, question.content));
-        if let Some(options) = &question.options {
-            for option in options {
-                output.push_str(&format!("- **{}**. {}\n", option.key, option.content));
-            }
-            if !options.is_empty() {
-                output.push('\n');
-            }
-        }
-        if let Some(answer) = &question.answer {
-            output.push_str(&format!("**答案：** {}\n\n", answer));
-        }
-        if let Some(explanation) = &question.explanation {
-            output.push_str(&format!("**解析：** {}\n\n", explanation));
-        }
-    }
-    output
-}
-
-fn write_markdown_paper(paper: &GeneratedPaper, export_dir: &Path) -> Result<String, String> {
-    std::fs::create_dir_all(export_dir).map_err(|error| {
-        qbank_error(
-            "QBANK_EXPORT_FAILED",
-            format!("无法创建题库导出目录: {error}"),
-            "检查应用数据目录权限后重试",
-        )
-    })?;
-    let filename = format!(
-        "{}-{}.md",
-        safe_file_component(&paper.title),
-        safe_file_component(&paper.id)
-    );
-    let path = export_dir.join(filename);
-    let temporary_path = path.with_extension("md.tmp");
-    std::fs::write(&temporary_path, render_paper_markdown(paper)).map_err(|error| {
-        qbank_error(
-            "QBANK_EXPORT_FAILED",
-            format!("写入 Markdown 试卷失败: {error}"),
-            "检查磁盘空间和应用数据目录权限后重试",
-        )
-    })?;
-    std::fs::rename(&temporary_path, &path).map_err(|error| {
-        let _ = std::fs::remove_file(&temporary_path);
-        qbank_error(
-            "QBANK_EXPORT_FAILED",
-            format!("提交 Markdown 试卷文件失败: {error}"),
-            "检查应用数据目录权限后重试",
-        )
-    })?;
-    Ok(path.to_string_lossy().into_owned())
 }
 
 /// Persist an export before reporting it to the Agent. Tool results contain only a bounded
@@ -4088,6 +4022,50 @@ impl QBankExecutor {
         }))
     }
 
+    async fn execute_practice_records(
+        &self,
+        call: &ToolCall,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+        let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+        if strip_tool_namespace(&call.name) == "qbank_get_paper" {
+            let id = required_non_empty_string(&call.arguments, "paper_id")?;
+            let paper = crate::qbank_practice::load_paper(&conn, &id).map_err(|e| e.to_string())?;
+            return Ok(
+                json!({"paper_id":paper.id,"session_id":paper.exam_id,"title":paper.title,"question_count":paper.questions.len(),"question_ids":paper.questions.iter().map(|q|&q.id).collect::<Vec<_>>(),"created_at":paper.created_at,"persisted":true,"view":"papers","grading_mode":"on_submit"}),
+            );
+        }
+        let scope = required_non_empty_string(&call.arguments, "session_id")?;
+        let papers = strip_tool_namespace(&call.name) == "qbank_list_papers";
+        let sql = if papers {
+            "SELECT document_json FROM qbank_papers WHERE exam_id=?1 AND deleted_at IS NULL ORDER BY created_at DESC"
+        } else {
+            "SELECT document_json FROM qbank_practice_attempts WHERE scope_id=?1 AND deleted_at IS NULL ORDER BY created_at DESC"
+        };
+        let mut stmt = conn.prepare(sql).map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([scope], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut records = Vec::new();
+        for row in rows {
+            let raw: Value = serde_json::from_str(&row.map_err(|e| e.to_string())?)
+                .map_err(|e| e.to_string())?;
+            let mut record = json!({"id":raw["id"],"title":raw["title"],"created_at":raw["created_at"],"question_count":raw["questions"].as_array().map(Vec::len).unwrap_or(0)});
+            if !papers {
+                let attempt: crate::qbank_practice::PracticeAttempt =
+                    serde_json::from_value(raw).map_err(|e| e.to_string())?;
+                record["status"] = json!(attempt.status);
+                record["score_summary"] = json!({"answered_count":attempt.answers.len(),"correct_count":attempt.results.iter().filter(|r|r.is_correct==Some(true)).count(),"wrong_count":attempt.results.iter().filter(|r|r.is_correct==Some(false)).count(),"pending_count":attempt.results.iter().filter(|r|r.status=="pending"||r.status=="failed").count()});
+            }
+            records.push(record);
+        }
+        let (page, page_size, start, end) = Self::page_bounds(&call.arguments, records.len())?;
+        Ok(
+            json!({"items":&records[start..end],"total":records.len(),"page":page,"page_size":page_size,"has_more":end<records.len()}),
+        )
+    }
+
     async fn execute_generate_paper(
         &self,
         call: &ToolCall,
@@ -4139,22 +4117,12 @@ impl QBankExecutor {
                     qbank_error(
                         "INVALID_ARGS",
                         "export_format 不受支持",
-                        "仅支持 preview 或 markdown",
+                        "支持 preview、markdown、pdf 或 word",
                     )
                 })
             })
             .transpose()?
             .unwrap_or(PaperExportFormat::Preview);
-        if matches!(
-            export_format,
-            PaperExportFormat::Pdf | PaperExportFormat::Word
-        ) {
-            return Err(qbank_error(
-                "QBANK_EXPORT_FORMAT_UNSUPPORTED",
-                "组卷工具当前未实现 PDF/Word 文件导出",
-                "使用 preview 或 markdown；不得把无路径结果当作已生成文件",
-            ));
-        }
         let config = PaperConfig {
             title,
             type_selection: type_selection.clone(),
@@ -4171,48 +4139,76 @@ impl QBankExecutor {
         if type_selection.is_empty() && paper.questions.len() > requested_count as usize {
             paper.questions.truncate(requested_count as usize);
             paper.total_score = paper.questions.len() as u32;
+            let db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
+            let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
+            conn.execute("UPDATE qbank_papers SET document_json=?2,local_version=local_version+1 WHERE id=?1", rusqlite::params![paper.id, serde_json::to_string(&paper).map_err(|e|e.to_string())?]).map_err(|e|e.to_string())?;
         }
-        let file_created = export_format == PaperExportFormat::Markdown;
+        let file_created = export_format != PaperExportFormat::Preview;
         if file_created {
-            let app_data_dir = ctx
-                .window_ref()
-                .app_handle()
-                .path()
-                .app_data_dir()
-                .map_err(|error| {
-                    qbank_error(
-                        "QBANK_EXPORT_FAILED",
-                        format!("无法解析应用数据目录: {error}"),
-                        "重新打开应用后重试",
-                    )
-                })?;
-            let export_path =
-                write_markdown_paper(&paper, &app_data_dir.join("exports").join("qbank"))?;
+            let format = match export_format {
+                PaperExportFormat::Markdown => "markdown",
+                PaperExportFormat::Pdf => "pdf",
+                PaperExportFormat::Word => "word",
+                PaperExportFormat::Preview => unreachable!(),
+            };
+            let window = ctx.tauri_window.as_ref().ok_or_else(|| {
+                qbank_error(
+                    "QBANK_EXPORT_SURFACE_UNAVAILABLE",
+                    "试卷已保存，文件导出需要应用窗口",
+                    "在题目集试卷页导出已保存试卷",
+                )
+            })?;
+            let export_path = crate::qbank_practice::export_bridge::export_for_tool(
+                window,
+                &paper,
+                format,
+                paper.config.include_answers,
+                paper.config.include_explanations,
+            )
+            .await
+            .map_err(|e| {
+                qbank_error(
+                    "QBANK_EXPORT_FAILED",
+                    e,
+                    "试卷已保存，可在题目集的试卷页重新导出",
+                )
+            })?;
             paper.export_path = Some(export_path);
         }
         let preview_count = paper.questions.len().min(20);
-        let question_previews: Vec<Value> = paper.questions[..preview_count]
+        let mut question_previews: Vec<Value> = paper.questions[..preview_count]
             .iter()
             .map(question_to_bounded_value)
             .collect();
+        for question in &mut question_previews {
+            if !paper.config.include_answers {
+                question["answer"] = Value::Null;
+            }
+            if !paper.config.include_explanations {
+                question["explanation"] = Value::Null;
+            }
+        }
 
         let (message_key, zh_cn, en_us) = if file_created {
             (
                 "chat.tools.qbank.paper_markdown_created",
-                "Markdown 试卷已真实写入应用数据导出目录",
-                "The Markdown paper was written to the application export directory.",
+                "试卷已保存，导出文件已真实写入应用数据导出目录",
+                "The paper was saved and its export file was written to the application export directory.",
             )
         } else {
             (
                 "chat.tools.qbank.paper_preview_created",
-                "仅生成内存预览，未创建任何文件",
-                "Only an in-memory preview was generated; no file was created.",
+                "试卷已保存，可在题目集的试卷页打开；未导出文件",
+                "The paper was saved to the question set's Papers page; no export file was created.",
             )
         };
         Ok(with_localized_message(
             json!({
                 "success": true,
                 "paper_id": paper.id,
+                "persisted": true,
+                "view": "papers",
+                "grading_mode": "on_submit",
                 "title": paper.title,
                 "session_id": paper.exam_id,
                 "total_score": paper.total_score,
@@ -5432,6 +5428,9 @@ impl ToolExecutor for QBankExecutor {
                 | "qbank_get_daily_practice"
                 | "qbank_get_check_in_calendar"
                 | "qbank_generate_paper"
+                | "qbank_list_papers"
+                | "qbank_get_paper"
+                | "qbank_list_practices"
                 | "qbank_get_learning_trend"
                 | "qbank_get_activity_heatmap"
                 | "qbank_get_knowledge_stats"
@@ -5490,6 +5489,9 @@ impl ToolExecutor for QBankExecutor {
             "qbank_get_daily_practice" => self.execute_get_daily_practice(call, ctx).await,
             "qbank_get_check_in_calendar" => self.execute_get_check_in_calendar(call, ctx).await,
             "qbank_generate_paper" => self.execute_generate_paper(call, ctx).await,
+            "qbank_list_papers" | "qbank_get_paper" | "qbank_list_practices" => {
+                self.execute_practice_records(call, ctx).await
+            }
             "qbank_get_learning_trend" => self.execute_get_learning_trend(call, ctx).await,
             "qbank_get_activity_heatmap" => self.execute_get_activity_heatmap(call, ctx).await,
             "qbank_get_knowledge_stats" => self.execute_get_knowledge_stats(call, ctx).await,
@@ -5614,6 +5616,9 @@ impl ToolExecutor for QBankExecutor {
             | "qbank_get_question_history"
             | "qbank_list_source_images"
             | "qbank_search_questions"
+            | "qbank_list_papers"
+            | "qbank_get_paper"
+            | "qbank_list_practices"
             | "qbank_get_stats"
             | "qbank_get_learning_trend"
             | "qbank_get_activity_heatmap"

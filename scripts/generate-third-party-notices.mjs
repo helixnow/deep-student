@@ -237,6 +237,13 @@ function collectBundledAssetRecords() {
 
   return [
     {
+      ecosystem: 'Bundled font',
+      id: 'Noto Sans SC',
+      license: 'OFL-1.1',
+      repository: 'https://github.com/notofonts/noto-cjk',
+      legalFiles: [{ source: 'public/fonts/paper-export/OFL.txt', text: readText(path.join(repoRoot, 'public/fonts/paper-export/OFL.txt')) }],
+    },
+    {
       ecosystem: 'Bundled binary',
       id: 'PDFium chromium/7350',
       license: 'SEE INCLUDED LICENSE FILES',

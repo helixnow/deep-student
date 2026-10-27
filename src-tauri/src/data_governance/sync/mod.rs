@@ -6516,6 +6516,8 @@ impl SyncManager {
             "qbank_materials" => 45,
             "qbank_groups" => 46,
             "qbank_group_materials" => 47,
+            "qbank_papers" => 48,
+            "qbank_practice_attempts" => 65,
             "note_learning_relations" => 70,
             "chat_v2_compactions" => 45,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
@@ -7565,6 +7567,18 @@ impl SyncManager {
                  WHERE exam_sheets.import_state_json IS NOT NULL AND json_valid(exam_sheets.import_state_json)
                    AND ref.key IN ('blob_hash','hash') AND ref.type='text' AND ref.value <> ''".to_string()
             );
+        }
+        // Frozen papers, local drafts and submitted attempts continue to own
+        // image assets after their source questions have been edited or deleted.
+        for table in [
+            "qbank_papers",
+            "qbank_practice_drafts",
+            "qbank_practice_attempts",
+        ] {
+            if Self::table_has_column(conn, table, "document_json") {
+                subqueries.push(format!("SELECT ref.value AS blob_hash FROM {table},json_tree(document_json) ref WHERE json_valid(document_json) AND ref.key='hash' AND ref.type='text' AND ref.value<>''"));
+                subqueries.push(format!("SELECT ref.value AS blob_hash FROM {table},json_each(document_json,'$.answers') a,json_tree(CASE WHEN json_valid(a.value) THEN a.value ELSE '{{}}' END) ref WHERE ref.key='hash' AND ref.type='text' AND ref.value<>''"));
+            }
         }
 
         // [P2 churn] 同 recompute_resource_ref_counts：只更新值实际变化的行。

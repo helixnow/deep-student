@@ -175,14 +175,20 @@ vi.mock('@/components/TagNavigationView', () => ({
 }));
 
 vi.mock('@/components/practice/PracticeLauncher', () => ({
-  default: ({ onStartPractice, requestedMode }: { onStartPractice?: (mode: string) => void; requestedMode?: string }) => (
+  default: ({ onStartPractice, onStartDrill, requestedMode }: { onStartPractice?: (mode: string) => void; onStartDrill?: (mode: string) => void; requestedMode?: string }) => (
     <div data-testid="practice-launcher" data-requested-mode={requestedMode}>
       <button type="button" onClick={() => onStartPractice?.('sequential')}>
         start sequential practice
       </button>
+      <button type="button" onClick={() => onStartDrill?.('sequential')}>start sequential drill</button>
     </div>
   ),
 }));
+
+vi.mock('@/components/practice/BatchPracticeWorkspace', () => ({
+  default: () => <div data-testid="batch-practice-workspace" />,
+}));
+vi.mock('@/components/practice/PaperLibrary', () => ({ default: () => <div data-testid="paper-library" /> }));
 
 vi.mock('@/components/QuestionBankStatsView', () => ({
   default: () => <div data-testid="question-bank-stats-view" />,
@@ -338,7 +344,7 @@ describe('ExamContentView secondary entry points', () => {
     // 从浏览进入做这道题
     fireEvent.click(screen.getByRole('button', { name: /practice this question/i }));
     await waitFor(() => {
-      expect(screen.getByTestId('question-bank-editor')).toHaveAttribute('data-browse', 'false');
+      expect(screen.getByTestId('batch-practice-workspace')).toBeInTheDocument();
     });
     expect(hookState.navigate).toHaveBeenCalledWith(0);
   });
@@ -359,10 +365,10 @@ describe('ExamContentView secondary entry points', () => {
 
     await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
 
-    const practiceButton = findButton([/练习/i, /practice/i, /learningHub:exam\.tab\.practice/i]);
+    const practiceButton = screen.getByRole('button', { name: 'learningHub:exam.tab.practice', exact: true });
     expect(practiceButton).toBeTruthy();
     fireEvent.click(practiceButton!);
-    fireEvent.click(await screen.findByRole('button', { name: /start sequential practice/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /start sequential drill/i }));
     fireEvent.click(await screen.findByRole('button', { name: /mark answer draft/i }));
 
     await openSecondaryMenuItem([/管理/i, /manage/i, /learningHub:exam\.tab\.manage/i]);
@@ -390,9 +396,9 @@ describe('ExamContentView secondary entry points', () => {
     );
 
     await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled(), { timeout: 5000 });
-    const practiceButton = findButton([/练习/i, /practice/i, /learningHub:exam\.tab\.practice/i]);
+    const practiceButton = screen.getByRole('button', { name: 'learningHub:exam.tab.practice', exact: true });
     fireEvent.click(practiceButton!);
-    fireEvent.click(await screen.findByRole('button', { name: /start sequential practice/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /start sequential drill/i }));
     fireEvent.click(await screen.findByRole('button', { name: /mark answer draft/i }));
 
     hookState.loadQuestions.mockClear();
@@ -421,7 +427,7 @@ describe('ExamContentView secondary entry points', () => {
     );
     await waitFor(() => expect(mockGetExamSheetSessionDetail).toHaveBeenCalled());
     fireEvent.click(screen.getByRole('button', { name: 'learningHub:exam.tab.practice' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'start sequential practice' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'start sequential drill' }));
     await screen.findByTestId('question-bank-editor');
     storeState.practiceSessions[JSON.stringify(['exam-1', 'entries-test-view'])] = {
       questionIds: ['q_1', 'q_2'], answeredIds: ['q_1'],

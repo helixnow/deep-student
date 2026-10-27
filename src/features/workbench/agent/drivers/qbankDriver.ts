@@ -8,6 +8,7 @@
  * 见 docs/dev/acr/DESIGN.md §5.4 / ROUND1.md R1-15。
  */
 import i18n from '@/i18n';
+import { getPracticeRuntimes } from '@/components/practice/practiceRuntime';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
 import { collectDomainEntityIds, registerDomainListener } from '../domainEvents';
 import { listTickCost } from '../pacing';
@@ -189,19 +190,23 @@ function dispatchRefreshEvent(payload: DomainChangePayload): void {
   );
 }
 
-function dispatchFocusEvent(questionId: string): QbankFocusResult | null {
+async function dispatchFocusEvent(questionId: string): Promise<QbankFocusResult | null> {
   if (typeof window === 'undefined') return null;
-  let result: QbankFocusResult | null = null;
+  let resolveResult: (value: QbankFocusResult | null) => void;
+  const pending = new Promise<QbankFocusResult | null>(resolve => { resolveResult = resolve; });
+  const timer = setTimeout(() => resolveResult(null), 5000);
   window.dispatchEvent(
     new CustomEvent<QbankFocusEventDetail>(QBANK_FOCUS_EVENT, {
       detail: {
         questionId,
         acknowledge: (nextResult) => {
-          result = nextResult;
+          resolveResult(nextResult);
         },
       },
     }),
   );
+  const result = await pending;
+  clearTimeout(timer);
   return result;
 }
 
@@ -282,6 +287,7 @@ export const qbankDriver: CollabDriver & {
       currentQuestionType: current?.question_type ?? null,
       currentQuestionFavorite: current?.is_favorite ?? false,
       practiceMode: state.practiceMode,
+      durablePracticeSessions: getPracticeRuntimes(state.currentExamId),
       focusMode: state.focusMode,
       filters: state.filters,
       loading: state.isLoading,
@@ -327,7 +333,7 @@ export const qbankDriver: CollabDriver & {
           state.undone.push(op.label || op.kind);
         } else {
           const store = useQuestionBankStore.getState();
-          const focusResult = dispatchFocusEvent(questionId);
+          const focusResult = await dispatchFocusEvent(questionId);
           if (!focusResult?.handled) {
             state.undone.push(
               i18n.t('exam_sheet:agent.question_not_visible', {
@@ -355,8 +361,8 @@ export const qbankDriver: CollabDriver & {
           if (previousQuestionId && previousQuestionId !== questionId) {
             run.ledger.record(
               run.runId,
-              () => {
-                const reverted = dispatchFocusEvent(previousQuestionId);
+              async () => {
+                const reverted = await dispatchFocusEvent(previousQuestionId);
                 if (!reverted?.handled) {
                   throw new Error(
                     i18n.t('exam_sheet:agent.undo_question_missing', {

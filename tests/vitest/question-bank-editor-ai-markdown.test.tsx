@@ -43,7 +43,7 @@ vi.mock('@/hooks/useQbankAiGrading', () => {
 });
 
 describe('QuestionBankEditor AI markdown rendering', () => {
-  it('renders cached ai_feedback as markdown after submit', async () => {
+  it('renders persisted ai_feedback as markdown before answering and keeps it after submit', async () => {
     const question: Question = {
       id: 'q1',
       questionLabel: 'Q1',
@@ -83,12 +83,7 @@ describe('QuestionBankEditor AI markdown rendering', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /选项A/i }));
-    fireEvent.click(screen.getByRole('button', { name: /提交答案|submit/i }));
-
-    await waitFor(() => {
-      expect(onSubmitAnswer).toHaveBeenCalledWith('q1', 'A', 'single_choice');
-    });
+    fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
 
     await waitFor(() => {
       const h1 = document.querySelector('.markdown-content h1');
@@ -97,6 +92,12 @@ describe('QuestionBankEditor AI markdown rendering', () => {
     });
 
     expect(document.querySelector('.markdown-content strong')?.textContent).toContain('加粗');
-    expect(document.querySelector('svg[viewBox="-40 -40 857 857"]')).toBeTruthy();
+    expect(screen.getByRole('region', { name: '解析' })).toContainElement(document.querySelector('.markdown-content h1'));
+    expect(onSubmitAnswer).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /选项A/i }));
+    fireEvent.click(screen.getByRole('button', { name: /提交答案|submit/i }));
+    await waitFor(() => expect(onSubmitAnswer).toHaveBeenCalledWith('q1', 'A', 'single_choice'));
+    expect(document.querySelector('.markdown-content h1')?.textContent).toContain('一级标题');
   });
 });

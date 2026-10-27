@@ -904,9 +904,11 @@ impl VfsExamRepo {
                     "qbank_materials",
                     "qbank_groups",
                     "qbank_group_materials",
+                    "qbank_papers",
                 ] {
                     tx.execute(&format!("UPDATE {table} SET deleted_at=?1,updated_at=?1,deletion_batch=?3 WHERE exam_id=?2 AND deleted_at IS NULL"),params![now,exam_id,batch])?;
                 }
+                tx.execute("UPDATE qbank_practice_attempts SET deleted_at=?1,updated_at=?1,deletion_batch=?3,local_version=local_version+1 WHERE scope_id=?2 AND deleted_at IS NULL", params![now,exam_id,batch])?;
                 tx.execute("UPDATE folder_items SET deleted_at=?1,updated_at=?1 WHERE item_type='exam' AND item_id=?2 AND deleted_at IS NULL",params![chrono::Utc::now().timestamp_millis(),exam_id])?;
             }
             Ok(())
@@ -1130,6 +1132,9 @@ impl VfsExamRepo {
             // 11. 递减页图与题目图片的 blob 引用计数（两阶段删除：
             //     此处只减计数，物理文件由事务提交后的 cleanup_unreferenced 清扫）
             for hash in &blob_hashes {
+                if crate::qbank_practice::retains_asset(conn, hash)? {
+                    continue;
+                }
                 match super::blob_repo::VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, hash)
                 {
                     Ok(remaining) => {
@@ -1238,9 +1243,15 @@ impl VfsExamRepo {
                 "UPDATE questions SET deleted_at = NULL, deletion_batch=NULL, updated_at = ?1 WHERE exam_id = ?2 AND deleted_at IS NOT NULL AND ((?3 IS NOT NULL AND deletion_batch=?3) OR (?3 IS NULL AND deleted_at=?4))",
                 params![now, exam_id,batch,deleted_at],
             )?;
-            for table in ["qbank_materials", "qbank_groups", "qbank_group_materials"] {
+            for table in [
+                "qbank_materials",
+                "qbank_groups",
+                "qbank_group_materials",
+                "qbank_papers",
+            ] {
                 conn.execute(&format!("UPDATE {table} SET deleted_at=NULL,deletion_batch=NULL,updated_at=?1 WHERE exam_id=?2 AND deletion_batch=?3"),params![now,exam_id,batch])?;
             }
+            conn.execute("UPDATE qbank_practice_attempts SET deleted_at=NULL,deletion_batch=NULL,updated_at=?1,local_version=local_version+1 WHERE scope_id=?2 AND deletion_batch=?3", params![now,exam_id,batch])?;
 
             Ok((folder_items_restored, questions_restored))
         })();

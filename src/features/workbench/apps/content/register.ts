@@ -191,7 +191,7 @@ function resolveExamTarget(ctx: ActivationContext): string | null {
   return ctx.instanceKey ?? getResourceWorkspaceActive('exam');
 }
 
-function dispatchExamFocus(targetResourceId: string, questionId: string): ActivationResult {
+async function dispatchExamFocus(targetResourceId: string, questionId: string): Promise<ActivationResult> {
   if (typeof window === 'undefined') {
     return {
       handled: false,
@@ -200,18 +200,22 @@ function dispatchExamFocus(targetResourceId: string, questionId: string): Activa
     };
   }
 
-  let acknowledgement: { handled: boolean; previousQuestionId: string | null } | null = null;
+  let resolveAck: (value: { handled: boolean; previousQuestionId: string | null } | null) => void;
+  const pending = new Promise<{ handled: boolean; previousQuestionId: string | null } | null>(resolve => { resolveAck = resolve; });
+  const timer = setTimeout(() => resolveAck(null), 5000);
   window.dispatchEvent(
     new CustomEvent<QbankFocusEventDetail>(QBANK_FOCUS_EVENT, {
       detail: {
         targetResourceId,
         questionId,
         acknowledge: (result) => {
-          acknowledgement = result;
+          resolveAck(result);
         },
       },
     }),
   );
+  const acknowledgement = await pending;
+  clearTimeout(timer);
 
   if (!acknowledgement) {
     return {
@@ -226,11 +230,11 @@ function dispatchExamFocus(targetResourceId: string, questionId: string): Activa
   return { handled: true };
 }
 
-function dispatchExamControl(
+async function dispatchExamControl(
   targetResourceId: string,
   action: QbankControlAction,
   payload?: unknown,
-): QbankControlResult {
+): Promise<QbankControlResult> {
   if (typeof window === 'undefined') {
     return {
       handled: false,
@@ -239,7 +243,9 @@ function dispatchExamControl(
     };
   }
 
-  let acknowledgement: QbankControlResult | null = null;
+  let resolveAck: (value: QbankControlResult | null) => void;
+  const pending = new Promise<QbankControlResult | null>(resolve => { resolveAck = resolve; });
+  const timer = setTimeout(() => resolveAck(null), 5000);
   window.dispatchEvent(
     new CustomEvent<QbankControlEventDetail>(QBANK_CONTROL_EVENT, {
       detail: {
@@ -247,11 +253,13 @@ function dispatchExamControl(
         action,
         payload,
         acknowledge: (result) => {
-          acknowledgement = result;
+          resolveAck(result);
         },
       },
     }),
   );
+  const acknowledgement = await pending;
+  clearTimeout(timer);
   return acknowledgement ?? {
     handled: false,
     code: 'WINDOW_NOT_FOUND',
@@ -282,7 +290,7 @@ async function hydrateExamPracticeSession(
     }
   }
 
-  const result = dispatchExamControl(
+  const result = await dispatchExamControl(
     targetResourceId,
     'hydratePracticeSession',
     { handoff: validated },
@@ -341,7 +349,7 @@ export async function handleExamActivation(
         hint: 'focusQuestion 需要 payload.questionId',
       };
     }
-    const result = dispatchExamFocus(targetResourceId, questionId);
+    const result = await dispatchExamFocus(targetResourceId, questionId);
     if (!result.handled) return result;
     // The global store is an agent-observation mirror; the mounted view owns
     // the actual per-resource session and acknowledged the navigation above.
@@ -349,7 +357,7 @@ export async function handleExamActivation(
     return ackIf(useQuestionBankStore.getState().currentQuestionId === questionId);
   }
   if (ctx.action === 'nextQuestion' || ctx.action === 'previousQuestion') {
-    const result = dispatchExamControl(targetResourceId, ctx.action);
+    const result = await dispatchExamControl(targetResourceId, ctx.action);
     if (!result.handled) return result;
     if (result.acknowledged === true) {
       if (result.currentQuestionId) {
@@ -368,7 +376,7 @@ export async function handleExamActivation(
     const filters = payload.filters && typeof payload.filters === 'object'
       ? (payload.filters as QuestionFilters)
       : (payload as QuestionFilters);
-    const result = dispatchExamControl(targetResourceId, 'setFilters', { filters });
+    const result = await dispatchExamControl(targetResourceId, 'setFilters', { filters });
     if (!result.handled) return result;
     if (result.acknowledged === true) {
       useQuestionBankStore.getState().setFilters(filters);
@@ -378,7 +386,7 @@ export async function handleExamActivation(
     return ackIf(useQuestionBankStore.getState().filters === filters);
   }
   if (ctx.action === 'resetFilters') {
-    const result = dispatchExamControl(targetResourceId, 'resetFilters');
+    const result = await dispatchExamControl(targetResourceId, 'resetFilters');
     if (!result.handled) return result;
     if (result.acknowledged === true) {
       useQuestionBankStore.getState().resetFilters();
@@ -412,7 +420,7 @@ export async function handleExamActivation(
         hint: 'by_tag 需要 payload.tag；请先选择要练习的标签',
       };
     }
-    const result = dispatchExamControl(targetResourceId, 'setPracticeMode', {
+    const result = await dispatchExamControl(targetResourceId, 'setPracticeMode', {
       mode: mode as PracticeMode,
       tag: typeof tag === 'string' ? tag : undefined,
     });

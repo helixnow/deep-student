@@ -1104,6 +1104,14 @@
       "path": "vfs/V20261023__question_authoring_v2.sql",
       "sha256": "3ac702d42a29dce34b7d825744238605a96b01374c566861997db8b2dfe1854b",
       "dangers": []
+    },
+    {
+      "database": "vfs",
+      "version": 20261027,
+      "name": "practice_sessions",
+      "path": "vfs/V20261027__practice_sessions.sql",
+      "sha256": "c3e8ac79833a91c5baedaa97a6f577b8d04d8975c094a13939d66bbc8940fe6e",
+      "dangers": []
     }
   ]
 }

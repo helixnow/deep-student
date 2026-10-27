@@ -61,6 +61,81 @@ enum StreamStatus {
     Incomplete,
 }
 
+/// Grade frozen practice content without touching the question-level AI cache.
+/// The queue atomically applies the verdict to this attempt after the stream ends.
+pub async fn grade_practice_snapshot(
+    db: &Arc<VfsDatabase>,
+    llm: Arc<LLMManager>,
+    question: &Question,
+    answer: &str,
+    job_id: &str,
+) -> Result<QbankGradingResponse, AppError> {
+    let mut context = GradingContext::from_question(question);
+    context.materials = question.materials.clone();
+    context.images =
+        super::context::fetch_context_images(db, &context.materials, &context.question_images)?;
+    let image_answer = parse_image_answer_envelope(answer);
+    let mut images = context.images.clone();
+    if let Some(payload) = image_answer.as_ref() {
+        for (index, base64) in fetch_image_answer_contents(db, payload)?
+            .into_iter()
+            .enumerate()
+        {
+            let mime = guess_image_mime(&base64).to_string();
+            images.push(GradingImage {
+                base64,
+                mime,
+                label: format!("学生作答图 {}", index + 1),
+            });
+        }
+    }
+    let submission = AnswerSubmission {
+        id: job_id.to_string(),
+        question_id: question.id.clone(),
+        user_answer: answer.to_string(),
+        is_correct: None,
+        grading_method: "ai".into(),
+        submitted_at: chrono::Utc::now().to_rfc3339(),
+    };
+    let (system, user) = build_prompts(
+        question,
+        &context,
+        Some(&submission),
+        &[],
+        &QbankGradingMode::Grade,
+        image_answer.as_ref(),
+    )?;
+    let config = resolve_grading_config(&llm, None, !images.is_empty()).await?;
+    let key = llm.decrypt_api_key(&config.api_key)?;
+    let mut accumulated = String::new();
+    let status = stream_grade(
+        &config,
+        &key,
+        &system,
+        &user,
+        &format!("practice_{job_id}"),
+        llm,
+        config.is_multimodal,
+        &images,
+        |chunk| accumulated.push_str(&chunk),
+    )
+    .await?;
+    if !matches!(status, StreamStatus::Completed) {
+        return Err(AppError::llm("AI 批改未完整结束，请重试"));
+    }
+    let (verdict, score) = parse_verdict_and_score(&accumulated);
+    if verdict.is_none() {
+        return Err(AppError::llm("AI 批改缺少有效判定，请重试"));
+    }
+    Ok(QbankGradingResponse {
+        submission_id: None,
+        verdict,
+        score,
+        feedback: accumulated,
+        explanation_written: false,
+    })
+}
+
 /// 运行 AI 评判管线
 pub async fn run_qbank_grading(
     request: QbankGradingRequest,
@@ -227,7 +302,7 @@ pub async fn run_qbank_grading(
 
     if matches!(stream_status, StreamStatus::Incomplete) {
         // 🔧 #56: 仅在没有任何累积文本时才报错；已有文本则继续走后续校验/持久化，
-        // 避免"解析先流式出现、随后整段消失"。grade 模式仍由下方 verdict 校验兜底。
+        // 避免"解析先流式出现、随后整段消失"，下方保留草稿并报告中断。
         if accumulated.trim().is_empty() {
             let err = AppError::llm(
                 "AI 评判流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
@@ -242,7 +317,7 @@ pub async fn run_qbank_grading(
         );
     }
 
-    // N13（2026-09-07 审阅）：Grade 模式的不完整流只落草稿，绝不提交正式成绩。
+    // Incomplete streams only save a draft, never a finished explanation or grade.
     // parser 取全文最后一个 verdict/score 匹配——若流在真正结论之前中断，正文中
     // 复述的格式示例（如 correct/100）会成为"最后一个匹配"被当最终成绩落库，
     // 污染统计与 mastery。此处把 draft_text 与 authoritative_result 分离：
@@ -250,17 +325,23 @@ pub async fn run_qbank_grading(
     // 返回错误引导重试。合法的 finish_reason=stop 无 [DONE] 网关在流层已被
     // 归一化为 Completed（sse_block_signals_finish），不受此分支影响。
     let stream_incomplete = matches!(stream_status, StreamStatus::Incomplete);
-    if stream_incomplete && request.mode == QbankGradingMode::Grade {
+    if stream_incomplete {
         if let Err(e) = persist_draft_feedback(&deps.vfs_db, &question, &accumulated) {
             // 草稿持久化是尽力而为；主错误仍是流不完整
             log::warn!("[QbankGrading] 不完整流的草稿反馈保存失败: {}", e.message);
         }
-        let err = AppError::llm(
-            "AI 评判流异常中断：已保留部分解析草稿，正式成绩未更新。请重试评判。".to_string(),
-        );
+        let err = AppError::llm(if request.mode == QbankGradingMode::Grade {
+            "AI 评判流异常中断：已保留部分解析草稿，正式成绩未更新。请重试评判。"
+        } else {
+            "AI 解析流异常中断：已保留部分文本，请重试以生成完整解析。"
+        });
         deps.emitter
             .emit_error(&request.stream_session_id, err.message.clone());
         return Err(err);
+    }
+
+    if accumulated.trim().is_empty() {
+        return Err(emit_and_return(AppError::llm("AI 返回了空内容，请重试")));
     }
 
     // S-014: 二次检查取消状态
@@ -870,7 +951,7 @@ fn get_submission_by_id(
     get_submission_by_id_with_conn(&conn, submission_id)
 }
 
-fn get_submission_by_id_with_conn(
+pub(crate) fn get_submission_by_id_with_conn(
     conn: &rusqlite::Connection,
     submission_id: &str,
 ) -> Result<Option<AnswerSubmission>, AppError> {
@@ -1993,6 +2074,52 @@ mod tests {
         assert_eq!(explanation_history_count(&conn, &question.id), 1);
         // 通用解析不碰作答统计
         assert_eq!(question_counters(&conn, &question.id), before);
+    }
+
+    #[test]
+    fn first_explanation_survives_progress_reset_without_answering() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, _) = seed_question_with_submission(&db, None);
+        let conn = db.get_conn_safe().unwrap();
+        conn.execute(
+            "DELETE FROM answer_submissions WHERE question_id=?1",
+            [&question.id],
+        )
+        .unwrap();
+        let (_, written) = persist_grading_result(
+            &conn,
+            &db,
+            &question,
+            &QbankGradingMode::Analyze,
+            None,
+            "**解题思路**：F = ma",
+            None,
+            None,
+            true,
+        )
+        .unwrap();
+        assert!(written);
+        assert_eq!(
+            conn.query_row(
+                "SELECT COUNT(*) FROM answer_submissions WHERE question_id=?1",
+                [&question.id],
+                |r| r.get::<_, i64>(0)
+            )
+            .unwrap(),
+            0
+        );
+        drop(conn);
+        crate::question_bank_service::QuestionBankService::new(db.clone())
+            .reset_progress(&question.exam_id)
+            .unwrap();
+        let reloaded = VfsQuestionRepo::get_question(&db, &question.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            reloaded.explanation.as_deref(),
+            Some("**解题思路**：F = ma")
+        );
+        assert_eq!(reloaded.attempt_count, 0);
     }
 
     #[test]
