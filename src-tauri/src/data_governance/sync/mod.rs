@@ -1606,8 +1606,11 @@ impl SyncManager {
         } else {
             HashMap::new()
         };
-        let keys = Self::list_all_change_keys(storage).await?;
+        // Writers publish immutable shards before advancing their manifest. Read
+        // that watermark first so a concurrent publish cannot make an older
+        // listing look like a missing tail (UI preflight holds no target lease).
         let manifests = self.download_device_manifests(storage).await?;
+        let keys = Self::list_all_change_keys(storage).await?;
         let sequences = self.change_sequence_inventory(&keys, &manifests);
         let gaps = self.sequence_gaps(sequences, &manifests, &cursors);
         let min_available_version = keys
@@ -2726,13 +2729,14 @@ impl SyncManager {
         since_version: u64,
         per_db_since: Option<&HashMap<String, u64>>,
     ) -> Result<DownloadChangesResult, SyncError> {
-        let files = Self::list_all_change_keys(storage).await?;
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let store = SyncStateStore::open_default()?;
         let device_manifests = self
             .download_device_manifests(storage)
             .await
             .map_err(|e| SyncError::Network(format!("下载设备 manifest 失败: {}", e)))?;
+        // As in preflight, capture published watermarks before listing shards.
+        let files = Self::list_all_change_keys(storage).await?;
         let gaps = self.sequence_gaps(
             self.change_sequence_inventory(&files, &device_manifests),
             &device_manifests,
@@ -13327,6 +13331,108 @@ mod tests {
         }
     }
 
+    fn seed_publication_after_change_listing(use_v4: bool) -> (FileE2eeMemoryStorage, String) {
+        let storage = FileE2eeMemoryStorage::default();
+        let source = format!("source-{}", uuid::Uuid::new_v4());
+        seed_sequence_cloud(&storage, &source, &[1], 1);
+
+        let writer = SyncManager::new(source.clone());
+        let key = if use_v4 {
+            writer.build_change_key_v4(2, 1_792_755_308)
+        } else {
+            writer.build_change_key_v3(2, 1_792_755_308)
+        };
+        let operation_id = match SyncManager::parse_change_key(&key) {
+            Some(ParsedChangeKey::V4Shard { operation_id, .. }) => Some(operation_id),
+            _ => None,
+        };
+        let payload = SyncChangesPayload {
+            changes: Vec::new(),
+            total_count: 0,
+            device_id: source.clone(),
+            format_version: if use_v4 { 4 } else { 3 },
+            source_seq: 2,
+            source_device_id: source.clone(),
+            operation_id,
+        };
+        let mut manifest = create_test_manifest(&source, vec![("vfs", 20261023, 100, "vfs")]);
+        manifest.published_max_seq = 2;
+        *storage.publish_after_list.lock().unwrap() = Some(ListPublication {
+            prefix: if use_v4 {
+                SyncManager::V4_SHARDS_PREFIX
+            } else {
+                SyncManager::CHANGES_PREFIX
+            }
+            .to_string(),
+            // Match the writer's real order: complete shard, then manifest.
+            objects: vec![
+                (key, serde_json::to_vec(&payload).unwrap()),
+                (
+                    SyncManager::device_manifest_key(&source),
+                    serde_json::to_vec(&manifest).unwrap(),
+                ),
+            ],
+        });
+        (storage, source)
+    }
+
+    #[tokio::test]
+    async fn sequence_gap_preflight_allows_publication_after_listing() {
+        for use_v4 in [false, true] {
+            let (storage, source) = seed_publication_after_change_listing(use_v4);
+            let reader = SyncManager::new(format!("reader-{}", uuid::Uuid::new_v4()));
+            let report = reader.detect_change_log_gaps(&storage).await.unwrap();
+            assert!(
+                report.gaps.is_empty(),
+                "concurrent publication is not a gap (v4={use_v4}): {:?}",
+                report.gaps
+            );
+            assert!(storage.publish_after_list.lock().unwrap().is_none());
+            assert_eq!(
+                reader
+                    .max_cloud_seq_for_device(&storage, &source)
+                    .await
+                    .unwrap(),
+                2
+            );
+            assert_eq!(
+                reader.download_device_manifests(&storage).await.unwrap()[&source]
+                    .published_max_seq,
+                2
+            );
+            assert!(reader
+                .detect_change_log_gaps(&storage)
+                .await
+                .unwrap()
+                .gaps
+                .is_empty());
+        }
+    }
+
+    #[tokio::test]
+    async fn sequence_gap_download_allows_publication_after_listing() {
+        for use_v4 in [false, true] {
+            let (storage, source) = seed_publication_after_change_listing(use_v4);
+            let reader = SyncManager::new(format!("reader-{}", uuid::Uuid::new_v4()));
+            let first = reader.download_changes(&storage, 0, None).await.unwrap();
+            assert!(storage.publish_after_list.lock().unwrap().is_none());
+            assert_eq!(first.cursor_advancements.get(&source), Some(&1));
+
+            // The shard absent from the first listing is consumed next time;
+            // reading a watermark must neither skip it nor acknowledge it.
+            let second = reader.download_changes(&storage, 0, None).await.unwrap();
+            assert_eq!(second.cursor_advancements.get(&source), Some(&2));
+            let instance = reader.ensure_remote_instance_id(&storage).await.unwrap();
+            assert_eq!(
+                SyncStateStore::open_default()
+                    .unwrap()
+                    .get_cursor(&instance, &source)
+                    .unwrap(),
+                0
+            );
+        }
+    }
+
     #[tokio::test]
     async fn legacy_timestamp_distance_alone_is_not_a_proven_prune_gap() {
         let storage = FileE2eeMemoryStorage::default();
@@ -17758,9 +17864,15 @@ mod tests {
 
     use crate::cloud_storage::{FileInfo, Result as StorageResult};
 
+    struct ListPublication {
+        prefix: String,
+        objects: Vec<(String, Vec<u8>)>,
+    }
+
     #[derive(Default)]
     struct FileE2eeMemoryStorage {
         files: std::sync::Mutex<std::collections::BTreeMap<String, Vec<u8>>>,
+        publish_after_list: std::sync::Mutex<Option<ListPublication>>,
     }
 
     impl FileE2eeMemoryStorage {
@@ -17802,7 +17914,7 @@ mod tests {
             Ok(self.files.lock().unwrap().get(key).cloned())
         }
         async fn list(&self, prefix: &str) -> StorageResult<Vec<FileInfo>> {
-            Ok(self
+            let snapshot = self
                 .files
                 .lock()
                 .unwrap()
@@ -17814,7 +17926,19 @@ mod tests {
                     last_modified: chrono::Utc::now(),
                     etag: None,
                 })
-                .collect())
+                .collect();
+            // Deterministically finish a peer upload after this listing's
+            // snapshot, without sleeps or scheduler-dependent interleaving.
+            let mut pending = self.publish_after_list.lock().unwrap();
+            if pending
+                .as_ref()
+                .is_some_and(|publication| publication.prefix == prefix)
+            {
+                for (key, bytes) in pending.take().unwrap().objects {
+                    self.put_raw(&key, bytes);
+                }
+            }
+            Ok(snapshot)
         }
         async fn delete(&self, key: &str) -> StorageResult<()> {
             self.files.lock().unwrap().remove(key);
