@@ -1627,11 +1627,15 @@ export interface PruneGapResponse {
   has_gap: boolean;
   since_version: number;
   min_available_version: number | null;
+  remote_format_version: number;
+  uses_device_cursors: boolean;
+  instance_id: string | null;
+  gap_details: string | null;
 }
 
 /**
- * 检查云端变更保留范围是否覆盖本地的 since_version
- * 返回 has_gap = true 时，应提示用户走"全量恢复"而不是普通同步
+ * 按远端实例和设备消费序号检测真实变更缺口。
+ * since_version 仅供诊断；has_gap 时优先展示 gap_details，不得跳过缺失分片。
  */
 export async function detectPruneGap(
   cloudConfig: CloudCfg,

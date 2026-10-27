@@ -82,6 +82,13 @@ pub use traits::{
     RESUMABLE_DOWNLOAD_UNSUPPORTED,
 };
 
+pub const CLOUD_RATE_LIMITED_CODE: &str = "E_CLOUD_RATE_LIMITED";
+
+/// String-wrapped sync errors must retain the transport's no-retry decision.
+pub(crate) fn is_cloud_rate_limited(message: &str) -> bool {
+    message.contains(CLOUD_RATE_LIMITED_CODE)
+}
+
 /// 本端启用加密后拒收明文遗留对象 / 拒明文上传。
 pub const SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED_CODE: &str = "E_SYNC_E2EE_PLAINTEXT_LEGACY_REJECTED";
 /// 密码与云端既有备份不一致，或 DSBK 解密失败。

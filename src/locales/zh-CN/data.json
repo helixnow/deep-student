@@ -1165,7 +1165,7 @@
     "purge_failed": "清空数据失败",
     "backup": "备份",
     "resumable_jobs_load_failed": "加载可恢复任务失败，请稍后重试",
-    "sync_prune_gap_warning": "检测到变更日志缺口，本次同步已停止，请先执行完整恢复后再同步。",
+    "sync_prune_gap_warning": "检测到变更日志缺口（本地版本 {{since}}，云端最早可用版本 {{minAvail}}），本次同步已停止，请先执行完整恢复后再同步。",
     "sync_partial_with_skipped": "同步完成，但有 {{skipped}} 项被跳过。请先查看同步详情。",
     "detect_conflicts_running": "冲突检测正在进行，请稍候",
     "resolve_conflicts_running": "冲突解决正在进行，请稍候",

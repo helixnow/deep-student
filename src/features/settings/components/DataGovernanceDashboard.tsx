@@ -1490,7 +1490,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         if (gap.has_gap) {
           const since = gap.since_version;
           const minAvail = gap.min_available_version ?? 0;
-          throw new Error(t('data:governance.sync_prune_gap_warning', {
+          throw new Error(gap.gap_details ?? t('data:governance.sync_prune_gap_warning', {
             since,
             minAvail,
           }));

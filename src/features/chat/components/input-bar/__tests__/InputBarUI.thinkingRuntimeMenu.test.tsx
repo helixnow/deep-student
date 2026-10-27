@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { InputBarUI } from '../InputBarUI';
 import { createDefaultPanelStates } from '../../../core/types/common';
@@ -160,6 +160,8 @@ describe('InputBarUI thinking/runtime model menu', () => {
     await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
     expect(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('搜索名称或模型 ID...')).not.toBeInTheDocument();
+    // The parent menu establishes focus asynchronously before the submenu opens.
+    await waitFor(() => expect(screen.getByRole('menu')).toHaveFocus());
 
     await user.click(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ }));
 
@@ -168,7 +170,9 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(screen.getAllByText('OpenAI').length).toBeGreaterThan(0);
     expect(screen.getByRole('menuitem', { name: /进入多选模式/ })).toBeInTheDocument();
 
-    await user.type(screen.getByPlaceholderText('搜索名称或模型 ID...'), 'V3.2');
+    const search = screen.getByPlaceholderText('搜索名称或模型 ID...');
+    await user.type(search, 'V3.2');
+    expect(search).toHaveValue('V3.2');
     expect(screen.getAllByRole('menuitem', { name: /DeepSeek V3.2/ }).length).toBeGreaterThan(1);
     expect(screen.queryByRole('menuitem', { name: /GPT-4o/ })).not.toBeInTheDocument();
 

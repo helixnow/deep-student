@@ -841,9 +841,10 @@ fn run_probe(data_dir: &Path, isolated_home: &Path, mode: &str) -> String {
 }
 
 fn probe_value(stdout: &str, prefix: &str) -> String {
+    // Serial libtest output may put its own prefix before the probe marker.
     stdout
-        .lines()
-        .find_map(|line| line.trim().strip_prefix(prefix))
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix(prefix))
         .unwrap_or_else(|| panic!("探针输出缺少 {prefix}。stdout:\n{stdout}"))
         .to_string()
 }

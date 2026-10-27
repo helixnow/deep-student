@@ -58,9 +58,10 @@ fn probe_device_id(data_dir: &Path, isolated_home: &Path) -> String {
         "探针子进程应成功退出。stdout:\n{stdout}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stderr)
     );
+    // libtest may print the test-name prefix on the same line in serial mode.
     stdout
-        .lines()
-        .find_map(|line| line.trim().strip_prefix(PROBE_OUTPUT_PREFIX))
+        .split_whitespace()
+        .find_map(|token| token.strip_prefix(PROBE_OUTPUT_PREFIX))
         .unwrap_or_else(|| panic!("探针子进程未输出 device_id。stdout:\n{stdout}"))
         .to_string()
 }
