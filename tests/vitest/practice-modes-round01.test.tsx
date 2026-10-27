@@ -111,14 +111,14 @@ describe('PaperGenerator export availability (E7)', () => {
     cleanup();
   });
 
-  it('disables unimplemented PDF/Word formats with a coming-soon badge', () => {
+  it('allows PDF and Word formats for the shared paper exporter', () => {
     render(<PaperGenerator examId="exam-1" />);
 
     const pdfButton = screen.getByRole('button', { name: /PDF/ });
     const wordButton = screen.getByRole('button', { name: /Word/ });
-    expect(pdfButton).toBeDisabled();
-    expect(wordButton).toBeDisabled();
-    expect(screen.getAllByText('即将推出')).toHaveLength(2);
+    expect(pdfButton).toBeEnabled();
+    expect(wordButton).toBeEnabled();
+    expect(screen.queryByText('即将推出')).toBeNull();
 
     const previewButton = screen.getByRole('button', { name: /预览/ });
     const markdownButton = screen.getByRole('button', { name: /Markdown/ });

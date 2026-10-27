@@ -257,7 +257,7 @@ pub fn load_question_materials_with_conn(
 }
 
 /// 题干图 + 材料图 → 多模态图片。缺图显式报错（判分缺图等于盲判）。
-fn fetch_context_images(
+pub(crate) fn fetch_context_images(
     db: &VfsDatabase,
     materials: &[QuestionMaterial],
     question_images: &[QuestionImage],

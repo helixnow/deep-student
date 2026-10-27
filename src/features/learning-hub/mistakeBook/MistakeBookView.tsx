@@ -31,6 +31,7 @@ import './mistakeBook.css';
 
 // 重做浮层带着整套做题界面：点了才加载
 const LazyMistakeRedoOverlay = React.lazy(() => import('./MistakeRedoOverlay'));
+const PracticeRecords = React.lazy(() => import('@/components/practice/PracticeRecords'));
 
 /** 题目集下拉的「全部」取值（题目集 id 不会以 `::` 开头） */
 const EXAM_FILTER_ALL = '::all';
@@ -155,6 +156,7 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [redoIds, setRedoIds] = useState<string[] | null>(null);
+  const [redoRecord, setRedoRecord] = useState<{ id: string; submitted: boolean } | null>(null);
   const requestRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -246,6 +248,7 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
 
   const closeRedo = useCallback(() => {
     setRedoIds(null);
+    setRedoRecord(null);
     setSelectedIds(new Set());
     // 答对的题已移出错题本
     void load();
@@ -368,9 +371,10 @@ export const MistakeBookView: React.FC<{ search: string }> = ({ search }) => {
         ) : null}
       </div>
 
-      {redoIds ? (
+      <Suspense fallback={null}><PracticeRecords scopeId="__mistake_redo__" onOpen={(id, submitted) => setRedoRecord({ id, submitted })} /></Suspense>
+      {redoIds || redoRecord ? (
         <Suspense fallback={null}>
-          <LazyMistakeRedoOverlay questionIds={redoIds} examNames={examNames} onClose={closeRedo} />
+          <LazyMistakeRedoOverlay questionIds={redoIds ?? []} practiceId={redoRecord?.id} submitted={redoRecord?.submitted} examNames={examNames} onClose={closeRedo} />
         </Suspense>
       ) : null}
     </div>

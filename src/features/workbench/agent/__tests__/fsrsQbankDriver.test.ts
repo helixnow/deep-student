@@ -752,8 +752,8 @@ describe('driver undo truthfulness', () => {
       expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-new');
       expect(record).toHaveBeenCalledTimes(1);
 
-      const invert = record.mock.calls[0]![1] as () => void;
-      invert();
+      const invert = record.mock.calls[0]![1] as () => Promise<void>;
+      await invert();
       expect(useQuestionBankStore.getState().currentQuestionId).toBe('q-keep');
       expect(displayedQuestionId).toBe('q-keep');
     } finally {
@@ -846,8 +846,8 @@ describe('driver undo truthfulness', () => {
       ]);
       expect(receipt.status).toBe('completed');
 
-      const invert = record.mock.calls[0]![1] as () => void;
-      expect(() => invert()).toThrow('无法恢复已不存在的题目 q-old');
+      const invert = record.mock.calls[0]![1] as () => Promise<void>;
+      await expect(invert()).rejects.toThrow('无法恢复已不存在的题目 q-old');
     } finally {
       window.removeEventListener(QBANK_FOCUS_EVENT, onFocus);
     }

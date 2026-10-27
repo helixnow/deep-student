@@ -886,9 +886,14 @@ impl QuestionBankService {
         conn.execute(
             r#"
             UPDATE questions SET
-                is_correct = ?1,
+                is_correct = CASE WHEN (
+                    SELECT id FROM answer_submissions WHERE question_id=?3 AND deleted_at IS NULL
+                    ORDER BY submitted_at DESC,rowid DESC LIMIT 1
+                )=?5 THEN ?1 ELSE is_correct END,
                 correct_count = MAX(0, correct_count + ?4),
                 status = CASE
+                    WHEN (SELECT id FROM answer_submissions WHERE question_id=?3 AND deleted_at IS NULL
+                          ORDER BY submitted_at DESC,rowid DESC LIMIT 1)<>?5 THEN status
                     WHEN ?1 = 0 THEN 'review'
                     WHEN MAX(0, correct_count + ?4) >= 2 THEN 'mastered'
                     ELSE 'in_progress'
@@ -896,7 +901,7 @@ impl QuestionBankService {
                 updated_at = ?2
             WHERE id = ?3 AND deleted_at IS NULL
             "#,
-            rusqlite::params![is_correct_val, now_rfc3339, question_id, correct_delta],
+            rusqlite::params![is_correct_val, now_rfc3339, question_id, correct_delta, submission.id],
         )
         .map_err(|e| AppError::database(e.to_string()))?;
 
@@ -1050,7 +1055,7 @@ impl QuestionBankService {
     /// - fill_blank：有 structured_data.blanks 时逐空判分（多可接受答案 + case/trim 规则），
     ///   否则回退旧的单串模糊比对
     /// - short_answer/essay/calculation/proof：手动批改
-    fn check_answer_correctness(
+    pub(crate) fn check_answer_correctness(
         user_answer: &str,
         correct_answer: Option<&str>,
         question_type: &QuestionType,
@@ -2851,6 +2856,18 @@ impl QuestionBankService {
         exam_id: &str,
         config: PaperConfig,
     ) -> Result<GeneratedPaper, AppError> {
+        if config.title.trim().is_empty() || config.title.chars().count() > 200 {
+            return Err(AppError::validation("试卷标题须为 1–200 字符"));
+        }
+        if config
+            .type_selection
+            .values()
+            .map(|&n| u64::from(n))
+            .sum::<u64>()
+            > 500
+        {
+            return Err(AppError::validation("每份试卷最多 500 题"));
+        }
         // 构建筛选条件
         let mut filters = QuestionFilters::default();
         if let Some(ref diff_filter) = config.difficulty_filter {
@@ -2886,6 +2903,12 @@ impl QuestionBankService {
                     *count,
                 )
                 .map_err(|e| AppError::database(e.to_string()))?;
+                if qs.len() != *count as usize {
+                    return Err(AppError::validation(format!(
+                        "题型 {qtype} 在当前难度和标签筛选下仅有 {} 题，需要 {count} 题",
+                        qs.len()
+                    )));
+                }
                 selected_questions.extend(qs);
             }
         } else {
@@ -2913,18 +2936,6 @@ impl QuestionBankService {
             selected_questions.shuffle(&mut rng);
         }
 
-        // 处理答案和解析的显示
-        if !config.include_answers {
-            for q in selected_questions.iter_mut() {
-                q.answer = None;
-            }
-        }
-        if !config.include_explanations {
-            for q in selected_questions.iter_mut() {
-                q.explanation = None;
-            }
-        }
-
         let paper = GeneratedPaper {
             id: uuid::Uuid::new_v4().to_string(),
             title: config.title.clone(),
@@ -2943,6 +2954,7 @@ impl QuestionBankService {
             selected_questions.len()
         );
 
+        crate::qbank_practice::save_paper(&self.vfs_db, &paper)?;
         Ok(paper)
     }
 

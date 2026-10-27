@@ -2,6 +2,7 @@ import './polyfills/promiseWithResolvers';
 import React from "react";
 // 🚀 性能优化：KaTeX CSS 改为按需加载，见 src/utils/lazyStyles.ts
 import App from "./App";
+import PracticeRuntimeBridge from './components/practice/PracticeRuntimeBridge';
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { TopLevelFallback } from './components/TopLevelFallback';
 import { OverlayCoordinatorProvider } from './components/shared/OverlayCoordinator';
@@ -370,6 +371,7 @@ const appTree = (
     <OverlayCoordinatorProvider>
       <DialogControlProvider>
         <App />
+        <PracticeRuntimeBridge />
       </DialogControlProvider>
     </OverlayCoordinatorProvider>
   </ErrorBoundary>

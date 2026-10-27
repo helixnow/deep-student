@@ -329,6 +329,15 @@ fn insert_vfs_all_row_sync_bundle(conn: &Connection) {
     .expect("insert vfs answer submission");
 
     conn.execute(
+        "INSERT INTO qbank_papers(id,exam_id,title,document_json,created_at,updated_at) VALUES('paper_all','exam_all','Paper','{}',?1,?1)",
+        [ts],
+    ).expect("insert saved paper");
+    conn.execute(
+        "INSERT INTO qbank_practice_attempts(id,scope_id,paper_id,document_json,created_at,updated_at) VALUES('practice_all','exam_all','paper_all','{}',?1,?1)",
+        [ts],
+    ).expect("insert submitted practice");
+
+    conn.execute(
         "INSERT INTO translations (
             id, resource_id, src_lang, tgt_lang, engine, model, is_favorite,
             quality_rating, created_at, metadata_json, title, subject, updated_at
@@ -1167,6 +1176,13 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
              (id, exam_id, status, document_json, idempotency_key, created_at, updated_at)
              VALUES ('qimport_non_row', 'exam_all', 'needs_review', '{}', 'qimport_non_row',
                      '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');
+         INSERT INTO qbank_practice_drafts
+             (id, scope_id, document_json, created_at, updated_at)
+             VALUES ('practice_non_row', 'exam_all', '{}', '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z');
+         INSERT INTO qbank_practice_jobs
+             (id, attempt_id, question_id, status, updated_at)
+             SELECT 'practice_job_non_row', id, 'q_all', 'queued', '2024-04-24T00:00:00Z'
+             FROM qbank_practice_attempts LIMIT 1;
          INSERT INTO vfs_index_profiles
              (id, model_fingerprint, dimension, modality, embedding_protocol,
               lance_table_name, created_at, updated_at)
@@ -1362,6 +1378,8 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
         "automation_todo_deliveries",
         "qbank_generation_tasks",
         "qbank_import_jobs",
+        "qbank_practice_drafts",
+        "qbank_practice_jobs",
         "vfs_index_profiles",
         "path_cache",
         "question_bank_stats",

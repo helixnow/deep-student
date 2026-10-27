@@ -4,7 +4,7 @@
  * 功能：
  * - 组卷配置面板（题型选择、数量设置、难度筛选）
  * - 预览生成的试卷
- * - 导出为 PDF/Word（待实现）
+ * - 保存试卷并导出 PDF / Word / Markdown
  */
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
@@ -68,12 +68,10 @@ const DIFFICULTY_KEYS = [
   { key: 'very_hard', color: 'bg-destructive/10 text-destructive' },
 ];
 
-// PDF / Word 导出尚未实现：入口保留但置灰 + 徽标，避免用户选中后
-// 到导出一步才发现"即将推出"（此前四格平权展示形成误导）。
 const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode; available: boolean }> = [
   { key: 'preview', icon: <Eye size={16} />, available: true },
-  { key: 'pdf', icon: <DownloadSimple size={16} />, available: false },
-  { key: 'word', icon: <FileText size={16} />, available: false },
+  { key: 'pdf', icon: <DownloadSimple size={16} />, available: true },
+  { key: 'word', icon: <FileText size={16} />, available: true },
   { key: 'markdown', icon: <FileText size={16} />, available: true },
 ];
 
@@ -215,52 +213,16 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     }
   }, [examId, title, typeSelection, selectedDifficulties, selectedTags, shuffle, includeAnswers, includeExplanations, exportFormat, generatePaper, onGenerate, t, beginRequest]);
   
-  // 导出试卷：Markdown 直接落盘（复用 save 对话框 + save_text_to_file 后端命令）；
-  // PDF/Word 暂未实现，给出明确提示而非静默无反应（修复此前点击导出无任何反馈的缺口）。
+  // Export the saved paper independently of generation.
   const handleExport = useCallback(async () => {
     if (!generatedPaper) return;
-    if (exportFormat !== 'markdown') {
-      showGlobalNotification('info', t('paper.exportComingSoon'));
-      return;
-    }
+    if (exportFormat === 'preview') return;
     try {
-      const answerLabel = t('paper.answer');
-      const explanationLabel = t('paper.explanation');
-      const lines: string[] = [`# ${generatedPaper.title}`, ''];
-      const exportedMaterials=new Set<string>();
-      generatedPaper.questions.forEach((q, i) => {
-        for (const material of q.materials || []) {
-          if (exportedMaterials.has(material.id)) continue;
-          exportedMaterials.add(material.id);
-          lines.push(`### ${q.group_label || t('exam_sheet:materials.title', {defaultValue:'共享材料'})}`,material.content,'');
-        }
-        lines.push(`## ${i + 1}. ${q.content}`, '');
-        if (q.options && q.options.length > 0) {
-          q.options.forEach((opt) => lines.push(`- ${opt.key}. ${opt.content}`));
-          lines.push('');
-        }
-        if (includeAnswers && q.answer) {
-          lines.push(`**${answerLabel}：** ${q.answer}`, '');
-        }
-        if (includeExplanations && q.explanation) {
-          lines.push(`**${explanationLabel}：** ${q.explanation}`, '');
-        }
-      });
-      const content = lines.join('\n');
-
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const path = await save({
-        title: t('paper.exportTitle'),
-        defaultPath: `${generatedPaper.title || 'paper'}.md`,
-        filters: [{ name: 'Markdown', extensions: ['md'] }],
-      });
-      if (!path) return;
-
-      await invoke('save_text_to_file', { path, content });
-      showGlobalNotification('success', t('paper.exportSuccess'));
+      const { exportPaperToFile } = await import('./paperExport');
+      await exportPaperToFile(generatedPaper, { format: exportFormat, includeAnswers, includeExplanations });
     } catch (err: unknown) {
       console.error('Failed to export paper:', err);
-      showGlobalNotification('error', t('paper.exportFailed'));
+      showGlobalNotification('error', getErrorMessage(err));
     }
   }, [generatedPaper, exportFormat, includeAnswers, includeExplanations, t]);
   

@@ -35,6 +35,7 @@ import type { QuestionBankStats } from '@/api/questionBankApi';
 import { ratioToPercent } from '@/components/stats';
 import type { PracticeMode } from '@/api/questionBankApi';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import PracticeRecords from './PracticeRecords';
 
 // 懒加载高级模式组件
 const TimedPracticeMode = lazy(() => import('./TimedPracticeMode'));
@@ -47,6 +48,8 @@ export interface PracticeLauncherProps {
   stats?: QuestionBankStats | null;
   questions: Array<{ tags?: string[] }>;
   onStartPractice: (mode: PracticeMode, tag?: string) => void;
+  onStartDrill?: (mode: PracticeMode, tag?: string) => void;
+  onOpenPractice?: (id: string, submitted: boolean) => void;
   /** Opens configuration for a mode selected from the in-practice toolbar. */
   requestedMode?: 'by_tag' | 'timed' | 'mock_exam' | 'daily' | 'paper' | null;
   onRequestedModeHandled?: () => void;
@@ -79,6 +82,8 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   stats,
   questions,
   onStartPractice,
+  onStartDrill,
+  onOpenPractice,
   requestedMode,
   onRequestedModeHandled,
   currentQuestionId,
@@ -89,6 +94,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   const { t } = useTranslation('practice');
   const [activeAdvanced, setActiveAdvanced] = useState<AdvancedMode>(null);
   const [isTagPickerOpen, setIsTagPickerOpen] = useState(false);
+  const [drillOpen, setDrillOpen] = useState(false);
 
   useEffect(() => {
     // isActive === false：保活隐藏（display:none 标签页）的实例不注册，
@@ -372,6 +378,14 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       className={cn('h-full', className)}
       viewportClassName="space-y-4 p-3 pb-[calc(0.75rem+var(--mobile-safe-area-bottom,0px))]"
     >
+      {onOpenPractice && <PracticeRecords scopeId={examId} onOpen={onOpenPractice} />}
+      {onStartDrill && <section className="border-b border-border/50 pb-3">
+        <DsButton variant="outline" size="sm" aria-expanded={drillOpen} onClick={() => setDrillOpen(v => !v)}><Play size={16} />{t('batch.drill')}</DsButton>
+        {drillOpen && <div className="mt-3 flex flex-wrap items-center gap-2">
+          {(['sequential', 'random', 'review_first', 'review_only'] as PracticeMode[]).map(mode => <DsButton key={mode} variant="outline" size="sm" onClick={() => onStartDrill(mode)}>{modes.find(m => m.key === mode)?.label}</DsButton>)}
+          {!!tagOptions.length && <select className="min-h-9 max-w-full rounded-md border bg-background px-2 text-sm" aria-label={t('practice:tagPicker.title')} defaultValue="" onChange={e => { if (e.target.value) onStartDrill('by_tag', e.target.value); }}><option value="" disabled>{t('practice:tagPicker.title')}</option>{tagOptions.map(({ tag }) => <option key={tag} value={tag}>{tag === '__untagged__' ? t('practice:tagPicker.untagged') : tag}</option>)}</select>}
+        </div>}
+      </section>}
       {/* 快速统计 */}
       {stats && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-1">

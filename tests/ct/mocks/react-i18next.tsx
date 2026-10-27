@@ -9,6 +9,11 @@ import zhExamSheet from '../../../src/locales/zh-CN/exam_sheet.json';
 import zhPractice from '../../../src/locales/zh-CN/practice.json';
 import zhLearningHub from '../../../src/locales/zh-CN/learningHub.json';
 import zhReview from '../../../src/locales/zh-CN/review.json';
+import React from 'react';
+
+export function Trans({ i18nKey, values, children }: { i18nKey?: string; values?: Record<string, unknown>; children?: React.ReactNode; components?: Record<string, React.ReactElement> }) {
+  return <>{i18nKey ? t(i18nKey, values) : children}</>;
+}
 
 type Dict = Record<string, unknown>;
 
