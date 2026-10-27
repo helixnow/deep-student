@@ -1165,7 +1165,7 @@
     "purge_failed": "Failed to purge data",
     "backup": "Backup",
     "resumable_jobs_load_failed": "Failed to load resumable tasks. Please try again later.",
-    "sync_prune_gap_warning": "This sync stopped because a change-log gap was detected. Run a full restore before syncing again.",
+    "sync_prune_gap_warning": "This sync stopped because a change-log gap was detected (local version {{since}}, earliest cloud version {{minAvail}}). Run a full restore before syncing again.",
     "sync_partial_with_skipped": "Sync completed with {{skipped}} skipped item(s). Review the sync details before continuing.",
     "detect_conflicts_running": "Conflict detection is already running. Please wait.",
     "resolve_conflicts_running": "Conflict resolution is already running. Please wait.",
