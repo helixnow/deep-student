@@ -241,8 +241,8 @@ export function useQbankAiGrading() {
           // 注册事件监听
           const eventName = `qbank_grading_stream_${streamSessionId}`;
           const unlisten = await listen<QbankGradingStreamEvent>(eventName, (event) => {
-            // 竞态守卫：如果 session 已被 resetState/cancelGrading 清除，忽略迟到的事件
-            if (currentStreamSessionIdRef.current !== streamSessionId) return;
+            // 卸载也会结束 Promise；监听器移除前到达的事件不能再触发完成回调。
+            if (settled || currentStreamSessionIdRef.current !== streamSessionId) return;
 
             const payload = event.payload;
             resetTimeout();
@@ -311,6 +311,12 @@ export function useQbankAiGrading() {
             }
           });
 
+          // listen 的 IPC 期间可能已取消、切题或卸载。只释放旧监听器，
+          // 不能启动旧请求，也不能覆盖重试请求的监听器和超时计时器。
+          if (settled || currentStreamSessionIdRef.current !== streamSessionId) {
+            unlisten();
+            return;
+          }
           unlistenRef.current = unlisten;
           isStartingRef.current = false;
 
