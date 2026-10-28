@@ -164,4 +164,68 @@ describe('useQbankAiGrading complete 终态文本（#56）', () => {
     expect(result.current.state.feedback).toBe('解题思路：先看题干');
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  it.each(['cancel', 'reset', 'unmount'] as const)(
+    'does not start grading when %s happens before listener registration finishes',
+    async (action) => {
+      let finishRegistration!: (unlisten: () => void) => void;
+      const registration = new Promise<() => void>((resolve) => { finishRegistration = resolve; });
+      mockListen.mockImplementationOnce((_name: string, handler: StreamHandler) => {
+        streamHandler = handler;
+        return registration;
+      });
+      const unlisten = vi.fn();
+      const onComplete = vi.fn();
+      const { result, unmount } = renderHook(() => useQbankAiGrading());
+      let grading!: Promise<'completed' | 'cancelled'>;
+      act(() => {
+        grading = result.current.startGrading('q1', null, 'analyze', undefined, onComplete);
+      });
+      if (action === 'cancel') {
+        await act(async () => { await result.current.cancelGrading(); });
+      } else if (action === 'reset') {
+        act(() => result.current.resetState());
+      } else {
+        unmount();
+      }
+      await expect(grading).resolves.toBe('cancelled');
+
+      // Tauri's registration/removal IPC can finish after the component is gone.
+      act(() => streamHandler?.({ payload: { type: 'complete', feedback: 'Late result' } }));
+      expect(onComplete).not.toHaveBeenCalled();
+      await act(async () => { finishRegistration(unlisten); });
+
+      expect(unlisten).toHaveBeenCalledTimes(1);
+      expect(mockInvoke.mock.calls.some(([command]) => command === 'qbank_ai_grade')).toBe(false);
+    },
+  );
+
+  it('releases a stale registration without replacing the retry listener', async () => {
+    let finishFirstRegistration!: (unlisten: () => void) => void;
+    const registration = new Promise<() => void>((resolve) => { finishFirstRegistration = resolve; });
+    mockListen.mockImplementationOnce(() => registration);
+    const firstUnlisten = vi.fn();
+    const retryUnlisten = vi.fn();
+    let retryHandler!: StreamHandler;
+    mockListen.mockImplementationOnce(async (_name: string, handler: StreamHandler) => {
+      retryHandler = handler;
+      return retryUnlisten;
+    });
+    const { result } = renderHook(() => useQbankAiGrading());
+    let first!: Promise<'completed' | 'cancelled'>;
+    act(() => { first = result.current.startGrading('q1', null, 'analyze'); });
+    await act(async () => { await result.current.cancelGrading(); });
+    await expect(first).resolves.toBe('cancelled');
+    let retry!: Promise<'completed' | 'cancelled'>;
+    await act(async () => { retry = result.current.retryGrading()!; });
+
+    await act(async () => { finishFirstRegistration(firstUnlisten); });
+    expect(firstUnlisten).toHaveBeenCalledTimes(1);
+    expect(retryUnlisten).not.toHaveBeenCalled();
+    expect(mockInvoke.mock.calls.filter(([command]) => command === 'qbank_ai_grade')).toHaveLength(1);
+    act(() => retryHandler({ payload: { type: 'complete', feedback: 'Retry result' } }));
+    await expect(retry).resolves.toBe('completed');
+    expect(retryUnlisten).toHaveBeenCalledTimes(1);
+    expect(result.current.state.feedback).toBe('Retry result');
+  });
 });
