@@ -18,7 +18,7 @@ use std::sync::Arc;
 use tracing::{debug, info, warn};
 
 use crate::llm_manager::single_shot_stream::{is_retryable_http_status, SingleShotOptions};
-use crate::llm_manager::{build_provider_adapter, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::page_rasterizer::PageSlice;
 
@@ -74,6 +74,22 @@ pub struct VlmFigure {
 
 fn default_bbox() -> [f64; 4] {
     [0.0, 0.0, 0.0, 0.0]
+}
+
+fn build_vlm_request_body(config: &ApiConfig, messages: Vec<Value>, stream: bool) -> Value {
+    let mut body = json!({
+        "model": config.model,
+        "messages": messages,
+        "temperature": 0.1,
+        "max_tokens": crate::llm_manager::effective_max_tokens(
+            config.max_output_tokens,
+            config.max_tokens_limit,
+        ),
+    });
+    if stream {
+        body["stream"] = json!(true);
+    }
+    body
 }
 
 // ============================================================================
@@ -410,19 +426,8 @@ impl VlmGroundingService {
             ]
         })];
 
-        let max_tokens = crate::llm_manager::effective_max_tokens(
-            config.max_output_tokens,
-            config.max_tokens_limit,
-        )
-        .max(4096)
-        .min(16384);
-
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": 0.1,
-            "max_tokens": max_tokens,
-        });
+        let mut request_body = build_vlm_request_body(config, messages, false);
+        let max_tokens = request_body["max_tokens"].as_u64().unwrap_or(0);
 
         // GLM-4.5+ 支持 thinking 参数；OCR/题目集默认关闭以降低延迟
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
@@ -548,19 +553,7 @@ impl VlmGroundingService {
             ]
         })];
 
-        let max_tokens = crate::llm_manager::effective_max_tokens(
-            config.max_output_tokens,
-            config.max_tokens_limit,
-        )
-        .max(2048)
-        .min(4096);
-
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": 0.1,
-            "max_tokens": max_tokens,
-        });
+        let mut request_body = build_vlm_request_body(config, messages, false);
 
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
             &config.model,
@@ -747,20 +740,7 @@ impl VlmGroundingService {
             "content": content_parts
         })];
 
-        let max_tokens = crate::llm_manager::effective_max_tokens(
-            config.max_output_tokens,
-            config.max_tokens_limit,
-        )
-        .max(8192)
-        .min(32768);
-
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": 0.1,
-            "max_tokens": max_tokens,
-            "stream": true,
-        });
+        let mut request_body = build_vlm_request_body(&config, messages, true);
 
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
             &config.model,
@@ -1583,6 +1563,43 @@ fn detect_image_format(data: &[u8]) -> (&'static str, &'static str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_vlm_request_payload_honors_only_configured_limits() {
+        let config = ApiConfig {
+            max_output_tokens: 12_000,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = build_vlm_request_body(&config, Vec::new(), true);
+        assert_eq!(body["max_tokens"], json!(12_000));
+        assert_eq!(body["stream"], json!(true));
+
+        let config = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = build_vlm_request_body(&config, Vec::new(), false);
+        assert_eq!(body["max_tokens"], json!(40_000));
+        assert!(body.get("stream").is_none());
+
+        let config = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: Some(24_000),
+            ..ApiConfig::default()
+        };
+        let body = build_vlm_request_body(&config, Vec::new(), false);
+        assert_eq!(body["max_tokens"], json!(24_000));
+
+        let config = ApiConfig {
+            max_output_tokens: 1_024,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = build_vlm_request_body(&config, Vec::new(), false);
+        assert_eq!(body["max_tokens"], json!(1_024));
+    }
 
     fn png_data_url(width: u32, height: u32) -> String {
         let image = image::RgbImage::new(width, height);

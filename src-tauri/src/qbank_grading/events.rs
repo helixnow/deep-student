@@ -39,6 +39,7 @@ impl QbankGradingEmitter {
         score: Option<i32>,
         feedback: String,
         explanation_written: bool,
+        diagnostics: super::types::GradingDiagnostics,
     ) {
         let event_name = format!("qbank_grading_stream_{}", stream_session_id);
         let payload = QbankGradingStreamComplete {
@@ -48,6 +49,7 @@ impl QbankGradingEmitter {
             score,
             feedback,
             explanation_written,
+            diagnostics: Some(diagnostics),
         };
 
         if let Err(e) = self.window.emit(&event_name, payload) {
@@ -61,10 +63,33 @@ impl QbankGradingEmitter {
         let payload = QbankGradingStreamError {
             event_type: "error".to_string(),
             message,
+            feedback: None,
+            diagnostics: None,
         };
 
         if let Err(e) = self.window.emit(&event_name, payload) {
             log::error!("[QbankGrading] 发送错误事件失败: {}", e);
+        }
+    }
+
+    pub fn emit_failure(
+        &self,
+        stream_session_id: &str,
+        message: String,
+        feedback: String,
+        diagnostics: super::types::GradingDiagnostics,
+    ) {
+        let payload = QbankGradingStreamError {
+            event_type: "error".to_string(),
+            message,
+            feedback: Some(feedback),
+            diagnostics: Some(diagnostics),
+        };
+        if let Err(error) = self.window.emit(
+            &format!("qbank_grading_stream_{stream_session_id}"),
+            payload,
+        ) {
+            log::error!("[QbankGrading] 发送错误事件失败: {}", error);
         }
     }
 

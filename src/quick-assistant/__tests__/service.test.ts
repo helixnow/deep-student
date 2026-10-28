@@ -1,5 +1,29 @@
-import { describe, expect, it } from 'vitest';
-import { inferQuickActions, isCaptureLikeText, looksLikeSecret } from '../service';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  inferQuickActions,
+  isCaptureLikeText,
+  looksLikeSecret,
+  QUICK_RUN_STOPPED,
+  startQuickLearningAction,
+} from '../service';
+
+const { invokeMock, listeners } = vi.hoisted(() => ({ invokeMock: vi.fn(), listeners: new Map<string, (event: { payload: unknown }) => void>() }));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: invokeMock,
+}));
+
+vi.mock('@tauri-apps/api/event', () => ({
+  listen: vi.fn(async (name: string, handler: (event: { payload: unknown }) => void) => {
+    listeners.set(name, handler);
+    return () => listeners.delete(name);
+  }),
+}));
+
+beforeEach(() => {
+  invokeMock.mockReset();
+  listeners.clear();
+});
 
 describe('inferQuickActions', () => {
   it('prioritizes hints for exercise-like content', () => {
@@ -51,5 +75,30 @@ describe('looksLikeSecret', () => {
   it('keeps math expressions and urls', () => {
     expect(looksLikeSecret('x^2+y_1=Z9(a-b)/2!')).toBe(false);
     expect(looksLikeSecret('https://example.com/A9_b?x=1')).toBe(false);
+  });
+});
+
+describe('startQuickLearningAction token budget', () => {
+  it('lets the backend use the selected model configuration instead of a hidden 1600-token cap', async () => {
+    invokeMock.mockImplementation(async (command: string) => {
+      if (command === 'chat_v2_create_session') return { id: 'quick-session-1' };
+      if (command === 'chat_v2_list_groups') {
+        return [{ id: 'quick-group-1', name: '快速学习' }];
+      }
+      if (command === 'chat_v2_cancel_stream') {
+        listeners.get('chat_v2_session_quick-session-1')?.({ payload: { eventType: 'stream_cancelled' } });
+      }
+      return null;
+    });
+
+    const handle = await startQuickLearningAction('解释熵', 'explain', vi.fn());
+    const sendCall = invokeMock.mock.calls.find(([command]) => command === 'chat_v2_send_message');
+
+    expect(sendCall).toBeDefined();
+    expect(sendCall?.[1]?.request.options).toEqual({ enableThinking: false });
+    expect(sendCall?.[1]?.request.options).not.toHaveProperty('maxTokens');
+
+    handle.cancel();
+    await expect(handle.completion).rejects.toMatchObject({ name: QUICK_RUN_STOPPED });
   });
 });

@@ -37,8 +37,10 @@ use super::events::QbankGradingEmitter;
 use super::image_answer::{
     fetch_image_answer_contents, parse_image_answer_envelope, ImageAnswerPayload,
 };
+use super::stream::GradingStreamState;
 use super::types::{
-    QbankGradingMode, QbankGradingRequest, QbankGradingResponse, Verdict, ANALYZE_SYSTEM_PROMPT,
+    GradingCompletionStatus, GradingDiagnostics, GradingFailure, QbankGradingMode,
+    QbankGradingRequest, QbankGradingResponse, Verdict, ANALYZE_SYSTEM_PROMPT,
     EXPLANATION_SYSTEM_PROMPT, GRADE_SYSTEM_PROMPT,
 };
 
@@ -54,13 +56,6 @@ pub struct QbankGradingDeps {
     pub emitter: QbankGradingEmitter,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StreamStatus {
-    Completed,
-    Cancelled,
-    Incomplete,
-}
-
 /// Grade frozen practice content without touching the question-level AI cache.
 /// The queue atomically applies the verdict to this attempt after the stream ends.
 pub async fn grade_practice_snapshot(
@@ -69,7 +64,7 @@ pub async fn grade_practice_snapshot(
     question: &Question,
     answer: &str,
     job_id: &str,
-) -> Result<QbankGradingResponse, AppError> {
+) -> Result<QbankGradingResponse, GradingFailure> {
     let mut context = GradingContext::from_question(question);
     context.materials = question.materials.clone();
     context.images =
@@ -105,10 +100,15 @@ pub async fn grade_practice_snapshot(
         &QbankGradingMode::Grade,
         image_answer.as_ref(),
     )?;
-    let config = resolve_grading_config(&llm, None, !images.is_empty()).await?;
-    let key = llm.decrypt_api_key(&config.api_key)?;
+    let config = resolve_grading_config(&llm, None, !images.is_empty())
+        .await
+        .map_err(GradingFailure::configuration)?;
+    let key = llm
+        .decrypt_api_key(&config.api_key)
+        .map_err(GradingFailure::configuration)?;
     let mut accumulated = String::new();
-    let status = stream_grade(
+    let mut stream = GradingStreamState::new(&config);
+    let result = stream_grade(
         &config,
         &key,
         &system,
@@ -117,15 +117,26 @@ pub async fn grade_practice_snapshot(
         llm,
         config.is_multimodal,
         &images,
+        &mut stream,
         |chunk| accumulated.push_str(&chunk),
     )
-    .await?;
-    if !matches!(status, StreamStatus::Completed) {
-        return Err(AppError::llm("AI 批改未完整结束，请重试"));
+    .await;
+    if let Err(error) = result {
+        return Err(GradingFailure {
+            error,
+            feedback: accumulated,
+            diagnostics: Some(stream.diagnostics),
+        });
     }
     let (verdict, score) = parse_verdict_and_score(&accumulated);
     if verdict.is_none() {
-        return Err(AppError::llm("AI 批改缺少有效判定，请重试"));
+        stream.diagnostics.status = GradingCompletionStatus::InvalidResult;
+        stream.diagnostics.error_message = Some("AI 批改缺少有效判定".into());
+        return Err(GradingFailure {
+            error: AppError::llm("AI 批改缺少有效判定，已保留反馈草稿，仍待批改"),
+            feedback: accumulated,
+            diagnostics: Some(stream.diagnostics),
+        });
     }
     Ok(QbankGradingResponse {
         submission_id: None,
@@ -133,6 +144,7 @@ pub async fn grade_practice_snapshot(
         score,
         feedback: accumulated,
         explanation_written: false,
+        diagnostics: Some(stream.diagnostics),
     })
 }
 
@@ -269,8 +281,9 @@ pub async fn run_qbank_grading(
     // 9. 流式调用 LLM
     let mut accumulated = String::new();
     let stream_event = format!("qbank_grading_stream_{}", request.stream_session_id);
+    let mut stream = GradingStreamState::new(&config);
 
-    let stream_status = match stream_grade(
+    let stream_result = stream_grade(
         &config,
         &api_key,
         &system_prompt,
@@ -279,74 +292,50 @@ pub async fn run_qbank_grading(
         deps.llm.clone(),
         config.is_multimodal,
         &images,
+        &mut stream,
         |chunk| {
             accumulated.push_str(&chunk);
             deps.emitter
                 .emit_data(&request.stream_session_id, chunk, accumulated.clone());
         },
     )
-    .await
-    {
-        Ok(status) => status,
-        Err(e) => {
-            deps.emitter
-                .emit_error(&request.stream_session_id, e.message.clone());
-            return Err(e);
-        }
-    };
+    .await;
 
-    if matches!(stream_status, StreamStatus::Cancelled) {
+    if stream.diagnostics.status == GradingCompletionStatus::Cancelled {
+        if !accumulated.trim().is_empty() {
+            persist_failed_grading(&deps.vfs_db, &question, &accumulated, &stream.diagnostics)?;
+        }
         deps.emitter.emit_cancelled(&request.stream_session_id);
         return Ok(None);
     }
 
-    if matches!(stream_status, StreamStatus::Incomplete) {
-        // 🔧 #56: 仅在没有任何累积文本时才报错；已有文本则继续走后续校验/持久化，
-        // 避免"解析先流式出现、随后整段消失"，下方保留草稿并报告中断。
-        if accumulated.trim().is_empty() {
-            let err = AppError::llm(
-                "AI 评判流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
-            );
-            deps.emitter
-                .emit_error(&request.stream_session_id, err.message.clone());
-            return Err(err);
-        }
-        log::warn!(
-            "[QbankGrading] SSE 流缺少完成哨兵但已累积 {} 字符，保留结果继续处理（#56）",
-            accumulated.len()
-        );
-    }
-
-    // Incomplete streams only save a draft, never a finished explanation or grade.
-    // parser 取全文最后一个 verdict/score 匹配——若流在真正结论之前中断，正文中
-    // 复述的格式示例（如 correct/100）会成为"最后一个匹配"被当最终成绩落库，
-    // 污染统计与 mastery。此处把 draft_text 与 authoritative_result 分离：
-    // 半截解析保留可见（ai_feedback 草稿，保留既有 ai_score），成绩维持待判，
-    // 返回错误引导重试。合法的 finish_reason=stop 无 [DONE] 网关在流层已被
-    // 归一化为 Completed（sse_block_signals_finish），不受此分支影响。
-    let stream_incomplete = matches!(stream_status, StreamStatus::Incomplete);
-    if stream_incomplete {
-        if let Err(e) = persist_draft_feedback(&deps.vfs_db, &question, &accumulated) {
-            // 草稿持久化是尽力而为；主错误仍是流不完整
-            log::warn!("[QbankGrading] 不完整流的草稿反馈保存失败: {}", e.message);
-        }
-        let err = AppError::llm(if request.mode == QbankGradingMode::Grade {
-            "AI 评判流异常中断：已保留部分解析草稿，正式成绩未更新。请重试评判。"
-        } else {
-            "AI 解析流异常中断：已保留部分文本，请重试以生成完整解析。"
-        });
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+    if let Err(error) = stream_result {
+        return Err(report_failed_grading(
+            &deps,
+            &request,
+            &question,
+            &accumulated,
+            &stream.diagnostics,
+            error,
+        ));
     }
 
     if accumulated.trim().is_empty() {
-        return Err(emit_and_return(AppError::llm("AI 返回了空内容，请重试")));
+        stream.diagnostics.status = GradingCompletionStatus::InvalidResult;
+        return Err(report_failed_grading(
+            &deps,
+            &request,
+            &question,
+            &accumulated,
+            &stream.diagnostics,
+            AppError::llm("AI 未返回批改正文，仍待批改。请检查模型输出及思考预算"),
+        ));
     }
 
     // S-014: 二次检查取消状态
     if deps.llm.consume_pending_cancel(&stream_event).await {
-        log::info!("[QbankGrading] 流完成后发现已取消，丢弃结果");
+        stream.diagnostics.status = GradingCompletionStatus::Cancelled;
+        persist_failed_grading(&deps.vfs_db, &question, &accumulated, &stream.diagnostics)?;
         deps.emitter.emit_cancelled(&request.stream_session_id);
         return Ok(None);
     }
@@ -359,12 +348,18 @@ pub async fn run_qbank_grading(
     };
 
     if request.mode == QbankGradingMode::Grade && verdict.is_none() {
+        stream.diagnostics.status = GradingCompletionStatus::InvalidResult;
         let err = AppError::llm(
-            "AI 评判结果缺少有效 verdict 标签（需为 correct|partial|incorrect）。".to_string(),
+            "AI 评判结果缺少有效 verdict 标签（需为 correct|partial|incorrect），已保留反馈草稿，仍待批改。".to_string(),
         );
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+        return Err(report_failed_grading(
+            &deps,
+            &request,
+            &question,
+            &accumulated,
+            &stream.diagnostics,
+            err,
+        ));
     }
 
     // 8. 持久化（SAVEPOINT 原子写入，任一失败即回滚并报错）
@@ -372,22 +367,33 @@ pub async fn run_qbank_grading(
         Ok(c) => c,
         Err(e) => {
             let err = AppError::database(format!("获取数据库连接失败: {}", e));
-            deps.emitter
-                .emit_error(&request.stream_session_id, err.message.clone());
-            return Err(err);
+            return Err(report_failed_grading(
+                &deps,
+                &request,
+                &question,
+                &accumulated,
+                &stream.diagnostics,
+                err,
+            ));
         }
     };
 
     if let Err(e) = conn.execute("SAVEPOINT qbank_grading_persist", []) {
         let err = AppError::database(format!("创建 SAVEPOINT 失败: {}", e));
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
+        drop(conn);
+        return Err(report_failed_grading(
+            &deps,
+            &request,
+            &question,
+            &accumulated,
+            &stream.diagnostics,
+            err,
+        ));
     }
 
     // 通用解析（无作答）只在流完整结束时才回填空解析：半截文本可以留在 AI 缓存里
     // 供查看，但不能落进题目自带的「解析」。
-    let fill_empty_explanation = current_submission.is_none() && !stream_incomplete;
+    let fill_empty_explanation = current_submission.is_none();
     let persist_result = persist_grading_result(
         &conn,
         &deps.vfs_db,
@@ -410,9 +416,15 @@ pub async fn run_qbank_grading(
         Err(e) => {
             let _ = conn.execute("ROLLBACK TO qbank_grading_persist", []);
             let _ = conn.execute("RELEASE qbank_grading_persist", []);
-            deps.emitter
-                .emit_error(&request.stream_session_id, e.message.clone());
-            return Err(e);
+            drop(conn);
+            return Err(report_failed_grading(
+                &deps,
+                &request,
+                &question,
+                &accumulated,
+                &stream.diagnostics,
+                e,
+            ));
         }
     };
     drop(conn);
@@ -466,6 +478,7 @@ pub async fn run_qbank_grading(
         score,
         accumulated.clone(),
         explanation_written,
+        stream.diagnostics.clone(),
     );
 
     Ok(Some(QbankGradingResponse {
@@ -474,81 +487,92 @@ pub async fn run_qbank_grading(
         score,
         feedback: accumulated,
         explanation_written,
+        diagnostics: Some(stream.diagnostics),
     }))
 }
 
-/// 持久化评判结果（在调用方开启的 SAVEPOINT/事务内执行，可单测）。
-///
-/// - 两种模式都写 AI 缓存（ai_feedback / ai_score / ai_graded_at）；
-/// - Grade 模式的判分落库（submission 判定 + grading_method='ai'、
-///   correct_count 差值 ±1 / MAX(0,·) 防负、状态 CASE、S-030 同步标记、
-///   content hash、mastery 事件、统计刷新）统一复用
-///   `QuestionBankService::apply_submission_verdict_in_tx`，与人工改判同口径；
-///   mastery 事件由原语写入（幂等键），本函数不重复插；
-/// - Analyze 模式写 ai_feedback，自行补 S-030 同步标记 + content hash；
-///   `fill_empty_explanation`（#467，仅无作答的通用解析）时把同一份解析回填进
-///   题目的 explanation——只在原解析为空时写，绝不覆盖用户已有解析
-///   （覆盖须走显式的「写入解析」/ qbank_update_question）。
-///
-/// 返回 Grade 模式下原语给出的 `VerdictApplyOutcome`（Analyze 为 None），
-/// 供调用方在事务外接 SM-2 复习计划与 learner_profile 回流。
-/// N13：不完整评判流的草稿持久化——只更新 ai_feedback，保留既有 ai_score，
-/// 不触碰 submission 判定、统计与 mastery（Analyze 分支语义）。
-/// SAVEPOINT 包裹，失败整体回滚。
+fn report_failed_grading(
+    deps: &QbankGradingDeps,
+    request: &QbankGradingRequest,
+    question: &Question,
+    feedback: &str,
+    diagnostics: &GradingDiagnostics,
+    mut error: AppError,
+) -> AppError {
+    let mut diagnostics = diagnostics.clone();
+    diagnostics.error_message = Some(error.message.clone());
+    if matches!(
+        error.error_type,
+        crate::models::AppErrorType::Database | crate::models::AppErrorType::NotFound
+    ) {
+        diagnostics.status = GradingCompletionStatus::PersistenceError;
+    }
+    if let Err(persist_error) =
+        persist_failed_grading(&deps.vfs_db, question, feedback, &diagnostics)
+    {
+        error
+            .message
+            .push_str(&format!("；反馈草稿保存失败：{}", persist_error.message));
+    }
+    log::warn!(
+        "[QbankGrading] question={} diagnostics={}",
+        question.id,
+        serde_json::to_string(&diagnostics).unwrap_or_default()
+    );
+    deps.emitter.emit_failure(
+        &request.stream_session_id,
+        error.message.clone(),
+        feedback.to_string(),
+        diagnostics.clone(),
+    );
+    error
+}
+
+fn persist_failed_grading(
+    db: &Arc<VfsDatabase>,
+    question: &Question,
+    feedback: &str,
+    diagnostics: &GradingDiagnostics,
+) -> Result<(), AppError> {
+    persist_draft_feedback(db, question, feedback, Some(diagnostics))
+}
+
+/// Failed feedback has its own history channel, separate from the successful AI cache.
 fn persist_draft_feedback(
     vfs_db: &Arc<VfsDatabase>,
     question: &Question,
     feedback: &str,
+    diagnostics: Option<&GradingDiagnostics>,
 ) -> Result<(), AppError> {
     let conn = vfs_db
         .get_conn_safe()
         .map_err(|e| AppError::database(format!("获取数据库连接失败: {}", e)))?;
-    conn.execute("SAVEPOINT qbank_grading_draft", [])
-        .map_err(|e| AppError::database(format!("创建 SAVEPOINT 失败: {}", e)))?;
-
-    let result = (|| -> Result<(), AppError> {
-        let now = chrono::Utc::now().to_rfc3339();
-        let updated = conn
-            .execute(
-                r#"UPDATE questions SET ai_feedback = ?1, ai_graded_at = ?2, updated_at = ?2
-                   WHERE id = ?3 AND deleted_at IS NULL"#,
-                params![feedback, &now, &question.id],
-            )
-            .map_err(|e| AppError::database(format!("保存草稿反馈失败: {}", e)))?;
-        if updated == 0 {
-            return Err(AppError::not_found(format!(
-                "题目不存在或已删除: {}",
-                question.id
-            )));
-        }
-        // 与 Analyze 分支一致：标记同步 + 重算 content hash，
-        // 否则云同步会用远端旧值覆盖草稿。
-        crate::question_sync_service::QuestionSyncService::mark_as_modified_with_conn(
-            &conn,
-            &question.id,
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM questions WHERE id=?1)",
+            [&question.id],
+            |row| row.get(0),
         )
-        .map_err(|e| AppError::database(format!("标记同步状态失败: {}", e)))?;
-        crate::question_sync_service::QuestionSyncService::update_content_hash_with_conn(
-            &conn,
-            &question.id,
-        )
-        .map_err(|e| AppError::database(format!("更新内容哈希失败: {}", e)))?;
-        Ok(())
-    })();
-
-    match &result {
-        Ok(()) => {
-            conn.execute("RELEASE qbank_grading_draft", [])
-                .map_err(|e| AppError::database(format!("提交草稿 SAVEPOINT 失败: {}", e)))?;
-        }
-        Err(_) => {
-            let _ = conn.execute("ROLLBACK TO qbank_grading_draft", []);
-            let _ = conn.execute("RELEASE qbank_grading_draft", []);
-        }
+        .map_err(|error| AppError::database(error.to_string()))?;
+    if !exists {
+        return Err(AppError::not_found(format!("题目不存在：{}", question.id)));
     }
-    result
+    let payload = json!({ "feedback": feedback, "diagnostics": diagnostics }).to_string();
+    VfsQuestionRepo::record_history_with_conn(
+        &conn,
+        &question.id,
+        "ai_grading_draft",
+        None,
+        Some(&payload),
+        "ai",
+        Some("批改未完成，正式成绩未更新"),
+    )
+    .map_err(|error| AppError::database(format!("保存批改草稿失败：{error}")))?;
+    Ok(())
 }
 
+/// Persist a completed result within the caller's transaction. Grade writes reuse
+/// the verdict primitive; standalone Analyze only fills an empty explanation.
 fn persist_grading_result(
     conn: &rusqlite::Connection,
     vfs_db: &Arc<VfsDatabase>,
@@ -984,14 +1008,14 @@ pub(crate) fn get_submission_by_id_with_conn(
 /// 取最后一个匹配以符合"末尾标签为准"的语义。
 fn parse_verdict_and_score(result: &str) -> (Option<Verdict>, Option<i32>) {
     // 解析 <verdict>correct|partial|incorrect</verdict>
-    let verdict = Regex::new(r"<verdict>\s*(correct|partial|incorrect)\s*</verdict>")
+    let verdict = Regex::new(r"(?i)<verdict\s*>\s*(correct|partial|incorrect)\s*</verdict\s*>")
         .ok()
         .and_then(|re| re.captures_iter(result).last())
         .and_then(|cap| cap.get(1))
         .and_then(|m| Verdict::from_str(m.as_str()));
 
     // 解析 <score value="N"/>
-    let score = Regex::new(r#"<score\s+value="(\d+)"\s*/>"#)
+    let score = Regex::new(r#"(?i)<score\s+value\s*=\s*["'](\d+)["']\s*/>"#)
         .ok()
         .and_then(|re| re.captures_iter(result).last())
         .and_then(|cap| cap.get(1))
@@ -1036,30 +1060,6 @@ fn guess_image_mime(base64_data: &str) -> &'static str {
     "image/jpeg"
 }
 
-/// 🔧 #56: 检测 SSE 数据块是否携带 finish_reason（非 null）。
-///
-/// 部分 OpenAI 兼容网关只发 `finish_reason: "stop"` 而不发 `data: [DONE]` 哨兵，
-/// 此时也应视为流正常完成，避免把完整结果误判为 Incomplete 而丢弃。
-fn sse_block_signals_finish(line: &str) -> bool {
-    let Some(data) = line.lines().find_map(|line| {
-        line.strip_prefix("data:")
-            .map(|data| data.strip_prefix(' ').unwrap_or(data))
-    }) else {
-        return false;
-    };
-    let Ok(json_data) = serde_json::from_str::<serde_json::Value>(data) else {
-        return false;
-    };
-    json_data["choices"]
-        .as_array()
-        .map(|choices| {
-            choices
-                .iter()
-                .any(|c| c["finish_reason"].as_str().is_some())
-        })
-        .unwrap_or(false)
-}
-
 /// 流式调用 LLM（复用 essay_grading 的多模态消息构造：is_multimodal 且有图时
 /// user content 改为图文 parts 数组，图片标签文本在前、完整文本 prompt 收尾）
 async fn stream_grade<F>(
@@ -1071,12 +1071,14 @@ async fn stream_grade<F>(
     llm: Arc<LLMManager>,
     is_multimodal: bool,
     images: &[GradingImage],
+    stream_state: &mut GradingStreamState,
     mut on_chunk: F,
-) -> Result<StreamStatus, AppError>
+) -> Result<(), AppError>
 where
     F: FnMut(String),
 {
-    let result = async {
+    let mut cancelled = false;
+    let result: Result<(), AppError> = async {
         // 构造消息：题干图/材料图/作答图在多模态模型下转为图文混合 content；
         // 无图（或非多模态——调用方已在校验层拦下图片+非多模态组合）保持纯文本。
         let has_images = !images.is_empty();
@@ -1134,8 +1136,7 @@ where
             "max_tokens": crate::llm_manager::effective_max_tokens(
                 config.max_output_tokens,
                 config.max_tokens_limit,
-            )
-            .min(8192),
+            ),
             "stream": true,
         });
 
@@ -1152,12 +1153,19 @@ where
                 Some(stream_event),
                 "评判请求构建失败",
             )
-            .await?;
+            .await
+            .map_err(|error| AppError::configuration(error.message))?;
+        if let Some(limit) = ["max_output_tokens", "max_completion_tokens", "max_tokens"]
+            .into_iter().find_map(|key| preq.body.get(key).and_then(serde_json::Value::as_u64))
+        {
+            stream_state.diagnostics.max_output_tokens = limit.min(u32::MAX as u64) as u32;
+        }
 
         let client = llm.get_http_client();
 
         if llm.consume_pending_cancel(stream_event).await {
-            return Ok(StreamStatus::Cancelled);
+            cancelled = true;
+            return Ok(());
         }
         let mut cancel_rx = llm.subscribe_cancel_stream(stream_event).await;
 
@@ -1194,56 +1202,20 @@ where
                     REQUEST_HEADER_TIMEOUT.as_secs()
                 ))
             })?
-            .map_err(|e| AppError::llm(format!("评判请求失败: {}", e)))?
+            .map_err(|e| AppError::llm(format!("评判请求失败: {}", e.without_url())))?
         };
 
         if !response.status().is_success() {
             let status = response.status();
             let error_text = response.text().await.unwrap_or_default();
-            return Err(AppError::llm(format!(
-                "评判 API 返回错误 {}: {}",
-                status, error_text
-            )));
+            stream_state.http_error(status.as_u16(), &error_text);
+            return Ok(());
         }
+        stream_state.diagnostics.http_status = Some(response.status().as_u16());
 
         let mut stream = response.bytes_stream();
         let mut sse_buffer = crate::utils::sse_buffer::SseEventBuffer::new();
         let mut stream_ended = false;
-        let mut cancelled = false;
-        // 🔧 #56: 部分 OpenAI 兼容网关只发 finish_reason 不发 `data: [DONE]` 哨兵。
-        // 观察到 finish_reason 即视为正常完成，避免把完整结果误判为 Incomplete 而丢弃。
-        let mut finish_observed = false;
-
-        // 处理单个 SSE 块：返回 true 表示流已结束
-        let handle_sse_block =
-            |line: &str, on_chunk: &mut F, finish_observed: &mut bool| -> bool {
-                if line.is_empty() {
-                    return false;
-                }
-
-                if crate::utils::sse_buffer::SseEventBuffer::check_done_marker(line) {
-                    return true;
-                }
-
-                if sse_block_signals_finish(line) {
-                    *finish_observed = true;
-                }
-
-                let events = adapter.parse_stream(line);
-                let mut done = false;
-                for event in events {
-                    match event {
-                        crate::providers::StreamEvent::ContentChunk(content) => {
-                            on_chunk(content);
-                        }
-                        crate::providers::StreamEvent::Done => {
-                            done = true;
-                        }
-                        _ => {}
-                    }
-                }
-                done
-            };
 
         // watch sender 一旦被清理（Err），停止轮询该分支，
         // 否则 changed() 每次立即返回 Err 会让 select 空转成忙等。
@@ -1273,7 +1245,7 @@ where
                         Ok(Some(chunk)) => {
                             let bytes = chunk.map_err(|e| AppError::llm(format!("读取流失败: {}", e)))?;
                             for line in sse_buffer.process_bytes(&bytes) {
-                                if handle_sse_block(&line, &mut on_chunk, &mut finish_observed) {
+                                if stream_state.process_block(adapter.as_ref(), &line, &mut on_chunk) {
                                     stream_ended = true;
                                     break;
                                 }
@@ -1295,59 +1267,161 @@ where
         }
 
         if cancelled {
-            return Ok(StreamStatus::Cancelled);
+            return Ok(());
         }
 
         // 流自然关闭后 flush 残留事件（最后一个事件可能只有单换行或没有空行）。
         if !stream_ended {
             for remaining in sse_buffer.flush() {
-                if handle_sse_block(&remaining, &mut on_chunk, &mut finish_observed) {
-                    stream_ended = true;
+                if stream_state.process_block(adapter.as_ref(), &remaining, &mut on_chunk) {
                     break;
                 }
             }
         }
 
-        if stream_ended || finish_observed {
-            Ok(StreamStatus::Completed)
-        } else {
-            log::warn!("[QbankGrading] SSE 流未收到 DONE 标记或 finish_reason 就结束，结果可能不完整");
-            Ok(StreamStatus::Incomplete)
-        }
+        stream_state.finish_adapter(adapter.as_ref(), &mut on_chunk);
+        Ok(())
     }
     .await;
 
     llm.clear_cancel_stream(stream_event).await;
 
-    result
+    match stream_state.complete(cancelled, result.err()) {
+        Some(error) => Err(error),
+        None => Ok(()),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_sse_block_signals_finish_detects_stop() {
-        assert!(sse_block_signals_finish(
-            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#
-        ));
-        assert!(sse_block_signals_finish(
-            r#"data: {"choices":[{"delta":{"content":"末尾"},"finish_reason":"length"}]}"#
-        ));
-        assert!(sse_block_signals_finish(
-            "event: message\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}"
-        ));
+    #[tokio::test]
+    async fn grading_request_respects_configured_budget_and_preserves_terminal_failures() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("settings.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        conn.execute("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT NOT NULL,updated_at TEXT NOT NULL)", []).unwrap();
+        drop(conn);
+        let db = Arc::new(crate::database::Database::new(&db_path).unwrap());
+        let files =
+            Arc::new(crate::file_manager::FileManager::new(tmp.path().to_path_buf()).unwrap());
+        let llm = Arc::new(LLMManager::new(db, files).unwrap());
+        let mut server = mockito::Server::new_async().await;
+        for (finish, expected, provider_limit) in [
+            ("stop", GradingCompletionStatus::Completed, None),
+            ("length", GradingCompletionStatus::Truncated, None),
+            (
+                "content_filter",
+                GradingCompletionStatus::ProviderError,
+                None,
+            ),
+            ("stop", GradingCompletionStatus::Completed, Some(64000)),
+        ] {
+            let body = format!("data: {{\"choices\":[{{\"delta\":{{\"content\":\"Draft <verdict>correct</verdict>\"}},\"finish_reason\":null}}]}}\n\ndata: {{\"choices\":[{{\"delta\":{{}},\"finish_reason\":\"{finish}\"}}]}}\n\ndata: {{\"choices\":[],\"usage\":{{\"completion_tokens\":9000}}}}\n\ndata: [DONE]\n\n");
+            let endpoint = server
+                .mock("POST", "/chat/completions")
+                .match_body(mockito::Matcher::PartialJson(
+                    json!({"max_tokens":provider_limit.unwrap_or(128000),"stream":true}),
+                ))
+                .with_header("content-type", "text/event-stream")
+                .with_body(body)
+                .expect(1)
+                .create_async()
+                .await;
+            let config = ApiConfig {
+                model: "test-reasoner".into(),
+                base_url: server.url(),
+                max_output_tokens: 128000,
+                max_tokens_limit: provider_limit,
+                api_protocol: Some("openai_chat_completions".into()),
+                ..Default::default()
+            };
+            let mut stream = GradingStreamState::new(&config);
+            let mut text = String::new();
+            let result = stream_grade(
+                &config,
+                "test-key",
+                "Teacher",
+                "Grade answer",
+                "grade-test",
+                llm.clone(),
+                false,
+                &[],
+                &mut stream,
+                |chunk| text.push_str(&chunk),
+            )
+            .await;
+            endpoint.assert_async().await;
+            assert_eq!(stream.diagnostics.status, expected);
+            assert_eq!(
+                stream.diagnostics.usage.as_ref().unwrap()["completion_tokens"],
+                9000
+            );
+            assert_eq!(
+                result.is_ok(),
+                expected == GradingCompletionStatus::Completed
+            );
+            assert!(text.contains("<verdict>correct</verdict>"));
+        }
     }
 
     #[test]
-    fn test_sse_block_signals_finish_ignores_normal_chunks() {
-        assert!(!sse_block_signals_finish(
-            r#"data: {"choices":[{"delta":{"content":"abc"},"finish_reason":null}]}"#
-        ));
-        assert!(!sse_block_signals_finish("data: [DONE]"));
-        assert!(!sse_block_signals_finish(": keep-alive"));
-        assert!(!sse_block_signals_finish(""));
-        assert!(!sse_block_signals_finish("data: not-json"));
+    fn failed_grading_persists_draft_and_diagnostics_without_applying_verdict() {
+        let (_tmp, db) = setup_persist_db();
+        let (question, submission_id) = seed_question_with_submission(&db, None);
+        let mut diagnostics = GradingStreamState::new(&ApiConfig {
+            max_output_tokens: 128000,
+            ..Default::default()
+        })
+        .diagnostics;
+        diagnostics.status = GradingCompletionStatus::Truncated;
+        diagnostics.finish_reason = Some("length".into());
+        let draft = "partial feedback <verdict>correct</verdict>";
+        persist_failed_grading(&db, &question, draft, &diagnostics).unwrap();
+        let conn = db.get_conn_safe().unwrap();
+        let sub = get_submission_by_id_with_conn(&conn, &submission_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(sub.is_correct, None);
+        let updated = VfsQuestionRepo::get_question_with_conn(&conn, &question.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated.ai_feedback, question.ai_feedback);
+        assert_eq!(updated.ai_score, None);
+        assert_eq!(updated.correct_count, question.correct_count);
+        assert_eq!(updated.explanation, question.explanation);
+        let raw:String = conn.query_row("SELECT new_value FROM question_history WHERE question_id=?1 AND field_name='ai_grading_draft'",[&question.id],|r|r.get(0)).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert_eq!(saved["feedback"], draft);
+        assert_eq!(saved["diagnostics"]["status"], "truncated");
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM mastery_events", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn verdict_parser_accepts_explicit_case_and_attribute_spacing_variants() {
+        let (verdict, score) = parse_verdict_and_score(
+            "Feedback\n<VERDICT > PARTIAL </VERDICT >\n<SCORE value = '72' />",
+        );
+        assert_eq!(verdict, Some(Verdict::Partial));
+        assert_eq!(score, Some(72));
+    }
+
+    #[test]
+    fn verdict_parser_does_not_infer_a_grade_from_prose_or_scores() {
+        assert_eq!(
+            parse_verdict_and_score("The answer is correct. 90/100."),
+            (None, None)
+        );
+        assert_eq!(
+            parse_verdict_and_score("<score value=\"90\"/>"),
+            (None, Some(90))
+        );
     }
 
     // ========================================================================
@@ -1926,7 +2000,7 @@ mod tests {
         {
             let conn = db.get_conn_safe().expect("conn");
             conn.execute(
-                "UPDATE questions SET ai_score = 88 WHERE id = ?1",
+                "UPDATE questions SET ai_score = 88, ai_feedback='complete feedback', ai_graded_at='2020-01-01' WHERE id = ?1",
                 params![question.id],
             )
             .expect("seed ai_score");
@@ -1934,7 +2008,7 @@ mod tests {
 
         // 正文复述格式示例后流中断的半截文本（审阅主样本形态）
         let draft = "输出格式示例：verdict: correct, score: 100\n下面开始分析……（流在此中断）";
-        persist_draft_feedback(&db, &question, draft).expect("draft persist");
+        persist_draft_feedback(&db, &question, draft, None).expect("draft persist");
 
         let conn = db.get_conn_safe().expect("conn");
         let (correct_count, is_correct, status, attempt_count) =
@@ -1952,7 +2026,24 @@ mod tests {
             )
             .expect("query ai fields");
         assert_eq!(ai_score, Some(88), "草稿必须保留既有 ai_score");
-        assert_eq!(ai_feedback.as_deref(), Some(draft), "草稿文本可见");
+        assert_eq!(
+            ai_feedback.as_deref(),
+            Some("complete feedback"),
+            "草稿不能覆盖成功反馈"
+        );
+        let graded_at: String = conn
+            .query_row(
+                "SELECT ai_graded_at FROM questions WHERE id=?1",
+                [&question.id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(graded_at, "2020-01-01");
+        let saved:String = conn.query_row("SELECT new_value FROM question_history WHERE question_id=?1 AND field_name='ai_grading_draft'",[&question.id],|r|r.get(0)).unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&saved).unwrap()["feedback"],
+            draft
+        );
 
         let (sub_correct, method) = submission_state(&conn, &submission_id);
         assert_eq!(sub_correct, Some(1), "submission 判定不得被草稿改动");
@@ -1971,7 +2062,7 @@ mod tests {
         let (question, _submission_id) = seed_question_with_submission(&db, None);
         let mut ghost = question.clone();
         ghost.id = "question_ghost".to_string();
-        assert!(persist_draft_feedback(&db, &ghost, "draft").is_err());
+        assert!(persist_draft_feedback(&db, &ghost, "draft", None).is_err());
     }
 
     // ========================================================================

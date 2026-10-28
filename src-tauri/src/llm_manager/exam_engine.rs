@@ -88,6 +88,18 @@ fn safe_truncate(s: &str, max_bytes: usize) -> &str {
     }
 }
 
+fn build_ocr_request_body(config: &ApiConfig, messages: Vec<Value>, temperature: f32) -> Value {
+    json!({
+        "model": config.model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": super::effective_max_tokens(
+            config.max_output_tokens,
+            config.max_tokens_limit,
+        ),
+    })
+}
+
 async fn run_ocr_with_deadline<T, F>(
     engine_idx: usize,
     engine_name: &str,
@@ -495,19 +507,8 @@ impl LLMManager {
             Some(json!({ "prompt": prompt_text, "engine": adapter.engine_type().as_str() })),
         );
 
-        let max_tokens = crate::llm_manager::effective_max_tokens(
-            config.max_output_tokens,
-            config.max_tokens_limit,
-        )
-        .min(adapter.recommended_max_tokens(ocr_mode))
-        .max(2048)
-        .min(8000);
-        let mut request_body = json!({
-            "model": config.model,
-            "messages": messages,
-            "temperature": adapter.recommended_temperature(),
-            "max_tokens": max_tokens,
-        });
+        let mut request_body =
+            build_ocr_request_body(config, messages, adapter.recommended_temperature());
 
         crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
@@ -983,18 +984,8 @@ impl LLMManager {
                 ]
             })];
 
-            let max_tokens =
-                super::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-                    .min(adapter.recommended_max_tokens(ocr_mode))
-                    .max(2048)
-                    .min(8000);
-
-            let mut request_body = json!({
-                "model": config.model,
-                "messages": messages,
-                "temperature": adapter.recommended_temperature(),
-                "max_tokens": max_tokens,
-            });
+            let mut request_body =
+                build_ocr_request_body(config, messages, adapter.recommended_temperature());
 
             crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
@@ -1497,6 +1488,33 @@ mod tests {
     use std::convert::Infallible;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
+
+    #[test]
+    fn ocr_request_payload_has_no_adapter_output_cap() {
+        let config = ApiConfig {
+            max_output_tokens: 12_000,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = build_ocr_request_body(&config, Vec::new(), 0.0);
+        assert_eq!(body["max_tokens"], json!(12_000));
+
+        let config = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: Some(24_000),
+            ..ApiConfig::default()
+        };
+        let body = build_ocr_request_body(&config, Vec::new(), 0.0);
+        assert_eq!(body["max_tokens"], json!(24_000));
+
+        let config = ApiConfig {
+            max_output_tokens: 1_024,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let body = build_ocr_request_body(&config, Vec::new(), 0.0);
+        assert_eq!(body["max_tokens"], json!(1_024));
+    }
 
     #[tokio::test]
     async fn local_codex_result_survives_closed_background_channel() {

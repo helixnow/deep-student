@@ -197,3 +197,32 @@ it('keeps favorites independent from this round marks and answer drafts', async 
   expect(saved.marked_ids).toEqual([]);
   expect(saved.answers).toEqual({});
 });
+
+it('shows saved failed drafts and diagnostics while keeping the result awaiting grading', async () => {
+  const saved = draft();
+  const attempt: PracticeAttempt = {
+    ...saved, status: 'needs_review', submitted_at: '', origin_device_id: 'device1',
+    results: [{
+      question_id: 'q1', status: 'failed', is_correct: null, score: null,
+      feedback: null, error: 'Output truncated', source_available: true, submission_id: 's1',
+      grading_drafts: [{
+        feedback: 'Saved interrupted feedback', error: 'Output truncated', created_at: '2026-10-28T00:00:00Z',
+        diagnostics: { status: 'truncated', model: 'test-reasoner', model_config_id: 'm1',
+          max_output_tokens: 128000, finish_reason: 'length', usage: { completion_tokens: 128000 },
+          response_chars: 25, reasoning_chars: 90000, http_status: 200 },
+      }],
+    }, {
+      question_id: 'q2', status: 'unanswered', is_correct: null, score: null, feedback: null,
+      error: null, source_available: true, submission_id: null,
+    }],
+  };
+  mocks.invoke.mockImplementation(async (command) => command === 'qbank_get_practice' ? attempt : undefined);
+  render(<BatchPracticeWorkspace practiceId="draft1" submitted onBack={vi.fn()} />);
+  await screen.findByText('Saved interrupted feedback');
+  expect(screen.getByText('待批改 1 题')).toBeInTheDocument();
+  expect(screen.getByText('错误 0 题')).toBeInTheDocument();
+  expect(screen.getByText(/批改反馈草稿（非正式成绩）/)).toBeInTheDocument();
+  expect(screen.getByText('test-reasoner')).toBeInTheDocument();
+  expect(screen.getByText('length')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: '重新批改' })).toBeInTheDocument();
+});
