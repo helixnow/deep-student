@@ -119,10 +119,10 @@ export function QuestionExplanation({
           {canonical?.trim() && <MarkdownRenderer content={canonical} />}
           {showFeedback && (
             <div className="space-y-2">
-              {ai.state.error && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
+              {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
               {canonical?.trim() && <h4 className="text-sm font-medium text-info">{t('editor.aiAnalysis')}</h4>}
               <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
-              {onRefreshQuestion && !ai.state.isGrading && !ai.state.error && (
+              {onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
                 <AiExplanationWriteButton
                   questionId={questionId}
                   explanation={canonical}

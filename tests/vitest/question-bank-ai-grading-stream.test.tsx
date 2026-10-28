@@ -139,4 +139,29 @@ describe('useQbankAiGrading complete 终态文本（#56）', () => {
     expect(result.current.state.score).toBeUndefined();
     expect(onComplete).not.toHaveBeenCalled();
   });
+
+  it('retains successful completion diagnostics from the terminal event', async () => {
+    const onComplete = vi.fn();
+    const { result, settled } = await startAndStream(onComplete);
+    const diagnostics = {
+      status: 'completed', model: 'test-model', model_config_id: 'model1',
+      max_output_tokens: 64000, finish_reason: 'stop', usage: { completion_tokens: 9000 },
+      response_chars: 10, reasoning_chars: 100, http_status: 200,
+    };
+    act(() => streamHandler?.({ payload: {
+      type: 'complete', feedback: 'Complete feedback', diagnostics,
+    } }));
+    await expect(settled).resolves.toBe('completed');
+    expect(result.current.state.diagnostics).toEqual(diagnostics);
+  });
+
+  it('marks backend cancellation as a draft without completing a grade', async () => {
+    const onComplete = vi.fn();
+    const { result, settled } = await startAndStream(onComplete);
+    act(() => streamHandler?.({ payload: { type: 'cancelled' } }));
+    await expect(settled).resolves.toBe('cancelled');
+    expect(result.current.state.cancelled).toBe(true);
+    expect(result.current.state.feedback).toBe('解题思路：先看题干');
+    expect(onComplete).not.toHaveBeenCalled();
+  });
 });

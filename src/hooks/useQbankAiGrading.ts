@@ -36,6 +36,8 @@ export interface QbankGradingState {
   explanationWritten?: boolean;
   /** 错误信息 */
   error?: string;
+  /** 已取消的流式文本仍是草稿，不能作为完整解析写入。 */
+  cancelled?: boolean;
   diagnostics?: GradingDiagnostics;
   /** 当前流 session ID */
   streamSessionId?: string;
@@ -273,6 +275,7 @@ export function useQbankAiGrading() {
                 verdict: finalVerdict,
                 score: finalScore,
                 explanationWritten,
+                diagnostics: payload.diagnostics,
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
@@ -300,6 +303,7 @@ export function useQbankAiGrading() {
               setState((prev) => ({
                 ...prev,
                 isGrading: false,
+                cancelled: true,
               }));
               isActiveRef.current = false;
               currentStreamSessionIdRef.current = null;
@@ -359,6 +363,7 @@ export function useQbankAiGrading() {
     setState((prev) => ({
       ...prev,
       isGrading: false,
+      cancelled: true,
     }));
 
     isActiveRef.current = false;
