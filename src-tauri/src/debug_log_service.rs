@@ -501,8 +501,8 @@ pub fn write_debug_log_entry(
 /// 不含请求凭据，但统一过 `redact_sensitive_text` 兜底（模型可能复读
 /// 提示词样例中的密钥样式文本）。
 ///
-/// 响应完整保留原文：出题管线 max_tokens 封顶 8192，正常远低于
-/// MAX_DEBUG_LOG_BYTES 截断阈值；超限属异常情况，保留截断标记防磁盘失控。
+/// 响应按配置的模型输出预算生成；超过 MAX_DEBUG_LOG_BYTES 时保留截断标记，
+/// 仅限制调试日志文件大小，不改写实际模型请求的 token 上限。
 pub fn write_debug_response_entry(
     log_dir: &Path,
     tag: &str,

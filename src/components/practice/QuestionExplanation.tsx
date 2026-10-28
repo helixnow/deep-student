@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import type { GradingDiagnostics } from '@/api/practiceApi';
 import { useTranslation } from 'react-i18next';
 import { ArrowClockwise, CaretDown, CaretUp, Lightbulb, WarningCircle } from '@phosphor-icons/react';
 import { DsButton } from '@/components/ui/DsButton';
@@ -8,6 +10,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { AiExplanationWriteButton } from './AiExplanationWriteButton';
 import { resolveAiExplanationWrite, toExplanationText } from './aiExplanation';
+import { GradingDiagnosticsView } from './GradingDiagnosticsView';
 
 interface Props {
   questionId: string;
@@ -29,11 +32,26 @@ export function QuestionExplanation({
   const ai = useQbankAiGrading();
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [savedExplanation, setSavedExplanation] = useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = useState<{ feedback: string; diagnostics?: GradingDiagnostics } | null>(null);
   const canonical = savedExplanation ?? explanation;
   const feedback = ai.state.feedback || aiFeedback || '';
   const showFeedback = Boolean(toExplanationText(feedback))
     && resolveAiExplanationWrite(canonical, feedback) !== 'none';
-  const hasContent = Boolean(canonical?.trim() || toExplanationText(feedback));
+  const hasContent = Boolean(canonical?.trim() || toExplanationText(feedback) || savedDraft);
+  useEffect(() => {
+    let cancelled = false;
+    setSavedDraft(null);
+    if (!onRefreshQuestion) return;
+    void invoke<Array<{ field_name: string; new_value: string | null }>>('qbank_get_history', {
+      questionId, limit: 20,
+    }).then((history) => {
+      const latest = history.find((entry) => entry.field_name === 'ai_grading_draft');
+      if (!latest?.new_value || cancelled) return;
+      const draft = JSON.parse(latest.new_value) as { feedback?: string; diagnostics?: GradingDiagnostics };
+      if (typeof draft.feedback === 'string') setSavedDraft({ ...draft, feedback: draft.feedback });
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [aiFeedback, expanded, questionId, onRefreshQuestion]);
 
   const generate = async () => {
     if (!onRefreshQuestion || ai.state.isGrading) return;
@@ -95,14 +113,16 @@ export function QuestionExplanation({
           {ai.state.error}
         </p>
       )}
+      <GradingDiagnosticsView diagnostics={ai.state.diagnostics} />
       {expanded && (
         <div className="space-y-3 text-sm leading-relaxed text-muted-foreground">
           {canonical?.trim() && <MarkdownRenderer content={canonical} />}
           {showFeedback && (
             <div className="space-y-2">
+              {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
               {canonical?.trim() && <h4 className="text-sm font-medium text-info">{t('editor.aiAnalysis')}</h4>}
               <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
-              {onRefreshQuestion && !ai.state.isGrading && !ai.state.error && (
+              {onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
                 <AiExplanationWriteButton
                   questionId={questionId}
                   explanation={canonical}
@@ -114,6 +134,13 @@ export function QuestionExplanation({
                 />
               )}
             </div>
+          )}
+          {savedDraft && !ai.state.feedback && (
+            <details className="space-y-2 border-t pt-2">
+              <summary className="cursor-pointer text-warning">{t('batch.feedbackDraft')}</summary>
+              {savedDraft.feedback && <MarkdownRenderer content={toExplanationText(savedDraft.feedback)} />}
+              <GradingDiagnosticsView diagnostics={savedDraft.diagnostics} />
+            </details>
           )}
         </div>
       )}

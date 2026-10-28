@@ -13,6 +13,7 @@ use tauri::{Emitter, Manager, State};
 
 use crate::commands::AppState;
 use crate::models::AppError;
+use crate::qbank_grading::types::{GradingDiagnostics, GradingFailure};
 use crate::question_bank_service::{GeneratedPaper, QuestionBankService};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{Question, VfsQuestionRepo};
@@ -46,6 +47,18 @@ pub struct PracticeResult {
     pub error: Option<String>,
     pub submission_id: Option<String>,
     pub source_available: bool,
+    #[serde(default)]
+    pub grading_diagnostics: Option<GradingDiagnostics>,
+    #[serde(default)]
+    pub grading_drafts: Vec<PracticeGradingDraft>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PracticeGradingDraft {
+    pub feedback: String,
+    pub error: String,
+    pub diagnostics: Option<GradingDiagnostics>,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -511,6 +524,8 @@ fn submit_draft_with_revision(
             error: None,
             submission_id,
             source_available: live.is_some(),
+            grading_diagnostics: None,
+            grading_drafts: Vec::new(),
         });
     }
     let elapsed_seconds = if let (Some(duration), Some(deadline)) =
@@ -893,35 +908,40 @@ async fn run_grading_queue(app: &tauri::AppHandle) -> Result<(), AppError> {
             continue;
         }
         let mut outcome = None;
+        let response = response.and_then(|response| {
+            let applied = apply_practice_verdict(
+                &tx,
+                &db,
+                &question_id,
+                result.submission_id.as_deref(),
+                response
+                    .verdict
+                    .as_ref()
+                    .is_some_and(|verdict| verdict.is_correct()),
+            );
+            match applied {
+                Ok((applied, source_available)) => {
+                    outcome = applied;
+                    result.source_available = source_available;
+                    Ok(response)
+                }
+                Err(error) => {
+                    let mut diagnostics = response.diagnostics;
+                    if let Some(diagnostics) = diagnostics.as_mut() {
+                        diagnostics.status =
+                            crate::qbank_grading::types::GradingCompletionStatus::PersistenceError;
+                    }
+                    Err(GradingFailure {
+                        error,
+                        feedback: response.feedback,
+                        diagnostics,
+                    })
+                }
+            }
+        });
         match response {
             Ok(response) => {
                 let correct = response.verdict.as_ref().is_some_and(|v| v.is_correct());
-                if let Some(sid) = result.submission_id.as_ref() {
-                    if let Some(live) = VfsQuestionRepo::get_question_with_conn(&tx, &question_id)
-                        .map_err(db_error)?
-                    {
-                        let sub = crate::qbank_grading::pipeline::get_submission_by_id_with_conn(
-                            &tx, sid,
-                        )?;
-                        if let Some(sub) = sub {
-                            outcome = Some(
-                                QuestionBankService::new(db.clone())
-                                    .apply_submission_verdict_in_tx(
-                                        &tx,
-                                        &live,
-                                        &sub,
-                                        correct,
-                                        "ai",
-                                        &now(),
-                                    )?,
-                            );
-                        } else {
-                            result.source_available = false;
-                        }
-                    } else {
-                        result.source_available = false;
-                    }
-                }
                 result.status = if correct {
                     "correct"
                 } else if matches!(
@@ -936,13 +956,19 @@ async fn run_grading_queue(app: &tauri::AppHandle) -> Result<(), AppError> {
                 result.is_correct = Some(correct);
                 result.score = response.score;
                 result.feedback = Some(response.feedback);
+                result.grading_diagnostics = response.diagnostics;
                 result.error = None;
                 tx.execute("UPDATE qbank_practice_jobs SET status='done',error=NULL,updated_at=?2 WHERE id=?1", params![job_id, now()]).map_err(db_error)?;
             }
-            Err(error) => {
-                result.status = "failed".into();
-                result.error = Some(error.message.clone());
-                tx.execute("UPDATE qbank_practice_jobs SET status='failed',error=?2,updated_at=?3 WHERE id=?1", params![job_id, error.message, now()]).map_err(db_error)?;
+            Err(failure) => {
+                record_grading_failure(result, failure);
+                log::warn!(
+                    "[PracticeGrading] job={} error={:?} diagnostics={}",
+                    job_id,
+                    result.error,
+                    serde_json::to_string(&result.grading_diagnostics).unwrap_or_default()
+                );
+                tx.execute("UPDATE qbank_practice_jobs SET status='failed',error=?2,updated_at=?3 WHERE id=?1", params![job_id, result.error, now()]).map_err(db_error)?;
             }
         }
         refresh_status(&mut attempt);
@@ -962,6 +988,73 @@ async fn run_grading_queue(app: &tauri::AppHandle) -> Result<(), AppError> {
         let _ = app.emit("qbank-practice-updated", &attempt.id);
     }
     Ok(())
+}
+
+fn apply_practice_verdict(
+    conn: &Connection,
+    db: &Arc<VfsDatabase>,
+    question_id: &str,
+    submission_id: Option<&str>,
+    correct: bool,
+) -> Result<
+    (
+        Option<crate::question_bank_service::VerdictApplyOutcome>,
+        bool,
+    ),
+    AppError,
+> {
+    conn.execute("SAVEPOINT practice_grade", [])
+        .map_err(db_error)?;
+    let applied = (|| {
+        let Some(live) =
+            VfsQuestionRepo::get_question_with_conn(conn, question_id).map_err(db_error)?
+        else {
+            return Ok((None, false));
+        };
+        let Some(sid) = submission_id else {
+            return Ok((None, false));
+        };
+        let Some(submission) =
+            crate::qbank_grading::pipeline::get_submission_by_id_with_conn(conn, sid)?
+        else {
+            return Ok((None, false));
+        };
+        let outcome = QuestionBankService::new(db.clone()).apply_submission_verdict_in_tx(
+            conn,
+            &live,
+            &submission,
+            correct,
+            "ai",
+            &now(),
+        )?;
+        Ok((Some(outcome), true))
+    })();
+    match applied {
+        Ok(applied) => {
+            conn.execute("RELEASE practice_grade", [])
+                .map_err(db_error)?;
+            Ok(applied)
+        }
+        Err(error) => {
+            conn.execute_batch("ROLLBACK TO practice_grade; RELEASE practice_grade;")
+                .map_err(db_error)?;
+            Err(error)
+        }
+    }
+}
+
+fn record_grading_failure(result: &mut PracticeResult, failure: GradingFailure) {
+    result.status = "failed".into();
+    result.is_correct = None;
+    result.score = None;
+    result.error = Some(failure.error.message.clone());
+    result.grading_diagnostics = failure.diagnostics.clone();
+    result.grading_drafts.push(PracticeGradingDraft {
+        feedback: failure.feedback,
+        error: failure.error.message,
+        diagnostics: failure.diagnostics,
+        created_at: now(),
+    });
 }
 
 #[tauri::command]
@@ -1273,6 +1366,135 @@ mod tests {
                 .unwrap()
                 .attempt_count,
             1
+        );
+    }
+
+    #[test]
+    fn failed_practice_grading_retains_drafts_on_reload_without_grades_or_learning_writes() {
+        let (_tmp, db) = setup();
+        let q = seed(&db, true);
+        let draft = create_draft(&db, request(&q)).unwrap();
+        let saved = save(&db, &draft, "My answer");
+        let mut attempt = submit_draft(&db, &saved.id, saved.revision).unwrap();
+        let submission_id = attempt.results[0].submission_id.clone().unwrap();
+        let diagnostics = GradingDiagnostics {
+            status: crate::qbank_grading::types::GradingCompletionStatus::Truncated,
+            model: "test".into(),
+            model_config_id: "test-id".into(),
+            max_output_tokens: 128000,
+            finish_reason: Some("length".into()),
+            usage: Some(serde_json::json!({"completion_tokens":128000})),
+            response_chars: 7,
+            reasoning_chars: 90000,
+            http_status: Some(200),
+            error_message: Some("truncated".into()),
+        };
+        for text in ["draft one", "draft two"] {
+            attempt.results[0].status = "pending".into();
+            record_grading_failure(
+                &mut attempt.results[0],
+                GradingFailure {
+                    error: AppError::llm("truncated"),
+                    feedback: text.into(),
+                    diagnostics: Some(diagnostics.clone()),
+                },
+            );
+        }
+        refresh_status(&mut attempt);
+        let conn = db.get_conn_safe().unwrap();
+        persist_attempt(&conn, &attempt).unwrap();
+        let loaded = load_attempt(&conn, &attempt.id).unwrap();
+        let result = &loaded.results[0];
+        assert_eq!(loaded.status, "needs_review");
+        assert_eq!(result.status, "failed");
+        assert_eq!(result.is_correct, None);
+        assert_eq!(result.score, None);
+        assert_eq!(result.feedback, None);
+        assert_eq!(result.grading_drafts.len(), 2);
+        assert_eq!(result.grading_drafts[0].feedback, "draft one");
+        assert_eq!(
+            result.grading_drafts[1]
+                .diagnostics
+                .as_ref()
+                .unwrap()
+                .finish_reason
+                .as_deref(),
+            Some("length")
+        );
+        assert_eq!(
+            crate::qbank_grading::pipeline::get_submission_by_id_with_conn(&conn, &submission_id)
+                .unwrap()
+                .unwrap()
+                .is_correct,
+            None
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM mastery_events", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            VfsQuestionRepo::get_question_with_conn(&conn, &q.id)
+                .unwrap()
+                .unwrap()
+                .correct_count,
+            0
+        );
+    }
+
+    #[test]
+    fn practice_verdict_persistence_error_rolls_back_partial_learning_writes() {
+        let (_tmp, db) = setup();
+        let q = seed(&db, true);
+        let draft = create_draft(&db, request(&q)).unwrap();
+        let saved = save(&db, &draft, "My answer");
+        let mut attempt = submit_draft(&db, &saved.id, saved.revision).unwrap();
+        let sid = attempt.results[0].submission_id.clone().unwrap();
+        let mut conn = db.get_conn_safe().unwrap();
+        let tx = conn.transaction().unwrap();
+        tx.execute_batch("CREATE TEMP TRIGGER fail_practice_grade BEFORE UPDATE ON questions BEGIN SELECT RAISE(ABORT, 'disk write failed'); END;").unwrap();
+        let error = match apply_practice_verdict(&tx, &db, &q.id, Some(&sid), true) {
+            Err(error) => error,
+            Ok(_) => panic!("grade write must fail"),
+        };
+        assert!(error.message.contains("disk write failed"));
+        record_grading_failure(
+            &mut attempt.results[0],
+            GradingFailure {
+                error,
+                feedback: "Finished feedback <verdict>correct</verdict>".into(),
+                diagnostics: None,
+            },
+        );
+        refresh_status(&mut attempt);
+        persist_attempt(&tx, &attempt).unwrap();
+        tx.commit().unwrap();
+        assert_eq!(
+            crate::qbank_grading::pipeline::get_submission_by_id_with_conn(&conn, &sid)
+                .unwrap()
+                .unwrap()
+                .is_correct,
+            None
+        );
+        assert_eq!(
+            load_attempt(&conn, &attempt.id).unwrap().results[0]
+                .grading_drafts
+                .len(),
+            1
+        );
+        assert_eq!(
+            conn.query_row("SELECT COUNT(*) FROM mastery_events", [], |r| r
+                .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            VfsQuestionRepo::get_question_with_conn(&conn, &q.id)
+                .unwrap()
+                .unwrap()
+                .correct_count,
+            0
         );
     }
 

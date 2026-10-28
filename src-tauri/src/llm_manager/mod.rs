@@ -326,6 +326,33 @@ mod tests {
         LLMManager::new(db, file_manager).expect("create llm manager")
     }
 
+    #[test]
+    fn question_parsing_payload_uses_configured_output_budget() {
+        let configured = ApiConfig {
+            max_output_tokens: 65_536,
+            max_tokens_limit: None,
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&configured, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(65_536));
+
+        let limited = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: Some(24_000),
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&limited, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(24_000));
+
+        let small = ApiConfig {
+            max_output_tokens: 1_024,
+            max_tokens_limit: None,
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&small, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(1_024));
+    }
+
     struct TestStreamHooks;
     impl LLMStreamHooks for TestStreamHooks {}
 
@@ -7562,10 +7589,7 @@ impl LLMManager {
             ]
         })];
 
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-            .min(adapter.recommended_max_tokens(ocr_mode))
-            .max(2048)
-            .min(8000);
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
 
         // 构建基础请求体
         let mut request_body = json!({
@@ -8865,11 +8889,9 @@ impl LLMManager {
         }
     }
 
-    fn question_parsing_request_body(
-        api_config: &ApiConfig,
-        prompt: &str,
-        max_tokens: u32,
-    ) -> Value {
+    fn question_parsing_request_body(api_config: &ApiConfig, prompt: &str) -> Value {
+        let max_tokens =
+            effective_max_tokens(api_config.max_output_tokens, api_config.max_tokens_limit);
         let messages = vec![
             json!({
                 "role": "system",
@@ -8910,7 +8932,7 @@ impl LLMManager {
             .resolve_question_parsing_config(model_config_id)
             .await?;
         let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
-        let request_body = Self::question_parsing_request_body(&api_config, prompt, 8192);
+        let request_body = Self::question_parsing_request_body(&api_config, prompt);
 
         let mut all_questions: Vec<Value> = Vec::new();
         let mut json_parser = IncrementalJsonArrayParser::new();
@@ -8976,7 +8998,7 @@ impl LLMManager {
             .resolve_question_parsing_config(model_config_id)
             .await?;
         let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
-        let request_body = Self::question_parsing_request_body(&api_config, prompt, 4096);
+        let request_body = Self::question_parsing_request_body(&api_config, prompt);
 
         // 流式传输：长输出/推理模型不再被网关或固定总超时掐断
         let opts =

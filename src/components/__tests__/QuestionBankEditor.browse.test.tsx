@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
@@ -24,6 +24,8 @@ vi.mock('@/features/chat/components/renderers', () => ({
 
 import { QuestionBankEditor } from '../QuestionBankEditor';
 import type { Question } from '@/api/questionBankApi';
+
+beforeEach(() => mocks.invoke.mockResolvedValue([]));
 
 afterEach(() => {
   cleanup();
@@ -135,6 +137,24 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(false);
   });
 
+  it('reopens a saved failed grading draft without replacing the successful feedback', async () => {
+    mocks.invoke.mockImplementation(async (command) => command === 'qbank_get_history' ? [{
+      field_name: 'ai_grading_draft', new_value: JSON.stringify({
+        feedback: 'Interrupted draft', diagnostics: { status: 'truncated', model: 'reasoner',
+          model_config_id: 'm1', max_output_tokens: 128000, finish_reason: 'length', usage: null,
+          response_chars: 17, reasoning_chars: 8000, http_status: 200 },
+      }),
+    }] : null);
+    renderBrowse([{ ...unanswered, ai_feedback: 'Previous complete feedback' }], {
+      onRefreshQuestion: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(screen.getByText('Previous complete feedback')).toBeInTheDocument();
+    await screen.findByText('Interrupted draft');
+    expect(screen.getByText('批改反馈草稿（非正式成绩）')).toBeInTheDocument();
+    expect(screen.getByText('reasoner')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(false);
+  });
+
   it('saves an unanswered drill explanation on first completion and reloads it after reopening', async () => {
     mocks.invoke.mockResolvedValue(null);
     const refresh = vi.fn().mockResolvedValue(undefined);
@@ -153,5 +173,22 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
     expect(screen.getByText('完整解析已落库')).toBeInTheDocument();
     expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'qbank_ai_grade')).toHaveLength(1);
+  });
+
+  it('keeps cancelled explanation text as a draft without offering to publish it', async () => {
+    renderBrowse([unanswered], { onRefreshQuestion: vi.fn().mockResolvedValue(undefined) });
+    fireEvent.click(screen.getByRole('button', { name: /AI 解析/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('qbank_ai_grade', expect.anything()));
+    const [, args] = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'qbank_ai_grade')!;
+    act(() => mocks.listeners.get(`qbank_grading_stream_${args.request.stream_session_id}`)!({
+      payload: { type: 'data', chunk: '尚未写完的推导', accumulated: '尚未写完的推导' },
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    expect(screen.getByText('尚未写完的推导')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /写入解析/ })).toBeNull();
+    expect(screen.getByText('批改反馈草稿（非正式成绩）')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_update_question')).toBe(false);
   });
 });

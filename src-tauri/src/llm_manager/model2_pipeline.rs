@@ -3072,6 +3072,42 @@ mod tests {
     }
 
     #[test]
+    fn ocr_legacy_payload_uses_configured_output_budget_without_task_caps() {
+        let config = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let quirks = resolve_quirks(&config);
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "temperature": 0.0
+        });
+
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+        apply_legacy_generation_token_limit(&mut body, &quirks, max_tokens);
+
+        assert_eq!(body["max_tokens"], json!(40_000));
+
+        let config = ApiConfig {
+            max_output_tokens: 1_024,
+            max_tokens_limit: None,
+            ..ApiConfig::default()
+        };
+        let quirks = resolve_quirks(&config);
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "temperature": 0.0
+        });
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+        apply_legacy_generation_token_limit(&mut body, &quirks, max_tokens);
+
+        assert_eq!(body["max_tokens"], json!(1_024));
+    }
+
+    #[test]
     fn mimo_connection_test_body_uses_chat_completions_token_field() {
         let body = build_test_chat_request_body("mimo-v2.5-pro", "https://api.xiaomimimo.com/v1");
 
@@ -9027,11 +9063,7 @@ impl LLMManager {
             "temperature": ocr_adapter.recommended_temperature()  // OCR 任务使用确定性输出
         });
 
-        // OCR 任务：先应用供应商限制，再应用 OCR 专用的 [2048, 8000] 范围
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-            .min(ocr_adapter.recommended_max_tokens(ocr_mode))
-            .max(2048)
-            .min(8000);
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
         apply_legacy_generation_token_limit(&mut request_body, &quirks, max_tokens);
 
         if let Some(extra) = ocr_adapter.get_extra_request_params() {
@@ -9145,16 +9177,13 @@ impl LLMManager {
             ]
         })];
 
-        // OCR 任务：先应用供应商限制，再应用 OCR 专用的 [2048, 8000] 范围
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-            .max(2048)
-            .min(8000);
         let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.0,
             "stream": false,
         });
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
         apply_legacy_generation_token_limit(&mut request_body, &quirks, max_tokens);
 
         let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
@@ -9445,13 +9474,15 @@ impl LLMManager {
         let final_prompt = format!("{}\n\n文档内容：\n{}", subject_prompt, document_content);
 
         // 4. 准备AI模型请求（应用供应商级别的 max_tokens 限制）
+        let configured_max_tokens =
+            effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
         let max_tokens = options
             .as_ref()
             .and_then(|opt| opt.max_tokens)
-            .map(|v| effective_max_tokens(v, config.max_tokens_limit))
-            .unwrap_or_else(|| {
-                effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
-            });
+            .map(|requested| {
+                effective_max_tokens(requested, config.max_tokens_limit).min(configured_max_tokens)
+            })
+            .unwrap_or(configured_max_tokens);
         let temperature = options
             .as_ref()
             .and_then(|opt| opt.temperature)

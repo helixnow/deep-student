@@ -12,6 +12,7 @@ pub mod context;
 pub mod events;
 pub mod image_answer;
 pub mod pipeline;
+mod stream;
 pub mod types;
 
 use tauri::{State, Window};

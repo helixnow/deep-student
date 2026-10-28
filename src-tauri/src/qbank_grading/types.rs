@@ -52,6 +52,90 @@ pub struct QbankGradingResponse {
     /// 本次是否把解析写入了题目的「解析」字段（仅通用解析且原解析为空时为 true）
     #[serde(default)]
     pub explanation_written: bool,
+    #[serde(default)]
+    pub diagnostics: Option<GradingDiagnostics>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum GradingCompletionStatus {
+    Completed,
+    Cancelled,
+    Truncated,
+    ProviderError,
+    TransportError,
+    Incomplete,
+    InvalidResult,
+    ConfigurationError,
+    PersistenceError,
+}
+
+/// Request metadata only: never persist credentials, request headers or reasoning text.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GradingDiagnostics {
+    pub status: GradingCompletionStatus,
+    pub model: String,
+    pub model_config_id: String,
+    pub max_output_tokens: u32,
+    pub finish_reason: Option<String>,
+    pub usage: Option<serde_json::Value>,
+    pub response_chars: usize,
+    pub reasoning_chars: usize,
+    pub http_status: Option<u16>,
+    #[serde(default)]
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug)]
+pub struct GradingFailure {
+    pub error: crate::models::AppError,
+    pub feedback: String,
+    pub diagnostics: Option<GradingDiagnostics>,
+}
+
+impl GradingFailure {
+    pub fn configuration(error: crate::models::AppError) -> Self {
+        let mut failure = Self::from(error);
+        failure.diagnostics = Some(GradingDiagnostics {
+            status: GradingCompletionStatus::ConfigurationError,
+            model: String::new(),
+            model_config_id: String::new(),
+            max_output_tokens: 0,
+            finish_reason: None,
+            usage: None,
+            response_chars: 0,
+            reasoning_chars: 0,
+            http_status: None,
+            error_message: Some(failure.error.message.clone()),
+        });
+        failure
+    }
+}
+
+impl From<crate::models::AppError> for GradingFailure {
+    fn from(error: crate::models::AppError) -> Self {
+        let diagnostics = matches!(
+            error.error_type,
+            crate::models::AppErrorType::Configuration | crate::models::AppErrorType::Validation
+        )
+        .then(|| GradingDiagnostics {
+            status: GradingCompletionStatus::ConfigurationError,
+            model: String::new(),
+            model_config_id: String::new(),
+            max_output_tokens: 0,
+            finish_reason: None,
+            usage: None,
+            response_chars: 0,
+            reasoning_chars: 0,
+            http_status: None,
+            error_message: Some(error.message.clone()),
+        });
+        Self {
+            error,
+            feedback: String::new(),
+            diagnostics,
+        }
+    }
 }
 
 /// 正误判定
@@ -103,6 +187,8 @@ pub struct QbankGradingStreamComplete {
     pub score: Option<i32>,
     pub feedback: String,
     pub explanation_written: bool,
+    #[serde(default)]
+    pub diagnostics: Option<GradingDiagnostics>,
 }
 
 /// SSE 事件 - 错误
@@ -111,6 +197,8 @@ pub struct QbankGradingStreamError {
     #[serde(rename = "type")]
     pub event_type: String, // "error"
     pub message: String,
+    pub feedback: Option<String>,
+    pub diagnostics: Option<GradingDiagnostics>,
 }
 
 /// SSE 事件 - 取消

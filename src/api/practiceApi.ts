@@ -2,6 +2,24 @@ import { invoke } from '@tauri-apps/api/core';
 import type { Question as StoredQuestion, GeneratedPaper } from '@/stores/questionBankStore';
 
 export type GradingMode = 'immediate' | 'on_submit';
+export interface GradingDiagnostics {
+  status: 'completed' | 'cancelled' | 'truncated' | 'provider_error' | 'transport_error' | 'incomplete' | 'invalid_result' | 'configuration_error' | 'persistence_error';
+  model: string;
+  model_config_id: string;
+  max_output_tokens: number;
+  finish_reason: string | null;
+  usage: Record<string, unknown> | null;
+  response_chars: number;
+  reasoning_chars: number;
+  http_status: number | null;
+  error_message?: string | null;
+}
+export interface PracticeGradingDraft {
+  feedback: string;
+  error: string;
+  diagnostics: GradingDiagnostics | null;
+  created_at: string;
+}
 export interface PracticeDraft {
   id: string;
   scope_id: string;
@@ -28,6 +46,8 @@ export interface PracticeResult {
   error: string | null;
   submission_id: string | null;
   source_available: boolean;
+  grading_diagnostics?: GradingDiagnostics | null;
+  grading_drafts?: PracticeGradingDraft[];
 }
 export interface PracticeAttempt {
   id: string;

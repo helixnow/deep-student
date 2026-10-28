@@ -78,23 +78,16 @@ const POPOVER_IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const POPOVER_TOTAL_TIMEOUT: Duration = Duration::from_secs(120);
 const POPOVER_MAX_REQUEST_ATTEMPTS: u32 = 2;
 const POPOVER_TEMPERATURE: f32 = 0.2;
-const POPOVER_MIN_MAX_TOKENS: u32 = 512;
-const POPOVER_REASONING_HEADROOM: u32 = 4096;
 
-/// 按源文本长度估算输出 token 上限，避免用模型全局大上限拖慢首包/尾包。
-/// aligned 模式输出为 NDJSON（src+tgt+JSON 结构开销），预算放大更多。
-/// 推理模型（含无法关闭思考的）额外预留思考额度，避免思考耗尽上限后零输出。
-fn popover_max_tokens(source_chars: usize, mode: ChatTranslationMode, reasoning: bool) -> u32 {
-    let multiplier: usize = match mode {
-        ChatTranslationMode::Aligned => 6,
-        ChatTranslationMode::Plain => 3,
-    };
-    let estimated = source_chars.saturating_mul(multiplier).saturating_add(256);
-    let base = (estimated.min(u32::MAX as usize) as u32).max(POPOVER_MIN_MAX_TOKENS);
-    if reasoning {
-        base.saturating_add(POPOVER_REASONING_HEADROOM)
-    } else {
-        base
+fn popover_stream_options() -> StreamOptions {
+    StreamOptions {
+        temperature: POPOVER_TEMPERATURE,
+        max_tokens: None,
+        idle_timeout: POPOVER_IDLE_TIMEOUT,
+        total_timeout: POPOVER_TOTAL_TIMEOUT,
+        max_request_attempts: POPOVER_MAX_REQUEST_ATTEMPTS,
+        // 划词翻译要的是快：关闭思考（默认开思考的 DeepSeek V4 等会拉长首包）
+        enable_thinking: Some(false),
     }
 }
 
@@ -265,25 +258,7 @@ async fn run_chat_translation(
     };
 
     // 3. 流式调用 + 转发事件（只发增量 delta；全量文本由前端拼接）
-    // 低延迟参数：紧凑 max_tokens（按源长估算并受模型上限约束）+ 快速失败超时
-    let model_cap =
-        crate::llm_manager::effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-    let options = StreamOptions {
-        temperature: POPOVER_TEMPERATURE,
-        max_tokens: Some(
-            popover_max_tokens(
-                request.source.chars().count(),
-                mode,
-                config.supports_reasoning,
-            )
-            .min(model_cap),
-        ),
-        idle_timeout: POPOVER_IDLE_TIMEOUT,
-        total_timeout: POPOVER_TOTAL_TIMEOUT,
-        max_request_attempts: POPOVER_MAX_REQUEST_ATTEMPTS,
-        // 划词翻译要的是快：关闭思考（默认开思考的 DeepSeek V4 等会把紧凑上限耗尽）
-        enable_thinking: Some(false),
-    };
+    let options = popover_stream_options();
     let window_for_chunk = window.clone();
     let event_for_chunk = event_name.clone();
     let mut accumulated_chars: usize = 0; // 仅用于日志统计，不再拼接/回传全量文本
@@ -388,4 +363,16 @@ pub async fn stream_chat_translation_plain(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     run_chat_translation(request, ChatTranslationMode::Plain, window, state).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::popover_stream_options;
+
+    #[test]
+    fn popover_leaves_output_limit_to_model_configuration() {
+        let options = popover_stream_options();
+        assert!(options.max_tokens.is_none());
+        assert_eq!(options.enable_thinking, Some(false));
+    }
 }

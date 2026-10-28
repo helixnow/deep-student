@@ -23,6 +23,7 @@ import { ImageCropDialog } from '@/components/ImageCropDialog';
 import { loadQuestionImageUrls, QUESTION_IMAGE_LOAD_ERROR } from '@/components/questionImageLoader';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import { QuestionExplanation } from './practice/QuestionExplanation';
+import { GradingDiagnosticsView } from './practice/GradingDiagnosticsView';
 import { QuestionMaterialView } from './QuestionMaterialView';
 import {
   CaretLeft,
@@ -2286,6 +2287,8 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                   </DsButton>
                 </div>
                 {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
+                <p role="alert" className="break-words text-xs text-destructive">{aiGrading.state.error}</p>
+                <GradingDiagnosticsView diagnostics={aiGrading.state.diagnostics} />
                 {aiGrading.state.feedback && (
                   <CustomScrollArea
                     className="max-h-48"
@@ -2351,6 +2354,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {/* AI 评判完成后的结果展示（verdict + score + feedback） */}
             {!aiGrading.state.isGrading && aiGrading.state.feedback && !aiGrading.state.error && (
               <div className="pt-2 border-t border-foreground/[0.06] space-y-2">
+                {aiGrading.state.cancelled && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
                 {aiGrading.state.verdict && (
                   <div className="flex items-center gap-2">
                     <span className={cn(
@@ -2437,6 +2441,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             {/* 主观题 AI 评判反馈：needsManualGrading 置 false 后仍保留分析正文 */}
             {!aiGrading.state.isGrading && aiGrading.state.feedback && !aiGrading.state.error && (
               <div className="pt-2 border-t border-foreground/[0.06] text-sm text-muted-foreground leading-relaxed">
+                {aiGrading.state.cancelled && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
                 <StreamingMarkdownRenderer
                   content={aiGrading.state.feedback}
                   isStreaming={false}
@@ -2448,6 +2453,9 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             <QuestionFollowUpBar question={currentQuestion} examId={sessionId}
               userAnswer={selectedAnswer} isCorrect={submitResult?.isCorrect} />
           </>
+        )}
+        {aiGrading.state.diagnostics?.status === 'completed' && (
+          <GradingDiagnosticsView diagnostics={aiGrading.state.diagnostics} />
         )}
       </div>
     );
