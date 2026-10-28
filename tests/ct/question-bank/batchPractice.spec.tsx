@@ -32,3 +32,46 @@ for (const width of [390, 1280]) {
     await page.screenshot({ path: `/tmp/deepstudent-batch-result-${width}.png` });
   });
 }
+
+test('desktop answer shortcuts work after mouse focus and never submit the paper', async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  const component = await mount(<BatchPracticeHarness />);
+  await component.getByRole('radio', { name: 'A. 4' }).click();
+  await page.keyboard.press('b');
+  await expect(component.getByRole('radio', { name: 'B. 8' })).toBeChecked();
+  await page.keyboard.press('Enter');
+  await expect(component.getByText('请说明函数的单调性，并给出判断过程。')).toBeVisible();
+  await component.getByRole('textbox', { name: '我的作答' }).fill('多行作答');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('继续说明');
+  await expect(component.getByRole('textbox', { name: '我的作答' })).toHaveValue('多行作答\n继续说明');
+  await component.getByRole('button', { name: '上一题' }).click();
+  await expect(component.getByRole('radio', { name: 'B. 8' })).toBeChecked();
+  await page.keyboard.press('a');
+  await expect(component.getByRole('radio', { name: 'A. 4' })).toBeChecked();
+  await component.getByRole('button', { name: '交卷', exact: true }).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('b');
+  await page.keyboard.press('ArrowRight');
+  await expect(component.getByRole('radio', { name: 'A. 4' })).toBeChecked();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(component.getByText('正确 1 题', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: '/tmp/deepstudent-practice-shortcuts-desktop.png' });
+});
+
+test('mistake overlay starts on the answer surface and Enter advances instead of closing', async ({ mount, page }) => {
+  await page.setViewportSize({ width: 1280, height: 850 });
+  const component = await mount(<BatchPracticeHarness mistakeOverlay />);
+  const opener = component.getByRole('button', { name: '打开错题重做' });
+  await opener.click();
+  const modal = page.getByRole('dialog', { name: '错题重做' });
+  await expect(modal).toBeFocused();
+  await page.keyboard.press('2');
+  await expect(modal.getByRole('radio', { name: 'B. 8' })).toBeChecked();
+  await page.keyboard.press('Enter');
+  await expect(modal.getByText('请说明函数的单调性，并给出判断过程。')).toBeVisible();
+  await modal.getByRole('button', { name: '关闭', exact: true }).click();
+  await expect(modal).toHaveCount(0);
+  await expect(opener).toBeFocused();
+});

@@ -63,6 +63,9 @@ Rust 相关 job（Backend、Rust Tests、Cloud Provider Contract Gate、Windows 
 
 请确保 PR 提交前本地通过 `npm run lint`、`npm run test` 和 `npm run build`。
 
+组件测试、完整本地 CI、Rust 归档分片、资源限制及历史故障处理方法见
+[本地测试方法](../docs/dev/local-testing.md)。执行前对照当前 workflow，避免重复踩坑。
+
 ### PR 指南
 - 描述变更与测试方式；关联 Issue（如有）
 - 附上截图或日志以便 Review

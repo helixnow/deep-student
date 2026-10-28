@@ -618,6 +618,8 @@
     "flush_unsaved": "Save unpersisted reading progress/bookmarks"
   },
   "batch": {
+    "shortcutSaveNext": "Save and next question",
+    "busy": "An operation is still in progress. Please wait.",
     "navigationFailed": "Could not change questions; save your answer and check that the target belongs to this practice",
     "readOnly": "Only submitted practice records are available in read-only mode",
     "drill": "Drill",

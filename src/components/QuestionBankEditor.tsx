@@ -16,7 +16,8 @@ import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
-import { isKeyEventFromOtherModal } from '@/utils/modalKeyGuard';
+import { usePracticeShortcuts, type PracticeShortcutOptions } from './practice/usePracticeShortcuts';
+import { PracticeShortcutHints } from './practice/PracticeShortcutHints';
 import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
 import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
@@ -1101,7 +1102,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   }, [questions, searchQuery]);
 
   const handleOptionClick = useCallback((key: string) => {
-    if (submitResult) return;
+    if (submitResult || submitInFlightRef.current || answerImageUploadRef.current) return;
     
     const isMulti = currentQuestion?.questionType === 'multiple_choice' 
       || currentQuestion?.questionType === 'indefinite_choice';
@@ -1413,13 +1414,17 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   }, [practiceMode, onModeChange]);
 
   // P1-3: 收藏功能 - 直接从 question 数据读取状态，调用 store action 更新
+  const favoriteInFlightRef = useRef(false);
   const handleToggleFavorite = useCallback(async () => {
-    if (!currentQuestion) return;
+    if (!currentQuestion || favoriteInFlightRef.current) return;
+    favoriteInFlightRef.current = true;
     try {
       await onToggleFavorite?.(currentQuestion.id, !currentQuestion.isFavorite);
     } catch (err) {
       debugLog.error('Toggle favorite failed:', err);
       showGlobalNotification('error', t('exam_sheet:errors.toggle_favorite_failed'));
+    } finally {
+      favoriteInFlightRef.current = false;
     }
   }, [currentQuestion, onToggleFavorite, t]);
 
@@ -1466,7 +1471,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   useEffect(() => () => onDraftDirtyChange?.(false), [onDraftDirtyChange]);
 
   const requestNavigate = useCallback((targetIndex: number) => {
-    if (!onNavigate || targetIndex === currentIndex) return;
+    if (!onNavigate || targetIndex === currentIndex || submitInFlightRef.current || answerImageUploadRef.current) return;
     if (hasUnsavedDraft) {
       if (onDraftNavigationRequested) {
         onDraftNavigationRequested(targetIndex);
@@ -1488,130 +1493,35 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     requestNavigate(newIndex);
   }, [browseMode, currentIndex, practiceMode, questions, requestNavigate, selectedTag]);
 
-  // ========== 键盘快捷键支持 ==========
-  useEffect(() => {
-    // 移动端不启用快捷键；窗口/标签页非激活时不监听（多窗做题与复习评分共用数字键，避免互扰）
-    if (isSmallScreen || isActive === false) return;
-    
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 带修饰键的组合（Ctrl+R 刷新、Ctrl+数字切标签等）不拦截
-      if (e.ctrlKey || e.metaKey || e.altKey) {
-        return;
-      }
-      // 如果正在输入框中，不处理快捷键
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
-        return;
-      }
-      // 盖在做题页上的模态层（如跨题目集错题复习）里的按键归模态层，背后不选项 / 不提交；
-      // 编辑器自己就在那个模态层里（错题重做浮层）时照常处理
-      if (isKeyEventFromOtherModal(e, containerRef.current)) {
-        return;
-      }
-
-      // 浏览模式只有 ← → 切题
-      if (browseMode) {
-        if (e.key === 'ArrowLeft' && currentIndex > 0) {
-          e.preventDefault();
-          handleNavigate('prev');
-        } else if (e.key === 'ArrowRight' && currentIndex < totalQuestions - 1) {
-          e.preventDefault();
-          handleNavigate('next');
-        }
-        return;
-      }
-
-      const isChoiceQuestion = currentQuestion?.questionType === 'single_choice' 
-        || currentQuestion?.questionType === 'multiple_choice'
-        || currentQuestion?.questionType === 'indefinite_choice';
-      
-      // 数字键 1-9 选择选项
-      if (isChoiceQuestion && !submitResult && /^[1-9]$/.test(e.key)) {
-        const optionIndex = parseInt(e.key) - 1;
-        const options = currentQuestion?.options;
-        if (options && optionIndex < options.length) {
-          e.preventDefault();
-          handleOptionClick(options[optionIndex].key);
-        }
-      }
-
-      // 字母键 A-Z 选择选项（与实际选项 key 动态对齐；命中选项时优先于 F/R/H 等功能键）
-      if (isChoiceQuestion && !submitResult && /^[a-z]$/i.test(e.key)) {
-        const letter = e.key.toUpperCase();
-        const match = currentQuestion?.options?.find(
-          (opt) => opt.key.toUpperCase() === letter
-        );
-        if (match) {
-          e.preventDefault();
-          handleOptionClick(match.key);
-          return;
-        }
-      }
-
-      // 判断题：1 = 正确，2 = 错误
-      if (qType === 'true_false' && !submitResult && (e.key === '1' || e.key === '2')) {
-        e.preventDefault();
-        setSelectedAnswer(e.key === '1' ? 'true' : 'false');
-      }
-
-      // F 键收藏/取消收藏（选项字母未命中时才会到这里）
-      if (e.key === 'f' || e.key === 'F') {
-        e.preventDefault();
-        void handleToggleFavorite();
-      }
-      
-      // Enter：未提交时提交答案；已提交后进入下一题
-      if (e.key === 'Enter' && !e.shiftKey) {
-        if (canSubmit && !isSubmitting) {
-          e.preventDefault();
-          handleSubmit();
-        } else if (submitResult && currentIndex < totalQuestions - 1) {
-          e.preventDefault();
-          handleNavigate('next');
-        }
-      }
-      
-      // 左右箭头切换题目
-      if (e.key === 'ArrowLeft' && currentIndex > 0) {
-        e.preventDefault();
-        handleNavigate('prev');
-      }
-      if (e.key === 'ArrowRight' && currentIndex < totalQuestions - 1) {
-        e.preventDefault();
-        handleNavigate('next');
-      }
-      
-      // R 键重做（仅明确答错后，不含主观题 null 状态）
-      if (e.key === 'r' && submitResult && submitResult.isCorrect === false) {
-        e.preventDefault();
-        handleRetry();
-      }
-      
-      // Space 暂停/继续计时器
-      if (e.key === ' ' && showTimer) {
-        e.preventDefault();
-        toggleTimer();
-      }
-      
-      // H 键切换暗记模式
-      if (e.key === 'h') {
-        e.preventDefault();
-        if (hideAnswerMode && !answerRevealed) {
-          setAnswerRevealed(true);
-        } else {
-          handleHideAnswerModeChange(!hideAnswerMode);
-        }
-      }
-    };
-    
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    browseMode, isSmallScreen, isActive, currentQuestion, qType, submitResult, canSubmit, isSubmitting,
-    currentIndex, totalQuestions, showTimer, hideAnswerMode, answerRevealed,
-    handleOptionClick, handleSubmit, handleNavigate, handleRetry, toggleTimer,
-    handleHideAnswerModeChange, handleToggleFavorite
-  ]);
+  const shortcutBusy = isSubmitting || isUploadingAnswerImage || isManualGrading || isDeleting;
+  const shortcutActions: PracticeShortcutOptions['actions'] = {
+    previous: onNavigate && currentIndex > 0 ? () => handleNavigate('prev') : undefined,
+    next: onNavigate && currentIndex < totalQuestions - 1 ? () => handleNavigate('next') : undefined,
+    favorite: onToggleFavorite ? () => { void handleToggleFavorite(); } : undefined,
+    ...(browseMode ? {
+      primary: onNavigate && currentIndex < totalQuestions - 1 ? () => handleNavigate('next') : undefined,
+    } : {}),
+    ...(!browseMode ? {
+      selectOption: !submitResult && ['single_choice', 'multiple_choice', 'indefinite_choice'].includes(qType) ? handleOptionClick : undefined,
+      selectTrueFalse: !submitResult && qType === 'true_false' ? setSelectedAnswer : undefined,
+      primary: canSubmit && onSubmitAnswer ? () => { void handleSubmit(); }
+        : submitResult && onNavigate && currentIndex < totalQuestions - 1 ? () => handleNavigate('next') : undefined,
+      retry: submitResult?.isCorrect === false && !aiGrading.state.isGrading ? handleRetry : undefined,
+      toggleTimer: showTimer && allowTimerControl ? toggleTimer : undefined,
+      toggleHidden: () => {
+        if (hideAnswerMode && !answerRevealed) setAnswerRevealed(true);
+        else handleHideAnswerModeChange(!hideAnswerMode);
+      },
+    } : {}),
+  };
+  const shortcutOptions: PracticeShortcutOptions = {
+    enabled: !isSmallScreen && isActive !== false && !isLoading && !error && !!currentQuestion && !shortcutBusy,
+    rootRef: containerRef,
+    optionKeys: currentQuestion?.options?.map(option => option.key),
+    actions: shortcutActions,
+    primaryLabel: browseMode || submitResult ? 'editor.nextQuestion' : 'editor.shortcutSubmit',
+  };
+  const onAnswerPrimaryAction = usePracticeShortcuts(shortcutOptions);
 
   if (isLoading) {
     return (
@@ -1915,17 +1825,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               <Keyboard size={16} />
               {t('editor.shortcuts')}
             </h4>
-            <div className="text-xs text-muted-foreground space-y-1.5">
-              <div className="flex justify-between"><span>{t('editor.shortcutSelectOption')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">1-9 / A-D</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutSubmit')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">Enter</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutNextAfterSubmit')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">Enter</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutNavigate')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">← →</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutFavorite')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">F</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutTrueFalse')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">1 / 2</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutRetry')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">R</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutPauseTimer')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">Space</kbd></div>
-              <div className="flex justify-between"><span>{t('editor.shortcutHideAnswer')}</span><kbd className="px-1.5 py-0.5 rounded bg-muted">H</kbd></div>
-            </div>
+            <PracticeShortcutHints {...shortcutOptions} />
           </div>
         )}
 
@@ -2038,7 +1938,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   const renderAnswerInput = () => {
     if (isChoiceQuestion && currentQuestion.options) {
       return (
-        <div className="space-y-3">
+        <div className="space-y-3" data-practice-choice>
           {currentQuestion.options.map((opt, index) => (
             <OptionButton
               key={opt.key}
@@ -2054,7 +1954,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
               correctAnswer={submitResult?.correctAnswer}
               onSelect={handleOptionClick}
               type={isMultiSelect ? 'multiple' : 'single'}
-              shortcutHint={!isSmallScreen ? String(index + 1) : undefined}
+              shortcutHint={!isSmallScreen && index < 9 ? String(index + 1) : undefined}
             />
           ))}
         </div>
@@ -2062,12 +1962,12 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     }
     if (qType === 'true_false') {
       return (
-        <TrueFalseAnswer
+        <div data-practice-choice><TrueFalseAnswer
           value={selectedAnswer === 'true' || selectedAnswer === 'false' ? selectedAnswer : ''}
           onChange={(v) => setSelectedAnswer(v)}
           submitted={!!submitResult}
           correctAnswer={submitResult ? trueFalseCorrectAnswer : null}
-        />
+        /></div>
       );
     }
     if (qType === 'matching' && matchingData) {
@@ -2098,6 +1998,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           spec={numericData}
           submitted={!!submitResult}
           isCorrect={submitResult ? submitResult.isCorrect : null}
+          onPrimaryAction={onAnswerPrimaryAction}
         />
       );
     }
@@ -2109,6 +2010,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
             onChange={setFillBlankAnswers}
             blanks={fillBlankData}
             submitted={!!submitResult}
+            onPrimaryAction={onAnswerPrimaryAction}
           />
           {renderImageAnswerControls()}
         </div>
@@ -2120,6 +2022,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
           <Input
             value={selectedAnswer}
             onChange={(e) => setSelectedAnswer(e.target.value)}
+            onKeyDown={onAnswerPrimaryAction}
             placeholder={t('editor.answerPlaceholder')}
             disabled={!!submitResult}
             className="h-11 [@media(pointer:coarse)]:text-[16px]"
@@ -2468,6 +2371,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
     return (
       <div
         ref={containerRef}
+        data-practice-shortcuts
         data-agent-qbank-editor
         className={cn('relative h-full overflow-hidden bg-background select-none', className)}
         style={{ touchAction: 'pan-y pinch-zoom' }}
@@ -2771,6 +2675,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
   return (
     <div
       ref={containerRef}
+      data-practice-shortcuts
       data-agent-qbank-editor
       className={cn('relative flex flex-col h-full bg-background', className)}
     >
