@@ -187,6 +187,8 @@ pub struct QbankGradingStreamComplete {
     pub score: Option<i32>,
     pub feedback: String,
     pub explanation_written: bool,
+    #[serde(default)]
+    pub diagnostics: Option<GradingDiagnostics>,
 }
 
 /// SSE 事件 - 错误

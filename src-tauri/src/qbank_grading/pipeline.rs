@@ -478,6 +478,7 @@ pub async fn run_qbank_grading(
         score,
         accumulated.clone(),
         explanation_written,
+        stream.diagnostics.clone(),
     );
 
     Ok(Some(QbankGradingResponse {

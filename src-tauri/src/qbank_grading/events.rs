@@ -39,6 +39,7 @@ impl QbankGradingEmitter {
         score: Option<i32>,
         feedback: String,
         explanation_written: bool,
+        diagnostics: super::types::GradingDiagnostics,
     ) {
         let event_name = format!("qbank_grading_stream_{}", stream_session_id);
         let payload = QbankGradingStreamComplete {
@@ -48,6 +49,7 @@ impl QbankGradingEmitter {
             score,
             feedback,
             explanation_written,
+            diagnostics: Some(diagnostics),
         };
 
         if let Err(e) = self.window.emit(&event_name, payload) {

@@ -174,4 +174,21 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     expect(screen.getByText('完整解析已落库')).toBeInTheDocument();
     expect(mocks.invoke.mock.calls.filter(([cmd]) => cmd === 'qbank_ai_grade')).toHaveLength(1);
   });
+
+  it('keeps cancelled explanation text as a draft without offering to publish it', async () => {
+    renderBrowse([unanswered], { onRefreshQuestion: vi.fn().mockResolvedValue(undefined) });
+    fireEvent.click(screen.getByRole('button', { name: /AI 解析/ }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith('qbank_ai_grade', expect.anything()));
+    const [, args] = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'qbank_ai_grade')!;
+    act(() => mocks.listeners.get(`qbank_grading_stream_${args.request.stream_session_id}`)!({
+      payload: { type: 'data', chunk: '尚未写完的推导', accumulated: '尚未写完的推导' },
+    }));
+
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+
+    expect(screen.getByText('尚未写完的推导')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /写入解析/ })).toBeNull();
+    expect(screen.getByText('批改反馈草稿（非正式成绩）')).toBeInTheDocument();
+    expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_update_question')).toBe(false);
+  });
 });
