@@ -618,6 +618,8 @@
     "flush_unsaved": "保存未持久化的阅读进度/书签"
   },
   "batch": {
+    "shortcutSaveNext": "保存并进入下一题",
+    "busy": "当前操作尚未完成，请稍候",
     "navigationFailed": "切题失败，请先保存当前作答并确认目标题目在本轮练习中",
     "readOnly": "只读模式下仅可查看已交卷记录",
     "drill": "刷题",

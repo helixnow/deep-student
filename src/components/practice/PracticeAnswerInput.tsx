@@ -9,6 +9,7 @@ import {
   parseImageAnswerEnvelope,
 } from '@/api/questionBankApi';
 import { DsButton } from '@/components/ui/DsButton';
+import { Input } from '@/components/ui/shad/Input';
 import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { FillBlankAnswer } from '@/components/question-types/FillBlankAnswer';
 import { MatchingAnswer } from '@/components/question-types/MatchingAnswer';
@@ -36,9 +37,10 @@ interface Props {
   value: string;
   onChange: (value: string) => void;
   onUploadingChange?: (uploading: boolean) => void;
+  onPrimaryAction?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
 }
 
-export function PracticeAnswerInput({ question, value, onChange, onUploadingChange }: Props) {
+export function PracticeAnswerInput({ question, value, onChange, onUploadingChange, onPrimaryAction }: Props) {
   const { t } = useTranslation('practice');
   const fileRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -92,7 +94,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
   return (
     <div className="space-y-3">
       {question.options?.length ? (
-        <div className="space-y-2">
+        <div className="space-y-2" data-practice-choice>
           {question.options.map((option) => {
             const checked = multiple ? text.includes(option.key) : text === option.key;
             return (
@@ -125,7 +127,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           })}
         </div>
       ) : question.questionType === 'true_false' ? (
-        <div className="flex gap-3">
+        <div className="flex gap-3" data-practice-choice>
           {['true', 'false'].map((answer) => (
             <label key={answer} className="flex min-h-11 items-center gap-2 rounded-md border px-4">
               <input
@@ -144,6 +146,7 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           onChange={(next) =>
             updateText(next.some((a) => a.trim()) ? encodeFillBlankUserAnswer(next) : '')
           }
+          onPrimaryAction={onPrimaryAction}
         />
       ) : question.questionType === 'matching' && matching ? (
         <MatchingAnswer
@@ -159,6 +162,16 @@ export function PracticeAnswerInput({ question, value, onChange, onUploadingChan
           }
           onChange={(order) => updateText(encodeOrderingUserAnswer(order))}
         />{!text && <DsButton variant="outline" size="sm" onClick={() => updateText(encodeOrderingUserAnswer(ordering.items.map(item => item.key)))}>{t('batch.keepOrder')}</DsButton>}</div>
+      ) : question.questionType === 'numeric' && !images.length ? (
+        <Input
+          aria-label={t('batch.yourAnswer')}
+          value={text}
+          onChange={event => updateText(event.target.value)}
+          onKeyDown={onPrimaryAction}
+          inputMode="decimal"
+          autoComplete="off"
+          className="h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus:ring-2 focus:ring-ring"
+        />
       ) : (
         <textarea
           aria-label={t('batch.yourAnswer')}
