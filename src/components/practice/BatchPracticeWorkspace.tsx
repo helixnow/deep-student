@@ -14,6 +14,7 @@ import {
   ArrowClockwise,
   Star,
   X,
+  Keyboard,
 } from '@phosphor-icons/react';
 import {
   practiceApi,
@@ -47,6 +48,11 @@ import { setPracticeRuntime } from './practiceRuntime';
 import { practiceAnswerText } from './practiceAnswerText';
 import { paperAnswer } from './paperDocument';
 import { GradingDiagnosticsView } from './GradingDiagnosticsView';
+import { usePracticeShortcuts, type PracticeShortcutOptions } from './usePracticeShortcuts';
+import { PracticeShortcutHints } from './PracticeShortcutHints';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/shad/Tooltip';
 
 export interface BatchPracticeWorkspaceProps {
   request?: CreatePracticeRequest;
@@ -74,6 +80,8 @@ export default function BatchPracticeWorkspace({
   readOnly = false,
 }: BatchPracticeWorkspaceProps) {
   const { t } = useTranslation('practice');
+  const { isSmallScreen } = useBreakpoint();
+  const rootRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<PracticeDraft | null>(null);
   const draftRef = useRef<PracticeDraft | null>(null);
   const [attempt, setAttempt] = useState<PracticeAttempt | null>(null);
@@ -84,6 +92,9 @@ export default function BatchPracticeWorkspace({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [navigating, setNavigating] = useState(false);
+  const navigatingRef = useRef(false);
+  const favoriteRef = useRef(false);
   const uploadingRef = useRef(false);
   const [index, setIndex] = useState(0);
   const [filter, setFilter] = useState('all');
@@ -95,6 +106,8 @@ export default function BatchPracticeWorkspace({
   const changeRef = useRef(0);
   const saveRef = useRef<Promise<void> | null>(null);
   const submitRef = useRef(false);
+  const busyRef = useRef(false);
+  busyRef.current = busy;
   const mounted = useRef(true);
   const callbackRef = useRef(onChanged);
   callbackRef.current = onChanged;
@@ -151,7 +164,10 @@ export default function BatchPracticeWorkspace({
 
   useEffect(() => {
     mounted.current = true;
-    onFlushReady?.(flush);
+    onFlushReady?.(async () => {
+      if (submitRef.current || busyRef.current || navigatingRef.current) throw new Error(t('batch.busy'));
+      await flush();
+    });
     const handler = () => {
       if (document.visibilityState === 'hidden') void flush().catch(() => {});
     };
@@ -162,7 +178,7 @@ export default function BatchPracticeWorkspace({
       document.removeEventListener('visibilitychange', handler);
       void flush().catch(() => {});
     };
-  }, [flush, onFlushReady]);
+  }, [flush, onFlushReady, t]);
 
   const installDraft = useCallback((next: PracticeDraft) => {
     draftRef.current = next;
@@ -249,7 +265,8 @@ export default function BatchPracticeWorkspace({
   }, [draft, flush]);
 
   const change = (patch: Partial<PracticeDraft>) => {
-    if (!draftRef.current || submitRef.current) return;
+    if (!draftRef.current || submitRef.current || readOnly ||
+      (draftRef.current.deadline && Date.parse(draftRef.current.deadline) <= Date.now())) return;
     const next = { ...draftRef.current, ...patch };
     draftRef.current = next;
     changeRef.current += 1;
@@ -393,17 +410,29 @@ export default function BatchPracticeWorkspace({
   const previousIndex = filteredIndices[Math.max(0, position) - 1];
   const nextIndex = filteredIndices[position + 1];
   const navigate = async (next: number) => {
-    if (uploading || busy || next < 0 || next >= questions.length) return false;
-    if (draftRef.current) {
-      change({ current_index: next });
-      try {
+    if (uploadingRef.current || busy || submitRef.current || navigatingRef.current ||
+      next < 0 || next >= questions.length ||
+      (draftRef.current?.deadline && Date.parse(draftRef.current.deadline) <= Date.now())) return false;
+    navigatingRef.current = true;
+    setNavigating(true);
+    const draftId = draftRef.current?.id;
+    try {
+      if (draftRef.current) {
+        change({ current_index: next });
         await flush();
-      } catch {
-        return false;
       }
+      if (submitRef.current || !mounted.current || (draftId && draftRef.current?.id !== draftId)) return false;
+      setIndex(next);
+      return true;
+    } catch {
+      // Failed navigation must not resume at a question the user never reached.
+      if (draftRef.current) change({ current_index: index });
+      setSaveState('error');
+      return false;
+    } finally {
+      navigatingRef.current = false;
+      if (mounted.current) setNavigating(false);
     }
-    setIndex(next);
-    return true;
   };
   const navigationRef = useRef(navigate);
   navigationRef.current = navigate;
@@ -466,6 +495,51 @@ export default function BatchPracticeWorkspace({
         images: current.images ?? [],
       })
     : null;
+
+  const changeAnswer = (value: string) => {
+    const latest = draftRef.current;
+    if (!latest || !current) return;
+    change({
+      answers: value ? { ...latest.answers, [current.id]: value }
+        : Object.fromEntries(Object.entries(latest.answers).filter(([id]) => id !== current.id)),
+    });
+  };
+  const toggleFavorite = async () => {
+    if (!current || readOnly || busy || favoriteRef.current || result?.source_available === false) return;
+    favoriteRef.current = true;
+    setBusy(true);
+    try {
+      const updated = await invoke<{ is_favorite: boolean }>('qbank_toggle_favorite', { questionId: current.id });
+      setFavorites(values => ({ ...values, [current.id]: updated.is_favorite }));
+      callbackRef.current?.();
+    } catch (error) { setError(getErrorMessage(error)); }
+    finally { favoriteRef.current = false; setBusy(false); }
+  };
+  const shortcutOptions: PracticeShortcutOptions = {
+    enabled: !isSmallScreen && isActive !== false && !loading && !!current && !busy && !uploading && !navigating && !confirmOpen &&
+      !(draft?.deadline && Date.parse(draft.deadline) <= tick),
+    rootRef,
+    optionKeys: question?.options?.map(option => option.key),
+    primaryLabel: attempt ? 'editor.nextQuestion' : 'batch.shortcutSaveNext',
+    actions: {
+      previous: previousIndex != null ? () => { void navigate(previousIndex); } : undefined,
+      next: nextIndex != null ? () => { void navigate(nextIndex); } : undefined,
+      primary: !attempt || nextIndex != null ? () => { void navigate(nextIndex ?? index); } : undefined,
+      favorite: !readOnly && result?.source_available !== false ? () => { void toggleFavorite(); } : undefined,
+      ...(!attempt && !readOnly ? {
+        selectOption: question && ['single_choice', 'multiple_choice', 'indefinite_choice'].includes(question.questionType) ? (key: string) => {
+          if (question.questionType === 'single_choice') changeAnswer(key);
+          else {
+            const selected = new Set((draftRef.current?.answers[question.id] ?? '').split(''));
+            if (selected.has(key)) selected.delete(key); else selected.add(key);
+            changeAnswer([...selected].sort().join(''));
+          }
+        } : undefined,
+        selectTrueFalse: question?.questionType === 'true_false' ? changeAnswer : undefined,
+      } : {}),
+    },
+  };
+  const onAnswerPrimaryAction = usePracticeShortcuts(shortcutOptions);
 
   const sheet = (
     <div className="space-y-3">
@@ -535,7 +609,7 @@ export default function BatchPracticeWorkspace({
     );
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div ref={rootRef} data-practice-shortcuts className="flex h-full min-h-0 flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b px-3 py-2">
         <DsButton
           variant="ghost"
@@ -552,6 +626,23 @@ export default function BatchPracticeWorkspace({
           {attempt?.title ?? draft?.title}
         </span>
         <span className="text-xs tabular-nums text-muted-foreground">{formatTime(elapsed)}</span>
+        {!isSmallScreen && (
+          <Popover>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <PopoverTrigger asChild>
+                  <DsButton variant="ghost" size="icon" iconOnly aria-label={t('editor.shortcuts')}>
+                    <Keyboard size={18} />
+                  </DsButton>
+                </PopoverTrigger>
+              </TooltipTrigger>
+              <TooltipContent>{t('editor.shortcuts')}</TooltipContent>
+            </Tooltip>
+            <PopoverContent className="w-72" align="end">
+              <PracticeShortcutHints {...shortcutOptions} />
+            </PopoverContent>
+          </Popover>
+        )}
         {!attempt && (
           <span
             role="status"
@@ -683,15 +774,7 @@ export default function BatchPracticeWorkspace({
                   aria-label={t('editor.favorite')} title={t('editor.favorite')}
                   aria-pressed={favorites[question.id] ?? current.is_favorite}
                   disabled={busy}
-                  onClick={async () => {
-                    setBusy(true);
-                    try {
-                      const updated = await invoke<{ is_favorite: boolean }>('qbank_toggle_favorite', { questionId: question.id });
-                      setFavorites((values) => ({ ...values, [question.id]: updated.is_favorite }));
-                      callbackRef.current?.();
-                    } catch (error) { setError(getErrorMessage(error)); }
-                    finally { setBusy(false); }
-                  }}>
+                  onClick={() => void toggleFavorite()}>
                   <Star size={16} weight={(favorites[question.id] ?? current.is_favorite) ? 'fill' : 'regular'} />
                 </DsButton>
               )}
@@ -740,27 +823,18 @@ export default function BatchPracticeWorkspace({
           {!attempt ? (
               <>
                 <fieldset
-                  disabled={busy || Boolean(draft?.deadline && Date.parse(draft.deadline) <= tick)}
+                  disabled={busy || uploading || navigating || Boolean(draft?.deadline && Date.parse(draft.deadline) <= tick)}
                 >
                   <PracticeAnswerInput
                     key={question.id}
                     question={question}
                     value={answers[question.id] ?? ''}
+                    onPrimaryAction={onAnswerPrimaryAction}
                     onUploadingChange={(value) => {
                       uploadingRef.current = value;
                       setUploading(value);
                     }}
-                    onChange={(value) =>
-                      change({
-                        answers: value
-                          ? { ...draftRef.current!.answers, [question.id]: value }
-                          : Object.fromEntries(
-                              Object.entries(draftRef.current!.answers).filter(
-                                ([id]) => id !== question.id,
-                              ),
-                            ),
-                      })
-                    }
+                    onChange={changeAnswer}
                   />
                 </fieldset>
                 <DsButton
@@ -891,7 +965,7 @@ export default function BatchPracticeWorkspace({
       <div className="flex items-center justify-between gap-2 border-t px-4 py-2 pb-[max(0.5rem,var(--mobile-safe-area-bottom,0px))]">
         <DsButton
           variant="outline"
-          disabled={busy || uploading || previousIndex == null}
+          disabled={busy || uploading || navigating || previousIndex == null}
           onClick={() => previousIndex != null && void navigate(previousIndex)}
         >
           <ArrowLeft size={16} />
@@ -899,7 +973,7 @@ export default function BatchPracticeWorkspace({
         </DsButton>
         <DsButton
           variant="outline"
-          disabled={busy || uploading || nextIndex == null}
+          disabled={busy || uploading || navigating || nextIndex == null}
           onClick={() => nextIndex != null && void navigate(nextIndex)}
         >
           {t('editor.nextQuestion')}

@@ -2905,6 +2905,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               showTimer={false}
               isActive={isActive}
               onNavigate={handleBrowseNavigate}
+              onToggleFavorite={readOnly ? undefined : handleToggleFavorite}
               onRefreshQuestion={readOnly ? undefined : handleRefreshQuestion}
               onPracticeQuestion={handlePracticeFromBrowse}
               onBack={() => requestViewMode('list')}

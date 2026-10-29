@@ -1,7 +1,7 @@
 /**
  * 填空题作答组件：多空逐空输入
  *
- * - 单空/多空统一渲染；Enter 在空位间顺移（最后一空交还给全局提交）
+ * - 单空/多空统一渲染；Enter 在空位间顺移（最后一空交还父层触发主动作）
  * - 有 structured blanks 时提交后逐空揭示正误 + 可接受答案对照
  *
  * 2026-07 题库题型扩展
@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { Check, X } from '@phosphor-icons/react';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { FillBlankStructuredData } from './structured';
 import { isBlankAnswerCorrect } from './structured';
 
@@ -22,6 +23,8 @@ export interface FillBlankAnswerProps {
   blanks?: FillBlankStructuredData | null;
   /** 已提交：禁用输入并进入揭示态 */
   submitted?: boolean;
+  /** 末空 Enter 的主操作；由父层决定是否 preventDefault 标记已处理 */
+  onPrimaryAction?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   className?: string;
 }
 
@@ -30,6 +33,7 @@ export const FillBlankAnswer: React.FC<FillBlankAnswerProps> = ({
   onChange,
   blanks,
   submitted = false,
+  onPrimaryAction,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -40,15 +44,31 @@ export const FillBlankAnswer: React.FC<FillBlankAnswerProps> = ({
     onChange(next);
   }, [answers, onChange]);
 
-  // Enter 顺移到下一空（最后一空不拦截，交给全局 Enter 提交）
+  // Enter 顺移到下一空；末空把事件交给父层，保留其 preventDefault 决策权。
   const handleKeyDown = useCallback((index: number) => (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key !== 'Enter' || index >= answers.length - 1) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const form = (e.currentTarget.closest('[data-fill-blank-root]') ?? document);
-    const inputs = form.querySelectorAll<HTMLInputElement>('input[data-blank-index]');
-    inputs[index + 1]?.focus();
-  }, [answers.length]);
+    if (
+      submitted
+      || e.key !== 'Enter'
+      || e.defaultPrevented
+      || e.repeat
+      || e.ctrlKey
+      || e.metaKey
+      || e.altKey
+      || e.shiftKey
+      || isComposingKeyEvent(e)
+    ) return;
+
+    if (index < answers.length - 1) {
+      e.preventDefault();
+      e.stopPropagation();
+      const root = (e.currentTarget.closest('[data-fill-blank-root]') ?? document);
+      const inputs = root.querySelectorAll<HTMLInputElement>('input[data-blank-index]');
+      inputs[index + 1]?.focus();
+      return;
+    }
+
+    onPrimaryAction?.(e);
+  }, [answers.length, onPrimaryAction, submitted]);
 
   return (
     <div data-fill-blank-root className={cn('space-y-2.5', className)}>

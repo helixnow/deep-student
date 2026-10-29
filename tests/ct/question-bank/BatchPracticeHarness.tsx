@@ -1,5 +1,6 @@
 import React from 'react';
 import BatchPracticeWorkspace from '@/components/practice/BatchPracticeWorkspace';
+import MistakeRedoOverlay from '@/features/learning-hub/mistakeBook/MistakeRedoOverlay';
 import { setCtInvokeHandlers } from '../mocks/tauri-core-mock';
 import { ExamShell } from './ExamShell';
 import type { PracticeDraft, PracticeAttempt } from '@/api/practiceApi';
@@ -65,7 +66,8 @@ const seed: PracticeDraft = {
   updated_at: '',
 };
 
-export function BatchPracticeHarness() {
+export function BatchPracticeHarness({ mistakeOverlay = false }: { mistakeOverlay?: boolean }) {
+  const [overlayOpen, setOverlayOpen] = React.useState(false);
   const initialized = React.useRef(false);
   if (!initialized.current) {
     initialized.current = true;
@@ -114,7 +116,10 @@ export function BatchPracticeHarness() {
   }
   return (
     <ExamShell>
-      <BatchPracticeWorkspace practiceId="practice-ct" onBack={() => {}} />
+      {mistakeOverlay ? <>
+        <button type="button" onClick={() => setOverlayOpen(true)}>打开错题重做</button>
+        {overlayOpen && <MistakeRedoOverlay questionIds={['q1', 'q2']} examNames={{}} practiceId="practice-ct" onClose={() => setOverlayOpen(false)} />}
+      </> : <BatchPracticeWorkspace practiceId="practice-ct" onBack={() => {}} />}
     </ExamShell>
   );
 }

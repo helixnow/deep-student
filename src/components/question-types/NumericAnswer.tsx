@@ -7,11 +7,12 @@
  * 2026-07 题库题型扩展
  */
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { Check, X, WarningCircle } from '@phosphor-icons/react';
+import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import type { NumericStructuredData } from './structured';
 import { formatNumericAnswer } from './structured';
 import { parseNumericInput } from '@/api/questionBankApi';
@@ -25,6 +26,8 @@ export interface NumericAnswerProps {
   submitted?: boolean;
   /** 后端判定结果（提交后） */
   isCorrect?: boolean | null;
+  /** Enter 主操作；由父层决定是否 preventDefault 标记已处理 */
+  onPrimaryAction?: (event: React.KeyboardEvent<HTMLInputElement>) => void;
   className?: string;
 }
 
@@ -34,6 +37,7 @@ export const NumericAnswer: React.FC<NumericAnswerProps> = ({
   spec,
   submitted = false,
   isCorrect,
+  onPrimaryAction,
   className,
 }) => {
   const { t } = useTranslation('practice');
@@ -47,12 +51,29 @@ export const NumericAnswer: React.FC<NumericAnswerProps> = ({
 
   const answerDisplay = useMemo(() => (spec ? formatNumericAnswer(spec) : null), [spec]);
 
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (
+      submitted
+      || event.key !== 'Enter'
+      || event.defaultPrevented
+      || event.repeat
+      || event.ctrlKey
+      || event.metaKey
+      || event.altKey
+      || event.shiftKey
+      || isComposingKeyEvent(event)
+    ) return;
+
+    onPrimaryAction?.(event);
+  }, [onPrimaryAction, submitted]);
+
   return (
     <div className={cn('space-y-2', className)}>
       <div className="relative max-w-sm">
         <Input
           value={value}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           disabled={submitted}
           type="text"
           inputMode="decimal"
