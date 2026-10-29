@@ -17,6 +17,8 @@ interface Props {
   explanation?: string | null;
   aiFeedback?: string | null;
   defaultExpanded?: boolean;
+  /** Historical practice snapshots must not be replaced by live explanations. */
+  allowExplanationWrite?: boolean;
   onRefreshQuestion?: (questionId: string) => Promise<void>;
 }
 
@@ -26,6 +28,7 @@ export function QuestionExplanation({
   explanation,
   aiFeedback,
   defaultExpanded = false,
+  allowExplanationWrite = true,
   onRefreshQuestion,
 }: Props) {
   const { t } = useTranslation('practice');
@@ -60,7 +63,7 @@ export function QuestionExplanation({
     try {
       // A reusable explanation has no student submission and is saved before completion.
       await ai.startGrading(questionId, null, 'analyze', undefined, (_verdict, _score, text, written) => {
-        if (written && text) setSavedExplanation(toExplanationText(text));
+        if (allowExplanationWrite && written && text) setSavedExplanation(toExplanationText(text));
         showGlobalNotification('success', t('editor.aiExplanationSaved'));
         void onRefreshQuestion(questionId).catch((error) => {
           showGlobalNotification('warning', getErrorMessage(error));
@@ -122,7 +125,7 @@ export function QuestionExplanation({
               {(ai.state.error || ai.state.cancelled) && <p className="text-xs text-warning">{t('batch.feedbackDraft')}</p>}
               {canonical?.trim() && <h4 className="text-sm font-medium text-info">{t('editor.aiAnalysis')}</h4>}
               <StreamingMarkdownRenderer content={toExplanationText(feedback)} isStreaming={ai.state.isGrading} />
-              {onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
+              {allowExplanationWrite && onRefreshQuestion && !ai.state.isGrading && !ai.state.error && !ai.state.cancelled && (
                 <AiExplanationWriteButton
                   questionId={questionId}
                   explanation={canonical}

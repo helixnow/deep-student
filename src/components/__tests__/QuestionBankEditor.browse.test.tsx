@@ -121,6 +121,46 @@ describe('QuestionBankEditor 浏览模式（#466 / #467）', () => {
     expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_update_question')).toBe(false);
   });
 
+  it.each([true, false])(
+    'keeps AI analysis available for a question with an existing explanation (browseMode=%s)',
+    async (browseMode) => {
+      const onRefreshQuestion = vi.fn().mockResolvedValue(undefined);
+      renderBrowse([choice], { browseMode, onRefreshQuestion });
+
+      if (!browseMode) {
+        expect(screen.queryByText('加法')).toBeNull();
+        fireEvent.click(screen.getByRole('button', { name: /查看解析/ }));
+      }
+      expect(screen.getByText('加法')).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('button', { name: /AI 解析/ }));
+      await waitFor(() =>
+        expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_ai_grade')).toBe(true),
+      );
+      const [, args] = mocks.invoke.mock.calls.find(([cmd]) => cmd === 'qbank_ai_grade')!;
+      expect(args.request).toMatchObject({
+        question_id: 'q1',
+        submission_id: null,
+        mode: 'analyze',
+      });
+
+      act(() =>
+        mocks.listeners.get(`qbank_grading_stream_${args.request.stream_session_id}`)!({
+          payload: {
+            type: 'complete',
+            feedback: '已有解析时生成的 AI 解析',
+            explanation_written: false,
+          },
+        }),
+      );
+
+      await screen.findByText('已有解析时生成的 AI 解析');
+      await waitFor(() => expect(onRefreshQuestion).toHaveBeenCalledWith('q1'));
+      expect(screen.getByText('加法')).toBeInTheDocument();
+      expect(mocks.invoke.mock.calls.some(([cmd]) => cmd === 'qbank_update_question')).toBe(false);
+    },
+  );
+
   it('opens an existing explanation before answering in drill mode', () => {
     const submit = vi.fn();
     renderBrowse([choice], { browseMode: false, onSubmitAnswer: submit });
