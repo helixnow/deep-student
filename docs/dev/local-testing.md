@@ -69,6 +69,12 @@ never combine four shards each using the maximum two-worker CI configuration.
   sleeps. Reset singleton stores and unregister listeners between cases.
 - Cleanup timers and mounted components. Preserve `defaultPrevented`, native
   controls, inactive-window ownership and nested overlays in event tests.
+- For submitted practice, cover the result status matrix and transitions from
+  pending/failed through manual grading and `qbank-practice-updated` events.
+  Completed verdicts must hide manual fallback controls. For AI explanations,
+  seed different live and snapshot explanations, assert `mode=analyze` with no
+  submission ID, and check that existing text and historical snapshots survive
+  generation and navigation without answer or grading writes.
 
 ## Browser Components
 

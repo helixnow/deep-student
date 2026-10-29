@@ -48,6 +48,7 @@ import { setPracticeRuntime } from './practiceRuntime';
 import { practiceAnswerText } from './practiceAnswerText';
 import { paperAnswer } from './paperDocument';
 import { GradingDiagnosticsView } from './GradingDiagnosticsView';
+import { QuestionExplanation } from './QuestionExplanation';
 import { usePracticeShortcuts, type PracticeShortcutOptions } from './usePracticeShortcuts';
 import { PracticeShortcutHints } from './PracticeShortcutHints';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -100,6 +101,8 @@ export default function BatchPracticeWorkspace({
   const [filter, setFilter] = useState('all');
   const [tick, setTick] = useState(Date.now());
   const [favorites, setFavorites] = useState<Record<string, boolean>>({});
+  const [aiFeedback, setAiFeedback] = useState<Record<string, string>>({});
+  const [liveSourceAvailable, setLiveSourceAvailable] = useState<Record<string, boolean>>({});
   const runtimeKey = useRef(newPracticeId());
   const [images, setImages] = useState<Record<string, string>>({});
   const dirtyRef = useRef(false);
@@ -372,15 +375,36 @@ export default function BatchPracticeWorkspace({
 
   const questions = attempt?.questions ?? draft?.questions ?? [];
   const current = questions[index];
+  const results = attempt?.results ?? [];
+  const result = results.find((r) => r.question_id === current?.id);
+  const canLoadAnalysis = Boolean(attempt && result?.source_available === true && !readOnly);
+  const canAnalyze = Boolean(canLoadAnalysis && current && liveSourceAvailable[current.id] === true);
   useEffect(() => {
-    if (!current || readOnly) return;
+    if (!current || readOnly || result?.source_available === false) return;
     let cancelled = false;
-    void invoke<{ is_favorite: boolean } | null>('qbank_get_question', { questionId: current.id })
+    void invoke<{ is_favorite: boolean; ai_feedback?: string | null } | null>('qbank_get_question', { questionId: current.id })
       .then((live) => {
-        if (live && !cancelled) setFavorites((values) => ({ ...values, [current.id]: live.is_favorite }));
-      }).catch(() => {});
+        if (cancelled) return;
+        if (live) setFavorites((values) => ({ ...values, [current.id]: live.is_favorite }));
+        if (canLoadAnalysis) {
+          setLiveSourceAvailable((values) => ({ ...values, [current.id]: Boolean(live) }));
+          setAiFeedback((values) => ({ ...values, [current.id]: live?.ai_feedback ?? '' }));
+        }
+      }).catch(() => {
+        if (!cancelled && canLoadAnalysis) {
+          setLiveSourceAvailable((values) => ({ ...values, [current.id]: false }));
+        }
+      });
     return () => { cancelled = true; };
-  }, [current?.id, readOnly]);
+  }, [current?.id, readOnly, result?.source_available, canLoadAnalysis]);
+  const refreshExplanation = useCallback(async (questionId: string) => {
+    const live = await invoke<{ ai_feedback?: string | null } | null>('qbank_get_question', { questionId });
+    if (mounted.current) {
+      setLiveSourceAvailable((values) => ({ ...values, [questionId]: Boolean(live) }));
+      setAiFeedback((values) => ({ ...values, [questionId]: live?.ai_feedback ?? '' }));
+      callbackRef.current?.();
+    }
+  }, []);
   useEffect(() => {
     let cancelled = false;
     if (!current) return;
@@ -395,8 +419,6 @@ export default function BatchPracticeWorkspace({
   }, [current?.id]);
   const answers = attempt?.answers ?? draft?.answers ?? {};
   const marked = attempt?.marked_ids ?? draft?.marked_ids ?? [];
-  const results = attempt?.results ?? [];
-  const result = results.find((r) => r.question_id === current?.id);
   const filteredIndices = questions.flatMap((q, i) => {
     const r = results.find((r) => r.question_id === q.id);
     return filter === 'all' ||
@@ -868,7 +890,7 @@ export default function BatchPracticeWorkspace({
                   {t(`batch.result.${result?.status ?? 'pending'}`)}
                   {result?.score != null && ` · ${result.score}/100`}
                 </p>
-                {result && !result.source_available && (
+                {result && (!result.source_available || liveSourceAvailable[question.id] === false) && (
                   <p className="text-xs text-muted-foreground">{t('batch.sourceUnavailable')}</p>
                 )}
                 <div>
@@ -885,12 +907,15 @@ export default function BatchPracticeWorkspace({
                   <h4 className="mb-2 text-sm font-medium">{t('paper.answer')}</h4>
                   <MarkdownRenderer content={paperAnswer(current) || t('batch.noReference')} />
                 </div>
-                {question.explanation && (
-                  <div>
-                    <h4 className="mb-2 text-sm font-medium">{t('paper.explanation')}</h4>
-                    <MarkdownRenderer content={question.explanation} />
-                  </div>
-                )}
+                <QuestionExplanation
+                  key={`${attempt.id}:${question.id}`}
+                  questionId={question.id}
+                  explanation={question.explanation}
+                  aiFeedback={aiFeedback[question.id]}
+                  defaultExpanded
+                  allowExplanationWrite={false}
+                  onRefreshQuestion={canAnalyze ? refreshExplanation : undefined}
+                />
                 {result?.feedback && <MarkdownRenderer content={result.feedback} />}
                 {result?.grading_drafts?.map((saved, draftIndex, drafts) => (
                   <details key={`${saved.created_at}-${draftIndex}`} className="border-t pt-3 text-sm" open={draftIndex === drafts.length - 1 && result.status === 'failed'}>
@@ -927,7 +952,7 @@ export default function BatchPracticeWorkspace({
                     {t('batch.retryGrading')}
                   </DsButton>
                 )}
-                {result?.status !== 'unanswered' && !readOnly && (
+                {(result?.status === 'pending' || result?.status === 'failed') && !readOnly && (
                   <div className="flex flex-wrap gap-2">
                     {[true, false].map((correct) => (
                       <DsButton

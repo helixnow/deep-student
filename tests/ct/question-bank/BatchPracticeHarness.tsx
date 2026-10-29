@@ -3,7 +3,7 @@ import BatchPracticeWorkspace from '@/components/practice/BatchPracticeWorkspace
 import MistakeRedoOverlay from '@/features/learning-hub/mistakeBook/MistakeRedoOverlay';
 import { setCtInvokeHandlers } from '../mocks/tauri-core-mock';
 import { ExamShell } from './ExamShell';
-import type { PracticeDraft, PracticeAttempt } from '@/api/practiceApi';
+import type { PracticeDraft, PracticeAttempt, PracticeResult } from '@/api/practiceApi';
 
 const seed: PracticeDraft = {
   id: 'practice-ct',
@@ -75,7 +75,20 @@ export function BatchPracticeHarness({ mistakeOverlay = false }: { mistakeOverla
     let completed: PracticeAttempt | null = null;
     setCtInvokeHandlers({
       qbank_get_practice: (_command, payload) => payload?.submitted ? completed : draft,
+      qbank_get_question: () => ({ is_favorite: false, ai_feedback: null }),
+      qbank_get_history: () => [],
       qbank_resume_practice_grading: () => null,
+      qbank_grade_practice_manually: (_command, payload) => {
+        if (!completed) throw new Error('No submitted practice');
+        completed = {
+          ...completed,
+          status: 'completed',
+          results: completed.results.map((result): PracticeResult => result.question_id === payload?.questionId
+            ? { ...result, status: payload.correct ? 'correct' : 'incorrect', is_correct: Boolean(payload.correct), score: payload.correct ? 100 : 0 }
+            : result),
+        };
+        return completed;
+      },
       qbank_save_practice: (_command, payload) => {
         draft = {
           ...draft,
