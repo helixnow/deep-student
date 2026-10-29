@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.10.10](https://github.com/helixnow/deep-student/compare/v0.10.9...v0.10.10) (2026-10-29)
+
+
+### Bug Fixes
+
+* **grading:** discard cancelled listener registrations ([#506](https://github.com/helixnow/deep-student/issues/506)) ([a3fc3b8](https://github.com/helixnow/deep-student/commit/a3fc3b8082306d7e231f25f93359d4fe73493e99))
+* **grading:** honor configured output limits and preserve failed feedback ([#504](https://github.com/helixnow/deep-student/issues/504)) ([d37538c](https://github.com/helixnow/deep-student/commit/d37538cf069d9cb639302266f303b80615595c58))
+* **practice:** restore answer shortcuts and modal ownership ([#507](https://github.com/helixnow/deep-student/issues/507)) ([45b9bdb](https://github.com/helixnow/deep-student/commit/45b9bdbaf2bbdb355843aaad7b4efbbd2c6ab22a))
+
 ## [0.10.9](https://github.com/helixnow/deep-student/compare/v0.10.8...v0.10.9) (2026-10-27)
 
 
