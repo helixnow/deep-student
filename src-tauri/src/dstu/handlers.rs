@@ -661,7 +661,7 @@ async fn dstu_create_media_from_staged(
         return Ok(None);
     };
     let mime = mime_type.unwrap_or("").to_string();
-    if resource_type != "files" || crate::media::media_kind(&mime, name).is_none() {
+    if resource_type != "files" || crate::media_types::media_kind(&mime, name).is_none() {
         return Ok(None);
     }
     let path = staged.path().to_path_buf();
@@ -679,7 +679,7 @@ async fn dstu_create_media_from_staged(
             let mut blob_stage = VfsBlobRepo::stage_stream(
                 db.blobs_dir(),
                 &mut reader,
-                crate::media::MAX_MEDIA_IMPORT_BYTES,
+                crate::media_types::MAX_MEDIA_IMPORT_BYTES,
             )
             .map_err(|e| e.to_string())?;
             let size = blob_stage.size as i64;
@@ -719,10 +719,7 @@ async fn dstu_create_media_from_staged(
     )
     .await
     .map_err(|e| format!("Media import task failed: {}", e))??;
-    crate::media::commands::spawn_auto_transcribe_if_short_audio(
-        tauri::Manager::app_handle(window),
-        file.id.clone(),
-    );
+    crate::vfs::hooks::notify_resource_created(tauri::Manager::app_handle(window), &file.id);
     Ok(Some(file_to_dstu_node(&file)))
 }
 

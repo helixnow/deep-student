@@ -53,29 +53,6 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
     }
 }
 /// 清理崩溃遗留的媒体 PCM 临时文件（> 1 天）
-fn sweep_stale_media_temp(dir: &Path) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    let cutoff = std::time::SystemTime::now() - Duration::from_secs(24 * 3600);
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let is_spool = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| n.starts_with("media-pcm-"))
-            .unwrap_or(false);
-        let stale = entry
-            .metadata()
-            .and_then(|m| m.modified())
-            .map(|t| t < cutoff)
-            .unwrap_or(false);
-        if is_spool && stale {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-}
-
 use crate::file_manager::FileManager;
 use crate::llm_manager::{LLMManager, MAX_OCR_CONCURRENCY};
 use crate::models::PdfOcrTextBlock;
@@ -889,21 +866,6 @@ impl PdfProcessingService {
         self.db.app_data_dir().join("tmp").join("media")
     }
 
-    /// 构建受管 ASR 后端（与语音输入共用模型槽位）
-    pub async fn build_media_asr_backend(
-        &self,
-    ) -> Result<Arc<dyn crate::media::asr::AsrBackend>, crate::media::MediaError> {
-        let endpoint =
-            crate::voice_input::resolve_asr_endpoint(&self.llm_manager, &self.settings_db)
-                .await
-                .map_err(|error| crate::media::MediaError::AsrFatal {
-                    code: error.code.to_string(),
-                    message: error.message,
-                })?;
-        let backend = crate::media::asr::HttpAsrBackend::new(endpoint, None)?;
-        Ok(Arc::new(backend))
-    }
-
     /// 用户取消：停止任务并把状态落为稳定的 `cancelled`（不会被启动恢复自动续跑）
     pub fn cancel_media(&self, file_id: &str) -> VfsResult<bool> {
         let was_running = self.cancel(file_id)?;
@@ -921,14 +883,14 @@ impl PdfProcessingService {
         &self,
         file_id: &str,
         media_type: MediaType,
-        update: &crate::media::pipeline::MediaProgressUpdate,
+        update: &crate::vfs::hooks::MediaTranscriptionProgress,
         generation: u64,
     ) {
         if self.skip_stale_task_side_effects(file_id, Some(generation), "emit_media_progress") {
             return;
         }
         let progress = ProcessingProgress {
-            stage: update.stage.as_str().to_string(),
+            stage: update.stage.clone(),
             current_page: None,
             total_pages: None,
             percent: update.percent.clamp(0.0, 100.0),
@@ -962,7 +924,7 @@ impl PdfProcessingService {
                 file_id: file_id.to_string(),
                 status: progress,
                 media_type: media_type.as_str().to_string(),
-                stage: update.stage.as_str().to_string(),
+                stage: update.stage.clone(),
                 completed_segments: update.completed_segments,
                 total_segments: update.total_segments,
             };
@@ -983,10 +945,6 @@ impl PdfProcessingService {
         cancel_token: CancellationToken,
         generation: u64,
     ) -> VfsResult<()> {
-        use crate::media::pipeline::{MediaProgressUpdate, MediaStage};
-        use crate::media::MediaError;
-
-        let mut current_stage = MediaStage::Queued;
         // 字幕导入的计划不跑 ASR：不要求配置 ASR Key
         let imported = self
             .db
@@ -1003,65 +961,59 @@ impl PdfProcessingService {
                 source == crate::vfs::repos::media_transcript_repo::SEGMENT_SOURCE_IMPORT
             })
             .unwrap_or(false);
-        let backend = if imported {
-            Ok(Arc::new(crate::media::asr::UnavailableBackend)
-                as Arc<dyn crate::media::asr::AsrBackend>)
-        } else {
-            self.build_media_asr_backend().await
+
+        let temp_dir = self.media_temp_dir();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let Some(transcriber) = crate::vfs::hooks::media_transcriber() else {
+            return Err(VfsError::Internal(
+                "media transcriber not registered".to_string(),
+            ));
         };
-        let result: Result<crate::media::pipeline::TranscriptionOutcome, MediaError> = match backend
-        {
-            Err(e) => Err(e),
-            Ok(backend) => {
-                let temp_dir = self.media_temp_dir();
-                sweep_stale_media_temp(&temp_dir);
-                let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<MediaProgressUpdate>();
-                let fut = crate::media::pipeline::transcribe_resource(
-                    Arc::clone(&self.db),
-                    file_id,
-                    backend,
-                    Some(temp_dir),
-                    cancel_token.clone(),
-                    Some(tx),
-                );
-                tokio::pin!(fut);
-                let result = loop {
-                    tokio::select! {
-                        res = &mut fut => break res,
-                        Some(update) = rx.recv() => {
-                            current_stage = update.stage;
-                            self.emit_media_progress(file_id, media_type, &update, generation).await;
-                        }
-                    }
-                };
-                while let Ok(update) = rx.try_recv() {
-                    current_stage = update.stage;
-                    self.emit_media_progress(file_id, media_type, &update, generation)
-                        .await;
+        let fut = transcriber.transcribe(crate::vfs::hooks::MediaTranscriptionRequest {
+            vfs_db: Arc::clone(&self.db),
+            llm_manager: Arc::clone(&self.llm_manager),
+            settings_db: Arc::clone(&self.settings_db),
+            file_id: file_id.to_string(),
+            temp_dir,
+            cancel: cancel_token.clone(),
+            imported,
+            progress: tx,
+        });
+        tokio::pin!(fut);
+        let mut current_stage = "queued".to_string();
+        let result = loop {
+            tokio::select! {
+                res = &mut fut => break res,
+                Some(update) = rx.recv() => {
+                    current_stage = update.stage.clone();
+                    self.emit_media_progress(file_id, media_type, &update, generation).await;
                 }
-                result
             }
         };
+        while let Ok(update) = rx.try_recv() {
+            current_stage = update.stage.clone();
+            self.emit_media_progress(file_id, media_type, &update, generation)
+                .await;
+        }
 
         let outcome = match result {
             Ok(outcome) => outcome,
-            Err(MediaError::Cancelled) => {
+            Err(failure) if failure.cancelled => {
                 info!(
                     "[MediaProcessingService] Media transcription cancelled: {}",
                     file_id
                 );
                 return Ok(());
             }
-            Err(e) => {
-                let payload = e.to_payload_string();
-                let stage = ProcessingStage::from_str(current_stage.as_str());
+            Err(failure) => {
+                let stage = ProcessingStage::from_str(&current_stage);
                 warn!(
                     "[MediaProcessingService] Media transcription failed for {} at {}: {}",
-                    file_id,
-                    current_stage.as_str(),
-                    e
+                    file_id, current_stage, failure.display
                 );
-                if let Err(db_err) = self.set_error(file_id, &payload, stage, Some(generation)) {
+                if let Err(db_err) =
+                    self.set_error(file_id, &failure.payload, stage, Some(generation))
+                {
                     error!(
                         "[MediaProcessingService] Failed to set media error status: {}",
                         db_err
@@ -1069,8 +1021,8 @@ impl PdfProcessingService {
                 }
                 self.emit_error(
                     file_id,
-                    &payload,
-                    current_stage.as_str(),
+                    &failure.payload,
+                    &current_stage,
                     media_type,
                     Some(generation),
                 )
@@ -1089,8 +1041,8 @@ impl PdfProcessingService {
             self.emit_media_progress(
                 file_id,
                 media_type,
-                &MediaProgressUpdate {
-                    stage: MediaStage::Indexing,
+                &crate::vfs::hooks::MediaTranscriptionProgress {
+                    stage: "indexing".to_string(),
                     percent: 92.0,
                     completed_segments: Some(outcome.done_segments),
                     total_segments: Some(outcome.total_segments),
@@ -1180,9 +1132,10 @@ impl PdfProcessingService {
 
         MediaType::from_mime(&mime_type)
             .or_else(|| {
-                match crate::media::media_kind(&mime_type, file_name.as_deref().unwrap_or("")) {
-                    Some(crate::media::MediaKind::Audio) => return Some(MediaType::Audio),
-                    Some(crate::media::MediaKind::Video) => return Some(MediaType::Video),
+                match crate::media_types::media_kind(&mime_type, file_name.as_deref().unwrap_or(""))
+                {
+                    Some(crate::media_types::MediaKind::Audio) => return Some(MediaType::Audio),
+                    Some(crate::media_types::MediaKind::Video) => return Some(MediaType::Video),
                     None => {}
                 }
                 let lower_name = file_name.as_deref()?.to_lowercase();

@@ -3388,12 +3388,7 @@ impl SyncManager {
     }
 
     fn table_exists_for_snapshot(conn: &Connection, table_name: &str) -> Result<bool, SyncError> {
-        conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
-            params![table_name],
-            |row| row.get(0),
-        )
-        .map_err(|e| SyncError::Database(format!("检查快照表是否存在失败: {}", e)))
+        crate::vfs::repos::id_alias::table_exists(conn, table_name).map_err(SyncError::Database)
     }
 
     fn collect_snapshot_rows(
@@ -5829,43 +5824,16 @@ impl SyncManager {
         table_name: &str,
         record_id: &str,
     ) -> Result<String, SyncError> {
-        if !Self::table_exists_for_snapshot(conn, "__sync_id_aliases")? {
-            return Ok(record_id.to_string());
-        }
-        let mut stmt = conn
-            .prepare_cached(
-                "SELECT canonical_id FROM __sync_id_aliases
-                 WHERE table_name = ?1 AND remote_id = ?2",
-            )
-            .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))?;
-        Self::resolve_alias_with_lookup(table_name, record_id, |current| {
-            stmt.query_row(params![table_name, current], |row| row.get(0))
-                .optional()
-                .map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))
-        })
+        crate::vfs::repos::id_alias::resolve_persisted_id_alias(conn, table_name, record_id)
+            .map_err(SyncError::Database)
     }
 
     fn resolve_alias_with_lookup(
         table_name: &str,
         record_id: &str,
-        mut lookup: impl FnMut(&str) -> Result<Option<String>, SyncError>,
+        lookup: impl FnMut(&str) -> Result<Option<String>, SyncError>,
     ) -> Result<String, SyncError> {
-        let mut current = record_id.to_string();
-        let mut seen = HashSet::new();
-        loop {
-            if !seen.insert(current.clone()) {
-                tracing::warn!(
-                    "[sync] ID 别名存在循环，降级使用原始 record_id: {}.{}",
-                    table_name,
-                    record_id
-                );
-                return Ok(record_id.to_string());
-            }
-            match lookup(&current)? {
-                Some(next) => current = next,
-                None => return Ok(current),
-            }
-        }
+        crate::vfs::repos::id_alias::resolve_alias_with_lookup(table_name, record_id, lookup)
     }
 
     fn insert_alias(

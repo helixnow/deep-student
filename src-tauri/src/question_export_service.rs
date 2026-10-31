@@ -529,3 +529,4 @@ mod tests {
     }
 }
 pub mod authoring;
+pub mod vfs_hook;

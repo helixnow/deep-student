@@ -26,6 +26,7 @@ pub mod library;
 pub mod pipeline;
 pub mod resample;
 pub mod subtitle;
+pub mod transcriber_hook;
 pub mod transcript;
 pub mod vad;
 pub mod wav;

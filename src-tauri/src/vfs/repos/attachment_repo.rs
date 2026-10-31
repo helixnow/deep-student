@@ -216,7 +216,7 @@ const SUPPORTED_MIME_TYPES: &[&str] = &[
     "video/x-m4v",
     "video/x-ms-wmv",
     "video/x-flv",
-    crate::media::BILIBILI_LINK_MIME,
+    crate::media_types::BILIBILI_LINK_MIME,
     // archives
     "application/zip",
     "application/x-zip-compressed",
@@ -1420,7 +1420,7 @@ impl VfsAttachmentRepo {
     /// ★ 2026-02-08 修复：使用 SAVEPOINT 事务保护，确保 upload + add_to_folder 两步操作的原子性。
     /// 防止 upload 成功但 add_to_folder 失败导致附件缺少文件夹映射（孤儿附件）。
     /// 音视频流式导入：reader → `vfs_blobs/.staging`（边拷边算 SHA-256，不整文件进内存），
-    /// 上限 [`crate::media::MAX_MEDIA_IMPORT_BYTES`]（4 GB）；同内容去重复用已有附件。
+    /// 上限 [`crate::media_types::MAX_MEDIA_IMPORT_BYTES`]（4 GB）；同内容去重复用已有附件。
     ///
     /// 只做存储登记，不做文本提取；转写由媒体流水线（`media_transcribe_start`）负责。
     pub fn upload_media_stream_with_folder(
@@ -1441,7 +1441,7 @@ impl VfsAttachmentRepo {
         mut finalize: impl FnMut(&Connection, &VfsUploadAttachmentResult) -> VfsResult<()>,
     ) -> VfsResult<VfsUploadAttachmentResult> {
         Self::validate_upload_type(&params.name, &params.mime_type)?;
-        if crate::media::media_kind(&params.mime_type, &params.name).is_none() {
+        if crate::media_types::media_kind(&params.mime_type, &params.name).is_none() {
             return Err(VfsError::InvalidArgument {
                 param: "mime_type".to_string(),
                 reason: format!("Not an audio/video file: {}", params.name),
@@ -1450,7 +1450,7 @@ impl VfsAttachmentRepo {
         let mut staged = VfsBlobRepo::stage_stream(
             db.blobs_dir(),
             reader,
-            crate::media::MAX_MEDIA_IMPORT_BYTES,
+            crate::media_types::MAX_MEDIA_IMPORT_BYTES,
         )?;
 
         const BUSY_RETRIES: usize = 4;
@@ -2115,10 +2115,8 @@ impl VfsAttachmentRepo {
                 // retain the remote ID, so both preview and grading must follow
                 // the persisted alias before reporting an attachment as missing.
                 let canonical_id =
-                    crate::data_governance::sync::SyncManager::resolve_persisted_id_alias(
-                        conn, "files", id,
-                    )
-                    .map_err(|e| VfsError::Database(e.to_string()))?;
+                    crate::vfs::repos::id_alias::resolve_persisted_id_alias(conn, "files", id)
+                        .map_err(VfsError::Database)?;
                 if canonical_id == id {
                     return Ok(None);
                 }

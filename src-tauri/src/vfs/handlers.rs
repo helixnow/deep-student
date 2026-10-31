@@ -653,97 +653,18 @@ pub async fn vfs_delete_note(
     // 验证笔记 ID 格式
     validate_id_format(&id, "note_", "id")?;
 
-    // 记忆卫生（J7）：删除前判断该笔记是否在记忆根目录内。
+    // 记忆卫生（J7）：删除前由 memory hook 捕获上下文；删除成功后执行清理。
     // 判定与后续清理全程 best-effort——非记忆笔记不受影响，
     // 记忆逻辑失败也绝不阻塞通用删除。
-    let memory_ctx = memory_note_delete_context(&vfs_db, &id);
+    let continuations = crate::vfs::hooks::note_delete_continuations(&vfs_db, &id);
 
     // 保持 notes 与 folder_items 软删除一致
     VfsNoteRepo::delete_note_with_folder_item(&vfs_db, &id).map_err(|e| e.to_string())?;
 
-    if let Some((resource_id, title)) = memory_ctx {
-        cleanup_deleted_memory_note(&vfs_db, &id, &resource_id, &title);
+    for run in continuations {
+        run();
     }
     Ok(())
-}
-
-/// 判断笔记是否位于记忆根目录内；是则返回 (resource_id, title)。
-///
-/// 任何一步出错都按"非记忆笔记"处理（返回 None），确保记忆逻辑
-/// 不影响通用笔记删除路径。
-fn memory_note_delete_context(
-    vfs_db: &Arc<VfsDatabase>,
-    note_id: &str,
-) -> Option<(String, String)> {
-    let root_id = crate::memory::MemoryConfig::new(vfs_db.clone())
-        .get_root_folder_id()
-        .ok()
-        .flatten()?;
-    let note = VfsNoteRepo::get_note(vfs_db, note_id).ok().flatten()?;
-    let location = VfsNoteRepo::get_note_location(vfs_db, note_id)
-        .ok()
-        .flatten()?;
-    let folder_id = location.folder_id?;
-    if folder_id != root_id {
-        let folder_ids =
-            crate::vfs::repos::VfsFolderRepo::get_folder_ids_recursive(vfs_db, &root_id).ok()?;
-        if !folder_ids.contains(&folder_id) {
-            return None;
-        }
-    }
-    Some((note.resource_id, note.title))
-}
-
-/// 记忆笔记经 UI 删除后的索引/审计卫生（best-effort，只记 warn 不上抛）：
-/// - 把该笔记的向量段入 __lance_orphan_queue 并清理索引单元（与
-///   MemoryService::delete_with_source 的清理口径一致；后台 drain 兜底删除
-///   Lance 向量，恢复笔记时 restore_note 会 mark_pending 重建索引）
-/// - 写一条 memory_audit_log，标注来源为用户 UI 删除
-fn cleanup_deleted_memory_note(
-    vfs_db: &Arc<VfsDatabase>,
-    note_id: &str,
-    resource_id: &str,
-    title: &str,
-) {
-    match vfs_db.get_conn_safe() {
-        Ok(conn) => {
-            if let Err(e) = crate::vfs::repos::index_unit_repo::purge_index_artifacts_by_resource(
-                &conn,
-                resource_id,
-            ) {
-                log::warn!(
-                    "[VFS::handlers] Failed to purge index artifacts for deleted memory note {}: {}",
-                    note_id,
-                    e
-                );
-            }
-        }
-        Err(e) => {
-            log::warn!(
-                "[VFS::handlers] Failed to get connection for memory note cleanup {}: {}",
-                note_id,
-                e
-            );
-        }
-    }
-
-    crate::memory::MemoryAuditLogger::new(vfs_db.clone()).log(
-        &crate::memory::audit_log::MemoryAuditEntry {
-            source: crate::memory::MemoryOpSource::Handler,
-            operation: crate::memory::MemoryOpType::Delete,
-            success: true,
-            note_id: Some(note_id.to_string()),
-            title: Some(title.to_string()),
-            content_preview: None,
-            folder: None,
-            event: Some("DELETE".to_string()),
-            confidence: None,
-            reason: Some("user_ui: 用户经 VFS/DSTU UI 删除记忆笔记 (vfs_delete_note)".to_string()),
-            session_id: None,
-            duration_ms: None,
-            extra_json: None,
-        },
-    );
 }
 
 // ============================================================================
@@ -1451,7 +1372,7 @@ fn upload_attachment_blocking(
 
     // ★ 音视频：流式写入 blob（边拷边算 hash，不整文件进内存，上限 4 GB）；
     // 转写统一走媒体流水线（docs/dev/media-learning §1.2），不再导入时整段 ASR。
-    let is_media = crate::media::media_kind(&params.mime_type, &params.name).is_some();
+    let is_media = crate::media_types::media_kind(&params.mime_type, &params.name).is_some();
 
     // ★ 大文件分块暂存路径：从暂存区取走完整文件（StagedFile drop 即删除临时文件）
     let staged_file = match params.staged_upload_id.as_deref() {
@@ -1521,10 +1442,7 @@ fn upload_attachment_blocking(
 
     // ★ 短音频（< 10 分钟）导入后自动开始转写（保持原"导入即转写"体验；其余由用户触发）
     if is_media {
-        crate::media::commands::spawn_auto_transcribe_if_short_audio(
-            &app,
-            result.source_id.clone(),
-        );
+        crate::vfs::hooks::notify_resource_created(&app, &result.source_id);
     }
 
     log::info!(
@@ -2750,8 +2668,8 @@ fn upload_file_blocking(
     };
 
     // ★ 短音频（< 10 分钟）导入后自动开始转写（媒体流水线，docs/dev/media-learning §1.2）
-    if created && crate::media::media_kind(&params.mime_type, &params.name).is_some() {
-        crate::media::commands::spawn_auto_transcribe_if_short_audio(&app, file.id.clone());
+    if created && crate::media_types::media_kind(&params.mime_type, &params.name).is_some() {
+        crate::vfs::hooks::notify_resource_created(&app, &file.id);
     }
 
     // ★ 2026-02 修复：PDF/图片 上传后异步触发 Pipeline

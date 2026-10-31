@@ -139,9 +139,10 @@ impl ExamExportAdapter {
         let exam = self.get_exam(vfs_db, resource_id)?;
         let title = exam.exam_name.as_deref().unwrap_or("未命名题目集");
 
-        let document =
-            crate::question_export_service::authoring::export_document(vfs_db, resource_id)
-                .map_err(|e| DstuError::Internal(e.to_string()))?;
+        let document = crate::vfs::hooks::exam_document_exporter()
+            .ok_or_else(|| DstuError::Internal("题目导出服务未注册".to_string()))?
+            .export_document(vfs_db.as_ref(), resource_id)
+            .map_err(DstuError::Internal)?;
         let value = if document["questions"]
             .as_array()
             .is_some_and(|q| !q.is_empty())

@@ -13,5 +13,9 @@ pub fn register_extensions() {
     REGISTER.call_once(|| {
         // llm_manager 的 legacy 回退注入（模型不支持工具调用）使用的 web_search。
         crate::tools::install_web_search_fallback();
+        // vfs 的低层回调：memory 笔记删除、media 转写/资源创建、qbank 题目集导出。
+        crate::memory::delete_hook::install_vfs_hooks();
+        crate::media::transcriber_hook::install_vfs_hooks();
+        crate::question_export_service::vfs_hook::install_vfs_hooks();
     });
 }

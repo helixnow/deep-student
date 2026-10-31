@@ -27,6 +27,7 @@ pub mod database;
 pub mod embedding_service;
 pub mod error;
 pub mod handlers;
+pub mod hooks;
 pub mod index_handlers;
 pub mod index_service;
 pub mod indexing;

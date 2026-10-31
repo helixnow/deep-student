@@ -5,6 +5,7 @@ pub mod compaction_flush;
 pub mod compressor;
 pub mod config;
 pub mod daily_log;
+pub mod delete_hook;
 pub mod evolution;
 pub mod handlers;
 pub mod learner_profile;

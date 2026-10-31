@@ -30,6 +30,7 @@ pub mod essay_repo;
 pub mod exam_repo;
 pub mod file_repo;
 pub mod folder_repo;
+pub mod id_alias;
 pub mod index_segment_repo;
 pub mod index_unit_repo;
 pub mod media_transcript_repo;
