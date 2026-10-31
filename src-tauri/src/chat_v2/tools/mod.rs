@@ -76,6 +76,7 @@ pub mod injector;
 pub mod insight_recall_executor; // 🆕 灵感召回工具执行器（Insight Recall v2 阶段二）
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod learning_overview_executor; // Read-only learning overview and Pomodoro statistics
+pub mod legacy_tool_provider; // A2：旧 executor 花名册 → dstu-agent-api ToolRegistryBuilder（LegacyToolProvider）
 pub mod llm_usage_executor; // Agent-safe local LLM usage reporting
 pub mod local_shell_execute_executor;
 pub mod local_shell_preflight_executor;

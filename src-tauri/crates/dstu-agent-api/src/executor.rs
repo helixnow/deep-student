@@ -99,4 +99,11 @@ pub trait ToolExecutor: Send + Sync {
     fn result_char_budget(&self, _tool_name: &str) -> Option<usize> {
         Some(DEFAULT_TOOL_RESULT_CHAR_BUDGET)
     }
+
+    /// 执行器名称（日志、花名册快照与新旧注册表 oracle 对照用）。
+    ///
+    /// 默认取类型名；迁移期的 legacy 适配器转发旧 executor 的 `name()`。
+    fn name(&self) -> &'static str {
+        std::any::type_name::<Self>()
+    }
 }
