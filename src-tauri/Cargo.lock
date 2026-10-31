@@ -3287,6 +3287,7 @@ dependencies = [
  "dstu-learning",
  "dstu-llm",
  "dstu-mcp",
+ "dstu-notes",
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
@@ -3894,6 +3895,30 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "dstu-notes"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "chrono",
+ "dstu-core",
+ "dstu-storage",
+ "dstu-vfs",
+ "futures-util",
+ "lancedb",
+ "log",
+ "pulldown-cmark",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "uuid",
+ "zip 0.6.6",
 ]
 
 [[package]]

@@ -34,6 +34,7 @@ members = [
     "crates/dstu-learning",
     "crates/dstu-llm",
     "crates/dstu-mcp",
+    "crates/dstu-notes",
     "crates/dstu-util",
     "crates/dstu-platform",
     "crates/dstu-security",
@@ -60,6 +61,7 @@ dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
 dstu-learning = { path = "crates/dstu-learning", default-features = false }
 dstu-llm = { path = "crates/dstu-llm", default-features = false }
 dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
+dstu-notes = { path = "crates/dstu-notes", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
@@ -293,6 +295,7 @@ dstu-kernel = { workspace = true }
 dstu-learning = { workspace = true }
 dstu-llm = { workspace = true }
 dstu-mcp = { workspace = true }
+dstu-notes = { workspace = true }
 dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
@@ -560,8 +563,8 @@ default = ["sqlite", "lance", "mcp", "builtin_free_models", "tokenizer_tiktoken"
 # 启用 SQLite 代码（始终开启占位）
 sqlite = []
 # 启用 LanceDB 向量后端（需网络拉取依赖）
-# app 的 commands / notes_manager 仍直接用 lancedb，三项保留；vfs 侧由 dstu-vfs/lance 转发。
-lance = ["lancedb", "arrow-array", "arrow-schema", "dstu-vfs/lance"]
+# app 自身已不直接用 lancedb/arrow（notes_manager 已拆到 dstu-notes），三项保留不改依赖图；vfs / notes 侧分别由 dstu-vfs/lance、dstu-notes/lance 转发。
+lance = ["lancedb", "arrow-array", "arrow-schema", "dstu-vfs/lance", "dstu-notes/lance"]
 # P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
 tokenizer_tiktoken = ["tiktoken-rs", "dstu-util/tokenizer_tiktoken"]
 # 可选：MCP 客户端与 rmcp 校验
