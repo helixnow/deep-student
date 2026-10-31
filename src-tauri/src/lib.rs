@@ -71,9 +71,14 @@ pub use dstu_vfs::file_stream_protocol; // filestream:// 通用媒体/blob 流�
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
-pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
+pub use dstu_research::hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub use dstu_storage::injection_budget;
-pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
+// Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
+// 领域逻辑已下沉到 dstu-research；这里按原路径重导出，Tauri 命令层（取 AppState）留在 app。
+pub mod insight {
+    pub use dstu_research::insight::*;
+    pub mod handlers;
+}
 pub use dstu_core::json_validator;
 #[allow(dead_code)]
 pub use dstu_llm::llm_manager;
@@ -212,6 +217,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_llm",
     "dstu_vfs",
     "dstu_mcp",
+    "dstu_research",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

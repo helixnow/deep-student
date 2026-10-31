@@ -39,6 +39,7 @@ members = [
     "crates/dstu-storage",
     "crates/dstu-testkit",
     "crates/dstu-vfs",
+    "crates/dstu-research",
 ]
 # vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
 exclude = ["vendor"]
@@ -63,6 +64,7 @@ dstu-security = { path = "crates/dstu-security", default-features = false }
 dstu-storage = { path = "crates/dstu-storage", default-features = false }
 dstu-testkit = { path = "crates/dstu-testkit", default-features = false }
 dstu-vfs = { path = "crates/dstu-vfs", default-features = false }
+dstu-research = { path = "crates/dstu-research", default-features = false }
 
 # 公共依赖
 tauri-plugin-opener = "2.5"
@@ -293,6 +295,7 @@ dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
 dstu-storage = { workspace = true }
 dstu-vfs = { workspace = true }
+dstu-research = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-http = { workspace = true }
