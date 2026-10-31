@@ -7,8 +7,8 @@
 //! - `study_loop`：学习闭环胶水层（媒体转写出处锚点、学习时长命令）。
 //!
 //! 模块路径与拆分前在 `deep_student_lib` 中的路径一致：app 通过
-//! `pub use dstu_learning::xxx` 保留原路径。`memory::learner_profile` 仍留在 app 的
-//! memory（依赖 `MemoryService` / `MemoryConfig` / 记忆结构锁），见 `mastery::profile_sink`。
+//! `pub use dstu_learning::xxx` 保留原路径。`memory::learner_profile` 随 memory 在
+//! dstu-memory（依赖 `MemoryService` / `MemoryConfig` / 记忆结构锁），见 `mastery::profile_sink`。
 
 // 拆分前这些模块通过 `crate::xxx` 引用已下沉到其他 dstu crate 的模块，保留原路径。
 use dstu_core::models;

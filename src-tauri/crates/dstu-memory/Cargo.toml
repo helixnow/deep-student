@@ -1,0 +1,52 @@
+[package]
+name = "dstu-memory"
+version = "0.0.0"
+description = "Deep Student 记忆能力：Memory-as-VFS 记忆系统（记忆服务、自动抽取/演化/去重、压缩前记忆冲刷、每日日志、审计日志、学习者画像）及其 VFS 删除 / 掌握度画像回流扩展点实现"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "capability"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-learning = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-platform = { workspace = true }
+dstu-vfs = { workspace = true }
+# 仅 `test-util` feature（下游 crate 的 dev-dependency）使用，见 [features]。
+dstu-storage = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32 → JSON 数字按十进制字符串转换）。
+# 显式声明，保证 `cargo test -p dstu-memory` 单独编译时与在 app 中的行为一致；
+# 特性本来就已在 app 中合并开启，不改变产品行为。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+tauri = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+urlencoding = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+# 本 crate 单测的夹具（`memory::test_support`）：迁移好的 VFS 测试库 + 主库/文件管理器。
+dstu-storage = { workspace = true }
+dstu-vfs = { workspace = true, features = ["test-util"] }
+tempfile = { workspace = true }
+
+[features]
+# 对下游 crate（app 的 chat_v2 等）的单测公开 `memory::test_support::setup_memory_service`
+# 与 `MemoryService::fail_next_idempotent_write_before_receipt` 故障注入（只在 dev-dependency 中打开；
+# 拆分前二者是 app 内的 cfg(test) 项）。
+test-util = ["dep:dstu-storage", "dep:tempfile", "dstu-vfs/test-util"]
