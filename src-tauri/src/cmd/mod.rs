@@ -8,7 +8,7 @@
 pub mod anki_cards;
 pub mod anki_connect;
 pub mod apkg_import;
-pub mod browser;
+pub use dstu_browser::cmd::browser;
 pub mod enhanced_anki;
 pub mod fsrs_review;
 pub mod handout;

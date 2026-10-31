@@ -41,7 +41,7 @@ pub use dstu_platform::anr_watchdog; // 异步运行时看门狗（检测 tokio 
 pub use dstu_platform::background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub use dstu_storage::backup_common;
 pub mod backup_config;
-pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
+pub use dstu_browser::browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 #[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
@@ -234,6 +234,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_learning",
     "dstu_notes",
     "dstu_research",
+    "dstu_browser",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

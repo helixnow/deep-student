@@ -208,7 +208,7 @@ impl BrowserDatabase {
         #[cfg(feature = "data_governance")]
         {
             mod browser_migrations {
-                refinery::embed_migrations!("migrations/browser");
+                refinery::embed_migrations!("../../migrations/browser");
             }
 
             let mut conn = pool

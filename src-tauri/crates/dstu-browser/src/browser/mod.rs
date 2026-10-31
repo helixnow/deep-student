@@ -44,6 +44,7 @@ pub mod bridge;
 pub mod database;
 pub mod error;
 pub mod events;
+pub mod hooks;
 pub mod policy;
 pub mod repository;
 pub mod service;
