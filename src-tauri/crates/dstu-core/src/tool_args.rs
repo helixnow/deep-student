@@ -1,3 +1,7 @@
+//! 工具参数/错误载荷的共享辅助函数（仅依赖 serde_json）。
+//!
+//! 旧路径 `chat_v2::tools::arg_utils` 通过 `pub use` 继续可用。
+
 use serde_json::Value;
 
 const MAX_ERROR_DETAIL_CHARS: usize = 2_000;

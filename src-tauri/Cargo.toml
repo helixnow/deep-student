@@ -27,6 +27,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 resolver = "2"
 members = [
     ".",
+    "crates/dstu-agent-api",
     "crates/dstu-core",
     "crates/dstu-docs",
     "crates/dstu-kernel",
@@ -47,6 +48,7 @@ publish = false
 
 [workspace.dependencies]
 # 内部 crate（分层见 scripts/check-crate-layers.mjs）
+dstu-agent-api = { path = "crates/dstu-agent-api", default-features = false }
 dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
@@ -274,6 +276,7 @@ syn = { version = "2", features = ["full", "parsing", "visit"] }
 protoc-bin-vendored = "3.0"
 
 [dependencies]
+dstu-agent-api = { workspace = true }
 dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }

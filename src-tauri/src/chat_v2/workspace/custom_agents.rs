@@ -469,6 +469,7 @@ pub fn frontmatter_summary(content: &str) -> FrontmatterSummary {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_v2::grants::ToolScopeExt as _;
     use crate::chat_v2::workspace::agent_profile::{EXPLORER_PROFILE_ID, WORKER_PROFILE_ID};
 
     fn write_agent_file(dir: &Path, filename: &str, content: &str) {

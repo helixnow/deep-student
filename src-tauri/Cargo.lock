@@ -3280,6 +3280,7 @@ dependencies = [
  "dirs 4.0.0",
  "docx-rs",
  "dotenvy",
+ "dstu-agent-api",
  "dstu-core",
  "dstu-docs",
  "dstu-kernel",
@@ -3728,16 +3729,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "dstu-agent-api"
+version = "0.0.0"
+dependencies = [
+ "dstu-core",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio-util",
+]
+
+[[package]]
 name = "dstu-core"
 version = "0.0.0"
 dependencies = [
  "anyhow",
  "base64 0.21.7",
  "chrono",
+ "hex",
  "jsonschema",
+ "log",
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
+ "tempfile",
  "tokio",
  "tracing",
  "uuid",

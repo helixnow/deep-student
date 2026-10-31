@@ -58,6 +58,10 @@ use super::database::ChatV2Database;
 use super::tool_descriptors::{self, GrantsScopeHint};
 use super::tool_policy;
 
+// ToolScope 的纯数据形状已下沉到 dstu_core::agent；匹配/推导逻辑留在下面的
+// `ToolScopeExt`（依赖 tool_policy 与 tool_descriptors）。
+pub use dstu_core::agent::ToolScope;
+
 /// DelegatedGrant 结构版本。P1 = 1；schema 演进时递增并在此注释变更点。
 pub const DELEGATED_GRANT_SCHEMA_VERSION: u16 = 1;
 
@@ -65,46 +69,16 @@ pub const DELEGATED_GRANT_SCHEMA_VERSION: u16 = 1;
 // 数据模型
 // ============================================================================
 
-/// 类型化工具授权范围。
+/// `ToolScope` 的匹配与推导逻辑（类型本身在 `dstu_core::agent`）。
 ///
-/// `allows` 的匹配语义**完全委托** [`tool_policy::tool_allow_entry_matches`]
-/// （含 builtin/MCP 源隔离、`_serverId` 显式源限定），保证 grant 求值与
-/// 现有白名单逐字节一致，不产生第二套匹配规则。
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", tag = "kind")]
-pub enum ToolScope {
-    /// 内建工具（`builtin-*` / `builtin:*` / 裸名条目）。
-    Builtin { name: String },
-    /// MCP 工具。`server` 非空时等价白名单的 `server::tool` 显式源限定条目；
-    /// 为空时表示 `mcp_*` 命名空间条目（未限定服务器）。
-    Mcp { server: String, tool: String },
-    /// Shell 命令前缀授权（P1 占位：恒不匹配——worker 白名单无 shell 条目，
-    /// fail-closed；P2 参照 TrustedAutomationProfile.shell_command_prefixes 接线）。
-    Shell { prefixes: Vec<String> },
-}
-
-impl ToolScope {
+/// 之所以是扩展 trait：匹配语义必须完全复用本 crate 的
+/// `tool_policy::tool_allow_entry_matches`（含 builtin/MCP 源隔离、`_serverId`
+/// 显式源限定），推导必须查 `tool_descriptors` 的 344 条内建描述符表——两者都
+/// 不能下沉到 core。方法名与签名保持迁移前完全一致；本模块外的调用点需
+/// `use crate::chat_v2::grants::ToolScopeExt as _;`（如 `agent_profile`）。
+pub trait ToolScopeExt: Sized {
     /// 本范围是否放行一次工具调用。匹配语义 = 白名单条目匹配语义。
-    pub fn allows(&self, tool_name: &str, arguments: &Value) -> bool {
-        match self {
-            Self::Builtin { name } => {
-                tool_policy::tool_allow_entry_matches(name, tool_name, arguments)
-            }
-            Self::Mcp { server, tool } => {
-                if server.is_empty() {
-                    tool_policy::tool_allow_entry_matches(tool, tool_name, arguments)
-                } else {
-                    tool_policy::tool_allow_entry_matches(
-                        &format!("{server}::{tool}"),
-                        tool_name,
-                        arguments,
-                    )
-                }
-            }
-            // P1 fail-closed：shell 前缀授权尚未接线。
-            Self::Shell { .. } => false,
-        }
-    }
+    fn allows(&self, tool_name: &str, arguments: &Value) -> bool;
 
     /// 从白名单条目还原类型化范围（P1：与条目一一对应）。
     ///
@@ -128,7 +102,37 @@ impl ToolScope {
     /// 收紧为「恒拒」，正是 [`GrantsScopeHint::Shell`] 的声明性语义。
     /// 等价性由 `registry_driven_scope_derivation_matches_legacy_rules`
     /// 四层断言锁定。
-    pub fn from_allow_entry(entry: &str) -> Self {
+    fn from_allow_entry(entry: &str) -> Self;
+
+    /// profile.allowed_tools → scopes 的映射（保序、不去重——输入已被
+    /// profile 规范化去重）。G01-e 起每个条目的 Builtin/Shell 分类由
+    /// 注册表 hint 驱动（见 [`ToolScopeExt::from_allow_entry`]）。
+    fn scopes_from_allowed_tools(allowed_tools: &[String]) -> Vec<Self>;
+}
+
+impl ToolScopeExt for ToolScope {
+    fn allows(&self, tool_name: &str, arguments: &Value) -> bool {
+        match self {
+            Self::Builtin { name } => {
+                tool_policy::tool_allow_entry_matches(name, tool_name, arguments)
+            }
+            Self::Mcp { server, tool } => {
+                if server.is_empty() {
+                    tool_policy::tool_allow_entry_matches(tool, tool_name, arguments)
+                } else {
+                    tool_policy::tool_allow_entry_matches(
+                        &format!("{server}::{tool}"),
+                        tool_name,
+                        arguments,
+                    )
+                }
+            }
+            // P1 fail-closed：shell 前缀授权尚未接线。
+            Self::Shell { .. } => false,
+        }
+    }
+
+    fn from_allow_entry(entry: &str) -> Self {
         let entry = entry.trim();
         if let Some((server, tool)) = entry.split_once("::") {
             return Self::Mcp {
@@ -152,10 +156,7 @@ impl ToolScope {
         }
     }
 
-    /// profile.allowed_tools → scopes 的映射（保序、不去重——输入已被
-    /// profile 规范化去重）。G01-e 起每个条目的 Builtin/Shell 分类由
-    /// 注册表 hint 驱动（见 [`ToolScope::from_allow_entry`]）。
-    pub fn scopes_from_allowed_tools(allowed_tools: &[String]) -> Vec<Self> {
+    fn scopes_from_allowed_tools(allowed_tools: &[String]) -> Vec<Self> {
         allowed_tools
             .iter()
             .map(|entry| Self::from_allow_entry(entry))

@@ -55,7 +55,8 @@ pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
 pub mod task_audit; // Deterministic task audit manifests and export redaction
 pub mod task_command; // 🆕 G10-P1：远程渠道入站统一 TaskCommand（iLink 接入同一 ChatV2 任务运行系统）
-pub mod task_objects; // Unified file/message/event/record identity and delivery receipts
+// Unified file/message/event/record identity and delivery receipts（已下沉 dstu-core，旧路径保留）
+pub use dstu_core::task_objects;
 pub mod tool_approval_policy;
 pub mod tool_descriptors; // 🆕 G01-c：ToolDescriptor 后端权威注册表（内建工具静态元数据 SSOT）
 pub mod tool_policy;
