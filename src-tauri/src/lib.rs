@@ -161,7 +161,7 @@ pub use dstu_qbank::question_import_service;
 pub use vfs::question_sync_service; // 题目集同步元数据服务（只依赖 vfs 表）
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub use dstu_llm::reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
-// 复习计划服务（与错题系统集成）；本体在 dstu-qbank，依赖 data_governance 的单测留在 app。
+                                    // 复习计划服务（与错题系统集成）；本体在 dstu-qbank，依赖 data_governance 的单测留在 app。
 pub mod review_plan_service {
     pub use dstu_qbank::review_plan_service::*;
     #[cfg(test)]

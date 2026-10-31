@@ -46,10 +46,10 @@ fn reads_synced_image_answer_after_file_id_deduplication() {
     // Keep this a real newer update: an identical row is correctly skipped
     // by sync's semantic-echo guard and cannot assert an applied change.
     let remote_name = "answer-from-other-device.gif";
-    let remote_updated_at =
-        (chrono::DateTime::parse_from_rfc3339(&local.attachment.updated_at).unwrap()
-            + chrono::Duration::milliseconds(1))
-        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+    let remote_updated_at = (chrono::DateTime::parse_from_rfc3339(&local.attachment.updated_at)
+        .unwrap()
+        + chrono::Duration::milliseconds(1))
+    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
     let changes = [SyncChangeWithData {
         table_name: "files".into(),
         record_id: remote_id.into(),

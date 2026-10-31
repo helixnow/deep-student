@@ -3293,6 +3293,7 @@ dependencies = [
  "dstu-memory",
  "dstu-notes",
  "dstu-platform",
+ "dstu-qbank",
  "dstu-research",
  "dstu-security",
  "dstu-storage",
@@ -4081,6 +4082,50 @@ dependencies = [
  "url",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "dstu-qbank"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "csv",
+ "docx-rs",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "dstu-vision",
+ "encoding_rs",
+ "futures",
+ "futures-util",
+ "hex",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "nanoid",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
 ]
 
 [[package]]
