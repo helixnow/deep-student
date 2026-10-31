@@ -3281,6 +3281,7 @@ dependencies = [
  "docx-rs",
  "dotenvy",
  "dstu-agent-api",
+ "dstu-anki",
  "dstu-core",
  "dstu-docs",
  "dstu-kernel",
@@ -3741,6 +3742,38 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio-util",
+]
+
+[[package]]
+name = "dstu-anki"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "fsrs",
+ "futures",
+ "futures-util",
+ "log",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
+ "zstd 0.13.3",
 ]
 
 [[package]]

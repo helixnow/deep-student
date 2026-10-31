@@ -4882,7 +4882,7 @@ mod tests {
         // - 后端选 delimiter 时，分隔符指令只出现在后端生成的 user 消息中。
         const CARDAGENT_SYSTEM_PROMPT: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/fixtures/cardagent_system_prompt.txt"
+            "/../../tests/fixtures/cardagent_system_prompt.txt"
         ));
         assert!(
             !CARDAGENT_SYSTEM_PROMPT.contains("ANKI_CARD_JSON_END"),

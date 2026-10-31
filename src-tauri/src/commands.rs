@@ -707,26 +707,9 @@ pub struct AppState {
 }
 
 /// 获取模板配置（从数据库获取，支持内置和自定义模板）
-pub fn get_template_config(
-    template_id: &str,
-    database: &Arc<Database>,
-) -> std::result::Result<(String, Vec<String>, String, String, String), String> {
-    // 从数据库获取模板（包括内置和自定义）
-    match database.get_custom_template_by_id(template_id) {
-        Ok(Some(template)) => {
-            let fields = template.fields.clone();
-            Ok((
-                template.name,
-                fields,
-                template.front_template,
-                template.back_template,
-                template.css_style,
-            ))
-        }
-        Ok(None) => Err(format!("模板不存在: {}", template_id)),
-        Err(e) => Err(format!("获取模板失败: {}", e)),
-    }
-}
+///
+/// 已下沉到 dstu-anki（`anki::get_template_config`，`enhanced_anki_service` 导出时调用），按原路径重导出。
+pub use crate::anki::get_template_config;
 
 // PDF OCR 命令组
 #[tauri::command]

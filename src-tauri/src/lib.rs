@@ -6,20 +6,20 @@
 
 // 声明所有子模块，以便在 crate 内可见
 pub use dstu_llm::adapters;
-pub mod anki;
-pub mod anki_connect_service;
-pub mod anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
-pub mod anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
-pub mod anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
-pub mod anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
+pub use dstu_anki::anki;
+pub use dstu_anki::anki_connect_service;
+pub use dstu_anki::anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
+pub use dstu_anki::anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
+pub use dstu_anki::anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
+pub use dstu_anki::anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
 pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
-pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
-pub mod anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
-pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
+pub use dstu_anki::anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
+pub use dstu_anki::anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
+pub use dstu_anki::anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
 pub mod apk_installer;
 #[allow(dead_code)]
-pub mod apkg_exporter_service;
-pub mod apkg_importer_service;
+pub use dstu_anki::apkg_exporter_service;
+pub use dstu_anki::apkg_importer_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
 pub use dstu_core::canonical_tools;
@@ -53,10 +53,10 @@ pub use dstu_storage::data_space;
 pub use dstu_vision::cross_page_merger;
 pub mod diagnostics;
 pub use dstu_docs::document_parser;
-pub mod document_processing_service;
+pub use dstu_anki::document_processing_service;
 pub use dstu_docs::docx_handout;
 pub use dstu_vfs::dstu;
-pub mod enhanced_anki_service;
+pub use dstu_anki::enhanced_anki_service;
 pub use dstu_core::error_details;
 pub use dstu_core::error_recovery;
 pub mod essay_grading;
@@ -68,7 +68,14 @@ pub use dstu_storage::feature_flags;
 pub use dstu_storage::file_manager;
 pub use dstu_vfs::file_stream_protocol;
 pub use dstu_vision::figure_extractor; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
-pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
+// FSRS 闪卡复习服务（独立于题库 review_plans）
+// 实现已下沉到 dstu-anki，这里按原路径重导出；用到题库（QuestionBankService）的跨域单测
+// 留在 app，并保持原测试路径 `fsrs_review_service::tests`。
+pub mod fsrs_review_service {
+    pub use dstu_anki::fsrs_review_service::*;
+    #[cfg(test)]
+    mod tests;
+}
 pub use dstu_learning::fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
@@ -150,7 +157,7 @@ pub use dstu_platform::startup_gate;
 pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub use dstu_storage::startup_cleanup;
 #[allow(dead_code)]
-pub mod streaming_anki_service;
+pub use dstu_anki::streaming_anki_service;
 pub use dstu_learning::study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
 pub mod system_notification;
@@ -224,6 +231,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_mcp",
     "dstu_vision",
     "dstu_learning",
+    "dstu_anki",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
