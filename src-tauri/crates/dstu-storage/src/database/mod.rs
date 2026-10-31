@@ -1,6 +1,6 @@
-pub(crate) mod maintenance;
+pub mod maintenance;
 mod manager;
-pub(crate) mod sql_util;
+pub mod sql_util;
 
 pub use manager::DatabaseManager;
 
@@ -8095,8 +8095,8 @@ mod tests {
     /// `Database::new` 本身不建表（schema 由 MigrationCoordinator 在应用
     /// 启动时统一管理），需先走迁移路径。
     fn setup_migrated_db(app_data_dir: &std::path::Path) -> anyhow::Result<Database> {
-        use crate::data_governance::migration::coordinator::MigrationCoordinator;
-        use crate::data_governance::schema_registry::DatabaseId;
+        use crate::migration::coordinator::MigrationCoordinator;
+        use crate::schema_registry::DatabaseId;
 
         let mut coordinator =
             MigrationCoordinator::new(app_data_dir.to_path_buf()).with_audit_db(None);

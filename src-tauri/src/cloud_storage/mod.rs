@@ -64,16 +64,18 @@ mod traits;
 pub mod verified_publish;
 mod webdav;
 
+pub(crate) use crate::data_space::device_id::normalize_device_id;
+pub use crate::data_space::device_id::{
+    device_id_short_hash, generate_device_id_after_restore, get_device_id,
+    persist_device_id_after_restore, rotate_device_id_after_restore,
+};
 pub use config::{
     CloudStorageConfig, CloudStorageConfigError, FtpConfig, PlatformStorageCapabilities, S3Config,
     StorageProvider, WebDavConfig,
 };
-pub(crate) use sync_manager::normalize_device_id;
 pub use sync_manager::{
-    device_id_short_hash, generate_device_id_after_restore, get_device_id,
-    last_encryption_memory_persist_failure, persist_device_id_after_restore,
-    rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult,
-    EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
+    last_encryption_memory_persist_failure, BackupVersion, CloudManifest, CloudSyncManager,
+    DownloadResult, EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
 };
 pub(crate) use traits::is_sync_cancelled;
 pub use traits::{

@@ -462,7 +462,7 @@ impl LlmUsageDatabase {
         #[cfg(feature = "data_governance")]
         {
             mod llm_usage_migrations {
-                refinery::embed_migrations!("migrations/llm_usage");
+                refinery::embed_migrations!("../../migrations/llm_usage");
             }
 
             let mut conn = self.get_conn()?;
@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn test_direct_initializer_repairs_v20260824_column_without_history() {
         mod migrations {
-            refinery::embed_migrations!("migrations/llm_usage");
+            refinery::embed_migrations!("../../migrations/llm_usage");
         }
 
         let temp_dir = TempDir::new().expect("temp dir");
@@ -663,7 +663,7 @@ mod tests {
         )
         .expect("old writer insert");
         conn.execute_batch(include_str!(
-            "../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+            "../../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
         ))
         .expect("persist interrupted ALTER");
         drop(conn);

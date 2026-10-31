@@ -153,7 +153,7 @@ const V001_EXPECTED_COLUMNS: &[(&str, &str)] = &[
 pub const V20260130_INIT: MigrationDef = MigrationDef::new(
     20260130,
     "init",
-    include_str!("../../../migrations/chat_v2/V20260130__init.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260130__init.sql"),
 )
 .with_expected_tables(V001_EXPECTED_TABLES)
 .with_expected_columns(V001_EXPECTED_COLUMNS)
@@ -166,7 +166,7 @@ pub const V20260130_INIT: MigrationDef = MigrationDef::new(
 pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
     20260131,
     "add_change_log",
-    include_str!("../../../migrations/chat_v2/V20260131__add_change_log.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260131__add_change_log.sql"),
 )
 .with_expected_tables(&["__change_log"])
 .idempotent();
@@ -180,7 +180,7 @@ pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
 pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
     20260201,
     "add_sync_fields",
-    include_str!("../../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
 )
 .with_expected_indexes(CHAT_V2_V20260201_SYNC_INDEXES)
 .idempotent();
@@ -217,7 +217,7 @@ const CHAT_V2_V20260201_SYNC_INDEXES: &[&str] = &[
 pub const V20260202_SCHEMA_REPAIR: MigrationDef = MigrationDef::new(
     20260202,
     "schema_repair",
-    include_str!("../../../migrations/chat_v2/V20260202__schema_repair.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260202__schema_repair.sql"),
 )
 .with_expected_tables(&["sleep_block"])
 .with_expected_indexes(&[
@@ -231,7 +231,7 @@ pub const V20260202_SCHEMA_REPAIR: MigrationDef = MigrationDef::new(
 pub const V20260203_ENSURE_SUBAGENT_TASK: MigrationDef = MigrationDef::new(
     20260203,
     "ensure_subagent_task",
-    include_str!("../../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
 )
 .with_expected_tables(&["subagent_task"])
 .with_expected_indexes(&["idx_subagent_task_status", "idx_subagent_task_recovery"])
@@ -241,7 +241,7 @@ pub const V20260203_ENSURE_SUBAGENT_TASK: MigrationDef = MigrationDef::new(
 pub const V20260204_SESSION_GROUPS: MigrationDef = MigrationDef::new(
     20260204,
     "session_groups",
-    include_str!("../../../migrations/chat_v2/V20260204__session_groups.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260204__session_groups.sql"),
 )
 .with_expected_tables(&["chat_v2_session_groups"])
 .with_expected_indexes(&[
@@ -256,7 +256,7 @@ pub const V20260204_SESSION_GROUPS: MigrationDef = MigrationDef::new(
 pub const V20260207_ACTIVE_SKILL_IDS: MigrationDef = MigrationDef::new(
     20260207,
     "active_skill_ids_json",
-    include_str!("../../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
 )
 .idempotent();
 
@@ -264,7 +264,7 @@ pub const V20260207_ACTIVE_SKILL_IDS: MigrationDef = MigrationDef::new(
 pub const V20260221_GROUP_PINNED_RESOURCES: MigrationDef = MigrationDef::new(
     20260221,
     "group_pinned_resources",
-    include_str!("../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
 )
 .idempotent();
 
@@ -272,7 +272,7 @@ pub const V20260221_GROUP_PINNED_RESOURCES: MigrationDef = MigrationDef::new(
 pub const V20260301_CONTENT_SEARCH_AND_TAGS: MigrationDef = MigrationDef::new(
     20260301,
     "content_search_and_tags",
-    include_str!("../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
 )
 .with_expected_tables(&["chat_v2_content_fts", "chat_v2_session_tags"])
 .with_expected_indexes(&["idx_session_tags_tag", "idx_session_tags_type"])
@@ -282,7 +282,7 @@ pub const V20260301_CONTENT_SEARCH_AND_TAGS: MigrationDef = MigrationDef::new(
 pub const V20260302_SUBAGENT_TASK_SCHEMA_ALIGN: MigrationDef = MigrationDef::new(
     20260302,
     "subagent_task_schema_align",
-    include_str!("../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
 )
 .with_expected_columns(&[
     ("subagent_task", "initial_task"),
@@ -296,7 +296,7 @@ pub const V20260302_SUBAGENT_TASK_SCHEMA_ALIGN: MigrationDef = MigrationDef::new
 pub const V20260306_SKILL_STATE_JSON: MigrationDef = MigrationDef::new(
     20260306,
     "skill_state_json",
-    include_str!("../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
 )
 .with_expected_columns(&[("chat_v2_session_state", "skill_state_json")])
 .idempotent();
@@ -305,7 +305,7 @@ pub const V20260306_SKILL_STATE_JSON: MigrationDef = MigrationDef::new(
 pub const V20260502_ARCHIVE_LEGACY_DELETED_SESSIONS: MigrationDef = MigrationDef::new(
     20260502,
     "archive_legacy_deleted_sessions",
-    include_str!("../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
 )
 .idempotent();
 
@@ -313,7 +313,7 @@ pub const V20260502_ARCHIVE_LEGACY_DELETED_SESSIONS: MigrationDef = MigrationDef
 pub const V20260510_ADD_COMPACTION: MigrationDef = MigrationDef::new(
     20260510,
     "add_compaction",
-    include_str!("../../../migrations/chat_v2/V20260510__add_compaction.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260510__add_compaction.sql"),
 )
 .with_expected_tables(&["chat_v2_compactions"])
 .with_expected_columns(&[
@@ -328,7 +328,7 @@ pub const V20260510_ADD_COMPACTION: MigrationDef = MigrationDef::new(
 pub const V20260516_ADD_TITLE_LOCKED: MigrationDef = MigrationDef::new(
     20260516,
     "add_title_locked",
-    include_str!("../../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260516__add_title_locked.sql"),
 )
 .with_expected_columns(&[("chat_v2_sessions", "title_locked")])
 .idempotent();
@@ -337,21 +337,21 @@ pub const V20260516_ADD_TITLE_LOCKED: MigrationDef = MigrationDef::new(
 pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
     20260523,
     "add_missing_sync_coverage",
-    include_str!("../../../migrations/chat_v2/V20260523__add_missing_sync_coverage.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260523__add_missing_sync_coverage.sql"),
 );
 
 /// V20260524: 为 __change_log 增加字段增量元数据
 pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
     20260524,
     "add_change_log_field_deltas",
-    include_str!("../../../migrations/chat_v2/V20260524__add_change_log_field_deltas.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260524__add_change_log_field_deltas.sql"),
 );
 
 /// V20260527: 添加本地工作区数据库删除队列表
 pub const V20260527_ADD_WORKSPACE_DELETION_QUEUE: MigrationDef = MigrationDef::new(
     20260527,
     "add_workspace_deletion_queue",
-    include_str!("../../../migrations/chat_v2/V20260527__add_workspace_deletion_queue.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260527__add_workspace_deletion_queue.sql"),
 )
 .with_expected_tables(&["__workspace_deletion_queue"])
 .with_expected_indexes(&["idx__workspace_deletion_queue_retry"])
@@ -361,7 +361,7 @@ pub const V20260527_ADD_WORKSPACE_DELETION_QUEUE: MigrationDef = MigrationDef::n
 pub const V20260528_RESOURCES_TYPE_CHECK_REBUILD: MigrationDef = MigrationDef::new(
     20260528,
     "resources_type_check_rebuild",
-    include_str!("../../../migrations/chat_v2/V20260528__resources_type_check_rebuild.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260528__resources_type_check_rebuild.sql"),
 )
 .with_expected_columns(&[
     ("resources", "type"),
@@ -379,7 +379,7 @@ pub const V20260528_RESOURCES_TYPE_CHECK_REBUILD: MigrationDef = MigrationDef::n
 pub const V20260711_SESSION_TAGS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
     20260711,
     "session_tags_sync_coverage",
-    include_str!("../../../migrations/chat_v2/V20260711__session_tags_sync_coverage.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260711__session_tags_sync_coverage.sql"),
 )
 .idempotent();
 
@@ -387,7 +387,7 @@ pub const V20260711_SESSION_TAGS_SYNC_COVERAGE: MigrationDef = MigrationDef::new
 pub const V20260717_GROUP_PREFERRED_RUNTIME_ROOT: MigrationDef = MigrationDef::new(
     20260717,
     "group_preferred_runtime_root",
-    include_str!("../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
 )
 .with_expected_columns(&[
     ("chat_v2_session_groups", "default_runtime_root_id"),
@@ -402,7 +402,9 @@ pub const V20260717_GROUP_PREFERRED_RUNTIME_ROOT: MigrationDef = MigrationDef::n
 pub const V20260719_FTS_BLOCKTYPE_COVERAGE: MigrationDef = MigrationDef::new(
     20260719,
     "fts_blocktype_coverage_and_indexes",
-    include_str!("../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"),
+    include_str!(
+        "../../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
+    ),
 )
 .with_expected_indexes(&["idx_chat_v2_sessions_status_updated"])
 .idempotent();
@@ -410,7 +412,7 @@ pub const V20260719_FTS_BLOCKTYPE_COVERAGE: MigrationDef = MigrationDef::new(
 pub const V20260720_COMPACTION_LINEAGE_AND_SYNC: MigrationDef = MigrationDef::new(
     20260720,
     "compaction_lineage_and_sync",
-    include_str!("../../../migrations/chat_v2/V20260720__compaction_lineage_and_sync.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260720__compaction_lineage_and_sync.sql"),
 )
 .with_expected_columns(&[
     ("chat_v2_compactions", "previous_compaction_id"),
@@ -439,7 +441,7 @@ pub const V20260720_COMPACTION_LINEAGE_AND_SYNC: MigrationDef = MigrationDef::ne
 pub const V20260721_WORKSPACE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
     20260721,
     "workspace_deletion_intent_journal",
-    include_str!("../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"),
 )
 .with_expected_tables(&["__file_deletion_journal"])
 .with_expected_columns(&[
@@ -472,7 +474,7 @@ pub const V20260721_WORKSPACE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationD
 pub const V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY: MigrationDef = MigrationDef::new(
     20260806,
     "prompt_cache_replay_consistency",
-    include_str!("../../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"),
 )
 .with_expected_tables(&["chat_v2_blocks"])
 .with_expected_columns(&[
@@ -493,7 +495,7 @@ pub const V20260806_PROMPT_CACHE_REPLAY_CONSISTENCY: MigrationDef = MigrationDef
 pub const V20260905_GOAL_TABLE: MigrationDef = MigrationDef::new(
     20260905,
     "goal_table",
-    include_str!("../../../migrations/chat_v2/V20260905__goal_table.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260905__goal_table.sql"),
 )
 .with_expected_tables(&["chat_v2_goals"])
 .with_expected_columns(&[
@@ -521,7 +523,7 @@ pub const V20260905_GOAL_TABLE: MigrationDef = MigrationDef::new(
 pub const V20260907_CONNECTOR_OPERATIONS: MigrationDef = MigrationDef::new(
     20260907,
     "connector_operations",
-    include_str!("../../../migrations/chat_v2/V20260907__connector_operations.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260907__connector_operations.sql"),
 )
 .with_expected_tables(&["connector_operations"])
 .with_expected_columns(&[
@@ -546,7 +548,7 @@ pub const V20260907_CONNECTOR_OPERATIONS: MigrationDef = MigrationDef::new(
 pub const V20260908_COMPLETION_OUTBOX: MigrationDef = MigrationDef::new(
     20260908,
     "completion_outbox",
-    include_str!("../../../migrations/chat_v2/V20260908__completion_outbox.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260908__completion_outbox.sql"),
 )
 .with_expected_tables(&["completion_outbox"])
 .with_expected_columns(&[
@@ -565,7 +567,7 @@ pub const V20260908_COMPLETION_OUTBOX: MigrationDef = MigrationDef::new(
 pub const V20260909_SKILL_USAGE_CANDIDATES: MigrationDef = MigrationDef::new(
     20260909,
     "skill_usage_candidates",
-    include_str!("../../../migrations/chat_v2/V20260909__skill_usage_candidates.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260909__skill_usage_candidates.sql"),
 )
 .with_expected_tables(&["skill_usage", "skill_candidates"])
 .with_expected_columns(&[
@@ -593,7 +595,7 @@ pub const V20260909_SKILL_USAGE_CANDIDATES: MigrationDef = MigrationDef::new(
 pub const V20260910_REVOCATION_EPOCHS_AND_BUDGET: MigrationDef = MigrationDef::new(
     20260910,
     "revocation_epochs_and_budget",
-    include_str!("../../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"),
+    include_str!("../../../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"),
 )
 .with_expected_tables(&["revocation_epochs", "budget_snapshots"])
 .with_expected_columns(&[

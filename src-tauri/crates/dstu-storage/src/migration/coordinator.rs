@@ -20,8 +20,8 @@ use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::data_governance::schema_registry::{DatabaseId, SchemaRegistry};
 use crate::data_space::startup_health::StartupComponentHealth;
+use crate::schema_registry::{DatabaseId, SchemaRegistry};
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {
@@ -1152,7 +1152,7 @@ impl MigrationCoordinator {
     }
 
     /// 检查数据库依赖是否已满足
-    pub(crate) fn check_dependencies(
+    pub fn check_dependencies(
         &self,
         db_id: &DatabaseId,
         report: &MigrationReport,
@@ -1344,10 +1344,7 @@ impl MigrationCoordinator {
     /// 获取当前 schema 版本
     ///
     /// 从 Refinery 的 `refinery_schema_history` 表读取最新版本。
-    pub(crate) fn get_current_version(
-        &self,
-        conn: &rusqlite::Connection,
-    ) -> Result<u32, MigrationError> {
+    pub fn get_current_version(&self, conn: &rusqlite::Connection) -> Result<u32, MigrationError> {
         // 检查 Refinery 的 schema history 表是否存在
         let table_exists: bool = conn
             .query_row(
@@ -1694,7 +1691,7 @@ impl MigrationCoordinator {
         // 使用 embed_migrations! 宏嵌入迁移文件
         // 迁移文件路径相对于 Cargo.toml 所在目录
         mod vfs_migrations {
-            refinery::embed_migrations!("migrations/vfs");
+            refinery::embed_migrations!("../../migrations/vfs");
         }
 
         Ok(vfs_migrations::migrations::runner())
@@ -1704,7 +1701,7 @@ impl MigrationCoordinator {
     #[cfg(feature = "data_governance")]
     fn create_chat_v2_runner(&self) -> Result<refinery::Runner, MigrationError> {
         mod chat_v2_migrations {
-            refinery::embed_migrations!("migrations/chat_v2");
+            refinery::embed_migrations!("../../migrations/chat_v2");
         }
 
         Ok(chat_v2_migrations::migrations::runner())
@@ -1714,7 +1711,7 @@ impl MigrationCoordinator {
     #[cfg(feature = "data_governance")]
     fn create_mistakes_runner(&self) -> Result<refinery::Runner, MigrationError> {
         mod mistakes_migrations {
-            refinery::embed_migrations!("migrations/mistakes");
+            refinery::embed_migrations!("../../migrations/mistakes");
         }
 
         Ok(mistakes_migrations::migrations::runner())
@@ -1724,7 +1721,7 @@ impl MigrationCoordinator {
     #[cfg(feature = "data_governance")]
     fn create_llm_usage_runner(&self) -> Result<refinery::Runner, MigrationError> {
         mod llm_usage_migrations {
-            refinery::embed_migrations!("migrations/llm_usage");
+            refinery::embed_migrations!("../../migrations/llm_usage");
         }
 
         Ok(llm_usage_migrations::migrations::runner())
@@ -2197,7 +2194,7 @@ impl MigrationCoordinator {
 
     /// 记录 checksum 修复的审计日志
     fn log_checksum_repair_audit(&self, id: &DatabaseId, repair_details: &[String]) {
-        use crate::data_governance::audit::AuditRepository;
+        use crate::audit::AuditRepository;
 
         let Some(audit_db_path) = &self.audit_db_path else {
             return;
@@ -2219,8 +2216,8 @@ impl MigrationCoordinator {
             "count": repair_details.len(),
         });
 
-        let log = crate::data_governance::audit::AuditLog::new(
-            crate::data_governance::audit::AuditOperation::Migration {
+        let log = crate::audit::AuditLog::new(
+            crate::audit::AuditOperation::Migration {
                 from_version: 0,
                 to_version: 0,
                 applied_count: 0,
@@ -2322,7 +2319,7 @@ impl MigrationCoordinator {
         self.ensure_change_log_table(
             conn,
             "vfs",
-            include_str!("../../../migrations/vfs/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/vfs/V20260131__add_change_log.sql"),
             "resources",
         )?;
 
@@ -2422,7 +2419,7 @@ impl MigrationCoordinator {
         &self,
         conn: &rusqlite::Connection,
     ) -> Result<(), MigrationError> {
-        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const INIT_SQL: &str = include_str!("../../../../migrations/vfs/V20260130__init.sql");
         const NOTES_VERSIONS_DROPPED: i32 = 20260214;
         const NOTE_PROPS_ADDED: i32 = 20260824;
 
@@ -2490,7 +2487,7 @@ impl MigrationCoordinator {
         &self,
         conn: &rusqlite::Connection,
     ) -> Result<(), MigrationError> {
-        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const INIT_SQL: &str = include_str!("../../../../migrations/vfs/V20260130__init.sql");
 
         // init.sql 时代创建、但被后续迁移有意退役的对象：
         // - V20260202 重建 vfs_index_segments（DROP 旧表连带索引）后只重建
@@ -3574,7 +3571,7 @@ END;",
         // 可安全回放补齐缺失表，不影响已有数据。
         if self.table_exists(conn, "chat_v2_sessions")? {
             conn.execute_batch(include_str!(
-                "../../../migrations/chat_v2/V20260130__init.sql"
+                "../../../../migrations/chat_v2/V20260130__init.sql"
             ))
             .map_err(|e| {
                 MigrationError::Database(format!("回放 chat_v2 init 补齐缺失表失败: {}", e))
@@ -3585,7 +3582,7 @@ END;",
         self.ensure_change_log_table(
             conn,
             "chat_v2",
-            include_str!("../../../migrations/chat_v2/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260131__add_change_log.sql"),
             "chat_v2_sessions",
         )?;
 
@@ -3928,7 +3925,7 @@ END;",
             self.ensure_change_log_table(
                 conn,
                 "mistakes",
-                include_str!("../../../migrations/mistakes/V20260131__add_change_log.sql"),
+                include_str!("../../../../migrations/mistakes/V20260131__add_change_log.sql"),
                 "mistakes",
             )?;
         } else {
@@ -3936,7 +3933,7 @@ END;",
             self.ensure_change_log_table(
                 conn,
                 "mistakes",
-                include_str!("../../../migrations/mistakes/V20260131__add_change_log.sql"),
+                include_str!("../../../../migrations/mistakes/V20260131__add_change_log.sql"),
                 "mistakes",
             )?;
         }
@@ -4061,13 +4058,13 @@ END;",
 
         // 回放 init，补齐缺失表/索引/触发器
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .map_err(|e| MigrationError::Database(format!("回放 mistakes init 失败: {}", e)))?;
 
         // 旧库在 baseline 被跳过时，可能缺失 change_log 表；该脚本幂等，可安全回放。
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260131__add_change_log.sql"
+            "../../../../migrations/mistakes/V20260131__add_change_log.sql"
         ))
         .map_err(|e| {
             MigrationError::Database(format!("回放 mistakes add_change_log 失败: {}", e))
@@ -4153,7 +4150,7 @@ END;",
         self.ensure_change_log_table(
             conn,
             "llm_usage",
-            include_str!("../../../migrations/llm_usage/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/llm_usage/V20260131__add_change_log.sql"),
             "llm_usage_logs",
         )?;
 
@@ -5090,7 +5087,7 @@ END;",
         applied_count: usize,
         duration_ms: u64,
     ) -> Result<(), MigrationError> {
-        use crate::data_governance::audit::AuditRepository;
+        use crate::audit::AuditRepository;
 
         // 如果没有配置审计数据库，仅记录日志
         let Some(audit_db_path) = &self.audit_db_path else {
@@ -5164,7 +5161,7 @@ END;",
         error_message: &str,
         duration_ms: u64,
     ) {
-        use crate::data_governance::audit::{AuditLog, AuditOperation, AuditRepository};
+        use crate::audit::{AuditLog, AuditOperation, AuditRepository};
 
         let Some(audit_db_path) = &self.audit_db_path else {
             tracing::warn!(
@@ -5310,7 +5307,7 @@ END;",
         &self,
         mut component_health: Option<&mut StartupComponentHealth>,
     ) -> Result<SchemaRegistry, MigrationError> {
-        use crate::data_governance::schema_registry::{get_data_contract_version, DatabaseStatus};
+        use crate::schema_registry::{get_data_contract_version, DatabaseStatus};
 
         tracing::info!("📊 [SchemaAggregation] 开始聚合数据库 Schema 状态...");
         let mut registry = SchemaRegistry::new();
@@ -5431,8 +5428,8 @@ END;",
     fn read_migration_history(
         &self,
         conn: &rusqlite::Connection,
-    ) -> Result<Vec<crate::data_governance::schema_registry::MigrationRecord>, MigrationError> {
-        use crate::data_governance::schema_registry::MigrationRecord;
+    ) -> Result<Vec<crate::schema_registry::MigrationRecord>, MigrationError> {
+        use crate::schema_registry::MigrationRecord;
 
         // 检查 Refinery 的 schema history 表是否存在
         let table_exists: bool = conn
@@ -5531,7 +5528,7 @@ END;",
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::data_governance::migration::{
+    use crate::migration::{
         chat_v2::CHAT_V2_MIGRATIONS, CHAT_V2_MIGRATION_SET, LLM_USAGE_MIGRATION_SET,
         VFS_MIGRATION_SET,
     };
@@ -5935,7 +5932,7 @@ mod tests {
         let (coordinator, _temp_dir) = create_test_coordinator();
 
         // 所有数据库都不存在时，待执行迁移数量应等于全部迁移条目数
-        let expected: usize = crate::data_governance::migration::ALL_MIGRATION_SETS
+        let expected: usize = crate::migration::ALL_MIGRATION_SETS
             .iter()
             .map(|set| set.count())
             .sum();
@@ -6021,7 +6018,7 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
         conn.execute(
@@ -6100,7 +6097,7 @@ mod tests {
     #[test]
     fn test_extract_vfs_init_create_tables_includes_change_log_parents() {
         let statements = MigrationCoordinator::extract_create_table_if_not_exists(include_str!(
-            "../../../migrations/vfs/V20260130__init.sql"
+            "../../../../migrations/vfs/V20260130__init.sql"
         ));
         let names: Vec<&str> = statements.iter().map(|(name, _)| name.as_str()).collect();
         for required in ["resources", "notes", "questions", "review_plans", "folders"] {
@@ -6221,7 +6218,7 @@ mod tests {
     fn build_sparse_v20260130_recorded_vfs(
         coordinator: &MigrationCoordinator,
     ) -> rusqlite::Connection {
-        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const INIT_SQL: &str = include_str!("../../../../migrations/vfs/V20260130__init.sql");
         let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
         std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
         let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -6576,7 +6573,7 @@ mod tests {
         coordinator: &MigrationCoordinator,
         dropped: &[(&str, &str, &str)],
     ) -> rusqlite::Connection {
-        const INIT_SQL: &str = include_str!("../../../migrations/vfs/V20260130__init.sql");
+        const INIT_SQL: &str = include_str!("../../../../migrations/vfs/V20260130__init.sql");
         let db_path = coordinator.app_data_dir().join("databases").join("vfs.db");
         std::fs::create_dir_all(db_path.parent().unwrap()).unwrap();
         let conn = rusqlite::Connection::open(&db_path).unwrap();
@@ -6817,7 +6814,7 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
         conn.execute(
@@ -6866,7 +6863,7 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
 
@@ -7678,13 +7675,17 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         for sql in [
-            include_str!("../../../migrations/mistakes/V20260130__init.sql"),
-            include_str!("../../../migrations/mistakes/V20260131__add_change_log.sql"),
-            include_str!("../../../migrations/mistakes/V20260201__add_sync_fields.sql"),
-            include_str!("../../../migrations/mistakes/V20260207__add_template_preview_data.sql"),
-            include_str!("../../../migrations/mistakes/V20260208__add_hot_query_indexes.sql"),
-            include_str!("../../../migrations/mistakes/V20260209__anki_card_dedup_unique.sql"),
-            include_str!("../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"),
+            include_str!("../../../../migrations/mistakes/V20260130__init.sql"),
+            include_str!("../../../../migrations/mistakes/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/mistakes/V20260201__add_sync_fields.sql"),
+            include_str!(
+                "../../../../migrations/mistakes/V20260207__add_template_preview_data.sql"
+            ),
+            include_str!("../../../../migrations/mistakes/V20260208__add_hot_query_indexes.sql"),
+            include_str!("../../../../migrations/mistakes/V20260209__anki_card_dedup_unique.sql"),
+            include_str!(
+                "../../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"
+            ),
         ] {
             conn.execute_batch(sql).unwrap();
         }
@@ -7825,7 +7826,7 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
 
@@ -7871,7 +7872,7 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
 
@@ -8332,15 +8333,15 @@ mod tests {
         // 按顺序执行前三个迁移的 SQL，建立 v20260201 状态
         let conn = rusqlite::Connection::open(&db_path).unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/llm_usage/V20260130__init.sql"
+            "../../../../migrations/llm_usage/V20260130__init.sql"
         ))
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/llm_usage/V20260131__add_change_log.sql"
+            "../../../../migrations/llm_usage/V20260131__add_change_log.sql"
         ))
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/llm_usage/V20260201__add_sync_fields.sql"
+            "../../../../migrations/llm_usage/V20260201__add_sync_fields.sql"
         ))
         .unwrap();
 
@@ -8400,19 +8401,19 @@ mod tests {
         let conn = rusqlite::Connection::open(&db_path).unwrap();
         // 执行前四个迁移建立 v20260207 状态
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260130__init.sql"
+            "../../../../migrations/mistakes/V20260130__init.sql"
         ))
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260131__add_change_log.sql"
+            "../../../../migrations/mistakes/V20260131__add_change_log.sql"
         ))
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260201__add_sync_fields.sql"
+            "../../../../migrations/mistakes/V20260201__add_sync_fields.sql"
         ))
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/mistakes/V20260207__add_template_preview_data.sql"
+            "../../../../migrations/mistakes/V20260207__add_template_preview_data.sql"
         ))
         .unwrap();
 
@@ -9192,7 +9193,7 @@ mod tests {
         )
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+            "../../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
         ))
         .unwrap();
         assert!(

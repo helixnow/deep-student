@@ -26,7 +26,7 @@ use super::definitions::{MigrationDef, MigrationSet};
 pub const V20260130_INIT: MigrationDef = MigrationDef::new(
     20260130,
     "init",
-    include_str!("../../../migrations/mistakes/V20260130__init.sql"),
+    include_str!("../../../../migrations/mistakes/V20260130__init.sql"),
 )
 .with_expected_tables(V001_EXPECTED_TABLES)
 .with_expected_columns(KEY_COLUMNS_VERIFICATION)
@@ -40,7 +40,7 @@ pub const V20260130_INIT: MigrationDef = MigrationDef::new(
 pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
     20260131,
     "add_change_log",
-    include_str!("../../../migrations/mistakes/V20260131__add_change_log.sql"),
+    include_str!("../../../../migrations/mistakes/V20260131__add_change_log.sql"),
 )
 .with_expected_tables(&["__change_log"])
 .idempotent();
@@ -54,7 +54,7 @@ pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
 pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
     20260201,
     "add_sync_fields",
-    include_str!("../../../migrations/mistakes/V20260201__add_sync_fields.sql"),
+    include_str!("../../../../migrations/mistakes/V20260201__add_sync_fields.sql"),
 )
 .with_expected_indexes(MISTAKES_V20260201_SYNC_INDEXES)
 .idempotent();
@@ -63,7 +63,7 @@ pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
 pub const V20260207_TEMPLATE_PREVIEW_DATA: MigrationDef = MigrationDef::new(
     20260207,
     "add_template_preview_data",
-    include_str!("../../../migrations/mistakes/V20260207__add_template_preview_data.sql"),
+    include_str!("../../../../migrations/mistakes/V20260207__add_template_preview_data.sql"),
 )
 .idempotent();
 
@@ -71,7 +71,7 @@ pub const V20260207_TEMPLATE_PREVIEW_DATA: MigrationDef = MigrationDef::new(
 pub const V20260208_HOT_QUERY_INDEXES: MigrationDef = MigrationDef::new(
     20260208,
     "add_hot_query_indexes",
-    include_str!("../../../migrations/mistakes/V20260208__add_hot_query_indexes.sql"),
+    include_str!("../../../../migrations/mistakes/V20260208__add_hot_query_indexes.sql"),
 )
 .with_expected_indexes(MISTAKES_V20260208_HOT_INDEXES)
 .idempotent();
@@ -80,7 +80,7 @@ pub const V20260208_HOT_QUERY_INDEXES: MigrationDef = MigrationDef::new(
 pub const V20260209_ANKI_CARD_DEDUP_UNIQUE: MigrationDef = MigrationDef::new(
     20260209,
     "anki_card_dedup_unique",
-    include_str!("../../../migrations/mistakes/V20260209__anki_card_dedup_unique.sql"),
+    include_str!("../../../../migrations/mistakes/V20260209__anki_card_dedup_unique.sql"),
 )
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
@@ -89,7 +89,7 @@ pub const V20260209_ANKI_CARD_DEDUP_UNIQUE: MigrationDef = MigrationDef::new(
 pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
     20260523,
     "add_missing_sync_coverage",
-    include_str!("../../../migrations/mistakes/V20260523__add_missing_sync_coverage.sql"),
+    include_str!("../../../../migrations/mistakes/V20260523__add_missing_sync_coverage.sql"),
 )
 .idempotent();
 
@@ -97,7 +97,7 @@ pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
 pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
     20260524,
     "add_change_log_field_deltas",
-    include_str!("../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"),
+    include_str!("../../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"),
 )
 .idempotent();
 
@@ -110,7 +110,7 @@ pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = Migrati
     20260705,
     "add_document_tasks_source_session_id",
     include_str!(
-        "../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"
+        "../../../../migrations/mistakes/V20260705__add_document_tasks_source_session_id.sql"
     ),
 )
 .with_expected_columns(&[("document_tasks", "source_session_id")])
@@ -122,7 +122,7 @@ pub const V20260705_ADD_DOCUMENT_TASKS_SOURCE_SESSION_ID: MigrationDef = Migrati
 pub const V20260709_FLASHCARD_FSRS: MigrationDef = MigrationDef::new(
     20260709,
     "flashcard_fsrs",
-    include_str!("../../../migrations/mistakes/V20260709__flashcard_fsrs.sql"),
+    include_str!("../../../../migrations/mistakes/V20260709__flashcard_fsrs.sql"),
 )
 .with_expected_tables(&["anki_decks", "fsrs_card_states", "fsrs_review_logs"])
 .with_expected_indexes(&["idx_fsrs_due", "idx_fsrs_logs_card"])
@@ -138,7 +138,7 @@ pub const V20260709_FLASHCARD_FSRS: MigrationDef = MigrationDef::new(
 pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
     20260710,
     "anki_export_receipt",
-    include_str!("../../../migrations/mistakes/V20260710__anki_export_receipt.sql"),
+    include_str!("../../../../migrations/mistakes/V20260710__anki_export_receipt.sql"),
 )
 .with_expected_columns(&[
     ("anki_cards", "anki_note_id"),
@@ -152,7 +152,7 @@ pub const V20260710_ANKI_EXPORT_RECEIPT: MigrationDef = MigrationDef::new(
 pub const V20260711_FSRS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
     20260711,
     "fsrs_sync_coverage",
-    include_str!("../../../migrations/mistakes/V20260711__fsrs_sync_coverage.sql"),
+    include_str!("../../../../migrations/mistakes/V20260711__fsrs_sync_coverage.sql"),
 )
 .with_expected_columns(&[
     ("fsrs_card_states", "device_id"),
@@ -175,7 +175,7 @@ pub const V20260711_FSRS_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
 pub const V20260712_FSRS_UNDO_SNAPSHOT: MigrationDef = MigrationDef::new(
     20260712,
     "fsrs_undo_snapshot",
-    include_str!("../../../migrations/mistakes/V20260712__fsrs_undo_snapshot.sql"),
+    include_str!("../../../../migrations/mistakes/V20260712__fsrs_undo_snapshot.sql"),
 )
 .with_expected_columns(&[("fsrs_review_logs", "state_before_json")])
 .with_expected_indexes(&["idx_fsrs_logs_state_active"])
@@ -188,7 +188,7 @@ pub const V20260712_FSRS_UNDO_SNAPSHOT: MigrationDef = MigrationDef::new(
 pub const V20260713_APKG_CARD_IDENTITY: MigrationDef = MigrationDef::new(
     20260713,
     "apkg_card_identity",
-    include_str!("../../../migrations/mistakes/V20260713__apkg_card_identity.sql"),
+    include_str!("../../../../migrations/mistakes/V20260713__apkg_card_identity.sql"),
 )
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
@@ -197,7 +197,7 @@ pub const V20260713_APKG_CARD_IDENTITY: MigrationDef = MigrationDef::new(
 pub const V20260714_AUTOMATION_SCHEDULER: MigrationDef = MigrationDef::new(
     20260714,
     "automation_scheduler",
-    include_str!("../../../migrations/mistakes/V20260714__automation_scheduler.sql"),
+    include_str!("../../../../migrations/mistakes/V20260714__automation_scheduler.sql"),
 )
 .with_expected_tables(&["automation_definitions", "automation_runs"])
 .with_expected_indexes(&[
@@ -213,7 +213,7 @@ pub const V20260714_AUTOMATION_SCHEDULER: MigrationDef = MigrationDef::new(
 pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
     20260715,
     "harden_automation_runtime",
-    include_str!("../../../migrations/mistakes/V20260715__harden_automation_runtime.sql"),
+    include_str!("../../../../migrations/mistakes/V20260715__harden_automation_runtime.sql"),
 )
 .with_expected_columns(&[
     ("automation_runs", "lease_expires_at"),
@@ -226,7 +226,7 @@ pub const V20260715_HARDEN_AUTOMATION_RUNTIME: MigrationDef = MigrationDef::new(
 pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new(
     20260721,
     "trusted_automation_profile",
-    include_str!("../../../migrations/mistakes/V20260721__trusted_automation_profile.sql"),
+    include_str!("../../../../migrations/mistakes/V20260721__trusted_automation_profile.sql"),
 )
 .with_expected_columns(&[("automation_definitions", "trusted_profile_json")])
 .idempotent();
@@ -235,7 +235,7 @@ pub const V20260721_TRUSTED_AUTOMATION_PROFILE: MigrationDef = MigrationDef::new
 pub const V20260722_FSRS_SCHEDULER_HARDENING: MigrationDef = MigrationDef::new(
     20260722,
     "fsrs_scheduler_hardening",
-    include_str!("../../../migrations/mistakes/V20260722__fsrs_scheduler_hardening.sql"),
+    include_str!("../../../../migrations/mistakes/V20260722__fsrs_scheduler_hardening.sql"),
 )
 .with_expected_columns(&[
     ("fsrs_card_states", "leech"),
@@ -251,7 +251,7 @@ pub const V20260722_FSRS_SCHEDULER_HARDENING: MigrationDef = MigrationDef::new(
 pub const V20260723_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
     20260723,
     "template_user_state",
-    include_str!("../../../migrations/mistakes/V20260723__template_user_state.sql"),
+    include_str!("../../../../migrations/mistakes/V20260723__template_user_state.sql"),
 )
 .with_expected_columns(&[
     ("custom_anki_templates", "user_modified"),
@@ -267,7 +267,7 @@ pub const V20260723_TEMPLATE_USER_STATE: MigrationDef = MigrationDef::new(
 pub const V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED: MigrationDef = MigrationDef::new(
     20260724,
     "anki_dedup_index_exclude_deleted",
-    include_str!("../../../migrations/mistakes/V20260724__anki_dedup_index_exclude_deleted.sql"),
+    include_str!("../../../../migrations/mistakes/V20260724__anki_dedup_index_exclude_deleted.sql"),
 )
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
@@ -279,7 +279,9 @@ pub const V20260724_ANKI_DEDUP_INDEX_EXCLUDE_DELETED: MigrationDef = MigrationDe
 pub const V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON: MigrationDef = MigrationDef::new(
     20260824,
     "normalize_anki_card_optional_json",
-    include_str!("../../../migrations/mistakes/V20260824__normalize_anki_card_optional_json.sql"),
+    include_str!(
+        "../../../../migrations/mistakes/V20260824__normalize_anki_card_optional_json.sql"
+    ),
 )
 .idempotent();
 
@@ -287,7 +289,7 @@ pub const V20260824_NORMALIZE_ANKI_CARD_OPTIONAL_JSON: MigrationDef = MigrationD
 pub const V20261005_FSRS_LEARNING_STEP: MigrationDef = MigrationDef::new(
     20261005,
     "fsrs_learning_step",
-    include_str!("../../../migrations/mistakes/V20261005__fsrs_learning_step.sql"),
+    include_str!("../../../../migrations/mistakes/V20261005__fsrs_learning_step.sql"),
 )
 .with_expected_columns(&[("fsrs_card_states", "learning_step")])
 .idempotent();
@@ -296,7 +298,7 @@ pub const V20261005_FSRS_LEARNING_STEP: MigrationDef = MigrationDef::new(
 pub const V20260720_FSRS_MASTERY_OUTBOX: MigrationDef = MigrationDef::new(
     20260720,
     "fsrs_mastery_outbox",
-    include_str!("../../../migrations/mistakes/V20260720__fsrs_mastery_outbox.sql"),
+    include_str!("../../../../migrations/mistakes/V20260720__fsrs_mastery_outbox.sql"),
 )
 .with_expected_columns(&[
     ("fsrs_review_logs", "mastery_synced_at"),

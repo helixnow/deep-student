@@ -50,8 +50,11 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 #[test]
 fn p2_1_get_file_decoded_is_gone_from_src() {
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
     let mut files = Vec::new();
     collect_rs_files(&src_root, &mut files);
+    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
+    collect_rs_files(&crates_root, &mut files);
     assert!(
         !files.is_empty(),
         "src/ 下应能收集到 .rs 文件（路径基准漂移？）"

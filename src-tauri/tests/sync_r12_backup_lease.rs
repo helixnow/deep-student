@@ -444,6 +444,25 @@ fn source_lock_backup_lease_has_zero_production_wiring() {
         "backup_lease 必须零生产接线（增量备份尚未实现），却被引用于: {backup_lease_referencers:?}"
     );
 
+    // 搬家后的成员 crate 同样零 backup_lease 接线（src/ 之外还有 crates/*/src）。
+    let crates_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates");
+    let mut crate_files = Vec::new();
+    rust_files(&crates_root, &mut crate_files);
+    let mut crate_referencers = Vec::new();
+    for path in &crate_files {
+        let content = std::fs::read_to_string(path).unwrap();
+        if content.contains("backup_lease")
+            || content.contains("BACKUP_LEASE_HELD")
+            || content.contains("acquire_backup_repo_lease")
+        {
+            crate_referencers.push(path.display().to_string());
+        }
+    }
+    assert!(
+        crate_referencers.is_empty(),
+        "backup_lease 在 crates/ 下必须零生产接线，却被引用于: {crate_referencers:?}"
+    );
+
     // 记录级同步入口仍然只使用 sync_lease / E_SYNC_LEASE_HELD。
     let commands_sync =
         std::fs::read_to_string(src_root.join("data_governance/commands_sync.rs")).unwrap();

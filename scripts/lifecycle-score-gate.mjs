@@ -93,7 +93,7 @@ const legacyCommandChecks = [
 ];
 
 for (const check of legacyCommandChecks) {
-  const out = grepSearch(check.pattern, ['src', 'src-tauri/src']);
+  const out = grepSearch(check.pattern, ['src', 'src-tauri/src', 'src-tauri/crates']);
   ensure(!out, check.message);
 }
 

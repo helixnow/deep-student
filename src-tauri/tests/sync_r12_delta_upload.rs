@@ -814,6 +814,8 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
     assert!(!sync_manager.contains("publish_verified_staging"));
 
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
+    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
 
     // 生产代码（排除模块自身与 mod.rs 声明行）零 delta_upload 引用。
     let mut referencing_files = Vec::new();
@@ -835,6 +837,12 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
             "cloud_storage/mod.rs".to_string(),
         ],
         "delta_upload must have zero production callers"
+    );
+    let mut crate_referencing_files = Vec::new();
+    collect_files_mentioning(&crates_root, "delta_upload", &mut crate_referencing_files);
+    assert!(
+        crate_referencing_files.is_empty(),
+        "crates/ 下的生产代码不得引用 delta_upload: {crate_referencing_files:?}"
     );
 
     // cloud_storage/mod.rs 只允许声明行本身（无 pub use、无命令层导出）。
@@ -873,6 +881,16 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
         vec!["cloud_storage/delta_upload.rs".to_string()],
         "publish_verified_staging must have zero production callers; \
          this suite being green does NOT mean incremental backup is implemented"
+    );
+    let mut crate_publish_referencers = Vec::new();
+    collect_files_mentioning(
+        &crates_root,
+        "publish_verified_staging",
+        &mut crate_publish_referencers,
+    );
+    assert!(
+        crate_publish_referencers.is_empty(),
+        "publish_verified_staging 在 crates/ 下不得有生产调用方: {crate_publish_referencers:?}"
     );
 
     // 模块文档必须如实声明未接线状态。

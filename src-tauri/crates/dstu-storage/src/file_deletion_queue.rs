@@ -10,10 +10,29 @@ use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
+/// 笔记资产引用检查回调（存储层对上层 vfs 的唯一回调）。
+///
+/// `deletions journal` 在删除 `notes_assets/` 下的文件前必须确认没有笔记历史
+/// 仍引用它。该判断需要 vfs 的笔记仓储（正文/属性里的资产引用提取），而 vfs 是
+/// 上层模块；由 `extensions::register_extensions()` 在启动时把 vfs 的实现注册
+/// 进来。全部注册后行为与拆分前直接调用一致。
+pub trait NoteAssetRetention: Send + Sync {
+    /// `conn` 为 vfs 数据库连接；返回该资产是否仍被笔记引用。
+    fn asset_is_referenced(&self, conn: &Connection, relative_path: &str) -> Result<bool, String>;
+}
+
+static NOTE_ASSET_RETENTION: OnceLock<Arc<dyn NoteAssetRetention>> = OnceLock::new();
+
+/// 注册笔记资产引用检查实现（幂等：只有第一次生效）。
+pub fn register_note_asset_retention(retention: Arc<dyn NoteAssetRetention>) {
+    let _ = NOTE_ASSET_RETENTION.set(retention);
+}
+
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum DeletionJournalError {
+pub enum DeletionJournalError {
     #[error("删除意图数据库错误: {0}")]
     Database(#[from] rusqlite::Error),
     #[error("删除意图文件错误: {0}")]
@@ -39,10 +58,10 @@ pub(crate) enum DeletionJournalError {
     ReferencedNoteAsset(String),
 }
 
-type JournalResult<T> = Result<T, DeletionJournalError>;
+pub type JournalResult<T> = Result<T, DeletionJournalError>;
 
 #[derive(Debug, Clone)]
-pub(crate) struct PreparedDeletionIntent {
+pub struct PreparedDeletionIntent {
     pub operation_id: String,
     pub entity_key: String,
     pub local_path: String,
@@ -72,13 +91,13 @@ fn open_queue_connection(path: &Path) -> JournalResult<Connection> {
     Ok(conn)
 }
 
-pub(crate) fn active_data_dir_from_runtime_base(runtime_base: &Path) -> PathBuf {
+pub fn active_data_dir_from_runtime_base(runtime_base: &Path) -> PathBuf {
     crate::data_space::get_data_space_manager()
         .map(|mgr| mgr.active_dir())
         .unwrap_or_else(|| runtime_base.to_path_buf())
 }
 
-pub(crate) fn asset_key_from_relative_path(relative_path: &str) -> Option<String> {
+pub fn asset_key_from_relative_path(relative_path: &str) -> Option<String> {
     let normalized = relative_path.trim().replace('\\', "/");
     let normalized = normalized.trim_start_matches("./").trim_start_matches('/');
     if normalized.is_empty() {
@@ -105,7 +124,7 @@ pub(crate) fn asset_key_from_relative_path(relative_path: &str) -> Option<String
     }
 }
 
-pub(crate) fn asset_local_path_from_key(key: &str) -> JournalResult<PathBuf> {
+pub fn asset_local_path_from_key(key: &str) -> JournalResult<PathBuf> {
     let local = key
         .strip_prefix("active/")
         .or_else(|| key.strip_prefix("app_data/"))
@@ -116,7 +135,7 @@ pub(crate) fn asset_local_path_from_key(key: &str) -> JournalResult<PathBuf> {
     Ok(PathBuf::from(local))
 }
 
-pub(crate) fn delete_asset_with_journal(
+pub fn delete_asset_with_journal(
     active_dir: &Path,
     key: &str,
     local_path: &Path,
@@ -140,7 +159,7 @@ pub(crate) fn delete_asset_with_journal(
 /// 该函数刻意不要求 autocommit：需要删除业务元数据的调用方应先开启
 /// SAVEPOINT/transaction，在同一事务中调用本函数并删除元数据，提交成功后再
 /// 调用 [`finish_asset_deletion_with_conn`] 触碰物理文件。
-pub(crate) fn prepare_asset_deletion_with_conn(
+pub fn prepare_asset_deletion_with_conn(
     conn: &Connection,
     active_dir: &Path,
     key: &str,
@@ -184,7 +203,7 @@ pub(crate) fn prepare_asset_deletion_with_conn(
     )
 }
 
-pub(crate) fn finish_asset_deletion_with_conn(
+pub fn finish_asset_deletion_with_conn(
     conn: &Connection,
     active_dir: &Path,
     intent: &PreparedDeletionIntent,
@@ -192,13 +211,13 @@ pub(crate) fn finish_asset_deletion_with_conn(
     finish_prepared_intent(conn, TargetKind::Asset, active_dir, intent)
 }
 
-pub(crate) fn recover_asset_deletions(active_dir: &Path) -> JournalResult<usize> {
+pub fn recover_asset_deletions(active_dir: &Path) -> JournalResult<usize> {
     let db_path = active_dir.join("databases").join("vfs.db");
     let conn = open_queue_connection(&db_path)?;
     recover_prepared_intents(&conn, TargetKind::Asset, active_dir)
 }
 
-pub(crate) fn recover_workspace_deletions(
+pub fn recover_workspace_deletions(
     conn: &Connection,
     workspaces_dir: &Path,
 ) -> JournalResult<usize> {
@@ -209,7 +228,7 @@ pub(crate) fn recover_workspace_deletions(
 
 /// Atomically stores `prepared` and removes workspace metadata.  The caller
 /// must only delete the database file after this function returns.
-pub(crate) fn prepare_workspace_deletion(
+pub fn prepare_workspace_deletion(
     conn: &Connection,
     workspaces_dir: &Path,
     workspace_id: &str,
@@ -265,7 +284,7 @@ pub(crate) fn prepare_workspace_deletion(
     }
 }
 
-pub(crate) fn finish_workspace_deletion(
+pub fn finish_workspace_deletion(
     conn: &Connection,
     workspaces_dir: &Path,
     intent: &PreparedDeletionIntent,
@@ -276,10 +295,7 @@ pub(crate) fn finish_workspace_deletion(
 /// A recreated workspace supersedes already-ready deletion tombstones.  This is
 /// deliberately separate from prepared recovery: callers must recover first,
 /// then create/open the replacement database, then cancel stale ready entries.
-pub(crate) fn cancel_ready_workspace_deletion(
-    conn: &Connection,
-    workspace_id: &str,
-) -> JournalResult<()> {
+pub fn cancel_ready_workspace_deletion(conn: &Connection, workspace_id: &str) -> JournalResult<()> {
     ensure_autocommit(conn)?;
     conn.execute_batch("SAVEPOINT workspace_deletion_recreated")?;
     let result = (|| -> JournalResult<()> {
@@ -495,11 +511,13 @@ fn note_asset_is_referenced(conn: &Connection, path: &Path) -> JournalResult<boo
     if !has_history {
         return Ok(false);
     }
-    crate::vfs::repos::note_revision_repo::NoteRevisionRepo::asset_is_referenced(
-        conn,
-        &path.to_string_lossy(),
-    )
-    .map_err(|e| DeletionJournalError::InvalidState(e.to_string()))
+    match NOTE_ASSET_RETENTION.get() {
+        Some(retention) => retention
+            .asset_is_referenced(conn, &path.to_string_lossy())
+            .map_err(DeletionJournalError::InvalidState),
+        // 未注册（纯存储层单元测试）时没有笔记仓储可查，保持“无引用”语义。
+        None => Ok(false),
+    }
 }
 
 fn finish_prepared_intent_uncommitted(
@@ -724,7 +742,7 @@ fn path_to_storage(path: &Path) -> JournalResult<String> {
         .ok_or_else(|| DeletionJournalError::InvalidPath(path.display().to_string()))
 }
 
-pub(crate) fn hash_file(path: &Path) -> JournalResult<String> {
+pub fn hash_file(path: &Path) -> JournalResult<String> {
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
@@ -769,7 +787,7 @@ mod tests {
         )
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"
+            "../../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"
         ))
         .unwrap();
         (temp, active_dir)

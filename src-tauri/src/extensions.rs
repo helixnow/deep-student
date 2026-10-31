@@ -17,5 +17,7 @@ pub fn register_extensions() {
         crate::memory::delete_hook::install_vfs_hooks();
         crate::media::transcriber_hook::install_vfs_hooks();
         crate::question_export_service::vfs_hook::install_vfs_hooks();
+        // 存储层删除 journal 的笔记资产引用检查（vfs 笔记仓储实现）。
+        crate::vfs::repos::note_revision_repo::install_storage_hooks();
     });
 }

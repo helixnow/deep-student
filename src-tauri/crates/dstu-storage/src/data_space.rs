@@ -13,6 +13,9 @@ use tracing::{error, info, warn};
 #[allow(dead_code)]
 pub mod startup_health;
 
+// 设备 ID：绑定在数据空间根目录的持久身份（vfs/云同步共用）。
+pub mod device_id;
+
 const LEGACY_MIGRATION_PENDING_FILE: &str = ".legacy_migration_pending";
 const LEGACY_MIGRATION_COMPLETE_FILE: &str = ".legacy_migration_complete";
 const PURGE_MARKER_FILE: &str = ".purge_on_next_start";

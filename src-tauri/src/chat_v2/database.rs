@@ -20,8 +20,7 @@ const DATABASE_FILENAME: &str = "chat_v2.db";
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准。
 /// 定义在迁移层 `data_governance::migration::chat_v2::CHAT_V2_SCHEMA_VERSION`。
-pub const CURRENT_SCHEMA_VERSION: u32 =
-    crate::data_governance::migration::chat_v2::CHAT_V2_SCHEMA_VERSION;
+pub const CURRENT_SCHEMA_VERSION: u32 = dstu_storage::migration::chat_v2::CHAT_V2_SCHEMA_VERSION;
 
 /// SQLite 连接池类型
 pub type ChatV2Pool = Pool<SqliteConnectionManager>;
