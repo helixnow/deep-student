@@ -19,6 +19,7 @@
     "src/app/hooks/useWebviewSettingsPersistence.ts",
     "src/app/hooks/useDesktopSidebarElements.tsx",
     "src/app/hooks/useSessionSidebarContextSync.ts",
-    "src/app/hooks/useDesktopTitlebarInteractions.ts"
+    "src/app/hooks/useDesktopTitlebarInteractions.ts",
+    "src/app/hooks/useClassicToWorkbenchHandoff.ts"
   ]
 }
