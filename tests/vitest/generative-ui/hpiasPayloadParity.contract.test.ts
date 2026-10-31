@@ -21,7 +21,7 @@ describe('hpiasPayloadParity contract', () => {
 
   it('Rust payloads.rs declares all required lifecycle event builders', () => {
     const payloadsSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/src/hpias/payloads.rs'),
+      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/payloads.rs'),
       'utf8',
     );
     for (const eventType of HPIAS_REQUIRED_LIFECYCLE_TYPES) {
@@ -32,7 +32,7 @@ describe('hpiasPayloadParity contract', () => {
 
   it('Rust service.rs exposes replaceable backend trait', () => {
     const serviceSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/src/hpias/service.rs'),
+      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/service.rs'),
       'utf8',
     );
     expect(serviceSrc).toContain('trait HpiasResearchBackend');
@@ -55,7 +55,7 @@ describe('hpiasPayloadParity contract', () => {
 
   it('retrieval backend module exists with VFS wiring', () => {
     const retrievalSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/src/hpias/retrieval_backend.rs'),
+      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/retrieval_backend.rs'),
       'utf8',
     );
     expect(retrievalSrc).toContain('RetrievalHpiasResearchService');
@@ -64,7 +64,7 @@ describe('hpiasPayloadParity contract', () => {
 
   it('synthesis module wires LLM markdown generation', () => {
     const synthesisSrc = fs.readFileSync(
-      path.join(REPO, 'src-tauri/src/hpias/synthesis.rs'),
+      path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/synthesis.rs'),
       'utf8',
     );
     expect(synthesisSrc).toContain('build_synthesis_llm_prompt');

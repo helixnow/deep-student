@@ -3289,6 +3289,7 @@ dependencies = [
  "dstu-mcp",
  "dstu-notes",
  "dstu-platform",
+ "dstu-research",
  "dstu-security",
  "dstu-storage",
  "dstu-util",
@@ -3941,6 +3942,26 @@ dependencies = [
  "url",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "dstu-research"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "dstu-core",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-vfs",
+ "log",
+ "nanoid",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

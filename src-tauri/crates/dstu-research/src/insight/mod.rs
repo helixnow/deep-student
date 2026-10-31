@@ -8,7 +8,9 @@
 //! - 删除走墓碑 + 派生传播，永不自动物理删除。
 
 pub mod disclosure;
-pub mod handlers;
+// Tauri 命令层 `handlers` 取 app 的 `State<'_, AppState>`，留在 app（src-tauri/src/insight/handlers.rs），
+// 由 app lib.rs 的 `pub mod insight { pub use dstu_research::insight::*; pub mod handlers; }`
+// 保持 `crate::insight::handlers::*` 原路径。
 pub mod jobs;
 pub mod recall;
 pub mod repo;
