@@ -11,16 +11,8 @@
  * 5. 所有 invoke 调用必须 try-catch 并记录错误
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import i18n from 'i18next';
-import { formatUserFacingErrorWithThinkingBudgetHint, getErrorMessage } from '@/utils/errorUtils';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
-import {
-  clearAdapterErrorFlag,
-  reportAdapterError,
-  type AdapterErrorStoreApi,
-} from './errors/adapterErrorChannel';
+import type { UnlistenFn } from '@tauri-apps/api/event';
+import type { AdapterErrorStoreApi } from './errors/adapterErrorChannel';
 import type { StoreApi } from 'zustand';
 import type {
   ChatStore,
@@ -28,248 +20,41 @@ import type {
   LoadSessionResponseType,
   SessionRestoreBaseline,
 } from '../core/types';
-import { streamingBlockSaver } from '../core/middleware/autoSave';
 import type { BackendEvent } from '../core/middleware/eventBridge';
-import {
-  handleBackendEventWithSequence,
-  handleStreamComplete,
-  handleStreamAbort,
-  clearEventContext,
-  flushPendingBackendEvents,
-  registerBridgeStoreResolver,
-  resetBridgeState,
-} from '../core/middleware/eventBridge';
-import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
-import type { AnkiCard, ApiConfig, ModelAssignments } from '@/types';
-import { autoSave } from '../core/middleware/autoSave';
-import { chunkBuffer } from '../core/middleware/chunkBuffer';
-import { modeRegistry } from '../registry';
-// 🔧 优化：sessionManager 仅用于获取元数据，不再用于获取 Store 状态
-// 构造函数现在接收 storeApi 参数，消除了循环依赖的核心问题
-import { sessionManager } from '../core/session/sessionManager';
-import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
-import { getTestModeConfig } from '@/utils/testMode';
+import { registerBridgeStoreResolver } from '../core/middleware/eventBridge';
+import type { AnkiCard } from '@/types';
 import type {
   SendOptions,
-  SendMessageRequest,
   SessionEventPayload,
   SessionSettings,
   EditMessageResult,
   RetryMessageResult,
   BranchSessionResult,
 } from './types';
-import {
-  buildSendContextRefs,
-  buildSendContextRefsWithPaths,
-  getPendingContextRefs,
-  validateAndCleanupContextRefs,
-  logSendContextRefsSummary,
-  collectContextTypeHints,
-  truncateContextByTokens,
-} from './contextHelper';
-import { ensureModelsCacheLoaded, getCachedModels, getModelInfoByConfigId, isModelMultimodal, isModelMultimodalAsync } from '../hooks/useAvailableModels';
 import type { ContextRef } from '../resources/types';
-import type { ContextSnapshot } from '../context/types';
-import { logAttachment } from '../debug/chatV2Logger';
-import {
-  filterStagedPathMap,
-  materializeRetainedBinaryContextRefs,
-  prepareRetainedAttachmentsAndCommit,
-} from './attachmentMaterialization';
-import { collectSchemaToolIds } from '../tools/collector';
-import { McpService } from '@/mcp/mcpService';
-import { skillRegistry } from '../skills/registry';
-import { renderSkillContentWithArtifact } from '../skills/artifactSkeleton';
-import { getSkillRuntimeAdmissionWithDependencies } from '../skills/runtimeAdmission';
-import { SKILL_INSTRUCTION_TYPE_ID, type SkillDefinition } from '../skills/types';
-import { groupCache } from '../core/store/groupCache';
-import { BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
-import { getAvailableSearchEngines } from '@/mcp/searchEngineAvailability';
-import {
-  LOAD_SKILLS_TOOL_SCHEMA,
-  AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY,
-  generateAvailableSkillsPrompt,
-  getLoadedSkills,
-  getSessionAvailableSkillsPrompt,
-  hydrateSessionAvailableSkillsSnapshot,
-  preloadAutoLoadSkillsForSession,
-} from '../skills/progressiveDisclosure';
-import { PROACTIVE_KB_SYSTEM_PROMPT } from '../skills/builtin-tools/knowledge-retrieval';
-// 🆕 工作区状态（用于传递 workspaceId 到后端）
-import { useWorkspaceStore, resolveWorkspaceIdForSession } from '../workspace/workspaceStore';
-import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
-import { isAvailableChatModel } from '@/utils/chatModelEligibility';
-import {
-  emitTemplateDesignerToolEvent,
-  isTemplateDesignerToolName,
-} from '../debug/templateDesignerDebug';
-import { buildAttachmentRequestAudit } from '../debug/attachmentRequestAudit';
-// 🆕 2026-02-16: 工具调用生命周期调试
-import { resetRound as resetToolCallRound } from '@/debug-panel/plugins/ToolCallLifecycleDebugPlugin';
-import { isTauriRuntimeAvailable } from './tauri/runtime';
-import {
-  LOG_PREFIX,
-  adapterConsole as console,
-  buildStreamStartDiagData,
-  emitChatAnkiDebugLifecycle,
-} from './tauri/diagnostics';
-import { isActiveStreamConflict, normalizeStreamTerminalError } from './tauri/errors';
-import {
-  blockEventChannel,
-  sessionEventChannel,
-  matchesLlmRequestBodySession,
-  isSessionEventForSession,
-} from './tauri/sessionEvents';
-import {
-  compactionReasonI18nKey,
-  createContextTrimThrottle,
-  parseCompactionCompletedPayload,
-  parseCompactionFailedReason,
-  parseContextTrimmedPayload,
-} from '../utils/compactionFeedback';
-import {
-  LOAD_SESSION_TAIL_LIMIT,
-  FULL_HISTORY_IDLE_TIMEOUT_MS,
-  FULL_HISTORY_MAX_RETRIES,
-  FULL_HISTORY_RETRY_BASE_MS,
-  HISTORY_BACKFILL_PAGE_SIZE,
-  HISTORY_BACKFILL_MAX_PAGES,
-  isRetryableTerminalAnkiBlock,
-  getCanvasNoteIdFromModeState,
-  type NormalizedChatModelSelection,
-} from './tauri/requestHelpers';
-import {
-  STREAM_COMPLETE_SETTLE_DELAY_MS,
-  ABORT_TIMEOUT_MS,
-  type StreamExpectation,
-  type PendingStreamCompletion,
-  createStreamExpectation,
-  withStreamExpectationMessageId,
-  syncStreamExpectationState,
-  shouldClearStreamExpectation,
-  isStaleByExpectationTimestamp as isStaleByExpectationTimestampPure,
-  isStaleByStreamGeneration as isStaleByStreamGenerationPure,
-  isTargetingCurrentStreamMessage as isTargetingCurrentStreamMessagePure,
-  canAdoptRetryReboundStreamStart as canAdoptRetryReboundStreamStartPure,
-  shouldIgnoreStreamLifecycleEvent,
-  buildStreamReconnectMeta,
-  clearStreamReconnectMetaPatch,
-  streamErrorMetaPatch,
-  forceSettlePendingStreamCompletion as forceSettlePendingStreamCompletionPure,
-} from './tauri/streamLifecycle';
-
-// ★ context_trimmed 提示节流：模块级（按 sessionId 隔离），
-// 适配器重建（会话切换/重连）也不会重置窗口导致刷屏
-const contextTrimThrottle = createContextTrimThrottle();
-
-/** rawRequests 中保留完整请求体的最近轮次数（更早轮次 body 置为占位符防止内存无上限增长） */
-const MAX_FULL_RAW_REQUEST_ROUNDS = 10;
-/** 被截断轮次的 body 占位符 */
-const RAW_REQUEST_BODY_TRUNCATED = '[truncated]';
-
-/**
- * R4 目录原子化 + R5 换代消费：sessionId → available_skills 快照冻结的
- * 持久化确认状态（带代号维度，R4 复核第 3 点：集合升级为 Map）。
- *
- * 模块级（与 progressiveDisclosure 的内存快照 Map 同生命周期）：适配器重建
- * （切换会话再回来）不丢「后端已确认写入」这一事实，避免重复冻结 RPC。
- *
- * - persistedAvailableSkillsSnapshotGenerations：后端已确认持久化的快照及其
- *   代号。来源有二：首次发送时 await 冻结 RPC 成功；或 loadSession 从
- *   session.metadata 回灌（回灌值本身就来自持久化权威，无需再冻结）。
- *   条目内 pendingGeneration 记录 loadSession 见到的**有效**待换代标记
- *   （由 compaction 落盘事务写入，见 r4-catalog-compaction.md）：存在时
- *   下次发送不复用冻结字节，改按 live registry 重新生成目录并再走一次
- *   freeze RPC 兑现换代；不存在时行为与 R4 逐字节一致——已确认即复用，
- *   绝不重复冻结，first-write-wins 普通路径无回退。
- * - inflightAvailableSkillsSnapshotFreezes：冻结 RPC 进行中。并发发送（多变体
- *   重试等）共享同一 Promise，避免同 session 重复 RPC —— 后端 first-write-wins
- *   （换代兑现时为新代内 first-write-wins）本身幂等，共享只是省调用。
- *
- * 两表都缺键 = 从未触发，或上次冻结失败（fail-closed 已中止那次发送）；
- * 下次发送会重试冻结（普通路径用内存快照的同一字节；待换代路径按 live
- * registry 重新生成，重试不丢换代意图——pendingGeneration 只在兑现成功后清除）。
- */
-interface AvailableSkillsSnapshotPersistedState {
-  /** 已确认持久化的快照所属代号（缺键语义 = 第 0 代，与后端一致） */
-  generation: number;
-  /**
-   * loadSession 带回的有效待换代代号（仅严格大于 generation 时记录，
-   * 脏数据按无标记处理，与后端 freeze 原语的 effective_pending 门闩同语义）。
-   * 兑现成功后清除（generation := pendingGeneration）。
-   */
-  pendingGeneration?: number;
-}
-const persistedAvailableSkillsSnapshotGenerations = new Map<
-  string,
-  AvailableSkillsSnapshotPersistedState
->();
-const inflightAvailableSkillsSnapshotFreezes = new Map<string, Promise<string>>();
-
-/**
- * session.metadata 中「当前冻结快照所属代号」键（R4-#6 引入；与后端
- * `AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY`（repo.rs）对齐，
- * 后端文档明确前端消费侧对齐字符串字面量即可）。普通首冻不写该键，
- * 缺键 = 第 0 代。
- */
-const AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY =
-  'availableSkillsSnapshotGeneration';
-
-/**
- * session.metadata 中「待生效代号」键（R4-#6；仅由 compaction 落盘事务
- * 写入，与后端 `AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY`
- * 对齐）。存在且大于当前代号 = 后端声明目录已过期，前端下次构建 system
- * 时按 live registry 重新生成并经 freeze 原语作为新代 first write 兑现。
- */
-const AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY =
-  'availableSkillsSnapshotPendingGeneration';
-
-/** 解析当前快照代号：缺键 / 类型不符视为 0（旧会话兼容，与后端同语义）。 */
-function readAvailableSkillsSnapshotGeneration(
-  metadata: Record<string, unknown> | undefined
-): number {
-  const raw = metadata?.[AVAILABLE_SKILLS_SNAPSHOT_GENERATION_METADATA_KEY];
-  return typeof raw === 'number' && Number.isInteger(raw) && raw >= 0 ? raw : 0;
-}
-
-/**
- * 解析有效待换代代号：仅严格大于当前代号才有效（pending <= generation 的
- * 脏数据按无标记处理，镜像后端 freeze 原语的覆盖门闩，保证前端不会在
- * 后端会拒绝覆盖的场景下白白重算目录）。
- */
-function readAvailableSkillsSnapshotPendingGeneration(
-  metadata: Record<string, unknown> | undefined,
-  generation: number
-): number | undefined {
-  const raw =
-    metadata?.[AVAILABLE_SKILLS_SNAPSHOT_PENDING_GENERATION_METADATA_KEY];
-  return typeof raw === 'number' && Number.isInteger(raw) && raw > generation
-    ? raw
-    : undefined;
-}
-
-/** chat_v2_load_messages_page 响应（messages/blocks 结构与 load_session 一致） */
-interface LoadMessagesPageResponseType {
-  messages: LoadSessionResponseType['messages'];
-  blocks: LoadSessionResponseType['blocks'];
-  totalMessageCount: number;
-  offset: number;
-  limit: number;
-}
-
-interface LlmRequestBodyEventPayload {
-  streamEvent: string;
-  model: string;
-  url: string;
-  requestBody: unknown;
-  logFilePath?: string | null;
-  messageId?: string;
-}
-
-interface BuildSendOptionsSnapshot {
-  state?: ChatStore;
-  pendingContextRefs?: ContextRef[];
-}
+import { emitChatAnkiDebugLifecycle } from './tauri/diagnostics';
+import type { NormalizedChatModelSelection } from './tauri/requestHelpers';
+import type { StreamExpectation, PendingStreamCompletion } from './tauri/streamLifecycle';
+import type {
+  TauriAdapterHost,
+  LlmRequestBodyEventPayload,
+  BuildSendOptionsSnapshot,
+} from './tauri/adapterHost';
+import * as streamTracking from './tauri/streamTracking';
+import * as adapterLifecycle from './tauri/adapterLifecycle';
+import * as ankiRetryReconcile from './tauri/ankiRetryReconcile';
+import * as ankiGenerationEvents from './tauri/ankiGenerationEvents';
+import * as blockEvents from './tauri/blockEvents';
+import * as sessionEventHandler from './tauri/sessionEventHandler';
+import * as sendOperations from './tauri/sendOperations';
+import * as messageOperations from './tauri/messageOperations';
+import * as historyLoading from './tauri/historyLoading';
+import * as sessionCommands from './tauri/sessionCommands';
+import * as variantOperations from './tauri/variantOperations';
+import * as modelSelection from './tauri/modelSelection';
+import * as skillRuntime from './tauri/skillRuntime';
+import * as sendOptions from './tauri/sendOptions';
+import * as availableSkillsSnapshot from './tauri/availableSkillsSnapshot';
 
 // ============================================================================
 // 辅助函数
@@ -281,13 +66,6 @@ interface BuildSendOptionsSnapshot {
 // ============================================================================
 // ChatV2TauriAdapter
 // ============================================================================
-
-function getRegisteredSkillRuntimeAdmission(skill: SkillDefinition) {
-  return getSkillRuntimeAdmissionWithDependencies(
-    skill,
-    (skillId) => skillRegistry.get(skillId),
-  );
-}
 
 /**
  * Chat V2 Tauri 适配器
@@ -395,6 +173,15 @@ export class ChatV2TauriAdapter {
     return (this.storeApi as unknown as AdapterErrorStoreApi | null) ?? null;
   }
 
+  /** 拆分模块的 host 视图：即本实例（经 tauri/ 模块委托时作为首参传入）。 */
+  private asHost(): TauriAdapterHost {
+    return this as unknown as TauriAdapterHost;
+  }
+
+  private getAnkiEventOwnerAdapterId(): number | null {
+    return ChatV2TauriAdapter.ankiEventOwnerAdapterId;
+  }
+
   private claimSessionRuntimeOwnership(): boolean {
     const currentOwner = ChatV2TauriAdapter.sessionRuntimeOwners.get(this.sessionId);
     if (!currentOwner || currentOwner.adapterInstanceId <= this.adapterInstanceId) {
@@ -417,38 +204,15 @@ export class ChatV2TauriAdapter {
   }
 
   private captureRestoreBaseline(): SessionRestoreBaseline {
-    const state = this.getCurrentState();
-    let oldestMessageTimestamp: number | undefined;
-    for (const message of state.messageMap.values()) {
-      if (
-        oldestMessageTimestamp === undefined
-        || message.timestamp < oldestMessageTimestamp
-      ) {
-        oldestMessageTimestamp = message.timestamp;
-      }
-    }
-    return {
-      messageIds: new Set(state.messageMap.keys()),
-      blockIds: new Set(state.blocks.keys()),
-      oldestMessageTimestamp,
-      sessionStatus: state.sessionStatus,
-      currentStreamingMessageId: state.currentStreamingMessageId,
-    };
+    return historyLoading.captureRestoreBaseline(this.asHost());
   }
 
   private beginStreamExpectation(messageId: string): void {
-    if (!messageId) return;
-    this.cancelPendingStreamCompletion();
-    this.streamExpectation = createStreamExpectation(messageId);
+    streamTracking.beginStreamExpectation(this.asHost(), messageId);
   }
 
   private setStreamExpectationMessageId(messageId: string): void {
-    if (!messageId) return;
-    if (!this.streamExpectation) {
-      this.beginStreamExpectation(messageId);
-      return;
-    }
-    this.streamExpectation = withStreamExpectationMessageId(this.streamExpectation, messageId);
+    streamTracking.setStreamExpectationMessageId(this.asHost(), messageId);
   }
 
   private syncStreamExpectationFromEvent(
@@ -456,131 +220,47 @@ export class ChatV2TauriAdapter {
     timestamp?: number,
     streamGeneration?: number,
   ): void {
-    if (!messageId) return;
-    this.streamExpectation = syncStreamExpectationState(
-      this.streamExpectation,
-      messageId,
-      timestamp,
-      streamGeneration,
-    );
-    if (streamGeneration !== undefined) {
-      this.lastStreamGenerationByMessageId.set(messageId, streamGeneration);
-    }
+    streamTracking.syncStreamExpectationFromEvent(this.asHost(), messageId, timestamp, streamGeneration);
   }
 
   private clearStreamExpectation(messageId?: string): void {
-    if (!shouldClearStreamExpectation(this.streamExpectation, messageId)) return;
-    this.streamExpectation = null;
+    streamTracking.clearStreamExpectation(this.asHost(), messageId);
   }
 
   private cancelPendingStreamCompletion(): void {
-    if (!this.pendingStreamCompletion) return;
-    if (this.pendingStreamCompletion.timer !== null) {
-      clearTimeout(this.pendingStreamCompletion.timer);
-    }
-    this.pendingStreamCompletion = null;
+    streamTracking.cancelPendingStreamCompletion(this.asHost());
   }
 
   private armPendingStreamCompletion(pending: PendingStreamCompletion): void {
-    pending.timer = setTimeout(() => {
-      if (this.pendingStreamCompletion !== pending) return;
-      this.pendingStreamCompletion = null;
-      this.settleStreamCompletion(pending.payload);
-    }, STREAM_COMPLETE_SETTLE_DELAY_MS);
+    streamTracking.armPendingStreamCompletion(this.asHost(), pending);
   }
 
-  /**
-   * stream_complete 收尾执行体：32ms 静默窗口到期后由定时器调用，
-   * 或被 goal 续跑的新 stream_start 经 forceSettlePendingStreamCompletion
-   * 同步提前调用（见 handleSessionEvent 的 stream_start 分支）。
-   */
   private settleStreamCompletion(payload: SessionEventPayload): void {
-    if (
-      !this.isSessionRuntimeOwner()
-      || !payload.messageId
-      || !this.isTargetingCurrentStreamMessage(payload.messageId)
-      || this.isStaleByStreamGeneration(payload)
-      || this.isStaleByExpectationTimestamp(payload)
-    ) {
-      return;
-    }
-
-    // A terminal event can overtake block events from the separate channel.
-    // First drain sequence-buffered events, then flush their chunk batches,
-    // and only after that tear down the streaming state and bridge context.
-    flushPendingBackendEvents(this.getCurrentState());
-    chunkBuffer.flushSession(this.sessionId);
-    this.clearStreamExpectation(payload.messageId);
-    this.store.completeStream('success');
-    this.store.updateMessageMeta(
-      payload.messageId,
-      clearStreamReconnectMetaPatch({ clearTerminalError: true }),
-    );
-    handleStreamComplete(this.store, {
-      messageId: payload.messageId,
-      usage: payload.usage,
-    }).catch((err) => {
-      reportAdapterError({
-        code: 'stream_cleanup_failed',
-        level: 'dev',
-        sessionId: this.sessionId,
-        message: 'Error in handleStreamComplete',
-        cause: err,
-      });
-    });
+    streamTracking.settleStreamCompletion(this.asHost(), payload);
   }
 
-  /**
-   * goal 续跑竞态补丁：新 stream_start 到达时旧轮仍在静默窗口内，
-   * 同步结算旧轮（而不是把新轮当冲突丢弃）。
-   */
   private forceSettlePendingStreamCompletion(): void {
-    const pending = this.pendingStreamCompletion;
-    if (!pending) return;
-    this.pendingStreamCompletion = null;
-    forceSettlePendingStreamCompletionPure(pending, (payload) => {
-      this.settleStreamCompletion(payload);
-    });
+    streamTracking.forceSettlePendingStreamCompletion(this.asHost());
   }
 
   private scheduleStreamCompletion(payload: SessionEventPayload): void {
-    this.cancelPendingStreamCompletion();
-    const pending: PendingStreamCompletion = {
-      payload: { ...payload },
-      timer: null,
-    };
-    this.pendingStreamCompletion = pending;
-    this.armPendingStreamCompletion(pending);
+    streamTracking.scheduleStreamCompletion(this.asHost(), payload);
   }
 
-  /** Restart the quiet window whenever a block callback arrives. */
   private touchPendingStreamCompletion(): void {
-    const pending = this.pendingStreamCompletion;
-    if (!pending) return;
-    if (pending.timer !== null) {
-      clearTimeout(pending.timer);
-    }
-    this.armPendingStreamCompletion(pending);
+    streamTracking.touchPendingStreamCompletion(this.asHost());
   }
 
   private isStaleByExpectationTimestamp(payload: SessionEventPayload): boolean {
-    return isStaleByExpectationTimestampPure(this.streamExpectation, payload);
+    return streamTracking.isStaleByExpectationTimestamp(this.asHost(), payload);
   }
 
   private isStaleByStreamGeneration(payload: SessionEventPayload): boolean {
-    return isStaleByStreamGenerationPure(
-      this.streamExpectation,
-      this.lastStreamGenerationByMessageId,
-      payload,
-    );
+    return streamTracking.isStaleByStreamGeneration(this.asHost(), payload);
   }
 
   private isTargetingCurrentStreamMessage(messageId?: string): boolean {
-    return isTargetingCurrentStreamMessagePure(
-      messageId,
-      this.getCurrentState().currentStreamingMessageId,
-      this.streamExpectation?.messageId ?? null,
-    );
+    return streamTracking.isTargetingCurrentStreamMessage(this.asHost(), messageId);
   }
 
   private canAdoptRetryReboundStreamStart(
@@ -589,18 +269,7 @@ export class ChatV2TauriAdapter {
     currentStreamingMessageId: string | null,
     expectedMessageId: string | null,
   ): boolean {
-    // 仅当当前流式消息仍是“清空待重试”状态时允许重绑，
-    // 避免把普通 stale 事件误接入到现有流。
-    const currentMsg = currentStreamingMessageId
-      ? state.messageMap.get(currentStreamingMessageId)
-      : undefined;
-    return canAdoptRetryReboundStreamStartPure(
-      incomingMessageId,
-      currentStreamingMessageId,
-      expectedMessageId,
-      state.messageOperationLock,
-      currentMsg,
-    );
+    return streamTracking.canAdoptRetryReboundStreamStart(this.asHost(), state, incomingMessageId, currentStreamingMessageId, expectedMessageId);
   }
 
   private claimAnkiEventOwnership(source: string): void {
@@ -654,64 +323,12 @@ export class ChatV2TauriAdapter {
     return this.listenerRegistrationError;
   }
 
-  /**
-   * 🔧 P1 修复（2026-07-08 审阅 20 P1-2）：逐个注册监听器并收集 unlisten，失败时回滚。
-   *
-   * 原实现用 Promise.all：任一 listen reject 时整体 reject，已 resolve 的 unlisten
-   * 函数被丢弃，无法再释放（监听器闭包持有 adapter → store 引用链，既是事件重复
-   * 处理源也是内存泄漏）。改用 allSettled：部分失败时先释放全部已成功注册的
-   * 监听器，再抛出首个失败原因，保证"要么全部注册成功、要么零残留"。
-   */
-  private async registerEventListenersWithRollback(): Promise<UnlistenFn[]> {
-    const blockChannel = blockEventChannel(this.sessionId);
-    const sessionChannel = sessionEventChannel(this.sessionId);
-
-    const results = await Promise.allSettled([
-      listen<BackendEvent>(blockChannel, (event) => {
-        this.handleBlockEvent(event.payload);
-      }),
-      listen<SessionEventPayload>(sessionChannel, (event) => {
-        this.handleSessionEvent(event.payload);
-      }),
-      listen<unknown>('anki_generation_event', (event) => {
-        this.handleAnkiGenerationEvent(event.payload);
-      }),
-      // ★ 2026-02-14: 监听后端真实 LLM 请求体，替换前端 rawRequest
-      listen<LlmRequestBodyEventPayload>('chat_v2_llm_request_body', (event) => {
-        this.handleLlmRequestBody(event.payload);
-      }),
-    ]);
-
-    const fulfilledUnlisteners = results
-      .filter((r): r is PromiseFulfilledResult<UnlistenFn> => r.status === 'fulfilled')
-      .map((r) => r.value);
-    const firstRejection = results.find(
-      (r): r is PromiseRejectedResult => r.status === 'rejected'
-    );
-
-    if (firstRejection) {
-      console.warn(
-        LOG_PREFIX,
-        `Listener registration partially failed (${fulfilledUnlisteners.length}/${results.length} succeeded), rolling back`
-      );
-      this.releaseUnlisteners(fulfilledUnlisteners, 'partial registration rollback');
-      throw firstRejection.reason instanceof Error
-        ? firstRejection.reason
-        : new Error(getErrorMessage(firstRejection.reason));
-    }
-
-    return fulfilledUnlisteners;
+  private registerEventListenersWithRollback(): Promise<UnlistenFn[]> {
+    return adapterLifecycle.registerEventListenersWithRollback(this.asHost());
   }
 
-  /** 逐个安全释放 unlisten 函数（单个失败不影响其余释放）。 */
   private releaseUnlisteners(unlisteners: UnlistenFn[], reason: string): void {
-    for (const unlisten of unlisteners) {
-      try {
-        unlisten();
-      } catch (error) {
-        console.error(LOG_PREFIX, `Error during unlisten (${reason}):`, getErrorMessage(error));
-      }
-    }
+    adapterLifecycle.releaseUnlisteners(this.asHost(), unlisteners, reason);
   }
 
   /**
@@ -723,95 +340,8 @@ export class ChatV2TauriAdapter {
    * 
    * @returns 重新注册是否成功
    */
-  async retrySetupListeners(): Promise<boolean> {
-    // 🔧 重入检查：防止并发调用导致重复监听器注册
-    if (this.isRetryingListeners) {
-      console.warn(LOG_PREFIX, 'retrySetupListeners already in progress, skipping');
-      return false;
-    }
-
-    this.isRetryingListeners = true;
-    console.log(LOG_PREFIX, 'Retrying event listener setup...');
-
-    try {
-      // 清理旧的监听器（如果有）
-      for (const unlisten of this.unlisteners) {
-        try {
-          unlisten();
-        } catch (error) {
-          console.error(LOG_PREFIX, 'Error during unlisten in retry:', getErrorMessage(error));
-        }
-      }
-      this.unlisteners = [];
-      this.listenerRegistrationError = null;
-
-      const currentGeneration = ++this.setupGeneration;
-
-      // 重新注册监听器（🔧 P1: 逐个注册 + 部分失败回滚，见 registerEventListenersWithRollback）
-      const listenPromise = this.registerEventListenersWithRollback();
-
-      this.listenersReadyPromise = listenPromise.then((unlistenFns) => {
-        if (this.setupGeneration !== currentGeneration) {
-          console.warn(LOG_PREFIX, `Releasing stale retry listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
-          this.releaseUnlisteners(unlistenFns, 'stale retry generation');
-          throw new Error(`Retry listener setup became stale for session ${this.sessionId}`);
-        }
-
-        this.unlisteners.push(...unlistenFns);
-        this.claimAnkiEventOwnership('retrySetupListeners');
-        this.listenerRegistrationError = null;
-        clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
-          'listener_registration_failed',
-          'listener_retry_failed',
-        ]);
-      }).catch((err) => {
-        const isStaleSetupError = err instanceof Error && err.message.includes('Retry listener setup became stale');
-        if (isStaleSetupError) {
-          console.warn(LOG_PREFIX, 'Retry listener setup cancelled due to stale generation');
-          throw err;
-        }
-
-        const errorMsg = getErrorMessage(err);
-        this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
-        throw this.listenerRegistrationError;
-      });
-
-      await this.waitForListenersReady();
-
-      console.log(LOG_PREFIX, `Retry successful: ${this.unlisteners.length} event listeners registered`);
-      clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
-        'listener_registration_failed',
-        'listener_retry_failed',
-      ]);
-      
-      showGlobalNotification(
-        'success',
-        i18n.t('chatV2:success.listenerRetrySuccessMessage'),
-        i18n.t('chatV2:success.listenerRetrySuccess')
-      );
-      
-      return true;
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      this.listenerRegistrationError = error instanceof Error ? error : new Error(errorMsg);
-
-      reportAdapterError({
-        code: 'listener_retry_failed',
-        level: 'user',
-        sessionId: this.sessionId,
-        message: i18n.t('chatV2:error.listenerRetryFailedMessage'),
-        title: i18n.t('chatV2:error.listenerRetryFailed'),
-        cause: error,
-        retryable: true,
-        retry: () => { void this.retrySetupListeners(); },
-        storeApi: this.getErrorStoreApi(),
-      });
-      
-      return false;
-    } finally {
-      // 🔧 确保标志在方法结束时被重置
-      this.isRetryingListeners = false;
-    }
+  retrySetupListeners(): Promise<boolean> {
+    return adapterLifecycle.retrySetupListeners(this.asHost());
   }
 
   // ========================================================================
@@ -822,287 +352,8 @@ export class ChatV2TauriAdapter {
    * 初始化适配器
    * 设置事件监听器
    */
-  async setup(): Promise<void> {
-    this.ensureBridgeStoreResolver();
-    if (this.isSetup) {
-      console.warn(LOG_PREFIX, 'Already setup, skipping...');
-      // 📊 性能打点：适配器已初始化，快速路径
-      sessionSwitchPerf.mark('adapter_already_setup', { fromCache: true });
-      sessionSwitchPerf.endTrace();
-      return;
-    }
-
-    if (!isTauriRuntimeAvailable()) {
-      console.warn(LOG_PREFIX, 'Tauri runtime not available, skip setup.');
-      this.isSetup = true;
-      sessionSwitchPerf.mark('adapter_setup_skipped', { reason: 'not_tauri' });
-      sessionSwitchPerf.endTrace();
-      return;
-    }
-
-    if (!this.claimSessionRuntimeOwnership()) {
-      throw new Error(`A newer adapter owns the runtime for session ${this.sessionId}`);
-    }
-
-    // 📊 性能打点：adapter_setup_start
-    const alreadyLoadedBefore = this.store.isDataLoaded;
-    sessionSwitchPerf.mark('adapter_setup_start', { fromCache: alreadyLoadedBefore });
-
-    try {
-      // 监听块级事件: chat_v2_event_{session_id}（通道构造收敛在 registerEventListenersWithRollback）
-      const blockEventChannel = `chat_v2_event_${this.sessionId}`;
-      
-      // 🔧 调试打点：确认事件监听通道
-      logMultiVariant('adapter', 'setup_listening', {
-        sessionId: this.sessionId,
-        blockEventChannel,
-      }, 'info');
-
-      // 🚀 性能优化 V2：事件监听、数据加载、回调注入三者并行
-      // 检查是否需要加载数据
-      const alreadyLoaded = this.getCurrentState().isDataLoaded;
-      let isNewSession = false;
-      let loadError: Error | null = null;
-      const loadStartTs = performance.now();
-
-      // 📊 细粒度打点：listen 开始
-      sessionSwitchPerf.mark('listen_start');
-      
-      // 🔧 P0修复：记录当前 setup generation，防止 cleanup→re-setup 场景下旧 listener 泄漏到新 session
-      const currentGeneration = ++this.setupGeneration;
-      this.listenerRegistrationError = null;
-      
-      // 启动事件监听（不立即 await，后台注册）
-      // 🔧 P1: 逐个注册 + 部分失败回滚，见 registerEventListenersWithRollback
-      const listenPromise = this.registerEventListenersWithRollback();
-
-      this.listenersReadyPromise = listenPromise.then((unlistenFns) => {
-        // 守卫：如果 cleanup/re-setup 已使当前 generation 失效，立即释放过期监听器
-        if (this.setupGeneration !== currentGeneration) {
-          console.warn(LOG_PREFIX, `Releasing stale listeners (gen=${currentGeneration}, current=${this.setupGeneration})`);
-          this.releaseUnlisteners(unlistenFns, 'stale setup generation');
-          throw new Error(`Listener setup became stale for session ${this.sessionId}`);
-        }
-
-        this.unlisteners.push(...unlistenFns);
-        this.claimAnkiEventOwnership('setup');
-        sessionSwitchPerf.mark('listen_end');
-        this.listenerRegistrationError = null;
-        clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), [
-          'listener_registration_failed',
-          'listener_retry_failed',
-        ]);
-        console.log(LOG_PREFIX, `Listeners ready for session: ${this.sessionId}`);
-        console.log(LOG_PREFIX, `Successfully registered ${this.unlisteners.length} event listeners`);
-      }).catch((err) => {
-        const isStaleSetupError = err instanceof Error && err.message.includes('Listener setup became stale');
-        if (isStaleSetupError) {
-          console.warn(LOG_PREFIX, 'Listener setup cancelled due to stale generation');
-          throw err;
-        }
-
-        // 🆕 P1 修复：事件监听注册失败处理
-        const errorMsg = getErrorMessage(err);
-        
-        // 保存错误状态，供健康检查和重试使用
-        this.listenerRegistrationError = err instanceof Error ? err : new Error(errorMsg);
-
-        reportAdapterError({
-          code: 'listener_registration_failed',
-          level: 'user',
-          sessionId: this.sessionId,
-          message: i18n.t('chatV2:error.listenerRegistrationFailedMessage'),
-          title: i18n.t('chatV2:error.listenerRegistrationFailed'),
-          cause: err,
-          retryable: true,
-          retry: () => { void this.retrySetupListeners(); },
-          storeApi: this.getErrorStoreApi(),
-        });
-        throw this.listenerRegistrationError;
-      });
-
-      // 📊 细粒度打点：loadSession 开始
-      sessionSwitchPerf.mark('load_start', { alreadyLoaded });
-      
-      // 启动数据加载（不立即 await）
-      const loadPromise = alreadyLoaded 
-        ? Promise.resolve('cached' as const)
-        : this.loadSession().then(() => {
-            // 📊 精确打点：loadSession Promise 的 .then() 回调被调用
-            sessionSwitchPerf.mark('load_then_callback', { timing: 'entered' });
-            return 'loaded' as const;
-          }).catch((err) => {
-            loadError = err;
-            return 'error' as const;
-          });
-
-      // 同时注入回调（同步操作，不阻塞）
-      this.store.setSaveCallback(() => this.saveSession());
-      this.store.setRetryCallback((messageId, modelOverride) =>
-        this.executeRetry(messageId, modelOverride)
-      );
-      this.store.setDeleteCallback((messageId) =>
-        this.executeDelete(messageId)
-      );
-      // 🆕 P1-2: 支持传递新的上下文引用
-      this.store.setEditAndResendCallback((messageId, newContent, newContextRefs) =>
-        this.executeEditAndResend(messageId, newContent, newContextRefs)
-      );
-      this.store.setSendCallback((content, attachments, userMessageId, assistantMessageId) =>
-        this.executeSendMessage(content, attachments, userMessageId, assistantMessageId)
-      );
-      this.store.setWakeSessionCallback((content, assistantMessageId) =>
-        this.executeWakeSession(content, assistantMessageId)
-      );
-      this.store.setAbortCallback(() => this.executeAbort());
-      // 🔧 P0 修复：注入 continueMessage 回调，让 store.continueMessage 调用后端 chat_v2_continue_message
-      this.store.setContinueMessageCallback((messageId, variantId) =>
-        this.continueMessage(messageId, variantId)
-      );
-      this.store.setLoadCallback(() => this.loadSession());
-      this.store.setLoadEarlierMessagesCallback(() => this.loadEarlierMessages());
-      this.store.setSwitchVariantCallback((messageId, variantId) =>
-        this.executeSwitchVariant(messageId, variantId)
-      );
-      this.store.setDeleteVariantCallback((messageId, variantId) =>
-        this.executeDeleteVariant(messageId, variantId)
-      );
-      this.store.setRetryVariantCallback((messageId, variantId, modelOverride) =>
-        this.executeRetryVariant(messageId, variantId, modelOverride)
-      );
-      this.store.setRetryAllVariantsCallback((messageId, variantIds) =>
-        this.executeRetryAllVariants(messageId, variantIds)
-      );
-      this.store.setCancelVariantCallback((variantId) =>
-        this.executeCancelVariant(variantId)
-      );
-      this.store.setUpdateBlockContentCallback((blockId, content) =>
-        this.executeUpdateBlockContent(blockId, content)
-      );
-      this.store.setUpdateSessionSettingsCallback((settings) =>
-        this.executeUpdateSessionSettings(settings)
-      );
-      // 🆕 P0 分支模型：注入分支回调（store.branchSession → chat_v2_branch_session）
-      this.store.setBranchSessionCallback?.((upToMessageId) =>
-        this.branchSession(upToMessageId)
-      );
-      this.unregisterStreamingBlockSaver?.();
-      this.unregisterStreamingBlockSaver = streamingBlockSaver.registerSaveCallback(
-        this.sessionId,
-        (blockId, messageId, blockType, content, sessionId) =>
-          this.executeUpsertStreamingBlock(blockId, messageId, blockType, content, sessionId),
-      );
-
-      // 🔧 2026-01-15: 移除超时机制，后端工具调用参数累积时会实时发送事件
-      // 超时机制已移除，避免长工具调用参数生成期间误杀
-
-      // 📊 性能打点：回调注入完成
-      sessionSwitchPerf.mark('callbacks_injected');
-
-      // 📊 细粒度打点：await 开始
-      sessionSwitchPerf.mark('await_start');
-      
-      // 🚀 性能优化 V3：先等待数据加载完成，让 UI 可以立即渲染
-      // 事件监听在后台继续注册，不阻塞首次渲染
-      const loadResult = await loadPromise;
-      const loadElapsedMs = performance.now() - loadStartTs;
-      
-      // 📊 细粒度打点：数据加载完成（仅数据链路）
-      sessionSwitchPerf.mark('await_load_done', { loadElapsedMs, loadResult });
-      sessionSwitchPerf.mark('await_resolved');
-      sessionSwitchPerf.mark('parallel_done');
-
-      // setup 的就绪语义与监听真正挂载一致：这里必须等待 listenersReadyPromise
-      await this.waitForListenersReady();
-
-      this.isSetup = true;
-      console.log(LOG_PREFIX, 'Setup complete');
-
-      // 处理加载结果
-      if (loadResult === 'cached') {
-        console.log(LOG_PREFIX, '✅ Session already loaded (cached), skipping loadSession:', this.sessionId);
-        sessionSwitchPerf.mark('adapter_setup_end', { fromCache: true });
-        sessionSwitchPerf.endTrace();
-      } else if (loadResult === 'loaded') {
-        console.log(LOG_PREFIX, 'Session loaded after setup');
-        sessionSwitchPerf.mark('adapter_setup_end');
-      } else {
-        // loadResult === 'error'
-        isNewSession = true;
-        // 🔧 用户通知：会话加载失败时提示用户（降级为新会话）
-        reportAdapterError({
-          code: 'session_load_failed',
-          level: 'user',
-          sessionId: this.sessionId,
-          message: i18n.t('chatV2:error.sessionLoadFailedMessage'),
-          title: i18n.t('chatV2:error.sessionLoadFailed'),
-          cause: loadError,
-          notificationType: 'warning',
-          retryable: true,
-          retry: () => this.loadSession(),
-          storeApi: this.getErrorStoreApi(),
-        });
-        // 🔧 P27 修复：新会话加载失败时也要标记 isDataLoaded=true
-        // 否则 ChatContainer 会一直显示空白（因为 isDataLoaded 永远是 false）
-        // 对于新会话，数据为空但状态是"已加载"，UI 应该正常渲染空态
-        // 
-        // 注意：AdapterManager 创建 adapter 时总是传递 storeApi，所以这里一定存在
-        // 但为安全起见添加 null 检查
-        if (this.storeApi) {
-          this.storeApi.setState({ isDataLoaded: true });
-          console.log(LOG_PREFIX, '✅ New session marked as loaded (empty state) via storeApi');
-        } else {
-          console.warn(LOG_PREFIX, '⚠️ storeApi is null, cannot mark isDataLoaded');
-        }
-        sessionSwitchPerf.mark('adapter_setup_end', { error: true, markedAsLoaded: !!this.storeApi });
-        sessionSwitchPerf.endTrace();
-      }
-
-      // 🔧 性能优化：已缓存的会话无需再执行 initSession
-      // initSession 只在首次加载时执行，后续切换回该会话时跳过
-      if (!alreadyLoaded) {
-        // M2 修复：在 initSession 之前确保监听器就绪（autoSendFirstMessage 会立即触发消息发送）
-        await this.waitForListenersReady();
-
-        const meta = sessionManager.getSessionMeta(this.sessionId);
-        if (meta?.pendingInitConfig) {
-          const mode = meta.mode;
-          const initConfig = meta.pendingInitConfig;
-          console.log(LOG_PREFIX, `Executing pending initSession for mode '${mode}'`, initConfig);
-          
-          try {
-            await this.store.initSession(mode, initConfig);
-            console.log(LOG_PREFIX, `Mode '${mode}' initialized successfully`);
-          } catch (initError) {
-            console.error(LOG_PREFIX, `Failed to init mode '${mode}':`, getErrorMessage(initError));
-          } finally {
-            // 清除待执行配置，避免重复执行
-            sessionManager.clearPendingInitConfig(this.sessionId);
-          }
-        } else if (isNewSession) {
-          // 新会话且没有 pendingInitConfig，使用默认模式初始化
-          const mode = meta?.mode || 'chat';
-          if (mode !== 'chat') {
-            console.log(LOG_PREFIX, `Initializing new session with mode '${mode}'`);
-            try {
-              await this.store.initSession(mode);
-            } catch (initError) {
-              console.error(LOG_PREFIX, `Failed to init mode '${mode}':`, getErrorMessage(initError));
-            }
-          }
-        }
-      }
-    } catch (error) {
-      // Listener failures already report at user level; keep outer catch as dev breadcrumb.
-      reportAdapterError({
-        code: 'setup_failed',
-        level: 'dev',
-        sessionId: this.sessionId,
-        message: 'Setup failed',
-        cause: error,
-      });
-      throw error;
-    }
+  setup(): Promise<void> {
+    return adapterLifecycle.setup(this.asHost());
   }
 
   /**
@@ -1115,237 +366,8 @@ export class ChatV2TauriAdapter {
    * - 组件卸载时流式尚未完成
    * - 会话切换时事件未正常结束
    */
-  async cleanup(): Promise<void> {
-    console.log(LOG_PREFIX, 'Cleaning up...');
-    this.unregisterBridgeStoreResolver?.();
-    this.unregisterBridgeStoreResolver = null;
-    this.cancelPendingStreamCompletion();
-    // 🚀 性能修复（2026-09-06）：清理前冲刷所有制卡合并缓冲，避免待写卡片丢失
-    for (const blockId of [...this.ankiCardFlushQueue.keys()]) {
-      this.flushAnkiCardBuffer(blockId);
-    }
-    // 使正在进行的 setup/listener 注册代际失效，防止过期监听器被挂回当前实例
-    this.setupGeneration += 1;
-    this.cancelScheduledFullHistoryLoad?.();
-    this.cancelScheduledFullHistoryLoad = null;
-    this.fullHistoryLoadComplete = false;
-    this.historyWindowStartOffset = 0;
-    this.lastLoadedSessionInfo = null;
-
-    // 等待监听器注册完成，确保 unlisteners 已填充
-    if (this.listenersReadyPromise) {
-      try {
-        await this.listenersReadyPromise;
-      } catch {
-        // 注册失败的情况已由 .catch() 分支处理
-      }
-    }
-
-    const ownsSessionRuntime = this.isSessionRuntimeOwner();
-    if (ownsSessionRuntime) {
-      if (this.getCurrentState().compactionInProgress) {
-        this.store.setCompactionInProgress(false);
-      }
-
-    // 🔧 同步修复：cleanup 前先保存会话状态（fire-and-forget）
-    // 确保 idle 状态下修改的 UI 设置（chatParams, features 等）不丢失
-    try {
-      this.saveSession().catch((error) => {
-        console.error(LOG_PREFIX, 'Error saving session on cleanup:', getErrorMessage(error));
-      });
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error initiating save on cleanup:', getErrorMessage(error));
-    }
-
-    // 🔧 2026-01-15: 超时机制已移除
-
-    // 🔧 P1修复：只刷新并清理当前会话的 chunkBuffer
-    // chunkBuffer 现在支持多会话并发，每个会话有独立的缓冲区
-    // flushAndCleanupSession 会刷新该会话的缓冲并释放资源
-    try {
-      chunkBuffer.flushAndCleanupSession(this.sessionId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error flushing chunkBuffer:', getErrorMessage(error));
-    }
-
-    // 🔧 P3修复：清理自动保存相关的所有状态
-    // 不仅取消待执行保存，还清理 lastSaveTime 和 savingPromise
-    try {
-      autoSave.cleanup(this.sessionId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error cleaning up autoSave:', getErrorMessage(error));
-    }
-
-    // 🆕 渐进披露优化：不再在会话切换时清空已加载的 Skills
-    // 原因：
-    // 1. Skills 状态已持久化到后端（saveSession 保存 loadedSkillIdsJson）
-    // 2. 会话恢复时会从后端恢复（restoreFromBackend 调用 loadSkillsToSession）
-    // 3. loadedSkillsMap 按 sessionId 隔离，不同会话互不影响
-    // 4. 保留内存中的 Skills 状态可以加速会话切换（如果 LRU 缓存命中）
-    // 
-    // 只有在以下情况才需要清空：
-    // - 会话被从 LRU 缓存中 evict（由 SessionManager 处理）
-    // - 用户主动删除会话
-
-    // 🔧 P0修复：清理事件上下文
-    // 防止 activeContexts Map 累积过期条目
-    try {
-      clearEventContext(this.sessionId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing eventContext:', getErrorMessage(error));
-    }
-
-    // 清除保存回调
-    try {
-      this.store.setSaveCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing save callback:', getErrorMessage(error));
-    }
-
-    // 清除重试回调
-    try {
-      this.store.setRetryCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing retry callback:', getErrorMessage(error));
-    }
-
-    // 清除删除回调
-    try {
-      this.store.setDeleteCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing delete callback:', getErrorMessage(error));
-    }
-
-    // 清除编辑并重发回调
-    try {
-      this.store.setEditAndResendCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing editAndResend callback:', getErrorMessage(error));
-    }
-
-    // 清除发送回调
-    try {
-      this.store.setSendCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing send callback:', getErrorMessage(error));
-    }
-
-    try {
-      this.store.setWakeSessionCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing wakeSession callback:', getErrorMessage(error));
-    }
-
-    // 清除中断回调
-    try {
-      this.store.setAbortCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing abort callback:', getErrorMessage(error));
-    }
-
-    // 🔧 P0 修复：清除继续执行回调
-    try {
-      this.store.setContinueMessageCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing continueMessage callback:', getErrorMessage(error));
-    }
-
-    // 清除加载回调
-    try {
-      this.store.setLoadCallback(null);
-      this.store.setLoadEarlierMessagesCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing load callback:', getErrorMessage(error));
-    }
-
-    // 🔧 P0修复：清除变体操作回调
-    try {
-      this.store.setSwitchVariantCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing switchVariant callback:', getErrorMessage(error));
-    }
-
-    try {
-      this.store.setDeleteVariantCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing deleteVariant callback:', getErrorMessage(error));
-    }
-
-    try {
-      this.store.setRetryVariantCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing retryVariant callback:', getErrorMessage(error));
-    }
-
-    try {
-      this.store.setRetryAllVariantsCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing retryAllVariants callback:', getErrorMessage(error));
-    }
-
-    try {
-      this.store.setCancelVariantCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing cancelVariant callback:', getErrorMessage(error));
-    }
-
-    // 🔧 同步修复：清除更新块内容回调
-    try {
-      this.store.setUpdateBlockContentCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing updateBlockContent callback:', getErrorMessage(error));
-    }
-
-    // 🔧 同步修复：清除更新会话设置回调
-    try {
-      this.store.setUpdateSessionSettingsCallback(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing updateSessionSettings callback:', getErrorMessage(error));
-    }
-
-    // 🆕 P0 分支模型：清除分支回调
-    try {
-      this.store.setBranchSessionCallback?.(null);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing branchSession callback:', getErrorMessage(error));
-    }
-
-    try {
-      streamingBlockSaver.cleanup(this.sessionId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error cleaning streamingBlockSaver state:', getErrorMessage(error));
-    }
-    }
-
-    // Identity-safe unregister: an old generation cannot clear the callback
-    // installed by a newer adapter for the same session.
-    try {
-      this.unregisterStreamingBlockSaver?.();
-      this.unregisterStreamingBlockSaver = null;
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Error clearing streamingBlockSaver callback:', getErrorMessage(error));
-    }
-
-    for (const unlisten of this.unlisteners) {
-      try {
-        unlisten();
-      } catch (error) {
-        console.error(LOG_PREFIX, 'Error during unlisten:', getErrorMessage(error));
-      }
-    }
-
-    this.unlisteners = [];
-    this.releaseAnkiEventOwnershipIfHeld('cleanup');
-    this.chatAnkiChunkLogCounter.clear();
-    this.retryingAnkiDocumentIds.clear();
-    this.ankiRetryReconcileRevisions.clear();
-    this.clearStreamExpectation();
-    this.lastStreamGenerationByMessageId.clear();
-    if (ownsSessionRuntime) {
-      this.releaseSessionRuntimeOwnershipIfHeld();
-    }
-    this.isSetup = false;
-    console.log(LOG_PREFIX, 'Cleanup complete');
+  cleanup(): Promise<void> {
+    return adapterLifecycle.cleanup(this.asHost());
   }
 
   // ========================================================================
@@ -1353,262 +375,29 @@ export class ChatV2TauriAdapter {
   // ========================================================================
 
   private scheduleAnkiRetryReconcile(blockId: string, documentId: string): void {
-    const revision = (this.ankiRetryReconcileRevisions.get(documentId) ?? 0) + 1;
-    this.ankiRetryReconcileRevisions.set(documentId, revision);
-    void this.reconcileAnkiRetryState(blockId, documentId, revision).catch((error: unknown) => {
-      if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
-      console.warn(
-        LOG_PREFIX,
-        `Failed to reconcile retried Anki document ${documentId}:`,
-        getErrorMessage(error),
-      );
-    });
+    ankiRetryReconcile.scheduleAnkiRetryReconcile(this.asHost(), blockId, documentId);
   }
 
   private reconcileLoadedAnkiBlocks(): void {
-    const state = this.getCurrentState();
-    for (const block of state.blocks.values()) {
-      if (block.type !== 'anki_cards') continue;
-      const output = block.toolOutput as Record<string, unknown> | undefined;
-      const documentId = typeof output?.documentId === 'string' ? output.documentId.trim() : '';
-      if (!documentId) continue;
-      const cards = Array.isArray(output?.cards) ? output.cards : [];
-      const needsProjectionUpgrade = Number(output?.schemaVersion ?? 0) < 2;
-      const inconsistentTerminal = block.status === 'error' && (
-        output?.workflowStatus !== 'failed' ||
-        output?.generationStatus !== 'failed' ||
-        output?.finalStatus !== 'error'
-      );
-      if (needsProjectionUpgrade || inconsistentTerminal) {
-        this.scheduleAnkiRetryReconcile(block.id, documentId);
-      }
-    }
+    ankiRetryReconcile.reconcileLoadedAnkiBlocks(this.asHost());
   }
 
-  private async reconcileAnkiRetryState(
+  private reconcileAnkiRetryState(
     blockId: string,
     documentId: string,
     revision: number,
   ): Promise<void> {
-    type TaskSnapshot = {
-      status?: unknown;
-      error_message?: unknown;
-      errorMessage?: unknown;
-    };
-
-    const tasks = await invoke<TaskSnapshot[]>('get_document_tasks', { documentId });
-    if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
-    if (!Array.isArray(tasks) || tasks.length === 0) return;
-
-    const normalizeStatus = (value: unknown) =>
-      typeof value === 'string' ? value.trim().toLowerCase() : '';
-    const statuses = tasks.map((task) => normalizeStatus(task.status));
-    const count = (status: string) => statuses.filter((value) => value === status).length;
-    const counts = {
-      total: tasks.length,
-      pending: count('pending'),
-      processing: count('processing'),
-      streaming: count('streaming'),
-      paused: count('paused'),
-      completed: count('completed'),
-      failed: count('failed'),
-      truncated: count('truncated'),
-      cancelled: count('cancelled'),
-    };
-    const hasInFlight = counts.pending + counts.processing + counts.streaming > 0;
-
-    let cards: AnkiCard[] | undefined;
-    if (!hasInFlight) {
-      cards = await invoke<AnkiCard[]>('get_document_cards', { documentId });
-      if (this.ankiRetryReconcileRevisions.get(documentId) !== revision) return;
-      if (!Array.isArray(cards)) cards = [];
-    }
-
-    const state = this.getCurrentState();
-    const block = state.blocks.get(blockId);
-    const output = block?.toolOutput as Record<string, unknown> | undefined;
-    if (block?.type !== 'anki_cards' || output?.documentId !== documentId) return;
-
-    const currentCards = Array.isArray(output.cards) ? (output.cards as AnkiCard[]) : [];
-    // Once a terminal SQLite snapshot is available it is authoritative. Re-merging the
-    // serialized UI copy can resurrect deleted cards or overwrite newer database edits.
-    const mergedCards = cards ?? currentCards;
-    const hasFailure = counts.failed + counts.truncated > 0;
-    const hasUsableCard = mergedCards.some(
-      (card) => !(card as AnkiCard & { is_error_card?: boolean }).is_error_card,
-    );
-    const hasUserCancellation = tasks.some((task, index) => {
-      if (statuses[index] !== 'cancelled') return false;
-      const error = task.error_message ?? task.errorMessage;
-      return error !== 'GLOBAL_CARD_LIMIT_REACHED';
-    });
-    const terminalCount = counts.completed + counts.failed + counts.truncated + counts.cancelled;
-    const completedRatio = counts.total > 0 ? terminalCount / counts.total : 0;
-
-    let finalStatus: 'generating' | 'paused' | 'cancelled' | 'completed' | 'completed_with_errors' | 'error';
-    let blockStatus: 'running' | 'success' | 'error';
-    if (hasInFlight) {
-      finalStatus = 'generating';
-      blockStatus = 'running';
-    } else if (counts.paused > 0) {
-      finalStatus = 'paused';
-      blockStatus = 'running';
-    } else if (hasUserCancellation) {
-      finalStatus = 'cancelled';
-      blockStatus = 'success';
-    } else if (hasFailure) {
-      const isPartial = counts.completed > 0 || hasUsableCard;
-      finalStatus = isPartial ? 'completed_with_errors' : 'error';
-      blockStatus = isPartial ? 'success' : 'error';
-    } else {
-      finalStatus = 'completed';
-      blockStatus = 'success';
-    }
-
-    const taskError = tasks
-      .map((task) => task.error_message ?? task.errorMessage)
-      .find((value): value is string => typeof value === 'string' && value.trim().length > 0);
-    const normalizedTaskError = taskError?.toLowerCase() ?? '';
-    const taskIssueCode =
-      normalizedTaskError.includes('balance is insufficient') ||
-      normalizedTaskError.includes('余额不足') ||
-      normalizedTaskError.includes('额度不足')
-        ? 'provider_quota_exhausted'
-        : normalizedTaskError.includes('403') || normalizedTaskError.includes('访问被拒绝')
-          ? 'provider_forbidden'
-        : normalizedTaskError.includes('401') ||
-            normalizedTaskError.includes('api key') ||
-            normalizedTaskError.includes('认证失败')
-          ? 'provider_auth_failed'
-          : 'generation_failed';
-    const taskErrorRetryable = taskIssueCode === 'generation_failed';
-    const progress = (output.progress as Record<string, unknown> | undefined) ?? {};
-    const recoveredFromGenerationError =
-      ['error', 'failed'].includes(String(output.finalStatus ?? '').toLowerCase()) ||
-      ['error', 'failed'].includes(String(progress.stage ?? '').toLowerCase());
-    const messageKey =
-      finalStatus === 'completed_with_errors'
-        ? 'blocks.ankiCards.progress.messages.completedWithErrors'
-        : finalStatus === 'generating'
-          ? 'blocks.ankiCards.progress.messages.generating'
-          : undefined;
-
-    state.updateBlock(blockId, {
-      status: blockStatus,
-      error: finalStatus === 'error' ? taskError ?? block.error ?? 'generation_failed' : undefined,
-      toolOutput: {
-        ...output,
-        schemaVersion: 2,
-        stateRevision: Math.max(Date.now(), Number(output.stateRevision ?? 0) + 1),
-        cards: mergedCards,
-        workflowStatus:
-          finalStatus === 'generating'
-            ? 'running'
-            : finalStatus === 'completed_with_errors'
-            ? 'completed_with_warnings'
-            : finalStatus === 'error'
-              ? 'failed'
-              : finalStatus,
-        generationStatus:
-          finalStatus === 'generating'
-            ? 'running'
-            : finalStatus === 'completed_with_errors'
-            ? counts.completed > 0 ? 'partial' : 'failed'
-            : finalStatus === 'error'
-              ? 'failed'
-              : finalStatus,
-        deliveryStatus: hasUsableCard ? 'ready' : 'empty',
-        recoveryStatus:
-          finalStatus === 'completed_with_errors' && counts.completed === 0
-            ? 'existing_cards'
-            : 'none',
-        availableCards: mergedCards.filter(
-          (card) => !(card as AnkiCard & { is_error_card?: boolean }).is_error_card,
-        ).length,
-        finalStatus,
-        finalError:
-          finalStatus === 'error'
-            ? taskError ?? output.finalError
-            : undefined,
-        issues: taskError
-          ? [{
-              scope: 'generation',
-              code: taskIssueCode,
-              severity: hasUsableCard ? 'warning' : 'error',
-              retryable: taskErrorRetryable,
-              recovered: hasUsableCard,
-              detail: taskError,
-            }]
-          : [],
-        warnings: finalStatus === 'completed_with_errors'
-          ? [{
-              code: 'generation_recovered',
-              messageKey: 'blocks.ankiCards.warnings.generationRecovered',
-              messageParams: { count: mergedCards.length },
-            }]
-          : output.warnings,
-        syncStatus:
-          recoveredFromGenerationError && output.syncStatus === 'error'
-            ? 'pending'
-            : output.syncStatus,
-        syncError:
-          recoveredFromGenerationError && output.syncStatus === 'error'
-            ? undefined
-            : output.syncError,
-        progress: {
-          ...progress,
-          stage: finalStatus,
-          messageKey,
-          messageParams:
-            finalStatus === 'completed_with_errors'
-              ? { failed: counts.failed, truncated: counts.truncated }
-              : undefined,
-          cardsGenerated: mergedCards.length,
-          counts,
-          completedRatio,
-          lastUpdatedAt: new Date().toISOString(),
-        },
-      },
-    });
-    state.updateBlockStatus(blockId, blockStatus);
-    autoSave.scheduleAutoSave(this.getCurrentState());
-
-    if (blockStatus !== 'running') {
-      this.retryingAnkiDocumentIds.delete(documentId);
-    }
+    return ankiRetryReconcile.reconcileAnkiRetryState(this.asHost(), blockId, documentId, revision);
   }
 
-  /** 从卡片字段中提取问题文本（用于签名/调试快照） */
   private extractAnkiCardQuestion(card: AnkiCard): string {
-    const fields = (card.fields ?? {}) as Record<string, unknown>;
-    const extraFields = (card.extra_fields ?? {}) as Record<string, unknown>;
-    const fieldQuestion =
-      fields.question ??
-      fields.Question ??
-      extraFields.question ??
-      extraFields.Question;
-    if (typeof fieldQuestion === 'string' && fieldQuestion.trim()) return fieldQuestion.trim();
-    const front = card.front ?? '';
-    if (front.trim().startsWith('{') && front.trim().endsWith('}')) {
-      try {
-        const parsed = JSON.parse(front) as Record<string, unknown>;
-        const q = parsed.Question ?? parsed.question ?? parsed.front;
-        if (typeof q === 'string' && q.trim()) return q.trim();
-      } catch {
-        // ignore
-      }
-    }
-    return front.replace(/\s+/g, ' ').trim().slice(0, 80);
+    return ankiGenerationEvents.extractAnkiCardQuestion(this.asHost(), card);
   }
 
-  /** 构建卡片列表签名（O(N)——仅在冲刷/终态时调用，不再每卡一次） */
   private buildAnkiCardsSignature(cards: AnkiCard[]): string {
-    return cards
-      .map((card) => `${card.id ?? 'no-id'}::${card.template_id ?? 'no-template'}::${this.extractAnkiCardQuestion(card)}`)
-      .join('|');
+    return ankiGenerationEvents.buildAnkiCardsSignature(this.asHost(), cards);
   }
 
-  /** 记录卡片来源快照（调试面板用） */
   private recordAnkiSourceSnapshot(
     targetBlock: { id: string },
     source: string,
@@ -1616,1388 +405,39 @@ export class ChatV2TauriAdapter {
     status: string | undefined,
     docId: string | undefined,
   ): void {
-    const signature = this.buildAnkiCardsSignature(cards);
-    const updatedAt = new Date().toISOString();
-    const cardIds = cards.map((card) => card.id ?? 'no-id');
-
-    const win = window as Window & {
-      __chatankiCardSourceByBlock?: Record<
-        string,
-        {
-          source: string;
-          blockStatus?: string;
-          documentId?: string;
-          cardIds: string[];
-          signature: string;
-          updatedAt: string;
-        }
-      >;
-    };
-    if (!win.__chatankiCardSourceByBlock) {
-      win.__chatankiCardSourceByBlock = {};
-    }
-    win.__chatankiCardSourceByBlock[targetBlock.id] = {
-      source,
-      blockStatus: status,
-      documentId: docId,
-      cardIds,
-      signature,
-      updatedAt,
-    };
-
-    try {
-      window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-        level: 'info',
-        phase: 'bridge:source',
-        summary: `source snapshot ${source} block=${targetBlock.id.slice(0, 8)} cards=${cards.length} doc=${docId ?? 'null'}`,
-        detail: {
-          blockId: targetBlock.id,
-          source,
-          blockStatus: status ?? null,
-          documentId: docId ?? null,
-          cardsCount: cards.length,
-          cardIds,
-          signature,
-          updatedAt,
-        },
-      }}));
-    } catch { /* debug only */ }
+    ankiGenerationEvents.recordAnkiSourceSnapshot(this.asHost(), targetBlock, source, cards, status, docId);
   }
 
-  /**
-   * 🚀 性能修复（2026-09-06）：批量落盘缓冲的制卡事件。
-   * 将 100ms 窗口内到达的 NewCard/NewErrorCard 合并为一次 updateBlock，
-   * 使 N 张卡的渲染开销从 O(N²) 降为 O(N)。
-   */
   private flushAnkiCardBuffer(blockId: string): void {
-    const queued = this.ankiCardFlushQueue.get(blockId);
-    if (!queued) return;
-    this.ankiCardFlushQueue.delete(blockId);
-    if (queued.timer) {
-      clearTimeout(queued.timer);
-    }
-    if (queued.cards.length === 0) return;
-
-    const state = this.getCurrentState();
-    const targetBlock = state.blocks.get(blockId);
-    if (!targetBlock) return;
-
-    const currentOutput = (targetBlock.toolOutput as Record<string, unknown> | undefined) ?? {};
-    const currentCards = (currentOutput.cards as AnkiCard[] | undefined) ?? [];
-    // 落盘前按最新状态重建 ID 索引（O(M)），窗口内新卡逐一 O(1) 判重——
-    // 整体 O(M+N) 而非逐个 some() 的 O(N²)（2026-09-07 审阅 F3）。
-    const existingIds = new Set<string>();
-    for (const card of currentCards) {
-      if (card.id) existingIds.add(card.id);
-    }
-    const newCards = queued.cards.filter((card) => !card.id || !existingIds.has(card.id));
-    if (newCards.length === 0) return;
-
-    const nextCards = [...currentCards, ...newCards];
-    const documentId = queued.documentId;
-    const ensureDocumentId = documentId && !currentOutput.documentId ? { documentId } : {};
-    const nextTemplateId =
-      (currentOutput.templateId as string | undefined) ||
-      (newCards[0]?.template_id ?? undefined) ||
-      null;
-    const nextProgress = {
-      ...(currentOutput.progress as Record<string, unknown> | undefined),
-      stage: (currentOutput.progress as any)?.stage ?? 'streaming',
-      cardsGenerated: nextCards.length,
-      lastUpdatedAt: new Date().toISOString(),
-    };
-    this.recordAnkiSourceSnapshot(
-      targetBlock,
-      'event-new-card-batched',
-      nextCards,
-      targetBlock.status === 'success' || targetBlock.status === 'error' ? targetBlock.status : 'running',
-      (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
-    );
-    state.updateBlock(blockId, {
-      toolOutput: {
-        ...currentOutput,
-        ...ensureDocumentId,
-        cards: nextCards,
-        templateId: nextTemplateId,
-        progress: nextProgress,
-      },
-      ...(targetBlock.status === 'success' || targetBlock.status === 'error'
-        ? {}
-        : { status: 'running' }),
-    });
+    ankiGenerationEvents.flushAnkiCardBuffer(this.asHost(), blockId);
   }
 
-  /**
-   * 处理 ChatAnki 后端事件（anki_generation_event）
-   * 将 NewCard/进度事件桥接到 anki_cards 块，实现实时预览
-   */
   private handleAnkiGenerationEvent(payload: unknown): void {
-    const raw = (payload as { payload?: unknown })?.payload ?? payload;
-    if (!raw || typeof raw !== 'object') return;
-
-    const normalized = 'type' in (raw as Record<string, unknown>) && 'data' in (raw as Record<string, unknown>)
-      ? {
-          type: (raw as { type: string }).type,
-          data: (raw as { data: unknown }).data,
-        }
-      : (() => {
-          const keys = Object.keys(raw as Record<string, unknown>);
-          if (keys.length === 0) return null;
-          const type = keys[0];
-          return { type, data: (raw as Record<string, unknown>)[type] };
-        })();
-
-    if (!normalized) return;
-
-    const { type, data } = normalized;
-    const dataObj = (data && typeof data === 'object') ? (data as Record<string, unknown>) : undefined;
-    const cardData = (dataObj && 'card' in dataObj ? (dataObj.card as AnkiCard) : (data as AnkiCard | undefined));
-    const documentId =
-      (dataObj?.document_id as string | undefined) ||
-      (dataObj?.documentId as string | undefined) ||
-      ((cardData as any)?.document_id as string | undefined) ||
-      ((raw as any)?.document_id as string | undefined) ||
-      ((raw as any)?.documentId as string | undefined);
-
-    if (
-      ChatV2TauriAdapter.ankiEventOwnerAdapterId !== this.adapterInstanceId &&
-      !documentId
-    ) {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'debug',
-          phase: 'bridge:event',
-          summary: `drop anki_generation_event without documentId: adapter#${this.adapterInstanceId} is not owner`,
-          detail: {
-            adapterId: this.adapterInstanceId,
-            ownerAdapterId: ChatV2TauriAdapter.ankiEventOwnerAdapterId,
-            sessionId: this.sessionId,
-            type,
-          },
-        }}));
-      } catch { /* debug only */ }
-      return;
-    }
-
-    const state = this.getCurrentState();
-    const blocks = state.blocks;
-    // 按 documentId 精确匹配（不限状态 — 块可能已被 chatanki_wait 标记为 success）
-    const findBlockByDocumentId = (docId: string) => {
-      for (const block of blocks.values()) {
-        if (block.type !== 'anki_cards') continue;
-        const toolOutput = block.toolOutput as Record<string, unknown> | undefined;
-        if (toolOutput?.documentId === docId) return block;
-      }
-      return undefined;
-    };
-    // 仅无 documentId 时允许回退到最新活跃块（且仅 owner adapter 能走到这里）
-    const findLatestActiveAnkiBlock = () => {
-      const candidates = Array.from(blocks.values()).filter((block) => {
-        if (block.type !== 'anki_cards') return false;
-        return block.status === 'running' || block.status === 'pending';
-      });
-      return candidates.length > 0 ? candidates[candidates.length - 1] : undefined;
-    };
-
-    // P1 止血：有 documentId 时只精确匹配，禁止回退到「最新活跃块」（避免串块 / 写错 documentId）
-    let usedLatestActiveFallback = false;
-    const targetBlock = documentId
-      ? findBlockByDocumentId(documentId)
-      : (() => {
-          const fallback = findLatestActiveAnkiBlock();
-          if (fallback) usedLatestActiveFallback = true;
-          return fallback;
-        })();
-    if (!targetBlock) {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'warn',
-          phase: 'bridge:event',
-          summary: `drop anki_generation_event ${type}: no target block`,
-          documentId,
-          detail: { type, data: dataObj ?? data },
-        }}));
-      } catch { /* debug only */ }
-      // documentId 存在但本 session 没有匹配的块 → 事件属于其他 session / 块未就绪，静默忽略
-      // documentId 不存在且没有活跃块 → 无处投递，忽略
-      return;
-    }
-    if (usedLatestActiveFallback) {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'warn',
-          phase: 'bridge:event',
-          summary: `anki_generation_event ${type}: no documentId, fallback to latest active block ${targetBlock.id.slice(0, 8)}`,
-          blockId: targetBlock.id,
-          detail: { type, adapterId: this.adapterInstanceId },
-        }}));
-      } catch { /* debug only */ }
-    }
-    // ensureDocumentId 仅在精确匹配到块后写入；有 documentId 时不会走到 fallback，故不会污染其他块
-    try {
-      window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-        level: 'debug',
-        phase: 'bridge:event',
-        summary: `route anki_generation_event ${type} -> block ${targetBlock.id.slice(0, 8)}`,
-        documentId,
-        blockId: targetBlock.id,
-        detail: {
-          type,
-          blockStatus: targetBlock.status,
-          currentCards: ((targetBlock.toolOutput as any)?.cards ?? []).length,
-        },
-      }}));
-    } catch { /* debug only */ }
-
-    // 🚀 性能修复（2026-09-06）：非卡片事件到达前先冲刷合并缓冲，
-    // 保证进度/完成/失败/重试事件基于最新卡片列表（否则终态事件会用旧 toolOutput 覆盖刚冲刷的卡片）
-    if (type !== 'NewCard' && type !== 'NewErrorCard') {
-      this.flushAnkiCardBuffer(targetBlock.id);
-    }
-    const latestBlock = this.getCurrentState().blocks.get(targetBlock.id) ?? targetBlock;
-
-    const currentOutput = (latestBlock.toolOutput as Record<string, unknown> | undefined) ?? {};
-    const currentCards = (currentOutput.cards as AnkiCard[] | undefined) ?? [];
-    const ensureDocumentId = documentId && !currentOutput.documentId ? { documentId } : {};
-    const retryRelevantEvent = [
-      'TaskStatusUpdate',
-      'NewCard',
-      'NewErrorCard',
-      'TaskCompleted',
-      'TaskProcessingError',
-      'TaskFailed',
-      'DocumentProcessingFailed',
-      'DocumentProcessingCompleted',
-    ].includes(type);
-    const isRetryFlow = Boolean(
-      documentId &&
-        retryRelevantEvent &&
-        (this.retryingAnkiDocumentIds.has(documentId) ||
-          isRetryableTerminalAnkiBlock(targetBlock.status, currentOutput)),
-    );
-    if (isRetryFlow && documentId) {
-      this.retryingAnkiDocumentIds.add(documentId);
-    }
-
-    // 生成质量观测事件（CriticSummary / GenerationStats）：只 patch toolOutput
-    // 观测字段，不动 status / progress / cards，不参与 retry reconcile。
-    // 类型与归一化契约以 ankiCardsBlockState 的 AnkiCriticSummary / AnkiGenerationStats
-    // 为准（此处经 inline import() 类型引用对齐，避免改动本文件 import 区）。
-    if (type === 'CriticSummary' || type === 'GenerationStats') {
-      if (!dataObj) return;
-      // 兼容 snake_case（后端当前 wire 格式）与 camelCase（防后端序列化策略调整）
-      const pickNum = (snake: string, camel: string): number => {
-        const value = dataObj[snake] ?? dataObj[camel];
-        if (typeof value === 'number' && Number.isFinite(value)) return value;
-        if (typeof value === 'string') {
-          const parsed = Number(value);
-          if (Number.isFinite(parsed)) return parsed;
-        }
-        return 0;
-      };
-      const pickStr = (snake: string, camel: string): string | undefined => {
-        const value = dataObj[snake] ?? dataObj[camel];
-        return typeof value === 'string' && value ? value : undefined;
-      };
-      const receivedAt = new Date().toISOString();
-
-      let statsPatch: Record<string, unknown>;
-      if (type === 'CriticSummary') {
-        const degradedRaw = dataObj.degraded;
-        const routedDegradedRaw = dataObj.routed_degraded ?? dataObj.routedDegraded;
-        const criticSummary: import('../plugins/blocks/components/ankiCardsBlockState').AnkiCriticSummary = {
-          taskId: pickStr('task_id', 'taskId'),
-          documentId: pickStr('document_id', 'documentId'),
-          examined: pickNum('examined', 'examined'),
-          kept: pickNum('kept', 'kept'),
-          revised: pickNum('revised', 'revised'),
-          flagged: pickNum('flagged', 'flagged'),
-          rejectedUnknownIds: pickNum('rejected_unknown_ids', 'rejectedUnknownIds'),
-          skippedOverBudget: pickNum('skipped_over_budget', 'skippedOverBudget'),
-          goldReferences: pickNum('gold_references', 'goldReferences'),
-          goldReferencesTruncated: pickNum('gold_references_truncated', 'goldReferencesTruncated'),
-          persistFailures: pickNum('persist_failures', 'persistFailures'),
-          degraded: typeof degradedRaw === 'string' && degradedRaw ? degradedRaw : null,
-          routedConfigId: pickStr('routed_config_id', 'routedConfigId'),
-          routedModel: pickStr('routed_model', 'routedModel'),
-          routedDegraded: typeof routedDegradedRaw === 'boolean' ? routedDegradedRaw : undefined,
-          receivedAt,
-        };
-        statsPatch = { criticSummary };
-      } else {
-        const generationStats: import('../plugins/blocks/components/ankiCardsBlockState').AnkiGenerationStats = {
-          taskId: pickStr('task_id', 'taskId'),
-          documentId: pickStr('document_id', 'documentId'),
-          cardsGenerated: pickNum('cards_generated', 'cardsGenerated'),
-          failedCards: pickNum('failed_cards', 'failedCards'),
-          duplicateCards: pickNum('duplicate_cards', 'duplicateCards'),
-          droppedFragments: pickNum('dropped_fragments', 'droppedFragments'),
-          flaggedCards: pickNum('flagged_cards', 'flaggedCards'),
-          receivedAt,
-        };
-        statsPatch = { generationStats };
-      }
-
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'info', phase: 'bridge:event',
-          summary: `${type} → block ${targetBlock.id.slice(0, 8)} | ${JSON.stringify(statsPatch[type === 'CriticSummary' ? 'criticSummary' : 'generationStats']).slice(0, 200)}`,
-          documentId, blockId: targetBlock.id,
-          detail: statsPatch,
-        }}));
-      } catch { /* debug only */ }
-
-      // 终态块（success/error）同样允许 patch —— 这两个事件在任务收尾后到达属正常时序
-      state.updateBlock(targetBlock.id, {
-        toolOutput: {
-          ...currentOutput,
-          ...ensureDocumentId,
-          ...statsPatch,
-        },
-      });
-      return;
-    }
-
-    if (type === 'NewCard' || type === 'NewErrorCard') {
-      if (!cardData) return;
-      // 🚀 性能修复（2026-09-06）：卡片事件进入合并缓冲，100ms 窗口批量写入 store。
-      // 原实现每张卡一次 O(N) 签名计算 + updateBlock + 调试 CustomEvent，
-      // N 张卡产生 O(N²) 渲染与事件洪水。
-      // F3（2026-09-07）：判重改 ID 索引——条目创建时从已落盘卡片播种
-      // （每窗口 O(M) 一次），窗口期内每张新卡 O(1)；无 ID 卡片不参与判重，
-      // 始终保留（与原语义一致）。
-      let queued = this.ankiCardFlushQueue.get(targetBlock.id);
-      if (!queued) {
-        const seededIds = new Set<string>();
-        for (const card of currentCards) {
-          if (card.id) seededIds.add(card.id);
-        }
-        queued = {
-          cards: [],
-          cardIds: seededIds,
-          documentId,
-          timer: setTimeout(() => this.flushAnkiCardBuffer(targetBlock.id), 100),
-        };
-        this.ankiCardFlushQueue.set(targetBlock.id, queued);
-      }
-      if (cardData.id && queued.cardIds.has(cardData.id)) {
-        try {
-          window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-            level: 'debug', phase: 'bridge:event',
-            summary: `${type} duplicate dropped: ${cardData.id?.slice(0, 10) ?? 'no-id'}`,
-            documentId, blockId: targetBlock.id,
-          }}));
-        } catch { /* debug only */ }
-        return;
-      }
-      queued.cards.push(cardData);
-      if (cardData.id) queued.cardIds.add(cardData.id);
-      if (documentId && !queued.documentId) queued.documentId = documentId;
-      // 重试对账读的是后端 TaskSnapshot，与前端缓冲时序无关，保持立即调度
-      if (isRetryFlow && documentId) {
-        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-      }
-      return;
-    }
-
-    if (type === 'TaskStatusUpdate' || type === 'DocumentProcessingStarted') {
-      if (isRetryFlow && documentId) {
-        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-        return;
-      }
-      const nextProgress = {
-        ...(currentOutput.progress as Record<string, unknown> | undefined),
-        stage:
-          type === 'TaskStatusUpdate'
-            ? ((dataObj?.status as string | undefined) || 'streaming')
-            : 'processing',
-        lastUpdatedAt: new Date().toISOString(),
-      };
-      this.recordAnkiSourceSnapshot(
-        targetBlock,
-        type === 'TaskStatusUpdate' ? 'event-task-status' : 'event-doc-started',
-        currentCards,
-        targetBlock.status === 'success' || targetBlock.status === 'error' ? targetBlock.status : 'running',
-        (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
-      );
-      state.updateBlock(targetBlock.id, {
-        toolOutput: {
-          ...currentOutput,
-          ...ensureDocumentId,
-          progress: nextProgress,
-        },
-        ...(targetBlock.status === 'success' || targetBlock.status === 'error'
-          ? {}
-          : { status: 'running' }),
-      });
-      return;
-    }
-
-    if (type === 'TaskCompleted') {
-      if ((targetBlock.status === 'success' || targetBlock.status === 'error') && !isRetryFlow) {
-        return;
-      }
-      if (documentId) {
-        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-      }
-      return;
-    }
-
-    if (type === 'DocumentProcessingCompleted') {
-      if (isRetryFlow && documentId) {
-        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-        return;
-      }
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'info', phase: 'bridge:card',
-          summary: `${type} → block ${targetBlock.id.slice(0, 8)} COMPLETED | ${currentCards.length} cards total`,
-          documentId, blockId: targetBlock.id,
-          detail: { cardsCount: currentCards.length, templateIds: [...new Set(currentCards.map((c: any) => c.template_id).filter(Boolean))] },
-        }}));
-      } catch { /* */ }
-      this.recordAnkiSourceSnapshot(
-        targetBlock,
-        'event-doc-completed',
-        currentCards,
-        'success',
-        (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
-      );
-      state.updateBlock(targetBlock.id, {
-        toolOutput: {
-          ...currentOutput,
-          ...ensureDocumentId,
-          finalStatus: 'completed',
-        },
-      });
-      if (targetBlock.status !== 'error') {
-        state.updateBlockStatus(targetBlock.id, 'success');
-      }
-      return;
-    }
-
-    if (type === 'TaskProcessingError' && isRetryFlow && documentId) {
-      this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-      return;
-    }
-
-    // 取消：保留已生成卡片，块 status=success，finalStatus=cancelled（与 failed 分离）
-    if (type === 'DocumentProcessingCancelled') {
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'info', phase: 'bridge:card',
-          summary: `${type} → block ${targetBlock.id.slice(0, 8)} CANCELLED | ${currentCards.length} cards kept`,
-          documentId, blockId: targetBlock.id,
-          detail: { cardsCount: currentCards.length },
-        }}));
-      } catch { /* */ }
-      this.recordAnkiSourceSnapshot(
-        targetBlock,
-        'event-doc-cancelled',
-        currentCards,
-        'success',
-        (ensureDocumentId.documentId as string | undefined) ?? (currentOutput.documentId as string | undefined),
-      );
-      state.updateBlock(targetBlock.id, {
-        toolOutput: {
-          ...currentOutput,
-          ...ensureDocumentId,
-          finalStatus: 'cancelled',
-        },
-      });
-      if (targetBlock.status !== 'error') {
-        state.updateBlockStatus(targetBlock.id, 'success');
-      }
-      return;
-    }
-
-    if (
-      type === 'TaskFailed' ||
-      type === 'DocumentProcessingFailed' ||
-      type === 'WorkflowFailed'
-    ) {
-      if (isRetryFlow && documentId) {
-        this.scheduleAnkiRetryReconcile(targetBlock.id, documentId);
-        return;
-      }
-      const errorMessage =
-        (dataObj?.message as string | undefined) ||
-        (dataObj?.error as string | undefined) ||
-        'generation_failed';
-      try {
-        window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-          level: 'error', phase: 'bridge:card',
-          summary: `${type} → block ${targetBlock.id.slice(0, 8)} FAILED: ${errorMessage}`,
-          documentId, blockId: targetBlock.id,
-          detail: { error: errorMessage },
-        }}));
-      } catch { /* */ }
-      state.updateBlock(targetBlock.id, {
-        toolOutput: {
-          ...currentOutput,
-          ...ensureDocumentId,
-          finalStatus: 'failed',
-          finalError: errorMessage,
-        },
-      });
-      state.updateBlockStatus(targetBlock.id, 'error');
-    }
+    ankiGenerationEvents.handleAnkiGenerationEvent(this.asHost(), payload);
   }
 
-  /**
-   * 处理块级事件
-   */
   private handleBlockEvent(event: BackendEvent): void {
-    if (!this.isSessionRuntimeOwner()) return;
-    try {
-      // ChatAnki 工具调用拦截 — 捕获 tool_call 的 start/end/error 供调试面板显示
-      {
-        const payloadToolName = (event.payload as any)?.toolName || '';
-        const blockToolName = event.blockId
-          ? this.getCurrentState().blocks.get(event.blockId)?.toolName || ''
-          : '';
-        const toolName = payloadToolName || blockToolName;
-        const isChatAnkiTool = toolName.includes('chatanki');
-        const isAnkiCardsEvent = event.type === 'anki_cards';
-        if (isChatAnkiTool || isAnkiCardsEvent) {
-          const chunkSize = typeof event.chunk === 'string' ? event.chunk.length : 0;
-          const shouldLogChunk = event.phase !== 'chunk' || (() => {
-            const key = event.blockId || `${event.type}:${event.messageId || 'unknown'}`;
-            const next = (this.chatAnkiChunkLogCounter.get(key) ?? 0) + 1;
-            this.chatAnkiChunkLogCounter.set(key, next);
-            return next % 10 === 1; // chunk 日志每 10 条记录 1 条，避免刷屏
-          })();
-          if (shouldLogChunk) {
-            try {
-              window.dispatchEvent(new CustomEvent('chatanki-debug-lifecycle', { detail: {
-                level: event.phase === 'error' ? 'error' : 'debug',
-                phase: 'bridge:event',
-                summary: `${event.type}:${event.phase} ${toolName || ''} ${chunkSize ? `chunk=${chunkSize}` : ''}`.trim(),
-                blockId: event.blockId,
-                detail: {
-                  messageId: event.messageId,
-                  sequenceId: event.sequenceId,
-                  variantId: event.variantId,
-                  payload: event.payload,
-                  result: event.result,
-                  error: event.error,
-                },
-              }}));
-            } catch { /* debug only */ }
-          }
-
-          // ★ 性能：chunk 阶段复用上方 1/10 采样（shouldLogChunk），避免流式期间
-          // 每个 chunk 都同步 dispatch 一次 window 事件；start/end/error 全量派发
-          if (shouldLogChunk) {
-            try {
-              window.dispatchEvent(new CustomEvent('chatanki-debug-tool-block', { detail: {
-                type: event.type,
-                phase: event.phase,
-                toolName: toolName || event.type,
-                blockId: event.blockId,
-                toolInput: (event.payload as any)?.toolInput,
-                toolOutput: event.result,
-                result: event.result,
-                error: event.error,
-                payload: event.payload,
-              }}));
-            } catch { /* */ }
-          }
-        }
-
-        if (isTemplateDesignerToolName(toolName)) {
-          try {
-            emitTemplateDesignerToolEvent({
-              type: event.type,
-              phase: event.phase,
-              toolName,
-              blockId: event.blockId,
-              toolInput: (event.payload as any)?.toolInput,
-              toolOutput: event.result,
-              result: event.result,
-              error: event.error,
-              payload: event.payload,
-            });
-          } catch {
-            // ignore debug failures
-          }
-        }
-      }
-
-      // 🔧 调试打点：追踪多变体事件接收
-      // 🚀 性能：content/thinking 的 chunk 阶段按 1/10 采样（与上方 chatanki 模式一致），
-      // 避免多变体流式期间每个 token 级 chunk 都记录一条日志
-      const isHotStreamChunk = event.phase === 'chunk'
-        && (event.type === 'content' || event.type === 'thinking');
-      const shouldLogVariantEvent = !isHotStreamChunk || ++this.variantChunkLogCounter % 10 === 1;
-      if (shouldLogVariantEvent && (event.variantId || event.type === 'variant_start' || event.type === 'variant_end')) {
-        logMultiVariant('adapter', 'event_received', {
-          type: event.type,
-          phase: event.phase,
-          variantId: event.variantId,
-          messageId: event.messageId,
-          blockId: event.blockId,
-          sequenceId: event.sequenceId,
-          willUseVariantHandler: !!event.variantId,
-        }, 'info');
-      }
-
-      // 🔧 优化：统一使用带序列号检查的处理器
-      // 1. 单变体和多变体模式都使用相同的乱序缓冲和去重机制
-      // 2. handleBackendEventWithSequence 内部已有向后兼容逻辑：
-      //    - 如果 sequenceId 为 undefined，直接处理（不阻塞）
-      //    - 如果有 sequenceId，进行乱序检测、缓冲和去重
-      // 3. 这样可以提高单变体模式的鲁棒性，防止网络抖动导致的事件乱序
-      // 🔧 2026-01-18 修复：使用 getCurrentState() 获取最新状态
-      // 之前使用 this.store（构造时的快照），导致 tool_call 事件处理时
-      // 无法找到刚创建的 preparing 块（因为 blocks Map 是旧的）
-      handleBackendEventWithSequence(this.getCurrentState(), event);
-    } catch (error) {
-      logMultiVariant('adapter', 'event_error', {
-        type: event.type,
-        variantId: event.variantId,
-        error: getErrorMessage(error),
-      }, 'error');
-      reportAdapterError({
-        code: 'block_event_failed',
-        level: 'dev',
-        sessionId: this.sessionId,
-        message: `Error handling block event (${event.type})`,
-        cause: error,
-      });
-    } finally {
-      this.touchPendingStreamCompletion();
-    }
+    blockEvents.handleBlockEvent(this.asHost(), event);
   }
 
-  /**
-   * ★ 2026-02-14: 处理后端真实 LLM 请求体事件
-   *
-   * 后端在构建并脱敏 LLM 请求体后通过 `chat_v2_llm_request_body` 全局事件推送。
-   * 此方法按 streamEvent 中的 session_id 过滤，仅处理当前会话的事件，
-   * 然后将 rawRequest 更新为后端的真实请求体（替换之前保存的前端请求）。
-   */
   private handleLlmRequestBody(payload: LlmRequestBodyEventPayload): void {
-    if (!this.isSessionRuntimeOwner()) return;
-    if (!matchesLlmRequestBodySession(payload.streamEvent, this.sessionId)) {
-      return;
-    }
-
-    const state = this.getCurrentState();
-    const expectedMessageId = this.streamExpectation?.messageId ?? null;
-    const targetMsgId = payload.messageId || state.currentStreamingMessageId || expectedMessageId;
-
-    if (!targetMsgId) return;
-    if (
-      payload.messageId
-      && expectedMessageId
-      && payload.messageId !== expectedMessageId
-      && state.currentStreamingMessageId !== payload.messageId
-    ) {
-      console.warn(LOG_PREFIX, 'Ignore stale llm_request_body event:', {
-        messageId: payload.messageId,
-        expectedMessageId,
-        currentStreamingMessageId: state.currentStreamingMessageId,
-      });
-      return;
-    }
-    const targetMsg = state.messageMap.get(targetMsgId);
-    if (!targetMsg || targetMsg.role !== 'assistant') return;
-
-    const existing = targetMsg._meta?.rawRequests ?? [];
-    const entry = {
-      _source: 'backend_llm' as const,
-      model: payload.model,
-      url: payload.url,
-      body: payload.requestBody,
-      logFilePath: payload.logFilePath ?? undefined,
-      round: existing.length + 1,
-    };
-
-    // 🚀 内存上限：请求体含全量上下文且跨轮次超线性增长，长 agentic 会话
-    // 无上限累积可达数十 MB。仅保留最近 N 轮完整 body，更早轮次置为占位符
-    // （保留 model/url/round/logFilePath 元信息，完整内容仍可经 logFilePath 读取）
-    const rawRequests = [...existing, entry];
-    const truncateBefore = rawRequests.length - MAX_FULL_RAW_REQUEST_ROUNDS;
-    for (let i = 0; i < truncateBefore; i++) {
-      if (rawRequests[i].body !== RAW_REQUEST_BODY_TRUNCATED) {
-        rawRequests[i] = { ...rawRequests[i], body: RAW_REQUEST_BODY_TRUNCATED };
-      }
-    }
-
-    // rawRequest 保持最新一轮（兼容旧逻辑）
-    const rawRequest = {
-      _source: 'backend_llm' as const,
-      model: payload.model,
-      url: payload.url,
-      body: payload.requestBody,
-      logFilePath: payload.logFilePath ?? undefined,
-    };
-
-    state.updateMessageMeta(targetMsgId, { rawRequest, rawRequests });
+    blockEvents.handleLlmRequestBody(this.asHost(), payload);
   }
 
-  /**
-   * 处理会话级事件
-   * 
-   * 注意：此方法是同步的，但内部的保存操作是异步的。
-   * 为了确保 UI 响应性，先重置状态再执行保存。
-   */
   private handleSessionEvent(payload: SessionEventPayload): void {
-    if (!this.isSessionRuntimeOwner()) return;
-    if (!isSessionEventForSession(payload.sessionId, this.sessionId)) {
-      return;
-    }
-    console.log(LOG_PREFIX, 'Session event:', payload.eventType, payload);
-    emitChatAnkiDebugLifecycle({
-      level: payload.eventType === 'stream_error' ? 'error' : 'debug',
-      phase: 'backend:event',
-      summary: `session_event ${payload.eventType} msg=${payload.messageId ?? 'null'}`,
-      detail: payload,
-    });
-
-    try {
-      switch (payload.eventType) {
-        case 'stream_start': {
-          if (!payload.messageId) {
-            console.warn(LOG_PREFIX, 'Ignore stream_start without messageId');
-            break;
-          }
-          if (
-            this.isStaleByStreamGeneration(payload)
-            || this.isStaleByExpectationTimestamp(payload)
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_start:', {
-              messageId: payload.messageId,
-              streamGeneration: payload.streamGeneration,
-              eventTimestamp: payload.timestamp,
-              expectation: this.streamExpectation,
-            });
-            break;
-          }
-
-          // goal 续跑竞态补丁（2026-09）：后端 goal 续跑在上一轮
-          // stream_complete 后约 150ms 发起新一轮 stream_start（新 messageId），
-          // 可能落在 STREAM_COMPLETE_SETTLE_DELAY_MS 静默窗口内——旧轮
-          // completion 已 arm 未执行，currentStreamingMessageId /
-          // streamExpectation 仍指向旧消息，下方冲突守卫会把新轮误丢弃。
-          // 这里先把旧轮同步结算（completeStream('success') + 清 expectation），
-          // 再让新轮走正常（自主流）路径。
-          if (
-            this.pendingStreamCompletion
-            && this.pendingStreamCompletion.payload.messageId !== payload.messageId
-          ) {
-            this.forceSettlePendingStreamCompletion();
-          }
-
-          const currentState = this.getCurrentState();
-          const currentStreamingMessageId = currentState.currentStreamingMessageId;
-          const expectedMessageId = this.streamExpectation?.messageId ?? null;
-          const hasConflictingCurrent =
-            !!currentStreamingMessageId && currentStreamingMessageId !== payload.messageId;
-          const hasConflictingExpectation =
-            !!expectedMessageId && expectedMessageId !== payload.messageId;
-          if (hasConflictingCurrent || hasConflictingExpectation) {
-            const canAdoptRetryRebound = this.canAdoptRetryReboundStreamStart(
-              currentState,
-              payload.messageId,
-              currentStreamingMessageId,
-              expectedMessageId,
-            );
-            if (canAdoptRetryRebound) {
-              console.warn(LOG_PREFIX, 'Adopt retry rebound stream_start messageId:', {
-                incomingMessageId: payload.messageId,
-                previousMessageId: currentStreamingMessageId,
-                expectedMessageId,
-              });
-              this.setStreamExpectationMessageId(payload.messageId);
-              this.store.setCurrentStreamingMessage(payload.messageId);
-            } else {
-              console.warn(LOG_PREFIX, 'Ignore stale stream_start with mismatched messageId:', {
-                incomingMessageId: payload.messageId,
-                currentStreamingMessageId,
-                expectedMessageId,
-              });
-              break;
-            }
-          }
-
-          // 🔧 P1 修复（2026-07-08 审阅 20 P1-1）：
-          // 原先此处对 isTargetingCurrentStreamMessage 的硬性守卫会把后端自主发起的流
-          // （P29 子代理场景：前端从未调用 send，currentStreamingMessageId 与
-          // streamExpectation 均为 null）静默丢弃，使下方占位消息创建路径成为死代码。
-          // messageId 冲突场景已由上方 hasConflictingCurrent/hasConflictingExpectation
-          // 守卫处理（含 retry 重绑白名单），走到这里只剩两种合法情况：
-          //   a) 事件指向当前流/预期流（isTargeting = true）
-          //   b) 当前无任何进行中流与预期 → 后端自主发起的新流，放行到占位路径
-          const isTargetingKnownStream = this.isTargetingCurrentStreamMessage(payload.messageId);
-          const isAutonomousStreamStart =
-            !isTargetingKnownStream &&
-            !this.getCurrentState().currentStreamingMessageId &&
-            !this.streamExpectation;
-          if (!isTargetingKnownStream && !isAutonomousStreamStart) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_start with mismatched messageId:', {
-              incomingMessageId: payload.messageId,
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectedMessageId: this.streamExpectation?.messageId ?? null,
-            });
-            break;
-          }
-
-          // 拦截空闲态下针对已完成历史消息的自主 start 事件（stale 重放）。
-          // 🔧 必须在 syncStreamExpectationFromEvent 之前判断，否则 expectation 被
-          // 提前同步为该 messageId 后此守卫恒不命中（原实现的死代码问题）。
-          const autonomousTargetMessage = isAutonomousStreamStart
-            ? currentState.messageMap.get(payload.messageId)
-            : undefined;
-          if (
-            isAutonomousStreamStart &&
-            autonomousTargetMessage &&
-            autonomousTargetMessage.role !== 'assistant'
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore autonomous stream_start targeting a non-assistant message:', {
-              messageId: payload.messageId,
-              role: autonomousTargetMessage.role,
-            });
-            break;
-          }
-          if (
-            isAutonomousStreamStart
-            && autonomousTargetMessage
-            && currentState.sessionStatus === 'idle'
-            && (autonomousTargetMessage.blockIds?.length ?? 0) > 0
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stream_start for completed historical message:', {
-              messageId: payload.messageId,
-              blockCount: autonomousTargetMessage.blockIds?.length ?? 0,
-              currentStreamingMessageId,
-              expectedMessageId,
-            });
-            break;
-          }
-
-          this.syncStreamExpectationFromEvent(
-            payload.messageId,
-            payload.timestamp,
-            payload.streamGeneration,
-          );
-
-          // 流式开始
-          // 🆕 2026-02-16: 重置工具调用生命周期追踪器的轮次计数器
-          try {
-            resetToolCallRound();
-          } catch { /* debug only */ }
-
-          // 🔧 调试打点：记录 stream_start 事件中的模型名称
-          logMultiVariant('adapter', 'stream_start_received', {
-            messageId: payload.messageId,
-            modelId: payload.modelId,
-            hasModelId: !!payload.modelId,
-            sessionId: payload.sessionId,
-          }, payload.modelId ? 'success' : 'warning');
-
-          const fallbackModelId =
-            this.getCurrentState().chatParams.modelDisplayName ||
-            this.getCurrentState().chatParams.modelId ||
-            undefined;
-          
-          // 🔧 P29 修复：子代理场景下消息可能不存在（后端创建，前端未同步）
-          // 检查消息是否存在，不存在则创建占位消息（与普通会话 sendMessageWithIds 等价）
-          // （历史消息 stale 拦截已前移到 syncStreamExpectationFromEvent 之前，见上方守卫）
-          const messageExists = currentState.messageMap.has(payload.messageId);
-          const streamStoreApi = this.storeApi ?? sessionManager.get(this.sessionId);
-
-          // 🔧 P31 全链路诊断
-          const diagData = buildStreamStartDiagData({
-            messageId: payload.messageId,
-            messageExists,
-            hasStoreApi: !!this.storeApi,
-            storeApiType: this.storeApi ? typeof this.storeApi : 'null',
-            hasStoreApiGetState: typeof this.storeApi?.getState === 'function',
-            messageMapSize: currentState.messageMap.size,
-            messageOrder: currentState.messageOrder,
-            sessionStatus: currentState.sessionStatus,
-            sessionId: payload.sessionId,
-            thisSessionId: this.sessionId,
-          });
-          console.log(LOG_PREFIX, '[P31] stream_start check:', diagData);
-          
-          // 调用全局调试日志
-          if ((window as any).__subagentFlowLog) {
-            (window as any).__subagentFlowLog('stream_start', 'check_state', diagData, 
-              !messageExists && this.storeApi ? 'info' : (!this.storeApi ? 'error' : 'warning'));
-          }
-          
-          if (!messageExists && payload.messageId) {
-            console.log(LOG_PREFIX, '[P29] Creating placeholder assistant message for subagent:', payload.messageId);
-            logMultiVariant('adapter', 'stream_start_create_placeholder', {
-              messageId: payload.messageId,
-              modelId: payload.modelId,
-              sessionId: payload.sessionId,
-              hasStoreApi: !!this.storeApi,
-            }, 'warning');
-            
-            // 与 sendMessageWithIds 等价：创建占位助手消息并设置流式状态
-            const placeholderMessage = {
-              id: payload.messageId,
-              role: 'assistant' as const,
-              blockIds: [] as string[],
-              timestamp: Date.now(),
-              _meta: {
-                modelId: payload.modelId || fallbackModelId,
-              },
-            };
-            
-            // 🔧 P32 修复：不依赖 this.storeApi，从 sessionManager 获取 store 作为后备
-            if (streamStoreApi) {
-              streamStoreApi.setState((s) => ({
-                sessionStatus: 'streaming' as const,
-                messageMap: new Map(s.messageMap).set(payload.messageId, placeholderMessage),
-                messageOrder: s.messageOrder.includes(payload.messageId)
-                  ? s.messageOrder
-                  : [...s.messageOrder, payload.messageId],
-                currentStreamingMessageId: payload.messageId,
-              }));
-              console.log(LOG_PREFIX, '[P32] Placeholder created via', this.storeApi ? 'storeApi' : 'sessionManager fallback');
-            } else {
-              console.error(LOG_PREFIX, '[P32] Cannot create placeholder: no storeApi available');
-            }
-          } else {
-            // An autonomous backend stream can race with session loading: the
-            // empty assistant placeholder may already exist even though the
-            // frontend never entered streaming state. Adopt every accepted
-            // stream_start into the same invariant used by the send path so
-            // terminal events are not discarded by completeStream().
-            if (streamStoreApi) {
-              streamStoreApi.setState({
-                sessionStatus: 'streaming' as const,
-                currentStreamingMessageId: payload.messageId,
-              });
-            }
-          }
-
-          if (messageExists && payload.messageId && payload.modelId) {
-            // 普通会话：消息已存在，仅更新 modelId
-            logMultiVariant('adapter', 'stream_start_update_meta', {
-              messageId: payload.messageId,
-              modelId: payload.modelId,
-            }, 'success');
-            this.store.updateMessageMeta(payload.messageId, { modelId: payload.modelId });
-          } else if (messageExists && payload.messageId && fallbackModelId) {
-            // 🔧 回退：stream_start 未携带 modelId 时使用当前模型
-            logMultiVariant('adapter', 'stream_start_fallback_model', {
-              messageId: payload.messageId,
-              modelId: fallbackModelId,
-            }, 'warning');
-            this.store.updateMessageMeta(payload.messageId, { modelId: fallbackModelId });
-          } else if (messageExists) {
-            logMultiVariant('adapter', 'stream_start_no_modelId', {
-              messageId: payload.messageId,
-              hasMessageId: !!payload.messageId,
-              hasModelId: !!payload.modelId,
-            }, 'warning');
-          }
-          break;
-        }
-
-        case 'stream_reconnect':
-          if (
-            shouldIgnoreStreamLifecycleEvent(payload, {
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
-            })
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_reconnect:', {
-              messageId: payload.messageId,
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              eventTimestamp: payload.timestamp,
-            });
-            break;
-          }
-          this.store.updateMessageMeta(payload.messageId!, {
-            streamReconnect: buildStreamReconnectMeta(payload),
-          });
-          break;
-
-        case 'stream_complete':
-          if (
-            shouldIgnoreStreamLifecycleEvent(payload, {
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
-            })
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_complete:', {
-              messageId: payload.messageId,
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              eventTimestamp: payload.timestamp,
-            });
-            break;
-          }
-          // 流式完成 - 重置状态为 idle
-          console.log(
-            LOG_PREFIX,
-            'Stream complete for message:',
-            payload.messageId,
-            'duration:',
-            payload.durationMs,
-            'ms'
-          );
-          this.scheduleStreamCompletion(payload);
-          break;
-
-        case 'stream_error': {
-          if (
-            shouldIgnoreStreamLifecycleEvent(payload, {
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
-            })
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_error:', {
-              messageId: payload.messageId,
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              eventTimestamp: payload.timestamp,
-            });
-            break;
-          }
-          this.cancelPendingStreamCompletion();
-          this.clearStreamExpectation(payload.messageId);
-          // 流式错误 - 重置状态为 idle
-          chunkBuffer.flushSession(this.sessionId);
-          // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
-          // 先归一化再收尾，孤儿 preparing 块才能显示后端真实原因而不是通用兜底文案
-          const contextOverflow = payload.payload?.code === 'CONTEXT_WINDOW_EXCEEDED';
-          const streamError = normalizeStreamTerminalError(payload.error, payload.payload?.code);
-          this.store.completeStream('error', streamError);
-          this.store.updateMessageMeta(
-            payload.messageId!,
-            streamErrorMetaPatch(streamError),
-          );
-          handleStreamAbort(this.store).catch((err) => {
-            reportAdapterError({
-              code: 'stream_cleanup_failed',
-              level: 'dev',
-              sessionId: this.sessionId,
-              message: 'Error in handleStreamAbort after stream_error',
-              cause: err,
-            });
-          });
-          // 显示错误提示（经 errorChannel，避免黑盒 console.error）
-          if (payload.error) {
-            reportAdapterError({
-              code: 'stream_error',
-              level: 'user',
-              sessionId: this.sessionId,
-              message: streamError,
-              title: i18n.t('chatV2:error.streamInterrupted'),
-              cause: payload.error,
-              retryable: false,
-              action: contextOverflow && payload.messageId ? {
-                label: i18n.t('chatV2:error.chooseLargerModel'),
-                onClick: () => {
-                  this.getCurrentState().setModelRetryTarget(payload.messageId!);
-                  this.getCurrentState().setPanelState('model', true);
-                },
-              } : undefined,
-              storeApi: this.getErrorStoreApi(),
-            });
-          }
-          break;
-        }
-
-        case 'stream_cancelled':
-          if (
-            shouldIgnoreStreamLifecycleEvent(payload, {
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              lastStreamGenerationByMessageId: this.lastStreamGenerationByMessageId,
-            })
-          ) {
-            console.warn(LOG_PREFIX, 'Ignore stale stream_cancelled:', {
-              messageId: payload.messageId,
-              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
-              expectation: this.streamExpectation,
-              eventTimestamp: payload.timestamp,
-            });
-            break;
-          }
-          this.cancelPendingStreamCompletion();
-          this.clearStreamExpectation(payload.messageId);
-          // 流式被取消 - 由 abortStream 处理状态重置
-          console.log(LOG_PREFIX, 'Stream cancelled for message:', payload.messageId);
-          chunkBuffer.flushSession(this.sessionId);
-          // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
-          // 用户主动取消时，abortStream 可能已经重置了状态
-          // completeStream 内部会检查状态，如果已经是 idle 则不会重复处理
-          this.store.completeStream('cancelled');
-          this.store.updateMessageMeta(
-            payload.messageId!,
-            clearStreamReconnectMetaPatch(),
-          );
-          // 用户取消时也清空多变体 ID
-          this.store.setPendingParallelModelIds(null);
-          handleStreamAbort(this.store).catch((err) => {
-            reportAdapterError({
-              code: 'stream_cleanup_failed',
-              level: 'dev',
-              sessionId: this.sessionId,
-              message: 'Error in handleStreamAbort after stream_cancelled',
-              cause: err,
-            });
-          });
-          break;
-
-        case 'save_complete':
-          console.log(LOG_PREFIX, 'Session saved successfully');
-          clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_save_failed']);
-          break;
-
-        case 'save_error':
-          reportAdapterError({
-            code: 'session_save_failed',
-            level: 'user',
-            sessionId: this.sessionId,
-            message: i18n.t('chatV2:error.saveFailedDesc'),
-            title: i18n.t('chatV2:error.saveFailed'),
-            cause: payload.error,
-            retryable: true,
-            retry: () => this.saveSession(),
-            storeApi: this.getErrorStoreApi(),
-          });
-          break;
-
-        case 'summary_updated':
-          // 摘要自动生成完成 - 同时更新标题和简介
-          console.log(LOG_PREFIX, 'Session summary updated:', {
-            title: payload.title,
-            description: payload.description,
-          });
-          if (payload.title) {
-            this.store.setSummary(payload.title, payload.description ?? '');
-            // 通知侧边栏等组件刷新会话列表
-            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-          }
-          break;
-
-        case 'goal_updated':
-          // goal 模式 P0：后端目标状态变更（创建/暂停/恢复/编辑/续跑计数），
-          // payload.goal 为 null 表示目标已清除。setGoal 驱动顶栏
-          // GoalStatusChip 自动更新。
-          this.store.setGoal(payload.goal ?? null);
-          break;
-
-        case 'variant_deleted':
-          // 变体删除事件 - 后端已完成删除，前端同步状态
-          this.handleVariantDeleted(payload);
-          break;
-
-        case 'compaction_started': {
-          if (this.getCurrentState().compactionInProgress) break;
-          this.store.setCompactionInProgress(true);
-          showGlobalNotification(
-            'info',
-            i18n.t('chatV2:compaction.started'),
-            i18n.t('chatV2:compaction.startedTitle'),
-          );
-          break;
-        }
-
-        case 'compaction_finished':
-          this.store.setCompactionInProgress(false);
-          break;
-
-        case 'compaction_completed': {
-          // 🆕 压缩已落盘：立即写入水位覆盖值，上下文水位环不等下一轮 usage 即刷新。
-          // 覆盖值在下一轮真实 usage 到达时由 eventBridge 清除。
-          const completed = parseCompactionCompletedPayload(payload.payload);
-          this.store.setCompactionInProgress(false);
-          if (completed?.tokensAfter && completed.tokensAfter > 0) {
-            this.store.setContextUsageOverride({
-              sessionId: this.sessionId,
-              tokensAfter: completed.tokensAfter,
-            });
-          }
-          showGlobalNotification(
-            'success',
-            completed?.tokensBefore && completed.tokensAfter
-              ? i18n.t('chatV2:compaction.completedWithUsage', {
-                  before: completed.tokensBefore.toLocaleString(),
-                  after: completed.tokensAfter.toLocaleString(),
-                })
-              : i18n.t('chatV2:compaction.completed'),
-            i18n.t('chatV2:compaction.completedTitle'),
-          );
-          break;
-        }
-
-        case 'compaction_failed': {
-          // Keep the complete history on failure; never imply successful compaction.
-          this.store.setCompactionInProgress(false);
-          const reason = parseCompactionFailedReason(payload.payload);
-          const reasonText = i18n.t(`chatV2:${compactionReasonI18nKey(reason)}`);
-          showGlobalNotification(
-            'warning',
-            i18n.t('chatV2:compaction.autoFailed', {
-              reason: reasonText,
-            }),
-            i18n.t('chatV2:compaction.autoFailedTitle'),
-          );
-          break;
-        }
-
-        case 'context_trimmed': {
-          // FIFO 截断实际丢弃消息：温和提示 + 同会话 30s 合并节流
-          const trimmed = parseContextTrimmedPayload(payload.payload);
-          if (!trimmed) break;
-          const decision = contextTrimThrottle.record(this.sessionId, trimmed);
-          if (!decision.notify) break;
-          showGlobalNotification(
-            'info',
-            i18n.t('chatV2:compaction.contextTrimmed', {
-              count: decision.droppedMessages,
-            }),
-            i18n.t('chatV2:compaction.contextTrimmedTitle'),
-            { borderTone: 'neutral' },
-          );
-          break;
-        }
-
-        default:
-          console.warn(LOG_PREFIX, 'Unknown session event type:', payload.eventType);
-      }
-    } catch (error) {
-      reportAdapterError({
-        code: 'session_event_failed',
-        level: 'dev',
-        sessionId: this.sessionId,
-        message: 'Error handling session event',
-        cause: error,
-      });
-    }
+    sessionEventHandler.handleSessionEvent(this.asHost(), payload);
   }
 
-  /**
-   * 处理 variant_deleted 事件
-   * 
-   * 后端删除变体后发射此事件，前端需要同步更新本地状态。
-   * 
-   * Payload 结构：
-   * - messageId: 消息 ID
-   * - variantId: 被删除的变体 ID
-   * - remainingCount: 剩余变体数量
-   * - newActiveVariantId: 新的激活变体 ID（可选）
-   */
   private handleVariantDeleted(payload: SessionEventPayload): void {
-    const { messageId, variantId, newActiveVariantId, remainingCount } = payload;
-
-    if (!messageId || !variantId) {
-      console.warn(LOG_PREFIX, 'variant_deleted event missing messageId or variantId:', payload);
-      return;
-    }
-
-    console.log(LOG_PREFIX, 'Variant deleted event received:', {
-      messageId,
-      variantId,
-      remainingCount,
-      newActiveVariantId,
-    });
-
-    // 获取当前状态
-    const currentState = this.getCurrentState();
-    const message = currentState.messageMap.get(messageId);
-
-    if (!message) {
-      console.warn(LOG_PREFIX, 'variant_deleted: Message not found:', messageId);
-      return;
-    }
-
-    const variants = message.variants ?? [];
-    const variantIndex = variants.findIndex((v) => v.id === variantId);
-
-    if (variantIndex === -1) {
-      // 变体可能已经被前端删除（例如用户主动调用 deleteVariant）
-      // 这种情况下忽略事件，避免重复处理
-      console.log(LOG_PREFIX, 'variant_deleted: Variant already removed from frontend:', variantId);
-      return;
-    }
-
-    // 获取要删除的变体的 blockIds（用于清理 blocks Map）
-    const variantToDelete = variants[variantIndex];
-    const blockIdsToDelete = variantToDelete.blockIds ?? [];
-
-    // 使用 storeApi 更新状态（如果可用），否则回退到 store
-    const storeApi = this.storeApi ?? sessionManager.get(this.sessionId);
-    
-    if (storeApi) {
-      storeApi.setState((s) => {
-        const newMessageMap = new Map(s.messageMap);
-        const newBlocks = new Map(s.blocks);
-        const newStreamingVariantIds = new Set(s.streamingVariantIds);
-
-        const msg = newMessageMap.get(messageId);
-        if (msg) {
-          // 移除被删除的变体
-          const newVariants = (msg.variants ?? []).filter((v) => v.id !== variantId);
-          
-          // 使用后端返回的 newActiveVariantId，如果没有则保持当前激活状态
-          // 如果当前激活的变体被删除，则选择第一个变体
-          let newActiveId = msg.activeVariantId;
-          if (newActiveVariantId) {
-            newActiveId = newActiveVariantId;
-          } else if (msg.activeVariantId === variantId && newVariants.length > 0) {
-            newActiveId = newVariants[0].id;
-          }
-
-          const newActiveVariant = newVariants.find((v) => v.id === newActiveId);
-
-          newMessageMap.set(messageId, {
-            ...msg,
-            variants: newVariants,
-            activeVariantId: newActiveId,
-            _meta: newActiveVariant?.modelId
-              ? { ...(msg._meta ?? {}), modelId: newActiveVariant.modelId }
-              : msg._meta,
-          });
-        }
-
-        // 清理被删除变体关联的 blocks
-        for (const blockId of blockIdsToDelete) {
-          newBlocks.delete(blockId);
-        }
-
-        // 从 streamingVariantIds 中移除（如果变体正在流式中）
-        newStreamingVariantIds.delete(variantId);
-
-        return {
-          messageMap: newMessageMap,
-          blocks: newBlocks,
-          streamingVariantIds: newStreamingVariantIds,
-        };
-      });
-
-      console.log(LOG_PREFIX, 'variant_deleted: Frontend state synced:', {
-        variantId,
-        blocksRemoved: blockIdsToDelete.length,
-      });
-    } else {
-      console.error(LOG_PREFIX, 'variant_deleted: Cannot update state - no storeApi available');
-    }
+    sessionEventHandler.handleVariantDeleted(this.asHost(), payload);
   }
 
   // ========================================================================
   // 消息操作
   // ========================================================================
 
-  /**
-   * 生成消息 ID（格式：msg_{uuid}）
-   */
   private generateMessageId(): string {
-    return `msg_${crypto.randomUUID()}`;
+    return sendOperations.generateMessageId(this.asHost());
   }
 
   /**
@@ -3010,519 +450,24 @@ export class ChatV2TauriAdapter {
    *
    * 实现消息 ID 统一：前端生成 ID 并传给后端使用，确保前后端一致
    */
-  async sendMessage(content: string, attachments?: AttachmentMeta[]): Promise<void> {
-    console.warn(
-      LOG_PREFIX,
-      'sendMessage() called directly. Prefer using store.sendMessage() instead.'
-    );
-    console.log(LOG_PREFIX, 'Sending message:', { content: content.substring(0, 50), attachments });
-
-    try {
-      const backendStreamActive = await invoke<boolean>('chat_v2_has_active_stream', {
-        sessionId: this.sessionId,
-      });
-      if (backendStreamActive) {
-        throw new Error('Session has an active stream. Please wait for completion or cancel first.');
-      }
-      // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
-      resetBridgeState(this.sessionId);
-
-      // 1. 前端生成消息 ID（消息 ID 统一方案 B）
-      const userMessageId = this.generateMessageId();
-      const assistantMessageId = this.generateMessageId();
-      this.beginStreamExpectation(assistantMessageId);
-      const sendStateSnapshot = this.getCurrentState();
-
-      // ⚠️ 统一上下文注入：先获取 pendingContextRefs（sendMessageWithIds 会清空）
-      // ★ 使用 storeApi 获取最新状态
-      let pendingContextRefs = getPendingContextRefs(this.storeApi ?? this.store);
-
-      // 🆕 P1 修复：验证并清理已删除的资源引用
-      // 在发送前检查资源是否仍然存在，移除无效引用
-      if (pendingContextRefs.length > 0) {
-        pendingContextRefs = await validateAndCleanupContextRefs(
-          this.storeApi ?? this.store,
-          pendingContextRefs,
-          { notifyUser: true, logDetails: true }
-        );
-        console.log(LOG_PREFIX, 'After validation:', pendingContextRefs.length, 'valid refs');
-      }
-
-      // 2. 构建发送选项（包含 parallelModelIds），并先同步当前会话模型
-      // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
-      const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = await this.buildSendOptions({
-        state: sendStateSnapshot,
-        pendingContextRefs,
-      });
-      await this.applyRuntimeModelSelection(options);
-      let localTurnCommitted = false;
-      const commitLocalTurn = async () => {
-        if (localTurnCommitted) return;
-        await this.store.sendMessageWithIds(
-          content,
-          attachments,
-          userMessageId,
-          assistantMessageId,
-        );
-        localTurnCommitted = true;
-      };
-
-      // 🆕 统一上下文注入：构建 SendContextRef[]（附件已通过 pendingContextRefs 处理）
-      // ★ 根据当前模型的多模态能力决定注入图片还是文本
-      // ★ 文档28 Prompt10：使用 buildSendContextRefsWithPaths 获取 pathMap
-      let userContextRefs = undefined;
-      let contextPathMap: Record<string, string> | undefined;
-      let isMultimodalModel = false;
-      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
-      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
-      const refsForUserMessage = pendingContextRefs.filter(
-        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
-      );
-      if (refsForUserMessage.length > 0) {
-        const currentModelId = options.modelId;
-        const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
-        isMultimodalModel = isMultimodal;
-        const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(refsForUserMessage, { isMultimodal });
-
-        // Token 预估和截断（防止上下文过长）
-        // ✅ 按模型上下文预算截断（优先使用用户覆盖，其次模型推断）
-        const truncateResult = truncateContextByTokens(sendRefs, this.getContextTruncateLimit(options.contextLimit));
-
-        if (truncateResult.wasTruncated) {
-          console.warn(
-            LOG_PREFIX,
-            'Context truncated:',
-            `original=${truncateResult.originalTokens} tokens,`,
-            `final=${truncateResult.finalTokens} tokens,`,
-            `removed=${truncateResult.removedCount} refs`
-          );
-          this.notifyContextTruncated(truncateResult.removedCount);
-        }
-
-        userContextRefs = truncateResult.truncatedRefs;
-        const stagedPathMap = await prepareRetainedAttachmentsAndCommit(
-          this.sessionId,
-          userContextRefs,
-          binaryStageCandidates,
-          pathMap,
-          commitLocalTurn,
-        );
-
-        // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
-        const keptPathMap = filterStagedPathMap(
-          stagedPathMap,
-          new Set(userContextRefs.map((ref) => ref.resourceId)),
-        );
-        if (Object.keys(keptPathMap).length > 0) {
-          contextPathMap = keptPathMap;
-        }
-      }
-
-      // Commit the optimistic local turn only after attachment preparation succeeds.
-      await commitLocalTurn();
-      if (contextPathMap) {
-        this.store.updateMessagePathMap(userMessageId, contextPathMap);
-      }
-
-      // 🔧 2026-01-15: 超时机制已移除
-
-      // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
-      const attachedWorkspaceId = resolveWorkspaceIdForSession(this.sessionId);
-
-      // 5. 调用后端（传递前端生成的消息 ID）
-      const request: SendMessageRequest = {
-        sessionId: this.sessionId,
-        content,
-        // 🆕 附件已通过 userContextRefs 传递，不再使用 attachments 字段
-        options,
-        // 传递前端生成的消息 ID，后端必须使用这些 ID
-        userMessageId,
-        assistantMessageId,
-        userContextRefs, // 🆕 统一上下文注入（包含附件）
-        pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
-        workspaceId: attachedWorkspaceId, // 🆕 工作区 ID（多 Agent 协作，仅限工作区成员会话）
-      };
-
-      const requestAudit = buildAttachmentRequestAudit(request, {
-        source: 'frontend',
-        modelId: options.modelId,
-        isMultimodalModel,
-      });
-      logAttachment('adapter', 'send_request_audit_frontend', requestAudit as unknown as Record<string, unknown>, requestAudit.expectation.expectationMet ? 'success' : 'warning');
-
-      const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
-        request,
-      });
-
-      // 发送成功后才清空多变体 ID，确保失败时用户可以重试
-      this.store.setPendingParallelModelIds(null);
-
-      console.log(
-        LOG_PREFIX,
-        'Message sent, assistant message ID:',
-        returnedAssistantMessageId,
-        '(expected:',
-        assistantMessageId,
-        ')'
-      );
-
-      // 5. 验证 ID 一致性（后端应返回相同的 ID）
-      if (returnedAssistantMessageId && returnedAssistantMessageId !== assistantMessageId) {
-        console.warn(
-          LOG_PREFIX,
-          'Backend returned different assistant message ID:',
-          returnedAssistantMessageId,
-          'expected:',
-          assistantMessageId
-        );
-        // 更新为后端返回的 ID（兼容旧版本后端）
-        this.setStreamExpectationMessageId(returnedAssistantMessageId);
-        this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
-      }
-    } catch (error) {
-      this.clearStreamExpectation();
-      const errorMsg = getErrorMessage(error);
-      if (isActiveStreamConflict(errorMsg)) {
-        console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
-        showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-          error,
-          'chatV2:error.sendFailed',
-          'Send failed',
-        ));
-        throw error;
-      }
-      console.error(LOG_PREFIX, 'Send message failed:', errorMsg);
-      // 尝试恢复状态
-      try {
-        await this.store.abortStream();
-      } catch {
-        // 忽略恢复失败
-      }
-      // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-        error,
-        'chatV2:error.sendFailed',
-        'Send failed',
-      ));
-      throw error;
-    }
+  sendMessage(content: string, attachments?: AttachmentMeta[]): Promise<void> {
+    return sendOperations.sendMessage(this.asHost(), content, attachments);
   }
 
-  /**
-   * 执行系统唤醒（内部方法，供 callback 使用）。
-   *
-   * 唤醒内容仍进入 Pipeline 的 user content，但后端强制跳过用户消息持久化；
-   * 本地 store 已仅创建 assistant 占位，以避免出现伪用户气泡。
-   */
-  private async executeWakeSession(
+  private executeWakeSession(
     content: string,
     assistantMessageId: string,
   ): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing wake session:', {
-      content: content.substring(0, 50),
-      assistantMessageId,
-    });
-
-    try {
-      this.beginStreamExpectation(assistantMessageId);
-      resetBridgeState(this.sessionId);
-
-      const state = this.getCurrentState();
-      const activeModelId = state.chatParams.model2OverrideId || state.chatParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = await this.buildSendOptions({ state, pendingContextRefs: [] });
-      await this.applyRuntimeModelSelection(options);
-
-      const returnedAssistantMessageId = await invoke<string>('chat_v2_wake_session', {
-        sessionId: this.sessionId,
-        content,
-        assistantMessageId,
-        options,
-      });
-      if (returnedAssistantMessageId && returnedAssistantMessageId !== assistantMessageId) {
-        this.setStreamExpectationMessageId(returnedAssistantMessageId);
-        this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
-      }
-    } catch (error) {
-      this.clearStreamExpectation(assistantMessageId);
-      const errorMsg = getErrorMessage(error);
-      if (isActiveStreamConflict(errorMsg)) {
-        console.warn(LOG_PREFIX, 'Wake deferred because the backend stream is still active');
-        throw error;
-      }
-      console.error(LOG_PREFIX, 'Execute wake session failed:', errorMsg);
-      this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
-      this.store.completeStream('error', normalizeStreamTerminalError(error));
-      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-        error,
-        'chatV2:error.sendFailed',
-        'Wake failed',
-      ));
-      throw error;
-    }
+    return sendOperations.executeWakeSession(this.asHost(), content, assistantMessageId);
   }
 
-  /**
-   * 执行发送消息（内部方法，供 callback 使用）
-   * 
-   * 与 sendMessage 的区别：使用调用方传入的消息 ID，而不是自己生成。
-   * 这确保了 Store.sendMessage() 生成的 ID 与后端使用的 ID 一致。
-   */
-  private async executeSendMessage(
+  private executeSendMessage(
     content: string,
     attachments: AttachmentMeta[] | undefined,
     userMessageId: string,
     assistantMessageId: string
   ): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing sendMessage:', { content: content.substring(0, 50), userMessageId, assistantMessageId });
-
-    try {
-      const backendStreamActive = await invoke<boolean>('chat_v2_has_active_stream', {
-        sessionId: this.sessionId,
-      });
-      if (backendStreamActive) {
-        throw new Error('Session has an active stream. Please wait for completion or cancel first.');
-      }
-      this.beginStreamExpectation(assistantMessageId);
-      const sendStateSnapshot = this.getCurrentState();
-
-      // 🔧 重置事件桥接状态（确保序列号从 0 开始）
-      resetBridgeState(this.sessionId);
-
-      // ========== 🆕 统一上下文注入（必须在 sendMessageWithIds 之前获取） ==========
-      // 0. 先获取 pendingContextRefs（sendMessageWithIds 会清空它们）
-      // ★ 使用 storeApi 获取最新状态，this.store 是构造时的快照，不是响应式的
-      let pendingContextRefs = getPendingContextRefs(this.storeApi ?? this.store);
-      logAttachment('adapter', 'get_pending_context_refs', {
-        count: pendingContextRefs.length,
-        refs: pendingContextRefs.map(r => ({ resourceId: r.resourceId, typeId: r.typeId, hash: r.hash })),
-      });
-
-      // 🆕 P1 修复：验证并清理已删除的资源引用
-      // 在发送前检查资源是否仍然存在，移除无效引用
-      if (pendingContextRefs.length > 0) {
-        pendingContextRefs = await validateAndCleanupContextRefs(
-          this.storeApi ?? this.store,
-          pendingContextRefs,
-          { notifyUser: true, logDetails: true }
-        );
-        console.log(LOG_PREFIX, 'After validation:', pendingContextRefs.length, 'valid refs');
-      }
-
-      // 1. 构建发送选项（包含 parallelModelIds），并先同步当前会话模型
-      // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
-      const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = await this.buildSendOptions({
-        state: sendStateSnapshot,
-        pendingContextRefs,
-      });
-      await this.applyRuntimeModelSelection(options);
-      let localTurnCommitted = false;
-      const commitLocalTurn = async () => {
-        if (localTurnCommitted) return;
-        await this.store.sendMessageWithIds(
-          content,
-          attachments,
-          userMessageId,
-          assistantMessageId,
-        );
-        localTurnCommitted = true;
-      };
-
-      // 🔧 调试打点：发送消息时的状态
-      if (options.parallelModelIds && options.parallelModelIds.length >= 2) {
-        logMultiVariant('adapter', 'executeSendMessage', {
-          userMessageId,
-          assistantMessageId,
-          parallelModelIds: options.parallelModelIds,
-          isMultiVariant: true,
-        }, 'success');
-      }
-
-      // 注意：不在这里清空 pendingParallelModelIds，等待发送成功后再清空
-      // 这样如果发送失败，用户可以重试而不会丢失多变体配置
-
-      // ========== 🆕 统一上下文注入 ==========
-      // 附件已通过 pendingContextRefs 处理，不再使用旧的 attachments 字段
-
-      // 3. 构建 SendContextRef[]（按优先级排序，获取资源内容，调用 formatToBlocks）
-      // ★ 根据当前模型的多模态能力决定注入图片还是文本
-      // ★ 文档28 Prompt10：使用 buildSendContextRefsWithPaths 获取 pathMap
-      let userContextRefs = undefined;
-      let contextPathMap: Record<string, string> | undefined;
-      let retainedContextSnapshot: ContextSnapshot | undefined;
-      let isMultimodalModel = false;
-      // 🔧 2026-02-22: 过滤掉 skill_instruction 类型 refs
-      // 技能内容改由后端 auto-load_skills 工具结果投递（role: tool），不再注入 user message
-      const refsForUserMessage2 = pendingContextRefs.filter(
-        (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
-      );
-      if (refsForUserMessage2.length > 0) {
-        console.log(LOG_PREFIX, 'Building SendContextRefs for', refsForUserMessage2.length, 'refs (filtered', pendingContextRefs.length - refsForUserMessage2.length, 'skill_instruction refs)');
-        const currentModelId = options.modelId;
-        const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
-        isMultimodalModel = isMultimodal;
-        console.debug('[TauriAdapter] send: model =', currentModelId, 'isMultimodal =', isMultimodal);
-        const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(refsForUserMessage2, { isMultimodal });
-
-        // 3.1 Token 预估和截断（基于模型预算，防止上下文过长）
-        const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
-        const truncateResult = truncateContextByTokens(sendRefs, contextTokenLimit);
-
-        if (truncateResult.wasTruncated) {
-          // 发生截断，记录警告日志
-          console.warn(
-            LOG_PREFIX,
-            'Context truncated:',
-            `original=${truncateResult.originalTokens} tokens,`,
-            `final=${truncateResult.finalTokens} tokens,`,
-            `removed=${truncateResult.removedCount} refs,`,
-            `kept=${truncateResult.truncatedRefs.length} refs`
-          );
-
-          this.notifyContextTruncated(truncateResult.removedCount);
-        } else {
-          // 未截断，记录 debug 日志
-          console.log(
-            LOG_PREFIX,
-            'Context within token limit:',
-            `${truncateResult.finalTokens} / ${contextTokenLimit} tokens,`,
-            `${sendRefs.length} refs`
-          );
-        }
-
-        // 使用截断后的 sendRefs
-        userContextRefs = truncateResult.truncatedRefs;
-        const stagedPathMap = await prepareRetainedAttachmentsAndCommit(
-          this.sessionId,
-          userContextRefs,
-          binaryStageCandidates,
-          pathMap,
-          commitLocalTurn,
-        );
-        logSendContextRefsSummary(userContextRefs);
-
-        // 🔧 修复：同步更新 contextSnapshot，确保与截断后的请求一致
-        const keptContextRefs = userContextRefs.map((ref) => ({
-          resourceId: ref.resourceId,
-          hash: ref.hash,
-          typeId: ref.typeId,
-          displayName: ref.displayName,
-          injectModes: ref.injectModes,
-        }));
-        const keptResourceIds = new Set<string>(keptContextRefs.map((ref) => String(ref.resourceId)));
-        const filteredPathMap = filterStagedPathMap(stagedPathMap, keptResourceIds);
-        const contextSnapshot = keptContextRefs.length > 0
-          ? {
-              userRefs: keptContextRefs,
-              retrievalRefs: [],
-              ...(Object.keys(filteredPathMap).length > 0 ? { pathMap: filteredPathMap } : {}),
-            }
-          : undefined;
-        retainedContextSnapshot = contextSnapshot;
-
-        // ★ 文档28 Prompt10：保存 pathMap 用于传递给后端和更新 store
-        if (Object.keys(filteredPathMap).length > 0) {
-          contextPathMap = filteredPathMap;
-        }
-
-        // 3.2 收集上下文类型 Hints（用于 System Prompt 中声明 XML 标签含义）
-        // Schema 工具 ID 已在 buildSendOptions 中通过 collectSchemaToolIds 统一收集
-        const contextTypeHints = collectContextTypeHints(keptContextRefs);
-        if (contextTypeHints.length > 0) {
-          options.contextTypeHints = contextTypeHints;
-          console.log(LOG_PREFIX, 'Context type hints:', contextTypeHints.length, 'hints');
-        }
-      }
-
-      // ========== 🆕 统一上下文注入结束 ==========
-
-      // Staging can fail. Keep the composer and ContextRefs intact until it succeeds.
-      await commitLocalTurn();
-      if (retainedContextSnapshot) {
-        this.store.updateMessageMeta(userMessageId, { contextSnapshot: retainedContextSnapshot });
-      }
-      if (contextPathMap) {
-        this.store.updateMessagePathMap(userMessageId, contextPathMap);
-      }
-
-      // 🔧 2026-01-15: 超时机制已移除
-
-      // 🔧 P1 修复：仅当本会话确实属于当前工作区时才附加 workspaceId，避免跨会话串台
-      const attachedWorkspaceId = resolveWorkspaceIdForSession(this.sessionId);
-
-      // 5. 调用后端
-      const request: SendMessageRequest = {
-        sessionId: this.sessionId,
-        content,
-        // 🆕 附件已通过 userContextRefs 传递，不再使用 attachments 字段
-        options,
-        userMessageId,
-        assistantMessageId,
-        userContextRefs, // 🆕 统一上下文注入（包含附件）
-        pathMap: contextPathMap, // ★ 文档28 Prompt10：传递路径映射给后端保存
-        workspaceId: attachedWorkspaceId, // 🆕 工作区 ID（多 Agent 协作，仅限工作区成员会话）
-      };
-
-      const requestAudit = buildAttachmentRequestAudit(request, {
-        source: 'frontend',
-        modelId: options.modelId,
-        isMultimodalModel,
-      });
-      logAttachment('adapter', 'send_request_audit_frontend', requestAudit as unknown as Record<string, unknown>, requestAudit.expectation.expectationMet ? 'success' : 'warning');
-
-      const returnedAssistantMessageId = await invoke<string>('chat_v2_send_message', {
-        request,
-      });
-
-      // 发送成功后才清空多变体 ID，确保失败时用户可以重试
-      this.store.setPendingParallelModelIds(null);
-
-      // 🆕 开发者调试：保存完整请求体到助手消息的元数据
-      // ★ 2026-02-14: 如果后端已推送真实 LLM 请求体（_source='backend_llm'），则不覆盖
-      const existingMeta = this.getCurrentState().messageMap.get(assistantMessageId)?._meta;
-      const existingRaw = existingMeta?.rawRequest as { _source?: string } | undefined;
-      if (!existingRaw || existingRaw._source !== 'backend_llm') {
-        this.store.updateMessageMeta(assistantMessageId, { rawRequest: request });
-      }
-
-      console.log(LOG_PREFIX, 'Message sent, assistant ID:', returnedAssistantMessageId);
-
-      // 6. 验证 ID 一致性
-      if (returnedAssistantMessageId && returnedAssistantMessageId !== assistantMessageId) {
-        console.warn(LOG_PREFIX, 'Backend returned different ID:', returnedAssistantMessageId);
-        this.setStreamExpectationMessageId(returnedAssistantMessageId);
-        this.store.setCurrentStreamingMessage(returnedAssistantMessageId);
-      }
-    } catch (error) {
-      this.clearStreamExpectation();
-      const errorMsg = getErrorMessage(error);
-      if (isActiveStreamConflict(errorMsg)) {
-        console.warn(LOG_PREFIX, 'Send rejected because the backend stream is still active');
-        showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-          error,
-          'chatV2:error.sendFailed',
-          'Send failed',
-        ));
-        throw error;
-      }
-      console.error(LOG_PREFIX, 'Execute sendMessage failed:', errorMsg);
-      this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
-      try {
-        await this.store.abortStream();
-      } catch {
-        // 忽略恢复失败
-      }
-      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-        error,
-        'chatV2:error.sendFailed',
-        'Send failed',
-      ));
-      throw error;
-    }
+    return sendOperations.executeSendMessage(this.asHost(), content, attachments, userMessageId, assistantMessageId);
   }
 
   /**
@@ -3535,166 +480,19 @@ export class ChatV2TauriAdapter {
    * 2. store.abortStream() → _abortCallback() → executeAbort() (后端)
    * 3. store.abortStream() → 更新本地状态
    */
-  async abortStream(): Promise<void> {
-    console.log(LOG_PREFIX, 'Aborting stream...');
-
-    try {
-      // 直接调用 Store 的 abortStream，它会通过回调通知后端
-      await this.store.abortStream();
-      console.log(LOG_PREFIX, 'Stream aborted');
-    } catch (error) {
-      // 强制重置前端状态
-      console.warn(LOG_PREFIX, 'Forcing frontend state reset');
-      this.store.forceResetToIdle?.();
-      reportAdapterError({
-        code: 'abort_failed',
-        level: 'user',
-        sessionId: this.sessionId,
-        message: i18n.t('chatV2:error.abortFailedMessage'),
-        title: i18n.t('chatV2:error.abortFailed'),
-        cause: error,
-        retryable: false,
-        storeApi: this.getErrorStoreApi(),
-      });
-      throw error;
-    }
+  abortStream(): Promise<void> {
+    return messageOperations.abortStream(this.asHost());
   }
 
-  /**
-   * 执行中断操作（内部方法，供 callback 使用）
-   * 仅通知后端取消，不更新本地状态（由 Store 的 abortStream 处理）
-   * 
-   * 包含超时保护机制：如果后端取消请求超过 10 秒未响应，
-   * 静默超时让调用方继续执行。
-   */
-  private async executeAbort(): Promise<void> {
-    console.log(LOG_PREFIX, 'Execute abort (backend only)...');
-
-    // 🔧 2026-01-15: 超时机制已移除
-
-    // 获取当前流式消息 ID（使用 getCurrentState 获取最新状态）
-    const currentMessageId = this.getCurrentState().currentStreamingMessageId;
-    if (!currentMessageId) {
-      console.warn(LOG_PREFIX, 'No streaming message to abort');
-      this.clearStreamExpectation();
-      return;
-    }
-
-    try {
-      // 带超时保护地通知后端取消
-      const backendAbort = invoke('chat_v2_cancel_stream', {
-        sessionId: this.sessionId,
-        messageId: currentMessageId,
-      });
-
-      // 创建超时 Promise
-      const timeout = new Promise<'timeout'>((resolve) => {
-        setTimeout(() => resolve('timeout'), ABORT_TIMEOUT_MS);
-      });
-
-      // 使用 Promise.race 实现超时保护
-      const result = await Promise.race([
-        backendAbort.then(() => 'success' as const),
-        timeout,
-      ]);
-
-      if (result === 'timeout') {
-        console.warn(
-          LOG_PREFIX,
-          `Abort backend timeout after ${ABORT_TIMEOUT_MS}ms`
-        );
-      } else {
-        console.log(LOG_PREFIX, 'Backend abort successful');
-      }
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Backend abort failed:', getErrorMessage(error));
-      // 不抛出错误，让 Store 继续更新本地状态
-    }
+  private executeAbort(): Promise<void> {
+    return messageOperations.executeAbort(this.asHost());
   }
 
-  /**
-   * 执行重试操作（内部方法，供 callback 使用）
-   * 🆕 P1 状态同步修复: 返回完整的 RetryMessageResult
-   * @returns 重试结果，包含消息 ID 和状态变更信息
-   */
-  private async executeRetry(
+  private executeRetry(
     messageId: string,
     modelOverride?: string
   ): Promise<RetryMessageResult> {
-    console.log(LOG_PREFIX, 'Executing retry for message:', messageId, 'model override:', modelOverride);
-
-    try {
-      this.beginStreamExpectation(messageId);
-      // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
-      resetBridgeState(this.sessionId);
-
-      const currentParams = this.getCurrentState().chatParams;
-      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.applyOriginalReplaySkillState(
-        messageId,
-        await this.buildSendOptions(),
-        this.getCurrentState().chatParams.selectedMcpServers,
-      );
-      const validIds = await this.getValidChatModelIdSet();
-      await this.applyRuntimeModelSelection(options);
-      if (modelOverride) {
-        const trimmedOverride = modelOverride.trim();
-        if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
-          options.modelId = trimmedOverride;
-          options.model2OverrideId = trimmedOverride;
-          this.applyRuntimeThinkingCapability(options);
-        }
-      }
-
-      // 🔧 2026-01-15: 超时机制已移除
-
-      // 🆕 P1 状态同步修复: 后端返回增强的结果，包含状态变更信息
-      const result = await invoke<{
-        message_id?: string;
-        new_variant_id?: string;
-        deleted_variant_ids?: string[];
-      }>('chat_v2_retry_message', {
-        sessionId: this.sessionId,
-        messageId,
-        options,
-      });
-
-      const returnedMessageId = result.message_id ?? messageId;
-      const newVariantId = result.new_variant_id;
-      const deletedVariantIds = result.deleted_variant_ids ?? [];
-
-      console.log(LOG_PREFIX, 'Retry initiated:', {
-        messageId: returnedMessageId,
-        newVariantId,
-        deletedVariantIds: deletedVariantIds.length,
-      });
-      if (returnedMessageId && returnedMessageId !== messageId) {
-        this.setStreamExpectationMessageId(returnedMessageId);
-      }
-
-      // 🆕 P1 状态同步修复: 返回完整的状态变更信息
-      return {
-        success: true,
-        messageId: returnedMessageId,
-        newVariantId,
-        deletedVariantIds: deletedVariantIds.length > 0 ? deletedVariantIds : undefined,
-      };
-    } catch (error) {
-      this.clearStreamExpectation(messageId);
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Retry failed:', errorMsg);
-      // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-        error,
-        'chatV2:messageItem.actions.retryFailed',
-        'Retry failed',
-      ));
-      throw error;
-    } finally {
-      // 无论成功/失败都清理重试阶段暂存的并行模型，避免污染下一次普通发送
-      this.store.setPendingParallelModelIds(null);
-    }
+    return messageOperations.executeRetry(this.asHost(), messageId, modelOverride);
   }
 
   /**
@@ -3705,24 +503,8 @@ export class ChatV2TauriAdapter {
    * 此方法仅作为后备使用，正常流程应该是：
    * store.retryMessage() -> _retryCallback -> executeRetry()
    */
-  async retryMessage(messageId: string, modelOverride?: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Retrying message (direct call):', messageId, 'model override:', modelOverride);
-    console.warn(
-      LOG_PREFIX,
-      'retryMessage() called directly. Prefer using store.retryMessage() instead.'
-    );
-
-    try {
-      // 通过 store 的 retryMessage 方法处理
-      // 它会自动调用注入的 _retryCallback（即 executeRetry）
-      // 并正确更新本地状态和启动超时监控
-      await this.store.retryMessage(messageId, modelOverride);
-
-      console.log(LOG_PREFIX, 'Retry completed:', messageId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Retry message failed:', getErrorMessage(error));
-      throw error;
-    }
+  retryMessage(messageId: string, modelOverride?: string): Promise<void> {
+    return messageOperations.retryMessage(this.asHost(), messageId, modelOverride);
   }
 
   /**
@@ -3733,43 +515,12 @@ export class ChatV2TauriAdapter {
    * 此方法仅作为后备使用，正常流程应该是：
    * store.editAndResend() -> _editAndResendCallback -> executeEditAndResend()
    */
-  async editAndResend(messageId: string, newContent: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Edit and resend (direct call):', messageId);
-    console.warn(
-      LOG_PREFIX,
-      'editAndResend() called directly. Prefer using store.editAndResend() instead.'
-    );
-
-    try {
-      // 通过 store 的 editAndResend 方法处理
-      // 它会自动调用注入的 _editAndResendCallback（即 executeEditAndResend）
-      // 并正确更新本地状态和启动超时监控
-      await this.store.editAndResend(messageId, newContent);
-
-      console.log(LOG_PREFIX, 'Edit and resend completed:', messageId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Edit and resend failed:', getErrorMessage(error));
-      throw error;
-    }
+  editAndResend(messageId: string, newContent: string): Promise<void> {
+    return messageOperations.editAndResend(this.asHost(), messageId, newContent);
   }
 
-  /**
-   * 执行删除操作（内部方法，供 callback 使用）
-   */
-  private async executeDelete(messageId: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing delete for message:', messageId);
-
-    try {
-      await invoke('chat_v2_delete_message', {
-        sessionId: this.sessionId,
-        messageId,
-      });
-
-      console.log(LOG_PREFIX, 'Message deleted from backend:', messageId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Delete message failed:', getErrorMessage(error));
-      throw error;
-    }
+  private executeDelete(messageId: string): Promise<void> {
+    return messageOperations.executeDelete(this.asHost(), messageId);
   }
 
   /**
@@ -3780,161 +531,16 @@ export class ChatV2TauriAdapter {
    * 此方法仅作为后备使用，正常流程应该是：
    * store.deleteMessage() -> _deleteCallback -> executeDelete()
    */
-  async deleteMessage(messageId: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Deleting message (direct call):', messageId);
-    console.warn(
-      LOG_PREFIX,
-      'deleteMessage() called directly. Prefer using store.deleteMessage() instead.'
-    );
-
-    try {
-      // 通过 store 的 deleteMessage 方法处理
-      // 它会自动调用注入的 _deleteCallback（即 executeDelete）
-      // 并正确更新本地状态
-      await this.store.deleteMessage(messageId);
-
-      console.log(LOG_PREFIX, 'Message deleted:', messageId);
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Delete message failed:', getErrorMessage(error));
-      throw error;
-    }
+  deleteMessage(messageId: string): Promise<void> {
+    return messageOperations.deleteMessage(this.asHost(), messageId);
   }
 
-  /**
-   * 执行编辑并重发操作（内部方法，供 callback 使用）
-   * 🆕 P1-2: 支持传递新的上下文引用
-   * 🆕 P1 状态同步修复: 返回完整的 EditMessageResult
-   * @returns 编辑结果，包含新消息 ID 和状态变更信息
-   */
-  private async executeEditAndResend(
+  private executeEditAndResend(
     messageId: string,
     newContent: string,
     newContextRefs?: ContextRef[]
   ): Promise<EditMessageResult> {
-    console.log(LOG_PREFIX, 'Executing editAndResend for message:', messageId, 'newContextRefs:', newContextRefs?.length ?? 0);
-
-    try {
-      // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
-      resetBridgeState(this.sessionId);
-
-      const currentParams = this.getCurrentState().chatParams;
-      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.applyOriginalReplaySkillState(
-        messageId,
-        await this.buildSendOptions(),
-        this.getCurrentState().chatParams.selectedMcpServers,
-      );
-      await this.applyRuntimeModelSelection(options);
-
-      // 🔧 2026-01-15: 超时机制已移除
-
-      // 🆕 P1-2: 如果有新的上下文引用，构建 SendContextRef[]
-      // ★ 根据当前模型的多模态能力决定注入图片还是文本
-      // 注意：editAndResend 的新消息由后端创建，pathMap 在后端保存时处理
-      let newContextRefsForBackend = undefined;
-      let newPathMap: Record<string, string> | undefined;
-      if (newContextRefs) {
-        if (newContextRefs.length === 0) {
-          // 显式清空上下文引用（传 [] 给后端，而不是 undefined）
-          newContextRefsForBackend = [];
-        } else {
-          // 🆕 P1 修复：验证并清理已删除的资源引用
-          const validContextRefs = await validateAndCleanupContextRefs(
-            this.storeApi ?? this.store,
-            newContextRefs,
-            { notifyUser: true, logDetails: true }
-          );
-          console.log(LOG_PREFIX, 'Building SendContextRefs for editAndResend:', validContextRefs.length, '(validated from', newContextRefs.length, ')');
-          
-          if (validContextRefs.length > 0) {
-            const currentModelId = options.modelId;
-            const isMultimodal = await this.shouldResolveContextAsMultimodal(options);
-            const { sendRefs, pathMap, binaryStageCandidates } = await buildSendContextRefsWithPaths(validContextRefs, { isMultimodal });
-
-            // Token 预估和截断（基于模型预算，防止上下文过长）
-            const contextTokenLimit = this.getContextTruncateLimit(options.contextLimit);
-            const truncateResult = truncateContextByTokens(sendRefs, contextTokenLimit);
-
-            if (truncateResult.wasTruncated) {
-              console.warn(
-                LOG_PREFIX,
-                'Context truncated for editAndResend:',
-                `original=${truncateResult.originalTokens} tokens,`,
-                `final=${truncateResult.finalTokens} tokens,`,
-                `removed=${truncateResult.removedCount} refs`
-              );
-              this.notifyContextTruncated(truncateResult.removedCount);
-            }
-
-            newContextRefsForBackend = truncateResult.truncatedRefs;
-            const stagedPathMap = await materializeRetainedBinaryContextRefs(
-              this.sessionId,
-              truncateResult.truncatedRefs,
-              binaryStageCandidates,
-              pathMap,
-            );
-            const keptIds = new Set(truncateResult.truncatedRefs.map((ref) => ref.resourceId));
-            const filteredPathMap = filterStagedPathMap(stagedPathMap, keptIds);
-            newPathMap = Object.keys(filteredPathMap).length > 0 ? filteredPathMap : undefined;
-            if (newPathMap) {
-              console.log(LOG_PREFIX, 'PathMap for editAndResend:', Object.keys(newPathMap).length, 'entries');
-            }
-          }
-        }
-      }
-
-      // 🆕 P1 状态同步修复: 后端返回增强的结果，包含状态变更信息
-      const result = await invoke<{
-        new_message_id?: string;
-        deleted_message_ids?: string[];
-        new_variant_id?: string;
-      }>('chat_v2_edit_and_resend', {
-        sessionId: this.sessionId,
-        messageId,
-        newContent,
-        // 🆕 P1-2: 传递新的上下文引用给后端
-        newContextRefs: newContextRefsForBackend,
-        newPathMap,
-        options,
-      });
-
-      // 发送成功后清空多变体 ID
-      this.store.setPendingParallelModelIds(null);
-
-      const newMessageId = result.new_message_id ?? null;
-      const deletedMessageIds = result.deleted_message_ids ?? [];
-      const newVariantId = result.new_variant_id;
-      if (newMessageId) {
-        this.beginStreamExpectation(newMessageId);
-      }
-
-      console.log(LOG_PREFIX, 'Edit and resend initiated:', {
-        newMessageId,
-        deletedMessageIds: deletedMessageIds.length,
-        newVariantId,
-      });
-
-      // 🆕 P1 状态同步修复: 返回完整的状态变更信息
-      return {
-        success: true,
-        newMessageId: newMessageId ?? undefined,
-        deletedMessageIds: deletedMessageIds.length > 0 ? deletedMessageIds : undefined,
-        newVariantId,
-      };
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Edit and resend failed:', errorMsg);
-      // 显示错误提示（使用 i18n）
-      showGlobalNotification('error', formatUserFacingErrorWithThinkingBudgetHint(
-        error,
-        'chatV2:messageItem.actions.editFailed',
-        'Edit and resend failed',
-      ));
-      // 🆕 P1 状态同步修复: 返回失败结果而不是抛出异常
-      // 让 Store 有机会处理失败情况
-      throw error;
-    }
+    return messageOperations.executeEditAndResend(this.asHost(), messageId, newContent, newContextRefs);
   }
 
   // ========================================================================
@@ -3950,59 +556,8 @@ export class ChatV2TauriAdapter {
    * @param messageId 要继续的助手消息 ID
    * @param variantId 可选的变体 ID
    */
-  async continueMessage(messageId: string, variantId?: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Continue message:', messageId, 'variant:', variantId);
-
-    try {
-      this.beginStreamExpectation(messageId);
-      // 重置事件桥接状态
-      resetBridgeState(this.sessionId);
-
-      const currentParams = this.getCurrentState().chatParams;
-      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.applyOriginalReplaySkillState(
-        messageId,
-        await this.buildSendOptions(),
-        this.getCurrentState().chatParams.selectedMcpServers,
-      );
-      await this.applyRuntimeModelSelection(options);
-
-      // 🔧 竞态修复：invoke 前立即设置 streaming 状态，防止窗口期内重复点击
-      // 与 sendMessageWithIds / retryVariant 保持一致
-      this.store.setCurrentStreamingMessage(messageId);
-      const storeApi = this.storeApi ?? sessionManager.get(this.sessionId);
-      if (storeApi) {
-        storeApi.setState({ sessionStatus: 'streaming' as const });
-      }
-
-      const resultMessageId = await invoke<string>('chat_v2_continue_message', {
-        sessionId: this.sessionId,
-        messageId,
-        variantId,
-        options,
-      });
-
-      console.log(LOG_PREFIX, 'Continue message initiated:', resultMessageId);
-      
-      // 更新流式消息 ID
-      if (resultMessageId && resultMessageId !== messageId) {
-        this.setStreamExpectationMessageId(resultMessageId);
-        this.store.setCurrentStreamingMessage(resultMessageId);
-      }
-    } catch (error) {
-      this.clearStreamExpectation(messageId);
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Continue message failed:', errorMsg);
-      // 清除流式状态
-      // 🔧 修复：同时清除 stale currentStreamingMessageId（completeStream 在 idle 时不清除它）
-      this.store.completeStream('error', normalizeStreamTerminalError(error));
-      this.store.setCurrentStreamingMessage(null);
-      // 🔧 修复：不在此处显示通知，让 store.continueMessage 的 fallback（sendMessage）处理
-      // 原代码在此显示 "继续执行失败" 通知，但 store 会 fallback 到 sendMessage('继续')，
-      // 导致用户看到一个无意义的错误通知
-      throw error;
-    }
+  continueMessage(messageId: string, variantId?: string): Promise<void> {
+    return messageOperations.continueMessage(this.asHost(), messageId, variantId);
   }
 
   // ========================================================================
@@ -4016,453 +571,30 @@ export class ChatV2TauriAdapter {
    * #469），首屏 IPC/渲染成本与会话总长度/总体量解耦；若后端报告还有缺失历史，首帧空闲后全量拉取并按锚点合并
    * （store.prependHistoryFromBackend，滚动锚定由 MessageList 补偿）。
    */
-  async loadSession(): Promise<void> {
-    console.log(LOG_PREFIX, 'Loading session:', this.sessionId);
-
-    // 📊 性能打点：backend_load_start
-    sessionSwitchPerf.mark('backend_load_start');
-    const t0 = performance.now();
-    const restoreBaseline = this.captureRestoreBaseline();
-
-    try {
-      // 📊 细粒度打点：invoke 开始
-      sessionSwitchPerf.mark('load_invoke_start');
-      
-      const response = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
-        sessionId: this.sessionId,
-        tailLimit: LOAD_SESSION_TAIL_LIMIT,
-      });
-      const invokeMs = performance.now() - t0;
-
-      // 📊 细粒度打点：invoke 返回
-      // 估算 response 体量（避免 JSON.stringify 阻塞主线程）
-      const msgCount = response.messages?.length || 0;
-      const blkCount = response.blocks?.length || 0;
-      const responseSizeEstimate = msgCount * 500 + blkCount * 1000;
-      sessionSwitchPerf.mark('load_invoke_end', {
-        messageCount: msgCount,
-        blockCount: blkCount,
-        invokeMs,
-        responseSizeKB: Math.round(responseSizeEstimate / 1024),
-      });
-      
-      // 📊 性能打点：backend_load_end
-      sessionSwitchPerf.mark('backend_load_end', {
-        messageCount: msgCount,
-        blockCount: blkCount,
-        invokeMs,
-      });
-
-      console.log(LOG_PREFIX, 'Session loaded:', {
-        messageCount: msgCount,
-        blockCount: blkCount,
-        invokeMs,
-      });
-
-      // 🆕 P37 调试：记录会话加载中的 workspace_status 块
-      const logDebug = (window as any).__multiAgentDebug?.log;
-      if (logDebug) {
-        const blocks = response.blocks || [];
-        const workspaceStatusBlocks = blocks.filter((b: any) => b.type === 'workspace_status');
-        const messages = response.messages || [];
-        
-        // 检查消息是否关联了 workspace_status 块
-        const messagesWithWsBlocks = messages.filter((m: any) => 
-          m.blockIds?.some((id: string) => workspaceStatusBlocks.some((b: any) => b.id === id))
-        );
-
-        logDebug('block', 'LOAD_SESSION_RESULT', {
-          sessionId: this.sessionId,
-          totalBlocks: blocks.length,
-          workspaceStatusBlocks: workspaceStatusBlocks.length,
-          workspaceStatusBlockIds: workspaceStatusBlocks.map((b: any) => b.id),
-          messagesWithWsBlocks: messagesWithWsBlocks.length,
-          blockDetails: workspaceStatusBlocks.map((b: any) => ({
-            id: b.id,
-            messageId: b.messageId,
-            type: b.type,
-            hasToolOutput: !!b.toolOutput,
-            snapshotAgents: b.toolOutput?.snapshotAgents?.length || 0,
-          })),
-        }, workspaceStatusBlocks.length > 0 ? 'success' : 'warning');
-      }
-
-      // 📊 性能打点：restore_start
-      sessionSwitchPerf.mark('restore_start');
-
-      if (!this.isSessionRuntimeOwner()) {
-        console.warn(LOG_PREFIX, 'Discarding session load from stale adapter generation:', this.sessionId);
-        return;
-      }
-
-      // 记录会话信息供第二阶段分页补页构造合并响应
-      this.lastLoadedSessionInfo = response.session;
-
-      // P0 available_skills 快照跨进程：应用重启后 provider prompt cache
-      // 可能仍存活，优先用 session.metadata 中冻结的目录快照回灌内存，
-      // 禁止按当时 live registry 重算（重启前中途装过技能会让 system 从
-      // 第 0 字节变）。缺键 = 该会话从未冻结，首次构建 system 时按 live
-      // 生成并持久化（见 buildSystemPromptWithSkills）。
-      const loadedSessionMetadata = response.session?.metadata;
-      const persistedSkillsSnapshot =
-        loadedSessionMetadata?.[AVAILABLE_SKILLS_SNAPSHOT_METADATA_KEY];
-      if (typeof persistedSkillsSnapshot === 'string') {
-        hydrateSessionAvailableSkillsSnapshot(this.sessionId, persistedSkillsSnapshot);
-        // 回灌值来自持久化权威，发送前无需再走冻结 RPC——除非 metadata 带回
-        // 有效待换代标记（compaction 落盘事务写入）：记录 pendingGeneration，
-        // 下次发送按 live registry 重新生成目录并经 freeze 兑现换代。回灌的
-        // 旧代字节在兑现前仍是持久化权威（后端尚未覆盖），照常入内存快照。
-        const snapshotGeneration =
-          readAvailableSkillsSnapshotGeneration(loadedSessionMetadata);
-        persistedAvailableSkillsSnapshotGenerations.set(this.sessionId, {
-          generation: snapshotGeneration,
-          pendingGeneration: readAvailableSkillsSnapshotPendingGeneration(
-            loadedSessionMetadata,
-            snapshotGeneration
-          ),
-        });
-      }
-
-      // 使用 Store 的 restoreFromBackend 方法恢复状态
-      this.store.restoreFromBackend(response, restoreBaseline);
-      clearAdapterErrorFlag(this.sessionId, this.getErrorStoreApi(), ['session_load_failed']);
-
-      this.reconcileLoadedAnkiBlocks();
-
-      await this.hydrateDefaultChatModelIfMissing();
-
-      // 📊 性能打点：restore_end
-      const totalMs = performance.now() - t0;
-      sessionSwitchPerf.mark('restore_end', { totalMs });
-      console.log(LOG_PREFIX, 'Session restore finished', { totalMs });
-      
-      // 🚀 性能优化：在 restoreFromBackend 后立即触发回调，不等待 await
-      // 这允许 AdapterManager 立即标记 isReady，避免 React 渲染阻塞微任务队列
-      if (this.onDataRestored) {
-        this.onDataRestored();
-      }
-
-      // 第二阶段：还有更早历史时，首帧后空闲期分批回填并合并到头部。
-      // 🚀 长会话内存窗口化：回填有页数上限（HISTORY_BACKFILL_MAX_PAGES），
-      // 先初始化连续窗口起点（backend offset 语义），触顶后由滚动向上补页
-      // 按窗口起点续拉；≤500 条消息的会话回填行为与全量加载完全一致。
-      const totalCount = response.totalMessageCount;
-      const initialLoadedCount = response.messages?.length ?? 0;
-      if (typeof totalCount === 'number' && totalCount > initialLoadedCount) {
-        this.historyWindowStartOffset = totalCount - initialLoadedCount;
-        this.scheduleFullHistoryLoad();
-      } else {
-        this.historyWindowStartOffset = 0;
-      }
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Load session failed:', getErrorMessage(error));
-      throw error;
-    }
+  loadSession(): Promise<void> {
+    return historyLoading.loadSession(this.asHost());
   }
 
   /** 手动加载更早历史（🚀 长会话内存窗口化）：从连续窗口起点向更老一页
    * 请求 `chat_v2_load_messages_page`，合并后窗口起点向 0 推进（窗口始终
    * 连续）。空闲期自动补页在途时跳过（避免窗口竞态）；全量已完成或窗口
    * 已抵达最老端时无可补。 */
-  async loadEarlierMessages(): Promise<void> {
-    const generation = this.setupGeneration;
-    const session = this.lastLoadedSessionInfo;
-    if (!session || !this.isSessionRuntimeOwner()) return;
-    if (this.fullHistoryLoadComplete) return;
-    if (this.historyWindowStartOffset <= 0) return;
-
-    // 手动滚动可能发生在 idle 回填已排队、尚未进入 in-flight 的窗口内。
-    // 先取消排队任务，再同步占有同一个 in-flight 门；若 idle 回填已开始，
-    // 则直接让在途任务完成，避免两个请求读取同一个窗口起点。
-    const resumeAutomaticBackfill = this.cancelScheduledFullHistoryLoad !== null;
-    this.cancelScheduledFullHistoryLoad?.();
-    if (this.fullHistoryLoadInFlight) return;
-    this.fullHistoryLoadInFlight = true;
-
-    try {
-      const requestWindowStart = this.historyWindowStartOffset;
-      const offset = Math.max(0, requestWindowStart - HISTORY_BACKFILL_PAGE_SIZE);
-      const expectedCount = requestWindowStart - offset;
-      const baseline = this.captureRestoreBaseline();
-      const page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
-        sessionId: this.sessionId,
-        offset,
-        limit: HISTORY_BACKFILL_PAGE_SIZE,
-      });
-      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
-      // 请求期间窗口已被其他路径推进时，响应已经过期，不能按共享当前值盲减。
-      if (this.historyWindowStartOffset !== requestWindowStart) return;
-
-      if (page.messages.length !== expectedCount) {
-        // 非连续短页/空页不能直接拼到当前尾窗，否则会制造中间空洞；直接走
-        // 全量 fallback 一次性重建连续历史，也避免用户反复滚顶请求同一坏页。
-        console.warn(LOG_PREFIX, 'Manual history page was not contiguous, falling back to full load:', {
-          sessionId: this.sessionId,
-          offset,
-          expected: expectedCount,
-          returned: page.messages.length,
-        });
-        await this.loadFullHistoryFallback(generation);
-        return;
-      }
-
-      this.store.prependHistoryFromBackend(
-        {
-          session,
-          messages: page.messages,
-          blocks: page.blocks,
-          totalMessageCount: page.totalMessageCount,
-        },
-        baseline,
-      );
-      this.historyWindowStartOffset = offset;
-      if (offset === 0) this.fullHistoryLoadComplete = true;
-    } finally {
-      this.fullHistoryLoadInFlight = false;
-      if (
-        resumeAutomaticBackfill
-        && !this.fullHistoryLoadComplete
-        && this.historyWindowStartOffset > 0
-        && generation === this.setupGeneration
-        && this.isSessionRuntimeOwner()
-      ) {
-        this.scheduleFullHistoryLoad();
-      }
-    }
+  loadEarlierMessages(): Promise<void> {
+    return historyLoading.loadEarlierMessages(this.asHost());
   }
 
-  /** 分页不可保证连续时，以一次全量读取重建连续历史窗口。 */
-  private async loadFullHistoryFallback(generation: number): Promise<boolean> {
-    const t0 = performance.now();
-    const restoreBaseline = this.captureRestoreBaseline();
-    const fullResponse = await invoke<LoadSessionResponseType>('chat_v2_load_session', {
-      sessionId: this.sessionId,
-    });
-    if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return false;
-    this.store.prependHistoryFromBackend(fullResponse, restoreBaseline);
-    this.historyWindowStartOffset = 0;
-    this.fullHistoryLoadComplete = true;
-    console.log(LOG_PREFIX, 'Full history merged (fallback path):', {
-      sessionId: this.sessionId,
-      totalMessages: fullResponse.messages?.length ?? 0,
-      invokeMs: Math.round(performance.now() - t0),
-    });
-    return true;
+  private loadFullHistoryFallback(generation: number): Promise<boolean> {
+    return historyLoading.loadFullHistoryFallback(this.asHost(), generation);
   }
 
-  /**
-   * 尾部分块加载第二阶段：空闲期分批向前补页（chat_v2_load_messages_page），
-   * 把缺失历史合并到正确位置；分页命令不可用时退回全量二次拉取 fallback。
-   * 失败静默降级（首屏尾部数据已可用；下次进入会话会重试）。
-   */
   private scheduleFullHistoryLoad(attempt = 0): void {
-    if (
-      this.fullHistoryLoadComplete
-      || this.fullHistoryLoadInFlight
-      || this.cancelScheduledFullHistoryLoad
-    ) {
-      return;
-    }
-    const generation = this.setupGeneration;
-    const win = window as Window & {
-      requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number;
-      cancelIdleCallback?: (id: number) => void;
-    };
-    let started = false;
-    let cancelled = false;
-    let idleId: number | null = null;
-    let watchdogId: number | null = null;
-    const clearSchedule = () => {
-      if (idleId !== null) {
-        if (win.cancelIdleCallback) win.cancelIdleCallback(idleId);
-        else window.clearTimeout(idleId);
-        idleId = null;
-      }
-      if (watchdogId !== null) {
-        window.clearTimeout(watchdogId);
-        watchdogId = null;
-      }
-      if (this.cancelScheduledFullHistoryLoad === cancelSchedule) {
-        this.cancelScheduledFullHistoryLoad = null;
-      }
-    };
-    const cancelSchedule = () => {
-      cancelled = true;
-      clearSchedule();
-    };
-
-    const run = async () => {
-      if (started || cancelled) return;
-      started = true;
-      clearSchedule();
-      // cleanup()/重新 setup 会推进 setupGeneration，此时放弃过期的补齐任务
-      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) return;
-      this.fullHistoryLoadInFlight = true;
-      try {
-        // 首选：分批回填页（chat_v2_load_messages_page，每批 ~100 条，倒序推进）
-        const pagedResult = await this.backfillHistoryByPages(generation);
-        if (pagedResult === 'done') {
-          this.fullHistoryLoadComplete = true;
-          return;
-        }
-        if (pagedResult === 'capped') {
-          // 页数上限收尾：fullHistoryLoadComplete 不置位，
-          // 更早历史由滚动向上补页（loadEarlierMessages）按窗口起点续拉
-          return;
-        }
-        if (pagedResult === 'stale') return;
-
-        // fallback：分页命令 invoke 失败（旧后端/异常）时退回全量二次拉取
-        await this.loadFullHistoryFallback(generation);
-      } catch (error) {
-        console.warn(LOG_PREFIX, 'Full history load failed (tail view remains):', getErrorMessage(error));
-        if (
-          attempt < FULL_HISTORY_MAX_RETRIES
-          && generation === this.setupGeneration
-          && this.isSessionRuntimeOwner()
-        ) {
-          const retryDelay = FULL_HISTORY_RETRY_BASE_MS * (2 ** attempt);
-          const retryTimer = window.setTimeout(() => {
-            if (this.cancelScheduledFullHistoryLoad === cancelRetry) {
-              this.cancelScheduledFullHistoryLoad = null;
-            }
-            this.scheduleFullHistoryLoad(attempt + 1);
-          }, retryDelay);
-          const cancelRetry = () => {
-            window.clearTimeout(retryTimer);
-            if (this.cancelScheduledFullHistoryLoad === cancelRetry) {
-              this.cancelScheduledFullHistoryLoad = null;
-            }
-          };
-          this.cancelScheduledFullHistoryLoad = cancelRetry;
-        }
-      } finally {
-        this.fullHistoryLoadInFlight = false;
-      }
-    };
-
-    if (win.requestIdleCallback) {
-      idleId = win.requestIdleCallback(() => { void run(); }, {
-        timeout: FULL_HISTORY_IDLE_TIMEOUT_MS,
-      });
-      // Some WebView/test implementations ignore requestIdleCallback timeout.
-      watchdogId = window.setTimeout(() => { void run(); }, FULL_HISTORY_IDLE_TIMEOUT_MS + 100);
-    } else {
-      idleId = window.setTimeout(() => { void run(); }, 120);
-    }
-    this.cancelScheduledFullHistoryLoad = cancelSchedule;
+    historyLoading.scheduleFullHistoryLoad(this.asHost(), attempt);
   }
 
-  /**
-   * 分批回填历史（🚀 2026-09-25 反向窗口化）：从连续窗口起点向更早历史
-   * 倒序拉取 `chat_v2_load_messages_page`（页 offset 按最老消息计），
-   * 每页立即合并进 store——mergeHistoryMessageOrder 按 timestamp 重排 +
-   * 锚点合并，与页面到达顺序无关。窗口始终连续（无中间空洞），每页合并
-   * 后 historyWindowStartOffset 向 0 推进；触顶（页数上限）后停止自动
-   * 回填，更早历史由滚动补页按窗口起点续拉。
-   *
-   * 返回值：
-   * - `'done'`：窗口抵达最老端（全量在内存）
-   * - `'capped'`：达到页数上限后主动收尾（fullHistoryLoadComplete 不置位，
-   *   滚动补页接续）
-   * - `'stale'`：会话已切换/adapter 已过期，放弃
-   * - `'unsupported'`：分页命令 invoke 失败或页序竞态无法保证窗口连续，
-   *   调用方应退回全量加载 fallback
-   */
-  private async backfillHistoryByPages(
+  private backfillHistoryByPages(
     generation: number,
   ): Promise<'done' | 'capped' | 'stale' | 'unsupported'> {
-    const session = this.lastLoadedSessionInfo;
-    if (!session || session.id !== this.sessionId) {
-      // 没有可用的会话信息（理论上 loadSession 已写入），退回全量路径
-      return 'unsupported';
-    }
-
-    const t0 = performance.now();
-    let pagesFetched = 0;
-    let mergedMessages = 0;
-
-    while (this.historyWindowStartOffset > 0 && pagesFetched < HISTORY_BACKFILL_MAX_PAGES) {
-      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
-        return 'stale';
-      }
-
-      const requestWindowStart = this.historyWindowStartOffset;
-      const restoreBaseline = this.captureRestoreBaseline();
-      const offset = Math.max(0, requestWindowStart - HISTORY_BACKFILL_PAGE_SIZE);
-      const expectedCount = requestWindowStart - offset;
-      let page: LoadMessagesPageResponseType;
-      try {
-        page = await invoke<LoadMessagesPageResponseType>('chat_v2_load_messages_page', {
-          sessionId: this.sessionId,
-          offset,
-          limit: HISTORY_BACKFILL_PAGE_SIZE,
-        });
-      } catch (error) {
-        console.warn(
-          LOG_PREFIX,
-          'Paged history load failed, will fall back to full load:',
-          getErrorMessage(error),
-        );
-        return 'unsupported';
-      }
-
-      if (generation !== this.setupGeneration || !this.isSessionRuntimeOwner()) {
-        return 'stale';
-      }
-      if (this.historyWindowStartOffset !== requestWindowStart) {
-        return 'stale';
-      }
-
-      if (page.messages.length === 0) {
-        // 服务端返回空页（total 与实际行数竞态，如压缩收缩）：防御死循环，
-        // 按抵达最老端收尾（store 分页标志由 prepend 按最新 total 重算）
-        this.historyWindowStartOffset = 0;
-        break;
-      }
-      if (page.messages.length !== expectedCount && offset > 0) {
-        // 未抵达最老端却拿到短页：页序竞态下无法保证窗口连续（会留中间
-        // 空洞），退回全量加载 fallback 兜底
-        console.warn(LOG_PREFIX, 'Short history page mid-window, will fall back to full load:', {
-          sessionId: this.sessionId,
-          offset,
-          returned: page.messages.length,
-        });
-        return 'unsupported';
-      }
-
-      this.store.prependHistoryFromBackend(
-        {
-          session,
-          messages: page.messages,
-          blocks: page.blocks,
-          totalMessageCount: page.totalMessageCount,
-        },
-        restoreBaseline,
-      );
-      mergedMessages += page.messages.length;
-      this.historyWindowStartOffset = offset;
-      pagesFetched += 1;
-    }
-
-    const capped = this.historyWindowStartOffset > 0;
-    if (capped) {
-      console.log(LOG_PREFIX, 'History backfill hit page cap, deferring older history to scroll-up paging:', {
-        sessionId: this.sessionId,
-        pagesFetched,
-        mergedMessages,
-        windowStartOffset: this.historyWindowStartOffset,
-        elapsedMs: Math.round(performance.now() - t0),
-      });
-    } else {
-      console.log(LOG_PREFIX, 'History backfilled by pages:', {
-        sessionId: this.sessionId,
-        pagesFetched,
-        mergedMessages,
-        elapsedMs: Math.round(performance.now() - t0),
-      });
-    }
-    return capped ? 'capped' : 'done';
+    return historyLoading.backfillHistoryByPages(this.asHost(), generation);
   }
 
   /**
@@ -4475,120 +607,32 @@ export class ChatV2TauriAdapter {
    * - inputValue: 输入框草稿
    * - panelStates: 面板开关状态
    */
-  async saveSession(): Promise<void> {
-    console.log(LOG_PREFIX, 'Saving session:', this.sessionId);
-
-    if (!isTauriRuntimeAvailable()) {
-      console.warn(LOG_PREFIX, 'Skip save session: not in Tauri runtime');
-      return;
-    }
-
-    try {
-      // 从 store 构建 session_state（使用 getCurrentState 获取最新状态）
-      const state = this.getCurrentState();
-      
-      // 🔧 笔记引用持久化
-      const modeStateWithCanvas = state.modeState;
-      
-      // 🆕 Prompt 7: 序列化待发送的上下文引用
-      const pendingContextRefsForPersistence = state.skillStateJson
-        ? state.pendingContextRefs.filter((ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID)
-        : state.pendingContextRefs;
-      const pendingContextRefsJson = pendingContextRefsForPersistence.length > 0
-        ? JSON.stringify(pendingContextRefsForPersistence)
-        : null;
-
-      const loadedSkills = getLoadedSkills(this.sessionId);
-      const skillStateJson = state.skillStateJson;
-      const loadedSkillIdsJson = loadedSkills.length > 0
-        ? JSON.stringify(loadedSkills.map((skill) => skill.id))
-        : null;
-
-      const sessionState = {
-        sessionId: this.sessionId,
-        chatParams: state.chatParams,
-        features: Object.fromEntries(state.features),
-        modeState: modeStateWithCanvas,
-        inputValue: state.inputValue || null,
-        panelStates: state.panelStates,
-        pendingContextRefsJson, // 🆕 Prompt 7: 上下文引用持久化
-        loadedSkillIdsJson,
-        activeSkillIdsJson: state.activeSkillIds.length > 0 ? JSON.stringify(state.activeSkillIds) : null, // 🆕 手动激活 Skills 持久化（多选）
-        skillStateJson: skillStateJson ?? null,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await invoke('chat_v2_save_session', {
-        sessionId: this.sessionId,
-        sessionState,
-      });
-
-      console.log(LOG_PREFIX, 'Session saved');
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Save session failed:', getErrorMessage(error));
-      throw error;
-    }
+  saveSession(): Promise<void> {
+    return sessionCommands.saveSession(this.asHost());
   }
 
   /**
    * 创建新会话
    */
-  async createSession(
+  createSession(
     mode: string,
     title?: string
   ): Promise<string> {
-    console.log(LOG_PREFIX, 'Creating session:', { mode, title });
-
-    try {
-      const session = await invoke<{ id: string }>('chat_v2_create_session', {
-        mode,
-        title,
-        metadata: null,
-      });
-
-      console.log(LOG_PREFIX, 'Session created:', session.id);
-      return session.id;
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Create session failed:', getErrorMessage(error));
-      throw error;
-    }
+    return sessionCommands.createSession(this.asHost(), mode, title);
   }
 
   /**
    * 更新会话设置
    */
-  async updateSessionSettings(settings: SessionSettings): Promise<void> {
-    console.log(LOG_PREFIX, 'Updating session settings:', settings);
-
-    try {
-      await invoke('chat_v2_update_session_settings', {
-        sessionId: this.sessionId,
-        settings,
-      });
-
-      console.log(LOG_PREFIX, 'Session settings updated');
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Update session settings failed:', getErrorMessage(error));
-      throw error;
-    }
+  updateSessionSettings(settings: SessionSettings): Promise<void> {
+    return sessionCommands.updateSessionSettings(this.asHost(), settings);
   }
 
   /**
    * 归档会话
    */
-  async archiveSession(): Promise<void> {
-    console.log(LOG_PREFIX, 'Archiving session:', this.sessionId);
-
-    try {
-      await invoke('chat_v2_archive_session', {
-        sessionId: this.sessionId,
-      });
-
-      console.log(LOG_PREFIX, 'Session archived');
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Archive session failed:', getErrorMessage(error));
-      throw error;
-    }
+  archiveSession(): Promise<void> {
+    return sessionCommands.archiveSession(this.asHost());
   }
 
   /**
@@ -4603,528 +647,118 @@ export class ChatV2TauriAdapter {
    * @param upToMessageId 分支截断点消息 ID（新会话包含该消息及之前的历史）
    * @returns 新分支会话（含 id，供 UI 导航）
    */
-  async branchSession(upToMessageId: string): Promise<BranchSessionResult> {
-    console.log(LOG_PREFIX, 'Branching session:', this.sessionId, 'upTo:', upToMessageId);
-
-    try {
-      const newSession = await invoke<BranchSessionResult>('chat_v2_branch_session', {
-        sourceSessionId: this.sessionId,
-        upToMessageId,
-      });
-
-      console.log(LOG_PREFIX, 'Session branched:', newSession.id);
-      return newSession;
-    } catch (error) {
-      console.error(LOG_PREFIX, 'Branch session failed:', getErrorMessage(error));
-      throw error;
-    }
+  branchSession(upToMessageId: string): Promise<BranchSessionResult> {
+    return sessionCommands.branchSession(this.asHost(), upToMessageId);
   }
 
   // ========================================================================
   // 变体操作
   // ========================================================================
 
-  /**
-   * 执行切换变体操作（内部方法，供 callback 使用）
-   */
-  private async executeSwitchVariant(
+  private executeSwitchVariant(
     messageId: string,
     variantId: string
   ): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing switch variant:', messageId, '->', variantId);
-
-    try {
-      await invoke('chat_v2_switch_variant', {
-        sessionId: this.sessionId,
-        messageId,
-        variantId,
-      });
-
-      this.store.setSkillStateJson(null);
-
-      console.log(LOG_PREFIX, 'Variant switched successfully:', variantId);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Switch variant failed:', errorMsg);
-      throw error;
-    }
+    return variantOperations.executeSwitchVariant(this.asHost(), messageId, variantId);
   }
 
-  /**
-   * 执行删除变体操作（内部方法，供 callback 使用）
-   * @returns 删除结果，包含新的激活变体 ID
-   */
-  private async executeDeleteVariant(
+  private executeDeleteVariant(
     messageId: string,
     variantId: string
   ): Promise<{ variantDeleted?: boolean; messageDeleted?: boolean; newActiveId?: string }> {
-    console.log(LOG_PREFIX, 'Executing delete variant:', messageId, '->', variantId);
-
-    try {
-      const result = await invoke<{
-        deletedVariantId: string;
-        remainingCount: number;
-        newActiveVariantId: string | null;
-      }>('chat_v2_delete_variant', {
-        sessionId: this.sessionId,
-        messageId,
-        variantId,
-      });
-
-      this.store.setSkillStateJson(null);
-
-      console.log(LOG_PREFIX, 'Variant deleted successfully:', result);
-
-      return {
-        variantDeleted: true,
-        messageDeleted: false,
-        newActiveId: result.newActiveVariantId ?? undefined,
-      };
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Delete variant failed:', errorMsg);
-      throw error;
-    }
+    return variantOperations.executeDeleteVariant(this.asHost(), messageId, variantId);
   }
 
-  /**
-   * 执行重试变体操作（内部方法，供 callback 使用）
-   */
-  private async executeRetryVariant(
+  private executeRetryVariant(
     messageId: string,
     variantId: string,
     modelOverride?: string
   ): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing retry variant:', messageId, '->', variantId, 'model:', modelOverride);
-
-    try {
-      // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
-      resetBridgeState(this.sessionId);
-
-      const currentParams = this.getCurrentState().chatParams;
-      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.applyOriginalReplaySkillState(
-        messageId,
-        await this.buildSendOptions(),
-        this.getCurrentState().chatParams.selectedMcpServers,
-        variantId,
-      );
-      await this.applyRuntimeModelSelection(options);
-      if (modelOverride) {
-        const validIds = await this.getValidChatModelIdSet();
-        const trimmedOverride = modelOverride.trim();
-        if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
-          options.modelId = trimmedOverride;
-          options.model2OverrideId = trimmedOverride;
-          this.applyRuntimeThinkingCapability(options);
-        }
-      }
-
-      // 🔧 2026-01-15: 超时机制已移除
-
-      await invoke('chat_v2_retry_variant', {
-        sessionId: this.sessionId,
-        messageId,
-        variantId,
-        modelOverride: modelOverride ?? null,
-        options,
-      });
-
-      // 发送成功后清空多变体 ID
-      this.store.setPendingParallelModelIds(null);
-
-      console.log(LOG_PREFIX, 'Variant retry initiated:', variantId);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Retry variant failed:', errorMsg);
-      throw error;
-    }
+    return variantOperations.executeRetryVariant(this.asHost(), messageId, variantId, modelOverride);
   }
 
-  /**
-   * 执行批量重试变体操作（内部方法，供 callback 使用）
-   */
-  private async executeRetryAllVariants(
+  private executeRetryAllVariants(
     messageId: string,
     variantIds: string[]
   ): Promise<void> {
-    console.log(
-      LOG_PREFIX,
-      'Executing retry all variants:',
-      messageId,
-      'variants:',
-      variantIds.length
-    );
-
-    try {
-      // 🔧 批量重试仅需重置一次事件桥接状态
-      resetBridgeState(this.sessionId);
-
-      const currentParams = this.getCurrentState().chatParams;
-      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.applyOriginalReplaySkillState(
-        messageId,
-        await this.buildSendOptions(),
-        this.getCurrentState().chatParams.selectedMcpServers,
-      );
-      await this.applyRuntimeModelSelection(options);
-
-      await invoke('chat_v2_retry_variants', {
-        sessionId: this.sessionId,
-        messageId,
-        variantIds,
-        options,
-      });
-
-      // 发送成功后清空多变体 ID
-      this.store.setPendingParallelModelIds(null);
-
-      console.log(LOG_PREFIX, 'Retry all variants initiated:', variantIds.length);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Retry all variants failed:', errorMsg);
-      throw error;
-    }
+    return variantOperations.executeRetryAllVariants(this.asHost(), messageId, variantIds);
   }
 
-  /**
-   * 执行取消变体操作（内部方法，供 callback 使用）
-   */
-  private async executeCancelVariant(variantId: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing cancel variant:', variantId);
-
-    try {
-      await invoke('chat_v2_cancel_variant', {
-        sessionId: this.sessionId,
-        variantId,
-      });
-
-      console.log(LOG_PREFIX, 'Variant cancelled successfully:', variantId);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Cancel variant failed:', errorMsg);
-      throw error;
-    }
+  private executeCancelVariant(variantId: string): Promise<void> {
+    return variantOperations.executeCancelVariant(this.asHost(), variantId);
   }
 
-  /**
-   * 执行更新块内容操作（内部方法，供 callback 使用）
-   * 用于 editMessage 后同步块内容到后端
-   */
-  private async executeUpdateBlockContent(blockId: string, content: string): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing update block content:', blockId, 'len:', content.length);
-
-    try {
-      await invoke('chat_v2_update_block_content', {
-        blockId,
-        content,
-      });
-
-      console.log(LOG_PREFIX, 'Block content updated successfully:', blockId);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Update block content failed:', errorMsg);
-      throw error;
-    }
+  private executeUpdateBlockContent(blockId: string, content: string): Promise<void> {
+    return sessionCommands.executeUpdateBlockContent(this.asHost(), blockId, content);
   }
 
-  /**
-   * 执行更新会话设置操作（内部方法，供 callback 使用）
-   * 用于 setTitle 后同步设置到后端
-   */
-  private async executeUpdateSessionSettings(settings: { title?: string }): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing update session settings:', settings);
-
-    try {
-      await invoke('chat_v2_update_session_settings', {
-        sessionId: this.sessionId,
-        settings,
-      });
-
-      console.log(LOG_PREFIX, 'Session settings updated successfully');
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Update session settings failed:', errorMsg);
-      throw error;
-    }
+  private executeUpdateSessionSettings(settings: { title?: string }): Promise<void> {
+    return sessionCommands.executeUpdateSessionSettings(this.asHost(), settings);
   }
 
-  /**
-   * 执行 UPSERT 流式块操作（内部方法，供防闪退保存使用）
-   * 用于流式过程中定期保存块内容到后端
-   */
-  private async executeUpsertStreamingBlock(
+  private executeUpsertStreamingBlock(
     blockId: string,
     messageId: string,
     blockType: string,
     content: string,
     sessionId?: string
   ): Promise<void> {
-    console.log(LOG_PREFIX, 'Executing upsert streaming block:', blockId, 'len:', content.length);
-
-    try {
-      await invoke('chat_v2_upsert_streaming_block', {
-        blockId,
-        messageId,
-        blockType,
-        content,
-        sessionId,
-      });
-
-      console.log(LOG_PREFIX, 'Streaming block upserted successfully:', blockId);
-    } catch (error) {
-      const errorMsg = getErrorMessage(error);
-      console.error(LOG_PREFIX, 'Upsert streaming block failed:', errorMsg);
-      // 不抛出错误，防闪退保存失败不应影响流式过程
-    }
+    return sessionCommands.executeUpsertStreamingBlock(this.asHost(), blockId, messageId, blockType, content, sessionId);
   }
 
   // ========================================================================
   // 私有方法
   // ========================================================================
 
-  /**
-   * 从 Store 状态构建发送选项
-   *
-   * 集成 modeRegistry：
-   * 1. 使用 buildSystemPrompt 生成系统提示
-   * 2. 使用 getEnabledTools 获取启用的工具
-   */
-  private async ensureModelMetadataReady(modelId: string | undefined): Promise<void> {
-    if (!modelId) {
-      return;
-    }
-
-    try {
-      await ensureModelsCacheLoaded();
-    } catch (error) {
-      console.warn(LOG_PREFIX, 'Failed to load model metadata cache:', getErrorMessage(error));
-    }
+  private ensureModelMetadataReady(modelId: string | undefined): Promise<void> {
+    return modelSelection.ensureModelMetadataReady(this.asHost(), modelId);
   }
 
-  private async hydrateDefaultChatModelIfMissing(): Promise<void> {
-    const currentParams = this.getCurrentState().chatParams;
-    if (currentParams.modelId?.trim()) {
-      return;
-    }
-
-    try {
-      await ensureModelsCacheLoaded();
-      const normalizedSelection = await this.normalizeChatModelSelection(
-        currentParams.modelId || undefined,
-        currentParams.model2OverrideId || undefined
-      );
-      const latestParams = this.getCurrentState().chatParams;
-      if (latestParams.modelId?.trim()) {
-        return;
-      }
-
-      // 只回写 model2OverrideId 与显示名，不写 modelId——避免把全局默认烘焙成
-      // 会话固定值。modelId 留空，发送时由 resolveEffectiveChatModelId 现取全局默认。
-      this.store.setChatParams({
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || latestParams.modelDisplayName || '',
-      });
-    } catch (error) {
-      console.warn(LOG_PREFIX, 'Failed to hydrate default chat model:', getErrorMessage(error));
-    }
+  private hydrateDefaultChatModelIfMissing(): Promise<void> {
+    return modelSelection.hydrateDefaultChatModelIfMissing(this.asHost());
   }
 
   private getEffectiveRuntimeModelId(options: {
     modelId?: string;
     model2OverrideId?: string;
   }): string | undefined {
-    const overrideId = options.model2OverrideId?.trim();
-    if (overrideId) {
-      return overrideId;
-    }
-    const modelId = options.modelId?.trim();
-    return modelId || undefined;
+    return modelSelection.getEffectiveRuntimeModelId(this.asHost(), options);
   }
 
   private resolveModelSupportsRuntimeThinking(modelId: string | undefined): boolean | undefined {
-    const modelInfo = getModelInfoByConfigId(modelId);
-    if (!modelInfo) {
-      return undefined;
-    }
-
-    const explicitReasoning = modelInfo.isReasoning;
-    const explicitSupportsReasoning = (modelInfo as Record<string, unknown>).supportsReasoning;
-    if (explicitReasoning === true || explicitSupportsReasoning === true) {
-      return true;
-    }
-    if (explicitReasoning === false && explicitSupportsReasoning === false) {
-      return false;
-    }
-
-    const providerScope =
-      typeof modelInfo.providerScope === 'string' ? modelInfo.providerScope : undefined;
-    return inferCapabilities({
-      id: modelInfo.model || modelInfo.id || modelId || '',
-      name: modelInfo.name,
-      providerScope,
-    }).supportsReasoning;
+    return modelSelection.resolveModelSupportsRuntimeThinking(this.asHost(), modelId);
   }
 
   private applyRuntimeThinkingCapability(options: SendOptions): void {
-    const supportsThinking = this.resolveModelSupportsRuntimeThinking(
-      this.getEffectiveRuntimeModelId(options)
-    );
-    if (supportsThinking !== false) {
-      return;
-    }
-
-    options.enableThinking = false;
-    options.reasoningEffort = undefined;
-    options.thinkingBudget = undefined;
+    modelSelection.applyRuntimeThinkingCapability(this.asHost(), options);
   }
 
-  private async shouldResolveContextAsMultimodal(options: {
+  private shouldResolveContextAsMultimodal(options: {
     modelId?: string;
     model2OverrideId?: string;
     parallelModelIds?: string[];
   }): Promise<boolean> {
-    const effectiveModelId = this.getEffectiveRuntimeModelId(options);
-    const candidateIds = [
-      ...(options.parallelModelIds ?? []),
-      ...(effectiveModelId ? [effectiveModelId] : []),
-    ].filter((id, index, list) => !!id && list.indexOf(id) === index);
-
-    if (candidateIds.length === 0) {
-      return false;
-    }
-
-    const capabilities = await Promise.all(candidateIds.map((id) => isModelMultimodalAsync(id)));
-    return capabilities.some(Boolean);
+    return modelSelection.shouldResolveContextAsMultimodal(this.asHost(), options);
   }
 
-  private async getValidChatModelIdSet(): Promise<Set<string>> {
-    try {
-      const configs = await invoke<ApiConfig[]>('get_api_configurations');
-      return new Set(
-        (configs || [])
-          .filter(isAvailableChatModel)
-          .map((config) => (typeof config?.id === 'string' ? config.id.trim() : ''))
-          .filter((id) => id.length > 0)
-      );
-    } catch (error) {
-      console.warn(LOG_PREFIX, 'Failed to load current API configuration ids:', getErrorMessage(error));
-      return new Set();
-    }
+  private getValidChatModelIdSet(): Promise<Set<string>> {
+    return modelSelection.getValidChatModelIdSet(this.asHost());
   }
 
-  private async resolveEffectiveChatModelId(modelId: string | undefined, validIds?: Set<string>): Promise<string> {
-    if (modelId && modelId.trim().length > 0) {
-      const trimmed = modelId.trim();
-      if (!validIds || validIds.size === 0 || validIds.has(trimmed)) {
-        return trimmed;
-      }
-    }
-
-    try {
-      const assignments = await invoke<ModelAssignments>('get_model_assignments');
-      const defaultModelId = assignments?.model2_config_id ?? undefined;
-      if (defaultModelId && defaultModelId.trim().length > 0) {
-        const trimmed = defaultModelId.trim();
-        if (!validIds || validIds.size === 0 || validIds.has(trimmed)) {
-          return trimmed;
-        }
-      }
-    } catch (error) {
-      console.warn(LOG_PREFIX, 'Failed to resolve default model assignment:', getErrorMessage(error));
-    }
-
-    // 兜底：运行时从已缓存模型中取第一个可用的
-    try {
-      await ensureModelsCacheLoaded();
-      const cachedModels = getCachedModels();
-      if (cachedModels && cachedModels.length > 0) {
-        const fallbackId = cachedModels[0].id;
-        console.warn(LOG_PREFIX, 'Runtime fallback to first available model:', fallbackId);
-        if (!validIds || validIds.size === 0 || validIds.has(fallbackId)) {
-          return fallbackId;
-        }
-      }
-    } catch {
-      // fall through to throw
-    }
-
-    throw new Error('No chat model configured: missing chatParams.modelId and model_assignments.model2_config_id');
+  private resolveEffectiveChatModelId(modelId: string | undefined, validIds?: Set<string>): Promise<string> {
+    return modelSelection.resolveEffectiveChatModelId(this.asHost(), modelId, validIds);
   }
 
-  private async normalizeChatModelSelection(
+  private normalizeChatModelSelection(
     modelId: string | undefined,
     model2OverrideId: string | undefined,
     pinnedByUser?: boolean
   ): Promise<NormalizedChatModelSelection> {
-    const validIds = await this.getValidChatModelIdSet();
-    let normalizedOverrideId = model2OverrideId?.trim() || undefined;
-    if (normalizedOverrideId && validIds.size > 0 && !validIds.has(normalizedOverrideId)) {
-      normalizedOverrideId = undefined;
-    }
-
-    // 仅"用户显式固定"的会话才尊重其持久化 modelId；未固定会话一律忽略
-    // （可能是旧版本烘焙的 fallback 残留），直接取当前全局默认，保证
-    // "模型分配"切换后会话跟随新默认。
-    const candidateModelId = pinnedByUser ? modelId : undefined;
-    const normalizedModelId = await this.resolveEffectiveChatModelId(candidateModelId, validIds);
-    const effectiveModelId = normalizedOverrideId || normalizedModelId;
-    const modelInfo = getModelInfoByConfigId(effectiveModelId);
-    const modelDisplayName = modelInfo?.model || modelInfo?.name || effectiveModelId;
-    // 用户固定的模型已被删除 / 停用（不在当前可用列表）而被回退替换
-    const trimmedPinned = candidateModelId?.trim();
-    const pinnedModelUnavailable = Boolean(
-      trimmedPinned && validIds.size > 0 && !validIds.has(trimmedPinned) && effectiveModelId !== trimmedPinned,
-    );
-
-    return {
-      modelId: normalizedModelId,
-      model2OverrideId: normalizedOverrideId,
-      effectiveModelId,
-      modelDisplayName,
-      pinnedModelUnavailable,
-    };
+    return modelSelection.normalizeChatModelSelection(this.asHost(), modelId, model2OverrideId, pinnedByUser);
   }
 
-  private async applyRuntimeModelSelection(options: SendOptions): Promise<NormalizedChatModelSelection> {
-    const pinnedByUser = this.store.chatParams?.modelIdPinnedByUser === true;
-    const normalizedSelection = await this.normalizeChatModelSelection(
-      options.modelId,
-      options.model2OverrideId,
-      pinnedByUser
-    );
-
-    // issue #44：会话固定的模型被删除 / 停用后，此前悄悄换成默认或第一个可用模型继续对话，
-    // 用户以为还在用原模型。改为每个会话 + 模型提示一次实际改用的模型。
-    if (normalizedSelection.pinnedModelUnavailable) {
-      const missingId = options.modelId?.trim() ?? '';
-      const noticeKey = `${this.sessionId}::${missingId}`;
-      if (!this.notifiedUnavailablePinnedModels.has(noticeKey)) {
-        this.notifiedUnavailablePinnedModels.add(noticeKey);
-        const previousName = this.store.chatParams?.modelDisplayName?.trim() || missingId;
-        showGlobalNotification(
-          'warning',
-          i18n.t('chatV2:modelPicker.pinnedUnavailable', {
-            from: previousName,
-            to: normalizedSelection.modelDisplayName || normalizedSelection.effectiveModelId,
-          }),
-        );
-      }
-    }
-
-    options.modelId = normalizedSelection.effectiveModelId;
-    options.model2OverrideId = normalizedSelection.model2OverrideId;
-    this.applyRuntimeThinkingCapability(options);
-
-    // 已固定与未固定都不再回写 modelId（未固定避免烘焙全局默认；已固定的
-    // modelId 由用户选择路径负责写入）。这里只刷新实际生效模型的显示名。
-    this.store.setChatParams({
-      modelDisplayName: normalizedSelection.modelDisplayName || '',
-    });
-
-    return normalizedSelection;
+  private applyRuntimeModelSelection(options: SendOptions): Promise<NormalizedChatModelSelection> {
+    return modelSelection.applyRuntimeModelSelection(this.asHost(), options);
   }
 
   private resolveReplaySkillSnapshot(
@@ -5148,37 +782,7 @@ export class ChatV2TauriAdapter {
     };
     selectedServerIds?: string[];
   } | null {
-    const currentState = this.getCurrentState();
-    const message = currentState.messageMap.get(messageId);
-    if (!message) {
-      return null;
-    }
-
-    const selectedVariant = variantId
-      ? message.variants?.find((candidate) => candidate.id === variantId)
-      : undefined;
-
-    const snapshot = selectedVariant?.meta?.skillSnapshotAfter
-      || selectedVariant?.meta?.skillSnapshotBefore
-      || message._meta?.skillSnapshotAfter
-      || message._meta?.skillSnapshotBefore;
-
-    const runtimeSnapshot = selectedVariant?.meta?.skillRuntimeAfter
-      || selectedVariant?.meta?.skillRuntimeBefore
-      || message._meta?.skillRuntimeAfter
-      || message._meta?.skillRuntimeBefore;
-
-    if (!snapshot && !runtimeSnapshot) {
-      return null;
-    }
-
-    const selectedServerIds = runtimeSnapshot?.selectedMcpServers || message._meta?.chatParams?.selectedMcpServers;
-
-    return {
-      snapshot: snapshot ?? {},
-      runtimeSnapshot,
-      selectedServerIds,
-    };
+    return skillRuntime.resolveReplaySkillSnapshot(this.asHost(), messageId, variantId);
   }
 
   private applyOriginalReplaySkillState(
@@ -5187,128 +791,7 @@ export class ChatV2TauriAdapter {
     selectedServerIds?: string[],
     variantId?: string
   ): SendOptions {
-    if (options.replayMode !== 'original') {
-      return options;
-    }
-
-    // Mark every modern original-replay request as admission-checked, even if
-    // the renderer no longer has the historical snapshot locally. This keeps
-    // the backend from restoring revoked historical schemas as a fallback.
-    (options as Record<string, unknown>).skillAdmissionErrors = {};
-
-    const resolvedReplay = this.resolveReplaySkillSnapshot(messageId, variantId);
-    if (!resolvedReplay) {
-      return options;
-    }
-    const { snapshot, runtimeSnapshot } = resolvedReplay;
-    const effectiveSelectedServerIds =
-      (runtimeSnapshot?.selectedMcpServers && runtimeSnapshot.selectedMcpServers.length > 0
-        ? runtimeSnapshot.selectedMcpServers
-        : undefined)
-      ?? (snapshot.effectiveAllowedExternalServers && snapshot.effectiveAllowedExternalServers.length > 0
-        ? snapshot.effectiveAllowedExternalServers
-        : undefined) ?? resolvedReplay.selectedServerIds ?? selectedServerIds;
-
-    const enabledReplaySkillIds = Array.from(new Set([
-      ...(runtimeSnapshot?.activeSkillIds || []),
-      ...(snapshot.manualPinnedSkillIds || []),
-      ...(snapshot.agenticSessionSkillIds || []),
-      ...(snapshot.branchLocalSkillIds || []),
-      ...(snapshot.modeRequiredBundleIds || []),
-    ])).filter(Boolean);
-    const replayPinnedSkillIds = Array.from(new Set([
-      ...(snapshot.manualPinnedSkillIds || []),
-      ...(runtimeSnapshot?.activeSkillIds || []),
-    ])).filter((skillId) => {
-      if (!skillId) return false;
-      const skill = skillRegistry.get(skillId);
-      return Boolean(skill && getRegisteredSkillRuntimeAdmission(skill).allowed);
-    });
-
-    options.activeSkillIds = replayPinnedSkillIds;
-
-    const skillContents: Record<string, string> = {};
-    const skillDependencies: Record<string, string[]> = {};
-    const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {};
-    const skillAdmissionErrors: Record<string, string> = {};
-    const snapshotSkillToolNames = new Set(
-      Object.values(runtimeSnapshot?.skillEmbeddedTools ?? {})
-        .flat()
-        .map((tool) => tool.name)
-        .filter(Boolean),
-    );
-    const replayToolSchemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [
-      LOAD_SKILLS_TOOL_SCHEMA,
-      ...((runtimeSnapshot?.mcpToolSchemas ?? []).filter(
-        (schema) => Boolean(schema?.serverId) && !snapshotSkillToolNames.has(schema.name),
-      )),
-    ];
-
-    for (const skillId of enabledReplaySkillIds) {
-      const skill = skillRegistry.get(skillId);
-      if (!skill) continue;
-      const admission = getRegisteredSkillRuntimeAdmission(skill);
-      if (!admission.allowed) {
-        skillAdmissionErrors[skill.id] = `${admission.code}: ${admission.message}`;
-        console.log(LOG_PREFIX, '[Replay] Skip rejected skill injection:', skill.id, admission.code);
-        continue;
-      }
-      // Trust is bound to the currently installed package, not to historical
-      // replay bytes. Reusing an old body here could inject content whose hash
-      // was never approved by the current trust decision.
-      // Keep an explicit entry even for tool-only skills. The backend uses
-      // membership in this map as the admitted-set check; omitting an empty
-      // body would incorrectly classify an admitted tool-only skill as missing.
-      // P3：产物模板骨架随正文注入（renderSkillContentWithArtifact 对无
-      // artifact 声明的 skill 原样返回）。
-      skillContents[skill.id] = renderSkillContentWithArtifact(skill);
-      if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
-        skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
-      }
-      if (skill.embeddedTools && skill.embeddedTools.length > 0) {
-        const embedded = skill.embeddedTools.map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        }));
-        skillEmbeddedTools[skill.id] = embedded;
-        replayToolSchemas.push(...embedded);
-      }
-    }
-
-    (options as Record<string, unknown>).skillContents = skillContents;
-    (options as Record<string, unknown>).replaySkillContents = skillContents;
-    (options as Record<string, unknown>).skillDependencies = skillDependencies;
-    (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
-    // Presence of this field is also the backend contract that the current
-    // renderer has re-evaluated replay admission. An empty map is meaningful:
-    // the backend must preserve these already-filtered fields instead of
-    // restoring older schema/allowlist snapshots over them.
-    (options as Record<string, unknown>).skillAdmissionErrors = skillAdmissionErrors;
-
-    const hasExternalReplaySchemas = replayToolSchemas.some((schema) => Boolean(schema.serverId));
-    if (
-      !hasExternalReplaySchemas
-      && effectiveSelectedServerIds
-      && effectiveSelectedServerIds.length > 0
-    ) {
-      for (const serverId of effectiveSelectedServerIds) {
-        if (serverId === BUILTIN_SERVER_ID) continue;
-        const tools = McpService.getCachedToolsFor(serverId);
-        for (const tool of tools) {
-          replayToolSchemas.push({
-            name: tool.name,
-            serverId,
-            description: tool.description,
-            inputSchema: tool.input_schema,
-          });
-        }
-      }
-    }
-
-    options.mcpToolSchemas = replayToolSchemas;
-    options.mcpTools = effectiveSelectedServerIds;
-    return options;
+    return skillRuntime.applyOriginalReplaySkillState(this.asHost(), messageId, options, selectedServerIds, variantId);
   }
 
   private getStructuredSkillStateFromStore(): {
@@ -5317,24 +800,7 @@ export class ChatV2TauriAdapter {
     agenticSessionSkillIds: string[];
     branchLocalSkillIds: string[];
   } | null {
-    const raw = this.getCurrentState().skillStateJson;
-    if (!raw) return null;
-    try {
-      const parsed = JSON.parse(raw) as {
-        manualPinnedSkillIds?: string[];
-        modeRequiredBundleIds?: string[];
-        agenticSessionSkillIds?: string[];
-        branchLocalSkillIds?: string[];
-      };
-      return {
-        manualPinnedSkillIds: Array.isArray(parsed?.manualPinnedSkillIds) ? parsed.manualPinnedSkillIds.filter(Boolean) : [],
-        modeRequiredBundleIds: Array.isArray(parsed?.modeRequiredBundleIds) ? parsed.modeRequiredBundleIds.filter(Boolean) : [],
-        agenticSessionSkillIds: Array.isArray(parsed?.agenticSessionSkillIds) ? parsed.agenticSessionSkillIds.filter(Boolean) : [],
-        branchLocalSkillIds: Array.isArray(parsed?.branchLocalSkillIds) ? parsed.branchLocalSkillIds.filter(Boolean) : [],
-      };
-    } catch {
-      return null;
-    }
+    return skillRuntime.getStructuredSkillStateFromStore(this.asHost());
   }
 
   private resolveInputContextLimit(
@@ -5343,645 +809,37 @@ export class ChatV2TauriAdapter {
     maxTokens: number,
     userContextLimit: number | undefined
   ): number {
-    const effectiveModelId = model2OverrideId || modelId;
-    const modelInfo = getModelInfoByConfigId(effectiveModelId);
-    const modelLike =
-      (typeof modelInfo?.model === 'string' ? modelInfo.model : undefined) ||
-      (typeof modelInfo?.name === 'string' ? modelInfo.name : undefined) ||
-      effectiveModelId ||
-      '';
-    const inferredModelMaxOutput =
-      typeof modelInfo?.maxOutputTokens === 'number' && Number.isFinite(modelInfo.maxOutputTokens)
-        ? modelInfo.maxOutputTokens
-        : undefined;
-
-    // 优先使用 ApiConfig 中用户配置/推断引擎写入的 contextWindow
-    const configContextWindow =
-      typeof modelInfo?.contextWindow === 'number' && modelInfo.contextWindow > 0
-        ? modelInfo.contextWindow
-        : undefined;
-
-    return inferInputContextBudget({
-      modelLike,
-      userContextLimit,
-      maxOutputTokens: Math.max(maxTokens || 0, inferredModelMaxOutput || 0),
-      configContextWindow,
-    });
+    return sendOptions.resolveInputContextLimit(this.asHost(), modelId, model2OverrideId, maxTokens, userContextLimit);
   }
 
   private getContextTruncateLimit(contextLimit: number | undefined): number {
-    if (typeof contextLimit === 'number' && Number.isFinite(contextLimit) && contextLimit > 0) {
-      return Math.max(2048, Math.floor(contextLimit));
-    }
-    // 回退：基于当前模型动态计算（而非硬编码值）
-    const currentState = this.getCurrentState();
-    const { chatParams } = currentState;
-    return this.resolveInputContextLimit(
-      chatParams.modelId,
-      chatParams.model2OverrideId || undefined,
-      chatParams.maxTokens,
-      undefined
-    );
+    return sendOptions.getContextTruncateLimit(this.asHost(), contextLimit);
   }
 
   private notifyContextTruncated(removedCount: number): void {
-    showGlobalNotification('warning', i18n.t('chatV2:chat.context_truncated', { count: removedCount }));
+    sendOptions.notifyContextTruncated(this.asHost(), removedCount);
   }
 
-  private async buildSendOptions(snapshot?: BuildSendOptionsSnapshot): Promise<SendOptions> {
-    // 🔧 使用 getCurrentState() 获取最新状态，而非构造时的快照
-    // 这确保了 enableThinking 等用户实时修改的参数能正确传递
-    const currentState = snapshot?.state ?? this.getCurrentState();
-    const pendingContextRefs = snapshot?.pendingContextRefs ?? currentState.pendingContextRefs;
-    const { chatParams, features, mode, modeState, sessionId, groupId, sessionMetadata } = currentState;
-
-    // 获取模式插件（使用 getResolved 获取合并了继承链的完整插件）
-    const modePlugin = modeRegistry.getResolved(mode);
-
-    // 构建系统提示
-    let systemPromptOverride: string | undefined;
-
-    // 1) 分组 System Prompt（同步缓存）
-    if (groupId) {
-      const group = groupCache.get(groupId);
-      if (group?.systemPrompt) {
-        systemPromptOverride = group.systemPrompt;
-      } else if (sessionMetadata?.groupSystemPromptSnapshot) {
-        systemPromptOverride = sessionMetadata.groupSystemPromptSnapshot as string;
-      }
-    }
-
-    // 2) 模式插件 System Prompt（追加）
-    if (modePlugin?.buildSystemPrompt) {
-      try {
-        const modePrompt = modePlugin.buildSystemPrompt({
-          sessionId,
-          mode,
-          modeState,
-        });
-        if (modePrompt) {
-          systemPromptOverride = systemPromptOverride
-            ? `${systemPromptOverride}\n\n${modePrompt}`
-            : modePrompt;
-        }
-      } catch (error) {
-        console.error(LOG_PREFIX, 'Error building system prompt:', getErrorMessage(error));
-      }
-    }
-
-    // 获取模式启用的工具
-    let modeEnabledTools: string[] = [];
-    if (modePlugin?.getEnabledTools) {
-      try {
-        modeEnabledTools = modePlugin.getEnabledTools(currentState);
-      } catch (error) {
-        console.error(LOG_PREFIX, 'Error getting enabled tools:', getErrorMessage(error));
-      }
-    } else if (modePlugin?.config.enabledTools) {
-      // 如果没有 getEnabledTools 方法，使用配置中的静态工具列表
-      modeEnabledTools = modePlugin.config.enabledTools;
-    }
-
-    // 根据模式工具配置覆盖功能开关
-    const ragEnabled = features.get('rag') ?? modeEnabledTools.includes('rag');
-    const memoryEnabled = features.get('userMemory') ?? modeEnabledTools.includes('memory');
-    const webSearchEnabled = features.get('webSearch') ?? modeEnabledTools.includes('web_search');
-    const ankiEnabled = features.get('anki') ?? modeEnabledTools.includes('anki');
-
-    // 3) 知识库主动检索提示词（加号菜单 → 知识库 → 主动检索）
-    // 仅在 RAG 未被关闭时注入，否则模型会被引导去调用注定被拦截的工具
-    if (ragEnabled && features.get('kbProactive')) {
-      systemPromptOverride = systemPromptOverride
-        ? `${systemPromptOverride}\n\n${PROACTIVE_KB_SYSTEM_PROMPT}`
-        : PROACTIVE_KB_SYSTEM_PROMPT;
-    }
-
-    // pendingParallelModelIds 也从 currentState 获取（保持一致性）
-    const parallelIds = currentState.pendingParallelModelIds;
-    const contextLimit = this.resolveInputContextLimit(
-      chatParams.modelId,
-      chatParams.model2OverrideId || undefined,
-      chatParams.maxTokens,
-      chatParams.contextLimit
-    );
-    const testModeConfig = getTestModeConfig();
-
-    // A2 会话首轮定型：本会话还没有任何技能进入工具面时，先把「设为默认」的技能
-    // 加载进来，使工具面从第 1 个请求就完整——任务中途 load_skills 追加工具会让
-    // provider 的前缀缓存整段失效（首次出现新工具面实测 cached=0）。
-    // 已有技能面的会话（新建会话已激活默认技能、或中途加载过技能）跳过，不改动
-    // 既有前缀。
-    if (
-      getLoadedSkills(this.sessionId).length === 0 &&
-      (!Array.isArray(currentState.activeSkillIds) || currentState.activeSkillIds.length === 0)
-    ) {
-      const preloadedDefaultSkills = preloadAutoLoadSkillsForSession(this.sessionId);
-      if (preloadedDefaultSkills.length > 0) {
-        console.log(
-          LOG_PREFIX,
-          '[ProgressiveDisclosure] Preloaded default skills for first-turn tool face:',
-          preloadedDefaultSkills
-        );
-      }
-    }
-
-    const structuredSkillState = this.getStructuredSkillStateFromStore();
-    // Runtime-active skills must pass the same trust/enable/requires admission
-    // used by load_skills and model-facing metadata.
-    const authoritativeActiveSkillIds = (structuredSkillState
-      ? structuredSkillState.manualPinnedSkillIds
-      : currentState.activeSkillIds
-    ).filter((id) => {
-      const skill = skillRegistry.get(id);
-      return Boolean(skill && getRegisteredSkillRuntimeAdmission(skill).allowed);
-    });
-    const modeRequiredSkillIds = (() => {
-      const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
-      return currentWorkspaceId ? ['workspace-tools'] : [];
-    })();
-    const runtimeLoadedSkillIds = getLoadedSkills(this.sessionId).map(s => s.id);
-
-    const authoritativeLoadedSkillIds = structuredSkillState
-      ? Array.from(new Set([
-          ...structuredSkillState.agenticSessionSkillIds,
-          ...structuredSkillState.branchLocalSkillIds,
-          ...structuredSkillState.modeRequiredBundleIds,
-          ...modeRequiredSkillIds,
-          ...runtimeLoadedSkillIds,
-        ]))
-      : Array.from(new Set([
-          ...runtimeLoadedSkillIds,
-          ...modeRequiredSkillIds,
-        ]));
-
-    const enabledSkillIdSeed = Array.from(
-      new Set([
-        ...authoritativeLoadedSkillIds,
-        ...authoritativeActiveSkillIds,
-      ])
-    );
-    const enabledSkillIdSet = new Set<string>();
-    const pendingSkillIds = [...enabledSkillIdSeed];
-    while (pendingSkillIds.length > 0) {
-      const skillId = pendingSkillIds.pop();
-      if (!skillId || enabledSkillIdSet.has(skillId)) continue;
-      const skill = skillRegistry.get(skillId);
-      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
-      enabledSkillIdSet.add(skillId);
-      for (const depId of skill?.dependencies ?? []) {
-        if (depId && !enabledSkillIdSet.has(depId)) {
-          pendingSkillIds.push(depId);
-        }
-      }
-    }
-    const authoritativeToolSkillIds = Array.from(enabledSkillIdSet);
-
-    const options = {
-      // ChatParams
-      modelId: chatParams.modelId || undefined,
-      temperature: chatParams.temperature,
-      topP: chatParams.topP,
-      frequencyPenalty: chatParams.frequencyPenalty,
-      presencePenalty: chatParams.presencePenalty,
-      maxTokens: chatParams.maxTokens,
-      contextLimit,
-      enableThinking: chatParams.enableThinking,
-      reasoningEffort: chatParams.reasoningEffort,
-      thinkingBudget: chatParams.thinkingBudget,
-      replayMode: testModeConfig.replayMode ? 'original' as const : undefined,
-      skillStateVersion: (() => {
-        const raw = currentState.skillStateJson;
-        if (!raw) return undefined;
-        try {
-          const parsed = JSON.parse(raw) as { version?: unknown };
-          return typeof parsed?.version === 'number' ? parsed.version : undefined;
-        } catch {
-          return undefined;
-        }
-      })(),
-      disableTools: chatParams.disableTools,
-      model2OverrideId: chatParams.model2OverrideId || undefined,
-      groupId: groupId || undefined,
-      groupName: groupId
-        ? (groupCache.get(groupId)?.name ?? undefined)
-        : undefined,
-      groupPinnedResourceIds: groupId
-        ? (groupCache.get(groupId)?.pinnedResourceIds ?? [])
-        : undefined,
-      // 课题首选 runtime root：优先读当前 group 缓存，否则回退 session metadata snapshot。
-      // 后端以 DB 课题字段为准；前端透传仅作可观测/兜底辅助，不可信任覆盖未校验 id。
-      groupDefaultRuntimeRootId: (() => {
-        if (!groupId) return undefined;
-        const group = groupCache.get(groupId);
-        if (group?.defaultRuntimeRootId) {
-          return group.defaultRuntimeRootId;
-        }
-        const snapshot = sessionMetadata?.groupDefaultRuntimeRootIdSnapshot;
-        return typeof snapshot === 'string' && snapshot.length > 0 ? snapshot : undefined;
-      })(),
-      maxToolRecursion: chatParams.maxToolRecursion,
-
-      // 功能开关（结合用户设置和模式配置）
-      ragEnabled,
-      memoryEnabled,
-      webSearchEnabled,
-      ankiEnabled,
-
-      // RAG 配置（从 chatParams 获取）
-      ragTopK: chatParams.ragTopK,
-      ragLibraryIds: chatParams.ragLibraryIds,
-      // 🔧 P1-35: 传递 Rerank 开关配置
-      ragEnableReranking: chatParams.ragEnableReranking,
-
-      // 多模态知识库检索配置（由用户开关逐轮快照到请求中）
-      multimodalRagEnabled: chatParams.multimodalRagEnabled ?? false,
-      multimodalTopK: chatParams.multimodalTopK,
-      // 多模态精排未显式设置时跟随全局 Rerank 开关（与 RagPanel 的 UI 默认一致）
-      multimodalEnableReranking: chatParams.multimodalEnableReranking ?? chatParams.ragEnableReranking,
-      multimodalLibraryIds: chatParams.multimodalLibraryIds,
-
-      // 🆕 图片压缩策略（不设置时后端使用智能默认策略）
-      visionQuality: chatParams.visionQuality,
-
-      // ★ 2026-01 简化：VFS RAG 作为唯一知识检索方案
-      // ragTopK 和 ragEnableReranking 直接用于 VFS RAG 检索
-
-      // ★ graphIds/graphTopK 已废弃（图谱模块已移除）
-
-      // MCP 工具（从 chatParams 获取选中的服务器）
-      mcpTools: chatParams.selectedMcpServers,
-      // ========== MCP 工具 Schema 注入 ==========
-      // 从 mcpService 获取选中服务器的工具 Schema，传递给后端
-      // 后端直接使用这些 Schema 注入到 LLM，而不需要自己连接 MCP 服务器
-      mcpToolSchemas: await this.collectMcpToolSchemas(
-        chatParams.selectedMcpServers,
-        authoritativeToolSkillIds,
-      ),
-
-      // 搜索引擎（从 chatParams 获取选中的引擎）
-      searchEngines: chatParams.selectedSearchEngines,
-
-      // 系统提示（注入 Skills 元数据）。R4 发送等待点：首次快照会在此
-      // await 持久化冻结成功后才放行，失败 fail-closed 中止发送。
-      systemPromptOverride: await this.buildSystemPromptWithSkills(systemPromptOverride),
-
-      // ========== 多变体选项 ==========
-      // 从 Store 读取待发送的并行模型 ID，2+ 个模型时触发多变体模式
-      parallelModelIds: parallelIds ?? undefined,
-
-      // ========== Schema 工具注入选项（文档 26）==========
-      schemaToolIds: undefined as string[] | undefined,
-
-      // 激活技能列表（用于技能内容与工具渐进加载）
-      activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
-
-      // ========== Canvas 智能笔记选项 ==========
-      // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
-      canvasNoteId: getCanvasNoteIdFromModeState(modeState),
-    };
-
-    // ========== Schema 工具收集（文档 26）==========
-    // 从权威技能状态收集需要注入的 Schema 工具 ID
-    // skill_instruction ContextRef 仅作为 UI / 历史兼容缓存，不再参与运行时权限决策
-    const schemaToolResult = collectSchemaToolIds({
-      pendingContextRefs,
-    });
-    if (schemaToolResult.schemaToolIds.length > 0) {
-      options.schemaToolIds = schemaToolResult.schemaToolIds;
-      console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
-    }
-
-    // Transient skill injection includes every runtime-admitted skill so the
-    // backend can service load_skills. Rejected skills are represented only by
-    // a non-sensitive admission error; their content, metadata, and schemas
-    // never cross the frontend/backend boundary.
-    const allSkills = skillRegistry.getAll();
-    if (allSkills.length > 0) {
-      const skillContents: Record<string, string> = {};
-      const replaySkillContents: Record<string, string> = {};
-      const skillDependencies: Record<string, string[]> = {};
-      const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
-      const skillPackageRoots: Record<string, string> = {};
-      const skillAdmissionErrors: Record<string, string> = {};
-      for (const skill of allSkills) {
-        const admission = getRegisteredSkillRuntimeAdmission(skill);
-        if (!admission.allowed) {
-          skillAdmissionErrors[skill.id] = `${admission.code}: ${admission.message}`;
-          console.log(LOG_PREFIX, '[TransientSkills] Skip rejected skill injection:', skill.id, admission.code);
-          continue;
-        }
-        skillContents[skill.id] = renderSkillContentWithArtifact(skill);
-        replaySkillContents[skill.id] = renderSkillContentWithArtifact(skill);
-        if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
-          skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
-        }
-        if (skill.embeddedTools && skill.embeddedTools.length > 0) {
-          skillEmbeddedTools[skill.id] = skill.embeddedTools.map(tool => ({
-            name: tool.name,
-            description: tool.description,
-            inputSchema: tool.inputSchema,
-          }));
-        }
-        if (
-          authoritativeToolSkillIds.includes(skill.id) &&
-          skill.packageRoot &&
-          !skill.packageRoot.startsWith('builtin://')
-        ) {
-          skillPackageRoots[skill.id] = skill.packageRoot;
-        }
-      }
-      if (Object.keys(skillContents).length > 0) {
-        (options as Record<string, unknown>).skillContents = skillContents;
-        (options as Record<string, unknown>).replaySkillContents = replaySkillContents;
-        console.log(LOG_PREFIX, '[TransientSkills] Injected skill contents:', Object.keys(skillContents).length);
-      }
-      if (Object.keys(skillDependencies).length > 0) {
-        (options as Record<string, unknown>).skillDependencies = skillDependencies;
-      }
-      if (Object.keys(skillEmbeddedTools).length > 0) {
-        (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
-        console.log(LOG_PREFIX, '[TransientSkills] Injected skill embeddedTools:', Object.keys(skillEmbeddedTools).length);
-      }
-      if (Object.keys(skillPackageRoots).length > 0) {
-        (options as Record<string, unknown>).skillPackageRoots = skillPackageRoots;
-        console.log(LOG_PREFIX, '[TransientSkills] Injected skill package roots:', Object.keys(skillPackageRoots).length);
-      }
-      (options as Record<string, unknown>).skillAdmissionErrors = skillAdmissionErrors;
-    }
-
-    // 🔧 调试日志：记录发送选项（包含 modelId）
-    logMultiVariant('adapter', 'buildSendOptions', {
-      modelId: options.modelId,
-      hasModelId: !!options.modelId,
-      hasParallelModelIds: !!parallelIds,
-      parallelModelIds: parallelIds ?? [],
-      count: parallelIds?.length ?? 0,
-      willTriggerMultiVariant: (parallelIds?.length ?? 0) >= 2,
-      enableThinking: chatParams.enableThinking,
-      reasoningEffort: chatParams.reasoningEffort,
-      thinkingBudget: chatParams.thinkingBudget,
-      isSingleVariant: !parallelIds || parallelIds.length < 2,
-    }, options.modelId ? 'success' : 'warning');
-
-    // 单独记录思维链状态
-    if (chatParams.enableThinking) {
-      logMultiVariant('adapter', 'thinking_enabled', {
-        modelId: chatParams.modelId,
-        enableThinking: true,
-        reasoningEffort: chatParams.reasoningEffort,
-        thinkingBudget: chatParams.thinkingBudget,
-      }, 'info');
-    }
-
-    return options;
+  private buildSendOptions(snapshot?: BuildSendOptionsSnapshot): Promise<SendOptions> {
+    return sendOptions.buildSendOptions(this.asHost(), snapshot);
   }
 
 
-  /**
-   * 从 mcpService 收集选中 MCP 服务器的工具 Schema
-   *
-   * 🔧 2026-01-11 重构：总是注入内置工具，确保工具化检索模式可用
-   * 🔧 2026-01-20 重构：支持渐进披露模式，按需加载工具
-   *
-   * 返回工具 Schema 数组，格式与 OpenAI function calling 兼容：
-   * - name: 工具名称（可能带命名空间前缀）
-   * - description: 工具描述
-   * - inputSchema: JSON Schema 定义参数
-   */
-  private async collectMcpToolSchemas(
+  private collectMcpToolSchemas(
     selectedServerIds?: string[],
     loadedSkillIds?: string[],
   ): Promise<Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> {
-    const schemas: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }> = [];
-
-    // 渐进披露模式：只注入 load_skills 元工具 + 已加载的 Skills 工具
-    // 完全替代 builtinMcpServer.ts，不再支持旧的全量注入模式
-    schemas.push(LOAD_SKILLS_TOOL_SCHEMA);
-    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected load_skills meta-tool');
-
-    // 注入已加载的 Skills 工具（动态过滤 web_search 引擎）
-    // 关键：已加载技能的真实工具定义应来自会话 loadedSkills 缓存；
-    // 当只有结构化 loadedSkillIds 可用时，需回退读取 skill.embeddedTools。
-    const loadedToolsByKey = new Map<string, { name: string; description?: string; inputSchema?: unknown }>();
-    const appendLoadedTool = (tool: { name: string; description?: string; inputSchema?: unknown }) => {
-      if (!tool?.name) return;
-      const key = tool.name;
-      if (!loadedToolsByKey.has(key)) {
-        loadedToolsByKey.set(key, tool);
-      }
-    };
-
-    // Re-check current admission so stale session caches cannot retain schemas
-    // after a skill is disabled, becomes untrusted, or loses a requirement.
-    for (const loadedSkill of getLoadedSkills(this.sessionId)) {
-      const skill = skillRegistry.get(loadedSkill.id);
-      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
-      for (const tool of loadedSkill.tools) {
-        appendLoadedTool(tool);
-      }
-    }
-
-    const effectiveLoadedSkillIds = Array.isArray(loadedSkillIds)
-      ? loadedSkillIds.filter((id): id is string => typeof id === 'string' && id.length > 0)
-      : [];
-    for (const skillId of effectiveLoadedSkillIds) {
-      const skill = skillRegistry.get(skillId);
-      if (!skill || !getRegisteredSkillRuntimeAdmission(skill).allowed) continue;
-      const embeddedTools = skill?.embeddedTools ?? [];
-      for (const tool of embeddedTools) {
-        appendLoadedTool(tool);
-      }
-    }
-
-    const loadedTools = Array.from(loadedToolsByKey.values());
-    const availableEngines = getAvailableSearchEngines();
-    for (const tool of loadedTools) {
-      let inputSchema = tool.inputSchema;
-      // 🔧 动态注入可用搜索引擎到 web_search 工具，避免 LLM 尝试未配置的引擎
-      if (tool.name === 'builtin-web_search' && availableEngines.length > 0) {
-        const schemaObj = inputSchema as unknown as Record<string, unknown>;
-        const existingProps = (schemaObj?.properties as Record<string, unknown>) ?? {};
-        const newProps = {
-          ...existingProps,
-          engine: {
-            type: 'string',
-            enum: availableEngines,
-            description: `可用的搜索引擎：${availableEngines.join(', ')}。如果不指定，使用默认配置的引擎。`,
-          },
-        };
-        inputSchema = { ...schemaObj, properties: newProps } as unknown as typeof inputSchema;
-      }
-      schemas.push({
-        name: tool.name,
-        description: tool.description,
-        inputSchema,
-      });
-    }
-    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected loaded skill tools:', loadedTools.length);
-
-    // 收集用户选择的其他 MCP 服务器工具（两种模式都支持）
-    if (selectedServerIds && selectedServerIds.length > 0) {
-      for (const serverId of selectedServerIds) {
-        // 跳过内置服务器（已经注入）
-        if (serverId === BUILTIN_SERVER_ID) {
-          continue;
-        }
-
-        // 从 McpService 缓存获取该服务器的工具列表
-        let tools = McpService.getCachedToolsFor(serverId);
-        if (tools.length === 0) {
-          // 页面重载/首启后缓存为空（WebView 重载清空内存态且尚未重连）：
-          // 发送路径兜底，连接并完成工具发现后再注入，避免模型只看到 load_skills。
-          tools = await McpService.ensureServerTools(serverId);
-        }
-        for (const tool of tools) {
-          schemas.push({
-            name: tool.name,
-            serverId,
-            description: tool.description,
-            inputSchema: tool.input_schema,
-          });
-        }
-      }
-    }
-
-    console.log(LOG_PREFIX, 'Total MCP tool schemas:', {
-      progressiveDisclosure: true, // 始终启用渐进披露
-      totalCount: schemas.length,
-    });
-
-    return schemas;
+    return sendOptions.collectMcpToolSchemas(this.asHost(), selectedServerIds, loadedSkillIds);
   }
 
-  /**
-   * 构建系统提示（注入 Skills 元数据）
-   *
-   * 🔧 2026-01-20: 渐进披露模式下，注入 available_skills 列表
-   *
-   * 将 Skills 元数据追加到系统提示后面，用于 LLM 自动发现和激活技能。
-   *
-   * 缓存前缀约束（ROUND-01-cache-prefix R1 / ROUND-02-synthesis P1-8）：
-   * 目录不按已加载状态收缩，会话内保持恒定，避免 system 前缀在
-   * load_skills 之后从第 0 字节变化、打碎整段 prompt cache。
-   * 已加载状态由 load_skills 的 tool result 与瞬态技能消息表达。
-   *
-   * P0 会话快照：目录按 sessionId 冻结首次生成结果，会话中途
-   * skill_install 改写 live registry 不会改已发出的 system 目录
-   * （与 excludeLoaded 修复同一哲学，新技能由 tool result 表达）。
-   *
-   * R4 目录原子化：首次快照不再 fire-and-forget —— await 持久化冻结成功
-   * （或拿到 first-write-wins 回灌值）后才返回 system，保证第一条 LLM
-   * 请求使用的目录字节与 session.metadata 持久化权威一致。
-   */
-  private async buildSystemPromptWithSkills(
+  private buildSystemPromptWithSkills(
     basePrompt: string | undefined
   ): Promise<string | undefined> {
-    // The shared generator applies trust/enable visibility before reading any
-    // model-facing description or embedded-tool metadata. The per-session
-    // snapshot freezes the first generated catalog so mid-session installs
-    // never rewrite the already-sent system prefix.
-    const skillMetadataPrompt = await this.ensureAvailableSkillsSnapshotFrozen();
-    console.log(LOG_PREFIX, '[ProgressiveDisclosure] Generated available_skills prompt (session-frozen catalog snapshot)');
-
-    // 如果没有 skills 元数据，返回原始提示
-    if (!skillMetadataPrompt) {
-      return basePrompt;
-    }
-
-    if (basePrompt) {
-      return `${basePrompt}\n\n${skillMetadataPrompt}`;
-    }
-
-    return skillMetadataPrompt;
+    return sendOptions.buildSystemPromptWithSkills(this.asHost(), basePrompt);
   }
 
-  /**
-   * R4 发送等待点：返回本会话冻结且已确认持久化的 available_skills 目录。
-   *
-   * P0 available_skills 快照跨进程：首次无快照（loadSession 未能从 metadata
-   * 回灌）时，把内存生成的目录冻结进 session.metadata（后端
-   * `chat_v2_freeze_available_skills_snapshot`，first-write-wins），并 await
-   * 到后端确认后才放行发送。多窗口竞争时后端返回更早冻结的生效值，回灌
-   * 内存并以该值构建 system，保证字节与持久化权威一致。
-   *
-   * R5 换代消费：loadSession 若见到有效待换代标记
-   * （availableSkillsSnapshotPendingGeneration，compaction 落盘事务写入，
-   * 见 r4-catalog-compaction.md），本方法不复用冻结的内存/回灌字节，改按
-   * live registry 重新生成目录并**再走一次** freeze RPC——后端 freeze 原语
-   * 在有效 pending 存在时放行覆盖（generation := pending 并清标记），
-   * 该次写入即新代 first write。compaction 已保证下一轮 history 字节必变、
-   * 旧前缀缓存已报废，此时换目录的增量损失仅 system+tools 段。多窗口竞争
-   * 时输家拿到新代已冻结值回灌，新代内仍是 first-write-wins。
-   * 无待换代标记时行为与 R4 逐字节一致：已确认即复用、绝不重复冻结、
-   * 绝不按 live 重算——普通 first-write-wins 路径无回退。
-   *
-   * 失败策略：fail-closed —— 冻结 RPC 失败时抛错中止本次发送，不带未持久化
-   * 的目录发 LLM 请求（否则中途重启会让同一会话的 system 从第 0 字节变，
-   * 打碎整段 prompt cache）。调用链各 send/retry 路径的既有 catch 负责复位
-   * streaming 状态并向用户报错。普通路径内存快照保留原字节，下次发送用
-   * 同一字节重试冻结；换代路径 pendingGeneration 仅在兑现成功后清除，
-   * 失败重试会重新按 live 生成，换代意图不丢。
-   */
-  private async ensureAvailableSkillsSnapshotFrozen(): Promise<string> {
-    const sessionId = this.sessionId;
-    const persisted = persistedAvailableSkillsSnapshotGenerations.get(sessionId);
-    const pendingGeneration = persisted?.pendingGeneration;
-    if (persisted !== undefined && pendingGeneration === undefined) {
-      // 已确认某代且无待换代：逐字节复用冻结快照（R4 普通路径，无回退）。
-      return getSessionAvailableSkillsPrompt(sessionId);
-    }
-
-    // 进入冻结 RPC 的两种情形：
-    // - persisted 缺项：普通首冻，冻结首次生成（或 fail-closed 重试保留）的内存字节；
-    // - pendingGeneration 有效：换代兑现，跳过冻结字节按 live registry 重新生成。
-    const snapshot =
-      pendingGeneration !== undefined
-        ? generateAvailableSkillsPrompt()
-        : getSessionAvailableSkillsPrompt(sessionId);
-
-    let freeze = inflightAvailableSkillsSnapshotFreezes.get(sessionId);
-    if (!freeze) {
-      freeze = invoke<string>('chat_v2_freeze_available_skills_snapshot', {
-        sessionId,
-        snapshot,
-      });
-      inflightAvailableSkillsSnapshotFreezes.set(sessionId, freeze);
-      freeze.finally(() => {
-        // 成功路径已进 persisted 表；失败路径清掉进行中句柄，
-        // 让下次发送重试冻结（fail-closed 后可恢复）。
-        inflightAvailableSkillsSnapshotFreezes.delete(sessionId);
-      }).catch(() => {
-        // 错误由下方 await 处向发送方抛出，这里仅防 unhandled rejection。
-      });
-    }
-
-    let effective: string;
-    try {
-      effective = await freeze;
-    } catch (error) {
-      throw new Error(
-        `available_skills catalog freeze failed; message not sent (fail-closed): ${getErrorMessage(error)}`
-      );
-    }
-    // 兑现换代后确认代号推进为 pending（后端 generation := pending 并清标记；
-    // 若另一窗口已抢先兑现，后端此刻的 generation 同样是该 pending 值，
-    // freeze 退化为新代内 first-write-wins 拒绝，记录值仍一致）。
-    // 并发发送共享同一 freeze Promise 时各自 resume 写入相同状态，幂等。
-    persistedAvailableSkillsSnapshotGenerations.set(sessionId, {
-      generation: pendingGeneration ?? persisted?.generation ?? 0,
-    });
-    if (pendingGeneration !== undefined) {
-      // 换代路径内存快照仍是旧代回灌字节，无条件以生效值覆盖：
-      // 赢家 = 刚生成的 live 目录，输家 = 抢先窗口的新代冻结值。
-      hydrateSessionAvailableSkillsSnapshot(sessionId, effective);
-      return effective;
-    }
-    if (typeof effective === 'string' && effective !== snapshot) {
-      // 多窗口竞争：后端已有更早冻结的快照，first-write-wins 生效值回灌内存。
-      hydrateSessionAvailableSkillsSnapshot(sessionId, effective);
-      return effective;
-    }
-    return snapshot;
+  private ensureAvailableSkillsSnapshotFrozen(): Promise<string> {
+    return availableSkillsSnapshot.ensureAvailableSkillsSnapshotFrozen(this.asHost());
   }
 
   // ========================================================================
