@@ -75,7 +75,7 @@ jobs:
           cat "$RUNNER_TEMP/tsc.log" "$RUNNER_TEMP/tsgo.log"
           test "$TSC_CODE" -eq 0 && test "$TSGO_CODE" -eq 0
       - if: matrix.task == 'lint'
-        run: npm run lint && npm run licenses:check
+        run: npm run lint && npm run licenses:check && npm run check:frontend-layers && npm run check:lint-ratchet
       - name: Build production bundle
         if: matrix.task == 'build'
         env:
