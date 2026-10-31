@@ -129,6 +129,7 @@ impl AgentProfile {
     /// 分类由 ToolDescriptor 注册表 `grants_scope_hint` 驱动，见
     /// [`crate::chat_v2::grants::ToolScope::from_allow_entry`]）。
     pub fn grant_tool_scopes(&self) -> Vec<crate::chat_v2::grants::ToolScope> {
+        use crate::chat_v2::grants::ToolScopeExt as _;
         crate::chat_v2::grants::ToolScope::scopes_from_allowed_tools(&self.allowed_tools)
     }
 }

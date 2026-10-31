@@ -58,7 +58,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
 
   it('event type constant matches frontend GENERATIVE_UI_BLOCK_TYPE', () => {
     const typesSrc = fs.readFileSync(
-      path.join(process.cwd(), 'src-tauri/src/chat_v2/types.rs'),
+      path.join(process.cwd(), 'src-tauri/crates/dstu-core/src/agent.rs'),
       'utf8',
     );
     expect(typesSrc).toContain('pub const GENERATIVE_UI: &str = "generative_ui"');

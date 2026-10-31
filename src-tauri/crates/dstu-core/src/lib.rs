@@ -13,9 +13,11 @@
 /// 统一读这里，值由 `build.rs` 从根 `Cargo.toml` 的 `[package] version` 注入。
 pub const APP_VERSION: &str = env!("DSTU_APP_VERSION");
 
+pub mod agent; // agent 消息/工具调用的纯数据类型（chat_v2::types、chat_v2::grants 按原路径重导出）
 pub mod canonical_tools;
 pub mod error_details;
 pub mod error_recovery;
+pub mod events; // Chat V2 事件名常量（chat_v2::events 按原路径重导出）
 pub mod json_validator;
 pub mod llm_config;
 pub mod media_types;
@@ -25,8 +27,11 @@ pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX �
 pub mod resource_types; // 内容块（ContentBlock）：chat_v2 资源格式化的共用形状
 pub mod services;
 pub mod spaced_repetition; // SM-2 间隔重复算法（纯函数，vfs 复习计划仓储也要用）
+pub mod task_objects; // 任务对象句柄/批量清单/页读写（chat_v2::task_objects 按原路径重导出）
 pub mod text_escape; // XML 文本转义（chat_v2::vfs_resolver 按原路径重导出）
 pub mod token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
+pub mod tool_args; // 工具参数/错误载荷辅助（chat_v2::tools::arg_utils 按原路径重导出）
+pub mod tool_names; // 工具名命名空间解析（chat_v2::tools::types 按原路径重导出）
 pub mod workflow_error_handler;
 
 #[cfg(test)]

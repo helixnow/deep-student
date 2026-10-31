@@ -38,7 +38,8 @@ pub mod academic_search_executor; // 🆕 学术论文搜索执行器（arXiv + 
                                   // ★ 2026-08 死链路清理：anki_executor（旧 CardForge AnkiToolExecutor，
                                   // 经 anki_tool_call 事件桥接前端 CardAgent）已删除——pipeline 从不注册它，
                                   // 前端 CardAgent 也已不再监听 anki_tool_call。Anki 制卡统一走 chatanki_executor。
-mod arg_utils;
+// 工具参数/错误载荷辅助已下沉 dstu-core（旧路径 `tools::arg_utils` 保留）
+pub(crate) use dstu_core::tool_args as arg_utils;
 pub mod ask_user_executor; // 🆕 用户提问工具执行器（轻量级问答交互）
 pub mod attachment_executor; // 🆕 附件工具执行器（解决 P0 断裂点）
 pub mod attachment_stage_executor; // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径）
