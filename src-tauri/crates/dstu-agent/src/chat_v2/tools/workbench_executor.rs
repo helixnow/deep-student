@@ -122,7 +122,7 @@ async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, Str
 /// 领域写工具在尝试 ACR 前端委托前也必须经过同一双闸。
 ///
 /// `false` 表示仍可执行领域工具，但只能走后端数据面；不得发送 `probe/apply_ops`。
-pub(crate) async fn is_workbench_agent_delegation_enabled(
+pub async fn is_workbench_agent_delegation_enabled(
     ctx: &ExecutionContext,
 ) -> Result<bool, String> {
     Ok(matches!(

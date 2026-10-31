@@ -70,13 +70,13 @@ pub struct SandboxEffectReport {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SandboxRuntimeContract {
+pub struct SandboxRuntimeContract {
     pub backend: &'static str,
     pub shell_kind: &'static str,
     pub output_encoding: &'static str,
 }
 
-pub(crate) const fn platform_sandbox_contract() -> SandboxRuntimeContract {
+pub const fn platform_sandbox_contract() -> SandboxRuntimeContract {
     #[cfg(target_os = "macos")]
     {
         SandboxRuntimeContract {

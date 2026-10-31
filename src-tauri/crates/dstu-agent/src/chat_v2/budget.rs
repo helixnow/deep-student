@@ -1034,7 +1034,7 @@ mod tests {
         db.get_conn()
             .expect("conn")
             .execute_batch(include_str!(
-                "../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"
+                "../../../../migrations/chat_v2/V20260910__revocation_epochs_and_budget.sql"
             ))
             .expect("apply V20260910");
         (dir, db)

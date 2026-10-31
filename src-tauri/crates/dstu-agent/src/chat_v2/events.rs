@@ -1140,7 +1140,10 @@ impl ChatV2EventEmitter {
     /// Test-only constructor: no Tauri window, all emits become no-ops.
     /// Used by behaviour-level pipeline tests that assert gate/executor
     /// effects rather than emitted events.
-    #[cfg(test)]
+    ///
+    /// step 10 L5：不再 `#[cfg(test)]`——app 侧留下的域执行器单测（attachment / chatanki /
+    /// generative_ui）也调用它，而跨 crate 时 `cfg(test)` 项不可见。生产代码不引用它。
+    #[doc(hidden)]
     pub fn new_windowless_for_test(session_id: String) -> Self {
         Self::new_headless(session_id)
     }

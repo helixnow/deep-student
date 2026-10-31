@@ -276,7 +276,7 @@ pub(crate) fn sanitize_retrieval_output_for_llm(tool_name: &str, output: &Value)
 // ============================================================
 
 /// 流水线执行上下文
-pub(crate) struct PipelineContext {
+pub struct PipelineContext {
     /// 会话 ID
     pub(crate) session_id: String,
     /// 用户消息 ID

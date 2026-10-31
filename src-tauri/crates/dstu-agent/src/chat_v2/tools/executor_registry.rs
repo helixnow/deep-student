@@ -509,7 +509,7 @@ impl ToolExecutorRegistry {
     }
 
     /// 有序执行器花名册（注册顺序；供 `LegacyToolProvider` 包装为 agent-api 视图）。
-    pub(crate) fn executors(&self) -> &[Arc<dyn ToolExecutor>] {
+    pub fn executors(&self) -> &[Arc<dyn ToolExecutor>] {
         &self.executors
     }
 }

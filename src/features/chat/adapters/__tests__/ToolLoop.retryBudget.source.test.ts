@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const toolLoopSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/src/chat_v2/pipeline/tool_loop.rs'),
+  resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/pipeline/tool_loop.rs'),
   'utf-8'
 );
 

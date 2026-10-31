@@ -393,10 +393,10 @@ async fn tool_pack_harness_constructs_execution_context() {
 #[test]
 fn tool_pack_selected_real_subtools_shared_state_audit_matches_allowed_paths() {
     let template_source = include_str!("../src/chat_v2/tools/template_executor.rs");
-    let session_source = include_str!("../src/chat_v2/tools/session_executor.rs");
+    let session_source = include_str!("../crates/dstu-agent/src/chat_v2/tools/session_executor.rs");
     let user_todo_source = include_str!("../src/chat_v2/tools/user_todo_executor.rs");
-    let tool_pack_source = include_str!("../src/chat_v2/tools/tool_pack_executor.rs");
-    let executor_source = include_str!("../src/chat_v2/tools/executor.rs");
+    let tool_pack_source = include_str!("../crates/dstu-agent/src/chat_v2/tools/tool_pack_executor.rs");
+    let executor_source = include_str!("../crates/dstu-agent/src/chat_v2/tools/executor.rs");
 
     assert!(user_todo_source.contains("VfsTodoRepo::create_todo_item"));
     assert!(session_source.contains("ChatV2Database") || session_source.contains("chat_v2_db"));

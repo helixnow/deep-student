@@ -2798,7 +2798,7 @@ impl ChatV2Repo {
         info!("[ChatV2::Repo] Initializing Chat V2 schema...");
 
         // 读取并执行迁移 SQL（使用 Refinery 格式的初始化迁移）
-        let migration_sql = include_str!("../../migrations/chat_v2/V20260130__init.sql");
+        let migration_sql = include_str!("../../../../migrations/chat_v2/V20260130__init.sql");
 
         conn.execute_batch(migration_sql)?;
 
@@ -4772,22 +4772,22 @@ mod tests {
         // 初始化 schema：依次应用所有迁移，与生产环境保持一致
         // （单独应用 V20260130 会缺少后续迁移加的列，导致测试 schema 与运行时不一致）
         let migrations: &[&str] = &[
-            include_str!("../../migrations/chat_v2/V20260130__init.sql"),
-            include_str!("../../migrations/chat_v2/V20260131__add_change_log.sql"),
-            include_str!("../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
-            include_str!("../../migrations/chat_v2/V20260202__schema_repair.sql"),
-            include_str!("../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
-            include_str!("../../migrations/chat_v2/V20260204__session_groups.sql"),
-            include_str!("../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
-            include_str!("../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
-            include_str!("../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
-            include_str!("../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
-            include_str!("../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
-            include_str!("../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
-            include_str!("../../migrations/chat_v2/V20260516__add_title_locked.sql"),
-            include_str!("../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260130__init.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260131__add_change_log.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260202__schema_repair.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260204__session_groups.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+            include_str!("../../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
             include_str!(
-                "../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
+                "../../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
             ),
         ];
         for sql in migrations {
@@ -6688,7 +6688,7 @@ mod tests {
     /// 需要三列时由本 helper 显式补充
     fn apply_replay_columns(conn: &Connection) {
         conn.execute_batch(include_str!(
-            "../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"
+            "../../../../migrations/chat_v2/V20260806__prompt_cache_replay_consistency.sql"
         ))
         .unwrap();
     }
@@ -8700,7 +8700,7 @@ mod goal_tests {
     fn setup_goal_db() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(include_str!(
-            "../../migrations/chat_v2/V20260905__goal_table.sql"
+            "../../../../migrations/chat_v2/V20260905__goal_table.sql"
         ))
         .unwrap();
         conn

@@ -12,7 +12,7 @@ describe('hidden draft session lifecycle contract', () => {
     'utf-8'
   );
   const repoSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/chat_v2/repo.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/repo.rs'),
     'utf-8'
   );
   const sessionActionsSource = readFileSync(

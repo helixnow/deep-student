@@ -37,7 +37,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 
-use super::attachment_executor::{localized_attachment_failure, required_attachment_id};
+use super::arg_utils::{ensure_localized_error, with_localized_message};
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use super::strip_tool_namespace;
 use crate::chat_v2::repo::ChatV2Repo;
@@ -49,6 +49,158 @@ use crate::chat_v2::task_objects::{
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::vfs::repos::attachment_repo::VfsAttachmentContentSource;
 use crate::vfs::repos::VfsAttachmentRepo;
+
+// ============================================================================
+// 附件参数校验与错误本地化（attachment_read / attachment_stage 共用；step 10 L5 自
+// attachment_executor.rs 原样迁入，attachment_executor 留在 app 并从这里导入）
+// ============================================================================
+
+pub fn attachment_error(
+    code: &str,
+    zh_cn: impl Into<String>,
+    en_us: impl Into<String>,
+    hint_zh: impl Into<String>,
+    hint_en: impl Into<String>,
+    retryable: bool,
+) -> String {
+    let zh_cn = zh_cn.into();
+    let en_us = en_us.into();
+    let hint_zh = hint_zh.into();
+    let hint_en = hint_en.into();
+    with_localized_message(
+        json!({
+            "code": code,
+            "hint": hint_zh,
+            "hintFallback": {
+                "zh-CN": hint_zh,
+                "en-US": hint_en,
+            },
+            "retryable": retryable,
+        }),
+        "chat.tools.attachment.error",
+        json!({ "code": code, "detail": zh_cn.clone() }),
+        zh_cn,
+        en_us,
+    )
+    .to_string()
+}
+
+fn schema_unavailable_error() -> String {
+    attachment_error(
+        "ATTACHMENT_STORE_SCHEMA_UNAVAILABLE",
+        "附件存储表不可用，请先完成数据库迁移",
+        "The attachment store schema is unavailable. Run database migrations first.",
+        "完成数据库迁移后再调用 attachment_list/read；不要改试 attachment_stage",
+        "Run database migrations, then retry attachment_list/read. Do not retry with attachment_stage.",
+        false,
+    )
+}
+
+fn invalid_attachment_args_error(param: &str) -> String {
+    attachment_error(
+        "ATTACHMENT_INVALID_ARGS",
+        format!("缺少非空参数 {param}"),
+        format!("Missing non-empty '{param}' parameter"),
+        "必须提供非空 message_id 与 attachment_id。已有 <attachment_metadata> 时直接使用 rootId/relativePath/objectHandle；历史附件先 attachment_list",
+        "Provide non-empty message_id and attachment_id. If <attachment_metadata> is present, use rootId/relativePath/objectHandle directly; otherwise call attachment_list first.",
+        false,
+    )
+}
+
+pub fn attachment_not_found_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_NOT_FOUND",
+        detail.clone(),
+        detail,
+        "用 attachment_list 或已有 <attachment_metadata> 取得真实 message_id/attachment_id；不要用 attachment_stage 搜索附件",
+        "Use attachment_list or existing <attachment_metadata> to get a real message_id/attachment_id. Do not use attachment_stage to search attachments.",
+        false,
+    )
+}
+
+fn attachment_source_unavailable_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_SOURCE_UNAVAILABLE",
+        detail.clone(),
+        detail,
+        "附件记录仍存在，但原始内容已不可用；attachment_list/stage 无法修复，请让用户重新附加该文件",
+        "The attachment record exists but its source bytes are unavailable. Listing or staging cannot repair it; ask the user to attach the file again.",
+        false,
+    )
+}
+
+fn staged_file_not_found_error(detail: impl Into<String>) -> String {
+    let detail = detail.into();
+    attachment_error(
+        "ATTACHMENT_STAGED_FILE_NOT_FOUND",
+        detail.clone(),
+        detail,
+        "暂存文件已失效；重新调用 attachment_stage，并把新返回的 root_id/relative_path 传给 attachment_extract",
+        "The staged file expired. Call attachment_stage again and pass its new root_id/relative_path to attachment_extract.",
+        true,
+    )
+}
+
+pub fn required_attachment_id(args: &Value, key: &str) -> Result<String, String> {
+    args.get(key)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| invalid_attachment_args_error(key))
+}
+
+fn is_schema_unavailable(error: &str) -> bool {
+    error.to_ascii_lowercase().contains("no such table")
+}
+
+fn is_attachment_not_found(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.starts_with("attachment not found:") || lower.starts_with("message not found:")
+}
+
+fn is_attachment_source_unavailable(error: &str) -> bool {
+    let lower = error.to_ascii_lowercase();
+    lower.starts_with("attachment source not found in vfs:")
+        || lower.starts_with("resource not found in vfs:")
+        || lower.contains("has no raw content available")
+}
+
+fn is_staged_file_not_found(error: &str) -> bool {
+    error
+        .to_ascii_lowercase()
+        .starts_with("staged file not found:")
+}
+
+pub fn localized_attachment_failure(error: impl Into<String>) -> String {
+    let raw = error.into();
+    let mapped = if serde_json::from_str::<Value>(&raw)
+        .ok()
+        .as_ref()
+        .is_some_and(Value::is_object)
+    {
+        raw
+    } else if is_schema_unavailable(&raw) {
+        schema_unavailable_error()
+    } else if is_staged_file_not_found(&raw) {
+        staged_file_not_found_error(raw)
+    } else if is_attachment_source_unavailable(&raw) {
+        attachment_source_unavailable_error(raw)
+    } else if is_attachment_not_found(&raw) {
+        attachment_not_found_error(raw)
+    } else {
+        raw
+    };
+    ensure_localized_error(
+        mapped,
+        "ATTACHMENT_OPERATION_FAILED",
+        "chat.tools.attachment.error",
+        "附件操作失败",
+        "The attachment operation failed.",
+    )
+}
 
 // ============================================================================
 // 常量
@@ -368,7 +520,7 @@ fn scan_staged_archive_or_cleanup(
 /// 仍在 temp root 内，且必须是常规文件（拒绝 symlink/目录）。
 ///
 /// `pub(crate)`：notes_import / session_import 等消费 staged 附件的执行器复用。
-pub(crate) fn resolve_staged_file_in_temp_root(
+pub fn resolve_staged_file_in_temp_root(
     temp_root_path: &Path,
     relative_path: &str,
 ) -> Result<std::path::PathBuf, String> {
@@ -1867,9 +2019,6 @@ impl ToolExecutor for AttachmentStageExecutor {
 mod tests {
     use super::*;
     use crate::chat_v2::database::ChatV2Database;
-    use crate::chat_v2::tools::attachment_executor::{
-        localized_attachment_failure, required_attachment_id,
-    };
     use crate::chat_v2::tools::executor::ToolConcurrency;
     use crate::chat_v2::types::{AttachmentMeta, ChatMessage, ChatSession};
     use crate::data_governance::migration::coordinator::MigrationCoordinator;

@@ -1027,7 +1027,7 @@ fn validate_authorized_record(record: &AuthorizedRootRecord) -> Result<(), Strin
 /// Re-check a persisted root immediately before filesystem use. This closes the
 /// gap between root lookup and opening a target when the selected directory was
 /// renamed, recreated, or replaced with a symlink.
-pub(crate) fn revalidate_runtime_root(
+pub fn revalidate_runtime_root(
     database: &crate::database::Database,
     root: &RuntimeRoot,
 ) -> Result<PathBuf, String> {

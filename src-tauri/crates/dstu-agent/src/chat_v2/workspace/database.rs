@@ -587,7 +587,7 @@ mod tests {
         )
         .unwrap();
         conn.execute_batch(include_str!(
-            "../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"
+            "../../../../../migrations/chat_v2/V20260721__workspace_deletion_intent_journal.sql"
         ))
         .unwrap();
         conn.execute(

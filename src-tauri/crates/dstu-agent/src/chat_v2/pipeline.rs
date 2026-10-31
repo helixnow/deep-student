@@ -134,7 +134,7 @@ pub(crate) use variant_adapter::*;
 /// - 无全局 AppHandle（集成测试 / headless 环境）
 /// - 启动时 VfsLanceStore 初始化失败（lib.rs 已降级，不 manage）
 /// - `vfs_db` 与托管实例不一致
-pub(crate) fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<Arc<VfsLanceStore>> {
+pub fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<Arc<VfsLanceStore>> {
     use tauri::Manager;
     let app_handle = crate::get_global_app_handle()?;
     let managed_db = app_handle.try_state::<Arc<VfsDatabase>>()?;

@@ -5649,15 +5649,15 @@ mod tests {
         )
         .expect("create settings table");
         conn.execute_batch(include_str!(
-            "../../migrations/mistakes/V20260714__automation_scheduler.sql"
+            "../../../../migrations/mistakes/V20260714__automation_scheduler.sql"
         ))
         .expect("create automation tables");
         conn.execute_batch(include_str!(
-            "../../migrations/mistakes/V20260715__harden_automation_runtime.sql"
+            "../../../../migrations/mistakes/V20260715__harden_automation_runtime.sql"
         ))
         .expect("harden automation runtime");
         conn.execute_batch(include_str!(
-            "../../migrations/mistakes/V20260721__trusted_automation_profile.sql"
+            "../../../../migrations/mistakes/V20260721__trusted_automation_profile.sql"
         ))
         .expect("add trusted automation profile");
         drop(conn);

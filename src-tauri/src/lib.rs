@@ -181,7 +181,7 @@ pub use dstu_platform::startup_gate;
 pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub use dstu_storage::startup_cleanup; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
-pub mod system_notification;
+pub use dstu_agent::system_notification; // 统一系统通知策略（实现随 chat_v2 迁到 dstu-agent，按原路径重导出）
 pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
@@ -261,6 +261,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_media",
     "dstu_qbank",
     "dstu_sync",
+    "dstu_agent",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
@@ -834,6 +835,8 @@ pub fn run() {
             crate::llm_manager::set_app_handle(app_handle.clone());
             // VFS 服务层同样持有自己的句柄（PDF 流水线索引阶段复用托管的 Lance store）
             crate::vfs::set_app_handle(app_handle.clone());
+            // Agent 层（chat_v2 编排引擎）同样持有自己的句柄（托管 Lance store / finalizer / 技能目录）
+            dstu_agent::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle

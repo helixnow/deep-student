@@ -1,0 +1,123 @@
+//! Chat V2 Tauri 命令处理器
+//!
+//! 提供所有 Chat V2 相关的 Tauri 命令，包括：
+//! - 消息发送、取消、重试、编辑重发
+//! - 会话加载、创建、更新、归档、保存
+//! - 块操作（删除消息、复制块内容）
+//! - OCR 识别（纯 OCR，不创建会话）
+//! - 变体管理（切换、删除、重试、取消变体）
+//! - 数据迁移（旧版 chat_messages 迁移到 Chat V2）
+//! - 工具审批（敏感工具用户确认）
+//!
+//! ## 命令命名约定
+//! 所有命令以 `chat_v2_` 前缀命名，以区分旧版聊天命令。
+//!
+//! ## 错误处理
+//! 所有命令返回 `Result<T, String>`；错误统一为 `ChatV2Error` 经
+//! `From<ChatV2Error> for String` 产出的 `{"code":"...","message":"..."}` JSON
+//! 字符串（见 `error.rs::to_command_error`）。禁止直接返回
+//! `ChatV2Error::to_string()` 明文或裸 `format!` 字符串。
+//!
+//! ## 资源操作
+//! 资源相关操作已迁移至 VFS 模块（vfs_* 命令），不再使用旧的 resource_* 命令。
+
+use crate::chat_v2::database::ChatV2Database;
+use crate::chat_v2::error::{ChatV2Error, ChatV2Result};
+use crate::chat_v2::repo::ChatV2Repo;
+
+/// 子代理会话由 workspace 运行时驱动；普通聊天写入口不得修改其历史或启动新流。
+pub(crate) fn ensure_session_writable(db: &ChatV2Database, session_id: &str) -> ChatV2Result<()> {
+    let Some(session) = ChatV2Repo::get_session_v2(db, session_id)? else {
+        return Ok(());
+    };
+    let metadata_marks_subagent = session
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("is_subagent"))
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    if session.mode == "subagent" || metadata_marks_subagent {
+        return Err(ChatV2Error::Validation(
+            "Subagent sessions are read-only; use the workspace runtime to communicate with them."
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
+pub mod approval_handlers;
+pub mod ask_user_handlers; // 🆕 用户提问命令处理器
+pub mod block_actions;
+// canvas_handlers 留在 app（依赖 app 侧 canvas_executor），由 app 门面 `src/chat_v2/handlers/mod.rs` 声明。
+pub mod export_handlers; // 🆕 会话导出（markdown / json）
+pub mod group_handlers;
+pub mod load_messages_page;
+pub mod load_session;
+pub mod manage_session;
+pub mod migration;
+pub mod ocr;
+// COMPAT-REMOVED 2026-07-20: resource_handlers.rs 已删除（resource_* 命令注销，替代 = vfs_*）。
+pub mod goal_handlers; // 🆕 Goal 模式命令处理器（P0）
+pub mod search_handlers;
+pub mod send_message;
+pub mod snapshot_handlers;
+pub mod variant_handlers;
+pub mod workspace_handlers;
+
+// 重导出所有 Tauri 命令
+pub use approval_handlers::{
+    chat_v2_clear_approval_history, chat_v2_tool_approval_cancel, chat_v2_tool_approval_respond,
+};
+pub use ask_user_handlers::chat_v2_ask_user_respond; // 🆕 用户提问响应
+pub use block_actions::{
+    chat_v2_compact_session, chat_v2_copy_block_content, chat_v2_delete_message,
+    chat_v2_get_anki_cards_from_block_by_document_id, chat_v2_undo_compaction,
+    chat_v2_update_block_content, chat_v2_update_block_tool_output, chat_v2_upsert_streaming_block,
+};
+pub use export_handlers::{chat_v2_export_session, chat_v2_export_session_jsonl};
+pub use goal_handlers::{
+    chat_v2_goal_clear, chat_v2_goal_edit, chat_v2_goal_get, chat_v2_goal_pause,
+    chat_v2_goal_resume,
+};
+pub use group_handlers::{
+    chat_v2_create_group, chat_v2_delete_group, chat_v2_get_group, chat_v2_list_groups,
+    chat_v2_move_session_to_group, chat_v2_reorder_groups, chat_v2_update_group,
+};
+pub use load_messages_page::chat_v2_load_messages_page;
+pub use load_session::chat_v2_load_session;
+pub use manage_session::{
+    chat_v2_archive_session, chat_v2_branch_session, chat_v2_count_sessions,
+    chat_v2_create_session, chat_v2_delete_session, chat_v2_empty_deleted_sessions,
+    chat_v2_freeze_available_skills_snapshot, chat_v2_get_message_summary, chat_v2_get_session,
+    chat_v2_list_agent_sessions, chat_v2_list_sessions, chat_v2_plan_gate_respond,
+    chat_v2_restore_session, chat_v2_save_session, chat_v2_session_message_count,
+    chat_v2_set_authority_mode, chat_v2_set_permission_preset, chat_v2_soft_delete_session,
+    chat_v2_update_session_settings,
+};
+pub use migration::{
+    chat_v2_check_migration_status, chat_v2_migrate_legacy_chat, chat_v2_rollback_migration,
+};
+pub use ocr::chat_v2_perform_ocr;
+pub use search_handlers::{
+    chat_v2_add_tag, chat_v2_get_session_tags, chat_v2_get_tags_batch, chat_v2_list_all_tags,
+    chat_v2_remove_tag, chat_v2_search_content, chat_v2_search_sessions, rebuild_chat_fts,
+};
+pub use send_message::{
+    chat_v2_cancel_stream, chat_v2_continue_message, chat_v2_edit_and_resend,
+    chat_v2_has_active_stream, chat_v2_retry_message, chat_v2_send_message, chat_v2_wake_session,
+};
+pub use snapshot_handlers::{
+    chat_v2_export_session_messages, chat_v2_export_session_meta, chat_v2_import_session,
+};
+pub use variant_handlers::{
+    chat_v2_cancel_variant, chat_v2_delete_variant, chat_v2_retry_variant, chat_v2_retry_variants,
+    chat_v2_switch_variant,
+};
+pub use workspace_handlers::{
+    workspace_cancel_agent, workspace_cancel_sleep, workspace_close, workspace_create,
+    workspace_create_agent, workspace_delete, workspace_get, workspace_get_context,
+    workspace_get_document, workspace_list_agents, workspace_list_all, workspace_list_documents,
+    workspace_list_messages, workspace_manual_wake, workspace_restore_executions,
+    workspace_run_agent, workspace_send_message, workspace_set_context,
+};

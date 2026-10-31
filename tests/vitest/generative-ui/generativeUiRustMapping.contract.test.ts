@@ -4,11 +4,11 @@ import path from 'node:path';
 
 describe('generativeUI Rust dual-mapping contract', () => {
   const contextSrc = fs.readFileSync(
-    path.join(process.cwd(), 'src-tauri/src/chat_v2/context.rs'),
+    path.join(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/context.rs'),
     'utf8',
   );
   const pipelineSrc = fs.readFileSync(
-    path.join(process.cwd(), 'src-tauri/src/chat_v2/pipeline.rs'),
+    path.join(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/pipeline.rs'),
     'utf8',
   );
   const executorSrc = fs.readFileSync(

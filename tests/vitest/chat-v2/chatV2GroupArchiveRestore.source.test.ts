@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('Chat V2 group archive restore source contract', () => {
   const repoSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/chat_v2/repo.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/repo.rs'),
     'utf-8'
   );
   const zhDataSource = readFileSync(resolve(process.cwd(), 'src/locales/zh-CN/data.json'), 'utf-8');
@@ -48,7 +48,7 @@ describe('Chat V2 group archive restore source contract', () => {
 
   it('keeps AI session-manager archives from being restored with an archived topic', () => {
     const sessionExecutorSource = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/chat_v2/tools/session_executor.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/tools/session_executor.rs'),
       'utf-8'
     );
 

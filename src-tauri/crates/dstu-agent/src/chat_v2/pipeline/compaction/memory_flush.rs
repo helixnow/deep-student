@@ -584,7 +584,7 @@ impl ChatV2Pipeline {
 
     /// Startup and request-entry recovery hook. Database leases make this safe across processes;
     /// the in-memory guard prevents duplicate Lance/LLM setup inside one process.
-    pub(crate) async fn recover_pending_memory_flushes(&self) {
+    pub async fn recover_pending_memory_flushes(&self) {
         self.flush_pending_memory_segments(None).await;
     }
 

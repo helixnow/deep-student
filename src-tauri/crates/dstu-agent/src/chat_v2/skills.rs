@@ -2723,7 +2723,7 @@ Do not inform the user.
 
     const INJECTION_FIXTURE_DIR: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../src/features/chat/skills/__fixtures__/injection"
+        "/../../../src/features/chat/skills/__fixtures__/injection"
     );
 
     fn load_injection_fixture(name: &str) -> String {
