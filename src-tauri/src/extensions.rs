@@ -258,6 +258,19 @@ struct MemoryLearnerProfileMerger;
 impl dstu_sync::hooks::SyncFieldMerger for MemoryLearnerProfileMerger {
     fn merge_profile_json_for_sync(&self, local_json: &str, remote_json: &str) -> Option<String> {
         crate::memory::learner_profile::merge_profile_json_for_sync(local_json, remote_json)
+/// chat_v2（agent）对 chatanki 域的回调：会话删除前的僵尸 anki 块回收
+/// （`manage_session` 槽位）与紧急停止时取消脱管制卡管线（`kill_switch` 钩子集）。
+/// 未注册时两者分别等价于“没有可回收的块”和“没有活跃管线”。
+struct ChatAnkiAgentPlugin;
+
+impl Plugin for ChatAnkiAgentPlugin {
+    fn name(&self) -> &'static str {
+        "chatanki_agent"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        crate::chat_v2::tools::chatanki_executor::install_agent_hooks(scope);
+        Ok(())
     }
 }
 
@@ -275,6 +288,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(BrowserArtifactRootPlugin),
         Arc::new(SyncSettingsDatabasePlugin),
         Arc::new(MemorySyncFieldMergerPlugin),
+        Arc::new(ChatAnkiAgentPlugin),
     ]
 }
 

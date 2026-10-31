@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use dstu_kernel::{Disposer, HookSet};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_notification::NotificationExt;
@@ -28,6 +29,31 @@ pub const KILL_SWITCH_BLOCKED_MESSAGE: &str =
 
 /// Kill Switch 状态变更事件（前端 AgentControlCenter 订阅）
 pub const KILL_SWITCH_CHANGED_EVENT: &str = "chat_v2://kill_switch_changed";
+
+/// 紧急停止联动：取消不持有 stream token 的脱管后台任务（如 ChatAnki 制卡管线）。
+///
+/// 域实现经 `extensions::register_extensions()` 注册（`ChatAnkiAgentPlugin`）；
+/// 未注册任何钩子时取消数为 0，等价于“没有活跃的脱管管线”。
+pub trait EmergencyCancelHook: Send + Sync {
+    /// 取消全部活跃的脱管任务（非破坏性），返回本次新取消的数量。
+    fn cancel_for_emergency_stop(&self, reason: &str) -> usize;
+}
+
+static EMERGENCY_CANCEL_HOOKS: HookSet<dyn EmergencyCancelHook> = HookSet::new();
+
+/// 注册紧急停止联动钩子；drop 返回的 `Disposer` 即注销。
+pub fn register_emergency_cancel_hook(hook: Arc<dyn EmergencyCancelHook>) -> Disposer {
+    EMERGENCY_CANCEL_HOOKS.register(hook)
+}
+
+/// 按注册顺序调用全部钩子，返回取消数之和。
+fn run_emergency_cancel_hooks(reason: &str) -> usize {
+    EMERGENCY_CANCEL_HOOKS
+        .snapshot()
+        .iter()
+        .map(|hook| hook.cancel_for_emergency_stop(reason))
+        .sum()
+}
 
 /// 全局一键断电开关
 #[derive(Debug, Default)]
@@ -183,8 +209,8 @@ pub async fn chat_v2_emergency_stop(
 
     // 🆕 取消语义贯通：脱管的 ChatAnki 后台制卡管线不持有 stream token，
     // 必须枚举活跃管线注册表逐一取消（非破坏性：保留已生成卡片）。
-    let cancelled_chatanki_pipelines =
-        super::tools::chatanki_executor::cancel_all_active_chatanki_pipelines(&reason);
+    // 实现由 chatanki 域经 EmergencyCancelHook 注入（见 extensions.rs）。
+    let cancelled_chatanki_pipelines = run_emergency_cancel_hooks(&reason);
 
     // 🆕 B2：挂起的工具审批全部以拒绝结果 drain（等待方立即解除阻塞，而非等超时）
     let rejected_approvals = app_handle

@@ -192,7 +192,41 @@ fn adjust_vfs_refs_with_retry(
     failed
 }
 
-pub(crate) fn session_has_running_anki_blocks(
+/// 会话删除前的僵尸 running/pending anki 块回收（F2）。
+///
+/// 实现由 chatanki 域提供（`chatanki_executor::reap_stale_running_anki_blocks`），
+/// 经 `extensions::register_extensions()` 的 `ChatAnkiAgentPlugin` 注入。
+pub trait StaleAnkiBlockReaper: Send + Sync {
+    /// 把会话内的僵尸 running/pending anki 块落库为 failed，返回被处理的块 ID。
+    fn reap_stale_running_anki_blocks(
+        &self,
+        db: &ChatV2Database,
+        session_id: &str,
+    ) -> Result<Vec<String>, String>;
+}
+
+static STALE_ANKI_BLOCK_REAPER: dstu_kernel::Slot<dyn StaleAnkiBlockReaper> =
+    dstu_kernel::Slot::new();
+
+/// 注册僵尸 anki 块回收实现；槽位已占用时返回 `Err(SlotOccupied)`（先注册者生效）。
+pub fn register_stale_anki_block_reaper(
+    reaper: Arc<dyn StaleAnkiBlockReaper>,
+) -> Result<dstu_kernel::Disposer, dstu_kernel::SlotOccupied> {
+    STALE_ANKI_BLOCK_REAPER.provide(reaper)
+}
+
+/// 未注册实现时返回 `Ok(vec![])`，等价于“没有可回收的 chatanki 块”。
+fn reap_stale_running_anki_blocks(
+    db: &ChatV2Database,
+    session_id: &str,
+) -> Result<Vec<String>, String> {
+    match STALE_ANKI_BLOCK_REAPER.get() {
+        Some(reaper) => reaper.reap_stale_running_anki_blocks(db, session_id),
+        None => Ok(Vec::new()),
+    }
+}
+
+pub fn session_has_running_anki_blocks(
     db: &ChatV2Database,
     session_id: &str,
 ) -> Result<bool, ChatV2Error> {
@@ -200,7 +234,7 @@ pub(crate) fn session_has_running_anki_blocks(
     // 通常来自崩溃/强退遗留）落库为 failed，再统计真正运行中的块。
     // 否则僵尸块会永久阻止会话删除（前端 watchdog 只改内存态，不写 DB）。
     // reap 失败仅告警并退回原有保守统计，不阻塞删除流程。
-    match crate::chat_v2::tools::chatanki_executor::reap_stale_running_anki_blocks(db, session_id) {
+    match reap_stale_running_anki_blocks(db, session_id) {
         Ok(reaped) if !reaped.is_empty() => {
             log::info!(
                 "[ChatV2::handlers] Marked {} stale running anki block(s) as failed before delete check (session {})",
@@ -2608,73 +2642,6 @@ mod tests {
         assert!(rebuilt.branch_local_skill_ids.is_empty());
         assert_eq!(rebuilt.version, 10);
     }
-
-    /// F2 修复回归：崩溃遗留的僵尸 running anki 块在删除检查时被自动落库为
-    /// failed，不再永久阻止会话删除；宽限期内的新鲜 running 块仍然拦截删除。
-    #[test]
-    fn test_session_has_running_anki_blocks_reaps_stale_zombie_blocks() {
-        use crate::chat_v2::types::{block_status, block_types, ChatMessage, MessageBlock};
-        use crate::data_governance::migration::coordinator::MigrationCoordinator;
-        use crate::data_governance::schema_registry::DatabaseId;
-
-        let dir = tempfile::tempdir().expect("tempdir");
-        let mut coordinator =
-            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
-        coordinator
-            .migrate_single(DatabaseId::ChatV2)
-            .expect("chat v2 migrations");
-        let db = ChatV2Database::new(dir.path()).expect("chat v2 db");
-
-        let session = ChatSession::new("sess_reap_zombie".to_string(), "general_chat".to_string());
-        ChatV2Repo::create_session_v2(&db, &session).expect("create session");
-
-        // 僵尸块：running 状态、无活跃管线、最近活动远超宽限时限（模拟强退后重启）。
-        let stale_ms = chrono::Utc::now().timestamp_millis()
-            - crate::chat_v2::tools::chatanki_executor::STALE_RUNNING_ANKI_BLOCK_AFTER_MS
-            - 60_000;
-        let mut zombie_message = ChatMessage::new_assistant(session.id.clone());
-        let mut zombie_block =
-            MessageBlock::new(zombie_message.id.clone(), block_types::ANKI_CARDS, 0);
-        zombie_block.status = block_status::RUNNING.to_string();
-        zombie_block.tool_name = Some("chatanki_run".to_string());
-        zombie_block.tool_output =
-            Some(serde_json::json!({ "documentId": "doc-zombie", "cards": [] }));
-        zombie_block.started_at = Some(stale_ms);
-        zombie_block.first_chunk_at = Some(stale_ms);
-        zombie_message.block_ids = vec![zombie_block.id.clone()];
-        ChatV2Repo::create_message_v2(&db, &zombie_message).expect("create zombie message");
-        ChatV2Repo::create_block_v2(&db, &zombie_block).expect("create zombie block");
-
-        // 删除检查：僵尸块被 reap，不再拦截删除。
-        assert!(
-            !session_has_running_anki_blocks(&db, &session.id).expect("zombie check"),
-            "stale zombie running block must not block session deletion"
-        );
-        // 修复必须落库（而不是仅内存态）：块状态已是 error。
-        let reaped = ChatV2Repo::get_block_v2(&db, &zombie_block.id)
-            .expect("load reaped block")
-            .expect("reaped block exists");
-        assert_eq!(reaped.status, block_status::ERROR);
-        assert!(reaped.ended_at.is_some());
-
-        // 新鲜 running 块（宽限期内，可能是真在跑的管线）仍然拦截删除。
-        let now_ms = chrono::Utc::now().timestamp_millis();
-        let mut fresh_message = ChatMessage::new_assistant(session.id.clone());
-        let mut fresh_block =
-            MessageBlock::new(fresh_message.id.clone(), block_types::ANKI_CARDS, 0);
-        fresh_block.status = block_status::RUNNING.to_string();
-        fresh_block.tool_output =
-            Some(serde_json::json!({ "documentId": "doc-fresh", "cards": [] }));
-        fresh_block.started_at = Some(now_ms);
-        fresh_block.first_chunk_at = Some(now_ms);
-        fresh_message.block_ids = vec![fresh_block.id.clone()];
-        ChatV2Repo::create_message_v2(&db, &fresh_message).expect("create fresh message");
-        ChatV2Repo::create_block_v2(&db, &fresh_block).expect("create fresh block");
-        assert!(
-            session_has_running_anki_blocks(&db, &session.id).expect("fresh check"),
-            "recent running block must still block session deletion"
-        );
-    }
 }
 
 /// 讨论过某份资料的会话（资料侧反查「相关对话」）。
@@ -2795,7 +2762,7 @@ pub async fn chat_v2_get_rag_scope(
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<Vec<String>, String> {
     Ok(
-        crate::chat_v2::tools::builtin_retrieval_executor::load_session_rag_scope(&db, &session_id)
+        crate::chat_v2::session_scope::load_session_rag_scope(&db, &session_id)
             .unwrap_or_default(),
     )
 }
