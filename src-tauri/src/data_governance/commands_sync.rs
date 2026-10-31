@@ -5973,13 +5973,17 @@ mod tests {
     const ENCRYPTION_MARKER_KEY: &str = ".encryption-marker";
 
     /// 测试用内存云存储（仅覆盖策略检查用到的 get/put，其余最小实现）。
-    #[derive(Default)]
+    ///
+    /// `CloudStorage` 已随 cloud_storage 拆到 dstu-sync（外部 trait），孤儿规则不再允许为
+    /// `Arc<PolicyMemoryStorage>` 实现它；改为本地类型内部以 `Arc` 共享 `files`，
+    /// `clone()` 与拆分前克隆 `Arc` 一样共享同一份存储。
+    #[derive(Default, Clone)]
     struct PolicyMemoryStorage {
-        files: std::sync::Mutex<HashMap<String, Vec<u8>>>,
+        files: std::sync::Arc<std::sync::Mutex<HashMap<String, Vec<u8>>>>,
     }
 
     #[async_trait::async_trait]
-    impl CloudStorage for std::sync::Arc<PolicyMemoryStorage> {
+    impl CloudStorage for PolicyMemoryStorage {
         fn provider_name(&self) -> &'static str {
             "memory"
         }
@@ -6042,8 +6046,8 @@ mod tests {
         }
     }
 
-    fn policy_storage() -> std::sync::Arc<PolicyMemoryStorage> {
-        std::sync::Arc::new(PolicyMemoryStorage::default())
+    fn policy_storage() -> PolicyMemoryStorage {
+        PolicyMemoryStorage::default()
     }
 
     #[test]

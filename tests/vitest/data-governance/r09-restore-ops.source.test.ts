@@ -46,13 +46,13 @@ describe('P2-1: user guide 16 documents the wrong-password marker takeover unloc
 });
 
 describe('P2-2: resumable cloud ZIP download stays honest', () => {
-  const traits = read('src-tauri/src/cloud_storage/traits.rs');
-  const webdav = read('src-tauri/src/cloud_storage/webdav.rs');
-  const s3 = read('src-tauri/src/cloud_storage/s3.rs');
-  const syncManager = read('src-tauri/src/cloud_storage/sync_manager.rs');
-  const repoCheck = read('src-tauri/src/cloud_storage/repo_check.rs');
-  const resume = read('src-tauri/src/cloud_storage/resume.rs');
-  const syncMod = read('src-tauri/src/data_governance/sync/mod.rs');
+  const traits = read('src-tauri/crates/dstu-sync/src/cloud_storage/traits.rs');
+  const webdav = read('src-tauri/crates/dstu-sync/src/cloud_storage/webdav.rs');
+  const s3 = read('src-tauri/crates/dstu-sync/src/cloud_storage/s3.rs');
+  const syncManager = read('src-tauri/crates/dstu-sync/src/cloud_storage/sync_manager.rs');
+  const repoCheck = read('src-tauri/crates/dstu-sync/src/cloud_storage/repo_check.rs');
+  const resume = read('src-tauri/crates/dstu-sync/src/cloud_storage/resume.rs');
+  const syncMod = read('src-tauri/crates/dstu-sync/src/data_governance/sync/mod.rs');
   const guide = read('docs/user-guide/16-数据管理与云同步.md');
 
   it('keeps the fail-closed default for providers without resume support', () => {
@@ -119,7 +119,7 @@ describe('P2-2: resumable cloud ZIP download stays honest', () => {
 });
 
 describe('P3: encrypted ZIP import without password fails before extraction', () => {
-  const zipExport = read('src-tauri/src/data_governance/backup/zip_export.rs');
+  const zipExport = read('src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs');
 
   it('shares one precheck between the resumable and non-resumable paths', () => {
     expect(zipExport).toContain('fn precheck_sealed_payload_password');

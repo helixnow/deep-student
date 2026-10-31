@@ -16,7 +16,7 @@ import {
 } from '@/utils/cloudStorageApi';
 
 const rustSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/src/cloud_config_commands.rs'),
+  resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_config_commands.rs'),
   'utf-8',
 );
 

@@ -115,7 +115,7 @@ import * as cloudApi from '@/utils/cloudStorageApi';
 // ============================================================================
 
 const backendSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/src/cloud_config_commands.rs'),
+  resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_config_commands.rs'),
   'utf-8',
 );
 const componentSource = readFileSync(

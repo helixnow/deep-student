@@ -77,7 +77,7 @@ pub use sync_manager::{
     last_encryption_memory_persist_failure, BackupVersion, CloudManifest, CloudSyncManager,
     DownloadResult, EncryptionMarker, EncryptionMemoryPersistFailure, SyncStatus, UploadResult,
 };
-pub(crate) use traits::is_sync_cancelled;
+pub use traits::is_sync_cancelled;
 pub use traits::{
     clear_cancel_token, clear_status_hook, set_cancel_token, set_status_hook, CloudStorage,
     DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
@@ -87,7 +87,7 @@ pub use traits::{
 pub const CLOUD_RATE_LIMITED_CODE: &str = "E_CLOUD_RATE_LIMITED";
 
 /// String-wrapped sync errors must retain the transport's no-retry decision.
-pub(crate) fn is_cloud_rate_limited(message: &str) -> bool {
+pub fn is_cloud_rate_limited(message: &str) -> bool {
     message.contains(CLOUD_RATE_LIMITED_CODE)
 }
 

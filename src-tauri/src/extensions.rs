@@ -144,6 +144,70 @@ impl crate::browser::hooks::DownloadArtifactRoot for ChatV2DownloadArtifactRoot 
     }
 }
 
+/// dstu-sync 的低层回调：云配置 hydrate 读取主设置库（app 的 `AppState.database`）。
+struct SyncSettingsDatabasePlugin;
+
+impl Plugin for SyncSettingsDatabasePlugin {
+    fn name(&self) -> &'static str {
+        "sync_settings_database"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        let provider: Arc<dyn dstu_sync::cloud_credentials::SettingsDatabaseProvider> =
+            Arc::new(AppStateSettingsDatabase);
+        match dstu_sync::cloud_credentials::register_settings_database_provider(provider) {
+            Ok(disposer) => {
+                scope.add(disposer);
+                Ok(())
+            }
+            Err(_occupied) => Ok(()),
+        }
+    }
+}
+
+/// 与拆分前 `secure_store::hydrate_cloud_config` 直接 `app.try_state::<AppState>()`
+/// 后取 `state.database` 相同。
+struct AppStateSettingsDatabase;
+
+impl dstu_sync::cloud_credentials::SettingsDatabaseProvider for AppStateSettingsDatabase {
+    fn settings_database(&self, app: &tauri::AppHandle) -> Option<Arc<crate::database::Database>> {
+        use tauri::Manager;
+        app.try_state::<crate::commands::AppState>()
+            .map(|state| state.database.clone())
+    }
+}
+
+/// dstu-sync 同步引擎的字段级合并：`resources.data` 学习者画像（memory 实现）。
+struct MemorySyncFieldMergerPlugin;
+
+impl Plugin for MemorySyncFieldMergerPlugin {
+    fn name(&self) -> &'static str {
+        "memory_sync_field_merger"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        let merger: Arc<dyn dstu_sync::hooks::SyncFieldMerger> =
+            Arc::new(MemoryLearnerProfileMerger);
+        match dstu_sync::hooks::register_sync_field_merger(merger) {
+            Ok(disposer) => {
+                scope.add(disposer);
+                Ok(())
+            }
+            Err(_occupied) => Ok(()),
+        }
+    }
+}
+
+/// 与拆分前 `field_merge::merge_learner_profile_data` 直接调用的
+/// `memory::learner_profile::merge_profile_json_for_sync` 相同。
+struct MemoryLearnerProfileMerger;
+
+impl dstu_sync::hooks::SyncFieldMerger for MemoryLearnerProfileMerger {
+    fn merge_profile_json_for_sync(&self, local_json: &str, remote_json: &str) -> Option<String> {
+        crate::memory::learner_profile::merge_profile_json_for_sync(local_json, remote_json)
+    }
+}
+
 /// 组合根唯一的插件列表（顺序即 apply 顺序）。
 fn plugins() -> Vec<Arc<dyn Plugin>> {
     vec![
@@ -154,6 +218,8 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(QbankVfsPlugin),
         Arc::new(StorageNotesPlugin),
         Arc::new(BrowserArtifactRootPlugin),
+        Arc::new(SyncSettingsDatabasePlugin),
+        Arc::new(MemorySyncFieldMergerPlugin),
     ]
 }
 

@@ -795,10 +795,22 @@ fn collect_files_mentioning(root: &Path, needle: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// cloud_storage / data_governance::{backup,sync} 已拆到 dstu-sync：模块本体所在源码树
+/// （`crates/dstu-sync/src`）以外的全部生产源码——app 的 `src/` 与其他成员 crate——
+/// 都必须零引用（与拆分前“`src/` 除模块本体外零引用 + `crates/` 零引用”等价）。
+fn collect_outside_sync_crate(needle: &str, out: &mut Vec<PathBuf>) {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let sync_root = manifest_dir.join("crates").join("dstu-sync").join("src");
+    collect_files_mentioning(&manifest_dir.join("src"), needle, out);
+    let mut crate_files = Vec::new();
+    collect_files_mentioning(&manifest_dir.join("crates"), needle, &mut crate_files);
+    out.extend(crate_files.into_iter().filter(|p| !p.starts_with(&sync_root)));
+}
+
 #[test]
 fn r12_source_lock_delta_upload_has_zero_production_wiring() {
     // 生产 Cloud backup 仍是整 ZIP 单对象 put_file，零 backup-v2 引用。
-    let sync_manager = include_str!("../src/cloud_storage/sync_manager.rs");
+    let sync_manager = include_str!("../crates/dstu-sync/src/cloud_storage/sync_manager.rs");
     assert!(
         sync_manager.contains(r#"format!("{}/{}.zip", BACKUPS_DIR, version_id)"#),
         "sync_manager.rs no longer builds the whole-ZIP remote key; \
@@ -813,9 +825,8 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
     assert!(!sync_manager.contains("backup-v2/snapshots"));
     assert!(!sync_manager.contains("publish_verified_staging"));
 
-    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
-    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
+    // 模块本体已拆到 dstu-sync：按相对路径锁定其源码树。
+    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/dstu-sync/src");
 
     // 生产代码（排除模块自身与 mod.rs 声明行）零 delta_upload 引用。
     let mut referencing_files = Vec::new();
@@ -839,14 +850,14 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
         "delta_upload must have zero production callers"
     );
     let mut crate_referencing_files = Vec::new();
-    collect_files_mentioning(&crates_root, "delta_upload", &mut crate_referencing_files);
+    collect_outside_sync_crate("delta_upload", &mut crate_referencing_files);
     assert!(
         crate_referencing_files.is_empty(),
         "crates/ 下的生产代码不得引用 delta_upload: {crate_referencing_files:?}"
     );
 
     // cloud_storage/mod.rs 只允许声明行本身（无 pub use、无命令层导出）。
-    let cloud_mod = include_str!("../src/cloud_storage/mod.rs");
+    let cloud_mod = include_str!("../crates/dstu-sync/src/cloud_storage/mod.rs");
     let wiring = cloud_mod
         .lines()
         .filter(|line| line.contains("delta_upload"))
@@ -883,18 +894,14 @@ fn r12_source_lock_delta_upload_has_zero_production_wiring() {
          this suite being green does NOT mean incremental backup is implemented"
     );
     let mut crate_publish_referencers = Vec::new();
-    collect_files_mentioning(
-        &crates_root,
-        "publish_verified_staging",
-        &mut crate_publish_referencers,
-    );
+    collect_outside_sync_crate("publish_verified_staging", &mut crate_publish_referencers);
     assert!(
         crate_publish_referencers.is_empty(),
         "publish_verified_staging 在 crates/ 下不得有生产调用方: {crate_publish_referencers:?}"
     );
 
     // 模块文档必须如实声明未接线状态。
-    let module_src = include_str!("../src/cloud_storage/delta_upload.rs");
+    let module_src = include_str!("../crates/dstu-sync/src/cloud_storage/delta_upload.rs");
     assert!(
         module_src.contains("未接线"),
         "module docs must state it is unwired"
