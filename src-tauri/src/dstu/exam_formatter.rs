@@ -14,10 +14,10 @@ use std::sync::Arc;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 
-use crate::chat_v2::resource_types::ContentBlock;
 use crate::models::{ExamCardPreview, ExamSheetPreviewResult};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{VfsBlobRepo, VfsExamRepo};
+use dstu_core::resource_types::ContentBlock;
 
 /// 格式化题目集识别内容为 ContentBlock[]
 ///

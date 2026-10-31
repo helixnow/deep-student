@@ -3328,7 +3328,7 @@ pub async fn dstu_get_exam_content(
     exam_id: String,
     is_multimodal: bool,
     vfs_db: State<'_, Arc<VfsDatabase>>,
-) -> Result<Vec<crate::chat_v2::resource_types::ContentBlock>, String> {
+) -> Result<Vec<dstu_core::resource_types::ContentBlock>, String> {
     log::info!(
         "[DSTU::handlers] dstu_get_exam_content: exam_id={}, is_multimodal={}",
         exam_id,
