@@ -20,10 +20,11 @@ pub mod types;
 
 use std::sync::Arc;
 
-use tauri::{AppHandle, State};
+use tauri::AppHandle;
 
 use crate::llm_manager::LLMManager;
 use crate::models::AppError;
+use crate::runtime::QbankState;
 use crate::vfs::database::VfsDatabase;
 use task_repo::GenerationTaskView;
 use types::QbankGenerationRequest;
@@ -38,11 +39,10 @@ pub fn recover_interrupted_tasks(vfs_db: &VfsDatabase) {
 }
 
 /// 提交 AI 出题任务（立即返回任务视图，后台执行）
-#[tauri::command]
 pub async fn qbank_ai_generate_questions(
     request: QbankGenerationRequest,
     app: AppHandle,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<GenerationTaskView, AppError> {
     let vfs_db = state
         .vfs_db
@@ -230,10 +230,9 @@ fn emit_current_task(app: &AppHandle, vfs_db: &VfsDatabase, task_id: &str) {
 }
 
 /// 查询单个任务（轮询兜底 + 重开面板恢复用）
-#[tauri::command]
 pub async fn qbank_get_generation_task(
     task_id: String,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<Option<GenerationTaskView>, AppError> {
     let vfs_db = state
         .vfs_db
@@ -245,11 +244,10 @@ pub async fn qbank_get_generation_task(
 }
 
 /// 列出题目集的任务（按创建时间倒序）
-#[tauri::command]
 pub async fn qbank_list_generation_tasks(
     exam_id: String,
     limit: Option<usize>,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<Vec<GenerationTaskView>, AppError> {
     let vfs_db = state
         .vfs_db
@@ -262,10 +260,9 @@ pub async fn qbank_list_generation_tasks(
 }
 
 /// 取消任务（向 LLM 流发取消信号，后台任务收尾后发 cancelled 事件）
-#[tauri::command]
 pub async fn qbank_cancel_generation_task(
     task_id: String,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<Option<GenerationTaskView>, AppError> {
     let vfs_db = state
         .vfs_db

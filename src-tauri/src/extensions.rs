@@ -110,6 +110,44 @@ impl Plugin for QbankVfsPlugin {
     }
 }
 
+/// qbank 命令薄包装与后台任务读取的 AppState 字段（`vfs_db` / `llm_manager`）。
+pub(crate) fn qbank_state(state: &crate::commands::AppState) -> dstu_qbank::runtime::QbankState {
+    dstu_qbank::runtime::QbankState {
+        vfs_db: state.vfs_db.clone(),
+        llm_manager: state.llm_manager.clone(),
+    }
+}
+
+/// qbank 后台任务（练习截止自动交卷、批改队列）只持有 `AppHandle`：
+/// 与拆分前的 `app.state::<AppState>()` 相同地取 AppState。
+struct QbankAppStateResolver;
+
+impl dstu_qbank::runtime::QbankStateResolver for QbankAppStateResolver {
+    fn resolve(&self, app: &tauri::AppHandle) -> dstu_qbank::runtime::QbankState {
+        use tauri::Manager;
+        let state = app.state::<crate::commands::AppState>();
+        qbank_state(&state)
+    }
+}
+
+/// qbank 的运行期依赖解析（AppState 定义在 app）。
+struct QbankRuntimePlugin;
+
+impl Plugin for QbankRuntimePlugin {
+    fn name(&self) -> &'static str {
+        "qbank_runtime"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        if let Ok(disposer) =
+            dstu_qbank::runtime::provide_state_resolver(Arc::new(QbankAppStateResolver))
+        {
+            scope.add(disposer);
+        }
+        Ok(())
+    }
+}
+
 /// 存储层删除 journal 的笔记资产引用检查（vfs 笔记仓储实现）。
 struct StorageNotesPlugin;
 
@@ -168,6 +206,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(MediaVfsPlugin),
         Arc::new(MediaHostPlugin),
         Arc::new(QbankVfsPlugin),
+        Arc::new(QbankRuntimePlugin),
         Arc::new(StorageNotesPlugin),
         Arc::new(BrowserArtifactRootPlugin),
     ]

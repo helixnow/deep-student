@@ -132,12 +132,13 @@ pub use dstu_vision::pdf_ocr_service;
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub use dstu_llm::providers;
-pub mod qbank_authoring_service;
-pub mod qbank_document;
+pub use dstu_qbank::qbank_authoring_service;
+pub use dstu_qbank::qbank_document;
+// 业务体在 dstu-qbank；取 State<AppState> 的命令薄包装留在 app（见模块文件）。
 pub mod qbank_generation;
 pub mod qbank_grading;
-pub mod qbank_legacy_reconcile;
-pub mod qbank_management;
+pub use dstu_qbank::qbank_legacy_reconcile;
+pub use dstu_qbank::qbank_management;
 pub mod qbank_practice;
 // 读取逻辑已下沉到 vfs；这里按原路径重导出，测试（需题库领域写入种子数据）留在 app。
 pub mod qbank_read {
@@ -145,17 +146,27 @@ pub mod qbank_read {
     #[cfg(test)]
     mod tests;
 }
-pub mod qbank_source_view;
-pub mod question_authoring_runner;
+pub use dstu_qbank::qbank_source_view;
+pub use dstu_qbank::question_authoring_runner;
+// 服务本体在 dstu-qbank；依赖 memory/extensions 的单测留在 app。
 #[allow(dead_code)]
-pub mod question_bank_service;
-pub mod question_export_service;
+pub mod question_bank_service {
+    pub use dstu_qbank::question_bank_service::*;
+    #[cfg(test)]
+    mod tests;
+}
+pub use dstu_qbank::question_export_service;
 #[allow(dead_code)]
-pub mod question_import_service;
+pub use dstu_qbank::question_import_service;
 pub use vfs::question_sync_service; // 题目集同步元数据服务（只依赖 vfs 表）
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub use dstu_llm::reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
-pub mod review_plan_service; // 复习计划服务（与错题系统集成）
+// 复习计划服务（与错题系统集成）；本体在 dstu-qbank，依赖 data_governance 的单测留在 app。
+pub mod review_plan_service {
+    pub use dstu_qbank::review_plan_service::*;
+    #[cfg(test)]
+    mod tests;
+}
 pub use dstu_platform::secret_prompt;
 pub mod secure_store;
 #[allow(dead_code)]
@@ -245,6 +256,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_memory",
     "dstu_anki",
     "dstu_media",
+    "dstu_qbank",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

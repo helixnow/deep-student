@@ -38,6 +38,7 @@ members = [
     "crates/dstu-mcp",
     "crates/dstu-notes",
     "crates/dstu-memory",
+    "crates/dstu-qbank",
     "crates/dstu-util",
     "crates/dstu-platform",
     "crates/dstu-security",
@@ -73,6 +74,7 @@ dstu-notes = { path = "crates/dstu-notes", default-features = false }
 dstu-memory = { path = "crates/dstu-memory", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
+dstu-qbank = { path = "crates/dstu-qbank", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
 dstu-storage = { path = "crates/dstu-storage", default-features = false }
 dstu-testkit = { path = "crates/dstu-testkit", default-features = false }
@@ -313,6 +315,7 @@ dstu-notes = { workspace = true }
 dstu-memory = { workspace = true }
 dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
+dstu-qbank = { workspace = true }
 dstu-security = { workspace = true }
 dstu-storage = { workspace = true }
 dstu-tutor = { workspace = true }
