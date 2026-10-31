@@ -3282,6 +3282,7 @@ dependencies = [
  "dotenvy",
  "dstu-core",
  "dstu-docs",
+ "dstu-platform",
  "dstu-util",
  "encoding_rs",
  "env_logger",
@@ -3764,6 +3765,28 @@ dependencies = [
  "umya-spreadsheet",
  "urlencoding",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-platform"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "cocoa",
+ "hyper 0.14.32",
+ "log",
+ "regex",
+ "sentry",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "zeroize",
 ]
 
 [[package]]
