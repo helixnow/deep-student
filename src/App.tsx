@@ -135,8 +135,9 @@ import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
 import { canonicalizeView } from './app/navigation/canonicalView';
-import { getCardsHubSwitchDirection, isCardsHubView, rememberCardsHubView } from './app/navigation/cardsHub';
+import { isCardsHubView, rememberCardsHubView } from './app/navigation/cardsHub';
 import { CardsHubTabs } from './app/shell/CardsHubTabs';
+import { advanceViewNavStack, computeNextVisitedViews } from './app/navigation/viewRouting';
 import {
   DESKTOP_SHELL,
   getShellSidebarDragLayout,
@@ -436,34 +437,6 @@ const BRIDGE_COMPLETION_REASONS = new Set([
   'retry',
   'delete',
 ]);
-
-// 🚀 LRU 视图淘汰：限制保活视图数量，避免内存无限增长
-/** 始终保活的视图（不参与 LRU 淘汰） */
-const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
-/**
- * 暂缓驱逐的视图（2026-07 移动端审计 残留#3）：该视图的关键状态是纯本地
- * state（pdf-reader 已打开的 PDF 与页码），
- * 被 LRU 驱逐即清零且不可恢复。淘汰时优先驱逐其他视图，仅当候选里只剩它们
- * 时才驱逐（软保护，不是 pinned——总保活上限不变，不抬高低端机内存天花板）。
- */
-const EVICTION_DEFERRED_VIEWS: Set<CurrentView> = new Set(['pdf-reader']);
-/** 最大保活视图数量（含 pinned）
- *  桌面用户常用 6-7 个视图，设为 8 避免频繁驱逐导致的重新挂载开销；
- *  搭配 useMemo 缓存子树后，保活视图的 re-render 成本接近零。
- *  触屏设备（PERF-1）：低端 Android 同时保活 8 棵完整视图子树内存压力大，降为 4。
- *  取值在每次淘汰时动态读取，旋转/分屏后自然收敛，无需监听。
- */
-const MAX_ALIVE_VIEWS_DESKTOP = 8;
-const MAX_ALIVE_VIEWS_TOUCH = 4;
-const getMaxAliveViews = (): number => {
-  try {
-    return window.matchMedia?.('(pointer: coarse)').matches
-      ? MAX_ALIVE_VIEWS_TOUCH
-      : MAX_ALIVE_VIEWS_DESKTOP;
-  } catch {
-    return MAX_ALIVE_VIEWS_DESKTOP;
-  }
-};
 
 
 function App() {
@@ -1139,65 +1112,10 @@ function App() {
     // 导航历史由 useNavigationHistory 的 useEffect 推入（始终基于 committed state，避免快速点击竞态）。
     startTransition(() => {
       // 切换方向：与视图切换同批提交，层动画首帧即拿到正确方向（前进右入/后退左入镜像）
-      const navStack = viewNavStackRef.current;
-      const cardsHubDirection = getCardsHubSwitchDirection(prevView, targetView);
-      if (cardsHubDirection !== null) {
-        // 闪卡中心分区互切：兄弟分区横向翻页（方向按分区顺序），栈顶替换而非压栈
-        if (navStack[navStack.length - 1] === prevView) {
-          navStack[navStack.length - 1] = targetView;
-        } else {
-          navStack.push(targetView);
-        }
-        setViewNavDirection(cardsHubDirection);
-      } else if (targetView !== prevView && navStack[navStack.length - 1] !== targetView) {
-        const existingIdx = navStack.lastIndexOf(targetView);
-        if (existingIdx >= 0) {
-          navStack.length = existingIdx + 1;
-          setViewNavDirection(-1);
-        } else {
-          navStack.push(targetView);
-          if (navStack.length > 30) navStack.shift();
-          setViewNavDirection(1);
-        }
-      }
+      advanceViewNavStack(viewNavStackRef.current, prevView, targetView, setViewNavDirection);
 
       // 🚀 LRU 更新：记录访问时间戳，超过阈值时淘汰最久未访问的非 pinned 视图
-      setVisitedViews(prev => {
-        const now = Date.now();
-        const next = new Map(prev);
-        next.set(targetView, now);
-
-        // 淘汰逻辑：仅在超出上限时移除最旧的非 pinned 视图。
-        // 两轮扫描：先跳过 EVICTION_DEFERRED_VIEWS（本地状态驱逐即丢的视图），
-        // 候选里只剩暂缓视图时才回退为普通 LRU，保证上限恒成立。
-        if (next.size > getMaxAliveViews()) {
-          let oldestView: CurrentView | null = null;
-          let oldestTime = Infinity;
-          for (const deferProtected of [true, false]) {
-            for (const [view, ts] of next) {
-              if (PINNED_VIEWS.has(view)) continue;
-              if (view === targetView) continue;
-              if (deferProtected && EVICTION_DEFERRED_VIEWS.has(view)) continue;
-              if (ts < oldestTime) {
-                oldestTime = ts;
-                oldestView = view;
-              }
-            }
-            if (oldestView) break;
-          }
-          if (oldestView) {
-            next.delete(oldestView);
-            pageLifecycleTracker.log(
-              'app',
-              'App.tsx',
-              'view_evict',
-              `LRU evicted: ${oldestView} (%.0fms old)`.replace('%.0fms', `${now - oldestTime}ms`)
-            );
-          }
-        }
-
-        return next;
-      });
+      setVisitedViews(prev => computeNextVisitedViews(prev, targetView));
       setCurrentViewRaw(targetView);
     });
   }, []);
