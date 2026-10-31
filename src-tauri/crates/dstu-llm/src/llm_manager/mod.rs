@@ -1,25 +1,42 @@
 pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;
-pub(crate) mod model2_pipeline;
-pub(crate) mod parser;
-pub(crate) mod provider_quirks;
+pub mod model2_pipeline;
+pub mod parser;
+pub mod provider_quirks;
 pub mod question_authoring;
 mod rag_extension;
 pub(crate) mod reasoning_level_map;
 pub mod routing;
-pub(crate) mod single_shot_stream;
+pub mod single_shot_stream;
 pub use dstu_util::utf8_stream;
 
 // 连接测试（commands::test_api_connection）复用生产请求构造的 token 上限逻辑，
 // 保证探测请求与真实聊天请求的 max_tokens/max_completion_tokens 方言一致。
-pub(crate) use model2_pipeline::apply_generation_params;
+pub use model2_pipeline::apply_generation_params;
 
 // 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
-pub(crate) use model2_pipeline::sanitize_url_for_log;
+pub use model2_pipeline::sanitize_url_for_log;
 
 // ApiConfig 及其默认值函数已下沉到 dstu-core（models/database 也持有它），这里按原路径重导出。
 pub use crate::llm_config::ApiConfig;
+
+// ── app `AppHandle`（由 app `lib.rs` 在 `set_global_app_handle` 旁边注入）──
+//
+// 本 crate 不能反向依赖 app 的 `get_global_app_handle()`。需要发 Tauri 事件 /
+// 解析 app 日志目录的两处（`exam_engine` 的 OCR 调试事件、`model2_pipeline`
+// 的 debug 落盘目录）统一读这里的句柄；注入时机与旧全局句柄完全相同。
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// 保存 app 的 `AppHandle`（幂等：先设置者生效，与旧全局句柄一致）。
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// 读取 app 的 `AppHandle`；未设置时为 `None`（等价旧 `get_global_app_handle()`）。
+pub(crate) fn app_handle() -> Option<&'static tauri::AppHandle> {
+    APP_HANDLE.get()
+}
 
 // 从 chat_v2 / cmd::ocr / translation 下沉到 llm 组的纯逻辑（原路径保留重导出），
 // 以及 legacy 回退注入用的 web_search 注册点（由上层 tools 模块安装）。
@@ -63,10 +80,10 @@ use tokio::time::{Duration, Instant};
 use uuid::Uuid;
 
 /// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
-pub(crate) const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
+pub const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
 
 /// PDF/图片预处理与索引兜底共用的 OCR 并发容量。
-pub(crate) const MAX_OCR_CONCURRENCY: usize = 4;
+pub const MAX_OCR_CONCURRENCY: usize = 4;
 
 // ============================================================
 // 流式事件出口（G01-b：LLM 流式层去 Window 依赖）
@@ -187,7 +204,7 @@ struct CapabilityOverrides {
 
 static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock::new(|| {
     serde_json::from_str::<RegistryDocument>(include_str!(
-        "../../../scripts/model-capability-registry.json"
+        "../../../../../scripts/model-capability-registry.json"
     ))
     .map(|doc| {
         doc.records
@@ -207,7 +224,7 @@ static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock:
 static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>> = LazyLock::new(
     || {
         serde_json::from_str::<ProviderProtocolRegistryDocument>(include_str!(
-            "../../../scripts/provider-protocol-registry.json"
+            "../../../../../scripts/provider-protocol-registry.json"
         ))
         .map(|doc| doc.providers)
         .unwrap_or_else(|err| {
@@ -278,7 +295,7 @@ fn deserialize_vendor_configs(
 
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
-pub(crate) struct IncrementalJsonArrayParser {
+pub struct IncrementalJsonArrayParser {
     buffer: String,
     in_array: bool,
     brace_depth: i32,
@@ -1209,7 +1226,7 @@ mod tests {
 
     #[test]
     fn provider_protocol_registry_contract_is_well_formed() {
-        let raw = include_str!("../../../scripts/provider-protocol-registry.json");
+        let raw = include_str!("../../../../../scripts/provider-protocol-registry.json");
         let registry: ProviderProtocolRegistryDocument =
             serde_json::from_str(raw).expect("provider protocol registry should parse");
 
@@ -2553,6 +2570,7 @@ mod tests {
         /// 是哪个模型的哪次改动把非思考强度参数也带偏了。
         fn baseline_path() -> std::path::PathBuf {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
                 .join("tests")
                 .join("fixtures")
                 .join("reasoning")
@@ -2996,7 +3014,7 @@ mod tests {
 }
 
 impl IncrementalJsonArrayParser {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             buffer: String::new(),
             in_array: false,
@@ -3007,7 +3025,7 @@ impl IncrementalJsonArrayParser {
     }
 
     /// 输入新的文本块，返回解析出的完整 JSON 对象列表
-    pub(crate) fn feed(&mut self, chunk: &str) -> Option<Vec<Value>> {
+    pub fn feed(&mut self, chunk: &str) -> Option<Vec<Value>> {
         let mut results = Vec::new();
 
         for ch in chunk.chars() {
@@ -3096,7 +3114,7 @@ impl IncrementalJsonArrayParser {
     }
 
     /// 处理剩余缓冲区内容
-    pub(crate) fn finalize(&mut self) -> Option<Vec<Value>> {
+    pub fn finalize(&mut self) -> Option<Vec<Value>> {
         if self.buffer.trim().is_empty() {
             return None;
         }
@@ -3252,7 +3270,7 @@ pub struct OcrModelConfig {
 
 /// Free-text OCR 的运行时候选。系统 OCR 没有 HTTP 模型配置，必须作为独立候选执行。
 #[derive(Debug, Clone)]
-pub(crate) enum OcrRuntimeCandidate {
+pub enum OcrRuntimeCandidate {
     Remote {
         config: ApiConfig,
         engine_type: crate::ocr_adapters::OcrEngineType,
@@ -3261,7 +3279,7 @@ pub(crate) enum OcrRuntimeCandidate {
 }
 
 impl OcrRuntimeCandidate {
-    pub(crate) fn engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
+    pub fn engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
         match self {
             Self::Remote { engine_type, .. } => *engine_type,
             Self::SystemOcr => crate::ocr_adapters::OcrEngineType::SystemOcr,
@@ -3277,7 +3295,7 @@ impl OcrRuntimeCandidate {
 /// 注意：仅匹配硅基流动（base_url 含 siliconflow）+ `zai-org/` 命名空间的
 /// GLM-4.6V；智谱官方 API 的 `glm-4.6v` 不带 `zai-org/` 前缀且仍在服务，
 /// 不能误伤。
-pub(crate) fn is_discontinued_ocr_model(config: &ApiConfig) -> bool {
+pub fn is_discontinued_ocr_model(config: &ApiConfig) -> bool {
     let url = config.base_url.to_lowercase();
     let model = config.model.to_lowercase();
     url.contains("siliconflow") && model.contains("glm-4.6v")
@@ -3746,7 +3764,7 @@ fn default_profile_enabled() -> bool {
     true
 }
 
-pub(crate) fn looks_like_image_generation_model_id(model: &str) -> bool {
+pub fn looks_like_image_generation_model_id(model: &str) -> bool {
     let model = model.to_lowercase();
     ["gpt-image", "dall-e", "imagen", "flux"]
         .iter()
@@ -3967,7 +3985,7 @@ pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
     base_url_host(&config.base_url) == "api.deepseek.com"
 }
 
-pub(crate) fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
+pub fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
     let explicit_responses = if let Some(protocol) = config.api_protocol.as_deref() {
         let normalized = normalize_provider_protocol_registry_value(Some(protocol));
         match normalized.as_str() {
@@ -4032,9 +4050,7 @@ pub(crate) fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
     preferred
 }
 
-pub(crate) fn request_adapter_for_config(
-    config: &ApiConfig,
-) -> &'static dyn adapters::RequestAdapter {
+pub fn request_adapter_for_config(config: &ApiConfig) -> &'static dyn adapters::RequestAdapter {
     let effective_protocol = effective_api_protocol_for_config(config);
     let uses_openai_transport = matches!(
         effective_protocol.as_str(),
@@ -4062,7 +4078,7 @@ pub(crate) fn request_adapter_for_config(
 }
 
 #[inline]
-pub(crate) fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
+pub fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
     match max_tokens_limit {
         Some(limit) => max_output_tokens.min(limit),
         None => max_output_tokens,
@@ -4146,7 +4162,7 @@ fn normalize_model_profile_protocol_config(
     true
 }
 
-pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
+pub fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
     let effective_protocol = effective_api_protocol_for_config(config);
     if matches!(
         config
@@ -4760,7 +4776,7 @@ impl LLMManager {
     }
 
     /// 为媒体预处理和索引兜底提供同一组 OCR 许可。
-    pub(crate) fn ocr_semaphore(&self) -> Arc<Semaphore> {
+    pub fn ocr_semaphore(&self) -> Arc<Semaphore> {
         Arc::clone(&self.ocr_semaphore)
     }
 
@@ -4851,7 +4867,7 @@ impl LLMManager {
     ///
     /// ## 子适配器架构
     /// 详见 `adapters` 模块文档
-    pub(crate) fn apply_reasoning_config(
+    pub fn apply_reasoning_config(
         body: &mut Value,
         config: &ApiConfig,
         enable_thinking: Option<bool>,
@@ -5121,7 +5137,7 @@ impl LLMManager {
     ///
     /// 注意：仅合并 content 为纯字符串的 user 消息。
     /// 对于 content 为数组（多模态）的情况，将数组元素追加到前一条。
-    pub(crate) fn merge_consecutive_user_messages(messages: &mut Vec<serde_json::Value>) {
+    pub fn merge_consecutive_user_messages(messages: &mut Vec<serde_json::Value>) {
         if messages.len() < 2 {
             return;
         }
@@ -5506,7 +5522,7 @@ impl LLMManager {
     ///
     /// Outer `select!` callers may drop the model2 future before its normal channel cleanup runs.
     /// Run-scoped keys make this safe: no later attempt can legitimately reuse the same key.
-    pub(crate) async fn clear_cancel_artifacts(&self, stream_event: &str) {
+    pub async fn clear_cancel_artifacts(&self, stream_event: &str) {
         self.cancel_channels.lock().await.remove(stream_event);
         self.cancel_registry.lock().await.remove(stream_event);
     }
@@ -5925,7 +5941,7 @@ impl LLMManager {
         Ok(vendors)
     }
 
-    pub(crate) async fn vendor_config_for_runtime(&self, vendor_id: &str) -> Result<VendorConfig> {
+    pub async fn vendor_config_for_runtime(&self, vendor_id: &str) -> Result<VendorConfig> {
         self.vendor_configs_for_runtime()
             .await?
             .into_iter()
@@ -5936,7 +5952,7 @@ impl LLMManager {
     /// 按 vendor_id + 模型名解析已保存模型条目的运行期配置（与生产聊天完全一致的
     /// vendor+profile 合并结果）。连接测试用它构造探测请求，避免测试路径与生产
     /// 路径的能力字段/协议/思考配置漂移。无匹配条目时返回 None（草稿配置场景）。
-    pub(crate) async fn runtime_config_for_vendor_model(
+    pub async fn runtime_config_for_vendor_model(
         &self,
         vendor_id: &str,
         model: &str,
@@ -7131,7 +7147,7 @@ impl LLMManager {
     }
 
     /// 获取 free-text OCR 的完整运行时候选，包括无需 ApiConfig 的系统原生 OCR。
-    pub(crate) async fn get_free_text_ocr_candidates_by_priority(
+    pub async fn get_free_text_ocr_candidates_by_priority(
         &self,
     ) -> Result<Vec<OcrRuntimeCandidate>> {
         use crate::ocr_adapters::{OcrAdapterFactory, OcrTaskType};
@@ -7886,7 +7902,7 @@ impl LLMManager {
             .map_err(|e| AppError::configuration(format!("序列化加密数据失败: {}", e)))
     }
 
-    pub(crate) fn decrypt_api_key_if_needed(&self, api_key: &str) -> Result<String> {
+    pub fn decrypt_api_key_if_needed(&self, api_key: &str) -> Result<String> {
         // 检查是否为加密格式
         if CryptoService::is_encrypted_format(api_key) {
             let encrypted_data: EncryptedData = serde_json::from_str(api_key)

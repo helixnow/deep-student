@@ -58,13 +58,13 @@ const MAX_ERROR_BODY_BYTES: usize = 64 * 1024;
 const RETRY_AFTER_CAP: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TransportMode {
+pub enum TransportMode {
     Stream,
     NonStream,
 }
 
 impl TransportMode {
-    pub(crate) fn is_stream(self) -> bool {
+    pub fn is_stream(self) -> bool {
         matches!(self, Self::Stream)
     }
 }
@@ -72,7 +72,7 @@ impl TransportMode {
 /// Timeouts / limits / retry budget for [`run_single_shot`]. All durations are
 /// injectable so tests can exercise the idle/total logic in milliseconds.
 #[derive(Debug, Clone)]
-pub(crate) struct SingleShotOptions {
+pub struct SingleShotOptions {
     pub label: String,
     pub header_timeout: Duration,
     pub idle_timeout: Duration,
@@ -88,7 +88,7 @@ pub(crate) struct SingleShotOptions {
 }
 
 impl SingleShotOptions {
-    pub(crate) fn new(label: impl Into<String>) -> Self {
+    pub fn new(label: impl Into<String>) -> Self {
         Self {
             label: label.into(),
             header_timeout: DEFAULT_HEADER_TIMEOUT,
@@ -103,7 +103,7 @@ impl SingleShotOptions {
         }
     }
 
-    pub(crate) fn with_max_retries(mut self, max_retries: u32) -> Self {
+    pub fn with_max_retries(mut self, max_retries: u32) -> Self {
         self.max_retries = max_retries;
         self
     }
@@ -136,7 +136,7 @@ impl SingleShotOptions {
 
 /// Result of a single-shot completion.
 #[derive(Debug, Clone)]
-pub(crate) struct SingleShotCompletion {
+pub struct SingleShotCompletion {
     /// Accumulated answer text (reasoning excluded).
     pub content: String,
     /// Bytes of reasoning/thinking text received (activity only, not returned).
@@ -201,7 +201,7 @@ fn remember_stream_unsupported(config: &ApiConfig) {
 
 /// Transient HTTP statuses worth retrying: 408/429 and 5xx (incl. Cloudflare
 /// 520-524 and Anthropic 529). 501/505 are deterministic.
-pub(crate) fn is_retryable_http_status(status: u16) -> bool {
+pub fn is_retryable_http_status(status: u16) -> bool {
     match status {
         408 | 429 => true,
         501 | 505 => false,
@@ -995,7 +995,7 @@ impl LLMManager {
     /// `request_body` is an OpenAI-shaped chat body; its `stream` field is
     /// overwritten per attempt. Returns the accumulated answer text.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) async fn single_shot_completion(
+    pub async fn single_shot_completion(
         &self,
         config: &ApiConfig,
         request_body: &Value,

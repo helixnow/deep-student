@@ -10,13 +10,13 @@ use super::ApiConfig;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum MaxTokensField {
+pub enum MaxTokensField {
     MaxTokens,
     MaxCompletionTokens,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub(crate) struct RuntimeReasoningOverride {
+pub struct RuntimeReasoningOverride {
     /// Runtime `enable_thinking=false` must be ignored for these OpenAI models.
     pub force_enabled: bool,
     /// Effort sent when runtime reasoning is disabled (`none` for modern GPT-5).
@@ -24,7 +24,7 @@ pub(crate) struct RuntimeReasoningOverride {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub(crate) struct ProviderQuirks {
+pub struct ProviderQuirks {
     /// B1: generation token-limit field.
     pub max_tokens_field: MaxTokensField,
     /// B1 legacy behavior: generic reasoning adapters may pre-populate max_tokens.
@@ -117,7 +117,7 @@ fn runtime_reasoning_override(config: &ApiConfig) -> RuntimeReasoningOverride {
 }
 
 /// Resolve all phase-1 quirks once from a complete API configuration.
-pub(crate) fn resolve_quirks(config: &ApiConfig) -> ProviderQuirks {
+pub fn resolve_quirks(config: &ApiConfig) -> ProviderQuirks {
     let model = config.model.to_lowercase();
     let model_slug = model.rsplit('/').next().unwrap_or(&model);
     let is_qwen = provider_field_matches(config.provider_type.as_deref(), "qwen")

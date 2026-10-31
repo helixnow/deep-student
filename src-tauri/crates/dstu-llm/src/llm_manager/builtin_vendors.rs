@@ -81,7 +81,7 @@ struct GeminiBuiltinModel {
 
 static GEMINI_BUILTIN_REGISTRY: LazyLock<GeminiBuiltinRegistryDocument> = LazyLock::new(|| {
     serde_json::from_str::<GeminiBuiltinRegistryDocument>(include_str!(
-        "../../../scripts/gemini-model-registry.json"
+        "../../../../../scripts/gemini-model-registry.json"
     ))
     .unwrap_or_else(|err| {
         panic!(

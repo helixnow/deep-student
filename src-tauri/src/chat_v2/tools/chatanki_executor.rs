@@ -21047,3 +21047,98 @@ mod tests {
         assert!(plain.source_ref.is_none());
     }
 }
+
+// anki_model_routing 的两个生产消费者接线契约测试原随该模块（现 dstu-llm）同放；
+// dstu-llm 不能读 app 源码，故留在这里，测试函数名不变。
+#[cfg(test)]
+mod anki_model_routing_contract_tests {
+    // ---------- 生产消费者接线契约（收尾续作 #3） ----------
+
+    #[test]
+    fn chatanki_plan_route_consumes_planner_role_through_fallback_adapter() {
+        let source = include_str!("chatanki_executor.rs");
+        let start = source
+            .find("async fn plan_route(")
+            .expect("plan_route production function must exist");
+        let end = source[start..]
+            .find("/// 在 VLM 路径消费")
+            .map(|offset| start + offset)
+            .expect("VLM helper must follow plan_route");
+        let function = &source[start..end];
+
+        assert!(
+            function.contains("AnkiModelRole::Planner"),
+            "plan_route 必须显式消费 Planner 角色"
+        );
+        assert!(
+            function.contains(".call_anki_routed_raw_prompt("),
+            "Planner 调用必须经过可回退的 Sidekick 适配器"
+        );
+        let routed_call = function
+            .find(".call_anki_routed_raw_prompt(")
+            .expect("routed Planner call");
+        let legacy_fallback = function
+            .find(".call_model2_raw_prompt(")
+            .expect("legacy model2 fallback");
+        assert!(
+            routed_call < legacy_fallback && function.contains("planner_decision.is_some()"),
+            "model2 只能在 Planner 槽调用失败后作为旧路径兜底"
+        );
+        assert!(
+            function.contains("return None;"),
+            "Planner 调用失败必须保留启发式路由降级"
+        );
+    }
+
+    #[test]
+    fn chatanki_vlm_extract_branches_consume_vlm_role_through_fallback_adapter() {
+        // 测试与生产代码同文件：只统计测试模块之前的生产代码，避免把断言字面量计入。
+        let source = include_str!("chatanki_executor.rs")
+            .split("mod anki_model_routing_contract_tests")
+            .next()
+            .expect("production source");
+        let start = source
+            .find("async fn call_vlm_extract(")
+            .expect("VLM production helper must exist");
+        let end = source[start..]
+            .find("/// 防注入护栏")
+            .map(|offset| start + offset)
+            .expect("prompt guard must follow VLM helper");
+        let helper = &source[start..end];
+
+        assert!(
+            helper.contains("AnkiModelRole::Vlm"),
+            "VLM extract 必须显式消费 Vlm 角色"
+        );
+        assert!(
+            helper.contains(".call_anki_routed_raw_prompt("),
+            "VLM 调用必须经过可回退的 Sidekick 适配器"
+        );
+        let routed_call = helper
+            .find(".call_anki_routed_raw_prompt(")
+            .expect("routed VLM call");
+        let legacy_fallback = helper
+            .find(".call_model2_raw_prompt(")
+            .expect("legacy model2 fallback");
+        assert!(
+            routed_call < legacy_fallback && helper.contains("vlm_decision.is_some()"),
+            "model2 只能在 Vlm 槽调用失败后作为旧图片提取路径兜底"
+        );
+        assert_eq!(
+            source.matches("call_vlm_extract(").count(),
+            4,
+            "应有一个 helper 定义和三条真实 VLM extract 调用路径"
+        );
+        for task in [
+            "chatanki.vlm_full_image_fallback",
+            "chatanki.vlm_light_extract",
+            "chatanki.vlm_full_extract",
+        ] {
+            assert!(
+                source.contains(task),
+                "VLM 生产调用缺少可观测任务标签: {}",
+                task
+            );
+        }
+    }
+}

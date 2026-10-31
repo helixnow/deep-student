@@ -454,7 +454,7 @@ impl LLMManager {
         }
 
         // 发送 Tauri 事件到前端
-        if let Some(app_handle) = crate::get_global_app_handle() {
+        if let Some(app_handle) = super::app_handle() {
             if let Err(e) = app_handle.emit("deepseek_ocr_log", payload) {
                 error!("[DeepSeek-OCR-Debug] 发送事件失败: {}", e);
             }
@@ -864,7 +864,7 @@ impl LLMManager {
 
     /// Chat 的 TM 图片降级只允许真正的 OCR 引擎。通用 VLM 已在上一阶段作为视觉
     /// observer 使用，不能在失败后再次伪装成 OCR 能力。
-    pub(crate) async fn call_dedicated_ocr_free_text_with_fallback(
+    pub async fn call_dedicated_ocr_free_text_with_fallback(
         &self,
         image_path: &str,
         cancellation_token: tokio_util::sync::CancellationToken,

@@ -3283,6 +3283,7 @@ dependencies = [
  "dstu-core",
  "dstu-docs",
  "dstu-kernel",
+ "dstu-llm",
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
@@ -3773,6 +3774,46 @@ dependencies = [
 [[package]]
 name = "dstu-kernel"
 version = "0.0.0"
+
+[[package]]
+name = "dstu-llm"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-platform",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "futures",
+ "futures-util",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "objc",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "uuid",
+ "windows 0.58.0",
+ "zeroize",
+]
 
 [[package]]
 name = "dstu-platform"

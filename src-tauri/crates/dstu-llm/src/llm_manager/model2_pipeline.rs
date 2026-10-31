@@ -55,7 +55,7 @@ const CODEX_ERROR_RESPONSE_BODY_LIMIT_BYTES: usize = 256 * 1024;
 const CODEX_NONSTREAM_SSE_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
 /// Request-local acknowledgement, never persisted or forwarded to the provider.
-pub(crate) const COMPACTION_CHECKED_CONTEXT_KEY: &str = "chat_v2_compaction_checked";
+pub const COMPACTION_CHECKED_CONTEXT_KEY: &str = "chat_v2_compaction_checked";
 
 fn effective_request_input_limit(
     config: &ApiConfig,
@@ -724,11 +724,7 @@ fn apply_legacy_generation_token_limit(body: &mut Value, quirks: &ProviderQuirks
     apply_token_limit(body, quirks.legacy_max_tokens_field, max_tokens);
 }
 
-pub(crate) fn apply_generation_params(
-    body: &mut Value,
-    config: &ApiConfig,
-    quirks: &ProviderQuirks,
-) {
+pub fn apply_generation_params(body: &mut Value, config: &ApiConfig, quirks: &ProviderQuirks) {
     if crate::llm_manager::adapters::apply_official_deepseek_generation_params(body, config) {
         return;
     }
@@ -905,7 +901,7 @@ fn redact_provider_state_and_data_urls(value: &mut serde_json::Value) {
 
 /// 🔒 URL 脱敏：Gemini 等供应商把 API key 放在 query 参数（?key=AIza...），
 /// 审计日志/调试落盘/前端事件/错误消息里的 URL 必须先脱敏，否则每次请求都泄漏密钥。
-pub(crate) fn sanitize_url_for_log(url: &str) -> String {
+pub fn sanitize_url_for_log(url: &str) -> String {
     let Some((base, query)) = url.split_once('?') else {
         return url.to_string();
     };
@@ -3797,7 +3793,7 @@ pub(crate) fn log_llm_request_audit(
 /// 调试日志持久化配置（由调用方从 DB 设置构造）
 ///
 /// 存在即表示已启用，不需要额外 enabled 字段。
-pub(crate) struct DebugPersistConfig {
+pub struct DebugPersistConfig {
     pub log_dir: std::path::PathBuf,
 }
 
@@ -3909,10 +3905,10 @@ struct CodexPreparedAuth {
     session_id: String,
 }
 
-pub(crate) struct PreparedProviderRequest {
-    pub(crate) url: String,
-    pub(crate) headers: Vec<(String, String)>,
-    pub(crate) body: Value,
+pub struct PreparedProviderRequest {
+    pub url: String,
+    pub headers: Vec<(String, String)>,
+    pub body: Value,
     codex: Option<CodexPreparedAuth>,
 }
 
@@ -3926,7 +3922,7 @@ impl PreparedProviderRequest {
         }
     }
 
-    pub(crate) fn is_codex(&self) -> bool {
+    pub fn is_codex(&self) -> bool {
         self.codex.is_some()
     }
 }
@@ -4739,7 +4735,7 @@ impl LLMManager {
         Ok(prepared)
     }
 
-    pub(crate) async fn prepare_provider_request(
+    pub async fn prepare_provider_request(
         &self,
         adapter: &dyn ProviderAdapter,
         config: &ApiConfig,
@@ -4810,7 +4806,7 @@ impl LLMManager {
         Ok(())
     }
 
-    pub(crate) async fn send_codex_request_with_single_refresh(
+    pub async fn send_codex_request_with_single_refresh(
         &self,
         request: &mut PreparedProviderRequest,
         timeout: Option<std::time::Duration>,
@@ -4821,7 +4817,7 @@ impl LLMManager {
         bridge_codex_nonstream_response(response).await
     }
 
-    pub(crate) async fn send_codex_stream_request_with_single_refresh(
+    pub async fn send_codex_stream_request_with_single_refresh(
         &self,
         request: &mut PreparedProviderRequest,
         timeout: Option<std::time::Duration>,
@@ -4869,7 +4865,7 @@ impl LLMManager {
     }
 
     /// 从 DB 读取 debug 持久化配置（LLM 请求体与出题原始返回落盘共用开关）
-    pub(crate) fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
+    pub fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
         let enabled = self
             .db
             .get_setting("debug.persist_logs")
@@ -4880,7 +4876,7 @@ impl LLMManager {
         if !enabled {
             return None;
         }
-        let log_root = crate::get_global_app_handle()
+        let log_root = super::app_handle()
             .and_then(|app| app.path().app_log_dir().ok())
             .unwrap_or_else(|| self.file_manager.get_app_data_dir().join("logs"));
         Some(DebugPersistConfig {
@@ -8338,7 +8334,7 @@ impl LLMManager {
     /// model2 raw prompt with explicit JSON mode. Background writing tasks (media handout)
     /// need Markdown/plain-text output for summaries (`force_json=false`) and strict JSON for
     /// structured section IR (`force_json=true`), on the same assigned model.
-    pub(crate) async fn call_model2_raw_prompt_opts(
+    pub async fn call_model2_raw_prompt_opts(
         &self,
         user_prompt: &str,
         force_json: bool,
@@ -8492,7 +8488,7 @@ impl LLMManager {
 
     /// Cancellation-aware Chat compiler entrypoint. The exact provider request is owned by this
     /// future, so dropping it or cancelling the token also drops the in-flight HTTP future.
-    pub(crate) async fn call_raw_prompt_with_config_id_and_images_cancellable(
+    pub async fn call_raw_prompt_with_config_id_and_images_cancellable(
         &self,
         config_id: &str,
         user_prompt: &str,

@@ -1,0 +1,65 @@
+[package]
+name = "dstu-llm"
+version = "0.0.0"
+description = "Deep Student LLM 服务层：多供应商模型管理（llm_manager + providers + adapters + vendors）、OpenAI Codex 登录、多模态嵌入、OCR 适配器与推理策略"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "service"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-platform = { workspace = true }
+dstu-security = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-util = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+hyper = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+rand = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32 → JSON 数字按十进制字符串转换，如 1.2 而非
+# 1.2000000476837158）。dstu-llm 的请求体构造依赖这一点；显式声明，保证 `cargo test -p dstu-llm`
+# 单独编译时与在 app 中的行为一致。特性本来就已在 app 中合并开启，不改变产品行为。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+sha2 = { workspace = true }
+tauri = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+# 系统 OCR：Windows 走 WinRT Media.Ocr，macOS 走 Vision Framework（objc runtime）。
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = { workspace = true }
+
+[dev-dependencies]
+# 测试内起本地 HTTP server / 临时目录 / 内存库 / mockito。
+mockito = "1.0"
+rusqlite = { workspace = true }
+tempfile = { workspace = true }
+
+[features]
+# 内置免费模型（vendors 模块）。app 的 profile 转发到这里。
+builtin_free_models = []

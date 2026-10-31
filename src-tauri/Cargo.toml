@@ -30,6 +30,7 @@ members = [
     "crates/dstu-core",
     "crates/dstu-docs",
     "crates/dstu-kernel",
+    "crates/dstu-llm",
     "crates/dstu-util",
     "crates/dstu-platform",
     "crates/dstu-security",
@@ -49,6 +50,7 @@ publish = false
 dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
+dstu-llm = { path = "crates/dstu-llm", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
@@ -275,6 +277,7 @@ protoc-bin-vendored = "3.0"
 dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }
+dstu-llm = { workspace = true }
 dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
@@ -551,7 +554,7 @@ db_migration = []
 http = []
 old_migration_impl = []
 # 内置免费模型（发行版使用）。开源版本可禁用
-builtin_free_models = []
+builtin_free_models = ["dstu-llm/builtin_free_models"]
 # 云存储 S3 兼容支持（可选，避免默认增加编译时间）
 cloud_storage_s3 = ["aws-sdk-s3", "aws-config"]
 # 数据治理模块（迁移、审计、同步等）

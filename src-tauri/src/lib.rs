@@ -5,14 +5,14 @@
 #![recursion_limit = "512"]
 
 // 声明所有子模块，以便在 crate 内可见
-pub mod adapters;
+pub use dstu_llm::adapters;
 pub mod anki;
 pub mod anki_connect_service;
 pub mod anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
 pub mod anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
 pub mod anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
 pub mod anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
-pub mod anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
+pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
 pub mod anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
 pub mod anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
 pub mod anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
@@ -27,7 +27,7 @@ pub use dstu_storage::batch_operations;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
-pub mod config_recovery;
+pub use dstu_llm::config_recovery;
 pub mod crash_logger;
 pub use dstu_security::crypto;
 pub use dstu_security::crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
@@ -49,8 +49,8 @@ pub mod cloud_config_commands;
 #[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
+pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
-pub mod deepseek_ocr_parser;
 pub mod diagnostics;
 pub use dstu_docs::document_parser;
 pub mod document_processing_service;
@@ -78,7 +78,7 @@ pub use dstu_core::json_validator;
 #[allow(dead_code)]
 pub mod lance_vector_store;
 #[allow(dead_code)]
-pub mod llm_manager;
+pub use dstu_llm::llm_manager;
 pub mod llm_structurer;
 pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
@@ -91,15 +91,15 @@ pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
 pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
-pub use dstu_platform::metrics_server;
 #[allow(dead_code, deprecated)]
-pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+pub use dstu_llm::multimodal;
+pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
 pub mod notes_exporter;
 pub mod notes_manager;
-pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
-pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
-pub mod openai_codex;
+pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
+pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
+pub use dstu_llm::openai_codex;
 pub use dstu_platform::package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
@@ -107,7 +107,7 @@ pub mod pdf_protocol;
 pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
-pub mod providers;
+pub use dstu_llm::providers;
 pub mod qbank_authoring_service;
 pub mod qbank_document;
 pub mod qbank_generation;
@@ -130,7 +130,7 @@ pub mod question_export_service;
 pub mod question_import_service;
 pub use vfs::question_sync_service; // 题目集同步元数据服务（只依赖 vfs 表）
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
-pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
+pub use dstu_llm::reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub use dstu_platform::secret_prompt;
 pub mod secure_store;
@@ -159,7 +159,7 @@ pub use dstu_storage::unified_file_manager;
 #[allow(dead_code)]
 pub mod utils;
 pub mod vector_store;
-pub mod vendors;
+pub use dstu_llm::vendors;
 #[allow(dead_code, deprecated)]
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
@@ -209,6 +209,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_platform",
     "dstu_security",
     "dstu_storage",
+    "dstu_llm",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
@@ -778,6 +779,8 @@ pub fn run() {
             // 存储层模块持有各自的 AppHandle（不回引 app crate 的全局句柄）
             crate::unified_file_manager::set_app_handle(app_handle.clone());
             crate::llm_usage::set_app_handle(app_handle.clone());
+            // LLM 服务层同样持有自己的句柄（OCR 调试事件 / debug 落盘目录）
+            crate::llm_manager::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle

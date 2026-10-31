@@ -63,7 +63,7 @@ struct ProtocolCap {
 }
 
 static LEVEL_REGISTRY: LazyLock<Vec<LevelProfile>> = LazyLock::new(|| {
-    let raw = include_str!("../../../scripts/reasoning-level-registry.json");
+    let raw = include_str!("../../../../../scripts/reasoning-level-registry.json");
     serde_json::from_str::<RegistryDocument>(raw)
         .map(|doc| doc.profiles)
         .unwrap_or_else(|err| {

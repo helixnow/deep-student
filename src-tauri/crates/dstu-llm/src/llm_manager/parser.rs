@@ -350,7 +350,7 @@ pub(crate) fn fix_common_json_errors(json_str: &str) -> String {
 }
 
 /// 增强的JSON清理函数
-pub(crate) fn enhanced_clean_json_response(content: &str) -> String {
+pub fn enhanced_clean_json_response(content: &str) -> String {
     let mut cleaned = content.trim().to_string();
 
     // 移除markdown代码块及常见围栏（使用预编译的静态正则）

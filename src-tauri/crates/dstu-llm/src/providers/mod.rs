@@ -108,7 +108,7 @@ impl OpenAIAdapter {
 /// `http://localhost:11434`，而 Ollama 的 OpenAI 兼容端点在 `/v1` 下——对话请求
 /// `/chat/completions` 与模型列表 `/models` 都会 404。只处理「端口 11434 且路径为空」，
 /// 其它地址原样返回。
-pub(crate) fn normalize_ollama_root_base_url(base_url: &str) -> std::borrow::Cow<'_, str> {
+pub fn normalize_ollama_root_base_url(base_url: &str) -> std::borrow::Cow<'_, str> {
     let trimmed = base_url.trim();
     let Ok(mut url) = url::Url::parse(trimmed) else {
         return std::borrow::Cow::Borrowed(base_url);
