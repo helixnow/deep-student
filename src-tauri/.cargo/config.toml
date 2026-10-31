@@ -30,6 +30,8 @@ lto = false
 
 [profile.dev.package."*"]
 opt-level = 0
+# 与 Cargo.toml 的 [profile.dev.package."*"] 保持一致：第三方依赖只保留行号级调试信息。
+debug = "line-tables-only"
 
 
 # Android NDK 配置请通过环境变量注入（见 scripts/build_android.sh）

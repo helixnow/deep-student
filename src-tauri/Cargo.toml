@@ -331,6 +331,13 @@ incremental = true     # 开启增量编译
 codegen-units = 256    # 最大化并行代码生成
 lto = false            # 调试/开发无需LTO
 
+# 第三方依赖只保留行号级调试信息：回溯和断点行号不受影响，但能大幅缩小
+# target 体积、PDB 和链接时间，并降低测试编译的内存峰值。workspace 内的
+# 代码（app 与 dstu-*）仍是完整调试信息。test profile 继承 dev。
+# 注意 src-tauri/.cargo/config.toml 里有同一份 [profile.dev]，两处需同步修改。
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
 # 移除所有 Cozo/Neo4j 测试二进制，仅保留主程序
 
 [features]
