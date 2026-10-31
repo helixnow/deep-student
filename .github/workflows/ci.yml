@@ -135,13 +135,16 @@ jobs:
         with:
           toolchain: '1.98.1'
           components: rustfmt
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
       - uses: ./.github/actions/setup-linux-rust
         with:
           cache-key: clippy
           components: clippy
+      # Members may only depend on lower layers; domain crates never on each other.
+      - name: Workspace crate layering
+        run: node scripts/check-crate-layers.mjs
       - name: Clippy (all targets, correctness deny)
-        run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D clippy::correctness
+        run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --workspace --all-targets -- -D clippy::correctness
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
@@ -215,7 +218,7 @@ jobs:
           tool: cargo-nextest@0.9.145
       - name: Build and archive all test binaries (including ignored provider tests)
         working-directory: src-tauri
-        run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst"
+        run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" --workspace
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: nextest-archive

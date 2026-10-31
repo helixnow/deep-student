@@ -182,6 +182,9 @@ function cargoRuntimePackageIds(metadata) {
   );
   if (!rootPackage) throw new Error('Could not locate the DeepStudent Cargo package.');
 
+  // Workspace members (the app and its dstu-* crates) are first-party code: walk
+  // through their runtime dependencies, but never list them as components.
+  const workspaceMembers = new Set(metadata.workspace_members);
   const nodes = new Map(metadata.resolve.nodes.map((node) => [node.id, node]));
   const included = new Set([rootPackage.id]);
   const queue = [rootPackage.id];
@@ -197,7 +200,7 @@ function cargoRuntimePackageIds(metadata) {
       }
     }
   }
-  included.delete(rootPackage.id);
+  for (const id of workspaceMembers) included.delete(id);
   return included;
 }
 
