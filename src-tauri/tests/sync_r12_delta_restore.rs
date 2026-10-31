@@ -865,6 +865,18 @@ fn collect_files_mentioning(root: &Path, needle: &str, out: &mut Vec<PathBuf>) {
     }
 }
 
+/// cloud_storage / data_governance::{backup,sync} 已拆到 dstu-sync：模块本体所在源码树
+/// （`crates/dstu-sync/src`）以外的全部生产源码——app 的 `src/` 与其他成员 crate——
+/// 都必须零引用（与拆分前“`src/` 除模块本体外零引用 + `crates/` 零引用”等价）。
+fn collect_outside_sync_crate(needle: &str, out: &mut Vec<PathBuf>) {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let sync_root = manifest_dir.join("crates").join("dstu-sync").join("src");
+    collect_files_mentioning(&manifest_dir.join("src"), needle, out);
+    let mut crate_files = Vec::new();
+    collect_files_mentioning(&manifest_dir.join("crates"), needle, &mut crate_files);
+    out.extend(crate_files.into_iter().filter(|p| !p.starts_with(&sync_root)));
+}
+
 fn relative_names(paths: &[PathBuf], src_root: &Path) -> Vec<String> {
     let mut names: Vec<String> = paths
         .iter()
@@ -882,7 +894,7 @@ fn relative_names(paths: &[PathBuf], src_root: &Path) -> Vec<String> {
 #[test]
 fn r12_source_lock_delta_restore_has_zero_production_wiring() {
     // 生产 Cloud backup/restore 仍是整 ZIP 单对象路径，零 backup-v2 恢复接线。
-    let sync_manager = include_str!("../src/cloud_storage/sync_manager.rs");
+    let sync_manager = include_str!("../crates/dstu-sync/src/cloud_storage/sync_manager.rs");
     assert!(
         sync_manager.contains(r#"format!("{}/{}.zip", BACKUPS_DIR, version_id)"#),
         "sync_manager.rs no longer builds the whole-ZIP remote key; \
@@ -898,9 +910,8 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
     assert!(!sync_manager.contains("backup-v2/objects"));
     assert!(!sync_manager.contains("backup-v2/snapshots"));
 
-    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
-    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
+    // 模块本体已拆到 dstu-sync：按相对路径锁定其源码树。
+    let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/dstu-sync/src");
 
     // 生产代码（排除模块自身与 mod.rs 声明行）零 delta_restore 引用。
     let mut referencing_files = Vec::new();
@@ -914,14 +925,14 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
         "delta_restore must have zero production callers"
     );
     let mut crate_referencing_files = Vec::new();
-    collect_files_mentioning(&crates_root, "delta_restore", &mut crate_referencing_files);
+    collect_outside_sync_crate("delta_restore", &mut crate_referencing_files);
     assert!(
         crate_referencing_files.is_empty(),
         "crates/ 下的生产代码不得引用 delta_restore: {crate_referencing_files:?}"
     );
 
     // cloud_storage/mod.rs 只允许声明行本身（无 pub use、无命令层导出）。
-    let cloud_mod = include_str!("../src/cloud_storage/mod.rs");
+    let cloud_mod = include_str!("../crates/dstu-sync/src/cloud_storage/mod.rs");
     let wiring = cloud_mod
         .lines()
         .filter(|line| line.contains("delta_restore"))
@@ -949,18 +960,14 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
          this suite being green does NOT mean incremental backup is implemented"
     );
     let mut crate_restore_referencers = Vec::new();
-    collect_files_mentioning(
-        &crates_root,
-        "restore_snapshot_to_staging",
-        &mut crate_restore_referencers,
-    );
+    collect_outside_sync_crate("restore_snapshot_to_staging", &mut crate_restore_referencers);
     assert!(
         crate_restore_referencers.is_empty(),
         "restore_snapshot_to_staging 在 crates/ 下不得有生产调用方: {crate_restore_referencers:?}"
     );
 
     // 模块本身：云端只读（除租约），零 A/B 槽 / 用户数据目录写入。
-    let module_src = include_str!("../src/cloud_storage/delta_restore.rs");
+    let module_src = include_str!("../crates/dstu-sync/src/cloud_storage/delta_restore.rs");
     assert!(
         module_src.contains("未接线"),
         "module docs must state it is unwired"
@@ -1015,7 +1022,8 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
 
     // include! 片段逐行钉死：只允许注释、空行与恰好这三组 re-export，
     // 防止片段本身沦为绕过各积木源码锁的生产接线通道。
-    let fragment = include_str!("../src/cloud_storage/delta_restore_upstream.rs.in");
+    let fragment =
+        include_str!("../crates/dstu-sync/src/cloud_storage/delta_restore_upstream.rs.in");
     let allowed_code_lines = [
         "pub(super) use crate::cloud_storage::backup_lease::acquire_backup_repo_lease as acquire_repo_lease;",
         "pub(super) use crate::cloud_storage::delta_upload::{",

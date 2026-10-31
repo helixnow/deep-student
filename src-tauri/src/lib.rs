@@ -21,7 +21,7 @@ pub mod apk_installer;
 pub use dstu_anki::apkg_exporter_service;
 pub use dstu_anki::apkg_importer_service;
 #[allow(dead_code)]
-pub mod backup_job_manager;
+pub use dstu_sync::backup_job_manager;
 pub use dstu_core::canonical_tools;
 pub use dstu_storage::batch_operations;
 pub mod cmd;
@@ -47,7 +47,7 @@ pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
 pub mod cloud_config_commands;
 #[allow(dead_code)]
-pub mod cloud_storage;
+pub use dstu_sync::cloud_storage;
 pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
 pub use dstu_vision::cross_page_merger;
@@ -122,6 +122,8 @@ pub use dstu_notes::notes_manager;
 pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[cfg(test)]
 mod notes_app_tests; // 依赖 app 组合根的笔记历史单测（notes_exporter 已拆到 dstu-notes）
+#[cfg(test)]
+mod sync_app_tests; // 依赖 app 组合根的同步字段合并单测（field_merge 已拆到 dstu-sync）
 pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub use dstu_llm::openai_codex;
@@ -257,6 +259,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_anki",
     "dstu_media",
     "dstu_qbank",
+    "dstu_sync",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

@@ -11,7 +11,7 @@ fn main() {
  s.push_str("}\n");
  s+=&module("utf8_stream",pick("src-tauri/crates/dstu-util/src/utf8_stream.rs","src-tauri/src/llm_manager/utf8_stream.rs"));
  s.push_str("pub mod llm_manager {pub use crate::utf8_stream;}\n");
- for (name,path) in [("mastery",pick("src-tauri/crates/dstu-learning/src/mastery/bias.rs","src-tauri/src/mastery/bias.rs")),("sse",pick("src-tauri/crates/dstu-util/src/utils/sse_buffer.rs","src-tauri/src/utils/sse_buffer.rs")),("classification","src-tauri/src/data_governance/sync/classification.rs"),("field_merge","src-tauri/src/data_governance/sync/field_merge.rs"),("asset_filenames","src-tauri/src/data_governance/sync/asset_filenames.rs")] {s+=&module(name,path);}
+ for (name,path) in [("mastery",pick("src-tauri/crates/dstu-learning/src/mastery/bias.rs","src-tauri/src/mastery/bias.rs")),("sse",pick("src-tauri/crates/dstu-util/src/utils/sse_buffer.rs","src-tauri/src/utils/sse_buffer.rs")),("classification",pick("src-tauri/crates/dstu-sync/src/data_governance/sync/classification.rs","src-tauri/src/data_governance/sync/classification.rs")),("field_merge",pick("src-tauri/crates/dstu-sync/src/data_governance/sync/field_merge.rs","src-tauri/src/data_governance/sync/field_merge.rs")),("asset_filenames",pick("src-tauri/crates/dstu-sync/src/data_governance/sync/asset_filenames.rs","src-tauri/src/data_governance/sync/asset_filenames.rs"))] {s+=&module(name,path);}
  fs::write(PathBuf::from(env::var("OUT_DIR").unwrap()).join("modules.rs"),s).unwrap();
  println!("cargo:rerun-if-env-changed=DS_SOURCE_ROOT");
  println!("cargo:rerun-if-changed={}",root.join("src-tauri/src").display());

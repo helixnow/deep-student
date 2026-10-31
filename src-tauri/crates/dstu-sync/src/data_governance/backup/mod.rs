@@ -2534,7 +2534,7 @@ impl BackupManager {
                 .any(|component| component == LANCE_COMPONENT)
     }
 
-    pub(crate) fn prepare_vfs_index_restore(
+    pub fn prepare_vfs_index_restore(
         manifest: &BackupManifest,
         target_dir: &Path,
         restore_assets: bool,
@@ -2553,7 +2553,7 @@ impl BackupManager {
         }
     }
 
-    pub(crate) fn finalize_vfs_index_restore(
+    pub fn finalize_vfs_index_restore(
         manifest: &BackupManifest,
         target_dir: &Path,
         restore_assets: bool,
@@ -2622,7 +2622,7 @@ impl BackupManager {
     /// 在指定目录下解析数据库文件路径（不依赖 active slot）
     ///
     /// 用于恢复到非活跃插槽等场景。
-    pub(crate) fn resolve_database_path_in_dir(base_dir: &Path, id: &DatabaseId) -> PathBuf {
+    pub fn resolve_database_path_in_dir(base_dir: &Path, id: &DatabaseId) -> PathBuf {
         match id {
             // VFS 数据库在 databases 子目录
             DatabaseId::Vfs => base_dir.join("databases").join("vfs.db"),
@@ -3581,7 +3581,7 @@ impl BackupManager {
     ///
     /// `cutover` 为 `(backup_id, target_slot)`，写入持久化 journal；进程在发布
     /// 中途崩溃时，启动侧据其与 restore cutover lease 的匹配结果前滚或回滚。
-    pub(crate) fn restore_crypto_keys_from_manifest_transactional<F>(
+    pub fn restore_crypto_keys_from_manifest_transactional<F>(
         &self,
         manifest: &BackupManifest,
         backup_subdir: &Path,
@@ -4819,7 +4819,7 @@ impl BackupManager {
     ///
     /// - `BackupError::VersionIncompatible` - 版本不兼容，附带可操作的错误提示
     /// - `BackupError::IncrementalRestoreNotSupported` - 增量备份不支持直接恢复
-    pub(crate) fn check_manifest_compatibility(
+    pub fn check_manifest_compatibility(
         &self,
         manifest: &BackupManifest,
     ) -> Result<(), BackupError> {
@@ -5135,7 +5135,7 @@ impl BackupManager {
     }
 
     /// 恢复单个数据库到指定目标目录（用于恢复到非活跃插槽）
-    pub(crate) fn restore_single_database_to_dir(
+    pub fn restore_single_database_to_dir(
         &self,
         db_id: &DatabaseId,
         backup_dir: &Path,
@@ -5609,7 +5609,7 @@ impl BackupManager {
 
     /// Restore exactly the workspace snapshots declared by the manifest.
     /// Unlisted files in the package are never made visible in the candidate slot.
-    pub(crate) fn restore_workspace_manifest_files_to_dir(
+    pub fn restore_workspace_manifest_files_to_dir(
         &self,
         manifest: &BackupManifest,
         backup_dir: &Path,
@@ -5643,7 +5643,7 @@ impl BackupManager {
     }
 
     /// 恢复 manifest.files 中的非数据库文件（如 lance/ 可重建索引文件）
-    pub(crate) fn restore_non_database_manifest_files(
+    pub fn restore_non_database_manifest_files(
         &self,
         manifest: &BackupManifest,
         backup_dir: &Path,
@@ -6342,7 +6342,7 @@ impl BackupManager {
 }
 
 /// 计算文件的 SHA256 校验和
-pub(crate) fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> {
+pub fn calculate_file_sha256(path: &Path) -> Result<String, BackupError> {
     let file = File::open(path)?;
     let mut reader = BufReader::new(file);
     let mut hasher = Sha256::new();
@@ -7138,7 +7138,7 @@ mod tests {
         conn.execute(
             "INSERT INTO refinery_schema_history (version, name, applied_on, checksum)
              VALUES (?1, 'resources_type_check_rebuild', '2026-05-28T00:00:00Z', 'test')",
-            [crate::chat_v2::database::CURRENT_SCHEMA_VERSION as i64],
+            [crate::data_governance::migration::chat_v2::CHAT_V2_SCHEMA_VERSION as i64],
         )
         .unwrap();
         drop(conn);
@@ -7146,7 +7146,7 @@ mod tests {
         let manifest = manager.backup_full().unwrap();
         assert_eq!(
             manifest.schema_versions.get("chat_v2"),
-            Some(&crate::chat_v2::database::CURRENT_SCHEMA_VERSION)
+            Some(&crate::data_governance::migration::chat_v2::CHAT_V2_SCHEMA_VERSION)
         );
         manager
             .check_manifest_compatibility(&manifest)

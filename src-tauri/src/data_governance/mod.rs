@@ -32,7 +32,9 @@
 //! - [数据治理系统重构方案](../../../docs/数据治理系统重构方案.md)
 //! - [Refinery 文档](https://docs.rs/refinery/)
 
-pub mod backup;
+// 备份 / 同步半区（原 data_governance::{backup,restore_codes,sync}）已拆到 dstu-sync，
+// 这里按原路径重导出，`crate::data_governance::xxx` 继续可用。
+pub use dstu_sync::data_governance::backup;
 pub mod commands;
 pub mod commands_asset;
 pub mod commands_backup;
@@ -43,8 +45,8 @@ pub mod commands_zip;
 pub mod dto;
 pub mod init;
 pub mod plugin;
-pub mod restore_codes;
-pub mod sync;
+pub use dstu_sync::data_governance::restore_codes;
+pub use dstu_sync::data_governance::sync;
 
 // 存储层模块（原 data_governance::{audit,file_deletion_queue,migration,schema_registry}）
 // 已下沉到 dstu-storage，这里按原路径重导出，`crate::data_governance::xxx` 继续可用。

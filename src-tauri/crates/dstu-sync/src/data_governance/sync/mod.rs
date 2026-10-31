@@ -612,7 +612,7 @@ pub struct AssetSyncOutcome {
     pub download_failures: Vec<String>,
 }
 
-pub(crate) type FileTransferProgressCallback =
+pub type FileTransferProgressCallback =
     std::sync::Arc<dyn Fn(String, u64, u64) + Send + Sync>;
 
 impl AssetSyncOutcome {
@@ -4655,7 +4655,7 @@ impl SyncManager {
         )
     }
 
-    pub(crate) fn compare_lww_timestamps(
+    pub fn compare_lww_timestamps(
         local_timestamp: &str,
         local_device_id: &str,
         local_content_tiebreaker: &str,
@@ -4670,7 +4670,7 @@ impl SyncManager {
         local_key.cmp(&cloud_key)
     }
 
-    pub(crate) fn timestamp_value_to_lww_string(value: &serde_json::Value) -> Option<String> {
+    pub fn timestamp_value_to_lww_string(value: &serde_json::Value) -> Option<String> {
         match value {
             serde_json::Value::String(s) => Some(s.clone()),
             serde_json::Value::Number(n) => Some(n.to_string()),
@@ -4686,7 +4686,7 @@ impl SyncManager {
     /// 结论，永不收敛。修复：仅当双方写入者都可知时才用真实 device_id；
     /// 任一侧未知则双方退化为相同的中性值，让平局交给内容 tiebreaker
     /// （内容随数据传播，所有设备可见一致）决定，保证全设备同判。
-    pub(crate) fn lww_device_pair<'a>(
+    pub fn lww_device_pair<'a>(
         local_data: &'a serde_json::Value,
         cloud_data: Option<&'a serde_json::Value>,
         cloud_device_hint: Option<&'a str>,
@@ -5819,7 +5819,7 @@ impl SyncManager {
     /// Resolve IDs embedded in persisted payloads that cannot use SQL foreign-key
     /// remapping (for example, attachment IDs in an image-answer envelope).
     /// This lookup does not create sync tables or load unrelated alias records.
-    pub(crate) fn resolve_persisted_id_alias(
+    pub fn resolve_persisted_id_alias(
         conn: &Connection,
         table_name: &str,
         record_id: &str,
@@ -9010,7 +9010,7 @@ impl SyncManager {
         }
     }
 
-    pub(crate) fn records_semantically_equal_for_sync(
+    pub fn records_semantically_equal_for_sync(
         local: &serde_json::Value,
         cloud: &serde_json::Value,
     ) -> bool {

@@ -88,7 +88,7 @@ pub(crate) fn is_portable_excluded_relative_path(relative_path: &Path) -> bool {
 /// Produce a manifest for an unencrypted portable archive without mutating the
 /// local backup. Local encryption material and the auxiliary audit database are
 /// intentionally excluded from portable ZIP files.
-pub(crate) fn portable_manifest_bytes(backup_dir: &Path) -> Result<Vec<u8>, ZipExportError> {
+pub fn portable_manifest_bytes(backup_dir: &Path) -> Result<Vec<u8>, ZipExportError> {
     portable_manifest_bytes_with(
         backup_dir,
         BackupKeyPolicy::ExcludedPortable,

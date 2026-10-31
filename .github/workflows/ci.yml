@@ -168,6 +168,7 @@ jobs:
               - 'src-tauri/src/cloud_storage/**'
               - 'src-tauri/src/data_governance/**'
               - 'src-tauri/crates/dstu-storage/src/**'
+              - 'src-tauri/crates/dstu-sync/src/**'
               - 'src-tauri/crates/dstu-security/src/crypto/**'
               - 'src-tauri/tests/sync_provider_contract_tests.rs'
               - 'src-tauri/Cargo.toml'

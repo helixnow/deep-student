@@ -49,6 +49,7 @@ members = [
     "crates/dstu-vision",
     "crates/dstu-research",
     "crates/dstu-anki",
+    "crates/dstu-sync",
 ]
 # vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
 exclude = ["vendor"]
@@ -83,6 +84,7 @@ dstu-vfs = { path = "crates/dstu-vfs", default-features = false }
 dstu-vision = { path = "crates/dstu-vision", default-features = false }
 dstu-research = { path = "crates/dstu-research", default-features = false }
 dstu-anki = { path = "crates/dstu-anki", default-features = false }
+dstu-sync = { path = "crates/dstu-sync", default-features = false }
 
 # 公共依赖
 tauri-plugin-opener = "2.5"
@@ -323,6 +325,7 @@ dstu-vfs = { workspace = true }
 dstu-vision = { workspace = true }
 dstu-research = { workspace = true }
 dstu-anki = { workspace = true }
+dstu-sync = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-http = { workspace = true }
@@ -608,9 +611,9 @@ old_migration_impl = []
 # 内置免费模型（发行版使用）。开源版本可禁用
 builtin_free_models = ["dstu-llm/builtin_free_models"]
 # 云存储 S3 兼容支持（可选，避免默认增加编译时间）
-cloud_storage_s3 = ["aws-sdk-s3", "aws-config"]
+cloud_storage_s3 = ["aws-sdk-s3", "aws-config", "dstu-sync/cloud_storage_s3"]
 # 数据治理模块（迁移、审计、同步等）
-data_governance = ["refinery", "dstu-storage/data_governance", "dstu-browser/data_governance"]
+data_governance = ["refinery", "dstu-storage/data_governance", "dstu-browser/data_governance", "dstu-sync/data_governance"]
 # DevTools：仅在开发构建中启用，release 构建不应包含
 # 使用方式：cargo tauri dev --features devtools
 devtools = ["tauri/devtools"]

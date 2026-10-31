@@ -92,7 +92,7 @@ pub fn clear_cancel_token() {
 }
 
 /// 当前是否已请求取消（未注册令牌 = 不可取消场景，恒 false）
-pub(crate) fn is_sync_cancelled() -> bool {
+pub fn is_sync_cancelled() -> bool {
     cancel_token_slot()
         .read()
         .ok()
