@@ -20,8 +20,8 @@ use std::sync::{Arc, LazyLock};
 
 use dstu_agent_api::{
     ExecutionContext as ApiExecutionContext, HeadlessPolicy, ProviderId, PtcPolicy,
-    ToolDescriptor as ApiToolDescriptor, ToolExecutor as ApiToolExecutor, ToolFuture,
-    ToolProvider, ToolRegistry, ToolRegistryBuilder, ToolRegistryError, ToolTimeout,
+    ToolDescriptor as ApiToolDescriptor, ToolExecutor as ApiToolExecutor, ToolFuture, ToolProvider,
+    ToolRegistry, ToolRegistryBuilder, ToolRegistryError, ToolTimeout,
 };
 use serde_json::Value;
 
@@ -281,7 +281,10 @@ mod tests {
 
         // 显式声明的名字/别名都归 legacy provider 所有，且带 descriptor。
         for descriptor in BUILTIN_DESCRIPTORS {
-            for name in [descriptor.name.to_string(), format!("builtin-{}", descriptor.name)] {
+            for name in [
+                descriptor.name.to_string(),
+                format!("builtin-{}", descriptor.name),
+            ] {
                 assert_eq!(new.owner_of(&name), Some(LEGACY_PROVIDER_ID), "{name}");
                 assert_eq!(
                     new.descriptor(&name).map(|projected| projected.name),
@@ -303,8 +306,11 @@ mod tests {
     fn roster_order_matches_old_registry_and_expected_roster() {
         let (_temp, old) = production_registry();
         let new = build_tool_registry(&old).expect("legacy provider must build");
-        let new_names: Vec<&'static str> =
-            new.executors().iter().map(|executor| executor.name()).collect();
+        let new_names: Vec<&'static str> = new
+            .executors()
+            .iter()
+            .map(|executor| executor.name())
+            .collect();
         assert_eq!(new_names, old.executor_names());
         assert_eq!(new_names, EXPECTED_ROSTER);
     }
@@ -338,7 +344,11 @@ mod tests {
         let new = build_tool_registry(&old).expect("legacy provider must build");
         for descriptor in BUILTIN_DESCRIPTORS {
             let projected = new.descriptor(descriptor.name).expect("descriptor");
-            assert_eq!(projected.sensitivity, descriptor.sensitivity, "{}", descriptor.name);
+            assert_eq!(
+                projected.sensitivity, descriptor.sensitivity,
+                "{}",
+                descriptor.name
+            );
             let executor = new.executor_for(descriptor.name).expect("executor");
             assert_eq!(
                 executor.sensitivity_level(descriptor.name),

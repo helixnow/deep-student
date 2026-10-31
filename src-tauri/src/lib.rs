@@ -106,14 +106,14 @@ pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
 pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
+pub use dstu_docs::pdfium_utils;
 #[allow(dead_code, deprecated)]
 pub use dstu_llm::multimodal;
-pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
 pub use dstu_notes::notes_exporter;
 pub use dstu_notes::notes_manager;
-pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
-// 依赖 app 组合根的笔记历史单测（notes_exporter 已拆到 dstu-notes）。
+pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker） // Pdfium 公共工具（库加载 + 文本提取）
+                                                                                               // 依赖 app 组合根的笔记历史单测（notes_exporter 已拆到 dstu-notes）。
 #[cfg(test)]
 mod notes_app_tests;
 pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
