@@ -156,7 +156,7 @@ pub(crate) fn drain_pool_until_idle(
 ///
 /// checkpoint 失败（包括 busy=1 未能完成合并）必须向上传播：
 /// 屏障建立在"WAL 已完整合并进主文件"的前提上，忽略失败会让备份读到缺数据的快照。
-pub(crate) fn checkpoint_truncate_strict(conn: &Connection) -> Result<(), String> {
+pub fn checkpoint_truncate_strict(conn: &Connection) -> Result<(), String> {
     let (busy, wal_pages, checkpointed): (i64, i64, i64) = conn
         .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
@@ -176,7 +176,7 @@ pub(crate) fn checkpoint_truncate_strict(conn: &Connection) -> Result<(), String
 /// 之前的实现换入一个可正常读写的 `:memory:` 池，绕过维护标志的调用方
 /// 会把数据写进内存库并在退出屏障时被静默丢弃（fail-open）。占位池的
 /// init 回调恒定返回错误，`get()` 只会得到显式错误，永远不会成功。
-pub(crate) fn fail_closed_placeholder_pool() -> Pool<SqliteConnectionManager> {
+pub fn fail_closed_placeholder_pool() -> Pool<SqliteConnectionManager> {
     let manager = SqliteConnectionManager::memory().with_init(|_| {
         Err(rusqlite::Error::SqliteFailure(
             rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_AUTH),

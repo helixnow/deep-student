@@ -434,7 +434,7 @@ describe('mutual exclusion with manual sync', () => {
     'utf-8',
   );
   const rustBackupCommonSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/backup_common.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-storage/src/backup_common.rs'),
     'utf-8',
   );
 

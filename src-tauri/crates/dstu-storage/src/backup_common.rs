@@ -353,7 +353,7 @@ const BACKUP_CRYPTO_SECRET_PATHS: [&str; 4] = ["crypto", ".secure", ".master_key
 /// 判断备份根目录下的相对路径是否属于不应进入未加密 ZIP 的密钥材料。
 ///
 /// 只匹配顶层条目及其后代，避免误伤资产目录中碰巧同名的普通文件。
-pub(crate) fn is_crypto_secret_backup_relative_path(relative_path: &Path) -> bool {
+pub fn is_crypto_secret_backup_relative_path(relative_path: &Path) -> bool {
     let Some(first_component) = relative_path.components().next() else {
         return false;
     };

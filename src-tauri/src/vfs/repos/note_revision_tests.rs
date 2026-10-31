@@ -246,6 +246,8 @@ fn edits_coalesce_without_mutation_and_budget_preserves_pins() {
 
 #[test]
 fn history_trash_and_shared_asset_references_guard_journal_deletion() {
+    // 删除 journal 的笔记资产引用检查由 extensions 注册（拆分后为回调解耦）。
+    crate::extensions::register_extensions();
     use crate::data_governance::file_deletion_queue::{
         finish_asset_deletion_with_conn, prepare_asset_deletion_with_conn,
     };

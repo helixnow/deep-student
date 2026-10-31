@@ -22,8 +22,8 @@ pub mod apkg_exporter_service;
 pub mod apkg_importer_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
-pub mod batch_operations;
 pub use dstu_core::canonical_tools;
+pub use dstu_storage::batch_operations;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
@@ -32,14 +32,14 @@ pub mod crash_logger;
 pub use dstu_security::crypto;
 pub use dstu_security::crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
 #[allow(dead_code)]
-pub mod database;
+pub use dstu_storage::database;
 pub mod debug_commands;
 pub use dstu_platform::debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
 pub use dstu_platform::debug_logger;
 
 pub use dstu_platform::anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
 pub use dstu_platform::background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
-pub mod backup_common;
+pub use dstu_storage::backup_common;
 pub mod backup_config;
 pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
 #[allow(dead_code)]
@@ -49,7 +49,7 @@ pub mod cloud_config_commands;
 #[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
-pub mod data_space;
+pub use dstu_storage::data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
 pub use dstu_docs::document_parser;
@@ -64,15 +64,15 @@ pub mod essay_grading;
 pub mod exam_sheet_service;
 pub mod extensions; // 扩展点注册：低层模块对上层能力的回调统一在此接线
 pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
-pub mod feature_flags;
+pub use dstu_storage::feature_flags;
 pub mod figure_extractor;
-pub mod file_manager;
+pub use dstu_storage::file_manager;
 pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
-pub mod injection_budget;
+pub use dstu_storage::injection_budget;
 pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 pub use dstu_core::json_validator;
 #[allow(dead_code)]
@@ -80,7 +80,7 @@ pub mod lance_vector_store;
 #[allow(dead_code)]
 pub mod llm_manager;
 pub mod llm_structurer;
-pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
+pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 #[cfg(feature = "mcp")]
 pub mod mcp;
@@ -136,9 +136,9 @@ pub use dstu_platform::secret_prompt;
 pub mod secure_store;
 pub use dstu_core::services;
 pub use dstu_core::spaced_repetition; // SM-2 间隔重复算法（下沉 dstu-core，纯函数）
-pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
-pub mod startup_cleanup;
 pub use dstu_platform::startup_gate;
+pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
+pub use dstu_storage::startup_cleanup;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
 pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
@@ -155,7 +155,7 @@ pub mod tools;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]
-pub mod unified_file_manager;
+pub use dstu_storage::unified_file_manager;
 #[allow(dead_code)]
 pub mod utils;
 pub mod vector_store;
@@ -208,6 +208,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_util",
     "dstu_platform",
     "dstu_security",
+    "dstu_storage",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

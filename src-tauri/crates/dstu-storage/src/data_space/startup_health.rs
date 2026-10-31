@@ -70,7 +70,7 @@ impl StartupComponentHealth {
             .collect()
     }
 
-    pub(crate) fn mark_degraded(&mut self, component: &str, reason: impl Into<String>) {
+    pub fn mark_degraded(&mut self, component: &str, reason: impl Into<String>) {
         self.set(
             component,
             StartupComponentStatus::Degraded,
@@ -79,7 +79,7 @@ impl StartupComponentHealth {
         );
     }
 
-    pub(crate) fn mark_blocked(&mut self, component: &str, reason: impl Into<String>) {
+    pub fn mark_blocked(&mut self, component: &str, reason: impl Into<String>) {
         self.set(
             component,
             StartupComponentStatus::Blocked,
@@ -88,7 +88,7 @@ impl StartupComponentHealth {
         );
     }
 
-    pub(crate) fn mark_dependency_blocked(
+    pub fn mark_dependency_blocked(
         &mut self,
         component: &str,
         dependency: &str,
@@ -102,7 +102,7 @@ impl StartupComponentHealth {
         );
     }
 
-    pub(crate) fn apply_database_dependency_closure(&mut self) {
+    pub fn apply_database_dependency_closure(&mut self) {
         if !self.is_blocked("vfs") {
             return;
         }

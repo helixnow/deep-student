@@ -923,6 +923,8 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
     assert!(!sync_manager.contains("backup-v2/gc"));
 
     let src_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    // 搬家后的成员 crate 同样在锁范围内（src/ 之外还有 crates/*/src）。
+    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
 
     // 生产代码（排除模块自身与 mod.rs 声明行）零 delta_gc 引用。
     let mut referencing_files = Vec::new();
@@ -934,6 +936,12 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
             "cloud_storage/mod.rs".to_string(),
         ],
         "delta_gc must have zero production callers"
+    );
+    let mut crate_referencing_files = Vec::new();
+    collect_files_mentioning(&crates_root, "delta_gc", &mut crate_referencing_files);
+    assert!(
+        crate_referencing_files.is_empty(),
+        "crates/ 下的生产代码不得引用 delta_gc: {crate_referencing_files:?}"
     );
 
     // cloud_storage/mod.rs 只允许声明行本身（无 pub use、无命令层导出）。
@@ -960,6 +968,12 @@ fn r12_source_lock_delta_gc_has_zero_production_wiring() {
             vec!["cloud_storage/delta_gc.rs".to_string()],
             "{entry_point} must have zero production callers; this suite being \
              green does NOT mean incremental backup / GC is implemented"
+        );
+        let mut crate_referencers = Vec::new();
+        collect_files_mentioning(&crates_root, entry_point, &mut crate_referencers);
+        assert!(
+            crate_referencers.is_empty(),
+            "{entry_point} 在 crates/ 下不得有生产调用方: {crate_referencers:?}"
         );
     }
 

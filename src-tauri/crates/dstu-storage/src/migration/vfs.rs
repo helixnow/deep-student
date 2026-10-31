@@ -56,7 +56,7 @@ use super::definitions::{MigrationDef, MigrationSet};
 pub const V20260130_INIT: MigrationDef = MigrationDef::new(
     20260130,
     "init",
-    include_str!("../../../migrations/vfs/V20260130__init.sql"),
+    include_str!("../../../../migrations/vfs/V20260130__init.sql"),
 )
 .with_expected_tables(VFS_V001_TABLES)
 .with_expected_indexes(VFS_V001_KEY_INDEXES)
@@ -71,7 +71,7 @@ pub const V20260130_INIT: MigrationDef = MigrationDef::new(
 pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
     20260131,
     "add_change_log",
-    include_str!("../../../migrations/vfs/V20260131__add_change_log.sql"),
+    include_str!("../../../../migrations/vfs/V20260131__add_change_log.sql"),
 )
 .with_expected_tables(&["__change_log"])
 .idempotent();
@@ -85,7 +85,7 @@ pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
 pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
     20260201,
     "add_sync_fields",
-    include_str!("../../../migrations/vfs/V20260201__add_sync_fields.sql"),
+    include_str!("../../../../migrations/vfs/V20260201__add_sync_fields.sql"),
 )
 .with_expected_indexes(VFS_V20260201_SYNC_INDEXES)
 .idempotent();
@@ -230,7 +230,7 @@ const VFS_V001_KEY_INDEXES: &[&str] = &[
 pub const V20260202_ADD_SEGMENTS_FK: MigrationDef = MigrationDef::new(
     20260202,
     "add_segments_fk",
-    include_str!("../../../migrations/vfs/V20260202__add_segments_fk.sql"),
+    include_str!("../../../../migrations/vfs/V20260202__add_segments_fk.sql"),
 )
 .idempotent();
 
@@ -241,7 +241,7 @@ pub const V20260202_ADD_SEGMENTS_FK: MigrationDef = MigrationDef::new(
 pub const V20260203_SCHEMA_REPAIR: MigrationDef = MigrationDef::new(
     20260203,
     "schema_repair",
-    include_str!("../../../migrations/vfs/V20260203__schema_repair.sql"),
+    include_str!("../../../../migrations/vfs/V20260203__schema_repair.sql"),
 )
 .idempotent();
 
@@ -249,21 +249,21 @@ pub const V20260203_SCHEMA_REPAIR: MigrationDef = MigrationDef::new(
 pub const V20260204_PDF_PROCESSING_STATUS: MigrationDef = MigrationDef::new(
     20260204,
     "add_pdf_processing_status",
-    include_str!("../../../migrations/vfs/V20260204__add_pdf_processing_status.sql"),
+    include_str!("../../../../migrations/vfs/V20260204__add_pdf_processing_status.sql"),
 );
 
 /// V20260205: 添加压缩 blob 引用字段
 pub const V20260205_ADD_COMPRESSED_BLOB_HASH: MigrationDef = MigrationDef::new(
     20260205,
     "add_compressed_blob_hash",
-    include_str!("../../../migrations/vfs/V20260205__add_compressed_blob_hash.sql"),
+    include_str!("../../../../migrations/vfs/V20260205__add_compressed_blob_hash.sql"),
 );
 
 /// V20260206: 修复缺失的索引
 pub const V20260206_REPAIR_INDEX_SEGMENTS_UNIT: MigrationDef = MigrationDef::new(
     20260206,
     "repair_vfs_index_segments_unit",
-    include_str!("../../../migrations/vfs/V20260206__repair_vfs_index_segments_unit.sql"),
+    include_str!("../../../../migrations/vfs/V20260206__repair_vfs_index_segments_unit.sql"),
 )
 .idempotent();
 
@@ -274,7 +274,7 @@ pub const V20260206_REPAIR_INDEX_SEGMENTS_UNIT: MigrationDef = MigrationDef::new
 pub const V20260207_UNIFY_DELETED_AT_TYPE: MigrationDef = MigrationDef::new(
     20260207,
     "unify_deleted_at_type",
-    include_str!("../../../migrations/vfs/V20260207__unify_deleted_at_type.sql"),
+    include_str!("../../../../migrations/vfs/V20260207__unify_deleted_at_type.sql"),
 );
 
 /// V20260208: 为 questions.last_attempt_at 添加日期表达式索引
@@ -284,7 +284,7 @@ pub const V20260207_UNIFY_DELETED_AT_TYPE: MigrationDef = MigrationDef::new(
 pub const V20260208_ADD_QUESTIONS_LAST_ATTEMPT_DATE_INDEX: MigrationDef = MigrationDef::new(
     20260208,
     "add_questions_last_attempt_date_index",
-    include_str!("../../../migrations/vfs/V20260208__add_questions_last_attempt_date_index.sql"),
+    include_str!("../../../../migrations/vfs/V20260208__add_questions_last_attempt_date_index.sql"),
 )
 .with_expected_indexes(&[
     "idx_questions_last_attempt_date",
@@ -299,7 +299,7 @@ pub const V20260208_ADD_QUESTIONS_LAST_ATTEMPT_DATE_INDEX: MigrationDef = Migrat
 pub const V20260209_ADD_QUESTIONS_IMAGES: MigrationDef = MigrationDef::new(
     20260209,
     "add_questions_images",
-    include_str!("../../../migrations/vfs/V20260209__add_questions_images.sql"),
+    include_str!("../../../../migrations/vfs/V20260209__add_questions_images.sql"),
 );
 
 /// V20260210: 新增作答历史表和 AI 评判缓存
@@ -309,7 +309,7 @@ pub const V20260209_ADD_QUESTIONS_IMAGES: MigrationDef = MigrationDef::new(
 pub const V20260210_ADD_ANSWER_SUBMISSIONS: MigrationDef = MigrationDef::new(
     20260210,
     "add_answer_submissions",
-    include_str!("../../../migrations/vfs/V20260210__add_answer_submissions.sql"),
+    include_str!("../../../../migrations/vfs/V20260210__add_answer_submissions.sql"),
 )
 .with_expected_tables(&["answer_submissions"])
 .with_expected_indexes(&["idx_submissions_question"]);
@@ -318,7 +318,7 @@ pub const V20260210_ADD_ANSWER_SUBMISSIONS: MigrationDef = MigrationDef::new(
 pub const V20260211_FIX_CHANGE_LOG_RECORD_ID: MigrationDef = MigrationDef::new(
     20260211,
     "fix_change_log_record_id",
-    include_str!("../../../migrations/vfs/V20260211__fix_change_log_record_id.sql"),
+    include_str!("../../../../migrations/vfs/V20260211__fix_change_log_record_id.sql"),
 )
 .idempotent();
 
@@ -326,7 +326,7 @@ pub const V20260211_FIX_CHANGE_LOG_RECORD_ID: MigrationDef = MigrationDef::new(
 pub const V20260212_ADD_MINDMAP_VERSIONS: MigrationDef = MigrationDef::new(
     20260212,
     "add_mindmap_versions",
-    include_str!("../../../migrations/vfs/V20260212__add_mindmap_versions.sql"),
+    include_str!("../../../../migrations/vfs/V20260212__add_mindmap_versions.sql"),
 )
 .with_expected_tables(&["mindmap_versions"])
 .with_expected_indexes(&[
@@ -340,7 +340,7 @@ pub const V20260212_ADD_MINDMAP_VERSIONS: MigrationDef = MigrationDef::new(
 pub const V20260213_ADD_INDEX_STATUS_PERF_INDEXES: MigrationDef = MigrationDef::new(
     20260213,
     "add_index_status_perf_indexes",
-    include_str!("../../../migrations/vfs/V20260213__add_index_status_perf_indexes.sql"),
+    include_str!("../../../../migrations/vfs/V20260213__add_index_status_perf_indexes.sql"),
 )
 .with_expected_indexes(&["idx_resources_source_id"])
 .idempotent();
@@ -349,7 +349,7 @@ pub const V20260213_ADD_INDEX_STATUS_PERF_INDEXES: MigrationDef = MigrationDef::
 pub const V20260214_DROP_NOTES_VERSIONS: MigrationDef = MigrationDef::new(
     20260214,
     "drop_notes_versions",
-    include_str!("../../../migrations/vfs/V20260214__drop_notes_versions.sql"),
+    include_str!("../../../../migrations/vfs/V20260214__drop_notes_versions.sql"),
 );
 
 /// V20260215: 题目集导入断点续导支持
@@ -359,7 +359,7 @@ pub const V20260214_DROP_NOTES_VERSIONS: MigrationDef = MigrationDef::new(
 pub const V20260215_ADD_IMPORT_CHECKPOINT: MigrationDef = MigrationDef::new(
     20260215,
     "add_import_checkpoint",
-    include_str!("../../../migrations/vfs/V20260215__add_import_checkpoint.sql"),
+    include_str!("../../../../migrations/vfs/V20260215__add_import_checkpoint.sql"),
 )
 .idempotent();
 
@@ -367,7 +367,7 @@ pub const V20260215_ADD_IMPORT_CHECKPOINT: MigrationDef = MigrationDef::new(
 pub const V20260227_ADD_MEMORY_AUDIT_LOG: MigrationDef = MigrationDef::new(
     20260227,
     "add_memory_audit_log",
-    include_str!("../../../migrations/vfs/V20260227__add_memory_audit_log.sql"),
+    include_str!("../../../../migrations/vfs/V20260227__add_memory_audit_log.sql"),
 )
 .with_expected_tables(&["memory_audit_log"])
 .with_expected_indexes(&[
@@ -385,7 +385,7 @@ pub const V20260227_ADD_MEMORY_AUDIT_LOG: MigrationDef = MigrationDef::new(
 pub const V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS: MigrationDef = MigrationDef::new(
     20260302,
     "normalize_folder_items_timestamps",
-    include_str!("../../../migrations/vfs/V20260302__normalize_folder_items_timestamps.sql"),
+    include_str!("../../../../migrations/vfs/V20260302__normalize_folder_items_timestamps.sql"),
 )
 .idempotent();
 
@@ -393,7 +393,7 @@ pub const V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS: MigrationDef = MigrationD
 pub const V20260303_ADD_MEMORY_WRITE_IDEMPOTENCY: MigrationDef = MigrationDef::new(
     20260303,
     "add_memory_write_idempotency",
-    include_str!("../../../migrations/vfs/V20260303__add_memory_write_idempotency.sql"),
+    include_str!("../../../../migrations/vfs/V20260303__add_memory_write_idempotency.sql"),
 )
 .with_expected_tables(&["memory_write_idempotency"])
 .with_expected_indexes(&["idx_memory_write_idempotency_created_at"])
@@ -404,7 +404,7 @@ pub const V20260304_HARDEN_MEMORY_FOLDER_ITEMS_AND_AUDIT_INDEXES: MigrationDef =
     20260304,
     "harden_memory_folder_items_and_audit_indexes",
     include_str!(
-        "../../../migrations/vfs/V20260304__harden_memory_folder_items_and_audit_indexes.sql"
+        "../../../../migrations/vfs/V20260304__harden_memory_folder_items_and_audit_indexes.sql"
     ),
 )
 .with_expected_indexes(&[
@@ -420,7 +420,7 @@ pub const V20260304_HARDEN_MEMORY_FOLDER_ITEMS_AND_AUDIT_INDEXES: MigrationDef =
 pub const V20260305_ADD_ANSWER_SUBMISSION_IDEMPOTENCY: MigrationDef = MigrationDef::new(
     20260305,
     "add_answer_submission_idempotency",
-    include_str!("../../../migrations/vfs/V20260305__add_answer_submission_idempotency.sql"),
+    include_str!("../../../../migrations/vfs/V20260305__add_answer_submission_idempotency.sql"),
 )
 .with_expected_columns(&[("answer_submissions", "client_request_id")])
 .with_expected_indexes(&["idx_submissions_question_request_id"]);
@@ -429,7 +429,7 @@ pub const V20260305_ADD_ANSWER_SUBMISSION_IDEMPOTENCY: MigrationDef = MigrationD
 pub const V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS: MigrationDef = MigrationDef::new(
     20260306,
     "canonicalize_folder_item_mounts",
-    include_str!("../../../migrations/vfs/V20260306__canonicalize_folder_item_mounts.sql"),
+    include_str!("../../../../migrations/vfs/V20260306__canonicalize_folder_item_mounts.sql"),
 )
 .with_expected_indexes(&["idx_folder_items_item_active_unique"])
 .idempotent();
@@ -438,7 +438,7 @@ pub const V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS: MigrationDef = MigrationDef
 pub const V20260308_ADD_TODO_TABLES: MigrationDef = MigrationDef::new(
     20260308,
     "add_todo_tables",
-    include_str!("../../../migrations/vfs/V20260308__add_todo_tables.sql"),
+    include_str!("../../../../migrations/vfs/V20260308__add_todo_tables.sql"),
 )
 .with_expected_tables(&["todo_lists", "todo_items"])
 .with_expected_indexes(&[
@@ -461,7 +461,7 @@ pub const V20260308_ADD_TODO_TABLES: MigrationDef = MigrationDef::new(
 pub const V20260309_DECOUPLE_TODO_FROM_VFS: MigrationDef = MigrationDef::new(
     20260309,
     "decouple_todo_from_vfs",
-    include_str!("../../../migrations/vfs/V20260309__decouple_todo_from_vfs.sql"),
+    include_str!("../../../../migrations/vfs/V20260309__decouple_todo_from_vfs.sql"),
 )
 .with_expected_columns(&[
     ("todo_lists", "id"),
@@ -473,7 +473,7 @@ pub const V20260309_DECOUPLE_TODO_FROM_VFS: MigrationDef = MigrationDef::new(
 pub const V20260310_ADD_POMODORO: MigrationDef = MigrationDef::new(
     20260310,
     "add_pomodoro",
-    include_str!("../../../migrations/vfs/V20260310__add_pomodoro.sql"),
+    include_str!("../../../../migrations/vfs/V20260310__add_pomodoro.sql"),
 )
 .with_expected_tables(&["pomodoro_records"])
 .with_expected_columns(&[
@@ -491,7 +491,7 @@ pub const V20260310_ADD_POMODORO: MigrationDef = MigrationDef::new(
 pub const V20260311_TODO_CONSTRAINTS: MigrationDef = MigrationDef::new(
     20260311,
     "todo_constraints",
-    include_str!("../../../migrations/vfs/V20260311__todo_constraints.sql"),
+    include_str!("../../../../migrations/vfs/V20260311__todo_constraints.sql"),
 )
 .idempotent();
 
@@ -499,7 +499,7 @@ pub const V20260311_TODO_CONSTRAINTS: MigrationDef = MigrationDef::new(
 pub const V20260312_ADD_BLOB_DELETION_QUEUE: MigrationDef = MigrationDef::new(
     20260312,
     "add_blob_deletion_queue",
-    include_str!("../../../migrations/vfs/V20260312__add_blob_deletion_queue.sql"),
+    include_str!("../../../../migrations/vfs/V20260312__add_blob_deletion_queue.sql"),
 )
 .with_expected_tables(&["__blob_deletion_queue"])
 .with_expected_indexes(&["idx__blob_deletion_queue_retry"])
@@ -509,14 +509,14 @@ pub const V20260312_ADD_BLOB_DELETION_QUEUE: MigrationDef = MigrationDef::new(
 pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
     20260523,
     "add_missing_sync_coverage",
-    include_str!("../../../migrations/vfs/V20260523__add_missing_sync_coverage.sql"),
+    include_str!("../../../../migrations/vfs/V20260523__add_missing_sync_coverage.sql"),
 );
 
 /// V20260524: 为 __change_log 增加字段增量元数据
 pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
     20260524,
     "add_change_log_field_deltas",
-    include_str!("../../../migrations/vfs/V20260524__add_change_log_field_deltas.sql"),
+    include_str!("../../../../migrations/vfs/V20260524__add_change_log_field_deltas.sql"),
 );
 
 /// V20260525: 修复旧版 questions 变更日志中的 record_id
@@ -524,7 +524,7 @@ pub const V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS: MigrationDef 
     20260525,
     "repair_legacy_questions_change_log_record_ids",
     include_str!(
-        "../../../migrations/vfs/V20260525__repair_legacy_questions_change_log_record_ids.sql"
+        "../../../../migrations/vfs/V20260525__repair_legacy_questions_change_log_record_ids.sql"
     ),
 );
 
@@ -532,14 +532,14 @@ pub const V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS: MigrationDef 
 pub const V20260526_ADD_BLOB_METADATA_SYNC: MigrationDef = MigrationDef::new(
     20260526,
     "add_blob_metadata_sync",
-    include_str!("../../../migrations/vfs/V20260526__add_blob_metadata_sync.sql"),
+    include_str!("../../../../migrations/vfs/V20260526__add_blob_metadata_sync.sql"),
 );
 
 /// V20260527: 添加本地资产删除队列表
 pub const V20260527_ADD_ASSET_DELETION_QUEUE: MigrationDef = MigrationDef::new(
     20260527,
     "add_asset_deletion_queue",
-    include_str!("../../../migrations/vfs/V20260527__add_asset_deletion_queue.sql"),
+    include_str!("../../../../migrations/vfs/V20260527__add_asset_deletion_queue.sql"),
 )
 .with_expected_tables(&["__asset_deletion_queue"])
 .with_expected_indexes(&["idx__asset_deletion_queue_retry"])
@@ -549,7 +549,7 @@ pub const V20260527_ADD_ASSET_DELETION_QUEUE: MigrationDef = MigrationDef::new(
 pub const V20260610_FIX_QUESTIONS_FTS_TRIGGERS: MigrationDef = MigrationDef::new(
     20260610,
     "fix_questions_fts_triggers",
-    include_str!("../../../migrations/vfs/V20260610__fix_questions_fts_triggers.sql"),
+    include_str!("../../../../migrations/vfs/V20260610__fix_questions_fts_triggers.sql"),
 )
 .idempotent();
 
@@ -557,7 +557,7 @@ pub const V20260610_FIX_QUESTIONS_FTS_TRIGGERS: MigrationDef = MigrationDef::new
 pub const V20260611_ADD_LANCE_ORPHAN_QUEUE: MigrationDef = MigrationDef::new(
     20260611,
     "add_lance_orphan_queue",
-    include_str!("../../../migrations/vfs/V20260611__add_lance_orphan_queue.sql"),
+    include_str!("../../../../migrations/vfs/V20260611__add_lance_orphan_queue.sql"),
 )
 .with_expected_tables(&["__lance_orphan_queue"])
 .with_expected_indexes(&["idx__lance_orphan_queue_retry"])
@@ -567,7 +567,7 @@ pub const V20260611_ADD_LANCE_ORPHAN_QUEUE: MigrationDef = MigrationDef::new(
 pub const V20260612_TODO_INSERT_SELF_REF_CHECK: MigrationDef = MigrationDef::new(
     20260612,
     "todo_insert_self_ref_check",
-    include_str!("../../../migrations/vfs/V20260612__todo_insert_self_ref_check.sql"),
+    include_str!("../../../../migrations/vfs/V20260612__todo_insert_self_ref_check.sql"),
 )
 .idempotent();
 
@@ -575,7 +575,7 @@ pub const V20260612_TODO_INSERT_SELF_REF_CHECK: MigrationDef = MigrationDef::new
 pub const V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS: MigrationDef = MigrationDef::new(
     20260613,
     "pomodoro_timestamps_and_constraints",
-    include_str!("../../../migrations/vfs/V20260613__pomodoro_timestamps_and_constraints.sql"),
+    include_str!("../../../../migrations/vfs/V20260613__pomodoro_timestamps_and_constraints.sql"),
 )
 .idempotent();
 
@@ -583,7 +583,7 @@ pub const V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS: MigrationDef = Migratio
 pub const V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX: MigrationDef = MigrationDef::new(
     20260614,
     "todo_parent_check_softdelete_fix",
-    include_str!("../../../migrations/vfs/V20260614__todo_parent_check_softdelete_fix.sql"),
+    include_str!("../../../../migrations/vfs/V20260614__todo_parent_check_softdelete_fix.sql"),
 )
 .idempotent();
 
@@ -591,7 +591,7 @@ pub const V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX: MigrationDef = MigrationDe
 pub const V20260615_TODO_CYCLE_CHECK_FULL_GRAPH: MigrationDef = MigrationDef::new(
     20260615,
     "todo_cycle_check_full_graph",
-    include_str!("../../../migrations/vfs/V20260615__todo_cycle_check_full_graph.sql"),
+    include_str!("../../../../migrations/vfs/V20260615__todo_cycle_check_full_graph.sql"),
 )
 .idempotent();
 
@@ -599,7 +599,7 @@ pub const V20260615_TODO_CYCLE_CHECK_FULL_GRAPH: MigrationDef = MigrationDef::ne
 pub const V20260714_ADD_VECTOR_INDEX_PROFILES: MigrationDef = MigrationDef::new(
     20260714,
     "add_vector_index_profiles",
-    include_str!("../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"),
+    include_str!("../../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"),
 )
 .with_expected_tables(&["vfs_index_profiles"])
 .with_expected_columns(&[
@@ -652,7 +652,7 @@ pub const V20260714_ADD_VECTOR_INDEX_PROFILES: MigrationDef = MigrationDef::new(
 pub const V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS: MigrationDef = MigrationDef::new(
     20260715,
     "automation_todo_delivery_receipts",
-    include_str!("../../../migrations/vfs/V20260715__automation_todo_delivery_receipts.sql"),
+    include_str!("../../../../migrations/vfs/V20260715__automation_todo_delivery_receipts.sql"),
 )
 .with_expected_tables(&["automation_todo_deliveries"])
 .with_expected_indexes(&["idx_automation_todo_deliveries_item"])
@@ -662,7 +662,7 @@ pub const V20260715_AUTOMATION_TODO_DELIVERY_RECEIPTS: MigrationDef = MigrationD
 pub const V20260718_ADD_MASTERY_TABLES: MigrationDef = MigrationDef::new(
     20260718,
     "add_mastery_tables",
-    include_str!("../../../migrations/vfs/V20260718__add_mastery_tables.sql"),
+    include_str!("../../../../migrations/vfs/V20260718__add_mastery_tables.sql"),
 )
 .with_expected_tables(&["mastery_events", "mastery_states"])
 .with_expected_columns(&[
@@ -691,7 +691,7 @@ pub const V20260718_ADD_MASTERY_TABLES: MigrationDef = MigrationDef::new(
 pub const V20260719_MASTERY_EVENTS_SIGNAL: MigrationDef = MigrationDef::new(
     20260719,
     "mastery_events_signal",
-    include_str!("../../../migrations/vfs/V20260719__mastery_events_signal.sql"),
+    include_str!("../../../../migrations/vfs/V20260719__mastery_events_signal.sql"),
 )
 .with_expected_columns(&[("mastery_events", "signal")])
 .idempotent();
@@ -700,7 +700,7 @@ pub const V20260719_MASTERY_EVENTS_SIGNAL: MigrationDef = MigrationDef::new(
 pub const V20260720_MASTERY_EVENTS_SYNC: MigrationDef = MigrationDef::new(
     20260720,
     "mastery_events_sync",
-    include_str!("../../../migrations/vfs/V20260720__mastery_events_sync.sql"),
+    include_str!("../../../../migrations/vfs/V20260720__mastery_events_sync.sql"),
 )
 .with_expected_columns(&[
     ("mastery_events", "device_id"),
@@ -724,7 +724,7 @@ pub const V20260720_MASTERY_EVENTS_SYNC: MigrationDef = MigrationDef::new(
 pub const V20260721_POMODORO_BACKFILL_UPDATED_AT: MigrationDef = MigrationDef::new(
     20260721,
     "pomodoro_backfill_updated_at",
-    include_str!("../../../migrations/vfs/V20260721__pomodoro_backfill_updated_at.sql"),
+    include_str!("../../../../migrations/vfs/V20260721__pomodoro_backfill_updated_at.sql"),
 )
 .with_expected_queries(&[
     "SELECT 1 FROM pomodoro_records WHERE updated_at IS NULL AND created_at IS NOT NULL LIMIT 0",
@@ -736,7 +736,7 @@ pub const V20260721_POMODORO_BACKFILL_UPDATED_AT: MigrationDef = MigrationDef::n
 pub const V20260722_NOTE_TAGS: MigrationDef = MigrationDef::new(
     20260722,
     "note_tags",
-    include_str!("../../../migrations/vfs/V20260722__note_tags.sql"),
+    include_str!("../../../../migrations/vfs/V20260722__note_tags.sql"),
 )
 .with_expected_tables(&["note_tags"])
 .with_expected_indexes(&["idx_note_tags_tag"])
@@ -752,7 +752,7 @@ pub const V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES: MigrationDef = M
     20260723,
     "translation_soft_delete_repair_and_indexes",
     include_str!(
-        "../../../migrations/vfs/V20260723__translation_soft_delete_repair_and_indexes.sql"
+        "../../../../migrations/vfs/V20260723__translation_soft_delete_repair_and_indexes.sql"
     ),
 )
 .with_expected_indexes(&[
@@ -765,7 +765,7 @@ pub const V20260723_TRANSLATION_SOFT_DELETE_REPAIR_AND_INDEXES: MigrationDef = M
 pub const V20260724_NOTES_FTS: MigrationDef = MigrationDef::new(
     20260724,
     "notes_fts",
-    include_str!("../../../migrations/vfs/V20260724__notes_fts.sql"),
+    include_str!("../../../../migrations/vfs/V20260724__notes_fts.sql"),
 )
 .with_expected_tables(&["notes_fts"])
 .with_expected_queries(&[
@@ -782,7 +782,7 @@ pub const V20260724_NOTES_FTS: MigrationDef = MigrationDef::new(
 pub const V20260725_NOTE_LINKS: MigrationDef = MigrationDef::new(
     20260725,
     "note_links",
-    include_str!("../../../migrations/vfs/V20260725__note_links.sql"),
+    include_str!("../../../../migrations/vfs/V20260725__note_links.sql"),
 )
 .with_expected_tables(&["note_links"])
 .with_expected_indexes(&[
@@ -803,7 +803,7 @@ pub const V20260725_NOTE_LINKS: MigrationDef = MigrationDef::new(
 pub const V20260726_MINDMAP_CONTENT_UPDATED_AT: MigrationDef = MigrationDef::new(
     20260726,
     "mindmap_content_updated_at",
-    include_str!("../../../migrations/vfs/V20260726__mindmap_content_updated_at.sql"),
+    include_str!("../../../../migrations/vfs/V20260726__mindmap_content_updated_at.sql"),
 )
 .with_expected_columns(&[("mindmaps", "content_updated_at")])
 .with_expected_queries(&[
@@ -816,7 +816,7 @@ pub const V20260726_MINDMAP_CONTENT_UPDATED_AT: MigrationDef = MigrationDef::new
 pub const V20260727_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
     20260727,
     "todo_completed_at_index",
-    include_str!("../../../migrations/vfs/V20260727__todo_completed_at_index.sql"),
+    include_str!("../../../../migrations/vfs/V20260727__todo_completed_at_index.sql"),
 )
 .with_expected_indexes(&["idx_todo_items_completed_at"])
 .idempotent();
@@ -827,7 +827,7 @@ pub const V20260727_TODO_COMPLETED_AT_INDEX: MigrationDef = MigrationDef::new(
 pub const V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT: MigrationDef = MigrationDef::new(
     20260728,
     "todo_reminder_index_and_list_sort",
-    include_str!("../../../migrations/vfs/V20260728__todo_reminder_index_and_list_sort.sql"),
+    include_str!("../../../../migrations/vfs/V20260728__todo_reminder_index_and_list_sort.sql"),
 )
 .with_expected_indexes(&["idx_todo_items_reminder", "idx_todo_items_list_parent_sort"])
 .idempotent();
@@ -839,7 +839,7 @@ pub const V20260728_TODO_REMINDER_INDEX_AND_LIST_SORT: MigrationDef = MigrationD
 pub const V20260801_TODO_POMODORO_STATS_INDEXES: MigrationDef = MigrationDef::new(
     20260801,
     "todo_pomodoro_stats_indexes",
-    include_str!("../../../migrations/vfs/V20260801__todo_pomodoro_stats_indexes.sql"),
+    include_str!("../../../../migrations/vfs/V20260801__todo_pomodoro_stats_indexes.sql"),
 )
 .with_expected_indexes(&[
     "idx_todo_items_status_due",
@@ -854,7 +854,7 @@ pub const V20260801_TODO_POMODORO_STATS_INDEXES: MigrationDef = MigrationDef::ne
 pub const V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX: MigrationDef = MigrationDef::new(
     20260806,
     "mindmap_versions_lookup_index",
-    include_str!("../../../migrations/vfs/V20260806__mindmap_versions_lookup_index.sql"),
+    include_str!("../../../../migrations/vfs/V20260806__mindmap_versions_lookup_index.sql"),
 )
 .with_expected_indexes(&["idx_mindmap_versions_mindmap_created"])
 .idempotent();
@@ -865,7 +865,7 @@ pub const V20260806_MINDMAP_VERSIONS_LOOKUP_INDEX: MigrationDef = MigrationDef::
 pub const V20260807_QUESTION_STRUCTURED_DATA: MigrationDef = MigrationDef::new(
     20260807,
     "question_structured_data",
-    include_str!("../../../migrations/vfs/V20260807__question_structured_data.sql"),
+    include_str!("../../../../migrations/vfs/V20260807__question_structured_data.sql"),
 )
 .with_expected_columns(&[("questions", "structured_data")]);
 
@@ -876,7 +876,7 @@ pub const V20260807_QUESTION_STRUCTURED_DATA: MigrationDef = MigrationDef::new(
 pub const V20260808_FILE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::new(
     20260808,
     "file_deletion_intent_journal",
-    include_str!("../../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"),
+    include_str!("../../../../migrations/vfs/V20260808__file_deletion_intent_journal.sql"),
 )
 .with_expected_tables(&["__file_deletion_journal"])
 .with_expected_columns(&[
@@ -907,7 +907,7 @@ pub const V20260808_FILE_DELETION_INTENT_JOURNAL: MigrationDef = MigrationDef::n
 pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
     20260824,
     "note_props",
-    include_str!("../../../migrations/vfs/V20260824__note_props.sql"),
+    include_str!("../../../../migrations/vfs/V20260824__note_props.sql"),
 )
 .with_expected_columns(&[("notes", "props")]);
 
@@ -919,7 +919,7 @@ pub const V20260824_NOTE_PROPS: MigrationDef = MigrationDef::new(
 pub const V20260907_INSIGHT_CARDS: MigrationDef = MigrationDef::new(
     20260907,
     "insight_cards",
-    include_str!("../../../migrations/vfs/V20260907__insight_cards.sql"),
+    include_str!("../../../../migrations/vfs/V20260907__insight_cards.sql"),
 )
 .with_expected_tables(&[
     "insights",
@@ -948,7 +948,7 @@ pub const V20260907_INSIGHT_CARDS: MigrationDef = MigrationDef::new(
 pub const V20260908_INSIGHT_FTS: MigrationDef = MigrationDef::new(
     20260908,
     "insight_fts",
-    include_str!("../../../migrations/vfs/V20260908__insight_fts.sql"),
+    include_str!("../../../../migrations/vfs/V20260908__insight_fts.sql"),
 )
 .with_expected_tables(&["insight_fts"])
 .idempotent();
@@ -960,7 +960,7 @@ pub const V20260908_INSIGHT_FTS: MigrationDef = MigrationDef::new(
 pub const V20260909_MASTERY_EVENTS_INSIGHT_SOURCE: MigrationDef = MigrationDef::new(
     20260909,
     "mastery_events_insight_source",
-    include_str!("../../../migrations/vfs/V20260909__mastery_events_insight_source.sql"),
+    include_str!("../../../../migrations/vfs/V20260909__mastery_events_insight_source.sql"),
 )
 .with_expected_tables(&["mastery_events"])
 .with_expected_columns(&[
@@ -977,7 +977,7 @@ pub const V20260909_MASTERY_EVENTS_INSIGHT_SOURCE: MigrationDef = MigrationDef::
 pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
     20260910,
     "insight_jobs",
-    include_str!("../../../migrations/vfs/V20260910__insight_jobs.sql"),
+    include_str!("../../../../migrations/vfs/V20260910__insight_jobs.sql"),
 )
 .with_expected_tables(&["insight_jobs"])
 .with_expected_columns(&[
@@ -992,7 +992,7 @@ pub const V20260910_INSIGHT_JOBS: MigrationDef = MigrationDef::new(
 pub const V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING: MigrationDef = MigrationDef::new(
     20260911,
     "insight_fts_update_trigger_narrowing",
-    include_str!("../../../migrations/vfs/V20260911__insight_fts_update_trigger_narrowing.sql"),
+    include_str!("../../../../migrations/vfs/V20260911__insight_fts_update_trigger_narrowing.sql"),
 )
 .with_expected_tables(&["insight_fts"])
 .idempotent();
@@ -1004,7 +1004,7 @@ pub const V20260911_INSIGHT_FTS_UPDATE_TRIGGER_NARROWING: MigrationDef = Migrati
 pub const V20260912_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
     20260912,
     "qbank_generation_tasks",
-    include_str!("../../../migrations/vfs/V20260912__qbank_generation_tasks.sql"),
+    include_str!("../../../../migrations/vfs/V20260912__qbank_generation_tasks.sql"),
 )
 .with_expected_tables(&["qbank_generation_tasks"])
 .with_expected_indexes(&[
@@ -1016,7 +1016,7 @@ pub const V20260912_QBANK_GENERATION_TASKS: MigrationDef = MigrationDef::new(
 pub const V20260921_NOTE_DOCUMENT_REVISIONS: MigrationDef = MigrationDef::new(
     20260921,
     "note_document_revisions",
-    include_str!("../../../migrations/vfs/V20260921__note_document_revisions.sql"),
+    include_str!("../../../../migrations/vfs/V20260921__note_document_revisions.sql"),
 )
 .with_expected_tables(&["note_document_revisions"])
 .with_expected_indexes(&["idx_note_revisions_timeline"])
@@ -1025,7 +1025,7 @@ pub const V20260921_NOTE_DOCUMENT_REVISIONS: MigrationDef = MigrationDef::new(
 pub const V20260922_NOTE_STORAGE_FOUNDATIONS: MigrationDef = MigrationDef::new(
     20260922,
     "note_storage_foundations",
-    include_str!("../../../migrations/vfs/V20260922__note_storage_foundations.sql"),
+    include_str!("../../../../migrations/vfs/V20260922__note_storage_foundations.sql"),
 )
 .with_expected_tables(&[
     "note_document_formats",
@@ -1042,7 +1042,7 @@ pub const V20260922_NOTE_STORAGE_FOUNDATIONS: MigrationDef = MigrationDef::new(
 pub const V20260923_NOTE_HISTORY_INTEGRATION: MigrationDef = MigrationDef::new(
     20260923,
     "note_history_integration",
-    include_str!("../../../migrations/vfs/V20260923__note_history_integration.sql"),
+    include_str!("../../../../migrations/vfs/V20260923__note_history_integration.sql"),
 )
 .with_expected_tables(&[
     "note_history_retention",
@@ -1058,7 +1058,7 @@ pub const V20260923_NOTE_HISTORY_INTEGRATION: MigrationDef = MigrationDef::new(
 pub const V20260924_NOTE_EDITOR_LEASES: MigrationDef = MigrationDef::new(
     20260924,
     "note_editor_leases",
-    include_str!("../../../migrations/vfs/V20260924__note_editor_leases.sql"),
+    include_str!("../../../../migrations/vfs/V20260924__note_editor_leases.sql"),
 )
 .with_expected_tables(&[
     "note_editor_participants",
@@ -1075,7 +1075,7 @@ pub const V20260924_NOTE_EDITOR_LEASES: MigrationDef = MigrationDef::new(
 pub const V20261005_MEDIA_TRANSCRIPTS: MigrationDef = MigrationDef::new(
     20261005,
     "media_transcripts",
-    include_str!("../../../migrations/vfs/V20261005__media_transcripts.sql"),
+    include_str!("../../../../migrations/vfs/V20261005__media_transcripts.sql"),
 )
 .with_expected_tables(&["media_transcript_segments", "media_progress"])
 .with_expected_indexes(&["idx_media_segments_status"])
@@ -1087,7 +1087,7 @@ pub const V20261005_MEDIA_TRANSCRIPTS: MigrationDef = MigrationDef::new(
 pub const V20261006_STUDY_TIME: MigrationDef = MigrationDef::new(
     20261006,
     "study_time",
-    include_str!("../../../migrations/vfs/V20261006__study_time.sql"),
+    include_str!("../../../../migrations/vfs/V20261006__study_time.sql"),
 )
 .with_expected_tables(&["study_time_daily"])
 .idempotent();
@@ -1102,7 +1102,7 @@ pub const V20261006_STUDY_TIME: MigrationDef = MigrationDef::new(
 pub const V20261023_QUESTION_AUTHORING_V2: MigrationDef = MigrationDef::new(
     20261023,
     "question_authoring_v2",
-    include_str!("../../../migrations/vfs/V20261023__question_authoring_v2.sql"),
+    include_str!("../../../../migrations/vfs/V20261023__question_authoring_v2.sql"),
 )
 .with_expected_tables(&[
     "qbank_sources",
@@ -1126,7 +1126,7 @@ pub const V20261023_QUESTION_AUTHORING_V2: MigrationDef = MigrationDef::new(
 pub const V20261027_PRACTICE_SESSIONS: MigrationDef = MigrationDef::new(
     20261027,
     "practice_sessions",
-    include_str!("../../../migrations/vfs/V20261027__practice_sessions.sql"),
+    include_str!("../../../../migrations/vfs/V20261027__practice_sessions.sql"),
 )
 .with_expected_tables(&[
     "qbank_papers",
@@ -1535,7 +1535,7 @@ mod tests {
         .unwrap();
 
         conn.execute_batch(include_str!(
-            "../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"
+            "../../../../migrations/vfs/V20260714__add_vector_index_profiles.sql"
         ))
         .unwrap();
 

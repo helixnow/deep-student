@@ -81,6 +81,20 @@ impl Plugin for QbankVfsPlugin {
     }
 }
 
+/// 存储层删除 journal 的笔记资产引用检查（vfs 笔记仓储实现）。
+struct StorageNotesPlugin;
+
+impl Plugin for StorageNotesPlugin {
+    fn name(&self) -> &'static str {
+        "storage_notes"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        crate::vfs::repos::note_revision_repo::install_storage_hooks(scope);
+        Ok(())
+    }
+}
+
 /// 组合根唯一的插件列表（顺序即 apply 顺序）。
 fn plugins() -> Vec<Arc<dyn Plugin>> {
     vec![
@@ -88,6 +102,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(MemoryVfsPlugin),
         Arc::new(MediaVfsPlugin),
         Arc::new(QbankVfsPlugin),
+        Arc::new(StorageNotesPlugin),
     ]
 }
 

@@ -66,7 +66,7 @@ fn now_iso() -> String {
 /// 用于维护 translations/folder_items 的 device_id 同步列。
 fn current_device_id() -> &'static str {
     static DEVICE_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    DEVICE_ID.get_or_init(crate::cloud_storage::get_device_id)
+    DEVICE_ID.get_or_init(crate::data_space::device_id::get_device_id)
 }
 
 /// 在 SAVEPOINT 中执行多步写操作，保证原子性。

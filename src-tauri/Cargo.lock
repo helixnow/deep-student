@@ -3285,6 +3285,7 @@ dependencies = [
  "dstu-kernel",
  "dstu-platform",
  "dstu-security",
+ "dstu-storage",
  "dstu-util",
  "encoding_rs",
  "env_logger",
@@ -3818,6 +3819,44 @@ dependencies = [
  "tokio",
  "tracing",
  "zeroize",
+]
+
+[[package]]
+name = "dstu-storage"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "dirs 4.0.0",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-platform",
+ "dstu-security",
+ "dstu-util",
+ "fs2",
+ "hex",
+ "image 0.24.9",
+ "log",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "refinery",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-plugin-fs",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "urlencoding",
+ "uuid",
+ "walkdir",
+ "zip 0.6.6",
 ]
 
 [[package]]

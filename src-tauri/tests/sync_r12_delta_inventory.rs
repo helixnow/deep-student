@@ -417,6 +417,19 @@ fn r12_source_lock_inventory_has_no_production_callers() {
          (upload 积木可复用清单；sync_manager / 命令 / UI 仍不得引用)"
     );
 
+    // 成员 crate（crates/*/src）同样零引用：搬家不能把未接线积木接进生产路径。
+    let crates_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates");
+    let mut crate_referencing_files = Vec::new();
+    collect_files_mentioning(
+        &crates_root,
+        "delta_inventory",
+        &mut crate_referencing_files,
+    );
+    assert!(
+        crate_referencing_files.is_empty(),
+        "crates/ 下的生产代码不得引用 delta_inventory: {crate_referencing_files:?}"
+    );
+
     // backup/mod.rs 只允许出现声明行本身。
     let backup_mod = include_str!("../src/data_governance/backup/mod.rs");
     assert_eq!(

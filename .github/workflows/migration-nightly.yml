@@ -7,8 +7,8 @@ on:
     branches: [main]
     paths:
       - 'src-tauri/migrations/**'
-      - 'src-tauri/src/data_governance/migration*'
-      - 'src-tauri/src/data_governance/migration/**'
+      - 'src-tauri/crates/dstu-storage/src/migration*'
+      - 'src-tauri/crates/dstu-storage/src/migration/**'
       - 'src-tauri/tests/migration*'
       - 'src-tauri/tests/migration-fixtures/**'
       - 'scripts/migration-ci/**'

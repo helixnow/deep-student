@@ -32,7 +32,6 @@
 //! - [数据治理系统重构方案](../../../docs/数据治理系统重构方案.md)
 //! - [Refinery 文档](https://docs.rs/refinery/)
 
-pub mod audit;
 pub mod backup;
 pub mod commands;
 pub mod commands_asset;
@@ -42,13 +41,14 @@ pub mod commands_sync;
 pub mod commands_types;
 pub mod commands_zip;
 pub mod dto;
-pub mod file_deletion_queue;
 pub mod init;
-pub mod migration;
 pub mod plugin;
 pub mod restore_codes;
-pub mod schema_registry;
 pub mod sync;
+
+// 存储层模块（原 data_governance::{audit,file_deletion_queue,migration,schema_registry}）
+// 已下沉到 dstu-storage，这里按原路径重导出，`crate::data_governance::xxx` 继续可用。
+pub use dstu_storage::{audit, file_deletion_queue, migration, schema_registry};
 
 // 启动组件健康状态已下沉到存储层 `data_space::startup_health`，这里按原路径重导出。
 pub use crate::data_space::startup_health::{

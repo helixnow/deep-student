@@ -509,6 +509,28 @@ impl NoteRevisionRepo {
     }
 }
 
+/// 存储层删除 journal 的「笔记资产仍被引用」检查实现。
+///
+/// `dstu_storage::file_deletion_queue` 不能反向依赖 vfs，只定义注册接口；
+/// `extensions::register_extensions()` 把这里的实现接线进去（全部注册后的可观察
+/// 行为与拆分前直接调用一致）。
+struct StorageNoteAssetRetention;
+
+impl dstu_storage::file_deletion_queue::NoteAssetRetention for StorageNoteAssetRetention {
+    fn asset_is_referenced(&self, conn: &Connection, relative_path: &str) -> Result<bool, String> {
+        NoteRevisionRepo::asset_is_referenced(conn, relative_path).map_err(|e| e.to_string())
+    }
+}
+
+/// 注册存储层删除 journal 的回调。
+pub fn install_storage_hooks(scope: &mut dstu_kernel::Scope) {
+    if let Ok(disposer) = dstu_storage::file_deletion_queue::register_note_asset_retention(
+        std::sync::Arc::new(StorageNoteAssetRetention),
+    ) {
+        scope.add(disposer);
+    }
+}
+
 #[cfg(test)]
 #[path = "note_revision_tests.rs"]
 mod tests;

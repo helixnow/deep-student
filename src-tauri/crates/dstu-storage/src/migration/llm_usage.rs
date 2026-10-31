@@ -80,7 +80,7 @@ const V001_EXPECTED_COLUMNS: &[(&str, &str)] = &[
 pub const V20260130_INIT: MigrationDef = MigrationDef::new(
     20260130,
     "init",
-    include_str!("../../../migrations/llm_usage/V20260130__init.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260130__init.sql"),
 )
 .with_expected_tables(V001_EXPECTED_TABLES)
 .with_expected_columns(V001_EXPECTED_COLUMNS)
@@ -93,7 +93,7 @@ pub const V20260130_INIT: MigrationDef = MigrationDef::new(
 pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
     20260131,
     "add_change_log",
-    include_str!("../../../migrations/llm_usage/V20260131__add_change_log.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260131__add_change_log.sql"),
 )
 .with_expected_tables(&["__change_log"])
 .idempotent();
@@ -107,7 +107,7 @@ pub const V20260131_CHANGE_LOG: MigrationDef = MigrationDef::new(
 pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
     20260201,
     "add_sync_fields",
-    include_str!("../../../migrations/llm_usage/V20260201__add_sync_fields.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260201__add_sync_fields.sql"),
 )
 .with_expected_indexes(LLM_USAGE_V20260201_SYNC_INDEXES)
 .idempotent();
@@ -116,7 +116,7 @@ pub const V20260201_SYNC_FIELDS: MigrationDef = MigrationDef::new(
 pub const V20260202_FIX_CHANGE_LOG_RECORD_ID: MigrationDef = MigrationDef::new(
     20260202,
     "fix_change_log_record_id",
-    include_str!("../../../migrations/llm_usage/V20260202__fix_change_log_record_id.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260202__fix_change_log_record_id.sql"),
 )
 .idempotent();
 
@@ -124,14 +124,14 @@ pub const V20260202_FIX_CHANGE_LOG_RECORD_ID: MigrationDef = MigrationDef::new(
 pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
     20260524,
     "add_change_log_field_deltas",
-    include_str!("../../../migrations/llm_usage/V20260524__add_change_log_field_deltas.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260524__add_change_log_field_deltas.sql"),
 );
 
 /// V20260525: 停止为 llm_usage_daily 生成增量同步日志
 pub const V20260525_DROP_DAILY_CHANGE_LOG_TRIGGERS: MigrationDef = MigrationDef::new(
     20260525,
     "drop_daily_change_log_triggers",
-    include_str!("../../../migrations/llm_usage/V20260525__drop_daily_change_log_triggers.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260525__drop_daily_change_log_triggers.sql"),
 )
 .idempotent();
 
@@ -140,7 +140,7 @@ pub const V20260525_DROP_DAILY_CHANGE_LOG_TRIGGERS: MigrationDef = MigrationDef:
 pub const V20260824_ADD_CACHE_WRITE_TOKENS: MigrationDef = MigrationDef::new(
     20260824,
     "add_cache_write_tokens",
-    include_str!("../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"),
 )
 .with_expected_columns(&[("llm_usage_logs", "cache_write_tokens")]);
 
@@ -152,7 +152,7 @@ pub const V20260824_ADD_CACHE_WRITE_TOKENS: MigrationDef = MigrationDef::new(
 pub const V20260826_ADD_STREAM_IDENTITY: MigrationDef = MigrationDef::new(
     20260826,
     "add_stream_identity",
-    include_str!("../../../migrations/llm_usage/V20260826__add_stream_identity.sql"),
+    include_str!("../../../../migrations/llm_usage/V20260826__add_stream_identity.sql"),
 )
 .with_expected_columns(&[
     ("llm_usage_logs", "variant_id"),

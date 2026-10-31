@@ -87,7 +87,7 @@
 //! ## 使用示例
 //!
 //! ```rust,ignore
-//! use crate::data_governance::migration::{MigrationCoordinator, ALL_MIGRATION_SETS};
+//! use crate::migration::{MigrationCoordinator, ALL_MIGRATION_SETS};
 //!
 //! // 查看所有迁移集合
 //! for set in ALL_MIGRATION_SETS {
@@ -293,7 +293,7 @@ mod tests {
     /// 如果脚本确认无问题，可在脚本中添加 `-- @skip-check: <rule_name>` 跳过检查。
     #[test]
     fn test_all_migration_scripts_pass_checker() {
-        use crate::data_governance::migration::script_checker::check_migration_script;
+        use crate::migration::script_checker::check_migration_script;
 
         let mut all_passed = true;
         let mut error_messages = Vec::new();

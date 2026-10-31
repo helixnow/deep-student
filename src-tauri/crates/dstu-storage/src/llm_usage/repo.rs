@@ -714,17 +714,17 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         // 使用 Refinery 格式的初始化迁移
         conn.execute_batch(include_str!(
-            "../../migrations/llm_usage/V20260130__init.sql"
+            "../../../../migrations/llm_usage/V20260130__init.sql"
         ))
         .unwrap();
         // V20260824：cache_write_tokens 列（insert/read 路径已引用）
         conn.execute_batch(include_str!(
-            "../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
+            "../../../../migrations/llm_usage/V20260824__add_cache_write_tokens.sql"
         ))
         .unwrap();
         // V20260826：variant_id / run_id 遥测身份分列（insert/read 路径已引用）
         conn.execute_batch(include_str!(
-            "../../migrations/llm_usage/V20260826__add_stream_identity.sql"
+            "../../../../migrations/llm_usage/V20260826__add_stream_identity.sql"
         ))
         .unwrap();
         conn

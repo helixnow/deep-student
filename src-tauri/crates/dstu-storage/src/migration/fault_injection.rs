@@ -32,7 +32,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 
-use crate::data_governance::migration::MigrationError;
+use crate::migration::MigrationError;
 
 #[derive(Debug, Default)]
 struct FailpointState {

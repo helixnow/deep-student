@@ -30,7 +30,7 @@ pub fn set_app_handle(app_handle: tauri::AppHandle) {
 }
 
 /// CHAT_V2_CACHE_DEBUG=1 时开启 prompt-cache 调试日志（请求侧指纹与响应侧命中率共用）。
-pub(crate) fn cache_debug_enabled() -> bool {
+pub fn cache_debug_enabled() -> bool {
     std::env::var("CHAT_V2_CACHE_DEBUG")
         .map(|v| v == "1")
         .unwrap_or(false)
