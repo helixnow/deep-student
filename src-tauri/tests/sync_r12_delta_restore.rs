@@ -874,7 +874,11 @@ fn collect_outside_sync_crate(needle: &str, out: &mut Vec<PathBuf>) {
     collect_files_mentioning(&manifest_dir.join("src"), needle, out);
     let mut crate_files = Vec::new();
     collect_files_mentioning(&manifest_dir.join("crates"), needle, &mut crate_files);
-    out.extend(crate_files.into_iter().filter(|p| !p.starts_with(&sync_root)));
+    out.extend(
+        crate_files
+            .into_iter()
+            .filter(|p| !p.starts_with(&sync_root)),
+    );
 }
 
 fn relative_names(paths: &[PathBuf], src_root: &Path) -> Vec<String> {
@@ -960,7 +964,10 @@ fn r12_source_lock_delta_restore_has_zero_production_wiring() {
          this suite being green does NOT mean incremental backup is implemented"
     );
     let mut crate_restore_referencers = Vec::new();
-    collect_outside_sync_crate("restore_snapshot_to_staging", &mut crate_restore_referencers);
+    collect_outside_sync_crate(
+        "restore_snapshot_to_staging",
+        &mut crate_restore_referencers,
+    );
     assert!(
         crate_restore_referencers.is_empty(),
         "restore_snapshot_to_staging 在 crates/ 下不得有生产调用方: {crate_restore_referencers:?}"

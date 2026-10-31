@@ -612,8 +612,7 @@ pub struct AssetSyncOutcome {
     pub download_failures: Vec<String>,
 }
 
-pub type FileTransferProgressCallback =
-    std::sync::Arc<dyn Fn(String, u64, u64) + Send + Sync>;
+pub type FileTransferProgressCallback = std::sync::Arc<dyn Fn(String, u64, u64) + Send + Sync>;
 
 impl AssetSyncOutcome {
     pub fn has_failures(&self) -> bool {

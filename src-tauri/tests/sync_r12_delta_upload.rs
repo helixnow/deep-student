@@ -804,7 +804,11 @@ fn collect_outside_sync_crate(needle: &str, out: &mut Vec<PathBuf>) {
     collect_files_mentioning(&manifest_dir.join("src"), needle, out);
     let mut crate_files = Vec::new();
     collect_files_mentioning(&manifest_dir.join("crates"), needle, &mut crate_files);
-    out.extend(crate_files.into_iter().filter(|p| !p.starts_with(&sync_root)));
+    out.extend(
+        crate_files
+            .into_iter()
+            .filter(|p| !p.starts_with(&sync_root)),
+    );
 }
 
 #[test]

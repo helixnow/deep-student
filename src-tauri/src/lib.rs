@@ -20,10 +20,10 @@ pub mod apk_installer;
 #[allow(dead_code)]
 pub use dstu_anki::apkg_exporter_service;
 pub use dstu_anki::apkg_importer_service;
-#[allow(dead_code)]
-pub use dstu_sync::backup_job_manager;
 pub use dstu_core::canonical_tools;
 pub use dstu_storage::batch_operations;
+#[allow(dead_code)]
+pub use dstu_sync::backup_job_manager;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
@@ -46,10 +46,10 @@ pub use dstu_browser::browser; // Workbench 内置浏览器（browser.db 懒加�
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 #[allow(dead_code)]
 pub mod cloud_config_commands;
-#[allow(dead_code)]
-pub use dstu_sync::cloud_storage;
 pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
+#[allow(dead_code)]
+pub use dstu_sync::cloud_storage;
 pub use dstu_vision::cross_page_merger;
 pub mod diagnostics;
 pub use dstu_anki::document_processing_service;
