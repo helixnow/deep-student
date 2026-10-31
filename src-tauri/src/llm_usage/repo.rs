@@ -91,7 +91,7 @@ impl LlmUsageRepo {
     /// 注意：生产写库路径是 `UsageCollector::insert_records`（自拼 SQL），
     /// 本模块的 insert_usage* 只被测试调用——collector 侧必须同样调用本函数。
     pub(crate) fn log_cache_debug_usage(record: &UsageRecord) {
-        if !crate::llm_manager::model2_pipeline::cache_debug_enabled() {
+        if !super::cache_debug_enabled() {
             return;
         }
         tracing::info!("{}", Self::cache_debug_usage_line(record));

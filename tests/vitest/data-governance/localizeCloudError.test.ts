@@ -39,7 +39,7 @@ const t = (key: string, options?: Record<string, unknown>) =>
 describe('短密码 / stored-password 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一对 code', () => {
     const secureStore = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/secure_store.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-security/src/secure_store.rs'),
       'utf-8',
     );
     const zipCommands = readFileSync(

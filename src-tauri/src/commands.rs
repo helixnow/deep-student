@@ -4108,101 +4108,9 @@ pub async fn read_file_text(window: Window, path: String) -> Result<String> {
     unified_file_manager::read_to_string(&window, &path)
 }
 
-/// 拒绝包含隐藏路径段（点号开头）的本地路径
-///
-/// ★ 2026-06-12（审阅问题 R4 安全配套）：`read_file_bytes`/`read_file_text`
-/// 没有任何路径白名单，前端任意 JS 都能读取 ~/.ssh、~/.aws 等敏感目录。
-/// 正常导入/预览流程只会访问用户可见文件，封掉隐藏路径段不影响功能。
-/// 应用自身数据目录（Linux 下位于 ~/.local/share）始终放行。
-pub(crate) fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
-    use tauri::Manager;
-
-    if unified_file_manager::is_virtual_uri(raw_path) {
-        return Ok(());
-    }
-
-    // ★ 2026-07-19（安全加固）：先解码 + canonicalize 再做前缀/隐藏段判断。
-    // 旧实现直接对原始字符串做 `starts_with`，`$APP_DATA/../../.ssh/key` 这类
-    // 带 `..` 的路径可通过应用目录前缀放行，URL 编码（%2Essh）也能绕过隐藏段检查。
-    let normalized_raw = unified_file_manager::sanitize_for_legacy(raw_path);
-    let resolved = canonicalize_lenient(Path::new(&normalized_raw));
-
-    // 应用数据目录内的路径（如 VFS blob）放行（目录本身也真实化，
-    // 处理 macOS /var -> /private/var 之类的符号链接前缀差异）
-    let app = window.app_handle();
-    let in_app_dirs = [
-        app.path().app_data_dir().ok(),
-        app.path().app_local_data_dir().ok(),
-        app.path().app_cache_dir().ok(),
-    ]
-    .into_iter()
-    .flatten()
-    .any(|dir| {
-        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-        resolved.starts_with(&dir)
-    });
-    if in_app_dirs {
-        return Ok(());
-    }
-
-    let has_hidden_component = resolved.components().any(|c| {
-        matches!(
-            c,
-            std::path::Component::Normal(name)
-                if name.to_string_lossy().starts_with('.')
-        )
-    });
-    if has_hidden_component {
-        return Err(AppError::validation(format!(
-            "拒绝读取隐藏路径: {}",
-            raw_path
-        )));
-    }
-    Ok(())
-}
-
-/// 尽力真实化路径：
-/// - 文件存在时直接 `canonicalize`（消除 `..` 与符号链接）；
-/// - 文件尚不存在时先词法归一化 `.`/`..`，再尝试真实化父目录后拼回文件名；
-/// - 父目录也不存在时退化为纯词法归一化结果。
-fn canonicalize_lenient(path: &Path) -> std::path::PathBuf {
-    if let Ok(canonical) = std::fs::canonicalize(path) {
-        return canonical;
-    }
-    let normalized = lexical_normalize_path(path);
-    if let Some(parent) = normalized.parent() {
-        if let (Ok(canonical_parent), Some(name)) =
-            (std::fs::canonicalize(parent), normalized.file_name())
-        {
-            return canonical_parent.join(name);
-        }
-    }
-    normalized
-}
-
-/// 词法归一化：消除 `.` 段，`..` 段弹出上一个普通段（到达根后忽略，
-/// 与 `canonicalize` 对 `/..` 的行为一致）。不访问文件系统。
-fn lexical_normalize_path(path: &Path) -> std::path::PathBuf {
-    use std::path::Component;
-
-    let mut result = std::path::PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                // 相对路径开头的连续 `..` 无处可弹，原样保留；
-                // 已到根（pop 返回 false）时按 POSIX 语义忽略。
-                let ends_with_parent =
-                    matches!(result.components().next_back(), Some(Component::ParentDir));
-                if ends_with_parent || (!result.pop() && !result.has_root()) {
-                    result.push(Component::ParentDir.as_os_str());
-                }
-            }
-            other => result.push(other.as_os_str()),
-        }
-    }
-    result
-}
+/// 拒绝包含隐藏路径段（点号开头）的本地路径；定义已下沉到存储层
+/// `unified_file_manager`（staged_upload 共用），这里按原路径重导出。
+pub(crate) use crate::unified_file_manager::deny_hidden_local_path;
 
 /// `read_file_bytes` 单次读取的强制上限（与 vfs attachment `MAX_FILE_BYTES` 对齐）。
 /// 调用方传入的 `max_bytes` 只能收紧、不能放宽该上限。
@@ -5570,54 +5478,6 @@ mod tests {
         let basic_with_unknown_ref =
             make_template_request("Basic", &["Front"], "{{Front}}", "{{FrontSide}} {{Back}}");
         assert!(validate_template_request(&basic_with_unknown_ref).is_ok());
-    }
-
-    #[test]
-    fn lexical_normalize_path_resolves_dot_segments() {
-        use super::lexical_normalize_path;
-        use std::path::{Path, PathBuf};
-
-        assert_eq!(
-            lexical_normalize_path(Path::new("/a/b/../c/./d")),
-            PathBuf::from("/a/c/d")
-        );
-        // `..` 穿越应用目录前缀的攻击面：归一化后前缀判断不再被欺骗
-        assert_eq!(
-            lexical_normalize_path(Path::new("/app/data/../../home/user/.ssh/key")),
-            PathBuf::from("/home/user/.ssh/key")
-        );
-        // 根之上的 `..` 按 POSIX 语义忽略
-        assert_eq!(
-            lexical_normalize_path(Path::new("/../a")),
-            PathBuf::from("/a")
-        );
-        // 相对路径开头的连续 `..` 原样保留
-        assert_eq!(
-            lexical_normalize_path(Path::new("../../a/b/../c")),
-            PathBuf::from("../../a/c")
-        );
-    }
-
-    #[test]
-    fn canonicalize_lenient_handles_missing_files() {
-        use super::canonicalize_lenient;
-
-        let temp = std::env::temp_dir();
-        let canonical_temp = std::fs::canonicalize(&temp).unwrap();
-
-        // 不存在的文件：父目录真实化 + 拼回文件名
-        let missing = temp.join("deep_student_test_missing_file.bin");
-        assert_eq!(
-            canonicalize_lenient(&missing),
-            canonical_temp.join("deep_student_test_missing_file.bin")
-        );
-
-        // 不存在的文件 + `..` 段：词法归一化后仍能消除穿越
-        let traversal = temp.join("nonexistent_dir/../deep_student_test_missing_file.bin");
-        assert_eq!(
-            canonicalize_lenient(&traversal),
-            canonical_temp.join("deep_student_test_missing_file.bin")
-        );
     }
 
     #[test]

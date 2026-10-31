@@ -1,11 +1,5 @@
-pub mod chat_helpers;
-pub mod chat_query;
-pub mod chat_timing;
-pub mod graph_prefs;
-pub mod model_special_tokens;
-pub mod token_budget;
-pub mod unicode;
+// 不依赖 app 的工具模块在 dstu-util；这里按原路径 `crate::utils::xxx` 重导出。
+pub use dstu_util::utils::*;
 
-pub mod fetch;
-pub mod sse_buffer;
-pub mod text;
+pub mod chat_helpers;
+pub mod graph_prefs;

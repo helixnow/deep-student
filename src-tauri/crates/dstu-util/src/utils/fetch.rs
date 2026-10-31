@@ -6,9 +6,9 @@ use std::sync::LazyLock;
 use std::sync::Mutex;
 use std::time::Duration;
 
-// SSRF 判定使用全库正源 crate::browser::policy：内网封锁但放行回环
+// SSRF 判定使用全库正源 dstu_core::net_policy（browser::policy 重导出）：内网封锁但放行回环
 // （本地图片服务如 ComfyUI/A1111 是合法的 LLM 载荷来源）。
-use crate::browser::policy::is_blocked_internal_ip;
+use dstu_core::net_policy::is_blocked_internal_ip;
 
 static CACHE: LazyLock<Mutex<HashMap<String, (Vec<u8>, Option<String>)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));

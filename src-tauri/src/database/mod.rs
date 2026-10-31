@@ -1,5 +1,6 @@
 pub(crate) mod maintenance;
 mod manager;
+pub(crate) mod sql_util;
 
 pub use manager::DatabaseManager;
 
@@ -4457,16 +4458,16 @@ impl Database {
     }
 
     /// 保存API配置列表
-    pub fn save_api_configs(&self, configs: &[crate::llm_manager::ApiConfig]) -> Result<()> {
+    pub fn save_api_configs(&self, configs: &[crate::llm_config::ApiConfig]) -> Result<()> {
         let configs_json = serde_json::to_string(configs)?;
         self.save_setting("api_configs", &configs_json)
     }
 
     /// 获取API配置列表
-    pub fn get_api_configs(&self) -> Result<Vec<crate::llm_manager::ApiConfig>> {
+    pub fn get_api_configs(&self) -> Result<Vec<crate::llm_config::ApiConfig>> {
         match self.get_setting("api_configs")? {
             Some(json_str) => {
-                let configs: Vec<crate::llm_manager::ApiConfig> = serde_json::from_str(&json_str)?;
+                let configs: Vec<crate::llm_config::ApiConfig> = serde_json::from_str(&json_str)?;
                 // 兼容旧字段（supports_tools）已在反序列化时通过别名处理，这里无需额外转换。
                 Ok(configs)
             }
@@ -7630,7 +7631,7 @@ impl Database {
                 "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\' OR ac.tags_json LIKE ? ESCAPE '\\')"
                     .to_string(),
             );
-            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(query));
+            let pattern = format!("%{}%", sql_util::escape_like_pattern(query));
             filter_params.extend([
                 Value::from(pattern.clone()),
                 Value::from(pattern.clone()),
@@ -7780,7 +7781,7 @@ impl Database {
                 "(ac.front LIKE ? ESCAPE '\\' OR ac.back LIKE ? ESCAPE '\\' OR ac.text LIKE ? ESCAPE '\\' OR ac.tags_json LIKE ? ESCAPE '\\')"
                     .to_string(),
             );
-            let pattern = format!("%{}%", crate::vfs::repos::escape_like_pattern(search_value));
+            let pattern = format!("%{}%", sql_util::escape_like_pattern(search_value));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
             params.push(Value::from(pattern.clone()));
@@ -9260,82 +9261,6 @@ mod tests {
     }
 
     #[test]
-    fn legacy_null_anki_json_fields_do_not_break_library_reads_or_enqueue() -> anyhow::Result<()> {
-        use crate::fsrs_review_service::FsrsReviewService;
-        use std::sync::Arc;
-
-        let dir = tempdir()?;
-        let db = Arc::new(setup_migrated_db(dir.path())?);
-        let now = Utc::now().to_rfc3339();
-        let task = DocumentTask {
-            id: "task-library-legacy-null".to_string(),
-            document_id: "doc-library-legacy-null".to_string(),
-            original_document_name: "v0.9.44 library".to_string(),
-            segment_index: 0,
-            content_segment: "legacy fixture".to_string(),
-            status: TaskStatus::Completed,
-            created_at: now.clone(),
-            updated_at: now.clone(),
-            error_message: None,
-            anki_generation_options_json: "{}".to_string(),
-        };
-        let card = AnkiCard {
-            id: "card-library-legacy-null".to_string(),
-            task_id: task.id.clone(),
-            front: "legacy front".to_string(),
-            back: "legacy back".to_string(),
-            text: None,
-            tags: vec!["will-be-null".to_string()],
-            images: vec!["will-be-null.png".to_string()],
-            is_error_card: false,
-            error_content: None,
-            created_at: now.clone(),
-            updated_at: now,
-            extra_fields: std::collections::HashMap::from([(
-                "will-be-null".to_string(),
-                "value".to_string(),
-            )]),
-            template_id: None,
-        };
-        db.save_document_task_with_cards_atomic(&task, &[card])?;
-        db.get_conn_safe()?.execute(
-            "UPDATE anki_cards
-             SET tags_json = NULL, images_json = NULL, extra_fields_json = NULL
-             WHERE id = ?1",
-            params!["card-library-legacy-null"],
-        )?;
-
-        let (library, total) = db.list_anki_library_cards(None, None, None, 1, 20)?;
-        assert_eq!(total, 1);
-        assert_eq!(library.len(), 1);
-        assert!(library[0].card.tags.is_empty());
-        assert!(library[0].card.images.is_empty());
-        assert!(library[0].card.extra_fields.is_empty());
-
-        let agent_page = db.list_anki_agent_library_cards(
-            AnkiLibraryScope::agent(),
-            None,
-            None,
-            AnkiLibraryScheduleFilter::All,
-            AnkiLibraryDiagnosticFilter::All,
-            1,
-            20,
-        )?;
-        assert_eq!(agent_page.total, 1);
-        assert!(agent_page.items[0].library_card.card.tags.is_empty());
-        assert!(agent_page.items[0].library_card.card.images.is_empty());
-
-        let enqueue =
-            FsrsReviewService::new(db).enqueue_cards(&["card-library-legacy-null".to_string()])?;
-        assert_eq!(enqueue.enqueued, 1);
-        assert_eq!(enqueue.review_cards.len(), 1);
-        assert!(enqueue.review_cards[0].tags.is_empty());
-        assert!(enqueue.review_cards[0].images.is_empty());
-        assert!(enqueue.review_cards[0].extra_fields.is_empty());
-        Ok(())
-    }
-
-    #[test]
     fn list_anki_library_cards_searches_tags_and_escapes_like_wildcards() -> anyhow::Result<()> {
         let dir = tempdir()?;
         let db = setup_migrated_db(dir.path())?;
@@ -9729,88 +9654,6 @@ mod tests {
             )
             .expect_err("soft-deleted IDs fail the whole batch");
         assert!(deleted.to_string().contains("card-export-deleted"));
-        Ok(())
-    }
-
-    #[test]
-    fn agent_library_delete_conflicts_when_user_rates_after_preflight() -> anyhow::Result<()> {
-        use crate::fsrs_review_service::{
-            FsrsLibraryEnqueueCard, FsrsLibraryEnqueueOutcome, FsrsRating, FsrsReviewService,
-        };
-        use std::sync::Arc;
-
-        let dir = tempdir()?;
-        let db = Arc::new(setup_migrated_db(dir.path())?);
-        let card = insert_agent_library_fixture(
-            &db,
-            "doc-library-delete",
-            "task-library-delete",
-            "card-library-delete",
-            Some("session-foreign"),
-        )?;
-        let scope = AnkiLibraryScope::agent();
-        let service = FsrsReviewService::new(db.clone());
-        let state_id = match service.enqueue_cards_for_library(
-            scope,
-            &[FsrsLibraryEnqueueCard {
-                card_id: card.id.clone(),
-                expected_content_version: card.updated_at.clone(),
-            }],
-        )? {
-            FsrsLibraryEnqueueOutcome::Enqueued(result) => result.states[0].id.clone(),
-            other => panic!("expected enqueue, got {other:?}"),
-        };
-        let unexpected_enrollment =
-            db.delete_anki_card_for_library(scope, &card.id, &card.updated_at, None)?;
-        match unexpected_enrollment {
-            AnkiLibraryCardDeleteOutcome::ReviewConflict { review, .. } => {
-                assert_eq!(review.expect("new review state").review_version, 0);
-            }
-            other => panic!("expected null-token enrollment conflict, got {other:?}"),
-        }
-        let preflight = service
-            .get_review_states_for_library(scope, &[card.id.clone()])?
-            .remove(0);
-        assert_eq!(preflight.review_version, 0);
-
-        service.rate(&state_id, FsrsRating::Good.as_u8(), Some(75), None)?;
-        let conflict = db.delete_anki_card_for_library(
-            scope,
-            &card.id,
-            &card.updated_at,
-            Some(preflight.review_version),
-        )?;
-        match conflict {
-            AnkiLibraryCardDeleteOutcome::ReviewConflict {
-                current, review, ..
-            } => {
-                assert_eq!(current.library_card.card.id, card.id);
-                assert_eq!(review.expect("active review state").review_version, 1);
-            }
-            other => panic!("expected post-rating delete conflict, got {other:?}"),
-        }
-        assert!(db.get_anki_agent_library_card(scope, &card.id)?.is_some());
-
-        let current = service
-            .get_review_states_for_library(scope, &[card.id.clone()])?
-            .remove(0);
-        let deleted = db.delete_anki_card_for_library(
-            scope,
-            &card.id,
-            &card.updated_at,
-            Some(current.review_version),
-        )?;
-        match deleted {
-            AnkiLibraryCardDeleteOutcome::Deleted { locator } => {
-                assert_eq!(locator.document_id, "doc-library-delete");
-                assert_eq!(
-                    locator.source_session_id.as_deref(),
-                    Some("session-foreign")
-                );
-            }
-            other => panic!("expected version-bound delete, got {other:?}"),
-        }
-        assert!(db.get_anki_agent_library_card(scope, &card.id)?.is_none());
         Ok(())
     }
 

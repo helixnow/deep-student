@@ -1185,7 +1185,7 @@ impl FileManager {
         }
 
         // #62/ATT-09: 引用附件仓库的统一图片上限，提示文案由常量派生，避免硬编码漂移
-        const MAX_IMAGE_BYTES: usize = crate::vfs::repos::attachment_repo::MAX_IMAGE_BYTES;
+        const MAX_IMAGE_BYTES: usize = crate::media_types::MAX_IMAGE_BYTES;
         if image_bytes.len() > MAX_IMAGE_BYTES {
             return Err(AppError::validation(format!(
                 "图片文件过大，超过{}MB限制",

@@ -33,7 +33,7 @@
 /// chat templates. Shared crate-wide (e.g. `streaming_anki_service` reuses it
 /// for its whole-fragment stripping) so the two cleanup layers can never
 /// disagree on the token list.
-pub(crate) const MODEL_SPECIAL_TOKENS: &[&str] = &[
+pub const MODEL_SPECIAL_TOKENS: &[&str] = &[
     "<|begin_of_box|>",
     "<|end_of_box|>",
     "<|im_start|>",

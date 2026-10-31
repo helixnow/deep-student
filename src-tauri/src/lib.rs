@@ -29,17 +29,16 @@ pub mod cmd;
 pub mod commands;
 pub mod config_recovery;
 pub mod crash_logger;
-#[allow(dead_code)]
-pub mod crypto;
-pub mod crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
+pub use dstu_security::crypto;
+pub use dstu_security::crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
 #[allow(dead_code)]
 pub mod database;
 pub mod debug_commands;
-pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
-pub mod debug_logger;
+pub use dstu_platform::debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级过滤）
+pub use dstu_platform::debug_logger;
 
-pub mod anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
-pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
+pub use dstu_platform::anr_watchdog; // 异步运行时看门狗（检测 tokio runtime 饥饿，非 UI 主线程 ANR，见模块文档）
+pub use dstu_platform::background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
 pub mod browser; // Workbench 内置浏览器（browser.db 懒加载 + 导航策略；见 design §9）
@@ -53,10 +52,9 @@ pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
-#[allow(dead_code)]
-pub mod document_parser;
+pub use dstu_docs::document_parser;
 pub mod document_processing_service;
-pub mod docx_handout;
+pub use dstu_docs::docx_handout;
 pub mod dstu;
 pub mod enhanced_anki_service;
 pub use dstu_core::error_details;
@@ -86,12 +84,14 @@ pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
 #[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
-pub mod metrics_server;
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
+pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
+pub use dstu_platform::metrics_server;
 #[allow(dead_code, deprecated)]
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
@@ -100,11 +100,11 @@ pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub mod ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub mod openai_codex;
-pub mod package_manager;
+pub use dstu_platform::package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
-pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod providers;
@@ -127,13 +127,13 @@ pub mod question_sync_service;
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
-pub mod secret_prompt;
+pub use dstu_platform::secret_prompt;
 pub mod secure_store;
 pub use dstu_core::services;
 pub mod spaced_repetition;
 pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub mod startup_cleanup;
-pub mod startup_gate;
+pub use dstu_platform::startup_gate;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
 pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
@@ -166,6 +166,8 @@ pub use dstu_core::{
     retry_database_operation, retry_database_operation_async, retry_file_operation,
     retry_network_operation, workflow_error,
 };
+// 下沉到 dstu-platform 的 #[macro_export] 宏，按原路径 `deep_student_lib::debug_log!` 重导出。
+pub use dstu_platform::debug_log;
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
@@ -194,7 +196,14 @@ use tracing::{error, info, warn};
 // 本项目自己的日志 target 前缀。log/tracing 的默认 target 是模块路径，代码拆到
 // dstu-* crate 后前缀随之变化；日志插件对这里列出的每个前缀应用相同级别，
 // 保证拆分前后日志输出不变。新增 dstu-* crate 时在此追加。
-const FIRST_PARTY_LOG_TARGETS: &[&str] = &["deep_student_lib", "dstu_core"];
+const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
+    "deep_student_lib",
+    "dstu_core",
+    "dstu_docs",
+    "dstu_util",
+    "dstu_platform",
+    "dstu_security",
+];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -760,6 +769,9 @@ pub fn run() {
 
             // 设置全局 AppHandle，用于在任意位置发送事件
             set_global_app_handle(app_handle.clone());
+            // 存储层模块持有各自的 AppHandle（不回引 app crate 的全局句柄）
+            crate::unified_file_manager::set_app_handle(app_handle.clone());
+            crate::llm_usage::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle
@@ -924,9 +936,20 @@ pub fn run() {
 
             // 在任何数据库初始化之前，执行启动阶段清理（若存在清理标记）
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
+                // 清空后重置同步消费基线（同步状态属 data_governance，由 app 注入）
+                #[cfg(feature = "data_governance")]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    Some(|| {
+                        crate::data_governance::sync::state::SyncStateStore::reset_default_after_local_purge()
+                            .map_err(|e| e.to_string())
+                    });
+                #[cfg(not(feature = "data_governance"))]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    None;
                 match crate::startup_cleanup::purge_all_local_data(
                     &base_app_data_dir,
                     &active_app_data_dir,
+                    reset_sync_baseline,
                 ) {
                     Ok(report) => {
                         info!("启动阶段已执行数据清理:\n{}", report.details);
