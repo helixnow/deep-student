@@ -35,12 +35,6 @@ import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
 import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MobilePageScaffold } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { DueMistakesReviewHost } from '@/features/learning-today/DueMistakesReviewHost';
-import { initReminderScheduler } from '@/features/todo/reminderScheduler';
-import {
-  ensureAutoSyncSchedulerStarted,
-  ensureSyncProgressListener,
-  useAutoSyncStore,
-} from '@/stores/syncStatusStore';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
@@ -105,7 +99,7 @@ import { usePreventScroll } from './hooks/usePreventScroll';
 //   ShortcutSettings 在 Settings.tsx 中本就是 React.lazy 加载（设计 §9.3 同法）。
 import { CommandPaletteProvider, useCommandPalette } from './command-palette/CommandPaletteProvider';
 import { CommandPalette } from './command-palette/CommandPalette';
-import { registerBuiltinCommands } from './command-palette/registry/builtinCommands';
+import { useAppBackgroundServices } from './app/hooks/useAppBackgroundServices';
 import { TextContextMenuProvider } from './components/context-menu/TextContextMenu';
 import { useMenuEventBridge } from './menu/menuEventBridge';
 import { useCommandEvents, COMMAND_EVENTS } from './command-palette/hooks/useCommandEvents';
@@ -185,15 +179,9 @@ import {
 // ★ Workbench（学习 OS 桌面，实验功能）：刻意深路径导入轻量模块，
 //   避免经 workbench/index.ts 把应用群 re-export 拖进主 bundle；
 //   桌面本体为独立 lazy chunk，开关关闭时不加载（设计 §9.3）。
-import { installLegacyNavigationFallback } from '@/features/workbench/core/legacyNavigationMap';
+import { WORKBENCH_MODE_CACHE_KEY, useWorkbenchMode } from './app/hooks/useWorkbenchMode';
 import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
 import { useWindowStore } from '@/features/workbench/core/windowStore';
-// 停用事务（缝一）：模式开关 / 应用退出统一逐窗 canClose 预检；轻依赖，可深路径引入
-import {
-  hasDirtyWorkbenchWindows,
-  runWorkbenchDeactivationTransaction,
-} from '@/features/workbench/core/deactivationTransaction';
-import { flushSnapshot } from '@/features/workbench/core/snapshot';
 // P3 handoff（r5 handoff-2 消费侧）：经典壳 → Workbench 切回时复用 bus 打开
 // 同一资源。descriptor 形状 { version, appType, resourceId, innerRoute?, savedAt }，
 // sanitize 与新鲜度窗口（默认 15min）在模块内完成；consume 总是先删再判，
@@ -217,8 +205,6 @@ import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge'
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
-/** workbench 模式的 localStorage 同步预读键（组件内 workbenchMode 初始态同源） */
-const WORKBENCH_MODE_CACHE_KEY = 'desktop.workbenchMode';
 
 // ★ Workbench chunk 预热：OS 模式是产品默认（缺失键 → true），冷启动大概率要挂
 //   WorkbenchDesktop——在模块求值期用与 workbenchMode 初始态同源的 localStorage
@@ -484,65 +470,8 @@ function App() {
   // 平台 / 外观设置：Android 沉浸式、顶栏边距、macOS 字体平滑、侧栏半透明、指针光标
   const { topbarTopMargin } = usePlatformSettingsSync(isSmallScreen);
   
-  // 🎯 命令面板：注册内置命令
-  // ★ 2026-06-12：命令名在注册时经 i18next.t() 一次性求值,运行时切换语言后必须
-  //   重新注册一遍,否则面板里仍显示旧语言文案
-  useEffect(() => {
-    let unregister = registerBuiltinCommands();
-    const refreshOnLanguageChange = () => {
-      unregister();
-      unregister = registerBuiltinCommands();
-    };
-    i18n.on('languageChanged', refreshOnLanguageChange);
-    return () => {
-      i18n.off('languageChanged', refreshOnLanguageChange);
-      unregister();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n 为模块级单例,引用稳定
-  }, []);
-
-  // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
-  useEffect(() => initReminderScheduler(), []);
-
-  // ☁️ 云同步进度（应用级监听，issue 447）：进度写入全局 useGlobalSyncStore，
-  //   同步面板被设置页切栏目卸载/重挂载后仍能立即显示当前进度与取消入口。
-  useEffect(() => {
-    void ensureSyncProgressListener();
-  }, []);
-
-  // ☁️ 自动同步调度器（应用级主启动点，与 initReminderScheduler 同模式）：
-  //   持久化开关为开时，重启后无需进设置页即恢复排程。必须等 persist
-  //   hydration 完成后再 start——否则会用默认 enabled:false 误判为 no-op，
-  //   或在持久化状态读入前误读开关。start() 本身防重（已排程/执行中直接
-  //   return），ensureAutoSyncSchedulerStarted 幂等，StrictMode 双调用与
-  //   设置页的兼容性调用都不会起第二个 timer；开关关闭时 start 为 no-op。
-  useEffect(() => {
-    const persistApi = useAutoSyncStore.persist as
-      | typeof useAutoSyncStore.persist
-      | undefined;
-    // 极端环境（localStorage 不可用）下 persist 中间件未接 storage，
-    // 无 hydration 阶段可等，直接按内存默认态启动（enabled:false → no-op）
-    if (!persistApi) {
-      ensureAutoSyncSchedulerStarted();
-      return;
-    }
-    if (persistApi.hasHydrated()) {
-      ensureAutoSyncSchedulerStarted();
-      return;
-    }
-    return persistApi.onFinishHydration(() => {
-      ensureAutoSyncSchedulerStarted();
-    });
-  }, []);
-
-  // ★ 4.2 制卡完成通知（应用级，后台时发系统通知）
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    import('@/features/anki/ankiCompletionNotifier').then((m) => {
-      cleanup = m.initAnkiCompletionNotifier();
-    });
-    return () => cleanup?.();
-  }, []);
+  // 🎯 应用级后台服务：内置命令注册（随语言重注册）、待办提醒、云同步进度与自动同步、制卡完成通知
+  useAppBackgroundServices(i18n);
 
   // 🎯 命令面板：语言切换回调
   const switchLanguage = useCallback((lang: 'zh-CN' | 'en-US') => {
@@ -556,102 +485,8 @@ function App() {
     void params;
   }, []);
 
-  // ★ Workbench 产品默认身份：localStorage 同步预读避免冷启动闪回 legacy 壳，
-  //   再以 resolveWorkbenchModeEnabled 为准（缺失键 → true + 迁移哨兵）；
-  //   监听设置页 workbench:mode-changed 即时切换（缓存键提升至模块级供预热复用）
-  const [workbenchMode, setWorkbenchMode] = useState(() => {
-    try {
-      if (typeof localStorage === 'undefined') return true;
-      // 显式 false 保留经典壳；缺失 / true → 学习桌面（产品默认）
-      return localStorage.getItem(WORKBENCH_MODE_CACHE_KEY) !== 'false';
-    } catch {
-      return true;
-    }
-  });
-  useEffect(() => {
-    installLegacyNavigationFallback();
-    let cancelled = false;
-    const cacheMode = (enabled: boolean) => {
-      try {
-        localStorage.setItem(WORKBENCH_MODE_CACHE_KEY, String(enabled));
-      } catch {
-        /* private mode / quota */
-      }
-    };
-    (async () => {
-      try {
-        const { resolveWorkbenchModeEnabled } = await import(
-          '@/features/settings/components/workbenchMode'
-        );
-        const { enabled } = await resolveWorkbenchModeEnabled();
-        if (cancelled) return;
-        setWorkbenchMode(enabled);
-        cacheMode(enabled);
-      } catch {
-        /* 默认启用；保留预读缓存 */
-      }
-    })();
-    const dispose = addAppEventListener(APP_EVENTS.WORKBENCH_MODE_CHANGED, (detail) => {
-      const enabled = Boolean(detail?.enabled);
-      setWorkbenchMode(enabled);
-      cacheMode(enabled);
-    });
-    return () => {
-      cancelled = true;
-      dispose();
-    };
-  }, []);
-
-  // Workbench 仅桌面端生效（设计文档：移动端不适用，继续现有滑动布局）；
-  // 平台护栏：宽屏 Android 平板 / iPad 同样不进 OS 模式（isMobilePlatform 永真拦截）。
-  //
-  // 桌面窄窗（<768px）不再卸载 Workbench（0824 评审建议 2，本轮裁决落地）：
-  // 此前用 shellStableSmallScreen（250ms 宽度稳定迟滞）在持续窄窗时整壳硬切。
-  // 迟滞只是渲染防抖，不是数据安全措施——250ms 到期后照样绕过逐窗 canClose /
-  // windowCloseGuard 直接卸载所有窗口，未保存草稿静默丢失（快照契约只存壳，
-  // 见 docs/0824-quality-review/workbench-fg.md 接缝一）。窄窗是布局问题而非
-  // 生命周期问题：子应用已按容器宽度支持 compact，桌面平台恒保持 Workbench；
-  // 需要停用工作台的路径（模式开关 / 应用退出）统一走
-  // runWorkbenchDeactivationTransaction 逐窗预检，可取消、可回滚。
-  // 页面内布局仍用即时 isSmallScreen，不受影响。
-  const workbenchActive = workbenchMode && !isMobilePlatform();
-
-  // 应用退出护栏（缝一 · app-exit 路径）：Workbench 激活期间若存在脏窗
-  // （未保存更改），beforeunload 至少 preventDefault 触发系统级「确认离开」
-  // 对话框——浏览器 / WebView 不允许在卸载时刻 await 自定义逐窗确认，事务
-  // 只能异步补跑：用户选择留下后，逐窗保存 / 放弃对话框继续可用。
-  // pagehide 不可取消，仅作快照兜底落盘（退出时 WorkbenchDesktop 的卸载
-  // cleanup 不保证执行）。main.tsx 既有 beforeunload（MCP / ChatV2 紧急保存）
-  // 与本钩子互不冲突，无需改 main.tsx。
-  useEventRegistry(
-    workbenchActive
-      ? [
-          {
-            target: 'window' as const,
-            type: 'beforeunload',
-            listener: (event: Event) => {
-              const beforeUnload = event as BeforeUnloadEvent;
-              if (!hasDirtyWorkbenchWindows()) return;
-              beforeUnload.preventDefault();
-              // Chromium 系需要 returnValue 非空才可靠弹出原生确认；自定义文案不会被展示
-              beforeUnload.returnValue = i18n.t('workbench:deactivation.dirtyBlocked', {
-                defaultValue:
-                  '有窗口存在未保存的更改，已阻止直接退出 / Unsaved changes in open windows blocked the exit.',
-              });
-              void runWorkbenchDeactivationTransaction('app-exit');
-            },
-          },
-          {
-            target: 'window' as const,
-            type: 'pagehide',
-            listener: () => {
-              void flushSnapshot();
-            },
-          },
-        ]
-      : [],
-    [workbenchActive, i18n],
-  );
+  // ★ Workbench 产品默认身份 + 平台护栏 + 应用退出护栏（见 useWorkbenchMode）
+  const { workbenchActive } = useWorkbenchMode(i18n);
 
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回

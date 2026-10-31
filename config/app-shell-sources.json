@@ -6,6 +6,8 @@
     "src/app/navigation/viewRouting.ts",
     "src/app/hooks/useSystemStatusSync.ts",
     "src/app/hooks/useDebugPanelRequests.ts",
-    "src/app/hooks/usePlatformSettingsSync.ts"
+    "src/app/hooks/usePlatformSettingsSync.ts",
+    "src/app/hooks/useAppBackgroundServices.ts",
+    "src/app/hooks/useWorkbenchMode.ts"
   ]
 }
