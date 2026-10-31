@@ -3287,6 +3287,7 @@ dependencies = [
  "dstu-learning",
  "dstu-llm",
  "dstu-mcp",
+ "dstu-memory",
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
@@ -3892,6 +3893,32 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "dstu-memory"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-vfs",
+ "log",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tracing",
  "urlencoding",
  "uuid",
 ]

@@ -97,7 +97,7 @@ pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上�
 pub use dstu_mcp::mcp;
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
 #[allow(dead_code)]
-pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
+pub use dstu_memory::memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
 pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
@@ -224,6 +224,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_mcp",
     "dstu_vision",
     "dstu_learning",
+    "dstu_memory",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

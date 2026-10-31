@@ -69,8 +69,9 @@ pub use service::{
     WriteMode,
 };
 
-#[cfg(test)]
-pub(crate) mod test_support {
+// 拆分前是 app 内的 cfg(test) 项；app（chat_v2 等）的单测经 dev-dependency 的 `test-util` feature 使用。
+#[cfg(any(test, feature = "test-util"))]
+pub mod test_support {
     use std::sync::Arc;
 
     use tempfile::TempDir;
@@ -83,7 +84,7 @@ pub(crate) mod test_support {
 
     use super::MemoryService;
 
-    pub(crate) fn setup_memory_service() -> (TempDir, Arc<VfsDatabase>, MemoryService) {
+    pub fn setup_memory_service() -> (TempDir, Arc<VfsDatabase>, MemoryService) {
         let (temp_dir, vfs_db) = setup_migrated_test_db();
         let vfs_db = Arc::new(vfs_db);
 

@@ -34,6 +34,7 @@ members = [
     "crates/dstu-learning",
     "crates/dstu-llm",
     "crates/dstu-mcp",
+    "crates/dstu-memory",
     "crates/dstu-util",
     "crates/dstu-platform",
     "crates/dstu-security",
@@ -60,6 +61,7 @@ dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
 dstu-learning = { path = "crates/dstu-learning", default-features = false }
 dstu-llm = { path = "crates/dstu-llm", default-features = false }
 dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
+dstu-memory = { path = "crates/dstu-memory", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
@@ -293,6 +295,7 @@ dstu-kernel = { workspace = true }
 dstu-learning = { workspace = true }
 dstu-llm = { workspace = true }
 dstu-mcp = { workspace = true }
+dstu-memory = { workspace = true }
 dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
@@ -444,6 +447,9 @@ env_logger = "0.11.11"
 dstu-vfs = { workspace = true, features = ["test-util"] }
 # 单测按原路径 `crate::mastery::service::set_now_override_ms` 覆盖 mastery 事件时钟。
 dstu-learning = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::memory::test_support::setup_memory_service` 与
+# `MemoryService::fail_next_idempotent_write_before_receipt`（拆分前的 cfg(test) 项）。
+dstu-memory = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "chatanki_apkg_executor_e2e"

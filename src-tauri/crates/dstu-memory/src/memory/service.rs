@@ -111,7 +111,8 @@ struct CommittedSmartWrite {
     deleted_resource_id: Option<String>,
 }
 
-#[cfg(test)]
+// 故障注入：拆分前是 app 内的 cfg(test) 项；app 单测经 `test-util` feature 打开（产品构建不含）。
+#[cfg(any(test, feature = "test-util"))]
 static SMART_WRITE_FAIL_BEFORE_RECEIPT_KEY: std::sync::Mutex<Option<String>> =
     std::sync::Mutex::new(None);
 
@@ -1149,7 +1150,7 @@ impl MemoryService {
         let result = (|| {
             self.renew_smart_write_reservation_with_conn(&conn, reservation)?;
             let committed = mutation(&conn)?;
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-util"))]
             {
                 let mut fault_key = SMART_WRITE_FAIL_BEFORE_RECEIPT_KEY
                     .lock()
@@ -1180,8 +1181,8 @@ impl MemoryService {
         }
     }
 
-    #[cfg(test)]
-    pub(crate) fn fail_next_idempotent_write_before_receipt(idempotency_key: &str) {
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn fail_next_idempotent_write_before_receipt(idempotency_key: &str) {
         let mut fault_key = SMART_WRITE_FAIL_BEFORE_RECEIPT_KEY
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
