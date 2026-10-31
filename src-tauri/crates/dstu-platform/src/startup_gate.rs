@@ -92,12 +92,18 @@ impl Drop for StartupReadyGuard {
 mod tests {
     use super::*;
 
+    // 闸门是进程级全局状态，三个用例都会读/写同一个 READY/watch。
+    // 必须串行执行，否则「超时等待期间被另一个用例 mark」会让断言随机失败
+    // （cargo test 默认并行；这是测试隔离问题，不是运行时行为）。
+    static TEST_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
     // 注意：闸门是进程级全局状态，本模块测试只能依赖"未就绪→就绪"的单向迁移，
     // 且不能断言全局初始状态（其他测试可能已标记）。因此超时路径用独立短超时验证
     // "未标记时等待会超时"这一性质需放在标记之前——用串行顺序写在一个用例里。
 
     #[tokio::test]
     async fn wait_times_out_when_never_marked_then_succeeds_after_mark() {
+        let _serial = TEST_LOCK.lock().await;
         // 全局状态可能已被其他用例标记；若已就绪则本用例无意义，直接通过。
         if is_startup_ready() {
             return;
@@ -113,6 +119,7 @@ mod tests {
 
     #[tokio::test]
     async fn guard_marks_ready_on_drop() {
+        let _serial = TEST_LOCK.lock().await;
         {
             let _guard = StartupReadyGuard::new();
         } // guard drop → mark_startup_ready()
@@ -122,6 +129,7 @@ mod tests {
 
     #[tokio::test]
     async fn late_subscriber_sees_ready_immediately() {
+        let _serial = TEST_LOCK.lock().await;
         mark_startup_ready();
         // 模拟 setup 完成后才到达的命令：无需等待立即通过
         assert!(wait_startup_ready(Duration::from_millis(10)).await);
