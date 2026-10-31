@@ -178,33 +178,8 @@ pub fn save_paper(db: &VfsDatabase, paper: &GeneratedPaper) -> Result<(), AppErr
     Ok(())
 }
 
-/// Keep files referenced by an archived paper or practice snapshot available.
-/// Soft-deleted history still owns its assets until explicitly purged.
-pub fn retains_asset(conn: &Connection, value: &str) -> Result<bool, rusqlite::Error> {
-    for table in [
-        "qbank_papers",
-        "qbank_practice_drafts",
-        "qbank_practice_attempts",
-    ] {
-        let exists: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
-            [table],
-            |r| r.get(0),
-        )?;
-        if !exists {
-            continue;
-        }
-        let retained: bool = conn.query_row(&format!("SELECT EXISTS(SELECT 1 FROM {table},json_tree(document_json) j WHERE j.key IN ('id','hash') AND j.value=?1)"), [value], |r| r.get(0))?;
-        if retained {
-            return Ok(true);
-        }
-        let answers: bool = conn.query_row(&format!("SELECT EXISTS(SELECT 1 FROM {table},json_each(document_json,'$.answers') a,json_tree(CASE WHEN json_valid(a.value) THEN a.value ELSE '{{}}' END) j WHERE j.key IN ('id','hash') AND j.value=?1)"), [value], |r| r.get(0))?;
-        if answers {
-            return Ok(true);
-        }
-    }
-    Ok(false)
-}
+// 资产保留判定与 canonical 预览刷新都是纯 vfs SQL，已下沉到 vfs；按原路径重导出。
+pub use crate::vfs::qbank_helpers::retains_asset;
 
 pub fn load_paper(conn: &Connection, id: &str) -> Result<GeneratedPaper, AppError> {
     let json: String = conn

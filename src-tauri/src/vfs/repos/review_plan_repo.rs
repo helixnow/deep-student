@@ -268,7 +268,7 @@ impl VfsReviewPlanRepo {
         let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let ease_factor = params
             .initial_ease_factor
-            .unwrap_or(crate::spaced_repetition::DEFAULT_EASE_FACTOR);
+            .unwrap_or(dstu_core::spaced_repetition::DEFAULT_EASE_FACTOR);
 
         conn.execute(
             r#"

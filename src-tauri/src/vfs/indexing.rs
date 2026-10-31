@@ -987,8 +987,10 @@ fn resolve_indexable_content(
                 )
                 .ok();
             if let Some(exam_id) = exam_id {
-                match crate::qbank_read::context_with_conn(conn, &exam_id) {
-                    Ok(Some(document)) => return Some(crate::qbank_read::context_text(&document)),
+                match crate::vfs::qbank_read::context_with_conn(conn, &exam_id) {
+                    Ok(Some(document)) => {
+                        return Some(crate::vfs::qbank_read::context_text(&document))
+                    }
                     Err(error) => {
                         log::warn!("[VFS] Canonical question context failed: {error}");
                         return None;
@@ -1453,11 +1455,11 @@ fn resolve_indexable_pages(
                 )
                 .ok();
             if let Some(exam_id) = exam_id {
-                match crate::qbank_read::context_with_conn(conn, &exam_id) {
+                match crate::vfs::qbank_read::context_with_conn(conn, &exam_id) {
                     Ok(Some(document)) => {
                         return Some(vec![PageText {
                             page_index: 0,
-                            text: crate::qbank_read::context_text(&document),
+                            text: crate::vfs::qbank_read::context_text(&document),
                             source_id: Some(exam_id),
                         }])
                     }
@@ -2133,11 +2135,11 @@ impl VfsFullIndexingService {
                     .optional()?;
                 let document = exam_id
                     .as_deref()
-                    .map(|id| crate::qbank_read::context_with_conn(&conn, id))
+                    .map(|id| crate::vfs::qbank_read::context_with_conn(&conn, id))
                     .transpose()
                     .map_err(crate::vfs::VfsError::Other)?
                     .flatten();
-                let text = document.as_ref().map(crate::qbank_read::context_text);
+                let text = document.as_ref().map(crate::vfs::qbank_read::context_text);
                 UnitBuildInput {
                     resource_id: resource_id.into(),
                     resource_type: "exam".into(),

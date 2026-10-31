@@ -2384,7 +2384,7 @@ impl VfsAttachmentRepo {
         id: &str,
     ) -> VfsResult<()> {
         info!("[VFS::AttachmentRepo] Purging attachment: {}", id);
-        if crate::qbank_practice::retains_asset(conn, id)? {
+        if crate::vfs::qbank_helpers::retains_asset(conn, id)? {
             return Ok(());
         }
 

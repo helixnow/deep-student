@@ -5,14 +5,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
-pub struct SourceRef {
-    pub source_id: String,
-    #[serde(default)]
-    pub page: Option<u32>,
-    #[serde(default)]
-    pub bbox: Option<[f64; 4]>,
-}
+// 纯数据类型放在 vfs 内（仓储层需要），这里按原路径重导出保持调用点不变。
+pub use crate::vfs::qbank_types::{QuestionMaterial, SourceRef};
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DraftFigure {
     pub source_id: String,
@@ -119,17 +114,6 @@ impl Default for QuestionDocument {
         }
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub struct QuestionMaterial {
-    pub id: String,
-    pub content: String,
-    #[serde(default)]
-    pub images: Vec<QuestionImage>,
-    #[serde(default)]
-    pub source_refs: Vec<SourceRef>,
-    pub version: i64,
-}
-
 impl QuestionDocument {
     pub fn validate(&self) -> Result<(), AppError> {
         let invalid = |message: &str| AppError::validation(format!("题目文档校验失败: {message}"));

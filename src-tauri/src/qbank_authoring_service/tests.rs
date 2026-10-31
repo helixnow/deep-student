@@ -1,4 +1,5 @@
 use super::*;
+use crate::vfs::repos::VfsExamRepo;
 use crate::vfs::types::VfsCreateExamSheetParams;
 
 fn setup() -> (tempfile::TempDir, Arc<VfsDatabase>, String) {

@@ -34,8 +34,8 @@ use crate::vfs::error::{VfsError, VfsResult};
 fn parse_provenance_refs(
     provenance_json: Option<&str>,
 ) -> (
-    Vec<crate::qbank_document::SourceRef>,
-    Vec<crate::qbank_document::SourceRef>,
+    Vec<crate::vfs::qbank_types::SourceRef>,
+    Vec<crate::vfs::qbank_types::SourceRef>,
 ) {
     let Some(raw) = provenance_json.filter(|s| !s.trim().is_empty()) else {
         return (Vec::new(), Vec::new());
@@ -44,7 +44,7 @@ fn parse_provenance_refs(
         warn!("[VFS::QuestionRepo] provenance_json 不是合法 JSON，按无来源处理");
         return (Vec::new(), Vec::new());
     };
-    let parse = |key: &str| -> Vec<crate::qbank_document::SourceRef> {
+    let parse = |key: &str| -> Vec<crate::vfs::qbank_types::SourceRef> {
         value
             .get(key)
             .cloned()
@@ -320,16 +320,16 @@ pub struct Question {
     pub group_label: Option<String>,
     /// 该题所需的共享材料（读取期从 qbank_group_materials 派生，去重、按 position 排序）。
     #[serde(default)]
-    pub materials: Vec<crate::qbank_document::QuestionMaterial>,
+    pub materials: Vec<crate::vfs::qbank_types::QuestionMaterial>,
     /// 答案来源：source | generated | manual | unknown。
     #[serde(default)]
     pub answer_origin: Option<String>,
     /// 题干来源定位（来自 provenance_json.source_refs）。
     #[serde(default)]
-    pub source_refs: Vec<crate::qbank_document::SourceRef>,
+    pub source_refs: Vec<crate::vfs::qbank_types::SourceRef>,
     /// 答案来源定位（来自 provenance_json.answer_source_refs）。
     #[serde(default)]
-    pub answer_source_refs: Vec<crate::qbank_document::SourceRef>,
+    pub answer_source_refs: Vec<crate::vfs::qbank_types::SourceRef>,
     /// 原始来源键（同一来源+题位稳定标识，用于重解析去重/冲突识别）。
     #[serde(default)]
     pub source_key: Option<String>,
@@ -1851,8 +1851,10 @@ impl VfsQuestionRepo {
         }
 
         // 2. 组内共享材料（按组 + position 排序，去重）
-        let mut materials_by_group: HashMap<String, Vec<crate::qbank_document::QuestionMaterial>> =
-            HashMap::new();
+        let mut materials_by_group: HashMap<
+            String,
+            Vec<crate::vfs::qbank_types::QuestionMaterial>,
+        > = HashMap::new();
         if table_exists(conn, "qbank_group_materials") {
             for chunk in group_ids.chunks(500) {
                 let placeholders: Vec<String> =
@@ -1895,7 +1897,7 @@ impl VfsQuestionRepo {
                     if bucket.iter().any(|m| m.id == id) {
                         continue;
                     }
-                    bucket.push(crate::qbank_document::QuestionMaterial {
+                    bucket.push(crate::vfs::qbank_types::QuestionMaterial {
                         id,
                         content,
                         images: images_json

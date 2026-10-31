@@ -557,7 +557,7 @@ impl VfsExamRepo {
                     }
                 }
             }
-            crate::qbank_authoring_service::refresh_canonical_preview_with_conn(conn, &new_exam.id)
+            crate::vfs::qbank_helpers::refresh_canonical_preview_with_conn(conn, &new_exam.id)
                 .map_err(|e| VfsError::Other(e.to_string()))?;
             super::question_repo::VfsQuestionRepo::refresh_stats_with_conn(conn, &new_exam.id)?;
 
@@ -1132,7 +1132,7 @@ impl VfsExamRepo {
             // 11. 递减页图与题目图片的 blob 引用计数（两阶段删除：
             //     此处只减计数，物理文件由事务提交后的 cleanup_unreferenced 清扫）
             for hash in &blob_hashes {
-                if crate::qbank_practice::retains_asset(conn, hash)? {
+                if crate::vfs::qbank_helpers::retains_asset(conn, hash)? {
                     continue;
                 }
                 match super::blob_repo::VfsBlobRepo::decrement_ref_with_conn(conn, blobs_dir, hash)

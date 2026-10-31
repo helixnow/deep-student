@@ -114,7 +114,12 @@ pub mod qbank_grading;
 pub mod qbank_legacy_reconcile;
 pub mod qbank_management;
 pub mod qbank_practice;
-pub mod qbank_read;
+// 读取逻辑已下沉到 vfs；这里按原路径重导出，测试（需题库领域写入种子数据）留在 app。
+pub mod qbank_read {
+    pub use crate::vfs::qbank_read::*;
+    #[cfg(test)]
+    mod tests;
+}
 pub mod qbank_source_view;
 pub mod question_authoring_runner;
 #[allow(dead_code)]
@@ -122,14 +127,14 @@ pub mod question_bank_service;
 pub mod question_export_service;
 #[allow(dead_code)]
 pub mod question_import_service;
-pub mod question_sync_service;
+pub use vfs::question_sync_service; // 题目集同步元数据服务（只依赖 vfs 表）
 pub mod quick_assistant; // 快速学习小窗的原生窗口生命周期管理
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub use dstu_platform::secret_prompt;
 pub mod secure_store;
 pub use dstu_core::services;
-pub mod spaced_repetition;
+pub use dstu_core::spaced_repetition; // SM-2 间隔重复算法（下沉 dstu-core，纯函数）
 pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub mod startup_cleanup;
 pub use dstu_platform::startup_gate;

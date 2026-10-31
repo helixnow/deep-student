@@ -893,7 +893,7 @@ fn resolve_single_ref_with_conn(
             }
         }
         VfsResourceType::Exam => {
-            match crate::qbank_read::context_with_conn(conn, &r.source_id)
+            match crate::vfs::qbank_read::context_with_conn(conn, &r.source_id)
                 .map_err(|e| crate::vfs::error::VfsError::Database(e))?
             {
                 Some(document) => (Some(document.to_string()), None),
@@ -1592,9 +1592,9 @@ fn get_exam_multimodal_blocks_with_conn(
     use crate::vfs::repos::VfsBlobRepo;
     use base64::Engine;
 
-    if let Ok(Some(document)) = crate::qbank_read::context_with_conn(conn, exam_id) {
+    if let Ok(Some(document)) = crate::vfs::qbank_read::context_with_conn(conn, exam_id) {
         let mut blocks = vec![MultimodalContentBlock::text(document.to_string())];
-        for image in crate::qbank_read::image_refs(&document) {
+        for image in crate::vfs::qbank_read::image_refs(&document) {
             let hash = image["hash"].as_str().unwrap_or("");
             let bytes = VfsBlobRepo::get_blob_path_with_conn(conn, blobs_dir, hash)
                 .ok()

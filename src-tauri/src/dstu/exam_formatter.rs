@@ -41,7 +41,7 @@ pub async fn format_exam_for_context(
 
     let document = {
         let conn = vfs_db.get_conn_safe().map_err(|e| e.to_string())?;
-        crate::qbank_read::context_with_conn(&conn, exam_id)?
+        crate::vfs::qbank_read::context_with_conn(&conn, exam_id)?
     };
     if let Some(document) = document {
         let mut blocks = vec![ContentBlock::text(format!(
@@ -50,7 +50,7 @@ pub async fn format_exam_for_context(
             escape_xml(&document.to_string())
         ))];
         if is_multimodal {
-            for image in crate::qbank_read::image_refs(&document) {
+            for image in crate::vfs::qbank_read::image_refs(&document) {
                 let hash = image["hash"].as_str().unwrap_or("");
                 let (base64, mime) = get_blob_base64(vfs_db, hash)
                     .await

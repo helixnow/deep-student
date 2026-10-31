@@ -73,10 +73,11 @@ impl ExamExportAdapter {
             let conn = vfs_db
                 .get_conn_safe()
                 .map_err(|e| DstuError::Internal(e.to_string()))?;
-            crate::qbank_read::context_with_conn(&conn, resource_id).map_err(DstuError::Internal)?
+            crate::vfs::qbank_read::context_with_conn(&conn, resource_id)
+                .map_err(DstuError::Internal)?
         };
         if let Some(document) = canonical {
-            md.push_str(&crate::qbank_read::context_text(&document));
+            md.push_str(&crate::vfs::qbank_read::context_text(&document));
             return Ok(ExportPayload::Text {
                 content: md,
                 suggested_filename: format!("{}.md", sanitize_filename(title)),
