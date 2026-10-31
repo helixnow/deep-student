@@ -389,17 +389,6 @@ impl ChatV2Pipeline {
         self
     }
 
-    /// step 10 过渡垫片（仅测试）：`tools/legacy_tool_provider.rs` 的 oracle 测试仍按旧名
-    /// 取生产花名册。L2 把这些测试迁到 `src/agent_wiring/tests/` 时删除本垫片
-    /// （L5 搬入 dstu-agent 前必须删除：它引用 app 的 `agent_wiring`）。
-    #[cfg(test)]
-    pub(crate) fn create_executor_registry_with_workspace(
-        workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
-    ) -> Arc<ToolExecutorRegistry> {
-        use crate::agent_wiring::roster::AppExecutorRoster;
-        assemble_registry(AppExecutorRoster.executors(workspace_coordinator.as_ref()))
-    }
-
     /// 🆕 Goal 模式（P0）：把本轮已结算的用量同步累加到会话目标账目。
     ///
     /// 仅在 execute() 的 Ok 分支调用（取消/错误轮不记账，P0 简化）；

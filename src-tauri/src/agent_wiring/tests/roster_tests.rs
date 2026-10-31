@@ -11,9 +11,10 @@ use crate::agent_wiring::roster::{missing_descriptor_tools, AppExecutorRoster};
 use crate::chat_v2::pipeline::{
     assemble_registry, ChatV2Pipeline, CoreExecutorRoster, ExecutorRoster,
 };
-use crate::chat_v2::tool_descriptors::tests::EXPECTED_ROSTER;
 use crate::chat_v2::tools::ToolExecutorRegistry;
 use crate::chat_v2::workspace::WorkspaceCoordinator;
+
+use super::descriptor_tests::EXPECTED_ROSTER;
 
 /// 拆分前 `ChatV2Pipeline::create_executor_registry()`：生产花名册、无 workspace coordinator。
 fn create_executor_registry() -> Arc<ToolExecutorRegistry> {

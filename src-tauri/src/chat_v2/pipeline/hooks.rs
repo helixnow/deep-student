@@ -1112,7 +1112,10 @@ impl PipelineHook for TaskAuditHook {
 
 /// 敏感度非 Low（或未知）时，缺失 ApprovalManager 必须 fail-closed。
 /// （迁自 tool_loop.rs；语义规格由下方测试锁定。）
-fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
+///
+/// step 10：`pub` 仅供 app 侧 `agent_wiring::tests::hooks_tests` 断言。
+#[doc(hidden)]
+pub fn approval_manager_required(sensitivity: Option<ToolSensitivity>) -> bool {
     sensitivity != Some(ToolSensitivity::Low)
 }
 
@@ -1190,7 +1193,8 @@ impl ChatV2Pipeline {
                     .to_string(),
             );
         };
-        let state = window.state::<crate::commands::AppState>();
+        // step 10：主库 Arc 已单独 `app.manage`（与 AppState.database 同一个 Arc）。
+        let state = window.state::<Arc<crate::database::Database>>();
         let authority = ChatV2Repo::get_session_authority_state(&self.db, session_id)
             .map_err(|error| format!("Failed to resolve shell authority: {error}"))?;
         let allow_absolute_cwd = matches!(
@@ -1215,7 +1219,7 @@ impl ChatV2Pipeline {
             .unwrap_or_else(|| {
                 crate::chat_v2::runtime_roots::resolve_effective_runtime_root_id_for_session(
                     window.app_handle(),
-                    &state.database,
+                    state.inner(),
                     Some(self.db.as_ref()),
                     session_id,
                     skill_package_roots,
@@ -1237,7 +1241,7 @@ impl ChatV2Pipeline {
         };
         let binding = crate::chat_v2::runtime_roots::shell_runtime_approval_binding(
             window.app_handle(),
-            &state.database,
+            state.inner(),
             session_id,
             skill_package_roots,
             Some(&root_id),
@@ -1255,7 +1259,7 @@ impl ChatV2Pipeline {
 
     fn canonical_tool_short_name(tool_name: &str) -> &str {
         tool_name
-            .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .strip_prefix(super::super::tools::types::BUILTIN_NAMESPACE)
             .or_else(|| tool_name.strip_prefix("builtin:"))
             .or_else(|| tool_name.strip_prefix("mcp.tools."))
             .or_else(|| tool_name.strip_prefix("mcp_"))
@@ -1640,176 +1644,7 @@ mod tests {
         assert!(approval_manager_required(None));
     }
 
-    #[test]
-    fn phase9_non_low_tools_enter_the_fail_closed_approval_path() {
-        use crate::chat_v2::tools::ToolExecutor;
-
-        let memory = crate::chat_v2::tools::MemoryToolExecutor::new();
-        let essay = crate::chat_v2::tools::EssayGradingExecutor::new();
-        let temp_dir = tempfile::tempdir().expect("create workspace directory");
-        let subagent = crate::chat_v2::tools::SubagentExecutor::new(Arc::new(
-            crate::chat_v2::workspace::WorkspaceCoordinator::new(temp_dir.path().to_path_buf()),
-        ));
-
-        for (tool, sensitivity) in [
-            (
-                "builtin-memory_batch_move",
-                memory.sensitivity_level("builtin-memory_batch_move"),
-            ),
-            (
-                "builtin-memory_add_relation",
-                memory.sensitivity_level("builtin-memory_add_relation"),
-            ),
-            (
-                "builtin-memory_remove_relation",
-                memory.sensitivity_level("builtin-memory_remove_relation"),
-            ),
-            (
-                "builtin-memory_update_tags",
-                memory.sensitivity_level("builtin-memory_update_tags"),
-            ),
-            (
-                "builtin-memory_export_all",
-                memory.sensitivity_level("builtin-memory_export_all"),
-            ),
-            (
-                "builtin-essay_grade",
-                essay.sensitivity_level("builtin-essay_grade"),
-            ),
-            (
-                "builtin-subagent_call",
-                subagent.sensitivity_level("builtin-subagent_call"),
-            ),
-        ] {
-            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
-            assert!(
-                approval_manager_required(Some(sensitivity)),
-                "{tool} must be blocked when ApprovalManager is unavailable"
-            );
-        }
-
-        assert!(!approval_manager_required(Some(
-            essay.sensitivity_level("builtin-essay_list_modes")
-        )));
-    }
-
-    #[test]
-    fn phase2_phase3_and_phase8_non_low_tools_fail_closed_without_approval_manager() {
-        use crate::chat_v2::tools::ToolExecutor;
-
-        let canvas = crate::chat_v2::tools::CanvasToolExecutor::new();
-        let dstu = crate::chat_v2::tools::DstuToolExecutor::new();
-        let session = crate::chat_v2::tools::SessionToolExecutor::new();
-        let index = crate::chat_v2::tools::IndexWebpageToolExecutor::new();
-
-        let cases = [
-            (
-                "builtin-note_delete",
-                canvas.sensitivity_level("builtin-note_delete"),
-            ),
-            (
-                "builtin-note_update_tags",
-                canvas.sensitivity_level("builtin-note_update_tags"),
-            ),
-            (
-                "builtin-dstu_folder_create",
-                dstu.sensitivity_level("builtin-dstu_folder_create"),
-            ),
-            (
-                "builtin-dstu_folder_rename",
-                dstu.sensitivity_level("builtin-dstu_folder_rename"),
-            ),
-            (
-                "builtin-dstu_rename",
-                dstu.sensitivity_level("builtin-dstu_rename"),
-            ),
-            (
-                "builtin-dstu_move",
-                dstu.sensitivity_level("builtin-dstu_move"),
-            ),
-            (
-                "builtin-dstu_delete",
-                dstu.sensitivity_level("builtin-dstu_delete"),
-            ),
-            (
-                "builtin-dstu_restore",
-                dstu.sensitivity_level("builtin-dstu_restore"),
-            ),
-            (
-                "builtin-dstu_purge",
-                dstu.sensitivity_level("builtin-dstu_purge"),
-            ),
-            (
-                "builtin-dstu_upload_file",
-                dstu.sensitivity_level("builtin-dstu_upload_file"),
-            ),
-            (
-                "builtin-session_export",
-                session.sensitivity_level("builtin-session_export"),
-            ),
-            (
-                "builtin-session_tag_add",
-                session.sensitivity_level("builtin-session_tag_add"),
-            ),
-            (
-                "builtin-session_tag_remove",
-                session.sensitivity_level("builtin-session_tag_remove"),
-            ),
-            (
-                "builtin-session_move",
-                session.sensitivity_level("builtin-session_move"),
-            ),
-            (
-                "builtin-session_rename",
-                session.sensitivity_level("builtin-session_rename"),
-            ),
-            (
-                "builtin-session_restore",
-                session.sensitivity_level("builtin-session_restore"),
-            ),
-            (
-                "builtin-group_create",
-                session.sensitivity_level("builtin-group_create"),
-            ),
-            (
-                "builtin-group_update",
-                session.sensitivity_level("builtin-group_update"),
-            ),
-            (
-                "builtin-session_archive",
-                session.sensitivity_level("builtin-session_archive"),
-            ),
-            (
-                "builtin-index_rebuild",
-                index.sensitivity_level("builtin-index_rebuild"),
-            ),
-            (
-                "builtin-webpage_save",
-                index.sensitivity_level("builtin-webpage_save"),
-            ),
-        ];
-        for (tool, sensitivity) in cases {
-            assert_ne!(sensitivity, ToolSensitivity::Low, "{tool}");
-            assert!(
-                approval_manager_required(Some(sensitivity)),
-                "{tool} must be blocked when ApprovalManager is unavailable"
-            );
-        }
-
-        let learning = crate::chat_v2::tools::LearningOverviewExecutor::new();
-        for tool in [
-            "builtin-learning_overview",
-            "builtin-pomodoro_today_stats",
-            "builtin-pomodoro_daily_stats",
-        ] {
-            assert_eq!(
-                learning.sensitivity_level(tool),
-                ToolSensitivity::Low,
-                "{tool}"
-            );
-            assert!(!approval_manager_required(Some(
-                learning.sensitivity_level(tool)
-            )));
-        }
-    }
+    // step 10：`phase9_non_low_tools_enter_the_fail_closed_approval_path` 与
+    // `phase2_phase3_and_phase8_non_low_tools_fail_closed_without_approval_manager`
+    // （需 app 域执行器）已迁到 app `agent_wiring::tests::hooks_tests`（函数名不变）。
 }

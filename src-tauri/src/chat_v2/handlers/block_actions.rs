@@ -1077,26 +1077,8 @@ mod tests {
         assert_eq!(saved.ended_at, Some(220));
     }
 
-    #[test]
-    fn removed_cardforge_callback_stays_off_command_surfaces() {
-        let removed_command = ["chat_v2_anki", "_cards_result"].concat();
-        let command_surfaces = [
-            ("block_actions.rs", include_str!("block_actions.rs")),
-            ("handlers/mod.rs", include_str!("mod.rs")),
-            ("lib.rs", include_str!("../../lib.rs")),
-            (
-                "permissions/application-commands.toml",
-                include_str!("../../../permissions/application-commands.toml"),
-            ),
-        ];
-
-        for (path, source) in command_surfaces {
-            assert!(
-                !source.contains(&removed_command),
-                "removed CardAgent callback must not be restored in {path}"
-            );
-        }
-    }
+    // step 10：`removed_cardforge_callback_stays_off_command_surfaces`（include_str! app 的
+    // lib.rs / permissions）已迁到 app `agent_wiring::tests::command_surface_tests`（函数名不变）。
 
     #[test]
     fn test_block_id_validation() {
