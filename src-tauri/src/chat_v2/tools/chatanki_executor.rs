@@ -374,7 +374,9 @@ pub(crate) fn install_agent_hooks(scope: &mut dstu_kernel::Scope) {
     if let Ok(disposer) = register_stale_anki_block_reaper(Arc::new(ChatAnkiStaleBlockReaper)) {
         scope.add(disposer);
     }
-    scope.add(register_emergency_cancel_hook(Arc::new(ChatAnkiEmergencyCancel)));
+    scope.add(register_emergency_cancel_hook(Arc::new(
+        ChatAnkiEmergencyCancel,
+    )));
 }
 
 // ============================================================================
@@ -1798,10 +1800,10 @@ fn verify_document_ownership(
 // 安装入口（保持 `chatanki_executor::install_workspace_card_read_scope` 路径）并
 // 在只读预检中查询。fail-closed 论证见该模块文档。
 
+use crate::chat_v2::workspace::card_read_scope::workspace_card_read_scope;
 pub use crate::chat_v2::workspace::card_read_scope::{
     install_workspace_card_read_scope, WorkspaceCardReadScopeGuard,
 };
-use crate::chat_v2::workspace::card_read_scope::workspace_card_read_scope;
 
 /// 只读所有权预检（仅 get_cards / status 使用）：返回本次读取应使用的
 /// 「有效读会话」。

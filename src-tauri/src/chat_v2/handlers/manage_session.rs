@@ -2761,10 +2761,7 @@ pub async fn chat_v2_get_rag_scope(
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
 ) -> Result<Vec<String>, String> {
-    Ok(
-        crate::chat_v2::session_scope::load_session_rag_scope(&db, &session_id)
-            .unwrap_or_default(),
-    )
+    Ok(crate::chat_v2::session_scope::load_session_rag_scope(&db, &session_id).unwrap_or_default())
 }
 
 #[tauri::command]

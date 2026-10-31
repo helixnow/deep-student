@@ -30,10 +30,10 @@ use crate::chat_v2::types::{
 use crate::database::Database;
 use crate::llm_manager::ApiConfig;
 use crate::tools::ToolRegistry;
-use dstu_agent_api::Services;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::pdf_processing_service::PdfProcessingService;
+use dstu_agent_api::Services;
 
 // ============================================================================
 // 工具敏感等级 / 并发等级（A2：与 dstu-agent-api 同一类型）

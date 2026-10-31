@@ -77,14 +77,17 @@ enum GateMode {
 
 /// 解析双闸。flag 关 → FlagOff；设置 off → Off；否则 Enabled。
 async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, String> {
-    let state = ctx.window_ref().try_state::<Arc<Database>>().ok_or_else(|| {
-        structured_error(
-            "WORKBENCH_UNAVAILABLE",
-            "AppState 不可用",
-            HINT_UNAVAILABLE,
-            false,
-        )
-    })?;
+    let state = ctx
+        .window_ref()
+        .try_state::<Arc<Database>>()
+        .ok_or_else(|| {
+            structured_error(
+                "WORKBENCH_UNAVAILABLE",
+                "AppState 不可用",
+                HINT_UNAVAILABLE,
+                false,
+            )
+        })?;
 
     let app_version = dstu_core::APP_VERSION.to_string();
     let manager = FeatureFlagManager::new(app_version)

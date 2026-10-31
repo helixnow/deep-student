@@ -3742,6 +3742,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "dstu-agent"
+version = "0.0.0"
+
+[[package]]
 name = "dstu-agent-api"
 version = "0.0.0"
 dependencies = [

@@ -1799,14 +1799,7 @@ pub async fn chat_v2_list_runtime_directory(
         .unwrap_or("0")
         .parse::<usize>()
         .map_err(|_| "Invalid runtime directory cursor".to_string())?;
-    let root = runtime_root_by_id(
-        &app,
-        state.inner(),
-        &session_id,
-        None,
-        Some(root_id),
-        false,
-    )?;
+    let root = runtime_root_by_id(&app, state.inner(), &session_id, None, Some(root_id), false)?;
     let root_canon = revalidate_runtime_root(state.inner(), &root)?;
     list_runtime_directory_page(
         &root.id,

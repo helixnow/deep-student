@@ -364,7 +364,10 @@ async fn connect_with_retry(client: &McpClient, timeout: Duration) -> Result<(),
             Err(err) => {
                 last_error = err.to_string();
                 if start.elapsed() >= timeout {
-                    return Err(McpError::ConnectionError(format!("连接超时: {}", last_error)));
+                    return Err(McpError::ConnectionError(format!(
+                        "连接超时: {}",
+                        last_error
+                    )));
                 }
                 sleep(CONNECT_RETRY_DELAY).await;
             }

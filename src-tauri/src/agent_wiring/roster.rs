@@ -14,15 +14,15 @@ use std::sync::Arc;
 
 use crate::chat_v2::pipeline::ExecutorRoster;
 use crate::chat_v2::tools::{
-    AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor,
-    BuiltinResourceExecutor, BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor,
-    DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, FileManagerExecutor,
-    FsrsSettingsExecutor, ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor,
-    LearningOverviewExecutor, LlmUsageToolExecutor, LocalShellExecuteExecutor,
-    LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor,
-    OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor,
-    TextbookPdfToolExecutor, ToolExecutor, ToolExecutorRegistry, TranslationToolExecutor,
-    UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
+    AcademicSearchExecutor, AttemptCompletionExecutor, AutomationExecutor, BuiltinResourceExecutor,
+    BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, DataGovernanceToolExecutor,
+    DstuToolExecutor, FetchExecutor, FileManagerExecutor, FsrsSettingsExecutor,
+    ImageGenerationExecutor, IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor,
+    LlmUsageToolExecutor, LocalShellExecuteExecutor, LocalShellPreflightExecutor,
+    McpProposeExecutor, MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor,
+    SettingsModelsToolExecutor, SkillsExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
+    ToolExecutor, ToolExecutorRegistry, TranslationToolExecutor, UserTodoExecutor,
+    WorkspaceFsExecutor, WorkspaceToolExecutor,
 };
 use crate::chat_v2::workspace::WorkspaceCoordinator;
 
