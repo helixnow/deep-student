@@ -69,7 +69,7 @@ pub use dstu_vision::figure_extractor;
 pub use dstu_storage::file_manager;
 pub use dstu_vfs::file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
-pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
+pub use dstu_learning::fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub use dstu_storage::injection_budget;
@@ -81,7 +81,17 @@ pub use dstu_llm::llm_manager;
 pub use dstu_vfs::lance_vector_store;
 pub use dstu_vision::llm_structurer;
 pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
-pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+// 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+// 实现已下沉到 dstu-learning，这里按原路径重导出；service 的单测要用题库/FSRS/画像等 app 侧
+// 领域，留在 app 并保持原测试路径 `mastery::service::tests`。
+pub mod mastery {
+    pub use dstu_learning::mastery::*;
+    pub mod service {
+        pub use dstu_learning::mastery::service::*;
+        #[cfg(test)]
+        mod tests;
+    }
+}
 pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
 #[cfg(feature = "mcp")]
 pub use dstu_mcp::mcp;
@@ -141,7 +151,7 @@ pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 Web
 pub use dstu_storage::startup_cleanup;
 #[allow(dead_code)]
 pub mod streaming_anki_service;
-pub mod study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
+pub use dstu_learning::study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
 pub mod system_notification;
 pub mod system_permissions;
@@ -213,6 +223,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_vfs",
     "dstu_mcp",
     "dstu_vision",
+    "dstu_learning",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

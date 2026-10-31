@@ -3284,6 +3284,7 @@ dependencies = [
  "dstu-core",
  "dstu-docs",
  "dstu-kernel",
+ "dstu-learning",
  "dstu-llm",
  "dstu-mcp",
  "dstu-platform",
@@ -3793,6 +3794,23 @@ dependencies = [
 [[package]]
 name = "dstu-kernel"
 version = "0.0.0"
+
+[[package]]
+name = "dstu-learning"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-vfs",
+ "fsrs",
+ "nanoid",
+ "rusqlite",
+ "serde",
+ "tauri",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "dstu-llm"

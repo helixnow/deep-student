@@ -180,7 +180,8 @@ pub async fn study_time_range(
 mod tests {
     use super::*;
 
-    const MIGRATION_SQL: &str = include_str!("../../migrations/vfs/V20261006__study_time.sql");
+    const MIGRATION_SQL: &str =
+        include_str!("../../../../migrations/vfs/V20261006__study_time.sql");
 
     fn conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();

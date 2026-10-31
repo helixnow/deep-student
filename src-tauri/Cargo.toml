@@ -31,6 +31,7 @@ members = [
     "crates/dstu-core",
     "crates/dstu-docs",
     "crates/dstu-kernel",
+    "crates/dstu-learning",
     "crates/dstu-llm",
     "crates/dstu-mcp",
     "crates/dstu-util",
@@ -56,6 +57,7 @@ dstu-agent-api = { path = "crates/dstu-agent-api", default-features = false }
 dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
+dstu-learning = { path = "crates/dstu-learning", default-features = false }
 dstu-llm = { path = "crates/dstu-llm", default-features = false }
 dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
@@ -288,6 +290,7 @@ dstu-agent-api = { workspace = true }
 dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }
+dstu-learning = { workspace = true }
 dstu-llm = { workspace = true }
 dstu-mcp = { workspace = true }
 dstu-util = { workspace = true }
@@ -439,6 +442,8 @@ env_logger = "0.11.11"
 # 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
 # dstu-vfs 的 test-util feature 公开该函数（夹具本体在 dev-only 的 dstu-testkit）。
 dstu-vfs = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::mastery::service::set_now_override_ms` 覆盖 mastery 事件时钟。
+dstu-learning = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "chatanki_apkg_executor_e2e"

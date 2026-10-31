@@ -10,6 +10,7 @@ pub mod evolution;
 pub mod handlers;
 pub mod learner_profile;
 pub mod llm_decision;
+pub mod mastery_hook;
 pub mod query_rewriter;
 pub mod reranker;
 pub mod semantic_dedup;

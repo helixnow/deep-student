@@ -3639,6 +3639,8 @@ mod tests {
     /// C5：submit_answer 连错 3 次 → mastery_events/states + learner_profile.weak_points
     #[test]
     fn submit_answer_wrong_thrice_writes_mastery_and_weak_point() {
+        // 画像薄弱点回流经 mastery::profile_sink，由 extensions 注入 memory 实现（拆分后为回调解耦）。
+        crate::extensions::register_extensions();
         let (_tmp, vfs_db, qbank) = setup_qbank();
         let concept = "qbank_闭环概念";
         let qid = seed_tagged_question(&vfs_db, concept, "Q1");
