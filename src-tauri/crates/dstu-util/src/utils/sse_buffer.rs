@@ -3,7 +3,7 @@
 //! 注：本文件包含 issue #122 定位探针（invalid/lossy 分支的 log::warn，仅记录
 //! 长度类元数据，不记录任何 chunk/用户文本内容），不声称修复 #122。
 
-use crate::llm_manager::utf8_stream::Utf8StreamDecoder;
+use crate::utf8_stream::Utf8StreamDecoder;
 
 /// SSE行缓冲工具
 /// 用于处理跨chunk的不完整SSE行，确保数据完整性

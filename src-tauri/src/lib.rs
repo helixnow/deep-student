@@ -90,6 +90,7 @@ pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub mod metrics_server;
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
+pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
 #[allow(dead_code, deprecated)]
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
@@ -190,7 +191,8 @@ use tracing::{error, info, warn};
 // 本项目自己的日志 target 前缀。log/tracing 的默认 target 是模块路径，代码拆到
 // dstu-* crate 后前缀随之变化；日志插件对这里列出的每个前缀应用相同级别，
 // 保证拆分前后日志输出不变。新增 dstu-* crate 时在此追加。
-const FIRST_PARTY_LOG_TARGETS: &[&str] = &["deep_student_lib", "dstu_core", "dstu_docs"];
+const FIRST_PARTY_LOG_TARGETS: &[&str] =
+    &["deep_student_lib", "dstu_core", "dstu_docs", "dstu_util"];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();

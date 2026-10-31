@@ -13,6 +13,7 @@ pub mod error_recovery;
 pub mod json_validator;
 pub mod llm_config;
 pub mod models;
+pub mod net_policy; // 内网/回环地址判定（SSRF 拦截正源，browser::policy 按原路径重导出）
 pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod services;
 pub mod workflow_error_handler;

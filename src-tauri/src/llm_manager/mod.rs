@@ -9,7 +9,7 @@ mod rag_extension;
 pub(crate) mod reasoning_level_map;
 pub mod routing;
 pub(crate) mod single_shot_stream;
-pub mod utf8_stream;
+pub use dstu_util::utf8_stream;
 
 // 连接测试（commands::test_api_connection）复用生产请求构造的 token 上限逻辑，
 // 保证探测请求与真实聊天请求的 max_tokens/max_completion_tokens 方言一致。

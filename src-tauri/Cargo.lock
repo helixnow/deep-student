@@ -3282,6 +3282,7 @@ dependencies = [
  "dotenvy",
  "dstu-core",
  "dstu-docs",
+ "dstu-util",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -3763,6 +3764,19 @@ dependencies = [
  "umya-spreadsheet",
  "urlencoding",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-util"
+version = "0.0.0"
+dependencies = [
+ "chrono",
+ "dstu-core",
+ "log",
+ "reqwest 0.11.27",
+ "serde_json",
+ "tiktoken-rs",
+ "tracing",
 ]
 
 [[package]]

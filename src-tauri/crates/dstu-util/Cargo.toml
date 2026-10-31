@@ -1,0 +1,27 @@
+[package]
+name = "dstu-util"
+version = "0.0.0"
+description = "Deep Student 通用工具：token 预算、SSE 缓冲与流式 UTF-8 解码、受限远程抓取、文本处理（不依赖 tauri）"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "base"
+
+[lints]
+workspace = true
+
+[features]
+# 精确 tokenizer（app 的 tokenizer_tiktoken feature 转发到这里）
+tokenizer_tiktoken = ["tiktoken-rs"]
+
+[dependencies]
+dstu-core = { workspace = true }
+chrono = { workspace = true }
+log = { workspace = true }
+reqwest = { workspace = true }
+serde_json = { workspace = true }
+tiktoken-rs = { workspace = true, optional = true }
+tracing = { workspace = true }
