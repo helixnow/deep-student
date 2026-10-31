@@ -117,7 +117,7 @@ describe('modeI18n', () => {
 
   it('source table mirrors the Rust built-in modes (types.rs)', () => {
     const rust = readFileSync(
-      resolve(__dirname, '../../src-tauri/src/essay_grading/types.rs'),
+      resolve(__dirname, '../../src-tauri/crates/dstu-tutor/src/essay_grading/types.rs'),
       'utf8'
     );
     const body = rust.slice(rust.indexOf('pub fn get_builtin_grading_modes'), rust.indexOf('pub fn get_default_grading_mode'));
