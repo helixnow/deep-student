@@ -852,6 +852,7 @@ commands.allow = [
   "tauri_lab_frontend_log",
   "test_all_search_engines",
   "test_api_connection",
+  "opencode_go_get_usage",
   "test_mcp_connection",
   "test_mcp_http",
   "test_mcp_sse",

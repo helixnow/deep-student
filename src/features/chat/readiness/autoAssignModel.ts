@@ -17,6 +17,7 @@ import { sortApiConfigsByVendorOrder } from '@/utils/modelSorting';
 import { isVoiceInputAssignableApi } from '@/voice-input/modelSelection';
 import { ensureModelsCacheLoaded, getCachedModels } from '../hooks/useAvailableModels';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
+import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 
 // ============================================================================
 // 类型
@@ -40,6 +41,14 @@ export interface AutoAssignResult {
 /** 是否为可用的对话模型（非 embedding、非 reranker、已启用） */
 function isChatModel(api: ApiConfig): boolean {
   return isAvailableChatModel(api);
+}
+
+/**
+ * 非 Agent 对话功能的对话模型：OpenCode Go 仅限 Agent 对话（主对话、会话标题），
+ * 不能自动分配给制卡、批改、出题、翻译、记忆决策等功能。
+ */
+function isNonAgentChatModel(api: ApiConfig): boolean {
+  return isChatModel(api) && !isOpenCodeGoConfig(api);
 }
 
 /** 是否为可用的嵌入模型 */
@@ -114,12 +123,12 @@ interface AssignmentSlot {
  */
 const SLOTS: AssignmentSlot[] = [
   { field: 'model2_config_id', filter: isChatModel },
-  { field: 'anki_card_model_config_id', filter: isChatModel },
-  { field: 'qbank_ai_grading_model_config_id', filter: isChatModel },
-  { field: 'qbank_ai_generation_model_config_id', filter: isChatModel },
+  { field: 'anki_card_model_config_id', filter: isNonAgentChatModel },
+  { field: 'qbank_ai_grading_model_config_id', filter: isNonAgentChatModel },
+  { field: 'qbank_ai_generation_model_config_id', filter: isNonAgentChatModel },
   { field: 'chat_title_model_config_id', filter: isChatModel },
-  { field: 'translation_model_config_id', filter: isChatModel },
-  { field: 'memory_decision_model_config_id', filter: isChatModel },
+  { field: 'translation_model_config_id', filter: isNonAgentChatModel },
+  { field: 'memory_decision_model_config_id', filter: isNonAgentChatModel },
   { field: 'image_generation_model_config_id', filter: isImageGenerationModel },
   { field: 'voice_input_asr_model_config_id', filter: isAsrModel },
   { field: 'reranker_model_config_id', filter: isRerankerModel },
@@ -128,7 +137,7 @@ const SLOTS: AssignmentSlot[] = [
   // 多模态嵌入槽位（vl_embedding_model_config_id）不自动分配：多模态索引按页调用付费接口，
   // 只能由用户在「嵌入维度管理」里建多模态维度并绑定模型来开启；而且这里的 isEmbeddingModel
   // 不要求多模态，曾把纯文本嵌入模型写进该槽位，后端随即拒绝。
-  { field: 'exam_sheet_ocr_model_config_id', filter: isMultimodalModel },
+  { field: 'exam_sheet_ocr_model_config_id', filter: (api) => isMultimodalModel(api) && !isOpenCodeGoConfig(api) },
 ];
 
 /**
@@ -239,6 +248,7 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
       if (existingConfigIds.has(config.id)) continue; // 已注册，跳过
       if (isDiscontinuedOcrModel(config)) continue; // 停服模型不注册
       if (!isMultimodalModel(config)) continue; // 复用已有的多模态判断逻辑
+      if (isOpenCodeGoConfig(config)) continue; // OpenCode Go 仅限 Agent 对话，不注册为 OCR 引擎
 
       // 注册为 OCR 引擎
       try {

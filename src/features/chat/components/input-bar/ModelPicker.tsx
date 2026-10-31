@@ -42,6 +42,8 @@ import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
 import { useRecentChatModels } from '../../hooks/useRecentChatModels';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
+import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
+import { formatRequestCount, getOpenCodeGoModelQuota, useOpenCodeGoPlan } from '@/utils/opencodeGoPlans';
 
 // ============================================================================
 // Types
@@ -55,6 +57,8 @@ interface ApiModelConfig {
   model: string;
   vendorId?: string;
   vendorName?: string;
+  providerType?: string;
+  baseUrl?: string;
   isMultimodal?: boolean;
   isReasoning?: boolean;
   supportsTools?: boolean;
@@ -133,7 +137,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   retryMessageId,
   onRetry,
 }) => {
-  const { t } = useTranslation(['chatV2', 'chat_host', 'common']);
+  const { t, i18n } = useTranslation(['chatV2', 'chat_host', 'common']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
   // 📱 移动端也默认显示头部：面板在 composer 内联展开（无外层抽屉标题栏），
@@ -155,6 +159,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const [savingDefault, setSavingDefault] = useState(false);
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
   const { recentModels } = useRecentChatModels(models);
+  // OpenCode Go 模型在第二行附上当前套餐下的官方预估请求数（帮助挑选性价比高的模型）
+  const [openCodeGoPlan] = useOpenCodeGoPlan();
 
   // ----- load -----
   const isInitialLoad = useRef(true);
@@ -470,6 +476,20 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
             )}
           >
             {option.model || option.name}
+            {(() => {
+              if (!isOpenCodeGoConfig(option)) return null;
+              const quota = getOpenCodeGoModelQuota(option.model, openCodeGoPlan);
+              if (!quota) return null;
+              return (
+                <span className="ml-1 text-[color:var(--menu-shell-muted-foreground)]" data-testid="opencode-go-picker-quota">
+                  {quota.free || !quota.estimatedRequests
+                    ? t('chatV2:modelPicker.openCodeGoFree')
+                    : t('chatV2:modelPicker.openCodeGoRequests', {
+                        count: formatRequestCount(quota.estimatedRequests.five_hour, i18n?.language),
+                      })}
+                </span>
+              );
+            })()}
           </span>
         </span>
 

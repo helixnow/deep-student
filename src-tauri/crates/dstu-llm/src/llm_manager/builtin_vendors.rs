@@ -225,6 +225,17 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         max_tokens_limit: None,
         website_url: "https://platform.xiaomimimo.com",
     },
+    // OpenCode Go subscription（仅 Agent 对话可用，见 super::opencode_go）
+    BuiltinVendor {
+        id: super::opencode_go::VENDOR_ID,
+        name: "OpenCode Go",
+        provider_type: super::opencode_go::PROVIDER_TYPE,
+        auth_mode: None,
+        base_url: super::opencode_go::OPENAI_BASE_URL,
+        notes: "OpenCode Go 订阅（opencode.ai/go）。在 OpenCode Console 订阅后生成 API Key 填入即可。遵守 OpenCode 官方规则：仅用于 Agent 对话（含子代理、会话标题与上下文压缩），不能用于定时自动化、OCR、制卡、翻译、批改、向量检索等其他功能。各模型按官方端点表自动选择协议与地址；请求以 DeepStudent 身份发送并携带会话标识。连接测试只查询用量接口，不消耗额度。",
+        max_tokens_limit: None,
+        website_url: "https://opencode.ai/go",
+    },
 ];
 
 /// 所有内置模型列表
@@ -1310,7 +1321,40 @@ pub fn load_builtin_models(existing_profile_ids: &[String]) -> Vec<ModelProfile>
             .map(|m| m.to_model_profile(&GEMINI_BUILTIN_REGISTRY.vendor)),
     );
 
+    profiles.extend(
+        super::opencode_go::BUILTIN_MODELS
+            .iter()
+            .filter(|m| !existing_profile_ids.contains(&m.id.to_string()))
+            .map(opencode_go_model_profile),
+    );
+
     profiles
+}
+
+/// OpenCode Go 内置模型：每个模型显式声明协议，基础地址在合并运行期配置时按协议改写。
+fn opencode_go_model_profile(model: &super::opencode_go::GoBuiltinModel) -> ModelProfile {
+    let mut profile = BuiltinModel {
+        id: model.id,
+        vendor_id: super::opencode_go::VENDOR_ID,
+        label: model.label,
+        model: model.model,
+        is_multimodal: model.is_multimodal,
+        is_reasoning: model.is_reasoning,
+        supports_tools: true,
+        max_output_tokens: model.max_output_tokens,
+        temperature: 0.7,
+    }
+    .to_model_profile();
+    profile.api_protocol = Some(model.protocol.to_string());
+    profile.model_adapter =
+        super::opencode_go::model_adapter_for_protocol(model.protocol).to_string();
+    if model.protocol == "google_generate_content" {
+        profile.gemini_api_version = Some("v1beta".to_string());
+    }
+    if model.is_reasoning && model.protocol == "openai_responses" {
+        profile.reasoning_effort = Some("medium".to_string());
+    }
+    profile
 }
 
 /// 一次性加载所有内置供应商和模型
@@ -1380,6 +1424,39 @@ pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn opencode_go_builtins_declare_protocol_per_model() {
+        let vendor = BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == super::super::opencode_go::VENDOR_ID)
+            .expect("OpenCode Go vendor");
+        let vendor_config = vendor.to_vendor_config();
+        assert_eq!(vendor_config.provider_type, "opencode_go");
+        assert_eq!(vendor_config.supports_openai_responses, Some(true));
+
+        let profiles: Vec<_> = load_builtin_models(&[])
+            .into_iter()
+            .filter(|profile| profile.vendor_id == super::super::opencode_go::VENDOR_ID)
+            .collect();
+        assert_eq!(
+            profiles.len(),
+            super::super::opencode_go::BUILTIN_MODELS.len()
+        );
+        for profile in &profiles {
+            let protocol = profile.api_protocol.as_deref().expect("explicit protocol");
+            assert_eq!(
+                profile.model_adapter,
+                super::super::opencode_go::model_adapter_for_protocol(protocol)
+            );
+            assert_eq!(profile.provider_scope.as_deref(), Some("opencode_go"));
+        }
+        let gemini = profiles
+            .iter()
+            .find(|profile| profile.model == "gemini-4-argon")
+            .expect("gemini");
+        assert_eq!(gemini.gemini_api_version.as_deref(), Some("v1beta"));
+    }
 
     fn deepseek_vendor() -> &'static BuiltinVendor {
         BUILTIN_VENDORS

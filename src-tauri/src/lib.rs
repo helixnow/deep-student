@@ -2015,6 +2015,7 @@ pub fn run() {
             crate::commands::get_model_profiles,
             crate::commands::save_model_profiles,
             crate::commands::test_api_connection,
+            crate::commands::opencode_go_get_usage,
             crate::cmd::openai_codex::openai_codex_auth_status,
             crate::cmd::openai_codex::openai_codex_login_start,
             crate::cmd::openai_codex::openai_codex_login_cancel,

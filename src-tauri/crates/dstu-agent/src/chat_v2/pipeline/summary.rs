@@ -69,7 +69,7 @@ Output JSON now:"#;
             .replace("{assistant_content}", &assistant_summary);
 
         // 调用 LLM（一次返回 title + tags）
-        let metadata = match self.call_llm_for_summary(&prompt).await {
+        let metadata = match self.call_llm_for_summary(session_id, &prompt).await {
             Ok(response) => Self::parse_session_metadata_response(&response)
                 .unwrap_or_else(|| {
                     log::warn!(
@@ -206,9 +206,12 @@ Output JSON now:"#;
     }
 
     /// 调用 LLM 生成元数据（非流式 + 超时保护）
-    async fn call_llm_for_summary(&self, prompt: &str) -> ChatV2Result<String> {
-        // 调用 LLM（非流式），使用标题生成专用模型，带超时保护
-        let llm_future = self.llm_manager.call_chat_title_raw_prompt(prompt);
+    async fn call_llm_for_summary(&self, session_id: &str, prompt: &str) -> ChatV2Result<String> {
+        // 调用 LLM（非流式），使用标题生成专用模型，带超时保护。
+        // 标题属于该 Agent 会话本身，按会话标识发送（OpenCode Go 据此放行）。
+        let llm_future = self
+            .llm_manager
+            .call_agent_chat_title_raw_prompt(prompt, session_id);
 
         let response =
             match timeout(Duration::from_secs(LLM_NON_STREAM_TIMEOUT_SECS), llm_future).await {

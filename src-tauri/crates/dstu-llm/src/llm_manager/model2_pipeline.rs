@@ -2241,6 +2241,122 @@ mod tests {
         assert!(!LLMManager::is_openai_codex_oauth(&config));
     }
 
+    fn opencode_go_test_config(protocol: &str, base_url: &str) -> ApiConfig {
+        ApiConfig {
+            id: "builtin-opencode-go-test".to_string(),
+            vendor_id: Some(crate::llm_manager::opencode_go::VENDOR_ID.to_string()),
+            provider_type: Some(crate::llm_manager::opencode_go::PROVIDER_TYPE.to_string()),
+            api_protocol: Some(protocol.to_string()),
+            supports_openai_responses: Some(true),
+            api_key: "go-key".to_string(),
+            base_url: base_url.to_string(),
+            model: "deepseek-v4.1-flash".to_string(),
+            model_adapter: "general".to_string(),
+            headers: Some(HashMap::from([(
+                "User-Agent".to_string(),
+                "Mozilla/5.0 spoofed".to_string(),
+            )])),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn opencode_go_is_rejected_outside_agent_conversations() {
+        let config = opencode_go_test_config(
+            "openai_chat_completions",
+            crate::llm_manager::opencode_go::OPENAI_BASE_URL,
+        );
+        let adapter = build_provider_adapter(&config);
+        let error = LLMManager::prepare_plain_provider_request(
+            adapter.as_ref(),
+            &config,
+            &json!({"model": config.model, "messages": []}),
+            None,
+            Some("translation"),
+            "test",
+        )
+        .err()
+        .expect("non-agent OpenCode Go request must be rejected");
+        assert!(error
+            .to_string()
+            .contains(crate::llm_manager::opencode_go::AGENT_ONLY_MESSAGE));
+
+        // 空白会话标识不算 Agent 会话。
+        assert!(LLMManager::prepare_plain_provider_request_scoped(
+            adapter.as_ref(),
+            &config,
+            &json!({"model": config.model, "messages": []}),
+            None,
+            None,
+            Some("   "),
+            "test",
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn opencode_go_agent_request_carries_own_identity_and_session() {
+        let config = opencode_go_test_config(
+            "openai_chat_completions",
+            crate::llm_manager::opencode_go::OPENAI_BASE_URL,
+        );
+        let adapter = build_provider_adapter(&config);
+        let prepared = LLMManager::prepare_plain_provider_request_scoped(
+            adapter.as_ref(),
+            &config,
+            &json!({"model": config.model, "messages": []}),
+            None,
+            Some("sess_abc"),
+            Some("sess_abc"),
+            "test",
+        )
+        .expect("agent request is allowed");
+        assert!(prepared.is_opencode_go());
+        assert_eq!(
+            prepared.url,
+            "https://opencode.ai/inference/go/openai/v1/chat/completions"
+        );
+        let values = |name: &str| {
+            prepared
+                .headers
+                .iter()
+                .filter(|(candidate, _)| candidate.eq_ignore_ascii_case(name))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>()
+        };
+        // 供应商自定义的伪装 UA 不能覆盖 DeepStudent 身份。
+        assert_eq!(
+            values("user-agent"),
+            vec![crate::llm_manager::opencode_go::user_agent().as_str()]
+        );
+        assert_eq!(values("x-opencode-session"), vec!["sess_abc"]);
+    }
+
+    #[test]
+    fn non_go_requests_are_unaffected_by_agent_scope() {
+        let mut config =
+            opencode_go_test_config("openai_chat_completions", "https://api.deepseek.com/v1");
+        config.vendor_id = Some("builtin-deepseek".to_string());
+        config.provider_type = Some("deepseek".to_string());
+        config.headers = None;
+        let adapter = build_provider_adapter(&config);
+        let prepared = LLMManager::prepare_plain_provider_request_scoped(
+            adapter.as_ref(),
+            &config,
+            &json!({"model": config.model, "messages": []}),
+            None,
+            None,
+            Some("sess_abc"),
+            "test",
+        )
+        .expect("non-Go request");
+        assert!(!prepared.is_opencode_go());
+        assert!(!prepared
+            .headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("x-opencode-session")));
+    }
+
     #[test]
     fn configured_headers_reach_prepared_request_without_overriding_transport_headers() {
         let mut configured = HashMap::new();
@@ -3910,6 +4026,8 @@ pub struct PreparedProviderRequest {
     pub headers: Vec<(String, String)>,
     pub body: Value,
     codex: Option<CodexPreparedAuth>,
+    /// OpenCode Go 请求：身份头已写入 `headers`，发送处不得再附加浏览器伪装头。
+    opencode_go: bool,
 }
 
 impl PreparedProviderRequest {
@@ -3919,11 +4037,16 @@ impl PreparedProviderRequest {
             headers: request.headers,
             body: request.body,
             codex: None,
+            opencode_go: false,
         }
     }
 
     pub fn is_codex(&self) -> bool {
         self.codex.is_some()
+    }
+
+    pub fn is_opencode_go(&self) -> bool {
+        self.opencode_go
     }
 }
 
@@ -4703,6 +4826,9 @@ impl LLMManager {
     /// Background tasks that run without an `LLMManager` borrow (hedged OCR
     /// engines spawned onto the runtime) use this to rebuild a provider request
     /// per attempt, e.g. when switching between streaming and non-streaming.
+    ///
+    /// OpenCode Go 配置在这里一律拒绝：它只允许 Agent 对话，必须经由
+    /// [`Self::prepare_agent_provider_request`] 显式携带会话。
     pub(crate) fn prepare_plain_provider_request(
         adapter: &dyn ProviderAdapter,
         config: &ApiConfig,
@@ -4711,17 +4837,66 @@ impl LLMManager {
         session_id: Option<&str>,
         build_error_context: &str,
     ) -> Result<PreparedProviderRequest> {
+        Self::prepare_plain_provider_request_scoped(
+            adapter,
+            config,
+            request_body,
+            api_key_override,
+            session_id,
+            None,
+            build_error_context,
+        )
+    }
+
+    /// `agent_session_id` 为 Some 表示本次请求属于该 Agent 会话（主对话、子代理，或该会话
+    /// 自身的标题生成 / 上下文压缩）。只有这种请求可以使用 OpenCode Go。
+    fn prepare_plain_provider_request_scoped(
+        adapter: &dyn ProviderAdapter,
+        config: &ApiConfig,
+        request_body: &Value,
+        api_key_override: Option<&str>,
+        session_id: Option<&str>,
+        agent_session_id: Option<&str>,
+        build_error_context: &str,
+    ) -> Result<PreparedProviderRequest> {
         if Self::is_openai_codex_oauth(config) {
             return Err(AppError::configuration(
                 "OpenAI Codex OAuth 请求必须经由 LLMManager 准备",
             ));
         }
+        let opencode_go_session = if super::opencode_go::is_opencode_go_config(config) {
+            let session = agent_session_id
+                .and_then(super::opencode_go::session_header_value)
+                .ok_or_else(|| {
+                    warn!(
+                        "[OpenCode Go] 拒绝非 Agent 对话请求: config={}, context={}",
+                        config.id, build_error_context
+                    );
+                    AppError::configuration(super::opencode_go::AGENT_ONLY_MESSAGE)
+                })?;
+            Some(session)
+        } else {
+            None
+        };
         let api_key = api_key_override.unwrap_or(config.api_key.as_str());
         let provider_request = adapter
             .build_request(&config.base_url, api_key, &config.model, request_body)
             .map_err(|error| Self::provider_error(build_error_context, error))?;
         let mut prepared = PreparedProviderRequest::from_provider(provider_request);
         super::adapters::normalize_deepseek_chat_request(&mut prepared.body, config);
+        if let Some(session) = opencode_go_session.as_deref() {
+            // 身份头先于供应商自定义头写入：同名时以 DeepStudent 身份为准。
+            for (name, value) in super::opencode_go::identity_headers(session) {
+                append_provider_header_if_absent(
+                    &mut prepared.headers,
+                    &name,
+                    &value,
+                    "opencode-go identity",
+                    false,
+                );
+            }
+            prepared.opencode_go = true;
+        }
         merge_configured_provider_headers(&mut prepared, config.headers.as_ref());
 
         // P0 缓存：稳定 prompt_cache_key（禁止随机 UUID 回落）。
@@ -4733,6 +4908,41 @@ impl LLMManager {
             }
         }
         Ok(prepared)
+    }
+
+    /// Agent 会话内的请求准备：与 [`Self::prepare_provider_request`] 相同，额外允许
+    /// OpenCode Go，并以 `agent_session_id` 作为 `x-opencode-session`。
+    pub async fn prepare_agent_provider_request(
+        &self,
+        adapter: &dyn ProviderAdapter,
+        config: &ApiConfig,
+        request_body: &Value,
+        api_key_override: Option<&str>,
+        session_id: Option<&str>,
+        agent_session_id: &str,
+        build_error_context: &str,
+    ) -> Result<PreparedProviderRequest> {
+        if Self::is_openai_codex_oauth(config) {
+            return self
+                .prepare_provider_request(
+                    adapter,
+                    config,
+                    request_body,
+                    api_key_override,
+                    session_id,
+                    build_error_context,
+                )
+                .await;
+        }
+        Self::prepare_plain_provider_request_scoped(
+            adapter,
+            config,
+            request_body,
+            api_key_override,
+            session_id,
+            Some(agent_session_id),
+            build_error_context,
+        )
     }
 
     pub async fn prepare_provider_request(
@@ -5999,16 +6209,34 @@ impl LLMManager {
         // compatible gateways explicitly configured for the Responses protocol,
         // not only the Codex OAuth transport.
         let require_terminal_success = adapter.requires_explicit_stream_completion();
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
-                &config,
-                &request_body,
-                None,
-                Some(codex_session_id),
-                "对话请求构建失败",
-            )
-            .await?;
+        // 只有能还原出 chat_v2 会话的流才属于 Agent 对话（可使用 OpenCode Go）。
+        let agent_session_id =
+            chat_v2_session_scope_and_generation(stream_event).map(|(session_id, _)| session_id);
+        let mut preq = match agent_session_id {
+            Some(agent_session_id) => {
+                self.prepare_agent_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &request_body,
+                    None,
+                    Some(codex_session_id),
+                    agent_session_id,
+                    "对话请求构建失败",
+                )
+                .await?
+            }
+            None => {
+                self.prepare_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &request_body,
+                    None,
+                    Some(codex_session_id),
+                    "对话请求构建失败",
+                )
+                .await?
+            }
+        };
         let is_codex = preq.is_codex();
 
         // 🔧 Prompt-cache 分叉点定位（G7 → R5 升级）：CHAT_V2_CACHE_DEBUG=1 时
@@ -6066,15 +6294,22 @@ impl LLMManager {
                 ));
             if !preq.is_codex() {
                 request_builder = request_builder
-                    .header("Accept", "text/event-stream, application/json, text/plain, */*")
-                    .header("Accept-Encoding", "identity")
-                    .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                    .header(
+                        "Accept",
+                        "text/event-stream, application/json, text/plain, */*",
+                    )
+                    .header("Accept-Encoding", "identity");
+                // OpenCode Go 以 DeepStudent 身份发送（身份头已在 preq.headers），不附加浏览器伪装。
+                if !preq.is_opencode_go() {
+                    request_builder = request_builder
+                        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                }
             }
             for (k, v) in &preq.headers {
                 request_builder = request_builder.header(k.clone(), v.clone());
             }
-            if !preq.is_codex() {
+            if !preq.is_codex() && !preq.is_opencode_go() {
                 if let Ok(parsed_url) = Url::parse(&config.base_url) {
                     if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
                         && parsed_url.host_str().is_some()
@@ -8431,6 +8666,27 @@ impl LLMManager {
         config_id: &str,
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
+        self.call_with_config_id_raw_prompt_scoped(config_id, user_prompt, None)
+            .await
+    }
+
+    /// chat_v2 会话自身的上下文压缩：属于该 Agent 对话，可使用 OpenCode Go。
+    pub async fn call_agent_compaction_raw_prompt(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+        agent_session_id: &str,
+    ) -> Result<StandardModel2Output> {
+        self.call_with_config_id_raw_prompt_scoped(config_id, user_prompt, Some(agent_session_id))
+            .await
+    }
+
+    async fn call_with_config_id_raw_prompt_scoped(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+        agent_session_id: Option<&str>,
+    ) -> Result<StandardModel2Output> {
         let configs = self.get_api_configs().await?;
         let resolved = configs
             .iter()
@@ -8450,7 +8706,7 @@ impl LLMManager {
         };
 
         // 🔧 CR-R2-01：force_json=false，让 gpt-* 模型按 Markdown 输出
-        self.call_raw_prompt_with_config_opts(
+        self.call_raw_prompt_with_config_scoped(
             config,
             user_prompt,
             None,
@@ -8460,6 +8716,7 @@ impl LLMManager {
             },
             crate::llm_usage::CallerType::ChatV2,
             "compaction",
+            agent_session_id,
         )
         .await
     }
@@ -8558,6 +8815,7 @@ impl LLMManager {
             },
             caller_type,
             routing::ESTABLISH_RETRIES_WITHOUT_FALLBACK,
+            None,
         )
         .await
     }
@@ -8583,8 +8841,27 @@ impl LLMManager {
         &self,
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
+        self.call_chat_title_raw_prompt_scoped(user_prompt, None)
+            .await
+    }
+
+    /// chat_v2 会话自身的标题生成：属于该 Agent 对话，可使用 OpenCode Go。
+    pub async fn call_agent_chat_title_raw_prompt(
+        &self,
+        user_prompt: &str,
+        agent_session_id: &str,
+    ) -> Result<StandardModel2Output> {
+        self.call_chat_title_raw_prompt_scoped(user_prompt, Some(agent_session_id))
+            .await
+    }
+
+    async fn call_chat_title_raw_prompt_scoped(
+        &self,
+        user_prompt: &str,
+        agent_session_id: Option<&str>,
+    ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config_opts(
+        self.call_raw_prompt_with_config_scoped(
             config,
             user_prompt,
             None,
@@ -8594,6 +8871,7 @@ impl LLMManager {
             },
             crate::llm_usage::CallerType::ChatV2,
             "chat_title",
+            agent_session_id,
         )
         .await
     }
@@ -8636,6 +8914,31 @@ impl LLMManager {
         caller_type: crate::llm_usage::CallerType,
         task: &str,
     ) -> Result<StandardModel2Output> {
+        self.call_raw_prompt_with_config_scoped(
+            config,
+            user_prompt,
+            image_payloads,
+            opts,
+            caller_type,
+            task,
+            None,
+        )
+        .await
+    }
+
+    /// `agent_session_id` 为 Some 时本次调用属于该 Agent 会话（标题 / 压缩），
+    /// 允许 OpenCode Go 并以该会话作为 `x-opencode-session`。
+    #[allow(clippy::too_many_arguments)]
+    async fn call_raw_prompt_with_config_scoped(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+        opts: RawPromptOptions,
+        caller_type: crate::llm_usage::CallerType,
+        task: &str,
+        agent_session_id: Option<&str>,
+    ) -> Result<StandardModel2Output> {
         let run = routing::FailoverRun {
             task: task.to_string(),
             scenario: routing::FailoverScenario::BackgroundTask,
@@ -8657,6 +8960,7 @@ impl LLMManager {
                 opts,
                 caller_type.clone(),
                 establish_retries,
+                agent_session_id,
             )
         })
         .await
@@ -8670,6 +8974,7 @@ impl LLMManager {
     /// `RetryableTransient` 参与内部重试与外层 Failover。
     /// （2026-09 修复：此前解析失败不打标 → NonRetryable → 网关间歇性返回
     /// 200+空 body 时一次失败即终局，compaction 摘要因此反复失败退化为 FIFO 头删。）
+    #[allow(clippy::too_many_arguments)]
     async fn call_raw_prompt_attempt(
         &self,
         config: ApiConfig,
@@ -8678,6 +8983,7 @@ impl LLMManager {
         opts: RawPromptOptions,
         caller_type: crate::llm_usage::CallerType,
         establish_max_retries: u32,
+        agent_session_id: Option<&str>,
     ) -> Result<StandardModel2Output> {
         if image_payloads
             .as_ref()
@@ -8772,16 +9078,31 @@ impl LLMManager {
         // caller 类型稳定串（translation / analysis / other:essay_grading 等）
         // 作为 prompt_cache_key，同类后台任务共享缓存前缀。
         let prompt_cache_key = caller_type.to_string();
-        let mut preq = self
-            .prepare_provider_request(
-                adapter.as_ref(),
-                &config,
-                &request_body,
-                None,
-                Some(prompt_cache_key.as_str()),
-                "RAW prompt 请求构建失败",
-            )
-            .await?;
+        let mut preq = match agent_session_id {
+            Some(agent_session_id) => {
+                self.prepare_agent_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &request_body,
+                    None,
+                    Some(prompt_cache_key.as_str()),
+                    agent_session_id,
+                    "RAW prompt 请求构建失败",
+                )
+                .await?
+            }
+            None => {
+                self.prepare_provider_request(
+                    adapter.as_ref(),
+                    &config,
+                    &request_body,
+                    None,
+                    Some(prompt_cache_key.as_str()),
+                    "RAW prompt 请求构建失败",
+                )
+                .await?
+            }
+        };
 
         log_llm_request_audit(
             "RAW_PROMPT",
@@ -8815,15 +9136,21 @@ impl LLMManager {
                         // （"expected value at line 1 column 1"，首字符是 'd'），
                         // 表现为间歇性"200+解析失败"。
                         .header("Accept", "application/json")
-                        .header("Accept-Encoding", "identity")
-                        .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
-                        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                        .header("Accept-Encoding", "identity");
+                    // OpenCode Go 以 DeepStudent 身份发送（身份头已在 preq.headers），不附加浏览器伪装。
+                    if !preq.is_opencode_go() {
+                        request_builder = request_builder
+                            .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36");
+                    }
                     for (k, v) in &preq.headers {
                         request_builder = request_builder.header(k, v);
                     }
 
                     // 设置 Origin/Referer 头（与其它调用保持一致）
-                    if let Ok(parsed_url) = Url::parse(&config.base_url) {
+                    if let (false, Ok(parsed_url)) =
+                        (preq.is_opencode_go(), Url::parse(&config.base_url))
+                    {
                         if (parsed_url.scheme() == "http" || parsed_url.scheme() == "https")
                             && parsed_url.host_str().is_some()
                         {

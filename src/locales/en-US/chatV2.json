@@ -2180,7 +2180,9 @@
     "noMatches": "No matching models",
     "empty": "No models available",
     "goToSettings": "Add models in Settings",
-    "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed."
+    "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed.",
+    "openCodeGoRequests": "· ≈{{count}} req/5h",
+    "openCodeGoFree": "· free (limited time)"
   },
   "workspace": {
     "title": "Workspace",

@@ -40,6 +40,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { buildCreateParams } from '@/utils/qbankDraftToParams';
 import { isComposingKeyEvent } from '@/utils/isComposingKeyEvent';
 import { buildFileAccept } from '@/utils/fileAccept';
+import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 
 // ============================================================================
 // 题型选项
@@ -213,7 +214,9 @@ export const AiQuestionGenerationPanel: React.FC<AiQuestionGenerationPanelProps>
         (configs || [])
           .filter(
             (cfg: ApiConfig) =>
-              cfg.enabled !== false && !cfg.isEmbedding && !cfg.isReranker,
+              cfg.enabled !== false && !cfg.isEmbedding && !cfg.isReranker &&
+              // OpenCode Go 仅限 Agent 对话
+              !isOpenCodeGoConfig(cfg),
           )
           .map((cfg: ApiConfig) => ({
             id: cfg.id,
