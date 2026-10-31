@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('settings single sidebar layout contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
 
   it('keeps the global ModernSidebar out of the visible desktop sidebar slot while settings is active', () => {
     expect(appSource).toContain("const desktopShellSidebarKind = currentView === 'settings'");
