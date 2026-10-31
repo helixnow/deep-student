@@ -53,6 +53,20 @@ impl Plugin for MemoryVfsPlugin {
     }
 }
 
+/// mastery（dstu-learning）的画像回流：memory 学习者画像薄弱点 upsert/remove。
+struct MemoryMasteryPlugin;
+
+impl Plugin for MemoryMasteryPlugin {
+    fn name(&self) -> &'static str {
+        "memory_mastery"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        crate::memory::mastery_hook::install_mastery_hooks(scope);
+        Ok(())
+    }
+}
+
 /// vfs 的低层回调：media 转写与资源创建后的自动转写。
 struct MediaVfsPlugin;
 
@@ -100,6 +114,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
     vec![
         Arc::new(WebSearchFallbackPlugin) as Arc<dyn Plugin>,
         Arc::new(MemoryVfsPlugin),
+        Arc::new(MemoryMasteryPlugin),
         Arc::new(MediaVfsPlugin),
         Arc::new(QbankVfsPlugin),
         Arc::new(StorageNotesPlugin),

@@ -52,8 +52,9 @@ const PROMOTION_FINGERPRINT_JSON_KEY: &str = "_promotion_fingerprint";
 // 数据结构
 // ============================================================================
 
-/// 薄弱知识点来源：掌握度中间层确定性回流（与 LLM 晋升路径共存）
-pub const WEAK_POINT_SOURCE_MASTERY: &str = "mastery";
+// 薄弱知识点来源常量与掌握度回流证据随 mastery 下沉到 dstu-learning（`mastery::profile_sink`），
+// 这里按原路径重导出；本模块经 `mastery_hook` 为它提供回流实现。
+pub use crate::mastery::profile_sink::{MasteryWeakPointEvidence, WEAK_POINT_SOURCE_MASTERY};
 
 /// 薄弱知识点：科目→知识点→错误模式，带证据计数
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
@@ -76,15 +77,6 @@ pub struct WeakPoint {
     /// 来源标注：`mastery` = 成绩硬回流；缺省/其他 = LLM 提取或工具写入
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source: Option<String>,
-}
-
-/// 掌握度回流时携带的确定性证据（不经 LLM）
-#[derive(Debug, Clone)]
-pub struct MasteryWeakPointEvidence {
-    pub score: f64,
-    pub total: i32,
-    pub wrong_count: i32,
-    pub recent_wrong_summary: String,
 }
 
 /// 学习偏好（讲解风格、语言、节奏）

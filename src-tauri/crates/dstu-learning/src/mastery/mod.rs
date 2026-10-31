@@ -5,6 +5,7 @@
 //! 并对 FSRS 调度做有界应用层 due 偏置（见 [`bias`]）。
 
 pub mod bias;
+pub mod profile_sink;
 pub mod service;
 pub mod types;
 
