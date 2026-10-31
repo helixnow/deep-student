@@ -15,18 +15,18 @@ pub mod pipeline;
 mod stream;
 pub mod types;
 
-use tauri::{State, Window};
+use tauri::Window;
 
 use crate::models::AppError;
+use crate::runtime::QbankState;
 use events::QbankGradingEmitter;
 use types::{QbankGradingRequest, QbankGradingResponse};
 
 /// 流式 AI 评判命令
-#[tauri::command]
 pub async fn qbank_ai_grade(
     request: QbankGradingRequest,
     window: Window,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<Option<QbankGradingResponse>, AppError> {
     log::info!(
         "[QbankGrading] 开始 AI 评判：question={}, mode={:?}",
@@ -64,10 +64,9 @@ pub async fn qbank_ai_grade(
 }
 
 /// 取消 AI 评判
-#[tauri::command]
 pub async fn qbank_cancel_grading(
     stream_event_name: String,
-    state: State<'_, crate::commands::AppState>,
+    state: &QbankState,
 ) -> Result<(), AppError> {
     log::info!("[QbankGrading] 取消评判流: {}", stream_event_name);
     state

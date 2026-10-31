@@ -3574,10 +3574,9 @@ pub struct CheckInCalendar {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mastery::service::{
-        set_now_override_ms, MasteryService, MIN_TOTAL_FOR_WEAK, WEAK_SCORE_THRESHOLD,
-    };
-    use crate::memory::learner_profile::{load_profile_from_db, WEAK_POINT_SOURCE_MASTERY};
+    // `submit_answer_wrong_thrice_writes_mastery_and_weak_point` 依赖 memory 画像与
+    // extensions 组合根，留在 app 的 `question_bank_service::tests`。
+    use crate::mastery::service::{set_now_override_ms, MasteryService};
     use chrono::Utc;
     use rusqlite::params;
 
@@ -3634,52 +3633,6 @@ mod tests {
         )
         .expect("create question")
         .id
-    }
-
-    /// C5：submit_answer 连错 3 次 → mastery_events/states + learner_profile.weak_points
-    #[test]
-    fn submit_answer_wrong_thrice_writes_mastery_and_weak_point() {
-        // 画像薄弱点回流经 mastery::profile_sink，由 extensions 注入 memory 实现（拆分后为回调解耦）。
-        crate::extensions::register_extensions();
-        let (_tmp, vfs_db, qbank) = setup_qbank();
-        let concept = "qbank_闭环概念";
-        let qid = seed_tagged_question(&vfs_db, concept, "Q1");
-        let mut t0 = Utc::now().timestamp_millis();
-        set_now_override_ms(Some(t0));
-        for i in 0..3 {
-            t0 += 120_000;
-            set_now_override_ms(Some(t0));
-            let r = qbank
-                .submit_answer(&qid, "x", Some(false), Some(&format!("qw{i}")))
-                .expect("submit");
-            assert_eq!(r.is_correct, Some(false));
-        }
-        set_now_override_ms(None);
-
-        let conn = vfs_db.get_conn_safe().unwrap();
-        let n: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM mastery_events
-                 WHERE concept_key = ?1 AND source = 'qbank' AND outcome = 'wrong'",
-                params![concept],
-                |row| row.get(0),
-            )
-            .unwrap();
-        assert_eq!(n, 3);
-        let (score, total): (f64, i32) = conn
-            .query_row(
-                "SELECT score, total FROM mastery_states WHERE concept_key = ?1",
-                params![concept],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        assert!(score < WEAK_SCORE_THRESHOLD);
-        assert!(total >= MIN_TOTAL_FOR_WEAK);
-
-        let profile = load_profile_from_db(&vfs_db).unwrap().expect("profile");
-        assert!(profile.weak_points.iter().any(|w| {
-            w.knowledge_point == concept && w.source.as_deref() == Some(WEAK_POINT_SOURCE_MASTERY)
-        }));
     }
 
     /// C5-3：同题 1 分钟内连对 5 次，增幅显著小于 5 道独立题
