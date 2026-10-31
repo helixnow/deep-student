@@ -10,8 +10,10 @@ use std::net::IpAddr;
 use thiserror::Error;
 use url::{Host, Url};
 
-// 内网/回环地址判定下沉到 dstu-core（utils::fetch 等底层模块共用），这里按原路径重导出。
-pub use dstu_core::net_policy::{is_blocked_internal_ip, is_internal_ip, is_loopback_ip};
+// 内网/回环地址判定下沉到 dstu-core（utils::fetch、mcp 等底层模块共用），这里按原路径重导出。
+pub use dstu_core::net_policy::{
+    is_blocked_internal_ip, is_internal_ip, is_loopback_host, is_loopback_ip,
+};
 
 /// 导航拒绝原因（可序列化给前端 toast / 日志）
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -38,25 +40,6 @@ const FORBIDDEN_SCHEMES: &[&str] = &[
     "asset",
     "ipc",
 ];
-
-/// 判断 host 是否为 loopback（字面量或 IP）
-///
-/// 接受：`localhost`、`*.localhost`、`127.0.0.0/8`、`::1`、IPv4-mapped loopback。
-pub fn is_loopback_host(host: &str) -> bool {
-    let normalized = host
-        .strip_prefix('[')
-        .and_then(|value| value.strip_suffix(']'))
-        .unwrap_or(host)
-        .trim_end_matches('.')
-        .to_ascii_lowercase();
-    if normalized == "localhost" || normalized.ends_with(".localhost") {
-        return true;
-    }
-    if let Ok(ip) = normalized.parse::<IpAddr>() {
-        return is_loopback_ip(&ip);
-    }
-    false
-}
 
 fn is_loopback_url_host(url: &Url) -> bool {
     match url.host() {

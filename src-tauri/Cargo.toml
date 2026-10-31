@@ -32,6 +32,7 @@ members = [
     "crates/dstu-docs",
     "crates/dstu-kernel",
     "crates/dstu-llm",
+    "crates/dstu-mcp",
     "crates/dstu-util",
     "crates/dstu-platform",
     "crates/dstu-security",
@@ -53,6 +54,7 @@ dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
 dstu-llm = { path = "crates/dstu-llm", default-features = false }
+dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
 dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
@@ -281,6 +283,7 @@ dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }
 dstu-llm = { workspace = true }
+dstu-mcp = { workspace = true }
 dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
@@ -545,7 +548,7 @@ lance = ["lancedb", "arrow-array", "arrow-schema"]
 # P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
 tokenizer_tiktoken = ["tiktoken-rs", "dstu-util/tokenizer_tiktoken"]
 # 可选：MCP 客户端与 rmcp 校验
-mcp = []
+mcp = ["dstu-mcp/mcp"]
 # MCP 调试插件：允许 AI 代理（如 Cursor）通过 MCP 协议调试应用
 # 功能：截图、DOM 快照、IPC 监控、输入模拟、控制台日志流、JS 执行
 mcp-debug = ["tauri-plugin-mcp-bridge"]
@@ -554,7 +557,7 @@ mcp-debug = ["tauri-plugin-mcp-bridge"]
 # 其他开关
 db_migration = []
 # 仅为消除条件编译告警：不产生实际功能影响
-http = []
+http = ["dstu-mcp/http"]
 old_migration_impl = []
 # 内置免费模型（发行版使用）。开源版本可禁用
 builtin_free_models = ["dstu-llm/builtin_free_models"]
