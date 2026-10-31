@@ -131,7 +131,7 @@ pub struct LearnerProfile {
     /// Internal exactly-once marker for the daily-log promotion pipeline.
     /// Generic API serialization omits it; `to_json` persists it in the reserved note only.
     #[serde(skip)]
-    pub(crate) last_promotion_fingerprint: Option<String>,
+    pub last_promotion_fingerprint: Option<String>,
 }
 
 /// 画像结构化增量更新（工具 learner_profile_update 与晋升管道共用；

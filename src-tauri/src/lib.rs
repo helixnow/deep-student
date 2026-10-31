@@ -5,17 +5,17 @@
 #![recursion_limit = "512"]
 
 // 声明所有子模块，以便在 crate 内可见
-pub use dstu_llm::adapters;
 pub use dstu_anki::anki;
 pub use dstu_anki::anki_connect_service;
 pub use dstu_anki::anki_critic; // 生成后 grounded judge / LLM critic pass（opt-in 默认关闭，Round 4 #2）
 pub use dstu_anki::anki_fsrs_feedback; // FSRS 复习数据回流制卡生成（用户复习画像 + 语义干扰预警，Round 3 #5）
 pub use dstu_anki::anki_gold_set; // 金标卡集挖掘纯函数（编辑前后 diff → 金标/修正对 + lint 契约校验，Round 4 #10）
 pub use dstu_anki::anki_image_occlusion; // AI 图像遮挡草稿纯函数层（OcclusionSpec 校验 / cloze 候选字段 / IMAGE_DESC 启发式盒建议，Round 4 #5）
-pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7）
 pub use dstu_anki::anki_preference_memory; // 用户制卡偏好记忆（Mem0 风格 ADD-only 纯逻辑，接线见模块文档）
 pub use dstu_anki::anki_protocol; // Anki 制卡输出协议（分隔符常量 / Structured Output / schema 生成）
-pub use dstu_anki::anki_qa_lint; // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
+pub use dstu_anki::anki_qa_lint;
+pub use dstu_llm::adapters;
+pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7） // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
 pub mod apk_installer;
 #[allow(dead_code)]
 pub use dstu_anki::apkg_exporter_service;
@@ -52,13 +52,13 @@ pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
 pub use dstu_vision::cross_page_merger;
 pub mod diagnostics;
-pub use dstu_docs::document_parser;
 pub use dstu_anki::document_processing_service;
-pub use dstu_docs::docx_handout;
-pub use dstu_vfs::dstu;
 pub use dstu_anki::enhanced_anki_service;
 pub use dstu_core::error_details;
 pub use dstu_core::error_recovery;
+pub use dstu_docs::document_parser;
+pub use dstu_docs::docx_handout;
+pub use dstu_vfs::dstu;
 pub mod essay_grading;
 #[allow(dead_code)]
 pub use dstu_vision::exam_sheet_service;
@@ -68,9 +68,9 @@ pub use dstu_storage::feature_flags;
 pub use dstu_storage::file_manager;
 pub use dstu_vfs::file_stream_protocol;
 pub use dstu_vision::figure_extractor; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
-// FSRS 闪卡复习服务（独立于题库 review_plans）
-// 实现已下沉到 dstu-anki，这里按原路径重导出；用到题库（QuestionBankService）的跨域单测
-// 留在 app，并保持原测试路径 `fsrs_review_service::tests`。
+                                       // FSRS 闪卡复习服务（独立于题库 review_plans）
+                                       // 实现已下沉到 dstu-anki，这里按原路径重导出；用到题库（QuestionBankService）的跨域单测
+                                       // 留在 app，并保持原测试路径 `fsrs_review_service::tests`。
 pub mod fsrs_review_service {
     pub use dstu_anki::fsrs_review_service::*;
     #[cfg(test)]
@@ -108,14 +108,14 @@ pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上�
 #[cfg(feature = "mcp")]
 pub use dstu_mcp::mcp;
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
-#[allow(dead_code)]
-pub use dstu_memory::memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
 pub use dstu_core::models;
 pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
 pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 #[allow(dead_code, deprecated)]
 pub use dstu_llm::multimodal;
+#[allow(dead_code)]
+pub use dstu_memory::memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 #[allow(dead_code)]
 pub use dstu_notes::notes_exporter;
 pub use dstu_notes::notes_manager;
@@ -158,14 +158,14 @@ pub use dstu_llm::reasoning_policy; // 思维链回传策略模块（文档 29 �
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub use dstu_platform::secret_prompt;
 pub mod secure_store;
-pub use dstu_core::services;
-pub use dstu_core::spaced_repetition; // SM-2 间隔重复算法（下沉 dstu-core，纯函数）
-pub use dstu_platform::startup_gate;
-pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
-pub use dstu_storage::startup_cleanup;
 #[allow(dead_code)]
 pub use dstu_anki::streaming_anki_service;
-pub use dstu_learning::study_loop; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
+pub use dstu_core::services;
+pub use dstu_core::spaced_repetition; // SM-2 间隔重复算法（下沉 dstu-core，纯函数）
+pub use dstu_learning::study_loop;
+pub use dstu_platform::startup_gate;
+pub use dstu_storage::staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
+pub use dstu_storage::startup_cleanup; // 学习闭环：媒体转写制卡/出题出处 + 学习时长（docs/dev/media-learning §3）
 pub mod system_bars; // Android 沉浸式全屏（隐藏系统栏，#472）
 pub mod system_notification;
 pub mod system_permissions;

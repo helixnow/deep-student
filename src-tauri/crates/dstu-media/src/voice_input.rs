@@ -205,10 +205,7 @@ pub fn is_asr_model(model: &str, display_name: &str) -> bool {
 }
 
 /// 供应商是否提供 OpenAI 兼容的 ASR 接口（Anthropic / Gemini 原生 / Codex 账号没有）
-pub fn asr_provider_supported(
-    provider_id: Option<&str>,
-    api_protocol: Option<&str>,
-) -> bool {
+pub fn asr_provider_supported(provider_id: Option<&str>, api_protocol: Option<&str>) -> bool {
     let provider = provider_id.map(|p| p.trim().to_ascii_lowercase());
     if matches!(
         provider.as_deref(),
