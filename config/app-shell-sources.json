@@ -11,6 +11,11 @@
     "src/app/hooks/useWorkbenchMode.ts",
     "src/app/hooks/useViewRedirects.ts",
     "src/app/hooks/useFrontendErrorCapture.ts",
-    "src/app/hooks/useShellNavigationEvents.ts"
+    "src/app/hooks/useShellNavigationEvents.ts",
+    "src/app/hooks/useUnifiedNavigation.ts",
+    "src/app/hooks/useViewScrollRestoration.ts",
+    "src/app/hooks/useCrossFeatureHandoffs.ts",
+    "src/app/hooks/useDevtoolsShortcut.ts",
+    "src/app/hooks/useWebviewSettingsPersistence.ts"
   ]
 }

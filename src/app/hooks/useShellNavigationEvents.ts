@@ -95,3 +95,6 @@ export function useShellNavigationEvents(setCurrentView: SetCurrentView) {
 
   return { openInLearningHub };
 }
+
+/** useShellNavigationEvents 返回的 openInLearningHub 签名 */
+export type OpenInLearningHub = ReturnType<typeof useShellNavigationEvents>['openInLearningHub'];

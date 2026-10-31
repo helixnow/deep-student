@@ -47,11 +47,7 @@ import {
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // NT-1: NoteEditorPortal（白板远程桌面模式遗留，恒 return null）已随死渲染路径移除
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
-import {
-  LearningHubNavigationProvider,
-  getGlobalLearningHubNavigation,
-  subscribeLearningHubNavigation,
-} from './features/learning-hub';
+import { LearningHubNavigationProvider } from './features/learning-hub';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import 'overlayscrollbars/overlayscrollbars.css';
@@ -86,12 +82,10 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/Desk
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useAndroidSafeArea } from './hooks/useAndroidSafeArea';
-import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { shouldBlockMobileNavigation, ensureKeyboardTracking } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
-import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
+import { getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
-import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
 import { usePreventScroll } from './hooks/usePreventScroll';
 // ★ 刻意深路径导入：经 command-palette/index.ts barrel 会把 ShortcutSettings
 //   → @/features/settings barrel → 全部设置页签（含 recharts 等重组件）拖进主 bundle；
@@ -112,7 +106,6 @@ import {
 } from '@/events';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
-import { toggleDevtools } from './dev/devtools';
 import { sessionManager } from './features/chat/core/session/sessionManager';
 import { GoalStatusChip } from './features/chat/components/GoalStatusChip';
 import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
@@ -154,6 +147,11 @@ import { usePlatformSettingsSync } from './app/hooks/usePlatformSettingsSync';
 import { useViewRedirects } from './app/hooks/useViewRedirects';
 import { useFrontendErrorCapture } from './app/hooks/useFrontendErrorCapture';
 import { useShellNavigationEvents } from './app/hooks/useShellNavigationEvents';
+import { useUnifiedNavigation } from './app/hooks/useUnifiedNavigation';
+import { useViewScrollRestoration } from './app/hooks/useViewScrollRestoration';
+import { useCrossFeatureHandoffs } from './app/hooks/useCrossFeatureHandoffs';
+import { useDevtoolsShortcut } from './app/hooks/useDevtoolsShortcut';
+import { useWebviewSettingsPersistence } from './app/hooks/useWebviewSettingsPersistence';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -182,7 +180,6 @@ import {
 //   桌面本体为独立 lazy chunk，开关关闭时不加载（设计 §9.3）。
 import { WORKBENCH_MODE_CACHE_KEY, useWorkbenchMode } from './app/hooks/useWorkbenchMode';
 import { AgentBridge } from '@/features/workbench/agent/AgentBridge';
-import { useWindowStore } from '@/features/workbench/core/windowStore';
 // P3 handoff（r5 handoff-2 消费侧）：经典壳 → Workbench 切回时复用 bus 打开
 // 同一资源。descriptor 形状 { version, appType, resourceId, innerRoute?, savedAt }，
 // sanitize 与新鲜度窗口（默认 15min）在模块内完成；consume 总是先删再判，
@@ -194,11 +191,6 @@ import {
 } from '@/features/workbench/core/workbenchBus';
 import { consumeHandoffDescriptor } from '@/features/workbench/core/handoffDescriptor';
 import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
-import {
-  resolveClassicShellOpenNoteTarget,
-  type DstuOpenNoteDetail,
-} from '@/features/notes/openNoteEvent';
-import { publishNotesHeadingTarget } from '@/features/notes/headingTargetBridge';
 // 工厂提成共享常量：React.lazy 与下方预热 import() 指向同一模块说明符，命中同一 chunk
 const importWorkbenchDesktop = () => import('@/features/workbench/components/WorkbenchDesktop');
 const LazyWorkbenchDesktop = React.lazy(importWorkbenchDesktop);
@@ -899,133 +891,14 @@ function App() {
 
   // ★ 分析模式已废弃（旧错题系统已移除）
 
-  // 🐛 BUG-1 修复: 追踪是否通过页面级 back/forward 抵达 Learning Hub
-  // 当通过页面级导航抵达 LH 时，前进按钮应优先使用页面级前进（如有），
-  // 避免 LH 内部残留的前进历史遮蔽页面级前进。
-  const arrivedAtLHViaPageNavRef = useRef(false);
-  const pageNavInProgressRef = useRef(false);
-
-  // ⚙️ 视图历史：使用新的导航历史 Hook
-  const navigationHistory = useNavigationHistory({
-    currentView,
-    onViewChange: (view, _params) => {
-      // 🐛 BUG-1: 页面级导航（back/forward）抵达 LH 时设置标记
-      if (pageNavInProgressRef.current && view === 'learning-hub') {
-        arrivedAtLHViaPageNavRef.current = true;
-      }
-      setCurrentView(view);
-    },
-  });
-
-  // 📁 Learning Hub 内部导航（使用全局订阅，因为 App.tsx 在 Provider 外部）
-  const [learningHubNav, setLearningHubNav] = useState(() => getGlobalLearningHubNavigation());
-  const isInLearningHub = currentView === 'learning-hub';
-
-  // 订阅 Learning Hub 导航状态变化
-  useEffect(() => {
-    // 获取初始状态
-    setLearningHubNav(getGlobalLearningHubNavigation());
-
-    // 订阅状态变化
-    const unsubscribe = subscribeLearningHubNavigation((state) => {
-      setLearningHubNav(state);
-    });
-
-    return unsubscribe;
-  }, []);
-
-  // 🐛 BUG-1: 离开 Learning Hub 时清除页面级抵达标记
-  useEffect(() => {
-    if (!isInLearningHub) {
-      arrivedAtLHViaPageNavRef.current = false;
-    }
-  }, [isInLearningHub]);
-
-  // 统一的导航处理：Learning Hub / workbench files 的 finder 历史优先，否则使用页面级导航
-  // 🐛 BUG-1: 通过页面级导航抵达 LH 时，前进优先使用页面级（如有），
-  //   避免 LH 残留的内部前进历史遮蔽页面级前进目标。
-  const focusedWbTypeId = useWindowStore((s) => {
-    if (!workbenchActive) return null;
-    const topId = s.focusStack[s.focusStack.length - 1];
-    return topId ? (s.windows[topId]?.typeId ?? null) : null;
-  });
-  const isWorkbenchFilesFocused = workbenchActive && focusedWbTypeId === 'files';
-  const finderCanBack = Boolean(learningHubNav?.canGoBack);
-  const finderCanForward = Boolean(learningHubNav?.canGoForward);
-
-  const unifiedCanGoBack =
-    ((isInLearningHub || isWorkbenchFilesFocused) && finderCanBack)
-    || (!isWorkbenchFilesFocused && navigationHistory.canGoBack);
-  const unifiedCanGoForward = (() => {
-    if (isInLearningHub) {
-      // 通过页面级导航抵达 LH 且页面级有前进 → 页面级前进优先
-      if (arrivedAtLHViaPageNavRef.current && navigationHistory.canGoForward) {
-        return true;
-      }
-      // LH 内部有前进（用户主动 LH 后退产生的，或页面级前进已耗尽）
-      if (finderCanForward) {
-        return true;
-      }
-    }
-    if (isWorkbenchFilesFocused) {
-      return finderCanForward;
-    }
-    return navigationHistory.canGoForward;
-  })();
-  const unifiedGoBack = useCallback(() => {
-    if (isInLearningHub && arrivedAtLHViaPageNavRef.current && navigationHistory.canGoBack) {
-      pageNavInProgressRef.current = true;
-      navigationHistory.goBack();
-      pageNavInProgressRef.current = false;
-      return;
-    }
-    if ((isInLearningHub || isWorkbenchFilesFocused) && learningHubNav?.canGoBack) {
-      learningHubNav.goBack();
-      // 🐛 BUG-1: 用户主动使用 LH 内部后退，清除页面级抵达标记
-      if (isInLearningHub) {
-        arrivedAtLHViaPageNavRef.current = false;
-      }
-      return;
-    }
-    // files 聚焦且 finder 已见底：勿用页面级 history 偷换视图
-    if (isWorkbenchFilesFocused) {
-      return;
-    }
-    pageNavInProgressRef.current = true;
-    navigationHistory.goBack();
-    pageNavInProgressRef.current = false;
-  }, [isInLearningHub, isWorkbenchFilesFocused, learningHubNav, navigationHistory]);
-  const unifiedGoForward = useCallback(() => {
-    if (isInLearningHub) {
-      // 🐛 BUG-1: 通过页面级导航抵达 LH 且页面级有前进 → 页面级前进优先
-      if (arrivedAtLHViaPageNavRef.current && navigationHistory.canGoForward) {
-        pageNavInProgressRef.current = true;
-        navigationHistory.goForward();
-        pageNavInProgressRef.current = false;
-        return;
-      }
-      // LH 内部有前进（正常 LH 浏览，或页面级前进已耗尽）
-      if (learningHubNav?.canGoForward) {
-        learningHubNav.goForward();
-        return;
-      }
-    }
-    if (isWorkbenchFilesFocused) {
-      if (learningHubNav?.canGoForward) {
-        learningHubNav.goForward();
-      }
-      return;
-    }
-    navigationHistory.goForward();
-  }, [isInLearningHub, isWorkbenchFilesFocused, learningHubNav, navigationHistory]);
-  
-  // ⌨️ 键盘和鼠标快捷键支持
-  useNavigationShortcuts({
-    onBack: unifiedGoBack,
-    onForward: unifiedGoForward,
-    canGoBack: unifiedCanGoBack,
-    canGoForward: unifiedCanGoForward,
-  });
+  // ⚙️ 统一前进 / 后退：页面级历史 + Learning Hub / workbench files 的 finder 历史，含键鼠快捷键
+  const {
+    navigationHistory,
+    unifiedCanGoBack,
+    unifiedCanGoForward,
+    unifiedGoBack,
+    unifiedGoForward,
+  } = useUnifiedNavigation(currentView, setCurrentView, workbenchActive);
 
   // 🤖 Android 系统返回键接管（A-5）：
   // overlay 由协调器内部 handler/Escape 兜底处理；这里注册最低优先级的导航 fallback。
@@ -1102,32 +975,7 @@ function App() {
   );
 
   // 📜 自动保存和恢复列表页滚动位置（扩展到所有主要视图）
-  useEffect(() => {
-    const viewsWithScrollState: CurrentView[] = [
-      'learning-hub',
-      'settings',
-      'skills-management',
-      'task-dashboard',
-      'template-management',
-    ];
-    
-    if (!viewsWithScrollState.includes(currentView)) {
-      return;
-    }
-
-    // 恢复滚动位置
-    const timer = setTimeout(() => {
-      autoRestoreScrollPosition(currentView);
-    }, 100); // 等待 DOM 渲染
-
-    // 自动保存滚动位置
-    const cleanup = autoSaveScrollPosition(currentView);
-
-    return () => {
-      clearTimeout(timer);
-      cleanup();
-    };
-  }, [currentView]);
+  useViewScrollRestoration(currentView);
 
   // 🔍 调试：暴露加载错题的全局函数供调试插件使用
   useEffect(() => {
@@ -1153,118 +1001,8 @@ function App() {
   // handleNavigateToAnalysisFromIrec, handleNavigateToGraph, handleJumpToGraphCard,
   // handleNavigateToMistake, handleNavigateToIrecFromMistake, irecAnalysisData cleanup
 
-  // 其他页面导航事件监听（typed registry + useEventRegistry lifecycle）
-  const handleNavigateToExamSheet = useCallback((detail: {
-    sessionId: string;
-    cardId?: string;
-    mistakeId?: string;
-  }) => {
-    const sessionId = detail?.sessionId;
-    if (!sessionId) return;
-
-    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_EXAM, {
-      sessionId,
-      cardId: detail?.cardId ?? null,
-      mistakeId: detail?.mistakeId ?? null,
-    });
-  }, [openInLearningHub]);
-
-  const handleNavigateToTranslation = useCallback((detail: {
-    translationId: string;
-    title?: string;
-  }) => {
-    const translationId = detail?.translationId;
-    if (!translationId) return;
-
-    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_TRANSLATION, {
-      translationId,
-      title: detail?.title,
-    });
-  }, [openInLearningHub]);
-
-  const handleNavigateToEssay = useCallback((detail: {
-    essayId: string;
-    title?: string;
-  }) => {
-    const essayId = detail?.essayId;
-    if (!essayId) return;
-
-    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_ESSAY, {
-      essayId,
-      title: detail?.title,
-    });
-  }, [openInLearningHub]);
-
-  const handleNavigateToNote = useCallback((detail: {
-    noteId: string;
-    source?: string;
-  }) => {
-    const noteId = detail?.noteId;
-    if (!noteId) return;
-
-    openInLearningHub(APP_EVENTS.LEARNING_HUB_OPEN_NOTE, {
-      noteId,
-      source: detail?.source,
-    });
-  }, [openInLearningHub]);
-
-  // 经典壳的 DSTU_OPEN_NOTE 宿主（Android/iOS 恒为经典壳）。WorkbenchEventBridge 只挂在
-  // WorkbenchDesktop 内：此前经典壳里 wikilink / @mention / note:// 链接点了没反应，
-  // 块链接跳转（source 'notes-editor'）空等 15s 超时；聊天页不可见时 Chat 自有事件
-  // 开进隐藏画布同样无效。落点规则见 resolveClassicShellOpenNoteTarget。
-  const handleClassicShellOpenNote = useCallback((event: Event) => {
-    if (workbenchBus.isEnabled()) return;
-    const detail = (event as CustomEvent<DstuOpenNoteDetail>).detail;
-    const target = resolveClassicShellOpenNoteTarget(detail, useViewStore.getState().currentView);
-    if (target !== 'learning-hub') return;
-    if (detail.heading) {
-      publishNotesHeadingTarget({ noteId: detail.noteId, heading: detail.heading });
-    }
-    handleNavigateToNote({ noteId: detail.noteId, source: detail.source });
-  }, [handleNavigateToNote]);
-
-  const handlePrefillChatInput = useCallback((detail: {
-    content: string;
-    autoSend?: boolean;
-    newSession?: boolean;
-  }) => {
-    const { content, autoSend, newSession } = detail ?? {};
-    if (!content) return;
-
-    setCurrentView('chat-v2');
-    if (!newSession) {
-      setTimeout(() => {
-        dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend });
-      }, 150);
-      return;
-    }
-    // 新会话就绪（current-session-changed）后再填入；3s 兜底，避免填进旧会话或丢失
-    const previousSessionId = sessionManager.getCurrentSessionId();
-    let done = false;
-    const fill = () => {
-      if (done) return;
-      done = true;
-      unsubscribe();
-      window.clearTimeout(fallbackTimer);
-      setTimeout(() => dispatchAppEvent(APP_EVENTS.CHAT_V2_SET_INPUT, { content, autoSend }), 150);
-    };
-    const unsubscribe = sessionManager.subscribe((event) => {
-      if (event.type === 'current-session-changed' && event.sessionId && event.sessionId !== previousSessionId) fill();
-    });
-    const fallbackTimer = window.setTimeout(fill, 3000);
-    requestAnimationFrame(() => dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION));
-  }, [setCurrentView]);
-
-  // ★ irec 相关事件监听已废弃（图谱模块已移除）
-  // ★ navigateToMistakeById 事件监听已废弃（2026-01 清理）
-  useEventRegistry([
-    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_EXAM_SHEET, listener: toAppEventListener(handleNavigateToExamSheet) },
-    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_TRANSLATION, listener: toAppEventListener(handleNavigateToTranslation) },
-    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_ESSAY, listener: toAppEventListener(handleNavigateToEssay) },
-    { target: 'window', type: APP_EVENTS.NAVIGATE_TO_NOTE, listener: toAppEventListener(handleNavigateToNote) },
-    { target: 'window', type: 'DSTU_OPEN_NOTE', listener: handleClassicShellOpenNote },
-    { target: 'window', type: APP_EVENTS.PREFILL_CHAT_INPUT, listener: toAppEventListener(handlePrefillChatInput) },
-  ], [handleNavigateToExamSheet, handleNavigateToTranslation, handleNavigateToEssay, handleNavigateToNote, handleClassicShellOpenNote, handlePrefillChatInput]);
+  // 跨功能交接：试卷 / 翻译 / 作文 / 笔记 → 学习资源页，DSTU_OPEN_NOTE（经典壳），预填聊天输入
+  useCrossFeatureHandoffs(openInLearningHub, setCurrentView);
 
   // 处理页面切换（useCallback 稳定引用，避免 ModernSidebar 每次重渲染）
   const handleViewChange = useCallback((newView: CurrentView) => {
@@ -1297,32 +1035,7 @@ function App() {
   // 历史管理已迁移到 useNavigationHistory Hook
 
   // 开发者工具快捷键支持 (仅生产模式，仅 Ctrl+Shift+I / Cmd+Alt+I)
-  // 注：F12 由命令系统 dev.open-devtools 统一处理；debug 构建下 Cmd+Alt+I 由
-  // Tauri 注入热键处理，此处仅覆盖生产 web 部署场景（统一走自有命令 toggle_devtools）
-  const handleDevtoolsKeyDown = useCallback(async (event: Event) => {
-    const isProduction = !window.location.hostname.includes('localhost') &&
-                        !window.location.hostname.includes('127.0.0.1') &&
-                        !window.location.hostname.includes('tauri.localhost');
-    if (!isProduction) return;
-
-    const keyboardEvent = event as KeyboardEvent;
-    const isDevtoolsShortcut =
-      (keyboardEvent.ctrlKey && keyboardEvent.shiftKey && keyboardEvent.key === 'I') ||
-      (keyboardEvent.metaKey && keyboardEvent.altKey && keyboardEvent.key === 'I');
-
-    if (!isDevtoolsShortcut) return;
-
-    keyboardEvent.preventDefault();
-    keyboardEvent.stopPropagation();
-    const opened = await toggleDevtools();
-    if (opened === null) {
-      debugLog.warn('[App] DevTools 不可用：当前构建未启用 devtools（需 debug 构建或 --features devtools）');
-    }
-  }, []);
-
-  useEventRegistry([
-    { target: 'document', type: 'keydown', listener: handleDevtoolsKeyDown },
-  ], [handleDevtoolsKeyDown]);
+  useDevtoolsShortcut();
 
   // 模板管理状态
   const [isSelectingTemplate, setIsSelectingTemplate] = useState(false);
@@ -1336,33 +1049,7 @@ function App() {
   
   
   // 🔧 定期持久化 WebView 设置，确保自动备份可获取
-  useEffect(() => {
-    let lastSnapshot = '';
-    let cancelled = false;
-
-    const persistWebviewSettings = async () => {
-      if (cancelled) return;
-      try {
-        const data = TauriAPI.collectLocalStorageForBackup();
-        const snapshot = JSON.stringify(data);
-        if (snapshot === lastSnapshot) {
-          return;
-        }
-        lastSnapshot = snapshot;
-        await TauriAPI.saveWebviewSettings(data);
-      } catch (error) {
-        console.warn('[App] WebView 设置持久化失败:', error);
-      }
-    };
-
-    void persistWebviewSettings();
-    const intervalId = window.setInterval(persistWebviewSettings, 10 * 60 * 1000);
-
-    return () => {
-      cancelled = true;
-      window.clearInterval(intervalId);
-    };
-  }, []);
+  useWebviewSettingsPersistence();
 
   // 处理模板选择请求
   const handleTemplateSelectionRequest = useCallback((callback: (template: any) => void) => {
