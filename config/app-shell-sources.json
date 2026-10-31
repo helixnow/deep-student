@@ -8,6 +8,9 @@
     "src/app/hooks/useDebugPanelRequests.ts",
     "src/app/hooks/usePlatformSettingsSync.ts",
     "src/app/hooks/useAppBackgroundServices.ts",
-    "src/app/hooks/useWorkbenchMode.ts"
+    "src/app/hooks/useWorkbenchMode.ts",
+    "src/app/hooks/useViewRedirects.ts",
+    "src/app/hooks/useFrontendErrorCapture.ts",
+    "src/app/hooks/useShellNavigationEvents.ts"
   ]
 }

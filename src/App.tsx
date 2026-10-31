@@ -75,7 +75,6 @@ import { WelcomeOnboardingDialog, useWelcomeOnboarding } from './components/onbo
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import { useQbankGenerationTasks } from './hooks/useQbankGenerationTasks';
 import useTheme from './hooks/useTheme';
-import { emitDebug } from './utils/emitDebug';
 import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
@@ -114,7 +113,6 @@ import {
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { toggleDevtools } from './dev/devtools';
-import { useIsUILabEnabled } from './utils/uiLabToggle';
 import { sessionManager } from './features/chat/core/session/sessionManager';
 import { GoalStatusChip } from './features/chat/components/GoalStatusChip';
 import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
@@ -153,6 +151,9 @@ import { Z_INDEX } from './config/zIndex';
 import { useSystemStatusSync } from './app/hooks/useSystemStatusSync';
 import { useDebugPanelRequests } from './app/hooks/useDebugPanelRequests';
 import { usePlatformSettingsSync } from './app/hooks/usePlatformSettingsSync';
+import { useViewRedirects } from './app/hooks/useViewRedirects';
+import { useFrontendErrorCapture } from './app/hooks/useFrontendErrorCapture';
+import { useShellNavigationEvents } from './app/hooks/useShellNavigationEvents';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -192,11 +193,7 @@ import {
   type PdfPageActivationTypeId,
 } from '@/features/workbench/core/workbenchBus';
 import { consumeHandoffDescriptor } from '@/features/workbench/core/handoffDescriptor';
-import {
-  requestLearningHubIntent,
-  type LearningHubIntentType,
-} from '@/features/learning-hub/navigation/pendingLearningHubIntent';
-import type { AppEventPayloads } from '@/events/app';
+import { requestLearningHubIntent } from '@/features/learning-hub/navigation/pendingLearningHubIntent';
 import {
   resolveClassicShellOpenNoteTarget,
   type DstuOpenNoteDetail,
@@ -719,33 +716,8 @@ function App() {
     });
   }, []);
 
-  useEffect(() => {
-    let shouldOpenRecoveryReceipt = false;
-    try {
-      shouldOpenRecoveryReceipt =
-        localStorage.getItem('deep-student.pending-recovery-receipt') === '1';
-      if (shouldOpenRecoveryReceipt) {
-        localStorage.removeItem('deep-student.pending-recovery-receipt');
-      }
-    } catch {
-      return;
-    }
-
-    if (!shouldOpenRecoveryReceipt) return;
-    setPendingSettingsRoute({
-      tab: 'data-governance',
-      dataGovernanceTab: 'recovery',
-    });
-    setCurrentView('settings');
-  }, [setCurrentView]);
-
-  const uiLabEnabled = useIsUILabEnabled();
-
-  useEffect(() => {
-    if (currentView === 'ui-lab' && !uiLabEnabled) {
-      setCurrentView('chat-v2');
-    }
-  }, [currentView, uiLabEnabled, setCurrentView]);
+  // 启动恢复回执跳转设置页；UI Lab 关闭时退出 ui-lab 视图
+  const { uiLabEnabled } = useViewRedirects(currentView, setCurrentView);
 
   // ★ 移动端顶栏活跃视图同步已移至 MobileHeaderActiveViewSync 组件
 
@@ -852,160 +824,10 @@ function App() {
   const textbookExportConcurrency = 2;
 
   // 前端错误采集：记录到事件模式（channel='error', eventName='frontend_error'）
-  // 原生 DOM 事件走 useEventRegistry（非 CustomEvent 域）
-  const onFrontendError = useCallback((ev: Event) => {
-    const dispatchFrontendErrorDebug = (payload: Record<string, unknown>) => {
-      const meta = { path: window.location?.pathname, ua: navigator?.userAgent };
-      const emitTask = () => {
-        try {
-          emitDebug({ channel: 'error', eventName: 'frontend_error', payload, meta });
-        } catch (e) { debugLog.warn('[App] emitDebug frontend_error failed:', e); }
-      };
-      if (typeof queueMicrotask === 'function') {
-        try {
-          queueMicrotask(emitTask);
-          return;
-        } catch { /* non-critical: queueMicrotask unavailable, falls through to setTimeout */ }
-      }
-      setTimeout(emitTask, 0);
-    };
+  useFrontendErrorCapture();
 
-    try {
-      const errorEvent = ev as ErrorEvent & { target?: EventTarget | null };
-      const target = errorEvent.target as (EventTarget & {
-        currentSrc?: string;
-        src?: string;
-        href?: string;
-        tagName?: string;
-        baseURI?: string;
-      }) | null;
-      const isResourceError = Boolean(errorEvent && target && target !== window);
-      if (isResourceError) {
-        const src = target?.currentSrc || target?.src || target?.href || '';
-        if (typeof src === 'string' && src.includes('/sse-proxy/')) {
-          return;
-        }
-      }
-      const payload = isResourceError
-        ? {
-          type: 'ResourceError',
-          tagName: target?.tagName,
-          src: target?.currentSrc || target?.src || target?.href,
-          baseURI: target?.baseURI,
-        }
-        : {
-          type: 'Error',
-          message: errorEvent?.message || String((errorEvent as ErrorEvent)?.error || 'Unknown error'),
-          stack: (errorEvent?.error && (errorEvent.error as Error)?.stack) || undefined,
-          filename: errorEvent?.filename,
-          lineno: errorEvent?.lineno,
-          colno: errorEvent?.colno,
-        };
-      dispatchFrontendErrorDebug(payload);
-      console.error('[DSTU][FRONTEND_ERROR]', payload);
-    } catch (e) { debugLog.warn('[App] onError handler failed:', e); }
-  }, []);
-
-  const onUnhandledRejection = useCallback((ev: Event) => {
-    try {
-      const rejection = ev as PromiseRejectionEvent;
-      const reason = rejection?.reason || 'Unknown rejection';
-      const message = typeof reason === 'string' ? reason : (reason?.message || String(reason));
-
-      if (message.includes('fetch_cancel_body') || message.includes('http.fetch_cancel_body')) {
-        return;
-      }
-
-      emitDebug({
-        channel: 'error',
-        eventName: 'frontend_error',
-        payload: {
-          type: 'UnhandledRejection',
-          message,
-          stack: typeof reason === 'object' && reason ? reason.stack : undefined,
-        },
-        meta: { path: window.location?.pathname, ua: navigator?.userAgent },
-      });
-    } catch (e) { debugLog.warn('[App] onRejection handler failed:', e); }
-  }, []);
-
-  useEventRegistry([
-    { target: 'window', type: 'error', listener: onFrontendError, options: true },
-    { target: 'window', type: 'unhandledrejection', listener: onUnhandledRejection },
-  ], [onFrontendError, onUnhandledRejection]);
-
-  // Milkdown / Notes / 新建桥接 / 知识库：壳层导航监听（owner: App）
-  useAppEvent(APP_EVENTS.OPEN_MARKDOWN_EDITOR, () => {
-    setCurrentView('learning-hub');
-  }, [setCurrentView]);
-
-  useAppEvent(APP_EVENTS.OPEN_NOTES, () => {
-    setCurrentView('learning-hub');
-  }, [setCurrentView]);
-
-  const handleCreateChatSessionBridge = useCallback((detail: { action?: string } | undefined) => {
-    if (
-      detail?.action &&
-      detail.action !== 'create-session' &&
-      detail.action !== 'create-group'
-    ) {
-      return;
-    }
-    setCurrentView('chat-v2');
-  }, [setCurrentView]);
-
-  useEventRegistry([
-    {
-      target: 'window',
-      type: APP_EVENTS.CHAT_NEW_SESSION,
-      listener: toAppEventListener(handleCreateChatSessionBridge),
-    },
-    {
-      target: 'window',
-      type: APP_EVENTS.MODERN_SIDEBAR_GROUP_ACTION,
-      listener: toAppEventListener(handleCreateChatSessionBridge),
-    },
-    {
-      target: 'window',
-      type: APP_EVENTS.NOTES_CREATE_NEW,
-      listener: () => {
-        setCurrentView('learning-hub');
-      },
-    },
-  ], [handleCreateChatSessionBridge, setCurrentView]);
-
-  // Crepe minimal demo：用于排查编辑器性能的纯净示例（仅开发模式）
-  useEffect(() => {
-    if (!import.meta.env.DEV) return;
-    const openCrepeDemo = () => setCurrentView('crepe-demo');
-    const dispose = addAppEventListener(APP_EVENTS.OPEN_CREPE_DEMO, openCrepeDemo);
-    (window as unknown as { openCrepeDemo?: () => void }).openCrepeDemo = openCrepeDemo;
-    return () => {
-      dispose();
-      const w = window as unknown as { openCrepeDemo?: () => void };
-      if (w.openCrepeDemo === openCrepeDemo) {
-        delete w.openCrepeDemo;
-      }
-    };
-  }, [setCurrentView]);
-
-  // ★ OPEN_RF_DEMO 事件已废弃（图谱演示已移除）
-
-  // 顶部安全区功能已移除
-
-  // 跨页「在学习资源中打开 X」：切到学习资源页并经握手投递打开意图。
-  // 监听者在 lazy LearningHubPage 内注册，首次进入 / 触屏 LRU 淘汰后重进时页面尚未
-  // 挂载，旧的「隔一帧 / 150ms 再派发」会早到即丢；握手挂起意图，页面监听器就位后重放。
-  // Workbench 启用时由 WorkbenchEventBridge 开窗，经典学习资源页不挂载，不挂起意图
-  // （否则切回经典壳时会重放陈旧意图）。
-  const openInLearningHub = useCallback(<K extends LearningHubIntentType>(
-    type: K,
-    detail: AppEventPayloads[K],
-  ) => {
-    setCurrentView('learning-hub');
-    if (workbenchBus.isEnabled()) return;
-    requestLearningHubIntent(type, detail);
-  }, [setCurrentView]);
+  // Milkdown / Notes / 新建桥接 / Crepe demo 壳层导航监听；跨页「在学习资源中打开 X」
+  const { openInLearningHub } = useShellNavigationEvents(setCurrentView);
 
   // 媒体时间戳引用（`[媒体@id:mm:ss]`，闪卡来源按钮、笔记锚点等）：经典壳下除聊天页外
   // 一律在「音视频」学习页打开并跳转（docs/dev/media-learning §0.5）。聊天页自己处理（右侧

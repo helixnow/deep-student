@@ -2,6 +2,9 @@ import type { CurrentView } from '@/types/navigation';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
 import { getCardsHubSwitchDirection } from './cardsHub';
 
+/** App 的 setCurrentView（视图切换追踪 + LRU 淘汰包装）签名，供搬出的壳层 hooks 作参数类型 */
+export type SetCurrentView = (newView: CurrentView | ((prev: CurrentView) => CurrentView)) => void;
+
 // 🚀 LRU 视图淘汰：限制保活视图数量，避免内存无限增长
 /** 始终保活的视图（不参与 LRU 淘汰） */
 export const PINNED_VIEWS: Set<CurrentView> = new Set(['chat-v2']);
