@@ -620,6 +620,42 @@ impl Tool for RagTool {
     }
 }
 
+/// 向 llm_manager 注册 legacy 回退注入用的 web_search（llm_manager 不能反向依赖 tools）。
+///
+/// 与原先 model2_pipeline 内联的调用相同：单工具注册表 + 回退阶段的 ToolContext。
+pub fn install_web_search_fallback() {
+    crate::llm_manager::web_search_fallback::register_web_search_fallback(call_web_search_fallback);
+}
+
+fn call_web_search_fallback(
+    req: crate::llm_manager::web_search_fallback::WebSearchFallbackRequest<'_>,
+) -> std::pin::Pin<
+    Box<
+        dyn std::future::Future<
+                Output = crate::llm_manager::web_search_fallback::WebSearchToolResult,
+            > + Send
+            + '_,
+    >,
+> {
+    Box::pin(async move {
+        let mcp_client = None;
+        let tool_ctx = ToolContext {
+            db: Some(req.db),
+            mcp_client,
+            supports_tools: false, // 专门为降级注入场景
+            window: req.window,    // G01-b：无窗 runtime 为 None
+            stream_event: Some(req.stream_event),
+            stage: Some("fallback"),
+            memory_enabled: req.memory_enabled,
+            llm_manager: None, // fallback 场景不需要重排器
+        };
+        let web_registry = ToolRegistry::new_with(vec![Arc::new(WebSearchTool)]);
+        web_registry
+            .call_tool("web_search", req.args, &tool_ctx)
+            .await
+    })
+}
+
 // WebSearch 工具（外部搜索）
 pub struct WebSearchTool;
 
