@@ -93,10 +93,13 @@ pub use dstu_core::models;
 pub use dstu_core::net_policy; // 内网/回环地址判定（browser::policy 按原路径重导出）
 #[allow(dead_code, deprecated)]
 pub use dstu_llm::multimodal;
-pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
-pub mod notes_exporter;
-pub mod notes_manager;
+pub use dstu_notes::notes_exporter;
+pub use dstu_notes::notes_manager;
+pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+// 依赖 app 组合根的笔记历史单测（notes_exporter 已拆到 dstu-notes）。
+#[cfg(test)]
+mod notes_app_tests;
 pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub use dstu_llm::openai_codex;
@@ -212,6 +215,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_llm",
     "dstu_vfs",
     "dstu_mcp",
+    "dstu_notes",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
