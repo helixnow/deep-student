@@ -175,7 +175,10 @@ fn is_valid_name(name: &str) -> bool {
 
 /// 自定义 profile 可声明的工具安全全集：协作工具 ∪ headless 只读白名单
 /// ∪ chatanki 只读卡面四工具（Phase 2）。
-fn safe_tool_set() -> HashSet<String> {
+///
+/// step 10：`pub` 仅供 app 侧 `agent_wiring::tests::custom_agent_tests` 断言。
+#[doc(hidden)]
+pub fn safe_tool_set() -> HashSet<String> {
     let mut set: HashSet<String> = crate::chat_v2::headless::headless_allowed_tools()
         .into_iter()
         .collect();
@@ -686,47 +689,8 @@ mod tests {
         );
     }
 
-    /// Multi-agent Phase 2 双向 fail-closed 之「放行」向：chatanki 只读四工具
-    /// 进入安全全集，档案声明后完整保留；且四者确实是 chatanki 执行器口径的
-    /// Low 敏感度只读工具（防止未来有人把写工具塞进该常量）。
-    #[test]
-    fn chatanki_readonly_tools_are_allowed_and_low_sensitivity() {
-        let safe = safe_tool_set();
-        for tool in CHATANKI_READONLY_TOOLS {
-            assert!(safe.contains(tool), "safe tool set must contain {tool}");
-        }
-
-        // 常量本身的只读性由执行器敏感度分级钉死：四者全部 Low。
-        use crate::chat_v2::tools::executor::{ToolExecutor, ToolSensitivity};
-        let executor = crate::chat_v2::tools::ChatAnkiToolExecutor::new();
-        for tool in CHATANKI_READONLY_TOOLS {
-            assert!(executor.can_handle(tool), "{tool} must be a chatanki tool");
-            assert_eq!(
-                executor.sensitivity_level(tool),
-                ToolSensitivity::Low,
-                "{tool} must stay Low sensitivity to qualify as read-only card surface"
-            );
-        }
-
-        let dir = tempfile::tempdir().unwrap();
-        write_agent_file(
-            dir.path(),
-            "qa-readonly.md",
-            "---\nname: qa-readonly\nbase: worker\ntools: [builtin-chatanki_get_cards, builtin-chatanki_status, builtin-chatanki_analyze, builtin-chatanki_list_templates]\n---\nBody.\n",
-        );
-        let profile = find_custom_profile(dir.path(), "qa-readonly").unwrap();
-        assert_eq!(
-            profile.allowed_tools,
-            vec![
-                "builtin-workspace_send",
-                "builtin-workspace_query",
-                "builtin-chatanki_get_cards",
-                "builtin-chatanki_status",
-                "builtin-chatanki_analyze",
-                "builtin-chatanki_list_templates",
-            ]
-        );
-    }
+    // step 10：`chatanki_readonly_tools_are_allowed_and_low_sensitivity`（需 app 的
+    // ChatAnkiToolExecutor）已迁到 app `agent_wiring::tests::custom_agent_tests`（函数名不变）。
 
     /// 双向 fail-closed 的混合声明用例：同一档案里读写混declare 时，只读四工具
     /// 保留、写工具剔除——sanitize 是逐项裁剪而不是整体作废，也绝不因为

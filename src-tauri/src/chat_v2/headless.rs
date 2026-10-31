@@ -577,8 +577,11 @@ pub fn is_headless_allowed_tool(tool_name: &str) -> bool {
 /// 逐名锁定"注册表派生集合 == 本清单"。新增/移除 headless 工具时必须同步
 /// 更新本清单与 `tool_descriptors::BUILTIN_DESCRIPTORS` 的 `headless_allowed`
 /// 标志，否则对照测试红灯。
-#[cfg(test)]
-pub(crate) const LEGACY_HEADLESS_ALLOWED_TOOLS: &[&str] = &[
+///
+/// step 10：不再 `#[cfg(test)]`——app 侧 `agent_wiring::tests::descriptor_tests`
+/// 也读取本清单，而跨 crate 时 `cfg(test)` 项不可见。生产代码不引用它。
+#[doc(hidden)]
+pub const LEGACY_HEADLESS_ALLOWED_TOOLS: &[&str] = &[
     // Agent 元工具（todo_* 经 schema_tool_ids 注入；attempt_completion 是
     // control tool 本就绕过白名单，列入仅为语义完整）
     "attempt_completion",
@@ -1996,9 +1999,9 @@ fn clamp_session_turn_timeout(
 }
 
 fn read_main_db_setting_u64(app: &AppHandle, key: &str) -> Option<u64> {
-    let state = app.try_state::<crate::commands::AppState>()?;
-    state
-        .database
+    // step 10：主库 Arc 已单独 `app.manage`（与 AppState.database 同一个 Arc）。
+    let database = app.try_state::<Arc<crate::database::Database>>()?;
+    database
         .get_setting(key)
         .ok()
         .flatten()
@@ -2090,38 +2093,11 @@ mod tests {
     use super::*;
     use crate::chat_v2::automations::heartbeat_is_silent;
     use crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy;
-    use crate::chat_v2::tools::{
-        AttemptCompletionExecutor, BuiltinResourceExecutor, BuiltinRetrievalExecutor,
-        DataGovernanceToolExecutor, DstuToolExecutor, FetchExecutor, FsrsSettingsExecutor,
-        IndexWebpageToolExecutor, LearningOverviewExecutor, LlmUsageToolExecutor,
-        MemoryToolExecutor, ReviewToolExecutor, SettingsModelsToolExecutor, TodoListExecutor,
-        ToolExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
-    };
     use serde_json::json;
-    use std::sync::Arc;
 
-    /// 构建覆盖白名单全部工具的执行器注册表（顺序与 pipeline 注册一致的子集）
-    fn whitelist_registry() -> ToolExecutorRegistry {
-        let executors: Vec<Arc<dyn ToolExecutor>> = vec![
-            Arc::new(AttemptCompletionExecutor::new()),
-            Arc::new(BuiltinRetrievalExecutor::new()),
-            Arc::new(BuiltinResourceExecutor::new()),
-            Arc::new(DstuToolExecutor::new()),
-            Arc::new(FetchExecutor::new()),
-            Arc::new(SettingsModelsToolExecutor::new()),
-            Arc::new(LlmUsageToolExecutor::new()),
-            Arc::new(DataGovernanceToolExecutor::new()),
-            Arc::new(LearningOverviewExecutor::new()),
-            Arc::new(FsrsSettingsExecutor::new()),
-            Arc::new(IndexWebpageToolExecutor::new()),
-            Arc::new(TodoListExecutor::new()),
-            Arc::new(crate::chat_v2::tools::qbank_executor::QBankExecutor::new()),
-            Arc::new(MemoryToolExecutor::new()),
-            Arc::new(UserTodoExecutor::new()),
-            Arc::new(ReviewToolExecutor::new()),
-        ];
-        ToolExecutorRegistry::from_vec(executors)
-    }
+    // step 10：`whitelist_registry`（需 app 域执行器）及其用户
+    // `all_whitelisted_tools_are_low_sensitivity` 已迁到 app
+    // `agent_wiring::tests::headless_tests`（函数名不变）。
 
     fn schema_for(name: &str) -> Value {
         headless_tool_schemas()
@@ -2340,26 +2316,6 @@ mod tests {
             &json!({}),
             &allowed
         ));
-    }
-
-    // —— 审批 fail-closed：白名单必须全部是 Low 敏感度 ————————————
-
-    /// 核心安全不变量：headless 无人审批，白名单内任何工具到达敏感度检查时
-    /// 必须是 Low（否则会进入审批等待→60s 超时挂起）。
-    /// 该测试守护"新工具加入白名单前必须确认 Low 敏感度"的约定。
-    #[test]
-    fn all_whitelisted_tools_are_low_sensitivity() {
-        let registry = whitelist_registry();
-        for tool_name in headless_allowed_tools() {
-            let sensitivity = registry.get_sensitivity(&tool_name);
-            assert_eq!(
-                sensitivity,
-                Some(ToolSensitivity::Low),
-                "白名单工具 '{}' 敏感度必须为 Low（实际: {:?}），否则 headless 下会触发审批挂起",
-                tool_name,
-                sensitivity
-            );
-        }
     }
 
     #[test]
