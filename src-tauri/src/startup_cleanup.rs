@@ -101,15 +101,20 @@ pub fn purge_active_data_dir(active_app_data_dir: &Path) -> Result<PurgeReport, 
     })
 }
 
+/// 清空本机数据后重置同步消费基线的钩子（由 app 在启用 data_governance 时传入，
+/// 存储层不依赖同步模块）。错误以 `Display` 文本并入清理报告。
+pub type ResetSyncBaselineFn = fn() -> Result<(), String>;
+
 /// 启动早期执行真正的本机数据清理。
 ///
 /// - 活跃槽保留用户明确约定的备份目录；
 /// - 非活跃槽、测试槽和恢复 trash 全量删除，避免隐私数据可被切回；
-/// - 重置同步消费游标，使空白本地库下次可以重新消费完整云端历史；
+/// - 重置同步消费游标（`reset_sync_baseline`），使空白本地库下次可以重新消费完整云端历史；
 /// - 必须在任何业务数据库连接打开前调用。
 pub fn purge_all_local_data(
     base_app_data_dir: &Path,
     active_app_data_dir: &Path,
+    reset_sync_baseline: Option<ResetSyncBaselineFn>,
 ) -> Result<PurgeReport, AppError> {
     let mut report = purge_active_data_dir(active_app_data_dir)?;
     let slots_dir = base_app_data_dir.join("slots");
@@ -186,11 +191,10 @@ pub fn purge_all_local_data(
         }
     }
 
-    #[cfg(feature = "data_governance")]
-    if let Err(e) =
-        crate::data_governance::sync::state::SyncStateStore::reset_default_after_local_purge()
-    {
-        extra_errors.push(format!("重置同步消费基线失败: {}", e));
+    if let Some(reset_sync_baseline) = reset_sync_baseline {
+        if let Err(e) = reset_sync_baseline() {
+            extra_errors.push(format!("重置同步消费基线失败: {}", e));
+        }
     }
 
     if !extra_deleted.is_empty() {

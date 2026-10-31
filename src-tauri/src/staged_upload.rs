@@ -31,11 +31,11 @@ use tauri::{AppHandle, Manager, Window};
 /// 单个暂存上传的硬上限（与附件 `MAX_FILE_BYTES` / `read_file_bytes` 上限对齐）
 pub const STAGED_UPLOAD_MAX_BYTES: u64 = 200 * 1024 * 1024;
 /// 音视频暂存上限（消费方流式写入 blob，不整文件进内存；设计契约 media-learning §4）
-pub const STAGED_UPLOAD_MEDIA_MAX_BYTES: u64 = crate::media::MAX_MEDIA_IMPORT_BYTES;
+pub const STAGED_UPLOAD_MEDIA_MAX_BYTES: u64 = crate::media_types::MAX_MEDIA_IMPORT_BYTES;
 
 /// 按文件名决定暂存上限：音视频 4 GB，其余 200 MB
 pub fn max_bytes_for_name(name: &str) -> u64 {
-    if crate::media::media_kind("", name).is_some() {
+    if crate::media_types::media_kind("", name).is_some() {
         STAGED_UPLOAD_MEDIA_MAX_BYTES
     } else {
         STAGED_UPLOAD_MAX_BYTES
@@ -492,7 +492,8 @@ pub async fn staged_upload_from_path(
     window: Window,
     path: String,
 ) -> Result<StagedFromPath, String> {
-    crate::commands::deny_hidden_local_path(&window, &path).map_err(|e| e.to_string())?;
+    crate::unified_file_manager::deny_hidden_local_path(&window, &path)
+        .map_err(|e| e.to_string())?;
     let dir = staging_dir(window.app_handle())?;
     tauri::async_runtime::spawn_blocking(move || {
         let name = crate::unified_file_manager::extract_file_name(&path);

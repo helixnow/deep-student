@@ -8,6 +8,11 @@ use std::sync::{Mutex, OnceLock};
 use tauri::Manager;
 use tracing::{error, info, warn};
 
+// 受治理组件的启动健康状态（与 data_governance 同一 feature 门控，原路径重导出）
+#[cfg(feature = "data_governance")]
+#[allow(dead_code)]
+pub mod startup_health;
+
 const LEGACY_MIGRATION_PENDING_FILE: &str = ".legacy_migration_pending";
 const LEGACY_MIGRATION_COMPLETE_FILE: &str = ".legacy_migration_complete";
 const PURGE_MARKER_FILE: &str = ".purge_on_next_start";
@@ -2268,7 +2273,7 @@ pub fn export_startup_recovery_report(
     let component_health = {
         #[cfg(feature = "data_governance")]
         {
-            app.try_state::<crate::data_governance::StartupComponentHealthState>()
+            app.try_state::<startup_health::StartupComponentHealthState>()
                 .map(|health| health.snapshot())
         }
         #[cfg(not(feature = "data_governance"))]

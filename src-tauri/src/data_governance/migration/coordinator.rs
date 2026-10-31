@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::data_governance::schema_registry::{DatabaseId, SchemaRegistry};
-use crate::data_governance::StartupComponentHealth;
+use crate::data_space::startup_health::StartupComponentHealth;
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {

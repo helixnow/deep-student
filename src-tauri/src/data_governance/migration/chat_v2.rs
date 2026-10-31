@@ -651,6 +651,11 @@ pub const CHAT_V2_MIGRATION_SET: MigrationSet = MigrationSet {
     migrations: CHAT_V2_MIGRATIONS,
 };
 
+/// Chat V2 当前 Schema 版本（对应 Refinery 迁移的最新版本）
+/// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准。
+/// `chat_v2::database::CURRENT_SCHEMA_VERSION` 按原路径重导出。
+pub const CHAT_V2_SCHEMA_VERSION: u32 = 20260910;
+
 // ============================================================================
 // 测试
 // ============================================================================
@@ -691,7 +696,7 @@ mod tests {
     fn test_latest_version() {
         assert_eq!(
             CHAT_V2_MIGRATION_SET.latest_version(),
-            crate::chat_v2::database::CURRENT_SCHEMA_VERSION as i32
+            CHAT_V2_SCHEMA_VERSION as i32
         );
     }
 

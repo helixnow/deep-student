@@ -12,6 +12,7 @@ pub mod error_details;
 pub mod error_recovery;
 pub mod json_validator;
 pub mod llm_config;
+pub mod media_types;
 pub mod models;
 pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod services;

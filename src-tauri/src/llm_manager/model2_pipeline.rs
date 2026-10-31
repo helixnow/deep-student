@@ -4076,11 +4076,8 @@ const CACHE_DEBUG_SEGMENT_NAMES: [&str; 4] = ["system", "tools", "history", "cur
 /// 防止长会话调试期间无界增长；超限整体清空（只影响下一次基线判定）
 const CACHE_DEBUG_MAX_TRACKED_SCOPES: usize = 256;
 
-pub(crate) fn cache_debug_enabled() -> bool {
-    std::env::var("CHAT_V2_CACHE_DEBUG")
-        .map(|v| v == "1")
-        .unwrap_or(false)
-}
+// CHAT_V2_CACHE_DEBUG 开关已下沉到存储层 `llm_usage`（命中率日志共用），这里按原路径重导出。
+pub(crate) use crate::llm_usage::cache_debug_enabled;
 
 /// 把 post-adapter 最终请求体切成缓存语义上的四段。
 ///

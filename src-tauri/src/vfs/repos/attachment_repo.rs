@@ -140,7 +140,8 @@ const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 /// JPEG 普遍超过 10MB，旧限制导致常见照片无法导入。
 /// ★ #62/ATT-09：这两个常量是全局附件上限的唯一权威来源，其他模块的
 /// 校验与错误提示应引用这里（或 `max_upload_size_bytes`），禁止再散落硬编码。
-pub(crate) const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
+/// 图片上限定义已下沉到 `dstu_core::media_types`（存储层 file_manager 共用），这里按原路径重导出。
+pub(crate) use dstu_core::media_types::MAX_IMAGE_BYTES;
 const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
 /// 附件原始内容的内部来源。调用方可直接处理磁盘文件，避免先读取并 base64 编码，
