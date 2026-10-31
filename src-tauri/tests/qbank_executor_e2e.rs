@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use deep_student_lib::agent_wiring::services::build_pipeline_services;
 use deep_student_lib::chat_v2::events::ChatV2EventEmitter;
 use deep_student_lib::chat_v2::tools::qbank_executor::QBankExecutor;
 use deep_student_lib::chat_v2::tools::{ExecutionContext, ToolExecutor};
@@ -220,7 +221,10 @@ fn execution_context(harness: &ExecutorHarness, block_id: &str) -> ExecutionCont
     .with_main_db(Some(harness.main_db.clone()))
     .with_vfs_db(Some(harness.vfs_db.clone()))
     .with_llm_manager(Some(harness.llm_manager.clone()))
-    .with_question_bank_service(Some(harness.question_bank_service.clone()))
+    .with_services(build_pipeline_services(
+        None,
+        Some(harness.question_bank_service.clone()),
+    ))
 }
 
 async fn execute_tool(

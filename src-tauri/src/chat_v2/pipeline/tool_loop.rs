@@ -3250,7 +3250,7 @@ impl ChatV2Pipeline {
         // 剥离前缀
         let short_name = tc
             .name
-            .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .strip_prefix(super::super::tools::types::BUILTIN_NAMESPACE)
             .or_else(|| tc.name.strip_prefix("mcp_"))
             .unwrap_or(&tc.name);
 
@@ -3322,7 +3322,7 @@ impl ChatV2Pipeline {
         created_file_ids: &mut std::collections::HashMap<String, String>,
     ) {
         let short_name = tool_name
-            .strip_prefix(super::super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+            .strip_prefix(super::super::tools::types::BUILTIN_NAMESPACE)
             .or_else(|| tool_name.strip_prefix("mcp_"))
             .unwrap_or(tool_name);
 
@@ -3479,7 +3479,8 @@ impl ChatV2Pipeline {
         )
         // ACR R2-01：runId = toolCallId，贯穿桥/presence/账本
         .with_tool_call_id(tool_call.id.clone())
-        .with_canvas(canvas_note_id.clone(), self.notes_manager.clone())
+        .with_canvas(canvas_note_id.clone())
+        .with_services(self.services.clone()) // step 10：宿主服务（NotesManager / QuestionBankService 等）
         .with_main_db(self.main_db.clone())
         .with_anki_db(self.anki_db.clone())
         .with_vfs_db(self.vfs_db.clone()) // 🆕 学习资源工具需要访问 VFS 数据库
@@ -3488,7 +3489,6 @@ impl ChatV2Pipeline {
         .with_vfs_lance_store(self.vfs_db.as_ref().and_then(managed_vfs_lance_store_for))
         .with_llm_manager(Some(self.llm_manager.clone())) // 🆕 VFS RAG 工具需要 LLM 管理器
         .with_chat_v2_db(Some(self.db.clone())) // 🆕 工具块防闪退保存
-        .with_question_bank_service(self.question_bank_service.clone()) // 🆕 智能题目集工具
         .with_pdf_processing_service(self.pdf_processing_service.clone()) // 🆕 论文保存触发 Pipeline
         .with_rag_config(rag_top_k, rag_enable_reranking)
         .with_variant_id(variant_id.map(|s| s.to_string()))

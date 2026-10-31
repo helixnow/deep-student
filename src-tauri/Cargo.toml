@@ -50,6 +50,7 @@ members = [
     "crates/dstu-research",
     "crates/dstu-anki",
     "crates/dstu-sync",
+    "crates/dstu-agent",
 ]
 # vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
 exclude = ["vendor"]
@@ -85,6 +86,7 @@ dstu-vision = { path = "crates/dstu-vision", default-features = false }
 dstu-research = { path = "crates/dstu-research", default-features = false }
 dstu-anki = { path = "crates/dstu-anki", default-features = false }
 dstu-sync = { path = "crates/dstu-sync", default-features = false }
+dstu-agent = { path = "crates/dstu-agent", default-features = false }
 
 # 公共依赖
 tauri-plugin-opener = "2.5"

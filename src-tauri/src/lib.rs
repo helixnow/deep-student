@@ -16,6 +16,7 @@ pub use dstu_anki::anki_protocol; // Anki 制卡输出协议（分隔符常量 /
 pub use dstu_anki::anki_qa_lint;
 pub use dstu_llm::adapters;
 pub use dstu_llm::anki_model_routing; // Anki 制卡 Sidekick 模型分层路由（Planner/Generator/Critic/Vlm，Round 4 #7） // 确定性卡片质检 lint（零 LLM 成本，Round 3 #3）
+pub mod agent_wiring; // step 10：向 chat_v2 pipeline 注入执行器花名册 / 服务 / 域能力（组装层）
 pub mod apk_installer;
 #[allow(dead_code)]
 pub use dstu_anki::apkg_exporter_service;
@@ -1510,7 +1511,7 @@ pub fn run() {
                         .state::<std::sync::Arc<crate::chat_v2::ChatV2State>>()
                         .kill_switch
                         .clone();
-                    let chat_v2_pipeline_base = crate::chat_v2::pipeline::ChatV2Pipeline::new(
+                    let chat_v2_pipeline = crate::chat_v2::pipeline::ChatV2Pipeline::new(
                         chat_v2_db_arc.clone(),
                         Some(database.clone()), // 主数据库，用于工具读取用户配置
                         Some(app_state.inner().anki_database.clone()), // Anki 数据库，用于制卡进度查询
@@ -1519,20 +1520,25 @@ pub fn run() {
                         std::sync::Arc::new(crate::tools::ToolRegistry::new_with(vec![
                             std::sync::Arc::new(crate::tools::WebSearchTool) as std::sync::Arc<dyn crate::tools::Tool>,
                         ])),
-                        Some(app_state.inner().notes_manager.clone()), // NotesManager
+                        Some(std::sync::Arc::new(crate::agent_wiring::plugins::NotesCanvasSource(
+                            app_state.inner().notes_manager.clone(),
+                        ))), // NotesManager（Canvas 模式 prompt 注入）
                     )
+                    // step 10：生产执行器花名册（含域执行器）由 app 注入；顺序即分发顺序，与拆分前一致
+                    .with_executor_roster(std::sync::Arc::new(crate::agent_wiring::roster::AppExecutorRoster))
+                    // step 10：NotesManager（Canvas 工具）与智能题目集服务经 Services 注入执行上下文。
+                    // 🆕 缺失 QuestionBankService 时聊天侧全部 qbank_* 工具
+                    // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
+                    .with_services(crate::agent_wiring::services::build_pipeline_services(
+                        Some(app_state.inner().notes_manager.clone()),
+                        app_state.inner().question_bank_service.clone(),
+                    ))
                     .with_approval_manager(approval_manager) // 🆕 关联审批管理器
                     .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
                     .with_workspace_coordinator(workspace_coordinator) // 🆕 关联工作区协调器
                     .with_pdf_processing_service(app_state.inner().pdf_processing_service.clone()); // 🆕 论文保存触发 Pipeline
-                    // 🆕 注入智能题目集服务：缺失时聊天侧全部 qbank_* 工具
-                    // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
-                    let chat_v2_pipeline = match app_state.inner().question_bank_service.clone() {
-                        Some(question_bank_service) => {
-                            chat_v2_pipeline_base.with_question_bank_service(question_bank_service)
-                        }
-                        None => chat_v2_pipeline_base,
-                    };
+                    // step 10 §6 #3：漏注入花名册时域工具会静默落到 GeneralToolExecutor，启动期自检（只记日志）
+                    crate::agent_wiring::roster::verify_roster_coverage(&chat_v2_pipeline.executor_registry());
                     let chat_v2_pipeline = std::sync::Arc::new(chat_v2_pipeline);
                     let recovery_pipeline = chat_v2_pipeline.clone();
                     tauri::async_runtime::spawn(async move {

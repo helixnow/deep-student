@@ -47,18 +47,32 @@ test('rejects upward, domain-to-domain and agent-to-domain dependencies', () => 
     { name: 'dstu-qbank', layer: 'domain' },
     { name: 'dstu-agent', layer: 'agent', deps: ['dstu-anki'] },
   ]));
-  assert.equal(result.problems.length, 2);
+  assert.equal(result.problems.length, 3);
   assert.match(result.problems[0], /dstu-core\(core\) -> dstu-util\(base\): 依赖了更高层/);
   assert.match(result.problems[1], /dstu-anki\(domain\) -> dstu-qbank\(domain\)/);
+  assert.match(result.problems[2], /dstu-agent\(agent\) -> dstu-anki\(domain\): agent 层不得依赖 domain 层/);
 });
 
-test('agent depending on domain is an upward dependency', () => {
+test('agent must not depend on domain; domain depending on agent is upward', () => {
   const result = checkLayers(metadata([
     app,
     { name: 'dstu-anki', layer: 'domain' },
     { name: 'dstu-agent', layer: 'agent', deps: ['dstu-anki'] },
   ]));
-  assert.deepEqual(result.problems, []);
+  assert.equal(result.problems.length, 1);
+  assert.match(result.problems[0], /dstu-agent\(agent\) -> dstu-anki\(domain\): agent 层不得依赖 domain 层/);
+  const allowed = checkLayers(metadata([
+    app,
+    { name: 'dstu-core', layer: 'core' },
+    { name: 'dstu-agent-api', layer: 'capability', deps: ['dstu-core'] },
+    {
+      name: 'dstu-agent',
+      layer: 'agent',
+      deps: ['dstu-core', 'dstu-agent-api', { name: 'dstu-anki', kind: 'dev' }],
+    },
+    { name: 'dstu-anki', layer: 'domain' },
+  ]));
+  assert.deepEqual(allowed.problems, []);
   const inverted = checkLayers(metadata([
     app,
     { name: 'dstu-agent', layer: 'agent' },

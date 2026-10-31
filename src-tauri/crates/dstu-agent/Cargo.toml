@@ -1,0 +1,25 @@
+[package]
+name = "dstu-agent"
+version = "0.0.0"
+description = "Deep Student Agent 层：chat_v2 编排引擎（pipeline / 工具环 / 执行器框架 / 审批 / 工作区 / 技能），域执行器由 app 经 ExecutorRoster 注入"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "agent"
+
+[lints]
+workspace = true
+
+# step 10 P0：空骨架。L5 搬入 chat_v2 时再补依赖（tauri、dstu-* 下层 crate 等），
+# 并由 app 原样转发下列 feature（default 与 mobile-slim 等价）。
+[features]
+default = []
+mcp = []
+lance = []
+tokenizer_tiktoken = []
+data_governance = []
+
+[dependencies]

@@ -35,6 +35,11 @@ export const LAYERS = {
   agent: 6,
 };
 const SAME_LAYER_ALLOWED = new Set(['base', 'infra', 'service', 'capability']);
+// 显式禁止的“向下”依赖：agent 层只能依赖 capability 及以下；业务域执行器由 app
+// 经 ExecutorRoster 注入，跨域回调走 dstu-kernel Slot/HookSet（extensions.rs 注册）。
+export const FORBIDDEN_LAYER_DEPS = {
+  agent: new Set(['domain']),
+};
 
 export function checkLayers(metadata) {
   const members = new Set(metadata.workspace_members);
@@ -66,6 +71,8 @@ export function checkLayers(metadata) {
       const dl = dep.metadata?.dstu?.layer;
       if (!(dl in LAYERS)) continue;
       if (LAYERS[dl] > LAYERS[layer]) problems.push(`${p.name}(${layer}) -> ${dep.name}(${dl}): 依赖了更高层`);
+      else if (FORBIDDEN_LAYER_DEPS[layer]?.has(dl))
+        problems.push(`${p.name}(${layer}) -> ${dep.name}(${dl}): ${layer} 层不得依赖 ${dl} 层`);
       else if (LAYERS[dl] === LAYERS[layer] && !SAME_LAYER_ALLOWED.has(layer))
         problems.push(`${p.name}(${layer}) -> ${dep.name}(${dl}): ${layer} 层成员之间禁止互相依赖`);
     }
