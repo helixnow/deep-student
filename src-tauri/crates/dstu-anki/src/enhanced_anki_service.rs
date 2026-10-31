@@ -516,7 +516,7 @@ impl EnhancedAnkiService {
                     document_id, result.enqueued, result.skipped
                 );
                 if result.enqueued > 0 {
-                    crate::cmd::fsrs_review::emit_fsrs_enqueue_changed(
+                    crate::fsrs_review_service::emit_fsrs_enqueue_changed(
                         &window.app_handle(),
                         &service,
                         &result,
@@ -1001,7 +1001,7 @@ impl EnhancedAnkiService {
 
         // 获取模板配置（如果指定了模板）
         let template_config = if let Some(template_id) = &options.template_id {
-            match crate::commands::get_template_config(template_id, &self.db) {
+            match crate::anki::get_template_config(template_id, &self.db) {
                 Ok(config) => Some(config),
                 Err(e) => {
                     // 记录详细错误信息

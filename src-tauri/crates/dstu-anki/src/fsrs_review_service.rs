@@ -5421,6 +5421,83 @@ fn apply_mastery_bias_to_outcome(
     );
 }
 
+/// 未施加掌握度偏置的 FSRS 调度 due（`schedule_review` 的 `due_ms`）。
+///
+/// 只供 app 侧跨域单测
+/// `fsrs_review_service::tests::e2e_vfs_mastery_score_biases_due_and_respects_three_day_cap`
+/// 使用（该测试要用题库 `QuestionBankService`，留在 app）；由 `test-util` feature 打开。
+#[cfg(feature = "test-util")]
+#[doc(hidden)]
+pub fn schedule_review_due_ms(
+    before: &FsrsCardState,
+    rating: FsrsRating,
+    now_ms: i64,
+    config: &FsrsSchedulerConfig,
+) -> Result<i64> {
+    schedule_review(before, rating, now_ms, config).map(|outcome| outcome.due_ms)
+}
+
+// `fsrs://changed` enqueue 事件（原 app `cmd::fsrs_review`；`enhanced_anki_service` 自动入队后也要发，
+// 随服务下沉到本 crate，`cmd::fsrs_review` 按原名导入使用）。
+pub fn build_fsrs_enqueue_changed_payload(
+    result: &FsrsEnqueueResult,
+    loaded_cards: &[FsrsEnqueuedCard],
+    source: &str,
+) -> Option<serde_json::Value> {
+    if result.enqueued_state_ids.is_empty() {
+        return None;
+    }
+
+    let cards_by_state_id: HashMap<&str, &FsrsEnqueuedCard> = loaded_cards
+        .iter()
+        .map(|card| (card.id.as_str(), card))
+        .collect();
+    let cards: Option<Vec<&FsrsEnqueuedCard>> = result
+        .enqueued_state_ids
+        .iter()
+        .map(|state_id| cards_by_state_id.get(state_id.as_str()).copied())
+        .collect();
+    let cards = cards?;
+    let entity_ids: Vec<&str> = cards
+        .iter()
+        .map(|card| card.anki_card_id.as_str())
+        .collect();
+    let card_state_ids: Vec<&str> = cards.iter().map(|card| card.id.as_str()).collect();
+
+    Some(serde_json::json!({
+        "source": source,
+        "action": "enqueue",
+        "entityIds": entity_ids,
+        "cardStateIds": card_state_ids,
+        "cards": cards,
+    }))
+}
+
+pub fn emit_fsrs_enqueue_changed(
+    app: &tauri::AppHandle,
+    service: &FsrsReviewService,
+    result: &FsrsEnqueueResult,
+) {
+    use tauri::Emitter;
+
+    let loaded_cards = match service.get_enqueued_cards(result) {
+        Ok(cards) => cards,
+        Err(error) => {
+            log::debug!(
+                "[fsrs_review] Failed to load newly enqueued cards for fsrs://changed: {}",
+                error
+            );
+            return;
+        }
+    };
+    let Some(payload) = build_fsrs_enqueue_changed_payload(result, &loaded_cards, "user") else {
+        return;
+    };
+    if let Err(error) = app.emit("fsrs://changed", payload) {
+        log::debug!("[fsrs_review] Failed to emit fsrs://changed: {}", error);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5897,182 +5974,6 @@ mod tests {
             .find(|row| row.log_id == rated.log_id)
             .expect("undo outbox row must remain pending");
         assert!(row.revert);
-    }
-
-    /// C5：VFS mastery_states.score（连错后）驱动 FSRS due 提前；极低分受 3 天上限。
-    #[test]
-    fn e2e_vfs_mastery_score_biases_due_and_respects_three_day_cap() {
-        use crate::mastery::service::{set_now_override_ms, MasteryService};
-        use crate::mastery::{
-            apply_mastery_due_bias, mastery_due_bias_delta_ms, MasteryOutcome, MasterySource,
-            MAX_ADVANCE_MS,
-        };
-        use crate::question_bank_service::QuestionBankService;
-        use crate::vfs::repos::{CreateQuestionParams, QuestionType, VfsQuestionRepo};
-
-        let (_vfs_tmp, vfs_raw) = crate::vfs::database::setup_migrated_test_db();
-        let vfs_db = Arc::new(vfs_raw);
-        let concept = "fsrs_闭环偏置";
-        let qid = {
-            let exam_id = "exam_fsrs_e2e";
-            let conn = vfs_db.get_conn_safe().unwrap();
-            conn.execute(
-                "INSERT INTO exam_sheets (
-                    id, exam_name, status, temp_id, metadata_json, preview_json, created_at, updated_at
-                 ) VALUES (?1, 'e2e', 'completed', 't1', '{}', '{}', '2020-01-01T00:00:00Z', '2020-01-01T00:00:00Z')",
-                params![exam_id],
-            )
-            .unwrap();
-            drop(conn);
-            VfsQuestionRepo::create_question(
-                &vfs_db,
-                &CreateQuestionParams {
-                    exam_id: exam_id.into(),
-                    card_id: None,
-                    question_label: Some("Q".into()),
-                    content: "x?".into(),
-                    options: None,
-                    answer: Some("1".into()),
-                    explanation: None,
-                    question_type: Some(QuestionType::FillBlank),
-                    difficulty: None,
-                    tags: Some(vec![concept.into()]),
-                    source_type: None,
-                    source_ref: None,
-                    images: None,
-                    parent_id: None,
-                    structured_data: None,
-                },
-            )
-            .unwrap()
-            .id
-        };
-        let qbank = QuestionBankService::new(vfs_db.clone());
-        let mut t0 = Utc::now().timestamp_millis();
-        set_now_override_ms(Some(t0));
-        for i in 0..3 {
-            t0 += 120_000;
-            set_now_override_ms(Some(t0));
-            qbank
-                .submit_answer(&qid, "bad", Some(false), Some(&format!("fw{i}")))
-                .unwrap();
-        }
-        set_now_override_ms(None);
-
-        let mastery = MasteryService::new(vfs_db.clone());
-        let score = mastery.get_state(concept).unwrap().unwrap().score;
-        assert!(score < 0.5, "expected weak score, got {score}");
-
-        let (_fsrs_tmp, db) = setup_migrated_fsrs_db();
-        insert_task_and_card(&db, "doc-c5", "task-c5", "card-c5-a");
-        insert_card_for_task(&db, "doc-c5", "task-c5", "card-c5-b");
-        insert_card_for_task(&db, "doc-c5", "task-c5", "card-c5-cap");
-        // tag cards with same concept
-        {
-            let conn = db.get_conn_safe().unwrap();
-            let tags = serde_json::to_string(&vec![concept]).unwrap();
-            for id in ["card-c5-a", "card-c5-b", "card-c5-cap"] {
-                conn.execute(
-                    "UPDATE anki_cards SET tags_json = ?1 WHERE id = ?2",
-                    params![tags, id],
-                )
-                .unwrap();
-            }
-        }
-        let service = FsrsReviewService::new(db.clone());
-        // 两张不同卡的 fuzz 因子不同；本用例比较「同一 FSRS 间隔」上的偏置，关闭 fuzz
-        service
-            .update_scheduler_config(&FsrsSchedulerConfigUpdate {
-                enable_fuzz: Some(false),
-                ..FsrsSchedulerConfigUpdate::default()
-            })
-            .unwrap();
-        let seed_review = |card_id: &str, stability: f64, scheduled_days: f64| -> String {
-            let enq = service.enqueue_cards(&[card_id.to_string()]).unwrap();
-            let sid = enq.states[0].id.clone();
-            let seed_now = Utc::now().timestamp_millis();
-            let conn = db.get_conn_safe().unwrap();
-            conn.execute(
-                "UPDATE fsrs_card_states SET
-                    state = 2, stability = ?1, difficulty = 5.0,
-                    scheduled_days = ?2, reps = 5, lapses = 0,
-                    due_ms = ?3, last_review_ms = ?4, suspended = 0
-                 WHERE id = ?5",
-                params![
-                    stability,
-                    scheduled_days,
-                    seed_now,
-                    seed_now - (scheduled_days as i64) * MS_PER_DAY,
-                    sid
-                ],
-            )
-            .unwrap();
-            sid
-        };
-        let sid_base = seed_review("card-c5-a", 10.0, 10.0);
-        let sid_bias = seed_review("card-c5-b", 10.0, 10.0);
-        let sid_cap = seed_review("card-c5-cap", 200.0, 100.0);
-
-        let baseline = service
-            .rate_with_mastery_bias(&sid_base, 3, Some(10), None, None)
-            .unwrap();
-        let biased = service
-            .rate_with_mastery_bias(&sid_bias, 3, Some(10), Some(score), None)
-            .unwrap();
-        let now_ms = Utc::now().timestamp_millis();
-        let interval = baseline.due_ms.saturating_sub(now_ms);
-        let expected_delta = mastery_due_bias_delta_ms(score, interval);
-        let advance = baseline.due_ms.saturating_sub(biased.due_ms);
-        assert!(
-            advance > 60_000,
-            "VFS low mastery must advance due; advance={advance}"
-        );
-        assert!(
-            (advance as i64 - expected_delta.abs()).abs() < 30_000,
-            "advance {advance} ≈ |delta| {}",
-            expected_delta.abs()
-        );
-
-        // Cap: huge interval + score=0 → advance ≤ 3 days on persisted due
-        let before_cap = service.get_card_state(&sid_cap).unwrap().unwrap();
-        let rate_now = Utc::now().timestamp_millis();
-        let fsrs_cap = schedule_review(
-            &before_cap,
-            FsrsRating::Good,
-            rate_now,
-            &service.get_scheduler_config().unwrap(),
-        )
-        .expect("schedule");
-        let capped = service
-            .rate_with_mastery_bias(&sid_cap, 3, Some(10), Some(0.0), None)
-            .unwrap();
-        let cap_advance = fsrs_cap.due_ms.saturating_sub(capped.due_ms);
-        assert!(
-            cap_advance > 0 && cap_advance <= MAX_ADVANCE_MS + 5_000,
-            "cap advance {cap_advance} must be in (0, 3d]; fsrs={} biased={}",
-            fsrs_cap.due_ms,
-            capped.due_ms
-        );
-        assert_eq!(
-            mastery_due_bias_delta_ms(0.0, 100 * MS_PER_DAY),
-            -MAX_ADVANCE_MS
-        );
-        // 再压低真实 score 后，100d 间隔仍不超过 3 天上限
-        mastery
-            .record_event(
-                MasterySource::Qbank,
-                concept,
-                "extra",
-                &MasteryOutcome::Wrong,
-            )
-            .unwrap();
-        let ultra_low = mastery.get_state(concept).unwrap().unwrap().score;
-        let formula_due = apply_mastery_due_bias(ultra_low, rate_now, rate_now + 100 * MS_PER_DAY);
-        let formula_advance = (rate_now + 100 * MS_PER_DAY) - formula_due;
-        assert!(
-            formula_advance > 0 && formula_advance <= MAX_ADVANCE_MS,
-            "ultra-low score={ultra_low} advance {formula_advance} must be ≤ 3d"
-        );
     }
 
     #[test]

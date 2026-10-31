@@ -1771,7 +1771,7 @@ mod tests {
     #[test]
     fn repo_repair_pair_fixtures_satisfy_lint_contract() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../tests/fixtures/anki-eval/gold/repair-pairs");
+            .join("../../../tests/fixtures/anki-eval/gold/repair-pairs");
         let mut checked = 0usize;
         let cfg = gold_lint_config();
         let mut entries: Vec<_> = std::fs::read_dir(&dir)

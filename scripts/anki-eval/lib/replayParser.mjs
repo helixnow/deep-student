@@ -4,7 +4,7 @@
  * ⚠️ DRIFT RISK（漂移风险）：
  * 生产实现是 Rust 私有函数，无法直接从测试调用，此处按行为逐条复刻：
  *   - `StreamingAnkiService::extract_card_from_buffer_impl`
- *     （src-tauri/src/streaming_anki_service.rs，brace-depth 主信号 +
+ *     （src-tauri/crates/dstu-anki/src/streaming_anki_service.rs，brace-depth 主信号 +
  *       <<<ANKI_CARD_JSON_END>>> 分隔符辅助信号 + 损坏分隔符修复）
  *   - `StreamingAnkiService::clean_json_string`（围栏/BOM/首尾大括号截取）
  *   - 流收尾 E1 残留处理（looks_like_card 判定 → 错误卡或丢弃）

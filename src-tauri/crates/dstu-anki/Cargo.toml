@@ -1,0 +1,53 @@
+[package]
+name = "dstu-anki"
+version = "0.0.0"
+description = "Deep Student Anki 制卡域（服务层）：AnkiConnect 客户端、APKG 导入导出、文档拆分与流式制卡、FSRS 复习服务，以及制卡协议 / lint / critic / 金标 / 偏好记忆 / 图像遮挡 / 复习画像回流等纯函数层"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "domain"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-learning = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-util = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+dashmap = { workspace = true }
+fsrs = { workspace = true }
+futures = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32 → JSON 数字按十进制字符串转换）。
+# 制卡事件 / LLM 请求体 / APKG 元数据等会序列化进 JSON；显式声明，保证 `cargo test -p dstu-anki`
+# 单独编译时与在 app 中的行为一致。特性本来就已在 app 中合并开启，不改变产品行为。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+sha1 = { workspace = true }
+tauri = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+zip = { workspace = true }
+zstd = { workspace = true }
+
+[dev-dependencies]
+# 单测按原路径 `crate::data_governance::{migration, schema_registry}` 建迁移好的 mistakes 库。
+dstu-storage = { workspace = true, features = ["data_governance"] }
+
+[features]
+# 对 app 的单测公开 `fsrs_review_service::schedule_review_due_ms`（只在 dev-dependency 中打开）。
+test-util = []

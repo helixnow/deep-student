@@ -5,15 +5,15 @@
 //! R1-04 / docs/dev/acr：写操作成功后 emit `fsrs://changed`（DESIGN §5.6）。
 
 use crate::commands::AppState;
+// `fsrs://changed` enqueue 事件随 FSRS 服务下沉到 dstu-anki（`enhanced_anki_service` 也要发），按原名导入。
 use crate::fsrs_review_service::{
-    FsrsBuryResult, FsrsCardMemoryHistory, FsrsDueCard, FsrsEnqueueResult, FsrsEnqueuedCard,
-    FsrsMemoryOverview, FsrsOptimizeResult, FsrsPreviewResult, FsrsRateResult, FsrsResetResult,
-    FsrsReviewService, FsrsReviewStatistics, FsrsSchedulerConfig, FsrsSchedulerConfigUpdate,
-    FsrsStats, FsrsSuspendResult, FsrsUndoResult,
+    emit_fsrs_enqueue_changed, FsrsBuryResult, FsrsCardMemoryHistory, FsrsDueCard,
+    FsrsEnqueueResult, FsrsMemoryOverview, FsrsOptimizeResult, FsrsPreviewResult, FsrsRateResult,
+    FsrsResetResult, FsrsReviewService, FsrsReviewStatistics, FsrsSchedulerConfig,
+    FsrsSchedulerConfigUpdate, FsrsStats, FsrsSuspendResult, FsrsUndoResult,
 };
 use crate::models::AppError;
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use tauri::{AppHandle, Emitter, State};
 
 type Result<T> = std::result::Result<T, AppError>;
@@ -100,63 +100,6 @@ fn emit_fsrs_changed(
     };
     if let Err(e) = app.emit("fsrs://changed", payload) {
         log::debug!("[fsrs_review] Failed to emit fsrs://changed: {}", e);
-    }
-}
-
-fn build_fsrs_enqueue_changed_payload(
-    result: &FsrsEnqueueResult,
-    loaded_cards: &[FsrsEnqueuedCard],
-    source: &str,
-) -> Option<Value> {
-    if result.enqueued_state_ids.is_empty() {
-        return None;
-    }
-
-    let cards_by_state_id: HashMap<&str, &FsrsEnqueuedCard> = loaded_cards
-        .iter()
-        .map(|card| (card.id.as_str(), card))
-        .collect();
-    let cards: Option<Vec<&FsrsEnqueuedCard>> = result
-        .enqueued_state_ids
-        .iter()
-        .map(|state_id| cards_by_state_id.get(state_id.as_str()).copied())
-        .collect();
-    let cards = cards?;
-    let entity_ids: Vec<&str> = cards
-        .iter()
-        .map(|card| card.anki_card_id.as_str())
-        .collect();
-    let card_state_ids: Vec<&str> = cards.iter().map(|card| card.id.as_str()).collect();
-
-    Some(json!({
-        "source": source,
-        "action": "enqueue",
-        "entityIds": entity_ids,
-        "cardStateIds": card_state_ids,
-        "cards": cards,
-    }))
-}
-
-pub(crate) fn emit_fsrs_enqueue_changed(
-    app: &AppHandle,
-    service: &FsrsReviewService,
-    result: &FsrsEnqueueResult,
-) {
-    let loaded_cards = match service.get_enqueued_cards(result) {
-        Ok(cards) => cards,
-        Err(error) => {
-            log::debug!(
-                "[fsrs_review] Failed to load newly enqueued cards for fsrs://changed: {}",
-                error
-            );
-            return;
-        }
-    };
-    let Some(payload) = build_fsrs_enqueue_changed_payload(result, &loaded_cards, "user") else {
-        return;
-    };
-    if let Err(error) = app.emit("fsrs://changed", payload) {
-        log::debug!("[fsrs_review] Failed to emit fsrs://changed: {}", error);
     }
 }
 
@@ -666,6 +609,8 @@ pub async fn fsrs_reset_card_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fsrs_review_service::{build_fsrs_enqueue_changed_payload, FsrsEnqueuedCard};
+    use std::collections::HashMap;
 
     #[test]
     fn changed_payload_keeps_anki_and_state_ids_distinct() {
