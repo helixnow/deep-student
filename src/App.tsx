@@ -8,7 +8,6 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
 import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
-import type { StartupComponentIssue } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
@@ -48,7 +47,6 @@ import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
 import { isWindows, isMacOS, isMobilePlatform } from './utils/platform';
 import {
-  applySidebarTranslucency,
   clearNativeTitlebarSidebarMaterial,
   syncNativeWindowAppearance,
 } from './utils/sidebarTranslucency';
@@ -83,7 +81,7 @@ import { WelcomeOnboardingDialog, useWelcomeOnboarding } from './components/onbo
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import { useQbankGenerationTasks } from './hooks/useQbankGenerationTasks';
 import useTheme from './hooks/useTheme';
-import { emitDebug, getDebugEnabled } from './utils/emitDebug';
+import { emitDebug } from './utils/emitDebug';
 import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
@@ -95,7 +93,6 @@ import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/Desk
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useAndroidSafeArea } from './hooks/useAndroidSafeArea';
-import { syncAndroidImmersiveModeFromSettings } from './utils/androidImmersiveMode';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { shouldBlockMobileNavigation, ensureKeyboardTracking } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
@@ -120,7 +117,6 @@ import {
   toAppEventListener,
   useAppEvent,
 } from '@/events';
-import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { toggleDevtools } from './dev/devtools';
@@ -160,6 +156,9 @@ import {
   shouldIgnoreHeaderHotzoneTarget,
 } from './app/shell/desktopHeaderHotzone';
 import { Z_INDEX } from './config/zIndex';
+import { useSystemStatusSync } from './app/hooks/useSystemStatusSync';
+import { useDebugPanelRequests } from './app/hooks/useDebugPanelRequests';
+import { usePlatformSettingsSync } from './app/hooks/usePlatformSettingsSync';
 
 // 🚀 性能优化：懒加载页面组件
 import {
@@ -244,24 +243,6 @@ const LazyDevMobileRecoveryFab = React.lazy(() => import('./dev/DevMobileRecover
 // 演示环境不渲染任何开发版悬浮件（调试面板球、移动端恢复 FAB）。
 const isDemoShell =
   typeof window !== 'undefined' && Boolean((window as unknown as { __DS_DEMO_SHELL__?: boolean }).__DS_DEMO_SHELL__);
-const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
-const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
-
-function applyMacOSFontSmoothingPreference(enabled: boolean) {
-  if (typeof document === 'undefined') {
-    return;
-  }
-
-  document.documentElement.dataset.fontSmoothing = enabled ? 'macos-native' : 'macos-grayscale';
-}
-
-function applyPointerCursorPreference(enabled: boolean) {
-  if (typeof document === 'undefined') {
-    return;
-  }
-
-  document.documentElement.dataset.pointerCursor = enabled ? 'true' : 'false';
-}
 
 /**
  * 命令面板按钮 - 用于顶部栏
@@ -478,60 +459,8 @@ function App() {
     s.componentHealth.some((entry) => entry.component === 'chat_v2' && entry.status === 'blocked'),
   );
 
-  // 🆕 任务3：应用启动时同步后端维护模式状态到前端 store
-  useEffect(() => {
-    const syncMaintenanceStatus = async () => {
-      try {
-        const status = await invoke<{
-          is_in_maintenance_mode: boolean;
-          blocked_components?: string[];
-          component_health?: { components?: StartupComponentIssue[] } | null;
-          component_issues?: StartupComponentIssue[];
-        }>('data_governance_get_maintenance_status');
-        const componentHealth =
-          status.component_health?.components
-          ?? status.component_issues
-          ?? [];
-        useSystemStatusStore.getState().setComponentHealth(componentHealth);
-        if (status.is_in_maintenance_mode) {
-          useSystemStatusStore.getState().requireMaintenanceRestart(
-            status.blocked_components?.length
-              ? t('common:maintenance.recovery_required')
-              : t('common:maintenance.banner_description')
-          );
-        } else if (componentHealth.some((entry) => entry.status !== 'healthy')) {
-          const affected = componentHealth
-            .filter((entry) => entry.status !== 'healthy')
-            .map((entry) => entry.component)
-            .join(', ');
-          useSystemStatusStore.getState().showMigrationStatus({
-            level: componentHealth.some((entry) => entry.status === 'blocked') ? 'error' : 'warning',
-            message: t('common:maintenance.partial_degradation_title'),
-            details: t('common:maintenance.partial_degradation_description', { components: affected }),
-          });
-        }
-      } catch (err) {
-        // 命令可能不存在（旧版后端），静默忽略
-        console.warn('[App] 查询后端维护模式状态失败:', err);
-      }
-    };
-    syncMaintenanceStatus();
-  }, [t]);
-
-  // 🌐 全局网络状态监测
-  const { isOnline } = useNetworkStatus();
-  const prevOnlineRef = useRef(isOnline);
-  useEffect(() => {
-    const wasOnline = prevOnlineRef.current;
-    prevOnlineRef.current = isOnline;
-    // 跳过首次渲染
-    if (wasOnline === isOnline) return;
-    if (!isOnline) {
-      showGlobalNotification('warning', t('common:network.offline_message'), t('common:network.offline_title'));
-    } else {
-      showGlobalNotification('info', t('common:network.online_message'), t('common:network.online_title'));
-    }
-  }, [isOnline, t]);
+  // 🆕 任务3 + 🌐 全局网络状态：后端维护模式同步、网络上下线通知
+  useSystemStatusSync(t);
 
   // P1修复：暗色主题初始化
   const { isDarkMode, toggleDarkMode } = useTheme(); // 自动初始化主题系统
@@ -546,179 +475,14 @@ function App() {
   
   // 响应式检测：移动端布局调整
   const { isSmallScreen } = useBreakpoint();
-  const [debugPanelRequested, setDebugPanelRequested] = useState(() => getDebugEnabled());
-  const [debugPanelOpenRequest, setDebugPanelOpenRequest] = useState(0);
-
-  // 生产包不会预先加载调试面板。设置页和命令面板都可能在面板尚未挂载时
-  // 发起打开请求，因此由 App 保留请求并触发懒加载，避免事件落空。
-  const openDebugPanel = useCallback(() => {
-    setDebugPanelRequested(true);
-    setDebugPanelOpenRequest((request) => request + 1);
-  }, []);
-
-  const toggleDebugPanel = useCallback(() => {
-    const win = window as Window & { DSTU_TOGGLE_DEBUGGER?: () => void };
-    if (typeof win.DSTU_TOGGLE_DEBUGGER === 'function') {
-      win.DSTU_TOGGLE_DEBUGGER();
-      return;
-    }
-    openDebugPanel();
-  }, [openDebugPanel]);
-
-  useEventRegistry([
-    { target: 'window', type: 'DSTU_OPEN_DEBUGGER', listener: openDebugPanel },
-    { target: 'window', type: 'DEV_TOGGLE_DEBUG_PANEL', listener: toggleDebugPanel },
-  ], [openDebugPanel, toggleDebugPanel]);
+  const { debugPanelRequested, debugPanelOpenRequest } = useDebugPanelRequests();
 
   // 防止 content-body 被编程方式滚动
   const contentBodyRef = useRef<HTMLDivElement>(null);
   usePreventScroll(contentBodyRef);
 
-  // issue 472：Android 沉浸式全屏偏好在启动时下发一次（设置库为权威，原生侧仅作冷启动缓存）
-  useEffect(() => {
-    void syncAndroidImmersiveModeFromSettings();
-  }, []);
-
-  // 顶部栏顶部边距高度设置
-  // 桌面端读取用户设置；移动端统一改由 mobile shell safe-area contract 提供。
-  const [topbarTopMargin, setTopbarTopMargin] = useState<number>(0);
-  useEffect(() => {
-    let cancelled = false;
-    if (isSmallScreen) {
-      setTopbarTopMargin(0);
-      return;
-    }
-    // 桌面端读取用户设置
-    const loadSetting = async () => {
-      try {
-        const v = await invoke<string>('get_setting', { key: 'topbar.top_margin' });
-        if (cancelled) return;
-        const value = String(v ?? '').trim();
-        if (value) {
-          const numValue = parseInt(value, 10);
-          setTopbarTopMargin(isNaN(numValue) || numValue < 0 ? 0 : numValue);
-        } else {
-          setTopbarTopMargin(0);
-        }
-      } catch {
-        if (cancelled) return;
-        setTopbarTopMargin(0);
-      }
-    };
-    loadSetting();
-    // 监听设置变化事件（owner: App shell；dispose 与 cancelled 同生命周期）
-    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
-      if (detail?.topbarTopMargin) {
-        void loadSetting();
-      }
-    });
-    return () => {
-      cancelled = true;
-      dispose();
-    };
-  }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
-
-  useEffect(() => {
-    if (!isMacOS()) {
-      delete document.documentElement.dataset.fontSmoothing;
-      return;
-    }
-
-    let cancelled = false;
-
-    const loadFontSmoothingSetting = async () => {
-      try {
-        const value = await invoke<string | null>('get_setting', {
-          key: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
-        });
-        if (cancelled) return;
-        applyMacOSFontSmoothingPreference(String(value ?? '').trim() !== 'false');
-      } catch {
-        if (cancelled) return;
-        applyMacOSFontSmoothingPreference(true);
-      }
-    };
-
-    void loadFontSmoothingSetting();
-
-    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
-      if (
-        detail?.macosFontSmoothing ||
-        detail?.settingKey === MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY
-      ) {
-        void loadFontSmoothingSetting();
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      dispose();
-    };
-  }, []);
-
-  // 侧边栏半透明：启动时从持久化设置恢复（CSS 属性 + macOS 原生 vibrancy）
-  useEffect(() => {
-    let cancelled = false;
-    const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
-
-    const loadSidebarTranslucentSetting = async () => {
-      try {
-        const val = await invoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY });
-        if (cancelled) return;
-        void applySidebarTranslucency(String(val ?? '').trim() === 'true');
-      } catch {
-        if (cancelled) return;
-        void applySidebarTranslucency(false);
-      }
-    };
-    void loadSidebarTranslucentSetting();
-
-    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
-      if (detail?.settingKey === SIDEBAR_TRANSLUCENT_KEY) {
-        void loadSidebarTranslucentSetting();
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      dispose();
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadPointerCursorSetting = async () => {
-      try {
-        const val = await invoke<string | null>('get_setting', { key: POINTER_CURSOR_SETTING_KEY });
-        if (cancelled) return;
-        applyPointerCursorPreference(String(val ?? '').trim() !== 'false');
-      } catch {
-        if (cancelled) return;
-        applyPointerCursorPreference(true);
-      }
-    };
-
-    void loadPointerCursorSetting();
-
-    const dispose = addAppEventListener(APP_EVENTS.SYSTEM_SETTINGS_CHANGED, (detail) => {
-      if (
-        detail?.pointerCursor ||
-        detail?.settingKey === POINTER_CURSOR_SETTING_KEY
-      ) {
-        const enabled =
-          typeof detail?.value === 'boolean'
-            ? detail.value
-            : String(detail?.value ?? '').trim() !== 'false';
-        applyPointerCursorPreference(enabled);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-      dispose();
-    };
-  }, []);
+  // 平台 / 外观设置：Android 沉浸式、顶栏边距、macOS 字体平滑、侧栏半透明、指针光标
+  const { topbarTopMargin } = usePlatformSettingsSync(isSmallScreen);
   
   // 🎯 命令面板：注册内置命令
   // ★ 2026-06-12：命令名在注册时经 i18next.t() 一次性求值,运行时切换语言后必须

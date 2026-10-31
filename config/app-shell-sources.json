@@ -3,6 +3,9 @@
   "files": [
     "src/App.tsx",
     "src/app/shell/desktopHeaderHotzone.ts",
-    "src/app/navigation/viewRouting.ts"
+    "src/app/navigation/viewRouting.ts",
+    "src/app/hooks/useSystemStatusSync.ts",
+    "src/app/hooks/useDebugPanelRequests.ts",
+    "src/app/hooks/usePlatformSettingsSync.ts"
   ]
 }
