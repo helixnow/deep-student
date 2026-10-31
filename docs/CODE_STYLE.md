@@ -1,5 +1,7 @@
 # 代码风格规范
 
+> 前端 UI / 视觉规范（组件选用、设计令牌、交互模式、评审清单）见 [docs/frontend/](./frontend/README.md)。本文与其冲突时以 `docs/frontend/` 为准。
+
 ## 1. 通用规范
 
 | 项目 | 要求 |
