@@ -83,6 +83,7 @@ pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 #[cfg(feature = "mcp")]
 pub mod mcp;
+pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
 #[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
@@ -762,6 +763,9 @@ pub fn run() {
 
             // 设置全局 AppHandle，用于在任意位置发送事件
             set_global_app_handle(app_handle.clone());
+            // 存储层模块持有各自的 AppHandle（不回引 app crate 的全局句柄）
+            crate::unified_file_manager::set_app_handle(app_handle.clone());
+            crate::llm_usage::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle
@@ -926,9 +930,20 @@ pub fn run() {
 
             // 在任何数据库初始化之前，执行启动阶段清理（若存在清理标记）
             if crate::startup_cleanup::should_purge_on_start(&base_app_data_dir) {
+                // 清空后重置同步消费基线（同步状态属 data_governance，由 app 注入）
+                #[cfg(feature = "data_governance")]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    Some(|| {
+                        crate::data_governance::sync::state::SyncStateStore::reset_default_after_local_purge()
+                            .map_err(|e| e.to_string())
+                    });
+                #[cfg(not(feature = "data_governance"))]
+                let reset_sync_baseline: Option<crate::startup_cleanup::ResetSyncBaselineFn> =
+                    None;
                 match crate::startup_cleanup::purge_all_local_data(
                     &base_app_data_dir,
                     &active_app_data_dir,
+                    reset_sync_baseline,
                 ) {
                     Ok(report) => {
                         info!("启动阶段已执行数据清理:\n{}", report.details);
