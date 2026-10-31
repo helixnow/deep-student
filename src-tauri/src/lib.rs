@@ -53,10 +53,9 @@ pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
 pub mod diagnostics;
-#[allow(dead_code)]
-pub mod document_parser;
+pub use dstu_docs::document_parser;
 pub mod document_processing_service;
-pub mod docx_handout;
+pub use dstu_docs::docx_handout;
 pub mod dstu;
 pub mod enhanced_anki_service;
 pub use dstu_core::error_details;
@@ -103,7 +102,7 @@ pub mod package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
-pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod providers;
@@ -191,7 +190,7 @@ use tracing::{error, info, warn};
 // 本项目自己的日志 target 前缀。log/tracing 的默认 target 是模块路径，代码拆到
 // dstu-* crate 后前缀随之变化；日志插件对这里列出的每个前缀应用相同级别，
 // 保证拆分前后日志输出不变。新增 dstu-* crate 时在此追加。
-const FIRST_PARTY_LOG_TARGETS: &[&str] = &["deep_student_lib", "dstu_core"];
+const FIRST_PARTY_LOG_TARGETS: &[&str] = &["deep_student_lib", "dstu_core", "dstu_docs"];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();

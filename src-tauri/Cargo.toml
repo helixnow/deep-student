@@ -25,7 +25,7 @@ crate-type = ["cdylib", "rlib", "staticlib"]
 # =============================================================================
 [workspace]
 resolver = "2"
-members = [".", "crates/dstu-core"]
+members = [".", "crates/dstu-core", "crates/dstu-docs"]
 # vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
 exclude = ["vendor"]
 
@@ -38,6 +38,7 @@ publish = false
 [workspace.dependencies]
 # 内部 crate（分层见 scripts/check-crate-layers.mjs）
 dstu-core = { path = "crates/dstu-core", default-features = false }
+dstu-docs = { path = "crates/dstu-docs", default-features = false }
 
 # 公共依赖
 tauri-plugin-opener = "2.5"
@@ -258,6 +259,7 @@ protoc-bin-vendored = "3.0"
 
 [dependencies]
 dstu-core = { workspace = true }
+dstu-docs = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-http = { workspace = true }

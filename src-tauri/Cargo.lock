@@ -3281,6 +3281,7 @@ dependencies = [
  "docx-rs",
  "dotenvy",
  "dstu-core",
+ "dstu-docs",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -3734,6 +3735,33 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
+ "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-docs"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "calamine",
+ "csv",
+ "docx-rs",
+ "encoding_rs",
+ "html2text",
+ "image 0.24.9",
+ "log",
+ "pdfium-render",
+ "ppt-rs",
+ "pptx-to-md",
+ "quick-xml 0.37.5",
+ "rtf-parser",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tempfile",
+ "tracing",
+ "umya-spreadsheet",
+ "urlencoding",
  "zip 0.6.6",
 ]
 
