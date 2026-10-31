@@ -117,7 +117,7 @@ pub fn export_session_jsonl_with_conn<W: Write>(
         "exportedAt": Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
         "generator": {
             "app": "deep-student",
-            "version": env!("CARGO_PKG_VERSION"),
+            "version": dstu_core::APP_VERSION,
         },
         "options": options,
         "session": to_export_value(&session, options.redact_secrets)?,

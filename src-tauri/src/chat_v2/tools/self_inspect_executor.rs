@@ -3,6 +3,7 @@
 //! Low 敏感度只读自查：runtime root、技能注册/加载状态、MCP 配置摘要、web 搜索配置可见性。
 //! 输出经白名单提取 + 敏感键脱敏闸门，不读取 tool_approval.*、信任状态或 secure store 明文。
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -17,7 +18,6 @@ use crate::chat_v2::runtime_roots::{
     skill_package_runtime_root, RuntimeRoot,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
 use crate::database::Database;
 
 pub mod tool_names {
@@ -117,9 +117,9 @@ impl SelfInspectExecutor {
     fn collect_runtime_roots(ctx: &ExecutionContext, limitations: &mut Vec<String>) -> Value {
         let mut entries: Vec<Value> = Vec::new();
 
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let app = ctx.window_ref().app_handle();
-        match runtime_roots_for_session(app, &state.database, &ctx.session_id, false) {
+        match runtime_roots_for_session(app, state.inner(), &ctx.session_id, false) {
             Ok(roots) => {
                 entries.extend(roots.iter().map(Self::root_json));
             }

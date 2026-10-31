@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -27,7 +28,7 @@ use crate::chat_v2::types::{
     AuthorityMode, HostShellExecutionMode, PermissionPreset, SessionAuthorityState, ToolCall,
     ToolResultInfo,
 };
-use crate::commands::AppState;
+use crate::database::Database;
 
 pub mod tool_names {
     pub const SHELL_PREFLIGHT: &str = "local_shell_preflight";
@@ -305,13 +306,13 @@ impl LocalShellPreflightExecutor {
         } else {
             None
         };
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let effective_root_id = if cwd_absolute_input.is_some() {
             "host".to_string()
         } else {
             resolve_effective_runtime_root_id_for_session(
                 ctx.window_ref().app_handle(),
-                &state.database,
+                state.inner(),
                 ctx.chat_v2_db.as_deref(),
                 &ctx.session_id,
                 ctx.skill_package_roots.as_ref(),
@@ -323,7 +324,7 @@ impl LocalShellPreflightExecutor {
             Some(cwd) => host_cwd_runtime_root(cwd),
             None => runtime_root_by_id(
                 ctx.window_ref().app_handle(),
-                &state.database,
+                state.inner(),
                 &ctx.session_id,
                 ctx.skill_package_roots.as_ref(),
                 root_id_input,
@@ -338,7 +339,7 @@ impl LocalShellPreflightExecutor {
         let (display_command, command_redacted) = redact_shell_command_for_display(&command);
         let display_analysis = analyze_shell_command(&display_command);
         let raw_command_policy = state
-            .database
+            .inner()
             .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
             .ok()
             .flatten();
@@ -509,7 +510,7 @@ impl LocalShellPreflightExecutor {
             Some(skill_root_id) => {
                 let resolved = runtime_root_by_id(
                     ctx.window_ref().app_handle(),
-                    &state.database,
+                    state.inner(),
                     &ctx.session_id,
                     ctx.skill_package_roots.as_ref(),
                     Some(skill_root_id),

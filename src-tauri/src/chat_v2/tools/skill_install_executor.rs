@@ -4,6 +4,7 @@
 //! - `skill_install`（High，必审批）：重新取源 → 校验 sha256 → 安装 → provenance
 
 use std::fs;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -24,7 +25,7 @@ use crate::chat_v2::skills::{
     SkillImportZipResult, DEFAULT_AGENT_SKILLS_BASE, MAX_SKILL_PACKAGE_ZIP_BYTES,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
+use crate::database::Database;
 use crate::utils::text::safe_truncate;
 
 pub mod tool_names {
@@ -204,10 +205,10 @@ impl SkillInstallExecutor {
             .split_once(':')
             .ok_or("Invalid runtime_path source detail")?;
         let relative = normalize_runtime_relative_path(Some(rel_path))?;
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let root = runtime_root_by_id(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             Some(root_id),

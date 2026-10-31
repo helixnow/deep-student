@@ -43,12 +43,12 @@ pub fn notifications_disabled(db: &Database) -> bool {
     current_policy(db) == SystemNotificationPolicy::Never
 }
 
-/// `AppHandle` 版本：从全局 AppState 取主数据库读策略。
+/// `AppHandle` 版本：从托管的 `Arc<Database>`（与 AppState.database 同一 Arc）取主数据库读策略。
 /// 状态未就绪（启动极早期）时按默认档处理，不拦截。
 pub fn notifications_disabled_for_app(app: &tauri::AppHandle) -> bool {
     use tauri::Manager;
-    app.try_state::<crate::commands::AppState>()
-        .map(|state| notifications_disabled(&state.database))
+    app.try_state::<std::sync::Arc<Database>>()
+        .map(|state| notifications_disabled(state.inner()))
         .unwrap_or(false)
 }
 

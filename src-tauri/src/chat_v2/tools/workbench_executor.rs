@@ -13,6 +13,7 @@
 //! 设计文档：`docs/dev/acr/DESIGN.md` §2/§3/§6；错误码：`docs/dev/acr/ERRORS.md`；
 //! 规范：`docs/dev/acr/STANDARDS.md` §3。
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -23,7 +24,7 @@ use super::executor::{ExecutionContext, ToolConcurrency, ToolExecutor, ToolSensi
 use super::strip_tool_namespace;
 use super::workbench_bridge::{self, is_bridge_cancelled, is_bridge_result_unknown};
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
+use crate::database::Database;
 use crate::feature_flags::FeatureFlagManager;
 
 // ============================================================================
@@ -76,7 +77,7 @@ enum GateMode {
 
 /// 解析双闸。flag 关 → FlagOff；设置 off → Off；否则 Enabled。
 async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, String> {
-    let state = ctx.window_ref().try_state::<AppState>().ok_or_else(|| {
+    let state = ctx.window_ref().try_state::<Arc<Database>>().ok_or_else(|| {
         structured_error(
             "WORKBENCH_UNAVAILABLE",
             "AppState 不可用",
@@ -85,9 +86,9 @@ async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, Str
         )
     })?;
 
-    let app_version = env!("CARGO_PKG_VERSION").to_string();
+    let app_version = dstu_core::APP_VERSION.to_string();
     let manager = FeatureFlagManager::new(app_version)
-        .load_from_database(&state.database)
+        .load_from_database(state.inner())
         .await
         .map_err(|e| structured_error("WORKBENCH_UNAVAILABLE", &e, HINT_UNAVAILABLE, false))?;
     if !manager.is_feature_enabled(FLAG_WORKBENCH_AGENT) {
@@ -95,7 +96,7 @@ async fn resolve_workbench_gates(ctx: &ExecutionContext) -> Result<GateMode, Str
     }
 
     let agent_setting = state
-        .database
+        .inner()
         .get_setting(SETTING_WORKBENCH_AGENT_CONTROL)
         .map_err(|e| {
             structured_error(

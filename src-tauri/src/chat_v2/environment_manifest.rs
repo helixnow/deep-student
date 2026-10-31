@@ -5,7 +5,7 @@
 //! 每个任务在开始时采集一份环境清单，回答"这个任务跑在什么环境里"：
 //!
 //! - **OS/架构**：`os` / `arch` / `family`（`std::env::consts`）；
-//! - **应用与运行时**：`app_version`（`CARGO_PKG_VERSION`）、`tauri_version`
+//! - **应用与运行时**：`app_version`（`dstu_core::APP_VERSION`，即根包版本）、`tauri_version`
 //!   （`tauri::VERSION`）、`rust_version`（`CARGO_PKG_RUST_VERSION`，Cargo.toml
 //!   未声明 `rust-version` 时回退 `"unknown"`——编译期 `env!` 是唯一可靠
 //!   来源，本模块不引入 build.rs 依赖）；
@@ -146,7 +146,7 @@ pub struct EnvironmentManifest {
     pub schema_version: u16,
     /// OS/架构身份。
     pub os: OsIdentity,
-    /// 应用版本（`CARGO_PKG_VERSION`）。
+    /// 应用版本（`dstu_core::APP_VERSION`，即根包 `deep-student` 的版本）。
     pub app_version: String,
     /// 运行时身份（tauri/rust 编译期版本）。
     pub runtime: RuntimeIdentity,
@@ -267,7 +267,7 @@ impl EnvironmentManifest {
                 arch: std::env::consts::ARCH.to_string(),
                 family: std::env::consts::FAMILY.to_string(),
             },
-            app_version: env!("CARGO_PKG_VERSION").to_string(),
+            app_version: dstu_core::APP_VERSION.to_string(),
             runtime: RuntimeIdentity {
                 tauri_version: tauri::VERSION.to_string(),
                 // 注：rust-version 未声明时 cargo 将该变量展开为空串（非 unset），
@@ -689,7 +689,7 @@ mod tests {
         assert!(!manifest.os.os.is_empty());
         assert!(!manifest.os.arch.is_empty());
         assert!(!manifest.os.family.is_empty());
-        assert_eq!(manifest.app_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(manifest.app_version, dstu_core::APP_VERSION);
         assert!(!manifest.runtime.tauri_version.is_empty());
         assert!(!manifest.runtime.rust_version.is_empty());
         assert_eq!(manifest.tool_schema_hash.len(), 64);

@@ -3,11 +3,13 @@
 //! 提供纯粹的 OCR 功能，不创建会话或保存图片。
 //! 用于 Analysis 模式在 sendMessage 之前预先识别题目内容。
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::chat_v2::error::ChatV2Error;
-use crate::commands::AppState;
+use crate::llm_manager::LLMManager;
 
 /// OCR 请求
 #[derive(Debug, Clone, Deserialize)]
@@ -42,7 +44,7 @@ pub struct OcrResponse {
 #[tauri::command]
 pub async fn chat_v2_perform_ocr(
     request: OcrRequest,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<LLMManager>>,
 ) -> Result<OcrResponse, String> {
     log::info!(
         "[ChatV2::OCR] Performing OCR: images_count={}",
@@ -55,7 +57,7 @@ pub async fn chat_v2_perform_ocr(
     }
 
     // 获取当前 OCR 引擎适配器
-    let adapter = state.llm_manager.get_ocr_adapter().await;
+    let adapter = state.inner().get_ocr_adapter().await;
 
     let ocr_text = if adapter.engine_type().is_native_ocr() {
         // ===== 系统原生 OCR 路径 =====
@@ -106,7 +108,7 @@ pub async fn chat_v2_perform_ocr(
         }
 
         let ocr_raw = state
-            .llm_manager
+            .inner()
             .call_ocr_model_raw_prompt(prompt.as_str(), Some(image_payloads))
             .await
             .map_err(|e| {

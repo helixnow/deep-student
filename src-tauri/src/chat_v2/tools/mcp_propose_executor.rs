@@ -5,6 +5,7 @@
 
 #[cfg(feature = "mcp")]
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -19,7 +20,6 @@ use super::mcp_settings_store::{
 };
 use super::self_inspect_executor::redact_sensitive_json;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
 use crate::database::Database;
 
 pub mod tool_names {
@@ -147,7 +147,7 @@ pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) 
                             .collect()
                     })
                     .unwrap_or_default();
-                crate::cmd::mcp::mcp_test_helpers::test_stdio(
+                crate::mcp::test_helpers::test_stdio(
                     command,
                     args,
                     Some(env),
@@ -163,7 +163,7 @@ pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) 
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                crate::cmd::mcp::mcp_test_helpers::test_websocket(url).await
+                crate::mcp::test_helpers::test_websocket(url).await
             }
             McpTransport::Sse => {
                 let endpoint = entry
@@ -171,7 +171,7 @@ pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) 
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                crate::cmd::mcp::mcp_test_helpers::test_sse(endpoint, None, None).await
+                crate::mcp::test_helpers::test_sse(endpoint, None, None).await
             }
             McpTransport::Http => {
                 let endpoint = entry
@@ -179,7 +179,7 @@ pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) 
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                crate::cmd::mcp::mcp_test_helpers::test_http(endpoint, None, None).await
+                crate::mcp::test_helpers::test_http(endpoint, None, None).await
             }
             McpTransport::StreamableHttp => {
                 let url = entry
@@ -187,7 +187,7 @@ pub(crate) async fn run_connection_test(transport: McpTransport, entry: &Value) 
                     .and_then(Value::as_str)
                     .unwrap_or("")
                     .to_string();
-                crate::cmd::mcp::mcp_test_helpers::test_streamable_http_rmcp(url, None).await
+                crate::mcp::test_helpers::test_streamable_http_rmcp(url, None).await
             }
         }
     };
@@ -231,8 +231,8 @@ impl McpProposeExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return f(db.as_ref());
         }
-        let state = ctx.window_ref().state::<AppState>();
-        f(&state.database)
+        let state = ctx.window_ref().state::<Arc<Database>>();
+        f(state.inner())
     }
 
     fn reject_unknown_fields(args: &Value) -> Result<(), String> {

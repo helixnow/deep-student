@@ -13,7 +13,7 @@ use crate::chat_v2::repo::ChatV2Repo;
 use crate::chat_v2::runtime_roots::runtime_root_by_id;
 use crate::chat_v2::state::ChatV2State;
 use crate::chat_v2::types::{CreateGroupRequest, PersistStatus, SessionGroup, UpdateGroupRequest};
-use crate::commands::AppState;
+use crate::database::Database;
 use crate::vfs::{VfsDatabase, VfsFolder, VfsFolderRepo, MAX_FOLDER_TITLE_LENGTH};
 
 use super::manage_session::decrement_vfs_refs_for_session;
@@ -148,7 +148,7 @@ pub async fn chat_v2_create_group(
     request: CreateGroupRequest,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<Database>>,
 ) -> Result<SessionGroup, String> {
     let conn = db.get_conn_safe().map_err(String::from)?;
 
@@ -167,7 +167,7 @@ pub async fn chat_v2_create_group(
     let (default_runtime_root_id, preferred_project_root_path) =
         resolve_group_preferred_runtime_root(
             &app,
-            &app_state.database,
+            app_state.inner(),
             request.default_runtime_root_id,
         )?;
     let _ = request.preferred_project_root_path; // path 由绑定 root 派生，忽略客户端传入
@@ -201,7 +201,7 @@ pub async fn chat_v2_update_group(
     request: UpdateGroupRequest,
     db: State<'_, Arc<ChatV2Database>>,
     vfs_db: State<'_, Arc<VfsDatabase>>,
-    app_state: State<'_, AppState>,
+    app_state: State<'_, Arc<Database>>,
 ) -> Result<SessionGroup, String> {
     let mut conn = db.get_conn_safe().map_err(String::from)?;
     let existing = ChatV2Repo::get_group_with_conn(&conn, &group_id)
@@ -243,7 +243,7 @@ pub async fn chat_v2_update_group(
             ),
             Some(root_id) => {
                 // 绑定变更：校验并写 path；清除绑定时一并清 path
-                resolve_group_preferred_runtime_root(&app, &app_state.database, Some(root_id))?
+                resolve_group_preferred_runtime_root(&app, app_state.inner(), Some(root_id))?
             }
         };
 

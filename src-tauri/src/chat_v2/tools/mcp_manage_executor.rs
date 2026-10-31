@@ -15,7 +15,7 @@
 //! （settings_changed 域事件 → systemSettingsChanged → bootstrapMcpFromSettings）。
 //! 读→改→写 全程持 `mcp_list_mutation_guard` 进程内锁（不跨 await）。
 
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -34,7 +34,6 @@ use super::mcp_settings_store::{
 };
 use super::self_inspect_executor::redact_sensitive_json;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
 use crate::database::Database;
 
 pub mod tool_names {
@@ -129,8 +128,8 @@ impl McpManageExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return f(db.as_ref());
         }
-        let state = ctx.window_ref().state::<AppState>();
-        f(&state.database)
+        let state = ctx.window_ref().state::<Arc<Database>>();
+        f(state.inner())
     }
 
     // ------------------------------------------------------------------

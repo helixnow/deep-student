@@ -9,6 +9,8 @@
 //! - 更新走与 `skill_install` 相同的 staging → 原子发布路径，写回 provenance。
 //! - 更新后的包内容已变化，既有信任指纹自动失效（fail-closed），需用户重新信任。
 
+use std::sync::Arc;
+
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -21,7 +23,7 @@ use super::skills::{
 };
 use super::tools::fetch_executor::FetchExecutor;
 use super::tools::skill_install_executor::AGENT_INSTALLED_MARKER;
-use crate::commands::AppState;
+use crate::database::Database;
 
 const PROVENANCE_SETTINGS_PREFIX: &str = "skill.provenance.";
 
@@ -351,7 +353,7 @@ async fn check_one(
 /// - 单个技能的下载失败不会使整个调用失败（错误记录在对应条目）。
 #[tauri::command]
 pub async fn skill_check_updates(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     skill_ids: Option<Vec<String>>,
 ) -> Result<Vec<SkillUpdateCheckResult>, String> {
     skill_check_updates_impl(state, skill_ids)
@@ -360,11 +362,11 @@ pub async fn skill_check_updates(
 }
 
 async fn skill_check_updates_impl(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     skill_ids: Option<Vec<String>>,
 ) -> ChatV2Result<Vec<SkillUpdateCheckResult>> {
     let entries = state
-        .database
+        .inner()
         .get_settings_by_prefix(PROVENANCE_SETTINGS_PREFIX)
         .map_err(|e| ChatV2Error::IoError(format!("Failed to list skill provenance: {}", e)))?;
 
@@ -411,7 +413,7 @@ async fn skill_check_updates_impl(
 /// 包内容变化会使既有信任指纹失效，技能回到未信任状态。
 #[tauri::command]
 pub async fn skill_update_from_source(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     skill_id: String,
 ) -> Result<SkillUpdateApplyResult, String> {
     skill_update_from_source_impl(state, skill_id)
@@ -420,7 +422,7 @@ pub async fn skill_update_from_source(
 }
 
 async fn skill_update_from_source_impl(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     skill_id: String,
 ) -> ChatV2Result<SkillUpdateApplyResult> {
     let skill_id = skill_id.trim().to_string();
@@ -430,7 +432,7 @@ async fn skill_update_from_source_impl(
         ));
     }
 
-    let provenance = load_provenance(&state.database, &skill_id)?;
+    let provenance = load_provenance(state.inner(), &skill_id)?;
     if !is_refetchable_kind(&provenance.source_kind) {
         return Err(ChatV2Error::InvalidInput(format!(
             "Skill '{}' was installed from a non-refetchable source ({}); reinstall it manually",
@@ -528,7 +530,7 @@ async fn skill_update_from_source_impl(
     let (installed, committed) = prepared.commit()?;
 
     let key = format!("{}{}", PROVENANCE_SETTINGS_PREFIX, skill_id);
-    if let Err(persist_error) = state.database.save_setting(&key, &provenance_json) {
+    if let Err(persist_error) = state.inner().save_setting(&key, &provenance_json) {
         return match committed.rollback() {
             Ok(()) => Err(ChatV2Error::IoError(format!(
                 "Failed to persist updated provenance ({}); the previous skill was restored.",
