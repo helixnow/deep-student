@@ -156,7 +156,7 @@ pub async fn dstu_folder_create(
 /// Window-independent production core shared by the Tauri command and Agent
 /// executor. Keeping validation and repository writes here lets headless tests
 /// exercise the same mutation without fabricating a `tauri::Window`.
-pub(crate) fn dstu_folder_create_with_db(
+pub fn dstu_folder_create_with_db(
     vfs_db: &VfsDatabase,
     title: String,
     parent_id: Option<String>,

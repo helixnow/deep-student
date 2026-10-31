@@ -147,7 +147,7 @@ const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 /// 附件原始内容的内部来源。调用方可直接处理磁盘文件，避免先读取并 base64 编码，
 /// 随后又解码回字节的高峰内存往返。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum VfsAttachmentContentSource {
+pub enum VfsAttachmentContentSource {
     Base64(String),
     File(PathBuf),
 }
@@ -373,7 +373,7 @@ impl VfsAttachmentRepo {
             || msg.contains("database busy")
     }
 
-    pub(crate) fn max_upload_size_bytes(mime_type: &str) -> usize {
+    pub fn max_upload_size_bytes(mime_type: &str) -> usize {
         if mime_type.trim().to_lowercase().starts_with("image/") {
             MAX_IMAGE_BYTES
         } else {
@@ -381,7 +381,7 @@ impl VfsAttachmentRepo {
         }
     }
 
-    pub(crate) fn is_supported_upload_type(name: &str, mime_type: &str) -> bool {
+    pub fn is_supported_upload_type(name: &str, mime_type: &str) -> bool {
         let normalized_mime = mime_type.trim().to_lowercase();
         if normalized_mime.is_empty() {
             return false;
@@ -1433,7 +1433,7 @@ impl VfsAttachmentRepo {
     }
 
     /// Finalize media-specific metadata in the same transaction as file registration.
-    pub(crate) fn upload_media_stream_finalized(
+    pub fn upload_media_stream_finalized(
         db: &VfsDatabase,
         params: &VfsUploadAttachmentParams,
         reader: &mut dyn std::io::Read,
@@ -2103,7 +2103,7 @@ impl VfsAttachmentRepo {
     }
 
     /// 获取附件原始内容来源（使用现有连接）。磁盘内容只返回安全路径，不做全量读取。
-    pub(crate) fn get_content_source_with_conn(
+    pub fn get_content_source_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
         id: &str,

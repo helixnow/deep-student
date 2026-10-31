@@ -3508,7 +3508,7 @@ impl PdfProcessingService {
         // 优先复用 app 托管的 VfsLanceStore 单例（保留 Lance 连接与 ensured_tables
         // 缓存）；仅当 self.db 与托管 VfsDatabase 是同一实例时才复用，避免测试等
         // 场景误绑其它数据库。无托管单例（启动降级/headless 测试）时按需新建。
-        let managed_lance_store = crate::get_global_app_handle().and_then(|handle| {
+        let managed_lance_store = crate::vfs::app_handle().and_then(|handle| {
             let managed_db = handle.try_state::<Arc<VfsDatabase>>()?;
             if !Arc::ptr_eq(managed_db.inner(), &self.db) {
                 return None;

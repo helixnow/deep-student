@@ -480,7 +480,7 @@ impl NoteLeaseRepo {
         })
     }
 
-    pub(crate) fn remove(
+    pub fn remove(
         conn: &Connection,
         token: &str,
         reason: &str,

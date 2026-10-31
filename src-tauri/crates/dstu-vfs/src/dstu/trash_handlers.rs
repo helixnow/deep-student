@@ -250,7 +250,7 @@ pub async fn dstu_list_trash(
 /// Window-independent production core used by the Tauri command and Agent
 /// executor. All resource repositories and global pagination semantics remain
 /// identical to the desktop path.
-pub(crate) fn list_trash_with_db(
+pub fn list_trash_with_db(
     db: &VfsDatabase,
     limit: u32,
     offset: u32,

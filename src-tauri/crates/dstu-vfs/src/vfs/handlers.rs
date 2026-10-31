@@ -2931,7 +2931,7 @@ pub struct VfsBlobBase64Result {
 /// ## 使用场景
 /// - RAG 检索结果中引用 PDF 页面时，前端调用此 API 获取页面图片
 /// - 支持 OCR + 文本索引（有预渲染）和多模态索引两种场景
-pub(crate) struct PdfPageImageBytes {
+pub struct PdfPageImageBytes {
     pub bytes: Vec<u8>,
     pub mime_type: String,
     pub stored_size: i64,
@@ -2940,7 +2940,7 @@ pub(crate) struct PdfPageImageBytes {
 /// Shared byte-level source used by both the Tauri command and the bounded
 /// Chat V2 tool. It deliberately selects the existing compressed preview blob
 /// when the PDF pipeline produced one.
-pub(crate) fn read_pdf_page_image_bytes(
+pub fn read_pdf_page_image_bytes(
     vfs_db: &VfsDatabase,
     resource_id: &str,
     page_index: usize,

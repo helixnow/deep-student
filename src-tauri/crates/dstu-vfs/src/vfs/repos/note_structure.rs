@@ -6,7 +6,7 @@ use pulldown_cmark::{Event, Options, Parser, Tag};
 use std::ops::Range;
 
 #[derive(Debug)]
-pub(crate) struct RootSpan {
+pub struct RootSpan {
     pub range: Range<usize>,
     pub paragraph: bool,
     pub columns: bool,
@@ -58,7 +58,7 @@ fn reserved(text: &str) -> bool {
         || text.starts_with(":::end-ds-columns")
 }
 
-pub(crate) fn roots(content: &str) -> VfsResult<Vec<RootSpan>> {
+pub fn roots(content: &str) -> VfsResult<Vec<RootSpan>> {
     let raw = markdown_roots(content);
     let mut result = Vec::new();
     let mut i = 0;

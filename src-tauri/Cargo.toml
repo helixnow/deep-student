@@ -36,6 +36,8 @@ members = [
     "crates/dstu-platform",
     "crates/dstu-security",
     "crates/dstu-storage",
+    "crates/dstu-testkit",
+    "crates/dstu-vfs",
 ]
 # vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
 exclude = ["vendor"]
@@ -57,6 +59,8 @@ dstu-util = { path = "crates/dstu-util", default-features = false }
 dstu-platform = { path = "crates/dstu-platform", default-features = false }
 dstu-security = { path = "crates/dstu-security", default-features = false }
 dstu-storage = { path = "crates/dstu-storage", default-features = false }
+dstu-testkit = { path = "crates/dstu-testkit", default-features = false }
+dstu-vfs = { path = "crates/dstu-vfs", default-features = false }
 
 # 公共依赖
 tauri-plugin-opener = "2.5"
@@ -285,6 +289,7 @@ dstu-util = { workspace = true }
 dstu-platform = { workspace = true }
 dstu-security = { workspace = true }
 dstu-storage = { workspace = true }
+dstu-vfs = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-http = { workspace = true }
@@ -425,6 +430,9 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
 proptest = "1.5"
 env_logger = "0.11.11"
+# 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
+# dstu-vfs 的 test-util feature 公开该函数（夹具本体在 dev-only 的 dstu-testkit）。
+dstu-vfs = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "chatanki_apkg_executor_e2e"
@@ -541,7 +549,8 @@ default = ["sqlite", "lance", "mcp", "builtin_free_models", "tokenizer_tiktoken"
 # 启用 SQLite 代码（始终开启占位）
 sqlite = []
 # 启用 LanceDB 向量后端（需网络拉取依赖）
-lance = ["lancedb", "arrow-array", "arrow-schema"]
+# app 的 commands / notes_manager 仍直接用 lancedb，三项保留；vfs 侧由 dstu-vfs/lance 转发。
+lance = ["lancedb", "arrow-array", "arrow-schema", "dstu-vfs/lance"]
 # P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
 tokenizer_tiktoken = ["tiktoken-rs", "dstu-util/tokenizer_tiktoken"]
 # 可选：MCP 客户端与 rmcp 校验

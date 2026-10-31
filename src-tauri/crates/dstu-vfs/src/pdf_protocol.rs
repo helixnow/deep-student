@@ -108,7 +108,7 @@ fn opened_file_path(_file: &File) -> Option<PathBuf> {
 /// `\\?\UNC\srv\share\x` → `\\srv\share\x`；`\\?\D:\x` → `D:\x`；
 /// `/` → `\`；去除尾部 `\`；大小写折叠。
 #[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn windows_comparable_path_text(path: &str) -> String {
+pub fn windows_comparable_path_text(path: &str) -> String {
     let unified = path.replace('/', "\\");
     let stripped = if let Some(rest) = unified.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{}", rest)
@@ -141,7 +141,7 @@ pub(crate) fn windows_path_starts_with(path: &str, dir: &str) -> bool {
 /// 白名单包含判定：先走组件级 `Path::starts_with`（所有平台的快路径，
 /// 也是非 Windows 平台的唯一判定），Windows 上再做书写形式归一化比较，
 /// 消除 `\\?\` verbatim 与普通盘符形式不一致造成的误拒。
-pub(crate) fn path_is_within(path: &Path, dir: &Path) -> bool {
+pub fn path_is_within(path: &Path, dir: &Path) -> bool {
     if path.starts_with(dir) {
         return true;
     }
@@ -269,8 +269,8 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
         Box::new(|| app.path().resource_dir()),
     ];
 
-    // desktop_dir / picture_dir 仅桌面端可用
-    #[cfg(desktop)]
+    // desktop_dir / picture_dir 仅桌面端可用（Tauri 的 `desktop` cfg 只在 app crate 内定义）
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         resolvers.push(Box::new(|| app.path().desktop_dir()));
         resolvers.push(Box::new(|| app.path().picture_dir()));

@@ -623,7 +623,7 @@ impl VfsNoteRepo {
     }
 
     /// Only the explicit, lossless per-page migration may supply a format upgrade.
-    pub(crate) fn update_note_with_format(
+    pub fn update_note_with_format(
         conn: &Connection,
         note_id: &str,
         params: VfsUpdateNoteParams,
@@ -2324,7 +2324,7 @@ impl VfsNoteRepo {
     /// Create a note and its folder membership inside a transaction owned by
     /// the caller. This is used when another durable record (for example an
     /// idempotency receipt) must commit atomically with the note mutation.
-    pub(crate) fn create_note_in_folder_uncommitted(
+    pub fn create_note_in_folder_uncommitted(
         conn: &Connection,
         params: VfsCreateNoteParams,
         folder_id: Option<&str>,

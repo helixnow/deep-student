@@ -104,6 +104,23 @@ pub use unified_retriever::{
 // 统一文本抽取策略（供 DSTU 等其他模块调用）
 pub use ref_handlers::extract_file_text_with_strategy;
 
+// ── app `AppHandle`（由 app `lib.rs` 在 `set_global_app_handle` 旁边注入）──
+//
+// 本 crate 不能反向依赖 app 的 `get_global_app_handle()`。`PdfProcessingService`
+// 索引阶段查询托管的 `Arc<VfsDatabase>` / `Arc<VfsLanceStore>` 时读这里的句柄；
+// 注入时机与旧全局句柄完全相同。
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// 保存 app 的 `AppHandle`（幂等：先设置者生效，与旧全局句柄一致）。
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// 读取 app 的 `AppHandle`；未设置时为 `None`（等价旧 `get_global_app_handle()`）。
+pub(crate) fn app_handle() -> Option<&'static tauri::AppHandle> {
+    APP_HANDLE.get()
+}
+
 /// Whether this build can store vectors (the `lance` feature). Slim builds
 /// (Android `mobile-slim`) keep the SQLite text ledger and lexical retrieval
 /// but cannot embed/persist vectors, so every vector-index entry point must

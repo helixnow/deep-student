@@ -338,7 +338,7 @@ fn relationship_logs_and_pin_backfill_use_row_sync_identity_and_replay_suppressi
         .unwrap(),
         0
     );
-    let sql = include_str!("../../../migrations/vfs/V20260924__note_editor_leases.sql");
+    let sql = include_str!("../../../../../migrations/vfs/V20260924__note_editor_leases.sql");
     conn.execute_batch(sql).unwrap();
     conn.execute_batch(sql).unwrap();
     assert_eq!(conn.query_row("SELECT COUNT(*) FROM __change_log WHERE table_name='note_learning_relations' AND record_id='rel' AND sync_version=0",[],|r|r.get::<_,i64>(0)).unwrap(),1);

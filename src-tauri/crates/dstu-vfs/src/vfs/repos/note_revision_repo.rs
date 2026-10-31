@@ -113,7 +113,7 @@ impl NoteRevisionRepo {
     }
 
     /// Reusable nested transaction; metadata and history must commit together.
-    pub(crate) fn transaction<T>(
+    pub fn transaction<T>(
         conn: &Connection,
         f: impl FnOnce() -> VfsResult<T>,
     ) -> VfsResult<T> {
@@ -138,7 +138,7 @@ impl NoteRevisionRepo {
 
     /// Capture actual stored state, not the caller's partial patch. Equality is
     /// structural (including props), never a serialized-map hash/string compare.
-    pub(crate) fn snapshot(conn: &Connection, note_id: &str, source: &str) -> VfsResult<String> {
+    pub fn snapshot(conn: &Connection, note_id: &str, source: &str) -> VfsResult<String> {
         Self::snapshot_restored(conn, note_id, source, None)
     }
 

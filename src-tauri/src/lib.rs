@@ -55,7 +55,7 @@ pub mod diagnostics;
 pub use dstu_docs::document_parser;
 pub mod document_processing_service;
 pub use dstu_docs::docx_handout;
-pub mod dstu;
+pub use dstu_vfs::dstu;
 pub mod enhanced_anki_service;
 pub use dstu_core::error_details;
 pub use dstu_core::error_recovery;
@@ -67,7 +67,7 @@ pub mod external_file_opener; // 移动端「用其他应用打开/分享文件�
 pub use dstu_storage::feature_flags;
 pub mod figure_extractor;
 pub use dstu_storage::file_manager;
-pub mod file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
+pub use dstu_vfs::file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub mod fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
@@ -76,9 +76,9 @@ pub use dstu_storage::injection_budget;
 pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
 pub use dstu_core::json_validator;
 #[allow(dead_code)]
-pub mod lance_vector_store;
-#[allow(dead_code)]
 pub use dstu_llm::llm_manager;
+#[allow(dead_code)]
+pub use dstu_vfs::lance_vector_store;
 pub mod llm_structurer;
 pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
@@ -103,8 +103,8 @@ pub use dstu_llm::openai_codex;
 pub use dstu_platform::package_manager;
 pub mod page_rasterizer;
 pub mod pdf_ocr_service;
-pub mod pdf_protocol;
 pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+pub use dstu_vfs::pdf_protocol;
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub use dstu_llm::providers;
@@ -148,8 +148,8 @@ pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
 pub use dstu_core::text_escape; // XML 文本转义纯函数（chat_v2::vfs_resolver 按原路径重导出）
-pub mod textbooks_db;
 pub use dstu_core::token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
+pub use dstu_vfs::textbooks_db;
 #[allow(dead_code)]
 pub mod tools;
 pub mod translation;
@@ -158,10 +158,10 @@ pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 pub use dstu_storage::unified_file_manager;
 #[allow(dead_code)]
 pub mod utils;
-pub mod vector_store;
 pub use dstu_llm::vendors;
+pub use dstu_vfs::vector_store;
 #[allow(dead_code, deprecated)]
-pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
+pub use dstu_vfs::vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
 pub mod voice_input;
 pub use dstu_core::workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
@@ -210,6 +210,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_security",
     "dstu_storage",
     "dstu_llm",
+    "dstu_vfs",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
@@ -781,6 +782,8 @@ pub fn run() {
             crate::llm_usage::set_app_handle(app_handle.clone());
             // LLM 服务层同样持有自己的句柄（OCR 调试事件 / debug 落盘目录）
             crate::llm_manager::set_app_handle(app_handle.clone());
+            // VFS 服务层同样持有自己的句柄（PDF 流水线索引阶段复用托管的 Lance store）
+            crate::vfs::set_app_handle(app_handle.clone());
 
             // 运行最早阶段的容错：即使系统路径解析失败，也要能够初始化崩溃日志目录，避免静默闪退
             let base_app_data_dir = app_handle

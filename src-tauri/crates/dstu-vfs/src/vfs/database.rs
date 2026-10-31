@@ -520,16 +520,14 @@ pub struct VfsDatabaseStats {
 /// 启动时统一执行），直接用它建出来的是无表空库。本辅助函数走与生产一致的
 /// 迁移路径（`MigrationCoordinator::migrate_single(Vfs)`），保证 repo 单测
 /// 运行在真实 schema 上。
-#[cfg(test)]
-pub(crate) fn setup_migrated_test_db() -> (tempfile::TempDir, VfsDatabase) {
-    let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
-    let mut coordinator =
-        crate::data_governance::migration::MigrationCoordinator::new(temp_dir.path().to_path_buf());
-    coordinator
-        .migrate_single(crate::data_governance::schema_registry::DatabaseId::Vfs)
-        .expect("VFS migrations should apply cleanly");
-    let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create VFS database");
-    (temp_dir, db)
+///
+/// 迁移夹具本体在 dev-only 的 `dstu-testkit`；这里只负责用本 crate 的
+/// `VfsDatabase` 打开它（类型必须来自同一份 crate 编译产物）。本 crate 单测
+/// 走 `cfg(test)`；app 等下游 crate 的单测通过 dev-dependency 打开
+/// `test-util` feature，按原路径 `crate::vfs::database::setup_migrated_test_db` 调用。
+#[cfg(any(test, feature = "test-util"))]
+pub fn setup_migrated_test_db() -> (tempfile::TempDir, VfsDatabase) {
+    dstu_testkit::setup_migrated_vfs(VfsDatabase::new)
 }
 
 // ============================================================================
@@ -568,7 +566,7 @@ mod tests {
         // 防止 CURRENT_SCHEMA_VERSION 与实际迁移集合脱节
         assert_eq!(
             CURRENT_SCHEMA_VERSION as i32,
-            crate::data_governance::migration::VFS_MIGRATION_SET.latest_version(),
+            dstu_storage::migration::VFS_MIGRATION_SET.latest_version(),
             "CURRENT_SCHEMA_VERSION 需与 VFS_MIGRATION_SET 最新版本保持一致"
         );
     }

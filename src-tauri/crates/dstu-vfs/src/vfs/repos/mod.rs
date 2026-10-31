@@ -43,7 +43,7 @@ pub mod note_repo;
 pub mod note_review_repo;
 pub mod note_revision_repo;
 pub mod note_state_repo;
-pub(crate) mod note_structure;
+pub mod note_structure;
 pub mod note_transfer_repo;
 pub mod path_cache_repo;
 pub mod pdf_preview;

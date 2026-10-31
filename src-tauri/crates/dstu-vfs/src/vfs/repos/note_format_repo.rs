@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 
 pub const COLUMNS_CAPABILITY: &str = "ds-columns-v1";
 
-pub(crate) fn invalid(reason: impl Into<String>) -> VfsError {
+pub fn invalid(reason: impl Into<String>) -> VfsError {
     VfsError::InvalidArgument {
         param: "note_document".into(),
         reason: reason.into(),
@@ -34,12 +34,12 @@ pub struct NoteFormat {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct StableBlock<'a> {
+pub struct StableBlock<'a> {
     pub id: &'a str,
     pub body: &'a str,
 }
 
-pub(crate) fn marker(text: &str) -> Option<&str> {
+pub fn marker(text: &str) -> Option<&str> {
     let id = text
         .trim_end_matches(['\n', '\r'])
         .strip_prefix("<!-- ds:block-id=")?
@@ -56,7 +56,7 @@ pub(crate) fn marker(text: &str) -> Option<&str> {
     }
 }
 
-pub(crate) fn blocks(content: &str) -> VfsResult<Vec<StableBlock<'_>>> {
+pub fn blocks(content: &str) -> VfsResult<Vec<StableBlock<'_>>> {
     let ranges = roots(content)?;
     let mut ids = BTreeSet::new();
     let mut result = Vec::new();
@@ -114,7 +114,7 @@ impl NoteFormatRepo {
         Self::detect(note_id, &content)
     }
 
-    pub(crate) fn detect(note_id: &str, content: &str) -> VfsResult<NoteFormat> {
+    pub fn detect(note_id: &str, content: &str) -> VfsResult<NoteFormat> {
         // Reserve root ds: headers for versioned envelopes. Old writers must
         // never strip unknown schema headers in an imported/synced document.
         let ranges = roots(content)?;
@@ -149,13 +149,13 @@ impl NoteFormatRepo {
         })
     }
 
-    pub(crate) fn insert(conn: &Connection, format: &NoteFormat) -> VfsResult<()> {
+    pub fn insert(conn: &Connection, format: &NoteFormat) -> VfsResult<()> {
         conn.execute("INSERT INTO note_document_formats(note_id,content_format,format_version,serializer_version,baseline_version_id,updated_at) VALUES(?1,?2,?3,?4,?5,strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(note_id) DO UPDATE SET content_format=excluded.content_format,format_version=excluded.format_version,serializer_version=excluded.serializer_version,baseline_version_id=excluded.baseline_version_id,updated_at=excluded.updated_at",
             params![format.note_id, format.content_format, format.format_version, format.serializer_version, format.baseline_version_id])?;
         Ok(())
     }
 
-    pub(crate) fn ensure_supported(format: &NoteFormat) -> VfsResult<()> {
+    pub fn ensure_supported(format: &NoteFormat) -> VfsResult<()> {
         if format.format_version != 1
             || !matches!(
                 format.content_format.as_str(),
@@ -176,7 +176,7 @@ impl NoteFormatRepo {
         Self::validate_write_capabilities(conn, id, content, &[])
     }
 
-    pub(crate) fn serializer(stable: bool, columns: bool) -> String {
+    pub fn serializer(stable: bool, columns: bool) -> String {
         format!(
             "{}{}",
             if stable { "blocks-v1" } else { "markdown-v1" },

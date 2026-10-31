@@ -315,7 +315,7 @@ fn v20260923_backfills_existing_versions_by_identity_and_logs_only_immutable_ins
         CREATE TABLE __change_log(id INTEGER PRIMARY KEY,table_name TEXT,record_id TEXT,operation TEXT,sync_version INTEGER DEFAULT 0);
         INSERT INTO note_document_revisions VALUES(1,'nrev_old','note_a',0);
         INSERT INTO note_document_formats VALUES('note_a','old');").unwrap();
-    let sql = include_str!("../../../migrations/vfs/V20260923__note_history_integration.sql");
+    let sql = include_str!("../../../../../migrations/vfs/V20260923__note_history_integration.sql");
     conn.execute_batch(sql).unwrap();
     conn.execute_batch(sql).unwrap();
     let pending: i64 = conn

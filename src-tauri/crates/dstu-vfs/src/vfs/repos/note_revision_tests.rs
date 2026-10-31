@@ -245,49 +245,6 @@ fn edits_coalesce_without_mutation_and_budget_preserves_pins() {
 }
 
 #[test]
-fn history_trash_and_shared_asset_references_guard_journal_deletion() {
-    // 删除 journal 的笔记资产引用检查由 extensions 注册（拆分后为回调解耦）。
-    crate::extensions::register_extensions();
-    use crate::data_governance::file_deletion_queue::{
-        finish_asset_deletion_with_conn, prepare_asset_deletion_with_conn,
-    };
-    let (tmp, db) = crate::vfs::database::setup_migrated_test_db();
-    let conn = db.get_conn_safe().unwrap();
-    let path = "notes_assets/_global/original/image.png";
-    std::fs::create_dir_all(tmp.path().join("notes_assets/_global/original")).unwrap();
-    std::fs::write(tmp.path().join(path), b"image bytes").unwrap();
-    let key = format!("active/{}", path);
-    let prepared =
-        prepare_asset_deletion_with_conn(&conn, tmp.path(), &key, std::path::Path::new(path))
-            .unwrap();
-    let quarantine = tmp
-        .path()
-        .join(format!("{}.deleting-{}", path, prepared.operation_id));
-    std::fs::rename(tmp.path().join(path), quarantine).unwrap();
-    let note = create(&conn, &format!("![img]({})", path));
-    // A prepared intent from before a restore/save is cancelled during recovery.
-    finish_asset_deletion_with_conn(&conn, tmp.path(), &prepared).unwrap();
-    assert!(tmp.path().join(path).exists());
-    let note = edit(&conn, &note, "removed image");
-    assert!(
-        prepare_asset_deletion_with_conn(&conn, tmp.path(), &key, std::path::Path::new(path))
-            .is_err()
-    );
-    VfsNoteRepo::delete_note_with_conn(&conn, &note.id).unwrap();
-    assert!(NoteRevisionRepo::asset_is_referenced(&conn, path).unwrap());
-    let shared = create(&conn, &format!("![shared]({})", path));
-    VfsNoteRepo::purge_note_with_conn(&conn, &note.id).unwrap();
-    assert!(NoteRevisionRepo::asset_is_referenced(&conn, path).unwrap());
-    VfsNoteRepo::purge_note_with_conn(&conn, &shared.id).unwrap();
-    assert!(!NoteRevisionRepo::asset_is_referenced(&conn, path).unwrap());
-    let prepared =
-        prepare_asset_deletion_with_conn(&conn, tmp.path(), &key, std::path::Path::new(path))
-            .unwrap();
-    finish_asset_deletion_with_conn(&conn, tmp.path(), &prepared).unwrap();
-    assert!(!tmp.path().join(path).exists());
-}
-
-#[test]
 fn full_sqlite_backup_restores_history_and_local_classification() {
     let (tmp, db) = crate::vfs::database::setup_migrated_test_db();
     let conn = db.get_conn_safe().unwrap();
@@ -322,77 +279,6 @@ fn asset_manifest_distinguishes_owned_and_external_references() {
         .iter()
         .any(|r| r.kind == "external_resource" && r.value == "pdfref://file_123?page=4"));
     assert!(refs.iter().any(|r| r.kind == "remote_url"));
-}
-
-#[test]
-fn zip_overwrite_captures_body_and_writes_fresh_assets_without_overwriting_history_bytes() {
-    use crate::notes_exporter::{ImportConflictStrategy, ImportOptions, NotesImporter};
-    use std::io::Write;
-    use std::sync::Arc;
-    let (tmp, db) = crate::vfs::database::setup_migrated_test_db();
-    let db = Arc::new(db);
-    let conn = db.get_conn_safe().unwrap();
-    let original_path = "notes_assets/_global/original/image.png";
-    let note = create(&conn, &format!("![original]({})", original_path));
-    let saved = latest(&conn, &note);
-    std::fs::create_dir_all(tmp.path().join("notes_assets/_global/original")).unwrap();
-    std::fs::write(tmp.path().join(original_path), b"original image").unwrap();
-    let archive_path = tmp.path().join("import.zip");
-    {
-        let file = std::fs::File::create(&archive_path).unwrap();
-        let mut archive = zip::ZipWriter::new(file);
-        archive
-            .start_file("markdown/imported.md", zip::write::FileOptions::default())
-            .unwrap();
-        write!(
-            archive,
-            "---\nid: {}\ntitle: Imported\n---\n\n![imported]({})",
-            note.id, original_path
-        )
-        .unwrap();
-        archive
-            .start_file(
-                "assets/_global/original/image.png",
-                zip::write::FileOptions::default(),
-            )
-            .unwrap();
-        archive.write_all(b"imported image").unwrap();
-        archive.finish().unwrap();
-    }
-    let main_db =
-        Arc::new(crate::database::Database::new(&tmp.path().join("mistakes.db")).unwrap());
-    let files = Arc::new(crate::file_manager::FileManager::new(tmp.path().to_path_buf()).unwrap());
-    let result = NotesImporter::new_with_vfs(main_db, files, Some(db.clone()))
-        .import_with_options(
-            archive_path,
-            ImportOptions {
-                conflict_strategy: ImportConflictStrategy::Overwrite,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    assert_eq!(result.overwritten_count, 1);
-    assert_eq!(
-        std::fs::read(tmp.path().join(original_path)).unwrap(),
-        b"original image"
-    );
-    assert_eq!(
-        NoteRevisionRepo::get(&conn, &note.id, &saved.summary.version_id)
-            .unwrap()
-            .content_md,
-        saved.content_md
-    );
-    let imported = latest(&conn, &note);
-    let asset = imported
-        .asset_refs
-        .iter()
-        .find(|r| r.kind == "notes_asset")
-        .unwrap();
-    assert_ne!(asset.value, original_path);
-    assert_eq!(
-        std::fs::read(tmp.path().join(&asset.value)).unwrap(),
-        b"imported image"
-    );
 }
 
 #[test]

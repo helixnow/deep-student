@@ -208,7 +208,7 @@ impl NoteRelationRepo {
     pub fn invalidate_resource(conn: &Connection, resource_id: &str) -> VfsResult<usize> {
         Ok(conn.execute("UPDATE note_learning_relations SET invalidated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now'),revision=revision+1 WHERE resource_id=?1 AND invalidated_at IS NULL", [resource_id])?)
     }
-    pub(crate) fn invalidate_missing_blocks(conn: &Connection, note_id: &str) -> VfsResult<()> {
+    pub fn invalidate_missing_blocks(conn: &Connection, note_id: &str) -> VfsResult<()> {
         let note = VfsNoteRepo::get_note_with_conn(conn, note_id)?
             .ok_or_else(|| invalid("Note missing"))?;
         let content = VfsNoteRepo::get_note_content_with_conn(conn, note_id)?.unwrap_or_default();
