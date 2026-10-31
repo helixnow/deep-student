@@ -1,6 +1,7 @@
 //! Chat V2 工作区模块 - 多 Agent 协作共享空间
 
 pub mod agent_profile;
+pub mod card_read_scope; // worker → coordinator 只读卡面作用域注册表（chatanki 只读工具查询）
 pub mod config;
 pub mod coordinator;
 pub mod custom_agents;

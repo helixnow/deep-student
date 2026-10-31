@@ -15,7 +15,7 @@
 //!   [`MAX_RETRIEVAL_PAGE_IMAGES_PER_TURN`] 张；按 blob 去重，含用户已引用的同一页图。
 
 use super::images::{sniff_image_mime, ResolvedCanonicalImage};
-use crate::chat_v2::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
+use crate::chat_v2::tools::types::BUILTIN_NAMESPACE;
 use crate::chat_v2::types::{CanonicalContentPart, ToolResultInfo};
 use crate::models::{ChatMessage as LegacyChatMessage, MultimodalContentPart};
 use serde_json::{json, Value};

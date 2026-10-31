@@ -44,6 +44,7 @@ pub mod resource_types; // 统一上下文注入系统 - 资源类型定义（�
 pub mod role_packs;
 pub mod runtime_roots;
 pub mod session_export; // 🆕 WI-12: session JSONL 导出（规范见 docs/dev/optimization0824/WI-12-session-jsonl-spec.md）
+pub mod session_scope; // 会话检索范围（RAG 文件夹硬过滤）读取，manage_session 与检索执行器共用
 pub mod shell_command_policy;
 pub mod skill_market_client; // 🆕 社区技能市场只读客户端（SkillTap 接入）
 pub mod skill_replay; // 🆕 技能经验回放器（G09-P1：dry-run 对账 + 人工晋升，无自动行为）

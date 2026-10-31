@@ -4,7 +4,7 @@ use super::tools::{attempt_completion, SkillsExecutor};
 
 pub fn canonical_tool_short_name(tool_name: &str) -> &str {
     tool_name
-        .strip_prefix(super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
+        .strip_prefix(super::tools::types::BUILTIN_NAMESPACE)
         .or_else(|| tool_name.strip_prefix("builtin:"))
         .or_else(|| tool_name.strip_prefix("mcp.tools."))
         .or_else(|| tool_name.strip_prefix("mcp_"))
@@ -60,8 +60,7 @@ fn is_mcp_namespaced(name: &str) -> bool {
 
 /// 工具名是否属于 builtin 命名空间（`builtin-*` / `builtin:*`）
 fn is_builtin_namespaced(name: &str) -> bool {
-    name.starts_with(super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE)
-        || name.starts_with("builtin:")
+    name.starts_with(super::tools::types::BUILTIN_NAMESPACE) || name.starts_with("builtin:")
 }
 
 /// 从参数中提取 pipeline reverse-map 注入的 MCP 服务器 ID

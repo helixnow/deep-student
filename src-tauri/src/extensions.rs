@@ -197,6 +197,22 @@ impl crate::browser::hooks::DownloadArtifactRoot for ChatV2DownloadArtifactRoot 
     }
 }
 
+/// chat_v2（agent）对 chatanki 域的回调：会话删除前的僵尸 anki 块回收
+/// （`manage_session` 槽位）与紧急停止时取消脱管制卡管线（`kill_switch` 钩子集）。
+/// 未注册时两者分别等价于“没有可回收的块”和“没有活跃管线”。
+struct ChatAnkiAgentPlugin;
+
+impl Plugin for ChatAnkiAgentPlugin {
+    fn name(&self) -> &'static str {
+        "chatanki_agent"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        crate::chat_v2::tools::chatanki_executor::install_agent_hooks(scope);
+        Ok(())
+    }
+}
+
 /// 组合根唯一的插件列表（顺序即 apply 顺序）。
 fn plugins() -> Vec<Arc<dyn Plugin>> {
     vec![
@@ -209,6 +225,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(QbankRuntimePlugin),
         Arc::new(StorageNotesPlugin),
         Arc::new(BrowserArtifactRootPlugin),
+        Arc::new(ChatAnkiAgentPlugin),
     ]
 }
 

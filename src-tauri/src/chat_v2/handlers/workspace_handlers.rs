@@ -1228,7 +1228,7 @@ fn install_worker_card_read_scope(
     agents: &[crate::chat_v2::workspace::WorkspaceAgent],
     workspace_id: &str,
     agent_session_id: &str,
-) -> Option<crate::chat_v2::tools::chatanki_executor::WorkspaceCardReadScopeGuard> {
+) -> Option<crate::chat_v2::workspace::card_read_scope::WorkspaceCardReadScopeGuard> {
     use crate::chat_v2::workspace::custom_agents::CHATANKI_READONLY_TOOLS;
     if !is_worker
         || !worker_allowed_tools
@@ -1241,7 +1241,7 @@ fn install_worker_card_read_scope(
         .iter()
         .find(|a| matches!(a.role, AgentRole::Coordinator))
         .map(|a| a.session_id.clone())?;
-    match crate::chat_v2::tools::chatanki_executor::install_workspace_card_read_scope(
+    match crate::chat_v2::workspace::card_read_scope::install_workspace_card_read_scope(
         agent_session_id,
         workspace_id,
         &coordinator_session_id,
