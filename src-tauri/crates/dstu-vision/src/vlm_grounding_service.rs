@@ -1481,7 +1481,7 @@ impl VlmGroundingService {
         result
     }
 
-    pub(crate) async fn get_vlm_config(&self) -> Result<crate::llm_manager::ApiConfig, AppError> {
+    pub async fn get_vlm_config(&self) -> Result<crate::llm_manager::ApiConfig, AppError> {
         self.get_vlm_config_candidates()
             .await
             .into_iter()
