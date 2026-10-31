@@ -4781,11 +4781,17 @@ mod tests {
             include_str!("../../../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
             include_str!("../../../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
             include_str!("../../../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
-            include_str!("../../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"
+            ),
             include_str!("../../../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
-            include_str!("../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"
+            ),
             include_str!("../../../../migrations/chat_v2/V20260516__add_title_locked.sql"),
-            include_str!("../../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"),
+            include_str!(
+                "../../../../migrations/chat_v2/V20260717__group_preferred_runtime_root.sql"
+            ),
             include_str!(
                 "../../../../migrations/chat_v2/V20260719__fts_blocktype_coverage_and_indexes.sql"
             ),

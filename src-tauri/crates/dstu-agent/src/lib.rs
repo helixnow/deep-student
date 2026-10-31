@@ -17,6 +17,7 @@
 // 大型 json! 审计块（local shell 工具结果等）需要更深的宏展开余量（与 app 一致）。
 #![recursion_limit = "512"]
 
+#[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 pub mod system_notification; // 统一系统通知策略（automations / kill_switch 与 app 启动路径共用）
 
@@ -31,9 +32,10 @@ pub(crate) use dstu_mcp::tools;
 pub(crate) use dstu_memory::memory;
 pub(crate) use dstu_platform::background_tasks;
 pub(crate) use dstu_security::secure_store;
+#[cfg(test)]
+pub(crate) use dstu_storage::file_manager;
 pub(crate) use dstu_storage::{
-    backup_common, database, feature_flags, file_manager, injection_budget, llm_usage,
-    unified_file_manager,
+    backup_common, database, feature_flags, injection_budget, llm_usage, unified_file_manager,
 };
 pub(crate) use dstu_util::utils;
 pub(crate) use dstu_vfs::{dstu, pdf_protocol, vfs};
@@ -49,7 +51,9 @@ pub(crate) mod browser {
 /// 与各单测的 `migration::coordinator` / `schema_registry` 按原路径引用。
 #[cfg(feature = "data_governance")]
 pub(crate) mod data_governance {
-    pub(crate) use dstu_storage::{file_deletion_queue, migration, schema_registry};
+    pub(crate) use dstu_storage::file_deletion_queue;
+    #[cfg(test)]
+    pub(crate) use dstu_storage::{migration, schema_registry};
 }
 
 // ── app `AppHandle`（由 app `lib.rs` 在 `set_global_app_handle` 旁边注入）──

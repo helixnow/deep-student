@@ -89,6 +89,7 @@ windows-sys = { workspace = true }
 [dev-dependencies]
 hyper = { workspace = true }
 mockito = "1.0"
+env_logger = "0.11.11"
 # 单测按原路径 `crate::memory::test_support::setup_memory_service` 与
 # `MemoryService::fail_next_idempotent_write_before_receipt`（拆分前的 cfg(test) 项）。
 dstu-memory = { workspace = true, features = ["test-util"] }

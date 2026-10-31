@@ -3767,6 +3767,7 @@ dependencies = [
  "dstu-util",
  "dstu-vfs",
  "encoding_rs",
+ "env_logger",
  "futures",
  "futures-util",
  "hex",
