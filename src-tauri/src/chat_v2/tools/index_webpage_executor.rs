@@ -1225,7 +1225,11 @@ mod tests {
 
     #[test]
     fn validates_only_http_urls_without_credentials() {
-        assert!(validate_web_url("https://example.com/a").is_ok());
+        // 用 IP 字面量避免本地代理 DNS 把公网域名解析到 198.18.0.0/15 基准网段，
+        // 导致 SSRF 正源按设计拦截、测试随网络环境漂移。
+        assert!(validate_web_url("https://1.1.1.1/a").is_ok());
+        assert!(validate_web_url("http://127.0.0.1/a").is_ok()); // 回环放行
+        assert!(validate_web_url("http://10.0.0.1/a").is_err()); // 私网拦截
         assert!(validate_web_url("file:///tmp/a").is_err());
         assert!(validate_web_url("https://user:pass@example.com/a").is_err());
     }
