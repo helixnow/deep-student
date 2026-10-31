@@ -489,8 +489,7 @@ pub async fn media_bilibili_auth_status(app: AppHandle) -> CmdResult<BiliAccount
 pub async fn media_bilibili_login_qr_start() -> CmdResult<BiliLoginQr> {
     let client = AuthClient::new()?;
     let data = client.qr_generate().await?;
-    let png =
-        crate::plugins::ilink_bot::qr::qrcode_png_base64(&data.url).map_err(|e| e.to_string())?;
+    let png = dstu_util::qr::qrcode_png_base64(&data.url).map_err(|e| e.to_string())?;
     Ok(BiliLoginQr {
         qrcode_key: data.qrcode_key,
         qr_png: format!("data:image/png;base64,{}", png),

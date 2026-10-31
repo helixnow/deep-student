@@ -81,6 +81,21 @@ impl Plugin for MediaVfsPlugin {
     }
 }
 
+/// dstu-media 的 app 侧服务解析：原 `try_state::<AppState>()` / `state::<AppState>()`
+/// （B 站出口设置读写、导入后自动转写的 ASR 配置探测）。
+struct MediaHostPlugin;
+
+impl Plugin for MediaHostPlugin {
+    fn name(&self) -> &'static str {
+        "media_host"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        crate::media::install_media_host(scope);
+        Ok(())
+    }
+}
+
 /// vfs 的低层回调：qbank 题目集导出。
 struct QbankVfsPlugin;
 
@@ -151,6 +166,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(MemoryVfsPlugin),
         Arc::new(MemoryMasteryPlugin),
         Arc::new(MediaVfsPlugin),
+        Arc::new(MediaHostPlugin),
         Arc::new(QbankVfsPlugin),
         Arc::new(StorageNotesPlugin),
         Arc::new(BrowserArtifactRootPlugin),

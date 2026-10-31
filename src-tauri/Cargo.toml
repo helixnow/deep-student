@@ -33,6 +33,7 @@ members = [
     "crates/dstu-docs",
     "crates/dstu-kernel",
     "crates/dstu-learning",
+    "crates/dstu-media",
     "crates/dstu-llm",
     "crates/dstu-mcp",
     "crates/dstu-notes",
@@ -65,6 +66,7 @@ dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
 dstu-learning = { path = "crates/dstu-learning", default-features = false }
+dstu-media = { path = "crates/dstu-media", default-features = false }
 dstu-llm = { path = "crates/dstu-llm", default-features = false }
 dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
 dstu-notes = { path = "crates/dstu-notes", default-features = false }
@@ -304,6 +306,7 @@ dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }
 dstu-learning = { workspace = true }
+dstu-media = { workspace = true }
 dstu-llm = { workspace = true }
 dstu-mcp = { workspace = true }
 dstu-notes = { workspace = true }

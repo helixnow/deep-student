@@ -174,7 +174,7 @@ impl reqwest::dns::Resolve for PublicResolver {
         Box::pin(async move {
             let addresses: Vec<_> = tokio::net::lookup_host((host.as_str(), 443))
                 .await?
-                .filter(|address| !crate::browser::policy::is_internal_ip(&address.ip()))
+                .filter(|address| !crate::net_policy::is_internal_ip(&address.ip()))
                 .collect();
             if addresses.is_empty() {
                 return Err(std::io::Error::new(

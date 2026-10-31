@@ -18,8 +18,9 @@ use super::*;
 
 const BASE: &str = "/deepstudent-bili-bridge/v1/";
 static SOCKETS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
-const SCRIPT: &str = include_str!("../../../resources/bilibili/deepstudent-bili-bridge.user.js");
-const PAGE: &str = include_str!("../../../resources/bilibili/pair.html");
+const SCRIPT: &str =
+    include_str!("../../../../../resources/bilibili/deepstudent-bili-bridge.user.js");
+const PAGE: &str = include_str!("../../../../../resources/bilibili/pair.html");
 
 pub async fn start_server() -> BiliResult<u16> {
     let mut port = HUB.server_port.lock().await;

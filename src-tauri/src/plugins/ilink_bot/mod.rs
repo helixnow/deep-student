@@ -7,7 +7,7 @@
 
 mod client;
 mod guard;
-pub(crate) mod qr;
+pub(crate) use dstu_util::qr; // 二维码 PNG（base64）已下沉 dstu-util
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
