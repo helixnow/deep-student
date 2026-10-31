@@ -720,7 +720,7 @@ impl CodexAuthManager {
             .post(self.inner.endpoints.device_user_code_url.clone())
             .header(
                 reqwest::header::USER_AGENT,
-                format!("deep-student/{}", env!("CARGO_PKG_VERSION")),
+                format!("deep-student/{}", dstu_core::APP_VERSION),
             )
             .json(&json!({ "client_id": self.inner.endpoints.client_id }))
             .send()
@@ -767,7 +767,7 @@ impl CodexAuthManager {
             .post(self.inner.endpoints.device_token_url.clone())
             .header(
                 reqwest::header::USER_AGENT,
-                format!("deep-student/{}", env!("CARGO_PKG_VERSION")),
+                format!("deep-student/{}", dstu_core::APP_VERSION),
             )
             .json(&json!({
                 "device_auth_id": device_auth_id,
@@ -842,7 +842,7 @@ impl CodexAuthManager {
             .post(self.inner.endpoints.token_url.clone())
             .header(
                 reqwest::header::USER_AGENT,
-                format!("deep-student/{}", env!("CARGO_PKG_VERSION")),
+                format!("deep-student/{}", dstu_core::APP_VERSION),
             )
             .form(params)
             .send()

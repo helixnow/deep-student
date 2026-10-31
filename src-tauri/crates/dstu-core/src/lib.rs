@@ -7,6 +7,12 @@
 //! 模块路径与拆分前在 `deep_student_lib` 中的路径一致，app 通过
 //! `pub use dstu_core::xxx` 保留原路径。
 
+/// app（根包 `deep-student`）的版本号。
+///
+/// 成员 crate 的 `CARGO_PKG_VERSION` 是 `0.0.0`；从 app 移出的代码需要版本号时
+/// 统一读这里，值由 `build.rs` 从根 `Cargo.toml` 的 `[package] version` 注入。
+pub const APP_VERSION: &str = env!("DSTU_APP_VERSION");
+
 pub mod canonical_tools;
 pub mod error_details;
 pub mod error_recovery;
@@ -20,3 +26,13 @@ pub mod services;
 pub mod text_escape; // XML 文本转义（chat_v2::vfs_resolver 按原路径重导出）
 pub mod token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
 pub mod workflow_error_handler;
+
+#[cfg(test)]
+mod tests {
+    /// 防止 build.rs 失效时把 app 版本静默变成成员 crate 的 0.0.0。
+    #[test]
+    fn app_version_is_injected_from_app_manifest() {
+        assert!(!super::APP_VERSION.is_empty());
+        assert_ne!(super::APP_VERSION, "0.0.0");
+    }
+}

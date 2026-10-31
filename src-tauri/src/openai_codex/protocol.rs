@@ -90,7 +90,7 @@ pub fn build_codex_request_headers(
         .map_err(|_| CodexAuthError::InvalidHeader)?;
     let session_id =
         HeaderValue::from_str(session_id).map_err(|_| CodexAuthError::InvalidHeader)?;
-    let user_agent = HeaderValue::from_str(&format!("deep-student/{}", env!("CARGO_PKG_VERSION")))
+    let user_agent = HeaderValue::from_str(&format!("deep-student/{}", dstu_core::APP_VERSION))
         .map_err(|_| CodexAuthError::InvalidHeader)?;
 
     let account_id = auth.account_id().trim();
