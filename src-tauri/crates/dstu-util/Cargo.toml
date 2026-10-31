@@ -19,8 +19,12 @@ tokenizer_tiktoken = ["tiktoken-rs"]
 
 [dependencies]
 dstu-core = { workspace = true }
+# base64 / image / qrcode：`qr`（二维码 PNG base64，ilink_bot 与 B 站扫码登录共用）
+base64 = { workspace = true }
 chrono = { workspace = true }
+image = { workspace = true }
 log = { workspace = true }
+qrcode = { workspace = true }
 reqwest = { workspace = true }
 serde_json = { workspace = true }
 tiktoken-rs = { workspace = true, optional = true }

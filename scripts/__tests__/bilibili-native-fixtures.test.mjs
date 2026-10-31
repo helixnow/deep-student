@@ -4,7 +4,7 @@ import test from 'node:test';
 
 test('every Bilibili client uses the unified transport, not a second CDN or auth client', () => {
   for (const name of ['bilibili', 'bilibili_auth', 'bilibili_stream']) {
-    const source = readFileSync(new URL(`../../src-tauri/src/media/${name}.rs`, import.meta.url), 'utf8');
+    const source = readFileSync(new URL(`../../src-tauri/crates/dstu-media/src/media/${name}.rs`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /reqwest::Client(?:::|\b)/, name);
   }
 });

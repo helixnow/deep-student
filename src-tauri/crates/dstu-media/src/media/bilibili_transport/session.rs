@@ -3,7 +3,7 @@ use std::sync::{Arc, LazyLock, Mutex};
 
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tokio_util::sync::CancellationToken;
 
 use super::bridge::{BrowserTransport, HUB};
@@ -56,7 +56,7 @@ pub fn settings(app: &AppHandle) -> TransportSettings {
     let mut cache = SETTINGS.lock().unwrap();
     cache
         .get_or_insert_with(|| {
-            app.try_state::<crate::commands::AppState>()
+            crate::host::try_services(app)
                 .and_then(|s| s.database.get_setting(SETTINGS_KEY).ok().flatten())
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
@@ -71,7 +71,7 @@ pub fn update_settings(app: &AppHandle, value: TransportSettings) -> BiliResult<
     if value.mode == RouteMode::Proxy && value.proxy_url.as_deref().is_none_or(str::is_empty) {
         return Err(BiliError::new("proxy-config", "请先配置可信代理地址"));
     }
-    let state = app.state::<crate::commands::AppState>();
+    let state = crate::host::services(app);
     state
         .database
         .save_setting(SETTINGS_KEY, &serde_json::to_string(&value).unwrap())

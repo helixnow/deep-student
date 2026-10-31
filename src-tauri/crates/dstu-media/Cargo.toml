@@ -1,0 +1,60 @@
+[package]
+name = "dstu-media"
+version = "0.0.0"
+description = "Deep Student 音视频学习域：媒体转写流水线（解码/VAD/ASR/字幕段）、B 站链接与传输、学习台账、语音输入与图片压缩命令"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "domain"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-learning = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-security = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-util = { workspace = true }
+dstu-vfs = { workspace = true }
+async-trait = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+encoding_rs = { workspace = true }
+flate2 = { workspace = true }
+futures-util = { workspace = true }
+hyper = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+prost = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+rusqlite = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32/f64 → JSON 数字按十进制字符串转换）。
+# 转写进度 / ASR 请求体 / B 站接口响应会经 serde_json 序列化与解析；显式声明，保证
+# `cargo test -p dstu-media` 单独编译时与在 app 中的行为一致。特性本来就已在 app 中合并开启。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+symphonia = { workspace = true }
+tauri = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+tungstenite = { workspace = true }
+url = { workspace = true }
+urlencoding = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+# 测试内起本地 HTTP server（ASR / B 站接口 / 语音输入）。
+mockito = "1.0"
+# 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
+# dstu-vfs 的 test-util feature 公开该函数（夹具本体在 dev-only 的 dstu-testkit）。
+dstu-vfs = { workspace = true, features = ["test-util"] }

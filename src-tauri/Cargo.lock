@@ -3287,6 +3287,7 @@ dependencies = [
  "dstu-learning",
  "dstu-llm",
  "dstu-mcp",
+ "dstu-media",
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
@@ -3897,6 +3898,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "dstu-media"
+version = "0.0.0"
+dependencies = [
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-learning",
+ "dstu-llm",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "encoding_rs",
+ "flate2",
+ "futures-util",
+ "hyper 0.14.32",
+ "image 0.24.9",
+ "log",
+ "mockito",
+ "prost",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "symphonia",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tokio-util",
+ "tungstenite 0.21.0",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "dstu-platform"
 version = "0.0.0"
 dependencies = [
@@ -3993,9 +4035,12 @@ dependencies = [
 name = "dstu-util"
 version = "0.0.0"
 dependencies = [
+ "base64 0.21.7",
  "chrono",
  "dstu-core",
+ "image 0.24.9",
  "log",
+ "qrcode",
  "reqwest 0.11.27",
  "serde_json",
  "tiktoken-rs",

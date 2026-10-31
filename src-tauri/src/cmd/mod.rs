@@ -14,7 +14,7 @@ pub mod fsrs_review;
 pub mod handout;
 pub mod helpers;
 pub mod mcp;
-pub mod media;
+pub use dstu_media::cmd::media; // compress_image（上传前图片压缩，已迁至 dstu-media）
 pub mod network;
 pub mod notes;
 pub mod ocr;
