@@ -56,7 +56,7 @@ pub fn rollback_dir(app_data_root: &Path) -> PathBuf {
     app_data_root.join(CRYPTO_PUBLICATION_ROLLBACK_DIR)
 }
 
-pub(crate) fn sync_directory(path: &Path) -> std::io::Result<()> {
+pub fn sync_directory(path: &Path) -> std::io::Result<()> {
     #[cfg(unix)]
     {
         fs::File::open(path)?.sync_all()

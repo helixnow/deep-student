@@ -3283,6 +3283,7 @@ dependencies = [
  "dstu-core",
  "dstu-docs",
  "dstu-platform",
+ "dstu-security",
  "dstu-util",
  "encoding_rs",
  "env_logger",
@@ -3786,6 +3787,31 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
+ "zeroize",
+]
+
+[[package]]
+name = "dstu-security"
+version = "0.0.0"
+dependencies = [
+ "aes-gcm",
+ "anyhow",
+ "argon2",
+ "base64 0.21.7",
+ "chrono",
+ "dirs 4.0.0",
+ "dstu-core",
+ "hex",
+ "hostname",
+ "keyring",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
  "zeroize",
 ]
 

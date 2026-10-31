@@ -29,9 +29,8 @@ pub mod cmd;
 pub mod commands;
 pub mod config_recovery;
 pub mod crash_logger;
-#[allow(dead_code)]
-pub mod crypto;
-pub mod crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
+pub use dstu_security::crypto;
+pub use dstu_security::crypto_publication; // 恢复密钥发布 journal 与启动侧前滚/回滚
 #[allow(dead_code)]
 pub mod database;
 pub mod debug_commands;
@@ -199,6 +198,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_docs",
     "dstu_util",
     "dstu_platform",
+    "dstu_security",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
