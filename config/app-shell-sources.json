@@ -16,6 +16,9 @@
     "src/app/hooks/useViewScrollRestoration.ts",
     "src/app/hooks/useCrossFeatureHandoffs.ts",
     "src/app/hooks/useDevtoolsShortcut.ts",
-    "src/app/hooks/useWebviewSettingsPersistence.ts"
+    "src/app/hooks/useWebviewSettingsPersistence.ts",
+    "src/app/hooks/useDesktopSidebarElements.tsx",
+    "src/app/hooks/useSessionSidebarContextSync.ts",
+    "src/app/hooks/useDesktopTitlebarInteractions.ts"
   ]
 }

@@ -27,7 +27,7 @@ const AnkiTasksApp = React.lazy(() =>
 );
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
-import { ModernSidebar, type SidebarUpdater } from './components/ModernSidebar';
+import { useDesktopSidebarElements } from './app/hooks/useDesktopSidebarElements';
 import { DesktopShellSidebarLayers } from './app/shell/DesktopShellSidebarLayers';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
@@ -76,15 +76,13 @@ import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
 import { FeatureUnavailablePanel } from './components/system-status/FeatureUnavailablePanel';
-import { SettingsShellSidebar } from '@/features/settings/components/SettingsShellSidebar';
-import { TodoShellSidebar } from '@/features/todo/components/TodoShellSidebar';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useAndroidSafeArea } from './hooks/useAndroidSafeArea';
 import { shouldBlockMobileNavigation, ensureKeyboardTracking } from './hooks/useKeyboardHeight';
 import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
-import { getNavigationShortcutText } from './hooks/useNavigationShortcuts';
+import { useDesktopTitlebarInteractions } from './app/hooks/useDesktopTitlebarInteractions';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { usePreventScroll } from './hooks/usePreventScroll';
 // ★ 刻意深路径导入：经 command-palette/index.ts barrel 会把 ShortcutSettings
@@ -108,7 +106,7 @@ import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { sessionManager } from './features/chat/core/session/sessionManager';
 import { GoalStatusChip } from './features/chat/components/GoalStatusChip';
-import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
+import { useSessionSidebarContextSync } from './app/hooks/useSessionSidebarContextSync';
 import { groupCache } from './features/chat/core/store/groupCache';
 import { getSessionTitleText } from './features/chat/utils/sessionTitle';
 import type { ChatStore } from './features/chat/core/types';
@@ -132,13 +130,10 @@ import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSideb
 import { DesktopShellHeaderPortalProvider } from './app/shell/DesktopShellHeaderPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
 import {
-  HEADER_HOTZONE_DRAG_THRESHOLD,
-  clearHeaderHotzoneActivationTimer,
   handleDesktopToolbarButtonClick,
   handleDesktopToolbarButtonMouseDown,
   handleHeaderHotzoneClick,
   handleHeaderHotzoneKeyDown,
-  shouldIgnoreHeaderHotzoneTarget,
 } from './app/shell/desktopHeaderHotzone';
 import { Z_INDEX } from './config/zIndex';
 import { useSystemStatusSync } from './app/hooks/useSystemStatusSync';
@@ -1102,48 +1097,12 @@ function App() {
 
   // 管理题目图片URL的生命周期
 
-  // 渲染侧边栏导航 - 现代化风格
-  const sidebarUpdater = useMemo<SidebarUpdater>(() => ({
-    checking: updater.checking,
-    available: updater.available,
-    info: updater.info,
-    downloading: updater.downloading,
-    progress: updater.progress,
-    readyToRelaunch: updater.readyToRelaunch,
-    performUpdateAction: updater.performUpdateAction,
-  }), [
-    updater.available,
-    updater.checking,
-    updater.downloading,
-    updater.info,
-    updater.performUpdateAction,
-    updater.progress,
-    updater.readyToRelaunch,
-  ]);
-  const sidebarElement = useMemo(() => (
-    <ModernSidebar
-      currentView={currentView}
-      onViewChange={handleViewChange}
-      sidebarCollapsed={leftPanelCollapsed}
-      updater={sidebarUpdater}
-    />
-  ), [currentView, handleViewChange, leftPanelCollapsed, sidebarUpdater]);
-
-  const settingsShellSidebarElement = useMemo(() => (
-    <SettingsShellSidebar
-      isSmallScreen={false}
-      globalLeftPanelCollapsed={leftPanelCollapsed}
-      onBack={() => setCurrentView('chat-v2')}
-    />
-  ), [leftPanelCollapsed, setCurrentView]);
-
-  const todoShellSidebarElement = useMemo(() => (
-    <TodoShellSidebar
-      isSmallScreen={false}
-      globalLeftPanelCollapsed={leftPanelCollapsed}
-      onBack={() => setCurrentView('chat-v2')}
-    />
-  ), [leftPanelCollapsed, setCurrentView]);
+  // 渲染侧边栏导航 - 现代化风格（主 ModernSidebar + 设置 / 待办壳侧栏）
+  const {
+    sidebarElement,
+    settingsShellSidebarElement,
+    todoShellSidebarElement,
+  } = useDesktopSidebarElements(updater, currentView, handleViewChange, leftPanelCollapsed, setCurrentView);
 
   const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
     setDesktopPageSidebarTarget(node);
@@ -1204,143 +1163,24 @@ function App() {
     ['desktop-page', desktopPageShellSidebarElement],
   ] as const, [sidebarElement, settingsShellSidebarElement, todoShellSidebarElement, desktopPageShellSidebarElement]);
 
-  const syncSessionSidebarContext = useCallback(() => {
-    setSessionSidebarViewContext({
-      currentView,
-      activeSessionId: sessionManager.getCurrentSessionId(),
-      isDocumentVisible:
-        typeof document === 'undefined'
-          ? true
-          : document.visibilityState === 'visible' && document.hasFocus(),
-    });
-  }, [currentView]);
-
-  useEffect(() => {
-    syncSessionSidebarContext();
-
-    const unsubscribeSessionManager = sessionManager.subscribe((event) => {
-      if (event.type === 'current-session-changed') {
-        syncSessionSidebarContext();
-      }
-    });
-
-    return () => {
-      unsubscribeSessionManager();
-    };
-  }, [syncSessionSidebarContext]);
-
-  useEventRegistry([
-    {
-      target: 'window',
-      type: 'focus',
-      listener: syncSessionSidebarContext as EventListener,
-    },
-    {
-      target: 'window',
-      type: 'blur',
-      listener: syncSessionSidebarContext as EventListener,
-    },
-    {
-      target: 'document',
-      type: 'visibilitychange',
-      listener: syncSessionSidebarContext as EventListener,
-    },
-  ], [syncSessionSidebarContext]);
+  // 会话侧栏指示器上下文：当前视图 / 活跃会话 / 窗口可见性
+  useSessionSidebarContextSync(currentView);
 
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
 
-  const navigationShortcuts = getNavigationShortcutText();
-  const commandPaletteTriggerRef = useRef<(() => void) | null>(null);
-  const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');
-    if (dragExclusionTarget || shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
-      return;
-    }
-
-    if (event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-
-    if (event.detail === 2) {
-      void toggleDesktopWindowMaximize();
-      return;
-    }
-
-    void startDragging(event);
-  }, [startDragging, toggleDesktopWindowMaximize]);
-  const clearHeaderHotzonePress = useCallback((element: HTMLElement) => {
-    delete element.dataset.shellHotzoneStartX;
-    delete element.dataset.shellHotzoneStartY;
-  }, []);
-  const handleHeaderHotzoneMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
-      return;
-    }
-
-    if (event.detail === 2) {
-      event.preventDefault();
-      event.stopPropagation();
-      clearHeaderHotzonePress(event.currentTarget);
-      clearHeaderHotzoneActivationTimer(event.currentTarget);
-      event.currentTarget.dataset.shellHotzoneSuppressClick = 'true';
-      void toggleDesktopWindowMaximize();
-      return;
-    }
-
-    event.currentTarget.dataset.shellHotzoneStartX = String(event.clientX);
-    event.currentTarget.dataset.shellHotzoneStartY = String(event.clientY);
-    delete event.currentTarget.dataset.shellHotzoneSuppressClick;
-  }, [clearHeaderHotzonePress, toggleDesktopWindowMaximize]);
-  const handleHeaderHotzoneMouseMove = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.buttons !== 1) {
-      return;
-    }
-
-    const { shellHotzoneStartX, shellHotzoneStartY } = event.currentTarget.dataset;
-    if (!shellHotzoneStartX || !shellHotzoneStartY) {
-      return;
-    }
-
-    const deltaX = event.clientX - Number(shellHotzoneStartX);
-    const deltaY = event.clientY - Number(shellHotzoneStartY);
-    if (Math.hypot(deltaX, deltaY) < HEADER_HOTZONE_DRAG_THRESHOLD) {
-      return;
-    }
-
-    clearHeaderHotzonePress(event.currentTarget);
-    event.currentTarget.dataset.shellHotzoneSuppressClick = 'true';
-    void startDragging(event);
-  }, [clearHeaderHotzonePress, startDragging]);
-  const handleHeaderHotzoneMouseUp = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    const hotzoneElement = event.currentTarget;
-    clearHeaderHotzonePress(hotzoneElement);
-
-    if (hotzoneElement.dataset.shellHotzoneSuppressClick === 'true') {
-      window.setTimeout(() => {
-        delete hotzoneElement.dataset.shellHotzoneSuppressClick;
-      }, 0);
-    }
-  }, [clearHeaderHotzonePress]);
-  const handleHeaderHotzoneMouseLeave = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    clearHeaderHotzonePress(event.currentTarget);
-  }, [clearHeaderHotzonePress]);
-  const handleCreateChatSession = useCallback(() => {
-    if (currentView !== 'chat-v2') {
-      setCurrentView('chat-v2');
-      requestAnimationFrame(() => {
-        dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
-      });
-      return;
-    }
-
-    dispatchAppEvent(APP_EVENTS.CHAT_NEW_SESSION);
-  }, [currentView, setCurrentView]);
-  const openCommandPalette = useCallback(() => {
-    commandPaletteTriggerRef.current?.();
-  }, []);
+  // 桌面标题栏：拖拽 / 双击最大化、热区按下-拖动-点击、新建会话、打开命令面板
+  const {
+    navigationShortcuts,
+    commandPaletteTriggerRef,
+    handleDesktopTitlebarMouseDown,
+    handleHeaderHotzoneMouseDown,
+    handleHeaderHotzoneMouseMove,
+    handleHeaderHotzoneMouseUp,
+    handleHeaderHotzoneMouseLeave,
+    handleCreateChatSession,
+    openCommandPalette,
+  } = useDesktopTitlebarInteractions(startDragging, toggleDesktopWindowMaximize, currentView, setCurrentView);
   const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');
   const [currentChatHeaderGroupName, setCurrentChatHeaderGroupName] = useState('');
   const [currentChatHeaderSessionId, setCurrentChatHeaderSessionId] = useState<string | null>(null);
