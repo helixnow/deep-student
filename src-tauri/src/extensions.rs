@@ -289,6 +289,8 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(SyncSettingsDatabasePlugin),
         Arc::new(MemorySyncFieldMergerPlugin),
         Arc::new(ChatAnkiAgentPlugin),
+        // Insight 被动提示（agent 侧 Slot，研究域实现）；缺失时提示为 None。
+        Arc::new(crate::agent_wiring::plugins::InsightHintPlugin),
     ]
 }
 
