@@ -571,7 +571,7 @@ async fn run_grading_inner(
 /// `None` intentionally selects the default mode. Once a caller supplies an
 /// ID, however, a missing custom/builtin mode is a validation error rather
 /// than a fallback to the default rubric.
-pub(crate) fn resolve_grading_mode(
+pub fn resolve_grading_mode(
     mode_id: &Option<String>,
     custom_modes: &[GradingMode],
 ) -> Result<GradingMode, AppError> {

@@ -212,6 +212,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_llm",
     "dstu_vfs",
     "dstu_mcp",
+    "dstu_tutor",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

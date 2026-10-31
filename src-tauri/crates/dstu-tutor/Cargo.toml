@@ -1,0 +1,36 @@
+[package]
+name = "dstu-tutor"
+version = "0.0.0"
+description = "Deep Student 辅导域：作文批改（essay_grading：流式批改管线、会话/轮次、自定义批阅模式）与翻译（translation：流式翻译、多候选、聊天浮窗翻译）"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "domain"
+
+[lints]
+workspace = true
+
+[dependencies]
+dstu-core = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-util = { workspace = true }
+dstu-vfs = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+# app 图里 starlark 打开了 arbitrary_precision（f32 → JSON 数字按十进制字符串转换，如 0.7 而非
+# 0.699999988079071）。批改/翻译管线的请求体（temperature 等）依赖这一点；显式声明，保证
+# `cargo test -p dstu-tutor` 单独编译时与在 app 中的行为一致。特性本来就已在 app 中合并开启，不改变产品行为。
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
+tauri = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }

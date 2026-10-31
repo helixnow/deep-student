@@ -3289,6 +3289,7 @@ dependencies = [
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
+ "dstu-tutor",
  "dstu-util",
  "dstu-vfs",
  "encoding_rs",
@@ -3968,6 +3969,29 @@ version = "0.0.0"
 dependencies = [
  "dstu-storage",
  "tempfile",
+]
+
+[[package]]
+name = "dstu-tutor"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "chrono",
+ "dstu-core",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "futures-util",
+ "log",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
