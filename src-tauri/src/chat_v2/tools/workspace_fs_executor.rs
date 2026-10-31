@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -23,7 +24,7 @@ use crate::chat_v2::runtime_roots::{
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 use crate::chat_v2::workspace_change_set::{self, ChangeSet, MutationKind, MutationReceipt};
-use crate::commands::AppState;
+use crate::database::Database;
 
 pub mod tool_names {
     pub const FILE_LIST: &str = "workspace_file_list";
@@ -80,16 +81,16 @@ impl WorkspaceFsExecutor {
         root_id: Option<&str>,
         ctx: &ExecutionContext,
     ) -> Result<(RuntimeRoot, PathBuf), String> {
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let root = runtime_root_by_id(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             root_id,
             true,
         )?;
-        let canonical = revalidate_runtime_root(&state.database, &root)?;
+        let canonical = revalidate_runtime_root(state.inner(), &root)?;
         Ok((root, canonical))
     }
 
@@ -481,10 +482,10 @@ impl WorkspaceFsExecutor {
 
     fn resolve_read_root_id(args: &Value, ctx: &ExecutionContext) -> String {
         let explicit = explicit_runtime_root_id_from_args(args);
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         resolve_effective_runtime_root_id_for_session(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             ctx.chat_v2_db.as_deref(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),

@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -24,7 +24,7 @@ use crate::chat_v2::task_objects::{
     ManagedLocator, ObjectCapabilities, TaskObjectHandle, TaskObjectHandleBuilder, TaskObjectKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
+use crate::database::Database;
 
 pub mod tool_names {
     pub const PLAN: &str = "file_manager_plan";
@@ -144,10 +144,10 @@ impl FileManagerExecutor {
         if root_id != "workspace" {
             return Err("File manager mutations require root_id=workspace; authorized roots remain read-only".to_string());
         }
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let root = runtime_root_by_id(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             Some(root_id),
@@ -161,7 +161,7 @@ impl FileManagerExecutor {
                 "File manager requires an explicitly configured read-write workspace".to_string(),
             );
         }
-        let canonical = revalidate_runtime_root(&state.database, &root)?;
+        let canonical = revalidate_runtime_root(state.inner(), &root)?;
         Ok((root, canonical))
     }
 

@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
+use std::sync::Arc;
 use std::time::{Duration, Instant, UNIX_EPOCH};
 
 use async_trait::async_trait;
@@ -34,7 +35,7 @@ use crate::chat_v2::types::{
     ToolResultInfo,
 };
 use crate::chat_v2::workspace_change_set::{self, ExternalFileSnapshot, ExternalFileState};
-use crate::commands::AppState;
+use crate::database::Database;
 
 #[cfg(windows)]
 use super::shell_sandbox::DirectHostShellBackend;
@@ -179,10 +180,10 @@ impl LocalShellExecuteExecutor {
     }
 
     fn resolve_root(root_id: Option<&str>, ctx: &ExecutionContext) -> Result<RuntimeRoot, String> {
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         runtime_root_by_id(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             root_id,
@@ -791,7 +792,7 @@ impl LocalShellExecuteExecutor {
         allow_network: bool,
         options: ShellExecuteOptions,
     ) -> Result<SandboxPolicy, String> {
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let mut readable_roots = Vec::new();
         let mut writable_roots = Vec::new();
         let mut protected_read_roots = Vec::new();
@@ -799,7 +800,7 @@ impl LocalShellExecuteExecutor {
 
         let mut roots = runtime_roots_for_session(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             true,
         )?;
@@ -1756,9 +1757,9 @@ impl LocalShellExecuteExecutor {
         );
         let unsandboxed = execution_mode.unsandboxed();
         let unrestricted = execution_mode.unrestricted();
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let raw_command_policy = state
-            .database
+            .inner()
             .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
             .ok()
             .flatten();
@@ -1803,7 +1804,7 @@ impl LocalShellExecuteExecutor {
         let preferred_default = if explicit_root_id.is_none() && cwd_absolute_input.is_none() {
             Some(resolve_effective_runtime_root_id_for_session(
                 ctx.window_ref().app_handle(),
-                &state.database,
+                state.inner(),
                 ctx.chat_v2_db.as_deref(),
                 &ctx.session_id,
                 ctx.skill_package_roots.as_ref(),
@@ -1892,8 +1893,8 @@ impl LocalShellExecuteExecutor {
         };
         if cwd_absolute_input.is_none() {
             let validated_root_path = {
-                let state = ctx.window_ref().state::<AppState>();
-                revalidate_runtime_root(&state.database, &root)?
+                let state = ctx.window_ref().state::<Arc<Database>>();
+                revalidate_runtime_root(state.inner(), &root)?
             };
             root.path = validated_root_path;
         }
@@ -2021,7 +2022,7 @@ impl LocalShellExecuteExecutor {
             } else {
                 runtime_roots_for_session(
                     ctx.window_ref().app_handle(),
-                    &state.database,
+                    state.inner(),
                     &ctx.session_id,
                     true,
                 )?
@@ -2052,7 +2053,7 @@ impl LocalShellExecuteExecutor {
                 ShellCommandGuardEffect::Allow | ShellCommandGuardEffect::Ask => {}
             }
             let current_raw_policy = state
-                .database
+                .inner()
                 .get_setting(crate::chat_v2::shell_command_policy::SETTING_KEY)
                 .ok()
                 .flatten();

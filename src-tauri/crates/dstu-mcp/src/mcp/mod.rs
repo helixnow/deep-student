@@ -15,6 +15,7 @@ pub mod protocol_version;
 pub mod rmcp;
 pub mod sse_transport;
 pub mod stdio_proxy;
+pub mod test_helpers;
 pub mod transport;
 pub mod types;
 

@@ -6,6 +6,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -20,7 +21,7 @@ use crate::chat_v2::runtime_roots::{
     normalize_runtime_relative_path, revalidate_runtime_root, runtime_root_by_id, RuntimeRootKind,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
+use crate::database::Database;
 
 pub mod tool_names {
     pub const TEXT_SEARCH: &str = "workspace_text_search";
@@ -65,10 +66,10 @@ impl CodeNavigationExecutor {
     }
 
     pub(crate) fn resolve_workspace(ctx: &ExecutionContext) -> Result<PathBuf, String> {
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let root = runtime_root_by_id(
             ctx.window_ref().app_handle(),
-            &state.database,
+            state.inner(),
             &ctx.session_id,
             ctx.skill_package_roots.as_ref(),
             Some("workspace"),
@@ -77,7 +78,7 @@ impl CodeNavigationExecutor {
         if root.kind != RuntimeRootKind::Workspace || !root.configured {
             return Err("Code navigation requires a configured workspace root".to_string());
         }
-        revalidate_runtime_root(&state.database, &root)
+        revalidate_runtime_root(state.inner(), &root)
     }
 
     fn is_private_component(component: &std::ffi::OsStr) -> bool {

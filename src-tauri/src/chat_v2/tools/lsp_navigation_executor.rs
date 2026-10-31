@@ -176,7 +176,7 @@ impl LspSession {
                 "workspace": { "workspaceFolders": true }
             },
             "initializationOptions": language.initialization_options(),
-            "clientInfo": { "name": "Deep Student", "version": env!("CARGO_PKG_VERSION") },
+            "clientInfo": { "name": "Deep Student", "version": dstu_core::APP_VERSION },
         });
         session.request("initialize", initialize).await?;
         session.notify("initialized", json!({})).await?;

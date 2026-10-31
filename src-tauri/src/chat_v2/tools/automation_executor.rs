@@ -1,5 +1,6 @@
 //! automation_propose / automation_list / automation_set_enabled 工具执行器
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -21,7 +22,6 @@ use crate::chat_v2::automations::{
 };
 use crate::chat_v2::headless::HeadlessSessionMode;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
 use crate::database::Database;
 
 pub mod tool_names {
@@ -275,15 +275,15 @@ impl AutomationExecutor {
         if let Some(db) = ctx.main_db.as_ref() {
             return f(db.as_ref());
         }
-        let state = ctx.window_ref().state::<AppState>();
-        f(&state.database)
+        let state = ctx.window_ref().state::<Arc<Database>>();
+        f(state.inner())
     }
 
     fn database_arc(ctx: &ExecutionContext) -> std::sync::Arc<Database> {
         if let Some(db) = ctx.main_db.as_ref() {
             return db.clone();
         }
-        ctx.window_ref().state::<AppState>().database.clone()
+        ctx.window_ref().state::<Arc<Database>>().inner().clone()
     }
 
     fn reject_unknown_fields(args: &Value, allowed: &[&str]) -> Result<(), String> {

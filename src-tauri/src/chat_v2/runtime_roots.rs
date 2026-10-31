@@ -15,13 +15,13 @@ use std::fs::{self, OpenOptions};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager, State};
 
-use crate::commands::AppState;
+use crate::database::Database;
 
 const AUTHORIZED_ROOTS_KEY: &str = "chat_v2.runtime.authorized_roots";
 const WORKSPACE_ROOT_KEY: &str = "chat_v2.runtime.workspace_root";
@@ -1600,7 +1600,7 @@ pub fn redact_path_for_display(path: &str) -> String {
 
 #[tauri::command]
 pub async fn chat_v2_set_skill_trust(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     skill_id: String,
     package_root: Option<String>,
     trusted: bool,
@@ -1616,7 +1616,7 @@ pub async fn chat_v2_set_skill_trust(
     let key = skill_trust_key(skill_id);
     if !trusted {
         state
-            .database
+            .inner()
             .delete_setting(&key)
             .map_err(|error| format!("Failed to revoke skill trust: {error}"))?;
         return Ok(SkillTrustState {
@@ -1647,7 +1647,7 @@ pub async fn chat_v2_set_skill_trust(
     let encoded = serde_json::to_string(&record)
         .map_err(|error| format!("Failed to serialize skill trust record: {error}"))?;
     state
-        .database
+        .inner()
         .save_setting(&key, &encoded)
         .map_err(|error| format!("Failed to persist skill trust: {error}"))?;
     Ok(SkillTrustState {
@@ -1673,7 +1673,7 @@ pub fn runtime_roots_for_session(
 #[tauri::command]
 pub async fn chat_v2_list_runtime_roots(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     let session_id = session_id
@@ -1681,7 +1681,7 @@ pub async fn chat_v2_list_runtime_roots(
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("session-preview");
-    runtime_roots_for_session(&app, &state.database, session_id, false)
+    runtime_roots_for_session(&app, state.inner(), session_id, false)
 }
 
 const MAX_RUNTIME_DIRECTORY_PAGE: usize = 100;
@@ -1785,7 +1785,7 @@ fn list_runtime_directory_page(
 #[tauri::command]
 pub async fn chat_v2_list_runtime_directory(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: String,
     root_id: Option<String>,
     relative_path: Option<String>,
@@ -1801,13 +1801,13 @@ pub async fn chat_v2_list_runtime_directory(
         .map_err(|_| "Invalid runtime directory cursor".to_string())?;
     let root = runtime_root_by_id(
         &app,
-        &state.database,
+        state.inner(),
         &session_id,
         None,
         Some(root_id),
         false,
     )?;
-    let root_canon = revalidate_runtime_root(&state.database, &root)?;
+    let root_canon = revalidate_runtime_root(state.inner(), &root)?;
     list_runtime_directory_page(
         &root.id,
         &root_canon,
@@ -1820,7 +1820,7 @@ pub async fn chat_v2_list_runtime_directory(
 #[tauri::command]
 pub async fn chat_v2_set_workspace_root(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     path: String,
     label: Option<String>,
     access: Option<RuntimeRootAccess>,
@@ -1845,7 +1845,7 @@ pub async fn chat_v2_set_workspace_root(
     {
         let _settings_guard = runtime_root_settings_guard();
         save_workspace_record(
-            &state.database,
+            state.inner(),
             &WorkspaceRootRecord {
                 path: canonical,
                 label,
@@ -1861,13 +1861,13 @@ pub async fn chat_v2_set_workspace_root(
 #[tauri::command]
 pub async fn chat_v2_reset_workspace_root(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     {
         let _settings_guard = runtime_root_settings_guard();
         state
-            .database
+            .inner()
             .delete_setting(WORKSPACE_ROOT_KEY)
             .map_err(|e| format!("Failed to reset workspace runtime root: {}", e))?;
     }
@@ -1878,12 +1878,12 @@ pub async fn chat_v2_reset_workspace_root(
 #[tauri::command]
 pub async fn chat_v2_authorize_runtime_root(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     path: String,
     label: Option<String>,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
-    authorize_runtime_root_path(&state.database, &path, label.as_deref())?;
+    authorize_runtime_root_path(state.inner(), &path, label.as_deref())?;
 
     chat_v2_list_runtime_roots(app, state, session_id).await
 }
@@ -1891,18 +1891,18 @@ pub async fn chat_v2_authorize_runtime_root(
 #[tauri::command]
 pub async fn chat_v2_revoke_runtime_root(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     root_id: String,
     session_id: Option<String>,
 ) -> Result<Vec<RuntimeRoot>, String> {
     let _settings_guard = runtime_root_settings_guard();
-    let mut records = load_authorized_records(&state.database)?;
+    let mut records = load_authorized_records(state.inner())?;
     let before = records.len();
     records.retain(|record| record.id != root_id);
     if records.len() == before {
         return Err("Authorized runtime root not found".to_string());
     }
-    save_authorized_records(&state.database, &records)?;
+    save_authorized_records(state.inner(), &records)?;
     drop(_settings_guard);
 
     chat_v2_list_runtime_roots(app, state, session_id).await
@@ -1948,14 +1948,14 @@ fn resolve_runtime_target(
 #[tauri::command]
 pub async fn chat_v2_resolve_runtime_path(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: String,
     root_id: Option<String>,
     relative_path: String,
 ) -> Result<String, String> {
     let target = resolve_runtime_target(
         &app,
-        &state.database,
+        state.inner(),
         &session_id,
         root_id.as_deref(),
         &relative_path,
@@ -1972,7 +1972,7 @@ pub async fn chat_v2_resolve_runtime_path(
 #[tauri::command]
 pub async fn chat_v2_delete_artifact(
     app: AppHandle,
-    _state: State<'_, AppState>,
+    _state: State<'_, Arc<Database>>,
     session_id: String,
     relative_path: String,
 ) -> Result<serde_json::Value, String> {
@@ -2517,7 +2517,7 @@ pub async fn chat_v2_revert_artifact_write(
 #[tauri::command]
 pub async fn chat_v2_revert_workspace_change(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: String,
     receipt: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
@@ -2528,14 +2528,14 @@ pub async fn chat_v2_revert_workspace_change(
         return Err("Mutation receipt does not belong to the workspace root".to_string());
     }
 
-    let root = workspace_root(&state.database)?;
+    let root = workspace_root(state.inner())?;
     if !root.configured {
         return Err("Workspace root is not configured".to_string());
     }
     if root.access != RuntimeRootAccess::ReadWrite {
         return Err("Workspace root is read-only".to_string());
     }
-    let root_canon = revalidate_runtime_root(&state.database, &root)?;
+    let root_canon = revalidate_runtime_root(state.inner(), &root)?;
     let temp = temp_root(&app, &session_id, false)?;
     crate::chat_v2::workspace_change_set::rollback(&root_canon, &temp.path, &receipt)?;
 
@@ -2558,7 +2558,7 @@ pub struct RuntimeFilePreview {
 #[tauri::command]
 pub async fn chat_v2_read_runtime_file(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     session_id: String,
     root_id: String,
     relative_path: String,
@@ -2566,7 +2566,7 @@ pub async fn chat_v2_read_runtime_file(
 ) -> Result<RuntimeFilePreview, String> {
     let target = resolve_runtime_target(
         &app,
-        &state.database,
+        state.inner(),
         &session_id,
         Some(&root_id),
         &relative_path,

@@ -3,6 +3,7 @@
 //! High 敏感度：agent 请求用户授权只读 authorized runtime root。
 //! critical 目录在 agent 发起路径下直接拒绝（比 Settings 手动更严）；broad 目录允许但带警示。
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -19,7 +20,7 @@ use crate::chat_v2::runtime_roots::{
     RUNTIME_ROOT_PROVENANCE_PREFIX,
 };
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
-use crate::commands::AppState;
+use crate::database::Database;
 
 pub mod tool_names {
     pub const RUNTIME_ROOT_REQUEST: &str = "runtime_root_request";
@@ -127,8 +128,8 @@ impl RuntimeRootRequestExecutor {
             return Err(CRITICAL_REJECTION.to_string());
         }
 
-        let state = ctx.window_ref().state::<AppState>();
-        let outcome = authorize_runtime_root_path(&state.database, &canonical_display, None)
+        let state = ctx.window_ref().state::<Arc<Database>>();
+        let outcome = authorize_runtime_root_path(state.inner(), &canonical_display, None)
             .map_err(|error| {
                 format!(
                     "Failed to authorize directory '{}': {}. Ask the user to confirm the path exists and is a directory.",
@@ -138,7 +139,7 @@ impl RuntimeRootRequestExecutor {
 
         if outcome.newly_granted {
             Self::write_provenance(
-                &state.database,
+                state.inner(),
                 &outcome.root_id,
                 purpose,
                 &ctx.session_id,

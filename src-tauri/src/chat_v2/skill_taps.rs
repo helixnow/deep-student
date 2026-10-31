@@ -18,6 +18,7 @@
 //! - 技能目录写入仍只经 staging → 原子发布，默认 untrusted。
 
 use std::io::{Read, Write};
+use std::sync::Arc;
 
 use serde::Serialize;
 use serde_json::json;
@@ -31,6 +32,7 @@ use super::skills::{
 use super::tools::fetch_executor::FetchExecutor;
 use super::tools::skill_install_executor::AGENT_INSTALLED_MARKER;
 use crate::commands::AppState;
+use crate::database::Database;
 
 /// 目录里最多列出的技能数
 const MAX_CATALOG_SKILLS: usize = 200;
@@ -487,7 +489,7 @@ async fn skill_tap_catalog_impl(repo_url: String) -> ChatV2Result<TapCatalog> {
 /// `dry_run=false` 安装，写入 `tap` 来源 provenance 供后续更新检查。
 #[tauri::command]
 pub async fn skill_tap_install(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     zip_url: String,
     subdir: String,
     overwrite: bool,
@@ -507,7 +509,7 @@ pub async fn skill_tap_install(
 }
 
 async fn skill_tap_install_impl(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     zip_url: String,
     subdir: String,
     overwrite: bool,
@@ -597,7 +599,7 @@ async fn skill_tap_install_impl(
     let (installed, committed) = prepared.commit()?;
 
     let key = format!("{}{}", PROVENANCE_SETTINGS_PREFIX, skill_id);
-    if let Err(persist_error) = state.database.save_setting(&key, &provenance_json) {
+    if let Err(persist_error) = state.inner().save_setting(&key, &provenance_json) {
         return match committed.rollback() {
             Ok(()) => Err(ChatV2Error::IoError(format!(
                 "Failed to persist tap provenance ({}); the install was rolled back.",

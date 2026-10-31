@@ -93,7 +93,7 @@ pub fn emit_mcp_list_changed(window: &tauri::Window, action: &str) -> bool {
     window
         .app_handle()
         .emit(
-            super::settings_models_executor::SETTINGS_CHANGED_EVENT,
+            super::types::SETTINGS_CHANGED_EVENT,
             serde_json::json!({ "action": action, "key": MCP_TOOLS_LIST_KEY }),
         )
         .is_ok()

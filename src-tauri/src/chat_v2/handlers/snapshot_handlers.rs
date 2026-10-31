@@ -100,7 +100,7 @@ pub async fn chat_v2_export_session_meta(
         format: SNAPSHOT_FORMAT.to_string(),
         version: SNAPSHOT_VERSION,
         exported_at: chrono::Utc::now().to_rfc3339(),
-        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        app_version: dstu_core::APP_VERSION.to_string(),
         session,
         session_state,
         message_count: messages.len(),

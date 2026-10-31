@@ -30,7 +30,7 @@ use super::skills::{
     SkillImportZipResult, DEFAULT_AGENT_SKILLS_BASE, MAX_SKILL_PACKAGE_ZIP_BYTES,
 };
 use super::tools::skill_install_executor::{AGENT_INSTALLED_MARKER, POST_WRITE_TRUST_NEXT_STEP};
-use crate::commands::AppState;
+use crate::database::Database;
 
 /// 社区技能市场 API。
 const COMMUNITY_SKILL_MARKET_BASE: &str = "https://clawhub.ai";
@@ -1276,7 +1276,7 @@ async fn skill_market_verify_impl(
 /// provenance：`sourceKind=skill_market` / `sourceDetail=skill_market:{slug}@{version}`。
 #[tauri::command]
 pub async fn skill_market_download_and_scan(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     slug: String,
     version: Option<String>,
     install: Option<bool>,
@@ -1300,7 +1300,7 @@ pub async fn skill_market_download_and_scan(
 }
 
 async fn skill_market_download_and_scan_impl(
-    state: State<'_, AppState>,
+    state: State<'_, Arc<Database>>,
     slug: String,
     version: Option<String>,
     install: Option<bool>,
@@ -1444,7 +1444,7 @@ async fn skill_market_download_and_scan_impl(
     let (installed_result, committed) = prepared.commit()?;
 
     let key = format!("{}{}", PROVENANCE_SETTINGS_PREFIX, skill_id);
-    if let Err(persist_error) = state.database.save_setting(&key, &provenance_str) {
+    if let Err(persist_error) = state.inner().save_setting(&key, &provenance_str) {
         return match committed.rollback() {
             Ok(()) => Err(ChatV2Error::IoError(format!(
                 "Failed to persist skill market provenance ({}); the install was rolled back.",
@@ -1692,7 +1692,7 @@ impl SkillMarketInstallToolExecutor {
         args: &Value,
         ctx: &crate::chat_v2::tools::ExecutionContext,
     ) -> Result<Value, String> {
-        let state = ctx.window_ref().state::<AppState>();
+        let state = ctx.window_ref().state::<Arc<Database>>();
         let result = skill_market_download_and_scan_impl(
             state,
             Self::required_slug(args)?,
