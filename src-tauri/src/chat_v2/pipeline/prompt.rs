@@ -1,4 +1,43 @@
 use super::*;
+use dstu_kernel::{Disposer, Slot, SlotOccupied};
+
+// ============================================================
+// step 10：域能力注入点（Canvas 笔记读取 / Insight 被动提示）
+// ============================================================
+
+/// Canvas 模式 system prompt 注入用的笔记读取口（原直接调用 `NotesManager::get_note`）。
+///
+/// pipeline 持有 `Option<Arc<dyn CanvasNoteSource>>`；app 注入
+/// `agent_wiring::plugins::NotesCanvasSource`。为 `None` 时与原 `notes_manager = None`
+/// 一致：不注入 Canvas 笔记。
+pub trait CanvasNoteSource: Send + Sync {
+    /// 读取笔记，返回 `(title, content_md)`；错误为原错误的 `Display` 文本（日志原样输出）。
+    fn note(&self, note_id: &str) -> Result<(String, String), String>;
+}
+
+/// Insight Recall 被动提示的输入（原 `load_insight_existence_hints` 从 pipeline/ctx 读取的字段）。
+pub struct InsightHintRequest<'a> {
+    pub vfs_db: &'a Arc<VfsDatabase>,
+    pub main_db: Option<&'a MainDatabase>,
+    pub session_id: &'a str,
+    pub user_message_id: &'a str,
+    pub user_content: &'a str,
+}
+
+/// Insight Recall v2 阶段二被动注入（research 域实现，app 注入）。
+pub trait InsightHintProvider: Send + Sync {
+    /// 存在级最小披露提示；`None` = 无提示（含一切失败降级）。
+    fn existence_hints(&self, request: InsightHintRequest<'_>) -> Option<String>;
+}
+
+static INSIGHT_HINT_PROVIDER: Slot<dyn InsightHintProvider> = Slot::new();
+
+/// 注册 Insight 被动提示实现（`extensions.rs` 组合根调用；先注册者生效）。
+pub fn register_insight_hint_provider(
+    provider: Arc<dyn InsightHintProvider>,
+) -> Result<Disposer, SlotOccupied> {
+    INSIGHT_HINT_PROVIDER.provide(provider)
+}
 
 impl ChatV2Pipeline {
     /// 构建系统提示（P1-10 拆分形态）
@@ -99,131 +138,19 @@ impl ChatV2Pipeline {
 
     /// 🆕 Insight Recall v2 阶段二：被动注入（存在级最小披露）。
     ///
-    /// 纪律（D2 / 规格 §4 阶段二验收）：
-    /// - 只走 FTS（同步、微秒级）——被动注入在每轮热路径上，LLM 级联升级
-    ///   （改写/唱反调）属于 insight_recall 工具路径，不在此发生；
-    /// - 披露控制器门控（开关/置信/预算），存在级只给标题，方法零泄露；
-    /// - 沉默四态幂等记账（确定性事件 id，重试/变体重建不重复）；
-    /// - 任何失败降级为 None，绝不阻塞主流程。
+    /// step 10：实现属于 research 域，经 [`InsightHintProvider`] 槽位由 app 注入
+    /// （`agent_wiring::plugins::InsightHintPlugin`，在 `extensions.rs` 注册）。
+    /// 槽位为空等同“无灵感命中”（`None`，与原失败降级一致）。
     fn load_insight_existence_hints(&self, ctx: &PipelineContext) -> Option<String> {
-        use crate::insight::disclosure::{self, DisclosureOutcome};
-        use crate::insight::recall::InsightRecallService;
-        use crate::insight::types::{DisclosureLevel, InsightEventType};
-
         let vfs_db = self.vfs_db.as_ref()?;
-        let policy = disclosure::load_policy(self.main_db.as_deref());
-        // 阶段四：三本账校准（效用门控路由器）
-        let policy = match vfs_db.get_conn_safe() {
-            Ok(conn) => disclosure::calibrate_policy_from_ledger(&conn, policy),
-            Err(_) => policy,
-        };
-
-        // 用户禁用：每轮至多一条沉默账本（幂等键），然后静默退出
-        if !policy.enabled {
-            if let Ok(conn) = vfs_db.get_conn_safe() {
-                let _ = InsightRecallService::record_event_idempotent(
-                    &conn,
-                    Some(&ctx.session_id),
-                    Some(&ctx.user_message_id),
-                    None,
-                    InsightEventType::SilenceUserDisabled,
-                    DisclosureLevel::Hidden,
-                    None,
-                );
-            }
-            return None;
-        }
-
-        let query = ctx.user_content.trim();
-        // 太短没有召回价值（trigram 下限 3 字符；多留一点防噪音注入）
-        if query.chars().count() < 4 {
-            return None;
-        }
-
-        let recall = InsightRecallService::new(std::sync::Arc::clone(vfs_db));
-        let candidates = match recall.recall_fts(query, policy.max_per_turn * 2) {
-            Ok(c) => c,
-            Err(e) => {
-                log::warn!("[ChatV2::pipeline] insight passive recall failed: {e}");
-                return None;
-            }
-        };
-
-        let conn = vfs_db.get_conn_safe().ok()?;
-
-        // 无候选：沉默记账（验收：无匹配完整走沉默分支）
-        if candidates.is_empty() {
-            let _ = InsightRecallService::record_event_idempotent(
-                &conn,
-                Some(&ctx.session_id),
-                Some(&ctx.user_message_id),
-                None,
-                InsightEventType::SilenceNoMatch,
-                DisclosureLevel::Hidden,
-                None,
-            );
-            return None;
-        }
-
-        let scored: Vec<disclosure::ScoredRef> = candidates
-            .iter()
-            .map(|c| disclosure::ScoredRef {
-                confidence: c.confidence,
-            })
-            .collect();
-        let outcomes = disclosure::decide_passive(&policy, &scored);
-
-        let mut lines: Vec<String> = Vec::new();
-        for (cand, outcome) in candidates.iter().zip(outcomes.iter()) {
-            match outcome {
-                DisclosureOutcome::Disclose(level) => {
-                    // 存在级只暴露标题（filter_content 是红线收口）
-                    let (title, _, _) =
-                        disclosure::filter_content(*level, &cand.card.title, "", "");
-                    let inserted = InsightRecallService::record_event_idempotent(
-                        &conn,
-                        Some(&ctx.session_id),
-                        Some(&ctx.user_message_id),
-                        Some(&cand.card.id),
-                        InsightEventType::ShownExistence,
-                        *level,
-                        None,
-                    );
-                    // 计数器只在事件真正插入时累加（重试/变体幂等一致）
-                    if inserted.unwrap_or(false) {
-                        let _ =
-                            crate::insight::repo::bump_stat(&conn, &cand.card.id, "shown_count");
-                    }
-                    lines.push(format!("- [灵感] {title}"));
-                }
-                DisclosureOutcome::Silence(reason) => {
-                    let event_type = match reason {
-                        disclosure::SilenceReason::NoMatch => InsightEventType::SilenceNoMatch,
-                        disclosure::SilenceReason::LowConfidence => {
-                            InsightEventType::SilenceLowConfidence
-                        }
-                        disclosure::SilenceReason::Budget => InsightEventType::SilenceBudget,
-                        disclosure::SilenceReason::UserDisabled => {
-                            InsightEventType::SilenceUserDisabled
-                        }
-                    };
-                    let _ = InsightRecallService::record_event_idempotent(
-                        &conn,
-                        Some(&ctx.session_id),
-                        Some(&ctx.user_message_id),
-                        Some(&cand.card.id),
-                        event_type,
-                        DisclosureLevel::Hidden,
-                        None,
-                    );
-                }
-            }
-        }
-
-        if lines.is_empty() {
-            return None;
-        }
-        Some(lines.join("\n"))
+        let provider = INSIGHT_HINT_PROVIDER.get()?;
+        provider.existence_hints(InsightHintRequest {
+            vfs_db,
+            main_db: self.main_db.as_deref(),
+            session_id: &ctx.session_id,
+            user_message_id: &ctx.user_message_id,
+            user_content: &ctx.user_content,
+        })
     }
 
     /// 解析会话绑定 workspace 根并加载 AGENTS.md 常驻指令
@@ -445,20 +372,20 @@ impl ChatV2Pipeline {
         ctx: &PipelineContext,
     ) -> Option<prompt_builder::CanvasNoteInfo> {
         let note_id = ctx.options.canvas_note_id.as_ref()?;
-        let notes_mgr = self.notes_manager.as_ref()?;
-        match notes_mgr.get_note(note_id) {
-            Ok(note) => {
-                let word_count = note.content_md.chars().count();
+        let note_source = self.canvas_note_source.as_ref()?;
+        match note_source.note(note_id) {
+            Ok((title, content_md)) => {
+                let word_count = content_md.chars().count();
                 log::info!(
                     "[ChatV2::pipeline] Canvas mode: loaded note '{}' ({} chars, is_long={})",
-                    note.title,
+                    title,
                     word_count,
                     word_count >= 3000
                 );
                 Some(prompt_builder::CanvasNoteInfo::new(
                     note_id.clone(),
-                    note.title,
-                    note.content_md,
+                    title,
+                    content_md,
                 ))
             }
             Err(e) => {

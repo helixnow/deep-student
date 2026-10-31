@@ -7,6 +7,20 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 // ============================================================================
+// 跨执行器共享常量（step 10：从域执行器下沉，agent 框架代码不再引用域执行器）
+// ============================================================================
+
+/// 内置工具命名空间前缀
+/// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
+/// API 要求工具名称符合正则 ^[a-zA-Z0-9_-]+$，不允许冒号
+///
+/// 原定义在 `builtin_retrieval_executor`（该处保留 `pub use` 旧路径）。
+pub const BUILTIN_NAMESPACE: &str = "builtin-";
+
+/// 设置变更事件名（原定义在 `settings_models_executor`，该处保留 `pub use` 旧路径）。
+pub const SETTINGS_CHANGED_EVENT: &str = "chat_v2://settings_changed";
+
+// ============================================================================
 // 工具分类
 // ============================================================================
 

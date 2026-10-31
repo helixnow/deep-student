@@ -2217,20 +2217,20 @@ impl ChatV2Pipeline {
         options: &SendOptions,
     ) -> Option<prompt_builder::CanvasNoteInfo> {
         let note_id = options.canvas_note_id.as_ref()?;
-        let notes_mgr = self.notes_manager.as_ref()?;
-        match notes_mgr.get_note(note_id) {
-            Ok(note) => {
-                let word_count = note.content_md.chars().count();
+        let note_source = self.canvas_note_source.as_ref()?;
+        match note_source.note(note_id) {
+            Ok((title, content_md)) => {
+                let word_count = content_md.chars().count();
                 log::info!(
                     "[ChatV2::pipeline] Canvas mode (variant): loaded note '{}' ({} chars, is_long={})",
-                    note.title,
+                    title,
                     word_count,
                     word_count >= 3000
                 );
                 Some(prompt_builder::CanvasNoteInfo::new(
                     note_id.clone(),
-                    note.title,
-                    note.content_md,
+                    title,
+                    content_md,
                 ))
             }
             Err(e) => {

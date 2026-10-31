@@ -33,17 +33,12 @@ pub(crate) use crate::llm_manager::{LLMManager, LLMStreamHooks};
 
 pub(crate) use super::approval_manager::{ApprovalManager, ApprovalRequest};
 pub(crate) use super::database::ChatV2Database;
-pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
+pub(crate) use super::tools::types::BUILTIN_NAMESPACE;
+// step 10：生产执行器花名册已移到 app（`agent_wiring::roster::AppExecutorRoster`），
+// 这里只保留 pipeline 及其子模块（`use super::*`）实际使用的执行器框架类型。
 pub(crate) use super::tools::{
-    AcademicSearchExecutor, AdmittedToolDispatcher, AttemptCompletionExecutor, AutomationExecutor,
-    BuiltinResourceExecutor, BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor,
-    DataGovernanceToolExecutor, DstuToolExecutor, ExecutionContext, FetchExecutor,
-    FileManagerExecutor, FsrsSettingsExecutor, GeneralToolExecutor, ImageGenerationExecutor,
-    IndexWebpageToolExecutor, KnowledgeExecutor, LearningOverviewExecutor, LlmUsageToolExecutor,
-    LocalShellExecuteExecutor, LocalShellPreflightExecutor, McpProposeExecutor, MediaToolExecutor,
-    MemoryToolExecutor, OfficeFidelityExecutor, SettingsModelsToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, TextbookPdfToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    TranslationToolExecutor, UserTodoExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor,
+    AdmittedToolDispatcher, ExecutionContext, GeneralToolExecutor, LocalShellExecuteExecutor,
+    ToolExecutorRegistry, ToolSensitivity,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -100,6 +95,7 @@ mod prefix_generation_restore_tests;
 mod prefix_snapshot_tests;
 pub mod prompt;
 pub mod retrieval;
+pub mod roster; // step 10：执行器花名册注入点（ExecutorRoster / CoreExecutorRoster）
 #[cfg(test)]
 mod skill_replay_digest_tests;
 #[cfg(test)]
@@ -116,6 +112,10 @@ pub(crate) use constants::*;
 pub(crate) use helpers::*;
 pub use hooks::*;
 pub use llm_adapter::*;
+pub use prompt::{
+    register_insight_hint_provider, CanvasNoteSource, InsightHintProvider, InsightHintRequest,
+};
+pub use roster::{CoreExecutorRoster, ExecutorRoster};
 pub(crate) use variant_adapter::*;
 
 // ============================================================
@@ -147,6 +147,44 @@ pub(crate) fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<A
 }
 
 // ============================================================
+// 执行器注册表组装（step 10 §2.2）
+// ============================================================
+
+/// 把花名册头部（[`ExecutorRoster::executors`] 的有序结果）组装成生产注册表。
+///
+/// 固定尾部与拆分前 `create_executor_registry_with_workspace` 逐字一致：
+/// `ToolPackExecutor(Weak)` → `PtcExecutor` → `GeneralToolExecutor`（catch-all，必须最后），
+/// 随后记录花名册日志并经 `validate_legacy_registry` 做只读校验。
+pub fn assemble_registry(
+    head: Vec<Arc<dyn super::tools::ToolExecutor>>,
+) -> Arc<ToolExecutorRegistry> {
+    let mut executors = head;
+
+    // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
+    let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
+        // ToolPackExecutor must be registered before GeneralToolExecutor
+        executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
+        // PTC (Starlark 程序化工具组合)：只读白名单 + 每次 call 独立过中央准入
+        executors.push(Arc::new(super::tools::PtcExecutor::new()));
+        // GeneralToolExecutor must be last (catch-all)
+        executors.push(Arc::new(GeneralToolExecutor::new()));
+        ToolExecutorRegistry::from_vec(executors)
+    });
+
+    log::info!(
+        "[ChatV2::pipeline] ToolExecutorRegistry initialized with {} executors: {:?}",
+        registry.len(),
+        registry.executor_names()
+    );
+
+    // A2：同一花名册经 dstu-agent-api `ToolRegistryBuilder` 校验（只读视图，不参与分发；
+    // 分发、超时、审批仍走上面的 ToolExecutorRegistry）。失败只记日志，不改变行为。
+    super::tools::legacy_tool_provider::validate_legacy_registry(&registry);
+
+    registry
+}
+
+// ============================================================
 // 流水线主结构
 // ============================================================
 
@@ -170,8 +208,13 @@ pub struct ChatV2Pipeline {
     vfs_db: Option<Arc<VfsDatabase>>,
     llm_manager: Arc<LLMManager>,
     tool_registry: Arc<ToolRegistry>,
-    /// 笔记管理器（用于 Canvas 工具调用）
-    notes_manager: Option<Arc<crate::notes_manager::NotesManager>>,
+    /// Canvas 笔记读取口（用于 Canvas 模式 system prompt 注入；step 10 前为 `notes_manager`）。
+    canvas_note_source: Option<Arc<dyn CanvasNoteSource>>,
+    /// 宿主注入的服务容器（step 10：原 `notes_manager` / `question_bank_service` 字段），
+    /// 原样传给每个工具调用的 `ExecutionContext.services`。
+    services: Arc<dstu_agent_api::Services>,
+    /// step 10：执行器花名册（默认 `CoreExecutorRoster`；生产由 app 注入 `AppExecutorRoster`）。
+    roster: Arc<dyn ExecutorRoster>,
     /// 🆕 工具执行器注册表（文档 29 P0-1）
     executor_registry: Arc<ToolExecutorRegistry>,
     /// 🆕 工具审批管理器（文档 29 P1-3）
@@ -179,8 +222,6 @@ pub struct ChatV2Pipeline {
     /// 🆕 全局一键断电（与 ChatV2State 共享；工具执行前强制拦截）
     kill_switch: Option<Arc<super::kill_switch::AgentKillSwitch>>,
     workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
-    /// 🆕 智能题目集服务（用于 qbank_* MCP 工具，2026-01）
-    question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
     pdf_processing_service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
     /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
@@ -231,8 +272,11 @@ impl ChatV2Pipeline {
     /// - `vfs_db`: VFS 数据库（可选，用于统一资源存储）
     /// - `llm_manager`: LLM 管理器
     /// - `tool_registry`: 工具注册表
-    /// - `notes_manager`: 笔记管理器（可选，用于 Canvas 工具调用）
+    /// - `canvas_note_source`: Canvas 笔记读取口（可选，用于 Canvas 模式 prompt 注入；
+    ///   step 10 前为 `notes_manager`）
     ///
+    /// 执行器花名册默认为 [`CoreExecutorRoster`]（仅 agent 自有执行器）；生产由 app
+    /// 经 [`Self::with_executor_roster`] 注入完整花名册。
     pub fn new(
         db: Arc<ChatV2Database>,
         main_db: Option<Arc<MainDatabase>>,
@@ -240,13 +284,14 @@ impl ChatV2Pipeline {
         vfs_db: Option<Arc<VfsDatabase>>,
         llm_manager: Arc<LLMManager>,
         tool_registry: Arc<ToolRegistry>,
-        notes_manager: Option<Arc<crate::notes_manager::NotesManager>>,
+        canvas_note_source: Option<Arc<dyn CanvasNoteSource>>,
     ) -> Self {
         // legacy 回退注入（模型不支持工具调用）的 web_search 由 tools 提供给 llm_manager
         crate::tools::install_web_search_fallback();
 
         // 🆕 初始化工具执行器注册表（文档 29 P0-1）
-        let executor_registry = Self::create_executor_registry();
+        let roster: Arc<dyn ExecutorRoster> = Arc::new(CoreExecutorRoster);
+        let executor_registry = assemble_registry(roster.executors(None));
 
         Self {
             db,
@@ -255,12 +300,13 @@ impl ChatV2Pipeline {
             vfs_db,
             llm_manager,
             tool_registry,
-            notes_manager,
+            canvas_note_source,
+            services: Arc::new(dstu_agent_api::Services::new()),
+            roster,
             executor_registry,
             approval_manager: None,
             kill_switch: None,
             workspace_coordinator: None,
-            question_bank_service: None,
             pdf_processing_service: None,
             compaction_locks: Arc::new(Mutex::new(HashSet::new())),
             compaction_cooldowns: Arc::new(Mutex::new(HashMap::new())),
@@ -301,18 +347,37 @@ impl ChatV2Pipeline {
     }
 
     pub fn with_workspace_coordinator(mut self, coordinator: Arc<WorkspaceCoordinator>) -> Self {
-        self.workspace_coordinator = Some(coordinator.clone());
-        self.executor_registry = Self::create_executor_registry_with_workspace(Some(coordinator));
+        self.workspace_coordinator = Some(coordinator);
+        self.rebuild_registry();
         self
     }
 
-    /// 🆕 设置智能题目集服务（用于 qbank_* MCP 工具，2026-01）
-    pub fn with_question_bank_service(
-        mut self,
-        service: Arc<crate::question_bank_service::QuestionBankService>,
-    ) -> Self {
-        self.question_bank_service = Some(service);
+    /// step 10：注入执行器花名册（生产为 app 的 `AppExecutorRoster`）并重建注册表。
+    ///
+    /// 与 [`Self::with_workspace_coordinator`] 的调用先后无关：两者都按当前
+    /// `roster` + `workspace_coordinator` 重建。
+    pub fn with_executor_roster(mut self, roster: Arc<dyn ExecutorRoster>) -> Self {
+        self.roster = roster;
+        self.rebuild_registry();
         self
+    }
+
+    /// step 10：注入宿主服务容器（原 `with_question_bank_service` 与 `new` 的
+    /// `notes_manager` 参数）。工具调用的 `ExecutionContext.services` 共享同一 `Arc`。
+    pub fn with_services(mut self, services: Arc<dstu_agent_api::Services>) -> Self {
+        self.services = services;
+        self
+    }
+
+    /// 当前执行器注册表（启动期花名册自检用）。
+    pub fn executor_registry(&self) -> Arc<ToolExecutorRegistry> {
+        self.executor_registry.clone()
+    }
+
+    /// 按当前花名册与 workspace coordinator 重建注册表（ToolPack/Ptc/General 尾部固定）。
+    fn rebuild_registry(&mut self) {
+        self.executor_registry =
+            assemble_registry(self.roster.executors(self.workspace_coordinator.as_ref()));
     }
 
     /// 🆕 设置 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
@@ -324,140 +389,15 @@ impl ChatV2Pipeline {
         self
     }
 
-    fn create_executor_registry() -> Arc<ToolExecutorRegistry> {
-        Self::create_executor_registry_with_workspace(None)
-    }
-
-    /// 生产执行器花名册（唯一来源）。`pub(crate)` 供 `LegacyToolProvider` oracle 测试复用。
+    /// step 10 过渡垫片（仅测试）：`tools/legacy_tool_provider.rs` 的 oracle 测试仍按旧名
+    /// 取生产花名册。L2 把这些测试迁到 `src/agent_wiring/tests/` 时删除本垫片
+    /// （L5 搬入 dstu-agent 前必须删除：它引用 app 的 `agent_wiring`）。
+    #[cfg(test)]
     pub(crate) fn create_executor_registry_with_workspace(
         workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     ) -> Arc<ToolExecutorRegistry> {
-        let mut executors: Vec<Arc<dyn super::tools::ToolExecutor>> = Vec::new();
-
-        executors.push(Arc::new(AttemptCompletionExecutor::new()));
-        executors.push(Arc::new(CanvasToolExecutor::new()));
-        // AnkiToolExecutor 已移除 — 旧 CardForge 2.0 管线由 ChatAnki 完全接管
-        executors.push(Arc::new(ChatAnkiToolExecutor::new()));
-        executors.push(Arc::new(BuiltinRetrievalExecutor::new()));
-        executors.push(Arc::new(super::tools::InsightRecallExecutor::new()));
-        executors.push(Arc::new(BuiltinResourceExecutor::new()));
-        executors.push(Arc::new(super::tools::ConnectorToolExecutor::new()));
-        executors.push(Arc::new(super::tools::TaskAuditExecutor::new()));
-        executors.push(Arc::new(DstuToolExecutor::new()));
-        executors.push(Arc::new(super::tools::AttachmentToolExecutor::new())); // 🆕 附件工具执行器（解决 P0 断裂点）
-        executors.push(Arc::new(FetchExecutor::new())); // 🆕 内置 Web Fetch 工具
-        executors.push(Arc::new(super::tools::BrowserToolExecutor::new())); // 🆕 内置浏览器 Agent 工具（非 Playwright）
-        executors.push(Arc::new(MediaToolExecutor::new())); // Managed attachment audio transcription
-        executors.push(Arc::new(OfficeFidelityExecutor::new())); // Read-only Office/PDF fidelity inventory
-        executors.push(Arc::new(McpProposeExecutor::new())); // 🆕 MCP server 提案工具（High 敏感度）
-        executors.push(Arc::new(super::tools::McpManageExecutor::new())); // 🆕 MCP server 修改/启停/删除（update/remove High，set_enabled Medium）
-        executors.push(Arc::new(AutomationExecutor::new())); // 🆕 周期自动化工具（propose High / set_enabled Medium）
-        executors.push(Arc::new(AcademicSearchExecutor::new())); // 🆕 学术论文搜索工具（arXiv + OpenAlex）
-        executors.push(Arc::new(super::tools::PaperSaveExecutor::new())); // 🆕 论文保存+引用格式化工具
-        executors.push(Arc::new(KnowledgeExecutor::new()));
-        executors.push(Arc::new(super::tools::TodoListExecutor::new()));
-        executors.push(Arc::new(super::tools::GoalExecutor::new())); // 🆕 Goal 模式工具执行器（goal_*，P0）
-        executors.push(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
-        executors.push(Arc::new(TranslationToolExecutor::new()));
-        executors.push(Arc::new(SettingsModelsToolExecutor::new()));
-        executors.push(Arc::new(LlmUsageToolExecutor::new()));
-        executors.push(Arc::new(LearningOverviewExecutor::new()));
-        executors.push(Arc::new(FsrsSettingsExecutor::new())); // 🆕 闪卡调度设置 get/update（与设置面板同源）
-        executors.push(Arc::new(DataGovernanceToolExecutor::new()));
-        executors.push(Arc::new(MemoryToolExecutor::new()));
-        executors.push(Arc::new(UserTodoExecutor::new()));
-        executors.push(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
-        executors.push(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
-        executors.push(Arc::new(TextbookPdfToolExecutor::new()));
-        executors.push(Arc::new(IndexWebpageToolExecutor::new()));
-        executors.push(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
-        executors.push(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
-        executors.push(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
-        executors.push(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
-        executors.push(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
-        executors.push(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
-        executors.push(Arc::new(super::tools::GenerativeUiExecutor::new())); // 🆕 生成式 UI 工具执行器
-        executors.push(Arc::new(WorkspaceFsExecutor::new()));
-        executors.push(Arc::new(super::tools::LspNavigationExecutor::new()));
-        executors.push(Arc::new(super::tools::CodeNavigationExecutor::new()));
-        executors.push(Arc::new(FileManagerExecutor::new()));
-        executors.push(Arc::new(
-            super::tools::attachment_stage_executor::AttachmentStageExecutor::new(),
-        )); // 🆕 附件物化工具执行器（附件原始字节 → temp root 路径 + 受管 zip 解压）
-        executors.push(Arc::new(
-            super::tools::notes_import_executor::NotesImportExecutor::new(),
-        )); // 🆕 笔记库 zip 导入执行器（staged zip → NotesImporter，Medium）
-        executors.push(Arc::new(
-            super::tools::skill_install_executor::SkillInstallExecutor::new(),
-        )); // 🆕 skill_scan / skill_install 技能包自装（High 安装必审批 + provenance）
-        executors.push(Arc::new(
-            super::skill_market_client::SkillMarketReadToolExecutor::new(),
-        )); // 🆕 skill_market_search / skill_market_skill_detail 只读市场工具
-        executors.push(Arc::new(
-            super::skill_market_client::SkillMarketInstallToolExecutor::new(),
-        )); // 🆕 skill_market_verify / skill_market_download_and_scan 治理安装正门
-        executors.push(Arc::new(
-            super::tools::skill_workshop_executor::SkillWorkshopExecutor::new(),
-        )); // 🆕 skill_workshop_propose / skill_workshop_apply 提案式自建/自改技能
-        executors.push(Arc::new(
-            super::tools::skill_lifecycle_executor::SkillLifecycleExecutor::new(),
-        )); // 🆕 skill_set_enabled / skill_remove / skill_trust_request 技能生命周期治理正门
-        executors.push(Arc::new(LocalShellPreflightExecutor::new()));
-        executors.push(Arc::new(super::tools::GitToolExecutor::new()));
-        executors.push(Arc::new(
-            super::tools::self_inspect_executor::SelfInspectExecutor::new(),
-        )); // 🆕 self_inspect 只读自查工具（Low 敏感度，脱敏输出）
-        executors.push(Arc::new(
-            super::tools::role_pack_executor::RolePackExecutor::new(),
-        )); // Versioned role pack list/get/validate (read-only + auditable selection)
-        executors.push(Arc::new(
-            super::tools::runtime_root_request_executor::RuntimeRootRequestExecutor::new(),
-        )); // 🆕 runtime_root_request 授权请求（High，never-remember，critical 直接拒绝）
-        executors.push(Arc::new(LocalShellExecuteExecutor::new()));
-        executors.push(Arc::new(super::tools::EssayGradingExecutor::new())); // 🆕 作文批改工具执行器（essay_* 异步任务 + 历史查询）
-        executors.push(Arc::new(super::tools::ReviewToolExecutor::new())); // 🆕 间隔重复复习计划工具执行器（review_*，SM-2）
-        executors.push(Arc::new(super::tools::DocumentProcessingExecutor::new())); // 🆕 文档解析/OCR 主动触发执行器（document_parse/status）
-        executors.push(Arc::new(super::tools::WorkbenchToolExecutor::new())); // ACR R1-02：workbench_* 桌面操控工具
-
-        if let Some(coordinator) = workspace_coordinator {
-            executors.push(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
-            // 注册 SubagentExecutor（subagent_call 语法糖）
-            executors.push(Arc::new(super::tools::SubagentExecutor::new(
-                coordinator.clone(),
-            )));
-            // 🆕 custom_agent_* 自定义子代理 persona 管理
-            // （list/get Low，propose Medium，apply/remove High 必审批）
-            executors.push(Arc::new(super::tools::CustomAgentExecutor::new(
-                coordinator.clone(),
-            )));
-            // 🆕 注册 CoordinatorSleepExecutor（主代理睡眠/唤醒机制）
-            executors.push(Arc::new(super::tools::CoordinatorSleepExecutor::new(
-                coordinator,
-            )));
-        }
-
-        // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
-        let registry = Arc::new_cyclic(|weak: &std::sync::Weak<ToolExecutorRegistry>| {
-            // ToolPackExecutor must be registered before GeneralToolExecutor
-            executors.push(Arc::new(super::tools::ToolPackExecutor::new(weak.clone())));
-            // PTC (Starlark 程序化工具组合)：只读白名单 + 每次 call 独立过中央准入
-            executors.push(Arc::new(super::tools::PtcExecutor::new()));
-            // GeneralToolExecutor must be last (catch-all)
-            executors.push(Arc::new(GeneralToolExecutor::new()));
-            ToolExecutorRegistry::from_vec(executors)
-        });
-
-        log::info!(
-            "[ChatV2::pipeline] ToolExecutorRegistry initialized with {} executors: {:?}",
-            registry.len(),
-            registry.executor_names()
-        );
-
-        // A2：同一花名册经 dstu-agent-api `ToolRegistryBuilder` 校验（只读视图，不参与分发；
-        // 分发、超时、审批仍走上面的 ToolExecutorRegistry）。失败只记日志，不改变行为。
-        super::tools::legacy_tool_provider::validate_legacy_registry(&registry);
-
-        registry
+        use crate::agent_wiring::roster::AppExecutorRoster;
+        assemble_registry(AppExecutorRoster.executors(workspace_coordinator.as_ref()))
     }
 
     /// 🆕 Goal 模式（P0）：把本轮已结算的用量同步累加到会话目标账目。
@@ -1436,260 +1376,6 @@ mod tests {
             ),
             4,
             "compaction 事件推进后的锚点同样必须跨进程恢复一致"
-        );
-    }
-
-    #[test]
-    fn test_tool_pack_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        // Directly verify that the executor matched for tool_pack is ToolPackExecutor
-        let executor = registry
-            .get_executor("builtin-tool_pack")
-            .expect("builtin-tool_pack must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "ToolPackExecutor",
-            "ToolPackExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_workspace_fs_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-workspace_file_read")
-            .expect("builtin-workspace_file_read must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "WorkspaceFsExecutor",
-            "WorkspaceFsExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_code_navigation_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        for tool_name in [
-            "builtin-workspace_text_search",
-            "builtin-workspace_symbol_outline",
-        ] {
-            let executor = registry
-                .get_executor(tool_name)
-                .expect("code navigation tool must have a registered executor");
-            assert_eq!(executor.name(), "CodeNavigationExecutor");
-        }
-    }
-
-    #[test]
-    fn test_lsp_navigation_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        for tool_name in [
-            "builtin-workspace_lsp_definition",
-            "builtin-workspace_lsp_references",
-            "builtin-workspace_lsp_hover",
-            "builtin-workspace_lsp_document_symbols",
-        ] {
-            let executor = registry
-                .get_executor(tool_name)
-                .expect("LSP navigation tool must have a registered executor");
-            assert_eq!(executor.name(), "LspNavigationExecutor");
-        }
-    }
-
-    #[test]
-    fn test_external_mcp_workspace_name_bypasses_builtin_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        for tool_name in ["mcp_workspace_file_read", "mcp.tools.workspace_file_read"] {
-            let executor = registry
-                .get_executor(tool_name)
-                .expect("external MCP tools must route through the general bridge");
-            assert_eq!(
-                executor.name(),
-                "GeneralToolExecutor",
-                "external MCP tools must not collide with WorkspaceFsExecutor"
-            );
-        }
-    }
-
-    #[test]
-    fn test_attachment_stage_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-attachment_stage")
-            .expect("builtin-attachment_stage must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "AttachmentStageExecutor",
-            "AttachmentStageExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_local_shell_preflight_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-local_shell_preflight")
-            .expect("builtin-local_shell_preflight must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "LocalShellPreflightExecutor",
-            "LocalShellPreflightExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_self_inspect_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-self_inspect")
-            .expect("builtin-self_inspect must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "SelfInspectExecutor",
-            "SelfInspectExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_skill_install_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-skill_scan")
-            .expect("builtin-skill_scan must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "SkillInstallExecutor",
-            "SkillInstallExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_skill_market_tools_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let search = registry
-            .get_executor("builtin-skill_market_search")
-            .expect("builtin-skill_market_search must have a registered executor");
-        assert_eq!(search.name(), "SkillMarketReadToolExecutor");
-        let detail = registry
-            .get_executor("builtin-skill_market_skill_detail")
-            .expect("builtin-skill_market_skill_detail must have a registered executor");
-        assert_eq!(detail.name(), "SkillMarketReadToolExecutor");
-        // 写操作不得由只读执行器承接
-        let download = registry
-            .get_executor("builtin-skill_market_download_and_scan")
-            .expect("builtin-skill_market_download_and_scan must have a registered executor");
-        assert_eq!(download.name(), "SkillMarketInstallToolExecutor");
-        let verify = registry
-            .get_executor("builtin-skill_market_verify")
-            .expect("builtin-skill_market_verify must have a registered executor");
-        assert_eq!(verify.name(), "SkillMarketInstallToolExecutor");
-    }
-
-    #[test]
-    fn test_skill_workshop_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-skill_workshop_propose")
-            .expect("builtin-skill_workshop_propose must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "SkillWorkshopExecutor",
-            "SkillWorkshopExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_skill_lifecycle_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        for tool in [
-            "builtin-skill_set_enabled",
-            "builtin-skill_remove",
-            "builtin-skill_trust_request",
-        ] {
-            let executor = registry
-                .get_executor(tool)
-                .unwrap_or_else(|| panic!("{tool} must have a registered executor"));
-            assert_eq!(
-                executor.name(),
-                "SkillLifecycleExecutor",
-                "SkillLifecycleExecutor must be matched before GeneralToolExecutor for {tool}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_mcp_propose_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-mcp_server_propose")
-            .expect("builtin-mcp_server_propose must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "McpProposeExecutor",
-            "McpProposeExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_mcp_manage_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        // 裸名 mcp_server_* 若落到 GeneralToolExecutor 会被误当外部 MCP 工具转发，
-        // 因此带前缀与裸名两种形态都必须命中 McpManageExecutor
-        for tool in [
-            "builtin-mcp_server_update",
-            "mcp_server_update",
-            "builtin-mcp_server_set_enabled",
-            "mcp_server_set_enabled",
-            "builtin-mcp_server_remove",
-            "mcp_server_remove",
-        ] {
-            let executor = registry
-                .get_executor(tool)
-                .unwrap_or_else(|| panic!("{tool} must have a registered executor"));
-            assert_eq!(
-                executor.name(),
-                "McpManageExecutor",
-                "McpManageExecutor must be matched before GeneralToolExecutor for {tool}"
-            );
-        }
-    }
-
-    #[test]
-    fn test_automation_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-automation_propose")
-            .expect("builtin-automation_propose must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "AutomationExecutor",
-            "AutomationExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_runtime_root_request_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-runtime_root_request")
-            .expect("builtin-runtime_root_request must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "RuntimeRootRequestExecutor",
-            "RuntimeRootRequestExecutor must be matched before GeneralToolExecutor"
-        );
-    }
-
-    #[test]
-    fn test_local_shell_execute_registered_before_general_executor() {
-        let registry = ChatV2Pipeline::create_executor_registry();
-        let executor = registry
-            .get_executor("builtin-local_shell_execute")
-            .expect("builtin-local_shell_execute must have a registered executor");
-        assert_eq!(
-            executor.name(),
-            "LocalShellExecuteExecutor",
-            "LocalShellExecuteExecutor must be matched before GeneralToolExecutor"
         );
     }
 }

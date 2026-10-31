@@ -29,8 +29,8 @@ use crate::chat_v2::types::{
 };
 use crate::database::Database;
 use crate::llm_manager::ApiConfig;
-use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;
+use dstu_agent_api::Services;
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::pdf_processing_service::PdfProcessingService;
@@ -98,8 +98,12 @@ pub struct ExecutionContext {
     pub emitter: Arc<ChatV2EventEmitter>,
     /// Canvas 笔记 ID（Canvas 工具需要）
     pub canvas_note_id: Option<String>,
-    /// 笔记管理器（Canvas 工具需要）
-    pub notes_manager: Option<Arc<NotesManager>>,
+    /// 宿主注入的服务容器（step 10：取代原 `notes_manager` / `question_bank_service` 字段）。
+    ///
+    /// 域执行器用 `ctx.services.get::<NotesManager>()` /
+    /// `ctx.services.get::<QuestionBankService>()` 取用；未注入时为 `None`，与原字段为
+    /// `None` 时语义一致。由 pipeline 每次调用共享同一 `Arc`。
+    pub services: Arc<Services>,
     /// 通用工具注册表
     pub tool_registry: Arc<ToolRegistry>,
     /// 主数据库（用于读取用户配置）
@@ -119,8 +123,6 @@ pub struct ExecutionContext {
     pub llm_manager: Option<Arc<crate::llm_manager::LLMManager>>,
     /// 🆕 Chat V2 数据库（用于工具块防闪退保存）
     pub chat_v2_db: Option<Arc<ChatV2Database>>,
-    /// 🆕 智能题目集服务（用于 qbank_* 工具，2026-01）
-    pub question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     /// Trusted snapshot of the model that made the current tool call.
     ///
     /// Question authoring tools must not choose (or accept from model-supplied
@@ -185,7 +187,7 @@ impl ExecutionContext {
             tool_call_id: None,
             emitter,
             canvas_note_id: None,
-            notes_manager: None,
+            services: Arc::new(Services::new()),
             tool_registry,
             main_db: None,
             anki_db: None,
@@ -195,7 +197,6 @@ impl ExecutionContext {
             vfs_lance_store: None,
             llm_manager: None,
             chat_v2_db: None,
-            question_bank_service: None,
             question_authoring_config: None,
             skill_contents: None,
             skill_embedded_tools: None,
@@ -327,7 +328,7 @@ impl ExecutionContext {
             tool_call_id: self.tool_call_id.clone(),
             emitter: self.emitter.clone(),
             canvas_note_id: self.canvas_note_id.clone(),
-            notes_manager: self.notes_manager.clone(),
+            services: self.services.clone(),
             tool_registry: self.tool_registry.clone(),
             main_db: self.main_db.clone(),
             anki_db: self.anki_db.clone(),
@@ -336,7 +337,6 @@ impl ExecutionContext {
             vfs_lance_store: self.vfs_lance_store.clone(),
             llm_manager: self.llm_manager.clone(),
             chat_v2_db: self.chat_v2_db.clone(),
-            question_bank_service: self.question_bank_service.clone(),
             question_authoring_config: self.question_authoring_config.clone(),
             skill_contents: self.skill_contents.clone(),
             skill_embedded_tools: self.skill_embedded_tools.clone(),
@@ -387,14 +387,16 @@ impl ExecutionContext {
         self.cancellation_token.as_ref()
     }
 
-    /// 设置 Canvas 上下文
-    pub fn with_canvas(
-        mut self,
-        note_id: Option<String>,
-        notes_manager: Option<Arc<NotesManager>>,
-    ) -> Self {
+    /// 设置 Canvas 上下文（step 10：NotesManager 改经 [`Self::with_services`] 注入）
+    pub fn with_canvas(mut self, note_id: Option<String>) -> Self {
         self.canvas_note_id = note_id;
-        self.notes_manager = notes_manager;
+        self
+    }
+
+    /// step 10：设置宿主服务容器（取代原 `with_question_bank_service` 与
+    /// `with_canvas` 的 `notes_manager` 参数）。
+    pub fn with_services(mut self, services: Arc<Services>) -> Self {
+        self.services = services;
         self
     }
 
@@ -433,15 +435,6 @@ impl ExecutionContext {
     /// 🆕 设置 Chat V2 数据库（用于工具块防闪退保存）
     pub fn with_chat_v2_db(mut self, db: Option<Arc<ChatV2Database>>) -> Self {
         self.chat_v2_db = db;
-        self
-    }
-
-    /// 🆕 设置智能题目集服务（用于 qbank_* 工具，2026-01）
-    pub fn with_question_bank_service(
-        mut self,
-        service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
-    ) -> Self {
-        self.question_bank_service = service;
         self
     }
 

@@ -32,10 +32,8 @@ use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
 
-/// 内置工具命名空间前缀
-/// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
-/// API 要求工具名称符合正则 ^[a-zA-Z0-9_-]+$，不允许冒号
-pub const BUILTIN_NAMESPACE: &str = "builtin-";
+/// 内置工具命名空间前缀（定义已下沉 `tools/types.rs`，此处保留旧路径）
+pub use super::types::BUILTIN_NAMESPACE;
 
 /// RAG 检索最小分数阈值（仅对量纲可比的 reranker 相关度生效）
 const RETRIEVAL_MIN_SCORE: f32 = 0.3;
