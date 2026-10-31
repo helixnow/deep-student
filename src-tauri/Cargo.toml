@@ -500,17 +500,24 @@ strip = "symbols"     # 安装包内二进制剥离符号；独立调试文件�
 # 开发配置：最大化增量与并行，不牺牲产物语义（仅影响dev/bench/test，release不变）
 [profile.dev]
 opt-level = 0          # 保持零优化，编译更快，语义与默认一致
-debug = true           # 完整调试信息，避免调试体验打折
-incremental = true     # 开启增量编译
+debug = "line-tables-only" # 行号级调试：保留断点行号与回溯，显著缩小 target/PDB；需要变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖
+incremental = true     # 开启增量编译（cargo build / tauri dev）
 codegen-units = 256    # 最大化并行代码生成
 lto = false            # 调试/开发无需LTO
 
 # 第三方依赖只保留行号级调试信息：回溯和断点行号不受影响，但能大幅缩小
-# target 体积、PDB 和链接时间，并降低测试编译的内存峰值。workspace 内的
-# 代码（app 与 dstu-*）仍是完整调试信息。test profile 继承 dev。
-# 注意 src-tauri/.cargo/config.toml 里有同一份 [profile.dev]，两处需同步修改。
+# target 体积、PDB 和链接时间，并降低测试编译的内存峰值。本地 crate 同样使用
+# 行号级调试信息；需要完整变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖。
+# test profile 继承 dev。注意 src-tauri/.cargo/config.toml 里有同一份 profile，
+# 两处需同步修改。
 [profile.dev.package."*"]
 debug = "line-tables-only"
+
+# 测试目标数量多（每个集成测试一个二进制）。增量缓存会为每个测试二进制、
+# 每个 worktree 各存一份，曾把 target 撑到数十 GB。测试统一关闭增量；
+# cargo build / tauri dev 仍保留 dev 增量，日常改代码速度不受影响。
+[profile.test]
+incremental = false
 
 # 移除所有 Cozo/Neo4j 测试二进制，仅保留主程序
 

@@ -103,7 +103,7 @@ const MFJS_SUPPORTED_KEYWORDS: &[&str] = &[
 
 /// 规范化 OpenAI function 线格式工具数组（{"type":"function","function":{...}}），
 /// 返回改写的节点数（供日志与测试断言）。
-pub(crate) fn normalize_tool_schemas_for_mfjs(tools: &mut [Value]) -> usize {
+pub fn normalize_tool_schemas_for_mfjs(tools: &mut [Value]) -> usize {
     let mut rewrites = 0;
     for tool in tools.iter_mut() {
         if let Some(params) = tool
@@ -1334,71 +1334,6 @@ mod tests {
         assert!(content.get("description").is_none());
         assert_eq!(content["anyOf"][0]["description"], json!("JSON 字符串"));
         assert_eq!(content["anyOf"][1]["description"], json!("对象格式"));
-    }
-
-    /// 递归断言：MFJS 不支持的关键字、anyOf 非法同级键、裸 enum 均不存在
-    fn assert_mfjs_clean(node: &Value, path: &str) {
-        match node {
-            Value::Object(map) => {
-                for banned in [
-                    "uniqueItems",
-                    "minProperties",
-                    "maxProperties",
-                    "exclusiveMinimum",
-                    "exclusiveMaximum",
-                    "oneOf",
-                    "allOf",
-                    "const",
-                ] {
-                    assert!(!map.contains_key(banned), "{banned} remains at {path}");
-                }
-                if map.contains_key("anyOf") {
-                    for k in map.keys() {
-                        assert!(
-                            matches!(
-                                k.as_str(),
-                                "anyOf" | "description" | "title" | "$defs" | "$id"
-                            ),
-                            "anyOf sibling '{k}' at {path}"
-                        );
-                    }
-                }
-                if map.contains_key("enum") {
-                    assert!(map.contains_key("type"), "bare enum at {path}");
-                }
-                for (k, v) in map {
-                    assert_mfjs_clean(v, &format!("{path}.{k}"));
-                }
-            }
-            Value::Array(arr) => {
-                for (i, v) in arr.iter().enumerate() {
-                    assert_mfjs_clean(v, &format!("{path}[{i}]"));
-                }
-            }
-            _ => {}
-        }
-    }
-
-    #[test]
-    fn mfjs_normalizes_real_rust_builtin_tool_schemas() {
-        // Rust 侧真实内置工具（user_todo 系）必须全部通过规范化
-        let mut tools = crate::chat_v2::tools::user_todo_executor::get_user_todo_schemas();
-        let rewrites = normalize_tool_schemas_for_mfjs(&mut tools);
-        assert!(rewrites > 0, "user_todo schemas should need rewrites");
-
-        for tool in &tools {
-            let name = tool["function"]["name"].as_str().unwrap_or("<unnamed>");
-            assert_mfjs_clean(&tool["function"]["parameters"], name);
-        }
-
-        let update = tools
-            .iter()
-            .find(|t| t["function"]["name"] == json!("user_todo_update_list"))
-            .expect("user_todo_update_list schema");
-        let params = update["function"]["parameters"]
-            .as_object()
-            .expect("parameters object");
-        assert_eq!(params.keys().collect::<Vec<_>>(), vec!["anyOf"]);
     }
 
     #[test]

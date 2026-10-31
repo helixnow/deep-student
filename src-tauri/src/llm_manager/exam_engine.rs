@@ -652,9 +652,9 @@ impl LLMManager {
             measured_prompt_tokens.is_some(),
             measured_completion_tokens.is_some(),
         ) {
-            (true, true) => crate::chat_v2::types::TokenSource::Api,
-            (false, false) => crate::chat_v2::types::TokenSource::Heuristic,
-            _ => crate::chat_v2::types::TokenSource::Mixed,
+            (true, true) => crate::token_source::TokenSource::Api,
+            (false, false) => crate::token_source::TokenSource::Heuristic,
+            _ => crate::token_source::TokenSource::Mixed,
         };
 
         crate::llm_usage::record_llm_usage_ext(

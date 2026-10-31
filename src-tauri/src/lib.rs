@@ -62,6 +62,7 @@ pub use dstu_core::error_recovery;
 pub mod essay_grading;
 #[allow(dead_code)]
 pub mod exam_sheet_service;
+pub mod extensions; // 扩展点注册：低层模块对上层能力的回调统一在此接线
 pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub mod feature_flags;
 pub mod figure_extractor;
@@ -146,7 +147,9 @@ pub mod system_notification;
 pub mod system_permissions;
 #[allow(dead_code)]
 pub mod test_utils;
+pub use dstu_core::text_escape; // XML 文本转义纯函数（chat_v2::vfs_resolver 按原路径重导出）
 pub mod textbooks_db;
+pub use dstu_core::token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
 #[allow(dead_code)]
 pub mod tools;
 pub mod translation;
@@ -386,6 +389,9 @@ fn enforce_linux_main_window_min_logical_size(window: &tauri::WebviewWindow) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(deprecated)]
 pub fn run() {
+    // 先接好低层对上层的回调，再执行任何业务代码（见 extensions.rs）。
+    crate::extensions::register_extensions();
+
     // 环境变量在 run() 最前面设置（审阅 34 P2-3 / 19 P2-2）：
     // 此时 Sentry/tokio/ANR 看门狗等工作线程尚未启动，set_var 不存在
     // 多线程 getenv 数据竞争；原先放在 setup 闭包里时该前提不成立。

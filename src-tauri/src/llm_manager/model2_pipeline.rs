@@ -131,7 +131,7 @@ fn transient_user_contents_for_merge(
 ) -> std::collections::HashSet<&str> {
     chat_history
         .iter()
-        .filter(|m| crate::chat_v2::pipeline::is_transient_llm_only_message(m))
+        .filter(|m| crate::llm_manager::transient_messages::is_transient_llm_only_message(m))
         .map(|m| m.content.as_str())
         .collect()
 }
@@ -361,7 +361,7 @@ fn check_request_input_budget(
     let used = estimate_request_input_tokens(request_body, config);
     let needs_compaction = allow_compaction
         && limit > 0
-        && used >= (limit as f64 * crate::chat_v2::pipeline::compaction::TRIGGER_RATIO) as usize;
+        && used >= (limit as f64 * crate::llm_manager::compaction_budget::TRIGGER_RATIO) as usize;
     if !needs_compaction && used <= limit && limit > 0 {
         return Ok(());
     }
@@ -5763,20 +5763,9 @@ impl LLMManager {
                         }
                     }
 
-                    let mcp_client = None;
                     // 🔧 P1-36: 优先读取统一管线注入的 memory_enabled
                     let memory_enabled_from_context =
                         context.get("memory_enabled").and_then(|v| v.as_bool());
-                    let tool_ctx = crate::tools::ToolContext {
-                        db: Some(&self.db),
-                        mcp_client,
-                        supports_tools: false,        // 专门为降级注入场景
-                        window: sink_window.as_ref(), // G01-b：无窗 runtime 为 None
-                        stream_event: Some(stream_event),
-                        stage: Some("fallback"),
-                        memory_enabled: memory_enabled_from_context,
-                        llm_manager: None, // fallback 场景不需要重排器
-                    };
 
                     if let Some(last_user_msg) = chat_history.iter().rfind(|m| m.role == "user") {
                         let memory_enabled_effective = memory_enabled_from_context.unwrap_or(true);
@@ -5824,10 +5813,6 @@ impl LLMManager {
 
                         // 调用 WebSearch 工具生成注入文本
                         if !reuse_prefetched_web_search && web_search_enabled {
-                            let web_registry =
-                                crate::tools::ToolRegistry::new_with(vec![std::sync::Arc::new(
-                                    crate::tools::WebSearchTool,
-                                )]);
                             let web_args = json!({
                                 "query": last_user_msg.content,
                                 "top_k": 3
@@ -5836,10 +5821,31 @@ impl LLMManager {
                                 "[Fallback] 准备调用 web_search 工具，查询: {}",
                                 &last_user_msg.content
                             );
+                            // web_search 由上层 tools 模块注册（ChatV2Pipeline::new 安装），
+                            // 调用方式与原 ToolRegistry::call_tool 相同。
                             let (_ok, _data, _err, _usage, _citations, web_inject_text) =
-                                web_registry
-                                    .call_tool("web_search", &web_args, &tool_ctx)
-                                    .await;
+                                match crate::llm_manager::web_search_fallback::registered_web_search_fallback() {
+                                    Some(web_search) => {
+                                        web_search(
+                                            crate::llm_manager::web_search_fallback::WebSearchFallbackRequest {
+                                                db: &self.db,
+                                                window: sink_window.as_ref(),
+                                                stream_event,
+                                                memory_enabled: memory_enabled_from_context,
+                                                args: &web_args,
+                                            },
+                                        )
+                                        .await
+                                    }
+                                    None => (
+                                        false,
+                                        None,
+                                        Some("未知工具: web_search".to_string()),
+                                        None,
+                                        None,
+                                        None,
+                                    ),
+                                };
                             debug!("[Fallback] web_search 调用完成，ok={}, citations数量={}, inject_text长度={}",
                                 _ok,
                                 _citations.as_ref().map(|c| c.len()).unwrap_or(0),
@@ -5920,7 +5926,7 @@ impl LLMManager {
         {
             let transient_skill_count = chat_history
                 .iter()
-                .filter(|m| crate::chat_v2::pipeline::is_transient_skill_message(m))
+                .filter(|m| crate::llm_manager::transient_messages::is_transient_skill_message(m))
                 .count();
             let real_load_skills_call_count = messages
                 .iter()
@@ -7245,9 +7251,9 @@ impl LLMManager {
             if task_context != Some("chat_v2") {
                 // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
                 let token_source = if captured_usage.is_some() {
-                    crate::chat_v2::types::TokenSource::Api
+                    crate::token_source::TokenSource::Api
                 } else {
-                    crate::chat_v2::types::TokenSource::Heuristic
+                    crate::token_source::TokenSource::Heuristic
                 };
                 // R5 遥测身份：不要把 run-scoped stream_event 整体当 session_id
                 // ——每次 pipeline 执行的 run key 都不同，报表会把每个 run 当成
@@ -8897,7 +8903,7 @@ impl LLMManager {
                         Some(err_msg.clone()),
                         Some(usage_protocol.clone()),
                         // 响应解析失败没有任何 API usage，0 token 记录标注为本地估算
-                        Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
+                        Some(crate::token_source::TokenSource::Heuristic.to_string()),
                     );
                     routing::tag_establish_failure(AppError::llm(err_msg), None)
                 })?;
@@ -8918,7 +8924,7 @@ impl LLMManager {
                         false,
                         Some(error.to_string()),
                         Some(usage_protocol.clone()),
-                        Some(crate::chat_v2::types::TokenSource::Heuristic.to_string()),
+                        Some(crate::token_source::TokenSource::Heuristic.to_string()),
                     );
                     routing::tag_establish_failure(error, None)
                 })
@@ -8958,9 +8964,9 @@ impl LLMManager {
         let usage = openai_like_json.get("usage");
         // 真实 token 来源：有 API usage 为 api，否则为本地启发式估算
         let token_source = if usage.is_some() {
-            crate::chat_v2::types::TokenSource::Api
+            crate::token_source::TokenSource::Api
         } else {
-            crate::chat_v2::types::TokenSource::Heuristic
+            crate::token_source::TokenSource::Heuristic
         };
         let (
             actual_prompt_tokens,

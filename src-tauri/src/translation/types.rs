@@ -1,38 +1,8 @@
 /// 翻译模块类型定义
 use serde::{Deserialize, Serialize};
 
-/// 翻译请求
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TranslationRequest {
-    /// 待翻译文本
-    pub text: String,
-
-    /// 源语言（如 "zh", "en", "auto"）
-    pub src_lang: String,
-
-    /// 目标语言
-    pub tgt_lang: String,
-
-    /// 自定义提示词（可选）
-    pub prompt_override: Option<String>,
-
-    /// 会话 ID（用于事件作用域）
-    pub session_id: String,
-
-    /// 风格控制（可选）
-    /// "formal" | "casual" | "auto"（匹配原文语气） | null
-    #[serde(default)]
-    pub formality: Option<String>,
-
-    /// 术语表（可选，键值对：源词 -> 目标词）
-    #[serde(default)]
-    pub glossary: Option<Vec<(String, String)>>,
-
-    /// 翻译领域/场景（可选）
-    /// "academic" | "technical" | "literary" | "casual" | "legal" | "medical"
-    #[serde(default)]
-    pub domain: Option<String>,
-}
+/// 翻译请求（定义已下沉到 `llm_manager::translation_prompts`）
+pub use crate::llm_manager::translation_prompts::TranslationRequest;
 
 /// 翻译响应
 #[derive(Debug, Clone, Serialize, Deserialize)]
