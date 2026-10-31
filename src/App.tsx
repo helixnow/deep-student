@@ -4,7 +4,7 @@ import './i18n';
 import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
 import { invoke } from '@tauri-apps/api/core';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { useDesktopWindowMaximizeToggle } from './app/hooks/useDesktopWindowMaximizeToggle';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
 import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -480,19 +480,7 @@ function App() {
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
-  const toggleDesktopWindowMaximize = useCallback(async () => {
-    try {
-      const appWindow = getCurrentWindow();
-      if (await appWindow.isMaximized()) {
-        await appWindow.unmaximize();
-        return;
-      }
-
-      await appWindow.maximize();
-    } catch (error: unknown) {
-      console.error('Failed to toggle desktop window maximize:', error);
-    }
-  }, []);
+  const { toggleDesktopWindowMaximize } = useDesktopWindowMaximizeToggle();
   // macOS traffic lights share the native titlebar with the custom shell
   // controls. The horizontal spacer reserves their hit area; adding a second
   // vertical inset would render a duplicate toolbar below the native chrome.

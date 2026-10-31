@@ -22,6 +22,7 @@
     "src/app/hooks/useDesktopTitlebarInteractions.ts",
     "src/app/hooks/useClassicToWorkbenchHandoff.ts",
     "src/app/hooks/useShellViewChrome.tsx",
-    "src/app/hooks/useViewLayerContents.tsx"
+    "src/app/hooks/useViewLayerContents.tsx",
+    "src/app/hooks/useDesktopWindowMaximizeToggle.ts"
   ]
 }
