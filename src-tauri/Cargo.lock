@@ -3282,6 +3282,7 @@ dependencies = [
  "dotenvy",
  "dstu-core",
  "dstu-docs",
+ "dstu-kernel",
  "dstu-platform",
  "dstu-security",
  "dstu-util",
@@ -3767,6 +3768,10 @@ dependencies = [
  "urlencoding",
  "zip 0.6.6",
 ]
+
+[[package]]
+name = "dstu-kernel"
+version = "0.0.0"
 
 [[package]]
 name = "dstu-platform"
