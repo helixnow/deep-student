@@ -20,6 +20,8 @@
     "src/app/hooks/useDesktopSidebarElements.tsx",
     "src/app/hooks/useSessionSidebarContextSync.ts",
     "src/app/hooks/useDesktopTitlebarInteractions.ts",
-    "src/app/hooks/useClassicToWorkbenchHandoff.ts"
+    "src/app/hooks/useClassicToWorkbenchHandoff.ts",
+    "src/app/hooks/useShellViewChrome.tsx",
+    "src/app/hooks/useViewLayerContents.tsx"
   ]
 }

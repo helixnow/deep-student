@@ -32,7 +32,7 @@ import { DesktopShellSidebarLayers } from './app/shell/DesktopShellSidebarLayers
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { DesktopShellTitleEditor } from './components/DesktopShellTitleEditor';
-import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider, MobilePageScaffold } from '@/components/layout';
+import { MobileLayoutProvider, MobileHeaderProvider, MobileHeaderNavProvider, MobileHeaderActiveViewSync, MobileAppNavigationProvider } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro/components/GlobalPomodoroWidget';
 import { DueMistakesReviewHost } from '@/features/learning-today/DueMistakesReviewHost';
 import { useAutomationRunNotifications } from '@/features/todo/hooks/useAutomationRunNotifications';
@@ -61,7 +61,6 @@ import './styles/responsive-utilities.css'; // 响应式工具类
 // 🚀 性能优化：页面组件改为懒加载
 import { NotificationContainer } from './components/NotificationContainer';
 import { showGlobalNotification } from './components/UnifiedNotification';
-import { CustomScrollArea } from './components/custom-scroll-area';
 import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
 import { useShellScrollGuard } from './hooks/useShellScrollGuard';
@@ -75,7 +74,6 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
-import { FeatureUnavailablePanel } from './components/system-status/FeatureUnavailablePanel';
 import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
 import { setPendingSettingsTab, setPendingSettingsRoute } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -151,24 +149,15 @@ import { useWebviewSettingsPersistence } from './app/hooks/useWebviewSettingsPer
 // 🚀 性能优化：懒加载页面组件
 import {
   PageLoadingFallback,
-  LazySettings,
-  LazySOTADashboard,
   LazyDataImportExport,
   LazyImportConversationDialog,
-  LazySkillsManagementPage,
-  LazyTemplateManagementPage,
-  LazyStyleDebugPage,
-  LazyLearningHubPage,
-  LazySandboxWorkbenchPage,
-  LazyPdfReader,
-  LazyTodoPage,
-  LazyFlashcardsPage,
-  LazyMediaStudioPage,
-  LazyCrepeDemoPage,
-  LazyChatV2IntegrationTest,
-  LazyLLMOutputPlayground,
-  LazyChatV2Page,
 } from './lazyComponents';
+import {
+  useAuxiliaryViewContents,
+  useDashboardAndSettingsContents,
+  useFeatureViewContents,
+} from './app/hooks/useViewLayerContents';
+import { useShellViewChrome } from './app/hooks/useShellViewChrome';
 
 // ★ Workbench（学习 OS 桌面，实验功能）：刻意深路径导入轻量模块，
 //   避免经 workbench/index.ts 把应用群 re-export 拖进主 bundle；
@@ -1346,82 +1335,22 @@ function App() {
     syncCurrentChatHeaderGroupName();
   }, [syncCurrentChatHeaderGroupName]);
 
-  const desktopShellViewLabel = useMemo(() => {
-    if (currentView === 'chat-v2') {
-      // 新会话尚未写入标题时，按 Codex 的行为保持标题区域为空。
-      return currentChatHeaderTitle;
-    }
+  // 壳层标题（桌面标题栏 / 移动端兜底标题）与闪卡中心移动端分区条
+  const { desktopShellViewLabel, cardsHubMobileTabs } = useShellViewChrome(
+    currentView,
+    currentChatHeaderTitle,
+    t,
+    isSmallScreen,
+    handleMobileAppNavigate,
+  );
 
-    const labels: Partial<Record<CurrentView, string>> = {
-      'chat-v2': t('sidebar:navigation.chat_v2'),
-      'learning-hub': t('sidebar:navigation.learning_hub'),
-      'media': t('sidebar:navigation.media'),
-      'settings': t('sidebar:navigation.settings'),
-      'dashboard': t('common:navigation.dashboard'),
-      // 闪卡中心三个分区共用页面标题，分区由标题旁的 CardsHubTabs 指示
-      'task-dashboard': t('sidebar:navigation.flashcards'),
-      'flashcards': t('sidebar:navigation.flashcards'),
-      'skills-management': t('sidebar:navigation.skills_management'),
-      'data-management': t('common:navigation.data_management'),
-      'template-management': t('sidebar:navigation.flashcards'),
-      'ui-lab': t('sidebar:navigation.ui_lab'),
-      'pdf-reader': t('common:navigation.pdf_reader'),
-      'sandbox-workbench': t('common:navigation.sandbox_workbench'),
-      'todo': t('sidebar:navigation.todo'),
-      'crepe-demo': t('common:navigation.crepe_demo'),
-      'chat-v2-test': t('common:navigation.chat_v2_test'),
-      'llm-playground': t('common:navigation.llm_playground'),
-    };
-
-    return labels[currentView] ?? t('common:app.default_header');
-  }, [currentChatHeaderTitle, currentView, t]);
-
-  // 闪卡中心移动端分区条：经 MobileHeaderNav.accessory 注入各分区页的页内顶栏下方
-  const cardsHubMobileTabs = useMemo(() => (
-    isSmallScreen && isCardsHubView(currentView) ? (
-      <CardsHubTabs
-        variant="mobile"
-        currentView={currentView}
-        onNavigate={handleMobileAppNavigate}
-      />
-    ) : undefined
-  ), [currentView, handleMobileAppNavigate, isSmallScreen]);
-
-  // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
-  // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
-  // React 协调器看到相同引用后会跳过整个子树的 diff，大幅减少切换耗时。
-  // 仅包含稳定依赖（useCallback/useState setter/ref）的视图可安全 memoize。
-  const dashboardContent = useMemo(() => (
-    // P3-1：移动端组件自带 MobileSlidingLayout 抽屉壳（含内容滚动），
-    // 外层再套 CustomScrollArea 会让抽屉的 absolute 定位落进滚动视口
-    isSmallScreen ? (
-      <Suspense fallback={<PageLoadingFallback />}>
-        <LazySOTADashboard
-          onBack={() => setCurrentView('chat-v2')}
-          onNavigate={(view) => setCurrentView(view)}
-        />
-      </Suspense>
-    ) : (
-      <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
-        <Suspense fallback={<PageLoadingFallback />}>
-          <LazySOTADashboard
-            onBack={() => setCurrentView('chat-v2')}
-            onNavigate={(view) => setCurrentView(view)}
-          />
-        </Suspense>
-      </CustomScrollArea>
-    )
-  ), [isSmallScreen, setCurrentView]);
-
-  const isSettingsActive = currentView === 'settings';
-  const settingsContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <LazySettings
-        onBack={() => setCurrentView('chat-v2')}
-        isActive={isSettingsActive}
-      />
-    </Suspense>
-  ), [isSettingsActive, setCurrentView]);
+  // 🚀 性能优化：各视图内容 useMemo 收口（见 app/hooks/useViewLayerContents）；
+  // task-dashboard / data-management 依赖 App 内 state setter，留在下方
+  const { dashboardContent, settingsContent } = useDashboardAndSettingsContents(
+    currentView,
+    isSmallScreen,
+    setCurrentView,
+  );
 
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -1439,61 +1368,24 @@ function App() {
     </Suspense>
   ), [setCurrentView]);
 
-  const skillsManagementContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
-  ), []);
-
-  const isFlashcardsActive = currentView === 'flashcards';
-  const flashcardsContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <LazyFlashcardsPage isActive={isFlashcardsActive} />
-    </Suspense>
-  ), [isFlashcardsActive]);
-
-  const isMediaActive = currentView === 'media';
-  const mediaStudioContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <LazyMediaStudioPage isActive={isMediaActive} />
-    </Suspense>
-  ), [isMediaActive]);
-
-  const styleDebugContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold>
-        <LazyStyleDebugPage />
-      </MobilePageScaffold>
-    </Suspense>
-  ), []);
-
-  const learningHubContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyLearningHubPage /></Suspense>
-  ), []);
-
-  const pdfReaderContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold>
-        <LazyPdfReader />
-      </MobilePageScaffold>
-    </Suspense>
-  ), []);
-
-  const chatV2Content = useMemo(() => (
-    chatV2Blocked
-      ? <FeatureUnavailablePanel component="chat_v2" title={t('common:maintenance.chat_unavailable')} />
-      : <Suspense fallback={<PageLoadingFallback />}><LazyChatV2Page /></Suspense>
-  ), [chatV2Blocked, t]);
-
-  // template-management: 依赖仅在模板选择流程触发时变化，日常视图切换中保持稳定
-  const templateManagementContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <LazyTemplateManagementPage
-        isSelectingMode={isSelectingTemplate}
-        onTemplateSelected={handleTemplateSelected}
-        onCancel={handleTemplateSelectionCancel}
-        refreshToken={templateManagementRefreshTick}
-      />
-    </Suspense>
-  ), [isSelectingTemplate, handleTemplateSelected, handleTemplateSelectionCancel, templateManagementRefreshTick]);
+  const {
+    skillsManagementContent,
+    flashcardsContent,
+    mediaStudioContent,
+    styleDebugContent,
+    learningHubContent,
+    pdfReaderContent,
+    chatV2Content,
+    templateManagementContent,
+  } = useFeatureViewContents(
+    currentView,
+    chatV2Blocked,
+    t,
+    isSelectingTemplate,
+    handleTemplateSelected,
+    handleTemplateSelectionCancel,
+    templateManagementRefreshTick,
+  );
 
   // data-management: 依赖仅在导入对话框打开/语言切换时变化
   const dataManagementContent = useMemo(() => (
@@ -1507,32 +1399,13 @@ function App() {
     </Suspense>
   ), [showImportConversation, handleImportConversationSuccess, setCurrentView]);
 
-  // 保活视图层的内容必须保持稳定引用：ViewLayerRenderer 的 memo 以 children
-  // 引用做比较，若每次 App 重渲染都新建元素，已访问的隐藏视图会跟着重渲染，
-  // 表现为访问页面越多、切换越卡。以下内容统一 useMemo 收口。
-  const todoContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyTodoPage /></Suspense>
-  ), []);
-
-  const sandboxWorkbenchContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold><LazySandboxWorkbenchPage /></MobilePageScaffold>
-    </Suspense>
-  ), []);
-
-  const crepeDemoContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></MobilePageScaffold>
-    </Suspense>
-  ), [setCurrentView]);
-
-  const chatV2TestContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>
-  ), []);
-
-  const llmPlaygroundContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}><LazyLLMOutputPlayground /></Suspense>
-  ), []);
+  const {
+    todoContent,
+    sandboxWorkbenchContent,
+    crepeDemoContent,
+    chatV2TestContent,
+    llmPlaygroundContent,
+  } = useAuxiliaryViewContents(setCurrentView);
 
   // 🚀 使用抽取的 ViewLayerRenderer 组件
   const renderViewLayer = (
