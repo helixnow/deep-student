@@ -48,9 +48,9 @@ pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 pub mod cloud_config_commands;
 #[allow(dead_code)]
 pub mod cloud_storage;
-pub use dstu_vision::cross_page_merger;
 pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
+pub use dstu_vision::cross_page_merger;
 pub mod diagnostics;
 pub use dstu_docs::document_parser;
 pub mod document_processing_service;
@@ -65,9 +65,9 @@ pub use dstu_vision::exam_sheet_service;
 pub mod extensions; // 扩展点注册：低层模块对上层能力的回调统一在此接线
 pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub use dstu_storage::feature_flags;
-pub use dstu_vision::figure_extractor;
 pub use dstu_storage::file_manager;
-pub use dstu_vfs::file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
+pub use dstu_vfs::file_stream_protocol;
+pub use dstu_vision::figure_extractor; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
 pub use dstu_learning::fsrs_scheduler; // Anki 语义的 FSRS 调度层（学习步 / fuzz / 逻辑日，纯函数）
 pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecoder）
@@ -77,13 +77,13 @@ pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README
 pub use dstu_core::json_validator;
 #[allow(dead_code)]
 pub use dstu_llm::llm_manager;
+pub use dstu_storage::llm_usage;
 #[allow(dead_code)]
 pub use dstu_vfs::lance_vector_store;
-pub use dstu_vision::llm_structurer;
-pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
-// 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
-// 实现已下沉到 dstu-learning，这里按原路径重导出；service 的单测要用题库/FSRS/画像等 app 侧
-// 领域，留在 app 并保持原测试路径 `mastery::service::tests`。
+pub use dstu_vision::llm_structurer; // LLM 使用量统计模块（独立 llm_usage.db）
+                                     // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
+                                     // 实现已下沉到 dstu-learning，这里按原路径重导出；service 的单测要用题库/FSRS/画像等 app 侧
+                                     // 领域，留在 app 并保持原测试路径 `mastery::service::tests`。
 pub mod mastery {
     pub use dstu_learning::mastery::*;
     pub mod service {
@@ -107,14 +107,14 @@ pub use dstu_platform::metrics_server; // 多模态知识库模块（基于 Qwen
 #[allow(dead_code)]
 pub mod notes_exporter;
 pub mod notes_manager;
+pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
 pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub use dstu_llm::openai_codex;
 pub use dstu_platform::package_manager;
+pub use dstu_vfs::pdf_protocol;
 pub use dstu_vision::page_rasterizer;
 pub use dstu_vision::pdf_ocr_service;
-pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
-pub use dstu_vfs::pdf_protocol;
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
 pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub use dstu_llm::providers;
