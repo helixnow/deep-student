@@ -666,6 +666,18 @@ impl ActiveDatabaseKind {
     }
 }
 
+/// 应用级命令层聚合状态（**仅限 app crate**）。
+///
+/// app crate 是组合根：只做组装、状态管理、命令注册（唯一的 `generate_handler!`，见 `lib.rs::run`）
+/// 与 Tauri 适配层；业务实现位于 `crates/dstu-*`。`AppState` 保留为 app 内约 415 个命令的
+/// 聚合注入点（step 10 §4：不改这些命令的签名），由 `lib.rs::build_app_state` 构造。
+///
+/// 共享服务字段另以**同一份** `Arc<T>` 单独 `manage`（`lib.rs::manage_shared_services`，紧跟
+/// `app.manage(state)`）：`Arc<Database>`、`Arc<DatabaseManager>`、`Arc<FileManager>`、
+/// `Arc<NotesManager>`、`Arc<ExamSheetService>`、`Arc<PdfOcrService>`、`Arc<QuestionBankService>`（仅 `Some` 时）；
+/// `Arc<VfsDatabase>`、`Arc<VfsLanceStore>`（初始化成功时）、`Arc<LLMManager>`、`Arc<PdfProcessingService>`
+/// 由 `build_app_state` 自行 manage。`dstu-*` crate 只能注入这些 `State<Arc<T>>`，**不得**引用 `AppState`。
+/// 其余字段（会话/取消表、`active_database`、`custom_mode_manager` 等）是命令层会话状态，只留在此处。
 pub struct AppState {
     pub database: Arc<Database>,                // 保留以兼容旧代码
     pub database_manager: Arc<DatabaseManager>, // 新的连接池管理器

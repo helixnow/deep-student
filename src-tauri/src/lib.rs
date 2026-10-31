@@ -1,3 +1,16 @@
+//! Deep Student 应用 crate —— **组合根（composition root）**。
+//!
+//! 领域与平台实现都在 `crates/dstu-*`（chat_v2 核心在 `dstu-agent`）；本 crate 只负责：
+//! - **组装**：构造共享服务并接线扩展点（`build_app_state`、`extensions::register_extensions`、
+//!   `agent_wiring` 的执行器花名册 / pipeline `Services` / 域能力插件）；
+//! - **状态管理**：`app.manage(...)`。`commands::AppState` 是仅限 app 的命令层聚合；
+//!   其中每个共享服务另以**同一份** `Arc<T>` 单独 manage（见 `manage_shared_services`），
+//!   下层 crate 只注入 `State<Arc<T>>`，绝不引用 `AppState`；
+//! - **命令注册**：唯一的 `tauri::generate_handler!`（见 `run()`）；
+//! - **Tauri 适配层**：取 `State<AppState>` 的薄命令包装、事件桥、插件与窗口/平台胶水。
+//!
+//! 新的业务逻辑应放进对应的 `dstu-*` crate，而不是这里。
+
 // Deep Student library entry
 // 提供 run() 供 bin 目标调用，以解决编译错误。
 // 后续可在此处逐步引入 invoke_handler! 和实际命令函数列表。
@@ -1321,6 +1334,9 @@ pub fn run() {
                 std::sync::Mutex::new(sentry_guard),
             )));
             app.manage(state);
+            // step 10 §4 / §6 #6：紧随 AppState 单独 manage 各共享服务（`Arc<Database>` 在最前），
+            // 与 AppState 字段是同一份 Arc；不存在“AppState 已 manage 而 Arc<Database> 未 manage”的窗口。
+            manage_shared_services(app.handle(), &app.state::<crate::commands::AppState>());
             // Reset process-local editor membership after restart, then expire
             // lost heartbeats without relying on a renderer remaining alive.
             if let Some(db) = app.state::<crate::commands::AppState>().vfs_db.clone() {
@@ -1406,9 +1422,8 @@ pub fn run() {
             // Retrieve the application state and clone the database from it
             let app_state: tauri::State<crate::commands::AppState> = app.state();
             let database = app_state.inner().database.clone();
-            // 兼容命令注入：部分命令直接请求 `State<Arc<Database>>`（例如 schedule_memory_internalization）
-            // 需要显式将 `Arc<Database>` 注入到 Tauri 状态中，否则会提示 `.manage()` 缺失
-            app.manage(database.clone());
+            // `Arc<Database>`（同一份 Arc）已在 `app.manage(state)` 之后由 `manage_shared_services` 注入
+            // （step 10 §6 #6，原先在此处 manage）。
 
             // 🆕 注册 BackupJobManagerState 为 Tauri State（单例模式）
             // 所有备份相关命令都应通过 State 注入获取管理器实例
@@ -1532,9 +1547,9 @@ pub fn run() {
                     // step 10：NotesManager（Canvas 工具）与智能题目集服务经 Services 注入执行上下文。
                     // 🆕 缺失 QuestionBankService 时聊天侧全部 qbank_* 工具
                     // 恒报 QBANK_SERVICE_UNAVAILABLE（或静默降级到 preview_json）
-                    .with_services(crate::agent_wiring::services::build_pipeline_services(
-                        Some(app_state.inner().notes_manager.clone()),
-                        app_state.inner().question_bank_service.clone(),
+                    // Services 由已单独 manage 的同一份 Arc 组装（step 10 §4，见 manage_shared_services）。
+                    .with_services(crate::agent_wiring::services::build_pipeline_services_from_managed(
+                        &app_handle,
                     ))
                     .with_approval_manager(approval_manager) // 🆕 关联审批管理器
                     .with_kill_switch(chat_v2_kill_switch) // 🆕 工具环共享一键断电
@@ -3407,6 +3422,29 @@ fn start_vfs_index_worker(
         }
         tracing::info!("[VfsIndexWorker] stopped");
     });
+}
+
+/// step 10 §4：把 `AppState` 中的共享服务以**同一份** `Arc<T>` 单独注入 Tauri 状态，
+/// 让下层 crate 注入 `State<Arc<T>>` / `try_state::<Arc<T>>()` 而无需引用 app-only 的 `AppState`。
+///
+/// 只 clone Arc，绝不构造第二个实例。必须紧跟 `app.manage(state)` 调用（§6 #6），且 `Arc<Database>`
+/// 排在最前。已由 `build_app_state` 自行 manage 的 `Arc<VfsDatabase>` / `Arc<VfsLanceStore>` /
+/// `Arc<LLMManager>` / `Arc<PdfProcessingService>` 不在此重复；`anki_database` / `notes_database` 与
+/// `database` 是同一 `Arc<Database>`（同一 TypeId），不另行 manage。
+/// `question_bank_service` 仅在 `Some` 时 manage（§6 #5：app 命令仍读 AppState 字段，不改签名）。
+fn manage_shared_services<R: tauri::Runtime>(
+    manager: &impl Manager<R>,
+    state: &crate::commands::AppState,
+) {
+    manager.manage(state.database.clone()); // Arc<Database>
+    manager.manage(state.database_manager.clone()); // Arc<DatabaseManager>
+    manager.manage(state.file_manager.clone()); // Arc<FileManager>
+    manager.manage(state.notes_manager.clone()); // Arc<NotesManager>
+    manager.manage(state.exam_sheet_service.clone()); // Arc<ExamSheetService>
+    manager.manage(state.pdf_ocr_service.clone()); // Arc<PdfOcrService>
+    if let Some(question_bank_service) = state.question_bank_service.clone() {
+        manager.manage(question_bank_service); // Arc<QuestionBankService>
+    }
 }
 
 // Helper to build the global application state
