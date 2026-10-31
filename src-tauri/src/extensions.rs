@@ -95,6 +95,41 @@ impl Plugin for StorageNotesPlugin {
     }
 }
 
+/// browser 的低层回调：Agent 会话下载落盘的 artifact 根目录（chat_v2 runtime_roots）。
+struct BrowserArtifactRootPlugin;
+
+impl Plugin for BrowserArtifactRootPlugin {
+    fn name(&self) -> &'static str {
+        "browser_artifact_root"
+    }
+
+    fn apply(&self, scope: &mut Scope) -> Result<(), PluginError> {
+        let resolver: Arc<dyn crate::browser::hooks::DownloadArtifactRoot> =
+            Arc::new(ChatV2DownloadArtifactRoot);
+        match crate::browser::hooks::register_download_artifact_root(resolver) {
+            Ok(disposer) => {
+                scope.add(disposer);
+                Ok(())
+            }
+            Err(_occupied) => Ok(()),
+        }
+    }
+}
+
+/// 与拆分前 `browser::service` 直接调用的 `artifact_root(app, session_id, true)` 相同。
+struct ChatV2DownloadArtifactRoot;
+
+impl crate::browser::hooks::DownloadArtifactRoot for ChatV2DownloadArtifactRoot {
+    fn artifact_root(
+        &self,
+        app: &tauri::AppHandle,
+        chat_session_id: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        crate::chat_v2::runtime_roots::artifact_root(app, chat_session_id, true)
+            .map(|root| root.path)
+    }
+}
+
 /// 组合根唯一的插件列表（顺序即 apply 顺序）。
 fn plugins() -> Vec<Arc<dyn Plugin>> {
     vec![
@@ -103,6 +138,7 @@ fn plugins() -> Vec<Arc<dyn Plugin>> {
         Arc::new(MediaVfsPlugin),
         Arc::new(QbankVfsPlugin),
         Arc::new(StorageNotesPlugin),
+        Arc::new(BrowserArtifactRootPlugin),
     ]
 }
 

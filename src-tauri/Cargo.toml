@@ -28,6 +28,7 @@ resolver = "2"
 members = [
     ".",
     "crates/dstu-agent-api",
+    "crates/dstu-browser",
     "crates/dstu-core",
     "crates/dstu-docs",
     "crates/dstu-kernel",
@@ -52,6 +53,7 @@ publish = false
 [workspace.dependencies]
 # 内部 crate（分层见 scripts/check-crate-layers.mjs）
 dstu-agent-api = { path = "crates/dstu-agent-api", default-features = false }
+dstu-browser = { path = "crates/dstu-browser", default-features = false }
 dstu-core = { path = "crates/dstu-core", default-features = false }
 dstu-docs = { path = "crates/dstu-docs", default-features = false }
 dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
@@ -283,6 +285,7 @@ protoc-bin-vendored = "3.0"
 
 [dependencies]
 dstu-agent-api = { workspace = true }
+dstu-browser = { workspace = true }
 dstu-core = { workspace = true }
 dstu-docs = { workspace = true }
 dstu-kernel = { workspace = true }
@@ -573,7 +576,7 @@ builtin_free_models = ["dstu-llm/builtin_free_models"]
 # 云存储 S3 兼容支持（可选，避免默认增加编译时间）
 cloud_storage_s3 = ["aws-sdk-s3", "aws-config"]
 # 数据治理模块（迁移、审计、同步等）
-data_governance = ["refinery", "dstu-storage/data_governance"]
+data_governance = ["refinery", "dstu-storage/data_governance", "dstu-browser/data_governance"]
 # DevTools：仅在开发构建中启用，release 构建不应包含
 # 使用方式：cargo tauri dev --features devtools
 devtools = ["tauri/devtools"]

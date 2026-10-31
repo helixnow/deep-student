@@ -3281,6 +3281,7 @@ dependencies = [
  "docx-rs",
  "dotenvy",
  "dstu-agent-api",
+ "dstu-browser",
  "dstu-core",
  "dstu-docs",
  "dstu-kernel",
@@ -3739,6 +3740,41 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio-util",
+]
+
+[[package]]
+name = "dstu-browser"
+version = "0.0.0"
+dependencies = [
+ "block2 0.6.2",
+ "chrono",
+ "cocoa",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-storage",
+ "hex",
+ "javascriptcore-rs",
+ "objc",
+ "objc2 0.6.4",
+ "objc2-foundation 0.3.2",
+ "objc2-web-kit 0.3.2",
+ "r2d2",
+ "r2d2_sqlite",
+ "rand 0.8.5",
+ "refinery",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
+ "webkit2gtk",
+ "webview2-com",
 ]
 
 [[package]]

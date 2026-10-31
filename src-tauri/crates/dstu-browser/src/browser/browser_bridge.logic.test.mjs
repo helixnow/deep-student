@@ -1,6 +1,6 @@
 /**
  * Pure-logic unit tests for browser-bridge password / envelope helpers.
- * Run with: node --test src-tauri/src/browser/browser_bridge.logic.test.mjs
+ * Run with: node --test src-tauri/crates/dstu-browser/src/browser/browser_bridge.logic.test.mjs
  *
  * Full DOM bridge is covered by INIT_SCRIPT string asserts in bridge.rs;
  * this file locks the password hard-reject contract without a browser.

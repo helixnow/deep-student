@@ -24,13 +24,12 @@ use tracing::{debug, info, warn};
 use url::Url;
 use uuid::Uuid;
 
-use crate::chat_v2::runtime_roots::artifact_root;
-use crate::chat_v2::task_objects::{
+use crate::database::Database;
+use crate::feature_flags::FeatureFlagManager;
+use crate::task_objects::{
     hash_transform_params, DerivedEdge, ManagedLocator, ObjectCapabilities, TaskObjectHandle,
     TaskObjectHandleBuilder, TaskObjectKind,
 };
-use crate::commands::AppState;
-use crate::feature_flags::FeatureFlagManager;
 
 use super::database::BrowserDatabase;
 use super::error::{BrowserError, BrowserResult};
@@ -40,6 +39,7 @@ use super::events::{
     BrowserContentUserInputPayload, BrowserControlModeChangedPayload, BrowserNavigatedPayload,
     BrowserNavigationBlockedPayload, BrowserTitleChangedPayload,
 };
+use super::hooks::download_artifact_root;
 use super::policy::{self, NavigationDenyReason};
 use super::repository::BrowserRepository;
 use super::session::{BrowserSession, BrowserSessionState, HistoryEntry, OpenSessionOptions};
@@ -249,17 +249,17 @@ impl BrowserService {
     /// `"false"` 关闭。子闸 `desktop.workbenchBrowserEnabled` 仍为 opt-in
     ///（缺失 → 关闭）。
     pub async fn assert_gates_open(&self) -> BrowserResult<()> {
+        // app 在 manage(AppState) 之后以同一个 `Arc<Database>`（即 AppState.database）
+        // manage，且先于 BrowserService 注册；错误文案保持拆分前的 "AppState not available"。
         let app_state = self
             .app
-            .try_state::<AppState>()
+            .try_state::<Arc<Database>>()
             .ok_or_else(|| BrowserError::Validation("AppState not available".into()))?;
 
         let workbench = app_state
-            .database
             .get_setting(SETTING_WORKBENCH_MODE)
             .map_err(|e| BrowserError::Database(e.to_string()))?;
         let enabled = app_state
-            .database
             .get_setting(SETTING_BROWSER_ENABLED)
             .map_err(|e| BrowserError::Database(e.to_string()))?;
         if let Err(message) = assert_settings_gates_open(workbench.as_deref(), enabled.as_deref()) {
@@ -267,9 +267,9 @@ impl BrowserService {
             return self.reject_closed_gate(message).await;
         }
 
-        let app_version = env!("CARGO_PKG_VERSION").to_string();
+        let app_version = dstu_core::APP_VERSION.to_string();
         let manager = FeatureFlagManager::new(app_version)
-            .load_from_database(&app_state.database)
+            .load_from_database(&app_state)
             .await
             .map_err(BrowserError::Validation)?;
         if !manager.is_feature_enabled(FLAG_UI_WORKBENCH_BROWSER) {
@@ -312,8 +312,8 @@ impl BrowserService {
 
     /// `desktop.workbenchBrowserNetworkMode == "full"` → 允许非 loopback http
     fn allow_insecure_http(&self) -> bool {
-        let allow = match self.app.try_state::<AppState>() {
-            Some(app_state) => match app_state.database.get_setting(SETTING_BROWSER_NETWORK_MODE) {
+        let allow = match self.app.try_state::<Arc<Database>>() {
+            Some(app_state) => match app_state.get_setting(SETTING_BROWSER_NETWORK_MODE) {
                 Ok(Some(mode)) => mode.trim().eq_ignore_ascii_case("full"),
                 _ => false,
             },
@@ -325,7 +325,7 @@ impl BrowserService {
 
     /// Keep the native navigation callback in sync with a persisted setting
     /// without rebuilding the content Webview.
-    pub(crate) fn sync_network_mode_value(&self, mode: &str) {
+    pub fn sync_network_mode_value(&self, mode: &str) {
         self.navigation_policy
             .set_agent_allow_insecure_http(mode.trim().eq_ignore_ascii_case("full"));
     }
@@ -1331,14 +1331,14 @@ impl BrowserService {
             // User-owned browser sessions retain normal platform download behavior.
             return true;
         };
-        let root = match artifact_root(&self.app, &chat_session_id, true) {
+        let root = match download_artifact_root(&self.app, &chat_session_id) {
             Ok(root) => root,
             Err(error) => {
                 warn!("[browser] failed to resolve download artifact root: {error}");
                 return false;
             }
         };
-        let download_dir = root.path.join("browser-downloads");
+        let download_dir = root.join("browser-downloads");
         if let Err(error) = std::fs::create_dir_all(&download_dir) {
             warn!("[browser] failed to create download artifact directory: {error}");
             return false;
