@@ -34,12 +34,12 @@ pub use protocol_version::{CompatibilityChecker, ProtocolNegotiator, ProtocolVer
 pub use sse_transport::{SSEConfig, SSETransport};
 pub use types::*;
 
-/// 判断 MCP endpoint 是否指向本机回环地址（复用全库正源 browser::policy）。
+/// 判断 MCP endpoint 是否指向本机回环地址（复用全库正源 net_policy，browser::policy 按原路径重导出）。
 pub(crate) fn endpoint_is_loopback(url: &str) -> bool {
     reqwest::Url::parse(url)
         .ok()
         .and_then(|parsed| parsed.host_str().map(str::to_string))
-        .map(|host| crate::browser::policy::is_loopback_host(&host))
+        .map(|host| crate::net_policy::is_loopback_host(&host))
         .unwrap_or(false)
 }
 

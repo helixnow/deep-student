@@ -18,6 +18,25 @@ pub fn is_loopback_ip(ip: &IpAddr) -> bool {
     }
 }
 
+/// 判断 host 是否为 loopback（字面量或 IP）
+///
+/// 接受：`localhost`、`*.localhost`、`127.0.0.0/8`、`::1`、IPv4-mapped loopback。
+pub fn is_loopback_host(host: &str) -> bool {
+    let normalized = host
+        .strip_prefix('[')
+        .and_then(|value| value.strip_suffix(']'))
+        .unwrap_or(host)
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if normalized == "localhost" || normalized.ends_with(".localhost") {
+        return true;
+    }
+    if let Ok(ip) = normalized.parse::<IpAddr>() {
+        return is_loopback_ip(&ip);
+    }
+    false
+}
+
 /// 统一的 SSRF 拦截判定（全库正源）：内网地址且非回环。
 /// 回环放行——本地服务（本地 MCP 桥、插件服务、开发服务器）是桌面 Agent
 /// 的合法访问目标，业界 WebFetch/MCP 客户端均不封禁 loopback；
