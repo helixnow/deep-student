@@ -48,7 +48,7 @@ pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 pub mod cloud_config_commands;
 #[allow(dead_code)]
 pub mod cloud_storage;
-pub mod cross_page_merger;
+pub use dstu_vision::cross_page_merger;
 pub use dstu_llm::deepseek_ocr_parser;
 pub use dstu_storage::data_space;
 pub mod diagnostics;
@@ -61,11 +61,11 @@ pub use dstu_core::error_details;
 pub use dstu_core::error_recovery;
 pub mod essay_grading;
 #[allow(dead_code)]
-pub mod exam_sheet_service;
+pub use dstu_vision::exam_sheet_service;
 pub mod extensions; // 扩展点注册：低层模块对上层能力的回调统一在此接线
 pub mod external_file_opener; // 移动端「用其他应用打开/分享文件」（FileProvider → ACTION_VIEW/SEND）
 pub use dstu_storage::feature_flags;
-pub mod figure_extractor;
+pub use dstu_vision::figure_extractor;
 pub use dstu_storage::file_manager;
 pub use dstu_vfs::file_stream_protocol; // filestream:// 通用媒体/blob 流式加载协议（复用 pdfstream 安全模式）
 pub mod fsrs_review_service; // FSRS 闪卡复习服务（独立于题库 review_plans）
@@ -79,7 +79,7 @@ pub use dstu_core::json_validator;
 pub use dstu_llm::llm_manager;
 #[allow(dead_code)]
 pub use dstu_vfs::lance_vector_store;
-pub mod llm_structurer;
+pub use dstu_vision::llm_structurer;
 pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
 pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
@@ -101,8 +101,8 @@ pub use dstu_llm::ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎
 pub use dstu_llm::ocr_circuit_breaker; // OCR 熔断器（三态：Closed/Open/HalfOpen）
 pub use dstu_llm::openai_codex;
 pub use dstu_platform::package_manager;
-pub mod page_rasterizer;
-pub mod pdf_ocr_service;
+pub use dstu_vision::page_rasterizer;
+pub use dstu_vision::pdf_ocr_service;
 pub use dstu_docs::pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub use dstu_vfs::pdf_protocol;
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
@@ -162,7 +162,7 @@ pub use dstu_llm::vendors;
 pub use dstu_vfs::vector_store;
 #[allow(dead_code, deprecated)]
 pub use dstu_vfs::vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
-pub mod vlm_grounding_service;
+pub use dstu_vision::vlm_grounding_service;
 pub mod voice_input;
 pub use dstu_core::workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
 
@@ -212,6 +212,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_llm",
     "dstu_vfs",
     "dstu_mcp",
+    "dstu_vision",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

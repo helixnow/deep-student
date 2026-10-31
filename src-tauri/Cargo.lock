@@ -3291,6 +3291,7 @@ dependencies = [
  "dstu-storage",
  "dstu-util",
  "dstu-vfs",
+ "dstu-vision",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -4029,6 +4030,38 @@ dependencies = [
  "urlencoding",
  "uuid",
  "zip 0.6.6",
+]
+
+[[package]]
+name = "dstu-vision"
+version = "0.0.0"
+dependencies = [
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-llm",
+ "dstu-storage",
+ "dstu-util",
+ "dstu-vfs",
+ "futures-util",
+ "image 0.24.9",
+ "log",
+ "nanoid",
+ "pdfium-render",
+ "regex",
+ "reqwest 0.11.27",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "urlencoding",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]
