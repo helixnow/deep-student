@@ -701,7 +701,7 @@ pub struct TraditionalBackupData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BackupSettings {
     pub system_settings: std::collections::HashMap<String, String>,
-    pub api_configurations: Vec<crate::llm_manager::ApiConfig>,
+    pub api_configurations: Vec<crate::llm_config::ApiConfig>,
     pub model_assignments: Option<ModelAssignments>,
 }
 

@@ -23,7 +23,7 @@ pub mod apkg_importer_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
-pub mod canonical_tools;
+pub use dstu_core::canonical_tools;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;
@@ -59,8 +59,8 @@ pub mod document_processing_service;
 pub mod docx_handout;
 pub mod dstu;
 pub mod enhanced_anki_service;
-pub mod error_details;
-pub mod error_recovery;
+pub use dstu_core::error_details;
+pub use dstu_core::error_recovery;
 pub mod essay_grading;
 #[allow(dead_code)]
 pub mod exam_sheet_service;
@@ -75,7 +75,7 @@ pub mod heic_decoder; // HEIC/HEIF → JPEG 原生转码桥（Android ImageDecod
 pub mod hpias; // HPIAS 深度研究事件 emit（Generative UI researchSessionId 桥接）
 pub mod injection_budget;
 pub mod insight; // Insight Recall v2 灵感库（docs/dev/insight-recall/README.md）
-pub mod json_validator;
+pub use dstu_core::json_validator;
 #[allow(dead_code)]
 pub mod lance_vector_store;
 #[allow(dead_code)]
@@ -89,7 +89,8 @@ pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段�
 #[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub mod metrics_server;
-pub mod models;
+pub use dstu_core::llm_config; // 模型 API 配置（ApiConfig），llm_manager 按原路径重导出
+pub use dstu_core::models;
 #[allow(dead_code, deprecated)]
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
 #[allow(dead_code)]
@@ -104,7 +105,7 @@ pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
 pub mod plugins; // 可插拔通道插件（iLink Bot 等）
-pub mod prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
+pub use dstu_core::prompt_contracts; // 跨链路共享的 LLM 输出契约常量（LaTeX 等，单一来源）
 pub mod providers;
 pub mod qbank_authoring_service;
 pub mod qbank_document;
@@ -127,7 +128,7 @@ pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节�
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub mod secret_prompt;
 pub mod secure_store;
-pub mod services;
+pub use dstu_core::services;
 pub mod spaced_repetition;
 pub mod staged_upload; // 大文件分块暂存上传（替代 WebView 内 base64 + JSON IPC）
 pub mod startup_cleanup;
@@ -155,7 +156,13 @@ pub mod vendors;
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
 pub mod voice_input;
-pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
+pub use dstu_core::workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
+
+// 下沉到 dstu-core 的 #[macro_export] 宏，按原路径 `deep_student_lib::xxx!` 重导出。
+pub use dstu_core::{
+    retry_database_operation, retry_database_operation_async, retry_file_operation,
+    retry_network_operation, workflow_error,
+};
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
@@ -180,6 +187,11 @@ use sentry::ClientInitGuard;
 #[cfg(feature = "mcp")]
 use tracing::debug;
 use tracing::{error, info, warn};
+
+// 本项目自己的日志 target 前缀。log/tracing 的默认 target 是模块路径，代码拆到
+// dstu-* crate 后前缀随之变化；日志插件对这里列出的每个前缀应用相同级别，
+// 保证拆分前后日志输出不变。新增 dstu-* crate 时在此追加。
+const FIRST_PARTY_LOG_TARGETS: &[&str] = &["deep_student_lib", "dstu_core"];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件
 static GLOBAL_APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
@@ -702,8 +714,10 @@ pub fn run() {
         .level_for("h2", log::LevelFilter::Warn)
         .level_for("hyper", log::LevelFilter::Warn)
         .level_for("rustls", log::LevelFilter::Warn)
-        .level_for("reqwest", log::LevelFilter::Warn)
-        .level_for("deep_student_lib", log::LevelFilter::Info);
+        .level_for("reqwest", log::LevelFilter::Warn);
+    for target in FIRST_PARTY_LOG_TARGETS {
+        log_plugin_builder = log_plugin_builder.level_for(*target, log::LevelFilter::Info);
+    }
 
     // 调试日志只写 stdout。不要启用 TargetKind::Webview：
     // 后台日志 emit 与主线程 resize/focus 窗口事件可能争用 WebView 锁，
@@ -722,8 +736,9 @@ pub fn run() {
         || std::env::var("DSTU_CONSOLE_LOG")
             .is_ok_and(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
     {
-        log_plugin_builder =
-            log_plugin_builder.level_for("deep_student_lib", log::LevelFilter::Debug);
+        for target in FIRST_PARTY_LOG_TARGETS {
+            log_plugin_builder = log_plugin_builder.level_for(*target, log::LevelFilter::Debug);
+        }
     }
 
     builder

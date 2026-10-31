@@ -4,13 +4,13 @@ use serde_json::{json, Value};
 pub(crate) const CANONICAL_TOOL_NAME_PREFIX: &str = "ds_tool_";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ApiNameSource {
+pub enum ApiNameSource {
     BridgeName,
     InternalToolName,
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct CanonicalExternalToolConfig<'a> {
+pub struct CanonicalExternalToolConfig<'a> {
     pub internal_prefix: Option<&'a str>,
     pub preserve_prefix: Option<&'a str>,
     pub api_name_prefix: Option<&'a str>,
@@ -19,7 +19,7 @@ pub(crate) struct CanonicalExternalToolConfig<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct CanonicalExternalTool {
+pub struct CanonicalExternalTool {
     /// 规范化前的桥接名。生产路径当前只消费 api_name/internal_tool_name，
     /// 该字段是规范化契约的一部分，由单元测试断言，保留以便诊断与回溯。
     #[allow(dead_code)]
@@ -37,7 +37,7 @@ pub(crate) fn is_openai_compatible_tool_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-pub(crate) fn encode_tool_name_for_api(name: &str) -> Option<String> {
+pub fn encode_tool_name_for_api(name: &str) -> Option<String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return None;
@@ -54,7 +54,7 @@ pub(crate) fn encode_tool_name_for_api(name: &str) -> Option<String> {
     }
 }
 
-pub(crate) fn decode_tool_name_from_api(name: &str) -> Option<String> {
+pub fn decode_tool_name_from_api(name: &str) -> Option<String> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return None;
@@ -68,7 +68,7 @@ pub(crate) fn decode_tool_name_from_api(name: &str) -> Option<String> {
     String::from_utf8(decoded).ok()
 }
 
-pub(crate) fn build_openai_function_tool_schema(
+pub fn build_openai_function_tool_schema(
     api_name: &str,
     description: Option<&str>,
     parameters: Option<Value>,
@@ -103,7 +103,7 @@ fn normalize_function_parameters(parameters: Option<Value>) -> Value {
     schema
 }
 
-pub(crate) fn prepare_external_tool(
+pub fn prepare_external_tool(
     name: &str,
     server_id: Option<&str>,
     description: Option<&str>,

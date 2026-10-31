@@ -3280,6 +3280,7 @@ dependencies = [
  "dirs 4.0.0",
  "docx-rs",
  "dotenvy",
+ "dstu-core",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -3717,6 +3718,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
 dependencies = [
  "serde",
+]
+
+[[package]]
+name = "dstu-core"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "base64 0.21.7",
+ "chrono",
+ "jsonschema",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+ "zip 0.6.6",
 ]
 
 [[package]]
