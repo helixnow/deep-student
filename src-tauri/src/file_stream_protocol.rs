@@ -216,14 +216,12 @@ pub fn resolve_blob_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
     use tauri::Manager;
 
     let mut dirs = Vec::new();
-    if let Some(state) = app.try_state::<crate::commands::AppState>() {
-        if let Some(vfs_db) = state.vfs_db.as_ref() {
-            // #59：canonicalize 失败时保留原始路径（与 resolve_allowed_dirs 一致），
-            // 书写形式差异由 path_is_within 归一化处理。
-            let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
-                .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
-            dirs.push(blobs_dir);
-        }
+    if let Some(vfs_db) = app.try_state::<std::sync::Arc<crate::vfs::database::VfsDatabase>>() {
+        // #59：canonicalize 失败时保留原始路径（与 resolve_allowed_dirs 一致），
+        // 书写形式差异由 path_is_within 归一化处理。
+        let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
+            .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
+        dirs.push(blobs_dir);
     }
     dirs
 }

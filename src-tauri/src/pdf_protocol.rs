@@ -288,13 +288,11 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
     // ★ 2026-06-12（审阅问题 R1 配套）：VFS blobs 目录加入白名单。
     // 数据槽可由用户迁移到任意位置（可能在 app_data 之外），
     // 教材 PDF 复制进 blob 后需要可被 pdfstream:// 流式读取。
-    if let Some(state) = app.try_state::<crate::commands::AppState>() {
-        if let Some(vfs_db) = state.vfs_db.as_ref() {
-            let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
-                .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
-            if !dirs.contains(&blobs_dir) {
-                dirs.push(blobs_dir);
-            }
+    if let Some(vfs_db) = app.try_state::<std::sync::Arc<crate::vfs::database::VfsDatabase>>() {
+        let blobs_dir = std::fs::canonicalize(vfs_db.blobs_dir())
+            .unwrap_or_else(|_| vfs_db.blobs_dir().to_path_buf());
+        if !dirs.contains(&blobs_dir) {
+            dirs.push(blobs_dir);
         }
     }
 

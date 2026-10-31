@@ -1007,7 +1007,7 @@ fn parse_breakdown_titles(raw: &str) -> Vec<String> {
 #[tauri::command]
 pub async fn todo_ai_breakdown(
     app: AppHandle,
-    state: State<'_, crate::commands::AppState>,
+    llm_manager: State<'_, Arc<crate::llm_manager::LLMManager>>,
     item_id: String,
 ) -> CmdResult<Vec<VfsTodoItem>> {
     let vfs_db: Arc<VfsDatabase> = {
@@ -1075,8 +1075,7 @@ pub async fn todo_ai_breakdown(
         ));
     }
 
-    let output = state
-        .llm_manager
+    let output = llm_manager
         .call_model2_raw_prompt(
             &prompt,
             None,
