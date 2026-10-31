@@ -15,8 +15,7 @@ use crate::budget::DEFAULT_TOOL_RESULT_CHAR_BUDGET;
 use crate::context::ExecutionContext;
 
 /// 工具执行 future 的别名（对象安全：不在 trait 上使用 `async fn`）。
-pub type ToolFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<ToolResultInfo, String>> + Send + 'a>>;
+pub type ToolFuture<'a> = Pin<Box<dyn Future<Output = Result<ToolResultInfo, String>> + Send + 'a>>;
 
 /// 工具敏感等级。
 ///

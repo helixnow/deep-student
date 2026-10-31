@@ -15,8 +15,7 @@ use serde_json::Value;
 use crate::context::ExecutionContext;
 
 /// `HostBridge::round_trip` 的 future 别名。
-pub type HostFuture<'a> =
-    Pin<Box<dyn Future<Output = Result<Value, String>> + Send + 'a>>;
+pub type HostFuture<'a> = Pin<Box<dyn Future<Output = Result<Value, String>> + Send + 'a>>;
 
 /// 一次往返请求（前端桥 / 桌面桥 / ACR）。
 #[derive(Debug, Clone, Serialize, Deserialize)]

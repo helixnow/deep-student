@@ -161,8 +161,10 @@ mod tests {
 
     #[test]
     fn descriptor_names_include_primary_and_aliases_in_order() {
-        let descriptor = ToolDescriptor::new("workspace_file_read")
-            .with_aliases(&["builtin-workspace_file_read", "workspace_workspace_file_read"]);
+        let descriptor = ToolDescriptor::new("workspace_file_read").with_aliases(&[
+            "builtin-workspace_file_read",
+            "workspace_workspace_file_read",
+        ]);
         let names: Vec<_> = descriptor.names().collect();
         assert_eq!(
             names,
@@ -182,9 +184,6 @@ mod tests {
         assert_eq!(descriptor.headless, HeadlessPolicy::Blocked);
         assert_eq!(descriptor.ptc, PtcPolicy::Denied);
         assert_eq!(descriptor.sensitivity, ToolSensitivity::Low);
-        assert!(matches!(
-            descriptor.approval,
-            ApprovalPolicy::Scoped { .. }
-        ));
+        assert!(matches!(descriptor.approval, ApprovalPolicy::Scoped { .. }));
     }
 }

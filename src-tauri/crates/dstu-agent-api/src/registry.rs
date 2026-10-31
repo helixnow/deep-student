@@ -245,8 +245,14 @@ impl ToolRegistryBuilder {
             .collect();
         if catch_all_indices.len() > 1 {
             return Err(ToolRegistryError::MultipleCatchAllProviders {
-                first: self.providers[catch_all_indices[0]].id().as_str().to_string(),
-                second: self.providers[catch_all_indices[1]].id().as_str().to_string(),
+                first: self.providers[catch_all_indices[0]]
+                    .id()
+                    .as_str()
+                    .to_string(),
+                second: self.providers[catch_all_indices[1]]
+                    .id()
+                    .as_str()
+                    .to_string(),
             });
         }
         if let Some(&index) = catch_all_indices.first() {
@@ -290,18 +296,15 @@ impl ToolRegistryBuilder {
                             second: provider_name,
                         });
                     }
-                    let executor =
-                        provider
-                            .executor(name)
-                            .ok_or_else(|| ToolRegistryError::MissingExecutor {
-                                provider: provider_name.clone(),
-                                name: name.to_string(),
-                            })?;
+                    let executor = provider.executor(name).ok_or_else(|| {
+                        ToolRegistryError::MissingExecutor {
+                            provider: provider_name.clone(),
+                            name: name.to_string(),
+                        }
+                    })?;
                     name_owner.insert(name.to_string(), provider_name.clone());
                     owners.insert(name.to_string(), provider_id);
-                    descriptors
-                        .entries
-                        .insert(name.to_string(), descriptor);
+                    descriptors.entries.insert(name.to_string(), descriptor);
                     executors_by_name.insert(name.to_string(), executor.clone());
                     claimed.push((name.to_string(), executor));
                 }
@@ -436,11 +439,7 @@ mod tests {
         }
 
         fn executor(&self, tool_name: &str) -> Option<Arc<dyn ToolExecutor>> {
-            if let Some((_, executor)) = self
-                .routes
-                .iter()
-                .find(|(name, _)| *name == tool_name)
-            {
+            if let Some((_, executor)) = self.routes.iter().find(|(name, _)| *name == tool_name) {
                 return Some(executor.clone());
             }
             if self.catch_all {
@@ -624,13 +623,7 @@ mod tests {
     #[test]
     fn catch_all_provider_must_be_last() {
         let general = MockExecutor::new("general");
-        let catch_all = MockProvider::new(
-            "general",
-            Vec::new(),
-            Vec::new(),
-            vec![general],
-            true,
-        );
+        let catch_all = MockProvider::new("general", Vec::new(), Vec::new(), vec![general], true);
         let later = MockProvider::simple(
             "later",
             vec![ToolDescriptor::new("later_tool")],
@@ -684,7 +677,10 @@ mod tests {
         assert_eq!(registry.providers()[0].id().as_str(), "first");
         assert_eq!(registry.providers()[1].id().as_str(), "second");
 
-        assert_eq!(registry.owner_of("meta_tool"), Some(ProviderId::new("first")));
+        assert_eq!(
+            registry.owner_of("meta_tool"),
+            Some(ProviderId::new("first"))
+        );
         assert_eq!(
             registry.owner_of("alpha_tool"),
             Some(ProviderId::new("second"))
@@ -727,7 +723,9 @@ mod tests {
             Some("note_read")
         );
 
-        let dynamic = registry.executor_for("mcp_unknown_tool").expect("catch-all");
+        let dynamic = registry
+            .executor_for("mcp_unknown_tool")
+            .expect("catch-all");
         assert!(Arc::ptr_eq(&dynamic, &general));
         assert!(registry.descriptor("mcp_unknown_tool").is_none());
         assert!(registry.catch_all_provider().is_some());
