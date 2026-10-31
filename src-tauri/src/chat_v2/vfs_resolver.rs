@@ -2839,12 +2839,8 @@ pub fn escape_xml_attr(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-/// 转义 XML 内容
-pub fn escape_xml_content(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
+/// 转义 XML 内容（定义已下沉到 `dstu_core::text_escape`）
+pub use crate::text_escape::escape_xml_content;
 
 // ============================================================================
 // 单元测试

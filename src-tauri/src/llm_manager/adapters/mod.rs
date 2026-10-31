@@ -47,8 +47,9 @@ pub use grok::GrokAdapter;
 pub use mimo::MimoAdapter;
 pub use minimax::MiniMaxAdapter;
 pub use mistral::MistralAdapter;
+pub use moonshot::normalize_tool_schemas_for_mfjs;
+pub(crate) use moonshot::should_apply_mfjs_tool_schema_dialect;
 pub use moonshot::MoonshotAdapter;
-pub(crate) use moonshot::{normalize_tool_schemas_for_mfjs, should_apply_mfjs_tool_schema_dialect};
 pub use qwen::QwenAdapter;
 pub use zhipu::ZhipuAdapter;
 

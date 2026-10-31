@@ -242,6 +242,9 @@ impl ChatV2Pipeline {
         tool_registry: Arc<ToolRegistry>,
         notes_manager: Option<Arc<crate::notes_manager::NotesManager>>,
     ) -> Self {
+        // legacy 回退注入（模型不支持工具调用）的 web_search 由 tools 提供给 llm_manager
+        crate::tools::install_web_search_fallback();
+
         // 🆕 初始化工具执行器注册表（文档 29 P0-1）
         let executor_registry = Self::create_executor_registry();
 

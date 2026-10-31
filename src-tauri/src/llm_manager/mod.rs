@@ -21,6 +21,14 @@ pub(crate) use model2_pipeline::sanitize_url_for_log;
 // ApiConfig 及其默认值函数已下沉到 dstu-core（models/database 也持有它），这里按原路径重导出。
 pub use crate::llm_config::ApiConfig;
 
+// 从 chat_v2 / cmd::ocr / translation 下沉到 llm 组的纯逻辑（原路径保留重导出），
+// 以及 legacy 回退注入用的 web_search 注册点（由上层 tools 模块安装）。
+pub mod compaction_budget;
+pub mod ocr_models;
+pub mod transient_messages;
+pub mod translation_prompts;
+pub mod web_search_fallback;
+
 use crate::canonical_tools::{
     build_openai_function_tool_schema, prepare_external_tool, ApiNameSource, CanonicalExternalTool,
     CanonicalExternalToolConfig,
@@ -394,40 +402,6 @@ mod tests {
                 .await
         );
         assert!(manager.get_hook("chat_v2_event_test").await.is_none());
-    }
-
-    #[tokio::test]
-    async fn stream_guard_cleanup_clears_hook_channel_and_pending_cancel() {
-        let temp_dir = TempDir::new().expect("temp dir");
-        let manager = Arc::new(create_test_llm_manager(&temp_dir));
-        let stream_event = "chat_v2_event_test_var_msg_run_1";
-        let owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
-
-        manager
-            .register_stream_hooks(stream_event, owner.clone())
-            .await;
-        let _receiver = manager.register_cancel_channel(stream_event).await;
-        manager.request_cancel_stream(stream_event).await;
-        assert!(manager
-            .cancel_channels
-            .lock()
-            .await
-            .contains_key(stream_event));
-        assert!(manager.cancel_registry.lock().await.contains(stream_event));
-        let mut guard = crate::chat_v2::pipeline::tool_loop::StreamHooksGuard::new(
-            Arc::clone(&manager),
-            stream_event.to_string(),
-            owner,
-        );
-        guard.cleanup().await;
-
-        assert!(manager.get_hook(stream_event).await.is_none());
-        assert!(!manager
-            .cancel_channels
-            .lock()
-            .await
-            .contains_key(stream_event));
-        assert!(!manager.cancel_registry.lock().await.contains(stream_event));
     }
 
     #[test]
@@ -3326,7 +3300,7 @@ fn build_ocr_runtime_candidates(
     for ocr_config in enabled_models {
         let declared_engine = OcrEngineType::from_str(&ocr_config.engine_type);
         if declared_engine == OcrEngineType::SystemOcr
-            || ocr_config.config_id == crate::cmd::ocr::SYSTEM_OCR_CONFIG_ID
+            || ocr_config.config_id == crate::llm_manager::ocr_models::SYSTEM_OCR_CONFIG_ID
         {
             if task_type == OcrTaskType::FreeText && system_ocr_supported && !included_system_ocr {
                 result.push(OcrRuntimeCandidate::SystemOcr);
@@ -3429,7 +3403,7 @@ mod ocr_runtime_candidate_tests {
 
     fn system_model(enabled: bool) -> OcrModelConfig {
         OcrModelConfig {
-            config_id: crate::cmd::ocr::SYSTEM_OCR_CONFIG_ID.to_string(),
+            config_id: crate::llm_manager::ocr_models::SYSTEM_OCR_CONFIG_ID.to_string(),
             model: "system".to_string(),
             engine_type: "system_ocr".to_string(),
             name: "System OCR".to_string(),
@@ -7239,7 +7213,8 @@ impl LLMManager {
     pub async fn get_available_ocr_models(&self) -> Vec<OcrModelConfig> {
         if let Ok(Some(json)) = self.db.get_setting("ocr.available_models") {
             if let Ok(mut models) = serde_json::from_str::<Vec<OcrModelConfig>>(&json) {
-                let mut needs_save = crate::cmd::ocr::migrate_paddle_ocr_models(&mut models);
+                let mut needs_save =
+                    crate::llm_manager::ocr_models::migrate_paddle_ocr_models(&mut models);
 
                 // GLM-4.1V → 迁移：同时更新关联的 ApiConfig.model
                 // 硅基流动已下架 zai-org/GLM-4.6V，该提供商下迁移到 Qwen3-VL-8B；
@@ -7273,7 +7248,7 @@ impl LLMManager {
                     .map(|m| m.config_id.clone())
                     .collect();
 
-                if crate::cmd::ocr::migrate_glm_ocr_models(
+                if crate::llm_manager::ocr_models::migrate_glm_ocr_models(
                     &mut models,
                     is_siliconflow,
                     is_zhipu_official,
@@ -8597,7 +8572,7 @@ impl LLMManager {
         }
         let block = format!(
             "<injected_context>\n{}\n</injected_context>",
-            crate::chat_v2::vfs_resolver::escape_xml_content(inject_content.trim())
+            crate::text_escape::escape_xml_content(inject_content.trim())
         );
 
         let target = messages.iter_mut().rev().find(|msg| {

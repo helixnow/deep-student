@@ -911,7 +911,7 @@ impl LLMManager {
         let api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
 
         // 复用翻译管线的 prompt 构建（统一语言全名映射和领域预设）
-        let translate_req = crate::translation::types::TranslationRequest {
+        let translate_req = crate::llm_manager::translation_prompts::TranslationRequest {
             text: text.to_string(),
             src_lang: src_lang.to_string(),
             tgt_lang: tgt_lang.to_string(),
@@ -922,7 +922,7 @@ impl LLMManager {
             domain: None,
         };
         let (system_prompt, user_prompt) =
-            crate::translation::pipeline::build_translation_prompts(&translate_req)?;
+            crate::llm_manager::translation_prompts::build_translation_prompts(&translate_req)?;
 
         let messages = vec![
             json!({
@@ -1297,9 +1297,9 @@ impl LLMManager {
             // 真实 token 来源：API 实测才标 api，未上报的 0 不得伪装成 api
             Some(
                 if measured_prompt_tokens.is_some() {
-                    crate::chat_v2::types::TokenSource::Api
+                    crate::token_source::TokenSource::Api
                 } else {
-                    crate::chat_v2::types::TokenSource::Heuristic
+                    crate::token_source::TokenSource::Heuristic
                 }
                 .to_string(),
             ),
@@ -1456,9 +1456,9 @@ impl LLMManager {
             // 真实 token 来源：API 实测才标 api，未上报的 0 不得伪装成 api
             Some(
                 if measured_prompt_tokens.is_some() {
-                    crate::chat_v2::types::TokenSource::Api
+                    crate::token_source::TokenSource::Api
                 } else {
-                    crate::chat_v2::types::TokenSource::Heuristic
+                    crate::token_source::TokenSource::Heuristic
                 }
                 .to_string(),
             ),

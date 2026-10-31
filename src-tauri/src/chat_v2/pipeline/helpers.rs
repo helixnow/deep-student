@@ -613,8 +613,13 @@ pub(crate) fn make_empty_message(role: &str, content: String) -> LegacyChatMessa
     }
 }
 
-const TRANSIENT_SKILL_METADATA_KIND: &str = "skill_instruction";
-const TRANSIENT_REQUEST_ANCHOR_METADATA_KIND: &str = "request_context_anchor";
+// 瞬态消息识别已下沉到 llm_manager（legacy 管线同样需要），此处按原路径重导出。
+pub(crate) use crate::llm_manager::transient_messages::{
+    is_transient_llm_only_message, is_transient_skill_message,
+};
+use crate::llm_manager::transient_messages::{
+    TRANSIENT_REQUEST_ANCHOR_METADATA_KIND, TRANSIENT_SKILL_METADATA_KIND,
+};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SkillInjectionAudit {
@@ -629,28 +634,6 @@ pub(crate) struct SkillInjectionAudit {
 pub(crate) struct TransientSkillMessages {
     pub messages: Vec<LegacyChatMessage>,
     pub audit: SkillInjectionAudit,
-}
-
-pub(crate) fn is_transient_skill_message(msg: &LegacyChatMessage) -> bool {
-    msg.metadata.as_ref().is_some_and(|metadata| {
-        metadata.get("kind").and_then(Value::as_str) == Some(TRANSIENT_SKILL_METADATA_KIND)
-            && metadata
-                .get("hidden")
-                .and_then(Value::as_bool)
-                .unwrap_or(false)
-    })
-}
-
-pub(crate) fn is_transient_llm_only_message(msg: &LegacyChatMessage) -> bool {
-    is_transient_skill_message(msg)
-        || msg.metadata.as_ref().is_some_and(|metadata| {
-            metadata.get("kind").and_then(Value::as_str)
-                == Some(TRANSIENT_REQUEST_ANCHOR_METADATA_KIND)
-                && metadata
-                    .get("hidden")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
-        })
 }
 
 fn escape_xml_attr(value: &str) -> String {

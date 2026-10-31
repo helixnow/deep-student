@@ -3874,6 +3874,58 @@ mod tests {
         ToolCall::new(id.to_string(), name.to_string(), json!({}))
     }
 
+    struct TestStreamHooks;
+    impl LLMStreamHooks for TestStreamHooks {}
+
+    // 原在 llm_manager::tests；StreamHooksGuard 属于本模块，改用 LLMManager 公开接口断言。
+    #[tokio::test]
+    async fn stream_guard_cleanup_clears_hook_channel_and_pending_cancel() {
+        let temp_dir = tempfile::TempDir::new().expect("temp dir");
+        let db_path = temp_dir.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(crate::database::Database::new(&db_path).expect("create test database"));
+        let file_manager = Arc::new(
+            crate::file_manager::FileManager::new(temp_dir.path().to_path_buf())
+                .expect("create file manager"),
+        );
+        let manager = Arc::new(LLMManager::new(db, file_manager).expect("create llm manager"));
+        let stream_event = "chat_v2_event_test_var_msg_run_1";
+        let owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks(stream_event, owner.clone())
+            .await;
+        let receiver = manager.subscribe_cancel_stream(stream_event).await;
+        manager.request_cancel_stream(stream_event).await;
+        assert!(*receiver.borrow(), "cancel channel should be registered");
+        let mut guard = StreamHooksGuard::new(
+            Arc::clone(&manager),
+            stream_event.to_string(),
+            owner.clone(),
+        );
+        guard.cleanup().await;
+
+        // hook 已移除：同一 owner 再次注销返回 false
+        assert!(
+            !manager
+                .unregister_stream_hooks_if_owner(stream_event, &owner)
+                .await
+        );
+        // cancel channel 已移除：sender 被丢弃
+        assert!(receiver.has_changed().is_err());
+        // pending cancel 已清除
+        assert!(!manager.consume_pending_cancel(stream_event).await);
+    }
+
     #[test]
     fn tool_schema_sort_key_reads_function_name_and_falls_back_to_top_level() {
         let openai_format = json!({

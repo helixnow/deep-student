@@ -8,8 +8,8 @@ use crate::chat_v2::types::{ChatMessage, MessageBlock};
 use crate::llm_manager::ApiConfig;
 use log::info;
 
-/// 触发比率：`used >= (usable) * ratio`
-pub const TRIGGER_RATIO: f64 = 0.85;
+/// 触发比率：`used >= (usable) * ratio`（定义已下沉到 `llm_manager::compaction_budget`）
+pub use crate::llm_manager::compaction_budget::TRIGGER_RATIO;
 /// 无配置窗口时采用保守回退，避免未知模型被乐观地当作超长上下文。
 pub const DEFAULT_CONTEXT_WINDOW: u32 = 32_768;
 /// 无配置输出上限时的默认值
