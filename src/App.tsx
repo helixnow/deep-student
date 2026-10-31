@@ -149,6 +149,15 @@ import { DesktopSidebarResizeHandle } from './app/shell/DesktopSidebarResizeHand
 import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
 import { DesktopShellHeaderPortalProvider } from './app/shell/DesktopShellHeaderPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
+import {
+  HEADER_HOTZONE_DRAG_THRESHOLD,
+  clearHeaderHotzoneActivationTimer,
+  handleDesktopToolbarButtonClick,
+  handleDesktopToolbarButtonMouseDown,
+  handleHeaderHotzoneClick,
+  handleHeaderHotzoneKeyDown,
+  shouldIgnoreHeaderHotzoneTarget,
+} from './app/shell/desktopHeaderHotzone';
 import { Z_INDEX } from './config/zIndex';
 
 // 🚀 性能优化：懒加载页面组件
@@ -251,101 +260,6 @@ function applyPointerCursorPreference(enabled: boolean) {
   }
 
   document.documentElement.dataset.pointerCursor = enabled ? 'true' : 'false';
-}
-
-const HEADER_HOTZONE_INTERACTIVE_SELECTOR = [
-  'button',
-  '[role="button"]',
-  'a',
-  'input',
-  'textarea',
-  'select',
-  'summary',
-  '[data-shell-hotzone-ignore="true"]',
-].join(', ');
-const HEADER_HOTZONE_DRAG_THRESHOLD = 4;
-const HEADER_HOTZONE_CLICK_ACTIVATION_DELAY_MS = 180;
-
-function clearHeaderHotzoneActivationTimer(element: HTMLElement) {
-  const timerId = element.dataset.shellHotzoneActivationTimer;
-  if (!timerId) {
-    return;
-  }
-
-  window.clearTimeout(Number(timerId));
-  delete element.dataset.shellHotzoneActivationTimer;
-}
-
-function shouldIgnoreHeaderHotzoneTarget(target: EventTarget | null, boundary?: Element) {
-  if (!(target instanceof Element)) {
-    return false;
-  }
-
-  const closestInteractiveTarget = target.closest(HEADER_HOTZONE_INTERACTIVE_SELECTOR);
-  return closestInteractiveTarget !== null && closestInteractiveTarget !== boundary;
-}
-
-function handleHeaderHotzoneClick(
-  event: React.MouseEvent<HTMLElement>,
-  activate: () => void,
-) {
-  const hotzoneElement = event.currentTarget;
-  if (hotzoneElement.dataset.shellHotzoneSuppressClick === 'true' || event.detail > 1) {
-    clearHeaderHotzoneActivationTimer(hotzoneElement);
-    delete hotzoneElement.dataset.shellHotzoneSuppressClick;
-    return;
-  }
-
-  if (shouldIgnoreHeaderHotzoneTarget(event.target, hotzoneElement)) {
-    return;
-  }
-
-  clearHeaderHotzoneActivationTimer(hotzoneElement);
-  const timerId = window.setTimeout(() => {
-    delete hotzoneElement.dataset.shellHotzoneActivationTimer;
-    activate();
-  }, HEADER_HOTZONE_CLICK_ACTIVATION_DELAY_MS);
-  hotzoneElement.dataset.shellHotzoneActivationTimer = String(timerId);
-}
-
-function handleHeaderHotzoneKeyDown(
-  event: React.KeyboardEvent<HTMLElement>,
-  activate: () => void,
-) {
-  if (shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
-    return;
-  }
-
-  if (event.key === 'Enter' || event.key === ' ') {
-    event.preventDefault();
-    activate();
-  }
-}
-
-function handleDesktopToolbarButtonMouseDown(
-  event: React.MouseEvent<HTMLElement>,
-  onTitlebarDoubleClick: () => void | Promise<void>,
-) {
-  if (event.button !== 0 || event.detail !== 2) {
-    return;
-  }
-
-  event.preventDefault();
-  event.stopPropagation();
-  void onTitlebarDoubleClick();
-}
-
-function handleDesktopToolbarButtonClick(
-  event: React.MouseEvent<HTMLElement>,
-  activate: () => void,
-) {
-  event.stopPropagation();
-
-  if (event.detail > 1) {
-    return;
-  }
-
-  activate();
 }
 
 /**

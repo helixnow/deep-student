@@ -1,6 +1,7 @@
 {
   "$comment": "App 壳层源码集合：src/App.tsx 及从其中原样搬出的模块（按搬出顺序）。读 App.tsx 做源码契约的测试经 src/app/__tests__/appShellSources.ts 读取全部文件；scripts/lifecycle-score-gate.mjs 与 eslint.config.js 中原本只针对 App.tsx 的护栏同样覆盖这些文件。向 App 外搬代码时必须把目标文件登记在此，否则负向断言会对搬走的代码空转。",
   "files": [
-    "src/App.tsx"
+    "src/App.tsx",
+    "src/app/shell/desktopHeaderHotzone.ts"
   ]
 }
