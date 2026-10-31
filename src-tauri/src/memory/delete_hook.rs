@@ -103,10 +103,10 @@ impl crate::vfs::hooks::NoteDeleteHook for MemoryNoteDeleteHook {
     }
 }
 
-/// 由 `extensions::register_extensions()` 在启动时调用；幂等。
-pub fn install_vfs_hooks() {
-    static INSTALL: std::sync::Once = std::sync::Once::new();
-    INSTALL.call_once(|| {
-        crate::vfs::hooks::register_note_delete_hook(Arc::new(MemoryNoteDeleteHook));
-    });
+/// 由 `extensions::register_extensions()` 的 `MemoryVfsPlugin` 调用；幂等由
+/// `PluginHost`（同名插件只 apply 一次）保证。
+pub fn install_vfs_hooks(scope: &mut dstu_kernel::Scope) {
+    scope.add(crate::vfs::hooks::register_note_delete_hook(Arc::new(
+        MemoryNoteDeleteHook,
+    )));
 }

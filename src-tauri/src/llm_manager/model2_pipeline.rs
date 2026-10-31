@@ -5826,16 +5826,17 @@ impl LLMManager {
                             let (_ok, _data, _err, _usage, _citations, web_inject_text) =
                                 match crate::llm_manager::web_search_fallback::registered_web_search_fallback() {
                                     Some(web_search) => {
-                                        web_search(
-                                            crate::llm_manager::web_search_fallback::WebSearchFallbackRequest {
-                                                db: &self.db,
-                                                window: sink_window.as_ref(),
-                                                stream_event,
-                                                memory_enabled: memory_enabled_from_context,
-                                                args: &web_args,
-                                            },
-                                        )
-                                        .await
+                                        web_search
+                                            .call(
+                                                crate::llm_manager::web_search_fallback::WebSearchFallbackRequest {
+                                                    db: &self.db,
+                                                    window: sink_window.as_ref(),
+                                                    stream_event,
+                                                    memory_enabled: memory_enabled_from_context,
+                                                    args: &web_args,
+                                                },
+                                            )
+                                            .await
                                     }
                                     None => (
                                         false,

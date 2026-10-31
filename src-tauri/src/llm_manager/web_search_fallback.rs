@@ -2,14 +2,19 @@
 //!
 //! 实现位于上层 `tools` 模块（它依赖 llm_manager，llm_manager 不能反向引用它），
 //! 由 `tools::install_web_search_fallback()` 注册：`extensions::register_extensions()`
-//! 在 `run()` 第一行安装；`ChatV2Pipeline::new` 也会调用（幂等），覆盖直接构造流水线的测试。
+//! 的 `WebSearchFallbackPlugin` 在 `run()` 第一行安装；`ChatV2Pipeline::new` 也会调用
+//! （幂等），覆盖直接构造流水线的测试。
+//!
+//! 注册机制是 `dstu-kernel` 的单提供方 [`Slot`]（替代原 `OnceLock<WebSearchFallbackFn>`）：
+//! 先注册者生效，`Disposer` 由注册方持有。
 
 use crate::database::Database;
 use crate::models::RagSourceInfo;
+use dstu_kernel::{Disposer, Slot, SlotOccupied};
 use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::OnceLock;
+use std::sync::Arc;
 
 /// 与 `tools::Tool::invoke` 相同的返回：(成功, 数据, 错误, 用量, 引用, 注入文本)
 pub type WebSearchToolResult = (
@@ -30,18 +35,26 @@ pub struct WebSearchFallbackRequest<'a> {
     pub args: &'a Value,
 }
 
-pub type WebSearchFallbackFn =
-    for<'a> fn(
-        WebSearchFallbackRequest<'a>,
+/// web_search 回退实现（原 `WebSearchFallbackFn` 函数指针的 trait 化）。
+pub trait WebSearchFallback: Send + Sync {
+    fn call<'a>(
+        &'a self,
+        req: WebSearchFallbackRequest<'a>,
     ) -> Pin<Box<dyn Future<Output = WebSearchToolResult> + Send + 'a>>;
-
-static WEB_SEARCH_FALLBACK: OnceLock<WebSearchFallbackFn> = OnceLock::new();
-
-/// 注册 web_search 实现（幂等：只有第一次注册生效）
-pub fn register_web_search_fallback(f: WebSearchFallbackFn) {
-    let _ = WEB_SEARCH_FALLBACK.set(f);
 }
 
-pub(crate) fn registered_web_search_fallback() -> Option<WebSearchFallbackFn> {
-    WEB_SEARCH_FALLBACK.get().copied()
+static WEB_SEARCH_FALLBACK: Slot<dyn WebSearchFallback> = Slot::new();
+
+/// 注册 web_search 实现（幂等：只有第一次注册生效）。
+///
+/// 返回的 `Disposer` 必须由注册方持有（插件 `Scope` 或 `tools` 的进程级
+/// `OnceLock`）；立即丢弃会立刻注销。
+pub fn register_web_search_fallback(
+    fallback: Arc<dyn WebSearchFallback>,
+) -> Result<Disposer, SlotOccupied> {
+    WEB_SEARCH_FALLBACK.provide(fallback)
+}
+
+pub(crate) fn registered_web_search_fallback() -> Option<Arc<dyn WebSearchFallback>> {
+    WEB_SEARCH_FALLBACK.get()
 }

@@ -4,7 +4,6 @@
 //! 由这里注册，避免 vfs 反向依赖 qbank。
 
 use std::sync::Arc;
-use std::sync::Once;
 
 use serde_json::Value;
 
@@ -20,10 +19,12 @@ impl ExamDocumentExporter for QbankExamDocumentExporter {
     }
 }
 
-/// 由 `extensions::register_extensions()` 在启动时调用；幂等。
-pub fn install_vfs_hooks() {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| {
-        crate::vfs::hooks::register_exam_document_exporter(Arc::new(QbankExamDocumentExporter));
-    });
+/// 由 `extensions::register_extensions()` 的 `QbankVfsPlugin` 调用；幂等由
+/// `PluginHost`（同名插件只 apply 一次）保证。
+pub fn install_vfs_hooks(scope: &mut dstu_kernel::Scope) {
+    if let Ok(disposer) =
+        crate::vfs::hooks::register_exam_document_exporter(Arc::new(QbankExamDocumentExporter))
+    {
+        scope.add(disposer);
+    }
 }

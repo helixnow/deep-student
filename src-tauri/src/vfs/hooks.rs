@@ -2,12 +2,18 @@
 //!
 //! 拆分后 vfs 是低层 crate，不能反向依赖这些业务域；由 `extensions::register_extensions()`
 //! 在启动时接线。所有回调在“全部注册”时的可观察行为与拆分前直接调用一致。
+//!
+//! 注册机制统一走 `dstu-kernel`：多订阅者用 [`HookSet`]，单提供方用 [`Slot`]。
+//! `register_*` 返回 [`Disposer`]，由 `extensions.rs` 的插件 `Scope` 持有；槽位被
+//! 占用时保持“先注册者生效”（返回 `Err(SlotOccupied)`，调用方忽略即等价于旧
+//! `let _ = set(..)`）。
 
 use std::future::Future;
 use std::path::PathBuf;
 use std::pin::Pin;
-use std::sync::{Arc, OnceLock, RwLock};
+use std::sync::Arc;
 
+use dstu_kernel::{Disposer, HookSet, Slot, SlotOccupied};
 use serde_json::Value;
 use tauri::AppHandle;
 use tokio::sync::mpsc::UnboundedSender;
@@ -30,22 +36,19 @@ pub trait NoteDeleteHook: Send + Sync {
     ) -> Option<Box<dyn FnOnce() + Send>>;
 }
 
-static NOTE_DELETE_HOOKS: RwLock<Vec<Arc<dyn NoteDeleteHook>>> = RwLock::new(Vec::new());
+static NOTE_DELETE_HOOKS: HookSet<dyn NoteDeleteHook> = HookSet::new();
 
-pub fn register_note_delete_hook(hook: Arc<dyn NoteDeleteHook>) {
-    NOTE_DELETE_HOOKS
-        .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .push(hook);
+pub fn register_note_delete_hook(hook: Arc<dyn NoteDeleteHook>) -> Disposer {
+    NOTE_DELETE_HOOKS.register(hook)
 }
 
 pub(crate) fn note_delete_continuations(
     db: &Arc<VfsDatabase>,
     note_id: &str,
 ) -> Vec<Box<dyn FnOnce() + Send>> {
+    // 先快照再回调（不持锁执行 capture_delete）。
     NOTE_DELETE_HOOKS
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .snapshot()
         .iter()
         .filter_map(|hook| hook.capture_delete(db, note_id))
         .collect()
@@ -101,34 +104,32 @@ pub trait MediaTranscriber: Send + Sync {
     >;
 }
 
-static MEDIA_TRANSCRIBER: OnceLock<Arc<dyn MediaTranscriber>> = OnceLock::new();
+static MEDIA_TRANSCRIBER: Slot<dyn MediaTranscriber> = Slot::new();
 
-pub fn register_media_transcriber(transcriber: Arc<dyn MediaTranscriber>) {
-    let _ = MEDIA_TRANSCRIBER.set(transcriber);
+/// 注册媒体转写实现；槽位已占用时返回 `Err(SlotOccupied)`（先注册者生效）。
+pub fn register_media_transcriber(
+    transcriber: Arc<dyn MediaTranscriber>,
+) -> Result<Disposer, SlotOccupied> {
+    MEDIA_TRANSCRIBER.provide(transcriber)
 }
 
 pub(crate) fn media_transcriber() -> Option<Arc<dyn MediaTranscriber>> {
-    MEDIA_TRANSCRIBER.get().cloned()
+    MEDIA_TRANSCRIBER.get()
 }
 
 pub trait ResourceCreatedHook: Send + Sync {
     fn on_resource_created(&self, app: &AppHandle, resource_id: &str);
 }
 
-static RESOURCE_CREATED_HOOKS: RwLock<Vec<Arc<dyn ResourceCreatedHook>>> = RwLock::new(Vec::new());
+static RESOURCE_CREATED_HOOKS: HookSet<dyn ResourceCreatedHook> = HookSet::new();
 
-pub fn register_resource_created_hook(hook: Arc<dyn ResourceCreatedHook>) {
-    RESOURCE_CREATED_HOOKS
-        .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .push(hook);
+pub fn register_resource_created_hook(hook: Arc<dyn ResourceCreatedHook>) -> Disposer {
+    RESOURCE_CREATED_HOOKS.register(hook)
 }
 
 pub fn notify_resource_created(app: &AppHandle, resource_id: &str) {
-    let hooks = RESOURCE_CREATED_HOOKS
-        .read()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone();
+    // 先快照再调用：回调期间不持锁，之后被移除的钩子本轮仍会执行。
+    let hooks = RESOURCE_CREATED_HOOKS.snapshot();
     for hook in hooks {
         hook.on_resource_created(app, resource_id);
     }
@@ -142,12 +143,15 @@ pub trait ExamDocumentExporter: Send + Sync {
     fn export_document(&self, db: &VfsDatabase, exam_id: &str) -> Result<Value, String>;
 }
 
-static EXAM_DOCUMENT_EXPORTER: OnceLock<Arc<dyn ExamDocumentExporter>> = OnceLock::new();
+static EXAM_DOCUMENT_EXPORTER: Slot<dyn ExamDocumentExporter> = Slot::new();
 
-pub fn register_exam_document_exporter(exporter: Arc<dyn ExamDocumentExporter>) {
-    let _ = EXAM_DOCUMENT_EXPORTER.set(exporter);
+/// 注册题目集导出实现；槽位已占用时返回 `Err(SlotOccupied)`（先注册者生效）。
+pub fn register_exam_document_exporter(
+    exporter: Arc<dyn ExamDocumentExporter>,
+) -> Result<Disposer, SlotOccupied> {
+    EXAM_DOCUMENT_EXPORTER.provide(exporter)
 }
 
 pub(crate) fn exam_document_exporter() -> Option<Arc<dyn ExamDocumentExporter>> {
-    EXAM_DOCUMENT_EXPORTER.get().cloned()
+    EXAM_DOCUMENT_EXPORTER.get()
 }

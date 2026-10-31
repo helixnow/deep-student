@@ -623,8 +623,49 @@ impl Tool for RagTool {
 /// 向 llm_manager 注册 legacy 回退注入用的 web_search（llm_manager 不能反向依赖 tools）。
 ///
 /// 与原先 model2_pipeline 内联的调用相同：单工具注册表 + 回退阶段的 ToolContext。
+///
+/// 兼容入口：`extensions::register_extensions()` 与 `ChatV2Pipeline::new` 都调用它，
+/// 必须幂等。第一次成功注册后把 `Disposer` 存进进程级 `OnceLock`；若槽位已被
+/// 插件路径占用则忽略（先注册者生效）。
 pub fn install_web_search_fallback() {
-    crate::llm_manager::web_search_fallback::register_web_search_fallback(call_web_search_fallback);
+    use std::sync::{Once, OnceLock};
+
+    static INSTALLED: Once = Once::new();
+    static DISPOSER: OnceLock<dstu_kernel::Disposer> = OnceLock::new();
+
+    INSTALLED.call_once(|| {
+        if let Ok(disposer) = provide_web_search_fallback() {
+            let _ = DISPOSER.set(disposer);
+        }
+    });
+}
+
+/// 低层 provide：插件路径（`WebSearchFallbackPlugin::apply`）调用它并把
+/// `Disposer` 放进插件 `Scope`。
+pub(crate) fn provide_web_search_fallback(
+) -> Result<dstu_kernel::Disposer, dstu_kernel::SlotOccupied> {
+    crate::llm_manager::web_search_fallback::register_web_search_fallback(Arc::new(
+        ToolWebSearchFallback,
+    ))
+}
+
+/// [`crate::llm_manager::web_search_fallback::WebSearchFallback`] 的实现对象。
+struct ToolWebSearchFallback;
+
+impl crate::llm_manager::web_search_fallback::WebSearchFallback for ToolWebSearchFallback {
+    fn call<'a>(
+        &'a self,
+        req: crate::llm_manager::web_search_fallback::WebSearchFallbackRequest<'a>,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = crate::llm_manager::web_search_fallback::WebSearchToolResult,
+                > + Send
+                + 'a,
+        >,
+    > {
+        call_web_search_fallback(req)
+    }
 }
 
 fn call_web_search_fallback(

@@ -6,7 +6,6 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::Once;
 
 use crate::media::asr::{AsrBackend, HttpAsrBackend, UnavailableBackend};
 use crate::media::pipeline::{transcribe_resource, MediaProgressUpdate, TranscriptionOutcome};
@@ -163,11 +162,15 @@ impl ResourceCreatedHook for MediaResourceCreatedHook {
     }
 }
 
-/// 由 `extensions::register_extensions()` 在启动时调用；幂等。
-pub fn install_vfs_hooks() {
-    static INSTALL: Once = Once::new();
-    INSTALL.call_once(|| {
-        crate::vfs::hooks::register_media_transcriber(Arc::new(VfsMediaTranscriber));
-        crate::vfs::hooks::register_resource_created_hook(Arc::new(MediaResourceCreatedHook));
-    });
+/// 由 `extensions::register_extensions()` 的 `MediaVfsPlugin` 调用；幂等由
+/// `PluginHost`（同名插件只 apply 一次）保证。
+pub fn install_vfs_hooks(scope: &mut dstu_kernel::Scope) {
+    if let Ok(disposer) =
+        crate::vfs::hooks::register_media_transcriber(Arc::new(VfsMediaTranscriber))
+    {
+        scope.add(disposer);
+    }
+    scope.add(crate::vfs::hooks::register_resource_created_hook(Arc::new(
+        MediaResourceCreatedHook,
+    )));
 }
