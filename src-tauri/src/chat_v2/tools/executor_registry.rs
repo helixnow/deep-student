@@ -507,6 +507,11 @@ impl ToolExecutorRegistry {
     pub fn executor_names(&self) -> Vec<&'static str> {
         self.executors.iter().map(|e| e.name()).collect()
     }
+
+    /// 有序执行器花名册（注册顺序；供 `LegacyToolProvider` 包装为 agent-api 视图）。
+    pub(crate) fn executors(&self) -> &[Arc<dyn ToolExecutor>] {
+        &self.executors
+    }
 }
 
 impl Default for ToolExecutorRegistry {

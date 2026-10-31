@@ -328,7 +328,8 @@ impl ChatV2Pipeline {
         Self::create_executor_registry_with_workspace(None)
     }
 
-    fn create_executor_registry_with_workspace(
+    /// 生产执行器花名册（唯一来源）。`pub(crate)` 供 `LegacyToolProvider` oracle 测试复用。
+    pub(crate) fn create_executor_registry_with_workspace(
         workspace_coordinator: Option<Arc<WorkspaceCoordinator>>,
     ) -> Arc<ToolExecutorRegistry> {
         let mut executors: Vec<Arc<dyn super::tools::ToolExecutor>> = Vec::new();
@@ -451,6 +452,10 @@ impl ChatV2Pipeline {
             registry.len(),
             registry.executor_names()
         );
+
+        // A2：同一花名册经 dstu-agent-api `ToolRegistryBuilder` 校验（只读视图，不参与分发；
+        // 分发、超时、审批仍走上面的 ToolExecutorRegistry）。失败只记日志，不改变行为。
+        super::tools::legacy_tool_provider::validate_legacy_registry(&registry);
 
         registry
     }

@@ -721,7 +721,7 @@ pub fn grants_scope_hint(tool_name: &str) -> Option<GrantsScopeHint> {
 // ============================================================================
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::collections::HashSet;
     use std::sync::Arc;
@@ -852,7 +852,7 @@ mod tests {
     }
 
     /// 与 pipeline.rs 注册顺序一致的 executor 名单快照。
-    const EXPECTED_ROSTER: &[&str] = &[
+    pub(crate) const EXPECTED_ROSTER: &[&str] = &[
         "AttemptCompletionExecutor",
         "CanvasToolExecutor",
         "ChatAnkiToolExecutor",

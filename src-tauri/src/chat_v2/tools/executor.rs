@@ -16,7 +16,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::Window;
 use tokio_util::sync::CancellationToken;
@@ -37,24 +36,14 @@ use crate::vfs::lance_store::VfsLanceStore;
 use crate::vfs::pdf_processing_service::PdfProcessingService;
 
 // ============================================================================
-// 工具敏感等级
+// 工具敏感等级 / 并发等级（A2：与 dstu-agent-api 同一类型）
 // ============================================================================
 
-/// 工具敏感等级
-///
-/// 用于审批机制判断是否需要用户确认。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum ToolSensitivity {
-    /// 低敏感 - 直接执行
-    #[default]
-    Low,
-    /// 中敏感 - 根据用户配置决定
-    Medium,
-    /// 高敏感 - 必须审批
-    High,
-}
+// `ToolSensitivity` / `ToolConcurrency` 属于 `dstu_agent_api` 契约；这里 re-export，
+// 旧路径 `chat_v2::tools::executor::{ToolSensitivity, ToolConcurrency}` 继续解析，
+// `LegacyExecutorAdapter` 也无需做枚举转换。定义（变体、serde snake_case、
+// Default = Low / Serial）与旧版逐字一致。
+pub use dstu_agent_api::executor::{ToolConcurrency, ToolSensitivity};
 
 // ============================================================================
 // 工具结果预算（统一截断出口，2026-07；已下沉 dstu-agent-api）
@@ -64,34 +53,6 @@ pub enum ToolSensitivity {
 pub use dstu_agent_api::budget::{apply_tool_result_budget, DEFAULT_TOOL_RESULT_CHAR_BUDGET};
 #[cfg(test)]
 use dstu_agent_api::budget::{serialized_char_len, TRUNCATION_MARKER};
-
-// ============================================================================
-// 工具并发等级
-// ============================================================================
-
-/// 工具并发等级（2026-07 并行工具调用改造）
-///
-/// 声明工具在同一批 tool_calls 内的并发安全性，由 Pipeline 的
-/// `execute_tool_calls` 用于决定是否将连续的并行安全工具分段并行执行。
-///
-/// ## 语义
-/// - `ReadOnly`: 纯只读、无副作用（检索/读取/查询类）。可并行执行，
-///   且瞬时失败（超时/网络/429/5xx）允许自动重试。
-/// - `SafeParallel`: 有副作用但相互隔离、可安全并行（如各自写独立资源）。
-///   可并行执行，但**不**自动重试（避免副作用重复）。
-/// - `Serial`: 默认值。顺序执行，绝不自动重试。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-#[derive(Default)]
-pub enum ToolConcurrency {
-    /// 只读工具 - 可并行 + 瞬时错误可自动重试
-    ReadOnly,
-    /// 并行安全（有隔离副作用）- 可并行，不自动重试
-    SafeParallel,
-    /// 串行（默认，保守）
-    #[default]
-    Serial,
-}
 
 // ============================================================================
 // 类型复用说明
@@ -252,6 +213,19 @@ impl ExecutionContext {
             rag_enabled: true,
             web_search_enabled: true,
         }
+    }
+
+    /// 是否有可交互的前端窗口（与 `dstu_agent_api::HostBridge::has_frontend` 同义）。
+    ///
+    /// A2 迁移入口：执行器应先用本方法 / [`Self::try_window`] 判断，再逐步替换
+    /// panic 契约的 [`Self::window_ref`]（现存调用点保持不变）。
+    pub fn has_frontend(&self) -> bool {
+        self.tauri_window.is_some()
+    }
+
+    /// 非 panic 地借用 Tauri 窗口；windowless（headless / 测试）上下文返回 `None`。
+    pub fn try_window(&self) -> Option<&Window> {
+        self.tauri_window.as_ref()
     }
 
     /// Borrow the Tauri window (panics if constructed windowless).
