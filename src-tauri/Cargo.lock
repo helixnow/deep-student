@@ -3290,6 +3290,7 @@ dependencies = [
  "dstu-security",
  "dstu-storage",
  "dstu-util",
+ "dstu-vfs",
  "encoding_rs",
  "env_logger",
  "eventsource-stream",
@@ -3962,6 +3963,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "dstu-testkit"
+version = "0.0.0"
+dependencies = [
+ "dstu-storage",
+ "tempfile",
+]
+
+[[package]]
 name = "dstu-util"
 version = "0.0.0"
 dependencies = [
@@ -3972,6 +3981,54 @@ dependencies = [
  "serde_json",
  "tiktoken-rs",
  "tracing",
+]
+
+[[package]]
+name = "dstu-vfs"
+version = "0.0.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "async-trait",
+ "base64 0.21.7",
+ "chrono",
+ "dashmap 5.5.3",
+ "dstu-core",
+ "dstu-docs",
+ "dstu-kernel",
+ "dstu-llm",
+ "dstu-platform",
+ "dstu-storage",
+ "dstu-testkit",
+ "dstu-util",
+ "futures",
+ "futures-util",
+ "hex",
+ "image 0.24.9",
+ "lancedb",
+ "libc",
+ "log",
+ "nanoid",
+ "pdfium-render",
+ "pulldown-cmark",
+ "r2d2",
+ "r2d2_sqlite",
+ "regex",
+ "reqwest 0.11.27",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "url",
+ "urlencoding",
+ "uuid",
+ "zip 0.6.6",
 ]
 
 [[package]]

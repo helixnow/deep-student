@@ -480,11 +480,7 @@ impl NoteLeaseRepo {
         })
     }
 
-    pub fn remove(
-        conn: &Connection,
-        token: &str,
-        reason: &str,
-    ) -> VfsResult<LeaseCancellation> {
+    pub fn remove(conn: &Connection, token: &str, reason: &str) -> VfsResult<LeaseCancellation> {
         let status = Self::status(conn, token)?;
         conn.execute("DELETE FROM note_editor_lease_acks WHERE token=?1", [token])?;
         conn.execute(

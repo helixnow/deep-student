@@ -36,3 +36,5 @@ pub(crate) use dstu_storage::{
     data_space, database, file_manager, llm_usage, staged_upload, unified_file_manager,
 };
 pub(crate) use dstu_util::utils;
+// 与 app lib.rs 的 `pub use vfs::question_sync_service;` 对应：vfs 内部用 `crate::question_sync_service` 引用。
+pub(crate) use vfs::question_sync_service;

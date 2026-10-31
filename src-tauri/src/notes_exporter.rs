@@ -4471,10 +4471,13 @@ mod note_history_app_tests {
         finish_asset_deletion_with_conn(&conn, tmp.path(), &prepared).unwrap();
         assert!(tmp.path().join(path).exists());
         let note = edit(&conn, &note, "removed image");
-        assert!(
-            prepare_asset_deletion_with_conn(&conn, tmp.path(), &key, std::path::Path::new(path))
-                .is_err()
-        );
+        assert!(prepare_asset_deletion_with_conn(
+            &conn,
+            tmp.path(),
+            &key,
+            std::path::Path::new(path)
+        )
+        .is_err());
         VfsNoteRepo::delete_note_with_conn(&conn, &note.id).unwrap();
         assert!(NoteRevisionRepo::asset_is_referenced(&conn, path).unwrap());
         let shared = create(&conn, &format!("![shared]({})", path));

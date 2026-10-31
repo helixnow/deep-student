@@ -149,9 +149,9 @@ pub mod system_permissions;
 pub mod test_utils;
 pub use dstu_core::text_escape; // XML 文本转义纯函数（chat_v2::vfs_resolver 按原路径重导出）
 pub use dstu_core::token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
-pub use dstu_vfs::textbooks_db;
 #[allow(dead_code)]
 pub use dstu_mcp::tools;
+pub use dstu_vfs::textbooks_db;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]

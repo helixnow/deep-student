@@ -113,10 +113,7 @@ impl NoteRevisionRepo {
     }
 
     /// Reusable nested transaction; metadata and history must commit together.
-    pub fn transaction<T>(
-        conn: &Connection,
-        f: impl FnOnce() -> VfsResult<T>,
-    ) -> VfsResult<T> {
+    pub fn transaction<T>(conn: &Connection, f: impl FnOnce() -> VfsResult<T>) -> VfsResult<T> {
         conn.execute_batch("SAVEPOINT note_history_write")?;
         match f() {
             Ok(value) => {
