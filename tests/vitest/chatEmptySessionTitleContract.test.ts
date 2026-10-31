@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('chat empty session title contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const layoutSource = readFileSync(
     resolve(process.cwd(), 'src/features/chat/pages/useChatPageLayout.tsx'),
     'utf-8',

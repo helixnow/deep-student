@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('desktop page shell sidebar contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const learningHubPageSource = readFileSync(resolve(process.cwd(), 'src/features/learning-hub/LearningHubPage.tsx'), 'utf-8');
   const templatePageSource = readFileSync(resolve(process.cwd(), 'src/features/template-management/TemplateManagementApp.tsx'), 'utf-8');
 

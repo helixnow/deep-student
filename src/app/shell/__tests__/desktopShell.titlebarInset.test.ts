@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 import { resolveShellTitlebarTopInset } from '../desktopShell';
 
@@ -47,7 +48,7 @@ describe('Android system bar wiring (#472)', () => {
   const read = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf8');
 
   it('feeds the native safe area into the desktop shell titlebar', () => {
-    const app = read('src/App.tsx');
+    const app = readAppShellSource();
     expect(app).toContain('const androidSafeArea = useAndroidSafeArea();');
     expect(app).toContain('androidSafeAreaTop: androidSafeArea?.top ?? null');
     expect(app).toContain('syncAndroidImmersiveModeFromSettings()');

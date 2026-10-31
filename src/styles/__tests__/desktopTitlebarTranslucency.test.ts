@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+const appSource = readAppShellSource();
 const shellStylesSource = readFileSync(
   resolve(process.cwd(), 'src/shared/styles/app.css'),
   'utf8',

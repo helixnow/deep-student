@@ -10,6 +10,10 @@ const ensure = (condition, message) => {
 
 const read = (path) => readFileSync(path, 'utf-8');
 
+// App 壳层：src/App.tsx 及从其中搬出的模块（清单见 config/app-shell-sources.json）
+const appShellFiles = JSON.parse(read('config/app-shell-sources.json')).files;
+const readAppShell = () => appShellFiles.filter((file) => existsSync(file)).map(read).join('\n');
+
 // grep-based search that works on all CI runners (no rg dependency)
 const grepSearch = (pattern, dirs, excludeGlobs = []) => {
   const grepArgs = ['-rnE', pattern];
@@ -126,7 +130,7 @@ ensure(!deprecatedViewRouteOut, 'deprecated view direct routing still exists in 
 ensure(existsSync('src/hooks/useEventRegistry.ts'), 'missing centralized useEventRegistry hook');
 
 if (existsSync('src/App.tsx')) {
-  const appCode = read('src/App.tsx');
+  const appCode = readAppShell();
   ensure(!appCode.includes("addEventListener('NAVIGATE_TO_VIEW'"), 'App.tsx still uses raw addEventListener for NAVIGATE_TO_VIEW');
 }
 
@@ -151,7 +155,7 @@ if (alertConfirmOut) {
 
 // Gate 11: main entry points must not import deprecated SimpleTooltip directly.
 if (existsSync('src/App.tsx')) {
-  const appCode = read('src/App.tsx');
+  const appCode = readAppShell();
   ensure(!appCode.includes("@/components/ui/SimpleTooltip"), 'App.tsx still imports SimpleTooltip');
 }
 

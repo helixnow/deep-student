@@ -9,6 +9,12 @@ import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
 import noLegacyTooltip from './eslint-rules/no-legacy-tooltip.js';
 import noHardcodedColor from './eslint-rules/no-hardcoded-color.js';
 import noArbitraryZIndex from './eslint-rules/no-arbitrary-z-index.js';
+import { readFileSync } from 'node:fs';
+
+// App 壳层：src/App.tsx 及从其中搬出的模块，App.tsx 专属护栏同样覆盖这些文件
+const appShellSourceFiles = JSON.parse(
+  readFileSync(new URL('./config/app-shell-sources.json', import.meta.url), 'utf-8')
+).files;
 
 export default tseslint.config(
   // 基础 JS 推荐配置
@@ -201,7 +207,7 @@ export default tseslint.config(
 
   // 已迁移壳层：禁止再引入裸 window/document listener
   {
-    files: ['src/App.tsx'],
+    files: appShellSourceFiles,
     rules: {
       'no-restricted-syntax': [
         'error',

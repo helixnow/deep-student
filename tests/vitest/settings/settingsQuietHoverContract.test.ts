@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 'utf-8');
 
@@ -45,7 +46,7 @@ describe('settings quiet hover contract', () => {
     // 旧版移动端设置 Sheet（settingsMobileSheetCloseButtonClassName）已随统一
     // 移动壳（UnifiedMobileHeader + MobileSlidingLayout）移除，App.tsx 不再引用该 token；
     // 仅保留“禁止裸色值”负向断言。
-    const app = readSource('src/App.tsx');
+    const app = readAppShellSource();
 
     expect(app).not.toContain('hover:bg-[#F1F3F6]');
     expect(app).not.toContain('hover:text-[#111111]');
