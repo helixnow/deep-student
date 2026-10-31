@@ -6,8 +6,8 @@ fn main() {
  let pick=|new:&'static str,old:&'static str| if root.join(new).exists() {new} else {old};
  let mut s=String::new();
  s.push_str("pub mod mcp {\n");
- s+=&module("client","src-tauri/src/mcp/client.rs");
- s+=&module("protocol_version","src-tauri/src/mcp/protocol_version.rs");
+ s+=&module("client",pick("src-tauri/crates/dstu-mcp/src/mcp/client.rs","src-tauri/src/mcp/client.rs"));
+ s+=&module("protocol_version",pick("src-tauri/crates/dstu-mcp/src/mcp/protocol_version.rs","src-tauri/src/mcp/protocol_version.rs"));
  s.push_str("}\n");
  s+=&module("utf8_stream",pick("src-tauri/crates/dstu-util/src/utf8_stream.rs","src-tauri/src/llm_manager/utf8_stream.rs"));
  s.push_str("pub mod llm_manager {pub use crate::utf8_stream;}\n");

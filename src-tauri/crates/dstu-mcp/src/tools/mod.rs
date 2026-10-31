@@ -642,8 +642,7 @@ pub fn install_web_search_fallback() {
 
 /// 低层 provide：插件路径（`WebSearchFallbackPlugin::apply`）调用它并把
 /// `Disposer` 放进插件 `Scope`。
-pub(crate) fn provide_web_search_fallback(
-) -> Result<dstu_kernel::Disposer, dstu_kernel::SlotOccupied> {
+pub fn provide_web_search_fallback() -> Result<dstu_kernel::Disposer, dstu_kernel::SlotOccupied> {
     crate::llm_manager::web_search_fallback::register_web_search_fallback(Arc::new(
         ToolWebSearchFallback,
     ))

@@ -82,9 +82,9 @@ pub use dstu_llm::llm_manager;
 pub mod llm_structurer;
 pub use dstu_storage::llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 pub mod mastery; // 掌握度中间层（A-P0 回流画像 + A-P1 FSRS 调度偏置）
-#[cfg(feature = "mcp")]
-pub mod mcp;
 pub use dstu_core::media_types; // 媒体种类判定与附件/导入大小上限（media、attachment_repo 按原路径重导出）
+#[cfg(feature = "mcp")]
+pub use dstu_mcp::mcp;
 pub mod media; // 音视频学习：转写流水线（解码/VAD/ASR/字幕段，docs/dev/media-learning/README.md）
 #[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
@@ -151,7 +151,7 @@ pub use dstu_core::text_escape; // XML 文本转义纯函数（chat_v2::vfs_reso
 pub mod textbooks_db;
 pub use dstu_core::token_source; // Token 统计来源（chat_v2::types 按原路径重导出）
 #[allow(dead_code)]
-pub mod tools;
+pub use dstu_mcp::tools;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
 #[allow(dead_code)]
@@ -210,6 +210,7 @@ const FIRST_PARTY_LOG_TARGETS: &[&str] = &[
     "dstu_security",
     "dstu_storage",
     "dstu_llm",
+    "dstu_mcp",
 ];
 
 // 全局 AppHandle，用于在任意位置发送 Tauri 事件

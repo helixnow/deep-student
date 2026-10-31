@@ -3285,6 +3285,7 @@ dependencies = [
  "dstu-docs",
  "dstu-kernel",
  "dstu-llm",
+ "dstu-mcp",
  "dstu-platform",
  "dstu-security",
  "dstu-storage",
@@ -3829,6 +3830,50 @@ dependencies = [
  "uuid",
  "windows 0.58.0",
  "zeroize",
+]
+
+[[package]]
+name = "dstu-mcp"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "backon",
+ "chrono",
+ "config",
+ "dashmap 5.5.3",
+ "dotenvy",
+ "dstu-core",
+ "dstu-kernel",
+ "dstu-llm",
+ "dstu-security",
+ "dstu-storage",
+ "dstu-util",
+ "futures",
+ "hyper 0.14.32",
+ "libc",
+ "log",
+ "lru",
+ "oauth2",
+ "quick-xml 0.37.5",
+ "rand 0.8.5",
+ "regex",
+ "reqwest 0.11.27",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-plugin-opener",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+ "tokio-tungstenite 0.21.0",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
 ]
 
 [[package]]
