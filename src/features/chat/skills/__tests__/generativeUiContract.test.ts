@@ -22,6 +22,12 @@ const EXECUTOR_RS = join(
   HERE,
   '../../../../../src-tauri/src/chat_v2/tools/generative_ui_executor.rs',
 );
+// 交互式块（choice/form/image）在 dstu-agent 的 genui_interaction.rs 中登记，
+// executor 的 is_allowed_block_type = ALLOWED_GENERATIVE_UI_BLOCK_TYPES ∪ GENUI_NEW_BLOCK_TYPES。
+const GENUI_INTERACTION_RS = join(
+  HERE,
+  '../../../../../src-tauri/crates/dstu-agent/src/chat_v2/tools/genui_interaction.rs',
+);
 
 /** 从 skill content 的「可用 block type」节提取逗号分隔清单 */
 function extractSkillContentTypes(content: string): string[] {
@@ -42,13 +48,27 @@ function extractRustAllowedTypes(source: string): string[] {
   return [...match![1].matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
 }
 
+/** 从 genui_interaction.rs 提取 GENUI_NEW_BLOCK_TYPES，并确认 executor 确实把它并入白名单 */
+function extractRustInteractiveTypes(interactionSource: string, executorSource: string): string[] {
+  const match = interactionSource.match(/GENUI_NEW_BLOCK_TYPES: &\[&str\] = &\[([\s\S]*?)\];/);
+  expect(match, 'genui_interaction.rs 应定义 GENUI_NEW_BLOCK_TYPES').toBeTruthy();
+  expect(executorSource, 'executor 应把 GENUI_NEW_BLOCK_TYPES 并入白名单').toContain(
+    'GENUI_NEW_BLOCK_TYPES',
+  );
+  return [...match![1].matchAll(/"([a-z0-9-]+)"/g)].map((m) => m[1]);
+}
+
 describe('generative-ui 块类型白名单三处对齐', () => {
   const skillContentTypes = extractSkillContentTypes(generativeUiSkill.content);
   const registryTypes = generativeUIRegistry
     .getAll()
     .map((c) => c.type)
     .sort();
-  const rustTypes = extractRustAllowedTypes(readFileSync(EXECUTOR_RS, 'utf8')).sort();
+  const executorSource = readFileSync(EXECUTOR_RS, 'utf8');
+  const rustTypes = [
+    ...extractRustAllowedTypes(executorSource),
+    ...extractRustInteractiveTypes(readFileSync(GENUI_INTERACTION_RS, 'utf8'), executorSource),
+  ].sort();
 
   it('skill content 清单 == 前端 registry', () => {
     expect([...skillContentTypes].sort()).toEqual(registryTypes);

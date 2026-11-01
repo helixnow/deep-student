@@ -51,6 +51,7 @@ pub mod ask_user_handlers; // 🆕 用户提问命令处理器
 pub mod block_actions;
 // canvas_handlers 留在 app（依赖 app 侧 canvas_executor），由 app 门面 `src/chat_v2/handlers/mod.rs` 声明。
 pub mod export_handlers; // 🆕 会话导出（markdown / json）
+pub mod genui_interaction_handlers; // 生成式 UI 交互作答命令（submit / dismiss / list_pending）
 pub mod group_handlers;
 pub mod load_messages_page;
 pub mod load_session;
@@ -76,6 +77,10 @@ pub use block_actions::{
     chat_v2_update_block_content, chat_v2_update_block_tool_output, chat_v2_upsert_streaming_block,
 };
 pub use export_handlers::{chat_v2_export_session, chat_v2_export_session_jsonl};
+pub use genui_interaction_handlers::{
+    chat_v2_genui_dismiss_answer, chat_v2_genui_list_pending_answers, chat_v2_genui_submit_answer,
+    GenUiAck,
+};
 pub use goal_handlers::{
     chat_v2_goal_clear, chat_v2_goal_edit, chat_v2_goal_get, chat_v2_goal_pause,
     chat_v2_goal_resume,

@@ -13,6 +13,8 @@ import {
   resolveGenerativeLayout,
   layoutGridClassName,
   type ActionBarProps,
+  type ChoiceProps,
+  type FormProps,
 } from './schema';
 import { assignStableBlockIds } from './utils/assignStableBlockIds';
 import { classifyGenerativeUIParseErrors } from './utils/classifyGenerativeUIParseErrors';
@@ -36,11 +38,23 @@ import {
 } from './hooks/useGenerativeUICompact';
 import { usePrefersContrast } from './hooks/usePrefersContrast';
 import { usePrefersReducedMotion } from './hooks/usePrefersReducedMotion';
-import type { GenerativeUIIntent, GenerativeUIRendererProps } from './types';
+import type {
+  GenerativeActionDefinition,
+  GenerativeUIIntent,
+  GenerativeUIRendererProps,
+} from './types';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert';
 import { ActionBarBlock } from './components/ActionBarBlock';
 import { GenerativeBlockSlot } from './components/GenerativeBlockSlot';
 import { GenerativeActionUndoStack } from './handlers/actionUndoStack';
+import { ChoiceBlock } from './components/ChoiceBlock';
+import { FormBlock } from './components/FormBlock';
+import {
+  GenerativeInteractionProvider,
+  InteractionSubmitBar,
+} from './components/InteractionSubmitBar';
+import { GenerativeImageBudgetProvider } from './media/useGenerativeImage';
+import { isInlineSafeActionId, type InteractiveBlockSpec } from './validateIntentRules';
 
 import './blocks';
 import './generative-ui.css';
@@ -220,6 +234,41 @@ function resolveDisplayIntent(
   };
 }
 
+/** display-only：只放行 INLINE_SAFE action（copy-block、copy-intent、open-note:*、open-pdf:*） */
+function filterInlineSafeHandlers(
+  handlers: Record<string, GenerativeActionDefinition> | undefined,
+): Record<string, GenerativeActionDefinition> {
+  const out: Record<string, GenerativeActionDefinition> = Object.create(null);
+  if (!handlers) return out;
+  for (const [id, def] of Object.entries(handlers)) {
+    if (Object.hasOwn(handlers, id) && isInlineSafeActionId(id)) out[id] = def;
+  }
+  return out;
+}
+
+/** 按 intent 顺序收集交互块（props 已套 schema 默认值），供草稿汇总 / 答案构造 */
+function collectInteractiveSpecs(intent: GenerativeUIIntent | null): InteractiveBlockSpec[] {
+  if (!intent) return [];
+  const specs: InteractiveBlockSpec[] = [];
+  const seen = new Set<string>();
+  for (const block of intent.blocks) {
+    if (block.type !== 'choice' && block.type !== 'form') continue;
+    const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
+    if (!blockId || seen.has(blockId)) continue;
+    const config = generativeUIRegistry.get(block.type);
+    if (!config) continue;
+    const validation = validateBlockProps(config.propsSchema, block.props ?? {});
+    if (isBlockPropsValidationFailure(validation)) continue;
+    seen.add(blockId);
+    if (block.type === 'choice') {
+      specs.push({ type: 'choice', blockId, props: validation.props as unknown as ChoiceProps });
+    } else {
+      specs.push({ type: 'form', blockId, props: validation.props as unknown as FormProps });
+    }
+  }
+  return specs;
+}
+
 function generativeUIRootClassName(compact: boolean, className?: string): string {
   return cn(
     'generative-ui-root min-w-0',
@@ -233,11 +282,13 @@ export function GenerativeUIRenderer({
   isStreaming = false,
   showChrome = true,
   onAction,
-  actionHandlers,
+  actionHandlers: incomingActionHandlers,
   warnings: incomingWarnings,
   truncatedCount: incomingTruncatedCount,
   maxStreamChars = MAX_GENERATIVE_UI_STREAM_CHARS,
   forceCompact = false,
+  interactionMode = 'interactive',
+  interaction,
   className,
 }: GenerativeUIRendererProps) {
   const { t } = useTranslation('generativeUi');
@@ -259,9 +310,15 @@ export function GenerativeUIRenderer({
       ),
     [intentInput, incomingWarnings, incomingTruncatedCount, isStreaming, maxStreamChars],
   );
+  const displayOnly = interactionMode === 'display-only';
+  // display-only 二次过滤：调用方即便传入副作用 handler 也不会被渲染 / 执行
+  const actionHandlers = useMemo(
+    () => (displayOnly ? filterInlineSafeHandlers(incomingActionHandlers) : incomingActionHandlers),
+    [incomingActionHandlers, displayOnly],
+  );
   const actionBarRenderContext = useMemo(
-    () => ({ actionHandlers, onAction }),
-    [actionHandlers, onAction],
+    () => ({ actionHandlers, onAction, disabled: isStreaming }),
+    [actionHandlers, onAction, isStreaming],
   );
 
   const displayIntent = resolved.intent;
@@ -281,6 +338,11 @@ export function GenerativeUIRenderer({
   const reachableActionBarIndex = displayIntent
     ? firstReachableActionBarIndex(displayIntent, actionHandlers)
     : -1;
+  const interactiveSpecs = useMemo(() => collectInteractiveSpecs(displayIntent), [displayIntent]);
+  const hasInteractiveBlocks = useMemo(
+    () => Boolean(displayIntent?.blocks.some((b) => b.type === 'choice' || b.type === 'form')),
+    [displayIntent],
+  );
   const hasActionBar = reachableActionBarIndex >= 0;
 
   useEffect(() => {
@@ -337,6 +399,8 @@ export function GenerativeUIRenderer({
       data-streaming={isStreaming || undefined}
       data-stream-fallback={streamingFallback ? true : undefined}
       data-intent-fingerprint={fingerprintGenerativeUIIntent(displayIntent)}
+      data-interaction-mode={displayOnly ? 'display-only' : undefined}
+      data-interaction-state={interaction && hasInteractiveBlocks ? interaction.state : undefined}
       role="region"
       aria-label={t('a11y.region_label')}
       aria-busy={isStreaming || undefined}
@@ -367,6 +431,13 @@ export function GenerativeUIRenderer({
         </div>
       ) : null}
 
+      <GenerativeImageBudgetProvider>
+      <GenerativeInteractionProvider
+        mode={interactionMode}
+        isStreaming={isStreaming}
+        binding={hasInteractiveBlocks ? interaction : undefined}
+        specBlocks={interactiveSpecs}
+      >
       <div
         className={layoutGridClassName(mode, columns, compact)}
         data-layout-mode={mode}
@@ -427,13 +498,31 @@ export function GenerativeUIRenderer({
                 actionHandlers={actionHandlers}
                 onAction={onAction}
                 undoStack={undoStack}
+                disabled={isStreaming}
               />,
+            );
+          }
+
+          // 交互块：实际 id 取 block.id（Rust 强制必填），不用 assignStableBlockIds 的合成 id
+          const interactiveId = displayIntent.blocks[index]?.id;
+          if (block.type === 'choice') {
+            return slot(
+              <ChoiceBlock {...(validation.props as unknown as ChoiceProps)} blockId={interactiveId} />,
+            );
+          }
+          if (block.type === 'form') {
+            return slot(
+              <FormBlock {...(validation.props as unknown as FormProps)} blockId={interactiveId} />,
             );
           }
 
           return slot(<Component {...validation.props} />);
         })}
       </div>
+
+      {hasInteractiveBlocks ? <InteractionSubmitBar /> : null}
+      </GenerativeInteractionProvider>
+      </GenerativeImageBudgetProvider>
 
       {showTruncatedHint ? (
         <Alert

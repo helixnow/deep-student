@@ -1,5 +1,5 @@
 /**
- * Generative UI a11y contract — 18 内置块 landmark / progressbar / alert / live region
+ * Generative UI a11y contract — 21 内置块 landmark / progressbar / alert / live region
  * + [data-generative-ui] 内 button/a/[tabindex] 的 :focus-visible ring token
  */
 import fs from 'node:fs';
@@ -117,8 +117,8 @@ describe('generativeUIA11y.contract', () => {
     }
   });
 
-  it('covers the 18 built-in block types from the fixture', () => {
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
+  it('covers the 21 built-in block types from the fixture', () => {
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
     for (const type of REQUIRED_EIGHTEEN) {
       expect(ALL_BLOCK_TYPES).toContain(type);
     }

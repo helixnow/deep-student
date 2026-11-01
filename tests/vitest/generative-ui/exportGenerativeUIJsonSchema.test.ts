@@ -42,11 +42,11 @@ describe('exportGenerativeUIJsonSchema', () => {
     expect(blocks.maxItems).toBe(MAX_GENERATIVE_UI_BLOCKS);
   });
 
-  it('lists 18 registered block types including markdown, chart, steps, table, stat-card, action-bar', () => {
+  it('lists 21 registered block types including markdown, chart, steps, table, stat-card, action-bar, choice, form, image', () => {
     const schema = exportGenerativeUIJsonSchema();
     const registered = schema['x-registered-block-types'];
     expect(registered).toEqual(expect.any(Array));
-    expect(registered).toHaveLength(18);
+    expect(registered).toHaveLength(21);
     expect(registered).toEqual(
       expect.arrayContaining([
         'markdown',
@@ -55,6 +55,9 @@ describe('exportGenerativeUIJsonSchema', () => {
         'table',
         'stat-card',
         'action-bar',
+        'choice',
+        'form',
+        'image',
       ]),
     );
     expect(registered).toEqual([...(registered as string[])].sort());

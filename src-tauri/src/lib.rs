@@ -2515,6 +2515,10 @@ pub fn run() {
             ,crate::chat_v2::tools::attachment_stage_executor::chat_v2_stage_context_attachments
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
+            // 生成式 UI 交互作答（awaitAnswer：提交 / 中止 / 查询挂起）
+            ,crate::chat_v2::handlers::genui_interaction_handlers::chat_v2_genui_submit_answer
+            ,crate::chat_v2::handlers::genui_interaction_handlers::chat_v2_genui_dismiss_answer
+            ,crate::chat_v2::handlers::genui_interaction_handlers::chat_v2_genui_list_pending_answers
             // Canvas 工具前端回调命令（完全前端模式）
             ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_result
             ,crate::chat_v2::handlers::canvas_handlers::chat_v2_canvas_edit_ack

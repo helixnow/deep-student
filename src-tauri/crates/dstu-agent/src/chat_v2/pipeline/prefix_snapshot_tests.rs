@@ -22,7 +22,9 @@ use super::tool_loop::{
     freeze_tool_schema_order_for_prompt_cache, merge_frozen_tool_schema_order_baseline,
     tool_schema_sort_key,
 };
-use crate::chat_v2::prompt_builder::{CanvasNoteInfo, PromptBuilder, SystemPromptParts};
+use crate::chat_v2::prompt_builder::{
+    CanvasNoteInfo, PromptBuilder, SystemPromptParts, GENERATIVE_UI_USAGE_RULE,
+};
 use crate::chat_v2::types::SourceInfo;
 
 // ============================================================================
@@ -136,6 +138,38 @@ fn todos_and_canvas_never_leak_into_stable_system() {
     let volatile = parts.turn_volatile.expect("volatile blocks present");
     assert!(volatile.contains("<active_todos>"));
     assert!(volatile.contains("<canvas_note>"));
+}
+
+/// 生成式 UI 使用规则是 stable system 的固定字节段：每轮恰好一次、逐轮同一偏移，
+/// 内联 ```genui 规则默认关闭时不进入 system，也不漂移到 turn-volatile。
+#[test]
+fn generative_ui_usage_rule_is_byte_stable_in_system_prefix() {
+    let rounds: Vec<SystemPromptParts> = (1..=3).map(build_round).collect();
+    for parts in &rounds {
+        assert_eq!(
+            parts
+                .stable_system
+                .matches(GENERATIVE_UI_USAGE_RULE)
+                .count(),
+            1,
+            "<generative_ui_usage> 必须无条件、恰好一次进入 stable system"
+        );
+        assert!(!parts.stable_system.contains("<generative_ui_inline_rules"));
+        if let Some(volatile) = parts.turn_volatile.as_deref() {
+            assert!(
+                !volatile.contains("<generative_ui_usage>"),
+                "使用规则属于稳定前缀，不得出现在 turn-volatile"
+            );
+        }
+    }
+    let offset = |parts: &SystemPromptParts| {
+        parts
+            .stable_system
+            .find("<generative_ui_usage>")
+            .expect("usage rule present")
+    };
+    assert_eq!(offset(&rounds[0]), offset(&rounds[1]));
+    assert_eq!(offset(&rounds[1]), offset(&rounds[2]));
 }
 
 // ============================================================================

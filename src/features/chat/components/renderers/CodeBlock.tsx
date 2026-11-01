@@ -42,6 +42,8 @@ import '../../styles/flowtoken-patched.css';
 // Keep the shared Prism grammar bundle behind a code-only boundary. Plain prose
 // and inline code never evaluate it, and completed blocks retain memoized output.
 const LazySyntaxHighlighter = React.lazy(() => import('react-syntax-highlighter/dist/esm/prism'));
+// 正文内联 ```genui 只在能力开启且遇到该围栏时才加载生成式 UI 渲染器。
+const LazyInlineGenerativeUIFence = React.lazy(() => import('@/features/generative-ui/inline/InlineGenerativeUIFence'));
 
 const HighlightContent: React.FC<{ children?: ReactNode }> = ({ children }) => <>{children}</>;
 
@@ -333,6 +335,8 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [showRendered, setShowRendered] = useState(false);
   const [showRichRenderer, setShowRichRenderer] = useState(false);
+  /** ```genui 内联界面：默认渲染，工具栏可切到源码 */
+  const [genuiView, setGenuiView] = useState<'render' | 'source'>('render');
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -396,6 +400,9 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
     rendererCapabilities.molecular3d && langLower === 'pdb' ? 'molecule-3d' :
     rendererCapabilities.geojson && langLower === 'geojson' ? 'geojson' : null;
   const canRenderRich = richRendererKind !== null;
+  /** 正文内联 ```genui（只展示）：能力关闭时按普通源码块显示 */
+  const canRenderGenui = rendererCapabilities.generativeUiInline && langLower === 'genui';
+  const genuiActive = canRenderGenui && genuiView === 'render';
   /** SVG / HTML 走自动预览 + 「…」菜单；其余可视化保持手动「运行」 */
   const hasLivePreview = canRenderSvg || canRenderHtml;
 
@@ -988,6 +995,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
           <span>{copied ? t('codeBlock.copied') : t('codeBlock.copy')}</span>
         </DsButton>
 
+        {canRenderGenui && (
+          <DsButton
+            variant="ghost"
+            size="sm"
+            className="code-block-copy"
+            onClick={() => setGenuiView((v) => (v === 'render' ? 'source' : 'render'))}
+            title={genuiActive ? t('codeBlock.viewSource') : t('codeBlock.viewRender')}
+            aria-pressed={!genuiActive}
+          >
+            <span style={{ marginRight: 4 }}>{genuiActive ? '</>' : '◎'}</span>
+            <span>{genuiActive ? t('codeBlock.source') : t('codeBlock.render')}</span>
+          </DsButton>
+        )}
+
         {(canRunMermaid || canRenderXml || canRenderRich) && (
           (renderedSvg || showRichRenderer) ? (
             <DsButton
@@ -1037,7 +1058,17 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({
   );
 
   let body: ReactNode;
-  if (showRichRenderer && richRendererKind) {
+  if (genuiActive) {
+    body = (
+      <React.Suspense fallback={sourceView}>
+        <LazyInlineGenerativeUIFence
+          source={codeContent}
+          isStreaming={!!isStreaming}
+          renderSource={() => sourceView}
+        />
+      </React.Suspense>
+    );
+  } else if (showRichRenderer && richRendererKind) {
     body = <RichCodeRenderer kind={richRendererKind} source={codeContent} />;
   } else if (htmlPreviewActive) {
     body = (

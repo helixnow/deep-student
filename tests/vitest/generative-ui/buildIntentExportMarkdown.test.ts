@@ -8,14 +8,14 @@ import { buildIntentExportMarkdown } from '@/features/generative-ui/utils/buildI
 import type { GenerativeUIIntent } from '@/features/generative-ui/types';
 
 describe('buildIntentExportMarkdown', () => {
-  it('exports all 18 fixture types as readable markdown', () => {
+  it('exports all 21 fixture types as readable markdown', () => {
     const intent = buildAllBlocksIntent();
     const md = buildIntentExportMarkdown(intent);
 
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
-    expect(intent.blocks).toHaveLength(18);
-    expect(md.startsWith('# All 18 blocks')).toBe(true);
-    expect(md.match(/^### /gm)).toHaveLength(18);
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
+    expect(intent.blocks).toHaveLength(21);
+    expect(md.startsWith('# All 21 blocks')).toBe(true);
+    expect(md.match(/^### /gm)).toHaveLength(21);
 
     for (const type of ALL_BLOCK_TYPES) {
       const props = ALL_BLOCKS_MINIMAL_PROPS[type] ?? {};

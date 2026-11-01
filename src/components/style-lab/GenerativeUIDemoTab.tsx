@@ -18,7 +18,7 @@ import {
   getIntentRecipe,
   type IntentRecipeId,
 } from '@/features/generative-ui/demo/intentRecipes';
-import { buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
+import { ALL_BLOCK_TYPES, buildAllBlocksGridIntent } from '@/features/generative-ui/demo/allBlocksFixture';
 import { lintGenerativeUIIntent } from '@/features/generative-ui/utils/lintGenerativeUIIntent';
 import { fingerprintGenerativeUIIntent } from '@/features/generative-ui/utils/fingerprintGenerativeUIIntent';
 import { diffGenerativeUIIntent } from '@/features/generative-ui/utils/diffGenerativeUIIntent';
@@ -338,7 +338,7 @@ export function GenerativeUIDemoTab() {
       case 'showcase':
         return (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">18 块最小合法 props · v1.1 两列 grid</p>
+            <p className="text-xs text-muted-foreground">{ALL_BLOCK_TYPES.length} 块最小合法 props · v1.1 两列 grid</p>
             <GenerativeUIRenderer
               intent={buildAllBlocksGridIntent()}
               showChrome={false}
@@ -410,7 +410,7 @@ export function GenerativeUIDemoTab() {
               onClick={() => setMode('showcase')}
               data-testid="generative-ui-demo-showcase"
             >
-              18 块 Showcase
+              {ALL_BLOCK_TYPES.length} 块 Showcase
             </DsButton>
           </div>
           <div className="flex flex-wrap gap-2" data-testid="generative-ui-demo-recipes">

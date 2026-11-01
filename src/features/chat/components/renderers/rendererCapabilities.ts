@@ -12,6 +12,8 @@ export interface RendererCapabilities {
   chemicalFiles: boolean;
   molecular3d: boolean;
   geojson: boolean;
+  /** 正文内联 ```genui 只展示界面；字段名与后端 RendererCapabilities.generativeUiInline 一致。 */
+  generativeUiInline: boolean;
 }
 
 /** 化学结构已是现有能力，默认保留；其余按用户明确启用才提示模型。 */
@@ -24,6 +26,7 @@ export const DEFAULT_RENDERER_CAPABILITIES: RendererCapabilities = {
   chemicalFiles: false,
   molecular3d: false,
   geojson: false,
+  generativeUiInline: false,
 };
 
 let cachedCapabilities = DEFAULT_RENDERER_CAPABILITIES;

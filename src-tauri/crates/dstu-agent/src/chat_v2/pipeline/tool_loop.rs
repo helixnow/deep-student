@@ -2185,6 +2185,16 @@ impl ChatV2Pipeline {
                         .unwrap_or(false)
                 });
 
+                // 🔒 生成式 UI awaitAnswer：用户改在输入框发消息时，工具输出
+                // yieldTurn=true，本轮立即结束（让队列里的用户消息接管）。
+                // 仅信任白名单工具（YIELD_TURN_TOOLS），其它工具的同名字段一律忽略。
+                let yield_turn = tool_results.iter().any(|r| {
+                    crate::chat_v2::tools::genui_interaction::is_yield_turn_result(
+                        r.tool_name.as_str(),
+                        &r.output,
+                    )
+                });
+
                 // 🔒 安全修复：心跳检测仅信任白名单内部工具
                 let has_continue_execution = tool_results.iter().any(|r| {
                     HEARTBEAT_TOOLS.contains(&r.tool_name.as_str())
@@ -2452,6 +2462,25 @@ impl ChatV2Pipeline {
                     );
 
                     // 清除 pending_reasoning
+                    ctx.pending_reasoning_for_api = None;
+
+                    return Ok(());
+                }
+
+                if yield_turn {
+                    // 生成式 UI：用户未在界面作答而是发了新消息 → 本轮让出。
+                    // 与 task_completed 同样收集已流式文本段后返回，但不调 finalizer
+                    // （这不是任务完成，只是把发言权交还给下一条用户消息）。
+                    log::info!(
+                        "[ChatV2::pipeline] yieldTurn detected from whitelisted generative UI tool, ending turn at depth={}",
+                        recursion_depth
+                    );
+
+                    ctx.collect_streamed_text_segments(
+                        adapter.get_text_segments(),
+                        &ctx.assistant_message_id.clone(),
+                    );
+
                     ctx.pending_reasoning_for_api = None;
 
                     return Ok(());

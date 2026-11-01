@@ -20,6 +20,9 @@ import {
   chartBlockPropsSchema,
   stepsBlockPropsSchema,
   tableBlockPropsSchema,
+  choicePropsSchema,
+  formPropsSchema,
+  imageBlockPropsSchema,
 } from './schema';
 
 export const BUILTIN_GENERATIVE_BLOCK_SCHEMAS: GenerativeComponentSchemaConfig[] = [
@@ -122,6 +125,24 @@ export const BUILTIN_GENERATIVE_BLOCK_SCHEMAS: GenerativeComponentSchemaConfig[]
     type: 'table',
     propsSchema: tableBlockPropsSchema,
     description: '表格：列 schema + 行数据（允许流式 rows）',
+    allowPartialRender: true,
+  },
+  {
+    type: 'choice',
+    propsSchema: choicePropsSchema,
+    description: '选择题（交互，需 awaitAnswer=true 且块 id 必填）：question + 2–12 个 options，single/multiple，可选 allowOther',
+    allowPartialRender: true,
+  },
+  {
+    type: 'form',
+    propsSchema: formPropsSchema,
+    description: '表单（交互，需 awaitAnswer=true 且块 id 必填）：1–12 个字段 text/number/slider/rating/switch',
+    allowPartialRender: true,
+  },
+  {
+    type: 'image',
+    propsSchema: imageBlockPropsSchema,
+    description: '图片：source 为 resource（att_/file_/img_/res_）、pdf-page（res_ + page）或 https url；alt 必填',
     allowPartialRender: true,
   },
 ];

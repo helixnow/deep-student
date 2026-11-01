@@ -3107,7 +3107,9 @@
     "molecular3d": "三维分子",
     "molecular3d_description": "PDB、SDF 等本地结构的可旋转三维模型。",
     "geojson": "地理数据",
-    "geojson_description": "GeoJSON 本地矢量地图；不请求在线底图。"
+    "geojson_description": "GeoJSON 本地矢量地图；不请求在线底图。",
+    "generativeUiInline": "正文内联界面",
+    "generativeUiInline_description": "允许模型在回答正文中用 ```genui 代码块嵌入只读的小型界面（指标卡、对比表、步骤）；不支持作答控件与有副作用的操作。"
   },
   "plugins": {
     "title": "插件与集成",

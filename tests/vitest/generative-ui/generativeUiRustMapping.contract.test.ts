@@ -166,7 +166,7 @@ describe('generativeUI Rust dual-mapping contract', () => {
     expect(executorSrc).toContain('parse_intent_rejects_oversized_payload');
   });
 
-  it('Rust executor allowlists the 18 registered generative-ui block types', () => {
+  it('Rust executor allowlists the 21 registered generative-ui block types', () => {
     expect(executorSrc).toContain('ALLOWED_GENERATIVE_UI_BLOCK_TYPES');
     expect(executorSrc).toContain('fn validate_block_types');
     expect(executorSrc).toContain('parse_intent_rejects_unknown_block_type');
@@ -192,6 +192,9 @@ describe('generativeUI Rust dual-mapping contract', () => {
       'chart',
       'steps',
       'table',
+      'choice',
+      'form',
+      'image',
     ]) {
       expect(executorSrc, `Rust allowlist missing ${type}`).toContain(`"${type}"`);
     }

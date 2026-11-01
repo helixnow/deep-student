@@ -99,11 +99,11 @@ describe('intentRecipes contract', () => {
     expect(recipe!.intent.blocks.some((block) => block.span === 2)).toBe(true);
   });
 
-  it('18-block v1.1 grid showcase also passes parse + registry', () => {
+  it('21-block v1.1 grid showcase also passes parse + registry', () => {
     const intent = buildAllBlocksGridIntent();
     expect(intent.version).toBe('1.1');
     expect(intent.layout).toEqual({ mode: 'grid', columns: 2 });
-    expect(intent.blocks).toHaveLength(18);
+    expect(intent.blocks).toHaveLength(21);
     expectParseAndRegistry(intent, 'all-blocks-grid');
   });
 });

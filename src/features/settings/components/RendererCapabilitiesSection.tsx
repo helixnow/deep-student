@@ -23,6 +23,7 @@ const CAPABILITY_ROWS: Array<{
   { key: 'chemicalFiles', titleKey: 'chemicalFiles', descriptionKey: 'chemicalFiles_description' },
   { key: 'molecular3d', titleKey: 'molecular3d', descriptionKey: 'molecular3d_description' },
   { key: 'geojson', titleKey: 'geojson', descriptionKey: 'geojson_description' },
+  { key: 'generativeUiInline', titleKey: 'generativeUiInline', descriptionKey: 'generativeUiInline_description' },
 ];
 
 /** 用户显式选择哪些专用正文渲染器可用，开关同时控制模型契约注入。 */

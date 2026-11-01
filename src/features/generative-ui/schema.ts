@@ -8,6 +8,23 @@ import { z } from 'zod';
 import type { GenerativeLayoutMode, GenerativeLayoutUnit, GenerativeUIIntent } from './types';
 import { sanitizeResearchSessionId } from './utils/extractResearchSessionId';
 import { sanitizeGenerativeTextLeaves } from './utils/sanitizeGenerativeText';
+import { isDangerousGenerativeUrl } from './utils/sanitizeGenerativeUrl';
+import {
+  GENUI_FOLLOWUP_ACTION_ID_RE,
+  GENUI_FOLLOWUP_ACTION_PREFIX,
+  GENUI_FOLLOWUP_PROMPT_MAX_CHARS,
+  GENUI_FORM_FIELD_NAME_RE,
+  GENUI_IMAGE_PDF_PAGE_MAX,
+  GENUI_IMAGE_PDF_RESOURCE_ID_RE,
+  GENUI_IMAGE_RESOURCE_ID_RE,
+  GENUI_IMAGE_URL_MAX_CHARS,
+  GENUI_INTERACTIVE_ID_RE,
+  GENUI_MAX_FOLLOWUP_ACTIONS,
+  GENUI_SLIDER_MAX_STEPS,
+  GENUI_TEXT_FIELD_DEFAULT_MAX_CHARS,
+  GENUI_TEXT_FIELD_MAX_CHARS,
+  countGenuiChars,
+} from './interaction/limits';
 import {
   MAX_GENERATIVE_UI_STREAM_CHARS,
   STREAM_BUFFER_CAPPED_WARNING,
@@ -154,20 +171,315 @@ export const progressBlockPropsSchema = z.object({
   label: z.string().max(80).optional(),
 });
 
+/** action id 以此开头 ⇔ 必须带 prompt（send-followup） */
+export const FOLLOWUP_ACTION_PREFIX = GENUI_FOLLOWUP_ACTION_PREFIX;
+
+export function isFollowupActionId(id: unknown): boolean {
+  return typeof id === 'string' && id.startsWith(GENUI_FOLLOWUP_ACTION_PREFIX);
+}
+
+const ACTION_RISK_ORDER = { low: 0, medium: 1, high: 2 } as const;
+
+/**
+ * action-bar 单个 action。
+ * - followup:<slug>（^followup:[a-z0-9-]{1,40}$）⇔ 必须带 prompt（1..500）；非 followup 不得带 prompt。
+ * - confirm=true → 解析结果 riskLevel 至少提升为 medium（行内二次确认）。
+ */
+export const generativeActionSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    label: z.string().min(1).max(60),
+    variant: z.enum(['default', 'primary', 'destructive']).optional().default('default'),
+    riskLevel: z.enum(['low', 'medium', 'high']).optional().default('low'),
+    prompt: z.string().min(1).max(GENUI_FOLLOWUP_PROMPT_MAX_CHARS).optional(),
+    confirm: z.boolean().optional(),
+  })
+  .superRefine((action, ctx) => {
+    const followup = isFollowupActionId(action.id);
+    if (followup && !GENUI_FOLLOWUP_ACTION_ID_RE.test(action.id)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['id'],
+        message: 'followup action id must match ^followup:[a-z0-9-]{1,40}$',
+      });
+    }
+    if (followup && action.prompt === undefined) {
+      ctx.addIssue({ code: 'custom', path: ['prompt'], message: 'followup action requires prompt' });
+    }
+    if (!followup && action.prompt !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['prompt'],
+        message: 'prompt is only allowed on followup:* actions',
+      });
+    }
+  })
+  .transform((action) =>
+    action.confirm === true && ACTION_RISK_ORDER[action.riskLevel] < ACTION_RISK_ORDER.medium
+      ? { ...action, riskLevel: 'medium' as const }
+      : action,
+  );
+
 export const actionBarPropsSchema = z.object({
   id: z.string().optional(),
   actions: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(64),
-        label: z.string().min(1).max(60),
-        variant: z.enum(['default', 'primary', 'destructive']).optional().default('default'),
-        riskLevel: z.enum(['low', 'medium', 'high']).optional().default('low'),
-      }),
-    )
+    .array(generativeActionSchema)
     .min(1)
-    .max(6),
+    .max(6)
+    .refine(
+      (actions) =>
+        actions.filter((a) => isFollowupActionId(a.id)).length <= GENUI_MAX_FOLLOWUP_ACTIONS,
+      { message: `at most ${GENUI_MAX_FOLLOWUP_ACTIONS} followup:* actions` },
+    ),
 });
+
+// ---------------------------------------------------------------------------
+// 交互作答 / 图片块（choice、form、image）
+// ---------------------------------------------------------------------------
+
+/** IPv4 点分字面量（WHATWG URL 会把 0x7f.1 等变体规范化成点分） */
+const IPV4_HOST_RE = /^\d{1,3}(?:\.\d{1,3}){3}$/;
+/** 路径穿越 / 反斜杠：同 Rust validate_genui_image_url（含 `\`、`../`、结尾 `/..`、`%2e%2e`） */
+function hasTraversalFragment(raw: string): boolean {
+  const lower = raw.toLowerCase();
+  return lower.includes('\\') || lower.includes('../') || lower.endsWith('/..') || lower.includes('%2e%2e');
+}
+/** 空白或 Unicode Cc 控制字符 */
+// eslint-disable-next-line no-control-regex
+const WHITESPACE_OR_CONTROL_RE = /[\s\u0000-\u001F\u007F-\u009F]/;
+/** 非空（trim 后）字符串，与 Rust get_str(non_empty=true) 一致 */
+const nonBlank = (max: number) =>
+  z.string().min(1).max(max).refine((s) => s.trim().length > 0, { message: 'must not be blank' });
+
+/**
+ * 外链图片 URL 规则（与 Rust 同义）：仅 https、≤2048、拒绝凭据 / localhost / IP 字面量 /
+ * 单标签主机 / `../` / 空白。
+ */
+export function isAllowedGenerativeImageUrl(raw: unknown): raw is string {
+  if (typeof raw !== 'string' || raw.length === 0) return false;
+  if (countGenuiChars(raw) > GENUI_IMAGE_URL_MAX_CHARS) return false;
+  if (WHITESPACE_OR_CONTROL_RE.test(raw)) return false;
+  if (!/^https:\/\//i.test(raw)) return false;
+  if (hasTraversalFragment(raw)) return false;
+  if (isDangerousGenerativeUrl(raw)) return false;
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'https:') return false;
+  if (url.username || url.password) return false;
+  const host = url.hostname.toLowerCase().replace(/\.$/, '');
+  if (!host) return false;
+  if (host === 'localhost' || host.endsWith('.localhost')) return false;
+  if (host.startsWith('[') || host.includes(':')) return false;
+  if (IPV4_HOST_RE.test(host)) return false;
+  if (!host.includes('.')) return false;
+  return true;
+}
+
+/** 图片来源：VFS 资源 / PDF 页 / https 外链 */
+export const generativeImageSourceSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('resource'),
+    resourceId: z.string().regex(GENUI_IMAGE_RESOURCE_ID_RE),
+  }),
+  z.object({
+    kind: z.literal('pdf-page'),
+    resourceId: z.string().regex(GENUI_IMAGE_PDF_RESOURCE_ID_RE),
+    page: z.number().int().min(1).max(GENUI_IMAGE_PDF_PAGE_MAX),
+  }),
+  z.object({
+    kind: z.literal('url'),
+    url: z
+      .string()
+      .max(GENUI_IMAGE_URL_MAX_CHARS)
+      .refine((value) => isAllowedGenerativeImageUrl(value), {
+        message: 'image url must be a public https URL (no credentials/localhost/IP literal)',
+      }),
+  }),
+]);
+
+export const choiceOptionSchema = z.object({
+  id: z.string().regex(GENUI_INTERACTIVE_ID_RE),
+  label: nonBlank(120),
+  description: z.string().max(300).optional(),
+  image: generativeImageSourceSchema.optional(),
+});
+
+/**
+ * 选择题。实际交互 id 取 block.id（Rust 强制必填）。
+ * multiple：minSelect 缺省 1、maxSelect 缺省 options.length，须 0 ≤ min ≤ max ≤ options.length。
+ */
+export const choicePropsSchema = z
+  .object({
+    id: z.string().optional(),
+    question: nonBlank(300),
+    description: z.string().max(500).optional(),
+    mode: z.enum(['single', 'multiple']).default('single'),
+    options: z.array(choiceOptionSchema).min(2).max(12),
+    minSelect: z.number().int().min(0).optional(),
+    maxSelect: z.number().int().min(1).optional(),
+    allowOther: z.boolean().optional().default(false),
+    required: z.boolean().optional().default(true),
+  })
+  .superRefine((props, ctx) => {
+    const seen = new Set<string>();
+    props.options.forEach((option, index) => {
+      if (seen.has(option.id)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['options', index, 'id'],
+          message: `duplicate option id: ${option.id}`,
+        });
+      }
+      seen.add(option.id);
+    });
+    if (props.mode === 'multiple') {
+      const { min, max } = resolveChoiceSelectBounds(props);
+      if (props.maxSelect !== undefined && props.maxSelect > props.options.length) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['maxSelect'],
+          message: 'maxSelect must be <= options.length',
+        });
+      }
+      if (min > max) {
+        ctx.addIssue({ code: 'custom', path: ['minSelect'], message: 'minSelect must be <= maxSelect' });
+      }
+    }
+  });
+
+/** multiple 的有效选择范围（single 恒为 [1,1]）；不含 required=false 允许 0 的放宽 */
+export function resolveChoiceSelectBounds(props: {
+  mode?: 'single' | 'multiple';
+  options: readonly unknown[];
+  minSelect?: number;
+  maxSelect?: number;
+}): { min: number; max: number } {
+  if (props.mode !== 'multiple') return { min: 1, max: 1 };
+  const max = Math.min(props.maxSelect ?? props.options.length, props.options.length);
+  const min = props.minSelect ?? 1;
+  return { min, max };
+}
+
+const formFieldBase = {
+  name: z.string().regex(GENUI_FORM_FIELD_NAME_RE),
+  label: nonBlank(80),
+  help: z.string().max(200).optional(),
+  required: z.boolean().optional().default(false),
+};
+
+export const formTextFieldSchema = z.object({
+  ...formFieldBase,
+  kind: z.literal('text'),
+  placeholder: z.string().max(120).optional(),
+  maxLength: z
+    .number()
+    .int()
+    .min(1)
+    .max(GENUI_TEXT_FIELD_MAX_CHARS)
+    .default(GENUI_TEXT_FIELD_DEFAULT_MAX_CHARS),
+  multiline: z.boolean().optional(),
+});
+
+export const formNumberFieldSchema = z
+  .object({
+    ...formFieldBase,
+    kind: z.literal('number'),
+    min: z.number().optional(),
+    max: z.number().optional(),
+    step: z.number().positive().optional(),
+    unit: z.string().max(16).optional(),
+  })
+  .refine((f) => f.min === undefined || f.max === undefined || f.min <= f.max, {
+    message: 'min must be <= max',
+    path: ['max'],
+  });
+
+export const formSliderFieldSchema = z
+  .object({
+    ...formFieldBase,
+    kind: z.literal('slider'),
+    min: z.number(),
+    max: z.number(),
+    step: z.number().positive().default(1),
+    unit: z.string().max(16).optional(),
+  })
+  .superRefine((f, ctx) => {
+    if (!(f.max > f.min)) {
+      ctx.addIssue({ code: 'custom', path: ['max'], message: 'slider max must be > min' });
+      return;
+    }
+    if ((f.max - f.min) / f.step > GENUI_SLIDER_MAX_STEPS) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['step'],
+        message: `slider (max-min)/step must be <= ${GENUI_SLIDER_MAX_STEPS}`,
+      });
+    }
+  });
+
+export const formRatingFieldSchema = z.object({
+  ...formFieldBase,
+  kind: z.literal('rating'),
+  max: z.number().int().min(3).max(10).default(5),
+});
+
+export const formSwitchFieldSchema = z.object({
+  ...formFieldBase,
+  kind: z.literal('switch'),
+  default: z.boolean().optional(),
+});
+
+export const formFieldSchema = z.discriminatedUnion('kind', [
+  formTextFieldSchema,
+  formNumberFieldSchema,
+  formSliderFieldSchema,
+  formRatingFieldSchema,
+  formSwitchFieldSchema,
+]);
+
+export const formPropsSchema = z
+  .object({
+    id: z.string().optional(),
+    title: z.string().max(120).optional(),
+    description: z.string().max(500).optional(),
+    fields: z.array(formFieldSchema).min(1).max(12),
+    submitLabel: z.string().max(40).optional(),
+  })
+  .superRefine((props, ctx) => {
+    const seen = new Set<string>();
+    props.fields.forEach((field, index) => {
+      if (seen.has(field.name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['fields', index, 'name'],
+          message: `duplicate field name: ${field.name}`,
+        });
+      }
+      seen.add(field.name);
+    });
+  });
+
+export const imageBlockPropsSchema = z.object({
+  id: z.string().optional(),
+  source: generativeImageSourceSchema,
+  alt: nonBlank(200),
+  caption: z.string().max(300).optional(),
+  fit: z.enum(['contain', 'cover']).optional().default('contain'),
+  maxHeight: z.number().int().min(120).max(640).optional().default(320),
+});
+
+export type GenerativeImageSource = z.infer<typeof generativeImageSourceSchema>;
+export type GenerativeAction = z.infer<typeof generativeActionSchema>;
+export type ChoiceOption = z.infer<typeof choiceOptionSchema>;
+export type ChoiceProps = z.infer<typeof choicePropsSchema>;
+export type FormField = z.infer<typeof formFieldSchema>;
+export type FormFieldKind = FormField['kind'];
+export type FormProps = z.infer<typeof formPropsSchema>;
+export type ImageBlockProps = z.infer<typeof imageBlockPropsSchema>;
 
 export const textBlockPropsSchema = z.object({
   id: z.string().optional(),

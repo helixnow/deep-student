@@ -145,7 +145,10 @@ const MAX_TOTAL_SCHEMA_TOKENS = 51_500;
 // docs/dev/optimization0824/progress/R4-WI-10-full.md 末节。
 // 2026-10-04：qbank_import_document 支持 resource_id 后实测 76554，先精简一轮至 76520，
 // 剩余属合理功能增长，有意识上调至 76600；记录同上。
-const MAX_TOTAL_TOKENS = 76_600;
+// 2026-11-01：generative-ui 新增交互作答（choice/form/image、awaitAnswer、追问按钮）后实测 77828，
+// 先把技能正文内嵌 few-shot 由 3 个精简为 1 个（77828→77474），剩余属合理功能增长，
+// 有意识上调至 77500；记录同上。
+const MAX_TOTAL_TOKENS = 77_500;
 
 // ============================================================================
 // 测试

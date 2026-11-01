@@ -4,7 +4,7 @@
  * 对照 ARCHITECTURE.md / INTEGRATION_ROADMAP.md 核心要求，
  * 确保「结构化意图 + 组件注册表」全链路接线未被回归破坏。
  *
- * Round 40/41 真实态：18 块 + Intent v1.1 layout + telemetry/undo + 流式 fallback。
+ * Round 40/41 真实态：21 块（含 choice/form/image） + Intent v1.1 layout + telemetry/undo + 流式 fallback。
  * 本文件只做文件/符号存在性检查，不把 Goal「合入 main」标成已完成。
  */
 import { describe, it, expect } from 'vitest';
@@ -568,7 +568,7 @@ describe('generativeUISotaAcceptance contract', () => {
     expect(rust).toContain('"hpias_event"');
   });
 
-  it('Round 40/41 symbols exist: 18-block set + v1.1 + telemetry + fallback', () => {
+  it('Round 40/41 symbols exist: 21-block set + v1.1 + telemetry + fallback', () => {
     const indexSrc = fs.readFileSync(path.join(GENERATIVE_UI, 'index.ts'), 'utf8');
     for (const symbol of [
       'ChartBlock',
@@ -593,6 +593,13 @@ describe('generativeUISotaAcceptance contract', () => {
       'firstReachableActionBarIndex',
       'formatGenerativeDate',
       'readPersistedLastGoodFingerprint',
+      'choicePropsSchema',
+      'formPropsSchema',
+      'imageBlockPropsSchema',
+      'validateIntentRules',
+      'buildGenerativeUIAnswer',
+      'readGenerativeUIInteraction',
+      'interaction/limits',
     ]) {
       expect(indexSrc, `index.ts missing export: ${symbol}`).toContain(symbol);
     }

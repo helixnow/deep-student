@@ -1,5 +1,5 @@
 /**
- * Contract: Generative UI 全模块集成接线（Round 9–18 累积态）
+ * Contract: Generative UI 全模块集成接线（Round 9–18 累积态 + 交互块 choice/form/image）
  *
  * 通过静态分析 + registry 快照验证各子系统 mount/bridge/handler 均已落地，
  * 防止后续迭代中 silently 断开集成链。
@@ -39,6 +39,9 @@ const EXPECTED_BLOCK_TYPES = [
   'chart',
   'steps',
   'table',
+  'choice',
+  'form',
+  'image',
 ] as const;
 
 const BRIDGE_FILES = [
@@ -95,7 +98,7 @@ const MOUNT_POINTS: Array<{ file: string; mustContain: string[] }> = [
 ];
 
 describe('generativeUIModuleIntegration contract', () => {
-  it('registers all 18 built-in block types', () => {
+  it('registers all 21 built-in block types', () => {
     const keys = generativeUIRegistry.keys().sort();
     expect(keys).toEqual([...EXPECTED_BLOCK_TYPES].sort());
   });

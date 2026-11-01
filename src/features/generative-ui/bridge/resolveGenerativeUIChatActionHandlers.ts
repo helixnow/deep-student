@@ -47,6 +47,11 @@ import {
   type OpenNoteActionInput,
   type OpenPdfPageActionInput,
 } from '../handlers/openResourceActionHandlers';
+import {
+  createFollowupActionHandlers,
+  type FollowupChatStoreApi,
+} from '../handlers/followupActionHandlers';
+import { isFollowupActionId } from '../schema';
 
 /**
  * 未传 labels 时的兜底文案：复用 generativeUi 命名空间既有 key，
@@ -96,6 +101,11 @@ export interface ResolveGenerativeUIChatActionHandlersInput {
   workbenchLabels?: WorkbenchLearningHandlerLabels;
   intentExportLabels?: Partial<IntentExportMarkdownLabels>;
   researchExportLabels?: Partial<ResearchExportMarkdownLabels>;
+  /**
+   * send-followup（followup:*）的发送目标：所在聊天会话的 store。
+   * 缺省时不注册 followup handler（注册表安全模式下按钮不渲染）。
+   */
+  chatStore?: FollowupChatStoreApi | null;
 }
 
 /**
@@ -239,6 +249,13 @@ export function resolveGenerativeUIChatActionHandlers(
         intentExportLabels,
       ),
     );
+  }
+
+  // send-followup：以用户身份发送 prompt（空闲直发；流式入队并中止当前等待）。
+  // 风险确认沿用 ActionBar：handler 注册 low，模型 confirm=true 已在 schema 提升为 medium。
+  const chatStore = input.chatStore;
+  if (chatStore && [...actionIds].some((id) => isFollowupActionId(id))) {
+    Object.assign(handlers, createFollowupActionHandlers(input.intent, () => chatStore));
   }
 
   return withGenerativeActionInstrumentation(handlers);

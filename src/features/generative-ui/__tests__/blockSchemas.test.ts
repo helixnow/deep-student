@@ -12,7 +12,7 @@ import { exportGenerativeUIJsonSchema } from '../utils/exportGenerativeUIJsonSch
 
 describe('schema-only built-in registration', () => {
   it('validates all built-in skeleton types and builds the catalog without renderers', () => {
-    expect(BUILTIN_GENERATIVE_BLOCK_SCHEMAS).toHaveLength(18);
+    expect(BUILTIN_GENERATIVE_BLOCK_SCHEMAS).toHaveLength(21);
     expect(generativeUIRegistry.getAll()).toEqual([]);
     expect(validateArtifactSkeletonTypes({
       blocks: BUILTIN_GENERATIVE_BLOCK_SCHEMAS.map(({ type }) => ({ type })),
@@ -20,7 +20,7 @@ describe('schema-only built-in registration', () => {
     expect(validateArtifactSkeletonTypes({ blocks: [{ type: 'unknown-block' }] })).toEqual({
       valid: false, unknownTypes: ['unknown-block'],
     });
-    expect(generativeUIRegistry.getCatalogForPrompt()).toHaveLength(18);
+    expect(generativeUIRegistry.getCatalogForPrompt()).toHaveLength(21);
     expect(exportGenerativeUIJsonSchema()['x-registered-block-types']).toEqual(generativeUIRegistry.keys().sort());
   });
 

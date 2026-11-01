@@ -3107,7 +3107,9 @@
     "molecular3d": "3D molecules",
     "molecular3d_description": "Rotatable 3D models from local PDB, SDF, and related structures.",
     "geojson": "Geographic data",
-    "geojson_description": "Local GeoJSON vector maps; no online basemap requests."
+    "geojson_description": "Local GeoJSON vector maps; no online basemap requests.",
+    "generativeUiInline": "Inline UI in replies",
+    "generativeUiInline_description": "Lets the model embed small read-only interfaces (stat cards, comparison tables, steps) in replies via ```genui code blocks; no answer controls or side-effect actions."
   },
   "plugins": {
     "title": "Plugins & Integrations",

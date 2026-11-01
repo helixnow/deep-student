@@ -1,5 +1,5 @@
 /**
- * Contract: 18 种内置块必须稳定暴露 data-generative-block="<type>"
+ * Contract: 21 种内置块必须稳定暴露 data-generative-block="<type>"
  *
  * 由 GenerativeBlockSlot 统一挂载（未知 / 校验失败块同样挂上），
  * 供测试、CT、宿主探测使用。禁止各 *Block.tsx 再各自写一份以免分叉。
@@ -47,7 +47,7 @@ vi.mock('@/features/mindmap/components/mindmap/MindMapEmbed', () => ({
 
 import '@/features/generative-ui/blocks';
 
-const REQUIRED_EIGHTEEN = [
+const REQUIRED_BLOCK_TYPES = [
   'stat-card',
   'alert',
   'list',
@@ -66,6 +66,9 @@ const REQUIRED_EIGHTEEN = [
   'chart',
   'steps',
   'table',
+  'choice',
+  'form',
+  'image',
 ] as const;
 
 const SLOT_SRC = path.join(
@@ -81,11 +84,11 @@ function collectGenerativeBlockAttrs(container: HTMLElement): string[] {
 }
 
 describe('blockTestId.contract — data-generative-block', () => {
-  it('fixture + registry cover exactly the 18 built-in types', () => {
-    expect(ALL_BLOCK_TYPES).toHaveLength(18);
-    expect([...ALL_BLOCK_TYPES].sort()).toEqual([...REQUIRED_EIGHTEEN].sort());
+  it('fixture + registry cover exactly the 21 built-in types', () => {
+    expect(ALL_BLOCK_TYPES).toHaveLength(21);
+    expect([...ALL_BLOCK_TYPES].sort()).toEqual([...REQUIRED_BLOCK_TYPES].sort());
     const registered = new Set(generativeUIRegistry.keys());
-    for (const type of REQUIRED_EIGHTEEN) {
+    for (const type of REQUIRED_BLOCK_TYPES) {
       expect(registered.has(type), `missing registry entry: ${type}`).toBe(true);
     }
   });
@@ -106,7 +109,7 @@ describe('blockTestId.contract — data-generative-block', () => {
     }
   });
 
-  it.each(REQUIRED_EIGHTEEN)(
+  it.each(REQUIRED_BLOCK_TYPES)(
     'renders a single "%s" block with exactly one matching data-generative-block',
     (blockType) => {
       const { container } = render(
@@ -124,17 +127,17 @@ describe('blockTestId.contract — data-generative-block', () => {
       <GenerativeUIRenderer intent={buildAllBlocksIntent()} showChrome={false} />,
     );
     const types = collectGenerativeBlockAttrs(container);
-    expect(types).toHaveLength(18);
-    expect(types.sort()).toEqual([...REQUIRED_EIGHTEEN].sort());
+    expect(types).toHaveLength(21);
+    expect(types.sort()).toEqual([...REQUIRED_BLOCK_TYPES].sort());
   });
 
-  it('v1.1 grid showcase keeps the same 18 stable selectors', () => {
+  it('v1.1 grid showcase keeps the same 21 stable selectors', () => {
     const { container } = render(
       <GenerativeUIRenderer intent={buildAllBlocksGridIntent()} showChrome={false} />,
     );
     const types = collectGenerativeBlockAttrs(container);
-    expect(types).toHaveLength(18);
-    expect(new Set(types)).toEqual(new Set(REQUIRED_EIGHTEEN));
+    expect(types).toHaveLength(21);
+    expect(new Set(types)).toEqual(new Set(REQUIRED_BLOCK_TYPES));
     expect(container.querySelector('[data-layout-mode="grid"]')).toBeTruthy();
   });
 
