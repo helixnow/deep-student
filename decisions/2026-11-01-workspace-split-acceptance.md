@@ -69,3 +69,32 @@
 
 `feat/opencode-go`（67f840bc）已移植到拆分后的结构并合入：请求门控与 `opencode_go.rs` 在 dstu-llm，headless / 压缩 / 标题在 dstu-agent，
 作文批改模型过滤在 dstu-tutor。见 `decisions/2026-10-31-opencode-go-integration.md`。
+
+## 6. 发版前追加合入与复验（2026-11-01）
+
+在拆分验收之后，同一分支又合入：
+
+| 内容 | 说明 |
+|---|---|
+| OpenCode Go 调整 | 供应商图标、列表置顶第二、一键分配（对话默认 / 会话标题 / 上下文压缩 → DeepSeek V4.1 Flash）、去掉备注；「仅限 Agent 对话」改为建议，用户可手动配给任意功能 |
+| 前端架构优化第一波 | `openchamber/frontend-arch`（27 个提交：App.tsx 拆分、TauriAdapter / MCP 设置 / LearningHubSidebar / mindmapStore 拆分、分层守卫、lint 棘轮、UI 规范文档）。冲突 2 处（package.json 脚本、一个源码契约测试的路径），两边保留 |
+| Super-agent（实验） | 由会话 deep-student-c9 的未提交工作移植并补完，见 `decisions/2026-11-01-super-agent.md` |
+
+复验结果（本机）：
+
+| 项目 | 结果 |
+|---|---|
+| fmt / crate 分层 / 前端分层 / 迁移门禁 | 通过 |
+| 接口快照 | 新增仅为 `opencode_go_get_usage` 与 9 个 `superagent_*` 命令 |
+| `cargo build` | 通过 |
+| Rust 单元测试（workspace --lib） | ok 6821 / FAILED 23 / ignored 11；按函数名对比基线回归 0。比第 2 节多出的 2 个失败是 `cloud_storage::webdav` 的连接测试，单独运行通过（并行时被其他测试置位的全局“云同步已取消”标志干扰），非代码回归 |
+| clippy `-D clippy::correctness`（workspace --all-targets） | 通过 |
+| mobile-slim（`--no-default-features --features mobile-slim`）、许可清单 | 通过 |
+| tsc / eslint | 通过；eslint 0 error，lint 棘轮无新增 |
+| vitest 全量 | 12521 通过；3 个失败：KaTeX（验收环境路径）、2 个负载抖动（单独重跑通过） |
+| CI 脚本测试（`scripts/__tests__`） | 与基线一致（仅 NDK 探测 1 个 Windows 环境失败） |
+| 桌面端 + 真实模型 | Super-agent 端到端通过（见其决策记录）；测试产生的数据已清理 |
+
+本轮顺带修复的 CI 问题：
+- AppContainer 边界测试随 chat_v2 移到 dstu-agent，CI 里的 `cargo test --lib <filter>` 只跑根包，会以 0 个测试“通过”；已改为 `-p dstu-agent`。
+- `check-migrations` 脚本的测试夹具仍按拆分前的 MigrationDef 位置生成 `include_str!` 路径，9 个用例失败；已同步。
