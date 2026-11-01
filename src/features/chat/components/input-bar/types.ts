@@ -16,6 +16,7 @@ import type { ReasoningLevelOption, ReasoningLevel } from '@/utils/reasoning';
 import type { ContextWindowUsage } from './contextWindowUsage';
 import type { ContextCompactionInfo } from './contextCompactionInfo';
 import type { SessionUsageSummary } from '@/api/llmUsageApi';
+import type { RuntimeModelMultiSelectConfig } from './RuntimeModelSubmenuBody';
 
 // ============================================================================
 // 模型 @mention 自动完成状态
@@ -289,9 +290,13 @@ export interface InputBarUIProps {
     iconId?: string;
     providerId?: string;
     isRecent?: boolean;
+    /** 最近选择中的名次（0 = 最近一次） */
+    recentRank?: number;
   }>;
   /** runtime 菜单中直接选择单模型 */
   onSelectRuntimeModel?: (modelId: string) => void;
+  /** runtime 模型子菜单内的多选（并行回答）配置；不提供则隐藏多选开关 */
+  runtimeModelMultiSelect?: RuntimeModelMultiSelectConfig;
   // ========== 推理模式开关 ==========
 
   /** 是否启用推理/思维链模式 */

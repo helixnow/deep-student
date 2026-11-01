@@ -45,7 +45,8 @@ describe('split input bar mobile contract', () => {
       '[@media(pointer:coarse)]:min-h-[var(--touch-target-size)]'
     );
     expect(toolbarSource).not.toContain('[@media(pointer:coarse)]:after:-inset');
-    expect(toolbarSource).toContain(
+    // 运行时模型子菜单的搜索框已抽到 RuntimeModelSubmenuBody，契约随之迁移
+    expect(readInputBarSource('RuntimeModelSubmenuBody.tsx')).toContain(
       'app-menu-search-input ds-search-input [@media(pointer:coarse)]:!h-[var(--touch-target-size)] [@media(pointer:coarse)]:!text-base'
     );
   });

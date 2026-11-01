@@ -42,6 +42,7 @@ import { triggerOpenSettingsModels } from '../../readiness/readinessGate';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
 import { useRecentChatModels } from '../../hooks/useRecentChatModels';
+import { useFavoriteChatModels } from '../../hooks/useFavoriteChatModels';
 import { isAvailableChatModel } from '@/utils/chatModelEligibility';
 import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 import { formatRequestCount, getOpenCodeGoModelQuota, useOpenCodeGoPlan } from '@/utils/opencodeGoPlans';
@@ -160,6 +161,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   const [savingDefault, setSavingDefault] = useState(false);
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
   const { recentModels } = useRecentChatModels(models);
+  // 收藏：复用 ModelProfile.isFavorite（与设置页星标同源），支持乐观切换
+  const { favoriteIds, toggleFavorite } = useFavoriteChatModels();
   // OpenCode Go 模型在第二行附上当前套餐下的官方预估请求数（帮助挑选性价比高的模型）
   const [openCodeGoPlan] = useOpenCodeGoPlan();
 
@@ -238,9 +241,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
       ...m,
       vendorName: m.vendorName ?? (m.vendorId ? vendorNameMap.get(m.vendorId) : undefined),
       searchable: `${m.name ?? ''} ${m.model ?? ''} ${m.vendorName ?? ''} ${m.vendorId ? (vendorNameMap.get(m.vendorId) ?? '') : ''}`.toLowerCase(),
-      isFavorite: m.isFavorite === true || m.is_favorite === true,
+      isFavorite: favoriteIds.has(m.id),
     }));
-  }, [models, vendorNameMap]);
+  }, [favoriteIds, models, vendorNameMap]);
 
   const sortedAndFiltered = useMemo<NormalizedModel[]>(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -257,12 +260,27 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     });
   }, [normalizedModels, searchTerm, vendorOrderMap]);
 
+  // 收藏分区：搜索时仍保留（按关键词过滤）；已删除/失效模型不在 models 中，自然被静默忽略
+  const favoriteOptions = useMemo(
+    () => sortedAndFiltered.filter((model) => model.isFavorite),
+    [sortedAndFiltered]
+  );
+
+  // 最近分区：去掉已在收藏中出现的模型
   const recentOptions = useMemo(
     () => recentModels
       .map((model) => normalizedModels.find((candidate) => candidate.id === model.id))
-      .filter((model): model is NormalizedModel => Boolean(model)),
+      .filter((model): model is NormalizedModel => model !== undefined && !model.isFavorite),
     [normalizedModels, recentModels]
   );
+
+  const handleToggleFavorite = useCallback((modelId: string) => {
+    void toggleFavorite(modelId).then((result) => {
+      if (result === 'failed') {
+        showGlobalNotification('error', t('chatV2:modelPicker.favoriteFailed'));
+      }
+    });
+  }, [t, toggleFavorite]);
 
   const vendorGroups = useMemo(() => {
     const groups: { vendorId: string; vendorName: string; models: NormalizedModel[] }[] = [];
@@ -446,9 +464,6 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               size={14}
               showTooltip={false}
             />
-            {option.isFavorite && (
-              <Star size={12} weight="fill" className="text-warning" aria-hidden />
-            )}
             <ModelCapabilityIcons
               isMultimodal={option.isMultimodal}
               isReasoning={option.isReasoning}
@@ -492,6 +507,32 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               );
             })()}
           </span>
+        </span>
+
+        {/* 收藏星标：已收藏常显实心星；未收藏的空心星悬停/聚焦行时出现（触屏常显） */}
+        <span
+          role="button"
+          tabIndex={-1}
+          aria-pressed={option.isFavorite}
+          aria-label={`${option.isFavorite ? t('chatV2:modelPicker.unfavorite') : t('chatV2:modelPicker.favorite')}: ${option.model || option.name}`}
+          title={option.isFavorite ? t('chatV2:modelPicker.unfavorite') : t('chatV2:modelPicker.favorite')}
+          data-testid="model-picker-favorite-toggle"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleToggleFavorite(option.id);
+          }}
+          className={cn(
+            'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] transition',
+            'relative',
+            coarseHitClassForBadge16,
+            'hover:bg-[color:var(--menu-shell-row-hover)]',
+            option.isFavorite
+              ? 'text-warning opacity-100'
+              : 'text-[color:var(--menu-shell-muted-foreground)] opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(pointer:coarse)]:opacity-100'
+          )}
+        >
+          <Star size={12} weight={option.isFavorite ? 'fill' : 'regular'} />
         </span>
 
         {!isDefault && (
@@ -653,6 +694,15 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               </div>
             ) : hasModels ? (
               <>
+              {favoriteOptions.length > 0 && (
+                <div className="space-y-0.5" data-section="favorites">
+                  <div className="flex items-center gap-1 px-[var(--menu-shell-row-padding-x)] py-1 text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]">
+                    <Star size={11} weight="fill" className="text-warning" aria-hidden />
+                    {t('chatV2:modelPicker.favorites')}
+                  </div>
+                  {favoriteOptions.map(renderRow)}
+                </div>
+              )}
               {!searchTerm.trim() && recentOptions.length > 0 && (
                 <div className="space-y-0.5">
                   <div className="px-[var(--menu-shell-row-padding-x)] py-1 text-2xs font-medium tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]">

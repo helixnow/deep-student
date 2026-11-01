@@ -29,7 +29,7 @@ vi.mock('react-i18next', () => ({
         'chatV2:inputBar.chooseRuntimeModel': '选择模型',
         'chatV2:inputBar.runtimeModelSwitchCurrent': '{{label}}，当前：{{current}}',
         'chatV2:modelPicker.searchPlaceholder': '搜索名称或模型 ID...',
-        'chatV2:inputBar.runtimeModelCompareMode': '进入多选模式',
+        'chatV2:inputBar.runtimeModelCompareMode': '多选模式',
         'chatV2:inputBar.thinkingOn': '开启',
         'chatV2:inputBar.thinkingOff': '关闭',
         'chatV2:inputBar.thinkingUnsupportedDescription': '该模型不支持推理',
@@ -168,7 +168,9 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(screen.getByPlaceholderText('搜索名称或模型 ID...')).toBeInTheDocument();
     expect(screen.getAllByText('DeepSeek').length).toBeGreaterThan(0);
     expect(screen.getAllByText('OpenAI').length).toBeGreaterThan(0);
-    expect(screen.getByRole('menuitem', { name: /进入多选模式/ })).toBeInTheDocument();
+    // 未传入多选配置时不渲染多选开关，也不再提供跳转旧大面板的入口
+    expect(screen.queryByTestId('runtime-model-multi-select-switch')).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /多选模式/ })).not.toBeInTheDocument();
 
     const search = screen.getByPlaceholderText('搜索名称或模型 ID...');
     await user.type(search, 'V3.2');
@@ -183,11 +185,14 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(onOpenRuntimeModelPanel).not.toHaveBeenCalled();
   });
 
-  it('offers a lightweight compare-mode entry from the runtime model submenu', async () => {
+  it('runs multi-select inside the compact runtime model submenu instead of opening the large panel', async () => {
     const user = userEvent.setup();
     const onOpenRuntimeModelPanel = vi.fn();
+    const onActiveChange = vi.fn();
+    const onToggle = vi.fn();
+    const onSelectRuntimeModel = vi.fn();
 
-    renderInputBar({
+    const baseProps = {
       enableThinking: false,
       thinkingStateLabel: '推理: 关闭',
       thinkingDepthOptions: [],
@@ -196,18 +201,55 @@ describe('InputBarUI thinking/runtime model menu', () => {
         { id: 'deepseek-v3.2', label: 'DeepSeek V3.2', providerLabel: 'DeepSeek', iconId: 'deepseek-v3.2' },
         { id: 'gpt-4o', label: 'GPT-4o', providerLabel: 'OpenAI', iconId: 'gpt-4o' },
       ],
-      onSelectRuntimeModel: vi.fn(),
+      onSelectRuntimeModel,
       onOpenRuntimeModelPanel,
       runtimeModelLabel: 'DeepSeek V3.2',
       runtimeModelProviderLabel: 'DeepSeek',
       runtimeCurrentModelId: 'deepseek-v3.2',
+    } satisfies Partial<React.ComponentProps<typeof InputBarUI>>;
+
+    const { rerender } = renderInputBar({
+      ...baseProps,
+      runtimeModelMultiSelect: { active: false, selectedIds: [], onActiveChange, onToggle },
     });
 
     await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
     await user.click(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ }));
-    await user.click(screen.getByRole('menuitem', { name: /进入多选模式/ }));
+    const toggle = screen.getByTestId('runtime-model-multi-select-switch');
+    expect(toggle).toHaveTextContent('多选模式');
+    await user.click(toggle);
+    expect(onActiveChange).toHaveBeenCalledWith(true);
 
-    expect(onOpenRuntimeModelPanel).toHaveBeenCalledWith('compare');
+    // 父组件把多选状态回灌后：同一子菜单内改为勾选行，点击不选中单模型、不关闭菜单
+    rerender(
+      <InputBarUI
+        inputValue=""
+        canSend={false}
+        canAbort={false}
+        isStreaming={false}
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+        {...baseProps}
+        runtimeModelMultiSelect={{ active: true, selectedIds: ['gpt-4o'], onActiveChange, onToggle }}
+      />
+    );
+
+    const gptRows = screen.getAllByRole('menuitemcheckbox', { name: /GPT-4o/ });
+    expect(gptRows[0]).toHaveAttribute('aria-checked', 'true');
+    await user.click(screen.getAllByRole('menuitemcheckbox', { name: /DeepSeek V3\.2/ })[0]);
+    expect(onToggle).toHaveBeenCalledWith('deepseek-v3.2');
+    expect(onSelectRuntimeModel).not.toHaveBeenCalled();
+    expect(screen.getByTestId('runtime-model-multi-select-switch')).toBeInTheDocument();
+    expect(onOpenRuntimeModelPanel).not.toHaveBeenCalled();
   });
 
   it('keeps the trigger focused on thinking state instead of the model name', () => {

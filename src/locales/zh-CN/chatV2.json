@@ -356,7 +356,7 @@
       "on": "推理: {{depth}}"
     },
     "runtimeModelTitle": "模型",
-    "runtimeModelCompareMode": "进入多选模式...",
+    "runtimeModelCompareMode": "多选模式",
     "runtimeModelOtherProvider": "其他",
     "runtimeModelRecent": "最近选择",
     "runtimeModelNoResults": "未找到匹配模型",
@@ -2182,7 +2182,14 @@
     "goToSettings": "去设置添加模型",
     "pinnedUnavailable": "所选模型「{{from}}」已删除或停用，本次改用「{{to}}」。可在输入框重新选择模型。",
     "openCodeGoRequests": "· 约 {{count}} 次/5小时",
-    "openCodeGoFree": "· 限时免费"
+    "openCodeGoFree": "· 限时免费",
+    "favorites": "收藏",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏",
+    "favoriteFailed": "收藏状态保存失败，请稍后重试",
+    "multiSelectCount": "已选 {{count}} 个 · 发送时并行回答",
+    "multiSelectEmpty": "勾选多个模型，发送时并行回答",
+    "removeSelected": "移除 {{model}}"
   },
   "workspace": {
     "title": "工作区",

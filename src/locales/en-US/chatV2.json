@@ -356,7 +356,7 @@
       "on": "Reasoning: {{depth}}"
     },
     "runtimeModelTitle": "Model",
-    "runtimeModelCompareMode": "Enter multi-select mode...",
+    "runtimeModelCompareMode": "Multi-select",
     "runtimeModelOtherProvider": "Other",
     "runtimeModelRecent": "Recently selected",
     "runtimeModelNoResults": "No matching models",
@@ -2182,7 +2182,14 @@
     "goToSettings": "Add models in Settings",
     "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed.",
     "openCodeGoRequests": "· ≈{{count}} req/5h",
-    "openCodeGoFree": "· free (limited time)"
+    "openCodeGoFree": "· free (limited time)",
+    "favorites": "Favorites",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite",
+    "favoriteFailed": "Could not save favorite. Please try again.",
+    "multiSelectCount": "{{count}} selected · answered in parallel on send",
+    "multiSelectEmpty": "Check several models to answer in parallel",
+    "removeSelected": "Remove {{model}}"
   },
   "workspace": {
     "title": "Workspace",
