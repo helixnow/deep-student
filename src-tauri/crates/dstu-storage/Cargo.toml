@@ -47,6 +47,10 @@ uuid = { workspace = true }
 walkdir = { workspace = true }
 zip = { workspace = true }
 
+# unix：backup_common 用 statvfs 查询可用磁盘空间（#[cfg(unix)]）。
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
 [dev-dependencies]
 # 测试只用 tempfile（已是普通依赖）；无 mockito/proptest。
 

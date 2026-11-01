@@ -4252,6 +4252,7 @@ dependencies = [
  "fs2",
  "hex",
  "image 0.24.9",
+ "libc",
  "log",
  "r2d2",
  "r2d2_sqlite",

@@ -11,6 +11,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { useMobileHeader } from '@/components/layout';
 import { APP_EVENTS, dispatchAppEvent } from '@/events';
 import { DsButton } from '@/components/ui/DsButton';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -164,6 +165,8 @@ const WorkerCard: React.FC<{
 
 export const SuperAgentPage: React.FC<SuperAgentPageProps> = ({ isActive = true }) => {
   const { t } = useTranslation('superAgent');
+  // 移动端统一顶栏：由 useViewLayerContents 外层 MobilePageScaffold 渲染（返回 + 标题）
+  useMobileHeader('super-agent', { title: 'Super-agent' });
   const { status, feed, error, sending, thinking, send, closeWorker, reviveWorker } =
     useSuperAgent(isActive);
   const [draft, setDraft] = useState('');
