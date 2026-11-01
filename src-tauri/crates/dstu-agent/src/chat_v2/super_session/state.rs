@@ -357,9 +357,33 @@ pub(crate) fn set_hidden(
     Ok(true)
 }
 
+/// 串行化 ensure / ensure_workspace。
+///
+/// 删除 Super 会话后，后端 on_session_removed 与前端刷新（super_session_get_state 自愈）
+/// 会几乎同时调用 ensure；两者都是“读 metadata → 发现无工作区 → 新建”，不加锁时会给
+/// 同一会话各建一个工作区（后写者覆盖 metadata，前一个成为孤儿），甚至各建一个会话。
+/// 两段逻辑都是同步的、不跨 await，用进程级 std Mutex 即可。
+static ENSURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+fn lock_ensure() -> std::sync::MutexGuard<'static, ()> {
+    ENSURE_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// 确保 Super 会话绑定一个可用（Active）的工作区，并已注册为 Coordinator。
 /// 返回工作区 id。工作区缺失 / 已关闭时新建并回填 metadata。
 pub fn ensure_workspace(
+    db: &ChatV2Database,
+    coordinator: &WorkspaceCoordinator,
+    session_id: &str,
+) -> Result<String, String> {
+    let _guard = lock_ensure();
+    ensure_workspace_locked(db, coordinator, session_id)
+}
+
+/// ensure_workspace 本体；调用方必须已持有 ENSURE_LOCK。
+fn ensure_workspace_locked(
     db: &ChatV2Database,
     coordinator: &WorkspaceCoordinator,
     session_id: &str,
@@ -410,6 +434,7 @@ pub(crate) fn ensure_core(
     db: &ChatV2Database,
     coordinator: &WorkspaceCoordinator,
 ) -> Result<EnsureOutcome, String> {
+    let _guard = lock_ensure();
     let ids = list_active_super_ids(db)?;
     let mut iter = ids.into_iter();
     let (session_id, created) = match iter.next() {
@@ -424,7 +449,7 @@ pub(crate) fn ensure_core(
         }
         None => (create_super_session(db)?.id, true),
     };
-    let workspace_id = ensure_workspace(db, coordinator, &session_id)?;
+    let workspace_id = ensure_workspace_locked(db, coordinator, &session_id)?;
     Ok(EnsureOutcome {
         session_id,
         workspace_id,
@@ -1052,6 +1077,44 @@ mod tests {
             .unwrap()
             .metadata
             .unwrap_or(Value::Null)
+    }
+
+    /// 回归：删除 Super 会话后，后端 on_session_removed 与前端 get_state 自愈会并发 ensure，
+    /// 曾给同一会话各建一个工作区（日志可见同一会话 1 秒内 Bound 两个不同 ws）。
+    #[test]
+    fn concurrent_ensure_creates_one_session_and_one_workspace() {
+        let (_d, db) = chat_db();
+        let (_w, coordinator) = coordinator_for(&db);
+        let outcomes: Vec<EnsureOutcome> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..8)
+                .map(|_| scope.spawn(|| ensure_core(&db, &coordinator).unwrap()))
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        let created = outcomes.iter().filter(|o| o.created).count();
+        assert_eq!(created, 1, "exactly one ensure should create the session");
+        let first = &outcomes[0];
+        assert!(outcomes
+            .iter()
+            .all(|o| o.session_id == first.session_id && o.workspace_id == first.workspace_id));
+        assert_eq!(
+            list_active_super_ids(&db).unwrap(),
+            vec![first.session_id.clone()]
+        );
+        assert_eq!(
+            session_meta(&db, &first.session_id)["super_agent"]["workspace_id"],
+            Value::String(first.workspace_id.clone())
+        );
+        // 并发直接调 ensure_workspace（投递路径）也不能换绑
+        let ws_again: Vec<String> = std::thread::scope(|scope| {
+            let handles: Vec<_> = (0..4)
+                .map(|_| {
+                    scope.spawn(|| ensure_workspace(&db, &coordinator, &first.session_id).unwrap())
+                })
+                .collect();
+            handles.into_iter().map(|h| h.join().unwrap()).collect()
+        });
+        assert!(ws_again.iter().all(|ws| ws == &first.workspace_id));
     }
 
     #[test]
