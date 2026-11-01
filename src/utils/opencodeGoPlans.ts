@@ -10,6 +10,7 @@
 import { useEffect, useState } from 'react';
 import plansData from '../../scripts/opencode-go-plans.json';
 import { getSetting, saveSetting } from './settingsApi';
+import { APP_EVENTS, addAppEventListener, dispatchAppEvent } from '@/events';
 
 export type OpenCodeGoPlanId = 'go' | 'go_plus' | 'go_teams';
 
@@ -44,7 +45,6 @@ export const OPENCODE_GO_PLANS_SOURCE = plans.source;
 
 export const OPENCODE_GO_PLAN_SETTING_KEY = 'opencode_go.plan';
 export const DEFAULT_OPENCODE_GO_PLAN: OpenCodeGoPlanId = 'go';
-const PLAN_CHANGED_EVENT = 'opencode-go-plan-changed';
 
 const isPlanId = (value: unknown): value is OpenCodeGoPlanId =>
   value === 'go' || value === 'go_plus' || value === 'go_teams';
@@ -92,7 +92,7 @@ export async function loadOpenCodeGoPlan(): Promise<OpenCodeGoPlanId> {
 export async function saveOpenCodeGoPlan(plan: OpenCodeGoPlanId): Promise<void> {
   await saveSetting(OPENCODE_GO_PLAN_SETTING_KEY, plan);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent<OpenCodeGoPlanId>(PLAN_CHANGED_EVENT, { detail: plan }));
+    dispatchAppEvent(APP_EVENTS.OPENCODE_GO_PLAN_CHANGED, plan);
   }
 }
 
@@ -105,14 +105,12 @@ export function useOpenCodeGoPlan(): [OpenCodeGoPlanId, (plan: OpenCodeGoPlanId)
     void loadOpenCodeGoPlan().then((value) => {
       if (active) setPlan(value);
     });
-    const onChange = (event: Event) => {
-      const next = (event as CustomEvent<OpenCodeGoPlanId>).detail;
+    const unlisten = addAppEventListener(APP_EVENTS.OPENCODE_GO_PLAN_CHANGED, (next) => {
       if (isPlanId(next)) setPlan(next);
-    };
-    window.addEventListener(PLAN_CHANGED_EVENT, onChange);
+    });
     return () => {
       active = false;
-      window.removeEventListener(PLAN_CHANGED_EVENT, onChange);
+      unlisten();
     };
   }, []);
 

@@ -362,7 +362,8 @@ jobs:
           cache-on-failure: true
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
-        run: cargo test --locked --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+        # shell_sandbox 随 chat_v2 拆到 dstu-agent：必须指定包，否则根包 --lib 过滤到 0 个测试也会“通过”
+        run: cargo test --locked -p dstu-agent --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
       - name: Exercise Windows shell helper end to end
         working-directory: src-tauri
         run: cargo test --locked --test windows_shell_helper_e2e -- --nocapture

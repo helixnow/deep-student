@@ -8,6 +8,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { WarningCircle } from '@phosphor-icons/react';
+import { DsButton } from '@/components/ui/DsButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { cn } from '@/lib/utils';
 import {
@@ -123,11 +124,11 @@ export const OpenCodeGoPlanQuotaSection: React.FC<OpenCodeGoPlanQuotaSectionProp
           {t('settings:vendor_panel.opencode_go.data_source', { date: OPENCODE_GO_PLANS_VERIFIED_AT, source: OPENCODE_GO_PLANS_SOURCE })}
         </span>
         {rows.all.length !== rows.visible.length || showAll ? (
-          <button type="button" className="text-primary hover:underline" onClick={() => setShowAll((value) => !value)}>
+          <DsButton size="sm" variant="ghost" className="h-auto px-1 py-0 text-2xs text-primary hover:underline" onClick={() => setShowAll((value) => !value)}>
             {showAll
               ? t('settings:vendor_panel.opencode_go.show_configured')
               : t('settings:vendor_panel.opencode_go.show_all', { count: rows.all.length })}
-          </button>
+          </DsButton>
         ) : null}
       </div>
     </div>
