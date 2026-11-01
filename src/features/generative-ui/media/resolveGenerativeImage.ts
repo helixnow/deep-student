@@ -148,8 +148,12 @@ function bytesToResolution(
   if (bytes.length > GENUI_IMAGE_MAX_BYTES) return { ok: false, key, reason: 'too_large' };
   const mime = sniffGenerativeImageMime(bytes);
   if (!mime) return { ok: false, key, reason: 'unsupported_type' };
-  // 以嗅探结果为准，不信任后端 / 模型声明的 MIME
-  const blob = new Blob([bytes], { type: mime });
+  // 以嗅探结果为准，不信任后端 / 模型声明的 MIME。
+  // 拷到新建的 Uint8Array（底层必为 ArrayBuffer）：新版 TS lib 不接受
+  // Uint8Array<ArrayBufferLike> 作为 BlobPart（可能是 SharedArrayBuffer）。
+  const blobBytes = new Uint8Array(bytes.length);
+  blobBytes.set(bytes);
+  const blob = new Blob([blobBytes], { type: mime });
   return { ok: true, kind: 'blob', key, blob, bytes: bytes.length, mime };
 }
 
