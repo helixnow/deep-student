@@ -105,6 +105,8 @@ pub struct HubConfig {
     pub orphan_claim_secs: i64,
     /// 连续产出相同结果的次数阈值（判定空转）。
     pub repeat_threshold: i64,
+    /// 历史保留天数：早于此的已处理事件、回复与已关闭 Worker 会被清理；0 = 永久保留。
+    pub retention_days: i64,
 }
 
 impl Default for HubConfig {
@@ -125,6 +127,7 @@ impl Default for HubConfig {
             subscription_ttl_secs: 24 * 3600,
             orphan_claim_secs: 20 * 60,
             repeat_threshold: 2,
+            retention_days: 30,
         }
     }
 }
@@ -167,6 +170,8 @@ pub struct SuperAgentHub {
     recovered: AtomicBool,
     /// 后台循环是否已启动（禁用状态下不启动任何后台任务）。
     loop_started: AtomicBool,
+    /// 准入（kill switch 等）当前是否被拒：只在状态翻转时记日志，避免每个 tick 刷屏。
+    admit_blocked: AtomicBool,
     busy: Arc<Mutex<HashSet<String>>>,
     worker_sem: Arc<Semaphore>,
     pub(super) notify: Notify,
@@ -209,10 +214,21 @@ impl SuperAgentHub {
             enabled: AtomicBool::new(enabled),
             recovered: AtomicBool::new(false),
             loop_started: AtomicBool::new(false),
+            admit_blocked: AtomicBool::new(false),
             busy: Arc::new(Mutex::new(HashSet::new())),
             worker_sem: Arc::new(Semaphore::new(permits)),
             notify: Notify::new(),
         })
+    }
+
+    fn has_unbriefed_worker(&self) -> bool {
+        self.store
+            .list_workers(false)
+            .map(|ws| {
+                ws.iter()
+                    .any(|w| !w.brief_sent && w.status == WorkerStatus::Idle)
+            })
+            .unwrap_or(false)
     }
 
     pub fn store(&self) -> &Arc<SuperAgentStore> {
@@ -388,6 +404,20 @@ impl SuperAgentHub {
                 return;
             }
         };
+        if pending.is_empty() && !self.has_unbriefed_worker() {
+            return;
+        }
+        // 准入被拒（一键断电等）时整轮跳过：事件留在队列里，恢复后自动继续。
+        // 只在状态翻转时记一次日志，避免每 3 秒一条 warning。
+        if let Err(e) = self.ports.admit() {
+            if !self.admit_blocked.swap(true, Ordering::SeqCst) {
+                log::warn!("[SuperAgent] 准入被拒，暂停调度（恢复后自动继续）: {e}");
+            }
+            return;
+        }
+        if self.admit_blocked.swap(false, Ordering::SeqCst) {
+            log::info!("[SuperAgent] 准入恢复，继续调度");
+        }
         let mut worker_ids: HashSet<String> = HashSet::new();
         for (target, _) in &pending {
             if target == TARGET_ROUTER {

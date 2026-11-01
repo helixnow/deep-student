@@ -55,5 +55,24 @@
     "switchTitle": "启用 Super-agent",
     "switchDescription": "打开后，侧栏会出现 Super-agent 页面；关闭后入口隐藏，普通会话不受任何影响。",
     "safety": "后台任务仅使用只读工具，不会修改你的数据或执行命令。窗口关闭到托盘后仍会在后台工作。"
+  },
+  "config": {
+    "followDefaultModel": "跟随对话默认模型",
+    "saved": "已保存",
+    "save": "保存",
+    "advanced": "高级设置",
+    "policyTitle": "处理策略",
+    "policyDescription": "用自然语言告诉 Router 哪些事值得处理、怎么处理，会注入到它的提示里。",
+    "policyPlaceholder": "例如：只处理和学习相关的请求；遇到需要修改数据的事先问我。",
+    "routerModelTitle": "Router 模型",
+    "routerModelDescription": "负责理解你的话、分派任务和统一回复。建议用响应快的模型。",
+    "workerModelTitle": "任务模型",
+    "workerModelDescription": "后台并行任务使用的模型。",
+    "concurrencyTitle": "同时运行的任务数",
+    "concurrencyDescription": "1–6。调高会更快，但会同时占用更多模型额度。",
+    "maxWorkersTitle": "任务数上限",
+    "maxWorkersDescription": "同时存在（未完结）的后台任务最多几个。",
+    "retentionTitle": "历史保留天数",
+    "retentionDescription": "早于此的已处理事件、回复与已完结任务会被自动清理；0 表示永久保留。"
   }
 }

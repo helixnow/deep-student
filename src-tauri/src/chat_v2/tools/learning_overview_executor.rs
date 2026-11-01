@@ -843,8 +843,10 @@ fn collect_learning_activities(
             Ok(conn) => {
                 apply(
                     &conn,
+                    // Super-agent（实验）的 Router/Worker 内部会话不算用户的学习对话
                     "SELECT DATE(created_at), COUNT(*) FROM chat_v2_sessions \
                  WHERE DATE(created_at) >= ?1 AND DATE(created_at) <= ?2 \
+                 AND json_extract(metadata_json, '$.superagent') IS NULL \
                  GROUP BY DATE(created_at)",
                     "learning_activity.chat_sessions",
                     |details, count| details.chat_sessions = count,

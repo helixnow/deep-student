@@ -55,5 +55,24 @@
     "switchTitle": "Enable Super-agent",
     "switchDescription": "When on, a Super-agent page appears in the sidebar. When off, the entry is hidden and regular chats are unaffected.",
     "safety": "Background tasks only use read-only tools; they never modify your data or run commands. Keeps working in the tray after the window is closed."
+  },
+  "config": {
+    "followDefaultModel": "Follow the default chat model",
+    "saved": "Saved",
+    "save": "Save",
+    "advanced": "Advanced",
+    "policyTitle": "Handling policy",
+    "policyDescription": "Tell the Router in plain language what is worth handling and how. It is added to the Router prompt.",
+    "policyPlaceholder": "e.g. Only handle study-related requests; ask me before anything that would change data.",
+    "routerModelTitle": "Router model",
+    "routerModelDescription": "Understands your messages, dispatches tasks and replies. A fast model works best.",
+    "workerModelTitle": "Task model",
+    "workerModelDescription": "Model used by background tasks.",
+    "concurrencyTitle": "Tasks running at once",
+    "concurrencyDescription": "1–6. Higher is faster but uses more model quota at the same time.",
+    "maxWorkersTitle": "Task limit",
+    "maxWorkersDescription": "Maximum number of open background tasks.",
+    "retentionTitle": "History retention (days)",
+    "retentionDescription": "Handled events, replies and finished tasks older than this are cleaned up automatically; 0 keeps everything."
   }
 }

@@ -599,6 +599,38 @@ impl SuperAgentStore {
     // Replies / kv / stats
     // ------------------------------------------------------------------
 
+    /// 保留期清理：删除 `cutoff_ms` 之前、所有投递都已结束（done / dropped）的事件及其投递，
+    /// 更早的回复，以及最后进展早于 cutoff 的已关闭 Worker（连同其订阅）。返回删除的行数。
+    pub fn prune_before(&self, cutoff_ms: i64) -> Result<usize, String> {
+        self.with(|c| {
+            let tx = c.unchecked_transaction()?;
+            let finished = "SELECT t.id FROM sa_triggers t WHERE t.created_ms < ?1 AND NOT EXISTS (
+                 SELECT 1 FROM sa_deliveries d WHERE d.trigger_id = t.id AND d.status IN ('pending', 'claimed'))";
+            tx.execute(
+                &format!("DELETE FROM sa_deliveries WHERE trigger_id IN ({finished})"),
+                params![cutoff_ms],
+            )?;
+            let mut n = tx.execute(
+                &format!("DELETE FROM sa_triggers WHERE id IN ({finished})"),
+                params![cutoff_ms],
+            )?;
+            n += tx.execute(
+                "DELETE FROM sa_replies WHERE created_ms < ?1",
+                params![cutoff_ms],
+            )?;
+            tx.execute(
+                "DELETE FROM sa_subs WHERE worker_id IN (SELECT id FROM sa_workers WHERE status = 'closed' AND last_progress_ms < ?1)",
+                params![cutoff_ms],
+            )?;
+            n += tx.execute(
+                "DELETE FROM sa_workers WHERE status = 'closed' AND last_progress_ms < ?1",
+                params![cutoff_ms],
+            )?;
+            tx.commit()?;
+            Ok(n)
+        })
+    }
+
     pub fn add_reply(&self, reply: &Reply) -> Result<(), String> {
         self.with(|c| {
             c.execute(
@@ -844,5 +876,41 @@ mod tests {
         s.complete("router", &["a".into()]).unwrap();
         s.add_delivery("a", "w1").unwrap();
         assert_eq!(s.claim("w1", 5, 2).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn prune_keeps_in_flight_and_recent_history() {
+        let s = SuperAgentStore::open_in_memory();
+        // 旧且已处理完 → 清理；旧但仍待处理 → 保留；新 → 保留
+        s.insert_trigger(&trig("old_done", "t", 10, 0), &["router".into()])
+            .unwrap();
+        s.claim("router", 1, 11).unwrap();
+        s.complete("router", &["old_done".into()]).unwrap();
+        s.insert_trigger(&trig("old_pending", "t", 20, 0), &["router".into()])
+            .unwrap();
+        s.insert_trigger(&trig("fresh", "t", 5_000, 0), &["router".into()])
+            .unwrap();
+        s.add_reply(&Reply {
+            id: "r_old".into(),
+            thread_key: "t".into(),
+            text: "x".into(),
+            created_ms: 10,
+        })
+        .unwrap();
+        let mut closed = worker("w_closed", "t");
+        closed.status = WorkerStatus::Closed;
+        s.create_worker(&closed).unwrap();
+        s.create_worker(&worker("w_idle", "t")).unwrap();
+
+        // 3 = old_done 事件 + 旧回复 + 已关闭 Worker
+        assert_eq!(s.prune_before(1_000).unwrap(), 3);
+        assert!(s.get_trigger("old_done").unwrap().is_none());
+        assert!(s.get_trigger("old_pending").unwrap().is_some());
+        assert!(s.get_trigger("fresh").unwrap().is_some());
+        assert!(s.list_replies(10).unwrap().is_empty());
+        assert!(s.get_worker("w_closed").unwrap().is_none());
+        assert!(s.get_worker("w_idle").unwrap().is_some());
+        // 仍在途的投递不受影响
+        assert_eq!(s.claim("router", 5, 6_000).unwrap().len(), 2);
     }
 }

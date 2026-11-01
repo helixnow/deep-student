@@ -6,7 +6,8 @@
 //!   “收到消息”不授予任何本地写权限；
 //! - 准入走 `kill_switch`，一键断电同样能停住 Super-agent。
 
-use std::sync::Arc;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -110,23 +111,70 @@ impl TurnPorts for HeadlessPorts {
     }
 }
 
-/// 应用启动时调用：打开存储、创建 Hub、恢复在途项、启动后台循环。
-pub fn init(app: &AppHandle) -> Result<Arc<SuperAgentHub>, String> {
-    let dir = app
+/// Super-agent 运行时句柄（Tauri 托管状态）。
+///
+/// 存储按需创建：从未启用过的用户不会在磁盘上留下 `superagent/superagent.db`。
+/// 已有数据库（曾经启用过）时启动即打开，以便恢复上次的开关状态与在途项。
+pub struct SuperAgentRuntime {
+    app: AppHandle,
+    db_path: PathBuf,
+    hub: OnceLock<Arc<SuperAgentHub>>,
+    open_lock: Mutex<()>,
+}
+
+impl SuperAgentRuntime {
+    /// 已创建的 Hub；数据库文件存在但尚未打开时顺带打开。从未启用过则返回 `None`。
+    pub fn existing(&self) -> Result<Option<Arc<SuperAgentHub>>, String> {
+        if let Some(hub) = self.hub.get() {
+            return Ok(Some(hub.clone()));
+        }
+        if !self.db_path.exists() {
+            return Ok(None);
+        }
+        self.get_or_create().map(Some)
+    }
+
+    /// 取得 Hub，必要时创建存储（启用开关、保存配置时使用）。
+    pub fn get_or_create(&self) -> Result<Arc<SuperAgentHub>, String> {
+        if let Some(hub) = self.hub.get() {
+            return Ok(hub.clone());
+        }
+        let _guard = self.open_lock.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(hub) = self.hub.get() {
+            return Ok(hub.clone());
+        }
+        let store = Arc::new(SuperAgentStore::open(&self.db_path)?);
+        let hub = SuperAgentHub::new(store, Arc::new(HeadlessPorts::new(self.app.clone())));
+        let _ = self.hub.set(hub.clone());
+        Ok(hub)
+    }
+}
+
+/// 应用启动时调用：登记运行时；仅当已有数据库且上次处于启用状态时恢复并启动后台循环。
+pub fn init(app: &AppHandle) -> Result<(), String> {
+    let db_path = app
         .path()
         .app_data_dir()
         .map_err(|e| format!("app_data_dir: {e}"))?
-        .join("superagent");
-    let store = Arc::new(SuperAgentStore::open(&dir.join("superagent.db"))?);
-    let hub = SuperAgentHub::new(store, Arc::new(HeadlessPorts::new(app.clone())));
-    app.manage(hub.clone());
+        .join("superagent")
+        .join("superagent.db");
+    let runtime = SuperAgentRuntime {
+        app: app.clone(),
+        db_path,
+        hub: OnceLock::new(),
+        open_lock: Mutex::new(()),
+    };
     // 默认关闭：未启用时不恢复、不启动任何后台任务，对普通会话模式零影响。
-    // 只有用户在设置页打开开关（或上次已打开）才会启动后台循环。
-    if hub.is_enabled() {
-        activate(&hub);
-    }
-    log::info!("[SuperAgent] initialized (enabled={})", hub.is_enabled());
-    Ok(hub)
+    let enabled = match runtime.existing()? {
+        Some(hub) if hub.is_enabled() => {
+            activate(&hub);
+            true
+        }
+        _ => false,
+    };
+    app.manage(runtime);
+    log::info!("[SuperAgent] initialized (enabled={enabled})");
+    Ok(())
 }
 
 /// 启用后的一次性激活：启动恢复 + 后台循环。可重复调用（幂等）。
@@ -163,7 +211,11 @@ async fn run_loop(hub: Arc<SuperAgentHub>) {
 /// 供其他模块（automations / 渠道插件）喂入事件的便捷入口。
 /// 未启用或未初始化时静默返回 `None`，不影响调用方。
 pub fn emit_trigger(app: &AppHandle, incoming: IncomingTrigger) -> Option<IngestOutcome> {
-    let hub = app.try_state::<Arc<SuperAgentHub>>()?;
+    let hub = app
+        .try_state::<SuperAgentRuntime>()?
+        .existing()
+        .ok()
+        .flatten()?;
     match hub.ingest(incoming) {
         Ok(outcome) => Some(outcome),
         Err(e) => {
@@ -186,10 +238,42 @@ pub struct SuperAgentStatus {
     pub router_busy: bool,
 }
 
+/// 前端（页面输入框 / 调试）允许声明的事件来源。渠道类来源（ilink、automation、review……）
+/// 只能由后端模块经 [`emit_trigger`] 喂入，页面不能冒充。
+const FRONTEND_SOURCES: &[&str] = &["chat", "manual"];
+
+fn check_frontend_source(source: &str) -> Result<(), String> {
+    if FRONTEND_SOURCES.contains(&source) {
+        Ok(())
+    } else {
+        Err(format!(
+            "不允许从前端以来源 \"{source}\" 投递事件（仅限 {}）",
+            FRONTEND_SOURCES.join(" / ")
+        ))
+    }
+}
+
+fn disabled_status() -> SuperAgentStatus {
+    SuperAgentStatus {
+        enabled: false,
+        stats: StoreStats::default(),
+        workers: Vec::new(),
+        router_busy: false,
+    }
+}
+
+fn require_hub(rt: &SuperAgentRuntime) -> Result<Arc<SuperAgentHub>, String> {
+    rt.existing()?
+        .ok_or_else(|| "Super-agent 尚未启用".to_string())
+}
+
 #[tauri::command]
 pub async fn superagent_status(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
 ) -> Result<SuperAgentStatus, String> {
+    let Some(hub) = rt.existing()? else {
+        return Ok(disabled_status());
+    };
     Ok(SuperAgentStatus {
         enabled: hub.is_enabled(),
         stats: hub.store().stats()?,
@@ -200,67 +284,95 @@ pub async fn superagent_status(
 
 #[tauri::command]
 pub async fn superagent_set_enabled(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     enabled: bool,
 ) -> Result<(), String> {
-    hub.set_enabled(enabled)?;
     if enabled {
+        let hub = rt.get_or_create()?;
+        hub.set_enabled(true)?;
         activate(&hub);
+    } else if let Some(hub) = rt.existing()? {
+        hub.set_enabled(false)?;
     }
     Ok(())
 }
 
 #[tauri::command]
 pub async fn superagent_ingest(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     trigger: IncomingTrigger,
 ) -> Result<IngestOutcome, String> {
-    hub.ingest(trigger)
+    check_frontend_source(&trigger.source)?;
+    match rt.existing()? {
+        Some(hub) => hub.ingest(trigger),
+        None => Ok(IngestOutcome::Disabled),
+    }
 }
 
 #[tauri::command]
-pub async fn superagent_get_config(
-    hub: State<'_, Arc<SuperAgentHub>>,
-) -> Result<HubConfig, String> {
-    Ok(hub.config())
+pub async fn superagent_get_config(rt: State<'_, SuperAgentRuntime>) -> Result<HubConfig, String> {
+    Ok(rt.existing()?.map(|hub| hub.config()).unwrap_or_default())
 }
 
 #[tauri::command]
 pub async fn superagent_set_config(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     config: HubConfig,
 ) -> Result<(), String> {
-    hub.set_config(config)
+    rt.get_or_create()?.set_config(config)
 }
 
 #[tauri::command]
 pub async fn superagent_feed(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     limit: Option<usize>,
 ) -> Result<Vec<super::feed::FeedItem>, String> {
-    super::feed::build_feed(hub.store(), limit.unwrap_or(100).clamp(1, 500))
+    match rt.existing()? {
+        Some(hub) => super::feed::build_feed(hub.store(), limit.unwrap_or(100).clamp(1, 500)),
+        None => Ok(Vec::new()),
+    }
 }
 
 #[tauri::command]
 pub async fn superagent_list_replies(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     limit: Option<usize>,
 ) -> Result<Vec<Reply>, String> {
-    hub.store().list_replies(limit.unwrap_or(50).min(500))
+    match rt.existing()? {
+        Some(hub) => hub.store().list_replies(limit.unwrap_or(50).min(500)),
+        None => Ok(Vec::new()),
+    }
 }
 
 #[tauri::command]
 pub async fn superagent_close_worker(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     worker_id: String,
 ) -> Result<(), String> {
-    hub.store().close_worker(&worker_id)
+    require_hub(&rt)?.store().close_worker(&worker_id)
 }
 
 #[tauri::command]
 pub async fn superagent_revive_worker(
-    hub: State<'_, Arc<SuperAgentHub>>,
+    rt: State<'_, SuperAgentRuntime>,
     worker_id: String,
 ) -> Result<(), String> {
-    hub.revive_worker(&worker_id)
+    require_hub(&rt)?.revive_worker(&worker_id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::check_frontend_source;
+
+    #[test]
+    fn frontend_can_only_ingest_chat_or_manual_events() {
+        assert!(check_frontend_source("chat").is_ok());
+        assert!(check_frontend_source("manual").is_ok());
+        for spoofed in ["ilink", "automation", "review", "internal", "watchdog", ""] {
+            assert!(
+                check_frontend_source(spoofed).is_err(),
+                "{spoofed} must be rejected"
+            );
+        }
+    }
 }

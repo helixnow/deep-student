@@ -5,6 +5,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SettingsGroup, SwitchRow } from './settingsTabPrimitives';
+import { SuperAgentConfigPanel } from './SuperAgentConfigPanel';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
   useSuperAgentEnabled,
@@ -41,6 +42,8 @@ export const SuperAgentSettingsSection: React.FC = () => {
         onCheckedChange={(v) => void toggle(v)}
       />
       {error && <p className="px-1 pt-1 text-xs text-destructive">{error}</p>}
+      {/* 高级设置只在启用后出现：未启用时不创建 Super-agent 的存储 */}
+      {enabled && <SuperAgentConfigPanel />}
       <p className="px-1 pt-2 text-xs leading-relaxed text-muted-foreground/70">{t('settings.safety')}</p>
     </SettingsGroup>
   );

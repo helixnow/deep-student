@@ -18,6 +18,9 @@ use super::types::{WorkerStatus, TARGET_ROUTER};
 
 const WATCHDOG_THREAD: &str = "system:watchdog";
 
+const KV_LAST_PRUNE: &str = "retention:last_prune_ms";
+const PRUNE_EVERY_MS: i64 = 3600 * 1000;
+
 #[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SweepReport {
@@ -27,6 +30,8 @@ pub struct SweepReport {
     pub orphan_claims_requeued: usize,
     pub subscriptions_expired: usize,
     pub workers_closed: usize,
+    /// 按保留期清理掉的历史行数（事件 + 回复 + 已关闭 Worker）。
+    pub pruned: usize,
 }
 
 impl SweepReport {
@@ -147,6 +152,21 @@ impl SuperAgentHub {
             if self.store.subscriptions_of(&worker_id)?.is_empty() && !self.is_busy(&worker_id) {
                 self.store.close_worker(&worker_id)?;
                 report.workers_closed += 1;
+            }
+        }
+
+        // —— 5) 保留期：每小时最多清理一次已处理完的历史（在途投递永不清理）
+        if cfg.retention_days > 0 {
+            let last = self
+                .store
+                .kv_get(KV_LAST_PRUNE)?
+                .and_then(|v| v.parse::<i64>().ok())
+                .unwrap_or(0);
+            if now - last >= PRUNE_EVERY_MS {
+                self.store.kv_set(KV_LAST_PRUNE, &now.to_string())?;
+                report.pruned = self
+                    .store
+                    .prune_before(now - cfg.retention_days * 24 * 3600 * 1000)?;
             }
         }
 
