@@ -7,6 +7,14 @@ import noNativeButton from './eslint-rules/no-native-button.js';
 import noArbitraryFontSize from './eslint-rules/no-arbitrary-font-size.js';
 import coarseTouchTarget from './eslint-rules/coarse-touch-target.js';
 import noLegacyTooltip from './eslint-rules/no-legacy-tooltip.js';
+import noHardcodedColor from './eslint-rules/no-hardcoded-color.js';
+import noArbitraryZIndex from './eslint-rules/no-arbitrary-z-index.js';
+import { readFileSync } from 'node:fs';
+
+// App 壳层：src/App.tsx 及从其中搬出的模块，App.tsx 专属护栏同样覆盖这些文件
+const appShellSourceFiles = JSON.parse(
+  readFileSync(new URL('./config/app-shell-sources.json', import.meta.url), 'utf-8')
+).files;
 
 export default tseslint.config(
   // 基础 JS 推荐配置
@@ -28,7 +36,9 @@ export default tseslint.config(
           'no-native-button': noNativeButton,
           'no-arbitrary-font-size': noArbitraryFontSize,
           'coarse-touch-target': coarseTouchTarget,
-          'no-legacy-tooltip': noLegacyTooltip
+          'no-legacy-tooltip': noLegacyTooltip,
+          'no-hardcoded-color': noHardcodedColor,
+          'no-arbitrary-z-index': noArbitraryZIndex
         }
       },
       'react-hooks': reactHooks
@@ -108,6 +118,13 @@ export default tseslint.config(
       // 改完一个文件就从白名单删一条，迁完即可删除该表与本规则。
       'ds-components/no-legacy-tooltip': 'error',
 
+      // 6.4 JSX className/style 禁止硬编码颜色（#fff / rgba() / bg-[#…]），
+      // 必须走主题 token 或 hsl(var(--x))；6.5 禁止 z-[N] 与 style zIndex 数字，
+      // 层级走 Z_INDEX（src/config/zIndex.ts）/ z-modal 等 token 类。
+      // 存量先 warn，由 scripts/check-lint-ratchet.mjs 按 (规则, 模块) 冻结只减不增。
+      'ds-components/no-hardcoded-color': 'warn',
+      'ds-components/no-arbitrary-z-index': 'warn',
+
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
       'no-undef': 'off',
       'no-unused-vars': 'off',
@@ -127,7 +144,9 @@ export default tseslint.config(
     files: ['src/debug-panel/plugins/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': 'off',
-      'ds-components/no-native-button': 'off'
+      'ds-components/no-native-button': 'off',
+      'ds-components/no-hardcoded-color': 'off',
+      'ds-components/no-arbitrary-z-index': 'off'
     }
   },
 
@@ -136,7 +155,9 @@ export default tseslint.config(
     files: ['src/components/dev/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': 'off',
-      'ds-components/no-native-button': 'off'
+      'ds-components/no-native-button': 'off',
+      'ds-components/no-hardcoded-color': 'off',
+      'ds-components/no-arbitrary-z-index': 'off'
     }
   },
 
@@ -186,7 +207,7 @@ export default tseslint.config(
 
   // 已迁移壳层：禁止再引入裸 window/document listener
   {
-    files: ['src/App.tsx'],
+    files: appShellSourceFiles,
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -213,7 +234,10 @@ export default tseslint.config(
       'ds-components/coarse-touch-target': 'off',
       // 测试与示例文件会把 CommonTooltip 当被测对象/用法样本引用，
       // 不是新增业务调用点，关闭（迁移欠账只登记在 allowlist 的业务文件上）。
-      'ds-components/no-legacy-tooltip': 'off'
+      'ds-components/no-legacy-tooltip': 'off',
+      // 契约测试会把颜色/层级字面量当断言样本，不是散点使用，关闭。
+      'ds-components/no-hardcoded-color': 'off',
+      'ds-components/no-arbitrary-z-index': 'off'
     }
   },
 
@@ -225,7 +249,9 @@ export default tseslint.config(
     ],
     rules: {
       'no-restricted-imports': 'off',
-      'ds-components/no-native-button': 'off'
+      'ds-components/no-native-button': 'off',
+      'ds-components/no-hardcoded-color': 'off',
+      'ds-components/no-arbitrary-z-index': 'off'
     }
   },
 

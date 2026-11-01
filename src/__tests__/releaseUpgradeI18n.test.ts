@@ -1,9 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 type ReuseCase = {
   source: string;
+  /** 源文件已拆分出的子模块目录：与 source 拼接后断言 */
+  extraSourceDirs?: readonly string[];
   keys: readonly string[];
   removedKeys: readonly string[];
 };
@@ -98,6 +100,7 @@ const REUSE_CASES: readonly ReuseCase[] = [
   },
   {
     source: 'src/features/settings/components/McpToolsSection.tsx',
+    extraSourceDirs: ['src/features/settings/components/mcp-tools'],
     keys: ['common:expand'],
     removedKeys: ['settings:tool_permissions.expand_hint'],
   },
@@ -117,6 +120,13 @@ function readSource(relativePath: string): string {
   return readFileSync(resolve(process.cwd(), relativePath), 'utf8');
 }
 
+function readCaseSource({ source, extraSourceDirs = [] }: ReuseCase): string {
+  const extraFiles = extraSourceDirs.flatMap((dir) =>
+    readdirSync(resolve(process.cwd(), dir)).sort().map((file) => `${dir}/${file}`),
+  );
+  return [source, ...extraFiles].map(readSource).join('\n');
+}
+
 function readLocale(language: 'en-US' | 'zh-CN', namespace: string): Record<string, unknown> {
   return JSON.parse(
     readFileSync(resolve(process.cwd(), `src/locales/${language}/${namespace}.json`), 'utf8'),
@@ -132,8 +142,9 @@ function readPath(value: Record<string, unknown>, keyPath: string): unknown {
 
 describe('v0.9.44 release-upgrade i18n regressions', () => {
   it('reuses keys that exist in both supported locales', () => {
-    for (const { source, keys } of REUSE_CASES) {
-      const sourceText = readSource(source);
+    for (const reuseCase of REUSE_CASES) {
+      const { source, keys } = reuseCase;
+      const sourceText = readCaseSource(reuseCase);
       for (const namespacedKey of keys) {
         const separatorIndex = namespacedKey.indexOf(':');
         const namespace = namespacedKey.slice(0, separatorIndex);
@@ -149,8 +160,9 @@ describe('v0.9.44 release-upgrade i18n regressions', () => {
   });
 
   it('does not restore the audited missing key paths', () => {
-    for (const { source, removedKeys } of REUSE_CASES) {
-      const sourceText = readSource(source);
+    for (const reuseCase of REUSE_CASES) {
+      const { source, removedKeys } = reuseCase;
+      const sourceText = readCaseSource(reuseCase);
       for (const removedKey of removedKeys) {
         expect(sourceText, `${source} must not use missing key ${removedKey}`).not.toContain(removedKey);
       }

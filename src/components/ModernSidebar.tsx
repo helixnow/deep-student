@@ -1,4 +1,6 @@
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
+import { useSuperAgentEnabledStore } from '@/stores/superAgentEnabledStore';
+import { useSuperSessionEntry } from '@/features/chat/superSession/useSuperSessionEntry';
 import { SessionRow, useStableSessionRowActions } from './sidebar/SessionRow';
 import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence } from 'framer-motion';
@@ -46,7 +48,7 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { ChatSession } from '@/features/chat/types/session';
 import type { SessionGroup } from '@/features/chat/types/group';
-import { buildPinnedSessionMetadata, isSessionPinned } from '@/features/chat/utils/sessionPin';
+import { buildPinnedSessionMetadata, isSessionPinned, isSuperAgentSession } from '@/features/chat/utils/sessionPin';
 import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 import { useSidebarSessionData } from '@/features/chat/hooks/useSessionManagement';
 import {
@@ -281,9 +283,20 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   } = useSidebarSessionData();
   // 侧栏过滤偏好（方案 A 纯前端过滤）：默认隐藏子代理会话，过滤菜单统一切换
   const showSubagentSessions = useSidebarFilterPrefs((state) => state.showSubagentSessions);
+  // Super-agent 会话：在置顶区最上面单独渲染（按 id 拉取，分页后也不会丢），并从普通列表按 id 去重
+  const superSessionEntry = useSuperSessionEntry();
+  const superSessionId = superSessionEntry.enabled ? superSessionEntry.sessionId : null;
+  // 普通列表里若带回了该会话（本地重命名等会先更新列表），优先用它；否则用按 id 拉取的摘要
+  const superSession: ChatSession | null = superSessionId
+    ? (rawRecentSessions.find((session) => session.id === superSessionId) ?? superSessionEntry.session ?? null)
+    : null;
+  const refreshSuperSessionEntry = superSessionEntry.refresh;
   const recentSessions = useMemo(
-    () => sortSessionsByUpdatedAt(filterSidebarSessions(rawRecentSessions, { showSubagentSessions })),
-    [rawRecentSessions, showSubagentSessions]
+    () => sortSessionsByUpdatedAt(
+      filterSidebarSessions(rawRecentSessions, { showSubagentSessions })
+        .filter((session) => session.id !== superSessionId && !isSuperAgentSession(session))
+    ),
+    [rawRecentSessions, showSubagentSessions, superSessionId]
   );
   const recentGroups = useMemo(
     () => sortGroups(rawRecentGroups.filter(isSessionGroup)),
@@ -323,7 +336,10 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
   const uiLabEnabled = useIsUILabEnabled();
-  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
+  const navItems = useMemo(
+    () => createNavItems(t, uiLabEnabled),
+    [t, uiLabEnabled],
+  );
   const primaryItems = useMemo(
     () => navItems.filter((item) => {
       if (navigationScope === 'chat') {
@@ -398,6 +414,12 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
 
   // 数据刷新由 useSidebarSessionData 内部订阅 sessions/groups 更新事件完成，
   // 这里只需要同步高亮的当前会话。
+  // 会话列表变化（重命名、删除重建、开关）时同步刷新按 id 拉取的 Super-agent 会话摘要
+  const handleSessionsUpdated = useCallback((event?: Event) => {
+    syncActiveSession(event);
+    refreshSuperSessionEntry?.();
+  }, [refreshSuperSessionEntry, syncActiveSession]);
+
   useEventRegistry([
     {
       target: 'window',
@@ -407,9 +429,9 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     {
       target: 'window',
       type: 'chat-v2:sessions-updated',
-      listener: syncActiveSession as EventListener,
+      listener: handleSessionsUpdated as EventListener,
     },
-  ], [syncActiveSession]);
+  ], [handleSessionsUpdated, syncActiveSession]);
 
   useEffect(() => {
     if (draggedRecentGroupId === null) {
@@ -574,14 +596,23 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   // 永久删除（区别于归档；行内二次确认后才会走到这里）
   const handleRecentSessionDelete = useCallback(async (sessionId: string) => {
     resetDeleteConfirmation();
+    const isDeletingSuperSession = sessionId === superSessionId;
     try {
       await invoke('chat_v2_delete_session', { sessionId });
       const remainingSessions = recentSessions.filter((item) => item.id !== sessionId);
       setRecentSessions((previous) => previous.filter((item) => item.id !== sessionId));
 
+      // 删除 Super-agent 会话：后端已停止其后台任务并新建空的 Super-agent 会话
+      // （super_session_changed 广播新 id）；这里主动拉一次状态，正停在旧会话时切到新会话。
+      const replacementSuperSessionId = isDeletingSuperSession
+        ? (await useSuperAgentEnabledStore.getState().refresh())?.sessionId ?? null
+        : null;
+
       if (activeSessionId === sessionId) {
         const nextSession = remainingSessions[0] ?? null;
-        if (nextSession) {
+        if (replacementSuperSessionId && replacementSuperSessionId !== sessionId) {
+          handleRecentSessionOpen(replacementSuperSessionId);
+        } else if (nextSession) {
           handleRecentSessionOpen(nextSession.id);
         } else {
           setActiveSessionId(null);
@@ -600,7 +631,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       console.warn('[ModernSidebar] Failed to delete recent session:', error);
       void refreshSidebarData();
     }
-  }, [activeSessionId, handleRecentSessionOpen, recentSessions, refreshSidebarData, resetDeleteConfirmation, setRecentSessions]);
+  }, [activeSessionId, handleRecentSessionOpen, recentSessions, refreshSidebarData, resetDeleteConfirmation, setRecentSessions, superSessionId]);
 
   // 拖拽会话到分组行 / 「对话」区（未分组）
   const moveRecentSessionToGroup = useCallback(async (sessionId: string, groupId: string | null) => {
@@ -890,7 +921,8 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
       setOpenRecentSessionMenuId((current) => open ? sessionId : current === sessionId ? null : current);
     },
     startRename: (sessionId) => {
-      const session = recentSessions.find((item) => item.id === sessionId);
+      const session = recentSessions.find((item) => item.id === sessionId)
+        ?? (superSession?.id === sessionId ? superSession : undefined);
       if (session) startRecentSessionRename(session);
     },
     changeRenameTitle: (title) => {
@@ -916,13 +948,14 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   });
 
   const canOpenSessionInNewWindow = workbenchBus.isEnabled();
-  const renderRecentSessionRow = useCallback((session: ChatSession, collapsed = false) => (
+  const renderRecentSessionRow = useCallback((session: ChatSession, collapsed = false, variant?: 'super') => (
     <SessionRow
       key={session.id}
       sessionId={session.id}
       title={getSessionTitleText(session.title, '')}
       updatedAt={session.updatedAt ?? session.createdAt}
-      pinned={isSessionPinned(session)}
+      pinned={variant === 'super' || isSessionPinned(session)}
+      variant={variant}
       collapsed={collapsed}
       isActive={currentView === 'chat-v2' && activeSessionId === session.id}
       isSessionStreaming={streamingSessionIdSet.has(session.id)}
@@ -1167,7 +1200,7 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
     );
   }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
 
-  const hasPinnedContent = pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
+  const hasPinnedContent = Boolean(superSession) || pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
   const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
   const isTopicsSectionCollapsed = collapsedSidebarSectionIds.has('topics');
   const isConversationsSectionCollapsed = collapsedSidebarSectionIds.has('conversations');
@@ -1290,6 +1323,10 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
                 {!isPinnedSectionCollapsed ? (
                   <nav aria-label={t('sidebar:aria.pinned_sessions')}>
                     <div className="space-y-0.5" role="list">
+                      {/* Super-agent 会话固定在置顶区最上面（与普通会话行同一外观与状态点） */}
+                      <AnimatePresence initial={false}>
+                        {superSession ? renderRecentSessionRow(superSession, false, 'super') : null}
+                      </AnimatePresence>
                       {pinnedRecentGroups.map((group) => renderRecentGroup(group))}
                       <AnimatePresence initial={false}>
                         {pinnedRecentSessions.map((session) => renderRecentSessionRow(session))}

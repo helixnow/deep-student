@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('desktop shell sidebar collapse contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
   const settingsSource = readFileSync(resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'), 'utf-8');
   const settingsCssSource = readFileSync(resolve(process.cwd(), 'src/features/settings/styles/settings.css'), 'utf-8');

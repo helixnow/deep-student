@@ -356,7 +356,7 @@
       "on": "推理: {{depth}}"
     },
     "runtimeModelTitle": "模型",
-    "runtimeModelCompareMode": "进入多选模式...",
+    "runtimeModelCompareMode": "多选模式",
     "runtimeModelOtherProvider": "其他",
     "runtimeModelRecent": "最近选择",
     "runtimeModelNoResults": "未找到匹配模型",
@@ -2180,7 +2180,16 @@
     "noMatches": "未找到匹配的模型",
     "empty": "暂无可用模型",
     "goToSettings": "去设置添加模型",
-    "pinnedUnavailable": "所选模型「{{from}}」已删除或停用，本次改用「{{to}}」。可在输入框重新选择模型。"
+    "pinnedUnavailable": "所选模型「{{from}}」已删除或停用，本次改用「{{to}}」。可在输入框重新选择模型。",
+    "openCodeGoRequests": "· 约 {{count}} 次/5小时",
+    "openCodeGoFree": "· 限时免费",
+    "favorites": "收藏",
+    "favorite": "收藏",
+    "unfavorite": "取消收藏",
+    "favoriteFailed": "收藏状态保存失败，请稍后重试",
+    "multiSelectCount": "已选 {{count}} 个 · 发送时并行回答",
+    "multiSelectEmpty": "勾选多个模型，发送时并行回答",
+    "removeSelected": "移除 {{model}}"
   },
   "workspace": {
     "title": "工作区",
@@ -2581,6 +2590,37 @@
       "pause": "暂停目标失败",
       "resume": "继续目标失败",
       "clear": "清除目标失败"
+    }
+  },
+  "superSession": {
+    "paused": {
+      "userStopped": "已停止，后台事件暂停自动处理",
+      "autoLimit": "已连续自动处理 {{count}} 轮，后台事件暂停自动处理",
+      "resume": "继续处理 {{count}} 条待处理事件",
+      "resume_one": "继续处理 {{count}} 条待处理事件",
+      "resumeNoCount": "继续处理待处理事件"
+    },
+    "event": {
+      "title": "后台事件",
+      "ariaLabel": "Super-agent 后台事件",
+      "count": "{{count}} 条",
+      "count_one": "{{count}} 条",
+      "generic": "收到新的后台事件",
+      "untitledWorker": "未命名任务",
+      "worker": {
+        "completed": "Worker「{{title}}」已完成",
+        "failed": "Worker「{{title}}」执行失败",
+        "cancelled": "Worker「{{title}}」已取消",
+        "interrupted": "Worker「{{title}}」已中断",
+        "timeout": "Worker「{{title}}」已超时",
+        "message": "Worker「{{title}}」发来新消息"
+      },
+      "external": "外部事件 · {{source}}",
+      "externalNoSource": "外部事件",
+      "view": "查看",
+      "viewWorkerAria": "查看 Worker「{{title}}」的完整会话",
+      "showRaw": "查看原文",
+      "hideRaw": "收起原文"
     }
   }
 }

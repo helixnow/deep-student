@@ -8,12 +8,11 @@
  * 拦截，不得回潮任何窄窗换壳条件。历史注释可以提及该标识符（留档），
  * 但不得再有声明、状态或逻辑引用。
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('workbenchActive small-screen shell-swap contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
 
   it('workbenchActive 护栏表达式恒为 workbenchMode && !isMobilePlatform()', () => {
     const declarations = appSource.match(/const workbenchActive =[^;]*;/g) ?? [];

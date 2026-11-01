@@ -4,11 +4,11 @@ import { describe, expect, it } from 'vitest';
 
 describe('Chat V2 archive and restore source contract', () => {
   const repoSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/chat_v2/repo.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/repo.rs'),
     'utf-8'
   );
   const manageSessionSource = readFileSync(
-    resolve(process.cwd(), 'src-tauri/src/chat_v2/handlers/manage_session.rs'),
+    resolve(process.cwd(), 'src-tauri/crates/dstu-agent/src/chat_v2/handlers/manage_session.rs'),
     'utf-8'
   );
 

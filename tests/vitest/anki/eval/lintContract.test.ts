@@ -2,7 +2,7 @@
  * 跨语言 lint 契约锁（Round 4 #10 建立，Round 5 #10 完全对齐）。
  *
  * eval harness 的 JS lint（scripts/anki-eval/lib/cardLint.mjs）复用 Rust
- * 生产 lint（src-tauri/src/anki_qa_lint.rs）的 code 字符串。契约有三个
+ * 生产 lint（src-tauri/crates/dstu-anki/src/anki_qa_lint.rs）的 code 字符串。契约有三个
  * 互相锁定的事实来源：
  *
  * 1. `anki_qa_lint::codes` —— 具名常量导出（Rust 侧锚点，Round 5 #10）；
@@ -34,11 +34,11 @@ import {
 const REPO_ROOT = path.resolve(__dirname, '../../../..');
 
 const qaLintSource = () =>
-  readFileSync(path.join(REPO_ROOT, 'src-tauri/src/anki_qa_lint.rs'), 'utf8');
+  readFileSync(path.join(REPO_ROOT, 'src-tauri/crates/dstu-anki/src/anki_qa_lint.rs'), 'utf8');
 
 /** 从 anki_gold_set.rs 解析契约清单 LINT_CONTRACT_CODES */
 function loadContractCodes(): Set<string> {
-  const source = readFileSync(path.join(REPO_ROOT, 'src-tauri/src/anki_gold_set.rs'), 'utf8');
+  const source = readFileSync(path.join(REPO_ROOT, 'src-tauri/crates/dstu-anki/src/anki_gold_set.rs'), 'utf8');
   const block = source.match(/LINT_CONTRACT_CODES:\s*&\[&str\]\s*=\s*&\[([\s\S]*?)\];/);
   expect(block, 'anki_gold_set.rs 必须声明 LINT_CONTRACT_CODES').not.toBeNull();
   const codes = new Set<string>();

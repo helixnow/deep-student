@@ -25,6 +25,10 @@ vi.mock('@/features/chat/core/session/sessionManager', () => ({
     subscribe: () => () => undefined,
   },
 }));
+// Super-agent 会话入口：本测试不涉及，固定为未启用（避免额外 IPC 干扰 invoke 断言）
+vi.mock('@/features/chat/superSession/useSuperSessionEntry', () => ({
+  useSuperSessionEntry: () => ({ enabled: false, sessionId: null, session: null, loading: false, refresh: () => undefined }),
+}));
 vi.mock('@/features/chat/core/session/sessionPrefetch', () => ({
   beginSessionHoverPrefetch: beginPrefetch,
   cancelSessionHoverPrefetch: cancelPrefetch,

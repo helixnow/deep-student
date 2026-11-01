@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('macOS font smoothing contracts', () => {
   it('removes broad grayscale antialiasing from shared component layers and gates the root override through document data', () => {
@@ -22,7 +23,7 @@ describe('macOS font smoothing contracts', () => {
   });
 
   it('legacy app settings load and apply the macOS font smoothing preference through the document dataset', () => {
-    const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+    const appSource = readAppShellSource();
 
     expect(appSource).toContain('macos.native_font_smoothing');
     expect(appSource).toContain('document.documentElement.dataset.fontSmoothing');

@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
-const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+const appSource = readAppShellSource();
 const shellCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf8');
 
 describe('desktop sidebar shell wiring', () => {
@@ -31,6 +32,13 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).toContain('showNewSession={leftPanelCollapsed}');
     expect(appSource).toContain('{showNewSession ? (');
     expect(appSource).not.toContain('isDesktopFullscreen');
+  });
+
+  it('keeps sidebar toggle and history nav reachable in settings/todo while collapsed', () => {
+    // 回归：对话页收起侧栏 → 后退进入设置页，壳侧栏（含其返回入口）随全局收起状态隐藏，
+    // 若标题栏也无条件隐藏开关与前进/后退，页面将没有任何出口。
+    expect(appSource).toContain("const shouldShowDesktopSidebarToggle = currentView !== 'settings' || leftPanelCollapsed;");
+    expect(appSource).toContain('const shouldShowDesktopHeaderNavControls = !isShellSidebarView || leftPanelCollapsed;');
   });
 
   it('keeps macOS custom chrome in the native titlebar row', () => {

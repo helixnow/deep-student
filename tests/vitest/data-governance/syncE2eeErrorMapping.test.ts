@@ -196,11 +196,11 @@ describe('classifySyncE2eeError', () => {
 describe('E2EE 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一组 code', () => {
     const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/cloud_storage/mod.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_storage/mod.rs'),
       'utf8',
     );
     const rustClaim = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/cloud_storage/e2ee_claim.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/cloud_storage/e2ee_claim.rs'),
       'utf8',
     );
     const api = readFileSync(

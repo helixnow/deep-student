@@ -1,8 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('GlobalDebugPanel open request contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const panelSource = readFileSync(
     resolve(process.cwd(), 'src/components/dev/GlobalDebugPanel.tsx'),
     'utf-8',

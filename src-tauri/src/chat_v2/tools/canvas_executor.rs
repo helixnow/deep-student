@@ -539,10 +539,9 @@ async fn verify_note_revision(
     expected: &str,
 ) -> Result<(), String> {
     let notes_manager = ctx
-        .notes_manager
-        .as_ref()
-        .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
-        .clone();
+        .services
+        .get::<crate::notes_manager::NotesManager>()
+        .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?;
     let note_id = note_id.to_string();
     let actual = tokio::task::spawn_blocking(move || {
         notes_manager
@@ -725,10 +724,9 @@ impl CanvasToolExecutor {
         args: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         let notes_manager = ctx
-            .notes_manager
-            .as_ref()
-            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
-            .clone();
+            .services
+            .get::<crate::notes_manager::NotesManager>()
+            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?;
 
         let note_id_owned = note_id.to_string();
         let section = args
@@ -771,10 +769,9 @@ impl CanvasToolExecutor {
         args: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         let notes_manager = ctx
-            .notes_manager
-            .as_ref()
-            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
-            .clone();
+            .services
+            .get::<crate::notes_manager::NotesManager>()
+            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?;
 
         let page = args
             .get("page")
@@ -897,10 +894,9 @@ impl CanvasToolExecutor {
         args: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         let notes_manager = ctx
-            .notes_manager
-            .as_ref()
-            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
-            .clone();
+            .services
+            .get::<crate::notes_manager::NotesManager>()
+            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?;
 
         let query = args
             .get("query")
@@ -1186,10 +1182,9 @@ impl CanvasToolExecutor {
         args: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<serde_json::Value, String> {
         let notes_manager = ctx
-            .notes_manager
-            .as_ref()
-            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?
-            .clone();
+            .services
+            .get::<crate::notes_manager::NotesManager>()
+            .ok_or_else(|| "Canvas 工具不可用：NotesManager 未初始化".to_string())?;
 
         let note_id_owned = note_id.to_string();
         // 提前提取工具名称，避免生命周期问题

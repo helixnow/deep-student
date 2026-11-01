@@ -104,6 +104,16 @@ initWorkspaceEventListeners()
   });
 
 // ============================================================================
+// Super 会话常驻控制器（仅 main 窗口；持有 Super 会话 lease 并驱动收件箱投递）
+// ============================================================================
+
+import { startSuperResidentController } from './superSession/residentController';
+
+startSuperResidentController().catch((error) => {
+  console.error('[Chat V2] Super session resident controller failed to start:', error);
+});
+
+// ============================================================================
 // 注册所有插件
 // ============================================================================
 

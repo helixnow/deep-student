@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const readSource = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf-8');
 
@@ -9,7 +10,7 @@ describe('UI style lab navigation contract', () => {
   const canonicalViewSource = readSource('src/app/navigation/canonicalView.ts');
   const navigationConfigSource = readSource('src/config/navigation.ts');
   const modernSidebarSource = readSource('src/components/ModernSidebar.tsx');
-  const appSource = readSource('src/App.tsx');
+  const appSource = readAppShellSource();
 
   it('registers ui-lab as a supported app view and sidebar destination', () => {
     expect(navigationTypesSource).toContain("| 'ui-lab'");

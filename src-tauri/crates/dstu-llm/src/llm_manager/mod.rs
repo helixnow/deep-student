@@ -1,0 +1,8963 @@
+pub mod adapters;
+mod builtin_vendors;
+mod exam_engine;
+pub mod model2_pipeline;
+pub mod opencode_go;
+pub mod parser;
+pub mod provider_quirks;
+pub mod question_authoring;
+mod rag_extension;
+pub(crate) mod reasoning_level_map;
+pub mod routing;
+pub mod single_shot_stream;
+pub use dstu_util::utf8_stream;
+
+// 连接测试（commands::test_api_connection）复用生产请求构造的 token 上限逻辑，
+// 保证探测请求与真实聊天请求的 max_tokens/max_completion_tokens 方言一致。
+pub use model2_pipeline::apply_generation_params;
+
+// 🔒 URL 日志脱敏工具（Gemini 等把 API key 放在 query 中），供 llm_manager 外的调用方复用
+pub use model2_pipeline::sanitize_url_for_log;
+
+// ApiConfig 及其默认值函数已下沉到 dstu-core（models/database 也持有它），这里按原路径重导出。
+pub use crate::llm_config::ApiConfig;
+
+// ── app `AppHandle`（由 app `lib.rs` 在 `set_global_app_handle` 旁边注入）──
+//
+// 本 crate 不能反向依赖 app 的 `get_global_app_handle()`。需要发 Tauri 事件 /
+// 解析 app 日志目录的两处（`exam_engine` 的 OCR 调试事件、`model2_pipeline`
+// 的 debug 落盘目录）统一读这里的句柄；注入时机与旧全局句柄完全相同。
+static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+/// 保存 app 的 `AppHandle`（幂等：先设置者生效，与旧全局句柄一致）。
+pub fn set_app_handle(handle: tauri::AppHandle) {
+    let _ = APP_HANDLE.set(handle);
+}
+
+/// 读取 app 的 `AppHandle`；未设置时为 `None`（等价旧 `get_global_app_handle()`）。
+pub(crate) fn app_handle() -> Option<&'static tauri::AppHandle> {
+    APP_HANDLE.get()
+}
+
+// 从 chat_v2 / cmd::ocr / translation 下沉到 llm 组的纯逻辑（原路径保留重导出），
+// 以及 legacy 回退注入用的 web_search 注册点（由上层 tools 模块安装）。
+pub mod compaction_budget;
+pub mod ocr_models;
+pub mod transient_messages;
+pub mod translation_prompts;
+pub mod web_search_fallback;
+
+use crate::canonical_tools::{
+    build_openai_function_tool_schema, prepare_external_tool, ApiNameSource, CanonicalExternalTool,
+    CanonicalExternalToolConfig,
+};
+use crate::crypto::{CryptoService, EncryptedData};
+use crate::database::Database;
+use crate::file_manager::FileManager;
+use crate::llm_config::{
+    default_gemini_api_version, default_max_output_tokens, default_model_adapter,
+    default_temperature,
+};
+use crate::models::{AppError, ChatMessage, ExamCardBBox, ModelAssignments};
+use crate::openai_codex::CodexAuthManager;
+use crate::providers::{ProviderAdapter, ProviderError};
+use crate::vendors::load_builtin_api_configs;
+use base64::{engine::general_purpose, Engine as _};
+use log::{debug, error, info, warn};
+use reqwest::{header::HeaderMap, Client, ClientBuilder};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use tauri::{Emitter, Listener, Window};
+use tokio::sync::watch;
+use tokio::sync::Mutex as TokioMutex;
+// use chrono::Utc;
+use regex::Regex;
+use std::sync::LazyLock;
+use tokio::sync::{RwLock, Semaphore};
+use tokio::time::{Duration, Instant};
+use uuid::Uuid;
+
+/// Suffix used by ChatV2 run-scoped LLM hook keys to carry the owning stream generation.
+pub const CHAT_V2_STREAM_GENERATION_MARKER: &str = "__stream_generation__";
+
+/// PDF/图片预处理与索引兜底共用的 OCR 并发容量。
+pub const MAX_OCR_CONCURRENCY: usize = 4;
+
+// ============================================================
+// 流式事件出口（G01-b：LLM 流式层去 Window 依赖）
+// ============================================================
+
+/// LLM 流式管线（`call_unified_model_2_stream`）的事件出口抽象。
+///
+/// 语义对齐 chat_v2 的 `ExecutionEventSink`（G01-a），但面向本层的非类型化
+/// JSON 事件（流式 chunk / 用量 / 错误 / 审计 / failover 通知）：
+/// - 桌面窗口运行时由 [`WindowStreamSink`] 经 Tauri `Window` 发到前端事件通道；
+/// - 无窗口运行时（headless / 测试）由 [`NoopStreamSink`] 丢弃事件（仅 trace 日志）。
+///
+/// 少数仍需要真实窗口的路径（MCP 前端桥工具发现、`ToolContext.window`）经
+/// [`StreamEventSink::window`] 取回；无窗口 runtime 返回 `None`，由调用方
+/// 降级（MCP 工具集为空，见 `build_tools_with_mcp`）。
+pub trait StreamEventSink: Send + Sync {
+    /// 发射 JSON 事件到指定通道。返回底层 emit 结果，由调用方按现状记录日志
+    /// （各调用点的 warn!/error! 语义保持不变）。
+    fn emit(&self, channel: &str, payload: &Value) -> std::result::Result<(), tauri::Error>;
+
+    /// 取回底层 Tauri 窗口；无窗口 runtime 返回 `None`。
+    fn window(&self) -> Option<Window>;
+}
+
+/// 桌面窗口事件出口：逐调用包装 `Window::emit`，行为与 G01-b 改造前完全一致
+/// （payload 原样透传，不加重试/计数——本层历史上就是 best-effort emit）。
+pub struct WindowStreamSink {
+    window: Window,
+}
+
+impl WindowStreamSink {
+    pub fn new(window: Window) -> Self {
+        Self { window }
+    }
+}
+
+impl StreamEventSink for WindowStreamSink {
+    fn emit(&self, channel: &str, payload: &Value) -> std::result::Result<(), tauri::Error> {
+        self.window.emit(channel, payload)
+    }
+
+    fn window(&self) -> Option<Window> {
+        Some(self.window.clone())
+    }
+}
+
+/// 无窗口事件出口（headless / 测试）：事件全部丢弃（仅 trace 日志），
+/// `window()` 返回 `None`。
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NoopStreamSink;
+
+impl StreamEventSink for NoopStreamSink {
+    fn emit(&self, channel: &str, _payload: &Value) -> std::result::Result<(), tauri::Error> {
+        log::trace!("[LLM::stream_sink] NoopSink drop event: {}", channel);
+        Ok(())
+    }
+
+    fn window(&self) -> Option<Window> {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryCapabilityFlags {
+    vision: bool,
+    function_calling: bool,
+    reasoning: bool,
+    #[serde(default)]
+    max_context_tokens: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryModelRecord {
+    model_id: String,
+    #[serde(default)]
+    provider_scope: Option<String>,
+    #[serde(default)]
+    provider_model_id: Option<String>,
+    #[serde(default)]
+    alias_of: Option<String>,
+    capabilities: RegistryCapabilityFlags,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistrySeriesRecord {
+    models: Vec<RegistryModelRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct RegistryDocument {
+    records: Vec<RegistrySeriesRecord>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryRecord {
+    provider_type: String,
+    #[serde(default)]
+    allowed_protocols: Vec<String>,
+    default_protocol: String,
+    #[serde(default)]
+    official: bool,
+    #[serde(default)]
+    supports_openai_responses: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryDocument {
+    providers: Vec<ProviderProtocolRegistryRecord>,
+}
+
+#[derive(Debug, Clone, Default)]
+struct CapabilityOverrides {
+    is_multimodal: bool,
+    supports_tools: bool,
+    supports_reasoning: bool,
+    context_window: Option<u32>,
+}
+
+static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock::new(|| {
+    serde_json::from_str::<RegistryDocument>(include_str!(
+        "../../../../../scripts/model-capability-registry.json"
+    ))
+    .map(|doc| {
+        doc.records
+            .into_iter()
+            .flat_map(|record| record.models)
+            .collect()
+    })
+    .unwrap_or_else(|err| {
+        eprintln!(
+            "[LLMManager] failed to parse model capability registry, falling back to empty: {}",
+            err
+        );
+        Vec::new()
+    })
+});
+
+static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>> = LazyLock::new(
+    || {
+        serde_json::from_str::<ProviderProtocolRegistryDocument>(include_str!(
+            "../../../../../scripts/provider-protocol-registry.json"
+        ))
+        .map(|doc| doc.providers)
+        .unwrap_or_else(|err| {
+            eprintln!(
+                "[LLMManager] failed to parse provider protocol registry, falling back to empty: {}",
+                err
+            );
+            Vec::new()
+        })
+    },
+);
+
+pub const AUTH_MODE_NONE: &str = "none";
+pub const AUTH_MODE_OPENAI_CODEX_OAUTH: &str = "openai_codex_oauth";
+
+fn api_origins_match(left: &str, right: &str) -> bool {
+    let Ok(left) = url::Url::parse(left.trim()) else {
+        return false;
+    };
+    let Ok(right) = url::Url::parse(right.trim()) else {
+        return false;
+    };
+    left.scheme().eq_ignore_ascii_case(right.scheme())
+        && left.host_str().map(str::to_ascii_lowercase)
+            == right.host_str().map(str::to_ascii_lowercase)
+        && left.port_or_known_default() == right.port_or_known_default()
+}
+
+fn is_sensitive_vendor_header(name: &str) -> bool {
+    // 自定义 Header 的语义不可可靠推断（X-Auth、X-Api-Key-V2、租户签名等命名
+    // 没有统一标准），因此一律按凭据处理：落盘加密、返回 renderer 时掩码，
+    // 跨源修改时要求显式重输。
+    !name.trim().is_empty()
+}
+
+fn is_masked_secret(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty() && value.chars().all(|character| character == '*')
+}
+
+fn deserialize_vendor_configs(
+    raw: &str,
+) -> std::result::Result<Vec<VendorConfig>, serde_json::Error> {
+    let mut value: Value = serde_json::from_str(raw)?;
+    if let Some(vendors) = value.as_array_mut() {
+        for vendor in vendors {
+            let Some(object) = vendor.as_object_mut() else {
+                continue;
+            };
+            let legacy_no_api_key = object
+                .get("noApiKey")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
+            let has_auth_mode = object
+                .get("authMode")
+                .and_then(Value::as_str)
+                .is_some_and(|mode| !mode.trim().is_empty());
+            if legacy_no_api_key && !has_auth_mode {
+                object.insert(
+                    "authMode".to_string(),
+                    Value::String(AUTH_MODE_NONE.to_string()),
+                );
+            }
+        }
+    }
+    serde_json::from_value(value)
+}
+
+/// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
+/// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
+pub struct IncrementalJsonArrayParser {
+    buffer: String,
+    in_array: bool,
+    brace_depth: i32,
+    in_string: bool,
+    escape_next: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    fn deepseek_sampling_body(model: &str) -> Value {
+        json!({
+            "model": model,
+            "messages": [],
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.4,
+            "logprobs": true
+        })
+    }
+
+    fn profile(
+        id: &str,
+        label: &str,
+        model: &str,
+        supports_tools: bool,
+        is_builtin: bool,
+    ) -> ModelProfile {
+        ModelProfile {
+            id: id.to_string(),
+            vendor_id: "builtin-deepseek".to_string(),
+            label: label.to_string(),
+            model: model.to_string(),
+            supports_tools,
+            is_builtin,
+            ..ModelProfile::default()
+        }
+    }
+
+    fn create_test_llm_manager(temp_dir: &TempDir) -> LLMManager {
+        let db_path = temp_dir.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(Database::new(&db_path).expect("create test database"));
+        let file_manager =
+            Arc::new(FileManager::new(temp_dir.path().to_path_buf()).expect("create file manager"));
+        LLMManager::new(db, file_manager).expect("create llm manager")
+    }
+
+    #[test]
+    fn question_parsing_payload_uses_configured_output_budget() {
+        let configured = ApiConfig {
+            max_output_tokens: 65_536,
+            max_tokens_limit: None,
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&configured, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(65_536));
+
+        let limited = ApiConfig {
+            max_output_tokens: 40_000,
+            max_tokens_limit: Some(24_000),
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&limited, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(24_000));
+
+        let small = ApiConfig {
+            max_output_tokens: 1_024,
+            max_tokens_limit: None,
+            ..Default::default()
+        };
+        let parsed = LLMManager::question_parsing_request_body(&small, "parse this");
+        assert_eq!(parsed["max_tokens"], json!(1_024));
+    }
+
+    struct TestStreamHooks;
+    impl LLMStreamHooks for TestStreamHooks {}
+
+    #[tokio::test]
+    async fn stale_stream_hook_owner_cannot_unregister_replacement() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let old_owner: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+        let replacement: Arc<dyn LLMStreamHooks> = Arc::new(TestStreamHooks);
+
+        manager
+            .register_stream_hooks("chat_v2_event_test", old_owner.clone())
+            .await;
+        manager
+            .register_stream_hooks("chat_v2_event_test", replacement.clone())
+            .await;
+
+        assert!(
+            !manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &old_owner)
+                .await,
+            "stale cleanup must not remove the replacement Arc"
+        );
+        let current = manager
+            .get_hook("chat_v2_event_test")
+            .await
+            .expect("replacement hook should remain registered");
+        assert!(Arc::ptr_eq(&current, &replacement));
+        assert!(
+            manager
+                .unregister_stream_hooks_if_owner("chat_v2_event_test", &replacement)
+                .await
+        );
+        assert!(manager.get_hook("chat_v2_event_test").await.is_none());
+    }
+
+    #[test]
+    fn prepare_frontend_mcp_tool_for_legacy_api_encodes_invalid_names_with_namespace_prefix() {
+        let tool = FrontendMcpTool {
+            name: "fetch:url".to_string(),
+            description: Some("Fetch URL".to_string()),
+            input_schema: json!({ "type": "object" }),
+        };
+
+        let prepared =
+            LLMManager::prepare_frontend_mcp_tool_for_legacy_api(&tool, Some("mcp.tools."))
+                .expect("tool should prepare");
+
+        assert_eq!(prepared.bridge_name, "fetch:url");
+        assert_eq!(prepared.internal_tool_name, "fetch:url");
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("mcp.tools.fetch:url".to_string())
+        );
+        assert_eq!(
+            prepared.schema["function"]["name"],
+            json!(prepared.api_name)
+        );
+    }
+
+    fn builtin_vendor_config(api_key: &str) -> VendorConfig {
+        VendorConfig {
+            id: "builtin-openai".to_string(),
+            name: "OpenAI".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: None,
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: api_key.to_string(),
+            api_keys: Vec::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: true,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        }
+    }
+
+    fn tool_call_message(id: &str, reasoning: Option<&str>) -> ChatMessage {
+        ChatMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            timestamp: chrono::Utc::now(),
+            thinking_content: reasoning.map(str::to_string),
+            thought_signature: None,
+            rag_sources: None,
+            memory_sources: None,
+            graph_sources: None,
+            web_search_sources: None,
+            image_paths: None,
+            image_base64: None,
+            doc_attachments: None,
+            multimodal_content: None,
+            tool_call: Some(crate::models::ToolCall {
+                id: id.to_string(),
+                tool_name: "builtin_test".to_string(),
+                args_json: json!({}),
+            }),
+            tool_result: None,
+            overrides: None,
+            relations: None,
+            persistent_stable_id: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn vendor_config_default_uses_registry_backed_openai_defaults() {
+        let vendor = VendorConfig::default();
+
+        assert_eq!(vendor.provider_type, "openai");
+        assert_eq!(vendor.api_protocol.as_deref(), Some("openai_responses"));
+        assert_eq!(vendor.supports_openai_responses, Some(true));
+    }
+
+    #[test]
+    fn resolve_preferred_protocol_for_provider_uses_registry_defaults_for_native_vendors() {
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("anthropic"),
+                Some("anthropic"),
+                "https://api.anthropic.com/v1",
+                None,
+            ),
+            "anthropic_messages"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("gemini"),
+                Some("google"),
+                "https://generativelanguage.googleapis.com",
+                None,
+            ),
+            "google_generate_content"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("siliconflow"),
+                Some("general"),
+                "https://api.siliconflow.cn/v1",
+                None,
+            ),
+            "openai_chat_completions"
+        );
+    }
+
+    #[test]
+    fn registry_level_responses_support_only_unlocks_option_without_switching_default() {
+        // qwen/doubao：注册表 supports_openai_responses=true（白名单制端点），
+        // 默认路由必须保持 default_protocol = chat completions。
+        for (provider, base_url) in [
+            ("qwen", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+            ("doubao", "https://ark.cn-beijing.volces.com/api/v3"),
+            ("ernie", "https://qianfan.baidubce.com/v2"),
+        ] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            assert!(record.supports_openai_responses, "{provider} supports flag");
+            assert!(
+                record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
+                "{provider} should keep responses selectable"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    None
+                ),
+                "openai_chat_completions",
+                "{provider} default routing should stay on chat completions"
+            );
+            // 供应商级显式声明仍可切换到 Responses。
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    base_url,
+                    Some(true),
+                ),
+                "openai_responses",
+                "{provider} explicit opt-in should unlock responses"
+            );
+        }
+
+        for provider in ["grok", "xai"] {
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(
+                    Some(provider),
+                    Some("general"),
+                    "https://api.x.ai/v1",
+                    None,
+                ),
+                "openai_responses",
+                "{provider} should honor its registry Responses default"
+            );
+        }
+    }
+
+    #[test]
+    fn responses_routing_accepts_all_model_adapters_when_the_host_declares_support() {
+        for adapter in [
+            "qwen",
+            "deepseek",
+            "doubao",
+            "anthropic",
+            "claude",
+            "google",
+            "gemini",
+        ] {
+            let explicit = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_responses".to_string()),
+                supports_openai_responses: Some(true),
+                ..ApiConfig::default()
+            };
+            assert!(
+                should_use_openai_responses_for_config(&explicit),
+                "{adapter} should honor an explicitly supported Responses protocol"
+            );
+
+            let defaulted = ApiConfig {
+                api_protocol: None,
+                ..explicit
+            };
+            assert!(
+                should_use_openai_responses_for_config(&defaulted),
+                "{adapter} should use the vendor-declared Responses default"
+            );
+        }
+
+        let official_openai_with_compatible_adapter = ApiConfig {
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model_adapter: "deepseek".to_string(),
+            api_protocol: None,
+            supports_openai_responses: None,
+            ..ApiConfig::default()
+        };
+        assert!(should_use_openai_responses_for_config(
+            &official_openai_with_compatible_adapter
+        ));
+    }
+
+    #[test]
+    fn protocol_routing_uses_native_transports_only_when_the_protocol_selects_them() {
+        let cases = [
+            (
+                "anthropic",
+                "anthropic",
+                None,
+                "https://api.anthropic.com",
+                "claude-sonnet-4-6",
+                "/v1/messages",
+            ),
+            (
+                "gemini",
+                "google",
+                None,
+                "https://generativelanguage.googleapis.com",
+                "gemini-3.1-pro-preview",
+                ":streamGenerateContent",
+            ),
+            (
+                "custom",
+                "anthropic",
+                None,
+                "https://one-api.example.com/v1",
+                "claude-sonnet-4-6",
+                "/chat/completions",
+            ),
+            (
+                "openrouter",
+                "google",
+                None,
+                "https://openrouter.ai/api/v1",
+                "google/gemini-3.1-pro-preview",
+                "/chat/completions",
+            ),
+            (
+                "custom",
+                "anthropic",
+                Some("openai_responses"),
+                "https://one-api.example.com/v1",
+                "anthropic/claude-sonnet-4-6",
+                "/responses",
+            ),
+        ];
+
+        for (provider, model_adapter, api_protocol, base_url, model, expected_url) in cases {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                model_adapter: model_adapter.to_string(),
+                api_protocol: api_protocol.map(str::to_string),
+                supports_openai_responses: api_protocol.map(|_| true),
+                base_url: base_url.to_string(),
+                model: model.to_string(),
+                ..ApiConfig::default()
+            };
+            let request = build_provider_adapter(&config)
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({
+                        "model": config.model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "stream": true
+                    }),
+                )
+                .expect("provider request should build");
+            assert!(
+                request.url.contains(expected_url),
+                "provider={provider}, adapter={model_adapter}, url={}",
+                request.url
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_native_protocols_still_select_native_transports_on_custom_hosts() {
+        for (adapter, protocol, expected_url) in [
+            ("anthropic", "anthropic_messages", "/messages"),
+            (
+                "google",
+                "google_generate_content",
+                ":streamGenerateContent",
+            ),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some(protocol.to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                model: if adapter == "anthropic" {
+                    "claude-sonnet-4-6".to_string()
+                } else {
+                    "gemini-3.1-pro-preview".to_string()
+                },
+                ..ApiConfig::default()
+            };
+            let request = build_provider_adapter(&config)
+                .build_request(
+                    &config.base_url,
+                    "test-key",
+                    &config.model,
+                    &json!({
+                        "model": config.model,
+                        "messages": [{"role": "user", "content": "ping"}],
+                        "stream": true
+                    }),
+                )
+                .expect("native provider request should build");
+            assert!(request.url.contains(expected_url), "url={}", request.url);
+        }
+    }
+
+    #[test]
+    fn explicit_native_protocols_use_native_reasoning_body_dialects_on_custom_hosts() {
+        let cases = [
+            (
+                "anthropic",
+                "anthropic_messages",
+                "claude-sonnet-4-6",
+                "thinking",
+            ),
+            (
+                "google",
+                "google_generate_content",
+                "gemini-3.1-pro-preview",
+                "thinkingConfig",
+            ),
+        ];
+
+        for (adapter, protocol, model, expected_field) in cases {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some(protocol.to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some("high".to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            assert!(body.get(expected_field).is_some(), "body={body}");
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_claude_and_gemini_keep_openai_nonstream_responses_unchanged() {
+        let response = json!({
+            "id": "chatcmpl_proxy",
+            "choices": [{"message": {"role": "assistant", "content": "complete"}}],
+            "usage": {"completion_tokens": 12}
+        });
+
+        for (provider, adapter) in [("custom", "anthropic"), ("openrouter", "google")] {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                base_url: "https://proxy.example.com/v1".to_string(),
+                ..ApiConfig::default()
+            };
+            assert_eq!(
+                normalize_nonstream_response_to_openai(&config, &response)
+                    .expect("OpenAI-shaped response should parse"),
+                response
+            );
+        }
+    }
+
+    #[test]
+    fn proxied_model_families_use_gateway_reasoning_fields() {
+        for (provider, adapter, model, uses_nested_reasoning) in [
+            ("custom", "anthropic", "claude-sonnet-4-6", false),
+            (
+                "openrouter",
+                "google",
+                "google/gemini-3.1-pro-preview",
+                true,
+            ),
+            ("custom", "qwen", "qwen3.5-plus", false),
+            ("openrouter", "zhipu", "z-ai/glm-5", true),
+            ("one-api", "moonshot", "moonshotai/kimi-k2.5", false),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some(provider.to_string()),
+                provider_scope: Some(provider.to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some("high".to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            if uses_nested_reasoning {
+                assert_eq!(body["reasoning"]["effort"], json!("high"));
+                assert!(body.get("reasoning_effort").is_none(), "body={body}");
+            } else {
+                assert_eq!(body["reasoning_effort"], json!("high"));
+                assert!(body.get("reasoning").is_none(), "body={body}");
+            }
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+            assert!(body.get("thinking").is_none(), "body={body}");
+            assert!(body.get("thinkingConfig").is_none(), "body={body}");
+            assert!(body.get("output_config").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_provider_effort_aliases_normalize_to_openai_values() {
+        // 中转（custom）宿主：**五档原样透传**，不按模型家族裁剪——中转站
+        // 已完成上游映射，客户端再裁剪会丢失用户意图。厂商原生别名
+        // （auto/adaptive/disabled）仍归一为标准 effort 值。
+        for (adapter, model, requested, expected) in [
+            ("doubao", "doubao-seed-1-6-thinking", "auto", "medium"),
+            ("minimax", "MiniMax-M3", "adaptive", "medium"),
+            ("ernie", "ernie-5.0-thinking", "max", "max"),
+            ("deepseek", "deepseek-v4-pro", "max", "max"),
+            ("zhipu", "glm-5.2", "disabled", "none"),
+        ] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: adapter.to_string(),
+                api_protocol: Some("openai_chat_completions".to_string()),
+                model: model.to_string(),
+                supports_reasoning: true,
+                thinking_enabled: true,
+                reasoning_effort: Some(requested.to_string()),
+                ..ApiConfig::default()
+            };
+            let mut body = json!({"temperature": 0.7});
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+            assert_eq!(
+                body["reasoning_effort"],
+                json!(expected),
+                "adapter={adapter}, requested={requested}, body={body}"
+            );
+            assert!(body.get("enable_thinking").is_none(), "body={body}");
+            assert!(body.get("thinking").is_none(), "body={body}");
+        }
+    }
+
+    #[test]
+    fn proxied_budget_only_reasoning_maps_to_standard_effort() {
+        let config = ApiConfig {
+            provider_type: Some("sub2api".to_string()),
+            provider_scope: Some("sub2api".to_string()),
+            model_adapter: "qwen".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "qwen3.7-plus".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            thinking_budget: Some(32768),
+            include_thoughts: true,
+            ..ApiConfig::default()
+        };
+        let mut body = json!({"temperature": 0.7});
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body["reasoning_effort"], json!("xhigh"));
+        assert!(body.get("enable_thinking").is_none(), "body={body}");
+        assert!(body.get("thinking_budget").is_none(), "body={body}");
+        assert!(body.get("include_thoughts").is_none(), "body={body}");
+    }
+
+    #[test]
+    fn proxied_toggle_only_reasoning_survives_responses_conversion() {
+        for (thinking_enabled, expected_effort) in [(false, "none"), (true, "medium")] {
+            let config = ApiConfig {
+                provider_type: Some("custom".to_string()),
+                provider_scope: Some("custom".to_string()),
+                model_adapter: "anthropic".to_string(),
+                api_protocol: Some("openai_responses".to_string()),
+                supports_openai_responses: Some(true),
+                model: "anthropic/claude-sonnet-4-6".to_string(),
+                supports_reasoning: true,
+                thinking_enabled,
+                ..ApiConfig::default()
+            };
+            let mut body = json!({
+                "model": config.model,
+                "messages": [{"role": "user", "content": "test"}],
+                "stream": true
+            });
+
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+            let request = build_provider_adapter(&config)
+                .build_request(&config.base_url, "test-key", &config.model, &body)
+                .expect("Responses request should build");
+
+            assert_eq!(request.body["reasoning"]["effort"], json!(expected_effort));
+            assert!(request.body.get("enable_thinking").is_none());
+        }
+    }
+
+    #[test]
+    fn openrouter_reasoning_survives_responses_conversion_without_double_wrapping() {
+        let config = ApiConfig {
+            provider_type: Some("openrouter".to_string()),
+            provider_scope: Some("openrouter".to_string()),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model_adapter: "google".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            supports_openai_responses: Some(true),
+            model: "google/gemini-3.1-pro-preview".to_string(),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("high".to_string()),
+            ..ApiConfig::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": true
+        });
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+        assert_eq!(body["reasoning"]["effort"], json!("high"));
+        assert!(body.get("reasoning_effort").is_none());
+
+        let request = build_provider_adapter(&config)
+            .build_request(&config.base_url, "test-key", &config.model, &body)
+            .expect("OpenRouter Responses request should build");
+
+        assert_eq!(request.body["reasoning"]["effort"], json!("high"));
+        assert_eq!(request.body["reasoning"]["summary"], json!("auto"));
+        assert!(request.body.get("reasoning_effort").is_none());
+        assert!(request.body.pointer("/reasoning/reasoning").is_none());
+    }
+
+    #[test]
+    fn openrouter_chat_request_uses_nested_reasoning_dialect() {
+        let config = ApiConfig {
+            provider_type: Some("openrouter".to_string()),
+            provider_scope: Some("openrouter".to_string()),
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model_adapter: "anthropic".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "anthropic/claude-sonnet-4.6".to_string(),
+            supports_reasoning: true,
+            reasoning_effort: Some("high".to_string()),
+            ..ApiConfig::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [{"role": "user", "content": "test"}],
+            "stream": true
+        });
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+        let request = build_provider_adapter(&config)
+            .build_request(&config.base_url, "test-key", &config.model, &body)
+            .expect("OpenRouter Chat request should build");
+
+        assert!(
+            request.url.ends_with("/chat/completions"),
+            "url={}",
+            request.url
+        );
+        assert_eq!(request.body["reasoning"]["effort"], json!("high"));
+        assert!(request.body.get("reasoning_effort").is_none());
+    }
+
+    #[test]
+    fn providers_without_responses_endpoint_no_longer_allow_openai_responses() {
+        for provider in [
+            "zhipu",
+            "moonshot",
+            "minimax",
+            "mimo",
+            "nvidia",
+            "siliconflow",
+            "mistral",
+        ] {
+            let allowed = provider_allowed_protocols(Some(provider));
+            assert!(
+                !allowed
+                    .iter()
+                    .any(|protocol| protocol == "openai_responses"),
+                "{provider} must not expose the phantom openai_responses protocol"
+            );
+            assert_eq!(
+                resolve_preferred_protocol_for_provider(Some(provider), Some("general"), "", None),
+                "openai_chat_completions"
+            );
+        }
+    }
+
+    #[test]
+    fn official_deepseek_responses_gating_follows_documented_model_list() {
+        // 2026-08-23 官方文档列名 v4-flash / v4-pro / vision-exp；2026-09-10 V4.1
+        // 发布后官方主推 deepseek-flash（旧名路由到该模型）。模型级门控在显式协议
+        // 与 api_protocol=None 的默认路径都必须执行（V3.x 等未列名型号回落
+        // chat_completions）。
+        let allowed = provider_allowed_protocols(Some("deepseek"));
+        assert!(allowed.contains(&"openai_responses".to_string()));
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(Some("deepseek"), Some("general"), "", None),
+            "openai_responses"
+        );
+
+        let flash = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        assert!(should_use_openai_responses_for_config(&flash));
+
+        let new_flash = ApiConfig {
+            model: "deepseek-flash".to_string(),
+            ..flash.clone()
+        };
+        assert!(should_use_openai_responses_for_config(&new_flash));
+
+        // 列名型号（含 2026-09-10 V4.1 的 deepseek-flash）：显式与默认（api_protocol=None）
+        // 均走 Responses
+        for model in [
+            "deepseek-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-vision-exp",
+        ] {
+            let default_route = ApiConfig {
+                model: model.to_string(),
+                ..flash.clone()
+            };
+            assert!(
+                should_use_openai_responses_for_config(&default_route),
+                "model={model} should default to Responses"
+            );
+
+            let explicit = ApiConfig {
+                api_protocol: Some("openai_responses".to_string()),
+                ..default_route
+            };
+            assert!(
+                should_use_openai_responses_for_config(&explicit),
+                "model={model} should honor explicit Responses"
+            );
+        }
+
+        // 未列名型号（V3.x）：显式与默认均回落 chat_completions
+        for model in ["deepseek-v3.2", "deepseek-v3.1"] {
+            let default_route = ApiConfig {
+                model: model.to_string(),
+                ..flash.clone()
+            };
+            assert_eq!(
+                effective_api_protocol_for_config(&default_route),
+                "openai_chat_completions",
+                "model={model} default route must fall back to chat completions"
+            );
+
+            let explicit = ApiConfig {
+                api_protocol: Some("openai_responses".to_string()),
+                ..default_route
+            };
+            assert!(
+                !should_use_openai_responses_for_config(&explicit),
+                "model={model} must stay on chat completions"
+            );
+        }
+    }
+
+    #[test]
+    fn official_deepseek_detection_requires_official_base_url() {
+        let official = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            model: "deepseek-v4-flash".to_string(),
+            ..Default::default()
+        };
+        assert!(is_official_deepseek_config(&official));
+
+        // base_url 为空的 deepseek 供应商回落内置官方端点
+        let empty_base = ApiConfig {
+            base_url: String::new(),
+            ..official.clone()
+        };
+        assert!(is_official_deepseek_config(&empty_base));
+
+        // provider_type=deepseek 的反代/中转端点不当官方
+        let proxy = ApiConfig {
+            base_url: "https://myproxy.example.com/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&proxy));
+        // path 中携带官方域名的中转地址同样不得误判
+        let path_smuggled = ApiConfig {
+            base_url: "https://myproxy.example.com/api.deepseek.com/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&path_smuggled));
+
+        // 第三方托管（SiliconFlow，scope=deepseek）不当官方
+        let hosted = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            ..official.clone()
+        };
+        assert!(!is_official_deepseek_config(&hosted));
+
+        // 非官方 deepseek 端点默认路由回落 chat_completions（未显式声明 Responses 支持）
+        assert_eq!(
+            effective_api_protocol_for_config(&proxy),
+            "openai_chat_completions"
+        );
+        // 显式声明 supports_openai_responses=true 时保留 Responses 默认
+        let proxy_with_responses = ApiConfig {
+            supports_openai_responses: Some(true),
+            ..proxy
+        };
+        assert_eq!(
+            effective_api_protocol_for_config(&proxy_with_responses),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn new_2026_providers_are_registered_with_expected_defaults() {
+        for provider in ["grok", "xai", "ernie", "mistral"] {
+            let record = get_provider_protocol_record(Some(provider))
+                .unwrap_or_else(|| panic!("{provider} provider should exist in registry"));
+            let expected_default = if matches!(provider, "grok" | "xai") {
+                "openai_responses"
+            } else {
+                "openai_chat_completions"
+            };
+            assert_eq!(record.default_protocol, expected_default);
+            assert!(
+                !record
+                    .allowed_protocols
+                    .iter()
+                    .any(|protocol| protocol == "anthropic_messages"),
+                "{provider} must not declare anthropic_messages (backend does not consume api_protocol yet)"
+            );
+        }
+    }
+
+    #[test]
+    fn official_openai_detection_uses_exact_host_match() {
+        assert!(resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com/v1"
+        ));
+        assert!(resolves_to_official_openai(Some("openai"), ""));
+        // 中转 URL 在 path 中携带官方域名时不得误判。
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://myproxy.com/api.openai.com/v1"
+        ));
+        assert!(!resolves_to_official_openai(
+            Some("openai"),
+            "https://api.openai.com.evil.example/v1"
+        ));
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_is_well_formed() {
+        let raw = include_str!("../../../../../scripts/provider-protocol-registry.json");
+        let registry: ProviderProtocolRegistryDocument =
+            serde_json::from_str(raw).expect("provider protocol registry should parse");
+
+        assert!(!registry.providers.is_empty());
+
+        for provider in registry.providers {
+            assert!(!provider.provider_type.is_empty());
+            assert!(!provider.allowed_protocols.is_empty());
+            assert!(!provider.default_protocol.is_empty());
+            assert!(provider
+                .allowed_protocols
+                .iter()
+                .any(|protocol| protocol == &provider.default_protocol));
+        }
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_preserves_shared_routing_expectations() {
+        let openai = get_provider_protocol_record(Some("openai")).expect("openai provider");
+        assert_eq!(openai.default_protocol, "openai_responses");
+        assert!(openai.supports_openai_responses);
+        assert!(openai
+            .allowed_protocols
+            .iter()
+            .any(|protocol| protocol == "openai_responses"));
+
+        let anthropic =
+            get_provider_protocol_record(Some("anthropic")).expect("anthropic provider");
+        assert_eq!(anthropic.allowed_protocols, vec!["anthropic_messages"]);
+
+        let gemini = get_provider_protocol_record(Some("gemini")).expect("gemini provider");
+        assert_eq!(gemini.allowed_protocols, vec!["google_generate_content"]);
+
+        let custom = get_provider_protocol_record(Some("custom")).expect("custom provider");
+        assert_eq!(custom.default_protocol, "openai_chat_completions");
+        assert!(!provider_supports_openai_responses(
+            Some("custom"),
+            "https://proxy.example.com/v1",
+            None,
+        ));
+    }
+
+    #[test]
+    fn openai_codex_registry_is_responses_only() {
+        let codex = get_provider_protocol_record(Some("openai_codex"))
+            .expect("openai_codex provider should exist in registry");
+
+        assert_eq!(codex.default_protocol, "openai_responses");
+        assert_eq!(codex.allowed_protocols, vec!["openai_responses"]);
+        assert!(codex.supports_openai_responses);
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("openai_codex"),
+                Some("general"),
+                "https://chatgpt.com/backend-api/codex",
+                Some(true),
+            ),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn auth_mode_defaults_for_legacy_serialized_configs() {
+        let mut api_value =
+            serde_json::to_value(ApiConfig::default()).expect("serialize api config");
+        api_value
+            .as_object_mut()
+            .expect("api config object")
+            .remove("authMode");
+        let api_config: ApiConfig =
+            serde_json::from_value(api_value).expect("deserialize legacy api config");
+        assert_eq!(api_config.auth_mode, None);
+
+        let mut vendor_value =
+            serde_json::to_value(VendorConfig::default()).expect("serialize vendor config");
+        vendor_value
+            .as_object_mut()
+            .expect("vendor config object")
+            .remove("authMode");
+        let vendor_config: VendorConfig =
+            serde_json::from_value(vendor_value).expect("deserialize legacy vendor config");
+        assert_eq!(vendor_config.auth_mode, None);
+    }
+
+    #[test]
+    fn oauth_codex_builtin_model_requires_an_authenticated_session() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let (vendors, profiles) = manager
+            .load_builtin_vendor_profiles()
+            .expect("load builtin vendor profiles");
+        let vendor = vendors
+            .iter()
+            .find(|vendor| vendor.id == "builtin-openai-codex")
+            .expect("Codex subscription vendor");
+        let profile = profiles
+            .iter()
+            .find(|profile| profile.id == "builtin-codex-gpt-5.4")
+            .expect("Codex subscription model");
+
+        assert!(vendor.api_key.is_empty());
+        assert_eq!(
+            vendor.auth_mode.as_deref(),
+            Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
+        );
+        let signed_out = manager
+            .merge_vendor_profile(vendor, profile, false)
+            .expect("resolve signed-out Codex subscription model");
+        assert!(!signed_out.runtime.enabled);
+
+        let resolved = manager
+            .merge_vendor_profile(vendor, profile, true)
+            .expect("resolve Codex subscription model");
+        assert!(resolved.runtime.enabled);
+        assert!(resolved.runtime.api_key.is_empty());
+        assert_eq!(
+            resolved.runtime.api_protocol.as_deref(),
+            Some("openai_responses")
+        );
+        assert!(should_use_openai_responses_for_config(&resolved.runtime));
+    }
+
+    #[test]
+    fn third_party_openai_compatible_base_url_does_not_imply_official_responses_support() {
+        assert!(!provider_supports_openai_responses(
+            Some("openai"),
+            "https://api.qsl.fan/v1",
+            None,
+        ));
+    }
+
+    #[tokio::test]
+    async fn bootstrap_vendor_model_config_repairs_invalid_openai_responses_overrides() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let vendor = VendorConfig {
+            id: "vendor-qsl".to_string(),
+            name: "QSL".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: None,
+            api_protocol: Some("openai_responses".to_string()),
+            supports_openai_responses: None,
+            base_url: "https://api.qsl.fan/v1".to_string(),
+            api_key: String::new(),
+            api_keys: Vec::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: false,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        };
+        let profile = ModelProfile {
+            id: "profile-qsl".to_string(),
+            vendor_id: "vendor-qsl".to_string(),
+            label: "DeepSeek V4".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            model_adapter: "general".to_string(),
+            supports_tools: true,
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..ModelProfile::default()
+        };
+
+        manager
+            .db
+            .save_setting(
+                "vendor_configs",
+                &serde_json::to_string(&vec![vendor]).unwrap(),
+            )
+            .expect("save vendors");
+        manager
+            .db
+            .save_setting(
+                "model_profiles",
+                &serde_json::to_string(&vec![profile]).unwrap(),
+            )
+            .expect("save profiles");
+
+        manager
+            .bootstrap_vendor_model_config()
+            .await
+            .expect("bootstrap should repair stored protocols");
+
+        let vendors = manager
+            .read_user_vendor_configs()
+            .await
+            .expect("read vendors after repair");
+        assert_eq!(
+            vendors[0].api_protocol.as_deref(),
+            Some("openai_chat_completions")
+        );
+        assert_eq!(vendors[0].supports_openai_responses, Some(false));
+
+        let profiles = manager
+            .read_user_model_profiles()
+            .await
+            .expect("read profiles after repair");
+        assert_eq!(
+            profiles[0].api_protocol.as_deref(),
+            Some("openai_chat_completions")
+        );
+    }
+
+    // ===== get_embedding_model_config 悬空引用自愈（方案 A）=====
+
+    fn seed_embedding_test_configs(manager: &LLMManager, profiles: &[ModelProfile]) {
+        let vendor = VendorConfig {
+            id: "vend-emb-test".to_string(),
+            name: "EmbTest Vendor".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: None,
+            api_protocol: None,
+            supports_openai_responses: None,
+            base_url: "https://emb-test.example.com/v1".to_string(),
+            api_key: "sk-test".to_string(),
+            api_keys: Vec::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: false,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        };
+        manager
+            .db
+            .save_setting(
+                "vendor_configs",
+                &serde_json::to_string(&vec![vendor]).unwrap(),
+            )
+            .expect("save vendors");
+        manager
+            .db
+            .save_setting("model_profiles", &serde_json::to_string(profiles).unwrap())
+            .expect("save profiles");
+    }
+
+    fn emb_test_profile(id: &str, is_embedding: bool) -> ModelProfile {
+        ModelProfile {
+            id: id.to_string(),
+            vendor_id: "vend-emb-test".to_string(),
+            label: "EmbTest".to_string(),
+            model: if is_embedding {
+                "test-embed-v1"
+            } else {
+                "test-chat-v1"
+            }
+            .to_string(),
+            is_embedding,
+            enabled: true,
+            status: "enabled".to_string(),
+            ..ModelProfile::default()
+        }
+    }
+
+    fn save_embedding_default(manager: &LLMManager, id: &str) {
+        manager
+            .db
+            .save_setting("embedding.default_text_model_config_id", id)
+            .expect("save embedding default");
+    }
+
+    fn saved_embedding_default(manager: &LLMManager) -> Option<String> {
+        manager
+            .db
+            .get_setting("embedding.default_text_model_config_id")
+            .expect("read embedding default")
+    }
+
+    #[tokio::test]
+    async fn dangling_embedding_default_falls_back_to_assignments_and_writes_back() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[emb_test_profile("emb-test", true)]);
+        save_embedding_default(&manager, "sf_1789015238478_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    embedding_model_config_id: Some("emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_embedding_model_config()
+            .await
+            .expect("dangling default must heal via assignments fallback");
+
+        assert_eq!(config.id, "emb-test");
+        assert!(config.is_embedding);
+        assert_eq!(
+            saved_embedding_default(&manager).as_deref(),
+            Some("emb-test"),
+            "healed assignment id must be written back to the settings key"
+        );
+    }
+
+    #[tokio::test]
+    async fn dangling_embedding_default_with_dangling_assignment_autodetects() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[emb_test_profile("emb-test", true)]);
+        save_embedding_default(&manager, "sf_1789015238478_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    embedding_model_config_id: Some("vm_also_missing".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_embedding_model_config()
+            .await
+            .expect("auto-detect must rescue when assignments is dangling too");
+
+        assert_eq!(config.id, "emb-test");
+        assert_eq!(
+            saved_embedding_default(&manager).as_deref(),
+            Some("emb-test"),
+            "write-back must contain the detected valid id, not the dangling assignment id"
+        );
+    }
+
+    #[tokio::test]
+    async fn dangling_embedding_default_without_any_embedding_config_errors() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[emb_test_profile("chat-only", false)]);
+        save_embedding_default(&manager, "sf_1789015238478_dangling");
+
+        let err = manager
+            .get_embedding_model_config()
+            .await
+            .expect_err("no embedding config available anywhere must error");
+        let message = err.to_string();
+        assert!(
+            message.contains("未配置默认嵌入维度"),
+            "unexpected error message: {}",
+            message
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_embedding_default_is_used_as_is() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[emb_test_profile("emb-test", true)]);
+        save_embedding_default(&manager, "emb-test");
+
+        let config = manager
+            .get_embedding_model_config()
+            .await
+            .expect("valid default must resolve directly");
+
+        assert_eq!(config.id, "emb-test");
+        assert_eq!(
+            saved_embedding_default(&manager).as_deref(),
+            Some("emb-test")
+        );
+    }
+
+    // ===== get_vl_embedding_model_config 多模态轨道悬空引用自愈（方案 A+）=====
+
+    fn vl_emb_test_profile(id: &str, is_multimodal: bool) -> ModelProfile {
+        ModelProfile {
+            id: id.to_string(),
+            vendor_id: "vend-emb-test".to_string(),
+            label: "VL EmbTest".to_string(),
+            model: "test-vl-embed-v1".to_string(),
+            is_embedding: true,
+            is_multimodal,
+            enabled: true,
+            status: "enabled".to_string(),
+            ..ModelProfile::default()
+        }
+    }
+
+    fn save_vl_embedding_default(manager: &LLMManager, id: &str) {
+        manager
+            .db
+            .save_setting("embedding.default_multimodal_model_config_id", id)
+            .expect("save multimodal embedding default");
+    }
+
+    fn saved_vl_embedding_default(manager: &LLMManager) -> Option<String> {
+        manager
+            .db
+            .get_setting("embedding.default_multimodal_model_config_id")
+            .expect("read multimodal embedding default")
+    }
+
+    #[tokio::test]
+    async fn binding_a_multimodal_dimension_adopts_it_as_default_only_when_none_is_set() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-a", true),
+                vl_emb_test_profile("vl-b", true),
+                emb_test_profile("emb-text", true),
+            ],
+        );
+        // 文本嵌入模型不能成为多模态默认
+        assert!(!manager
+            .adopt_default_multimodal_embedding(1024, "emb-text")
+            .await
+            .unwrap());
+        assert!(saved_vl_embedding_default(&manager).is_none());
+
+        assert!(manager
+            .adopt_default_multimodal_embedding(4096, "vl-a")
+            .await
+            .unwrap());
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-a")
+        );
+        assert_eq!(
+            manager
+                .db
+                .get_setting("embedding.default_multimodal_dimension")
+                .unwrap()
+                .as_deref(),
+            Some("4096")
+        );
+        assert_eq!(
+            manager.get_vl_embedding_model_config().await.unwrap().id,
+            "vl-a"
+        );
+
+        // 已有默认时不覆盖
+        assert!(!manager
+            .adopt_default_multimodal_embedding(2048, "vl-b")
+            .await
+            .unwrap());
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-a")
+        );
+    }
+
+    #[tokio::test]
+    async fn heal_adopts_the_only_bound_multimodal_dimension_but_never_guesses_between_two() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-a", true),
+                vl_emb_test_profile("vl-b", true),
+                emb_test_profile("emb-text", true),
+            ],
+        );
+        // 两个可用候选：不替用户选
+        let two = vec![(4096, "vl-a".to_string()), (2048, "vl-b".to_string())];
+        assert!(!manager.heal_default_multimodal_embedding(&two).await);
+        assert!(manager.get_vl_embedding_model_config().await.is_err());
+
+        // 只有一个可用（另一个绑的是文本模型 / 已删除的配置）：采用它
+        let one = vec![
+            (4096, "vl-a".to_string()),
+            (1024, "emb-text".to_string()),
+            (768, "deleted".to_string()),
+        ];
+        assert!(manager.heal_default_multimodal_embedding(&one).await);
+        assert_eq!(
+            manager.get_vl_embedding_model_config().await.unwrap().id,
+            "vl-a"
+        );
+    }
+
+    #[tokio::test]
+    async fn dangling_vl_embedding_default_falls_back_to_assignments_and_writes_back() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        save_vl_embedding_default(&manager, "vl_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("vl-emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("dangling multimodal default must heal via assignments fallback");
+
+        assert_eq!(config.id, "vl-emb-test");
+        assert!(config.is_embedding && config.is_multimodal);
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-emb-test"),
+            "healed assignment id must be written back to the settings key"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_vl_embedding_default_uses_explicit_assignment() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("vl-emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("an explicit model assignment enables multimodal indexing");
+        assert_eq!(config.id, "vl-emb-test");
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl-emb-test")
+        );
+    }
+
+    #[tokio::test]
+    async fn dangling_vl_embedding_default_rejects_text_only_assignment() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        // 文本嵌入模型（非 multimodal）挂在 VL 槽位——正是用户设备上
+        // 一键分配写入 builtin-sf-embed 的场景，必须拒绝而非写回。
+        seed_embedding_test_configs(
+            &manager,
+            &[
+                vl_emb_test_profile("vl-emb-test", true),
+                emb_test_profile("emb-test", true),
+            ],
+        );
+        save_vl_embedding_default(&manager, "vl_dangling");
+        manager
+            .db
+            .save_setting(
+                "model_assignments",
+                &serde_json::to_string(&crate::models::ModelAssignments {
+                    vl_embedding_model_config_id: Some("emb-test".to_string()),
+                    ..Default::default()
+                })
+                .unwrap(),
+            )
+            .expect("save assignments");
+
+        let err = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect_err("text-only assignment must not satisfy the multimodal track");
+        let message = err.to_string();
+        assert!(
+            message.contains("找不到多模态嵌入模型配置"),
+            "unexpected error message: {}",
+            message
+        );
+        assert_eq!(
+            saved_vl_embedding_default(&manager).as_deref(),
+            Some("vl_dangling"),
+            "dangling value must stay untouched when the assignment is unusable"
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_vl_embedding_default_errors_without_autodetect() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        // 有效多模态嵌入配置存在，但设置键缺失：必须保持报错，
+        // is_multimodal_rag_configured 依赖该 Err 关闭多模态索引批处理。
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+
+        let err = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect_err("absent key must keep the explicit-enable semantics");
+        let message = err.to_string();
+        assert!(
+            message.contains("还没有启用多模态索引") && message.contains("嵌入维度管理"),
+            "unexpected error message: {}",
+            message
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_vl_embedding_default_is_used_as_is() {
+        let temp_dir = TempDir::new().expect("temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        seed_embedding_test_configs(&manager, &[vl_emb_test_profile("vl-emb-test", true)]);
+        save_vl_embedding_default(&manager, "vl-emb-test");
+
+        let config = manager
+            .get_vl_embedding_model_config()
+            .await
+            .expect("valid multimodal default must resolve directly");
+
+        assert_eq!(config.id, "vl-emb-test");
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_preserves_empty_reasoning_content() {
+        let history = vec![tool_call_message("call_empty_reasoning", Some(""))];
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&history);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                thinking_content, ..
+            }) => assert_eq!(thinking_content.as_deref(), Some("")),
+            _ => panic!("expected merged tool call message"),
+        }
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_preserves_responses_reasoning_item_and_round_text() {
+        let reasoning_item = json!({
+            "type": "reasoning",
+            "id": "reasoning_1",
+            "encrypted_content": "encrypted-state"
+        });
+        let mut message = tool_call_message("call_1", None);
+        message.content = "Calling the tool".to_string();
+        message.metadata = Some(json!({
+            "openai_responses_reasoning_item": reasoning_item.clone()
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[message]);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                content,
+                response_reasoning_item,
+                ..
+            }) => {
+                assert_eq!(content, "Calling the tool");
+                assert_eq!(response_reasoning_item.as_ref(), Some(&reasoning_item));
+            }
+            _ => panic!("expected merged tool call message"),
+        }
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_splits_distinct_responses_reasoning_rounds() {
+        let mut first = tool_call_message("call_1", None);
+        first.metadata = Some(json!({
+            "openai_responses_reasoning_item": {"type": "reasoning", "id": "reasoning_1"}
+        }));
+        let mut second = tool_call_message("call_2", None);
+        second.metadata = Some(json!({
+            "openai_responses_reasoning_item": {"type": "reasoning", "id": "reasoning_2"}
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[first, second]);
+        let rounds: Vec<_> = merged
+            .iter()
+            .filter_map(|message| match message {
+                MergedChatMessage::MergedToolCalls {
+                    tool_calls,
+                    response_reasoning_item,
+                    ..
+                } => Some((tool_calls, response_reasoning_item)),
+                MergedChatMessage::Regular(_) => None,
+            })
+            .collect();
+
+        assert_eq!(rounds.len(), 2);
+        assert_eq!(rounds[0].0[0].id, "call_1");
+        assert_eq!(rounds[0].1.as_ref().unwrap()["id"], "reasoning_1");
+        assert_eq!(rounds[1].0[0].id, "call_2");
+        assert_eq!(rounds[1].1.as_ref().unwrap()["id"], "reasoning_2");
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_combines_split_state_for_parallel_responses_calls() {
+        let mut first = tool_call_message("call_1", Some("reasoning text"));
+        first.content = "Calling tools".to_string();
+        let mut second = tool_call_message("call_2", None);
+        second.metadata = Some(json!({
+            "openai_responses_reasoning_item": {
+                "type": "reasoning",
+                "id": "reasoning_1",
+                "content": [{ "type": "reasoning_text", "text": "reasoning text" }]
+            }
+        }));
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&[first, second]);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                tool_calls,
+                thinking_content,
+                response_reasoning_item,
+                ..
+            }) => {
+                assert_eq!(tool_calls.len(), 2);
+                assert_eq!(thinking_content.as_deref(), Some("reasoning text"));
+                assert_eq!(
+                    response_reasoning_item.as_ref().unwrap()["id"],
+                    "reasoning_1"
+                );
+            }
+            _ => panic!("expected one merged parallel tool-call round"),
+        }
+        assert_eq!(merged.len(), 1);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_preserves_user_modified_fields() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-reasoner",
+            "My Custom Label",
+            "deepseek-reasoner-custom",
+            false,
+            false,
+        )];
+        let builtin = profile(
+            "builtin-deepseek-reasoner",
+            "DeepSeek Reasoner (深度推理)",
+            "deepseek-reasoner",
+            true,
+            true,
+        );
+        let previous_builtin = profile(
+            "builtin-deepseek-reasoner",
+            "DeepSeek Reasoner (旧标签)",
+            "deepseek-reasoner",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(
+            &mut profiles,
+            builtin,
+            Some(&previous_builtin),
+        );
+
+        assert_eq!(profiles.len(), 1);
+        let merged = &profiles[0];
+        assert_eq!(merged.label, "My Custom Label");
+        assert_eq!(merged.model, "deepseek-reasoner-custom");
+        assert!(!merged.supports_tools);
+        assert!(merged.is_builtin);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_updates_untouched_fields_from_builtin() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (旧标签)",
+            "deepseek-chat",
+            true,
+            false,
+        )];
+        let mut builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (新标签)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+        builtin.temperature = 0.2;
+
+        let mut previous_builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (旧标签)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+        previous_builtin.temperature = 0.7;
+        profiles[0].temperature = 0.7;
+
+        LLMManager::merge_builtin_profile_user_aware(
+            &mut profiles,
+            builtin,
+            Some(&previous_builtin),
+        );
+
+        assert_eq!(profiles.len(), 1);
+        let merged = &profiles[0];
+        assert_eq!(merged.label, "DeepSeek Chat (新标签)");
+        assert!((merged.temperature - 0.2).abs() < f32::EPSILON);
+        assert!(merged.is_builtin);
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_adds_missing_builtin_profile() {
+        let mut profiles = vec![];
+        let builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (对话)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(&mut profiles, builtin, None);
+
+        assert_eq!(profiles.len(), 1);
+        assert_eq!(profiles[0].id, "builtin-deepseek-chat");
+        assert!(profiles[0].is_builtin);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn save_vendor_configs_returns_error_when_builtin_secret_clear_fails() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let vendor = builtin_vendor_config("sk-test-openai");
+
+        manager
+            .save_vendor_configs(&[vendor.clone()])
+            .await
+            .expect("save builtin vendor secret");
+
+        let secure_dir = temp_dir.path().join(".secure");
+        let secure_file = secure_dir.join("builtin-openai.api_key.enc");
+        assert!(
+            secure_file.exists(),
+            "expected builtin vendor key to be written to secure storage"
+        );
+
+        let original_permissions = std::fs::metadata(&secure_dir)
+            .expect("read secure dir metadata")
+            .permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o555);
+        std::fs::set_permissions(&secure_dir, read_only_permissions)
+            .expect("make secure dir read-only");
+
+        let result = manager
+            .save_vendor_configs(&[builtin_vendor_config("")])
+            .await;
+
+        std::fs::set_permissions(&secure_dir, original_permissions)
+            .expect("restore secure dir permissions");
+
+        assert!(
+            result.is_err(),
+            "expected builtin vendor clear to surface secure-store deletion errors"
+        );
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_official_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-v4-pro");
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in ["temperature", "presence_penalty", "frequency_penalty"] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(map.get("top_p"), Some(&json!(0.95)));
+        assert_eq!(
+            map.get("thinking").and_then(|value| value.get("type")),
+            Some(&json!("enabled"))
+        );
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_future_siliconflow_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V4-Pro");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V4-Pro".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("max".to_string()),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+        ] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("reasoning_effort"), Some(&json!("max")));
+        assert!(!map.contains_key("thinking_budget"));
+        assert!(!map.contains_key("thinking"));
+    }
+
+    #[test]
+    fn apply_reasoning_config_maps_siliconflow_v32_depth_to_budget() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("siliconflow".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
+    /// C1 黄金基线：除思考强度字段外，其余请求体参数必须逐字段不变。
+    ///
+    /// 本测试对「模型 × 档位 × 宿主」矩阵记录当前行为作为基线。后续任何
+    /// 档位映射改动都不得让非思考强度字段发生增删或改值——这是"只动思考
+    /// 强度"的硬约束（C1）的自动化闸门。
+    ///
+    /// 断言方式：把结果按「思考强度字段」与「其余字段」切成两组分别比较，
+    /// 避免用整体快照——整体快照会让合理的档位/关闭字段变化也报错。
+    mod reasoning_scope_baseline {
+        use super::*;
+
+        /// 思考强度相关字段的完整集合（含各家方言别名）。
+        const REASONING_KEYS: [&str; 12] = [
+            "reasoning_effort",
+            "reasoning",
+            "thinking",
+            "thinking_budget",
+            "enable_thinking",
+            "thinkingConfig",
+            "include_thoughts",
+            "effort",
+            "output_config",
+            "reasoning_mode",
+            "verbosity",
+            "gemini_api_version",
+        ];
+
+        fn is_reasoning_key(key: &str) -> bool {
+            REASONING_KEYS.contains(&key)
+        }
+
+        /// 非思考强度字段快照（用于 C1 断言）。
+        fn non_reasoning_fields(body: &Value) -> serde_json::Map<String, Value> {
+            body.as_object()
+                .expect("body should be an object")
+                .iter()
+                .filter(|(key, _)| !is_reasoning_key(key))
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect()
+        }
+
+        /// 带全套可选参数的请求体：涵盖采样参数、penalty、自定义扩展。
+        fn matrix_body(model: &str) -> Value {
+            json!({
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "temperature": 0.7,
+                "top_p": 0.9,
+                "presence_penalty": 0.3,
+                "frequency_penalty": 0.4,
+                "logprobs": true,
+                "top_k": 40,
+                "min_p": 0.05,
+                "repetition_penalty": 1.05,
+                "max_tokens": 4096,
+                "stream": true,
+            })
+        }
+
+        /// 一个矩阵样本：模型 + 宿主配置 + 生效档位。
+        struct Sample {
+            label: &'static str,
+            model: &'static str,
+            effort: Option<&'static str>,
+            budget: Option<i32>,
+            enable_thinking: Option<bool>,
+        }
+
+        fn base_config(model: &str) -> ApiConfig {
+            ApiConfig {
+                model: model.to_string(),
+                is_reasoning: true,
+                supports_reasoning: true,
+                thinking_enabled: true,
+                ..Default::default()
+            }
+        }
+
+        fn samples() -> Vec<Sample> {
+            vec![
+                // OpenAI 家族（含 gpt-6 与 gpt-5.6，协议差异在 Phase 2 接入）
+                Sample {
+                    label: "gpt-6-sol",
+                    model: "gpt-6-sol",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-6-sol/xhigh",
+                    model: "gpt-6-sol",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-5.6",
+                    model: "gpt-5.6",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gpt-5.5",
+                    model: "gpt-5.5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "o3",
+                    model: "o3",
+                    effort: Some("high"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Gemini
+                Sample {
+                    label: "gemini-3.8-flash",
+                    model: "gemini-3.8-flash",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "gemini-3.1-pro",
+                    model: "gemini-3.1-pro-preview",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Qwen
+                Sample {
+                    label: "qwen3.8-max",
+                    model: "qwen3.8-max",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "qwen3.8-max/low",
+                    model: "qwen3.8-max",
+                    effort: Some("low"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // GLM
+                Sample {
+                    label: "glm-5.3",
+                    model: "glm-5.3",
+                    effort: Some("none"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "glm-5.2",
+                    model: "glm-5.2",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Kimi
+                Sample {
+                    label: "kimi-k3",
+                    model: "kimi-k3",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "kimi-k3/blank",
+                    model: "kimi-k3",
+                    effort: Some(""),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // Grok
+                Sample {
+                    label: "grok-4.7",
+                    model: "grok-4.7",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "grok-4.7/unknown",
+                    model: "grok-4.7",
+                    effort: Some("turbo"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // DeepSeek
+                Sample {
+                    label: "deepseek-v4-pro",
+                    model: "deepseek-v4-pro",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "deepseek-v4-pro/medium",
+                    model: "deepseek-v4-pro",
+                    effort: Some("medium"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // 其他
+                Sample {
+                    label: "ernie-5",
+                    model: "ernie-5",
+                    effort: Some("xhigh"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "mistral-medium-3.5",
+                    model: "mistral-medium-3.5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "minimax-m3.1-flash-preview",
+                    model: "minimax-m3.1-flash-preview",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                Sample {
+                    label: "claude-opus-5",
+                    model: "claude-opus-5",
+                    effort: Some("max"),
+                    budget: None,
+                    enable_thinking: None,
+                },
+                // 关闭思考 + 预算兜底形态
+                Sample {
+                    label: "thinking-off",
+                    model: "gpt-5.6",
+                    effort: None,
+                    budget: None,
+                    enable_thinking: Some(false),
+                },
+                Sample {
+                    label: "budget-only",
+                    model: "qwen3.7-max",
+                    effort: None,
+                    budget: Some(8192),
+                    enable_thinking: None,
+                },
+            ]
+        }
+
+        fn host_config(
+            model: &str,
+            provider_type: &str,
+            model_adapter: &str,
+            base_url: &str,
+        ) -> ApiConfig {
+            ApiConfig {
+                provider_type: Some(provider_type.to_string()),
+                provider_scope: Some(provider_type.to_string()),
+                model_adapter: model_adapter.to_string(),
+                base_url: base_url.to_string(),
+                ..base_config(model)
+            }
+        }
+
+        fn apply(sample: &Sample, config: &ApiConfig) -> Value {
+            let mut body = matrix_body(&config.model);
+            let mut config = config.clone();
+            config.reasoning_effort = sample.effort.map(str::to_string);
+            config.thinking_budget = sample.budget;
+            if let Some(enable) = sample.enable_thinking {
+                config.enable_thinking = Some(enable);
+            }
+            LLMManager::apply_reasoning_config(&mut body, &config, None);
+            body
+        }
+
+        /// 各宿主的配置构造器：(标签, 构造闭包)。
+        #[allow(clippy::type_complexity)]
+        fn hosts() -> Vec<(&'static str, Box<dyn Fn(&str) -> ApiConfig>)> {
+            vec![
+                (
+                    "official-openai",
+                    Box::new(|m: &str| {
+                        host_config(m, "openai", "openai", "https://api.openai.com/v1")
+                    }),
+                ),
+                (
+                    "official-openai/responses",
+                    Box::new(|m: &str| {
+                        let mut c = host_config(m, "openai", "openai", "https://api.openai.com/v1");
+                        c.api_protocol = Some("openai_responses".to_string());
+                        c
+                    }),
+                ),
+                (
+                    "official-deepseek",
+                    Box::new(|m: &str| {
+                        host_config(m, "deepseek", "deepseek", "https://api.deepseek.com/v1")
+                    }),
+                ),
+                (
+                    "official-anthropic",
+                    Box::new(|m: &str| {
+                        host_config(m, "anthropic", "anthropic", "https://api.anthropic.com")
+                    }),
+                ),
+                (
+                    "official-gemini",
+                    Box::new(|m: &str| {
+                        host_config(
+                            m,
+                            "google",
+                            "google",
+                            "https://generativelanguage.googleapis.com",
+                        )
+                    }),
+                ),
+                (
+                    "official-qwen",
+                    Box::new(|m: &str| {
+                        host_config(
+                            m,
+                            "qwen",
+                            "qwen",
+                            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+                        )
+                    }),
+                ),
+                (
+                    "official-zhipu",
+                    Box::new(|m: &str| {
+                        host_config(m, "zhipu", "zhipu", "https://open.bigmodel.cn/api/paas/v4")
+                    }),
+                ),
+                (
+                    "official-moonshot",
+                    Box::new(|m: &str| {
+                        host_config(m, "moonshot", "moonshot", "https://api.moonshot.cn/v1")
+                    }),
+                ),
+                (
+                    "official-grok",
+                    Box::new(|m: &str| host_config(m, "grok", "grok", "https://api.x.ai/v1")),
+                ),
+                (
+                    "custom-relay",
+                    Box::new(|m: &str| {
+                        host_config(m, "custom", "general", "https://relay.example.com/v1")
+                    }),
+                ),
+                (
+                    "siliconflow",
+                    Box::new(|m: &str| {
+                        host_config(m, "siliconflow", "general", "https://api.siliconflow.cn/v1")
+                    }),
+                ),
+                (
+                    "openrouter",
+                    Box::new(|m: &str| {
+                        host_config(m, "openrouter", "general", "https://openrouter.ai/api/v1")
+                    }),
+                ),
+            ]
+        }
+
+        /// C1 核心断言：矩阵中每个样本的"非思考强度字段"必须与基线一致。
+        ///
+        /// 基线是仓库内 fixture（`tests/fixtures/reasoning/non_reasoning_fields_baseline.json`），
+        /// 随 PR 一起提交，因此 CI 上同样真正执行比对（而非只写不验）。
+        /// 断言失败会直接指出是哪个样本、期望与实际分别有哪些字段，便于定位
+        /// 是哪个模型的哪次改动把非思考强度参数也带偏了。
+        fn baseline_path() -> std::path::PathBuf {
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../..")
+                .join("tests")
+                .join("fixtures")
+                .join("reasoning")
+                .join("non_reasoning_fields_baseline.json")
+        }
+
+        #[test]
+        fn non_reasoning_fields_stay_byte_identical_across_matrix() {
+            let mut current = serde_json::Map::new();
+
+            for (host_label, build) in hosts() {
+                for sample in samples() {
+                    let config = build(sample.model);
+                    let body = apply(&sample, &config);
+                    let fields = non_reasoning_fields(&body);
+                    let key = format!("{host_label}::{}", sample.label);
+                    current.insert(key, Value::Object(fields));
+                }
+            }
+
+            let path = baseline_path();
+            // 基线存在 → 严格比对（CI 与本地一致）。
+            // 缺失时退化为"写出引导"而非静默通过：只有在显式设置
+            // REASONING_SCOPE_BASELINE_WRITE=1 时才允许重建，避免误删基线后
+            // 测试变成永远绿的空闸门。
+            if !path.exists() {
+                assert!(
+                    std::env::var("REASONING_SCOPE_BASELINE_WRITE").as_deref() == Ok("1"),
+                    "C1 baseline missing at {} — refusing to pass silently. \
+                     Re-create it deliberately with REASONING_SCOPE_BASELINE_WRITE=1 \
+                     (and review the diff) if the non-reasoning field set is intentionally changing.",
+                    path.display()
+                );
+                let doc = Value::Object(current);
+                let pretty = serde_json::to_string_pretty(&doc).expect("serialize baseline");
+                std::fs::create_dir_all(path.parent().expect("baseline parent")).ok();
+                std::fs::write(&path, pretty).expect("write baseline");
+                eprintln!(
+                    "[reasoning-scope-baseline] wrote baseline to {}",
+                    path.display()
+                );
+                return;
+            }
+
+            let raw = std::fs::read_to_string(&path).expect("read baseline");
+            let baseline: serde_json::Map<String, Value> =
+                serde_json::from_str(&raw).expect("parse baseline");
+
+            let mut diffs: Vec<String> = Vec::new();
+            for (key, expected) in &baseline {
+                match current.get(key) {
+                    None => diffs.push(format!("{key}: sample missing in current run")),
+                    Some(actual) if actual != expected => {
+                        let expected_map = expected.as_object();
+                        let actual_map = actual.as_object();
+                        let mut field_diffs: Vec<String> = Vec::new();
+                        if let (Some(expected_map), Some(actual_map)) = (expected_map, actual_map) {
+                            for (field, expected_value) in expected_map {
+                                match actual_map.get(field) {
+                                    Some(actual_value) if actual_value == expected_value => {}
+                                    Some(actual_value) => field_diffs.push(format!(
+                                        "    {field}: {expected_value} -> {actual_value}"
+                                    )),
+                                    None => field_diffs.push(format!(
+                                        "    {field}: {expected_value} -> <removed>"
+                                    )),
+                                }
+                            }
+                            for (field, actual_value) in actual_map {
+                                if !expected_map.contains_key(field) {
+                                    field_diffs
+                                        .push(format!("    {field}: <absent> -> {actual_value}"));
+                                }
+                            }
+                        }
+                        diffs.push(format!("{key}:\n{}", field_diffs.join("\n")));
+                    }
+                    Some(_) => {}
+                }
+            }
+            for key in current.keys() {
+                if !baseline.contains_key(key) {
+                    diffs.push(format!("{key}: new sample not in baseline"));
+                }
+            }
+
+            assert!(
+                diffs.is_empty(),
+                "C1 violated — non-reasoning request fields changed:\n{}",
+                diffs.join("\n")
+            );
+        }
+    }
+
+    #[test]
+    fn apply_reasoning_config_keeps_siliconflow_v32_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+        ] {
+            assert!(map.contains_key(key), "{key} should be preserved");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(4096)));
+        assert!(!map.contains_key("thinking"));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
+    #[test]
+    fn merge_builtin_profile_user_aware_without_snapshot_syncs_capability_fields() {
+        let mut profiles = vec![profile(
+            "builtin-deepseek-chat",
+            "User Local Label",
+            "deepseek-chat-custom",
+            false,
+            false,
+        )];
+        let builtin = profile(
+            "builtin-deepseek-chat",
+            "DeepSeek Chat (官方)",
+            "deepseek-chat",
+            true,
+            true,
+        );
+
+        LLMManager::merge_builtin_profile_user_aware(&mut profiles, builtin, None);
+
+        let merged = &profiles[0];
+        // 用户偏好字段保持不变
+        assert_eq!(merged.label, "User Local Label");
+        assert_eq!(merged.model, "deepseek-chat-custom");
+        // 能力字段从内置定义同步
+        assert!(merged.supports_tools);
+        assert!(merged.is_builtin);
+    }
+
+    #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_for_new_builtin_model_without_history() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .db
+            .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]")
+            .expect("seed builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not stay hidden without prior snapshot/user history"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_when_builtin_slot_points_to_new_model() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "repurposed builtin slot should be treated as a new model and unhidden"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_new_builtin_models() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_builtin_profile_snapshot(&[known_builtin.clone()])
+            .expect("seed builtin snapshot");
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not be inferred as hidden when absent from older saved profile sets"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_retargeted_builtin_slot() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "legacy preview snapshot should not cause the retargeted 3.5 flash slot to be hidden"
+        );
+    }
+
+    #[test]
+    fn convert_openai_tool_call_treats_empty_string_arguments_as_empty_object() {
+        let tool_call = json!({
+            "id": "call_1",
+            "type": "function",
+            "function": {
+                "name": "group_list",
+                "arguments": ""
+            }
+        });
+
+        let converted = LLMManager::convert_openai_tool_call(&tool_call)
+            .expect("empty string args should be accepted as no-arg call");
+        assert_eq!(converted.tool_name, "group_list");
+        assert_eq!(converted.args_json, json!({}));
+    }
+
+    #[test]
+    fn convert_openai_tool_call_treats_whitespace_arguments_as_empty_object() {
+        let tool_call = json!({
+            "id": "call_2",
+            "type": "function",
+            "function": {
+                "name": "tag_list_all",
+                "arguments": "   \n\t  "
+            }
+        });
+
+        let converted = LLMManager::convert_openai_tool_call(&tool_call)
+            .expect("whitespace args should be accepted as no-arg call");
+        assert_eq!(converted.tool_name, "tag_list_all");
+        assert_eq!(converted.args_json, json!({}));
+    }
+
+    #[test]
+    fn authoring_tool_never_repairs_truncated_question_or_material_arrays() {
+        for name in [
+            "builtin-qbank_batch_import",
+            "qbank_import_document",
+            "builtin-qbank_commit_authoring_draft",
+        ] {
+            let call = json!({"id":"call-cut","type":"function","function":{"name":name,"arguments":"{\"questions\":[{\"content\":\"complete\"}],\"materials\":[{\"content\":\"unfinished"}});
+            let error = LLMManager::convert_openai_tool_call(&call).unwrap_err();
+            assert!(error.contains("INCOMPLETE_TOOL_ARGUMENTS"), "{error}");
+        }
+    }
+
+    #[test]
+    fn vl_embedding_names_are_treated_as_multimodal() {
+        assert!(LLMManager::looks_like_multimodal_embedding(
+            "Qwen/Qwen3-VL-Embedding-8B"
+        ));
+        assert!(LLMManager::looks_like_multimodal_embedding("jina-clip-v2"));
+        assert!(!LLMManager::looks_like_multimodal_embedding("BAAI/bge-m3"));
+        assert!(!LLMManager::looks_like_multimodal_embedding(
+            "text-embedding-3-large"
+        ));
+    }
+
+    #[test]
+    fn registry_inference_matches_siliconflow_glm_46v() {
+        let inferred = LLMManager::infer_capability_overrides_from_registry(
+            "zai-org/GLM-4.6V",
+            Some("siliconflow"),
+        )
+        .expect("registry should infer GLM-4.6V capabilities");
+
+        assert!(inferred.is_multimodal);
+        assert!(inferred.supports_tools);
+        assert!(!inferred.supports_reasoning);
+    }
+
+    #[test]
+    fn registry_inference_matches_base_glm_46_without_scope() {
+        let inferred =
+            LLMManager::infer_capability_overrides_from_registry("glm-4.6", Some("zhipu"))
+                .expect("registry should infer GLM-4.6 capabilities");
+
+        assert!(!inferred.is_multimodal);
+        assert!(inferred.supports_tools);
+        assert!(inferred.supports_reasoning);
+    }
+
+    #[test]
+    fn builtin_catalog_inference_covers_missing_builtin_tool_models() {
+        for (model, scope) in [
+            ("qwen3-max", Some("qwen")),
+            ("qwen-plus", Some("qwen")),
+            ("qwq-plus", Some("qwen")),
+            ("glm-5", Some("zhipu")),
+            ("kimi-k2.6", Some("moonshot")),
+            ("MiniMax-M2.5", Some("minimax")),
+            ("doubao-seed-2-0-pro-260215", Some("doubao")),
+            ("gpt-5-mini", Some("openai")),
+            ("o3-mini", Some("openai")),
+            ("gemini-3.5-flash", Some("gemini")),
+        ] {
+            let inferred = LLMManager::resolve_capability_overrides(model, scope);
+            assert!(
+                inferred.supports_tools,
+                "expected builtin catalog tool support for model {} / {:?}",
+                model, scope
+            );
+        }
+    }
+}
+
+impl IncrementalJsonArrayParser {
+    pub fn new() -> Self {
+        Self {
+            buffer: String::new(),
+            in_array: false,
+            brace_depth: 0,
+            in_string: false,
+            escape_next: false,
+        }
+    }
+
+    /// 输入新的文本块，返回解析出的完整 JSON 对象列表
+    pub fn feed(&mut self, chunk: &str) -> Option<Vec<Value>> {
+        let mut results = Vec::new();
+
+        for ch in chunk.chars() {
+            // 处理转义字符
+            if self.escape_next {
+                self.escape_next = false;
+                if self.brace_depth > 0 {
+                    self.buffer.push(ch);
+                }
+                continue;
+            }
+
+            if ch == '\\' && self.in_string {
+                self.escape_next = true;
+                if self.brace_depth > 0 {
+                    self.buffer.push(ch);
+                }
+                continue;
+            }
+
+            // 处理字符串边界
+            if ch == '"' && !self.escape_next {
+                self.in_string = !self.in_string;
+                if self.brace_depth > 0 {
+                    self.buffer.push(ch);
+                }
+                continue;
+            }
+
+            // 在字符串内部，直接添加字符
+            if self.in_string {
+                if self.brace_depth > 0 {
+                    self.buffer.push(ch);
+                }
+                continue;
+            }
+
+            // 检测数组开始
+            if ch == '[' && !self.in_array && self.brace_depth == 0 {
+                self.in_array = true;
+                continue;
+            }
+
+            // 检测数组结束
+            if ch == ']' && self.in_array && self.brace_depth == 0 {
+                self.in_array = false;
+                continue;
+            }
+
+            // 检测对象开始
+            if ch == '{' {
+                if self.brace_depth == 0 {
+                    self.buffer.clear();
+                }
+                self.brace_depth += 1;
+                self.buffer.push(ch);
+                continue;
+            }
+
+            // 检测对象结束
+            if ch == '}' {
+                self.brace_depth -= 1;
+                self.buffer.push(ch);
+
+                // 完成一个顶层对象
+                if self.brace_depth == 0 && !self.buffer.is_empty() {
+                    if let Ok(obj) = serde_json::from_str::<Value>(&self.buffer) {
+                        results.push(obj);
+                    }
+                    self.buffer.clear();
+                }
+                continue;
+            }
+
+            // 其他字符
+            if self.brace_depth > 0 {
+                self.buffer.push(ch);
+            }
+        }
+
+        if results.is_empty() {
+            None
+        } else {
+            Some(results)
+        }
+    }
+
+    /// 处理剩余缓冲区内容
+    pub fn finalize(&mut self) -> Option<Vec<Value>> {
+        if self.buffer.trim().is_empty() {
+            return None;
+        }
+
+        // 尝试解析剩余内容
+        if let Ok(obj) = serde_json::from_str::<Value>(&self.buffer) {
+            self.buffer.clear();
+            return Some(vec![obj]);
+        }
+
+        None
+    }
+}
+
+type Result<T> = std::result::Result<T, AppError>;
+
+const EXAM_SEGMENT_MAX_IMAGE_BYTES: usize = 1_500_000;
+const EXAM_SEGMENT_MAX_DIMENSION: u32 = 1_600;
+const EXAM_SEGMENT_MAX_PAGES: usize = 36;
+const STREAM_MAX_CTX_TOKENS: usize = 200_000;
+const USER_PREFERENCES_SETTING_KEY: &str = "chat.user_preferences_profile";
+const USER_PREFERENCE_FIELD_MAX_LEN: usize = 800;
+const BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY: &str = "builtin_model_profiles_snapshot";
+const HIDDEN_BUILTIN_MODEL_PROFILES_KEY: &str = "hidden_builtin_model_profile_ids";
+
+static CONTROL_CHARS_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"[\u{0000}-\u{001F}\u{007F}]").unwrap());
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+#[derive(Default)]
+struct StoredUserPreferenceProfile {
+    enabled: bool,
+    background: String,
+    goals: String,
+    communication: String,
+    notes: String,
+}
+
+fn sanitize_user_preference_field(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    let cleaned = CONTROL_CHARS_REGEX.replace_all(value, "");
+    let trimmed = cleaned.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+    let mut count = 0usize;
+    let mut result = String::new();
+    for ch in trimmed.chars() {
+        if count >= USER_PREFERENCE_FIELD_MAX_LEN {
+            break;
+        }
+        result.push(ch);
+        count += 1;
+    }
+    result
+}
+
+fn build_user_preference_prompt_from_profile(
+    profile: &StoredUserPreferenceProfile,
+) -> Option<String> {
+    if !profile.enabled {
+        return None;
+    }
+
+    let background = sanitize_user_preference_field(&profile.background);
+    let goals = sanitize_user_preference_field(&profile.goals);
+    let communication = sanitize_user_preference_field(&profile.communication);
+    let notes = sanitize_user_preference_field(&profile.notes);
+
+    let mut lines: Vec<String> = Vec::new();
+    if !background.is_empty() {
+        lines.push(format!("- 学习背景 / Background: {}", background));
+    }
+    if !goals.is_empty() {
+        lines.push(format!("- 学习目标 / Goals: {}", goals));
+    }
+    if !communication.is_empty() {
+        lines.push(format!(
+            "- 沟通偏好 / Communication Style: {}",
+            communication
+        ));
+    }
+    if !notes.is_empty() {
+        lines.push(format!("- 补充说明 / Additional Notes: {}", notes));
+    }
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "### 用户偏好（User Preferences）\n{}",
+        lines.join("\n")
+    ))
+}
+
+/// 前端 MCP 工具（通过桥接从前端SDK获取）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct FrontendMcpTool {
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    input_schema: Value,
+}
+
+/// MCP 工具缓存（前端来源）
+#[derive(Debug, Clone)]
+struct McpToolCache {
+    tools: Vec<FrontendMcpTool>,
+    cached_at: Instant,
+    ttl: Duration,
+}
+
+impl McpToolCache {
+    fn new(tools: Vec<FrontendMcpTool>, ttl: Duration) -> Self {
+        Self {
+            tools,
+            cached_at: Instant::now(),
+            ttl,
+        }
+    }
+    fn is_expired(&self) -> bool {
+        self.cached_at.elapsed() > self.ttl
+    }
+}
+
+/// OCR 模型配置（用于多引擎支持）
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OcrModelConfig {
+    /// 模型配置 ID（对应 ApiConfig.id）
+    pub config_id: String,
+    /// 模型名称（如 deepseek-ai/DeepSeek-OCR）
+    pub model: String,
+    /// 引擎类型（deepseek_ocr, paddle_ocr_vl, generic_vlm）
+    pub engine_type: String,
+    /// 显示名称
+    pub name: String,
+    /// 是否免费
+    #[serde(default)]
+    pub is_free: bool,
+    /// 是否启用（默认 true，向后兼容旧数据）
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// 优先级（数字越小越优先，默认 0）
+    #[serde(default)]
+    pub priority: u32,
+}
+
+/// Free-text OCR 的运行时候选。系统 OCR 没有 HTTP 模型配置，必须作为独立候选执行。
+#[derive(Debug, Clone)]
+pub enum OcrRuntimeCandidate {
+    Remote {
+        config: ApiConfig,
+        engine_type: crate::ocr_adapters::OcrEngineType,
+    },
+    SystemOcr,
+}
+
+impl OcrRuntimeCandidate {
+    pub fn engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
+        match self {
+            Self::Remote { engine_type, .. } => *engine_type,
+            Self::SystemOcr => crate::ocr_adapters::OcrEngineType::SystemOcr,
+        }
+    }
+}
+
+/// 已知已停止服务的 OCR/VLM 模型组合（提供商 base_url 片段 + 模型名）。
+///
+/// 停服模型请求必然失败，若仍排在候选首位，会让整个 OCR 链路在重试后失败。
+/// 2026-08：硅基流动已下架 `zai-org/GLM-4.6V`。
+///
+/// 注意：仅匹配硅基流动（base_url 含 siliconflow）+ `zai-org/` 命名空间的
+/// GLM-4.6V；智谱官方 API 的 `glm-4.6v` 不带 `zai-org/` 前缀且仍在服务，
+/// 不能误伤。
+pub fn is_discontinued_ocr_model(config: &ApiConfig) -> bool {
+    let url = config.base_url.to_lowercase();
+    let model = config.model.to_lowercase();
+    url.contains("siliconflow") && model.contains("glm-4.6v")
+}
+
+fn build_ocr_runtime_candidates(
+    available: &[OcrModelConfig],
+    configs: &[ApiConfig],
+    task_type: crate::ocr_adapters::OcrTaskType,
+    system_ocr_supported: bool,
+) -> Vec<OcrRuntimeCandidate> {
+    use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
+
+    let mut enabled_models: Vec<&OcrModelConfig> =
+        available.iter().filter(|model| model.enabled).collect();
+    enabled_models.sort_by_key(|model| model.priority);
+
+    let mut result = Vec::new();
+    let mut included_system_ocr = false;
+    for ocr_config in enabled_models {
+        let declared_engine = OcrEngineType::from_str(&ocr_config.engine_type);
+        if declared_engine == OcrEngineType::SystemOcr
+            || ocr_config.config_id == crate::llm_manager::ocr_models::SYSTEM_OCR_CONFIG_ID
+        {
+            if task_type == OcrTaskType::FreeText && system_ocr_supported && !included_system_ocr {
+                result.push(OcrRuntimeCandidate::SystemOcr);
+                included_system_ocr = true;
+            }
+            continue;
+        }
+
+        let Some(config) = configs
+            .iter()
+            .find(|config| config.id == ocr_config.config_id)
+        else {
+            continue;
+        };
+        if !config.enabled || !config.is_multimodal {
+            continue;
+        }
+        // 跳过已知已停服的模型（如硅基流动已下架的 GLM-4.6V），避免其排在最前
+        // 白白消耗请求与重试时间后整体失败。
+        if is_discontinued_ocr_model(config) {
+            info!("[OCR] 跳过已停服模型: {} ({})", config.model, config.name);
+            continue;
+        }
+        let effective_engine =
+            if OcrAdapterFactory::validate_model_for_engine(&config.model, declared_engine) {
+                declared_engine
+            } else {
+                OcrAdapterFactory::infer_engine_from_model(&config.model)
+            };
+        result.push(OcrRuntimeCandidate::Remote {
+            config: config.clone(),
+            engine_type: effective_engine,
+        });
+    }
+
+    // `sort_by_key` is stable, so user priority remains authoritative within each class.
+    match task_type {
+        OcrTaskType::FreeText => result.sort_by_key(|candidate| {
+            if candidate.engine_type().is_dedicated_ocr() {
+                0
+            } else {
+                1
+            }
+        }),
+        OcrTaskType::Structured => result.sort_by_key(|candidate| {
+            if candidate.engine_type().is_dedicated_ocr() {
+                1
+            } else {
+                0
+            }
+        }),
+    }
+    result
+}
+
+fn inspect_free_text_ocr_available_from_settings(
+    available_models_json: Option<&str>,
+    legacy_engine: Option<&str>,
+    configs: &[ApiConfig],
+    system_ocr_supported: bool,
+) -> bool {
+    use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType, OcrTaskType};
+
+    if let Some(raw) = available_models_json {
+        if let Ok(models) = serde_json::from_str::<Vec<OcrModelConfig>>(raw) {
+            return !build_ocr_runtime_candidates(
+                &models,
+                configs,
+                OcrTaskType::FreeText,
+                system_ocr_supported,
+            )
+            .is_empty();
+        }
+    }
+
+    let Some(engine) = legacy_engine.and_then(OcrEngineType::try_from_str) else {
+        // Before the ordered engine list exists, supported native OCR is the compatibility
+        // default. Once the list exists, its explicit enabled flags are authoritative above.
+        return system_ocr_supported;
+    };
+    if engine == OcrEngineType::SystemOcr {
+        return system_ocr_supported;
+    }
+
+    configs.iter().any(|config| {
+        config.enabled
+            && config.is_multimodal
+            && !config.is_embedding
+            && !config.is_reranker
+            && !config.is_image_generation
+            && (OcrAdapterFactory::validate_model_for_engine(&config.model, engine)
+                || OcrAdapterFactory::infer_engine_from_model(&config.model) == engine)
+    })
+}
+
+#[cfg(test)]
+mod ocr_runtime_candidate_tests {
+    use super::*;
+    use crate::ocr_adapters::OcrTaskType;
+
+    fn system_model(enabled: bool) -> OcrModelConfig {
+        OcrModelConfig {
+            config_id: crate::llm_manager::ocr_models::SYSTEM_OCR_CONFIG_ID.to_string(),
+            model: "system".to_string(),
+            engine_type: "system_ocr".to_string(),
+            name: "System OCR".to_string(),
+            is_free: true,
+            enabled,
+            priority: 0,
+        }
+    }
+
+    fn generic_vlm() -> (OcrModelConfig, ApiConfig) {
+        (
+            OcrModelConfig {
+                config_id: "vlm".to_string(),
+                model: "vision-model".to_string(),
+                engine_type: "generic_vlm".to_string(),
+                name: "Vision".to_string(),
+                is_free: false,
+                enabled: true,
+                priority: 1,
+            },
+            ApiConfig {
+                id: "vlm".to_string(),
+                model: "vision-model".to_string(),
+                enabled: true,
+                is_multimodal: true,
+                ..Default::default()
+            },
+        )
+    }
+
+    #[test]
+    fn system_ocr_is_native_free_text_candidate_but_never_structured() {
+        let models = vec![system_model(true)];
+        let free = build_ocr_runtime_candidates(&models, &[], OcrTaskType::FreeText, true);
+        assert!(matches!(free.as_slice(), [OcrRuntimeCandidate::SystemOcr]));
+
+        let structured = build_ocr_runtime_candidates(&models, &[], OcrTaskType::Structured, true);
+        assert!(structured.is_empty());
+    }
+
+    #[test]
+    fn system_ocr_candidate_respects_enabled_state_alongside_remote_engine() {
+        let (remote_model, remote_config) = generic_vlm();
+        for (enabled, supported, expected_native) in [
+            (false, true, false),
+            (true, true, true),
+            (true, false, false),
+        ] {
+            let candidates = build_ocr_runtime_candidates(
+                &[remote_model.clone(), system_model(enabled)],
+                std::slice::from_ref(&remote_config),
+                OcrTaskType::FreeText,
+                supported,
+            );
+            assert_eq!(
+                candidates
+                    .iter()
+                    .any(|candidate| matches!(candidate, OcrRuntimeCandidate::SystemOcr)),
+                expected_native
+            );
+            assert!(candidates.iter().any(|candidate| matches!(
+                candidate,
+                OcrRuntimeCandidate::Remote { config, .. } if config.id == remote_config.id
+            )));
+        }
+    }
+
+    #[test]
+    fn readonly_ocr_inspection_uses_native_default_until_explicit_engine_list_exists() {
+        assert!(inspect_free_text_ocr_available_from_settings(
+            None,
+            None,
+            &[],
+            true
+        ));
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            None,
+            None,
+            &[],
+            false
+        ));
+        let disabled = serde_json::to_string(&vec![system_model(false)]).unwrap();
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            Some(&disabled),
+            None,
+            &[],
+            true
+        ));
+        let enabled = serde_json::to_string(&vec![system_model(true)]).unwrap();
+        assert!(inspect_free_text_ocr_available_from_settings(
+            Some(&enabled),
+            None,
+            &[],
+            true
+        ));
+        assert!(!inspect_free_text_ocr_available_from_settings(
+            Some(&enabled),
+            None,
+            &[],
+            false
+        ));
+    }
+
+    #[test]
+    fn readonly_ocr_inspection_accepts_enabled_remote_vlm_and_legacy_selection() {
+        let (model, config) = generic_vlm();
+        let raw = serde_json::to_string(&vec![model]).unwrap();
+        assert!(inspect_free_text_ocr_available_from_settings(
+            Some(&raw),
+            None,
+            std::slice::from_ref(&config),
+            false
+        ));
+        assert!(inspect_free_text_ocr_available_from_settings(
+            None,
+            Some("generic_vlm"),
+            &[config],
+            false
+        ));
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VendorConfig {
+    pub id: String,
+    pub name: String,
+    pub provider_type: String,
+    #[serde(default)]
+    pub auth_mode: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default)]
+    pub supports_openai_responses: Option<bool>,
+    pub base_url: String,
+    pub api_key: String,
+    /// 🆕 Failover：同一供应商的额外 API key（api_key 之外的备用 key，
+    /// 可重试错误时按顺序轮换）。serde 默认空数组，旧配置向后兼容。
+    #[serde(default)]
+    pub api_keys: Vec<String>,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub rate_limit_per_minute: Option<u32>,
+    #[serde(default)]
+    pub default_timeout_ms: Option<u64>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub is_builtin: bool,
+    #[serde(default)]
+    pub is_read_only: bool,
+    #[serde(default)]
+    pub sort_order: Option<i32>,
+    /// 供应商级别的 max_tokens 限制（API 最大允许值）
+    #[serde(default)]
+    pub max_tokens_limit: Option<u32>,
+    /// 供应商官网链接
+    #[serde(default)]
+    pub website_url: Option<String>,
+}
+
+impl Default for VendorConfig {
+    fn default() -> Self {
+        let official_openai_base = "https://api.openai.com/v1";
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name: "New Vendor".to_string(),
+            provider_type: "openai".to_string(),
+            auth_mode: None,
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                official_openai_base,
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                official_openai_base,
+                None,
+            )),
+            base_url: String::new(),
+            api_key: String::new(),
+            api_keys: Vec::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: false,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelProfile {
+    pub id: String,
+    pub vendor_id: String,
+    pub label: String,
+    pub model: String,
+    #[serde(default)]
+    pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default = "default_model_adapter")]
+    pub model_adapter: String,
+    #[serde(default)]
+    pub is_multimodal: bool,
+    #[serde(default)]
+    pub is_reasoning: bool,
+    #[serde(default)]
+    pub is_embedding: bool,
+    #[serde(default)]
+    pub is_reranker: bool,
+    #[serde(default)]
+    pub is_image_generation: bool,
+    #[serde(default)]
+    pub supports_tools: bool,
+    #[serde(default)]
+    pub supports_reasoning: bool,
+    #[serde(default = "default_profile_status")]
+    pub status: String,
+    #[serde(default = "default_profile_enabled")]
+    pub enabled: bool,
+    #[serde(default = "default_max_output_tokens")]
+    pub max_output_tokens: u32,
+    #[serde(default = "default_temperature")]
+    pub temperature: f32,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
+    /// GPT-5.6 Responses API reasoning.mode (standard/pro)
+    #[serde(default)]
+    pub reasoning_mode: Option<String>,
+    #[serde(default)]
+    pub thinking_enabled: bool,
+    #[serde(default)]
+    pub thinking_budget: Option<i32>,
+    #[serde(default)]
+    pub include_thoughts: bool,
+    #[serde(default)]
+    pub enable_thinking: Option<bool>,
+    #[serde(default)]
+    pub min_p: Option<f32>,
+    #[serde(default)]
+    pub top_k: Option<u32>,
+    #[serde(default)]
+    pub gemini_api_version: Option<String>,
+    #[serde(default)]
+    pub is_builtin: bool,
+    /// 重复惩罚（Qwen/豆包等模型使用）
+    #[serde(default)]
+    pub repetition_penalty: Option<f32>,
+    /// MiniMax reasoning_split 参数
+    #[serde(default)]
+    pub reasoning_split: Option<bool>,
+    #[serde(default)]
+    pub effort: Option<String>,
+    #[serde(default)]
+    pub verbosity: Option<String>,
+    /// 是否收藏（收藏的模型在列表中优先显示）
+    #[serde(default)]
+    pub is_favorite: bool,
+    /// 模型级 max_tokens 限制；与供应商限制同时存在时取较小值。
+    #[serde(default)]
+    pub max_tokens_limit: Option<u32>,
+    /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
+    #[serde(default, alias = "context_window")]
+    pub context_window: Option<u32>,
+    /// 2C 自定义请求体扩展（采纳 operit ModelParameter 逃生口思路）。
+    ///
+    /// 用户在设置 UI 上以 key-value 形式声明的额外字段，会被原样合并进
+    /// 最终发送到 API 的请求体。详见 `ApiConfig::extra_body`。
+    #[serde(default)]
+    pub extra_body: Option<serde_json::Map<String, Value>>,
+}
+
+impl Default for ModelProfile {
+    fn default() -> Self {
+        Self {
+            id: Uuid::new_v4().to_string(),
+            vendor_id: String::new(),
+            label: "New Model".to_string(),
+            model: String::new(),
+            provider_scope: None,
+            api_protocol: None,
+            model_adapter: default_model_adapter(),
+            is_multimodal: false,
+            is_reasoning: false,
+            is_embedding: false,
+            is_reranker: false,
+            is_image_generation: false,
+            supports_tools: false,
+            supports_reasoning: false,
+            status: default_profile_status(),
+            enabled: default_profile_enabled(),
+            max_output_tokens: default_max_output_tokens(),
+            temperature: default_temperature(),
+            reasoning_effort: None,
+            reasoning_mode: None,
+            thinking_enabled: false,
+            thinking_budget: None,
+            include_thoughts: false,
+            enable_thinking: None,
+            min_p: None,
+            top_k: None,
+            gemini_api_version: None,
+            is_builtin: false,
+            repetition_penalty: None,
+            reasoning_split: None,
+            effort: None,
+            verbosity: None,
+            is_favorite: false,
+            max_tokens_limit: None,
+            context_window: None,
+            extra_body: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ResolvedModelConfig {
+    pub vendor: VendorConfig,
+    pub profile: ModelProfile,
+    pub runtime: ApiConfig,
+}
+
+fn default_profile_status() -> String {
+    "enabled".to_string()
+}
+
+fn default_profile_enabled() -> bool {
+    true
+}
+
+pub fn looks_like_image_generation_model_id(model: &str) -> bool {
+    let model = model.to_lowercase();
+    ["gpt-image", "dall-e", "imagen", "flux"]
+        .iter()
+        .any(|needle| model.contains(needle))
+}
+
+fn normalize_provider_protocol_registry_value(value: Option<&str>) -> String {
+    value.unwrap_or_default().trim().to_lowercase()
+}
+
+fn normalize_base_url_for_provider_protocol_registry(base_url: &str) -> String {
+    base_url.trim().trim_end_matches('/').to_lowercase()
+}
+
+fn get_provider_protocol_record(
+    provider_type: Option<&str>,
+) -> Option<&'static ProviderProtocolRegistryRecord> {
+    let normalized = normalize_provider_protocol_registry_value(provider_type);
+    if normalized.is_empty() {
+        return None;
+    }
+    PROVIDER_PROTOCOL_REGISTRY
+        .iter()
+        .find(|record| record.provider_type == normalized)
+}
+
+fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.allowed_protocols.clone())
+        .filter(|protocols| !protocols.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "openai_chat_completions".to_string(),
+                "openai_responses".to_string(),
+            ]
+        })
+}
+
+/// 提取 base_url 的 host（去 scheme/path/query/port）。用于官方端点精确匹配，
+/// 避免 `https://myproxy.com/api.openai.com/v1` 这类中转地址被误判为官方端点。
+fn base_url_host(base_url: &str) -> String {
+    let normalized = normalize_base_url_for_provider_protocol_registry(base_url);
+    let without_scheme = normalized
+        .split_once("://")
+        .map(|(_, rest)| rest)
+        .unwrap_or(normalized.as_str());
+    let host_port = without_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or_default();
+    host_port.split(':').next().unwrap_or_default().to_string()
+}
+
+fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
+    let normalized_provider = normalize_provider_protocol_registry_value(provider_type);
+    let normalized_base_url = normalize_base_url_for_provider_protocol_registry(base_url);
+    if normalized_provider == "openai" && normalized_base_url.is_empty() {
+        return true;
+    }
+    base_url_host(base_url) == "api.openai.com"
+}
+
+pub(crate) fn provider_supports_openai_responses(
+    provider_type: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> bool {
+    if supports_openai_responses == Some(true) {
+        return true;
+    }
+    if resolves_to_official_openai(provider_type, base_url) {
+        return true;
+    }
+    if normalize_provider_protocol_registry_value(provider_type) == "openai" {
+        return false;
+    }
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.supports_openai_responses)
+        .unwrap_or(false)
+}
+
+fn native_protocol_for_model_adapter(model_adapter: &str) -> Option<&'static str> {
+    match normalize_provider_protocol_registry_value(Some(model_adapter)).as_str() {
+        "anthropic" | "claude" => Some("anthropic_messages"),
+        "google" | "gemini" => Some("google_generate_content"),
+        _ => None,
+    }
+}
+
+fn uses_generic_openai_gateway(config: &ApiConfig) -> bool {
+    let host_type = config
+        .provider_type
+        .as_deref()
+        .or(config.provider_scope.as_deref());
+    let normalized = normalize_provider_protocol_registry_value(host_type);
+
+    // SiliconFlow has its own OpenAI-compatible reasoning dialect and is
+    // intentionally handled by its host-aware adapters.
+    if normalized == "siliconflow" {
+        return false;
+    }
+
+    get_provider_protocol_record(host_type)
+        .map(|record| !record.official)
+        .unwrap_or(true)
+}
+
+/// 该 provider_type 是否为厂商官方渠道（数据来自 provider-protocol-registry.json）。
+///
+/// 思考强度档位映射据此分流：官方渠道按模型能力表就近吸附，自定义/中转渠道
+/// 五档原样透传（中转站已完成上游映射）。
+///
+/// 未登记的 provider 视为非官方（保守：不做裁剪比误裁剪更安全——多发的档位
+/// 由上游网关自行处理，而错误裁剪会静默改变用户意图）。
+pub(crate) fn provider_is_official(provider_type: &str) -> bool {
+    get_provider_protocol_record(Some(provider_type))
+        .map(|record| record.official)
+        .unwrap_or(false)
+}
+
+fn should_honor_explicit_openai_responses_protocol(config: &ApiConfig) -> bool {
+    provider_supports_openai_responses(
+        config.provider_type.as_deref(),
+        &config.base_url,
+        config.supports_openai_responses,
+    )
+}
+
+pub(crate) fn resolve_preferred_protocol_for_provider(
+    provider_type: Option<&str>,
+    adapter: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> String {
+    let allowed = provider_allowed_protocols(provider_type);
+    if let Some(native_protocol) = adapter.and_then(native_protocol_for_model_adapter) {
+        if allowed.iter().any(|protocol| protocol == native_protocol) {
+            return native_protocol.to_string();
+        }
+    }
+
+    // 仅「供应商级显式声明」或「官方 OpenAI 端点」才把默认路由切到 Responses；
+    // 注册表级 supports_openai_responses=true 只解锁可选项（qwen/doubao 等白名单制端点），
+    // 默认路由仍由 default_protocol 决定（与前端 resolvePreferredProtocol 保持一致）。
+    let explicitly_prefers_responses = supports_openai_responses == Some(true)
+        || resolves_to_official_openai(provider_type, base_url);
+    if explicitly_prefers_responses
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_responses")
+    {
+        return "openai_responses".to_string();
+    }
+
+    if normalize_provider_protocol_registry_value(provider_type) == "openai"
+        && !resolves_to_official_openai(provider_type, base_url)
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_chat_completions")
+    {
+        return "openai_chat_completions".to_string();
+    }
+
+    if let Some(record) = get_provider_protocol_record(provider_type) {
+        if allowed
+            .iter()
+            .any(|protocol| protocol == &record.default_protocol)
+        {
+            return record.default_protocol.clone();
+        }
+    }
+
+    allowed
+        .iter()
+        .find(|protocol| protocol.as_str() == "openai_chat_completions")
+        .cloned()
+        .or_else(|| allowed.first().cloned())
+        .unwrap_or_else(|| "openai_chat_completions".to_string())
+}
+
+/// DeepSeek 官方 Responses API 能力判定（2026-08-23 官方文档
+/// api-docs.deepseek.com/guides/responses_api 列名 flash / pro / flash-vision-exp）：
+/// - `deepseek-v4-flash` 系列（contains 匹配，含 `deepseek-v4-flash-vision-exp`）、
+///   `deepseek-v4-pro` 系列，以及 legacy 别名（`deepseek-chat`/`deepseek-reasoner`，
+///   映射到 flash 的非思考/思考模式）支持；
+/// - V3.x 等未列名型号不支持，走 Responses 会 404，门控到 chat_completions；
+/// - 空模型名（协议归一化路径构造的临时 config）视为可支持，避免已有配置被误降级。
+fn deepseek_model_supports_openai_responses(model: &str) -> bool {
+    let normalized = model.trim().to_lowercase();
+    if normalized.is_empty() {
+        return true;
+    }
+    normalized.contains("deepseek-v4-flash")
+        || normalized.contains("deepseek-flash")
+        || normalized.contains("deepseek-v4-pro")
+        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
+}
+
+/// provider_type/provider_scope 是否声称 DeepSeek 供应商（不校验端点归属）。
+fn config_claims_deepseek_provider(config: &ApiConfig) -> bool {
+    normalize_provider_protocol_registry_value(config.provider_type.as_deref()) == "deepseek"
+        || normalize_provider_protocol_registry_value(config.provider_scope.as_deref())
+            == "deepseek"
+}
+
+/// 是否为 DeepSeek 官方端点。仅官方端点适用 Responses/服务端搜索门控；
+/// SiliconFlow 等第三方托管的 deepseek 模型由各自注册表条目单独裁决。
+///
+/// 判定规则：
+/// - base_url 的 host 精确匹配 api.deepseek.com（反代/中转即使 provider_type=deepseek
+///   也不当官方，避免误注入服务端 web_search 或按官方能力表切协议）；
+/// - base_url 为空且 provider/scope 声称 deepseek 时回落内置官方端点，视为官方。
+pub(crate) fn is_official_deepseek_config(config: &ApiConfig) -> bool {
+    let normalized_base_url = normalize_base_url_for_provider_protocol_registry(&config.base_url);
+    if normalized_base_url.is_empty() {
+        return config_claims_deepseek_provider(config);
+    }
+    base_url_host(&config.base_url) == "api.deepseek.com"
+}
+
+pub fn effective_api_protocol_for_config(config: &ApiConfig) -> String {
+    let explicit_responses = if let Some(protocol) = config.api_protocol.as_deref() {
+        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+        match normalized.as_str() {
+            "openai_responses" if should_honor_explicit_openai_responses_protocol(config) => {
+                Some(normalized)
+            }
+            "openai_responses" => None,
+            "openai_chat_completions" | "anthropic_messages" | "google_generate_content" => {
+                return normalized;
+            }
+            _ => None,
+        }
+    } else {
+        None
+    };
+
+    // DeepSeek 官方 Responses API 按模型列名开放（2026-08-23 文档：flash / pro /
+    // flash-vision-exp）：V3.x 等未列名型号即使显式选中 openai_responses 也回落到
+    // chat_completions，避免命中 404。
+    if let Some(resolved) = explicit_responses {
+        if is_official_deepseek_config(config)
+            && !deepseek_model_supports_openai_responses(&config.model)
+        {
+            warn!(
+                "[LLM Manager] DeepSeek 官方 Responses API 未列名该模型（V3.x 等），回落到 openai_chat_completions: model={}, base_url={}",
+                config.model, config.base_url
+            );
+            return "openai_chat_completions".to_string();
+        }
+        return resolved;
+    }
+
+    // api_protocol=None 的默认路径同样必须跑 DeepSeek 模型门控：注册表
+    // default_protocol=openai_responses 不能把未列名型号（V3.x 等）送进 Responses。
+    let preferred = resolve_preferred_protocol_for_provider(
+        config.provider_type.as_deref(),
+        Some(config.model_adapter.as_str()),
+        &config.base_url,
+        config.supports_openai_responses,
+    );
+    if preferred == "openai_responses" {
+        if is_official_deepseek_config(config) {
+            if !deepseek_model_supports_openai_responses(&config.model) {
+                warn!(
+                    "[LLM Manager] DeepSeek 官方 Responses API 未列名该模型（V3.x 等），默认路由回落到 openai_chat_completions: model={}, base_url={}",
+                    config.model, config.base_url
+                );
+                return "openai_chat_completions".to_string();
+            }
+        } else if config_claims_deepseek_provider(config)
+            && config.supports_openai_responses != Some(true)
+        {
+            // 反代/中转声称 deepseek 但端点非官方：注册表的官方默认（Responses）
+            // 不适用，除非配置显式声明 supports_openai_responses=true。
+            warn!(
+                "[LLM Manager] 非官方 DeepSeek 端点未显式声明 Responses 支持，默认路由回落到 openai_chat_completions: model={}, base_url={}",
+                config.model, config.base_url
+            );
+            return "openai_chat_completions".to_string();
+        }
+    }
+    preferred
+}
+
+pub fn request_adapter_for_config(config: &ApiConfig) -> &'static dyn adapters::RequestAdapter {
+    let effective_protocol = effective_api_protocol_for_config(config);
+    let uses_openai_transport = matches!(
+        effective_protocol.as_str(),
+        "openai_chat_completions" | "openai_responses"
+    );
+    let uses_openai_dialect = uses_openai_transport
+        && (uses_generic_openai_gateway(config)
+            || native_protocol_for_model_adapter(&config.model_adapter).is_some());
+    let uses_native_transport = matches!(
+        effective_protocol.as_str(),
+        "anthropic_messages" | "google_generate_content"
+    );
+
+    if uses_openai_dialect {
+        adapters::get_adapter(None, None, "general")
+    } else if uses_native_transport {
+        adapters::get_adapter(None, None, &config.model_adapter)
+    } else {
+        adapters::get_adapter(
+            config.provider_type.as_deref(),
+            config.provider_scope.as_deref(),
+            &config.model_adapter,
+        )
+    }
+}
+
+#[inline]
+pub fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
+    match max_tokens_limit {
+        Some(limit) => max_output_tokens.min(limit),
+        None => max_output_tokens,
+    }
+}
+
+#[inline]
+pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
+    effective_api_protocol_for_config(config) == "openai_responses"
+}
+
+fn normalize_vendor_protocol_config(vendor: &mut VendorConfig) -> bool {
+    let mut changed = false;
+
+    if vendor.supports_openai_responses.is_none() {
+        vendor.supports_openai_responses = Some(provider_supports_openai_responses(
+            Some(vendor.provider_type.as_str()),
+            &vendor.base_url,
+            None,
+        ));
+        changed = true;
+    }
+
+    if let Some(protocol) = vendor.api_protocol.as_deref() {
+        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+        if normalized == "openai_responses"
+            && !provider_supports_openai_responses(
+                Some(vendor.provider_type.as_str()),
+                &vendor.base_url,
+                vendor.supports_openai_responses,
+            )
+        {
+            vendor.api_protocol = Some(resolve_preferred_protocol_for_provider(
+                Some(vendor.provider_type.as_str()),
+                Some("general"),
+                &vendor.base_url,
+                vendor.supports_openai_responses,
+            ));
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn normalize_model_profile_protocol_config(
+    profile: &mut ModelProfile,
+    vendor: Option<&VendorConfig>,
+) -> bool {
+    let Some(protocol) = profile.api_protocol.as_deref() else {
+        return false;
+    };
+
+    let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+    if normalized != "openai_responses" {
+        return false;
+    }
+
+    let config = ApiConfig {
+        provider_type: vendor.map(|item| item.provider_type.clone()),
+        base_url: vendor.map(|item| item.base_url.clone()).unwrap_or_default(),
+        model: profile.model.clone(),
+        model_adapter: profile.model_adapter.clone(),
+        api_protocol: Some("openai_responses".to_string()),
+        supports_openai_responses: vendor.and_then(|item| item.supports_openai_responses),
+        ..Default::default()
+    };
+
+    if should_use_openai_responses_for_config(&config) {
+        return false;
+    }
+
+    profile.api_protocol = Some(resolve_preferred_protocol_for_provider(
+        vendor.map(|item| item.provider_type.as_str()),
+        Some(profile.model_adapter.as_str()),
+        vendor
+            .map(|item| item.base_url.as_str())
+            .unwrap_or_default(),
+        vendor.and_then(|item| item.supports_openai_responses),
+    ));
+    true
+}
+
+pub fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
+    let effective_protocol = effective_api_protocol_for_config(config);
+    if matches!(
+        config
+            .api_protocol
+            .as_deref()
+            .map(|protocol| normalize_provider_protocol_registry_value(Some(protocol)))
+            .as_deref(),
+        Some("openai_responses")
+    ) && effective_protocol != "openai_responses"
+    {
+        warn!(
+            "[LLM Manager] Ignoring unsupported openai_responses protocol; using {}: provider_type={:?}, base_url={}, model={}, adapter={}",
+            effective_protocol,
+            config.provider_type,
+            config.base_url,
+            config.model,
+            config.model_adapter
+        );
+    }
+    match effective_protocol.as_str() {
+        "openai_responses" => Box::new(crate::providers::OpenAIResponsesAdapter::new()),
+        "anthropic_messages" => Box::new(crate::providers::AnthropicAdapter::new()),
+        "google_generate_content" => Box::new(crate::providers::GeminiAdapter::new()),
+        _ => Box::new(crate::providers::OpenAIAdapter::new()),
+    }
+}
+
+pub(crate) fn normalize_nonstream_response_to_openai(
+    config: &ApiConfig,
+    response_json: &Value,
+) -> Result<Value> {
+    match effective_api_protocol_for_config(config).as_str() {
+        "google_generate_content" => {
+            if let Some(safety_msg) = LLMManager::extract_gemini_safety_error(response_json) {
+                return Err(AppError::llm(safety_msg));
+            }
+            return crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
+                response_json,
+                &config.model,
+            )
+            .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
+        }
+        "anthropic_messages" => {
+            let stop_reason = response_json.get("stop_reason").and_then(Value::as_str);
+            let refusal_category = response_json
+                .get("stop_details")
+                .and_then(|details| details.get("category"))
+                .and_then(Value::as_str)
+                .filter(|category| !category.is_empty() && *category != "none");
+            if stop_reason == Some("refusal") || refusal_category.is_some() {
+                return Err(AppError::llm(format!(
+                    "模型拒绝了该请求{}",
+                    refusal_category
+                        .map(|category| format!(": {category}"))
+                        .unwrap_or_default()
+                )));
+            }
+            return crate::providers::convert_anthropic_response_to_openai(
+                response_json,
+                &config.model,
+            )
+            .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
+        }
+        "openai_responses" => {}
+        _ => {
+            return Ok(crate::providers::normalize_openai_nonstream_response(
+                response_json,
+            ))
+        }
+    }
+
+    let response_status = response_json.get("status").and_then(Value::as_str);
+    if response_json
+        .get("error")
+        .is_some_and(|error| !error.is_null())
+        || matches!(response_status, Some("failed" | "cancelled" | "canceled"))
+    {
+        let code = response_json
+            .get("error")
+            .and_then(|error| error.get("code").or_else(|| error.get("type")))
+            .and_then(Value::as_str)
+            .unwrap_or("response_failed");
+        return Err(AppError::llm(format!("Responses 请求失败: {}", code)));
+    }
+    let mut text_segments: Vec<String> = Vec::new();
+    if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
+        for item in output {
+            if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
+                for entry in content_arr {
+                    let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                    if entry_type == "refusal" {
+                        return Err(AppError::llm("模型拒绝了该请求"));
+                    }
+                    if matches!(entry_type, "output_text" | "text") {
+                        if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
+                            if !text.is_empty() {
+                                text_segments.push(text.to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if text_segments.is_empty() {
+        if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str()) {
+            if !output_text.is_empty() {
+                text_segments.push(output_text.to_string());
+            }
+        }
+    }
+    if text_segments.is_empty() && response_status == Some("incomplete") {
+        return Err(AppError::llm("Responses 请求未能完成"));
+    }
+    Ok(json!({
+        "choices": [{
+            "message": {
+                "content": text_segments.join("")
+            }
+        }],
+        "usage": response_json.get("usage").cloned()
+    }))
+}
+
+#[derive(Debug, Clone)]
+pub struct ExamSegmentationCard {
+    pub question_label: String,
+    pub bbox: ExamCardBBox,
+    pub ocr_text: Option<String>,
+    pub tags: Vec<String>,
+    pub extra_metadata: Option<Value>,
+    pub card_id: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExamSegmentationPage {
+    pub page_index: usize,
+    pub cards: Vec<ExamSegmentationCard>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ExamSegmentationOutput {
+    pub pages: Vec<ExamSegmentationPage>,
+    pub raw: Option<Value>,
+}
+
+pub struct LLMManager {
+    client: Client,
+    db: Arc<Database>,
+    openai_codex_auth: CodexAuthManager,
+    file_manager: Arc<FileManager>,
+    /// 由调用服务获取许可，LLM 请求方法不重复获取。
+    ocr_semaphore: Arc<Semaphore>,
+    crypto_service: CryptoService,
+    cancel_registry: Arc<TokioMutex<HashSet<String>>>,
+    cancel_channels: Arc<TokioMutex<std::collections::HashMap<String, watch::Sender<bool>>>>,
+    mcp_tool_cache: Arc<RwLock<Option<McpToolCache>>>,
+    hooks_registry:
+        Arc<TokioMutex<std::collections::HashMap<String, std::sync::Arc<dyn LLMStreamHooks>>>>,
+}
+
+// pub：被 model2_pipeline 的 pub 方法（call_model2_raw_prompt / call_ocr_model_raw_prompt）
+// 作为参数类型暴露，pub(crate) 会触发 private_interfaces 警告
+#[derive(Debug, Clone)]
+pub struct ImagePayload {
+    pub mime: String,
+    pub base64: String,
+}
+
+/// 🔧 P1修复：合并后的消息类型
+/// 用于在消息序列化时合并连续的工具调用
+enum MergedChatMessage {
+    /// 普通消息（直接传递）
+    Regular(ChatMessage),
+    /// 合并的工具调用消息（多个 tool_calls）
+    /// 🔧 Anthropic 最佳实践：必须保留 thinking_content
+    /// "When using thinking enabled + tool calling, you must include thinking_blocks
+    /// from the previous assistant response when sending tool results back."
+    MergedToolCalls {
+        tool_calls: Vec<crate::models::ToolCall>,
+        content: String,
+        /// 🔧 保留第一个工具调用对应的思维链（Anthropic 要求）
+        thinking_content: Option<String>,
+        /// 🔧 Gemini 3 思维签名：工具调用场景下必须在后续请求中回传
+        thought_signature: Option<String>,
+        /// OpenAI Responses encrypted reasoning item required for stateless continuation.
+        response_reasoning_item: Option<Value>,
+    },
+}
+
+// Optional streaming hooks for unified pipeline to observe and persist events
+pub trait LLMStreamHooks: Send + Sync {
+    fn on_content_chunk(&self, _text: &str) {}
+    fn on_reasoning_chunk(&self, _text: &str) {}
+    /// Complete OpenAI Responses reasoning item used for stateless tool continuation.
+    fn on_response_reasoning_item(&self, _item: &serde_json::Value) {}
+    /// Gemini 3 思维签名回调（工具调用必需）
+    /// 在工具调用场景下，需要缓存此签名并在后续请求中回传
+    fn on_thought_signature(&self, _signature: &str) {}
+    /// 🆕 2026-01-15: 工具调用参数开始累积时通知前端
+    /// 在 LLM 开始生成工具调用参数时立即调用，让前端显示"正在准备工具调用"
+    /// - tool_call_id: 工具调用 ID
+    /// - tool_name: 工具名称
+    fn on_tool_call_start(&self, _tool_call_id: &str, _tool_name: &str) {}
+    /// 工具调用参数流式片段回调
+    /// 在 LLM 逐 token 生成工具调用 arguments 时调用，用于前端实时预览
+    fn on_tool_call_args_delta(&self, _tool_call_id: &str, _delta: &str) {}
+    fn on_tool_call(&self, _msg: &ChatMessage) {}
+    fn on_tool_result(&self, _msg: &ChatMessage) {}
+    fn on_usage(&self, _usage: &serde_json::Value) {}
+    /// 🆕 2026-08: 服务端联网搜索（OpenAI Responses `web_search` 工具）状态回调。
+    /// 载荷格式：`{"id": "...", "stage": "in_progress"|"searching"|"completed",
+    /// "sources": [{"title","url","snippet"}]}`。默认空实现，chat_v2 适配器
+    /// 通过它转发 web_search 块事件并收集来源。
+    fn on_web_search(&self, _payload: &serde_json::Value) {}
+    fn on_complete(&self, _final_text: &str, _reasoning: Option<&str>) {}
+}
+
+impl LLMManager {
+    fn infer_capability_overrides_from_builtin_catalog(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> Option<CapabilityOverrides> {
+        let normalized_model = Self::normalize_model_id(model_id);
+        let requested_scope = Self::normalize_provider_scope(provider_scope);
+
+        let vendor_scope_by_id: HashMap<&str, &str> = builtin_vendors::BUILTIN_VENDORS
+            .iter()
+            .map(|vendor| (vendor.id, vendor.provider_type))
+            .collect();
+
+        let mut best_match: Option<CapabilityOverrides> = None;
+        for model in builtin_vendors::BUILTIN_MODELS.iter() {
+            if Self::normalize_model_id(model.model) != normalized_model {
+                continue;
+            }
+
+            let builtin_scope = vendor_scope_by_id
+                .get(model.vendor_id)
+                .copied()
+                .and_then(|scope| Self::normalize_provider_scope(Some(scope)));
+            if let Some(requested) = requested_scope.as_deref() {
+                if builtin_scope.as_deref() != Some(requested) {
+                    continue;
+                }
+            }
+
+            best_match = Some(CapabilityOverrides {
+                is_multimodal: model.is_multimodal,
+                supports_tools: model.supports_tools,
+                supports_reasoning: model.is_reasoning,
+                context_window: builtin_vendors::deepseek_context_window(model.model),
+            });
+            break;
+        }
+
+        best_match
+    }
+
+    /// 视觉/多模态嵌入模型名（Qwen3-VL-Embedding、jina-clip、siglip…）：手动添加的配置常漏勾
+    /// 「多模态」，导致多模态索引永远判定为未配置。按名称 token 识别，只用于嵌入配置。
+    fn looks_like_multimodal_embedding(model: &str) -> bool {
+        let lower = model.to_lowercase();
+        lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|token| {
+                matches!(
+                    token,
+                    "vl" | "vision" | "multimodal" | "clip" | "siglip" | "omni"
+                )
+            })
+    }
+
+    fn normalize_model_id(value: &str) -> String {
+        value.trim().to_lowercase()
+    }
+
+    fn normalize_provider_scope(value: Option<&str>) -> Option<String> {
+        value
+            .map(|scope| scope.trim().to_lowercase())
+            .filter(|scope| !scope.is_empty())
+    }
+
+    fn split_model_name(value: &str) -> Vec<String> {
+        Self::normalize_model_id(value)
+            .split(['/', ':', '\\'])
+            .map(|part| part.to_string())
+            .collect()
+    }
+
+    fn base_model_id(value: &str) -> String {
+        Self::split_model_name(value)
+            .last()
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    fn matches_full_model_id(input: &str, candidate: Option<&str>) -> bool {
+        let Some(candidate) = candidate else {
+            return false;
+        };
+        let normalized = Self::normalize_model_id(candidate);
+        input == normalized
+            || input.ends_with(&format!("/{}", normalized))
+            || input.ends_with(&format!(":{}", normalized))
+    }
+
+    fn registry_record_score(
+        model_id: &str,
+        provider_scope: Option<&str>,
+        record: &RegistryModelRecord,
+    ) -> i32 {
+        let normalized_input = Self::normalize_model_id(model_id);
+        if normalized_input.is_empty() {
+            return -1;
+        }
+
+        let base_model_id = Self::base_model_id(model_id);
+        let requested_scope = Self::normalize_provider_scope(provider_scope);
+        let record_scope = Self::normalize_provider_scope(record.provider_scope.as_deref());
+
+        let mut score = if Self::matches_full_model_id(
+            &normalized_input,
+            record.provider_model_id.as_deref(),
+        ) {
+            500
+        } else if Self::matches_full_model_id(&normalized_input, Some(&record.model_id)) {
+            450
+        } else if Self::matches_full_model_id(&normalized_input, record.alias_of.as_deref()) {
+            430
+        } else if record
+            .provider_model_id
+            .as_deref()
+            .map(|value| Self::base_model_id(value) == base_model_id)
+            .unwrap_or(false)
+        {
+            320
+        } else if Self::base_model_id(&record.model_id) == base_model_id {
+            300
+        } else if record
+            .alias_of
+            .as_deref()
+            .map(|value| Self::base_model_id(value) == base_model_id)
+            .unwrap_or(false)
+        {
+            280
+        } else {
+            -1
+        };
+
+        if score < 0 {
+            return score;
+        }
+
+        if let Some(requested_scope) = requested_scope {
+            if record_scope.as_deref() == Some(requested_scope.as_str()) {
+                score += 40;
+            } else if record_scope.is_none() {
+                score += 10;
+            }
+        } else if record_scope.is_none() {
+            score += 20;
+        }
+
+        score
+    }
+
+    fn infer_capability_overrides_from_registry(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> Option<CapabilityOverrides> {
+        let mut best_record: Option<&RegistryModelRecord> = None;
+        let mut best_score = -1;
+
+        for record in MODEL_CAPABILITY_REGISTRY.iter() {
+            let score = Self::registry_record_score(model_id, provider_scope, record);
+            if score > best_score {
+                best_score = score;
+                best_record = Some(record);
+            }
+        }
+
+        best_record.map(|record| CapabilityOverrides {
+            is_multimodal: record.capabilities.vision,
+            supports_tools: record.capabilities.function_calling,
+            supports_reasoning: record.capabilities.reasoning,
+            context_window: record.capabilities.max_context_tokens,
+        })
+    }
+
+    fn resolve_capability_overrides(
+        model_id: &str,
+        provider_scope: Option<&str>,
+    ) -> CapabilityOverrides {
+        let registry = Self::infer_capability_overrides_from_registry(model_id, provider_scope)
+            .unwrap_or_default();
+        let builtin =
+            Self::infer_capability_overrides_from_builtin_catalog(model_id, provider_scope)
+                .unwrap_or_default();
+
+        CapabilityOverrides {
+            is_multimodal: registry.is_multimodal || builtin.is_multimodal,
+            supports_tools: registry.supports_tools || builtin.supports_tools,
+            supports_reasoning: registry.supports_reasoning || builtin.supports_reasoning,
+            context_window: registry.context_window.or(builtin.context_window),
+        }
+    }
+
+    fn merge_builtin_profile_user_aware(
+        profiles: &mut Vec<ModelProfile>,
+        builtin_profile: ModelProfile,
+        previous_builtin_profile: Option<&ModelProfile>,
+    ) {
+        if let Some(existing) = profiles.iter_mut().find(|p| p.id == builtin_profile.id) {
+            // 无论如何都修复内置标记，避免旧数据将内置模型错误标记为非内置。
+            existing.is_builtin = true;
+
+            // 首次无基线快照时：能力字段从内置定义同步（用户极少手动修改），
+            // 用户偏好字段（标签、模型ID、温度等）保持不变。
+            let Some(previous_builtin) = previous_builtin_profile else {
+                existing.is_multimodal = builtin_profile.is_multimodal;
+                existing.is_reasoning = builtin_profile.is_reasoning;
+                existing.is_embedding = builtin_profile.is_embedding;
+                existing.is_reranker = builtin_profile.is_reranker;
+                existing.supports_tools = builtin_profile.supports_tools;
+                existing.supports_reasoning = builtin_profile.supports_reasoning;
+                return;
+            };
+
+            macro_rules! update_if_untouched {
+                ($field:ident) => {
+                    if existing.$field == previous_builtin.$field {
+                        existing.$field = builtin_profile.$field.clone();
+                    }
+                };
+            }
+
+            update_if_untouched!(vendor_id);
+            update_if_untouched!(label);
+            update_if_untouched!(model);
+            update_if_untouched!(model_adapter);
+            update_if_untouched!(is_multimodal);
+            update_if_untouched!(is_reasoning);
+            update_if_untouched!(is_embedding);
+            update_if_untouched!(is_reranker);
+            update_if_untouched!(supports_tools);
+            update_if_untouched!(supports_reasoning);
+            update_if_untouched!(status);
+            update_if_untouched!(enabled);
+            update_if_untouched!(max_output_tokens);
+            update_if_untouched!(temperature);
+            update_if_untouched!(reasoning_effort);
+            update_if_untouched!(thinking_enabled);
+            update_if_untouched!(thinking_budget);
+            update_if_untouched!(include_thoughts);
+            update_if_untouched!(enable_thinking);
+            update_if_untouched!(min_p);
+            update_if_untouched!(top_k);
+            update_if_untouched!(gemini_api_version);
+            update_if_untouched!(repetition_penalty);
+            update_if_untouched!(reasoning_split);
+            update_if_untouched!(effort);
+            update_if_untouched!(verbosity);
+            update_if_untouched!(is_favorite);
+            update_if_untouched!(max_tokens_limit);
+            update_if_untouched!(context_window);
+            return;
+        }
+        profiles.push(builtin_profile);
+    }
+
+    fn read_builtin_profile_snapshot_map(&self) -> HashMap<String, ModelProfile> {
+        let raw = match self.db.get_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY) {
+            Ok(Some(raw)) => raw,
+            _ => return HashMap::new(),
+        };
+
+        let parsed: Vec<ModelProfile> = match serde_json::from_str(&raw) {
+            Ok(parsed) => parsed,
+            Err(err) => {
+                warn!("[VendorModel] 解析内置模型快照失败，回退为空快照: {}", err);
+                return HashMap::new();
+            }
+        };
+
+        parsed
+            .into_iter()
+            .map(|profile| (profile.id.clone(), profile))
+            .collect()
+    }
+
+    fn save_builtin_profile_snapshot(&self, builtin_profiles: &[ModelProfile]) -> Result<()> {
+        let json = serde_json::to_string(builtin_profiles)
+            .map_err(|e| AppError::configuration(format!("序列化内置模型快照失败: {}", e)))?;
+        self.db
+            .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, &json)
+            .map_err(|e| AppError::database(format!("保存内置模型快照失败: {}", e)))
+    }
+
+    fn read_hidden_builtin_model_profile_ids(&self) -> HashSet<String> {
+        let raw = match self.db.get_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY) {
+            Ok(Some(raw)) => raw,
+            _ => return HashSet::new(),
+        };
+
+        match serde_json::from_str::<Vec<String>>(&raw) {
+            Ok(ids) => ids
+                .into_iter()
+                .map(|id| id.trim().to_string())
+                .filter(|id| !id.is_empty())
+                .collect(),
+            Err(err) => {
+                warn!(
+                    "[VendorModel] 解析隐藏内置模型列表失败，回退为空列表: {}",
+                    err
+                );
+                HashSet::new()
+            }
+        }
+    }
+
+    fn save_hidden_builtin_model_profile_ids(&self, ids: &HashSet<String>) -> Result<()> {
+        let mut sorted_ids: Vec<String> = ids
+            .iter()
+            .filter(|id| !id.trim().is_empty())
+            .cloned()
+            .collect();
+        sorted_ids.sort();
+        let json = serde_json::to_string(&sorted_ids)
+            .map_err(|e| AppError::configuration(format!("序列化隐藏内置模型列表失败: {}", e)))?;
+        self.db
+            .save_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY, &json)
+            .map_err(|e| AppError::database(format!("保存隐藏内置模型列表失败: {}", e)))
+    }
+
+    fn reconcile_hidden_builtin_model_profile_ids(
+        &self,
+        builtin_profiles: &[ModelProfile],
+        user_profiles: &[ModelProfile],
+        hidden_builtin_ids: &mut HashSet<String>,
+        snapshot_map: &HashMap<String, ModelProfile>,
+    ) -> Result<bool> {
+        let builtin_id_set: HashSet<&str> = builtin_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect();
+        let builtin_profile_map: HashMap<&str, &ModelProfile> = builtin_profiles
+            .iter()
+            .map(|profile| (profile.id.as_str(), profile))
+            .collect();
+        let known_user_builtin_models: HashMap<&str, &str> = user_profiles
+            .iter()
+            .filter_map(|profile| {
+                builtin_id_set
+                    .contains(profile.id.as_str())
+                    .then_some((profile.id.as_str(), profile.model.as_str()))
+            })
+            .collect();
+
+        let original = hidden_builtin_ids.clone();
+        hidden_builtin_ids.retain(|id| {
+            let Some(current_builtin) = builtin_profile_map.get(id.as_str()) else {
+                return false;
+            };
+
+            let snapshot_matches = snapshot_map
+                .get(id)
+                .map(|snapshot| snapshot.model == current_builtin.model)
+                .unwrap_or(false);
+            let user_model_matches = known_user_builtin_models
+                .get(id.as_str())
+                .map(|model| *model == current_builtin.model.as_str())
+                .unwrap_or(false);
+
+            snapshot_matches || user_model_matches
+        });
+
+        if *hidden_builtin_ids != original {
+            self.save_hidden_builtin_model_profile_ids(hidden_builtin_ids)?;
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
+        let client = Self::create_http_client_with_fallback();
+        let openai_codex_auth = CodexAuthManager::new(db.clone());
+
+        let app_data_dir_path = file_manager.get_app_data_dir();
+        let crypto_service = CryptoService::new(app_data_dir_path)
+            .map_err(|e| AppError::configuration(format!("加密服务初始化失败: {e}")))?;
+
+        Ok(Self {
+            client,
+            db,
+            openai_codex_auth,
+            file_manager,
+            ocr_semaphore: Arc::new(Semaphore::new(MAX_OCR_CONCURRENCY)),
+            crypto_service,
+            cancel_registry: Arc::new(TokioMutex::new(HashSet::new())),
+            cancel_channels: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
+            mcp_tool_cache: Arc::new(RwLock::new(None)),
+            hooks_registry: Arc::new(TokioMutex::new(std::collections::HashMap::new())),
+        })
+    }
+
+    // 对外暴露 HTTP 客户端，便于独立管线重用统一配置的客户端
+    pub fn get_http_client(&self) -> Client {
+        self.client.clone()
+    }
+
+    /// 为媒体预处理和索引兜底提供同一组 OCR 许可。
+    pub fn ocr_semaphore(&self) -> Arc<Semaphore> {
+        Arc::clone(&self.ocr_semaphore)
+    }
+
+    pub fn openai_codex_auth(&self) -> CodexAuthManager {
+        self.openai_codex_auth.clone()
+    }
+
+    // 订阅指定流事件的取消通道（用于独立流式实现）
+    pub async fn subscribe_cancel_stream(&self, stream_event: &str) -> watch::Receiver<bool> {
+        self.register_cancel_channel(stream_event).await
+    }
+
+    // 清理指定流事件的取消通道（用于独立流式实现）
+    pub async fn clear_cancel_stream(&self, stream_event: &str) {
+        self.clear_cancel_channel(stream_event).await;
+    }
+
+    // 若取消在通道注册前已发生，提供一次性消费接口
+    pub async fn consume_pending_cancel(&self, stream_event: &str) -> bool {
+        self.take_cancellation_if_any(stream_event).await
+    }
+
+    fn log_request_body(&self, tag: &str, body: &serde_json::Value) {
+        match serde_json::to_string_pretty(body) {
+            Ok(pretty) => debug!("[{}] 请求体如下:\n{}", tag, pretty),
+            Err(e) => warn!("[{}] 请求体序列化失败: {}", tag, e),
+        }
+    }
+
+    pub fn user_preference_prompt(&self) -> Option<String> {
+        let stored = match self.db.get_setting(USER_PREFERENCES_SETTING_KEY) {
+            Ok(value) => value?,
+            Err(err) => {
+                warn!("[UserPreferences] 读取失败: {}", err);
+                return None;
+            }
+        };
+
+        let trimmed = stored.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        let mut profile = match serde_json::from_str::<StoredUserPreferenceProfile>(trimmed) {
+            Ok(parsed) => parsed,
+            Err(_) => StoredUserPreferenceProfile {
+                enabled: true,
+                notes: trimmed.to_string(),
+                ..Default::default()
+            },
+        };
+
+        if !trimmed.contains("\"enabled\"") {
+            let has_any_content = !profile.background.trim().is_empty()
+                || !profile.goals.trim().is_empty()
+                || !profile.communication.trim().is_empty()
+                || !profile.notes.trim().is_empty();
+            if has_any_content {
+                profile.enabled = true;
+            }
+        }
+
+        // 允许空白字段，但 enabled 为 false 时直接跳过
+        if !profile.enabled {
+            return None;
+        }
+
+        build_user_preference_prompt_from_profile(&profile)
+    }
+
+    fn provider_error(context: &str, err: ProviderError) -> AppError {
+        AppError::llm(format!("{}: {}", context, err))
+    }
+
+    /// 请求前校验推理配置（例如官方 DeepSeek V4 家族的推理强度契约）。
+    ///
+    /// 校验失败在网络 I/O 前返回，避免静默丢弃用户显式给出的值。
+    pub(crate) fn validate_reasoning_config(config: &ApiConfig) -> Result<()> {
+        request_adapter_for_config(config).validate_reasoning_config(config)
+    }
+
+    /// 应用推理相关配置到请求体
+    ///
+    /// 使用子适配器系统处理不同供应商的参数差异：
+    /// - 通过 `provider_type` 查找对应的子适配器
+    /// - 子适配器处理特定供应商的参数格式
+    /// - 最后应用通用参数
+    ///
+    /// ## 子适配器架构
+    /// 详见 `adapters` 模块文档
+    pub fn apply_reasoning_config(
+        body: &mut Value,
+        config: &ApiConfig,
+        enable_thinking: Option<bool>,
+    ) {
+        let Value::Object(map) = body else {
+            return;
+        };
+
+        // Native model-family adapters emit provider-specific fields. When the
+        // selected transport is OpenAI-compatible, keep the model family for
+        // capability detection but shape reasoning parameters in the host
+        // protocol instead.
+        let adapter = request_adapter_for_config(config);
+        // 移除采样参数（如果适配器要求）
+        //
+        // C1 约束：这里的判定必须只看**用户原始档位**，绝不看档位映射结果。
+        // 映射（下方 map_reasoning_level_for_config）只负责改写 effort/budget
+        // 字段本身；若让它参与采样参数判定，改档位就会连带改动
+        // temperature/top_p 等无关参数。
+        if adapter.should_remove_sampling_params(config) {
+            map.remove("temperature");
+            map.remove("top_p");
+            map.remove("presence_penalty");
+            map.remove("frequency_penalty");
+            map.remove("logprobs");
+        }
+
+        // 档位能力映射（统一五档 → 该模型实际协议可接受的档位）。
+        //
+        // 位置选择：必须在适配器执行**之前**，因为各适配器内的归一表（如
+        // generic 的 max→xhigh、gemini 的默认档回退）读的是 config.reasoning_effort。
+        // 在此统一映射后，适配器只需按"该档位已合法"的假设发送，家族差异
+        // 不再散落在 14 个适配器的 match 分支里。
+        //
+        // 作用域：只改 reasoning_effort / thinking_budget 两个字段，
+        // 不触碰 enable_thinking 与任何其他参数（C1）。
+        let mapped_config;
+        let config = {
+            let mapped =
+                crate::llm_manager::reasoning_level_map::map_reasoning_level_for_config(config);
+            match mapped {
+                Some(m) => {
+                    mapped_config = m;
+                    &mapped_config
+                }
+                None => config,
+            }
+        };
+
+        // 应用推理配置
+        let early_return = adapter.apply_reasoning_config(map, config, enable_thinking);
+
+        // C1 约束：档位映射不得改变早期返回语义。early_return 决定后续
+        // apply_common_params（min_p/top_k/repetition_penalty/verbosity/extra_body）
+        // 是否执行，属于"其他请求体参数"的范畴。
+        if early_return {
+            return;
+        }
+
+        // 应用通用参数
+        adapter.apply_common_params(map, config);
+    }
+
+    // -------- Streaming Hooks (for unified pipeline) --------
+    pub async fn register_stream_hooks(
+        &self,
+        stream_event: &str,
+        hooks: std::sync::Arc<dyn LLMStreamHooks>,
+    ) {
+        let key = stream_event.to_string();
+        debug!("[Hook] 注册 hook: key={}", key);
+        let count = {
+            let mut registry = self.hooks_registry.lock().await;
+            registry.insert(key, hooks);
+            registry.len()
+        };
+        debug!("[Hook] 注册后 registry 大小: {}", count);
+    }
+
+    pub async fn unregister_stream_hooks(&self, stream_event: &str) {
+        let key = stream_event.to_string();
+        debug!("[Hook] 注销 hook: key={}", key);
+        self.hooks_registry.lock().await.remove(&key);
+    }
+
+    /// Remove a hook only if the registry still points at the caller's exact Arc allocation.
+    ///
+    /// Cancellation cleanup is spawned from `Drop`, so it may run after a replacement request has
+    /// registered under the same logical key. A key-only remove would silently detach the new
+    /// stream; Arc identity turns cleanup into compare-and-remove.
+    pub async fn unregister_stream_hooks_if_owner(
+        &self,
+        stream_event: &str,
+        owner: &std::sync::Arc<dyn LLMStreamHooks>,
+    ) -> bool {
+        use std::collections::hash_map::Entry;
+
+        let key = stream_event.to_string();
+        let mut registry = self.hooks_registry.lock().await;
+        match registry.entry(key) {
+            Entry::Occupied(entry) if std::sync::Arc::ptr_eq(entry.get(), owner) => {
+                entry.remove();
+                true
+            }
+            Entry::Occupied(_) => {
+                debug!(
+                    "[Hook] 忽略旧 owner 的延迟注销，保留 replacement hook: key={}",
+                    stream_event
+                );
+                false
+            }
+            Entry::Vacant(_) => false,
+        }
+    }
+
+    async fn get_hook(&self, stream_event: &str) -> Option<std::sync::Arc<dyn LLMStreamHooks>> {
+        let registry = self.hooks_registry.lock().await;
+        // 日志已简化：只在 debug 模式下输出
+        registry.get(stream_event).cloned()
+    }
+
+    /// 🔧 P1修复：合并连续的工具调用消息
+    ///
+    /// OpenAI 协议期望：一个 assistant 消息包含 tool_calls 数组，然后跟着多个 tool 消息。
+    /// 当前数据模型每个消息只有一个 tool_call，需要在序列化时合并。
+    ///
+    /// 🔧 Anthropic 最佳实践：必须保留 thinking_content
+    /// "When using thinking enabled + tool calling, you must include thinking_blocks
+    /// from the previous assistant response when sending tool results back."
+    ///
+    /// 输入：[assistant(tc1, thinking1), tool(tr1), assistant(tc2), tool(tr2), assistant(tc3, thinking2), tool(tr3)]
+    /// 输出：[MergedToolCalls([tc1, tc2], thinking1), tool(tr1), tool(tr2), MergedToolCalls([tc3], thinking2), tool(tr3)]
+    ///
+    /// ## 🔧 多轮工具调用边界检测
+    /// 当遇到新的 reasoning_content（包括空字符串）时，表示开始了新一轮的工具调用，
+    /// 需要刷新当前的 pending 组并开始新组，以保持每轮工具调用的边界。
+    /// 这确保了多轮工具调用的思维链都能被正确保留和回传。
+    fn merge_consecutive_tool_calls(history: &[ChatMessage]) -> Vec<MergedChatMessage> {
+        let mut result = Vec::new();
+        let mut pending_tool_calls: Vec<crate::models::ToolCall> = Vec::new();
+        let mut pending_tool_results: Vec<ChatMessage> = Vec::new();
+        let mut current_content = String::new();
+        // 🔧 保留当前轮次的思维链
+        let mut current_thinking_content: Option<String> = None;
+        // 🔧 Gemini 3 思维签名：工具调用场景下必须回传
+        let mut current_thought_signature: Option<String> = None;
+        let mut current_response_reasoning_item: Option<Value> = None;
+
+        for msg in history {
+            if msg.role == "assistant" && msg.tool_call.is_some() {
+                if let Some(tc) = &msg.tool_call {
+                    // 🔧 多轮边界检测：如果遇到新的 reasoning_content（包括空字符串），
+                    // 且已经有待处理的工具调用，则先刷新当前组
+                    let has_new_reasoning = msg.thinking_content.is_some();
+                    let response_reasoning_item = msg
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("openai_responses_reasoning_item"))
+                        .filter(|item| {
+                            item.get("type").and_then(Value::as_str) == Some("reasoning")
+                        })
+                        .cloned();
+                    // A Responses round can carry one reasoning item followed by
+                    // several parallel function calls. The text is attached to the
+                    // first stored result while the full item stays on its adjacent
+                    // call, so either half may arrive after the group has started.
+                    // Only a second value of the same kind proves a new round.
+                    let has_new_reasoning_round =
+                        has_new_reasoning && current_thinking_content.is_some();
+                    let has_new_response_reasoning = response_reasoning_item.is_some()
+                        && current_response_reasoning_item.is_some()
+                        && current_response_reasoning_item.as_ref()
+                            != response_reasoning_item.as_ref();
+
+                    if (has_new_reasoning_round || has_new_response_reasoning)
+                        && !pending_tool_calls.is_empty()
+                    {
+                        // 刷新当前组（这是前一轮的工具调用）
+                        result.push(MergedChatMessage::MergedToolCalls {
+                            tool_calls: std::mem::take(&mut pending_tool_calls),
+                            content: std::mem::take(&mut current_content),
+                            thinking_content: std::mem::take(&mut current_thinking_content),
+                            thought_signature: std::mem::take(&mut current_thought_signature),
+                            response_reasoning_item: std::mem::take(
+                                &mut current_response_reasoning_item,
+                            ),
+                        });
+                        for tr in std::mem::take(&mut pending_tool_results) {
+                            result.push(MergedChatMessage::Regular(tr));
+                        }
+
+                        debug!(
+                            "[LLMManager] New reasoning round detected, flushed previous tool calls group"
+                        );
+                    }
+
+                    // 收集工具调用
+                    pending_tool_calls.push(tc.clone());
+
+                    if current_content.is_empty() && !msg.content.is_empty() {
+                        current_content = msg.content.clone();
+                    }
+
+                    // 保留当前轮次的思维链（只保留第一个出现的字段，空字符串也必须回传）
+                    if current_thinking_content.is_none() && has_new_reasoning {
+                        current_thinking_content = msg.thinking_content.clone();
+                    }
+                    // 保留当前轮次的思维签名（只保留第一个非空的）
+                    if current_thought_signature.is_none() {
+                        current_thought_signature = msg.thought_signature.clone();
+                    }
+                    if current_response_reasoning_item.is_none() {
+                        current_response_reasoning_item = response_reasoning_item;
+                    }
+                }
+            } else if msg.role == "tool" {
+                // 收集工具结果
+                pending_tool_results.push(msg.clone());
+            } else {
+                // 非工具消息，先刷新待处理的工具调用
+                if !pending_tool_calls.is_empty() {
+                    result.push(MergedChatMessage::MergedToolCalls {
+                        tool_calls: std::mem::take(&mut pending_tool_calls),
+                        content: std::mem::take(&mut current_content),
+                        thinking_content: std::mem::take(&mut current_thinking_content),
+                        thought_signature: std::mem::take(&mut current_thought_signature),
+                        response_reasoning_item: std::mem::take(
+                            &mut current_response_reasoning_item,
+                        ),
+                    });
+                    for tr in std::mem::take(&mut pending_tool_results) {
+                        result.push(MergedChatMessage::Regular(tr));
+                    }
+                }
+                result.push(MergedChatMessage::Regular(msg.clone()));
+            }
+        }
+
+        // 处理尾部的工具调用
+        if !pending_tool_calls.is_empty() {
+            result.push(MergedChatMessage::MergedToolCalls {
+                tool_calls: pending_tool_calls,
+                content: current_content,
+                thinking_content: current_thinking_content,
+                thought_signature: current_thought_signature,
+                response_reasoning_item: current_response_reasoning_item,
+            });
+            for tr in pending_tool_results {
+                result.push(MergedChatMessage::Regular(tr));
+            }
+        }
+
+        result
+    }
+
+    /// 🔧 合并连续同角色的用户消息（防御性措施）
+    ///
+    /// 部分 LLM API（如 Anthropic Claude 原生 API、文心一言）严格要求 user/assistant 交替。
+    /// 当以下场景发生时，可能产生连续的 user 消息：
+    /// 1. assistant 回复为空（被取消/失败）被 `load_chat_history` 跳过
+    /// 2. 会话分支后用户继续发送新消息
+    /// 3. 消息编辑等边界情况
+    ///
+    /// 此函数在 messages 数组构建完成后、发送请求前调用，
+    /// 将连续的同角色 user 消息用 `\n\n` 合并为单条消息。
+    /// 对 system / assistant / tool 消息不做合并（它们有各自的语义）。
+    ///
+    /// 注意：仅合并 content 为纯字符串的 user 消息。
+    /// 对于 content 为数组（多模态）的情况，将数组元素追加到前一条。
+    pub fn merge_consecutive_user_messages(messages: &mut Vec<serde_json::Value>) {
+        if messages.len() < 2 {
+            return;
+        }
+
+        let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+
+        for msg in messages.drain(..) {
+            let is_user = msg.get("role").and_then(|r| r.as_str()) == Some("user");
+
+            if !is_user {
+                merged.push(msg);
+                continue;
+            }
+
+            // 检查前一条是否也是 user
+            let prev_is_user = merged
+                .last()
+                .and_then(|m| m.get("role"))
+                .and_then(|r| r.as_str())
+                == Some("user");
+
+            if !prev_is_user {
+                merged.push(msg);
+                continue;
+            }
+
+            // 需要合并：将当前 user 消息的 content 追加到前一条
+            let prev = merged.last_mut().unwrap();
+            let prev_content = prev.get("content").cloned();
+            let curr_content = msg.get("content").cloned();
+
+            match (prev_content, curr_content) {
+                // 两条都是纯文本 → 用 \n\n 拼接
+                (
+                    Some(serde_json::Value::String(ref prev_text)),
+                    Some(serde_json::Value::String(ref curr_text)),
+                ) => {
+                    let merged_text = format!("{}\n\n{}", prev_text, curr_text);
+                    let combined_len = merged_text.len();
+                    prev["content"] = serde_json::Value::String(merged_text);
+                    log::warn!(
+                        "[LLMManager] Merged 2 consecutive user messages (text+text, combined_len={})",
+                        combined_len
+                    );
+                }
+                // 前一条是数组（多模态），当前也是数组 → 追加元素
+                (
+                    Some(serde_json::Value::Array(ref _prev_arr)),
+                    Some(serde_json::Value::Array(ref curr_arr)),
+                ) => {
+                    let curr_len = curr_arr.len();
+                    if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
+                        arr.extend(curr_arr.clone());
+                        log::warn!(
+                            "[LLMManager] Merged 2 consecutive user messages (array+array, appended {} parts)",
+                            curr_len
+                        );
+                    }
+                }
+                // 前一条是纯文本，当前是数组 → 转换前一条为数组后追加
+                (
+                    Some(serde_json::Value::String(prev_text)),
+                    Some(serde_json::Value::Array(curr_arr)),
+                ) => {
+                    let mut new_content = vec![json!({"type": "text", "text": prev_text})];
+                    let curr_len = curr_arr.len();
+                    new_content.extend(curr_arr);
+                    prev["content"] = serde_json::Value::Array(new_content);
+                    log::warn!(
+                        "[LLMManager] Merged 2 consecutive user messages (text+array, appended {} parts)",
+                        curr_len
+                    );
+                }
+                // 前一条是数组，当前是纯文本 → 追加 text 元素
+                (
+                    Some(serde_json::Value::Array(ref _prev_arr)),
+                    Some(serde_json::Value::String(ref curr_text)),
+                ) => {
+                    if let Some(arr) = prev.get_mut("content").and_then(|c| c.as_array_mut()) {
+                        arr.push(json!({"type": "text", "text": curr_text}));
+                        log::warn!(
+                            "[LLMManager] Merged 2 consecutive user messages (array+text, text_len={})",
+                            curr_text.len()
+                        );
+                    }
+                }
+                // 其他情况（None 等）→ 不合并，直接追加
+                _ => {
+                    merged.push(msg);
+                }
+            }
+        }
+
+        *messages = merged;
+    }
+
+    /// 🔧 C2修复：合并序列化后的连续 assistant tool_calls 消息
+    ///
+    /// OpenAI API 要求同一轮的多个 tool_calls 在一个 assistant 消息中。
+    /// 此函数在 JSON messages 数组上操作，将连续的 `{"role":"assistant","tool_calls":[...]}`
+    /// 消息合并为一个，其 tool_calls 数组包含所有工具调用。
+    ///
+    /// 合并规则：
+    /// - 仅合并连续的、都包含 tool_calls 的 assistant 消息
+    /// - 中间不能有 tool/user 消息（那表示不同轮次）
+    /// - 合并后保留第一个消息的 content
+    pub(crate) fn merge_consecutive_assistant_tool_calls(messages: &mut Vec<serde_json::Value>) {
+        if messages.len() < 2 {
+            return;
+        }
+
+        let mut merged: Vec<serde_json::Value> = Vec::with_capacity(messages.len());
+
+        for msg in messages.drain(..) {
+            let is_assistant_with_tools = msg.get("role").and_then(|r| r.as_str())
+                == Some("assistant")
+                && msg
+                    .get("tool_calls")
+                    .and_then(|tc| tc.as_array())
+                    .map(|a| !a.is_empty())
+                    .unwrap_or(false);
+
+            if !is_assistant_with_tools {
+                merged.push(msg);
+                continue;
+            }
+
+            // 检查前一条是否也是 assistant with tool_calls
+            let prev_is_assistant_with_tools = merged
+                .last()
+                .map(|m| {
+                    m.get("role").and_then(|r| r.as_str()) == Some("assistant")
+                        && m.get("tool_calls")
+                            .and_then(|tc| tc.as_array())
+                            .map(|a| !a.is_empty())
+                            .unwrap_or(false)
+                })
+                .unwrap_or(false);
+
+            if !prev_is_assistant_with_tools {
+                merged.push(msg);
+                continue;
+            }
+
+            // 合并：将当前消息的 tool_calls 追加到前一条
+            let prev = merged.last_mut().unwrap();
+            if let Some(curr_tool_calls) = msg.get("tool_calls").and_then(|tc| tc.as_array()) {
+                let curr_len = curr_tool_calls.len();
+                if let Some(prev_arr) = prev.get_mut("tool_calls").and_then(|tc| tc.as_array_mut())
+                {
+                    prev_arr.extend(curr_tool_calls.clone());
+                    log::debug!(
+                        "[LLMManager] C2fix: Merged consecutive assistant tool_calls (+{} calls, total={})",
+                        curr_len,
+                        prev_arr.len()
+                    );
+                }
+            }
+        }
+
+        *messages = merged;
+    }
+
+    /// 发送专用流式事件（根据工具类型和citations的source_type分类）
+    fn emit_specialized_source_events(
+        window: &Window,
+        stream_event: &str,
+        tc: &crate::models::ToolCall,
+        tr: &crate::models::ToolResult,
+        citations_value: &serde_json::Value,
+    ) {
+        if tr.ok && !citations_value.is_null() {
+            if let serde_json::Value::Array(citations_array) = citations_value {
+                if !citations_array.is_empty() {
+                    match tc.tool_name.as_str() {
+                        "web_search" => {
+                            // 发送web_search专用流式事件
+                            let web_search_event = json!({
+                                "sources": citations_array,
+                                "tool_name": "web_search",
+                                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                            });
+                            if let Err(e) = window
+                                .emit(&format!("{}_web_search", stream_event), &web_search_event)
+                            {
+                                error!("emit web_search event failed: {}", e);
+                            }
+                        }
+                        "rag" => {
+                            // 发送rag专用流式事件
+                            let rag_event = json!({
+                                "sources": citations_array,
+                                "tool_name": "rag",
+                                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                            });
+                            if let Err(e) =
+                                window.emit(&format!("{}_rag_sources", stream_event), &rag_event)
+                            {
+                                error!("emit rag event failed: {}", e);
+                            }
+                        }
+                        "memory" => {
+                            // 发送memory专用流式事件
+                            let memory_event = json!({
+                                "sources": citations_array,
+                                "tool_name": "memory",
+                                "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                            });
+                            if let Err(e) = window
+                                .emit(&format!("{}_memory_sources", stream_event), &memory_event)
+                            {
+                                error!("emit memory event failed: {}", e);
+                            }
+                        }
+                        _ => {
+                            // 其他工具：根据citations中的source_type进行分类
+                            let mut web_sources = Vec::new();
+                            let mut rag_sources = Vec::new();
+                            let mut memory_sources = Vec::new();
+
+                            for citation in citations_array {
+                                if let Some(source_type) =
+                                    citation.get("source_type").and_then(|s| s.as_str())
+                                {
+                                    match source_type {
+                                        "search" => web_sources.push(citation.clone()),
+                                        "rag" => rag_sources.push(citation.clone()),
+                                        "memory" => memory_sources.push(citation.clone()),
+                                        _ => rag_sources.push(citation.clone()), // 默认归类到rag
+                                    }
+                                } else {
+                                    rag_sources.push(citation.clone()); // 无source_type默认归类到rag
+                                }
+                            }
+
+                            // 分别发送不同类型的事件
+                            if !web_sources.is_empty() {
+                                let web_search_event = json!({
+                                    "sources": web_sources,
+                                    "tool_name": tc.tool_name,
+                                    "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                                });
+                                if let Err(e) = window.emit(
+                                    &format!("{}_web_search", stream_event),
+                                    &web_search_event,
+                                ) {
+                                    error!("emit classified web_search event failed: {}", e);
+                                }
+                            }
+                            if !rag_sources.is_empty() {
+                                let rag_event = json!({
+                                    "sources": rag_sources,
+                                    "tool_name": tc.tool_name,
+                                    "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                                });
+                                if let Err(e) = window
+                                    .emit(&format!("{}_rag_sources", stream_event), &rag_event)
+                                {
+                                    error!("emit classified rag event failed: {}", e);
+                                }
+                            }
+                            if !memory_sources.is_empty() {
+                                let memory_event = json!({
+                                    "sources": memory_sources,
+                                    "tool_name": tc.tool_name,
+                                    "timestamp": chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string()
+                                });
+                                if let Err(e) = window.emit(
+                                    &format!("{}_memory_sources", stream_event),
+                                    &memory_event,
+                                ) {
+                                    error!("emit classified memory event failed: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// 检测 Gemini 非流式响应中的安全阻断，并返回结构化错误消息（用于非流式路径回传给前端）
+    pub(crate) fn extract_gemini_safety_error(resp: &serde_json::Value) -> Option<String> {
+        // 1) promptFeedback.blockReason
+        if let Some(obj) = resp.as_object() {
+            if let Some(prompt_feedback) = obj.get("promptFeedback") {
+                if let Some(block_reason) =
+                    prompt_feedback.get("blockReason").and_then(|v| v.as_str())
+                {
+                    let info = serde_json::json!({
+                        "type": "safety_error",
+                        "reason": block_reason,
+                        "details": prompt_feedback
+                    });
+                    return Some(format!("Gemini安全阻断: {}", info));
+                }
+            }
+        }
+        // 2) candidates[*].finishReason == SAFETY
+        if let Some(cands) = resp.get("candidates").and_then(|v| v.as_array()) {
+            for cand in cands {
+                if let Some(fr) = cand.get("finishReason").and_then(|v| v.as_str()) {
+                    if fr == "SAFETY" {
+                        let info = serde_json::json!({
+                            "type": "safety_error",
+                            "reason": fr,
+                            "details": cand
+                        });
+                        return Some(format!("Gemini安全阻断: {}", info));
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Request cancellation for a given stream event name
+    pub async fn request_cancel_stream(&self, stream_event: &str) {
+        info!(
+            "[LLM Manager] request_cancel_stream 开始处理: {}",
+            stream_event
+        );
+
+        // Notify channel first (notification-style cancel)
+        debug!("[LLM Manager] 检查 cancel_channels...");
+        if let Some(sender) = self.cancel_channels.lock().await.get(stream_event).cloned() {
+            debug!("[LLM Manager] 找到 cancel_channel，发送取消信号...");
+            if sender.send(true).is_ok() {
+                info!(
+                    "[LLM Manager] 取消信号已成功发送到 channel: {}",
+                    stream_event
+                );
+            } else {
+                warn!(
+                    "[LLM Manager] 取消信号发送失败（channel 已关闭）: {}",
+                    stream_event
+                );
+            }
+        } else {
+            debug!(
+                "[LLM Manager] 未找到对应的 cancel_channel: {}",
+                stream_event
+            );
+        }
+
+        // Fallback registry check (polling)
+        debug!("[LLM Manager] 写入 cancel_registry 作为备用...");
+        let mut guard = self.cancel_registry.lock().await;
+        guard.insert(stream_event.to_string());
+        debug!("[LLM Manager] 已将取消标记写入 registry: {}", stream_event);
+
+        debug!("[LLM Manager] request_cancel_stream 完成");
+    }
+
+    async fn take_cancellation_if_any(&self, stream_event: &str) -> bool {
+        let mut guard = self.cancel_registry.lock().await;
+        if guard.remove(stream_event) {
+            debug!(
+                "[Cancel] Acknowledged and cleared cancel flag for stream: {}",
+                stream_event
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    async fn register_cancel_channel(&self, stream_event: &str) -> watch::Receiver<bool> {
+        let (tx, rx) = watch::channel(false);
+        self.cancel_channels
+            .lock()
+            .await
+            .insert(stream_event.to_string(), tx);
+        rx
+    }
+
+    async fn clear_cancel_channel(&self, stream_event: &str) {
+        self.cancel_channels.lock().await.remove(stream_event);
+    }
+
+    /// Clear both cancellation mechanisms for a run that has definitively ended.
+    ///
+    /// Outer `select!` callers may drop the model2 future before its normal channel cleanup runs.
+    /// Run-scoped keys make this safe: no later attempt can legitimately reuse the same key.
+    pub async fn clear_cancel_artifacts(&self, stream_event: &str) {
+        self.cancel_channels.lock().await.remove(stream_event);
+        self.cancel_registry.lock().await.remove(stream_event);
+    }
+
+    /// 取消所有以某个前缀匹配的流事件（用于题目集分割按 session 级别取消）
+    pub async fn cancel_streams_by_prefix(&self, prefix: &str) {
+        let keys: Vec<String> = self.cancel_channels.lock().await.keys().cloned().collect();
+        for key in keys {
+            if key.starts_with(prefix) {
+                self.request_cancel_stream(&key).await;
+            }
+        }
+        // 同时在 registry 中落取消标记，避免 race
+        let guard = self.cancel_registry.lock().await;
+        for key in guard.clone().iter() {
+            if key.starts_with(prefix) {
+                // 已存在则忽略；否则追加
+            }
+        }
+    }
+
+    /// 创建HTTP客户端，使用渐进式回退策略确保始终有合理的配置
+    fn create_http_client_with_fallback() -> Client {
+        // 创建默认请求头，显式禁用压缩，防止后端收到 gzip/deflate 数据导致乱码
+        let mut headers = HeaderMap::new();
+        headers.insert("Accept-Encoding", "identity".parse().unwrap());
+
+        // 尝试1: 完整配置的客户端（推荐配置）
+        let client_builder = ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(300)) // 全局超时300秒（流式请求需要更长时间）
+            .connect_timeout(std::time::Duration::from_secs(30)) // 连接超时30秒
+            .danger_accept_invalid_certs(false) // 保持SSL验证
+            .default_headers(headers.clone());
+
+        if let Ok(client) = client_builder.build() {
+            info!("HTTP客户端创建成功: 完整配置（超时120s，连接15s，rustls TLS）");
+            return client;
+        }
+
+        // 尝试2: 简化TLS配置的客户端
+        let client_builder_2 = ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(300))
+            .connect_timeout(std::time::Duration::from_secs(30))
+            .danger_accept_invalid_certs(false)
+            .default_headers(headers.clone());
+
+        if let Ok(client) = client_builder_2.build() {
+            info!("HTTP客户端创建成功: 简化TLS配置（超时120s，连接15s，系统TLS）");
+            return client;
+        }
+
+        // 尝试3: 仅超时配置的客户端
+        if let Ok(client) = ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(300))
+            .default_headers(headers.clone())
+            .build()
+        {
+            info!("HTTP客户端创建成功: 仅超时配置（超时120s）");
+            return client;
+        }
+
+        // 尝试4: 最小配置的客户端（保证基本超时）
+        if let Ok(client) = ClientBuilder::new()
+            .timeout(std::time::Duration::from_secs(180)) // 最少180秒超时
+            .default_headers(headers.clone())
+            .build()
+        {
+            info!("HTTP客户端创建成功: 最小配置（超时60s）");
+            return client;
+        }
+
+        // 最后回退: 默认客户端
+        warn!("所有配置均失败，使用默认HTTP客户端（无超时配置）");
+        warn!("这可能导致网络请求挂起，建议检查系统网络和TLS配置");
+        Client::new()
+    }
+
+    /// 检测Base64编码图像的真实格式
+    fn detect_image_format_from_base64(base64_data: &str) -> &'static str {
+        // 解码Base64获取前几个字节来判断格式
+        if let Ok(decoded) =
+            general_purpose::STANDARD.decode(base64_data.get(..100).unwrap_or(base64_data))
+        {
+            Self::detect_image_format_from_bytes(&decoded)
+        } else {
+            "jpeg" // 默认格式
+        }
+    }
+    /// 根据图像字节数据检测格式
+    fn detect_image_format_from_bytes(image_data: &[u8]) -> &'static str {
+        if image_data.len() < 4 {
+            return "jpeg"; // 默认格式
+        }
+
+        // JPEG: FF D8 FF
+        if image_data.starts_with(&[0xFF, 0xD8, 0xFF]) {
+            "jpeg"
+        }
+        // PNG: 89 50 4E 47 0D 0A 1A 0A
+        else if image_data.starts_with(&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) {
+            "png"
+        }
+        // GIF: 47 49 46 38 (GIF8)
+        else if image_data.starts_with(&[0x47, 0x49, 0x46, 0x38]) {
+            "gif"
+        }
+        // WebP: 52 49 46 46 ... 57 45 42 50 (RIFF...WEBP)
+        else if image_data.len() >= 12
+            && image_data.starts_with(&[0x52, 0x49, 0x46, 0x46])
+            && image_data[8..12] == [0x57, 0x45, 0x42, 0x50]
+        {
+            "webp"
+        }
+        // BMP: 42 4D (BM)
+        else if image_data.starts_with(&[0x42, 0x4D]) {
+            "bmp"
+        } else {
+            "jpeg" // 默认格式
+        }
+    }
+    // P0修复：源抑制设置检查器
+
+    /// 初始化供应商与模型条目结构，兼容旧版 api_configs
+    pub async fn bootstrap_vendor_model_config(&self) -> Result<()> {
+        let vendor_exists = self
+            .db
+            .get_setting("vendor_configs")
+            .map_err(|e| AppError::database(format!("检测供应商配置失败: {}", e)))?
+            .is_some();
+        let profile_exists = self
+            .db
+            .get_setting("model_profiles")
+            .map_err(|e| AppError::database(format!("检测模型条目失败: {}", e)))?
+            .is_some();
+
+        if vendor_exists && profile_exists {
+            self.repair_vendor_model_protocol_settings().await?;
+            return Ok(());
+        }
+
+        let legacy_str = self
+            .db
+            .get_setting("api_configs")
+            .map_err(|e| AppError::database(format!("获取旧版API配置失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+
+        let mut legacy_configs = if legacy_str.trim().is_empty() || legacy_str.trim() == "[]" {
+            Vec::new()
+        } else {
+            match serde_json::from_str::<Vec<ApiConfig>>(&legacy_str) {
+                Ok(mut configs) => {
+                    for config in &mut configs {
+                        config.api_key = self.decrypt_api_key_if_needed(&config.api_key)?;
+                    }
+                    configs
+                }
+                Err(_) => {
+                    info!("检测到旧版API配置格式，正在迁移到供应商结构...");
+                    self.migrate_api_configs_legacy(&legacy_str).await?
+                }
+            }
+        };
+
+        if legacy_configs.is_empty() {
+            // 即使旧配置为空，也至少要初始化空数组，便于后续写入
+            self.save_vendor_model_configs(&[], &[]).await?;
+            return Ok(());
+        }
+
+        let (mut vendors, mut profiles) = self
+            .flatten_api_configs_to_vendor_profiles(&legacy_configs)
+            .await?;
+        legacy_configs.clear();
+
+        // 迁移时丢弃内置配置，由运行时动态注入
+        vendors.retain(|v| !v.is_builtin);
+        profiles.retain(|p| !p.is_builtin);
+
+        self.save_vendor_model_configs(&vendors, &profiles).await?;
+        Ok(())
+    }
+
+    async fn repair_vendor_model_protocol_settings(&self) -> Result<()> {
+        let raw_vendors = self
+            .db
+            .get_setting("vendor_configs")
+            .map_err(|e| AppError::database(format!("读取供应商配置失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+        let raw_profiles = self
+            .db
+            .get_setting("model_profiles")
+            .map_err(|e| AppError::database(format!("读取模型条目失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+
+        let mut vendors = deserialize_vendor_configs(&raw_vendors)
+            .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
+        let mut profiles: Vec<ModelProfile> = serde_json::from_str(&raw_profiles)
+            .map_err(|e| AppError::configuration(format!("解析模型条目失败: {}", e)))?;
+
+        let mut changed = false;
+        for vendor in &mut vendors {
+            changed |= normalize_vendor_protocol_config(vendor);
+        }
+        let vendor_map: HashMap<String, VendorConfig> = vendors
+            .iter()
+            .cloned()
+            .map(|vendor| (vendor.id.clone(), vendor))
+            .collect();
+        let mut vendor_map = vendor_map;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                vendor_map.entry(vendor.id.clone()).or_insert(vendor);
+            }
+        }
+        for profile in &mut profiles {
+            let vendor = vendor_map.get(&profile.vendor_id);
+            changed |= normalize_model_profile_protocol_config(profile, vendor);
+        }
+
+        if changed {
+            info!(
+                "[VendorModel] Normalized persisted protocol settings for OpenAI-compatible providers"
+            );
+            self.save_vendor_model_configs(&vendors, &profiles).await?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_vendor_configs(&self) -> Result<Vec<VendorConfig>> {
+        self.bootstrap_vendor_model_config().await?;
+        let mut vendors = self.read_user_vendor_configs().await?;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for mut vendor in builtin_vendors {
+                if let Some(existing) = vendors.iter_mut().find(|v| v.id == vendor.id) {
+                    // 同步内置供应商的信息字段，保留用户自定义的 base_url/headers 等
+                    existing.notes = vendor.notes.clone();
+                    existing.name = vendor.name.clone();
+                    existing.website_url = vendor.website_url.clone();
+                    if vendor.auth_mode.is_some() {
+                        existing.auth_mode = vendor.auth_mode.clone();
+                    }
+                    existing.is_builtin = true;
+                    continue;
+                }
+                vendor.api_key = String::new();
+                vendors.push(vendor);
+            }
+        }
+        // Renderer 只接收凭据存在性占位符。真实主/备用 key 始终留在 Rust 边界内，
+        // 运行时请求与模型发现通过 vendor_configs_for_runtime 读取。
+        for vendor in &mut vendors {
+            let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
+            let mut has_api_key = !vendor.api_key.trim().is_empty()
+                && vendor.api_key != "***"
+                && !vendor.api_key.chars().all(|character| character == '*');
+            if is_builtin_vendor && !has_api_key {
+                let secret_key = format!("{}.api_key", vendor.id);
+                if let Ok(Some(key)) = self.db.get_secret(&secret_key) {
+                    if !key.is_empty() {
+                        has_api_key = true;
+                    }
+                }
+                // 兼容旧的 SiliconFlow 存储格式
+                if vendor.id == "builtin-siliconflow" && !has_api_key {
+                    if let Ok(Some(sf_key)) = self.db.get_secret("siliconflow.api_key") {
+                        if !sf_key.is_empty() {
+                            has_api_key = true;
+                        }
+                    }
+                }
+            }
+            vendor.api_key = if has_api_key {
+                "***".to_string()
+            } else {
+                String::new()
+            };
+            vendor.api_keys = vec!["***".to_string(); vendor.api_keys.len()];
+            for (name, value) in &mut vendor.headers {
+                if is_sensitive_vendor_header(name) && !value.trim().is_empty() {
+                    *value = "***".to_string();
+                }
+            }
+            if is_builtin_vendor {
+                vendor.is_builtin = true;
+            }
+        }
+        Ok(vendors)
+    }
+
+    async fn read_user_vendor_configs(&self) -> Result<Vec<VendorConfig>> {
+        let raw = self
+            .db
+            .get_setting("vendor_configs")
+            .map_err(|e| AppError::database(format!("获取供应商配置失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+
+        let mut vendors = deserialize_vendor_configs(&raw)
+            .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
+
+        // 容错处理：解密失败时清空 API 密钥而不是让整个配置加载失败
+        for vendor in &mut vendors {
+            for (name, value) in &mut vendor.headers {
+                if !is_sensitive_vendor_header(name) {
+                    continue;
+                }
+                match self.decrypt_api_key_if_needed(value) {
+                    Ok(decrypted) => *value = decrypted,
+                    Err(error) => {
+                        tracing::warn!(
+                            "⚠️ 供应商 {} 的敏感请求头 {} 解密失败，将移除该请求头: {}",
+                            vendor.id,
+                            name,
+                            error
+                        );
+                        value.clear();
+                    }
+                }
+            }
+            vendor.headers.retain(|_, value| !value.is_empty());
+            // 🆕 Failover：备用 key 列表逐个解密，解密失败/空值的条目丢弃
+            vendor.api_keys = vendor
+                .api_keys
+                .iter()
+                .filter_map(|k| self.decrypt_api_key_if_needed(k).ok())
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+                .collect();
+            match self.decrypt_api_key_if_needed(&vendor.api_key) {
+                Ok(decrypted) => {
+                    // 迁移逻辑：如果是内置供应商且成功解密了 API key，迁移到安全存储
+                    let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
+                    if is_builtin_vendor && !decrypted.is_empty() {
+                        let secret_key = format!("{}.api_key", vendor.id);
+                        if let Err(e) = self.db.save_secret(&secret_key, &decrypted) {
+                            tracing::warn!(
+                                "⚠️ 迁移内置供应商 {} 的 API 密钥到安全存储失败: {}",
+                                vendor.id,
+                                e
+                            );
+                        } else {
+                            tracing::info!(
+                                "✅ 已迁移内置供应商 {} 的 API 密钥到安全存储",
+                                vendor.id
+                            );
+                        }
+                        // 迁移后不再向上游返回明文（运行期会从安全存储读取）
+                        vendor.api_key = String::new();
+                        vendor.is_builtin = true;
+                        continue;
+                    }
+                    vendor.api_key = decrypted;
+                }
+                Err(e) => {
+                    // 记录警告但不中断加载
+                    tracing::warn!(
+                        "⚠️ 供应商 {} 的 API 密钥解密失败，将清空密钥: {}",
+                        vendor.id,
+                        e
+                    );
+                    // 清空密钥，用户需要重新配置
+                    vendor.api_key = String::new();
+                }
+            }
+            normalize_vendor_protocol_config(vendor);
+        }
+        Ok(vendors)
+    }
+
+    async fn vendor_configs_for_runtime(&self) -> Result<Vec<VendorConfig>> {
+        let mut vendors = self.read_user_vendor_configs().await?;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                if let Some(existing) = vendors.iter_mut().find(|v| v.id == vendor.id) {
+                    if vendor.auth_mode.is_some() {
+                        existing.auth_mode = vendor.auth_mode.clone();
+                    }
+                    continue;
+                }
+                vendors.push(vendor);
+            }
+        }
+
+        // 内置供应商的 API key 统一通过安全存储管理（避免主密钥不稳定导致的解密问题）
+        // 存储格式：{vendor_id}.api_key，如 "builtin-siliconflow.api_key"
+        // 注意：使用 vendor.id.starts_with("builtin-") 判断，而不是 is_builtin 字段
+        // 因为旧数据可能有 is_builtin=false 的内置供应商
+        for vendor in &mut vendors {
+            let is_builtin_vendor = vendor.is_builtin || vendor.id.starts_with("builtin-");
+            if is_builtin_vendor {
+                let is_invalid = vendor.api_key.is_empty()
+                    || vendor.api_key == "***"
+                    || vendor.api_key.chars().all(|c| c == '*');
+                if is_invalid {
+                    // 从安全存储读取 API key
+                    let secret_key = format!("{}.api_key", vendor.id);
+                    if let Ok(Some(key)) = self.db.get_secret(&secret_key) {
+                        if !key.is_empty() {
+                            vendor.api_key = key;
+                        }
+                    }
+                    // 兼容旧的 SiliconFlow 存储格式
+                    if vendor.id == "builtin-siliconflow" && vendor.api_key.is_empty() {
+                        if let Ok(Some(sf_key)) = self.db.get_secret("siliconflow.api_key") {
+                            if !sf_key.is_empty() {
+                                vendor.api_key = sf_key;
+                            }
+                        }
+                    }
+                }
+                // 确保 is_builtin 字段正确（修复旧数据）
+                vendor.is_builtin = true;
+            }
+        }
+
+        Ok(vendors)
+    }
+
+    pub async fn vendor_config_for_runtime(&self, vendor_id: &str) -> Result<VendorConfig> {
+        self.vendor_configs_for_runtime()
+            .await?
+            .into_iter()
+            .find(|vendor| vendor.id == vendor_id)
+            .ok_or_else(|| AppError::configuration("供应商不存在或已被删除"))
+    }
+
+    /// 查询 OpenCode Go 订阅用量（公开的 `/zen/go/v1/usage`）。
+    pub async fn opencode_go_usage(&self, vendor_id: &str) -> Result<opencode_go::OpenCodeGoUsage> {
+        let vendor = self.vendor_config_for_runtime(vendor_id).await?;
+        let is_go_vendor = vendor.id == opencode_go::VENDOR_ID
+            || vendor
+                .provider_type
+                .eq_ignore_ascii_case(opencode_go::PROVIDER_TYPE);
+        if !is_go_vendor {
+            return Err(AppError::validation("该供应商不是 OpenCode Go"));
+        }
+        let primary = if vendor.is_builtin {
+            vendor.api_key.trim().to_string()
+        } else {
+            self.decrypt_api_key_if_needed(&vendor.api_key)?
+                .trim()
+                .to_string()
+        };
+        let api_key = std::iter::once(primary.as_str())
+            .chain(vendor.api_keys.iter().map(String::as_str))
+            .map(str::trim)
+            .find(|key| !key.is_empty() && !key.chars().all(|ch| ch == '*'))
+            .map(str::to_string)
+            .ok_or_else(|| AppError::validation("请先填写 OpenCode Go 的 API Key"))?;
+        let client =
+            opencode_go::usage_client().map_err(|error| AppError::network(error.message()))?;
+        opencode_go::fetch_usage(&client, &api_key)
+            .await
+            .map_err(|error| match error {
+                opencode_go::OpenCodeGoUsageError::Network(_) => AppError::network(error.message()),
+                _ => AppError::llm(error.message()),
+            })
+    }
+
+    /// 按 vendor_id + 模型名解析已保存模型条目的运行期配置（与生产聊天完全一致的
+    /// vendor+profile 合并结果）。连接测试用它构造探测请求，避免测试路径与生产
+    /// 路径的能力字段/协议/思考配置漂移。无匹配条目时返回 None（草稿配置场景）。
+    pub async fn runtime_config_for_vendor_model(
+        &self,
+        vendor_id: &str,
+        model: &str,
+    ) -> Option<ApiConfig> {
+        let vendor = self.vendor_config_for_runtime(vendor_id).await.ok()?;
+        let profiles = self.model_profiles_for_runtime().await.ok()?;
+        let profile = profiles
+            .into_iter()
+            .find(|profile| profile.vendor_id == vendor_id && profile.model == model)?;
+        let codex_authenticated = self.openai_codex_auth.status().await.has_usable_session;
+        self.merge_vendor_profile(&vendor, &profile, codex_authenticated)
+            .ok()
+            .map(|resolved| resolved.runtime)
+    }
+
+    pub async fn save_vendor_configs(&self, configs: &[VendorConfig]) -> Result<()> {
+        // 读取现有配置，用于保留未更新的 API key
+        let mut existing_vendors = self.read_user_vendor_configs().await.unwrap_or_default();
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                if !existing_vendors
+                    .iter()
+                    .any(|existing| existing.id == vendor.id)
+                {
+                    existing_vendors.push(vendor);
+                }
+            }
+        }
+        let existing_map: std::collections::HashMap<String, VendorConfig> = existing_vendors
+            .into_iter()
+            .map(|vendor| (vendor.id.clone(), vendor))
+            .collect();
+
+        // 先完成跨配置校验，再触碰任何安全存储，避免列表后部校验失败时
+        // 前部内置供应商的密钥已经被部分更新。
+        for cfg in configs {
+            for (name, value) in &cfg.headers {
+                reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                    .map_err(|_| AppError::validation(format!("无效的供应商请求头名称: {name}")))?;
+                reqwest::header::HeaderValue::from_str(value)
+                    .map_err(|_| AppError::validation("供应商请求头包含无效字符"))?;
+            }
+            let Some(existing) = existing_map.get(&cfg.id) else {
+                continue;
+            };
+            if api_origins_match(&existing.base_url, &cfg.base_url) {
+                continue;
+            }
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            if !uses_no_auth {
+                if is_masked_secret(&cfg.api_key) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+                if cfg.api_keys.iter().any(|key| is_masked_secret(key)) {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                    ));
+                }
+            }
+            if cfg
+                .headers
+                .iter()
+                .any(|(name, value)| is_sensitive_vendor_header(name) && is_masked_secret(value))
+            {
+                return Err(AppError::validation(
+                    "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                ));
+            }
+        }
+
+        let mut sanitized = Vec::new();
+        for cfg in configs {
+            let mut clone = cfg.clone();
+            normalize_vendor_protocol_config(&mut clone);
+
+            let existing = existing_map.get(&cfg.id);
+            let origin_changed =
+                existing.is_some_and(|vendor| !api_origins_match(&vendor.base_url, &cfg.base_url));
+            let uses_no_auth = cfg
+                .auth_mode
+                .as_deref()
+                .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+            let mut protected_headers = HashMap::new();
+            for (name, value) in &cfg.headers {
+                if !is_sensitive_vendor_header(name) {
+                    protected_headers.insert(name.clone(), value.clone());
+                    continue;
+                }
+                let trimmed = value.trim();
+                let keep_placeholder = trimmed == "***"
+                    || (!trimmed.is_empty() && trimmed.chars().all(|character| character == '*'));
+                if keep_placeholder && origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入敏感请求头",
+                    ));
+                }
+                let effective_value = if keep_placeholder {
+                    existing
+                        .and_then(|vendor| vendor.headers.get(name))
+                        .map(String::as_str)
+                        .unwrap_or_default()
+                } else {
+                    trimmed
+                };
+                if !effective_value.is_empty() {
+                    protected_headers.insert(name.clone(), self.encrypt_api_key(effective_value)?);
+                }
+            }
+            clone.headers = protected_headers;
+
+            // Failover 备用 key 按位置合并：掩码保留对应旧值，明文替换对应项，
+            // 空行删除对应位置，缩短列表可删除尾部 key，清空列表则删除全部。
+            if uses_no_auth {
+                clone.api_keys.clear();
+            } else {
+                let existing_keys = existing
+                    .map(|vendor| vendor.api_keys.as_slice())
+                    .unwrap_or(&[]);
+                let mut keys_to_store = Vec::new();
+                for (index, submitted) in cfg.api_keys.iter().enumerate() {
+                    let submitted = submitted.trim();
+                    if submitted.is_empty() {
+                        continue;
+                    }
+                    let is_placeholder =
+                        submitted == "***" || submitted.chars().all(|character| character == '*');
+                    if is_placeholder {
+                        if origin_changed {
+                            return Err(AppError::validation(
+                                "修改供应商地址的主机、协议或端口时必须重新输入备用 API 密钥",
+                            ));
+                        }
+                        if let Some(existing_key) = existing_keys.get(index) {
+                            keys_to_store.push(existing_key.clone());
+                        }
+                    } else {
+                        keys_to_store.push(submitted.to_string());
+                    }
+                }
+                let mut encrypted_keys = Vec::new();
+                for key in keys_to_store {
+                    encrypted_keys.push(self.encrypt_api_key(&key)?);
+                }
+                clone.api_keys = encrypted_keys;
+            }
+
+            let trimmed = if uses_no_auth { "" } else { cfg.api_key.trim() };
+            // “保留旧值”占位符：*** 或全 *（但不包含空字符串）
+            // 空字符串应视为用户明确清空（而不是保留）。
+            let keep_placeholder =
+                trimmed == "***" || (!trimmed.is_empty() && trimmed.chars().all(|c| c == '*'));
+            // 内置供应商判断：兼容旧数据（is_builtin=false 但 id 以 builtin- 开头）
+            let is_builtin_vendor = cfg.is_builtin || cfg.id.starts_with("builtin-");
+
+            if keep_placeholder {
+                if origin_changed {
+                    return Err(AppError::validation(
+                        "修改供应商地址的主机、协议或端口时必须重新输入 API 密钥",
+                    ));
+                }
+            }
+
+            if is_builtin_vendor {
+                // 内置供应商：API key 始终通过安全存储管理，vendor_configs 中不保存
+                let secret_key = format!("{}.api_key", cfg.id);
+                if keep_placeholder {
+                    // no-op：保留安全存储中的值
+                } else if trimmed.is_empty() {
+                    // 用户明确清空：删除安全存储中的密钥
+                    self.db.delete_secret(&secret_key).map_err(|e| {
+                        AppError::database(format!(
+                            "Failed to clear builtin vendor API key for {}: {}",
+                            cfg.id, e
+                        ))
+                    })?;
+                    // 兼容旧的 SiliconFlow 存储格式
+                    if cfg.id == "builtin-siliconflow" {
+                        self.db.delete_secret("siliconflow.api_key").map_err(|e| {
+                            AppError::database(format!(
+                                "Failed to clear SiliconFlow compatibility key: {}",
+                                e
+                            ))
+                        })?;
+                    }
+                } else {
+                    self.db.save_secret(&secret_key, trimmed).map_err(|e| {
+                        AppError::database(format!("Failed to save builtin vendor API key: {}", e))
+                    })?;
+                    if cfg.id == "builtin-siliconflow" {
+                        self.db
+                            .save_secret("siliconflow.api_key", trimmed)
+                            .map_err(|e| {
+                                AppError::database(format!(
+                                    "Failed to save SiliconFlow compatibility key: {}",
+                                    e
+                                ))
+                            })?;
+                    }
+                }
+                clone.api_key = String::new();
+                clone.is_builtin = true;
+            } else {
+                // 非内置供应商：API key 加密存储到 vendor_configs
+                let effective_api_key = if keep_placeholder {
+                    existing_map
+                        .get(&cfg.id)
+                        .map(|vendor| vendor.api_key.clone())
+                        .unwrap_or_default()
+                } else {
+                    trimmed.to_string()
+                };
+                clone.api_key = self.encrypt_api_key(&effective_api_key)?;
+                clone.is_read_only = false;
+            }
+            sanitized.push(clone);
+        }
+
+        let json = serde_json::to_string(&sanitized)
+            .map_err(|e| AppError::configuration(format!("序列化供应商配置失败: {}", e)))?;
+        self.db
+            .save_setting("vendor_configs", &json)
+            .map_err(|e| AppError::database(format!("保存供应商配置失败: {}", e)))?;
+        Ok(())
+    }
+
+    pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
+        self.bootstrap_vendor_model_config().await?;
+        let mut profiles = self.read_user_model_profiles().await?;
+        let mut hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
+
+        // 一次性迁移：直接将内置模型的能力字段写入用户存储的 model_profiles。
+        // 背景：早期版本在无快照时保守地保留了用户数据（含错误的 supports_tools=false），
+        // 随后快照被"污染"为新内置值，导致后续合并永远跳过更新。
+        // 必须直接修改 DB 中的 model_profiles，否则运行时路径（model_profiles_for_runtime）
+        // 仍会读到旧值。
+        const BUILTIN_CAPS_MIGRATION_KEY: &str = "builtin_caps_migration_v2";
+        if self
+            .db
+            .get_setting(BUILTIN_CAPS_MIGRATION_KEY)
+            .ok()
+            .flatten()
+            .is_none()
+        {
+            if let Ok((_, builtin_list)) = self.load_builtin_vendor_profiles() {
+                let builtin_map: HashMap<String, &ModelProfile> =
+                    builtin_list.iter().map(|p| (p.id.clone(), p)).collect();
+                let mut patched = false;
+                for profile in &mut profiles {
+                    if let Some(builtin) = builtin_map.get(&profile.id) {
+                        if profile.supports_tools != builtin.supports_tools
+                            || profile.is_multimodal != builtin.is_multimodal
+                            || profile.is_reasoning != builtin.is_reasoning
+                            || profile.supports_reasoning != builtin.supports_reasoning
+                        {
+                            profile.is_multimodal = builtin.is_multimodal;
+                            profile.is_reasoning = builtin.is_reasoning;
+                            profile.is_embedding = builtin.is_embedding;
+                            profile.is_reranker = builtin.is_reranker;
+                            profile.supports_tools = builtin.supports_tools;
+                            profile.supports_reasoning = builtin.supports_reasoning;
+                            patched = true;
+                            info!(
+                                "[VendorModel] 迁移: {} 能力字段已从内置定义同步 (supports_tools={})",
+                                profile.id, builtin.supports_tools
+                            );
+                        }
+                    }
+                }
+                if patched {
+                    if let Err(e) = self.save_model_profiles(&profiles).await {
+                        warn!("[VendorModel] 迁移保存失败（不影响本次读取）: {}", e);
+                    }
+                }
+            }
+            // 同时清除快照，让后续 merge 基于干净状态重建
+            let _ = self
+                .db
+                .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]");
+            let _ = self.db.save_setting(BUILTIN_CAPS_MIGRATION_KEY, "done");
+            info!("[VendorModel] 能力字段迁移完成");
+        }
+
+        let snapshot_map = self.read_builtin_profile_snapshot_map();
+        if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
+            if self
+                .reconcile_hidden_builtin_model_profile_ids(
+                    &builtin_profiles,
+                    &profiles,
+                    &mut hidden_builtin_ids,
+                    &snapshot_map,
+                )
+                .is_err()
+            {
+                warn!("[VendorModel] 修正隐藏内置模型列表失败，继续使用现有值");
+            }
+
+            if !hidden_builtin_ids.is_empty() {
+                profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
+            }
+
+            for builtin_profile in &builtin_profiles {
+                if hidden_builtin_ids.contains(&builtin_profile.id) {
+                    continue;
+                }
+                Self::merge_builtin_profile_user_aware(
+                    &mut profiles,
+                    builtin_profile.clone(),
+                    snapshot_map.get(&builtin_profile.id),
+                );
+            }
+            if let Err(err) = self.save_builtin_profile_snapshot(&builtin_profiles) {
+                warn!("[VendorModel] 保存内置模型快照失败（不影响读取）: {}", err);
+            }
+        }
+        Ok(profiles)
+    }
+
+    async fn read_user_model_profiles(&self) -> Result<Vec<ModelProfile>> {
+        let raw = self
+            .db
+            .get_setting("model_profiles")
+            .map_err(|e| AppError::database(format!("获取模型条目失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+
+        let profiles: Vec<ModelProfile> = serde_json::from_str(&raw)
+            .map_err(|e| AppError::configuration(format!("解析模型条目失败: {}", e)))?;
+        Ok(profiles)
+    }
+
+    async fn model_profiles_for_runtime(&self) -> Result<Vec<ModelProfile>> {
+        // 复用 get_model_profiles 以确保运行时路径也执行能力字段迁移和快照合并
+        self.get_model_profiles().await
+    }
+
+    pub async fn save_model_profiles(&self, profiles: &[ModelProfile]) -> Result<()> {
+        // ★ 2026-01-19 修复：保存所有模型（包括 is_builtin=true），以支持用户对内置模型的收藏等自定义设置
+        // 加载时按“字段级用户优先”进行合并：用户改过的字段保持不变，未改字段可接收后续内置更新
+        if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
+            let builtin_id_set: HashSet<String> = builtin_profiles
+                .iter()
+                .map(|profile| profile.id.clone())
+                .collect();
+            let builtin_model_map: HashMap<&str, &str> = builtin_profiles
+                .iter()
+                .map(|profile| (profile.id.as_str(), profile.model.as_str()))
+                .collect();
+            let incoming_builtin_ids: HashSet<String> = profiles
+                .iter()
+                .map(|profile| profile.id.clone())
+                .filter(|id| builtin_id_set.contains(id))
+                .collect();
+
+            let existing_profiles = self.read_user_model_profiles().await.unwrap_or_default();
+            let snapshot_map = self.read_builtin_profile_snapshot_map();
+            let previously_known_builtin_ids: HashSet<String> = builtin_id_set
+                .iter()
+                .filter(|id| {
+                    let Some(current_model) = builtin_model_map.get(id.as_str()) else {
+                        return false;
+                    };
+
+                    let snapshot_matches = snapshot_map
+                        .get(*id)
+                        .map(|snapshot| snapshot.model.as_str() == *current_model)
+                        .unwrap_or(false);
+                    let existing_matches = existing_profiles.iter().any(|profile| {
+                        profile.id == **id && profile.model.as_str() == *current_model
+                    });
+
+                    snapshot_matches || existing_matches
+                })
+                .cloned()
+                .collect();
+
+            if !previously_known_builtin_ids.is_empty() || !incoming_builtin_ids.is_empty() {
+                let hidden_builtin_ids: HashSet<String> = previously_known_builtin_ids
+                    .difference(&incoming_builtin_ids)
+                    .cloned()
+                    .collect();
+                self.save_hidden_builtin_model_profile_ids(&hidden_builtin_ids)?;
+            }
+        }
+
+        let vendor_map: HashMap<String, VendorConfig> = self
+            .read_user_vendor_configs()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|vendor| (vendor.id.clone(), vendor))
+            .collect();
+        let mut vendor_map = vendor_map;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                vendor_map.entry(vendor.id.clone()).or_insert(vendor);
+            }
+        }
+
+        let mut sanitized = profiles.to_vec();
+        for profile in &mut sanitized {
+            let vendor = vendor_map.get(&profile.vendor_id);
+            normalize_model_profile_protocol_config(profile, vendor);
+        }
+
+        let json = serde_json::to_string(&sanitized)
+            .map_err(|e| AppError::configuration(format!("序列化模型条目失败: {}", e)))?;
+        self.db
+            .save_setting("model_profiles", &json)
+            .map_err(|e| AppError::database(format!("保存模型条目失败: {}", e)))?;
+        Ok(())
+    }
+
+    pub async fn save_vendor_model_configs(
+        &self,
+        vendors: &[VendorConfig],
+        profiles: &[ModelProfile],
+    ) -> Result<()> {
+        self.save_vendor_configs(vendors).await?;
+        self.save_model_profiles(profiles).await?;
+        Ok(())
+    }
+
+    /// 向后兼容的 ApiConfig 列表（运行期已附带供应商信息）
+    pub async fn get_api_configs(&self) -> Result<Vec<ApiConfig>> {
+        self.bootstrap_vendor_model_config().await?;
+        let vendors = self.vendor_configs_for_runtime().await?;
+        let profiles = self.model_profiles_for_runtime().await?;
+        let vendor_map: HashMap<String, VendorConfig> =
+            vendors.into_iter().map(|v| (v.id.clone(), v)).collect();
+        let codex_authenticated = self.openai_codex_auth.status().await.has_usable_session;
+
+        let mut resolved = Vec::new();
+        for profile in profiles {
+            if let Some(vendor) = vendor_map.get(&profile.vendor_id) {
+                let merged = self.merge_vendor_profile(vendor, &profile, codex_authenticated)?;
+                resolved.push(merged.runtime);
+            } else {
+                warn!("[VendorModel] 找不到模型条目关联的供应商: {}", profile.id);
+            }
+        }
+
+        Ok(resolved)
+    }
+
+    fn merge_vendor_profile(
+        &self,
+        vendor: &VendorConfig,
+        profile: &ModelProfile,
+        codex_authenticated: bool,
+    ) -> Result<ResolvedModelConfig> {
+        let has_no_auth = vendor
+            .auth_mode
+            .as_deref()
+            .is_some_and(|mode| mode.eq_ignore_ascii_case(AUTH_MODE_NONE));
+        let api_key = if has_no_auth {
+            String::new()
+        } else if vendor.is_builtin {
+            vendor.api_key.trim().to_string()
+        } else {
+            self.decrypt_api_key_if_needed(&vendor.api_key)?
+                .trim()
+                .to_string()
+        };
+
+        let has_api_key =
+            (!api_key.is_empty() && api_key != "***" && !api_key.chars().all(|c| c == '*'))
+                || vendor.api_keys.iter().any(|key| !key.trim().is_empty());
+        let has_oauth_session = vendor.provider_type.eq_ignore_ascii_case("openai_codex")
+            && vendor.auth_mode.as_deref() == Some(AUTH_MODE_OPENAI_CODEX_OAUTH)
+            && codex_authenticated;
+
+        let provider_scope = profile
+            .provider_scope
+            .clone()
+            .or_else(|| Some(vendor.provider_type.clone()));
+        let capability_overrides =
+            Self::resolve_capability_overrides(&profile.model, provider_scope.as_deref());
+        let max_tokens_limit = match (profile.max_tokens_limit, vendor.max_tokens_limit) {
+            (Some(profile_limit), Some(vendor_limit)) => Some(profile_limit.min(vendor_limit)),
+            (Some(profile_limit), None) => Some(profile_limit),
+            (None, Some(vendor_limit)) => Some(vendor_limit),
+            (None, None) => None,
+        };
+
+        let mut runtime = ApiConfig {
+            resolved_adapter_id: None,
+            id: profile.id.clone(),
+            name: profile.label.clone(),
+            vendor_id: Some(vendor.id.clone()),
+            vendor_name: Some(vendor.name.clone()),
+            provider_type: Some(vendor.provider_type.clone()),
+            provider_scope,
+            auth_mode: vendor.auth_mode.clone(),
+            api_protocol: profile
+                .api_protocol
+                .clone()
+                .or_else(|| vendor.api_protocol.clone())
+                .or_else(|| {
+                    Some(resolve_preferred_protocol_for_provider(
+                        Some(vendor.provider_type.as_str()),
+                        Some(profile.model_adapter.as_str()),
+                        &vendor.base_url,
+                        vendor.supports_openai_responses,
+                    ))
+                }),
+            api_key,
+            base_url: vendor.base_url.clone(),
+            model: profile.model.clone(),
+            is_multimodal: profile.is_multimodal
+                || capability_overrides.is_multimodal
+                || (profile.is_embedding
+                    && !profile.is_reranker
+                    && Self::looks_like_multimodal_embedding(&profile.model)),
+            is_reasoning: profile.is_reasoning,
+            is_embedding: profile.is_embedding,
+            is_reranker: profile.is_reranker,
+            is_image_generation: profile.is_image_generation
+                || looks_like_image_generation_model_id(&profile.model),
+            enabled: profile.enabled
+                && profile.status.to_lowercase() != "disabled"
+                && (has_api_key || has_no_auth || has_oauth_session),
+            model_adapter: profile.model_adapter.clone(),
+            max_output_tokens: profile.max_output_tokens,
+            temperature: profile.temperature,
+            supports_tools: profile.supports_tools || capability_overrides.supports_tools,
+            gemini_api_version: profile
+                .gemini_api_version
+                .clone()
+                .unwrap_or_else(default_gemini_api_version),
+            is_builtin: profile.is_builtin || vendor.is_builtin,
+            is_read_only: vendor.is_read_only,
+            reasoning_effort: profile.reasoning_effort.clone(),
+            reasoning_mode: profile.reasoning_mode.clone(),
+            thinking_enabled: profile.thinking_enabled,
+            thinking_budget: profile.thinking_budget,
+            include_thoughts: profile.include_thoughts,
+            min_p: profile.min_p,
+            top_k: profile.top_k,
+            enable_thinking: profile.enable_thinking,
+            supports_reasoning: profile.supports_reasoning
+                || profile.is_reasoning
+                || capability_overrides.supports_reasoning,
+            headers: Some(vendor.headers.clone()),
+            top_p_override: None,
+            frequency_penalty_override: None,
+            presence_penalty_override: None,
+            repetition_penalty: profile.repetition_penalty,
+            reasoning_split: profile.reasoning_split,
+            effort: profile.effort.clone(),
+            verbosity: profile.verbosity.clone(),
+            is_favorite: profile.is_favorite,
+            // 供应商是硬上限；模型可设置更低的局部上限，但不能放宽供应商限制。
+            max_tokens_limit,
+            context_window: profile
+                .context_window
+                .or(capability_overrides.context_window),
+            supports_openai_responses: vendor.supports_openai_responses,
+            extra_body: profile.extra_body.clone(),
+        };
+        // OpenCode Go 按模型的原生协议使用不同端点根（openai / anthropic / google）。
+        if opencode_go::is_opencode_go_config(&runtime) {
+            let protocol = effective_api_protocol_for_config(&runtime);
+            runtime.base_url = opencode_go::base_url_for_protocol(&runtime.base_url, &protocol);
+        }
+
+        Ok(ResolvedModelConfig {
+            vendor: vendor.clone(),
+            profile: profile.clone(),
+            runtime,
+        })
+    }
+
+    fn load_builtin_vendor_profiles(&self) -> Result<(Vec<VendorConfig>, Vec<ModelProfile>)> {
+        let mut vendors = Vec::new();
+        let mut profiles = Vec::new();
+
+        // 1. 首先加载内置免费模型（如果有编译时环境变量）
+        let builtin = match load_builtin_api_configs() {
+            Ok(configs) => configs,
+            Err(err) => {
+                error!("[VendorModel] 加载内置模型配置失败: {}", err);
+                Vec::new()
+            }
+        };
+        for cfg in builtin {
+            let is_siliconflow = cfg.base_url.to_lowercase().contains("siliconflow");
+            let vendor_id = if is_siliconflow {
+                "builtin-siliconflow".to_string()
+            } else {
+                format!("builtin-{}", cfg.id)
+            };
+            let vendor_name = if is_siliconflow {
+                "SiliconFlow".to_string()
+            } else {
+                cfg.name.clone()
+            };
+            if !vendors.iter().any(|v: &VendorConfig| v.id == vendor_id) {
+                vendors.push(VendorConfig {
+                    id: vendor_id.clone(),
+                    name: vendor_name,
+                    provider_type: if is_siliconflow {
+                        "siliconflow".to_string()
+                    } else {
+                        cfg.model_adapter.clone()
+                    },
+                    auth_mode: cfg.auth_mode.clone(),
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
+                    base_url: cfg.base_url.clone(),
+                    api_key: cfg.api_key.clone(),
+                    api_keys: if cfg.api_key.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![cfg.api_key.clone()]
+                    },
+                    headers: cfg.headers.clone().unwrap_or_default(),
+                    rate_limit_per_minute: None,
+                    default_timeout_ms: None,
+                    notes: None,
+                    is_builtin: true,
+                    is_read_only: true,
+                    sort_order: None,
+                    max_tokens_limit: cfg.max_tokens_limit,
+                    website_url: None,
+                });
+            }
+            profiles.push(ModelProfile {
+                id: cfg.id.clone(),
+                vendor_id: vendor_id.clone(),
+                label: cfg.name.clone(),
+                model: cfg.model.clone(),
+                provider_scope: cfg
+                    .provider_scope
+                    .clone()
+                    .or_else(|| cfg.provider_type.clone()),
+                api_protocol: cfg.api_protocol.clone(),
+                model_adapter: cfg.model_adapter.clone(),
+                is_multimodal: cfg.is_multimodal,
+                is_reasoning: cfg.is_reasoning,
+                is_embedding: cfg.is_embedding,
+                is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation,
+                supports_tools: cfg.supports_tools,
+                supports_reasoning: cfg.supports_reasoning || cfg.is_reasoning,
+                status: if cfg.enabled {
+                    "enabled".to_string()
+                } else {
+                    "disabled".to_string()
+                },
+                enabled: cfg.enabled,
+                max_output_tokens: cfg.max_output_tokens,
+                temperature: cfg.temperature,
+                reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
+                thinking_enabled: cfg.thinking_enabled,
+                thinking_budget: cfg.thinking_budget,
+                include_thoughts: cfg.include_thoughts,
+                enable_thinking: cfg.enable_thinking,
+                min_p: cfg.min_p,
+                top_k: cfg.top_k,
+                gemini_api_version: Some(cfg.gemini_api_version.clone()),
+                is_builtin: true,
+                is_favorite: cfg.is_favorite,
+                max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window,
+                repetition_penalty: cfg.repetition_penalty,
+                reasoning_split: cfg.reasoning_split,
+                effort: cfg.effort.clone(),
+                verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
+            });
+        }
+
+        // 2. 加载预置供应商模板（来自 builtin_vendors 模块）
+        let existing_vendor_ids: Vec<String> = vendors.iter().map(|v| v.id.clone()).collect();
+        let existing_profile_ids: Vec<String> = profiles.iter().map(|p| p.id.clone()).collect();
+
+        let (new_vendors, new_profiles) =
+            builtin_vendors::load_all_builtins(&existing_vendor_ids, &existing_profile_ids);
+
+        vendors.extend(new_vendors);
+        profiles.extend(new_profiles);
+
+        Ok((vendors, profiles))
+    }
+
+    // 迁移旧版API配置到新结构（兼容读取）
+    async fn migrate_api_configs_legacy(&self, old_config_str: &str) -> Result<Vec<ApiConfig>> {
+        #[derive(serde::Deserialize)]
+        struct OldApiConfigV2 {
+            id: String,
+            name: String,
+            api_key: String,
+            base_url: String,
+            model: String,
+            is_multimodal: bool,
+            is_reasoning: bool,
+            enabled: bool,
+        }
+
+        #[derive(serde::Deserialize)]
+        struct OldApiConfigV1 {
+            id: String,
+            name: String,
+            api_key: String,
+            base_url: String,
+            model: String,
+            is_multimodal: bool,
+            enabled: bool,
+        }
+
+        if let Ok(old_configs) = serde_json::from_str::<Vec<OldApiConfigV2>>(old_config_str) {
+            return Ok(old_configs
+                .into_iter()
+                .map(|old| ApiConfig {
+                    resolved_adapter_id: None,
+                    id: old.id,
+                    name: old.name,
+                    vendor_id: None,
+                    vendor_name: None,
+                    provider_type: None,
+                    provider_scope: None,
+                    auth_mode: None,
+                    api_protocol: Some(resolve_preferred_protocol_for_provider(
+                        None,
+                        Some(default_model_adapter().as_str()),
+                        &old.base_url,
+                        None,
+                    )),
+                    supports_openai_responses: Some(provider_supports_openai_responses(
+                        None,
+                        &old.base_url,
+                        None,
+                    )),
+                    api_key: old.api_key,
+                    base_url: old.base_url,
+                    model: old.model,
+                    is_multimodal: old.is_multimodal,
+                    is_reasoning: old.is_reasoning,
+                    is_embedding: false,
+                    is_reranker: false,
+                    is_image_generation: false,
+                    enabled: old.enabled,
+                    model_adapter: default_model_adapter(),
+                    max_output_tokens: default_max_output_tokens(),
+                    temperature: default_temperature(),
+                    supports_tools: false,
+                    gemini_api_version: default_gemini_api_version(),
+                    min_p: None,
+                    top_k: None,
+                    enable_thinking: None,
+                    is_builtin: false,
+                    is_read_only: false,
+                    reasoning_effort: None,
+                    reasoning_mode: None,
+                    thinking_enabled: false,
+                    thinking_budget: None,
+                    include_thoughts: false,
+                    supports_reasoning: old.is_reasoning,
+                    headers: None,
+                    top_p_override: None,
+                    frequency_penalty_override: None,
+                    presence_penalty_override: None,
+                    repetition_penalty: None,
+                    reasoning_split: None,
+                    effort: None,
+                    verbosity: None,
+                    is_favorite: false,
+                    max_tokens_limit: None,
+                    context_window: None,
+                    extra_body: None,
+                })
+                .collect());
+        }
+
+        let old_configs: Vec<OldApiConfigV1> = serde_json::from_str(old_config_str)
+            .map_err(|e| AppError::configuration(format!("解析旧版API配置失败: {}", e)))?;
+
+        Ok(old_configs
+            .into_iter()
+            .map(|old| ApiConfig {
+                resolved_adapter_id: None,
+                id: old.id,
+                name: old.name,
+                vendor_id: None,
+                vendor_name: None,
+                provider_type: None,
+                provider_scope: None,
+                auth_mode: None,
+                api_protocol: Some(resolve_preferred_protocol_for_provider(
+                    None,
+                    Some(default_model_adapter().as_str()),
+                    &old.base_url,
+                    None,
+                )),
+                supports_openai_responses: Some(provider_supports_openai_responses(
+                    None,
+                    &old.base_url,
+                    None,
+                )),
+                api_key: old.api_key,
+                base_url: old.base_url,
+                model: old.model,
+                is_multimodal: old.is_multimodal,
+                is_reasoning: false,
+                is_embedding: false,
+                is_reranker: false,
+                is_image_generation: false,
+                enabled: old.enabled,
+                model_adapter: default_model_adapter(),
+                max_output_tokens: default_max_output_tokens(),
+                temperature: default_temperature(),
+                supports_tools: false,
+                gemini_api_version: default_gemini_api_version(),
+                min_p: None,
+                top_k: None,
+                enable_thinking: None,
+                is_builtin: false,
+                is_read_only: false,
+                reasoning_effort: None,
+                reasoning_mode: None,
+                thinking_enabled: false,
+                thinking_budget: None,
+                include_thoughts: false,
+                supports_reasoning: false,
+                headers: None,
+                top_p_override: None,
+                frequency_penalty_override: None,
+                presence_penalty_override: None,
+                is_favorite: false,
+                max_tokens_limit: None,
+                context_window: None,
+                repetition_penalty: None,
+                reasoning_split: None,
+                effort: None,
+                verbosity: None,
+                extra_body: None,
+            })
+            .collect())
+    }
+
+    async fn flatten_api_configs_to_vendor_profiles(
+        &self,
+        configs: &[ApiConfig],
+    ) -> Result<(Vec<VendorConfig>, Vec<ModelProfile>)> {
+        let mut vendors_map: HashMap<String, VendorConfig> = HashMap::new();
+        let mut profiles: Vec<ModelProfile> = Vec::new();
+
+        for cfg in configs {
+            let provider_scope = cfg
+                .provider_scope
+                .clone()
+                .or_else(|| cfg.provider_type.clone());
+            let capability_overrides =
+                Self::resolve_capability_overrides(&cfg.model, provider_scope.as_deref());
+            let base_key = format!("{}::{}", cfg.base_url.trim(), cfg.api_key.trim());
+            let key = cfg
+                .vendor_id
+                .clone()
+                .unwrap_or_else(|| format!("auto::{}", base_key));
+            let vendor_entry = vendors_map.entry(key.clone()).or_insert_with(|| {
+                let provider_type = cfg
+                    .provider_type
+                    .clone()
+                    .unwrap_or_else(|| cfg.model_adapter.clone());
+                let vendor_id = cfg
+                    .vendor_id
+                    .clone()
+                    .or_else(|| Some(format!("vendor-{}", Uuid::new_v4())))
+                    .unwrap();
+                VendorConfig {
+                    id: vendor_id,
+                    name: cfg
+                        .vendor_name
+                        .clone()
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or_else(|| cfg.name.clone()),
+                    provider_type,
+                    auth_mode: cfg.auth_mode.clone(),
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
+                    base_url: cfg.base_url.clone(),
+                    api_key: cfg.api_key.clone(),
+                    api_keys: Vec::new(),
+                    headers: cfg.headers.clone().unwrap_or_default(),
+                    rate_limit_per_minute: None,
+                    default_timeout_ms: None,
+                    notes: None,
+                    is_builtin: cfg.is_builtin,
+                    is_read_only: cfg.is_read_only,
+                    sort_order: None,
+                    max_tokens_limit: cfg.max_tokens_limit,
+                    website_url: None,
+                }
+            });
+            let vendor_id = vendor_entry.id.clone();
+
+            profiles.push(ModelProfile {
+                id: cfg.id.clone(),
+                vendor_id,
+                label: cfg.name.clone(),
+                model: cfg.model.clone(),
+                provider_scope,
+                api_protocol: cfg.api_protocol.clone(),
+                model_adapter: cfg.model_adapter.clone(),
+                is_multimodal: cfg.is_multimodal || capability_overrides.is_multimodal,
+                is_reasoning: cfg.is_reasoning,
+                is_embedding: cfg.is_embedding,
+                is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation
+                    || looks_like_image_generation_model_id(&cfg.model),
+                supports_tools: cfg.supports_tools || capability_overrides.supports_tools,
+                supports_reasoning: cfg.supports_reasoning
+                    || cfg.is_reasoning
+                    || capability_overrides.supports_reasoning,
+                status: if cfg.enabled {
+                    "enabled".to_string()
+                } else {
+                    "disabled".to_string()
+                },
+                enabled: cfg.enabled,
+                max_output_tokens: cfg.max_output_tokens,
+                temperature: cfg.temperature,
+                reasoning_effort: cfg.reasoning_effort.clone(),
+                reasoning_mode: cfg.reasoning_mode.clone(),
+                thinking_enabled: cfg.thinking_enabled,
+                thinking_budget: cfg.thinking_budget,
+                include_thoughts: cfg.include_thoughts,
+                enable_thinking: cfg.enable_thinking,
+                min_p: cfg.min_p,
+                top_k: cfg.top_k,
+                gemini_api_version: Some(cfg.gemini_api_version.clone()),
+                is_builtin: cfg.is_builtin,
+                is_favorite: cfg.is_favorite,
+                max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window.or(capability_overrides.context_window),
+                repetition_penalty: cfg.repetition_penalty,
+                reasoning_split: cfg.reasoning_split,
+                effort: cfg.effort.clone(),
+                verbosity: cfg.verbosity.clone(),
+                extra_body: cfg.extra_body.clone(),
+            });
+        }
+
+        Ok((vendors_map.into_values().collect(), profiles))
+    }
+    // 获取对话模型配置（公开方法）
+    pub async fn get_model2_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let model2_id = assignments
+            .model2_config_id
+            .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
+
+        let configs = self.get_api_configs().await?;
+        let config = routing::resolve_enabled_text_model(&configs, [model2_id.as_str()])
+            .cloned()
+            .ok_or_else(|| {
+                AppError::configuration("找不到已启用的有效对话模型配置（禁止使用嵌入/重排序模型）")
+            })?;
+
+        Ok(config)
+    }
+
+    /// 获取记忆决策模型配置（公开方法）
+    ///
+    /// 回退链：memory_decision_model_config_id → model2_config_id
+    pub async fn get_memory_decision_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let configs = self.get_api_configs().await?;
+        let candidate_ids = [
+            assignments.memory_decision_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
+            .ok_or_else(|| {
+                AppError::configuration("没有已启用的有效记忆决策模型（禁止使用嵌入/重排序模型）")
+            })?;
+
+        Ok(config)
+    }
+
+    /// 获取标题/标签生成模型配置（公开方法）
+    ///
+    /// 回退链：chat_title_model_config_id → model2_config_id
+    pub async fn get_chat_title_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let configs = self.get_api_configs().await?;
+        let candidate_ids = [
+            assignments.chat_title_model_config_id.as_deref(),
+            assignments.model2_config_id.as_deref(),
+        ]
+        .into_iter()
+        .flatten();
+        let config = routing::resolve_enabled_text_model(&configs, candidate_ids)
+            .cloned()
+            .ok_or_else(|| {
+                AppError::configuration(
+                    "没有已启用的有效标题/标签生成模型（禁止使用嵌入/重排序模型）",
+                )
+            })?;
+
+        Ok(config)
+    }
+
+    /// 获取 OCR 模型配置（公开方法，供多模态索引等通用 OCR 使用）
+    ///
+    /// 默认按 FreeText 策略返回：OCR-VLM（快速/便宜）优先于通用 VLM。
+    /// 同类内部保持用户设置的 priority 顺序。
+    /// 回退链：已启用的 OCR 引擎 → exam_sheet_ocr_model_config_id
+    pub async fn get_ocr_model_config(&self) -> Result<ApiConfig> {
+        use crate::ocr_adapters::OcrEngineType;
+
+        let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
+
+        let mut enabled_models: Vec<&OcrModelConfig> =
+            available.iter().filter(|m| m.enabled).collect();
+        // FreeText 策略：专业 OCR 模型优先（快速/便宜），通用 VLM 兜底
+        enabled_models.sort_by_key(|m| {
+            let engine = OcrEngineType::from_str(&m.engine_type);
+            (if engine.is_dedicated_ocr() { 0u8 } else { 1 }, m.priority)
+        });
+
+        // 尝试按优先级找到第一个有效的配置
+        // ★ OCR 配置脱节修复：启用引擎被跳过时必须留下 warn 证据（此前为 debug! 级，
+        // release 下不可见），且全部失效落到 assignment 兜底时明确报出降级原因，
+        // 避免"设置页启用了 A 引擎，运行时却静默打向无关 B 模型"的三账本脱节。
+        let mut skipped_reasons: Vec<String> = Vec::new();
+        for ocr_config in &enabled_models {
+            if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
+                if is_discontinued_ocr_model(config) {
+                    let reason = format!(
+                        "引擎 {}（{}）对应模型 {} 已停服",
+                        ocr_config.engine_type, ocr_config.config_id, config.model
+                    );
+                    warn!("[OCR] {reason}，跳过");
+                    skipped_reasons.push(reason);
+                    continue;
+                }
+                if config.is_multimodal {
+                    debug!(
+                        "[OCR] 使用引擎 {} 对应的模型配置: id={}, model={} (priority={})",
+                        ocr_config.engine_type, config.id, config.model, ocr_config.priority
+                    );
+                    return Ok(config.clone());
+                } else {
+                    let reason = format!(
+                        "引擎 {}（{}）对应模型 {} 不支持多模态",
+                        ocr_config.engine_type, ocr_config.config_id, config.model
+                    );
+                    warn!("[OCR] {reason}，跳过");
+                    skipped_reasons.push(reason);
+                }
+            } else {
+                let reason = format!(
+                    "引擎 {} 的配置 ID {} 不存在（模型配置可能已被删除）",
+                    ocr_config.engine_type, ocr_config.config_id
+                );
+                warn!("[OCR] {reason}，跳过");
+                skipped_reasons.push(reason);
+            }
+        }
+
+        // 回退：使用 exam_sheet_ocr_model_config_id
+        // ★ assignment 一致性修复（2026-09-07）：启用引擎全部失效时，兜底 assignment
+        // 可能指向与 OCR 无关的任意已分配模型（实测 gpt-5.6-luna@中转站），静默降级
+        // 会掩盖"设置页启用的引擎全部不可用"这一事实。降级必须显式：打 warn 后继续，
+        // 但要求兜底配置本身必须具备多模态能力——非多模态的 assignment 一律拒绝，
+        // 让上层落到本地系统 OCR 兜底（call_ocr_page_with_fallback）或直接报错，
+        // 而不是拿一个文本模型反复撞 400。
+        let assignments = self.get_model_assignments().await?;
+        let model_id = assignments.exam_sheet_ocr_model_config_id.ok_or_else(|| {
+            AppError::configuration("OCR 模型未配置，请在模型分配中添加 OCR 引擎")
+        })?;
+
+        let config = configs
+            .into_iter()
+            .find(|c| c.id == model_id)
+            .ok_or_else(|| {
+                AppError::configuration(format!("找不到 ID 为 {} 的模型配置", model_id))
+            })?;
+
+        // 兜底生效 = 启用的引擎没有一个可用，必须把脱节原因讲清楚
+        if !skipped_reasons.is_empty() {
+            warn!(
+                "[OCR] 启用引擎全部失效，降级到模型分配兜底 {}（{}）:{}",
+                config.model,
+                config.id,
+                skipped_reasons.join("; ")
+            );
+        } else {
+            info!(
+                "[OCR] 启用引擎列表为空，使用模型分配兜底: {} ({})",
+                config.model, config.id
+            );
+        }
+
+        if is_discontinued_ocr_model(&config) {
+            return Err(AppError::configuration(format!(
+                "当前配置的 OCR 模型 {} 已被服务商停服（如硅基流动已下架 zai-org/GLM-4.6V），请在设置中更换 OCR 引擎",
+                config.model
+            )));
+        }
+
+        if !config.is_multimodal {
+            return Err(AppError::configuration(format!(
+                "OCR 兜底分配的模型 {} 未启用多模态能力，已拒绝作为 OCR 引擎使用（请在模型分配中选择支持图像输入的模型，或在 OCR 设置中启用可用引擎）",
+                config.model
+            )));
+        }
+
+        debug!(
+            "[OCR] 使用配置的模型（回退）: id={}, model={}",
+            config.id, config.model
+        );
+
+        Ok(config)
+    }
+
+    /// 按优先级获取所有已启用的 OCR 引擎配置列表（用于熔断重试）
+    ///
+    /// 根据 `task_type` 对引擎列表进行分流排序：
+    /// - `FreeText`：OCR-VLM（快速专业模型）优先，通用 VLM 兜底
+    /// - `Structured`：通用 VLM（GLM-4.6V 等）优先，OCR-VLM 兜底
+    ///
+    /// 同类引擎之间保持用户设置的 priority 顺序。
+    pub async fn get_ocr_configs_by_priority(
+        &self,
+        task_type: crate::ocr_adapters::OcrTaskType,
+    ) -> Result<Vec<(ApiConfig, crate::ocr_adapters::OcrEngineType)>> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrTaskType};
+
+        let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
+        let mut result: Vec<_> = build_ocr_runtime_candidates(
+            &available,
+            &configs,
+            task_type,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        )
+        .into_iter()
+        .filter_map(|candidate| match candidate {
+            OcrRuntimeCandidate::Remote {
+                config,
+                engine_type,
+            } => Some((config, engine_type)),
+            // This API intentionally exposes only HTTP/VLM configs. Free-text execution uses
+            // get_free_text_ocr_candidates_by_priority so SystemOcr remains a native candidate.
+            OcrRuntimeCandidate::SystemOcr => None,
+        })
+        .collect();
+
+        if result.is_empty() {
+            if let Ok(config) = self.get_ocr_model_config().await {
+                let engine = OcrAdapterFactory::infer_engine_from_model(&config.model);
+                result.push((config, engine));
+            }
+        }
+
+        if result.is_empty() {
+            return Err(AppError::configuration(
+                "没有可用的 OCR 引擎配置，请在设置中添加 OCR 引擎",
+            ));
+        }
+
+        // 按任务类型分流：stable partition 保持同类内部的 priority 顺序
+        match task_type {
+            OcrTaskType::FreeText => {
+                // 专业 OCR 模型在前（快、便宜），通用 VLM 在后
+                result.sort_by_key(|(_, engine)| if engine.is_dedicated_ocr() { 0 } else { 1 });
+            }
+            OcrTaskType::Structured => {
+                // 通用 VLM 在前（GLM-4.6V 等，复杂布局理解能力强），专业 OCR 在后
+                result.sort_by_key(|(_, engine)| if engine.is_dedicated_ocr() { 1 } else { 0 });
+            }
+        }
+
+        debug!(
+            "[OCR] 引擎优先级（{:?}）: {}",
+            task_type,
+            result
+                .iter()
+                .enumerate()
+                .map(|(i, (c, e))| format!("#{} {}({})", i, e.display_name(), c.model))
+                .collect::<Vec<_>>()
+                .join(" → ")
+        );
+
+        Ok(result)
+    }
+
+    /// 获取 free-text OCR 的完整运行时候选，包括无需 ApiConfig 的系统原生 OCR。
+    pub async fn get_free_text_ocr_candidates_by_priority(
+        &self,
+    ) -> Result<Vec<OcrRuntimeCandidate>> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrTaskType};
+
+        let configs = self.get_api_configs().await?;
+        let available = self.get_available_ocr_models().await;
+        let mut result = build_ocr_runtime_candidates(
+            &available,
+            &configs,
+            OcrTaskType::FreeText,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        );
+
+        if result.is_empty() {
+            if let Ok(config) = self.get_ocr_model_config().await {
+                let engine_type = OcrAdapterFactory::infer_engine_from_model(&config.model);
+                result.push(OcrRuntimeCandidate::Remote {
+                    config,
+                    engine_type,
+                });
+            }
+        }
+        if result.is_empty() {
+            return Err(AppError::configuration(
+                "没有可用的 OCR 引擎配置，请在设置中添加 OCR 引擎",
+            ));
+        }
+
+        debug!(
+            "[OCR] FreeText 运行时候选: {}",
+            result
+                .iter()
+                .enumerate()
+                .map(|(index, candidate)| match candidate {
+                    OcrRuntimeCandidate::Remote {
+                        config,
+                        engine_type,
+                    } => format!(
+                        "#{} {}({})",
+                        index,
+                        engine_type.display_name(),
+                        config.model
+                    ),
+                    OcrRuntimeCandidate::SystemOcr => {
+                        format!(
+                            "#{} {}(native)",
+                            index,
+                            candidate.engine_type().display_name()
+                        )
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" → ")
+        );
+        Ok(result)
+    }
+
+    /// 只读检查 free-text OCR 是否真实可用。
+    ///
+    /// 不运行迁移、不补写设置。若有有序引擎列表则严格尊重其 enabled 状态；列表
+    /// 尚不存在时，受支持平台的 SystemOcr 作为兼容默认能力。
+    pub async fn inspect_free_text_ocr_available(&self) -> bool {
+        let available_models_json = self.db.get_setting("ocr.available_models").ok().flatten();
+        let legacy_engine = self.db.get_setting("ocr.engine_type").ok().flatten();
+        let configs = self.get_api_configs().await.unwrap_or_default();
+        inspect_free_text_ocr_available_from_settings(
+            available_models_json.as_deref(),
+            legacy_engine.as_deref(),
+            &configs,
+            crate::ocr_adapters::system_ocr::is_platform_supported(),
+        )
+    }
+
+    /// 获取所有已配置的 OCR 模型列表
+    ///
+    /// 包含自动迁移逻辑：
+    /// 1. 将旧版本 PaddleOCR-VL 模型名称自动更新为 1.5 版本
+    /// 2. 从旧 ocr.engine_type 单选迁移到新优先级列表
+    pub async fn get_available_ocr_models(&self) -> Vec<OcrModelConfig> {
+        if let Ok(Some(json)) = self.db.get_setting("ocr.available_models") {
+            if let Ok(mut models) = serde_json::from_str::<Vec<OcrModelConfig>>(&json) {
+                let mut needs_save =
+                    crate::llm_manager::ocr_models::migrate_paddle_ocr_models(&mut models);
+
+                // GLM-4.1V → 迁移：同时更新关联的 ApiConfig.model
+                // 硅基流动已下架 zai-org/GLM-4.6V，该提供商下迁移到 Qwen3-VL-8B；
+                // 智谱官方模型名不带 zai-org/ 前缀，迁移到 glm-4.6v。
+                let api_configs_result = self.get_api_configs().await;
+                let is_siliconflow = |config_id: &str| -> bool {
+                    match &api_configs_result {
+                        Ok(configs) => configs
+                            .iter()
+                            .find(|c| c.id == config_id)
+                            .map(|c| c.base_url.to_lowercase().contains("siliconflow"))
+                            .unwrap_or(false),
+                        Err(_) => false,
+                    }
+                };
+                let is_zhipu_official = |config_id: &str| -> bool {
+                    match &api_configs_result {
+                        Ok(configs) => configs
+                            .iter()
+                            .find(|c| c.id == config_id)
+                            .map(|c| c.base_url.to_lowercase().contains("bigmodel"))
+                            .unwrap_or(false),
+                        Err(_) => false,
+                    }
+                };
+                let glm_migrate_ids: Vec<String> = models
+                    .iter()
+                    .filter(|m| {
+                        m.engine_type == "glm4v_ocr" && m.model.to_lowercase().contains("glm-4.1v")
+                    })
+                    .map(|m| m.config_id.clone())
+                    .collect();
+
+                if crate::llm_manager::ocr_models::migrate_glm_ocr_models(
+                    &mut models,
+                    is_siliconflow,
+                    is_zhipu_official,
+                ) {
+                    needs_save = true;
+                    // 同步更新 ApiConfig 中的 model 字段，确保实际 API 调用也使用新模型
+                    if !glm_migrate_ids.is_empty() {
+                        if let Ok(mut api_configs) = api_configs_result {
+                            let mut api_changed = false;
+                            for cfg in api_configs.iter_mut() {
+                                if glm_migrate_ids.contains(&cfg.id)
+                                    && cfg.model.to_lowercase().contains("glm-4.1v")
+                                {
+                                    let (new_model, new_name) =
+                                        if cfg.base_url.to_lowercase().contains("siliconflow") {
+                                            (
+                                                "Qwen/Qwen3-VL-8B-Instruct".to_string(),
+                                                cfg.name
+                                                    .replace("GLM-4.1V", "Qwen3-VL-8B")
+                                                    .replace("4.1V", "Qwen3-VL-8B"),
+                                            )
+                                        } else if cfg.base_url.to_lowercase().contains("bigmodel") {
+                                            (
+                                                "glm-4.6v".to_string(),
+                                                cfg.name
+                                                    .replace("GLM-4.1V", "GLM-4.6V")
+                                                    .replace("4.1V", "4.6V"),
+                                            )
+                                        } else {
+                                            // 无法确定提供商，保持原模型不变
+                                            continue;
+                                        };
+                                    info!(
+                                        "[OCR] 同步更新 ApiConfig model: {} → {} (id={})",
+                                        cfg.model, new_model, cfg.id
+                                    );
+                                    cfg.model = new_model;
+                                    cfg.name = new_name;
+                                    api_changed = true;
+                                }
+                            }
+                            if api_changed {
+                                let _ = self.save_api_configurations(&api_configs).await;
+                            }
+                        }
+                    }
+                }
+
+                // 迁移：如果所有 priority 都是 0 且存在旧 ocr.engine_type 设置，
+                // 则根据旧单选设置调整优先级
+                if models.len() > 1 && models.iter().all(|m| m.priority == 0) {
+                    if let Ok(Some(old_engine)) = self.db.get_setting("ocr.engine_type") {
+                        for (i, model) in models.iter_mut().enumerate() {
+                            if model.engine_type == old_engine {
+                                model.priority = 0; // 旧选中的排第一
+                            } else {
+                                model.priority = (i as u32) + 1;
+                            }
+                        }
+                        // 重新按 priority 排序确保一致
+                        models.sort_by_key(|m| m.priority);
+                        // 重新编号
+                        for (i, model) in models.iter_mut().enumerate() {
+                            model.priority = i as u32;
+                        }
+                        needs_save = true;
+                        info!(
+                            "[OCR] 已从旧 ocr.engine_type='{}' 迁移到优先级列表",
+                            old_engine
+                        );
+                    }
+                }
+
+                if needs_save {
+                    if let Ok(updated_json) = serde_json::to_string(&models) {
+                        let _ = self.db.save_setting("ocr.available_models", &updated_json);
+                    }
+                }
+                return models;
+            }
+        }
+        Vec::new()
+    }
+
+    /// 使用指定引擎测试 OCR
+    ///
+    /// 用于对比不同 OCR 引擎的速度和质量
+    pub async fn test_ocr_with_engine(
+        &self,
+        image_path: String,
+        engine_type: crate::ocr_adapters::OcrEngineType,
+        config_id: Option<&str>,
+    ) -> Result<(String, Vec<crate::ocr_adapters::OcrRegion>)> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrMode, OcrRegion};
+        use crate::providers::ProviderAdapter;
+        use serde_json::json;
+
+        // 获取指定引擎的适配器
+        let adapter = OcrAdapterFactory::create(engine_type);
+        let engine_name = adapter.display_name();
+        let ocr_mode = OcrMode::Grounding;
+
+        // 优先通过 config_id 精确查找，回退到 engine_type 查找
+        let config = if let Some(cid) = config_id {
+            let configs = self.get_api_configs().await?;
+            configs
+                .into_iter()
+                .find(|c| c.id == cid)
+                .ok_or_else(|| AppError::configuration(format!("找不到配置 ID: {}", cid)))?
+        } else {
+            self.get_ocr_model_config_for_engine(engine_type).await?
+        };
+
+        debug!(
+            "[OCR Test] 使用引擎 {} 测试，模型: {}",
+            engine_name, config.model
+        );
+
+        // 准备图片数据
+        let mime = Self::infer_image_mime(&image_path);
+        let (data_url, _) = self
+            .prepare_segmentation_image_data(&image_path, mime)
+            .await?;
+
+        // 构建请求
+        let prompt_text = adapter.build_prompt(ocr_mode);
+        let messages = vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "image_url", "image_url": { "url": data_url, "detail": if adapter.requires_high_detail() { "high" } else { "low" } } },
+                { "type": "text", "text": prompt_text }
+            ]
+        })];
+
+        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+
+        // 构建基础请求体
+        let mut request_body = json!({
+            "model": config.model,
+            "messages": messages,
+            "temperature": adapter.recommended_temperature(),
+            "max_tokens": max_tokens,
+            "stream": false,
+        });
+
+        if let Some(extra) = adapter.get_extra_request_params() {
+            if let Some(obj) = request_body.as_object_mut() {
+                if let Some(extra_obj) = extra.as_object() {
+                    for (k, v) in extra_obj {
+                        obj.insert(k.to_string(), v.clone());
+                    }
+                } else {
+                    obj.insert("extra_params".to_string(), extra);
+                }
+            }
+        }
+
+        // 如果适配器推荐设置 repetition_penalty，则添加到请求中
+        // 这对 PaddleOCR-VL 等模型很重要，可以避免重复输出问题
+        if let Some(repetition_penalty) = adapter.recommended_repetition_penalty() {
+            if let Some(obj) = request_body.as_object_mut() {
+                obj.insert("repetition_penalty".to_string(), json!(repetition_penalty));
+            }
+            debug!(
+                "[OCR Test] 设置 repetition_penalty = {} (避免重复输出)",
+                repetition_penalty
+            );
+        }
+
+        let provider_adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
+        let mut preq = self
+            .prepare_provider_request(
+                provider_adapter.as_ref(),
+                &config,
+                &request_body,
+                None,
+                None,
+                &format!("{} 请求构建失败", engine_name),
+            )
+            .await?;
+
+        model2_pipeline::log_llm_request_audit(
+            "OCR_ENGINE_TEST",
+            &preq.url,
+            &config.model,
+            &preq.body,
+            None,
+        );
+
+        let timeout = std::time::Duration::from_secs(300);
+        let response = if preq.is_codex() {
+            self.send_codex_request_with_single_refresh(&mut preq, Some(timeout))
+                .await?
+        } else {
+            let mut request_builder = self.client.post(&preq.url).timeout(timeout);
+            for (name, value) in &preq.headers {
+                request_builder = request_builder.header(name, value);
+            }
+            request_builder.json(&preq.body).send().await.map_err(|e| {
+                AppError::network(format!("{} 请求失败: {}", engine_name, e.without_url()))
+            })?
+        };
+
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response.text().await.unwrap_or_default();
+            return Err(AppError::llm(format!(
+                "{} API 返回错误 ({}): {}",
+                engine_name, status, error_text
+            )));
+        }
+
+        let response_json: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| AppError::llm(format!("解析 {} 响应失败: {}", engine_name, e)))?;
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
+
+        // 提取响应文本
+        let content = openai_like_json
+            .pointer("/choices/0/message/content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
+        // 获取图片尺寸（用于坐标转换）
+        let (image_width, image_height) =
+            image::image_dimensions(&image_path).unwrap_or((1000, 1000));
+
+        // 使用适配器解析响应
+        let parse_result = adapter.parse_response(
+            &content,
+            image_width,
+            image_height,
+            0, // page_index
+            &image_path,
+            OcrMode::Grounding,
+        );
+
+        // 提取区域列表
+        let regions = match parse_result {
+            Ok(page_result) => page_result.regions,
+            Err(_) => {
+                // 解析失败，返回原始文本作为单个区域
+                vec![OcrRegion {
+                    label: "text".to_string(),
+                    text: content.clone(),
+                    bbox_normalized: None,
+                    bbox_pixels: None,
+                    confidence: None,
+                    raw_output: Some(content.clone()),
+                }]
+            }
+        };
+
+        // 如果没有解析出区域，创建一个包含全部文本的默认区域
+        let final_regions = if regions.is_empty() {
+            vec![OcrRegion {
+                label: "text".to_string(),
+                text: content.clone(),
+                bbox_normalized: None,
+                bbox_pixels: None,
+                confidence: None,
+                raw_output: Some(content.clone()),
+            }]
+        } else {
+            regions
+        };
+
+        // 合并所有区域的文本
+        let full_text = final_regions
+            .iter()
+            .map(|r| r.text.as_str())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok((full_text, final_regions))
+    }
+
+    /// 获取指定引擎类型对应的模型配置
+    async fn get_ocr_model_config_for_engine(
+        &self,
+        engine_type: crate::ocr_adapters::OcrEngineType,
+    ) -> Result<ApiConfig> {
+        let configs = self.get_api_configs().await?;
+
+        // 尝试从 ocr.available_models 中查找对应引擎的配置 ID
+        if let Ok(Some(available_models_json)) = self.db.get_setting("ocr.available_models") {
+            if let Ok(available_models) =
+                serde_json::from_str::<Vec<OcrModelConfig>>(&available_models_json)
+            {
+                if let Some(ocr_config) = available_models
+                    .iter()
+                    .find(|m| m.engine_type == engine_type.as_str())
+                {
+                    if let Some(config) = configs.iter().find(|c| c.id == ocr_config.config_id) {
+                        return Ok(config.clone());
+                    }
+                }
+            }
+        }
+
+        // 回退：尝试根据模型名称匹配
+        let recommended_model = engine_type.recommended_model();
+        if let Some(config) = configs
+            .iter()
+            .find(|c| c.model.contains(recommended_model) || recommended_model.contains(&c.model))
+        {
+            return Ok(config.clone());
+        }
+
+        // 最终回退：使用默认 OCR 模型配置
+        self.get_ocr_model_config().await
+    }
+
+    /// OCR/题目集任务是否启用 VLM 推理（thinking）
+    ///
+    /// 默认关闭：OCR 和结构化任务不需要深度推理，关闭可显著降低延迟和成本。
+    pub fn is_ocr_thinking_enabled(&self) -> bool {
+        self.db
+            .get_setting("ocr.enable_thinking")
+            .ok()
+            .flatten()
+            .map(|v| v.to_lowercase() == "true")
+            .unwrap_or(false)
+    }
+
+    /// 获取当前配置的 OCR 引擎类型
+    ///
+    /// 默认按 FreeText 策略：OCR-VLM 引擎优先于通用 VLM。
+    /// 回退到 `ocr.engine_type` 设置，最终默认 PaddleOCR-VL-1.5。
+    pub async fn get_ocr_engine_type(&self) -> crate::ocr_adapters::OcrEngineType {
+        use crate::ocr_adapters::OcrEngineType;
+
+        let available = self.get_available_ocr_models().await;
+        let mut enabled: Vec<&OcrModelConfig> = available.iter().filter(|m| m.enabled).collect();
+        // FreeText 策略：专业 OCR 引擎优先
+        enabled.sort_by_key(|m| {
+            let engine = OcrEngineType::from_str(&m.engine_type);
+            (if engine.is_dedicated_ocr() { 0u8 } else { 1 }, m.priority)
+        });
+
+        if let Some(first) = enabled.first() {
+            return OcrEngineType::from_str(&first.engine_type);
+        }
+
+        // 回退到 legacy 设置
+        let engine_str = self
+            .db
+            .get_setting("ocr.engine_type")
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| "paddle_ocr_vl".to_string());
+
+        OcrEngineType::from_str(&engine_str)
+    }
+
+    /// 获取当前配置的 OCR 适配器
+    ///
+    /// 根据数据库配置返回对应的 OCR 适配器实例
+    pub async fn get_ocr_adapter(&self) -> std::sync::Arc<dyn crate::ocr_adapters::OcrAdapter> {
+        use crate::ocr_adapters::OcrAdapterFactory;
+
+        let engine_type = self.get_ocr_engine_type().await;
+        OcrAdapterFactory::create(engine_type)
+    }
+
+    /// S4/S7 fix: 获取 OCR 模型配置及其有效引擎类型
+    ///
+    /// 优先从 available_models 中查找匹配的引擎类型，
+    /// 找不到时根据实际模型推断引擎类型，
+    /// 确保 adapter/prompt/parser 三者始终与实际模型匹配。
+    pub async fn get_ocr_config_with_effective_engine(
+        &self,
+    ) -> Result<(ApiConfig, crate::ocr_adapters::OcrEngineType)> {
+        use crate::ocr_adapters::{OcrAdapterFactory, OcrEngineType};
+
+        let config = self.get_ocr_model_config().await?;
+
+        // 从 available_models 中查找该 config_id 对应的引擎类型
+        let available = self.get_available_ocr_models().await;
+        let effective_engine =
+            if let Some(ocr_model) = available.iter().find(|m| m.config_id == config.id) {
+                let declared = OcrEngineType::from_str(&ocr_model.engine_type);
+                // 验证声明的引擎类型是否匹配实际模型
+                if OcrAdapterFactory::validate_model_for_engine(&config.model, declared) {
+                    declared
+                } else {
+                    OcrAdapterFactory::infer_engine_from_model(&config.model)
+                }
+            } else {
+                // 回退配置，根据模型推断
+                OcrAdapterFactory::infer_engine_from_model(&config.model)
+            };
+
+        debug!(
+            "[OCR] effective engine={}, model={}",
+            effective_engine.as_str(),
+            config.model
+        );
+
+        Ok((config, effective_engine))
+    }
+
+    // 获取 Anki 制卡模型配置
+    async fn get_anki_model_config(&self) -> Result<ApiConfig> {
+        let assignments = self.get_model_assignments().await?;
+        let anki_model_id = assignments
+            .anki_card_model_config_id
+            .ok_or_else(|| AppError::configuration("Anki制卡模型未配置"))?;
+
+        let configs = self.get_api_configs().await?;
+        let config = routing::resolve_enabled_text_model(&configs, [anki_model_id.as_str()])
+            .cloned()
+            .ok_or_else(|| AppError::configuration("找不到已启用的有效 Anki 制卡模型配置"))?;
+
+        debug!(
+            "找到 Anki 制卡模型配置: 模型={}, API地址={}",
+            config.model, config.base_url
+        );
+        Ok(config)
+    }
+
+    /// 只读能力探测：Anki Sidekick 模型分层路由的槽位快照（Round 4 #7）。
+    ///
+    /// 仅读取现有模型分配与 API 配置，不发起任何网络调用、不写任何状态。
+    /// 任何读取失败都返回空槽位（调用侧回退单模型旧路径），绝不阻断制卡。
+    pub async fn probe_anki_routing_slots(&self) -> crate::anki_model_routing::AnkiRoutingSlots {
+        let assignments = match self.get_model_assignments().await {
+            Ok(a) => a,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取模型分配失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        let configs = match self.get_api_configs().await {
+            Ok(c) => c,
+            Err(e) => {
+                debug!("[ANKI_ROUTING] 读取 API 配置失败，返回空槽位: {}", e);
+                return Default::default();
+            }
+        };
+        crate::anki_model_routing::build_slots(&assignments, &configs)
+    }
+
+    /// 统一模型选择函数
+    ///
+    /// 参数：
+    /// - task: 任务类型 ("default"|"review"|"chat_title"|"tag_generation")
+    /// - override_id: 可选的覆盖模型ID
+    /// - temperature: 可选的温度覆盖
+    /// - top_p: 可选的 Top-P 覆盖
+    /// - frequency_penalty: 可选的频率惩罚覆盖
+    /// - presence_penalty: 可选的存在惩罚覆盖
+    /// - max_output_tokens: 可选的最大输出 tokens 覆盖
+    ///
+    /// 返回：(ApiConfig, enable_cot)
+    pub async fn select_model_for(
+        &self,
+        task: &str,
+        override_id: Option<String>,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        frequency_penalty: Option<f32>,
+        presence_penalty: Option<f32>,
+        max_output_tokens: Option<u32>,
+    ) -> Result<(ApiConfig, bool)> {
+        // 如果有覆盖 ID，使用覆盖配置。override_id 本身不授予绕过 enabled 的权限；
+        // 如未来需要调用已禁用模型，必须提供独立且显式的授权参数。
+        if let Some(ref override_id) = override_id {
+            let configs = self.get_api_configs().await?;
+            let mut config = routing::resolve_enabled_text_model(&configs, [override_id.as_str()])
+                .cloned()
+                .ok_or_else(|| {
+                    AppError::configuration(format!("找不到已启用的有效模型配置: {}", override_id))
+                })?;
+
+            // 应用参数覆盖
+            if let Some(temp) = temperature {
+                config.temperature = temp;
+            }
+            if let Some(max_tokens) = max_output_tokens {
+                config.max_output_tokens = max_tokens;
+            }
+            config.top_p_override = top_p;
+            config.frequency_penalty_override = frequency_penalty;
+            config.presence_penalty_override = presence_penalty;
+
+            let enable_cot = config.is_reasoning;
+            return Ok((config, enable_cot));
+        }
+
+        // 根据任务类型选择模型
+        let assignments = self.get_model_assignments().await?;
+        let configs = self.get_api_configs().await?;
+
+        let (model_ids, enable_cot): (Vec<String>, bool) = match task {
+            "default" => {
+                let model_id = assignments
+                    .model2_config_id
+                    .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
+                (vec![model_id], true) // 默认启用CoT
+            }
+            "chat_title" | "tag_generation" => {
+                let model_ids = [
+                    assignments.chat_title_model_config_id,
+                    assignments.model2_config_id,
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>();
+                if model_ids.is_empty() {
+                    return Err(AppError::configuration("没有配置可用的标题/标签生成模型"));
+                }
+                (model_ids, false)
+            }
+            "review" => {
+                let model_id = assignments
+                    .review_analysis_model_config_id
+                    .ok_or_else(|| AppError::configuration("未配置回顾分析模型"))?;
+                (vec![model_id], true) // 回顾分析通常需要CoT
+            }
+            other => {
+                // 🆕 用途分模型路由（routing.rs）：compaction / memory_flush / utility 等
+                // 新用途可在 Failover 策略中配置专属（廉价）模型；未配置时回落 default 逻辑
+                let policy = self.get_failover_policy().await.unwrap_or_default();
+                if let Some(purpose_model_id) = routing::resolve_purpose_model_id(&policy, other) {
+                    let mut model_ids = vec![purpose_model_id];
+                    if let Some(default_id) = assignments.model2_config_id {
+                        model_ids.push(default_id);
+                    }
+                    (model_ids, false)
+                } else if routing::is_known_utility_purpose(other) {
+                    let model_id = assignments
+                        .model2_config_id
+                        .ok_or_else(|| AppError::configuration("对话模型未配置"))?;
+                    (vec![model_id], false)
+                } else {
+                    return Err(AppError::configuration(format!(
+                        "不支持的任务类型: {}",
+                        task
+                    )));
+                }
+            }
+        };
+
+        let mut config =
+            routing::resolve_enabled_text_model(&configs, model_ids.iter().map(String::as_str))
+                .cloned()
+                .ok_or_else(|| {
+                    AppError::configuration(format!(
+                        "找不到已启用的有效模型配置，候选: {}",
+                        model_ids.join(", ")
+                    ))
+                })?;
+
+        // 应用参数覆盖
+        if let Some(temp) = temperature {
+            config.temperature = temp;
+        }
+        if let Some(max_tokens) = max_output_tokens {
+            config.max_output_tokens = max_tokens;
+        }
+        config.top_p_override = top_p;
+        config.frequency_penalty_override = frequency_penalty;
+        config.presence_penalty_override = presence_penalty;
+
+        // CoT策略：默认采用config.is_reasoning，但可以被任务特定逻辑覆盖
+        let final_enable_cot = config.is_reasoning && enable_cot;
+
+        Ok((config, final_enable_cot))
+    }
+
+    // 获取模型分配配置
+    pub async fn get_model_assignments(&self) -> Result<ModelAssignments> {
+        let assignments_str = self.db.get_setting("model_assignments")
+            .map_err(|e| AppError::database(format!("获取模型分配配置失败: {}", e)))?
+            .unwrap_or_else(|| r#"{"model2_config_id": null, "review_analysis_model_config_id": null, "anki_card_model_config_id": null, "qbank_ai_grading_model_config_id": null}"#.to_string());
+
+        let assignments: ModelAssignments = serde_json::from_str(&assignments_str)
+            .map_err(|e| AppError::configuration(format!("解析模型分配配置失败: {}", e)))?;
+
+        Ok(assignments)
+    }
+
+    // 保存模型分配配置
+    pub async fn save_model_assignments(&self, assignments: &ModelAssignments) -> Result<()> {
+        let assignments_str = serde_json::to_string(assignments)
+            .map_err(|e| AppError::configuration(format!("序列化模型分配配置失败: {}", e)))?;
+
+        self.db
+            .save_setting("model_assignments", &assignments_str)
+            .map_err(|e| AppError::database(format!("保存模型分配配置失败: {}", e)))?;
+
+        Ok(())
+    }
+
+    // 保存API配置（兼容旧调用，自动映射到供应商/模型）
+    pub async fn save_api_configurations(&self, configs: &[ApiConfig]) -> Result<()> {
+        self.bootstrap_vendor_model_config().await?;
+
+        let mut plain_configs: Vec<ApiConfig> = configs
+            .iter()
+            .filter(|cfg| !cfg.is_builtin)
+            .cloned()
+            .collect();
+
+        for cfg in &mut plain_configs {
+            cfg.api_key = self.decrypt_api_key_if_needed(&cfg.api_key)?;
+        }
+
+        let (mut vendors, mut profiles) = self
+            .flatten_api_configs_to_vendor_profiles(&plain_configs)
+            .await?;
+
+        vendors.retain(|v| !v.is_builtin);
+        profiles.retain(|p| !p.is_builtin);
+
+        self.save_vendor_model_configs(&vendors, &profiles).await
+    }
+
+    // 加密API密钥
+    fn encrypt_api_key(&self, api_key: &str) -> Result<String> {
+        // 如果已经是加密格式，直接返回
+        if CryptoService::is_encrypted_format(api_key) {
+            return Ok(api_key.to_string());
+        }
+
+        let encrypted_data = self
+            .crypto_service
+            .encrypt_api_key(api_key)
+            .map_err(|e| AppError::configuration(format!("加密API密钥失败: {}", e)))?;
+
+        serde_json::to_string(&encrypted_data)
+            .map_err(|e| AppError::configuration(format!("序列化加密数据失败: {}", e)))
+    }
+
+    pub fn decrypt_api_key_if_needed(&self, api_key: &str) -> Result<String> {
+        // 检查是否为加密格式
+        if CryptoService::is_encrypted_format(api_key) {
+            let encrypted_data: EncryptedData = serde_json::from_str(api_key)
+                .map_err(|e| AppError::configuration(format!("解析加密数据失败: {}", e)))?;
+
+            self.crypto_service
+                .decrypt_api_key(&encrypted_data)
+                .map_err(|e| AppError::configuration(format!("解密API密钥失败: {}", e)))
+        } else {
+            // 明文格式，迁移到加密格式（静默处理，避免日志噪音）
+            Ok(api_key.to_string())
+        }
+    }
+
+    /// 公开的 API Key 解密方法（供翻译模块等使用）
+    pub fn decrypt_api_key(&self, api_key: &str) -> Result<String> {
+        self.decrypt_api_key_if_needed(api_key)
+    }
+}
+// ==================== Global singleton helper ====================
+use std::sync::OnceLock;
+// no extra traits needed for listen/unlisten
+
+impl LLMManager {
+    /// Get global singleton (constructed lazily with default Database & FileManager).
+    /// This prevents multiple heavy clients and allows background jobs reuse.
+    pub async fn global() -> anyhow::Result<Arc<LLMManager>> {
+        static INSTANCE: OnceLock<Arc<LLMManager>> = OnceLock::new();
+
+        if let Some(mgr) = INSTANCE.get() {
+            return Ok(mgr.clone());
+        }
+
+        // 构造全局实例目前依赖较多组件，若未准备好直接返回错误
+        Err(anyhow::anyhow!(
+            "LLMManager::global is not yet implemented in this build"
+        ))
+    }
+
+    /// 构建工具列表，包含本地工具和 MCP 工具
+    ///
+    /// G01-b：`window` 为 `None`（无窗口 runtime：headless / 测试）时 MCP 工具
+    /// 集为空——MCP 工具发现走前端桥，无窗 runtime 本就不该暴露前端桥工具；
+    /// 本地工具（web_search 等）广告逻辑不变。
+    async fn build_tools_with_mcp(&self, window: Option<&Window>) -> Value {
+        // 本地工具定义（按开关动态广告）
+        let mut tools_array = Vec::new();
+
+        // 条件广告 web_search（仅由消息级选择控制）
+        let selected_engines_list = self
+            .db
+            .get_setting("session.selected_search_engines")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let has_selected_engines = !selected_engines_list.trim().is_empty();
+
+        // 调试信息：搜索引擎配置状态
+        debug!(
+            "[搜索引擎] 配置: {:?}, 工具可用: {}",
+            selected_engines_list, has_selected_engines
+        );
+
+        if has_selected_engines {
+            // 解析选中的搜索引擎列表
+            let selected_engines: Vec<String> = selected_engines_list
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            // 构建 web_search 工具参数，动态注入引擎枚举约束
+            let mut properties = json!({
+                "query": { "type": "string", "description": "The web search query" },
+                "top_k": { "type": "integer", "description": "Max results to return", "default": 5 },
+                "site": { "type": "string", "description": "Optional site restriction (e.g., example.com)" },
+                "time_range": { "type": "string", "description": "Optional time range: 1d|7d|30d" }
+            });
+
+            // 如果有多个引擎选中，添加engine参数的枚举约束
+            if selected_engines.len() > 1 {
+                properties["engine"] = json!({
+                    "type": "string",
+                    "enum": selected_engines,
+                    "description": format!("Search engine to use. Available: {}", selected_engines.join(", "))
+                });
+            } else if selected_engines.len() == 1 {
+                // 只有一个引擎时，不暴露engine参数，工具内部自动使用
+                debug!(
+                    "Single search engine selected: {}, engine parameter hidden",
+                    selected_engines[0]
+                );
+            }
+
+            tools_array.push(build_openai_function_tool_schema(
+                "web_search",
+                Some("Search the INTERNET/WEB for current information, news, people, events, or any information not available in local knowledge base. Use this when users explicitly ask for web search or for real-time/current information."),
+                Some(json!({
+                    "type": "object",
+                    "properties": properties,
+                    "required": ["query"]
+                })),
+            ));
+
+            debug!(
+                "[工具] web_search工具已成功添加到工具列表，选中引擎: {:?}",
+                selected_engines
+            );
+        } else {
+            debug!("[工具] web_search工具未添加：没有选中的搜索引擎");
+        }
+
+        // ===== MCP 工具广告（经由前端SDK桥接） =====
+        let cache_ttl_ms: u64 = self
+            .db
+            .get_setting("mcp.performance.cache_ttl_ms")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(300_000);
+        let cache_ttl = Duration::from_millis(cache_ttl_ms);
+        let namespace_prefix = self
+            .db
+            .get_setting("mcp.tools.namespace_prefix")
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+        let advertise_all = self
+            .db
+            .get_setting("mcp.tools.advertise_all_tools")
+            .ok()
+            .flatten()
+            .map(|v| v.to_lowercase())
+            .map(|v| v != "0" && v != "false")
+            .unwrap_or(false);
+        let whitelist: Vec<String> = self
+            .db
+            .get_setting("mcp.tools.whitelist")
+            .ok()
+            .flatten()
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let blacklist: Vec<String> = self
+            .db
+            .get_setting("mcp.tools.blacklist")
+            .ok()
+            .flatten()
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let selected: Vec<String> = self
+            .db
+            .get_setting("session.selected_mcp_tools")
+            .ok()
+            .flatten()
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // G01-b：无窗口 runtime 没有前端桥，MCP 工具发现整体缺席（空集合）
+        let mcp_tools = match window {
+            Some(window) => self.get_frontend_mcp_tools_cached(window, cache_ttl).await,
+            None => {
+                debug!("[MCP] 无窗口 runtime：跳过前端 MCP 工具发现，工具集为空");
+                Vec::new()
+            }
+        };
+        let mut included_count = 0usize;
+        let namespace_prefix = namespace_prefix.trim();
+        let api_name_prefix = (!namespace_prefix.is_empty()).then_some(namespace_prefix);
+
+        for t in mcp_tools {
+            let name = t.name.trim().to_string();
+            if name.is_empty() {
+                warn!("[MCP] 跳过空名称工具: {:?}", t);
+                continue;
+            }
+            // 选择/白黑名单策略
+            let mut allowed = if !selected.is_empty() {
+                selected.iter().any(|s| s == &name)
+            } else if advertise_all {
+                true
+            } else if !whitelist.is_empty() {
+                whitelist.iter().any(|s| s == &name)
+            } else {
+                // 默认不广告，除非被选择或白名单开启
+                false
+            };
+            if !blacklist.is_empty() && blacklist.iter().any(|s| s == &name) {
+                allowed = false;
+            }
+            if !allowed {
+                continue;
+            }
+
+            let Some(prepared) =
+                Self::prepare_frontend_mcp_tool_for_legacy_api(&t, api_name_prefix)
+            else {
+                warn!("[MCP] 跳过无法规范化广告的工具: {}", name);
+                continue;
+            };
+            tools_array.push(prepared.schema);
+            included_count += 1;
+        }
+        debug!("[MCP] 已广告前端MCP工具 {} 个", included_count);
+
+        debug!("[工具] 工具列表构建完成，总计 {} 个工具", tools_array.len());
+
+        Value::Array(tools_array)
+    }
+
+    /// 获取 MCP 工具列表（使用 LLMManager 内部共享缓存）
+    async fn get_frontend_mcp_tools_cached(
+        &self,
+        window: &Window,
+        cache_ttl: Duration,
+    ) -> Vec<FrontendMcpTool> {
+        // 优先返回未过期缓存；若缓存为空则尝试强制刷新一次，避免"空缓存"导致长期不广告
+        if let Some(cache) = self.mcp_tool_cache.read().await.as_ref() {
+            if !cache.is_expired() && !cache.tools.is_empty() {
+                return cache.tools.clone();
+            }
+            // 缓存未过期但为空：尝试刷新一次
+        }
+        // 通过桥接请求工具
+        let tools = match self
+            .request_frontend_mcp_tools(window, Duration::from_millis(15_000))
+            .await
+        {
+            Ok(v) => v,
+            Err(e) => {
+                warn!("MCP tools bridge failed: {}", e);
+                vec![]
+            }
+        };
+        let mut guard = self.mcp_tool_cache.write().await;
+        *guard = Some(McpToolCache::new(tools.clone(), cache_ttl));
+        tools
+    }
+
+    /// 公开：预热前端 MCP 工具清单缓存（供命令调用）
+    pub async fn preheat_mcp_tools_public(&self, window: &Window) -> usize {
+        let ttl_ms: u64 = self
+            .db
+            .get_setting("mcp.performance.cache_ttl_ms")
+            .ok()
+            .flatten()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(300_000);
+        let tools = self
+            .get_frontend_mcp_tools_cached(window, Duration::from_millis(ttl_ms))
+            .await;
+        tools.len()
+    }
+
+    async fn request_frontend_mcp_tools(
+        &self,
+        window: &Window,
+        timeout: Duration,
+    ) -> anyhow::Result<Vec<FrontendMcpTool>> {
+        use tokio::sync::oneshot;
+        use tokio::time::timeout as tokio_timeout;
+        let correlation_id = uuid::Uuid::new_v4().to_string();
+        let event_name = format!("mcp-bridge-tools-response:{}", correlation_id);
+        let (tx, rx) = oneshot::channel::<serde_json::Value>();
+        let w = window.clone();
+        let tx_guard = std::sync::Arc::new(std::sync::Mutex::new(Some(tx)));
+        let tx_guard_clone = tx_guard.clone();
+        let id = w.listen(event_name.clone(), move |e| {
+            // In Tauri v2, payload is provided as &str
+            let payload_str = e.payload();
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(payload_str) {
+                if let Some(tx) = tx_guard_clone
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .take()
+                {
+                    let _ = tx.send(val);
+                }
+            }
+        });
+        // 发送请求
+        window
+            .emit(
+                "mcp-bridge-tools-request",
+                json!({"correlationId": correlation_id}),
+            )
+            .map_err(|e| anyhow::anyhow!("emit failed: {}", e))?;
+
+        // 等待响应
+        let waited = tokio_timeout(timeout, rx).await;
+        // 清理监听器（不论成功失败）
+        window.unlisten(id);
+        let val = match waited {
+            Err(_) => return Err(anyhow::anyhow!("timeout waiting tools response")),
+            Ok(Err(_)) => return Err(anyhow::anyhow!("bridge channel closed")),
+            Ok(Ok(v)) => v,
+        };
+        let arr = val.get("tools").cloned().unwrap_or(json!([]));
+        let tools: Vec<FrontendMcpTool> =
+            serde_json::from_value(arr).unwrap_or_else(|_| Vec::new());
+        Ok(tools)
+    }
+
+    /// 清除 MCP 工具缓存（供外部调用）
+    pub async fn clear_mcp_tool_cache(&self) {
+        let mut cache_guard = self.mcp_tool_cache.write().await;
+        *cache_guard = None;
+        info!("MCP tool cache cleared");
+    }
+
+    fn prepare_frontend_mcp_tool_for_legacy_api(
+        mcp_tool: &FrontendMcpTool,
+        api_name_prefix: Option<&str>,
+    ) -> Option<CanonicalExternalTool> {
+        prepare_external_tool(
+            &mcp_tool.name,
+            None,
+            mcp_tool.description.as_deref(),
+            Some(&mcp_tool.input_schema),
+            CanonicalExternalToolConfig {
+                internal_prefix: None,
+                preserve_prefix: None,
+                api_name_prefix,
+                include_server_suffix: false,
+                api_name_source: ApiNameSource::BridgeName,
+            },
+        )
+    }
+
+    /// 将 OpenAI 格式的工具调用转换为内部 ToolCall 格式
+    /// OpenAI 格式: {"id": "call_123", "type": "function", "function": {"name": "tool_name", "arguments": "{...}"}}
+    /// 内部格式: ToolCall { id, tool_name, args_json }
+    fn convert_openai_tool_call(
+        tool_call_value: &Value,
+    ) -> std::result::Result<crate::models::ToolCall, String> {
+        // 尝试直接解析为内部格式（兼容旧格式）
+        if let Ok(tc) = serde_json::from_value::<crate::models::ToolCall>(tool_call_value.clone()) {
+            return Ok(tc);
+        }
+
+        // OpenAI 格式解析
+        let id = tool_call_value
+            .get("id")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'id' field")?
+            .to_string();
+
+        let function = tool_call_value
+            .get("function")
+            .ok_or("Missing 'function' field")?;
+
+        let tool_name = function
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or("Missing 'function.name' field")?
+            .to_string();
+
+        // 🔧 修复：某些 OpenAI 兼容 API 的 arguments 已是 JSON 对象而非字符串
+        let arguments_value = function
+            .get("arguments")
+            .ok_or("Missing 'function.arguments' field")?;
+
+        // 如果 arguments 已经是 JSON 对象/数组，直接使用
+        if !arguments_value.is_string() {
+            if arguments_value.is_object() || arguments_value.is_array() {
+                log::debug!(
+                    "[llm_manager] convert_openai_tool_call: arguments 已是 JSON 值 (tool={})",
+                    tool_name
+                );
+                return Ok(crate::models::ToolCall {
+                    id,
+                    tool_name,
+                    args_json: arguments_value.clone(),
+                });
+            }
+            // null 或其他类型 → 空对象
+            return Ok(crate::models::ToolCall {
+                id,
+                tool_name,
+                args_json: Value::Object(serde_json::Map::new()),
+            });
+        }
+
+        let arguments_str = arguments_value.as_str().unwrap_or("{}");
+
+        // 兼容无参工具调用：部分模型会返回空字符串/空白字符串作为 arguments。
+        // 这不是截断错误，应按空对象处理。
+        if arguments_str.trim().is_empty() {
+            return Ok(crate::models::ToolCall {
+                id,
+                tool_name,
+                args_json: Value::Object(serde_json::Map::new()),
+            });
+        }
+
+        // 解析 arguments 字符串为 JSON
+        // 如果解析失败（常见于 LLM 输出被 max_tokens 截断），尝试修复截断的 JSON
+        let args_json: Value = match serde_json::from_str(arguments_str) {
+            Ok(v) => v,
+            Err(e) => {
+                // Authoring writes must never accept a repaired prefix as a
+                // complete document (it may omit materials or child questions).
+                if matches!(
+                    tool_name.trim_start_matches("builtin-"),
+                    "qbank_batch_import" | "qbank_import_document" | "qbank_commit_authoring_draft"
+                ) {
+                    return Err(format!(
+                        "INCOMPLETE_TOOL_ARGUMENTS: {tool_name} JSON is incomplete or invalid; no questions were written. Retry with a complete material/group boundary or the saved draft job_id: {e}"
+                    ));
+                }
+                // 检测是否为截断导致的 EOF 错误
+                let err_msg = e.to_string();
+                if err_msg.contains("EOF")
+                    || err_msg.contains("unexpected end")
+                    || err_msg.contains("trailing")
+                {
+                    log::warn!(
+                        "[llm_manager] 工具调用 JSON 疑似被截断 (len={}), 尝试修复...",
+                        arguments_str.len()
+                    );
+                    match Self::try_repair_truncated_json(arguments_str) {
+                        Some(repaired) => {
+                            log::info!(
+                                "[llm_manager] 截断 JSON 修复成功: tool={}, original_len={}, repaired_len={}",
+                                tool_name,
+                                arguments_str.len(),
+                                repaired.to_string().len()
+                            );
+                            repaired
+                        }
+                        None => {
+                            return Err(format!(
+                                "Failed to parse arguments JSON (truncated, repair failed): {}",
+                                e
+                            ));
+                        }
+                    }
+                } else {
+                    return Err(format!("Failed to parse arguments JSON: {}", e));
+                }
+            }
+        };
+
+        Ok(crate::models::ToolCall {
+            id,
+            tool_name,
+            args_json,
+        })
+    }
+
+    /// 尝试修复被截断的工具调用 JSON
+    ///
+    /// LLM 输出被 max_tokens 截断时，JSON 可能在任意位置中断。
+    /// 策略：从截断位置开始回退，找到最后一个完整的键值对，然后补全缺失的括号。
+    ///
+    /// 支持修复的场景：
+    /// - 对象/数组没有闭合（缺少 `}` 或 `]`）
+    /// - 字符串值被截断（缺少 `"`）
+    /// - 键值对写了一半（缺少 value）
+    fn try_repair_truncated_json(truncated: &str) -> Option<Value> {
+        let s = truncated.trim();
+        if s.is_empty() {
+            return None;
+        }
+
+        // 策略 1：直接补全括号
+        // 扫描已有的 JSON，统计未闭合的 { 和 [ ，在末尾补上对应的 } 和 ]
+        if let Some(repaired) = Self::repair_by_bracket_completion(s) {
+            return Some(repaired);
+        }
+
+        // 策略 2：回退到最后一个完整的逗号/键值对边界，再补全括号
+        // 从末尾向前找到最后一个 `,`、`}`、`]` 或完整的 `"key": value` 对
+        if let Some(repaired) = Self::repair_by_truncation_rollback(s) {
+            return Some(repaired);
+        }
+
+        log::warn!(
+            "[llm_manager] 截断 JSON 修复失败，所有策略均未成功 (len={})",
+            s.len()
+        );
+        None
+    }
+
+    /// 修复策略 1：补全缺失的括号
+    fn repair_by_bracket_completion(s: &str) -> Option<Value> {
+        // 扫描字符串，跟踪括号栈（忽略 JSON 字符串内部的括号）
+        let mut stack: Vec<char> = Vec::new();
+        let mut in_string = false;
+        let mut escape_next = false;
+
+        for ch in s.chars() {
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
+            if ch == '\\' && in_string {
+                escape_next = true;
+                continue;
+            }
+            if ch == '"' {
+                in_string = !in_string;
+                continue;
+            }
+            if in_string {
+                continue;
+            }
+            match ch {
+                '{' => stack.push('{'),
+                '[' => stack.push('['),
+                '}' if stack.last() == Some(&'{') => {
+                    stack.pop();
+                }
+                ']' if stack.last() == Some(&'[') => {
+                    stack.pop();
+                }
+                _ => {}
+            }
+        }
+
+        if stack.is_empty() {
+            // 括号已平衡，但可能有其他问题
+            return serde_json::from_str(s).ok();
+        }
+
+        // 如果截断在字符串内部，先闭合字符串
+        let mut repaired = s.to_string();
+        if in_string {
+            repaired.push('"');
+        }
+
+        // 处理末尾可能的不完整状态：
+        // 去掉末尾的悬挂逗号、冒号、不完整的 key
+        let trimmed = repaired.trim_end();
+        let last_char = trimmed.chars().last().unwrap_or(' ');
+        if last_char == ',' || last_char == ':' {
+            repaired = trimmed[..trimmed.len() - 1].to_string();
+        }
+
+        // 补全缺失的括号（逆序闭合）
+        for &bracket in stack.iter().rev() {
+            match bracket {
+                '{' => repaired.push('}'),
+                '[' => repaired.push(']'),
+                _ => {}
+            }
+        }
+
+        match serde_json::from_str::<Value>(&repaired) {
+            Ok(v) => {
+                log::debug!(
+                    "[llm_manager] 截断 JSON 修复成功（策略1：补全括号）, stack_depth={}",
+                    stack.len()
+                );
+                Some(v)
+            }
+            Err(_) => None,
+        }
+    }
+
+    /// 修复策略 2：回退到最后一个完整边界后补全
+    fn repair_by_truncation_rollback(s: &str) -> Option<Value> {
+        // 从末尾开始，逐步截断，直到找到一个可以通过补全括号修复的位置
+        // 尝试几个常见的截断回退点
+        let rollback_targets = [',', '}', ']', '\n'];
+
+        for &target in &rollback_targets {
+            if let Some(pos) = s.rfind(target) {
+                let candidate = if target == ',' {
+                    // 在逗号处截断：去掉逗号后的部分
+                    &s[..pos]
+                } else {
+                    // 在 } ] 换行处截断：保留到该字符
+                    &s[..=pos]
+                };
+
+                if let Some(repaired) = Self::repair_by_bracket_completion(candidate) {
+                    log::debug!(
+                        "[llm_manager] 截断 JSON 修复成功（策略2：回退到 '{}' pos={}）",
+                        target,
+                        pos
+                    );
+                    return Some(repaired);
+                }
+            }
+        }
+
+        None
+    }
+
+    fn coalesce_injection_texts(texts: &[String]) -> Option<String> {
+        if texts.is_empty() {
+            return None;
+        }
+        let per_item_max = 1600usize;
+        let total_max = 20_000usize;
+        let mut acc = String::new();
+        for (idx, text) in texts.iter().enumerate() {
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            let mut chunk = trimmed.to_string();
+            let original_len = chunk.chars().count();
+            if original_len > per_item_max {
+                chunk = chunk.chars().take(per_item_max).collect();
+                debug!(
+                    "  [{}] 注入段超限，截断 {} -> {} 字符",
+                    idx,
+                    original_len,
+                    chunk.chars().count()
+                );
+            }
+            if acc.chars().count() + chunk.chars().count() > total_max {
+                debug!(
+                    "  [{}] 注入总量已达上限，停止继续追加（当前 {} 字符）",
+                    idx,
+                    acc.chars().count()
+                );
+                break;
+            }
+            debug!(
+                "  [{}] 收录注入段，长度 {} 字符",
+                idx,
+                chunk.chars().count()
+            );
+            acc.push_str(&chunk);
+        }
+        if acc.is_empty() {
+            None
+        } else {
+            debug!("[Inject] 合并注入文本总长度: {} 字符", acc.chars().count());
+            debug!(
+                "[Inject] 注入预览: {}",
+                &acc.chars().take(200).collect::<String>()
+            );
+            Some(acc)
+        }
+    }
+
+    /// 把本轮检索/预取注入文本追加到**当前 user 消息**（prompt-cache 安全）。
+    ///
+    /// ## 为什么禁止追加到 system（P1-10 同源约束）
+    /// system 是消息序列第 0 位、位于全部历史之前；注入内容按当前 query
+    /// 生成、逐轮变化，追加到 system 尾部会让每轮请求的 system 字节都不同，
+    /// 从第 0 位起打碎整段 prompt cache。与 chat_v2 prompt_builder 的
+    /// P1-10 设计对齐：turn-volatile 内容一律落在当前 user 消息的
+    /// `<injected_context>` 内，system 保持跨轮字节恒定。
+    ///
+    /// ## 定位规则
+    /// 从尾部向前找第一条**非瞬态**的 user 消息（瞬态技能/锚点消息是
+    /// 字节稳定的合并屏障，改写会破坏其跨轮精确匹配，故跳过）；找不到
+    /// 任何可承载的 user 消息时，在尾部追加独立 user 消息承载注入——
+    /// 任何分支都不触碰 system。
+    ///
+    /// ## XML 转义安全
+    /// 注入载荷（web 检索摘要/图谱片段）为外部内容，整体经
+    /// `escape_xml_content` 转义后再包进 `<injected_context>`，防止载荷
+    /// 伪造 `<injected_context>`/`<skill_instructions>` 等标签（间接
+    /// prompt 注入面）。
+    fn append_injection_to_current_user_message(
+        messages: &mut Vec<Value>,
+        inject_content: &str,
+        transient_user_contents: &std::collections::HashSet<&str>,
+    ) {
+        if inject_content.trim().is_empty() {
+            warn!("[Inject] 注入内容为空，跳过");
+            return;
+        }
+        let block = format!(
+            "<injected_context>\n{}\n</injected_context>",
+            crate::text_escape::escape_xml_content(inject_content.trim())
+        );
+
+        let target = messages.iter_mut().rev().find(|msg| {
+            if msg.get("role").and_then(Value::as_str) != Some("user") {
+                return false;
+            }
+            let is_transient = msg
+                .get("content")
+                .and_then(Value::as_str)
+                .is_some_and(|text| transient_user_contents.contains(text));
+            !is_transient
+        });
+
+        if let Some(user_msg) = target {
+            match &user_msg["content"] {
+                // 字符串格式：user_query 在前、injected_context 尾随
+                Value::String(s) => {
+                    let new_content = format!("{}\n\n{}", s, block);
+                    user_msg["content"] = json!(new_content);
+                }
+                // 数组格式（多模态 content array）：追加一个 text block，
+                // 原有 text/image 块字节不动
+                Value::Array(arr) => {
+                    let mut new_arr = arr.clone();
+                    new_arr.push(json!({
+                        "type": "text",
+                        "text": block
+                    }));
+                    user_msg["content"] = json!(new_arr);
+                }
+                _ => {
+                    user_msg["content"] = json!(block);
+                }
+            }
+            debug!("[Inject] 已将注入文本追加到当前 user 消息（<injected_context>）");
+            return;
+        }
+
+        messages.push(json!({
+            "role": "user",
+            "content": block
+        }));
+        debug!("[Inject] 未找到可承载的 user 消息，已在尾部追加独立 user 消息承载注入内容");
+    }
+
+    /// 构建图谱检索结果的注入文本
+    ///
+    /// 支持两种数据格式：
+    /// - 旧格式（RagSourceInfo）：`file_name`, `chunk_text`
+    /// - 新格式（SourceInfo from Chat V2）：`title`, `snippet`
+    fn build_prefetched_graph_injection(context: &HashMap<String, Value>) -> Option<String> {
+        let prefetched = context
+            .get("prefetched_graph_sources")
+            .and_then(|v| v.as_array())?;
+        if prefetched.is_empty() {
+            return None;
+        }
+        let mut rows = Vec::new();
+        for (idx, item) in prefetched.iter().enumerate() {
+            // 兼容两种字段名格式：file_name/title, chunk_text/snippet
+            let title = item
+                .get("file_name")
+                .or_else(|| item.get("title"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or("Graph Insight");
+            let snippet = item
+                .get("chunk_text")
+                .or_else(|| item.get("snippet"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if snippet.trim().is_empty() {
+                continue;
+            }
+            rows.push(format!("({}) {}\n{}", idx + 1, title, snippet));
+            if rows.len() >= 5 {
+                break;
+            }
+        }
+        if rows.is_empty() {
+            None
+        } else {
+            Some(format!("【个人图谱】\n{}\n\n", rows.join("\n\n")))
+        }
+    }
+
+    /// P2-3: 调用 LLM 解析文档内容为题目
+    pub async fn call_llm_for_question_parsing(&self, prompt: &str) -> Result<String> {
+        // 默认使用模型二配置（第一模型已废弃）
+        self.call_llm_for_question_parsing_with_model(prompt, None)
+            .await
+    }
+
+    async fn resolve_question_parsing_config(
+        &self,
+        model_config_id: Option<&str>,
+    ) -> Result<ApiConfig> {
+        if let Some(config_id) = model_config_id {
+            let configs = self.get_api_configs().await?;
+            configs
+                .into_iter()
+                .find(|c| c.id == config_id)
+                .ok_or_else(|| {
+                    AppError::configuration(format!("找不到指定的模型配置: {}", config_id))
+                })
+        } else {
+            self.get_model2_config().await
+        }
+    }
+
+    fn question_parsing_request_body(api_config: &ApiConfig, prompt: &str) -> Value {
+        let max_tokens =
+            effective_max_tokens(api_config.max_output_tokens, api_config.max_tokens_limit);
+        let messages = vec![
+            json!({
+                "role": "system",
+                "content": "你是一个专业的题目解析助手。请准确识别文档中的题目，并按指定格式输出。"
+            }),
+            json!({
+                "role": "user",
+                "content": prompt
+            }),
+        ];
+
+        let mut request_body = json!({
+            "model": api_config.model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": max_tokens
+        });
+
+        Self::apply_reasoning_config(&mut request_body, api_config, None);
+        request_body
+    }
+
+    /// 流式调用 LLM 解析题目，每解析出一道题目立即通过回调返回
+    /// callback 返回 false 则中止流
+    ///
+    /// 传输由 `single_shot_stream` 承担：空闲超时 + 总时长硬上限（不再受共享
+    /// 客户端 300s 总超时限制），供应商拒绝流式时自动回退非流式。
+    pub async fn call_llm_for_question_parsing_streaming<F>(
+        &self,
+        prompt: &str,
+        model_config_id: Option<&str>,
+        mut on_question: F,
+    ) -> Result<Vec<Value>>
+    where
+        F: FnMut(Value) -> bool + Send,
+    {
+        let api_config = self
+            .resolve_question_parsing_config(model_config_id)
+            .await?;
+        let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
+        let request_body = Self::question_parsing_request_body(&api_config, prompt);
+
+        let mut all_questions: Vec<Value> = Vec::new();
+        let mut json_parser = IncrementalJsonArrayParser::new();
+        let opts = single_shot_stream::SingleShotOptions::new(format!(
+            "题目解析流式({})",
+            api_config.model
+        ));
+        let completion = {
+            // 增量解析 JSON 数组：每个内容增量喂给解析器，解析出完整题目即回调
+            let mut on_delta = |delta: &str| -> bool {
+                if let Some(questions) = json_parser.feed(delta) {
+                    for q in questions {
+                        if !on_question(q.clone()) {
+                            return false;
+                        }
+                        all_questions.push(q);
+                    }
+                }
+                true
+            };
+            self.single_shot_completion(
+                &api_config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "题目解析流式请求构建失败",
+                &opts,
+                Some(&mut on_delta),
+            )
+            .await?
+        };
+
+        if let Some(reason) = completion.interrupted.as_deref() {
+            // 已有部分内容时保留已解析题目（与旧实现一致），由上层决定是否补跑
+            log::warn!(
+                "[LLM] 题目解析流中断，保留已解析的 {} 题（{} 字符）: {}",
+                all_questions.len(),
+                completion.content.len(),
+                reason
+            );
+        }
+
+        // 处理剩余未解析的内容
+        if !completion.aborted {
+            if let Some(questions) = json_parser.finalize() {
+                for q in questions {
+                    if on_question(q.clone()) {
+                        all_questions.push(q);
+                    }
+                }
+            }
+        }
+
+        Ok(all_questions)
+    }
+
+    pub async fn call_llm_for_question_parsing_with_model(
+        &self,
+        prompt: &str,
+        model_config_id: Option<&str>,
+    ) -> Result<String> {
+        let api_config = self
+            .resolve_question_parsing_config(model_config_id)
+            .await?;
+        let api_key = self.decrypt_api_key_if_needed(&api_config.api_key)?;
+        let request_body = Self::question_parsing_request_body(&api_config, prompt);
+
+        // 流式传输：长输出/推理模型不再被网关或固定总超时掐断
+        let opts =
+            single_shot_stream::SingleShotOptions::new(format!("题目解析({})", api_config.model));
+        let completion = self
+            .single_shot_completion(
+                &api_config,
+                &request_body,
+                Some(&api_key),
+                None,
+                "题目解析请求构建失败",
+                &opts,
+                None,
+            )
+            .await?;
+
+        Ok(completion.content)
+    }
+}
+
+#[cfg(test)]
+mod proxy_env_tests {
+    use super::LLMManager;
+
+    /// 环境变量串行锁：代理测试会修改进程级 env，避免并行测试相互干扰。
+    static PROXY_ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    const PROXY_ENV_KEYS: [&str; 8] = [
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+        "NO_PROXY",
+        "no_proxy",
+    ];
+
+    /// 主 LLM HTTP 客户端必须遵循标准代理环境变量（对齐 DSH 出站代理语义）。
+    /// 用一个本地 TCP 监听冒充代理：只要它收到绝对形式请求行（GET http://…），
+    /// 就证明 reqwest 系统代理生效；NO_PROXY 排除本机是为了不影响并行测试。
+    #[tokio::test]
+    async fn http_client_honors_proxy_environment() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let _guard = PROXY_ENV_GUARD
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind proxy listener");
+        let proxy_url = format!("http://{}", listener.local_addr().expect("proxy addr"));
+
+        let saved: Vec<(&str, Option<String>)> = PROXY_ENV_KEYS
+            .iter()
+            .map(|key| (*key, std::env::var(key).ok()))
+            .collect();
+
+        for key in [
+            "HTTP_PROXY",
+            "http_proxy",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
+            std::env::set_var(key, &proxy_url);
+        }
+        for key in ["NO_PROXY", "no_proxy"] {
+            std::env::set_var(key, "127.0.0.1,localhost,::1");
+        }
+
+        let accept = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.expect("accept proxied request");
+            let mut buffer = vec![0u8; 8192];
+            let read = socket
+                .read(&mut buffer)
+                .await
+                .expect("read proxied request");
+            let head = String::from_utf8_lossy(&buffer[..read]).to_string();
+            let _ = socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{}",
+                )
+                .await;
+            head
+        });
+
+        let client = LLMManager::create_http_client_with_fallback();
+        let outcome = client
+            .get("http://proxy-verify.invalid/v1/models")
+            .send()
+            .await;
+
+        for (key, value) in saved {
+            match value {
+                Some(value) => std::env::set_var(key, value),
+                None => std::env::remove_var(key),
+            }
+        }
+
+        let head = accept.await.expect("proxy task");
+        if let Err(error) = &outcome {
+            // 代理 mock 提前断连不影响结论：绝对形式请求行已经证明代理生效。
+            eprintln!("proxied request error (tolerated): {error}");
+        }
+        assert!(
+            head.starts_with("GET http://proxy-verify.invalid"),
+            "HTTP client must honor proxy env; proxy saw: {head}"
+        );
+    }
+}

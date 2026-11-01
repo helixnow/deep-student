@@ -28,7 +28,7 @@ const MODEL_ASSIGNMENTS_GET_TOOL: &str = "model_assignments_get";
 const MODEL_ASSIGNMENTS_SET_TOOL: &str = "model_assignments_set";
 const MODEL_PROFILE_ADD_TOOL: &str = "model_profile_add";
 
-pub const SETTINGS_CHANGED_EVENT: &str = "chat_v2://settings_changed";
+pub use super::types::SETTINGS_CHANGED_EVENT; // 定义已下沉 `tools/types.rs`，此处保留旧路径
 pub const MODEL_ASSIGNMENTS_CHANGED_EVENT: &str = "chat_v2://model_assignments_changed";
 pub const MODEL_PROFILES_CHANGED_EVENT: &str = "chat_v2://model_profiles_changed";
 

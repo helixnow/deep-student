@@ -47,7 +47,7 @@ describe('archive manifest marker', () => {
 
   it('stays aligned with the Rust-side marker and manifest builder', () => {
     const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/vfs/repos/attachment_repo.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-vfs/src/vfs/repos/attachment_repo.rs'),
       'utf-8',
     );
     expect(rust).toContain(`ARCHIVE_MANIFEST_MARKER: &str = "${ARCHIVE_MANIFEST_MARKER}"`);

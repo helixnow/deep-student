@@ -14,6 +14,7 @@ import type {
   BlockingInteraction,
   PermissionPreset,
   GoalRecord,
+  DeliverInboxCallback,
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
@@ -61,6 +62,9 @@ export interface StoreCallbacks {
 
   /** 系统唤醒回调：只创建助手消息，唤醒内容不写入用户历史 */
   _wakeSessionCallback?: ((content: string, assistantMessageId: string) => Promise<void>) | null;
+
+  /** Super 会话收件箱投递回调：返回 DeliverOutcome（started 时附带后端生成的 user 消息） */
+  _deliverInboxCallback?: DeliverInboxCallback | null;
 
   /** 
    * 重试消息回调 
@@ -364,6 +368,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     // 🔧 P1修复：Callback 初始值
     _sendCallback: null,
     _wakeSessionCallback: null,
+    _deliverInboxCallback: null,
     _retryCallback: null,
     _deleteCallback: null,
     _editAndResendCallback: null,

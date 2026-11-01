@@ -16,7 +16,7 @@
 //! ## 与既有服务的对接
 //! - 全部业务逻辑走 `crate::review_plan_service::ReviewPlanService`（基于 ctx.vfs_db 构造），
 //!   不重复实现 SM-2 计算；
-//! - card_id → question_id 的映射复用 `ctx.question_bank_service`（与 qbank_* 工具同源）。
+//! - card_id → question_id 的映射复用 `ctx.services` 中的 `QuestionBankService`（与 qbank_* 工具同源）。
 //!
 //! ## 敏感度
 //! - 读（get_due / stats）: Low
@@ -318,8 +318,8 @@ impl ReviewToolExecutor {
         let mut unresolved_card_ids: Vec<String> = Vec::new();
         if !card_ids.is_empty() {
             let qb_service = ctx
-                .question_bank_service
-                .as_ref()
+                .services
+                .get::<crate::question_bank_service::QuestionBankService>()
                 .ok_or("QuestionBank service not available（card_ids 映射需要该服务，可改传 question_ids）")?;
             for card_id in &card_ids {
                 match qb_service.get_question_by_card_id(exam_id, card_id) {

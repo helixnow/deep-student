@@ -45,7 +45,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const MIGRATIONS_REL = path.join('src-tauri', 'migrations');
 export const LOCK_REL = path.join(MIGRATIONS_REL, 'migration-lock.json');
-export const RUST_DEF_REL = path.join('src-tauri', 'src', 'data_governance', 'migration');
+export const RUST_DEF_REL = path.join('src-tauri', 'crates', 'dstu-storage', 'src', 'migration');
 
 /** 各数据库目录 -> Rust MigrationDef 定义文件（null 表示豁免对应检查） */
 export const DATABASES = {
@@ -407,8 +407,10 @@ export function parseRustDefs(root, rustFile) {
   const re = /MigrationDef::new\s*\(\s*(\d+)\s*,\s*"([^"]*)"\s*,\s*include_str!\s*\(\s*"([^"]*)"\s*\)/g;
   for (const m of src.matchAll(re)) {
     const includePath = m[3];
-    // include_str! 相对 src/data_governance/migration/，形如 ../../../migrations/vfs/Vxxx.sql
-    const resolved = path.posix.normalize(path.posix.join('src/data_governance/migration', includePath));
+    // include_str! 相对 crates/dstu-storage/src/migration/，形如 ../../../../migrations/vfs/Vxxx.sql
+    const resolved = path.posix.normalize(
+      path.posix.join('crates/dstu-storage/src/migration', includePath)
+    );
     const prefix = 'migrations/';
     // normalize 后形如 migrations/vfs/Vxxx.sql（相对 src-tauri）
     const inMigrations = resolved.startsWith(prefix) ? resolved.slice(prefix.length) : null;

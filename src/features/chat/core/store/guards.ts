@@ -101,6 +101,10 @@ export function createGuards(getState: () => ChatStoreState): Guards {
     if (state.sessionStatus === 'streaming' || state.sessionStatus === 'aborting') {
       return false;
     }
+    // Super 会话的收件箱投递消息（事件卡片）由系统生成，不可编辑
+    if (state.messageMap.get(messageId)?._meta?.inboundOrigin != null) {
+      return false;
+    }
     return !isMessageLocked(messageId);
   };
 

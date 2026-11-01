@@ -308,6 +308,9 @@ export interface MessageMeta {
   /** 实际采用的 replay 来源 */
   replaySource?: string;
 
+  /** Super 会话收件箱投递来源（后端结构化 meta；存在即为系统事件消息，不可编辑） */
+  inboundOrigin?: unknown;
+
   /** 完整请求体（开发者调试用） */
   rawRequest?: unknown;
 

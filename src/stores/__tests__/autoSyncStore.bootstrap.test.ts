@@ -17,9 +17,8 @@
  *    ensureAutoSyncSchedulerStarted——修复前 App.tsx 没有这个调用（应红），
  *    修复后存在（应绿）。本轮只写测试不执行。
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 // performAutoSyncOnce 动态 import 这两个模块；整体 mock 掉以隔离 Tauri 链。
 // 未配置（config=null）→ 单轮结果为 skipped_unconfigured（fail-close 不误跑）。
@@ -121,7 +120,7 @@ describe('auto-sync bootstrap after restart (settings pages never mounted)', () 
     // 修复前 App.tsx 不调用 ensureAutoSyncSchedulerStarted（本用例红）；
     // 修复后 App 必须：hasHydrated() 已真 → 立即调；否则 onFinishHydration
     // 回调里调（不得在 hydration 前调，否则会用默认 enabled:false 误判 no-op）。
-    const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    const appSource = readAppShellSource();
 
     expect(appSource).toContain('ensureAutoSyncSchedulerStarted()');
     expect(appSource).toMatch(/hasHydrated\(\)/);

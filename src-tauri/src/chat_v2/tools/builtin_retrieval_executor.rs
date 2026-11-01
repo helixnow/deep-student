@@ -32,10 +32,8 @@ use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{SourceInfo, ToolCall, ToolResultInfo};
 use crate::tools::web_search::{do_search, SearchInput, ToolConfig as WebSearchConfig};
 
-/// 内置工具命名空间前缀
-/// 🔧 使用 'builtin-' 而非 'builtin:' 以兼容 DeepSeek/OpenAI API 的工具名称限制
-/// API 要求工具名称符合正则 ^[a-zA-Z0-9_-]+$，不允许冒号
-pub const BUILTIN_NAMESPACE: &str = "builtin-";
+/// 内置工具命名空间前缀（定义已下沉 `tools/types.rs`，此处保留旧路径）
+pub use super::types::BUILTIN_NAMESPACE;
 
 /// RAG 检索最小分数阈值（仅对量纲可比的 reranker 相关度生效）
 const RETRIEVAL_MIN_SCORE: f32 = 0.3;
@@ -2038,24 +2036,8 @@ mod tests {
     }
 }
 
-/// 读取会话检索范围（chat_v2_session_state.rag_library_ids_json，文件夹 id 列表）。
-pub(crate) fn load_session_rag_scope(
-    chat_db: &crate::chat_v2::database::ChatV2Database,
-    session_id: &str,
-) -> Option<Vec<String>> {
-    let conn = chat_db.get_conn_safe().ok()?;
-    let raw: Option<String> = conn
-        .query_row(
-            "SELECT rag_library_ids_json FROM chat_v2_session_state WHERE session_id = ?1",
-            [session_id],
-            |row| row.get(0),
-        )
-        .ok()
-        .flatten();
-    let ids: Vec<String> = serde_json::from_str(raw.as_deref()?).ok()?;
-    let ids: Vec<String> = ids.into_iter().filter(|id| !id.trim().is_empty()).collect();
-    (!ids.is_empty()).then_some(ids)
-}
+// 读取会话检索范围：实现位于 agent 侧 `chat_v2::session_scope`（`manage_session` 共用）。
+pub(crate) use crate::chat_v2::session_scope::load_session_rag_scope;
 
 /// 会话范围 ∩ 模型参数：无范围 → 原样；有范围 → 递归展开后与模型的 folder_ids 取交集，
 /// 交集为空或模型未指定 → 整个范围。

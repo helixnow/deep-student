@@ -16,6 +16,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
+import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
 import { isVectorIndexUnavailable, useEmbeddingReadiness } from '@/features/learning-hub/embeddingReadiness';
 import { VectorIndexUnavailableNotice } from '@/features/learning-hub/components/VectorIndexUnavailableNotice';
@@ -188,6 +189,20 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   saveSingleAssignmentField,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  // OpenCode Go 建议只用于 Agent 对话（对话默认模型、会话标题、上下文压缩），但不强制：
+  // 其他功能的选择器照常列出 Go 模型，只在下方提示哪些非 Agent 功能会用到 Go。
+  const findApi = (id?: string | null) => (id ? apiConfigs.find((api) => api.id === id) : undefined);
+  const model2IsOpenCodeGo = isOpenCodeGoConfig(findApi(config.model2ConfigId));
+  // 手动指定为 Go，或未单独指定而回退到 Go 对话模型的非 Agent 功能。
+  const goNonAgentFeatures = ([
+    [config.ankiCardModelConfigId, t('settings:api.anki_card_title')],
+    [config.qbank_ai_grading_model_config_id, t('settings:cards.qbank_ai_grading_model_title')],
+    [config.qbank_ai_generation_model_config_id, t('settings:cards.qbank_ai_generation_model_title')],
+    [config.translation_model_config_id, t('settings:cards.translation_model_title')],
+    [config.memory_decision_model_config_id, t('settings:api_config.memory_decision_model_label')],
+  ] as Array<[string | undefined, string]>)
+    .filter(([id]) => (id ? isOpenCodeGoConfig(findApi(id)) : model2IsOpenCodeGo))
+    .map(([, label]) => label);
   const [ocrEngineConfigured, setOcrEngineConfigured] = useState(false);
   // 未编入向量索引的构建（mobile-slim）：嵌入维度/模型绑定没有任何效果，换成说明
   const vectorIndexUnavailable = isVectorIndexUnavailable(useEmbeddingReadiness());
@@ -244,6 +259,15 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
+            {(model2IsOpenCodeGo || goNonAgentFeatures.length > 0) && (
+              <p className="px-1 pt-2 text-xs text-muted-foreground" data-testid="opencode-go-model2-notice">
+                {goNonAgentFeatures.length > 0
+                  ? t('settings:vendor_panel.opencode_go.non_agent_notice', {
+                      features: goNonAgentFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
+                    })
+                  : t('settings:vendor_panel.opencode_go.model2_notice')}
+              </p>
+            )}
           </div>
         </div></div>
 

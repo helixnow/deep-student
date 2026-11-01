@@ -69,7 +69,7 @@ function makeRepo(migrations, rustOverrides = {}) {
       if (!m) continue;
       src += `pub const X_${m[1]}: MigrationDef = MigrationDef::new(\n`;
       src += `    ${m[1]},\n    "${m[2]}",\n`;
-      src += `    include_str!("../../../migrations/${db}/${fileName}"),\n);\n`;
+      src += `    include_str!("../../../../migrations/${db}/${fileName}"),\n);\n`;
     }
     fs.writeFileSync(path.join(root, RUST_DEF_REL, rustFile), src);
   }
@@ -499,12 +499,12 @@ test('MigrationDef 版本号与文件名版本不一致必须失败', () => {
   const rust = `pub const X: MigrationDef = MigrationDef::new(
     20260999,
     "init",
-    include_str!("../../../migrations/vfs/V20260130__init.sql"),
+    include_str!("../../../../migrations/vfs/V20260130__init.sql"),
 );
 pub const Y: MigrationDef = MigrationDef::new(
     20260131,
     "add_flag",
-    include_str!("../../../migrations/vfs/V20260131__add_flag.sql"),
+    include_str!("../../../../migrations/vfs/V20260131__add_flag.sql"),
 );
 `;
   const root = makeRepo(BASE_REPO, { vfs: rust });
@@ -517,17 +517,17 @@ test('MigrationDef 引用不存在的 SQL 必须失败', () => {
   const rust = `pub const X: MigrationDef = MigrationDef::new(
     20260130,
     "init",
-    include_str!("../../../migrations/vfs/V20260130__init.sql"),
+    include_str!("../../../../migrations/vfs/V20260130__init.sql"),
 );
 pub const Y: MigrationDef = MigrationDef::new(
     20260131,
     "add_flag",
-    include_str!("../../../migrations/vfs/V20260131__add_flag.sql"),
+    include_str!("../../../../migrations/vfs/V20260131__add_flag.sql"),
 );
 pub const Z: MigrationDef = MigrationDef::new(
     20260999,
     "ghost",
-    include_str!("../../../migrations/vfs/V20260999__ghost.sql"),
+    include_str!("../../../../migrations/vfs/V20260999__ghost.sql"),
 );
 `;
   const root = makeRepo(BASE_REPO, { vfs: rust });

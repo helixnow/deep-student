@@ -666,6 +666,18 @@ impl ActiveDatabaseKind {
     }
 }
 
+/// 应用级命令层聚合状态（**仅限 app crate**）。
+///
+/// app crate 是组合根：只做组装、状态管理、命令注册（唯一的 `generate_handler!`，见 `lib.rs::run`）
+/// 与 Tauri 适配层；业务实现位于 `crates/dstu-*`。`AppState` 保留为 app 内约 415 个命令的
+/// 聚合注入点（step 10 §4：不改这些命令的签名），由 `lib.rs::build_app_state` 构造。
+///
+/// 共享服务字段另以**同一份** `Arc<T>` 单独 `manage`（`lib.rs::manage_shared_services`，紧跟
+/// `app.manage(state)`）：`Arc<Database>`、`Arc<DatabaseManager>`、`Arc<FileManager>`、
+/// `Arc<NotesManager>`、`Arc<ExamSheetService>`、`Arc<PdfOcrService>`、`Arc<QuestionBankService>`（仅 `Some` 时）；
+/// `Arc<VfsDatabase>`、`Arc<VfsLanceStore>`（初始化成功时）、`Arc<LLMManager>`、`Arc<PdfProcessingService>`
+/// 由 `build_app_state` 自行 manage。`dstu-*` crate 只能注入这些 `State<Arc<T>>`，**不得**引用 `AppState`。
+/// 其余字段（会话/取消表、`active_database`、`custom_mode_manager` 等）是命令层会话状态，只留在此处。
 pub struct AppState {
     pub database: Arc<Database>,                // 保留以兼容旧代码
     pub database_manager: Arc<DatabaseManager>, // 新的连接池管理器
@@ -707,26 +719,9 @@ pub struct AppState {
 }
 
 /// 获取模板配置（从数据库获取，支持内置和自定义模板）
-pub fn get_template_config(
-    template_id: &str,
-    database: &Arc<Database>,
-) -> std::result::Result<(String, Vec<String>, String, String, String), String> {
-    // 从数据库获取模板（包括内置和自定义）
-    match database.get_custom_template_by_id(template_id) {
-        Ok(Some(template)) => {
-            let fields = template.fields.clone();
-            Ok((
-                template.name,
-                fields,
-                template.front_template,
-                template.back_template,
-                template.css_style,
-            ))
-        }
-        Ok(None) => Err(format!("模板不存在: {}", template_id)),
-        Err(e) => Err(format!("获取模板失败: {}", e)),
-    }
-}
+///
+/// 已下沉到 dstu-anki（`anki::get_template_config`，`enhanced_anki_service` 导出时调用），按原路径重导出。
+pub use crate::anki::get_template_config;
 
 // PDF OCR 命令组
 #[tauri::command]
@@ -3117,6 +3112,23 @@ pub async fn fetch_vendor_models(
         .llm_manager
         .vendor_config_for_runtime(vendor_id.trim())
         .await?;
+    // OpenCode Go 不公开模型目录接口，且各模型协议不同：直接返回内置目录（不发网络请求），
+    // 避免把协议未知的型号批量加入。
+    if vendor.id == crate::llm_manager::opencode_go::VENDOR_ID
+        || vendor
+            .provider_type
+            .eq_ignore_ascii_case(crate::llm_manager::opencode_go::PROVIDER_TYPE)
+    {
+        return Ok(crate::llm_manager::opencode_go::BUILTIN_MODELS
+            .iter()
+            .map(|model| FetchedVendorModel {
+                id: model.model.to_string(),
+                label: model.label.to_string(),
+                context_window: None,
+                max_output_tokens: Some(model.max_output_tokens),
+            })
+            .collect());
+    }
     let uses_no_auth = vendor
         .auth_mode
         .as_deref()
@@ -3293,6 +3305,17 @@ pub async fn fetch_vendor_models(
     let mut fetched: Vec<FetchedVendorModel> = models.into_values().collect();
     fetched.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(fetched)
+}
+
+/// 查询 OpenCode Go 订阅用量（5 小时 / 周 / 月窗口）。
+#[tauri::command]
+pub async fn opencode_go_get_usage(
+    vendor_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<crate::llm_manager::opencode_go::OpenCodeGoUsage> {
+    let vendor_id =
+        vendor_id.unwrap_or_else(|| crate::llm_manager::opencode_go::VENDOR_ID.to_string());
+    state.llm_manager.opencode_go_usage(&vendor_id).await
 }
 
 #[tauri::command]
@@ -3587,6 +3610,27 @@ pub async fn test_api_connection(
             format!("Codex 连接测试失败 - {message}"),
             latency_ms(),
         ));
+    }
+
+    // OpenCode Go：只允许 Agent 对话产生推理流量，连接测试改为查询公开的用量接口，
+    // 同时验证 API Key 与订阅状态，不消耗额度。
+    if crate::llm_manager::opencode_go::is_opencode_go_config(&config) {
+        let result = match crate::llm_manager::opencode_go::usage_client() {
+            Ok(client) => {
+                crate::llm_manager::opencode_go::fetch_usage(&client, &config.api_key).await
+            }
+            Err(error) => Err(error),
+        };
+        return Ok(match result {
+            Ok(_) => {
+                info!("[API测试] OpenCode Go 用量接口验证成功");
+                ConnectionTestOutcome::success(latency_ms(), None)
+            }
+            Err(error) => {
+                warn!("[API测试] OpenCode Go 验证失败: {}", error.message());
+                ConnectionTestOutcome::failure(error.category(), error.message(), latency_ms())
+            }
+        });
     }
 
     // 探测客户端：跟随重定向（reqwest 跨源重定向会剥离敏感头，同源重定向
@@ -4108,101 +4152,9 @@ pub async fn read_file_text(window: Window, path: String) -> Result<String> {
     unified_file_manager::read_to_string(&window, &path)
 }
 
-/// 拒绝包含隐藏路径段（点号开头）的本地路径
-///
-/// ★ 2026-06-12（审阅问题 R4 安全配套）：`read_file_bytes`/`read_file_text`
-/// 没有任何路径白名单，前端任意 JS 都能读取 ~/.ssh、~/.aws 等敏感目录。
-/// 正常导入/预览流程只会访问用户可见文件，封掉隐藏路径段不影响功能。
-/// 应用自身数据目录（Linux 下位于 ~/.local/share）始终放行。
-pub(crate) fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
-    use tauri::Manager;
-
-    if unified_file_manager::is_virtual_uri(raw_path) {
-        return Ok(());
-    }
-
-    // ★ 2026-07-19（安全加固）：先解码 + canonicalize 再做前缀/隐藏段判断。
-    // 旧实现直接对原始字符串做 `starts_with`，`$APP_DATA/../../.ssh/key` 这类
-    // 带 `..` 的路径可通过应用目录前缀放行，URL 编码（%2Essh）也能绕过隐藏段检查。
-    let normalized_raw = unified_file_manager::sanitize_for_legacy(raw_path);
-    let resolved = canonicalize_lenient(Path::new(&normalized_raw));
-
-    // 应用数据目录内的路径（如 VFS blob）放行（目录本身也真实化，
-    // 处理 macOS /var -> /private/var 之类的符号链接前缀差异）
-    let app = window.app_handle();
-    let in_app_dirs = [
-        app.path().app_data_dir().ok(),
-        app.path().app_local_data_dir().ok(),
-        app.path().app_cache_dir().ok(),
-    ]
-    .into_iter()
-    .flatten()
-    .any(|dir| {
-        let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
-        resolved.starts_with(&dir)
-    });
-    if in_app_dirs {
-        return Ok(());
-    }
-
-    let has_hidden_component = resolved.components().any(|c| {
-        matches!(
-            c,
-            std::path::Component::Normal(name)
-                if name.to_string_lossy().starts_with('.')
-        )
-    });
-    if has_hidden_component {
-        return Err(AppError::validation(format!(
-            "拒绝读取隐藏路径: {}",
-            raw_path
-        )));
-    }
-    Ok(())
-}
-
-/// 尽力真实化路径：
-/// - 文件存在时直接 `canonicalize`（消除 `..` 与符号链接）；
-/// - 文件尚不存在时先词法归一化 `.`/`..`，再尝试真实化父目录后拼回文件名；
-/// - 父目录也不存在时退化为纯词法归一化结果。
-fn canonicalize_lenient(path: &Path) -> std::path::PathBuf {
-    if let Ok(canonical) = std::fs::canonicalize(path) {
-        return canonical;
-    }
-    let normalized = lexical_normalize_path(path);
-    if let Some(parent) = normalized.parent() {
-        if let (Ok(canonical_parent), Some(name)) =
-            (std::fs::canonicalize(parent), normalized.file_name())
-        {
-            return canonical_parent.join(name);
-        }
-    }
-    normalized
-}
-
-/// 词法归一化：消除 `.` 段，`..` 段弹出上一个普通段（到达根后忽略，
-/// 与 `canonicalize` 对 `/..` 的行为一致）。不访问文件系统。
-fn lexical_normalize_path(path: &Path) -> std::path::PathBuf {
-    use std::path::Component;
-
-    let mut result = std::path::PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                // 相对路径开头的连续 `..` 无处可弹，原样保留；
-                // 已到根（pop 返回 false）时按 POSIX 语义忽略。
-                let ends_with_parent =
-                    matches!(result.components().next_back(), Some(Component::ParentDir));
-                if ends_with_parent || (!result.pop() && !result.has_root()) {
-                    result.push(Component::ParentDir.as_os_str());
-                }
-            }
-            other => result.push(other.as_os_str()),
-        }
-    }
-    result
-}
+/// 拒绝包含隐藏路径段（点号开头）的本地路径；定义已下沉到存储层
+/// `unified_file_manager`（staged_upload 共用），这里按原路径重导出。
+pub(crate) use crate::unified_file_manager::deny_hidden_local_path;
 
 /// `read_file_bytes` 单次读取的强制上限（与 vfs attachment `MAX_FILE_BYTES` 对齐）。
 /// 调用方传入的 `max_bytes` 只能收紧、不能放宽该上限。
@@ -5570,54 +5522,6 @@ mod tests {
         let basic_with_unknown_ref =
             make_template_request("Basic", &["Front"], "{{Front}}", "{{FrontSide}} {{Back}}");
         assert!(validate_template_request(&basic_with_unknown_ref).is_ok());
-    }
-
-    #[test]
-    fn lexical_normalize_path_resolves_dot_segments() {
-        use super::lexical_normalize_path;
-        use std::path::{Path, PathBuf};
-
-        assert_eq!(
-            lexical_normalize_path(Path::new("/a/b/../c/./d")),
-            PathBuf::from("/a/c/d")
-        );
-        // `..` 穿越应用目录前缀的攻击面：归一化后前缀判断不再被欺骗
-        assert_eq!(
-            lexical_normalize_path(Path::new("/app/data/../../home/user/.ssh/key")),
-            PathBuf::from("/home/user/.ssh/key")
-        );
-        // 根之上的 `..` 按 POSIX 语义忽略
-        assert_eq!(
-            lexical_normalize_path(Path::new("/../a")),
-            PathBuf::from("/a")
-        );
-        // 相对路径开头的连续 `..` 原样保留
-        assert_eq!(
-            lexical_normalize_path(Path::new("../../a/b/../c")),
-            PathBuf::from("../../a/c")
-        );
-    }
-
-    #[test]
-    fn canonicalize_lenient_handles_missing_files() {
-        use super::canonicalize_lenient;
-
-        let temp = std::env::temp_dir();
-        let canonical_temp = std::fs::canonicalize(&temp).unwrap();
-
-        // 不存在的文件：父目录真实化 + 拼回文件名
-        let missing = temp.join("deep_student_test_missing_file.bin");
-        assert_eq!(
-            canonicalize_lenient(&missing),
-            canonical_temp.join("deep_student_test_missing_file.bin")
-        );
-
-        // 不存在的文件 + `..` 段：词法归一化后仍能消除穿越
-        let traversal = temp.join("nonexistent_dir/../deep_student_test_missing_file.bin");
-        assert_eq!(
-            canonicalize_lenient(&traversal),
-            canonical_temp.join("deep_student_test_missing_file.bin")
-        );
     }
 
     #[test]

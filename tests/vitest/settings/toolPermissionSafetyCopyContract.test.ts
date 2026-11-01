@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -7,10 +7,12 @@ function readJson(path: string): Record<string, any> {
 }
 
 describe('tool permission protected-action copy contract', () => {
-  const componentSource = readFileSync(
-    resolve(process.cwd(), 'src/features/settings/components/McpToolsSection.tsx'),
-    'utf-8'
-  );
+  // McpToolsSection 已拆分到 mcp-tools/ 子模块：入口 + 全部子模块拼接后断言
+  const componentsDir = resolve(process.cwd(), 'src/features/settings/components');
+  const componentSource = [
+    resolve(componentsDir, 'McpToolsSection.tsx'),
+    ...readdirSync(resolve(componentsDir, 'mcp-tools')).sort().map((file) => resolve(componentsDir, 'mcp-tools', file)),
+  ].map((file) => readFileSync(file, 'utf-8')).join('\n');
   const zh = readJson('src/locales/zh-CN/settings.json').tool_permissions;
   const en = readJson('src/locales/en-US/settings.json').tool_permissions;
 

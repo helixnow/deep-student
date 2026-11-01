@@ -1,0 +1,37 @@
+[package]
+name = "dstu-docs"
+version = "0.0.0"
+description = "Deep Student 文档读写：Office/PDF/EPUB 等格式解析与生成、讲义 DOCX、Pdfium 加载"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[package.metadata.dstu]
+layer = "infra"
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = { workspace = true }
+calamine = { workspace = true }
+csv = { workspace = true }
+docx-rs = { workspace = true }
+encoding_rs = { workspace = true }
+html2text = { workspace = true }
+image = { workspace = true }
+log = { workspace = true }
+pdfium-render = { workspace = true }
+ppt-rs = { workspace = true }
+pptx-to-md = { workspace = true }
+quick-xml = { workspace = true }
+rtf-parser = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tauri = { workspace = true }
+tempfile = { workspace = true }
+tracing = { workspace = true }
+umya-spreadsheet = { workspace = true }
+urlencoding = { workspace = true }
+zip = { workspace = true }

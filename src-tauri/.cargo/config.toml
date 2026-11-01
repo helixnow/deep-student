@@ -23,13 +23,21 @@ linker = "clang"
 
 [profile.dev]
 opt-level = 0
-debug = true
+# 与 Cargo.toml 的 [profile.dev] 保持一致：本地 crate 也只用行号级调试信息，
+# 需要完整变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖。
+debug = "line-tables-only"
 incremental = true
 codegen-units = 256
 lto = false
 
 [profile.dev.package."*"]
 opt-level = 0
+# 与 Cargo.toml 的 [profile.dev.package."*"] 保持一致：第三方依赖只保留行号级调试信息。
+debug = "line-tables-only"
+
+# 与 Cargo.toml 的 [profile.test] 保持一致：测试目标不保留增量缓存。
+[profile.test]
+incremental = false
 
 
 # Android NDK 配置请通过环境变量注入（见 scripts/build_android.sh）

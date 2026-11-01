@@ -23,6 +23,7 @@ import {
   type ParentWakeStore,
 } from './subagentIdleWake';
 import { isActiveStreamConflict } from '../adapters/tauri/errors';
+import { isSuperSession } from '../superSession/isSuperSession';
 // 🆕 P25: 导入子代理事件日志函数
 import { addSubagentEventLog } from '../debug/exportSessionDebug';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -241,6 +242,14 @@ const completionWakeController = new SubagentIdleWakeController({
     const parentSessionId = payload.parent_session_id;
     if (!parentSessionId) return false;
     const state = parentStore.getState();
+    // Super 会话：Worker 结果已写入其工作区收件箱，由 SuperInboxController 投递，不走 wake
+    const parentMetadata = (state as { sessionMetadata?: Record<string, unknown> | null }).sessionMetadata;
+    if (isSuperSession(parentMetadata)) {
+      console.log(
+        `[Workspace Events] [SUBAGENT_WAKE] Parent ${parentSessionId} is a Super session; completion handled by inbox delivery`,
+      );
+      return true;
+    }
     if (state.sessionStatus !== 'idle' || state.currentStreamingMessageId) return false;
 
     const typedStore = parentStore as unknown as Parameters<typeof adapterManager.getOrCreate>[1];

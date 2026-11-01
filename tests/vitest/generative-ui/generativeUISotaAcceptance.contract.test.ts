@@ -49,7 +49,7 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   },
   {
     id: 'rust-hpias-event-emit',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/events.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/events.rs')),
   },
   {
     id: 'hpias-frontend-bridge',
@@ -113,12 +113,12 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   {
     id: 'hpias-pipeline-orchestrator',
     check: () =>
-      fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/orchestrator.rs')) &&
-      fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/payloads.rs')),
+      fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/orchestrator.rs')) &&
+      fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/payloads.rs')),
   },
   {
     id: 'hpias-research-service',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/service.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/service.rs')),
   },
   {
     id: 'hpias-lifecycle-contract',
@@ -153,11 +153,11 @@ const SOTA_REQUIREMENTS: Array<{ id: string; check: () => boolean }> = [
   },
   {
     id: 'hpias-retrieval-backend',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/retrieval_backend.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/retrieval_backend.rs')),
   },
   {
     id: 'hpias-llm-synthesis',
-    check: () => fs.existsSync(path.join(REPO, 'src-tauri/src/hpias/synthesis.rs')),
+    check: () => fs.existsSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/synthesis.rs')),
   },
   {
     id: 'tauri-e2e-rust-harness',
@@ -564,7 +564,7 @@ describe('generativeUISotaAcceptance contract', () => {
   });
 
   it('Rust hpias channel constant matches frontend', () => {
-    const rust = fs.readFileSync(path.join(REPO, 'src-tauri/src/hpias/events.rs'), 'utf8');
+    const rust = fs.readFileSync(path.join(REPO, 'src-tauri/crates/dstu-research/src/hpias/events.rs'), 'utf8');
     expect(rust).toContain('"hpias_event"');
   });
 

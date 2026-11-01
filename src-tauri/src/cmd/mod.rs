@@ -8,13 +8,13 @@
 pub mod anki_cards;
 pub mod anki_connect;
 pub mod apkg_import;
-pub mod browser;
+pub use dstu_browser::cmd::browser;
 pub mod enhanced_anki;
 pub mod fsrs_review;
 pub mod handout;
 pub mod helpers;
 pub mod mcp;
-pub mod media;
+pub use dstu_media::cmd::media; // compress_image（上传前图片压缩，已迁至 dstu-media）
 pub mod network;
 pub mod notes;
 pub mod ocr;

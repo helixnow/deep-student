@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('chat v2 mobile sidebar layer contract', () => {
-  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appSource = readAppShellSource();
   const chatPageSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
   const mobileLayoutSource = readFileSync(resolve(process.cwd(), 'src/components/layout/MobileSlidingLayout.tsx'), 'utf-8');
   const responsiveUtilitiesSource = readFileSync(resolve(process.cwd(), 'src/styles/responsive-utilities.css'), 'utf-8');

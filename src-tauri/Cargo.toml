@@ -16,14 +16,78 @@ license = "AGPL-3.0-or-later"
 name = "deep_student_lib"
 crate-type = ["cdylib", "rlib", "staticlib"]
 
-[build-dependencies]
-tauri-build = { version = "2", features = [] }
-serde_json = "1.0"
-syn = { version = "2", features = ["full", "parsing", "visit"] }
-# 使用内置的 protoc 可执行文件，避免系统依赖
-protoc-bin-vendored = "3.0"
+# =============================================================================
+# Workspace：app 包 `deep-student` 是 workspace 根；后端模块按层拆成 crates/dstu-*。
+# 分层规则与守卫见 scripts/check-crate-layers.mjs。
+# 第三方依赖的版本与 feature 只在 [workspace.dependencies] 声明一次，成员用
+# `xxx = { workspace = true }` 引用，保证所有 crate 解析到同一组版本与 feature。
+# [patch]、[profile] 只能写在这里（workspace 根）。
+# =============================================================================
+[workspace]
+resolver = "2"
+members = [
+    ".",
+    "crates/dstu-agent-api",
+    "crates/dstu-browser",
+    "crates/dstu-core",
+    "crates/dstu-docs",
+    "crates/dstu-kernel",
+    "crates/dstu-learning",
+    "crates/dstu-media",
+    "crates/dstu-llm",
+    "crates/dstu-mcp",
+    "crates/dstu-notes",
+    "crates/dstu-memory",
+    "crates/dstu-qbank",
+    "crates/dstu-util",
+    "crates/dstu-platform",
+    "crates/dstu-security",
+    "crates/dstu-storage",
+    "crates/dstu-testkit",
+    "crates/dstu-tutor",
+    "crates/dstu-vfs",
+    "crates/dstu-vision",
+    "crates/dstu-research",
+    "crates/dstu-anki",
+    "crates/dstu-sync",
+    "crates/dstu-agent",
+]
+# vendor/* 是 [patch] 用的补丁版第三方 crate，不是 workspace 成员。
+exclude = ["vendor"]
 
-[dependencies]
+[workspace.package]
+edition = "2021"
+authors = ["helixnow"]
+license = "AGPL-3.0-or-later"
+publish = false
+
+[workspace.dependencies]
+# 内部 crate（分层见 scripts/check-crate-layers.mjs）
+dstu-agent-api = { path = "crates/dstu-agent-api", default-features = false }
+dstu-browser = { path = "crates/dstu-browser", default-features = false }
+dstu-core = { path = "crates/dstu-core", default-features = false }
+dstu-docs = { path = "crates/dstu-docs", default-features = false }
+dstu-kernel = { path = "crates/dstu-kernel", default-features = false }
+dstu-learning = { path = "crates/dstu-learning", default-features = false }
+dstu-media = { path = "crates/dstu-media", default-features = false }
+dstu-llm = { path = "crates/dstu-llm", default-features = false }
+dstu-mcp = { path = "crates/dstu-mcp", default-features = false }
+dstu-notes = { path = "crates/dstu-notes", default-features = false }
+dstu-memory = { path = "crates/dstu-memory", default-features = false }
+dstu-util = { path = "crates/dstu-util", default-features = false }
+dstu-platform = { path = "crates/dstu-platform", default-features = false }
+dstu-qbank = { path = "crates/dstu-qbank", default-features = false }
+dstu-security = { path = "crates/dstu-security", default-features = false }
+dstu-storage = { path = "crates/dstu-storage", default-features = false }
+dstu-testkit = { path = "crates/dstu-testkit", default-features = false }
+dstu-tutor = { path = "crates/dstu-tutor", default-features = false }
+dstu-vfs = { path = "crates/dstu-vfs", default-features = false }
+dstu-vision = { path = "crates/dstu-vision", default-features = false }
+dstu-research = { path = "crates/dstu-research", default-features = false }
+dstu-anki = { path = "crates/dstu-anki", default-features = false }
+dstu-sync = { path = "crates/dstu-sync", default-features = false }
+dstu-agent = { path = "crates/dstu-agent", default-features = false }
+
 # 公共依赖
 tauri-plugin-opener = "2.5"
 tauri-plugin-dialog = "2.6"
@@ -124,13 +188,13 @@ tokio-tungstenite = { version = "0.21", default-features = false, features = ["c
 tungstenite = { version = "0.21", default-features = false }
 
 # Optional: LanceDB backend for vectors (feature-gated)
-lancedb = { version = "0.22.1", optional = true, default-features = false }
-arrow-array = { version = "55.2.0", optional = true }
-arrow-schema = { version = "55.2.0", optional = true }
+lancedb = { version = "0.22.1", default-features = false }
+arrow-array = { version = "55.2.0" }
+arrow-schema = { version = "55.2.0" }
 ## Optional tokenizer for precise token counting
-tiktoken-rs = { version = "0.5", optional = true }
+tiktoken-rs = { version = "0.5" }
 # 数据治理迁移框架
-refinery = { version = "=0.9.0", features = ["rusqlite"], optional = true }
+refinery = { version = "=0.9.0", features = ["rusqlite"] }
 
 # Additional deps for backup module
 walkdir = "2"
@@ -154,8 +218,8 @@ rustls = { version = "0.23", default-features = false, features = ["ring", "std"
 webpki-roots = "0.26"
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
-aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
-aws-config = { version = "1.5", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.65", default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
+aws-config = { version = "1.5", default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
 
 # MCP SSE和OAuth支持
 eventsource-stream = "0.2"
@@ -165,19 +229,218 @@ tauri-plugin-clipboard-manager = "~2.2"
 fs2 = "0.4.3"
 unicode-normalization = "0.1"
 
-# 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
-# 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
-[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁），只在桌面 target 段引用
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 # 单实例锁（审阅 34 P1-2）：防止双开进程共享同一套 SQLite/数据空间
 tauri-plugin-single-instance = "2"
 tauri-plugin-global-shortcut = "2.3.2"
 
-# OAuth2 在 Android 上暂不支持（会引入 native-tls）
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# OAuth2 在 Android 上暂不支持（会引入 native-tls），只在非 Android target 段引用
 oauth2 = "4.4"
 pkce = "0.2"
+
+# 开发调试插件（使用 mcp-debug feature 启用）
+# 注意：使用 hypothesi 的 mcp-server-tauri 桥接插件
+# 功能：截图、DOM访问、IPC监控、输入模拟、控制台日志等
+# 文档：https://hypothesi.github.io/mcp-server-tauri
+tauri-plugin-mcp-bridge = { version = "0.8" }
+
+# macOS / Linux 共用的 keyring：版本在此统一，平台 feature 在各 target 段追加
+keyring = { version = "=3.6.3", default-features = false }
+# macOS 特定依赖
+cocoa = "0.25"
+objc = "0.2"
+window-vibrancy = "0.6"
+# 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
+objc2 = "0.6.3"
+block2 = "0.6.2"
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSData",
+    "NSError",
+    "NSJSONSerialization",
+    "NSObject",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "WKWebView",
+] }
+# Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
+# 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+javascriptcore-rs = "1.1"
+# Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
+# 与 wry/tauri 对齐；仅用于 browser::bridge eval_with_result（勿与下方 OCR windows 0.58 混用类型）
+webview2-com = "0.38"
+windows = { version = "0.58", features = [
+    "Media_Ocr",
+    "Graphics_Imaging",
+    "Storage_Streams",
+    "Globalization",
+    "Foundation",
+    # ★ A3-C2：迭代 OcrResult.Lines()（IVectorView<OcrLine>）需要此 feature，
+    # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
+    "Foundation_Collections",
+] }
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Isolation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemServices",
+    "Win32_System_Threading",
+] }
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+serde_json = "1.0"
+syn = { version = "2", features = ["full", "parsing", "visit"] }
+# 使用内置的 protoc 可执行文件，避免系统依赖
+protoc-bin-vendored = "3.0"
+
+[dependencies]
+dstu-agent-api = { workspace = true }
+dstu-browser = { workspace = true }
+dstu-core = { workspace = true }
+dstu-docs = { workspace = true }
+dstu-kernel = { workspace = true }
+dstu-learning = { workspace = true }
+dstu-media = { workspace = true }
+dstu-llm = { workspace = true }
+dstu-mcp = { workspace = true }
+dstu-notes = { workspace = true }
+dstu-memory = { workspace = true }
+dstu-util = { workspace = true }
+dstu-platform = { workspace = true }
+dstu-qbank = { workspace = true }
+dstu-security = { workspace = true }
+dstu-storage = { workspace = true }
+dstu-tutor = { workspace = true }
+dstu-vfs = { workspace = true }
+dstu-vision = { workspace = true }
+dstu-research = { workspace = true }
+dstu-anki = { workspace = true }
+dstu-sync = { workspace = true }
+dstu-agent = { workspace = true }
+tauri-plugin-opener = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-http = { workspace = true }
+tauri-plugin-fs = { workspace = true }
+tauri-plugin-log = { workspace = true }
+tauri-plugin-notification = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+rusqlite = { workspace = true }
+base64 = { workspace = true }
+tempfile = { workspace = true }
+cap-std = { workspace = true }
+chrono = { workspace = true }
+chrono-tz = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+prost = { workspace = true }
+flate2 = { workspace = true }
+futures-util = { workspace = true }
+r2d2 = { workspace = true }
+r2d2_sqlite = { workspace = true }
+regex = { workspace = true }
+pulldown-cmark = { workspace = true }
+aes-gcm = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+hostname = { workspace = true }
+nanoid = { workspace = true }
+ulid = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+jsonschema = { workspace = true }
+zip = { workspace = true }
+url = { workspace = true }
+dirs = { workspace = true }
+image = { workspace = true }
+symphonia = { workspace = true }
+qrcode = { workspace = true }
+zerocopy = { workspace = true }
+backon = { workspace = true }
+config = { workspace = true }
+dotenvy = { workspace = true }
+sha1 = { workspace = true }
+html2text = { workspace = true }
+starlark = { workspace = true }
+tauri = { workspace = true }
+reqwest = { workspace = true }
+moka = { workspace = true }
+lru = { workspace = true }
+hyper = { workspace = true }
+docx-rs = { workspace = true }
+calamine = { workspace = true }
+pptx-to-md = { workspace = true }
+ppt-rs = { workspace = true }
+umya-spreadsheet = { workspace = true }
+rtf-parser = { workspace = true }
+csv = { workspace = true }
+encoding_rs = { workspace = true }
+quick-xml = { workspace = true }
+bincode = { workspace = true }
+rayon = { workspace = true }
+fsrs = { workspace = true }
+dashmap = { workspace = true }
+log = { workspace = true }
+sentry = { workspace = true }
+sentry-tracing = { workspace = true }
+futures = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tungstenite = { workspace = true }
+lancedb = { workspace = true, optional = true }
+arrow-array = { workspace = true, optional = true }
+arrow-schema = { workspace = true, optional = true }
+tiktoken-rs = { workspace = true, optional = true }
+refinery = { workspace = true, optional = true }
+walkdir = { workspace = true }
+libc = { workspace = true }
+pdfium-render = { workspace = true }
+fs_extra = { workspace = true }
+urlencoding = { workspace = true }
+roxmltree = { workspace = true }
+argon2 = { workspace = true }
+zeroize = { workspace = true }
+suppaftp = { workspace = true }
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+webpki-roots = { workspace = true }
+aws-sdk-s3 = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+eventsource-stream = { workspace = true }
+reqwest-eventsource = { workspace = true }
+zstd = { workspace = true }
+tauri-plugin-clipboard-manager = { workspace = true }
+fs2 = { workspace = true }
+unicode-normalization = { workspace = true }
+
+# 桌面端专用插件（更新器 + 进程管理 + 单实例锁）
+# 官方推荐白名单写法：仅在 macOS/Windows/Linux 编译
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = { workspace = true }
+tauri-plugin-process = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+tauri-plugin-global-shortcut = { workspace = true }
+
+# OAuth2 在 Android 上暂不支持（会引入 native-tls）
+[target.'cfg(not(target_os = "android"))'.dependencies]
+oauth2 = { workspace = true }
+pkce = { workspace = true }
 # MCP客户端库
 
 
@@ -185,7 +448,7 @@ pkce = "0.2"
 # 注意：使用 hypothesi 的 mcp-server-tauri 桥接插件
 # 功能：截图、DOM访问、IPC监控、输入模拟、控制台日志等
 # 文档：https://hypothesi.github.io/mcp-server-tauri
-tauri-plugin-mcp-bridge = { version = "0.8", optional = true }
+tauri-plugin-mcp-bridge = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Tauri mock runtime for ACL boundary tests.
@@ -206,6 +469,16 @@ criterion = { version = "0.5", features = ["html_reports"] }
 # 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
 proptest = "1.5"
 env_logger = "0.11.11"
+# 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
+# dstu-vfs 的 test-util feature 公开该函数（夹具本体在 dev-only 的 dstu-testkit）。
+dstu-vfs = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::mastery::service::set_now_override_ms` 覆盖 mastery 事件时钟。
+dstu-learning = { workspace = true, features = ["test-util"] }
+# 单测按原路径 `crate::memory::test_support::setup_memory_service` 与
+# `MemoryService::fail_next_idempotent_write_before_receipt`（拆分前的 cfg(test) 项）。
+dstu-memory = { workspace = true, features = ["test-util"] }
+# 单测 `fsrs_review_service::tests`（留在 app 的跨域用例）经 test-util 取未偏置的 FSRS due。
+dstu-anki = { workspace = true, features = ["test-util"] }
 
 [[test]]
 name = "chatanki_apkg_executor_e2e"
@@ -251,68 +524,35 @@ harness = false
 name = "tool_performance"
 harness = false
 
+
 # macOS 特定依赖
 [target.'cfg(target_os = "macos")'.dependencies]
 # TD-08（修订）：根密钥种子可选存入 macOS Keychain（secure_store::platform keystore）。
 # 默认关闭（Keychain 授权弹窗侵扰），仅用户在设置中开启后才迁入。
 # keyring 只在桌面 macOS/Linux 目标编译，Android/iOS 维持加密文件方案。
-keyring = { version = "=3.6.3", default-features = false, features = ["apple-native"] }
-cocoa = "0.25"
-objc = "0.2"
-window-vibrancy = "0.6"
-# 与 wry 0.54 对齐；仅用于 browser::bridge eval_with_result（WKWebView evaluateJavaScript）
-objc2 = "0.6.3"
-block2 = "0.6.2"
-objc2-foundation = { version = "0.3.2", default-features = false, features = [
-    "std",
-    "NSString",
-    "NSData",
-    "NSError",
-    "NSJSONSerialization",
-    "NSObject",
-] }
-objc2-web-kit = { version = "0.3.2", default-features = false, features = [
-    "std",
-    "block2",
-    "WKWebView",
-] }
+keyring = { workspace = true, features = ["apple-native"] }
+cocoa = { workspace = true }
+objc = { workspace = true }
+window-vibrancy = { workspace = true }
+objc2 = { workspace = true }
+block2 = { workspace = true }
+objc2-foundation = { workspace = true }
+objc2-web-kit = { workspace = true }
 
 # Linux 特定依赖（browser bridge WebKitGTK evaluate_javascript）
 [target.'cfg(target_os = "linux")'.dependencies]
 # TD-08（修订）：根密钥种子可选存入 Secret Service（gnome-keyring/KWallet），
 # 默认关闭，仅用户在设置中开启后才迁入；曾迁入的种子在关闭时自动回迁为文件。
 # vendored 静态链接 libdbus，避免用户机器缺 libdbus-1。
-keyring = { version = "=3.6.3", default-features = false, features = ["sync-secret-service", "crypto-rust", "vendored"] }
-# 与 wry 0.54 / tauri-runtime-wry linux-body 对齐；仅用于 browser::bridge eval_with_result
-webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
-javascriptcore-rs = "1.1"
+keyring = { workspace = true, features = ["sync-secret-service", "crypto-rust", "vendored"] }
+webkit2gtk = { workspace = true }
+javascriptcore-rs = { workspace = true }
 
 # Windows 特定依赖（系统 OCR + browser bridge WebView2 ExecuteScript）
 [target.'cfg(windows)'.dependencies]
-# 与 wry/tauri 对齐；仅用于 browser::bridge eval_with_result（勿与下方 OCR windows 0.58 混用类型）
-webview2-com = "0.38"
-windows = { version = "0.58", features = [
-    "Media_Ocr",
-    "Graphics_Imaging",
-    "Storage_Streams",
-    "Globalization",
-    "Foundation",
-    # ★ A3-C2：迭代 OcrResult.Lines()（IVectorView<OcrLine>）需要此 feature，
-    # 用于按行以 \n 连接、保留换行结构（Text() 会把所有行拼成单行丢失换行）
-    "Foundation_Collections",
-] }
-windows-sys = { version = "0.59", features = [
-    "Win32_Foundation",
-    "Win32_Security",
-    "Win32_Security_Authorization",
-    "Win32_Security_Isolation",
-    "Win32_Storage_FileSystem",
-    "Win32_System_Console",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_System_JobObjects",
-    "Win32_System_SystemServices",
-    "Win32_System_Threading",
-] }
+webview2-com = { workspace = true }
+windows = { workspace = true }
+windows-sys = { workspace = true }
 
 [profile.release]
 opt-level = "s"        # 优化大小
@@ -326,10 +566,24 @@ strip = "symbols"     # 安装包内二进制剥离符号；独立调试文件�
 # 开发配置：最大化增量与并行，不牺牲产物语义（仅影响dev/bench/test，release不变）
 [profile.dev]
 opt-level = 0          # 保持零优化，编译更快，语义与默认一致
-debug = true           # 完整调试信息，避免调试体验打折
-incremental = true     # 开启增量编译
+debug = "line-tables-only" # 行号级调试：保留断点行号与回溯，显著缩小 target/PDB；需要变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖
+incremental = true     # 开启增量编译（cargo build / tauri dev）
 codegen-units = 256    # 最大化并行代码生成
 lto = false            # 调试/开发无需LTO
+
+# 第三方依赖只保留行号级调试信息：回溯和断点行号不受影响，但能大幅缩小
+# target 体积、PDB 和链接时间，并降低测试编译的内存峰值。本地 crate 同样使用
+# 行号级调试信息；需要完整变量级调试时用 CARGO_PROFILE_DEV_DEBUG=true 临时覆盖。
+# test profile 继承 dev。注意 src-tauri/.cargo/config.toml 里有同一份 profile，
+# 两处需同步修改。
+[profile.dev.package."*"]
+debug = "line-tables-only"
+
+# 测试目标数量多（每个集成测试一个二进制）。增量缓存会为每个测试二进制、
+# 每个 worktree 各存一份，曾把 target 撑到数十 GB。测试统一关闭增量；
+# cargo build / tauri dev 仍保留 dev 增量，日常改代码速度不受影响。
+[profile.test]
+incremental = false
 
 # 移除所有 Cozo/Neo4j 测试二进制，仅保留主程序
 
@@ -341,11 +595,12 @@ default = ["sqlite", "lance", "mcp", "builtin_free_models", "tokenizer_tiktoken"
 # 启用 SQLite 代码（始终开启占位）
 sqlite = []
 # 启用 LanceDB 向量后端（需网络拉取依赖）
-lance = ["lancedb", "arrow-array", "arrow-schema"]
+# app 自身已不直接用 lancedb/arrow（notes_manager 已拆到 dstu-notes），三项保留不改依赖图；vfs / notes 侧分别由 dstu-vfs/lance、dstu-notes/lance 转发。
+lance = ["lancedb", "arrow-array", "arrow-schema", "dstu-vfs/lance", "dstu-notes/lance", "dstu-agent/lance"]
 # P2修复：精确 tokenizer（默认启用以提供准确的 token 计数，避免启发式估算偏差）
-tokenizer_tiktoken = ["tiktoken-rs"]
+tokenizer_tiktoken = ["tiktoken-rs", "dstu-util/tokenizer_tiktoken", "dstu-agent/tokenizer_tiktoken"]
 # 可选：MCP 客户端与 rmcp 校验
-mcp = []
+mcp = ["dstu-mcp/mcp", "dstu-agent/mcp"]
 # MCP 调试插件：允许 AI 代理（如 Cursor）通过 MCP 协议调试应用
 # 功能：截图、DOM 快照、IPC 监控、输入模拟、控制台日志流、JS 执行
 mcp-debug = ["tauri-plugin-mcp-bridge"]
@@ -354,14 +609,14 @@ mcp-debug = ["tauri-plugin-mcp-bridge"]
 # 其他开关
 db_migration = []
 # 仅为消除条件编译告警：不产生实际功能影响
-http = []
+http = ["dstu-mcp/http"]
 old_migration_impl = []
 # 内置免费模型（发行版使用）。开源版本可禁用
-builtin_free_models = []
+builtin_free_models = ["dstu-llm/builtin_free_models"]
 # 云存储 S3 兼容支持（可选，避免默认增加编译时间）
-cloud_storage_s3 = ["aws-sdk-s3", "aws-config"]
+cloud_storage_s3 = ["aws-sdk-s3", "aws-config", "dstu-sync/cloud_storage_s3"]
 # 数据治理模块（迁移、审计、同步等）
-data_governance = ["refinery"]
+data_governance = ["refinery", "dstu-storage/data_governance", "dstu-browser/data_governance", "dstu-sync/data_governance", "dstu-agent/data_governance"]
 # DevTools：仅在开发构建中启用，release 构建不应包含
 # 使用方式：cargo tauri dev --features devtools
 devtools = ["tauri/devtools"]
@@ -407,11 +662,14 @@ android-release = [
 # style: warn for now — remaining style debt below is allow-listed until later
 # waves (should_implement_trait / if_same_then_else / doc noise / ptr_arg leftovers).
 # Large-refactor complexity lints are allow (signature / type alias churn).
-[lints.rust]
+[lints]
+workspace = true
+
+[workspace.lints.rust]
 # objc macros probe cfg(feature = "cargo-clippy"); register so check-cfg is quiet.
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy", "examples"))'] }
 
-[lints.clippy]
+[workspace.lints.clippy]
 # Groups at lower priority so per-lint allow/deny overrides win.
 correctness = { level = "deny", priority = -1 }
 # Prefer deny; kept at warn until remaining style items below are cleared.

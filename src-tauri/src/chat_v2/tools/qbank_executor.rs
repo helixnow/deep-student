@@ -1506,7 +1506,7 @@ impl QBankExecutor {
         &self,
         ctx: &ExecutionContext,
     ) -> Result<std::sync::Arc<QuestionBankService>, String> {
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             return Ok(service.clone());
         }
         // 防御性回退：宿主漏接线时（历史上 lib.rs 构建 ChatV2Pipeline 从未调用
@@ -1673,7 +1673,7 @@ impl QBankExecutor {
                 if include_stats {
                     let mut stats_set = false;
 
-                    if let Some(service) = &ctx.question_bank_service {
+                    if let Some(service) = &ctx.services.get::<QuestionBankService>() {
                         match service.get_stats(&exam.id) {
                             Ok(Some(stats)) => {
                                 bank["stats"] = json!({
@@ -1791,7 +1791,7 @@ impl QBankExecutor {
         let page_size = Self::read_bounded_u32(&call.arguments, "page_size", 20, 1, 20);
 
         // 🆕 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             // 将字符串转换为枚举类型
             let status_enum: Option<Vec<QuestionStatus>> = status_filter.and_then(|s| {
                 serde_json::from_value(serde_json::json!(s))
@@ -1944,7 +1944,7 @@ impl QBankExecutor {
             .ok_or("Missing 'card_id' parameter")?;
 
         // 🆕 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             if let Ok(Some(q)) = service.get_question_by_card_id(session_id, card_id) {
                 // 获取最近 5 条作答历史
                 let submissions = service.get_submissions(&q.id, 5).unwrap_or_default();
@@ -2841,7 +2841,7 @@ impl QBankExecutor {
         let is_correct_override = call.arguments.get("is_correct").and_then(|v| v.as_bool());
 
         // 🆕 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             // 先通过 card_id 获取 question_id
             if let Ok(Some(question)) = service.get_question_by_card_id(session_id, card_id) {
                 match service.submit_answer(&question.id, user_answer, is_correct_override, None) {
@@ -3257,7 +3257,7 @@ impl QBankExecutor {
                     )
                 })?;
 
-            let question = if let Some(service) = &ctx.question_bank_service {
+            let question = if let Some(service) = &ctx.services.get::<QuestionBankService>() {
                 service
                     .get_question_by_card_id(session_id, card_id)
                     .map_err(|error| error.to_string())?
@@ -3345,7 +3345,7 @@ impl QBankExecutor {
             .ok_or("Missing 'session_id' parameter")?;
 
         // 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             if let Ok(Some(stats)) = service.get_stats(session_id) {
                 return Ok(json!({
                     "total": stats.total_count,
@@ -3441,7 +3441,7 @@ impl QBankExecutor {
         let review_only = read_bool(&call.arguments, "review_only", false)?;
 
         // 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             let mut questions =
                 self.list_all_questions(service, session_id, &QuestionFilters::default())?;
             if review_only {
@@ -4247,7 +4247,7 @@ impl QBankExecutor {
             .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect());
 
         // 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             if let Some(card_ids) = &card_ids {
                 let mut question_ids = Vec::new();
                 let mut found_card_ids: Vec<String> = Vec::new();
@@ -4411,8 +4411,8 @@ impl QBankExecutor {
             ));
         }
 
-        let (name, questions, source, degraded) = if let Some(service) = &ctx.question_bank_service
-        {
+        let qb_service = ctx.services.get::<QuestionBankService>();
+        let (name, questions, source, degraded) = if let Some(service) = &qb_service {
             let name = ctx
                 .vfs_db
                 .as_ref()
@@ -4561,7 +4561,7 @@ impl QBankExecutor {
             .unwrap_or("similar");
 
         // 优先使用 QuestionBankService
-        if let Some(service) = &ctx.question_bank_service {
+        if let Some(service) = &ctx.services.get::<QuestionBankService>() {
             if let Ok(Some(q)) = service.get_question_by_card_id(session_id, card_id) {
                 let variant_prompt = match variant_type {
                     "harder" => "请基于以下原题生成一道**更难**的变式题。保持相同的知识点和题型，但增加难度（如增加步骤、引入更复杂的条件）。",
@@ -5103,7 +5103,7 @@ impl QBankExecutor {
         }
         let mut resolved_parents = HashMap::new();
         if !parent_cards.is_empty() {
-            let service = ctx.question_bank_service.as_ref().ok_or_else(|| {
+            let service = ctx.services.get::<QuestionBankService>().ok_or_else(|| {
                 qbank_error(
                     "UNAVAILABLE",
                     "题目服务不可用，无法校验变式父题",
@@ -6164,7 +6164,7 @@ mod occ_contract_tests {
             registry,
             None,
         );
-        assert!(ctx.question_bank_service.is_none());
+        assert!(ctx.services.get::<QuestionBankService>().is_none());
         ctx.vfs_db = Some(std::sync::Arc::new(db));
 
         let service = QBankExecutor

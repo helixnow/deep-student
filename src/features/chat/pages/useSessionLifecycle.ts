@@ -9,6 +9,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ChatSession } from '../types/session';
 import { retainSessionListStore, useSessionListStore } from '../stores/sessionListStore';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { getSuperAgentSessionId, useSuperAgentEnabledStore } from '@/stores/superAgentEnabledStore';
 import type { TFunction } from 'i18next';
 import {
   buildHiddenDraftSessionMetadata,
@@ -304,6 +305,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   // 🔧 P1-005 修复：使用 ref 获取最新状态，避免闭包竞态条件
   const deleteSession = useCallback(
     async (sessionId: string) => {
+      const isDeletingSuperSession = sessionId === getSuperAgentSessionId();
       try {
         await invoke('chat_v2_delete_session', { sessionId });
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -319,6 +321,16 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
           }
         } catch (e) {
           console.warn('[ChatV2Page] Failed to clear last session ID:', e);
+        }
+
+        // 删除 Super-agent 会话：后端已停止其后台任务并新建空的 Super-agent 会话
+        // （经 super_session_changed 广播新 id）；拉取最新状态，正停在旧会话时切到新会话。
+        if (isDeletingSuperSession) {
+          const replacementId = (await useSuperAgentEnabledStore.getState().refresh())?.sessionId ?? null;
+          if (replacementId && replacementId !== sessionId) {
+            setCurrentSessionId((prevId) => (prevId === sessionId ? replacementId : prevId));
+            return;
+          }
         }
 
         // 如果删除的是当前会话，切换到下一个

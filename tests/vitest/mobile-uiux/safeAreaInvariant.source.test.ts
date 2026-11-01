@@ -19,6 +19,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const read = (relPath: string) =>
   readFileSync(resolve(process.cwd(), relPath), 'utf-8');
@@ -88,7 +89,7 @@ describe('safe-area invariant: env(safe-area-inset) mappings', () => {
 
 describe('safe-area invariant: mobileShell contract variables', () => {
   const mobileShellSource = read('src/app/shell/mobileShell.ts');
-  const appSource = read('src/App.tsx');
+  const appSource = readAppShellSource();
 
   it('keeps the four-side android→env fallback chains as the shell source of truth', () => {
     for (const side of ['top', 'bottom', 'left', 'right']) {
@@ -149,7 +150,7 @@ describe('safe-area invariant: invariant-18 anchor paths exist', () => {
     expect(
       existsSync(fromRoot('src/app/navigation/androidBackCoordinator.ts'))
     ).toBe(true);
-    const appSource = read('src/App.tsx');
+    const appSource = readAppShellSource();
     expect(appSource).toContain(
       "from './app/navigation/androidBackCoordinator'"
     );

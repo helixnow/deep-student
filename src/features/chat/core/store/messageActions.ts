@@ -3,7 +3,7 @@ import type { AttachmentMeta, Message } from '../types/message';
 import type { Block, BlockType, BlockStatus } from '../types/block';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
-import type { ChatStore } from '../types';
+import type { ChatStore, DeliverOutcome, DeliverSuperInboxOptions } from '../types';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -170,6 +170,125 @@ export function createMessageActions(
             });
             throw error;
           }
+        },
+
+        deliverSuperInbox: async (
+          opts?: DeliverSuperInboxOptions
+        ): Promise<DeliverOutcome> => {
+          const state = getState();
+          if (isStoreSubagentSession(state)) {
+            return { status: 'disabled' };
+          }
+          // 控制器驱动：非 idle 时视为忙，不抛错
+          if (!state.canSend()) {
+            return { status: 'busy' };
+          }
+          const deliverCallback = (state as ChatStoreState & ChatStore)._deliverInboxCallback;
+          if (!deliverCallback) {
+            if (!IS_VITEST) {
+              console.warn(
+                '[ChatStore] deliverSuperInbox: No callback set. Use setDeliverInboxCallback() to inject backend logic.'
+              );
+            }
+            return { status: 'disabled' };
+          }
+
+          const userMessageId = generateId('msg');
+          const assistantMessageId = generateId('msg');
+          const assistantMessage = {
+            id: assistantMessageId,
+            role: 'assistant' as const,
+            blockIds: [] as string[],
+            timestamp: Date.now(),
+            _meta: {
+              modelId: state.chatParams.modelDisplayName || state.chatParams.modelId,
+              modelDisplayName: state.chatParams.modelDisplayName,
+              chatParams: { ...state.chatParams },
+            },
+          };
+
+          // 与普通发送一致：先建 assistant 占位并进入 streaming，停止按钮/生成中状态原生可用
+          set((s) => ({
+            sessionStatus: 'streaming',
+            messageMap: new Map(s.messageMap).set(assistantMessageId, assistantMessage),
+            messageOrder: [...s.messageOrder, assistantMessageId],
+            currentStreamingMessageId: assistantMessageId,
+          }));
+
+          const rollbackPlaceholder = () => {
+            set((s) => {
+              const messageMap = new Map(s.messageMap);
+              messageMap.delete(assistantMessageId);
+              const stillOwned = s.currentStreamingMessageId === assistantMessageId;
+              return {
+                messageMap,
+                messageOrder: s.messageOrder.filter((id) => id !== assistantMessageId),
+                ...(stillOwned
+                  ? {
+                      sessionStatus: 'idle' as const,
+                      currentStreamingMessageId: null,
+                      activeBlockIds: new Set<string>(),
+                    }
+                  : {}),
+              };
+            });
+          };
+
+          let outcome: DeliverOutcome;
+          try {
+            outcome = await deliverCallback(userMessageId, assistantMessageId, opts?.force === true);
+          } catch (error) {
+            rollbackPlaceholder();
+            throw error;
+          }
+
+          if (outcome.status !== 'started') {
+            rollbackPlaceholder();
+            return outcome;
+          }
+
+          // started：把后端生成的 user 消息插在 assistant 占位之前
+          const backendUser = outcome.userMessage;
+          const targetAssistantId = outcome.assistantMessageId || assistantMessageId;
+          const userBlockId = generateId('blk');
+          const ts = Number.isFinite(backendUser.timestampMs) ? backendUser.timestampMs : Date.now();
+          const userBlock = {
+            id: userBlockId,
+            type: 'content' as BlockType,
+            status: 'success' as BlockStatus,
+            messageId: backendUser.id,
+            content: backendUser.content,
+            startedAt: ts,
+            endedAt: ts,
+          };
+          const userMessage = {
+            id: backendUser.id,
+            role: 'user' as const,
+            blockIds: [userBlockId],
+            timestamp: ts,
+            _meta: { inboundOrigin: backendUser.inboundOrigin },
+          };
+
+          set((s) => {
+            if (s.messageMap.has(backendUser.id)) {
+              return {};
+            }
+            const order = s.messageOrder.slice();
+            let anchor = order.indexOf(targetAssistantId);
+            if (anchor < 0) anchor = order.indexOf(assistantMessageId);
+            if (anchor < 0) {
+              order.push(backendUser.id);
+            } else {
+              order.splice(anchor, 0, backendUser.id);
+            }
+            return {
+              messageMap: new Map(s.messageMap).set(backendUser.id, userMessage),
+              messageOrder: order,
+              blocks: new Map(s.blocks).set(userBlockId, userBlock),
+            };
+          });
+
+          return outcome;
         },
 
         sendMessageWithIds: async (

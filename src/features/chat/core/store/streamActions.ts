@@ -78,6 +78,10 @@ export function createStreamActions(
             // 1. 更新 activeBlockIds 中的块
             s.activeBlockIds.forEach((blockId) => {
               const block = newBlocks.get(blockId);
+              // preparing 占位块也在 activeBlockIds 里（status=pending），交给下面第 3 步按
+              // 「未执行」语义处理；在这里标 success 会留下 success+isPreparing 的矛盾块，
+              // 子代理卡片据 isPreparing 永久显示“执行中”。
+              if (block && block.isPreparing) return;
               if (block && block.status !== 'success' && block.status !== 'error') {
                 if (reason === 'success') {
                   newBlocks.set(blockId, {
@@ -135,7 +139,16 @@ export function createStreamActions(
                 ? normalizedTerminalError || 'Stream ended with error before tool execution'
                 : 'Stream cancelled before tool execution';
             const removedPreparingIds: string[] = [];
-            for (const blockId of messageBlockIds) {
+            // 候选：当前消息的 blockIds ∪ 活跃集合中属于当前消息的块（占位块可能尚未登记进
+            // message.blockIds，例如后端换了 block_id），避免漏网的 preparing 块残留。
+            const preparingCandidates = new Set<string>(messageBlockIds);
+            s.activeBlockIds.forEach((blockId) => {
+              const block = newBlocks.get(blockId);
+              if (block?.isPreparing && (!currentMessageId || block.messageId === currentMessageId)) {
+                preparingCandidates.add(blockId);
+              }
+            });
+            for (const blockId of preparingCandidates) {
               const block = newBlocks.get(blockId);
               if (block && block.isPreparing) {
                 console.warn(

@@ -107,12 +107,13 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).toContain('<AppMenuSub openOnClick>');
     expect(menuBranch).toContain('<AppMenuSubTrigger');
     expect(menuBranch).toContain('<AppMenuSubContent');
-    expect(menuBranch).toContain('runtimeModelSearchPlaceholder');
-    expect(menuBranch).toContain('groupedRuntimeModelOptions.map');
-    expect(menuBranch).toContain("onOpenRuntimeModelPanel('compare')");
+    // 子菜单内容（搜索/收藏/最近/供应商分组/多选）已抽到 RuntimeModelSubmenuBody；旧大面板的 compare 入口已移除
+    expect(menuBranch).toContain('<RuntimeModelSubmenuBody');
+    expect(menuBranch).toContain('multiSelect={runtimeModelMultiSelect}');
+    expect(menuBranch).not.toContain("onOpenRuntimeModelPanel('compare')");
+    expect(menuBranch).toContain('onSelect={onSelectRuntimeModel}');
     expect(menuBranch).toContain('<AppMenuItem');
     expect(toolbarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel')");
-    expect(menuBranch).toContain('onSelectRuntimeModel?.(model.id)');
     expect(menuBranch).toContain('runtimeCurrentModelId');
   });
 

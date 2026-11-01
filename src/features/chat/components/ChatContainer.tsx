@@ -22,6 +22,7 @@ import { Info } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
+import { SuperInboxPausedBanner } from '../superSession/SuperInboxPausedBanner';
 import { ChatErrorBoundary, ErrorFallback } from './ChatErrorBoundary';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
@@ -373,6 +374,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
               compact: true,
             })}
             {renderFooter('chat-empty-composer-layout__footer')}
+            {/* Super 会话：自动投递暂停提示条（非 Super / 未暂停时不渲染） */}
+            <SuperInboxPausedBanner sessionId={displayedSessionId} />
             <AgentTaskPanel store={store} chatStore={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
             {/* 今日待复习（无到期内容时不渲染） */}
@@ -395,6 +398,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           )}
 
           {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
+
+          {/* Super 会话：自动投递暂停提示条（非 Super / 未暂停时不渲染） */}
+          <SuperInboxPausedBanner sessionId={displayedSessionId} />
 
           {/* Agent todo panel — 贴在输入栏上方 */}
           <AgentTaskPanel store={store} chatStore={store} />

@@ -260,6 +260,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
   runtimeCurrentModelId,
   runtimeModelOptions = [],
   onSelectRuntimeModel,
+  runtimeModelMultiSelect,
   // 推理模式
   enableThinking,
   thinkingStateLabel,
@@ -2764,6 +2765,7 @@ const InputBarUIInner: React.FC<InputBarUIProps> = ({
           runtimeCurrentModelId={runtimeCurrentModelId}
           runtimeModelOptions={runtimeModelOptions}
           onSelectRuntimeModel={onSelectRuntimeModel}
+          runtimeModelMultiSelect={runtimeModelMultiSelect}
           hasModelPanel={!!renderModelPanel}
           onOpenRuntimeModelPanel={handleOpenRuntimeModelPanel}
           onThinkingMenuWillOpen={handleThinkingMenuWillOpen}

@@ -328,7 +328,7 @@ fn r12_invalid_hex_digests_are_rejected() {
 
 #[test]
 fn r12_source_lock_sync_manager_still_uploads_whole_zip() {
-    let source = include_str!("../src/cloud_storage/sync_manager.rs");
+    let source = include_str!("../crates/dstu-sync/src/cloud_storage/sync_manager.rs");
 
     // 生产备份仍构造 backups/<version>.zip 并整包 put_file。
     assert!(

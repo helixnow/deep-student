@@ -5,10 +5,9 @@
  * - `[媒体@…]` 引用（聊天页之外）→ 学习页 + 只投给子应用播放器的 seek 握手（App.tsx 源码契约 +
  *   focus 作用域过滤 + 待兑现意图兜底）。
  */
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const bus = vi.hoisted(() => ({
   enabled: false,
@@ -110,7 +109,7 @@ describe('navigation registration', () => {
 
 describe('[媒体@…] citation routing', () => {
   it('App routes non-chat media-ref:open to the studio study page with a scoped seek', () => {
-    const app = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+    const app = readAppShellSource();
     const handler = app.slice(app.indexOf('const handleMediaRefOpen'), app.indexOf("type: 'media-ref:open'"));
     expect(handler).toContain("currentViewRef.current === 'chat-v2'");
     expect(handler).toContain('openMediaStudio(resourceId)');

@@ -48,7 +48,10 @@ export type NavItem = {
  * @param t - i18next翻译函数
  * @returns 导航项数组
  */
-export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] => {
+export const createNavItems = (
+  t: TFunction,
+  includeUILab = false,
+): NavItem[] => {
   const items: NavItem[] = [
     // 🔧 Chat V2 放第一位
     {

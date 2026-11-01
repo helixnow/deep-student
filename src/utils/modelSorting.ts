@@ -18,15 +18,27 @@ export interface UnifiedModelSortInput {
 
 const normalize = (value?: string | null) => (value ?? '').trim().toLowerCase();
 
-const isSiliconFlowVendor = (vendor: Pick<VendorConfig, 'providerType'>) =>
-  normalize(vendor.providerType) === 'siliconflow';
+/**
+ * 置顶供应商的固定名次：SiliconFlow 第一、OpenCode Go 第二，其余为 2（再按用户排序 / 名称）。
+ * 设置页供应商列表与聊天里的各模型选择器共用，保证两边顺序一致。
+ */
+export const pinnedVendorRank = (providerType?: string | null): number => {
+  switch (normalize(providerType)) {
+    case 'siliconflow':
+      return 0;
+    case 'opencode_go':
+      return 1;
+    default:
+      return 2;
+  }
+};
 
 export const sortVendorsBySettingsOrder = <T extends VendorSortInput>(vendors: readonly T[]): T[] =>
   [...vendors].sort((a, b) => {
-    const aSilicon = isSiliconFlowVendor(a);
-    const bSilicon = isSiliconFlowVendor(b);
-    if (aSilicon !== bSilicon) {
-      return aSilicon ? -1 : 1;
+    const aPinned = pinnedVendorRank(a.providerType);
+    const bPinned = pinnedVendorRank(b.providerType);
+    if (aPinned !== bPinned) {
+      return aPinned - bPinned;
     }
 
     const aOrder = a.sortOrder ?? UNKNOWN_VENDOR_ORDER;

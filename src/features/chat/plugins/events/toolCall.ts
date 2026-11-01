@@ -47,6 +47,21 @@ import {
 // ============================================================================
 
 /**
+ * 渲染为 subagent_embed 卡片的工具（去前缀后的名字）。
+ * Super 会话的 builtin-super_dispatch_worker / builtin-super_message_worker 返回结构与
+ * subagent_call 一致，与后端历史映射（context.rs get_block_type_for_tool_static）保持同步。
+ */
+const SUBAGENT_EMBED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  'subagent_call',
+  'super_dispatch_worker',
+  'super_message_worker',
+]);
+
+export function isSubagentEmbedToolName(toolName: string | undefined | null): boolean {
+  return SUBAGENT_EMBED_TOOL_NAMES.has(stripToolNamePrefix(toolName));
+}
+
+/**
  * 按 toolCallId 查找仍处于 preparing 的占位块（同一 toolCallId 一条逻辑工具调用）。
  *
  * 返回顺序：同消息的块优先（按 blockIds 顺序），其后为其它消息中的匹配块
@@ -216,7 +231,7 @@ const toolCallEventHandler: EventHandler = {
     const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    const isSubagentCallTool = SUBAGENT_EMBED_TOOL_NAMES.has(strippedToolName);
     // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块
     const isWorkspaceSendTool = strippedToolName === 'workspace_send';
     // 与后端持久化的 QBANK_QUESTIONS 映射一致，实时展示可勾选的题目草稿。
@@ -1082,7 +1097,7 @@ const toolCallPreparingEventHandler: EventHandler = {
     const strippedToolName = stripToolNamePrefix(toolName);
     const isSleepTool = strippedToolName === 'coordinator_sleep';
     const isAskUserTool = strippedToolName === 'ask_user';
-    const isSubagentCallTool = strippedToolName === 'subagent_call';
+    const isSubagentCallTool = SUBAGENT_EMBED_TOOL_NAMES.has(strippedToolName);
     // 🆕 缺口 2: workspace_send → 专属语义化投递卡片块（与执行块类型保持一致）
     const isWorkspaceSendTool = strippedToolName === 'workspace_send';
     // ACR R1-09 / R2-05 / R3-01: workbench_* 与域委托写 → workbench_ops

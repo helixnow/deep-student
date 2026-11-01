@@ -75,7 +75,7 @@ jobs:
           cat "$RUNNER_TEMP/tsc.log" "$RUNNER_TEMP/tsgo.log"
           test "$TSC_CODE" -eq 0 && test "$TSGO_CODE" -eq 0
       - if: matrix.task == 'lint'
-        run: npm run lint && npm run licenses:check
+        run: npm run lint && npm run licenses:check && npm run check:frontend-layers && npm run check:lint-ratchet
       - name: Build production bundle
         if: matrix.task == 'build'
         env:
@@ -135,13 +135,16 @@ jobs:
         with:
           toolchain: '1.98.1'
           components: rustfmt
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
+      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all --check
       - uses: ./.github/actions/setup-linux-rust
         with:
           cache-key: clippy
           components: clippy
+      # Members may only depend on lower layers; domain crates never on each other.
+      - name: Workspace crate layering
+        run: node scripts/check-crate-layers.mjs
       - name: Clippy (all targets, correctness deny)
-        run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D clippy::correctness
+        run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --workspace --all-targets -- -D clippy::correctness
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
@@ -164,7 +167,9 @@ jobs:
             provider-contract:
               - 'src-tauri/src/cloud_storage/**'
               - 'src-tauri/src/data_governance/**'
-              - 'src-tauri/src/crypto/**'
+              - 'src-tauri/crates/dstu-storage/src/**'
+              - 'src-tauri/crates/dstu-sync/src/**'
+              - 'src-tauri/crates/dstu-security/src/crypto/**'
               - 'src-tauri/tests/sync_provider_contract_tests.rs'
               - 'src-tauri/Cargo.toml'
               - 'src-tauri/Cargo.lock'
@@ -215,7 +220,7 @@ jobs:
           tool: cargo-nextest@0.9.145
       - name: Build and archive all test binaries (including ignored provider tests)
         working-directory: src-tauri
-        run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst"
+        run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" --workspace
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: nextest-archive
@@ -357,7 +362,8 @@ jobs:
           cache-on-failure: true
       - name: Enforce AppContainer filesystem boundary
         working-directory: src-tauri
-        run: cargo test --locked --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
+        # shell_sandbox 随 chat_v2 拆到 dstu-agent：必须指定包，否则根包 --lib 过滤到 0 个测试也会“通过”
+        run: cargo test --locked -p dstu-agent --lib chat_v2::tools::shell_sandbox::windows::tests -- --nocapture
       - name: Exercise Windows shell helper end to end
         working-directory: src-tauri
         run: cargo test --locked --test windows_shell_helper_e2e -- --nocapture

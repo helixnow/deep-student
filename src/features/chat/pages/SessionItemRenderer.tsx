@@ -48,6 +48,11 @@ export type SessionDragState = {
   style?: React.CSSProperties;
 };
 
+/** 行渲染选项：variant 'super' = Super-agent 会话行（置顶区最上面单独渲染） */
+export interface SessionItemRenderOptions {
+  variant?: 'super';
+}
+
 export interface UseSessionItemRendererDeps {
   editingSessionId: string | null;
   hoveredSessionId: string | null;
@@ -94,7 +99,7 @@ export interface UseSessionItemRendererDeps {
 
 /** 单个滑出按钮宽度（px） */
 const SWIPE_ACTION_WIDTH = 72;
-/** 两个按钮的总宽度 */
+/** 两个按钮的总宽度（Super-agent 会话行只有删除一个按钮，见 showPinAction） */
 const SWIPE_ACTIONS_TOTAL_WIDTH = SWIPE_ACTION_WIDTH * 2;
 /** 松手时按位移判定开/关的阈值 */
 const SWIPE_OPEN_THRESHOLD = 48;
@@ -108,6 +113,8 @@ interface SwipeableSessionRowProps {
    */
   gestureEnabled?: boolean;
   pinned: boolean;
+  /** 是否露出置顶色块；Super-agent 会话不可取消置顶，传 false */
+  showPinAction?: boolean;
   pinLabel: string;
   deleteLabel: string;
   onTogglePin: () => void;
@@ -120,6 +127,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
   enabled,
   gestureEnabled = true,
   pinned,
+  showPinAction = true,
   pinLabel,
   deleteLabel,
   onTogglePin,
@@ -131,7 +139,10 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
 
-  const baseOffset = open ? -SWIPE_ACTIONS_TOTAL_WIDTH : 0;
+  const actionsTotalWidth = showPinAction ? SWIPE_ACTIONS_TOTAL_WIDTH : SWIPE_ACTION_WIDTH;
+  const actionsTotalWidthRef = React.useRef(actionsTotalWidth);
+  actionsTotalWidthRef.current = actionsTotalWidth;
+  const baseOffset = open ? -actionsTotalWidth : 0;
   const baseOffsetRef = React.useRef(baseOffset);
   baseOffsetRef.current = baseOffset;
 
@@ -155,7 +166,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
       if (!gestureActive) return;
       // 左滑为负；越过全开位置后有 16px 的橡皮筋余量
       const next = Math.max(
-        -SWIPE_ACTIONS_TOTAL_WIDTH - 16,
+        -actionsTotalWidthRef.current - 16,
         Math.min(0, baseOffsetRef.current + dx),
       );
       setDragOffset(next);
@@ -194,7 +205,7 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
   }
 
   const translate = dragOffset ?? baseOffset;
-  const revealedWidth = Math.min(-translate, SWIPE_ACTIONS_TOTAL_WIDTH);
+  const revealedWidth = Math.min(-translate, actionsTotalWidth);
   const isDragging = dragOffset !== null;
   const actionButtonClassName =
     'flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden whitespace-nowrap text-[11px] font-medium leading-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring';
@@ -207,21 +218,23 @@ const SwipeableSessionRow: React.FC<SwipeableSessionRowProps> = ({
         style={{ width: revealedWidth }}
         aria-hidden={!open}
       >
-        {/* eslint-disable-next-line ds-components/no-native-button -- 左滑色块按钮：全高填充的 iOS 式滑出操作，共享按钮组件的胶囊排版不适配 */}
-        <button
-          type="button"
-          tabIndex={open ? 0 : -1}
-          className={cn(actionButtonClassName, 'bg-primary text-primary-foreground')}
-          onClick={(e) => {
-            e.stopPropagation();
-            setOpen(false);
-            onTogglePin();
-          }}
-          aria-label={pinLabel}
-        >
-          {pinned ? <PushPinSlash size={16} aria-hidden="true" /> : <PushPin size={16} aria-hidden="true" />}
-          <span>{pinLabel}</span>
-        </button>
+        {showPinAction && (
+          // eslint-disable-next-line ds-components/no-native-button -- 左滑色块按钮：全高填充的 iOS 式滑出操作，共享按钮组件的胶囊排版不适配
+          <button
+            type="button"
+            tabIndex={open ? 0 : -1}
+            className={cn(actionButtonClassName, 'bg-primary text-primary-foreground')}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onTogglePin();
+            }}
+            aria-label={pinLabel}
+          >
+            {pinned ? <PushPinSlash size={16} aria-hidden="true" /> : <PushPin size={16} aria-hidden="true" />}
+            <span>{pinLabel}</span>
+          </button>
+        )}
         {/* eslint-disable-next-line ds-components/no-native-button -- 左滑色块按钮：同上 */}
         <button
           type="button"
@@ -320,9 +333,14 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
   }, []);
 
   // 渲染单个会话项 - 简洁风格
-  const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
+  const renderSessionItem = (session: ChatSession, drag?: SessionDragState, options?: SessionItemRenderOptions) => {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
-    const pinned = !!session.metadata?.pinned;
+    // Super-agent 会话：始终置顶、不可取消置顶/归档/移动分组；保留重命名、导出、删除
+    const isSuper = options?.variant === 'super';
+    const pinned = isSuper || !!session.metadata?.pinned;
+    const deleteConfirmLabel = isSuper
+      ? t('superAgent:sidebar.deleteConfirm')
+      : t('page.deleteSessionConfirm');
     const groupLabel = session.groupId
       ? (groupNameById.get(session.groupId) ?? t('page.ungrouped'))
       : t('page.ungrouped');
@@ -344,10 +362,15 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             className: 'items-center gap-2 border-destructive/30 bg-destructive/5',
           })}
           role="alertdialog"
-          aria-label={t('page.deleteSessionConfirm')}
+          aria-label={deleteConfirmLabel}
         >
-          <span className="min-w-0 flex-1 truncate text-ui leading-4 text-destructive">
-            {t('page.deleteSessionConfirm')}
+          <span
+            className={cn(
+              'min-w-0 flex-1 text-ui leading-4 text-destructive',
+              !isSuper && 'truncate',
+            )}
+          >
+            {deleteConfirmLabel}
           </span>
           {/* 破坏性操作确认按钮：移动/平板保持较大触控目标，桌面 lg 起紧凑 */}
           <div className="flex shrink-0 items-center gap-1">
@@ -388,6 +411,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
         enabled={isTouchPrimary}
         gestureEnabled={editingSessionId !== session.id && !drag?.isDragging}
         pinned={pinned}
+        showPinAction={!isSuper}
         pinLabel={pinned ? t('page.unpinSession') : t('page.pinSession')}
         deleteLabel={t('page.deleteSession')}
         onTogglePin={() => { void togglePinSession(session.id, !pinned, session.metadata); }}
@@ -400,6 +424,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             {...drag?.attributes}
             {...drag?.listeners}
             style={drag?.style}
+            data-session-variant={options?.variant}
             // P3-11 语义与键盘激活：移动端拖拽关闭时（drag 为空，无 attributes
             // 可铺）行退化为纯 div onClick；显式补齐 role/tabIndex。Enter 始终激活；
             // Space 仅在拖拽关闭时激活（拖拽启用时 Space 是 dnd-kit 的抓取键）
@@ -516,10 +541,24 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               <div className="flex min-w-0 items-center gap-2 text-[16px] font-normal leading-5 text-foreground/90">
                 <PushPin size={12} weight="fill" className="h-3 w-3 shrink-0 text-[color:var(--sidebar-muted)]" />
                 <span className="min-w-0 flex-1 truncate">{sessionTitle}</span>
+                {isSuper && (
+                  <span
+                    data-testid="mobile-sidebar-super-session-badge"
+                    title={t('superAgent:sidebar.badgeLabel')}
+                    className="inline-flex min-h-5 shrink-0 items-center rounded-full border border-foreground/15 bg-foreground/[0.06] px-1.5 text-2xs font-medium leading-none text-foreground/80"
+                  >
+                    {t('superAgent:sidebar.badge')}
+                  </span>
+                )}
               </div>
               <div className="flex min-w-0 items-center gap-1.5 text-ui font-normal leading-4 text-muted-foreground">
-                <span className="truncate">{groupLabel}</span>
-                <span aria-hidden="true">·</span>
+                {/* Super-agent 会话不归属分组：副标题只显示时间 */}
+                {!isSuper && (
+                  <>
+                    <span className="truncate">{groupLabel}</span>
+                    <span aria-hidden="true">·</span>
+                  </>
+                )}
                 <span className="shrink-0 tabular-nums">{formatTime(session.updatedAt)}</span>
               </div>
             </div>
@@ -583,13 +622,15 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             >
               {t('page.renameSession')}
             </AppMenuItem>
-            <AppMenuItem
-              icon={<PushPin size={16} />}
-              onClick={() => togglePinSession(session.id, !pinned, session.metadata)}
-            >
-              {pinned ? t('page.unpinSession') : t('page.pinSession')}
-            </AppMenuItem>
-            {moveTargetGroups.length > 0 && (
+            {!isSuper && (
+              <AppMenuItem
+                icon={<PushPin size={16} />}
+                onClick={() => togglePinSession(session.id, !pinned, session.metadata)}
+              >
+                {pinned ? t('page.unpinSession') : t('page.pinSession')}
+              </AppMenuItem>
+            )}
+            {!isSuper && moveTargetGroups.length > 0 && (
               <AppMenuSub>
                 <AppMenuSubTrigger icon={<FolderSimple size={16} />}>
                   {t('page.moveToGroup')}
@@ -647,12 +688,14 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 </AppMenuItem>
               </AppMenuSubContent>
             </AppMenuSub>
-            <AppMenuItem
-              icon={<Archive size={16} />}
-              onClick={() => archiveSession(session.id)}
-            >
-              {t('page.archiveSession')}
-            </AppMenuItem>
+            {!isSuper && (
+              <AppMenuItem
+                icon={<Archive size={16} />}
+                onClick={() => archiveSession(session.id)}
+              >
+                {t('page.archiveSession')}
+              </AppMenuItem>
+            )}
             <AppMenuSeparator />
             <AppMenuItem
               icon={<Trash size={16} />}

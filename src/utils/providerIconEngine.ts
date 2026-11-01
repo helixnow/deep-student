@@ -58,6 +58,7 @@ export type ProviderBrand =
   | 'udio'
   // 其他
   | 'ollama'
+  | 'opencode'   // OpenCode（Go 订阅网关，供应商级图标）
   | 'siliconflow' // 硅基流动（作为中转平台，显示其logo）
   | 'huggingface'
   | 'together'
@@ -78,6 +79,13 @@ const toLower = (s: string | undefined | null): string => (s ?? '').toLowerCase(
  * 按优先级排序：精确匹配 > 组织名匹配 > 模型名特征匹配
  */
 const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
+  // OpenCode Go 供应商（providerType=opencode_go）。只匹配供应商标识本身，
+  // 不匹配具体模型 ID（Go 下的 deepseek-v4.1-flash 等仍显示各自厂商图标）。
+  opencode: [
+    /^opencode([_-]go)?$/i,
+    /^opencode go$/i,
+  ],
+
   // === 国际供应商 ===
   openai: [
     /^openai$/i,
@@ -392,6 +400,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
   microsoft: 'Microsoft',
   nvidia: 'NVIDIA',
   mimo: 'Xiaomi MiMo',
+  opencode: 'OpenCode',
   deepseek: 'DeepSeek',
   qwen: '阿里云百炼',
   alibaba: '阿里云',

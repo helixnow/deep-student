@@ -356,7 +356,7 @@
       "on": "Reasoning: {{depth}}"
     },
     "runtimeModelTitle": "Model",
-    "runtimeModelCompareMode": "Enter multi-select mode...",
+    "runtimeModelCompareMode": "Multi-select",
     "runtimeModelOtherProvider": "Other",
     "runtimeModelRecent": "Recently selected",
     "runtimeModelNoResults": "No matching models",
@@ -2180,7 +2180,16 @@
     "noMatches": "No matching models",
     "empty": "No models available",
     "goToSettings": "Add models in Settings",
-    "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed."
+    "pinnedUnavailable": "The selected model \"{{from}}\" was deleted or disabled. Using \"{{to}}\" instead — pick another model in the input bar if needed.",
+    "openCodeGoRequests": "· ≈{{count}} req/5h",
+    "openCodeGoFree": "· free (limited time)",
+    "favorites": "Favorites",
+    "favorite": "Favorite",
+    "unfavorite": "Unfavorite",
+    "favoriteFailed": "Could not save favorite. Please try again.",
+    "multiSelectCount": "{{count}} selected · answered in parallel on send",
+    "multiSelectEmpty": "Check several models to answer in parallel",
+    "removeSelected": "Remove {{model}}"
   },
   "workspace": {
     "title": "Workspace",
@@ -2581,6 +2590,37 @@
       "pause": "Failed to pause goal",
       "resume": "Failed to resume goal",
       "clear": "Failed to clear goal"
+    }
+  },
+  "superSession": {
+    "paused": {
+      "userStopped": "Stopped. Background events will not be processed automatically",
+      "autoLimit": "Paused after {{count}} automatic turns in a row",
+      "resume": "Continue with {{count}} pending events",
+      "resume_one": "Continue with {{count}} pending event",
+      "resumeNoCount": "Continue with pending events"
+    },
+    "event": {
+      "title": "Background events",
+      "ariaLabel": "Super-agent background events",
+      "count": "{{count}} events",
+      "count_one": "{{count}} event",
+      "generic": "New background event received",
+      "untitledWorker": "Untitled task",
+      "worker": {
+        "completed": "Worker \"{{title}}\" completed",
+        "failed": "Worker \"{{title}}\" failed",
+        "cancelled": "Worker \"{{title}}\" was cancelled",
+        "interrupted": "Worker \"{{title}}\" was interrupted",
+        "timeout": "Worker \"{{title}}\" timed out",
+        "message": "New message from worker \"{{title}}\""
+      },
+      "external": "External event · {{source}}",
+      "externalNoSource": "External event",
+      "view": "View",
+      "viewWorkerAria": "View the full session of worker \"{{title}}\"",
+      "showRaw": "Show original",
+      "hideRaw": "Hide original"
     }
   }
 }

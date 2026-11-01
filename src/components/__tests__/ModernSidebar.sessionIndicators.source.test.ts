@@ -1,15 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const modernSidebarSource = readFileSync(
   resolve(process.cwd(), 'src/components/ModernSidebar.tsx'),
   'utf-8'
 ) + readFileSync(resolve(process.cwd(), 'src/components/sidebar/SessionRow.tsx'), 'utf-8');
-const appSource = readFileSync(
-  resolve(process.cwd(), 'src/App.tsx'),
-  'utf-8'
-);
+const appSource = readAppShellSource();
 
 describe('ModernSidebar session indicators', () => {
   it('prioritizes streaming and unread indicators over hover archive controls', () => {

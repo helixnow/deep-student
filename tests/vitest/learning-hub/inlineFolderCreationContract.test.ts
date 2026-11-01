@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('learning hub inline folder creation', () => {
-  const source = readFileSync(
+  // LearningHubSidebar 已拆分：入口文件 + sidebar/ 子模块共同构成被测源码
+  const sidebarDir = resolve(process.cwd(), 'src/features/learning-hub/sidebar');
+  const source = [
     resolve(process.cwd(), 'src/features/learning-hub/LearningHubSidebar.tsx'),
-    'utf-8'
-  );
+    ...readdirSync(sidebarDir).sort().map((name) => resolve(sidebarDir, name)),
+  ].map((file) => readFileSync(file, 'utf-8')).join('\n');
 
   it('renders an unpersisted folder draft and only creates after a non-empty inline edit', () => {
     expect(source).toContain("const PENDING_FOLDER_ID_PREFIX = '__pending_new_folder__'");

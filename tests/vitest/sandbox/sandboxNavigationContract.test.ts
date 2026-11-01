@@ -1,13 +1,14 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 const readSource = (file: string) => readFileSync(resolve(process.cwd(), file), 'utf-8');
 
 describe('sandbox workbench navigation contract', () => {
   const navigationTypesSource = readSource('src/types/navigation.ts');
   const lazyComponentsSource = readSource('src/lazyComponents.tsx');
-  const appSource = readSource('src/App.tsx');
+  const appSource = readAppShellSource();
   const chatPageSource = readSource('src/features/chat/pages/ChatV2Page.tsx');
   const launchSource = readSource('src/features/sandbox/launchSandboxWorkbench.ts');
   const sandboxWorkbenchPagePath = resolve(

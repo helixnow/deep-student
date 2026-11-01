@@ -1,0 +1,25 @@
+{
+  "$comment": "前端分层图（scripts/check-frontend-layers.mjs 读取）。layers 按从低到高排列；src/ 下每个顶层目录/顶层文件都必须恰好归入一层，新增顶层目录未登记时脚本直接失败。归类理由见脚本头部注释。",
+  "layers": [
+    {
+      "name": "foundation",
+      "entries": ["types", "config", "lib", "shared", "constants", "locales", "data", "polyfills", "shims", "assets", "version.ts", "vite-env.d.ts"]
+    },
+    {
+      "name": "platform",
+      "entries": ["api", "services", "stores", "store", "events", "logging", "utils", "hooks", "contexts", "mcp", "engines", "dstu", "boot", "i18n.ts"]
+    },
+    {
+      "name": "ui",
+      "entries": ["components", "styles"]
+    },
+    {
+      "name": "feature",
+      "entries": ["features", "command-palette", "essay-grading", "quick-assistant", "translation", "voice-input", "promptkit", "menu"]
+    },
+    {
+      "name": "app",
+      "entries": ["App.tsx", "main.tsx", "app", "lazyComponents.tsx", "reactRoot.ts", "dev", "debug-panel", "mcp-debug", "demo", "button-audit", "__tests__"]
+    }
+  ]
+}

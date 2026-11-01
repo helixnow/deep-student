@@ -17,6 +17,7 @@ import FalColor from '@lobehub/icons/es/Fal/components/Color';
 import GeminiColor from '@lobehub/icons/es/Gemini/components/Color';
 import GeminiMono from '@lobehub/icons/es/Gemini/components/Mono';
 import GrokMono from '@lobehub/icons/es/Grok/components/Mono';
+import OpenCodeMono from '@lobehub/icons/es/OpenCode/components/Mono';
 import HuggingFaceColor from '@lobehub/icons/es/HuggingFace/components/Color';
 import HunyuanColor from '@lobehub/icons/es/Hunyuan/components/Color';
 import HunyuanMono from '@lobehub/icons/es/Hunyuan/components/Mono';
@@ -219,6 +220,7 @@ const AVATAR_LIKE_STYLES: Partial<Record<ProviderBrand, {
 const MONO_LOBE_COMPONENTS: Partial<Record<ProviderBrand, React.ComponentType<any>>> = {
   google: GeminiMono,
   xai: GrokMono,
+  opencode: OpenCodeMono,
   microsoft: AzureMono,
   qwen: BailianMono,
   alibaba: BailianMono,

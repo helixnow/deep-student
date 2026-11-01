@@ -47,10 +47,12 @@ import {
 import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { SidebarFilterMenu } from '../components/SidebarFilterMenu';
-import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
+import { compareSessionsForSidebar, isSessionPinned, isSuperAgentSession } from '../utils/sessionPin';
+import { useSuperSessionEntry } from '../superSession/useSuperSessionEntry';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
-import type { SessionDragState } from './SessionItemRenderer';
+import type { SessionDragState, SessionItemRenderOptions } from './SessionItemRenderer';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { CurrentView } from '@/types/navigation';
@@ -102,7 +104,7 @@ export interface UseSessionSidebarContentDeps {
   resetDeleteConfirmation: () => void;
   createSession: (groupId?: string) => Promise<void>;
   loadMoreSessions: () => Promise<void>;
-  renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
+  renderSessionItem: (session: ChatSession, drag?: SessionDragState, options?: SessionItemRenderOptions) => React.ReactNode;
   /** 会话拖入分组：提供后启用 dnd-kit DnD（droppable id: session-group:<id> / session-ungrouped） */
   onSessionDragEnd?: (event: DragEndEvent) => void;
 }
@@ -250,9 +252,52 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
     [prefersReducedMotion, renderSessionItem]
   );
 
+  // Super-agent 会话：在置顶区最上面单独渲染（按 id 拉取，分页后也不会丢），并从普通列表按 id 去重
+  const superSessionEntry = useSuperSessionEntry();
+  const superSessionId = superSessionEntry.enabled ? superSessionEntry.sessionId : null;
+  // 普通列表里若带回了该会话（本地重命名等会先更新列表），优先用它；否则用按 id 拉取的摘要
+  const superSession: ChatSession | null = React.useMemo(
+    () => (superSessionId
+      ? (sessions.find((session) => session.id === superSessionId) ?? superSessionEntry.session ?? null)
+      : null),
+    [sessions, superSessionEntry.session, superSessionId]
+  );
+  // 会话列表变化（重命名、删除重建、开关）时同步刷新按 id 拉取的 Super-agent 会话摘要
+  const refreshSuperSessionEntry = superSessionEntry.refresh;
+  const handleSessionsUpdatedForSuper = React.useCallback(() => {
+    refreshSuperSessionEntry?.();
+  }, [refreshSuperSessionEntry]);
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'chat-v2:sessions-updated',
+      listener: handleSessionsUpdatedForSuper as EventListener,
+    },
+  ], [handleSessionsUpdatedForSuper]);
+  const isListedAsRegularSession = React.useCallback(
+    (session: ChatSession) => session.id !== superSessionId && !isSuperAgentSession(session),
+    [superSessionId]
+  );
+
+  const renderSuperSessionRow = React.useCallback(
+    (session: ChatSession) => (
+      <motion.div
+        key={session.id}
+        layout={prefersReducedMotion ? false : 'position'}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 4 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.98 }}
+        transition={{ duration: prefersReducedMotion ? 0 : 0.15, ease: [0.22, 1, 0.36, 1] }}
+      >
+        {renderSessionItem(session, undefined, { variant: 'super' })}
+      </motion.div>
+    ),
+    [prefersReducedMotion, renderSessionItem]
+  );
+
   const sortedSessions = React.useMemo(
-    () => [...sessions].sort(compareSessionsForSidebar),
-    [sessions]
+    () => sessions.filter(isListedAsRegularSession).sort(compareSessionsForSidebar),
+    [isListedAsRegularSession, sessions]
   );
 
   // 标题匹配（与 ChatV2Page 的 filteredSessions 同一规则；deps.sessions 是未过滤全量列表）
@@ -271,12 +316,14 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   // 「最近」= 桌面侧栏跨分组扁平最近会话（排除置顶）。移动端不再按日历桶重复列出。
   const recentFlatSessions = React.useMemo(
     () => sessions
-      .filter((session) => !isSessionPinned(session))
+      .filter((session) => !isSessionPinned(session) && isListedAsRegularSession(session))
       .filter(matchesSearchQuery)
       .sort((a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? ''))
       .slice(0, RECENT_FLAT_SESSION_LIMIT),
-    [matchesSearchQuery, sessions]
+    [isListedAsRegularSession, matchesSearchQuery, sessions]
   );
+
+  const visibleSuperSession = superSession && matchesSearchQuery(superSession) ? superSession : null;
 
   const currentSession = React.useMemo(
     () => sessions.find((session) => session.id === currentSessionId) ?? null,
@@ -408,7 +455,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   ) => {
     // 搜索时强制展开，保证命中结果可见（不污染持久化的展开状态）
     const isExpanded = isSearching || expandedGroupIds.has(id);
-    const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session));
+    const nonPinnedSessions = sessionsForFolder.filter((session) => !isSessionPinned(session) && isListedAsRegularSession(session));
     const createSessionLabel = id === 'ungrouped'
       ? t('page.newSession')
       : t('page.newSessionInGroup', {groupName: label});
@@ -586,11 +633,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       return null;
     }
 
-    const ungroupedNonPinned = ungroupedSessions.filter((session) => !isSessionPinned(session));
+    const ungroupedNonPinned = ungroupedSessions.filter((session) => !isSessionPinned(session) && isListedAsRegularSession(session));
     const activeGroupId = currentSession?.groupId && visibleGroups.some((group) => group.id === currentSession.groupId)
       ? currentSession.groupId
       : (!currentSession?.groupId && currentSession ? 'ungrouped' : null);
-    const hasAnySearchResult = pinnedSessions.length > 0
+    const hasAnySearchResult = Boolean(visibleSuperSession)
+      || pinnedSessions.length > 0
       || visibleGroups.length > 0
       || ungroupedNonPinned.length > 0;
 
@@ -626,10 +674,12 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
 
     return (
       <div className={cn('space-y-2.5', unified ? 'pb-0' : 'pb-2 pt-1')}>
-        {pinnedSessions.length > 0 && (
+        {(visibleSuperSession || pinnedSessions.length > 0) && (
           <section className="space-y-0.5">
             <div className="space-y-0.5" role="list" aria-label={t('page.pinnedSessions')}>
               <AnimatePresence initial={false} mode="popLayout">
+                {/* Super-agent 会话固定在置顶区最上面（与普通会话行同一外观与状态点） */}
+                {visibleSuperSession ? renderSuperSessionRow(visibleSuperSession) : null}
                 {pinnedSessions.map(renderAnimatedSessionRow)}
               </AnimatePresence>
             </div>

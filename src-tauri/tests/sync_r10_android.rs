@@ -257,7 +257,7 @@ fn zip_command_materialization_orchestration_is_anchored() {
         "导入完成后必须清理从 content:// 物化的临时 ZIP"
     );
 
-    let copy_source = read_source("src/unified_file_manager.rs");
+    let copy_source = read_source("crates/dstu-storage/src/unified_file_manager.rs");
     for marker in [
         "digest_copy",
         "目标回读失败，已停止并不得报成功",
@@ -299,7 +299,7 @@ fn zip_command_materialization_orchestration_is_anchored() {
         );
     }
 
-    let persist_source = read_source("src/unified_file_manager.rs");
+    let persist_source = read_source("crates/dstu-storage/src/unified_file_manager.rs");
     for marker in [
         "pub const PENDING_SAF_PERSIST_FILE: &str = \"pending_saf_persist.uri\"",
         "pub const PENDING_SAF_PERSIST_DIR: &str = \"pending_saf_persist\"",
@@ -365,7 +365,7 @@ fn restart_command_shell_registration_and_ordering_are_anchored() {
         "restart_app 必须保持注册在 invoke handler（恢复后「立即重启」依赖它）"
     );
 
-    let data_space_source = read_source("src/data_space.rs");
+    let data_space_source = read_source("crates/dstu-storage/src/data_space.rs");
     let shell_start = data_space_source
         .find("pub fn restart_app")
         .expect("data_space.rs 必须保留 restart_app 命令壳");

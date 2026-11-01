@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { describe, it } from 'vitest';
-
-const appPath = path.resolve(process.cwd(), 'src/App.tsx');
+import { readAppShellSource } from '@/app/__tests__/appShellSources';
 
 describe('App update notification source', () => {
   it('does not render a startup update modal when an update becomes available', () => {
-    const source = readFileSync(appPath, 'utf8');
+    const source = readAppShellSource();
 
     assert.doesNotMatch(source, /function StartupUpdateNotification\(/u);
     assert.doesNotMatch(source, /<StartupUpdateNotification updater=\{updater\}\s*\/>/u);

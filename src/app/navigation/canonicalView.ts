@@ -30,6 +30,8 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
   'media-studio': 'media',
   'audio-video': 'media',
   'media-learning': 'media',
+  // 2026-11: Super-agent 独立页已移除，改为会话列表顶部固定的 Super-agent 会话
+  'super-agent': 'chat-v2',
 };
 
 const BASE_CANONICAL_VIEWS: CurrentView[] = [

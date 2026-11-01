@@ -265,3 +265,11 @@ describe('ProviderIconEngine', () => {
     });
   });
 });
+
+describe('OpenCode Go vendor icon', () => {
+  it('maps the OpenCode Go provider type to the opencode brand without hijacking model ids', () => {
+    expect(detectProviderBrand('opencode_go')).toBe('opencode');
+    expect(detectProviderBrand('OpenCode Go')).toBe('opencode');
+    expect(detectProviderBrand('deepseek-v4.1-flash')).toBe('deepseek');
+  });
+});

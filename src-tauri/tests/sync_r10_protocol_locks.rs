@@ -216,7 +216,7 @@ fn p2_1_marker_upgrade_unlock_guide_doc_lock() {
     );
 
     // 代码侧的最低可观测性：升级动作至少留有日志（事后可追认哪台设备升级）。
-    let sync_manager = read_repo_file("src/cloud_storage/sync_manager.rs");
+    let sync_manager = read_repo_file("crates/dstu-sync/src/cloud_storage/sync_manager.rs");
     assert!(
         sync_manager.contains("一次性升级"),
         "旧标记一次性升级的日志/注释被移除：升级动作必须保持可追溯"

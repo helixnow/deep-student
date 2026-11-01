@@ -39,7 +39,7 @@ const t = (key: string, options?: Record<string, unknown>) =>
 describe('短密码 / stored-password 稳定 code 跨层契约', () => {
   it('Rust 与 TypeScript 使用同一对 code', () => {
     const secureStore = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/secure_store.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-security/src/secure_store.rs'),
       'utf-8',
     );
     const zipCommands = readFileSync(
@@ -117,7 +117,7 @@ describe('localizeCloudStorageError', () => {
 
   it('Rust and TypeScript share the partial-archive slot-restore code', () => {
     const rust = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/mod.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/mod.rs'),
       'utf-8',
     );
     expect(rust).toContain(`"${PARTIAL_ARCHIVE_NOT_SLOTABLE_CODE}"`);
@@ -161,14 +161,14 @@ describe('localizeCloudStorageError', () => {
 
   it('Rust and TypeScript share sealed-ZIP and atomic-restore codes', () => {
     const zip = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/zip_export.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/zip_export.rs'),
       'utf-8',
     );
     expect(zip).toContain(`"${SEALED_BACKUP_PASSWORD_REQUIRED_CODE}"`);
     expect(zip).toContain(`"${SEALED_BACKUP_DECRYPT_FAILED_CODE}"`);
 
     const backup = readFileSync(
-      resolve(process.cwd(), 'src-tauri/src/data_governance/backup/mod.rs'),
+      resolve(process.cwd(), 'src-tauri/crates/dstu-sync/src/data_governance/backup/mod.rs'),
       'utf-8',
     );
     expect(backup).toContain(`"${ATOMIC_RESTORE_UNAVAILABLE_CODE}"`);

@@ -3,11 +3,11 @@ import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const model2PipelineSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/src/llm_manager/model2_pipeline.rs'),
+  resolve(process.cwd(), 'src-tauri/crates/dstu-llm/src/llm_manager/model2_pipeline.rs'),
   'utf-8'
 );
 const routingSource = readFileSync(
-  resolve(process.cwd(), 'src-tauri/src/llm_manager/routing.rs'),
+  resolve(process.cwd(), 'src-tauri/crates/dstu-llm/src/llm_manager/routing.rs'),
   'utf-8'
 );
 
