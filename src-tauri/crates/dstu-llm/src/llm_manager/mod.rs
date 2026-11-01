@@ -5951,10 +5951,7 @@ impl LLMManager {
     }
 
     /// 查询 OpenCode Go 订阅用量（公开的 `/zen/go/v1/usage`）。
-    pub async fn opencode_go_usage(
-        &self,
-        vendor_id: &str,
-    ) -> Result<opencode_go::OpenCodeGoUsage> {
+    pub async fn opencode_go_usage(&self, vendor_id: &str) -> Result<opencode_go::OpenCodeGoUsage> {
         let vendor = self.vendor_config_for_runtime(vendor_id).await?;
         let is_go_vendor = vendor.id == opencode_go::VENDOR_ID
             || vendor
