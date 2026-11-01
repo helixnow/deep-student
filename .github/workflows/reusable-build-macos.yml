@@ -357,7 +357,7 @@ jobs:
           node .release-tooling/scripts/ci/native-build.mjs compile '${{ matrix.target }}'
 
       - name: Preserve compilation before packaging
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: native-${{ matrix.target }}
           path: |
@@ -526,7 +526,7 @@ jobs:
 
       - name: Upload release asset provenance
         if: ${{ inputs.source_sha != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-provenance-${{ matrix.target }}
           path: ${{ runner.temp }}/release-provenance.json
@@ -534,7 +534,7 @@ jobs:
           overwrite: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           if-no-files-found: error
           overwrite: true

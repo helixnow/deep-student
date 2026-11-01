@@ -44,7 +44,7 @@ jobs:
           npx vite preview --config vite.demo.config.ts --port 4173 --strictPort > preview.log 2>&1 &
           for _ in $(seq 1 60); do curl -fs -o /dev/null http://127.0.0.1:4173/demo-app.html && break; sleep 1; done
           node scripts/demo/check-demo-apps.mjs --base http://127.0.0.1:4173 --shots posters --json demo-check.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: demo-check

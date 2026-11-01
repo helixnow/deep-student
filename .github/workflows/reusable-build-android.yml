@@ -456,7 +456,7 @@ jobs:
           exit "$status"
 
       - name: Preserve unsigned APK before signing
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: android-unsigned-apk
           path: src-tauri/gen/android/app/build/outputs/apk/**/*-unsigned.apk
@@ -575,7 +575,7 @@ jobs:
 
       - name: Upload release asset provenance
         if: ${{ inputs.source_sha != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-provenance-aarch64-linux-android
           path: ${{ runner.temp }}/release-provenance.json
@@ -583,7 +583,7 @@ jobs:
           overwrite: true
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           if-no-files-found: error
           overwrite: true
@@ -592,7 +592,7 @@ jobs:
 
       - name: Upload in-build resource diagnostics
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: resource-diagnostics-aarch64-linux-android
           path: ${{ runner.temp }}/release-resource-metrics.log

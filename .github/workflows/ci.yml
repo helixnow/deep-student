@@ -145,7 +145,7 @@ jobs:
         run: node scripts/check-crate-layers.mjs
       - name: Clippy (all targets, correctness deny)
         run: bash scripts/ci/with-resource-monitor.sh cargo clippy --manifest-path src-tauri/Cargo.toml --locked --workspace --all-targets -- -D clippy::correctness
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: resource-backend
@@ -221,14 +221,14 @@ jobs:
       - name: Build and archive all test binaries (including ignored provider tests)
         working-directory: src-tauri
         run: bash ../scripts/ci/with-resource-monitor.sh cargo nextest archive --locked --archive-file "$RUNNER_TEMP/nextest-archive.tar.zst" --workspace
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: nextest-archive
           path: ${{ runner.temp }}/nextest-archive.tar.zst
           retention-days: 7
           compression-level: 0
           overwrite: true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: resource-rust-tests
@@ -409,7 +409,7 @@ jobs:
           bash scripts/ci/with-resource-monitor.sh bash scripts/migration-ci/run-fixture-upgrades.sh \
             --fixture-root "${{ steps.fixtures.outputs.fixture_root }}" --mode upgrade \
             --report "$RUNNER_TEMP/migration-reports/representative-upgrade.jsonl"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         if: always()
         with:
           name: migration-gate-fixture-report
