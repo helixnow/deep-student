@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.10...v0.11.0) (2026-11-01)
+
+
+### Features
+
+* **super-agent:** Super-agent 重做为普通会话里的常驻「Super 会话」（实验，默认关闭）：附件、流式、停止、编辑重发、重新生成等与普通会话完全一致；Router 用工具派发并行的后台 Worker（子代理卡片可展开查看过程），完成后自动回到会话汇报；侧栏置顶并显示生成中/未读状态，可删除并自动重建 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **providers:** 内置 OpenCode Go 供应商（列表第二位）、一键分配与用量查询；「仅限 Agent 对话」改为建议 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **chat:** 输入框模型菜单内置多选模式（不再弹出大面板），支持星标收藏与最近使用，交互参考 OpenChamber ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+
+
+### Bug Fixes
+
+* **shell:** 收起侧栏后进入设置/待办页时，标题栏保留侧栏开关与前进/后退，修复页面无出口 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **chat:** 生成工具参数时停止，子代理卡片不再永久显示「执行中」 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **mobile:** Super-agent 设置在窄屏下不再溢出 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+
+
+### Code Refactoring
+
+* **backend:** 后端从单 crate 拆分为 25 个成员的 Cargo workspace（dstu-kernel 插件内核 + 分层守卫），命令、事件与参数不变；业务域改动后的增量 `cargo check` 从约 255s 降至约 7s ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+* **frontend:** App.tsx 拆分到 src/app/，TauriAdapter / MCP 设置 / LearningHubSidebar / mindmapStore 拆分，新增前端分层守卫与 lint 棘轮 ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+
 ## [0.10.10](https://github.com/helixnow/deep-student/compare/v0.10.9...v0.10.10) (2026-10-29)
 
 
