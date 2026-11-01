@@ -87,6 +87,8 @@ zip = { workspace = true }
 windows-sys = { workspace = true }
 
 [dev-dependencies]
+# 单测用 tokio::runtime::Builder::start_paused（tokio `test-util`）；原先由 app 的开发依赖合并开启。
+tokio = { workspace = true, features = ["test-util"] }
 hyper = { workspace = true }
 mockito = "1.0"
 env_logger = "0.11.11"

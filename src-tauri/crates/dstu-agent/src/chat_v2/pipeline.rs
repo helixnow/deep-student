@@ -158,6 +158,16 @@ pub fn managed_vfs_lance_store_for(vfs_db: &Arc<VfsDatabase>) -> Option<Arc<VfsL
 pub fn assemble_registry(
     head: Vec<Arc<dyn super::tools::ToolExecutor>>,
 ) -> Arc<ToolExecutorRegistry> {
+    assemble_registry_inner(head, true)
+}
+
+/// `announce = false`：只组装、不记日志也不校验。用于 [`ChatV2Pipeline::new`] 的
+/// 占位注册表（默认 `CoreExecutorRoster` 不含 app 注入的域执行器，校验必然报缺失；
+/// 生产随后由 `with_executor_roster` 重建并在那时记录与校验，启动日志与拆分前一致）。
+fn assemble_registry_inner(
+    head: Vec<Arc<dyn super::tools::ToolExecutor>>,
+    announce: bool,
+) -> Arc<ToolExecutorRegistry> {
     let mut executors = head;
 
     // Use Arc::new_cyclic so ToolPackExecutor can hold Weak<ToolExecutorRegistry>
@@ -171,15 +181,17 @@ pub fn assemble_registry(
         ToolExecutorRegistry::from_vec(executors)
     });
 
-    log::info!(
-        "[ChatV2::pipeline] ToolExecutorRegistry initialized with {} executors: {:?}",
-        registry.len(),
-        registry.executor_names()
-    );
+    if announce {
+        log::info!(
+            "[ChatV2::pipeline] ToolExecutorRegistry initialized with {} executors: {:?}",
+            registry.len(),
+            registry.executor_names()
+        );
 
-    // A2：同一花名册经 dstu-agent-api `ToolRegistryBuilder` 校验（只读视图，不参与分发；
-    // 分发、超时、审批仍走上面的 ToolExecutorRegistry）。失败只记日志，不改变行为。
-    super::tools::legacy_tool_provider::validate_legacy_registry(&registry);
+        // A2：同一花名册经 dstu-agent-api `ToolRegistryBuilder` 校验（只读视图，不参与分发；
+        // 分发、超时、审批仍走上面的 ToolExecutorRegistry）。失败只记日志，不改变行为。
+        super::tools::legacy_tool_provider::validate_legacy_registry(&registry);
+    }
 
     registry
 }
@@ -291,7 +303,7 @@ impl ChatV2Pipeline {
 
         // 🆕 初始化工具执行器注册表（文档 29 P0-1）
         let roster: Arc<dyn ExecutorRoster> = Arc::new(CoreExecutorRoster);
-        let executor_registry = assemble_registry(roster.executors(None));
+        let executor_registry = assemble_registry_inner(roster.executors(None), false);
 
         Self {
             db,

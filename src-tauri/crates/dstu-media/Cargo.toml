@@ -53,6 +53,8 @@ urlencoding = { workspace = true }
 uuid = { workspace = true }
 
 [dev-dependencies]
+# 单测用 tokio::runtime::Builder::start_paused（tokio `test-util`）；原先由 app 的开发依赖合并开启。
+tokio = { workspace = true, features = ["test-util"] }
 # 测试内起本地 HTTP server（ASR / B 站接口 / 语音输入）。
 mockito = "1.0"
 # 单测按原路径 `crate::vfs::database::setup_migrated_test_db` 取迁移好的 VFS 测试库：
