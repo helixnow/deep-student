@@ -4,6 +4,10 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { VendorConfig } from '@/types';
 import { OpenCodeGoUsageSection } from '../OpenCodeGoUsageSection';
+import { OpenCodeGoAssignError } from '@/utils/opencodeGo';
+
+const notify = vi.hoisted(() => vi.fn());
+vi.mock('@/components/UnifiedNotification', () => ({ showGlobalNotification: notify }));
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -17,6 +21,9 @@ vi.mock('react-i18next', () => ({
         'settings:vendor_panel.opencode_go.usage_loading': '正在查询用量',
         'settings:vendor_panel.opencode_go.usage_refresh': '刷新用量',
         'settings:vendor_panel.opencode_go.usage_failed': '用量查询失败',
+        'settings:vendor_panel.opencode_go.assign_button': '一键分配',
+        'settings:vendor_panel.opencode_go.assign_done': '已分配',
+        'settings:vendor_panel.opencode_go.assign_no_model': '没有可用模型',
       };
       const template = map[key] ?? options?.defaultValue ?? key;
       return template.replace('{{time}}', options?.time ?? '');
@@ -68,5 +75,24 @@ describe('OpenCodeGoUsageSection', () => {
     await userEvent.click(screen.getByRole('button', { name: '刷新用量' }));
     await waitFor(() => expect(screen.getByTestId('opencode-go-usage-weekly')).toHaveTextContent('本周3%'));
     expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('one-click assign is disabled until the key is configured', () => {
+    const assigner = vi.fn();
+    render(<OpenCodeGoUsageSection vendor={vendor} active={false} fetcher={vi.fn()} assigner={assigner} />);
+    expect(screen.getByRole('button', { name: '一键分配' })).toBeDisabled();
+  });
+
+  it('one-click assign runs the assigner and reports the result', async () => {
+    notify.mockClear();
+    const fetcher = vi.fn().mockResolvedValue({ windows: [] });
+    const assigner = vi.fn().mockResolvedValueOnce('builtin-opencode-go-deepseek-v4.1-flash').mockRejectedValueOnce(new OpenCodeGoAssignError('no_default_model'));
+    render(<OpenCodeGoUsageSection vendor={vendor} active fetcher={fetcher} assigner={assigner} />);
+
+    await userEvent.click(screen.getByRole('button', { name: '一键分配' }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('success', '已分配'));
+    await userEvent.click(screen.getByRole('button', { name: '一键分配' }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('error', '没有可用模型'));
+    expect(assigner).toHaveBeenCalledTimes(2);
   });
 });

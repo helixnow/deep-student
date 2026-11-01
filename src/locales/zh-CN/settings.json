@@ -533,6 +533,12 @@
     "balance_days_ago_one": "{{count}}天前",
     "opencode_go": {
       "agent_only_notice": "遵守 OpenCode 官方使用规则：OpenCode Go 只用于 Agent 对话（含子代理、会话标题与上下文压缩）。定时自动化、OCR、制卡、翻译、批改、向量检索等其他功能不能使用，需单独指定其他模型。",
+      "assign_button": "一键分配",
+      "assign_hint": "把对话模型、会话标题、上下文压缩设为 DeepSeek V4.1 Flash（Go），其他功能不变",
+      "assign_done": "已将对话模型、会话标题和上下文压缩分配为 OpenCode Go 的 DeepSeek V4.1 Flash",
+      "assign_no_model": "没有找到可用的 DeepSeek V4.1 Flash（Go）模型，请先填写 API Key 并确认该模型已启用",
+      "assign_failed": "一键分配失败：{{detail}}",
+      "assign_need_key": "请先填写 API Key",
       "window_five_hour": "5 小时",
       "window_weekly": "本周",
       "window_monthly": "本月",

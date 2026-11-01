@@ -232,7 +232,8 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         provider_type: super::opencode_go::PROVIDER_TYPE,
         auth_mode: None,
         base_url: super::opencode_go::OPENAI_BASE_URL,
-        notes: "OpenCode Go 订阅（opencode.ai/go）。在 OpenCode Console 订阅后生成 API Key 填入即可。遵守 OpenCode 官方规则：仅用于 Agent 对话（含子代理、会话标题与上下文压缩），不能用于定时自动化、OCR、制卡、翻译、批改、向量检索等其他功能。各模型按官方端点表自动选择协议与地址；请求以 DeepStudent 身份发送并携带会话标识。连接测试只查询用量接口，不消耗额度。",
+        // 使用规则在供应商页的「仅限 Agent 对话」说明里展示，这里不写备注。
+        notes: "",
         max_tokens_limit: None,
         website_url: "https://opencode.ai/go",
     },

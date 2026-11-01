@@ -6,11 +6,14 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowClockwise, Info, Spinner, WarningCircle } from '@phosphor-icons/react';
+import { ArrowClockwise, Info, MagicWand, Spinner, WarningCircle } from '@phosphor-icons/react';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { VendorConfig } from '@/types';
 import { DsButton } from '@/components/ui/DsButton';
 import {
+  assignOpenCodeGoDefaults,
   fetchOpenCodeGoUsage,
+  OpenCodeGoAssignError,
   type OpenCodeGoUsage,
 } from '@/utils/opencodeGo';
 
@@ -26,6 +29,8 @@ interface OpenCodeGoUsageSectionProps {
   active: boolean;
   /** 注入式查询，便于测试；默认调用后端命令 */
   fetcher?: (vendorId: string) => Promise<OpenCodeGoUsage>;
+  /** 注入式一键分配，便于测试；默认把规则允许的槽位指向 Go 的默认模型 */
+  assigner?: () => Promise<string>;
 }
 
 const WINDOW_KEYS: Record<string, string> = {
@@ -47,10 +52,12 @@ export const OpenCodeGoUsageSection: React.FC<OpenCodeGoUsageSectionProps> = ({
   vendor,
   active,
   fetcher = fetchOpenCodeGoUsage,
+  assigner = assignOpenCodeGoDefaults,
 }) => {
   const { t } = useTranslation(['settings']);
   const [state, setState] = useState<UsageUiState>({ status: 'idle' });
   const autoQueriedRef = useRef(false);
+  const [assigning, setAssigning] = useState(false);
   const mountedRef = useRef(true);
 
   useEffect(() => {
@@ -79,11 +86,43 @@ export const OpenCodeGoUsageSection: React.FC<OpenCodeGoUsageSectionProps> = ({
     void query();
   }, [active, query, state.status]);
 
+  const assign = useCallback(async () => {
+    setAssigning(true);
+    try {
+      await assigner();
+      showGlobalNotification('success', t('settings:vendor_panel.opencode_go.assign_done'));
+    } catch (error: unknown) {
+      const message =
+        error instanceof OpenCodeGoAssignError
+          ? t('settings:vendor_panel.opencode_go.assign_no_model')
+          : t('settings:vendor_panel.opencode_go.assign_failed', {
+              detail: error instanceof Error ? error.message : String(error),
+            });
+      showGlobalNotification('error', message);
+    } finally {
+      if (mountedRef.current) setAssigning(false);
+    }
+  }, [assigner, t]);
+
   return (
     <div className="space-y-1.5" data-testid="opencode-go-usage">
       <div className="flex items-start gap-1.5 rounded-md border border-border/50 bg-muted/30 px-2 py-1.5 text-xs text-muted-foreground">
         <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>{t('settings:vendor_panel.opencode_go.agent_only_notice')}</span>
+        <span className="min-w-0 flex-1">{t('settings:vendor_panel.opencode_go.agent_only_notice')}</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <DsButton
+          size="sm"
+          variant="secondary"
+          onClick={() => void assign()}
+          disabled={!active || assigning}
+          title={active ? undefined : t('settings:vendor_panel.opencode_go.assign_need_key')}
+          data-testid="opencode-go-assign"
+        >
+          {assigning ? <Spinner className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <MagicWand className="h-3.5 w-3.5" aria-hidden="true" />}
+          <span>{t('settings:vendor_panel.opencode_go.assign_button')}</span>
+        </DsButton>
+        <span className="text-xs text-muted-foreground">{t('settings:vendor_panel.opencode_go.assign_hint')}</span>
       </div>
       {state.status !== 'idle' && (
         <div className="inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border/50 bg-muted/30 py-0.5 pl-1.5 pr-0.5 text-xs text-muted-foreground">

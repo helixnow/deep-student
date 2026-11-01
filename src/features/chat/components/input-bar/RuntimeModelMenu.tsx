@@ -7,6 +7,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { pinnedVendorRank } from '@/utils/modelSorting';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
@@ -100,9 +101,9 @@ export const RuntimeModelMenu: React.FC<RuntimeModelMenuProps> = ({
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
-          const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
-          const bSilicon = (b.providerType ?? '').toLowerCase() === 'siliconflow';
-          if (aSilicon !== bSilicon) return aSilicon ? -1 : 1;
+          const aPinned = pinnedVendorRank(a.providerType);
+          const bPinned = pinnedVendorRank(b.providerType);
+          if (aPinned !== bPinned) return aPinned - bPinned;
           const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
           const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
           if (aOrder !== bOrder) return aOrder - bOrder;

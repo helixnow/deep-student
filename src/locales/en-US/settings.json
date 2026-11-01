@@ -533,6 +533,12 @@
     "balance_days_ago_one": "{{count}} day ago",
     "opencode_go": {
       "agent_only_notice": "Following OpenCode’s usage rules, OpenCode Go is used only for agent conversations (including subagents, session titles and context compaction). Scheduled automations, OCR, card generation, translation, grading, embeddings and other features cannot use it and need a different model.",
+      "assign_button": "One-click assign",
+      "assign_hint": "Sets the chat model, session titles and context compaction to DeepSeek V4.1 Flash (Go); other features are unchanged",
+      "assign_done": "Chat model, session titles and context compaction now use DeepSeek V4.1 Flash on OpenCode Go",
+      "assign_no_model": "No usable DeepSeek V4.1 Flash (Go) model found. Enter your API key and make sure the model is enabled.",
+      "assign_failed": "One-click assign failed: {{detail}}",
+      "assign_need_key": "Enter your API key first",
       "window_five_hour": "5h",
       "window_weekly": "Week",
       "window_monthly": "Month",

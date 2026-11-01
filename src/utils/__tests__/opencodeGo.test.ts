@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import {
   excludeOpenCodeGo,
+  findOpenCodeGoDefaultConfig,
+  OPENCODE_GO_ASSIGNABLE_FIELDS,
   isOpenCodeGoConfig,
   isOpenCodeGoVendor,
   OPENCODE_GO_VENDOR_ID,
@@ -32,5 +34,26 @@ describe('opencodeGo', () => {
       { id: 'c', providerType: 'opencode_go' },
     ];
     expect(excludeOpenCodeGo(configs).map((config) => config.id)).toEqual(['b']);
+  });
+});
+
+describe('OpenCode Go one-click assign', () => {
+  it('only targets the agent-conversation slots', () => {
+    expect([...OPENCODE_GO_ASSIGNABLE_FIELDS]).toEqual([
+      'model2_config_id',
+      'chat_title_model_config_id',
+      'compaction_model_config_id',
+    ]);
+  });
+
+  it('picks the enabled DeepSeek V4.1 Flash config on the Go vendor only', () => {
+    const configs = [
+      { id: 'ds-official', model: 'deepseek-v4.1-flash', providerType: 'deepseek', enabled: true },
+      { id: 'go-disabled', model: 'deepseek-v4.1-flash', vendorId: 'builtin-opencode-go', enabled: false },
+      { id: 'go-pro', model: 'deepseek-v4-pro', vendorId: 'builtin-opencode-go', enabled: true },
+      { id: 'go-flash', model: 'deepseek-v4.1-flash', providerType: 'opencode_go', enabled: true },
+    ];
+    expect(findOpenCodeGoDefaultConfig(configs)?.id).toBe('go-flash');
+    expect(findOpenCodeGoDefaultConfig(configs.slice(0, 3))).toBeUndefined();
   });
 });
