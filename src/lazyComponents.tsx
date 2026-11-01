@@ -103,6 +103,11 @@ export const LazySkillsManagementPage = React.lazy(() =>
   import('./features/skills-management').then(m => ({ default: m.SkillsManagementPage }))
 );
 
+// Super-agent 模式（实验）
+export const LazySuperAgentPage = React.lazy(() =>
+  import('./features/super-agent').then(m => ({ default: m.SuperAgentPage }))
+);
+
 // 模板管理
 export const LazyTemplateManagementPage = React.lazy(() =>
   import('./features/template-management/TemplateManagementApp').then(m => ({ default: m.default }))

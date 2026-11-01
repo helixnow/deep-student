@@ -46,6 +46,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'skills-management',
   'todo',
   'flashcards',
+  'super-agent',
 ];
 
 const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'llm-playground'];

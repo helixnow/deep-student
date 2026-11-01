@@ -1,0 +1,59 @@
+{
+  "title": "Super-agent",
+  "experimental": "Experimental",
+  "subtitle": "One always-on agent: continuous chat, parallel work, background progress",
+  "intro": {
+    "heading": "How is this different from regular chats?",
+    "continuous": "A single continuous conversation with no session list. Follow-ups never depend on remembering which chat you were in.",
+    "parallel": "Throw in several things in a row without waiting. Background tasks run in parallel without interfering.",
+    "background": "Keeps working in the tray after you close the window, and reports back here.",
+    "safe": "Experimental: background tasks only use read-only tools. They never modify your data or run commands.",
+    "enableInSettings": "Turn on Super-agent in Settings → Automation first.",
+    "openSettings": "Open Settings"
+  },
+  "empty": "Say something, e.g. \"organize this week's mistakes\", then carry on with other things.",
+  "thinking": "Thinking…",
+  "feed": {
+    "worker": "Task update",
+    "system": "System"
+  },
+  "composer": {
+    "placeholder": "Tell Super-agent what to do…",
+    "send": "Send",
+    "hint": "Enter to send, Shift+Enter for a new line. You can keep sending without waiting."
+  },
+  "notice": {
+    "dropped": "Message filtered: {{reason}}",
+    "disabled": "Super-agent is not enabled"
+  },
+  "tasks": {
+    "title": "Tasks",
+    "running": "{{running}} running / {{total}} total",
+    "empty": "No background tasks yet. They appear here when Super-agent decides to work on something in parallel."
+  },
+  "workerStatus": {
+    "idle": "Idle",
+    "running": "Running",
+    "failed": "Failed",
+    "interrupted": "Interrupted",
+    "closed": "Closed"
+  },
+  "worker": {
+    "meta": "{{runs}} runs · last progress {{time}}",
+    "reply": "Reply to task",
+    "replyPlaceholder": "Send directly to this task (Ctrl/⌘+Enter)",
+    "sendDirect": "Send directly",
+    "retry": "Retry",
+    "close": "Finish"
+  },
+  "common": {
+    "cancel": "Cancel"
+  },
+  "settings": {
+    "title": "Super-agent (experimental)",
+    "description": "An alternative to per-session chats: one continuous conversation with parallel background tasks.",
+    "switchTitle": "Enable Super-agent",
+    "switchDescription": "When on, a Super-agent page appears in the sidebar. When off, the entry is hidden and regular chats are unaffected.",
+    "safety": "Background tasks only use read-only tools; they never modify your data or run commands. Keeps working in the tray after the window is closed."
+  }
+}

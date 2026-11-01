@@ -152,6 +152,7 @@ const ModelsTab = React.lazy(() => import('./ModelsTab').then((module) => ({ def
 const PluginsTab = React.lazy(() => import('./plugins/PluginsTab').then((module) => ({ default: module.PluginsTab })));
 const McpToolsSection = React.lazy(() => import('./McpToolsSection').then((module) => ({ default: module.McpToolsSection })));
 const AutomationSettingsSection = React.lazy(() => import('./AutomationSettingsSection').then((module) => ({ default: module.AutomationSettingsSection })));
+const SuperAgentSettingsSection = React.lazy(() => import('./SuperAgentSettingsSection').then((module) => ({ default: module.SuperAgentSettingsSection })));
 const SubagentProfilesSection = React.lazy(() => import('./SubagentProfilesSection').then((module) => ({ default: module.SubagentProfilesSection })));
 const DataGovernanceDashboard = React.lazy(() => import('./DataGovernanceDashboard').then((module) => ({ default: module.DataGovernanceDashboard })));
 const GeneralTab = React.lazy(() => import('./GeneralTab').then((module) => ({ default: module.GeneralTab })));
@@ -1502,6 +1503,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
               listen={isTauri ? tauriListen as unknown as AutomationListen : null}
             />
             <SubagentProfilesSection />
+            <SuperAgentSettingsSection />
           </div>
         )}
         {/* 数据治理 */}

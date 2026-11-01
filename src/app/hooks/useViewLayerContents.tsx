@@ -9,6 +9,7 @@ import {
   LazySettings,
   LazySOTADashboard,
   LazySkillsManagementPage,
+  LazySuperAgentPage,
   LazyTemplateManagementPage,
   LazyStyleDebugPage,
   LazyLearningHubPage,
@@ -88,6 +89,13 @@ export function useFeatureViewContents(
     <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
   ), []);
 
+  const isSuperAgentActive = currentView === 'super-agent';
+  const superAgentContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazySuperAgentPage isActive={isSuperAgentActive} />
+    </Suspense>
+  ), [isSuperAgentActive]);
+
   const isFlashcardsActive = currentView === 'flashcards';
   const flashcardsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -142,6 +150,7 @@ export function useFeatureViewContents(
 
   return {
     skillsManagementContent,
+    superAgentContent,
     flashcardsContent,
     mediaStudioContent,
     styleDebugContent,

@@ -1708,6 +1708,11 @@ pub fn run() {
                 });
             }
 
+            // 实验性 Super-agent（默认关闭；仅创建 Hub 与后台循环，不启用时不跑任何回合）
+            if let Err(e) = crate::chat_v2::superagent::init(&app_handle) {
+                log::warn!("[SuperAgent] init failed: {e}");
+            }
+
             // 有启用自动化时，用户关闭主窗口默认转为后台驻留。应用仍可通过
             // Dock/任务栏再次启动；single-instance 回调会唤回这一窗口。显式“退出”
             // 仍走 RunEvent::ExitRequested，不拦截。
@@ -2547,6 +2552,15 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
+            ,crate::chat_v2::superagent::runtime::superagent_status
+            ,crate::chat_v2::superagent::runtime::superagent_set_enabled
+            ,crate::chat_v2::superagent::runtime::superagent_ingest
+            ,crate::chat_v2::superagent::runtime::superagent_get_config
+            ,crate::chat_v2::superagent::runtime::superagent_set_config
+            ,crate::chat_v2::superagent::runtime::superagent_feed
+            ,crate::chat_v2::superagent::runtime::superagent_list_replies
+            ,crate::chat_v2::superagent::runtime::superagent_close_worker
+            ,crate::chat_v2::superagent::runtime::superagent_revive_worker
             // COMPAT-REMOVED 2026-07-20 (owner: platform-chat, remove target: vNext)
             // 旧 resource_* 命令已注销：前端零 invoke，替代路径 = vfs_* / VfsResourceRepo。
             // chat_v2::resource_repo 仍保留只读兼容层（见该模块头注释），勿再注册 resource_*。

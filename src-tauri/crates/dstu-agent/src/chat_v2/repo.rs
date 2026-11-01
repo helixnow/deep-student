@@ -219,6 +219,9 @@ pub struct ChatV2Repo;
 impl ChatV2Repo {
     fn append_visible_session_filter(sql: &mut String) {
         sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1");
+        // Super-agent（实验）的 Router/Worker 内部会话：用户感知的是单一持续对话，
+        // 底层会话不应出现在普通会话列表 / 计数 / 搜索里（见 chat_v2/superagent）。
+        sql.push_str(" AND json_extract(metadata_json, '$.superagent') IS NULL");
     }
 
     /// 检查 variants_json 大小：达到 LIMIT 即从最旧变体起截断；达到 WARN 仅日志。
@@ -4891,6 +4894,54 @@ mod tests {
 
         let deleted = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123").unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn superagent_internal_sessions_are_hidden_from_regular_session_views() {
+        // 回归：Super-agent 的 Router/Worker 内部会话（metadata.superagent）不得出现在
+        // 普通会话列表 / 计数 / 搜索里；普通会话（含 automation 会话）保持可见。
+        let conn = setup_test_db();
+        let mk = |id: &str, mode: &str, title: &str, metadata: Option<serde_json::Value>| {
+            let mut s = ChatSession::new(id.to_string(), mode.to_string());
+            s.title = Some(title.to_string());
+            s.metadata = metadata;
+            ChatV2Repo::create_session_with_conn(&conn, &s).unwrap();
+        };
+        mk("sess_plain", "general_chat", "needle 普通会话", None);
+        mk(
+            "sess_auto",
+            "automation",
+            "needle 自动化会话",
+            Some(serde_json::json!({"headless": true})),
+        );
+        mk(
+            "sess_sa_router",
+            "automation",
+            "needle Super-agent Router",
+            Some(serde_json::json!({"headless": true, "superagent": "router"})),
+        );
+        mk(
+            "sess_sa_worker",
+            "automation",
+            "needle Super-agent Worker",
+            Some(serde_json::json!({"headless": true, "superagent": "worker"})),
+        );
+
+        let listed =
+            ChatV2Repo::list_sessions_with_conn(&conn, Some("active"), None, 50, 0).unwrap();
+        let mut ids: Vec<_> = listed.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, ["sess_auto", "sess_plain"]);
+
+        assert_eq!(
+            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None).unwrap(),
+            2
+        );
+
+        let found = ChatV2Repo::search_sessions_with_conn(&conn, "needle", 50, false).unwrap();
+        let mut found_ids: Vec<_> = found.iter().map(|s| s.id.as_str()).collect();
+        found_ids.sort();
+        assert_eq!(found_ids, ["sess_auto", "sess_plain"]);
     }
 
     #[test]

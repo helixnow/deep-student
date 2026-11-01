@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { DsButton } from '@/components/ui/DsButton';
 import { TextSwap } from '@/components/ui/TextSwap';
 import { useUIStore } from '@/stores/uiStore';
+import { useSyncSuperAgentEnabled } from '@/stores/superAgentEnabledStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
 // ★ 2026-07-08（审计 30-P1-4）：CloudStorageSection（≈1300 行，仅云存储弹窗使用）与
@@ -357,6 +358,8 @@ function App() {
   const USE_STABLE_STREAM_ENGINE = true;
   // 🚀 应用初始化
   useAppInitialization();
+  // Super-agent（实验）侧栏入口：启动后以后端开关为准校正一次本地镜像
+  useSyncSuperAgentEnabled();
 
   // 🛡️ 外壳滚动保护：focus/scrollIntoView/拖拽自动滚动等把 overflow:hidden
   // 的壳层容器滚出偏移时（表现为整页滚走、渲染断成两半）立即复位
@@ -1358,6 +1361,7 @@ function App() {
 
   const {
     skillsManagementContent,
+    superAgentContent,
     flashcardsContent,
     mediaStudioContent,
     styleDebugContent,
@@ -1761,6 +1765,9 @@ function App() {
               {/* anki-generation 已通过 canonicalView.ts 重定向到 task-dashboard */}
 
               {renderViewLayer('skills-management', skillsManagementContent)}
+
+              {/* Super-agent 模式（实验）：单一持续对话 + 后台并行任务 */}
+              {renderViewLayer('super-agent', superAgentContent, 'overflow-hidden')}
 
               {/* ★ 记忆内化已废弃（图谱模块已移除） */}
 

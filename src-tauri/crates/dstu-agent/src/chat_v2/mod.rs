@@ -54,6 +54,7 @@ pub mod skill_updates; // 🆕 技能更新检查与一键更新（基于 proven
 pub mod skill_usage; // 🆕 技能使用后端账目 + 经验候选库（G09-P0：只记录，不回放）
 pub mod skills; // 🆕 Skills 文件系统处理器
 pub mod state;
+pub mod superagent; // 🆕 实验性 Super-agent：Router/Worker 双层 + 事件驱动 + 订阅直通 + Watchdog（默认关闭）
 pub mod task_audit; // Deterministic task audit manifests and export redaction
 pub mod task_command; // 🆕 G10-P1：远程渠道入站统一 TaskCommand（iLink 接入同一 ChatV2 任务运行系统）
                       // Unified file/message/event/record identity and delivery receipts（已下沉 dstu-core，旧路径保留）

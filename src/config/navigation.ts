@@ -8,6 +8,7 @@ import {
   StudyMagicWandIcon,
   StudyMediaIcon,
   StudySettingsIcon,
+  StudyStackIcon,
   StudyTodoIcon,
 } from '../components/icons/StudySidebarIcons';
 
@@ -29,7 +30,8 @@ export type NavViewType =
   | 'skills-management'
   | 'ui-lab'
   | 'todo'
-  | 'flashcards';
+  | 'flashcards'
+  | 'super-agent';
 
 /**
  * 导航项类型定义
@@ -48,7 +50,11 @@ export type NavItem = {
  * @param t - i18next翻译函数
  * @returns 导航项数组
  */
-export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] => {
+export const createNavItems = (
+  t: TFunction,
+  includeUILab = false,
+  includeSuperAgent = false,
+): NavItem[] => {
   const items: NavItem[] = [
     // 🔧 Chat V2 放第一位
     {
@@ -89,6 +95,18 @@ export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] =>
       view: 'flashcards',
       icon: StudyCardsIcon,
     },
+    // ★ Super-agent（2026-10，实验）：与“按 Session 的会话”并列的另一种工作方式——
+    // 单一持续对话 + 后台并行 Worker。仅桌面侧栏展示（不进移动端启动器，见 MOBILE_APP_LAUNCHER_VIEWS）。
+    // 默认不出现：仅当用户在「设置 → 自动化」打开 Super-agent 开关后才传入 includeSuperAgent=true
+    ...(includeSuperAgent
+      ? [
+          {
+            name: t('sidebar:navigation.super_agent', 'Super-agent'),
+            view: 'super-agent' as NavViewType,
+            icon: StudyStackIcon,
+          },
+        ]
+      : []),
     ...(includeUILab
       ? [
           {

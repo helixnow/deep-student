@@ -1,4 +1,5 @@
 import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
+import { useSuperAgentEnabled } from '@/stores/superAgentEnabledStore';
 import { SessionRow, useStableSessionRowActions } from './sidebar/SessionRow';
 import { invoke } from '@tauri-apps/api/core';
 import { AnimatePresence } from 'framer-motion';
@@ -323,14 +324,18 @@ const ModernSidebarImpl: React.FC<ModernSidebarProps> = ({
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
   const uiLabEnabled = useIsUILabEnabled();
-  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
+  const superAgentEnabled = useSuperAgentEnabled();
+  const navItems = useMemo(
+    () => createNavItems(t, uiLabEnabled, superAgentEnabled),
+    [t, uiLabEnabled, superAgentEnabled],
+  );
   const primaryItems = useMemo(
     () => navItems.filter((item) => {
       if (navigationScope === 'chat') {
         return item.view === 'chat-v2';
       }
       // 闪卡中心（复习 / 制卡 / 模板）只占一个入口：flashcards 代表整个分区组
-      return ['chat-v2', 'learning-hub', 'media', 'todo', 'skills-management', 'flashcards', 'ui-lab'].includes(item.view);
+      return ['chat-v2', 'learning-hub', 'media', 'todo', 'skills-management', 'flashcards', 'super-agent', 'ui-lab'].includes(item.view);
     }),
     [navItems, navigationScope]
   );

@@ -23,6 +23,7 @@ export type CurrentView =
   | 'media'             // 音视频（资源库音视频的专用视角：转写 / 字幕 / 讲义 / 问答 / 练习）
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面
+  | 'super-agent'       // Super-agent 模式（实验）：持续在线、并行办事的单一对话
   | 'flashcards'        // 闪卡复习（传统壳入口；OS 模式仍走学习桌面应用）
   | 'chat-v2-test'      // Chat V2 集成测试页面（开发用）
   | 'llm-playground';    // LLM 输出模拟游乐场（开发用）
