@@ -30,3 +30,22 @@ pub fn build_pipeline_services(
     }
     Arc::new(services)
 }
+
+/// 生产路径：从 Tauri 已单独 manage 的共享服务（`lib.rs::manage_shared_services`，与 `AppState`
+/// 字段是同一份 `Arc`）组装 pipeline 服务容器（step 10 §4）。
+///
+/// 与旧写法 `build_pipeline_services(Some(state.notes_manager), state.question_bank_service)` 等价：
+/// `Arc<NotesManager>` 总是已 manage；`Arc<QuestionBankService>` 仅在 AppState 字段为 `Some` 时 manage，
+/// 未 manage 时取出为 `None`，与字段为 `None` 时一致。必须在 `manage_shared_services` 之后调用。
+pub fn build_pipeline_services_from_managed<R: tauri::Runtime>(
+    manager: &impl tauri::Manager<R>,
+) -> Arc<Services> {
+    build_pipeline_services(
+        manager
+            .try_state::<Arc<NotesManager>>()
+            .map(|state| state.inner().clone()),
+        manager
+            .try_state::<Arc<QuestionBankService>>()
+            .map(|state| state.inner().clone()),
+    )
+}
