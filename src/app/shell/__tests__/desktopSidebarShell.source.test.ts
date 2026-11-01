@@ -34,6 +34,13 @@ describe('desktop sidebar shell wiring', () => {
     expect(appSource).not.toContain('isDesktopFullscreen');
   });
 
+  it('keeps sidebar toggle and history nav reachable in settings/todo while collapsed', () => {
+    // 回归：对话页收起侧栏 → 后退进入设置页，壳侧栏（含其返回入口）随全局收起状态隐藏，
+    // 若标题栏也无条件隐藏开关与前进/后退，页面将没有任何出口。
+    expect(appSource).toContain("const shouldShowDesktopSidebarToggle = currentView !== 'settings' || leftPanelCollapsed;");
+    expect(appSource).toContain('const shouldShowDesktopHeaderNavControls = !isShellSidebarView || leftPanelCollapsed;');
+  });
+
   it('keeps macOS custom chrome in the native titlebar row', () => {
     // macOS 归零逻辑在 resolveShellTitlebarTopInset（单测见 desktopShell.titlebarInset.test.ts）
     expect(appSource).toContain('const shellTitlebarTopInset = resolveShellTitlebarTopInset({');

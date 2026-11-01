@@ -121,6 +121,7 @@ export const SuperAgentConfigPanel: React.FC<Props> = ({
           options={modelOptions}
           size="sm"
           width={260}
+          className="max-md:!w-full max-md:!min-w-0"
         />
       </SettingRow>
       <SettingRow title={t('config.workerModelTitle')} description={t('config.workerModelDescription')}>
@@ -130,6 +131,7 @@ export const SuperAgentConfigPanel: React.FC<Props> = ({
           options={modelOptions}
           size="sm"
           width={260}
+          className="max-md:!w-full max-md:!min-w-0"
         />
       </SettingRow>
       <SettingRow title={t('config.concurrencyTitle')} description={t('config.concurrencyDescription')}>

@@ -1146,8 +1146,12 @@ function App() {
       groupName: currentChatHeaderGroupName,
     })
     : desktopHeaderNavHotzoneLabel;
-  const shouldShowDesktopSidebarToggle = currentView !== 'settings';
-  const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
+  // settings / todo 展开时由各自壳侧栏提供返回入口，标题栏不重复渲染；
+  // 但侧栏收起（leftPanelCollapsed 全局共享，可能在别的视图收起后再导航进来）时
+  // 壳侧栏连同返回入口一起隐藏，标题栏必须保留开关与前进/后退，否则页面无出口。
+  const isShellSidebarView = currentView === 'settings' || currentView === 'todo';
+  const shouldShowDesktopSidebarToggle = currentView !== 'settings' || leftPanelCollapsed;
+  const shouldShowDesktopHeaderNavControls = !isShellSidebarView || leftPanelCollapsed;
   const handleDesktopSidebarToggle = useCallback(() => {
     // Preserve the current native surface width while the sidebar slides out.
     // Opening can reveal both layers immediately because the sidebar is already
