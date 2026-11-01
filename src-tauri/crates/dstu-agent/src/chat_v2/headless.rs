@@ -1558,6 +1558,17 @@ impl HeadlessPipelineTermination {
 }
 
 #[allow(clippy::too_many_arguments)]
+/// 会话 metadata 对自动记忆提取的声明：`auto_memory_extraction: false`，或带 `superagent` 标记
+/// （兼容在该键引入前创建的 Super-agent 会话）时返回 `Some(false)`；否则 `None`（照常）。
+fn session_auto_memory_extraction(metadata: &Value) -> Option<bool> {
+    let opted_out = metadata
+        .get("auto_memory_extraction")
+        .and_then(Value::as_bool)
+        == Some(false)
+        || metadata.get("superagent").is_some();
+    opted_out.then_some(false)
+}
+
 async fn execute_headless_pipeline(
     app: &AppHandle,
     session_id: &str,
@@ -1638,6 +1649,18 @@ async fn execute_headless_pipeline(
         allowed_tools.sort();
         allowed_tools.dedup();
     }
+    // 会话可声明不做对话后自动记忆提取：Super-agent 内部会话的内容含不可信事件正文与
+    // 模型推断，不应自动写入用户记忆（记忆的读取与工具不受影响）。
+    let auto_memory_extraction = app
+        .try_state::<Arc<ChatV2Database>>()
+        .and_then(|db| {
+            ChatV2Repo::get_session_v2(db.inner(), session_id)
+                .ok()
+                .flatten()
+        })
+        .and_then(|session| session.metadata)
+        .and_then(|metadata| session_auto_memory_extraction(&metadata));
+
     let options = SendOptions {
         model_id: model_id.map(|s| s.to_string()),
         // todo_* 元工具经后端 SchemaToolRegistry 注入；attempt_completion 自动追加
@@ -1653,6 +1676,7 @@ async fn execute_headless_pipeline(
         execution_allowed_tools: Some(allowed_tools),
         max_tool_recursion: max_tool_rounds,
         memory_enabled: Some(true),
+        auto_memory_extraction,
         rag_enabled: Some(true),
         web_search_enabled: Some(true),
         system_prompt_append: Some(system_append),
@@ -2096,6 +2120,19 @@ mod tests {
     use crate::chat_v2::automations::heartbeat_is_silent;
     use crate::chat_v2::tool_policy::is_tool_allowed_by_execution_policy;
     use serde_json::json;
+
+    #[test]
+    fn superagent_sessions_opt_out_of_auto_memory_extraction() {
+        use super::session_auto_memory_extraction as f;
+        assert_eq!(f(&json!({"auto_memory_extraction": false})), Some(false));
+        assert_eq!(
+            f(&json!({"headless": true, "superagent": "worker"})),
+            Some(false)
+        );
+        // 普通 / 自动化会话照常提取
+        assert_eq!(f(&json!({"headless": true})), None);
+        assert_eq!(f(&json!({"auto_memory_extraction": true})), None);
+    }
 
     // step 10：`whitelist_registry`（需 app 域执行器）及其用户
     // `all_whitelisted_tools_are_low_sensitivity` 已迁到 app

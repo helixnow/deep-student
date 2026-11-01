@@ -60,6 +60,8 @@ impl TurnPorts for HeadlessPorts {
         if let Some(obj) = metadata.as_object_mut() {
             obj.entry("headless_named").or_insert(json!(true));
             obj.entry("superagent_kind").or_insert(json!(kind));
+            // 内部会话不做对话后自动记忆提取（见 headless::session_auto_memory_extraction）
+            obj.entry("auto_memory_extraction").or_insert(json!(false));
         }
         // mode 沿用 "automation"：与 automations 的 headless 会话同类，不污染普通会话列表
         create_headless_session(&db, "automation", title, metadata)

@@ -1469,6 +1469,10 @@ impl ChatV2Pipeline {
     /// 受 mem0 `add` 和 memU `memorize` 启发：
     /// 从用户消息和助手回复中自动提取候选记忆，通过 write_smart 去重写入。
     fn trigger_auto_memory_extraction(&self, ctx: &PipelineContext) {
+        if ctx.options.auto_memory_extraction == Some(false) {
+            log::debug!("[AutoMemory] Auto-extraction disabled for this turn, skipping");
+            return;
+        }
         self.trigger_auto_memory_extraction_for_turn(
             ctx.options.memory_enabled,
             &ctx.user_content,

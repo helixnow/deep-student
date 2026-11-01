@@ -2249,6 +2249,11 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_enabled: Option<bool>,
 
+    /// 对话后自动记忆提取（None = 照常）。`Some(false)` 只关闭“从本轮对话提取记忆入库”，
+    /// 记忆注入与记忆工具不受影响。后端内部会话（如 Super-agent 的 Router/Worker）使用。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_memory_extraction: Option<bool>,
+
     // ========== 多模态 RAG 选项 ==========
     /// 启用多模态知识库检索
     #[serde(skip_serializing_if = "Option::is_none")]
