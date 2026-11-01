@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('mcp tools section global bypass contract', () => {
-  const source = readFileSync(
-    resolve(process.cwd(), 'src/features/settings/components/McpToolsSection.tsx'),
-    'utf-8'
-  );
+  // McpToolsSection 已拆分到 mcp-tools/ 子模块：入口 + 全部子模块拼接后断言
+  const componentsDir = resolve(process.cwd(), 'src/features/settings/components');
+  const source = [
+    resolve(componentsDir, 'McpToolsSection.tsx'),
+    ...readdirSync(resolve(componentsDir, 'mcp-tools')).sort().map((file) => resolve(componentsDir, 'mcp-tools', file)),
+  ].map((file) => readFileSync(file, 'utf-8')).join('\n');
 
   it('uses the shared switch control instead of an oversized icon-only button for global bypass', () => {
     expect(source).toContain("import { Switch } from '@/components/ui/shad/Switch';");
