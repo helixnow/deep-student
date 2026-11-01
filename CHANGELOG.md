@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.11.0](https://github.com/helixnow/deep-student/compare/v0.10.10...v0.11.0) (2026-11-01)
+
+
+### Features
+
+* 后端拆分为 Cargo workspace + 前端架构优化 + OpenCode Go + Super-agent（实验） ([#510](https://github.com/helixnow/deep-student/issues/510)) ([5ea56e4](https://github.com/helixnow/deep-student/commit/5ea56e40db384a06e6526ba9cf9397fd41001564))
+
+
+### Miscellaneous Chores
+
+* release 0.11.0 ([#511](https://github.com/helixnow/deep-student/issues/511)) ([530e4f5](https://github.com/helixnow/deep-student/commit/530e4f5ab2b96544f89888db9f99f6eb6a70784e))
+
 ## [0.10.10](https://github.com/helixnow/deep-student/compare/v0.10.9...v0.10.10) (2026-10-29)
 
 
