@@ -91,6 +91,10 @@ impl ExecutorRoster for CoreExecutorRoster {
                 coordinator.clone(),
             )));
             executors.push(Arc::new(tools::SubagentExecutor::new(coordinator.clone())));
+            // Super 会话 Router 工具（仅活跃 Super 回合可执行，执行器内部 fail-closed）
+            executors.push(Arc::new(tools::SuperSessionExecutor::new(
+                coordinator.clone(),
+            )));
             executors.push(Arc::new(tools::CustomAgentExecutor::new(
                 coordinator.clone(),
             )));

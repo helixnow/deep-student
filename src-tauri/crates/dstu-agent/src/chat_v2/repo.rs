@@ -222,6 +222,9 @@ impl ChatV2Repo {
         // Super-agent（实验）的 Router/Worker 内部会话：用户感知的是单一持续对话，
         // 底层会话不应出现在普通会话列表 / 计数 / 搜索里（见 chat_v2/superagent）。
         sql.push_str(" AND json_extract(metadata_json, '$.superagent') IS NULL");
+        // Super 会话（chat_v2/super_session）关闭后标记 super_agent.hidden=true：数据保留，
+        // 但不出现在普通会话列表 / 计数 / 搜索里；重新开启时去掉 hidden 即恢复可见。
+        sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.super_agent.hidden'), 0) != 1");
     }
 
     /// 检查 variants_json 大小：达到 LIMIT 即从最旧变体起截断；达到 WARN 仅日志。
@@ -4942,6 +4945,67 @@ mod tests {
         let mut found_ids: Vec<_> = found.iter().map(|s| s.id.as_str()).collect();
         found_ids.sort();
         assert_eq!(found_ids, ["sess_auto", "sess_plain"]);
+    }
+
+    #[test]
+    fn hidden_super_session_is_hidden_from_regular_session_views() {
+        // 回归：关闭 Super 会话后 metadata.super_agent.hidden=true，不得出现在普通会话
+        // 列表 / 计数 / 搜索里；未隐藏的 Super 会话、退役 Super 会话与普通会话保持可见。
+        let conn = setup_test_db();
+        let mk = |id: &str, title: &str, metadata: Option<serde_json::Value>| {
+            let mut s = ChatSession::new(id.to_string(), "chat".to_string());
+            s.title = Some(title.to_string());
+            s.metadata = metadata;
+            ChatV2Repo::create_session_with_conn(&conn, &s).unwrap();
+        };
+        mk("sess_plain", "needle 普通会话", None);
+        mk(
+            "sess_super_visible",
+            "needle Super-agent",
+            Some(serde_json::json!({
+                "super_agent": {"active": true, "version": 1, "workspace_id": "ws_a", "hidden": false},
+                "pinned": true
+            })),
+        );
+        mk(
+            "sess_super_hidden",
+            "needle Super-agent hidden",
+            Some(serde_json::json!({
+                "super_agent": {"active": true, "version": 1, "workspace_id": "ws_b", "hidden": true},
+                "pinned": true
+            })),
+        );
+        mk(
+            "sess_super_retired",
+            "needle Super-agent retired",
+            Some(serde_json::json!({
+                "super_agent": {"active": false, "retired_at": "2026-11-01T00:00:00Z"}
+            })),
+        );
+        // 旧 superagent 内部会话过滤仍然生效
+        mk(
+            "sess_legacy_router",
+            "needle legacy router",
+            Some(serde_json::json!({"headless": true, "superagent": "router"})),
+        );
+
+        let expected = ["sess_plain", "sess_super_retired", "sess_super_visible"];
+
+        let listed =
+            ChatV2Repo::list_sessions_with_conn(&conn, Some("active"), None, 50, 0).unwrap();
+        let mut ids: Vec<_> = listed.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        assert_eq!(ids, expected);
+
+        assert_eq!(
+            ChatV2Repo::count_sessions_with_conn(&conn, Some("active"), None).unwrap(),
+            3
+        );
+
+        let found = ChatV2Repo::search_sessions_with_conn(&conn, "needle", 50, false).unwrap();
+        let mut found_ids: Vec<_> = found.iter().map(|s| s.id.as_str()).collect();
+        found_ids.sort();
+        assert_eq!(found_ids, expected);
     }
 
     #[test]

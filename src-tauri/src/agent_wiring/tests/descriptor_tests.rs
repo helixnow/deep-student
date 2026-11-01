@@ -37,8 +37,8 @@ use crate::chat_v2::tools::{
     MediaToolExecutor, MemoryToolExecutor, OfficeFidelityExecutor, PaperSaveExecutor,
     PptxToolExecutor, PtcExecutor, ReviewToolExecutor, SessionToolExecutor,
     SettingsModelsToolExecutor, SkillLifecycleExecutor, SkillsExecutor, SubagentExecutor,
-    TaskAuditExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor, TodoListExecutor,
-    ToolExecutor, ToolPackExecutor, TranslationToolExecutor, UserTodoExecutor,
+    SuperSessionExecutor, TaskAuditExecutor, TemplateDesignerExecutor, TextbookPdfToolExecutor,
+    TodoListExecutor, ToolExecutor, ToolPackExecutor, TranslationToolExecutor, UserTodoExecutor,
     WorkbenchToolExecutor, WorkspaceFsExecutor, WorkspaceToolExecutor, XlsxToolExecutor,
 };
 use crate::chat_v2::workspace::WorkspaceCoordinator;
@@ -119,6 +119,7 @@ fn production_like_registry() -> (tempfile::TempDir, Arc<ToolExecutorRegistry>) 
         // —— coordinator 注册组（pipeline.rs workspace 分支）——
         Arc::new(WorkspaceToolExecutor::new(coordinator.clone())),
         Arc::new(SubagentExecutor::new(coordinator.clone())),
+        Arc::new(SuperSessionExecutor::new(coordinator.clone())),
         Arc::new(CustomAgentExecutor::new(coordinator.clone())),
         Arc::new(CoordinatorSleepExecutor::new(coordinator)),
     ];
@@ -200,6 +201,7 @@ pub(crate) const EXPECTED_ROSTER: &[&str] = &[
     "WorkbenchToolExecutor",
     "WorkspaceToolExecutor",
     "SubagentExecutor",
+    "SuperSessionExecutor",
     "CustomAgentExecutor",
     "CoordinatorSleepExecutor",
     "ToolPackExecutor",

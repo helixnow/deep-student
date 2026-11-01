@@ -64,6 +64,7 @@
     "components -> src/features/chat/skills/skillTrustStorage.ts",
     "components -> src/features/chat/skills/types.ts",
     "components -> src/features/chat/skills/utils.ts",
+    "components -> src/features/chat/superSession/useSuperSessionEntry.ts",
     "components -> src/features/chat/utils/archiveSessionToast.ts",
     "components -> src/features/chat/utils/sessionPin.ts",
     "components -> src/features/chat/utils/sessionTitle.ts",

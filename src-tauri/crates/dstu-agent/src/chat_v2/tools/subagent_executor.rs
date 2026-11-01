@@ -34,17 +34,27 @@ const AUTO_WORKSPACE_NAME_CHARS: usize = 24;
 const AGENT_SETTLE_GRACE_MS: u64 = 3_000;
 
 /// `subagent_call` 的解析后参数（契约 C4/C7 入参侧，schema 由前端分区同步维护）
-#[derive(Debug)]
-struct SubagentCallArgs {
-    task: String,
-    workspace_id: Option<String>,
-    profile: Option<String>,
-    skill_id: Option<String>,
-    model: Option<String>,
-    context: Option<Value>,
-    wait: bool,
+///
+/// `pub(crate)`：Super 会话执行器（`super_session_executor`）直接构造本结构，
+/// 委托 [`SubagentExecutor::execute_subagent_call_with_args`]。
+#[derive(Debug, Default)]
+pub(crate) struct SubagentCallArgs {
+    pub(crate) task: String,
+    pub(crate) workspace_id: Option<String>,
+    pub(crate) profile: Option<String>,
+    pub(crate) skill_id: Option<String>,
+    pub(crate) model: Option<String>,
+    pub(crate) context: Option<Value>,
+    pub(crate) wait: bool,
     /// 契约 C7：提供时走续跑路径（跳过创建，向既有 worker 投递追问）
-    resume_agent_session_id: Option<String>,
+    pub(crate) resume_agent_session_id: Option<String>,
+    /// 子代理会话标题（创建路径）。None 时沿用 `Subagent: {label}`。
+    /// `subagent_call` 不接受此参数（恒 None）；仅后端内部调用方设置。
+    pub(crate) title: Option<String>,
+    /// 额外 agent metadata（JSON 对象，创建路径），与 resolved profile 合并后
+    /// 持久化进 workspace agent metadata（如 Super 的 `super_agent` 键）。
+    /// `subagent_call` 不接受此参数（恒 None）；仅后端内部调用方设置。
+    pub(crate) agent_metadata: Option<Value>,
 }
 
 fn optional_trimmed_string(args: &Value, key: &str) -> Option<String> {
@@ -73,6 +83,8 @@ fn parse_subagent_args(args: &Value) -> Result<SubagentCallArgs, String> {
         context: args.get("context").cloned().filter(|v| !v.is_null()),
         wait: args.get("wait").and_then(|v| v.as_bool()).unwrap_or(true),
         resume_agent_session_id: optional_trimmed_string(args, "resume_agent_session_id"),
+        title: None,
+        agent_metadata: None,
     })
 }
 
@@ -435,6 +447,21 @@ impl SubagentExecutor {
         }
 
         let args = parse_subagent_args(raw_args)?;
+        self.execute_subagent_call_with_args(args, ctx).await
+    }
+
+    /// 以已解析参数执行子代理调用（创建或续跑）。
+    ///
+    /// `subagent_call` 经 [`parse_subagent_args`] 进入；Super 会话执行器直接构造
+    /// [`SubagentCallArgs`]（固定 workspace / wait=false，附带 title 与额外 agent metadata）。
+    pub(crate) async fn execute_subagent_call_with_args(
+        &self,
+        args: SubagentCallArgs,
+        ctx: &ExecutionContext,
+    ) -> Result<Value, String> {
+        if ctx.is_cancelled() {
+            return Err("Subagent call cancelled before start".to_string());
+        }
 
         // 契约 C7：resume_agent_session_id 提供时走续跑路径，跳过创建
         if let Some(resume_id) = args.resume_agent_session_id.clone() {
@@ -540,7 +567,11 @@ impl SubagentExecutor {
         let session = ChatSession {
             id: agent_session_id.clone(),
             mode: "subagent".to_string(),
-            title: Some(format!("Subagent: {}", agent_label)),
+            title: Some(
+                args.title
+                    .clone()
+                    .unwrap_or_else(|| format!("Subagent: {}", agent_label)),
+            ),
             description: Some(format!(
                 "工作区 {} 的子代理",
                 &workspace_id[..8.min(workspace_id.len())]
@@ -595,7 +626,10 @@ impl SubagentExecutor {
             &agent_session_id,
             AgentRole::Worker,
             args.skill_id.clone(),
-            Some(AgentProfileResolver::persist_into_metadata(None, &profile)),
+            Some(AgentProfileResolver::persist_into_metadata(
+                args.agent_metadata.clone(),
+                &profile,
+            )),
         ) {
             Ok(agent) => agent,
             Err(e) => {

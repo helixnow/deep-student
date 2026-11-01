@@ -2591,5 +2591,36 @@
       "resume": "Failed to resume goal",
       "clear": "Failed to clear goal"
     }
+  },
+  "superSession": {
+    "paused": {
+      "userStopped": "Stopped. Background events will not be processed automatically",
+      "autoLimit": "Paused after {{count}} automatic turns in a row",
+      "resume": "Continue with {{count}} pending events",
+      "resume_one": "Continue with {{count}} pending event",
+      "resumeNoCount": "Continue with pending events"
+    },
+    "event": {
+      "title": "Background events",
+      "ariaLabel": "Super-agent background events",
+      "count": "{{count}} events",
+      "count_one": "{{count}} event",
+      "generic": "New background event received",
+      "untitledWorker": "Untitled task",
+      "worker": {
+        "completed": "Worker \"{{title}}\" completed",
+        "failed": "Worker \"{{title}}\" failed",
+        "cancelled": "Worker \"{{title}}\" was cancelled",
+        "interrupted": "Worker \"{{title}}\" was interrupted",
+        "timeout": "Worker \"{{title}}\" timed out",
+        "message": "New message from worker \"{{title}}\""
+      },
+      "external": "External event · {{source}}",
+      "externalNoSource": "External event",
+      "view": "View",
+      "viewWorkerAria": "View the full session of worker \"{{title}}\"",
+      "showRaw": "Show original",
+      "hideRaw": "Hide original"
+    }
   }
 }

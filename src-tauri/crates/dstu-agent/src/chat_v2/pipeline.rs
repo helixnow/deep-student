@@ -565,6 +565,19 @@ impl ChatV2Pipeline {
         Self::skill_allows_tool(tool_name, allowed)
     }
 
+    /// Super 会话管线入口钩子（send/retry/edit/continue/wake/变体统一经过）。
+    ///
+    /// 委托 `super_session::apply_turn_overrides`：仅对活跃 && 启用 && 未隐藏的
+    /// Super 会话生效，幂等（重复调用不重复追加工具）。
+    fn apply_super_turn_overrides(&self, request: &mut SendMessageRequest, has_window: bool) {
+        crate::chat_v2::super_session::apply_turn_overrides(
+            &*self.db,
+            self.main_db.as_deref(),
+            request,
+            has_window,
+        );
+    }
+
     /// 执行消息发送流水线
     ///
     /// ## 流程
@@ -593,6 +606,11 @@ impl ChatV2Pipeline {
         // 启动时 VFS/Lance 可能尚未就绪。正常请求入口做带退避的异步兜底，
         // 不让 compaction 已提交的 memory-flush ledger 永久滞留。
         self.schedule_memory_flush_recovery();
+
+        // === Super 会话回合覆盖（幂等；必须在多变体分支之前）===
+        // 活跃且启用的 Super 会话：清 workspace_id、设内部 super_session、
+        // 有窗口时追加 4 个 Super 工具 schema。
+        self.apply_super_turn_overrides(&mut request, true);
 
         // === Feature Flag 检查 ===
         let multi_variant_enabled = feature_flags::is_multi_variant_enabled();
@@ -687,10 +705,15 @@ impl ChatV2Pipeline {
     pub async fn execute_with_emitter(
         &self,
         emitter: Arc<ChatV2EventEmitter>,
-        request: SendMessageRequest,
+        mut request: SendMessageRequest,
         cancel_token: CancellationToken,
         chat_v2_state: Option<Arc<super::state::ChatV2State>>,
     ) -> ChatV2Result<String> {
+        // === Super 会话回合覆盖（幂等；execute 委托而来时已应用过一次）===
+        // 无窗口（headless）不追加 Super 工具。
+        let has_window = emitter.try_window().is_some();
+        self.apply_super_turn_overrides(&mut request, has_window);
+
         // 多变体 fail-fast（见文档注释）：emitter 路径没有 Window 可供
         // execute_multi_variant 构造逐变体 emitter。
         if request

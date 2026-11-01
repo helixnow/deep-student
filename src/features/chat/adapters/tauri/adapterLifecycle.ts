@@ -309,6 +309,10 @@ export async function setup(host: TauriAdapterHost): Promise<void> {
     host.store.setWakeSessionCallback((content, assistantMessageId) =>
       host.executeWakeSession(content, assistantMessageId)
     );
+    // Super 会话收件箱投递（store.deliverSuperInbox → chat_v2_super_deliver_inbox）
+    host.store.setDeliverInboxCallback?.((userMessageId, assistantMessageId, force) =>
+      host.executeDeliverInbox(userMessageId, assistantMessageId, force)
+    );
     host.store.setAbortCallback(() => host.executeAbort());
     // 🔧 P0 修复：注入 continueMessage 回调，让 store.continueMessage 调用后端 chat_v2_continue_message
     host.store.setContinueMessageCallback((messageId, variantId) =>
@@ -579,6 +583,12 @@ export async function cleanup(host: TauriAdapterHost): Promise<void> {
     host.store.setWakeSessionCallback(null);
   } catch (error) {
     console.error(LOG_PREFIX, 'Error clearing wakeSession callback:', getErrorMessage(error));
+  }
+
+  try {
+    host.store.setDeliverInboxCallback?.(null);
+  } catch (error) {
+    console.error(LOG_PREFIX, 'Error clearing deliverInbox callback:', getErrorMessage(error));
   }
 
   // 清除中断回调

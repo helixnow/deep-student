@@ -10,6 +10,7 @@ import type {
   AttachmentMeta,
   LoadSessionResponseType,
   SessionRestoreBaseline,
+  DeliverOutcome,
 } from '../../core/types';
 import type { BackendEvent } from '../../core/middleware/eventBridge';
 import type { AnkiCard } from '@/types';
@@ -146,6 +147,11 @@ export interface TauriAdapterHost {
     content: string,
     assistantMessageId: string,
   ): Promise<void>;
+  executeDeliverInbox(
+    userMessageId: string,
+    assistantMessageId: string,
+    force: boolean,
+  ): Promise<DeliverOutcome>;
   executeSendMessage(
     content: string,
     attachments: AttachmentMeta[] | undefined,

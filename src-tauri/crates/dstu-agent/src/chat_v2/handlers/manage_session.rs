@@ -41,8 +41,53 @@ const BACKEND_AUTHORITATIVE_METADATA_KEYS: &[&str] = &[
     MANUALLY_ARCHIVED_BY_KEY,
     "groupArchivedBy",
     "branchedFrom",
+    // Super 会话标记由后端 super_session 模块独占维护（ensure/关闭/退役）。
+    SUPER_AGENT_METADATA_KEY,
 ];
+/// Super 会话 metadata 标记键（见 chat_v2/super_session）。
+const SUPER_AGENT_METADATA_KEY: &str = "super_agent";
 static SESSION_LIFECYCLE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+/// metadata 是否标记为活跃 Super 会话（`super_agent.active == true`）。
+fn is_active_super_metadata(metadata: Option<&Value>) -> bool {
+    metadata
+        .and_then(|metadata| metadata.get(SUPER_AGENT_METADATA_KEY))
+        .and_then(|marker| marker.get("active"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// 会话 metadata 是否带 Super 标记（活跃或已退役均算）。读取失败按 false 处理。
+fn session_has_super_marker(db: &ChatV2Database, session_id: &str) -> bool {
+    match ChatV2Repo::get_session_v2(db, session_id) {
+        Ok(Some(session)) => session
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get(SUPER_AGENT_METADATA_KEY))
+            .is_some(),
+        _ => false,
+    }
+}
+
+/// 除 `exclude_session_id` 外，是否还存在 persist_status=active 的活跃 Super 会话。
+fn other_active_super_session_exists(
+    conn: &rusqlite::Connection,
+    exclude_session_id: &str,
+) -> Result<bool, ChatV2Error> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM chat_v2_sessions
+                WHERE id != ?1
+                  AND persist_status = 'active'
+                  AND COALESCE(json_extract(metadata_json, '$.super_agent.active'), 0) = 1
+            )",
+            rusqlite::params![exclude_session_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| ChatV2Error::Database(e.to_string()))?;
+    Ok(exists)
+}
 
 fn session_lifecycle_guard() -> MutexGuard<'static, ()> {
     SESSION_LIFECYCLE_LOCK
@@ -725,6 +770,7 @@ pub async fn chat_v2_branch_session(
 /// - `Err(String)`: 软删除失败
 #[tauri::command]
 pub async fn chat_v2_soft_delete_session(
+    app: AppHandle,
     session_id: String,
     db: State<'_, Arc<ChatV2Database>>,
     chat_v2_state: State<'_, Arc<ChatV2State>>,
@@ -762,6 +808,8 @@ pub async fn chat_v2_soft_delete_session(
         .into());
     }
 
+    let was_super = session_has_super_marker(&db, &session_id);
+
     // 软删除会话
     soft_delete_session_in_db(&session_id, &db)?;
 
@@ -772,6 +820,13 @@ pub async fn chat_v2_soft_delete_session(
     clear_session_sequence_counter(&session_id);
 
     log::info!("[ChatV2::handlers] Soft deleted session: id={}", session_id);
+
+    // Super 会话钩子（仅对带 super_agent 标记的会话调用）：取消 Worker、关闭工作区、
+    // 已启用则自动新建空 Super 会话。先释放生命周期锁，避免 ensure() 重入建会话时死锁。
+    drop(_lifecycle_guard);
+    if was_super {
+        crate::chat_v2::super_session::on_session_removed(&app, &session_id, false);
+    }
 
     Ok(())
 }
@@ -884,6 +939,9 @@ pub async fn chat_v2_delete_session(
     // 会话删除前递减 VFS 资源引用计数，防止 CASCADE DELETE 后引用计数永远无法归零
     decrement_vfs_refs_for_session(&db, &vfs_db, &session_id);
 
+    // 硬删后会话行不复存在，删除前先记下是否为 Super 会话
+    let was_super = session_has_super_marker(&db, &session_id);
+
     // 从数据库删除会话（级联删除）
     ChatV2Repo::delete_session_v2(&db, &session_id).map_err(String::from)?;
     clear_session_sequence_counter(&session_id);
@@ -892,6 +950,13 @@ pub async fn chat_v2_delete_session(
         "[ChatV2::handlers] Deleted session with cascade: id={}",
         session_id
     );
+
+    // Super 会话钩子（仅对带 super_agent 标记的会话调用；此时会话行已删除）：取消 Worker、
+    // 删除工作区、已启用则自动新建空 Super 会话。先释放生命周期锁，避免 ensure() 重入死锁。
+    drop(_lifecycle_guard);
+    if was_super {
+        crate::chat_v2::super_session::on_session_removed(&app, &session_id, true);
+    }
 
     Ok(())
 }
@@ -962,14 +1027,23 @@ pub async fn chat_v2_empty_deleted_sessions(
     // 执行硬删除（锁内逐个复查状态：锁外阶段期间被恢复的会话不再删除；
     // 锁外阶段期间新软删的会话留待下次清空，保证与上面的 FS 清理一一对应）
     let mut count: u32 = 0;
+    let mut purged_super_ids: Vec<String> = Vec::new();
     {
         let _lifecycle_guard = session_lifecycle_guard();
         for session_id in &deleted_ids {
             match ChatV2Repo::get_session_v2(&db, session_id).map_err(String::from)? {
                 Some(session) if session.persist_status == PersistStatus::Deleted => {
+                    let was_super = session
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get(SUPER_AGENT_METADATA_KEY))
+                        .is_some();
                     ChatV2Repo::delete_session_v2(&db, session_id).map_err(String::from)?;
                     clear_session_sequence_counter(session_id);
                     count += 1;
+                    if was_super {
+                        purged_super_ids.push(session_id.clone());
+                    }
                 }
                 Some(_) => {
                     log::info!(
@@ -980,6 +1054,10 @@ pub async fn chat_v2_empty_deleted_sessions(
                 None => {}
             }
         }
+    }
+    // 回收站里的（旧）Super 会话被永久删除：交给 super_session 清理其工作区（锁外调用）。
+    for session_id in &purged_super_ids {
+        crate::chat_v2::super_session::on_session_removed(&app, session_id, true);
     }
     log::info!(
         "[ChatV2::handlers] Emptied trash: {} sessions permanently deleted",
@@ -1275,6 +1353,14 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
     let existing = ChatV2Repo::get_session_v2(db, session_id)?
         .ok_or_else(|| ChatV2Error::SessionNotFound(session_id.to_string()))?;
 
+    // 活跃 Super 会话是常驻入口，不允许归档（删除会自动新建空 Super 会话）。
+    if is_active_super_metadata(existing.metadata.as_ref()) {
+        return Err(ChatV2Error::Validation(
+            "Super-agent 会话不能归档。如需清空，请删除该会话（会自动新建一个空的 Super-agent 会话）。"
+                .to_string(),
+        ));
+    }
+
     let now = chrono::Utc::now();
     let mut metadata = existing
         .metadata
@@ -1359,6 +1445,20 @@ fn restore_session_in_db(
     if let Some(Value::Object(obj)) = metadata.as_mut() {
         obj.remove(MANUALLY_ARCHIVED_BY_KEY);
         obj.remove("groupArchivedBy");
+    }
+    // 回收站恢复旧 Super 会话：若已有另一个活跃 Super（删除后已自动新建），
+    // 则把恢复的这个退役为普通历史会话，保证活跃 Super 唯一。
+    if is_active_super_metadata(metadata.as_ref()) {
+        let conn = db.get_conn_safe()?;
+        if other_active_super_session_exists(&conn, session_id)? {
+            if let Some(meta) = metadata.as_mut() {
+                crate::chat_v2::super_session::retire_metadata(meta);
+            }
+            log::info!(
+                "[ChatV2::handlers] Restored session {} retired from Super-agent (another active Super exists)",
+                session_id
+            );
+        }
     }
     if let Some(group_id) = existing.group_id.as_deref() {
         let conn = db.get_conn_safe()?;
@@ -1550,6 +1650,11 @@ fn branch_session_in_db(
         .clone()
         .unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = metadata.as_object_mut() {
+        // 从 Super 会话分支出来的是普通会话：不继承 Super 标记，也不继承
+        // Super 自带的置顶（普通会话分支的 pinned 行为保持不变）。
+        if obj.remove(SUPER_AGENT_METADATA_KEY).is_some() {
+            obj.remove("pinned");
+        }
         obj.insert(
             "branchedFrom".to_string(),
             serde_json::json!({
@@ -2189,6 +2294,122 @@ mod tests {
             .unwrap();
         let db = ChatV2Database::new(dir.path()).unwrap();
         (dir, db)
+    }
+
+    fn active_super_metadata(workspace_id: &str) -> Value {
+        serde_json::json!({
+            "super_agent": {
+                "active": true,
+                "version": 1,
+                "workspace_id": workspace_id,
+                "hidden": false
+            },
+            "pinned": true
+        })
+    }
+
+    fn create_session_with_metadata(db: &ChatV2Database, id: &str, metadata: Option<Value>) {
+        let mut session = ChatSession::new(id.to_string(), "chat".to_string());
+        session.metadata = metadata;
+        ChatV2Repo::create_session_v2(db, &session).unwrap();
+    }
+
+    #[test]
+    fn archive_rejects_active_super_session_but_allows_regular_ones() {
+        let (_dir, db) = setup_chat_v2_test_db();
+        create_session_with_metadata(&db, "sess_super", Some(active_super_metadata("ws_a")));
+        create_session_with_metadata(&db, "sess_plain", None);
+
+        let err = archive_session_in_db("sess_super", &db).unwrap_err();
+        assert!(matches!(err, ChatV2Error::Validation(_)), "got {err:?}");
+        let still_active = ChatV2Repo::get_session_v2(&db, "sess_super")
+            .unwrap()
+            .unwrap();
+        assert_eq!(still_active.persist_status, PersistStatus::Active);
+
+        archive_session_in_db("sess_plain", &db).unwrap();
+        let archived = ChatV2Repo::get_session_v2(&db, "sess_plain")
+            .unwrap()
+            .unwrap();
+        assert_eq!(archived.persist_status, PersistStatus::Archived);
+    }
+
+    #[test]
+    fn restore_retires_old_super_session_when_another_active_super_exists() {
+        let (_dir, db) = setup_chat_v2_test_db();
+        // 旧 Super 被软删进回收站，随后自动新建了新的活跃 Super
+        create_session_with_metadata(&db, "sess_super_old", Some(active_super_metadata("ws_old")));
+        soft_delete_session_in_db("sess_super_old", &db).unwrap();
+        create_session_with_metadata(&db, "sess_super_new", Some(active_super_metadata("ws_new")));
+
+        let restored = restore_session_in_db("sess_super_old", &db).unwrap();
+        assert_eq!(restored.persist_status, PersistStatus::Active);
+        assert!(
+            !is_active_super_metadata(restored.metadata.as_ref()),
+            "restored old Super must be retired: {:?}",
+            restored.metadata
+        );
+        let reloaded = ChatV2Repo::get_session_v2(&db, "sess_super_old")
+            .unwrap()
+            .unwrap();
+        assert!(!is_active_super_metadata(reloaded.metadata.as_ref()));
+
+        // 当前活跃 Super 不受影响
+        let current = ChatV2Repo::get_session_v2(&db, "sess_super_new")
+            .unwrap()
+            .unwrap();
+        assert!(is_active_super_metadata(current.metadata.as_ref()));
+    }
+
+    #[test]
+    fn restore_keeps_super_marker_when_no_other_active_super_exists() {
+        let (_dir, db) = setup_chat_v2_test_db();
+        create_session_with_metadata(&db, "sess_super_only", Some(active_super_metadata("ws_a")));
+        soft_delete_session_in_db("sess_super_only", &db).unwrap();
+
+        let restored = restore_session_in_db("sess_super_only", &db).unwrap();
+        assert!(is_active_super_metadata(restored.metadata.as_ref()));
+    }
+
+    #[test]
+    fn branch_from_super_session_strips_super_marker_and_pin() {
+        use crate::chat_v2::types::ChatMessage;
+        let (_dir, db) = setup_chat_v2_test_db();
+        create_session_with_metadata(&db, "sess_super_src", Some(active_super_metadata("ws_a")));
+        let message = ChatMessage::new_user("sess_super_src".to_string(), vec![]);
+        ChatV2Repo::create_message_v2(&db, &message).unwrap();
+
+        let (branched, _) = branch_session_in_db("sess_super_src", &message.id, &db).unwrap();
+        let metadata = branched.metadata.clone().expect("branch metadata");
+        assert!(
+            metadata.get(SUPER_AGENT_METADATA_KEY).is_none(),
+            "{metadata}"
+        );
+        assert!(metadata.get("pinned").is_none(), "{metadata}");
+        assert!(metadata.get("branchedFrom").is_some());
+
+        let reloaded = ChatV2Repo::get_session_v2(&db, &branched.id)
+            .unwrap()
+            .unwrap();
+        assert!(!is_active_super_metadata(reloaded.metadata.as_ref()));
+
+        // 源 Super 会话保持不变
+        let source = ChatV2Repo::get_session_v2(&db, "sess_super_src")
+            .unwrap()
+            .unwrap();
+        assert!(is_active_super_metadata(source.metadata.as_ref()));
+    }
+
+    #[test]
+    fn settings_patch_cannot_strip_super_marker() {
+        let existing = Some(active_super_metadata("ws_a"));
+        let patched = patch_session_metadata(
+            existing,
+            &Some(Some(serde_json::json!({ "pinned": true, "note": "x" }))),
+        )
+        .expect("metadata");
+        assert!(is_active_super_metadata(Some(&patched)));
+        assert_eq!(patched["note"], serde_json::json!("x"));
     }
 
     #[test]

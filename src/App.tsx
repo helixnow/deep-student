@@ -358,7 +358,7 @@ function App() {
   const USE_STABLE_STREAM_ENGINE = true;
   // 🚀 应用初始化
   useAppInitialization();
-  // Super-agent（实验）侧栏入口：启动后以后端开关为准校正一次本地镜像
+  // Super-agent 会话：启动后以后端状态（开关 + 会话 id）校正本地镜像，并订阅 super_session_changed
   useSyncSuperAgentEnabled();
 
   // 🛡️ 外壳滚动保护：focus/scrollIntoView/拖拽自动滚动等把 overflow:hidden
@@ -1365,7 +1365,6 @@ function App() {
 
   const {
     skillsManagementContent,
-    superAgentContent,
     flashcardsContent,
     mediaStudioContent,
     styleDebugContent,
@@ -1769,9 +1768,6 @@ function App() {
               {/* anki-generation 已通过 canonicalView.ts 重定向到 task-dashboard */}
 
               {renderViewLayer('skills-management', skillsManagementContent)}
-
-              {/* Super-agent 模式（实验）：单一持续对话 + 后台并行任务 */}
-              {renderViewLayer('super-agent', superAgentContent, 'overflow-hidden')}
 
               {/* ★ 记忆内化已废弃（图谱模块已移除） */}
 

@@ -402,6 +402,7 @@ impl ChatV2Pipeline {
                     response_reasoning_items: None,
                     skill_injection_anchors: None,
                     response_web_search_items: None,
+                    inbound_origin: None,
                 }),
                 attachments: None,
                 active_variant_id: first_variant_id,
@@ -3337,7 +3338,8 @@ impl ChatV2Pipeline {
                 user_msg_params = user_msg_params.with_context_snapshot(snapshot);
             }
 
-            let user_msg_result = build_user_message(user_msg_params);
+            let mut user_msg_result = build_user_message(user_msg_params);
+            super::persistence::attach_inbound_origin(&mut user_msg_result.message, options);
 
             ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
             ChatV2Repo::create_block_with_conn(&conn, &user_msg_result.block)?;
@@ -3520,6 +3522,7 @@ impl ChatV2Pipeline {
                     response_reasoning_items: None,
                     skill_injection_anchors: None,
                     response_web_search_items: None,
+                    inbound_origin: None,
                 }),
                 attachments: None,
                 active_variant_id: active_variant_id.map(|s| s.to_string()),

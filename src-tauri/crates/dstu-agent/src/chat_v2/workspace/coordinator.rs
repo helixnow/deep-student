@@ -583,6 +583,28 @@ impl WorkspaceCoordinator {
         Ok(messages)
     }
 
+    /// 只读查看某 agent/会话收件箱中待消费的消息（不改变任何状态）。
+    ///
+    /// 顺序与 [`Self::drain_inbox`] 的消费顺序一致（内存 FIFO，未加载的工作区经
+    /// get_instance 从 DB unread 记录惰性恢复）；不出队、不标记 processed。
+    /// 消息体已不存在的悬空 inbox 项被跳过（drain 时同样不会产出）。
+    /// 待消费数量即返回值的 `len()`。
+    pub fn peek_inbox(
+        &self,
+        workspace_id: &str,
+        agent_session_id: &str,
+    ) -> Result<Vec<WorkspaceMessage>, String> {
+        let instance = self.get_instance(workspace_id)?;
+        let message_ids = instance.inbox_manager.peek(agent_session_id, usize::MAX);
+        let mut messages = Vec::with_capacity(message_ids.len());
+        for message_id in &message_ids {
+            if let Some(message) = instance.repo.get_message(message_id)? {
+                messages.push(message);
+            }
+        }
+        Ok(messages)
+    }
+
     /// 🆕 契约 C12：查询某 agent inbox 中待消费（unread）的消息数
     ///
     /// 直接查 ws 库 inbox 表（DB 为准），不依赖内存 InboxManager——
@@ -1247,6 +1269,61 @@ mod tests {
             .get_unread_inbox(COORD, 10)
             .expect("unread inbox")
             .is_empty());
+    }
+
+    #[test]
+    fn peek_inbox_is_read_only_and_matches_drain_order() {
+        let (_dir, coordinator, ws) = setup_coordinator();
+        coordinator
+            .register_agent(&ws.id, "worker_1", AgentRole::Worker, None, None)
+            .expect("register worker");
+
+        assert!(coordinator
+            .peek_inbox(&ws.id, COORD)
+            .expect("peek empty inbox")
+            .is_empty());
+
+        let result_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Result,
+                "result content".to_string(),
+            )
+            .expect("send result");
+        let task_msg = coordinator
+            .send_message(
+                &ws.id,
+                "worker_1",
+                Some(COORD),
+                MessageType::Task,
+                "task content".to_string(),
+            )
+            .expect("send task");
+
+        // 重复 peek 结果一致，且不改变收件箱状态
+        for _ in 0..2 {
+            let peeked = coordinator.peek_inbox(&ws.id, COORD).expect("peek inbox");
+            let ids: Vec<_> = peeked.iter().map(|m| m.id.clone()).collect();
+            assert_eq!(ids, vec![result_msg.id.clone(), task_msg.id.clone()]);
+        }
+        assert_eq!(
+            coordinator
+                .pending_inbox_count(&ws.id, COORD)
+                .expect("pending count"),
+            2
+        );
+        assert!(coordinator.has_pending_messages(&ws.id, COORD));
+
+        // drain 的消费顺序与 peek 一致；drain 后 peek 反映剩余项
+        let drained = coordinator
+            .drain_inbox(&ws.id, COORD, 1)
+            .expect("drain inbox");
+        assert_eq!(drained[0].id, result_msg.id);
+        let remaining = coordinator.peek_inbox(&ws.id, COORD).expect("peek again");
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id, task_msg.id);
     }
 
     #[test]

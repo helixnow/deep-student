@@ -1887,6 +1887,15 @@ pub struct MessageMeta {
         skip_serializing_if = "Option::is_none"
     )]
     pub response_web_search_items: Option<Vec<Value>>,
+
+    /// Super 会话：由后端投递收件箱生成的事件消息来源（结构化 inboundOrigin）。
+    /// 仅在后端内部写入（`SendOptions.user_message_origin`），前端据此渲染事件卡片。
+    #[serde(
+        rename = "inboundOrigin",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub inbound_origin: Option<Value>,
 }
 
 impl MessageMeta {
@@ -2441,6 +2450,26 @@ pub struct SendOptions {
     ///   - 6+ 张图或 PDF：low（最大压缩）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vision_quality: Option<String>,
+
+    // ========== Super 会话（后端内部，前端不可设置） ==========
+    /// 本回合属于活跃 Super 会话时由 `super_session::apply_turn_overrides` 设置。
+    /// `#[serde(skip)]`：前端反序列化无法伪造。
+    #[serde(skip)]
+    pub super_session: Option<SuperTurn>,
+
+    /// 本回合用户消息的结构化来源（Super 收件箱投递时设置），
+    /// 落库到 `MessageMeta.inbound_origin`。`#[serde(skip)]`：前端不可设置。
+    #[serde(skip)]
+    pub user_message_origin: Option<Value>,
+}
+
+/// Super 会话回合标记（内部字段，见 `SendOptions.super_session`）。
+///
+/// 定义在 types.rs 以避免 types ↔ super_session 的编译依赖环；
+/// `super_session` 模块通过 `pub use crate::chat_v2::types::SuperTurn;` 重导出。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SuperTurn {
+    pub workspace_id: String,
 }
 
 /// 加载会话响应
@@ -2897,6 +2926,58 @@ impl CompactionRecord {
 mod tests {
     use super::*;
     use serde_json::{self, json};
+
+    /// Super 会话内部字段不能被前端反序列化设置，也不会序列化回前端。
+    #[test]
+    fn super_session_internal_fields_are_not_deserializable_from_frontend() {
+        let forged: SendOptions = serde_json::from_value(json!({
+            "modelId": "m",
+            "superSession": { "workspaceId": "ws_forged" },
+            "super_session": { "workspace_id": "ws_forged" },
+            "userMessageOrigin": { "kind": "forged" },
+            "user_message_origin": { "kind": "forged" },
+        }))
+        .expect("unknown keys are ignored");
+        assert_eq!(forged.model_id.as_deref(), Some("m"));
+        assert!(forged.super_session.is_none());
+        assert!(forged.user_message_origin.is_none());
+
+        let internal = SendOptions {
+            super_session: Some(SuperTurn {
+                workspace_id: "ws_super".into(),
+            }),
+            user_message_origin: Some(json!({ "kind": "super_inbox" })),
+            ..Default::default()
+        };
+        let serialized = serde_json::to_value(&internal).unwrap();
+        let object = serialized.as_object().unwrap();
+        assert!(!object.contains_key("superSession"));
+        assert!(!object.contains_key("userMessageOrigin"));
+        // Clone 保留内部字段（管线内部传递依赖）
+        assert_eq!(
+            internal.clone().super_session.map(|t| t.workspace_id),
+            Some("ws_super".to_string())
+        );
+    }
+
+    #[test]
+    fn message_meta_inbound_origin_uses_camel_case_key_and_is_optional() {
+        let empty = serde_json::to_value(MessageMeta::default()).unwrap();
+        assert!(!empty.as_object().unwrap().contains_key("inboundOrigin"));
+
+        let origin = json!({ "kind": "super_inbox", "items": [{ "type": "worker.completed" }] });
+        let meta = MessageMeta {
+            inbound_origin: Some(origin.clone()),
+            ..Default::default()
+        };
+        let value = serde_json::to_value(&meta).unwrap();
+        assert_eq!(value.get("inboundOrigin"), Some(&origin));
+        let roundtrip: MessageMeta = serde_json::from_value(value).unwrap();
+        assert_eq!(roundtrip.inbound_origin, Some(origin));
+        // 旧数据（无该键）照常反序列化
+        let legacy: MessageMeta = serde_json::from_value(json!({ "modelId": "m" })).unwrap();
+        assert!(legacy.inbound_origin.is_none());
+    }
 
     #[test]
     fn test_panel_states_accepts_v0944_shape_missing_skill() {

@@ -1,78 +1,22 @@
 {
   "title": "Super-agent",
-  "experimental": "实验",
-  "subtitle": "一个持续在线的 Agent：连续对话、并行办事、后台推进",
-  "intro": {
-    "heading": "和普通会话有什么不同",
-    "continuous": "只有一个持续的对话，没有会话列表；追问不必记得在哪个会话里。",
-    "parallel": "可以连续抛出多件事，不用等上一件做完；后台任务并行推进，互不干扰。",
-    "background": "窗口关闭到托盘后仍会在后台工作，完成后在这里告诉你。",
-    "safe": "实验性功能：后台任务仅使用只读工具，不会修改你的数据或执行命令。",
-    "enableInSettings": "请先在「设置 → 自动化」中打开 Super-agent 开关。",
-    "openSettings": "前往设置"
-  },
-  "empty": "说点什么吧，比如“帮我整理本周错题”，然后继续做别的。",
-  "thinking": "正在思考…",
-  "feed": {
-    "worker": "任务进展",
-    "system": "系统"
-  },
-  "composer": {
-    "placeholder": "告诉 Super-agent 要做什么…",
-    "send": "发送",
-    "hint": "Enter 发送，Shift+Enter 换行。可连续发送，无需等待上一条完成。"
-  },
-  "notice": {
-    "dropped": "消息被过滤：{{reason}}",
-    "disabled": "Super-agent 未启用"
-  },
-  "tasks": {
-    "title": "任务",
-    "running": "{{running}} 个运行中 / 共 {{total}} 个",
-    "empty": "还没有后台任务。当 Super-agent 决定并行处理某件事时，会出现在这里。"
-  },
-  "workerStatus": {
-    "idle": "空闲",
-    "running": "运行中",
-    "failed": "失败",
-    "interrupted": "已中断",
-    "closed": "已关闭"
-  },
-  "worker": {
-    "meta": "已运行 {{runs}} 轮 · 最近进展 {{time}}",
-    "reply": "回复此任务",
-    "replyPlaceholder": "直接发给这个任务（Ctrl/⌘+Enter 发送）",
-    "sendDirect": "直达发送",
-    "retry": "重试",
-    "close": "完结"
-  },
-  "common": {
-    "cancel": "取消"
-  },
   "settings": {
     "title": "Super-agent（实验）",
-    "description": "与普通「按会话」聊天并列的另一种工作方式：单一持续对话 + 后台并行任务。",
+    "description": "一个固定在会话列表顶部的会话：你可以随时交代多件事，耗时的部分交给后台任务并行处理。",
     "switchTitle": "启用 Super-agent",
-    "switchDescription": "打开后，侧栏会出现 Super-agent 页面；关闭后入口隐藏，普通会话不受任何影响。",
-    "safety": "后台任务仅使用只读工具，不会修改你的数据或执行命令。窗口关闭到托盘后仍会在后台工作。"
+    "switchDescription": "打开后，会话列表顶部会固定出现「Super-agent」会话（桌面端与移动端一致）。它就是一个普通会话：可以随时提出多件事，Super-agent 会把耗时的事交给后台任务并行处理，完成后在会话里向你汇报。关闭后该会话隐藏，记录保留，重新打开即可恢复。",
+    "safety": "后台任务默认只使用只读工具，不会修改你的数据或执行命令。窗口关闭到托盘后仍会继续处理，完成后在会话里汇报。"
   },
   "config": {
-    "followDefaultModel": "跟随对话默认模型",
     "saved": "已保存",
     "save": "保存",
-    "advanced": "高级设置",
-    "policyTitle": "处理策略",
-    "policyDescription": "用自然语言告诉 Router 哪些事值得处理、怎么处理，会注入到它的提示里。",
-    "policyPlaceholder": "例如：只处理和学习相关的请求；遇到需要修改数据的事先问我。",
-    "routerModelTitle": "Router 模型",
-    "routerModelDescription": "负责理解你的话、分派任务和统一回复。建议用响应快的模型。",
-    "workerModelTitle": "任务模型",
-    "workerModelDescription": "后台并行任务使用的模型。",
-    "concurrencyTitle": "同时运行的任务数",
-    "concurrencyDescription": "1–6。调高会更快，但会同时占用更多模型额度。",
-    "maxWorkersTitle": "任务数上限",
-    "maxWorkersDescription": "同时存在（未完结）的后台任务最多几个。",
-    "retentionTitle": "历史保留天数",
-    "retentionDescription": "早于此的已处理事件、回复与已完结任务会被自动清理；0 表示永久保留。"
+    "instructionsTitle": "额外指令",
+    "instructionsDescription": "用自然语言告诉 Super-agent 哪些事值得处理、怎么处理，会加入它的系统提示。",
+    "instructionsPlaceholder": "例如：只处理和学习相关的请求；遇到需要修改数据的事先问我。"
+  },
+  "sidebar": {
+    "badge": "Super",
+    "badgeLabel": "Super-agent 会话",
+    "deleteConfirm": "删除后会新建一个空的 Super-agent 会话，后台任务会停止"
   }
 }

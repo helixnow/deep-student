@@ -649,6 +649,13 @@ pub static BUILTIN_DESCRIPTORS: &[ToolDescriptor] = &[
     // —— SubagentExecutor（1，coordinator 注册）——
     // 阻塞等待子代理终态，内部自带 750s 等待预算与取消，看门狗豁免。
     d("subagent_call", Medium, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
+    // —— SuperSessionExecutor（4，coordinator 注册；仅活跃 Super 回合可执行）——
+    // dispatch/message 委托 subagent 派发（wait=false），派发可能阻塞在 worker
+    // 调度信号量上，执行器自管理取消，看门狗豁免（同 subagent_call）。
+    d("super_dispatch_worker", Medium, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
+    d("super_message_worker", Medium, false, WriteLocal).with_timeout(NO_TIMEOUT_SECS),
+    d("super_close_worker", Low, false, WriteLocal),
+    d("super_list_workers", Low, true, Read),
     // —— CustomAgentExecutor（5，coordinator 注册）——
     d("custom_agent_list", Low, true, Read),
     d("custom_agent_get", Low, true, Read),

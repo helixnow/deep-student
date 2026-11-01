@@ -918,7 +918,10 @@ impl PipelineContext {
             "image_generate" => block_types::IMAGE_GEN.to_string(),
             "render_generative_ui" => block_types::GENERATIVE_UI.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
-            "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
+            // Super 会话：dispatch/message 返回结构与 subagent_call 一致，同映射为子代理嵌入块
+            "subagent_call" | "super_dispatch_worker" | "super_message_worker" => {
+                block_types::SUBAGENT_EMBED.to_string()
+            }
             // 🆕 契约 C11 配套（缺口 2 历史加载侧）：前端为 workspace_send 建专属块，
             // 历史加载时工具块类型必须与实时块一致
             "workspace_send" => block_types::WORKSPACE_SEND.to_string(),

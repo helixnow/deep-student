@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { readAppShellSource } from '@/app/__tests__/appShellSources';
+import { CANONICAL_VIEWS, canonicalizeView } from '@/app/navigation/canonicalView';
+import { createNavItems } from '@/config/navigation';
 
 /**
  * 「进得去就出得来」契约：任何视图在任何壳形态下都要留一个可见可点的出口。
@@ -15,15 +17,20 @@ const viewContentsSource = readFileSync(
 );
 
 describe('shell exit reachability', () => {
-  it('wraps the super-agent view in MobilePageScaffold so narrow windows keep a back button', () => {
-    // 回归：Super-agent 页不注册 useMobileHeader、不带 MobileSlidingLayout，移动抽屉也无入口；
-    // 从桌面宽度拉窄到 <768 后，若不包脚手架，页面没有统一顶栏 → 无返回出口。
-    const block = viewContentsSource.slice(
-      viewContentsSource.indexOf('const superAgentContent = useMemo('),
-      viewContentsSource.indexOf('[isSuperAgentActive]);'),
-    );
-    expect(block).toContain('<MobilePageScaffold>');
-    expect(block).toContain('<LazySuperAgentPage isActive={isSuperAgentActive} />');
+  it('has no standalone super-agent view: old links land on chat-v2 instead of a dead page', () => {
+    // Super-agent 已改为会话列表顶部固定的普通会话；独立页及其视图层整体移除，
+    // 历史记录 / 深链里的 'super-agent' 统一重定向到 chat-v2，保证进得去就出得来。
+    expect(CANONICAL_VIEWS.has('super-agent' as never)).toBe(false);
+    expect(canonicalizeView('super-agent')).toBe('chat-v2');
+    expect(viewContentsSource).not.toContain('superAgentContent');
+    expect(viewContentsSource).not.toContain('LazySuperAgentPage');
+    expect(appSource).not.toContain("renderViewLayer('super-agent'");
+  });
+
+  it('never puts a super-agent entry in the navigation', () => {
+    const t = ((key: string, def?: string) => def ?? key) as never;
+    expect(createNavItems(t).map((item) => item.view)).not.toContain('super-agent');
+    expect(createNavItems(t, true).map((item) => item.view)).not.toContain('super-agent');
   });
 
   it('keeps the mobile header back fallback for every non-home view', () => {

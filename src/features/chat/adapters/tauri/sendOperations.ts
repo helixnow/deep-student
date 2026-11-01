@@ -8,7 +8,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { formatUserFacingErrorWithThinkingBudgetHint, getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import type { AttachmentMeta } from '../../core/types';
+import type { AttachmentMeta, DeliverOutcome } from '../../core/types';
 import { resetBridgeState } from '../../core/middleware/eventBridge';
 import { logMultiVariant } from '@/debug-panel/plugins/MultiVariantDebugPlugin';
 import type { SendMessageRequest } from '../types';
@@ -297,8 +297,69 @@ export async function executeWakeSession(
 }
 
 /**
+ * Super 会话收件箱投递（内部方法，供 store.deliverSuperInbox 的 callback 使用）。
+ *
+ * 用与普通发送同一套 buildSendOptions 组装 options，调用 chat_v2_super_deliver_inbox。
+ * 后端把收件箱 drain 成一条持久化 user 消息并开启流式回合；非 started 结果不是错误，
+ * 只需撤销流期望，由 store 撤掉 assistant 占位。
+ */
+export async function executeDeliverInbox(
+  host: TauriAdapterHost,
+  userMessageId: string,
+  assistantMessageId: string,
+  force: boolean,
+): Promise<DeliverOutcome> {
+  console.log(LOG_PREFIX, 'Executing super inbox delivery:', {
+    userMessageId,
+    assistantMessageId,
+    force,
+  });
+
+  host.beginStreamExpectation(assistantMessageId);
+  let outcome: DeliverOutcome;
+  try {
+    resetBridgeState(host.sessionId);
+
+    const state = host.getCurrentState();
+    const activeModelId = state.chatParams.model2OverrideId || state.chatParams.modelId;
+    await host.ensureModelMetadataReady(activeModelId);
+    const options = await host.buildSendOptions({ state, pendingContextRefs: [] });
+    await host.applyRuntimeModelSelection(options);
+
+    outcome = await invoke<DeliverOutcome>('chat_v2_super_deliver_inbox', {
+      request: {
+        sessionId: host.sessionId,
+        userMessageId,
+        assistantMessageId,
+        options,
+        force,
+      },
+    });
+  } catch (error) {
+    host.clearStreamExpectation(assistantMessageId);
+    const errorMsg = getErrorMessage(error);
+    if (isActiveStreamConflict(errorMsg)) {
+      console.warn(LOG_PREFIX, 'Super inbox delivery deferred because the backend stream is still active');
+      return { status: 'busy' };
+    }
+    console.error(LOG_PREFIX, 'Execute super inbox delivery failed:', errorMsg);
+    throw error;
+  }
+
+  if (outcome.status !== 'started') {
+    host.clearStreamExpectation(assistantMessageId);
+    return outcome;
+  }
+  if (outcome.assistantMessageId && outcome.assistantMessageId !== assistantMessageId) {
+    host.setStreamExpectationMessageId(outcome.assistantMessageId);
+    host.store.setCurrentStreamingMessage(outcome.assistantMessageId);
+  }
+  return outcome;
+}
+
+/**
  * 执行发送消息（内部方法，供 callback 使用）
- * 
+ *
  * 与 sendMessage 的区别：使用调用方传入的消息 ID，而不是自己生成。
  * 这确保了 Store.sendMessage() 生成的 ID 与后端使用的 ID 一致。
  */

@@ -9,7 +9,6 @@ import {
   LazySettings,
   LazySOTADashboard,
   LazySkillsManagementPage,
-  LazySuperAgentPage,
   LazyTemplateManagementPage,
   LazyStyleDebugPage,
   LazyLearningHubPage,
@@ -89,20 +88,6 @@ export function useFeatureViewContents(
     <Suspense fallback={<PageLoadingFallback />}><LazySkillsManagementPage /></Suspense>
   ), []);
 
-  const isSuperAgentActive = currentView === 'super-agent';
-  // 移动壳（<768：桌面窗口拉窄 / 平板旋转 / 分屏）：Super-agent 页不自带移动顶栏
-  // （未注册 useMobileHeader、无 MobileSlidingLayout），移动抽屉也不提供入口，只能从桌面宽度
-  // 带进窄屏；不包脚手架则页面没有任何可见出口（iOS / 桌面窄窗无系统返回键）。
-  // MobilePageScaffold 在桌面原样透传，移动端补统一顶栏（全局返回 + 兜底标题）；
-  // 页面日后注册 useMobileHeader('super-agent') 也由这条顶栏渲染，勿再自带第二条顶栏。
-  const superAgentContent = useMemo(() => (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <MobilePageScaffold>
-        <LazySuperAgentPage isActive={isSuperAgentActive} />
-      </MobilePageScaffold>
-    </Suspense>
-  ), [isSuperAgentActive]);
-
   const isFlashcardsActive = currentView === 'flashcards';
   const flashcardsContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
@@ -157,7 +142,6 @@ export function useFeatureViewContents(
 
   return {
     skillsManagementContent,
-    superAgentContent,
     flashcardsContent,
     mediaStudioContent,
     styleDebugContent,

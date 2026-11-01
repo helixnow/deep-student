@@ -60,7 +60,6 @@ const VIEW_REGISTRY_FILES: Record<string, string> = {
   'todo': 'src/features/todo/components/TodoContentView.tsx',
   'chat-v2-test': 'src/features/chat/dev/IntegrationTest.tsx',
   'llm-playground': 'src/features/chat/dev/playground/LLMOutputPlayground.tsx',
-  'super-agent': 'src/features/super-agent/SuperAgentPage.tsx',
 };
 
 /** MobileHeaderContext 的 JSDoc 里有 useMobileHeader('settings', ...) 等示例注释，排除该文件 */

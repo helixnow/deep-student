@@ -321,7 +321,7 @@ pub(crate) async fn run_send_message_pipeline(
         .await
 }
 
-async fn run_send_message_pipeline_owned(
+pub(crate) async fn run_send_message_pipeline_owned(
     pipeline: Arc<ChatV2Pipeline>,
     chat_v2_state: Arc<ChatV2State>,
     window: Window,
@@ -1050,6 +1050,14 @@ pub async fn chat_v2_retry_message(
         to_delete
     };
 
+    // Super 会话：重新生成会替换这些消息，取消其中派发且仍在运行的 Worker。
+    // 函数内部自行判断会话是否为活跃 Super，普通会话为 no-op。
+    crate::chat_v2::super_session::cancel_workers_dispatched_in(
+        window.app_handle(),
+        &session_id,
+        &messages_to_delete,
+    );
+
     // 使用事务删除所有后续消息
     if !messages_to_delete.is_empty() {
         let conn = db.get_conn_safe().map_err(String::from)?;
@@ -1497,6 +1505,14 @@ pub async fn chat_v2_edit_and_resend(
 
         to_delete
     };
+
+    // Super 会话：编辑重发会替换后续消息，取消其中派发且仍在运行的 Worker。
+    // 函数内部自行判断会话是否为活跃 Super，普通会话为 no-op。
+    crate::chat_v2::super_session::cancel_workers_dispatched_in(
+        window.app_handle(),
+        &session_id,
+        &messages_to_delete,
+    );
 
     // 🔧 修复：使用单次连接 + 事务删除后续消息，确保原子性
     // 注意：chat_v2_messages 表有 ON DELETE CASCADE，删除消息会自动删除关联的块

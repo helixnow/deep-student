@@ -31,7 +31,6 @@ export function useShellViewChrome(
       'task-dashboard': t('sidebar:navigation.flashcards'),
       'flashcards': t('sidebar:navigation.flashcards'),
       'skills-management': t('sidebar:navigation.skills_management'),
-      'super-agent': t('sidebar:navigation.super_agent', 'Super-agent'),
       'data-management': t('common:navigation.data_management'),
       'template-management': t('sidebar:navigation.flashcards'),
       'ui-lab': t('sidebar:navigation.ui_lab'),

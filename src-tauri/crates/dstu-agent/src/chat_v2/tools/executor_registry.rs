@@ -895,6 +895,8 @@ mod tests {
                 300
             }
             "subagent_call" => NO_TOOL_TIMEOUT_SECS,
+            // 2026-11 Super 会话：dispatch/message 委托 subagent 派发，同样豁免看门狗
+            "super_dispatch_worker" | "super_message_worker" => NO_TOOL_TIMEOUT_SECS,
             "coordinator_sleep" => NO_TOOL_TIMEOUT_SECS,
             "tool_pack" => 600,
             // Question generation was deliberately extended for multi-round LLM work.

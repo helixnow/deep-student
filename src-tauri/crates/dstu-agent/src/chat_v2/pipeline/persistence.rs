@@ -9,6 +9,77 @@ mod incremental_save_tests {
     use crate::chat_v2::types::ChatSession;
 
     #[tokio::test]
+    async fn user_message_persists_inbound_origin_from_internal_option() {
+        let (_dir, pipeline) = replay_test_pipeline();
+        let conn = pipeline.db.get_conn_safe().unwrap();
+        let session_id = "sess_inbound_origin";
+        ChatV2Repo::create_session_with_conn(
+            &conn,
+            &ChatSession::new(session_id.into(), "chat".into()),
+        )
+        .unwrap();
+
+        // 无来源：用户消息 meta 不带 inboundOrigin
+        let plain_ctx = next_turn_ctx(session_id);
+        pipeline
+            .save_user_message_immediately(&plain_ctx)
+            .await
+            .unwrap();
+        let plain = ChatV2Repo::get_message_with_conn(&conn, &plain_ctx.user_message_id)
+            .unwrap()
+            .unwrap();
+        assert!(plain
+            .meta
+            .as_ref()
+            .and_then(|meta| meta.inbound_origin.as_ref())
+            .is_none());
+
+        // 有来源：即时保存与中间保存都写入 inboundOrigin
+        let origin = serde_json::json!({
+            "kind": "super_inbox",
+            "items": [{ "type": "worker.completed", "workerId": "agent_1" }]
+        });
+        let mut ctx = next_turn_ctx(session_id);
+        ctx.options.user_message_origin = Some(origin.clone());
+        pipeline.save_user_message_immediately(&ctx).await.unwrap();
+        let saved = ChatV2Repo::get_message_with_conn(&conn, &ctx.user_message_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.meta.as_ref().and_then(|m| m.inbound_origin.clone()),
+            Some(origin.clone())
+        );
+
+        ctx.add_interleaved_block(content_block(
+            &ctx.assistant_message_id,
+            "blk_inbound_origin_0",
+            "reply",
+            0,
+        ));
+        pipeline.save_intermediate_results(&mut ctx).await.unwrap();
+        let saved = ChatV2Repo::get_message_with_conn(&conn, &ctx.user_message_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            saved.meta.as_ref().and_then(|m| m.inbound_origin.clone()),
+            Some(origin.clone())
+        );
+        // 助手消息不带 inboundOrigin
+        let assistant = ChatV2Repo::get_message_with_conn(&conn, &ctx.assistant_message_id)
+            .unwrap()
+            .unwrap();
+        assert!(assistant
+            .meta
+            .as_ref()
+            .and_then(|m| m.inbound_origin.as_ref())
+            .is_none());
+
+        // 序列化键名为 inboundOrigin（前端契约）
+        let json = serde_json::to_value(saved.meta.as_ref().unwrap()).unwrap();
+        assert_eq!(json.get("inboundOrigin"), Some(&origin));
+    }
+
+    #[tokio::test]
     async fn intermediate_saves_write_only_changed_payloads_and_retain_dirty_on_rollback() {
         let (_dir, pipeline) = replay_test_pipeline();
         let conn = pipeline.db.get_conn_safe().unwrap();
@@ -154,6 +225,18 @@ fn build_replay_skill_payload_snapshot(
     .without_skill_contents();
 
     snapshot.has_replay_metadata().then_some(snapshot)
+}
+
+/// Super 会话：把后端内部的 `options.user_message_origin` 写入用户消息
+/// `MessageMeta.inbound_origin`（前端据此渲染事件卡片）。无来源时不改动 meta。
+pub(super) fn attach_inbound_origin(message: &mut ChatMessage, options: &SendOptions) {
+    let Some(origin) = options.user_message_origin.as_ref() else {
+        return;
+    };
+    message
+        .meta
+        .get_or_insert_with(MessageMeta::default)
+        .inbound_origin = Some(origin.clone());
 }
 
 /// 从最终回复文本与工具结果中解析"实际被引用的记忆 note_id"（引用级使用信号）。
@@ -483,7 +566,8 @@ impl ChatV2Pipeline {
                 .with_execution_snapshot(ctx.execution_snapshot.clone())
                 .with_timestamp(now_ms);
 
-        let user_msg_result = build_user_message(user_msg_params);
+        let mut user_msg_result = build_user_message(user_msg_params);
+        attach_inbound_origin(&mut user_msg_result.message, &ctx.options);
 
         // 使用 INSERT OR REPLACE 保存（与 save_results 兼容）
         ChatV2Repo::create_message_with_conn(&conn, &user_msg_result.message)?;
@@ -642,7 +726,8 @@ impl ChatV2Pipeline {
                     .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(now_ms);
 
-            let user_msg_result = build_user_message(user_msg_params);
+            let mut user_msg_result = build_user_message(user_msg_params);
+            attach_inbound_origin(&mut user_msg_result.message, &ctx.options);
 
             // 使用 INSERT OR REPLACE 保存用户消息（与 save_results 兼容）
             ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
@@ -866,7 +951,8 @@ impl ChatV2Pipeline {
                     .with_execution_snapshot(ctx.execution_snapshot.clone())
                     .with_timestamp(user_now_ms);
 
-            let user_msg_result = build_user_message(user_msg_params);
+            let mut user_msg_result = build_user_message(user_msg_params);
+            attach_inbound_origin(&mut user_msg_result.message, &ctx.options);
 
             // 保存用户消息和块
             ChatV2Repo::create_message_with_conn(conn, &user_msg_result.message)?;
@@ -1351,6 +1437,8 @@ impl ChatV2Pipeline {
             // （键 openai_responses_web_search_items），history 重放原样回传 input
             response_web_search_items: (!ctx.response_web_search_items.is_empty())
                 .then(|| ctx.response_web_search_items.clone()),
+            // inboundOrigin 只属于用户消息（Super 收件箱投递），助手消息不带
+            inbound_origin: None,
         };
 
         let assistant_message = ChatMessage {

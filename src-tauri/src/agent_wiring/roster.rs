@@ -131,6 +131,11 @@ impl ExecutorRoster for AppExecutorRoster {
             executors.push(Arc::new(super::tools::SubagentExecutor::new(
                 coordinator.clone(),
             )));
+            // Super 会话 Router 工具（super_dispatch/message/close/list_worker[s]；
+            // 仅活跃 Super 回合可执行，执行器内部 fail-closed）
+            executors.push(Arc::new(super::tools::SuperSessionExecutor::new(
+                coordinator.clone(),
+            )));
             // 🆕 custom_agent_* 自定义子代理 persona 管理
             // （list/get Low，propose Medium，apply/remove High 必审批）
             executors.push(Arc::new(super::tools::CustomAgentExecutor::new(

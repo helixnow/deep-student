@@ -84,6 +84,7 @@ fn app_executor_roster_without_workspace_omits_only_coordinator_group() {
     const COORDINATOR_GROUP: &[&str] = &[
         "WorkspaceToolExecutor",
         "SubagentExecutor",
+        "SuperSessionExecutor",
         "CustomAgentExecutor",
         "CoordinatorSleepExecutor",
     ];

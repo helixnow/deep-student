@@ -1,6 +1,8 @@
 /**
  * 设置 → 自动化 → Super-agent（实验）。
- * 这是启用 Super-agent 模式的**唯一入口**：打开后侧栏才会出现 “Super-agent” 页面。
+ * 这是启用 Super-agent 会话的**唯一入口**：打开后会话列表顶部固定出现 “Super-agent” 会话
+ * （桌面侧栏与移动端会话列表一致）；关闭后该会话隐藏、记录保留。
+ * 开关走 super_session_set_enabled（经 superAgentEnabledStore），成功后派发 chat-v2:sessions-updated。
  */
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -42,7 +44,7 @@ export const SuperAgentSettingsSection: React.FC = () => {
         onCheckedChange={(v) => void toggle(v)}
       />
       {error && <p className="px-1 pt-1 text-xs text-destructive">{error}</p>}
-      {/* 高级设置只在启用后出现：未启用时不创建 Super-agent 的存储 */}
+      {/* 额外指令只在启用后出现 */}
       {enabled && <SuperAgentConfigPanel />}
       <p className="px-1 pt-2 text-xs leading-relaxed text-muted-foreground/70">{t('settings.safety')}</p>
     </SettingsGroup>

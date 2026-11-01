@@ -85,7 +85,7 @@
 | 项目 | 结果 |
 |---|---|
 | fmt / crate 分层 / 前端分层 / 迁移门禁 | 通过 |
-| 接口快照 | 新增仅为 `opencode_go_get_usage` 与 9 个 `superagent_*` 命令 |
+| 接口快照 | 新增仅为 `opencode_go_get_usage` 与 9 个 `superagent_*` 命令（发布前已重做为 6 个 `super_session_*` / `chat_v2_super_deliver_inbox` 命令，见 `2026-11-01-super-agent.md`） |
 | `cargo build` | 通过 |
 | Rust 单元测试（workspace --lib） | ok 6821 / FAILED 23 / ignored 11；按函数名对比基线回归 0。比第 2 节多出的 2 个失败是 `cloud_storage::webdav` 的连接测试，单独运行通过（并行时被其他测试置位的全局“云同步已取消”标志干扰），非代码回归 |
 | clippy `-D clippy::correctness`（workspace --all-targets） | 通过 |

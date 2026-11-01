@@ -474,6 +474,18 @@ impl DeliveryWorker {
             );
             return Ok(ProcessOutcome::Delivered);
         }
+        // 目标是活跃 Super 会话：不跑 headless 唤醒轮（wake 语义不落用户消息，
+        // 历史看不到结果）。Result 已在 Super 工作区收件箱持久化，由前端常驻
+        // SuperInboxController 在会话空闲时经 chat_v2_super_deliver_inbox 投递。
+        if self.target_is_active_super(&delivery.target_session_id) {
+            log::info!(
+                "[CompletionDispatcher] Delivered completion {} (run={}, target={}) to Super session inbox; headless wake skipped",
+                delivery.delivery_id,
+                delivery.run_id,
+                delivery.target_session_id
+            );
+            return Ok(ProcessOutcome::Delivered);
+        }
         let scheduled = self.wake.schedule(WakeTurnRequest {
             session_id: delivery.target_session_id.clone(),
             prompt: wake_prompt_from_delivery(delivery),
@@ -565,6 +577,23 @@ impl DeliveryWorker {
 
     fn workspace_db_exists(&self, workspace_id: &str) -> bool {
         self.workspace_db_path(workspace_id).exists()
+    }
+
+    /// 目标会话是否为活跃 Super 会话（metadata `super_agent.active == true`）。
+    /// 查询失败按 false 处理（保持原有唤醒行为）。
+    fn target_is_active_super(&self, target_session_id: &str) -> bool {
+        let Ok(conn) = self.db.get_conn() else {
+            return false;
+        };
+        match ChatV2Repo::get_session_with_conn(&conn, target_session_id) {
+            Ok(Some(session)) => session
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.pointer("/super_agent/active"))
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false),
+            _ => false,
+        }
     }
 
     /// 父会话不存在或已删除（PersistStatus::Deleted）→ true。
@@ -994,6 +1023,125 @@ mod tests {
             dispatcher.converge(&delivery),
             ConvergeOutcome::NeedsRedelivery
         ));
+    }
+
+    /// 无窗场景：活跃 Super 会话只收敛 delivered、不排 headless 唤醒轮；
+    /// 普通父会话仍照常排唤醒轮（对照组，证明测试接缝有效）。
+    #[test]
+    fn no_window_skips_headless_wake_for_active_super_session() {
+        let (_dir, db) = setup_chat_db();
+        let ws_dir = db.db_path().parent().unwrap().join("workspaces");
+        setup_workspace_db(&ws_dir, "ws_1");
+
+        // 父会话：一个活跃 Super、一个普通会话
+        {
+            let conn = db.get_conn().expect("conn");
+            conn.execute(
+                "INSERT INTO chat_v2_sessions (
+                    id, mode, title, persist_status, created_at, updated_at, metadata_json
+                 ) VALUES ('sess_super', 'chat', 'Super-agent', 'active',
+                           '2026-09-08T00:00:00Z', '2026-09-08T00:00:00Z', ?1)",
+                params![serde_json::json!({
+                    "super_agent": {"active": true, "version": 1, "workspace_id": "ws_1", "hidden": false},
+                    "pinned": true
+                })
+                .to_string()],
+            )
+            .expect("insert super session");
+        }
+        insert_parent_session(&db, "sess_plain");
+
+        let (wake_tx, wake_rx) = std::sync::mpsc::channel::<String>();
+        let wake_tx = std::sync::Mutex::new(wake_tx);
+        let runner: WakeRunner = Arc::new(
+            move |req: WakeTurnRequest| -> BoxFuture<'static, Result<(), String>> {
+                let _ = wake_tx.lock().unwrap().send(req.session_id.clone());
+                Box::pin(async { Ok(()) })
+            },
+        );
+        let outbox = CompletionOutbox::new(db.clone());
+        let worker = DeliveryWorker {
+            outbox: outbox.clone(),
+            db: db.clone(),
+            coordinator: Arc::new(WorkspaceCoordinator::new(ws_dir.clone())),
+            chat_v2_state: Arc::new(ChatV2State::new()),
+            workspaces_dir: ws_dir.clone(),
+            owner: "test-owner".to_string(),
+            has_window: Arc::new(|| false),
+            emit_completion: Arc::new(|_: &serde_json::Value| -> Result<(), String> { Ok(()) }),
+            wake: HeadlessWakeScheduler::new(runner),
+        };
+
+        // 入账 + 认领一行（task_id=None 跳过 task 终态补偿；inbox 预置 → 查重命中不补投）
+        let claim_for = |run_id: &str, target: &str| -> CompletionDelivery {
+            let ws_conn = rusqlite::Connection::open(ws_dir.join("ws_ws_1.db")).unwrap();
+            ws_conn
+                .execute(
+                    "INSERT INTO message (id, workspace_id, sender_session_id, message_type, content, created_at) \
+                     VALUES (?1, 'ws_1', 'agent_1', 'result', ?2, 't')",
+                    params![
+                        format!("m-{run_id}"),
+                        envelope_json(run_id, "task_x", target, "ws_1")
+                    ],
+                )
+                .unwrap();
+            outbox
+                .enqueue(&NewCompletionDelivery {
+                    delivery_id: format!("d-{run_id}"),
+                    task_id: None,
+                    run_id: run_id.to_string(),
+                    workspace_id: "ws_1".to_string(),
+                    agent_session_id: "agent_1".to_string(),
+                    target_session_id: target.to_string(),
+                    target_generation: None,
+                    payload_json: envelope_json(run_id, "task_x", target, "ws_1"),
+                    created_at: past_grace_timestamp(),
+                })
+                .unwrap();
+            let lease = (chrono::Utc::now() + chrono::Duration::seconds(60))
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            let not_before = NewCompletionDelivery::now_timestamp();
+            outbox
+                .claim_pending("test-owner", &lease, &not_before, 10)
+                .unwrap()
+                .into_iter()
+                .next()
+                .expect("claimed")
+        };
+
+        // Super：delivered，且不排唤醒轮
+        let super_delivery = claim_for("run-super", "sess_super");
+        assert!(matches!(
+            worker.process_one(&super_delivery),
+            Ok(ProcessOutcome::Delivered)
+        ));
+        assert_eq!(
+            outbox
+                .get(&super_delivery.delivery_id)
+                .unwrap()
+                .unwrap()
+                .state,
+            CompletionDeliveryState::Delivered
+        );
+        assert!(
+            wake_rx
+                .recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "active Super session must not get a headless wake turn"
+        );
+
+        // 对照：普通父会话照常排唤醒轮
+        let plain_delivery = claim_for("run-plain", "sess_plain");
+        assert!(matches!(
+            worker.process_one(&plain_delivery),
+            Ok(ProcessOutcome::Delivered)
+        ));
+        assert_eq!(
+            wake_rx
+                .recv_timeout(std::time::Duration::from_secs(10))
+                .expect("plain parent should be woken"),
+            "sess_plain"
+        );
     }
 
     fn past_grace_timestamp() -> String {

@@ -19,6 +19,7 @@ import type {
   AttachmentMeta,
   LoadSessionResponseType,
   SessionRestoreBaseline,
+  DeliverOutcome,
 } from '../core/types';
 import type { BackendEvent } from '../core/middleware/eventBridge';
 import { registerBridgeStoreResolver } from '../core/middleware/eventBridge';
@@ -459,6 +460,14 @@ export class ChatV2TauriAdapter {
     assistantMessageId: string,
   ): Promise<void> {
     return sendOperations.executeWakeSession(this.asHost(), content, assistantMessageId);
+  }
+
+  private executeDeliverInbox(
+    userMessageId: string,
+    assistantMessageId: string,
+    force: boolean,
+  ): Promise<DeliverOutcome> {
+    return sendOperations.executeDeliverInbox(this.asHost(), userMessageId, assistantMessageId, force);
   }
 
   private executeSendMessage(

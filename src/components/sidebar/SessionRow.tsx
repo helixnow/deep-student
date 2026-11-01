@@ -81,6 +81,12 @@ export interface SessionRowProps {
   canOpenInNewWindow: boolean;
   nowMinute: number;
   actions: SessionRowActions;
+  /**
+   * 'super'：Super-agent 会话行（固定在置顶区最上面，由侧栏单独渲染）。
+   * 与普通行同一外观与状态点；隐藏置顶/归档（不可取消置顶、后端拒绝归档）与拖拽，
+   * 保留重命名、新窗口、删除；删除确认文案说明会新建空 Super-agent 会话。
+   */
+  variant?: 'super';
 }
 
 function HoverScrollSidebarLabel({ text }: { text: string }) {
@@ -205,6 +211,19 @@ function SidebarBlockingContinueBadge({ label }: { label: string }) {
   );
 }
 
+/** Super-agent 会话行的小徽标：与「等待继续」徽标同一视觉语言 */
+function SidebarSuperSessionBadge({ label, ariaLabel }: { label: string; ariaLabel: string }) {
+  return (
+    <span
+      data-testid="sidebar-super-session-badge"
+      className="inline-flex min-h-4 shrink-0 items-center rounded-full border border-[color:color-mix(in_oklab,var(--shell-navigation-foreground)_16%,transparent)] bg-[color:color-mix(in_oklab,var(--shell-navigation-foreground)_8%,transparent)] px-1.5 text-2xs font-medium leading-none text-[color:var(--shell-navigation-foreground)]"
+      title={ariaLabel}
+    >
+      {label}
+    </span>
+  );
+}
+
 function SidebarUnreadReplyDot() {
   return (
     <span
@@ -223,10 +242,11 @@ export const SessionRow = React.memo(function SessionRow({
   isSessionStreaming, hasBlockingInteraction, hasUnreadAssistantReply,
   isConfirmingArchive, isConfirmingDelete, isMenuOpen, isDragged,
   isEditing, isRenaming, editingTitle, renameError, canOpenInNewWindow,
-  nowMinute, actions,
+  nowMinute, actions, variant,
 }: SessionRowProps) {
   // Language changes should update every row; parent t/callback identity changes should not.
-  const { t } = useTranslation(['sidebar', 'common', 'chatV2']);
+  const { t } = useTranslation(['sidebar', 'common', 'chatV2', 'superAgent']);
+  const isSuper = variant === 'super';
   const prefersReducedMotion = useReducedMotion();
   const sessionTitle = title || t('chatV2:page.untitled');
   const blockingContinueLabel = t('chatV2:tool_limit.continue');
@@ -303,6 +323,7 @@ export const SessionRow = React.memo(function SessionRow({
         'group/thread-row relative',
         isDragged && 'opacity-55'
       )}
+      data-session-variant={variant}
       onMouseEnter={() => {
         beginSessionHoverPrefetch(sessionId);
       }}
@@ -327,7 +348,7 @@ export const SessionRow = React.memo(function SessionRow({
               event.preventDefault();
               event.stopPropagation();
             }}
-            draggable={!collapsed}
+            draggable={!collapsed && !isSuper}
             onDragStart={(event) => actions.dragStart(event, sessionId)}
             onDragEnd={actions.dragEnd}
             aria-label={sessionTitle}
@@ -360,7 +381,14 @@ export const SessionRow = React.memo(function SessionRow({
               </span>
             )}
           >
-            <HoverScrollSidebarLabel text={sessionTitle} />
+            {isSuper ? (
+              <span className="flex min-w-0 items-center gap-1.5">
+                <HoverScrollSidebarLabel text={sessionTitle} />
+                <SidebarSuperSessionBadge label={t('superAgent:sidebar.badge')} ariaLabel={t('superAgent:sidebar.badgeLabel')} />
+              </span>
+            ) : (
+              <HoverScrollSidebarLabel text={sessionTitle} />
+            )}
           </SidebarRow>
         </AppMenuTrigger>
         <AppMenuContent align="end" width={180}>
@@ -392,24 +420,29 @@ export const SessionRow = React.memo(function SessionRow({
             >
               {t('sidebar:actions.rename_session')}
             </AppMenuItem>
-            <AppMenuItem
-              icon={<PushPin size={16} />}
-              onClick={() => {
-                actions.setMenuOpen(sessionId, false);
-                void actions.togglePin(sessionId);
-              }}
-            >
-              {pinned ? t('chatV2:page.unpinSession') : t('chatV2:page.pinSession')}
-            </AppMenuItem>
-            <AppMenuItem
-              icon={<Archive size={16} />}
-              onClick={() => {
-                actions.setMenuOpen(sessionId, false);
-                void actions.archive(sessionId);
-              }}
-            >
-              {t('chatV2:page.archiveSession')}
-            </AppMenuItem>
+            {/* Super-agent 会话不可取消置顶、不可归档 */}
+            {!isSuper && (
+              <AppMenuItem
+                icon={<PushPin size={16} />}
+                onClick={() => {
+                  actions.setMenuOpen(sessionId, false);
+                  void actions.togglePin(sessionId);
+                }}
+              >
+                {pinned ? t('chatV2:page.unpinSession') : t('chatV2:page.pinSession')}
+              </AppMenuItem>
+            )}
+            {!isSuper && (
+              <AppMenuItem
+                icon={<Archive size={16} />}
+                onClick={() => {
+                  actions.setMenuOpen(sessionId, false);
+                  void actions.archive(sessionId);
+                }}
+              >
+                {t('chatV2:page.archiveSession')}
+              </AppMenuItem>
+            )}
             <AppMenuSeparator />
             <AppMenuItem
               icon={<Trash size={16} />}
@@ -426,7 +459,10 @@ export const SessionRow = React.memo(function SessionRow({
       {!collapsed && isConfirmingDelete && (
         <div className="mt-0.5 flex items-center justify-between gap-2 rounded-[10px] border border-destructive/25 bg-destructive/10 py-1.5 pl-2 pr-1">
           <span className="min-w-0 truncate text-[11px] leading-none text-destructive">
-            {t('sidebar:delete.confirm_hint')}
+            {/* Super-agent 文案较长：允许换行，说明会新建空会话、后台任务会停止 */}
+            {isSuper
+              ? <span className="block whitespace-normal leading-snug">{t('superAgent:sidebar.deleteConfirm')}</span>
+              : t('sidebar:delete.confirm_hint')}
           </span>
           <span className="flex shrink-0 items-center gap-0.5">
             <DsButton
@@ -451,8 +487,9 @@ export const SessionRow = React.memo(function SessionRow({
 
       {/* 行内快捷操作：置顶与归档组成右侧操作簇，细指针 hover 或 focus 时渐显；
           触屏（coarse pointer）没有 hover，所有行常显保证可达——
-          仅活动行常显会让非活动会话在 iPad 上无法置顶/归档。 */}
-      {!collapsed && (
+          仅活动行常显会让非活动会话在 iPad 上无法置顶/归档。
+          Super-agent 会话不可取消置顶、不可归档：不渲染操作簇。 */}
+      {!collapsed && !isSuper && (
         <div
           className="pointer-events-none absolute right-2.5 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-hover/thread-row:pointer-events-auto group-hover/thread-row:opacity-100 group-focus-within/thread-row:pointer-events-auto group-focus-within/thread-row:opacity-100 [@media(pointer:coarse)]:pointer-events-auto [@media(pointer:coarse)]:opacity-100"
         >

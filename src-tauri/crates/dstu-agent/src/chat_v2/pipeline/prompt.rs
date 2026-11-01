@@ -74,6 +74,9 @@ impl ChatV2Pipeline {
         // 只向模型声明用户在设置中启用的渲染语法。
         let renderer_capabilities = self.load_renderer_capabilities();
 
+        // Super 会话（仅 options.super_session 为 Some）：Router 稳定段 + Worker 名册
+        let (super_agent_router, super_agent_roster) = self.load_super_agent_sections(ctx);
+
         let parts = prompt_builder::build_system_prompt_with_profile_agents_and_renderers(
             &ctx.options,
             &ctx.retrieved_sources,
@@ -83,6 +86,8 @@ impl ChatV2Pipeline {
             active_goal,
             insight_hints,
             renderer_capabilities,
+            super_agent_router,
+            super_agent_roster,
         );
         ctx.turn_volatile_context = parts.turn_volatile;
         parts.stable_system
@@ -134,6 +139,35 @@ impl ChatV2Pipeline {
             return None;
         }
         Some(crate::chat_v2::goal::format_active_goal_summary(&goal))
+    }
+
+    /// Super 会话注入段：`(router 稳定段, worker 名册)`。
+    ///
+    /// 仅当本回合 `options.super_session` 为 Some（由入口钩子
+    /// `super_session::apply_turn_overrides` 设置）时加载；两段的格式化、
+    /// XML 包裹与转义由 `super_session` 负责，prompt_builder 原样放置。
+    /// 失败一律降级为 None（由 super_session 内部记日志）。
+    pub(crate) fn load_super_agent_sections(
+        &self,
+        ctx: &PipelineContext,
+    ) -> (Option<String>, Option<String>) {
+        let Some(turn) = ctx.options.super_session.as_ref() else {
+            return (None, None);
+        };
+        let main_db = self.main_db.as_deref();
+        let router = crate::chat_v2::super_session::router_stable_section(
+            &*self.db,
+            main_db,
+            &ctx.session_id,
+            &turn.workspace_id,
+        );
+        let roster = crate::chat_v2::super_session::roster_volatile_section(
+            &*self.db,
+            main_db,
+            &ctx.session_id,
+            &turn.workspace_id,
+        );
+        (router, roster)
     }
 
     /// 🆕 Insight Recall v2 阶段二：被动注入（存在级最小披露）。

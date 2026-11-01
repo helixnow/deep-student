@@ -78,6 +78,7 @@ pub mod skill_workshop_executor; // 🆕 skill_workshop_propose / skill_workshop
 pub mod skills_executor; // 🆕 Skills 工具执行器（渐进披露架构）
 pub mod sleep_executor;
 pub mod subagent_executor;
+pub mod super_session_executor; // Super 会话 Router 专用 Worker 编排工具（super_dispatch/message/close/list_worker[s]）
 pub mod task_audit_executor; // Audit manifest export and lineage forget governance
 pub mod todo_executor;
 pub mod tool_pack_executor; // ToolPack parallel executor
@@ -143,6 +144,7 @@ pub use skill_lifecycle_executor::SkillLifecycleExecutor; // 🆕 技能生命�
 pub use skills_executor::SkillsExecutor; // 🆕 Skills 工具执行器
 pub use sleep_executor::CoordinatorSleepExecutor;
 pub use subagent_executor::{SubagentExecutor, SUBAGENT_TOOL_NAME};
+pub use super_session_executor::SuperSessionExecutor;
 pub use task_audit_executor::TaskAuditExecutor;
 pub use todo_executor::TodoListExecutor;
 pub use tool_pack_executor::ToolPackExecutor; // ToolPack parallel executor

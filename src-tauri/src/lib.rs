@@ -1708,12 +1708,11 @@ pub fn run() {
                 });
             }
 
-            // 实验性 Super-agent（默认关闭；仅创建 Hub 与后台循环，不启用时不跑任何回合）
-            if let Err(e) = crate::chat_v2::superagent::init(&app_handle) {
-                log::warn!("[SuperAgent] init failed: {e}");
-            }
+            // Super 会话：读取开关（含旧 superagent.db 开关迁移），启用时 ensure()
+            // 活跃 Super 会话；不启动任何后台循环（投递由前端常驻控制器驱动）。错误只记日志。
+            crate::chat_v2::super_session::init(&app_handle);
 
-            // 有启用自动化时，用户关闭主窗口默认转为后台驻留。应用仍可通过
+            // 有启用自动化 / 快速助手后台 / Super 会话时，用户关闭主窗口默认转为后台驻留。应用仍可通过
             // Dock/任务栏再次启动；single-instance 回调会唤回这一窗口。显式“退出”
             // 仍走 RunEvent::ExitRequested，不拦截。
             #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -1729,10 +1728,18 @@ pub fn run() {
                             .flatten()
                             .as_deref()
                             == Some("true");
-                        if !crate::chat_v2::automations::automation_app_is_exiting()
-                            && (crate::chat_v2::automations::should_keep_automation_background(
+                        let keep_automation_background =
+                            crate::chat_v2::automations::should_keep_automation_background(
                                 &database_for_close,
-                            ) || keep_quick_assistant_background)
+                            );
+                        // Super 会话启用时关窗只隐藏：webview 内的常驻控制器继续投递
+                        // Worker 结果，后台 Worker 也继续运行。
+                        let keep_super_session_background =
+                            crate::chat_v2::super_session::is_enabled(&app_for_close);
+                        if !crate::chat_v2::automations::automation_app_is_exiting()
+                            && (keep_automation_background
+                                || keep_quick_assistant_background
+                                || keep_super_session_background)
                         {
                             api.prevent_close();
                             let _ = window_for_close.hide();
@@ -1741,12 +1748,23 @@ pub fn run() {
                             if !crate::system_notification::notifications_disabled(
                                 &database_for_close,
                             ) {
+                                let mut reasons: Vec<&str> = Vec::new();
+                                if keep_automation_background {
+                                    reasons.push("已启用的定时任务会继续按计划执行");
+                                }
+                                if keep_super_session_background {
+                                    reasons.push("Super-agent 会话的后台任务会继续运行");
+                                }
+                                if keep_quick_assistant_background {
+                                    reasons.push("快速助手保持可用");
+                                }
+                                let body = format!("{}。", reasons.join("；"));
                                 use tauri_plugin_notification::NotificationExt;
                                 let _ = app_for_close
                                     .notification()
                                     .builder()
                                     .title("Deep Student 正在后台运行")
-                                    .body("已启用的定时任务会继续按计划执行。")
+                                    .body(body)
                                     .show();
                             }
                         } else if !crate::chat_v2::automations::automation_app_is_exiting() {
@@ -2552,15 +2570,13 @@ pub fn run() {
             ,crate::chat_v2::handlers::workspace_handlers::workspace_manual_wake
             ,crate::chat_v2::handlers::workspace_handlers::workspace_cancel_sleep
             ,crate::chat_v2::handlers::workspace_handlers::workspace_restore_executions
-            ,crate::chat_v2::superagent::runtime::superagent_status
-            ,crate::chat_v2::superagent::runtime::superagent_set_enabled
-            ,crate::chat_v2::superagent::runtime::superagent_ingest
-            ,crate::chat_v2::superagent::runtime::superagent_get_config
-            ,crate::chat_v2::superagent::runtime::superagent_set_config
-            ,crate::chat_v2::superagent::runtime::superagent_feed
-            ,crate::chat_v2::superagent::runtime::superagent_list_replies
-            ,crate::chat_v2::superagent::runtime::superagent_close_worker
-            ,crate::chat_v2::superagent::runtime::superagent_revive_worker
+            // Super 会话（普通 chat_v2 会话 + metadata 标记；替代旧 superagent_* 命令）
+            ,crate::chat_v2::super_session::commands::super_session_get_state
+            ,crate::chat_v2::super_session::commands::super_session_set_enabled
+            ,crate::chat_v2::super_session::commands::super_session_ensure
+            ,crate::chat_v2::super_session::commands::super_session_get_settings
+            ,crate::chat_v2::super_session::commands::super_session_set_settings
+            ,crate::chat_v2::super_session::commands::chat_v2_super_deliver_inbox
             // COMPAT-REMOVED 2026-07-20 (owner: platform-chat, remove target: vNext)
             // 旧 resource_* 命令已注销：前端零 invoke，替代路径 = vfs_* / VfsResourceRepo。
             // chat_v2::resource_repo 仍保留只读兼容层（见该模块头注释），勿再注册 resource_*。

@@ -498,6 +498,11 @@ pub struct PromptBuilder {
     insight_hints: Option<String>,
     /// 已启用的富渲染能力；仅其输出语法会注入 system。
     renderer_capabilities: RendererCapabilities,
+    /// Super 会话 Router 稳定段（已由 super_session 格式化为完整 XML 块并完成转义；
+    /// 会话内字节稳定，进 stable system）
+    super_agent_router: Option<String>,
+    /// Super 会话 Worker 名册（已由 super_session 格式化并转义；逐轮变化，进 turn-volatile）
+    super_agent_roster: Option<String>,
 }
 
 impl PromptBuilder {
@@ -524,6 +529,8 @@ impl PromptBuilder {
             active_goal: None,
             insight_hints: None,
             renderer_capabilities: RendererCapabilities::default(),
+            super_agent_router: None,
+            super_agent_roster: None,
         }
     }
 
@@ -548,6 +555,22 @@ impl PromptBuilder {
     /// 内容纪律：只含卡片标题（存在级），方法内容零泄露（D2 红线）。
     pub fn with_insight_hints(mut self, hints: Option<String>) -> Self {
         self.insight_hints = hints.filter(|s| !s.trim().is_empty());
+        self
+    }
+
+    /// Super 会话注入段（仅 Super 回合）。
+    ///
+    /// 分工约定：两段都由 `super_session` 产出**完整的、已转义的** XML 块
+    /// （router 为 `<super_agent_router>…</super_agent_router>`），本构建器原样放置：
+    /// router 进稳定 system（`<user_preferences>` 之后、固定引用规则之前），
+    /// roster 进 turn-volatile（活跃目标之后）。空白字符串视为 None。
+    pub fn with_super_agent_sections(
+        mut self,
+        router: Option<String>,
+        roster: Option<String>,
+    ) -> Self {
+        self.super_agent_router = router.filter(|s| !s.trim().is_empty());
+        self.super_agent_roster = roster.filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -723,6 +746,11 @@ impl PromptBuilder {
             ));
         }
 
+        // 1.15 Super 会话 Router 稳定段（仅 Super 回合；会话内字节稳定）
+        if let Some(router) = self.super_agent_router {
+            parts.push(router);
+        }
+
         // 1.2 固定引用规则（P1-10：无条件注入，字节恒定；
         // 本轮实际检索到的 context 在当前 user 的 <injected_context> 内）
         parts.push(CITATION_GUIDE.to_string());
@@ -793,6 +821,12 @@ impl PromptBuilder {
                 "<active_goal>\n当前会话有一个进行中的目标（用户设定，跨轮次持续存在）：\n{}\n用户的插话与目标推进应服务于该目标。需要用户回答才能继续时，调用 goal_update(status=\"waiting_user\")；确证目标完成后调用 goal_update(status=\"complete\")。\n</active_goal>",
                 escape_xml_content(goal)
             ));
+        }
+
+        // 2.45 Super 会话 Worker 名册（逐轮变化，绝不进 stable system；
+        // 已由 super_session 格式化并转义）
+        if let Some(roster) = &self.super_agent_roster {
+            parts.push(roster.clone());
         }
 
         // 2.5 🆕 灵感存在级提示（Insight Recall v2：被动通道）
@@ -961,6 +995,8 @@ pub fn build_system_prompt_with_profile_and_agents(
         active_goal,
         insight_hints,
         RendererCapabilities::default(),
+        None,
+        None,
     )
 }
 
@@ -974,6 +1010,8 @@ pub fn build_system_prompt_with_profile_agents_and_renderers(
     active_goal: Option<String>,
     insight_hints: Option<String>,
     renderer_capabilities: RendererCapabilities,
+    super_agent_router: Option<String>,
+    super_agent_roster: Option<String>,
 ) -> SystemPromptParts {
     PromptBuilder::new(options.system_prompt_override.as_deref())
         .with_message_sources(sources)
@@ -985,6 +1023,7 @@ pub fn build_system_prompt_with_profile_agents_and_renderers(
         .with_active_goal(active_goal)
         .with_insight_hints(insight_hints)
         .with_renderer_capabilities(renderer_capabilities)
+        .with_super_agent_sections(super_agent_router, super_agent_roster)
         .build_split()
 }
 
@@ -1074,6 +1113,35 @@ pub fn build_system_prompt_with_shared_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn super_agent_router_goes_to_stable_and_roster_to_turn_volatile() {
+        let router = "<super_agent_router>\nROUTER-RULES\n</super_agent_router>".to_string();
+        let roster = "<super_agent_workers>\nWORKER-ROSTER\n</super_agent_workers>".to_string();
+        let parts = PromptBuilder::new(None)
+            .with_super_agent_sections(Some(router.clone()), Some(roster.clone()))
+            .build_split();
+        assert!(parts.stable_system.contains(&router));
+        assert!(!parts.stable_system.contains("WORKER-ROSTER"));
+        let volatile = parts.turn_volatile.expect("roster must be turn-volatile");
+        assert!(volatile.contains(&roster));
+        assert!(!volatile.contains("ROUTER-RULES"));
+        // router 在固定引用规则之前
+        let router_at = parts.stable_system.find("ROUTER-RULES").unwrap();
+        let citation_at = parts.stable_system.find(CITATION_GUIDE).unwrap();
+        assert!(router_at < citation_at);
+    }
+
+    #[test]
+    fn super_agent_sections_absent_or_blank_leave_prompt_unchanged() {
+        let baseline = PromptBuilder::new(None).build_split();
+        let blank = PromptBuilder::new(None)
+            .with_super_agent_sections(Some("   ".to_string()), Some(String::new()))
+            .build_split();
+        assert_eq!(baseline.stable_system, blank.stable_system);
+        assert_eq!(baseline.turn_volatile, blank.turn_volatile);
+        assert!(!baseline.stable_system.contains("super_agent"));
+    }
 
     #[test]
     fn test_default_prompt() {
