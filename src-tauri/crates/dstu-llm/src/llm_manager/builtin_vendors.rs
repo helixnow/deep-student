@@ -232,7 +232,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         provider_type: super::opencode_go::PROVIDER_TYPE,
         auth_mode: None,
         base_url: super::opencode_go::OPENAI_BASE_URL,
-        // 使用规则在供应商页的「仅限 Agent 对话」说明里展示，这里不写备注。
+        // 使用建议在供应商页的「建议仅用于 Agent 对话」说明里展示，这里不写备注。
         notes: "",
         max_tokens_limit: None,
         website_url: "https://opencode.ai/go",

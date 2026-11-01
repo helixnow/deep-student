@@ -132,7 +132,6 @@ import UnifiedErrorHandler, { useUnifiedErrorHandler } from '@/components/Unifie
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
-import { excludeOpenCodeGo } from '@/utils/opencodeGo';
 // ★ 2025-01-03: userPreferenceProfile 已删除，由新的 User Memory 系统替代
 // ★ 2026-01-15: 导师模式已迁移到 Skills 系统，不再需要自定义 prompt
 
@@ -1454,7 +1453,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, isActive = true }) =
           />
         )}
         {activeTab === 'plugins' && !isMobilePlatform() && (
-          <PluginsTab models={toUnifiedModelInfo(excludeOpenCodeGo(getAllEnabledApis()))} />
+          <PluginsTab models={toUnifiedModelInfo(getAllEnabledApis())} />
         )}
         {activeTab === 'plugins' && isMobilePlatform() && (
           <div className="py-10 text-sm text-muted-foreground">{t('settings:plugins.mobile_hidden')}</div>

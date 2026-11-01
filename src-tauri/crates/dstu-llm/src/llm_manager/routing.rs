@@ -629,18 +629,7 @@ impl LLMManager {
                                 continue;
                             }
                             if let Some(cfg) = resolve_enabled_text_model(&all, [target.as_str()]) {
-                                // OpenCode Go 仅限 Agent 对话：后台任务不得降级到它。
-                                if run.scenario == FailoverScenario::BackgroundTask
-                                    && super::opencode_go::is_opencode_go_config(cfg)
-                                {
-                                    warn!(
-                                        "[Failover] fallback 模型配置 {} 属于 OpenCode Go（仅限 Agent 对话），后台任务跳过",
-                                        target,
-                                    );
-                                } else if supports_required_modality(
-                                    cfg,
-                                    run.required_is_multimodal,
-                                ) {
+                                if supports_required_modality(cfg, run.required_is_multimodal) {
                                     models.push(cfg.clone());
                                 } else {
                                     warn!(

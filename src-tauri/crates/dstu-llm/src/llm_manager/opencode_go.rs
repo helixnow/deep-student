@@ -40,10 +40,9 @@ pub(crate) const USAGE_SESSION_ID: &str = "deepstudent-usage";
 
 const SESSION_HEADER_MAX_LEN: usize = 128;
 
-pub(crate) const AGENT_ONLY_MESSAGE: &str =
-    "OpenCode Go 订阅仅用于 Agent 对话（遵守 OpenCode 官方的使用规则），不能用于该功能。请在设置中为该功能指定其他模型。";
-pub const AUTOMATION_BLOCKED_MESSAGE: &str =
-    "OpenCode Go 订阅仅用于 Agent 对话，定时自动化不能使用。请为该自动化指定其他模型。";
+/// 非 Agent 对话（用户手动把 Go 配给制卡、翻译、自动化等功能）且调用方没有会话标识时使用的会话标识。
+/// Go 只“建议”用于 Agent 对话，不再拒绝其他用途。
+pub(crate) const TASK_SESSION_ID: &str = "deepstudent-task";
 
 /// 身份标识：`DeepStudent/<版本>`。
 pub(crate) fn user_agent() -> String {

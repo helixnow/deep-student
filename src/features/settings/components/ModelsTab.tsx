@@ -16,7 +16,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
-import { excludeOpenCodeGo, isOpenCodeGoConfig } from '@/utils/opencodeGo';
+import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
 import { isVectorIndexUnavailable, useEmbeddingReadiness } from '@/features/learning-hub/embeddingReadiness';
 import { VectorIndexUnavailableNotice } from '@/features/learning-hub/components/VectorIndexUnavailableNotice';
@@ -189,22 +189,20 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   saveSingleAssignmentField,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
-  // OpenCode Go 仅限 Agent 对话：对话默认模型、会话标题、上下文压缩之外的功能不提供 Go 模型。
-  const getNonAgentApis = (currentId?: string) => excludeOpenCodeGo(getAllEnabledApis(currentId));
-  // 对话默认模型是 OpenCode Go 时，未单独指定（或仍指向 Go）的非对话功能会回退到它而被拒绝。
+  // OpenCode Go 建议只用于 Agent 对话（对话默认模型、会话标题、上下文压缩），但不强制：
+  // 其他功能的选择器照常列出 Go 模型，只在下方提示哪些非 Agent 功能会用到 Go。
   const findApi = (id?: string | null) => (id ? apiConfigs.find((api) => api.id === id) : undefined);
   const model2IsOpenCodeGo = isOpenCodeGoConfig(findApi(config.model2ConfigId));
-  const goFallbackFeatures = model2IsOpenCodeGo
-    ? ([
-        [config.ankiCardModelConfigId, t('settings:api.anki_card_title')],
-        [config.qbank_ai_grading_model_config_id, t('settings:cards.qbank_ai_grading_model_title')],
-        [config.qbank_ai_generation_model_config_id, t('settings:cards.qbank_ai_generation_model_title')],
-        [config.translation_model_config_id, t('settings:cards.translation_model_title')],
-        [config.memory_decision_model_config_id, t('settings:api_config.memory_decision_model_label')],
-      ] as Array<[string | undefined, string]>)
-        .filter(([id]) => !id || isOpenCodeGoConfig(findApi(id)))
-        .map(([, label]) => label)
-    : [];
+  // 手动指定为 Go，或未单独指定而回退到 Go 对话模型的非 Agent 功能。
+  const goNonAgentFeatures = ([
+    [config.ankiCardModelConfigId, t('settings:api.anki_card_title')],
+    [config.qbank_ai_grading_model_config_id, t('settings:cards.qbank_ai_grading_model_title')],
+    [config.qbank_ai_generation_model_config_id, t('settings:cards.qbank_ai_generation_model_title')],
+    [config.translation_model_config_id, t('settings:cards.translation_model_title')],
+    [config.memory_decision_model_config_id, t('settings:api_config.memory_decision_model_label')],
+  ] as Array<[string | undefined, string]>)
+    .filter(([id]) => (id ? isOpenCodeGoConfig(findApi(id)) : model2IsOpenCodeGo))
+    .map(([, label]) => label);
   const [ocrEngineConfigured, setOcrEngineConfigured] = useState(false);
   // 未编入向量索引的构建（mobile-slim）：嵌入维度/模型绑定没有任何效果，换成说明
   const vectorIndexUnavailable = isVectorIndexUnavailable(useEmbeddingReadiness());
@@ -261,11 +259,11 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
-            {model2IsOpenCodeGo && (
+            {(model2IsOpenCodeGo || goNonAgentFeatures.length > 0) && (
               <p className="px-1 pt-2 text-xs text-muted-foreground" data-testid="opencode-go-model2-notice">
-                {goFallbackFeatures.length > 0
-                  ? t('settings:vendor_panel.opencode_go.model2_fallback_notice', {
-                      features: goFallbackFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
+                {goNonAgentFeatures.length > 0
+                  ? t('settings:vendor_panel.opencode_go.non_agent_notice', {
+                      features: goNonAgentFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
                     })
                   : t('settings:vendor_panel.opencode_go.model2_notice')}
               </p>
@@ -283,7 +281,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.ankiCardModelConfigId}
               field="anki_card_model_config_id"
               configKey="ankiCardModelConfigId"
-              models={toUnifiedModelInfo(getNonAgentApis(config.ankiCardModelConfigId))}
+              models={toUnifiedModelInfo(getAllEnabledApis(config.ankiCardModelConfigId))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('model_saved')}
               onSave={handleSave}
@@ -295,7 +293,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.qbank_ai_grading_model_config_id}
               field="qbank_ai_grading_model_config_id"
               configKey="qbank_ai_grading_model_config_id"
-              models={toUnifiedModelInfo(getNonAgentApis(config.qbank_ai_grading_model_config_id))}
+              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_grading_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('qbank_ai_grading_saved')}
               onSave={handleSave}
@@ -307,7 +305,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.qbank_ai_generation_model_config_id}
               field="qbank_ai_generation_model_config_id"
               configKey="qbank_ai_generation_model_config_id"
-              models={toUnifiedModelInfo(getNonAgentApis(config.qbank_ai_generation_model_config_id))}
+              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_generation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('qbank_ai_generation_saved')}
               onSave={handleSave}
@@ -331,7 +329,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.translation_model_config_id}
               field="translation_model_config_id"
               configKey="translation_model_config_id"
-              models={toUnifiedModelInfo(getNonAgentApis(config.translation_model_config_id))}
+              models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('translation_saved')}
               onSave={handleSave}
@@ -352,7 +350,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.memory_decision_model_config_id}
               field="memory_decision_model_config_id"
               configKey="memory_decision_model_config_id"
-              models={toUnifiedModelInfo(getNonAgentApis(config.memory_decision_model_config_id))}
+              models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('memory_decision_saved')}
               onSave={handleSave}
@@ -458,7 +456,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
            <OcrEngineCard
              apiConfigs={apiConfigs}
              toUnifiedModelInfo={toUnifiedModelInfo}
-             getAllEnabledApis={getNonAgentApis}
+             getAllEnabledApis={getAllEnabledApis}
            />
         </div>
 

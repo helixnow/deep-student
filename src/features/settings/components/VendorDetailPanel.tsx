@@ -1001,7 +1001,7 @@ export const VendorDetailPanel: React.FC<VendorDetailPanelProps> = ({ scrollElem
           </div>
         )}
 
-        {/* OpenCode Go：「仅限 Agent 对话」说明与订阅用量常驻，不随连接区折叠；填好 Key 后自动查询一次 */}
+        {/* OpenCode Go：「建议仅用于 Agent 对话」说明与订阅用量常驻，不随连接区折叠；填好 Key 后自动查询一次 */}
         {isOpenCodeGoVendor(selectedVendor) && (
           <div className="mt-3">
             <OpenCodeGoUsageSection

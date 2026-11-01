@@ -44,8 +44,8 @@ function isChatModel(api: ApiConfig): boolean {
 }
 
 /**
- * 非 Agent 对话功能的对话模型：OpenCode Go 仅限 Agent 对话（主对话、会话标题），
- * 不能自动分配给制卡、批改、出题、翻译、记忆决策等功能。
+ * 非 Agent 对话功能的对话模型：OpenCode Go 建议只用于 Agent 对话（主对话、会话标题），
+ * 自动分配不会把它配给制卡、批改、出题、翻译、记忆决策等功能（用户仍可手动选择）。
  */
 function isNonAgentChatModel(api: ApiConfig): boolean {
   return isChatModel(api) && !isOpenCodeGoConfig(api);
@@ -248,7 +248,7 @@ async function ensureAllVisionModelsRegisteredAsOcr(): Promise<void> {
       if (existingConfigIds.has(config.id)) continue; // 已注册，跳过
       if (isDiscontinuedOcrModel(config)) continue; // 停服模型不注册
       if (!isMultimodalModel(config)) continue; // 复用已有的多模态判断逻辑
-      if (isOpenCodeGoConfig(config)) continue; // OpenCode Go 仅限 Agent 对话，不注册为 OCR 引擎
+      if (isOpenCodeGoConfig(config)) continue; // 自动注册不选 OpenCode Go（建议仅用于 Agent 对话）；用户可在 OCR 设置里手动选择
 
       // 注册为 OCR 引擎
       try {

@@ -1,4 +1,4 @@
-# OpenCode Go 订阅接入（仅限 Agent 对话）
+# OpenCode Go 订阅接入（建议仅用于 Agent 对话）
 
 日期：2026-10-31
 参考来源：
@@ -18,7 +18,9 @@ OpenCode Go 是面向「OpenCode 及产生同类请求的编程 agent」的订�
 
 ## 决策
 
-**只在 Agent 对话中允许使用 OpenCode Go。**
+> **2026-11-01 修订：限制改为建议。** 用户决定不再强制拦截：非 Agent 功能（制卡、翻译、批改、OCR、定时自动化、fallback 等）只要用户手动选了 Go 就照常执行，请求仍带 DeepStudent 身份头，会话标识依次取 Agent 会话 ID → 调用方 session_id → 固定的 `deepstudent-task`。自动分配与 OCR 引擎自动注册仍不会选 Go；一键分配只设置对话默认模型、会话标题、上下文压缩；设置页对用到 Go 的非 Agent 功能给出提示。下表「拒绝」各行已不再生效，保留作历史记录。
+
+**（原决策）只在 Agent 对话中允许使用 OpenCode Go。**
 
 | 场景 | 是否允许 | 实现位置 |
 |---|---|---|
@@ -60,6 +62,4 @@ OpenCode Go 是面向「OpenCode 及产生同类请求的编程 agent」的订�
 ## 未做 / 后续
 
 - 解析响应中的 `opencode.allowance` 字段（逐次用量；官方字段结构未公开）。
-- 多模态辅助模型生成视觉观察（`call_raw_prompt_with_config_id_and_images`）暂未携带会话 ID，选 Go 作辅助多模态模型会被拒绝。
-- 微信 iLink 等渠道对话暂按非 Agent 场景处理（前端不提供 Go）。
 - 若后续需要，可向 OpenCode 申请进入「已验证客户端」列表。

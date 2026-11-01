@@ -2261,13 +2261,14 @@ mod tests {
     }
 
     #[test]
-    fn opencode_go_is_rejected_outside_agent_conversations() {
+    fn opencode_go_is_allowed_outside_agent_conversations() {
         let config = opencode_go_test_config(
             "openai_chat_completions",
             crate::llm_manager::opencode_go::OPENAI_BASE_URL,
         );
         let adapter = build_provider_adapter(&config);
-        let error = LLMManager::prepare_plain_provider_request(
+        // 非 Agent 请求不再被拒绝：仍带 DeepStudent 身份头，会话标识取调用方的 session_id。
+        let prepared = LLMManager::prepare_plain_provider_request(
             adapter.as_ref(),
             &config,
             &json!({"model": config.model, "messages": []}),
@@ -2275,14 +2276,20 @@ mod tests {
             Some("translation"),
             "test",
         )
-        .err()
-        .expect("non-agent OpenCode Go request must be rejected");
-        assert!(error
-            .to_string()
-            .contains(crate::llm_manager::opencode_go::AGENT_ONLY_MESSAGE));
+        .expect("non-agent OpenCode Go request is allowed");
+        assert!(prepared.is_opencode_go());
+        assert_eq!(
+            prepared
+                .headers
+                .iter()
+                .filter(|(name, _)| name.eq_ignore_ascii_case("x-opencode-session"))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec!["translation"]
+        );
 
-        // 空白会话标识不算 Agent 会话。
-        assert!(LLMManager::prepare_plain_provider_request_scoped(
+        // 既无 Agent 会话也无 session_id（空白不算）时使用固定的任务会话标识。
+        let prepared = LLMManager::prepare_plain_provider_request_scoped(
             adapter.as_ref(),
             &config,
             &json!({"model": config.model, "messages": []}),
@@ -2291,7 +2298,16 @@ mod tests {
             Some("   "),
             "test",
         )
-        .is_err());
+        .expect("non-agent OpenCode Go request is allowed");
+        assert_eq!(
+            prepared
+                .headers
+                .iter()
+                .filter(|(name, _)| name.eq_ignore_ascii_case("x-opencode-session"))
+                .map(|(_, value)| value.as_str())
+                .collect::<Vec<_>>(),
+            vec![crate::llm_manager::opencode_go::TASK_SESSION_ID]
+        );
     }
 
     #[test]
@@ -4864,16 +4880,18 @@ impl LLMManager {
                 "OpenAI Codex OAuth 请求必须经由 LLMManager 准备",
             ));
         }
+        // OpenCode Go 建议只用于 Agent 对话；用户手动配到其他功能时照常放行，只记一条日志。
         let opencode_go_session = if super::opencode_go::is_opencode_go_config(config) {
             let session = agent_session_id
                 .and_then(super::opencode_go::session_header_value)
-                .ok_or_else(|| {
-                    warn!(
-                        "[OpenCode Go] 拒绝非 Agent 对话请求: config={}, context={}",
+                .or_else(|| {
+                    info!(
+                        "[OpenCode Go] 非 Agent 对话请求（用户手动配置）: config={}, context={}",
                         config.id, build_error_context
                     );
-                    AppError::configuration(super::opencode_go::AGENT_ONLY_MESSAGE)
-                })?;
+                    session_id.and_then(super::opencode_go::session_header_value)
+                })
+                .unwrap_or_else(|| super::opencode_go::TASK_SESSION_ID.to_string());
             Some(session)
         } else {
             None

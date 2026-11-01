@@ -50,7 +50,6 @@ import {
   type QuestionSourceImportMetadata,
   type QuestionSourceRange,
 } from './QuestionSourceRangePicker';
-import { isOpenCodeGoConfig } from '@/utils/opencodeGo';
 
 // ★ 试卷上传专用文件类型（支持 HEIC，与统一组件的 IMAGE 略有不同）
 // 导出给题目集启动台的拖放区域复用，保证两处接受的文件类型一致
@@ -400,8 +399,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
         const isEmbedding = cfg.isEmbedding === true || (cfg as any).is_embedding === true;
         const isReranker = cfg.isReranker === true || (cfg as any).is_reranker === true;
         const isEnabled = cfg.enabled !== false;
-        // OpenCode Go 仅限 Agent 对话
-        return !isEmbedding && !isReranker && isEnabled && !isOpenCodeGoConfig(cfg);
+        return !isEmbedding && !isReranker && isEnabled;
       });
       setAvailableModels(
         chatModels.map((cfg: ApiConfig) => ({

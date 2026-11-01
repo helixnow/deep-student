@@ -1592,27 +1592,7 @@ async fn execute_headless_pipeline(
         return Err(HeadlessPipelineTermination::Failed(error));
     }
 
-    // —— OpenCode Go 仅限 Agent 对话：无人参与的 headless 回合（定时自动化）不得使用 ——
-    if let Some(llm_manager) = app.try_state::<Arc<crate::llm_manager::LLMManager>>() {
-        if let Ok((config, _)) = llm_manager
-            .select_model_for(
-                "default",
-                model_id.map(str::to_string),
-                None,
-                None,
-                None,
-                None,
-                None,
-            )
-            .await
-        {
-            if crate::llm_manager::opencode_go::is_opencode_go_config(&config) {
-                return Err(HeadlessPipelineTermination::Failed(
-                    crate::llm_manager::opencode_go::AUTOMATION_BLOCKED_MESSAGE.to_string(),
-                ));
-            }
-        }
-    }
+    // OpenCode Go 只建议用于 Agent 对话；用户手动给自动化选了 Go 时照常执行（不再拦截）。
 
     // —— G01-d 事件出口收口：headless emitter 单一形态 ——
     //    `ChatV2EventEmitter::new_headless`（NoopEventSink，全部事件丢弃），
