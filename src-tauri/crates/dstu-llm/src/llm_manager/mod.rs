@@ -2,6 +2,7 @@ pub mod adapters;
 mod builtin_vendors;
 mod exam_engine;
 pub mod model2_pipeline;
+pub mod opencode_go;
 pub mod parser;
 pub mod provider_quirks;
 pub mod question_authoring;
@@ -5949,6 +5950,42 @@ impl LLMManager {
             .ok_or_else(|| AppError::configuration("供应商不存在或已被删除"))
     }
 
+    /// 查询 OpenCode Go 订阅用量（公开的 `/zen/go/v1/usage`）。
+    pub async fn opencode_go_usage(
+        &self,
+        vendor_id: &str,
+    ) -> Result<opencode_go::OpenCodeGoUsage> {
+        let vendor = self.vendor_config_for_runtime(vendor_id).await?;
+        let is_go_vendor = vendor.id == opencode_go::VENDOR_ID
+            || vendor
+                .provider_type
+                .eq_ignore_ascii_case(opencode_go::PROVIDER_TYPE);
+        if !is_go_vendor {
+            return Err(AppError::validation("该供应商不是 OpenCode Go"));
+        }
+        let primary = if vendor.is_builtin {
+            vendor.api_key.trim().to_string()
+        } else {
+            self.decrypt_api_key_if_needed(&vendor.api_key)?
+                .trim()
+                .to_string()
+        };
+        let api_key = std::iter::once(primary.as_str())
+            .chain(vendor.api_keys.iter().map(String::as_str))
+            .map(str::trim)
+            .find(|key| !key.is_empty() && !key.chars().all(|ch| ch == '*'))
+            .map(str::to_string)
+            .ok_or_else(|| AppError::validation("请先填写 OpenCode Go 的 API Key"))?;
+        let client =
+            opencode_go::usage_client().map_err(|error| AppError::network(error.message()))?;
+        opencode_go::fetch_usage(&client, &api_key)
+            .await
+            .map_err(|error| match error {
+                opencode_go::OpenCodeGoUsageError::Network(_) => AppError::network(error.message()),
+                _ => AppError::llm(error.message()),
+            })
+    }
+
     /// 按 vendor_id + 模型名解析已保存模型条目的运行期配置（与生产聊天完全一致的
     /// vendor+profile 合并结果）。连接测试用它构造探测请求，避免测试路径与生产
     /// 路径的能力字段/协议/思考配置漂移。无匹配条目时返回 None（草稿配置场景）。
@@ -6441,7 +6478,7 @@ impl LLMManager {
             (None, None) => None,
         };
 
-        let runtime = ApiConfig {
+        let mut runtime = ApiConfig {
             resolved_adapter_id: None,
             id: profile.id.clone(),
             name: profile.label.clone(),
@@ -6516,6 +6553,11 @@ impl LLMManager {
             supports_openai_responses: vendor.supports_openai_responses,
             extra_body: profile.extra_body.clone(),
         };
+        // OpenCode Go 按模型的原生协议使用不同端点根（openai / anthropic / google）。
+        if opencode_go::is_opencode_go_config(&runtime) {
+            let protocol = effective_api_protocol_for_config(&runtime);
+            runtime.base_url = opencode_go::base_url_for_protocol(&runtime.base_url, &protocol);
+        }
 
         Ok(ResolvedModelConfig {
             vendor: vendor.clone(),

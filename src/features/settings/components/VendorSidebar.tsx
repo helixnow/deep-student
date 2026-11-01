@@ -98,6 +98,7 @@ const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) =
     ollama: 'Ollama',
     nvidia: 'NVIDIA',
     mimo: 'Xiaomi MiMo',
+    opencode_go: 'OpenCode Go',
   };
   const fallback = map[normalizedProviderType] || providerType;
   return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;

@@ -3112,6 +3112,23 @@ pub async fn fetch_vendor_models(
         .llm_manager
         .vendor_config_for_runtime(vendor_id.trim())
         .await?;
+    // OpenCode Go 不公开模型目录接口，且各模型协议不同：直接返回内置目录（不发网络请求），
+    // 避免把协议未知的型号批量加入。
+    if vendor.id == crate::llm_manager::opencode_go::VENDOR_ID
+        || vendor
+            .provider_type
+            .eq_ignore_ascii_case(crate::llm_manager::opencode_go::PROVIDER_TYPE)
+    {
+        return Ok(crate::llm_manager::opencode_go::BUILTIN_MODELS
+            .iter()
+            .map(|model| FetchedVendorModel {
+                id: model.model.to_string(),
+                label: model.label.to_string(),
+                context_window: None,
+                max_output_tokens: Some(model.max_output_tokens),
+            })
+            .collect());
+    }
     let uses_no_auth = vendor
         .auth_mode
         .as_deref()
@@ -3288,6 +3305,17 @@ pub async fn fetch_vendor_models(
     let mut fetched: Vec<FetchedVendorModel> = models.into_values().collect();
     fetched.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(fetched)
+}
+
+/// 查询 OpenCode Go 订阅用量（5 小时 / 周 / 月窗口）。
+#[tauri::command]
+pub async fn opencode_go_get_usage(
+    vendor_id: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<crate::llm_manager::opencode_go::OpenCodeGoUsage> {
+    let vendor_id =
+        vendor_id.unwrap_or_else(|| crate::llm_manager::opencode_go::VENDOR_ID.to_string());
+    state.llm_manager.opencode_go_usage(&vendor_id).await
 }
 
 #[tauri::command]
@@ -3582,6 +3610,27 @@ pub async fn test_api_connection(
             format!("Codex 连接测试失败 - {message}"),
             latency_ms(),
         ));
+    }
+
+    // OpenCode Go：只允许 Agent 对话产生推理流量，连接测试改为查询公开的用量接口，
+    // 同时验证 API Key 与订阅状态，不消耗额度。
+    if crate::llm_manager::opencode_go::is_opencode_go_config(&config) {
+        let result = match crate::llm_manager::opencode_go::usage_client() {
+            Ok(client) => {
+                crate::llm_manager::opencode_go::fetch_usage(&client, &config.api_key).await
+            }
+            Err(error) => Err(error),
+        };
+        return Ok(match result {
+            Ok(_) => {
+                info!("[API测试] OpenCode Go 用量接口验证成功");
+                ConnectionTestOutcome::success(latency_ms(), None)
+            }
+            Err(error) => {
+                warn!("[API测试] OpenCode Go 验证失败: {}", error.message());
+                ConnectionTestOutcome::failure(error.category(), error.message(), latency_ms())
+            }
+        });
     }
 
     // 探测客户端：跟随重定向（reqwest 跨源重定向会剥离敏感头，同源重定向

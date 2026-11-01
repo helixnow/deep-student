@@ -16,6 +16,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
+import { excludeOpenCodeGo, isOpenCodeGoConfig } from '@/utils/opencodeGo';
 import { supportsKnowledgeModelCapability } from './knowledgeModelCapabilities';
 import { isVectorIndexUnavailable, useEmbeddingReadiness } from '@/features/learning-hub/embeddingReadiness';
 import { VectorIndexUnavailableNotice } from '@/features/learning-hub/components/VectorIndexUnavailableNotice';
@@ -188,6 +189,22 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   saveSingleAssignmentField,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  // OpenCode Go 仅限 Agent 对话：对话默认模型、会话标题、上下文压缩之外的功能不提供 Go 模型。
+  const getNonAgentApis = (currentId?: string) => excludeOpenCodeGo(getAllEnabledApis(currentId));
+  // 对话默认模型是 OpenCode Go 时，未单独指定（或仍指向 Go）的非对话功能会回退到它而被拒绝。
+  const findApi = (id?: string | null) => (id ? apiConfigs.find((api) => api.id === id) : undefined);
+  const model2IsOpenCodeGo = isOpenCodeGoConfig(findApi(config.model2ConfigId));
+  const goFallbackFeatures = model2IsOpenCodeGo
+    ? ([
+        [config.ankiCardModelConfigId, t('settings:api.anki_card_title')],
+        [config.qbank_ai_grading_model_config_id, t('settings:cards.qbank_ai_grading_model_title')],
+        [config.qbank_ai_generation_model_config_id, t('settings:cards.qbank_ai_generation_model_title')],
+        [config.translation_model_config_id, t('settings:cards.translation_model_title')],
+        [config.memory_decision_model_config_id, t('settings:api_config.memory_decision_model_label')],
+      ] as Array<[string | undefined, string]>)
+        .filter(([id]) => !id || isOpenCodeGoConfig(findApi(id)))
+        .map(([, label]) => label)
+    : [];
   const [ocrEngineConfigured, setOcrEngineConfigured] = useState(false);
   // 未编入向量索引的构建（mobile-slim）：嵌入维度/模型绑定没有任何效果，换成说明
   const vectorIndexUnavailable = isVectorIndexUnavailable(useEmbeddingReadiness());
@@ -244,6 +261,15 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
+            {model2IsOpenCodeGo && (
+              <p className="px-1 pt-2 text-xs text-muted-foreground" data-testid="opencode-go-model2-notice">
+                {goFallbackFeatures.length > 0
+                  ? t('settings:vendor_panel.opencode_go.model2_fallback_notice', {
+                      features: goFallbackFeatures.join(t('settings:vendor_panel.opencode_go.list_separator')),
+                    })
+                  : t('settings:vendor_panel.opencode_go.model2_notice')}
+              </p>
+            )}
           </div>
         </div></div>
 
@@ -257,7 +283,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.ankiCardModelConfigId}
               field="anki_card_model_config_id"
               configKey="ankiCardModelConfigId"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.ankiCardModelConfigId))}
+              models={toUnifiedModelInfo(getNonAgentApis(config.ankiCardModelConfigId))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('model_saved')}
               onSave={handleSave}
@@ -269,7 +295,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.qbank_ai_grading_model_config_id}
               field="qbank_ai_grading_model_config_id"
               configKey="qbank_ai_grading_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_grading_model_config_id))}
+              models={toUnifiedModelInfo(getNonAgentApis(config.qbank_ai_grading_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('qbank_ai_grading_saved')}
               onSave={handleSave}
@@ -281,7 +307,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.qbank_ai_generation_model_config_id}
               field="qbank_ai_generation_model_config_id"
               configKey="qbank_ai_generation_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_generation_model_config_id))}
+              models={toUnifiedModelInfo(getNonAgentApis(config.qbank_ai_generation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('qbank_ai_generation_saved')}
               onSave={handleSave}
@@ -305,7 +331,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.translation_model_config_id}
               field="translation_model_config_id"
               configKey="translation_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
+              models={toUnifiedModelInfo(getNonAgentApis(config.translation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('translation_saved')}
               onSave={handleSave}
@@ -326,7 +352,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               value={config.memory_decision_model_config_id}
               field="memory_decision_model_config_id"
               configKey="memory_decision_model_config_id"
-              models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
+              models={toUnifiedModelInfo(getNonAgentApis(config.memory_decision_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('memory_decision_saved')}
               onSave={handleSave}
@@ -432,7 +458,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
            <OcrEngineCard
              apiConfigs={apiConfigs}
              toUnifiedModelInfo={toUnifiedModelInfo}
-             getAllEnabledApis={getAllEnabledApis}
+             getAllEnabledApis={getNonAgentApis}
            />
         </div>
 

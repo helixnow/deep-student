@@ -1043,7 +1043,7 @@ impl ChatV2Pipeline {
                     );
                     let call = self
                         .llm_manager
-                        .call_with_config_id_raw_prompt(effective_model_id, &prompt);
+                        .call_agent_compaction_raw_prompt(effective_model_id, &prompt, session_id);
                     let result = if let Some(token) = cancellation_token {
                         tokio::select! {
                             result = call => Some(result),
@@ -1125,7 +1125,7 @@ impl ChatV2Pipeline {
                         );
                         let repair_call = self
                             .llm_manager
-                            .call_with_config_id_raw_prompt(effective_model_id, &repair_prompt);
+                            .call_agent_compaction_raw_prompt(effective_model_id, &repair_prompt, session_id);
                         let repair = if let Some(token) = cancellation_token {
                             tokio::select! {
                                 result = repair_call => Some(result),

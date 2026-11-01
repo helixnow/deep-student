@@ -207,6 +207,19 @@
       "notes": "v0.13.3+ 支持 /v1/responses 但为无状态实现（不支持 previous_response_id，2026-07 调研 10 要点 1），保持 supports=false、仅保留可选项，2026-07-08 复核。"
     },
     {
+      "provider_type": "opencode_go",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages",
+        "google_generate_content"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": true,
+      "notes": "OpenCode Go 订阅网关（2026-10-31 核对 opencode.ai/docs/go）。每个模型按官方端点表使用原生协议：openai/v1（chat/completions 与 responses）、anthropic/v1/messages、google/v1beta；内置模型显式声明 api_protocol，后端 merge_vendor_profile 按生效协议改写 Base URL（opencode_go::base_url_for_protocol）。仅允许 Agent 对话使用，请求携带 DeepStudent User-Agent 与 x-opencode-session。"
+    },
+    {
       "provider_type": "custom",
       "allowed_protocols": [
         "openai_chat_completions",

@@ -587,6 +587,8 @@ pub async fn essay_grading_get_models(
         .into_iter()
         // 与 Chat V2 前端过滤逻辑一致：排除嵌入模型、重排序模型、未启用的模型
         .filter(|c| c.enabled && !c.is_embedding && !c.is_reranker)
+        // OpenCode Go 仅限 Agent 对话，作文批改不提供。
+        .filter(|c| !crate::llm_manager::opencode_go::is_opencode_go_config(c))
         .map(|c| ModelInfo {
             id: c.id.clone(),
             name: c.name.clone(),
